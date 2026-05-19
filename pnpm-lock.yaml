@@ -103,9 +103,15 @@ importers:
       drizzle-kit:
         specifier: ^0.30.0
         version: 0.30.6
+      tsx:
+        specifier: ^4.19.2
+        version: 4.21.0
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@edge-runtime/vm@3.2.0)(@types/node@20.19.41)(lightningcss@1.32.0)
 
   packages/domain:
     devDependencies:

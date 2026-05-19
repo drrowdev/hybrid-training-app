@@ -5,21 +5,12 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
-### Added
-- Phase 0 monorepo scaffold: pnpm workspaces, Next.js 16 in `apps/web`, `packages/{domain,db,engine,ui}`.
-- `packages/domain`: first canonical functions — `computeRegionFreshness` (DC-C14) and `ewmaStep` (DC-C1) — with 14/14 Vitest cases including the morning-after-heavy-squats worked example.
-- `packages/db`: Drizzle schema (`profiles`, `limitations` per DC-V1, `movements` per DC-D4) with three enums (`region`, `limitation_severity`, `interference_cost`). Zod schemas via `drizzle-zod`. Migrations applied live: `0000` (tables + enums) and `0001_auth_and_rls` (FKs to `auth.users` with `ON DELETE CASCADE`, RLS, 11 policies, `handle_new_user` trigger).
-- Supabase Auth wired in `apps/web` via `@supabase/ssr`: client + server + middleware helpers, root middleware refreshes session every request, `/login` (tabbed signin/signup/magic-link), `/auth/callback`, protected `/app`, `signOut`, `deleteAccount` (GDPR Art. 17 with FK cascade), `/api/health`.
-- Multi-user RLS integration test (`packages/db/integration-tests/rls.mjs`): 11/11 pass live, covering profile/limitations/movements isolation and full FK cascade on `auth.users` deletion.
-- Vercel project linked to GitHub repo with Supabase + `NEXT_PUBLIC_SITE_URL` env vars; Deployment Protection disabled so public signups work.
-- Supabase Auth Site URL + 2 Redirect URLs (production + localhost) configured.
-- `docs/knowledge/` wiki bootstrap (plan + 3 research files + 108-constraint design constraints + index + log).
-- `docs/adr/0001-stack-choices.md` capturing Phase D verdicts.
-- `.github/workflows/ci.yml`: pnpm + Node 20, typecheck + lint + tests + build.
-- Husky `pre-push` hook running typecheck + domain/engine tests.
-- Privacy + Terms placeholder pages (per plan §4.5 — to be expanded before public launch).
-- Home page with footer linking to privacy + terms.
+### Added — Phase 1 starting point: movement catalog (commit pending)
 
-### Notes
-- **Phase 0 definition-of-done: ✓ achieved.** Live at https://hybrid-training-app-web.vercel.app. Health check + login + auto-created profile + signOut + account-delete all verified.
-- Phase 1 starting points listed in `HANDOFF.md`: movement catalog seed, sessions + set_logs tables + logging UI, Strava integration, Playwright e2e tests.
+- **0002_movement_metadata migration** applied live to Supabase: 22-value `muscle` enum (DC-T1 priorities), `axial_load` enum (DC-D3), `stability` enum (DC-O5), 7 new columns on `movements` (`primary_muscles`, `secondary_muscles`, `high_strain_tendon`, `axial_load`, `stability`, `bilateral`, `body_weight_loaded`). GIN indexes on muscle arrays for the aesthetics dashboard.
+- **`packages/db/seeds/`**: 275-movement seed catalog organised into 3 files (strength patterns / isolation / cardio+plyo+olympic+tendon+cuff+drills), with category-helper builders for terse per-movement overrides. Includes 28 squat, 24 hinge, 24 press, 25 pull, 6 carry, 87 isolation, 38 cardio (cycling/running/rowing/sled/ruck/swim/etc.), 12 plyometric, 8 Olympic, 9 tendon-resilience (Baar isometric / Kongsgaard HSR / Alfredson eccentric protocols), 8 rotator-cuff, 6 run drills, 6 grip. 42 flagged `high_strain_tendon` for DC-J5 6h refractory.
+- **Seed runner** (`pnpm --filter @hta/db db:seed`): idempotent upsert via `ON CONFLICT (user_id, slug) DO UPDATE`, with pre-flight sanity checks (no duplicate slugs, every non-carry movement has ≥ 1 primary muscle) and post-seed `\dt`-style verification by pattern.
+- **Seed-shape Vitest suite** (`seeds/movements.test.ts`): 24/24 pass — uniqueness, region coverage, primary-muscle coverage per priority (every DC-T1 muscle has ≥ 3 movements), Olympic-implies-compound, cardio-has-interference-cost.
+
+### Phase 0 → Phase 1 transition
+Phase 0 closed (live at https://hybrid-training-app-web.vercel.app). Phase 1 movement-catalog foundation now in place. Next: `sessions` + `set_logs` + `cardio_logs` + `wellness` tables + the logging UI.
