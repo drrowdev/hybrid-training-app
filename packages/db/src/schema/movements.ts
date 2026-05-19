@@ -19,7 +19,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
-import { region } from "./limitations.js";
+import { region } from "./limitations";
 
 /** DC-D4 modality interference hierarchy (Wilson 2012 HIGH meta). */
 export const interferenceCost = pgEnum("interference_cost", [
