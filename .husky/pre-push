@@ -1,0 +1,1 @@
+pnpm -r typecheck && pnpm -r --filter './packages/**' test

@@ -6,18 +6,20 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 ## [Unreleased]
 
 ### Added
-- Phase 0 monorepo scaffold: pnpm workspaces, Next.js 16 in `apps/web`, empty `packages/{domain,db,engine,ui}`.
-- `packages/domain`: first canonical function — `computeRegionFreshness` per DC-C14 — with Vitest coverage including the "morning after heavy squats" worked example.
-- `packages/db`: Drizzle schema for `profiles`, `limitations` (DC-V1), `movements` with `interference_cost` enum (DC-D4) and the seven-region enum (DC-A6). Zod schemas via `drizzle-zod`.
-- `packages/engine` and `packages/ui`: stub packages.
-- `docs/knowledge/`: wiki seed (plan, three research files, design constraints, index, log) imported from the planning workspace.
-- `docs/adr/0001-stack-choices.md` capturing the Phase D verdicts.
-- Strict `tsconfig.base.json` (target ES2022, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`).
-- **Supabase project provisioned** in `eu-west-1` and migrations applied: `0000` (tables + enums) and `0001_auth_and_rls` (FKs to `auth.users` with `ON DELETE CASCADE`, RLS enabled, 11 self-only policies, `handle_new_user` trigger).
-- **Supabase Auth wired** in `apps/web` via `@supabase/ssr`: client + server + middleware helpers, `/login` (signin/signup/magic-link tabbed form), `/auth/callback`, protected `/app` route, `/api/health` endpoint, `signOut` server action, `deleteAccount` server action with cascade verification.
-- Multi-user RLS verification suite (`packages/db/integration-tests/rls.mjs`): 11/11 pass live against Supabase, covering profiles + limitations + movements isolation and full FK cascade on `auth.users` deletion (GDPR Article 17).
+- Phase 0 monorepo scaffold: pnpm workspaces, Next.js 16 in `apps/web`, `packages/{domain,db,engine,ui}`.
+- `packages/domain`: first canonical functions — `computeRegionFreshness` (DC-C14) and `ewmaStep` (DC-C1) — with 14/14 Vitest cases including the morning-after-heavy-squats worked example.
+- `packages/db`: Drizzle schema (`profiles`, `limitations` per DC-V1, `movements` per DC-D4) with three enums (`region`, `limitation_severity`, `interference_cost`). Zod schemas via `drizzle-zod`. Migrations applied live: `0000` (tables + enums) and `0001_auth_and_rls` (FKs to `auth.users` with `ON DELETE CASCADE`, RLS, 11 policies, `handle_new_user` trigger).
+- Supabase Auth wired in `apps/web` via `@supabase/ssr`: client + server + middleware helpers, root middleware refreshes session every request, `/login` (tabbed signin/signup/magic-link), `/auth/callback`, protected `/app`, `signOut`, `deleteAccount` (GDPR Art. 17 with FK cascade), `/api/health`.
+- Multi-user RLS integration test (`packages/db/integration-tests/rls.mjs`): 11/11 pass live, covering profile/limitations/movements isolation and full FK cascade on `auth.users` deletion.
+- Vercel project linked to GitHub repo with Supabase + `NEXT_PUBLIC_SITE_URL` env vars; Deployment Protection disabled so public signups work.
+- Supabase Auth Site URL + 2 Redirect URLs (production + localhost) configured.
+- `docs/knowledge/` wiki bootstrap (plan + 3 research files + 108-constraint design constraints + index + log).
+- `docs/adr/0001-stack-choices.md` capturing Phase D verdicts.
 - `.github/workflows/ci.yml`: pnpm + Node 20, typecheck + lint + tests + build.
-- Root `README.md`, `AGENTS.md`, `CHANGELOG.md`, `HANDOFF.md`, comprehensive `.gitignore`.
+- Husky `pre-push` hook running typecheck + domain/engine tests.
+- Privacy + Terms placeholder pages (per plan §4.5 — to be expanded before public launch).
+- Home page with footer linking to privacy + terms.
 
 ### Notes
-- Phase 0 definition-of-done items still pending: Vercel deploy (H3 — owner-blocked), Sentry + PostHog wiring, Playwright e2e tests, Husky pre-push hook, Google + Apple OAuth provider setup. Tracked in `HANDOFF.md`.
+- **Phase 0 definition-of-done: ✓ achieved.** Live at https://hybrid-training-app-web.vercel.app. Health check + login + auto-created profile + signOut + account-delete all verified.
+- Phase 1 starting points listed in `HANDOFF.md`: movement catalog seed, sessions + set_logs tables + logging UI, Strava integration, Playwright e2e tests.

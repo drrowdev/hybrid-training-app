@@ -43,3 +43,5 @@ drizzle/snapshot/
 .turbo/
 .cache/
 .vercel/
+.vercel
+.env*.local

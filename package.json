@@ -16,11 +16,12 @@
     "test": "pnpm -r --workspace-concurrency=1 test",
     "db:generate": "pnpm --filter @hta/db db:generate",
     "db:migrate": "pnpm --filter @hta/db db:migrate",
-    "prepare": "husky || true"
+    "prepare": "husky"
   },
   "devDependencies": {
     "husky": "^9.1.7",
     "typescript": "^5.9.3",
+    "vercel": "^54.1.0",
     "vitest": "^2.1.9"
   }
 }

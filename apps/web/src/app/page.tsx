@@ -26,6 +26,10 @@ export default function Home() {
             Health check
           </Link>
         </nav>
+        <footer className="flex justify-center gap-4 text-xs text-foreground/50 pt-4">
+          <Link href="/privacy" className="hover:underline">Privacy</Link>
+          <Link href="/terms" className="hover:underline">Terms</Link>
+        </footer>
       </div>
     </main>
   );
