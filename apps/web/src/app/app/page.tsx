@@ -38,14 +38,22 @@ export default async function AppPage() {
           </h1>
           <p className="text-xs text-foreground/50 font-mono">{user.email}</p>
         </div>
-        <form action={signOut}>
-          <button
-            type="submit"
+        <div className="flex gap-2">
+          <Link
+            href="/app/settings"
             className="rounded-md border border-foreground/20 px-3 py-1.5 text-xs hover:bg-foreground/5"
           >
-            Sign out
-          </button>
-        </form>
+            Settings
+          </Link>
+          <form action={signOut}>
+            <button
+              type="submit"
+              className="rounded-md border border-foreground/20 px-3 py-1.5 text-xs hover:bg-foreground/5"
+            >
+              Sign out
+            </button>
+          </form>
+        </div>
       </header>
 
       <section className="rounded-lg border border-foreground/10 p-4 space-y-3">

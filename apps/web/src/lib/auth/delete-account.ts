@@ -9,19 +9,21 @@ import { createAdmin, createClient } from "@/lib/supabase/server";
  * Sequence:
  *   1. Verify the caller is authenticated.
  *   2. Call admin API to delete the auth.users row.
- *   3. The FK chain (profiles, limitations, movements) cascades.
+ *   3. The FK chain (profiles, limitations, movements, sessions, …) cascades.
  *   4. Sign the user out; redirect to the marketing root.
  */
-export async function deleteAccount() {
+export async function deleteAccount(): Promise<void> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { error: "Not signed in." };
+  if (!user) {
+    redirect("/login");
+  }
 
   const admin = createAdmin();
   const { error } = await admin.auth.admin.deleteUser(user.id);
-  if (error) return { error: error.message };
+  if (error) throw new Error(error.message);
 
   await supabase.auth.signOut();
   redirect("/?deleted=1");
