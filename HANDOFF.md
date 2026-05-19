@@ -15,9 +15,9 @@ Current-state snapshot. Updated by whoever last touched the repo. Read this befo
 - Privacy / Terms: `/privacy`, `/terms` (placeholders per plan §4.5)
 
 **External services:**
-- GitHub: https://github.com/drrowdev/hybrid-training-app (private)
-- Vercel project: `prj_l1PzxaQIdTYgRSW0mlch95oxFiXo` on team `drrowdevs-projects`. Connected to GitHub repo, auto-deploys on push to `main`. Deployment Protection disabled (was breaking public signup flow).
-- Supabase: https://grhetczkxawkcfgkwerj.supabase.co — region `eu-west-1`, 3 tables (profiles + limitations + movements) with RLS + 11 policies + 3 triggers + 3 enums
+- GitHub: `drrowdev/hybrid-training-app`
+- Vercel project: `prj_l1PzxaQIdTYgRSW0mlch95oxFiXo` on team `drrowdevs-projects`. Connected to the GitHub repo, auto-deploys on push to `main`. Deployment Protection disabled (was breaking public signup flow).
+- Supabase: project URL + keys in `apps/web/.env.local` (gitignored). Region `eu-west-1`. Schema: 3 + 5 = 8 tables with RLS + 11 policies + triggers + enums.
 
 **Done in this session:**
 - pnpm monorepo + Next.js 16 + Tailwind v4 + strict TypeScript

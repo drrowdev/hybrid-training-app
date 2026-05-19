@@ -1,6 +1,6 @@
 # Design Constraints — Hybrid Training Engine
 
-**Status:** Phase C output for Martin's Phase D review. Pre-repo location; will move to `docs/design-constraints.md` when the new repo exists.
+**Status:** Phase C output for the owner's Phase D review. Pre-repo location; will move to `docs/design-constraints.md` when the new repo exists.
 **Sources cross-validated:** `hybrid-training-research-v1.md` (v1) + `hybrid-training-research-v2.md` (v2) + `hybrid-training-research-new.md` (new) + `hybrid-training-app-plan.md` (plan).
 **Refined from:** `hybrid-training-design-constraints-draft1.md` (65 constraints, v1+v2+plan only). This file integrates `new` per the protocol in §10 of the plan.
 

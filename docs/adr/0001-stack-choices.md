@@ -14,7 +14,7 @@ The plan §7 listed eight open questions. The Phase D session of 2026-05-19 clos
 |---|---|---|
 | Database | **Supabase** (managed Postgres) | Bundled auth + storage + DB; cuts Phase 0 wiring time; vendor lock is acceptable for a solo project. Drizzle keeps the SQL layer portable if we ever migrate off |
 | Auth library | **Supabase Auth** via `@supabase/ssr` | Matches the DB choice. Out-of-the-box email/password, magic link, Google + Apple OAuth |
-| Hosting region | **`aws-eu-west-1`** | GDPR-first; close to the developer (Helsinki). Note: Supabase placed the project in `eu-west-1` rather than `eu-central-1`; pooler hostname `aws-0-eu-west-1.pooler.supabase.com` |
+| Hosting region | **`aws-eu-west-1`** | GDPR-first; EU residency. Note: Supabase placed the project in `eu-west-1` rather than `eu-central-1`; pooler hostname `aws-0-eu-west-1.pooler.supabase.com` |
 | Pricing intent | **Free for all + pricing later** | Defers Stripe; doesn't shape the data model around tiers. A `subscription_tier` column can be added later |
 | Methodology naming | **Methodology-pure** (re-confirmed) | Zero external program names in catalog, data model, or engine. Only the five archetypes (`balanced_hybrid_build`, `strength_biased_hybrid`, `aesthetic_hybrid`, `engine_biased_hybrid`, `rebuild_return`). Marketing copy may compare externally |
 | Day-one platform | **Web-first**; Capacitor wrap in Phase 2 | Lifts the existing Capacitor scaffold from the wendler-app. PWA explicitly not a substitute |

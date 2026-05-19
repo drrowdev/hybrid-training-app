@@ -5,13 +5,13 @@ import { deleteAccount } from "@/lib/auth/delete-account";
 import { logBodyweight, updateProfile } from "@/lib/settings/actions";
 
 const TIMEZONES = [
-  "Europe/Helsinki",
-  "Europe/Stockholm",
-  "Europe/London",
-  "Europe/Berlin",
-  "America/New_York",
-  "America/Los_Angeles",
   "UTC",
+  "America/Los_Angeles",
+  "America/New_York",
+  "Europe/Berlin",
+  "Europe/Helsinki",
+  "Europe/London",
+  "Europe/Stockholm",
 ];
 
 export default async function SettingsPage() {
