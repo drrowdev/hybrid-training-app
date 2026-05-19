@@ -42,6 +42,9 @@ export default async function LimitationsPage() {
   const active = (all ?? []).filter((l) => !l.resolved_at);
   const resolved = (all ?? []).filter((l) => l.resolved_at);
 
+  // Server Component: rendered per request, not subject to the React
+  // purity rule for hooks/components. The lint can't tell the difference.
+  // eslint-disable-next-line react-hooks/purity
   const now = Date.now();
   const longOpen = active.filter(
     (l) => now - new Date(l.started_at).getTime() > NINETY_DAYS_MS,
