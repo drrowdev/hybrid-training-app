@@ -6,5 +6,6 @@
  * `docs/knowledge/design-constraints.md` (DC-* identifiers).
  */
 
-export * from "./region-freshness.js";
-export * from "./types.js";
+export * from "./region-freshness";
+export * from "./ewma-series";
+export * from "./types";

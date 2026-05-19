@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { recomputeRegionState } from "@/lib/engine/region-ledger";
 
 const checkInSchema = z.object({
   fatigue: z.coerce.number().int().min(1).max(5).nullable().optional(),
@@ -205,6 +206,11 @@ export async function completeSession(formData: FormData): Promise<void> {
   }
 
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
   const { error } = await supabase
     .from("sessions")
     .update({
@@ -217,9 +223,30 @@ export async function completeSession(formData: FormData): Promise<void> {
 
   if (error) throw new Error(error.message);
 
+  // DC-C14: rematerialise the per-region ledger now that this session is
+  // counted. Idempotent; failures here shouldn't block the user from
+  // marking the session complete, so we swallow + log.
+  try {
+    await recomputeRegionState(supabase, user.id);
+  } catch (e) {
+    console.error("recomputeRegionState failed:", e);
+  }
+
   revalidatePath("/app");
   revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
   redirect(`/app/sessions/${parsed.data.sessionId}`);
+}
+
+export async function recomputeRegionStateAction(): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  await recomputeRegionState(supabase, user.id);
+  revalidatePath("/app");
+  revalidatePath("/app/settings");
 }
 
 export async function deleteSession(formData: FormData): Promise<void> {

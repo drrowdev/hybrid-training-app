@@ -7,11 +7,12 @@
  * test in apps/web (per plan §4.4 + the Phase 0 definition-of-done).
  */
 
-export * from "./schema/profiles.js";
-export * from "./schema/limitations.js";
-export * from "./schema/movements.js";
-export * from "./schema/sessions.js";
-export * from "./schema/set-logs.js";
-export * from "./schema/cardio-logs.js";
-export * from "./schema/wellness.js";
-export * from "./client.js";
+export * from "./schema/profiles";
+export * from "./schema/limitations";
+export * from "./schema/movements";
+export * from "./schema/sessions";
+export * from "./schema/set-logs";
+export * from "./schema/cardio-logs";
+export * from "./schema/wellness";
+export * from "./schema/region-state";
+export * from "./client";

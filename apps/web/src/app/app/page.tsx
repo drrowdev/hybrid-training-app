@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/lib/auth/actions";
+import { FreshnessWidget } from "@/components/freshness-widget";
 
 export default async function AppPage() {
   const supabase = await createClient();
@@ -74,6 +75,8 @@ export default async function AppPage() {
           </Link>
         </div>
       </section>
+
+      <FreshnessWidget />
 
       <section className="space-y-2">
         <div className="flex items-baseline justify-between">

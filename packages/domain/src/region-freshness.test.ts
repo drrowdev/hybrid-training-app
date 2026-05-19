@@ -9,7 +9,7 @@ import {
   computeAllRegionFreshness,
   computeRegionFreshness,
   ewmaStep,
-} from "./region-freshness.js";
+} from "./region-freshness";
 
 describe("clamp", () => {
   it("returns x when inside the band", () => {

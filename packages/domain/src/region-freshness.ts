@@ -15,7 +15,7 @@
  * signal 6 (regional overload), DC-V2 load-recency soft block.
  */
 
-import type { Region } from "./types.js";
+import type { Region } from "./types";
 
 /**
  * Clamp a number into [min, max]. Inline to keep domain pure-functional.

@@ -36,6 +36,13 @@
       "when": 1779220000000,
       "tag": "0004_body_comp_phase",
       "breakpoints": false
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1779226000000,
+      "tag": "0005_region_state",
+      "breakpoints": false
     }
   ]
 }
