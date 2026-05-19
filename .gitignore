@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+.next/
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Env files (never commit)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+
+# Test output
+coverage/
+.vitest-cache/
+playwright-report/
+test-results/
+
+# Drizzle
+drizzle/journal/
+drizzle/snapshot/
+*.drizzle.local.sql
+
+# Misc
+.turbo/
+.cache/
+.vercel/

@@ -1,0 +1,20 @@
+{
+  "name": "@hta/engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "echo '(no lint config yet)'"
+  },
+  "dependencies": {
+    "@hta/domain": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.9"
+  }
+}

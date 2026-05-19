@@ -1,0 +1,436 @@
+# Design Constraints — Hybrid Training Engine
+
+**Status:** Phase C output for Martin's Phase D review. Pre-repo location; will move to `docs/design-constraints.md` when the new repo exists.
+**Sources cross-validated:** `hybrid-training-research-v1.md` (v1) + `hybrid-training-research-v2.md` (v2) + `hybrid-training-research-new.md` (new) + `hybrid-training-app-plan.md` (plan).
+**Refined from:** `hybrid-training-design-constraints-draft1.md` (65 constraints, v1+v2+plan only). This file integrates `new` per the protocol in §10 of the plan.
+
+**Confidence labels** (cross-document support):
+- **HIGH** — 3-source agreement (v1+v2+new), OR `new` HIGH from peer-reviewed meta agreeing with one of v1/v2 (upgrade one tier). Encode as strict default.
+- **HIGH-MODERATE** — 2-source agreement, OR `new` HIGH single-source from peer-reviewed meta. Encode as default.
+- **MODERATE-LOW** — 1-source only or 2 sources with weaker support. Flag for Phase D review; encode as `[DEF→cal]` engineering default.
+
+**Authority tags** (preserved from draft1):
+- **[EV]** Evidence-informed principle — load-bearing; flag any deviation.
+- **[DEF]** Implementation default / engineering assumption — overridable.
+- **[DEF→cal]** Default that v2 explicitly marks as needing calibration from real outcomes (v2 §9).
+- **⏸ [BACKLOG]** Constraint deferred from MVP per the 2026-05-19 scope decisions (see § U). Kept in the file as a forward contract — restored when the relevant input source (HRV/RHR/sleep wearable, AI layer, daily self-report widget, etc.) returns. Engine MUST NOT depend on these for v1 logic.
+
+---
+
+## A. Canonical units & primitives
+
+- **DC-A1 — Two-layer units (v1 §8 layer 2 + v2 §2 + new §9 architectural skeleton)** [EV] — Engine stores stress in canonical internal units (bucket points, region points) but renders prescription in user-facing units (kg×reps, sets/muscle, minutes by modality, hard minutes). Mirrors `new`'s separation: templates encode *what*, scheduler encodes *when*, autoregulator encodes *how much*. *Test:* round-tripping a session through internal storage and back to prescription preserves the user-facing unit type and quantity to within rounding. **Confidence: HIGH.**
+
+- **DC-A2 — Session load primitive (v2 §3.1, new §5.4 RPE-based autoregulation, Helms 2016 HIGH, Zourdos 2016 HIGH)** [DEF→cal] — `session_load = duration_min × session_RPE`. sRPE is reliable when within 3 reps of failure (`new` §5.4). *Test:* a 60-min sRPE-7 session yields load 420; missing sRPE blocks load computation (or marks it estimated, never silently substitutes a default). **Confidence: HIGH** (RPE primacy peer-reviewed-HIGH; product formula is engineering default).
+
+- **DC-A3 — Six global stress buckets (v1 §8 layer 2 + v2 §3.1 + new implicit throughout §1/§4)** [EV] — The engine maintains exactly six bucket ledgers: `neural, mechanical, metabolic, impact, axial, tissue`. *Test:* schema enforces enum; adding a seventh requires migration + ADR. **Confidence: HIGH-MODERATE** (`new` discusses neural / mechanical / metabolic / impact / tendon-tissue interference equivalents but does not enumerate the same 6).
+
+- **DC-A4 — Bucket coefficients sum to 1.0 per session (v2 §3.1)** [DEF] — Each session's six `bucket_coeff` values sum to 1.00 ± ε. *Test:* tagger rejects (or normalises) any session whose coefficients sum outside [0.99, 1.01]. **Confidence: MODERATE-LOW** (engineering convention).
+
+- **DC-A5 — Region coefficients are not normalised (v2 §3.1)** [EV] — Region coefficients are independent (one session can load multiple regions); they do NOT sum to 1.0. *Test:* a heavy back squat session can produce region_points > 0 for knee, hip, lumbar, and ankle simultaneously without triggering a normalisation warning. **Confidence: MODERATE-LOW** (engineering convention, logically required).
+
+- **DC-A6 — Tracked regions (v1 §4 + v2 §10 + new §4.4 injury etiology)** [DEF] — Region ledger covers at minimum: foot/ankle/calf, knee, hamstring/posterior chain, adductor/groin, lumbar/trunk, shoulder/scapular, elbow/forearm. `new` §4.4 confirms the same set as the recurring injury locations (Achilles/patellar, low back, shoulders, knees). *Test:* default seed creates rows for each; deletion is forbidden (only disabling). **Confidence: HIGH.**
+
+## B. Floor / target / ceiling allocation
+
+- **DC-B1 — Allocation order: floors → targets → ceiling clamp (v1 §8 layer 3 + v2 §11 + new §5.2 "one emphasis at a time, others maintenance")** [EV] — Allocator fills floor doses for every quality first, then distributes remaining budget toward targets weighted by archetype priority, then clamps each quality at its ceiling. *Test:* given a recovery-crisis week, floors are still allocated before any target work; if ceiling < floor, the allocator emits a `recovery_crisis` event rather than silently dropping the floor. **Confidence: HIGH-MODERATE.**
+
+- **DC-B2 — Ceiling ≥ floor invariant (v2 §7.2 step 15 + new §5.3 composite deload trigger)** [EV] — For every quality every week, `ceiling_q ≥ floor_q`. *Test:* the planner asserts this after ceiling computation; violation triggers deload recommendation or block transition. **Confidence: HIGH-MODERATE** (`new` §5.3 deload trigger is the behavioural analogue of "ceiling collapsed below floor").
+
+- **DC-B3 — No quality drops to zero (v1 §2 Rule 4 + v2 §4.2 maintenance floors + new §2.2 Bickel 2011 HIGH)** [EV] — Floor doses are never zero for an active quality; "maintenance" and "protected" tiers carry positive minima. Bickel showed 1/9th peak volume preserves strength gains for 32 weeks if intensity ≥85%. *Test:* given any archetype, every quality in the active set has `floor_q > 0`. **Confidence: HIGH** (upgraded; peer-reviewed HIGH support).
+
+- **DC-B4 — Default per-quality floors (v1 §2 Rule 4 + new §2.2, §3.3, §5.2)** [DEF] — Strength: 1–2 quality exposures per main pattern/week (`new` adds: maintenance phase = 1–2 sessions/wk at ≥85% on main lift). Hypertrophy: per-muscle MV (minimum volume), typically 4–8 hard sets/muscle/wk. Aerobic base: ≥ 2 easy sessions/week. Anaerobic: alactic 1 short session/wk year-round (low cost, high value); threshold default-off; lactate-tolerance 1 brief exposure / 7–10 days. Durability: short frequent microdoses (daily, 5–12 min) per archetype bulletproofing stack (DC-O6). *Test:* seeded floor values produce these defaults for the balanced archetype on a 4–5 session/week user. **Confidence: HIGH-MODERATE.**
+
+## C. Ceiling computation
+
+- **DC-C1 — EWMA load state (v2 §3.2)** [DEF] — ATL = EWMA₇, CTL = EWMA₂₈, α = 2/(n+1), per bucket and per region. *Test:* given a synthetic 60-day load series, the computed ATL/CTL match the EWMA formula within 1e-6. **Confidence: MODERATE-LOW** (engineering default).
+
+- **DC-C2 — Bucket pressure formula (v2 §3.4)** [DEF→cal] — `pressure_b = 0.35·N_acute_pct + 0.25·N_ratio + 0.20·N_monotony + 0.20·N_strain`. Weights overridable per ADR. *Test:* unit test pins the formula; changing a weight without updating the test fails CI. **Confidence: MODERATE-LOW.**
+
+- **DC-C3 — Normalisation in [0,1] (v2 §3.3)** [EV] — All recovery/stress metrics normalised to [0,1] penalty space (`norm_high` for "more is worse", `norm_low` for "less is worse"). Default bands per v2 §3.3 table. *Test:* fuzzing inputs across raw range never produces a normalised value outside [0,1]. **Confidence: MODERATE-LOW** (engineering convention).
+
+- **DC-C4 — Systemic penalty formula (v2 §3.5; MVP simplified per § U)** [DEF→cal] — **MVP form** (no HRV / RHR / sleep self-log): `systemic_penalty = 0.55·N_fatigue + 0.30·N_soreness + 0.15·N_compliance_instability`. Both `N_fatigue` and `N_soreness` are derived from the pre-session 2-slider check-in (DC-P1) using `norm_high(x; good=1, bad=4)` on the 1–5 scale. **Future form** (when wearables / sleep self-log return): `0.30·N_sleep + 0.22·N_HRV_7d_zscore + 0.16·N_RHR + 0.16·N_compliance_instability + 0.16·N_soreness` per v2 §3.5 + `new` §6.1 Walker 2017 HIGH + Plews 2013 HIGH (HRV strictly 7-day rolling z-score, never point reading — see deferred DC-P3). *Test:* MVP weights sum to 1.00; injecting fatigue=4/5 + soreness=4/5 + compliance_instability=0.10 yields the documented penalty value. **Confidence: MODERATE-LOW** for MVP weights (engineering default; downgraded from HIGH-MODERATE because the peer-reviewed inputs are deferred).
+
+- **DC-C5 — Global recovery multiplier (v2 §3.6)** [DEF→cal] — `GRM = clamp(1.07 − 0.18·global_pressure − 0.12·systemic_penalty, 0.70, 1.08)`. *Test:* given pressures from v2 §3.13 worked example, GRM = 0.917. **Confidence: MODERATE-LOW.**
+
+- **DC-C6 — Quality sensitivity matrix (v2 §3.7)** [DEF→cal] — Per-quality sensitivity to the six buckets follows the v2 §3.7 table; rows sum to 1.0; `quality_modifier_q = clamp(1.04 − 0.18·quality_pressure_q, 0.78, 1.04)`. *Test:* matrix-row-sum invariant + worked-example modifier values. **Confidence: MODERATE-LOW.**
+
+- **DC-C7 — Interference modifier (v2 §3.8 + new §1.2 Wilson 2012 HIGH meta)** [DEF→cal] — `interference_modifier_q = clamp(1.00 − 0.25·Σ(conflict_q,c · overload_c), 0.80, 1.00)`, where `overload_c = max(0, delivered_c/target_c − 1)`. Conflict coefficients seeded from v1 §13 conflict-matrix tiers + v2 §3.8 high/moderate/low matrix, with `new` §1.2 modality hierarchy (DC-L1) as the running-vs-cycling tiebreaker. *Test:* lower-body strength quality with hard-running delivered at 1.5× target produces interference_modifier < 1.0; same with delivered at target produces exactly 1.0. **Confidence: HIGH-MODERATE.**
+
+- **DC-C8 — Region cap (v2 §3.9 + v1 §4 + new §4 Baar 2017 HIGH, Magnusson & Kjaer 2019 HIGH; MVP revised per § U)** [DEF→cal] — `region_cap_r = clamp(1.00 − 0.25·region_risk_r, 0.70, 1.00)`. **MVP form** (no daily symptom self-report): `region_risk_r = 0.40·N_load_recency + 0.30·N_ratio + 0.15·N_novelty + 0.15·N_history`, where `N_load_recency` is derived from `region_freshness_r` (see DC-C14) and `N_history` is a binary derived from any active `limitations` row for the region (DC-V1). **Future form** (when daily symptom self-report returns): re-introduce `N_symptom` at weight 0.45 and renormalise other terms. Tendon-loaded movements draw from region cap of the loaded tendon (see DC-C12, DC-O2). *Test:* a user with quads ATL_r at 1.4× baseline yesterday + no active limitation compresses today's quad-dominant ceiling via N_load_recency; same user with a `limitations.knee.active=true` row compresses further via N_history. **Confidence: HIGH** (load-recency derivation peer-reviewed-HIGH from v2 ledger math + `new` §4; limitations-table-as-N_history HIGH-MODERATE).
+
+- **DC-C9 — Base ceiling from recovered weeks (v2 §3.10)** [DEF→cal] — `base_ceiling_q = max(floor_q, median(last_3_recovered_weeks_dose_q) × headroom_q)`. Recovered-week criteria: anchor compliance ≥ 85%, global soreness ≤ 5/10 avg, no local symptom Δ > +2 pts, no perf crash on two anchor exposures, no severe sleep/readiness deterioration. *Test:* a 3-week window with one disqualifying week produces a 2-week median (or triggers the cold-start fallback — see Open Conflicts OC-3). **Confidence: MODERATE-LOW.**
+
+- **DC-C10 — Headroom cap (v2 §3.10)** [DEF] — `headroom_q = clamp(1.00 + 0.02·positive_streak − 0.03·local_flags, 0.95, 1.06)`; `positive_response_streak_q` capped at 2. *Test:* a 5-streak yields headroom ≤ 1.04 (cap on streak), not 1.10. **Confidence: MODERATE-LOW.**
+
+- **DC-C11 — Final ceiling equation (v2 §3.11)** [EV] — `ceiling_q = base_ceiling_q × GRM × quality_modifier_q × interference_modifier_q × region_cap_factor_q × confidence_bias`. *Test:* worked example produces lower-body strength ceiling ≈ 1.37 heavy-exposure-equivalents (v2 §3.13). **Confidence: MODERATE-LOW** (composite formula is v2-only; individual factors graded separately).
+
+- **DC-C12 — Region cap aggregation policy (v2 §3.11 + new §4)** [DEF] — Weighted mean of relevant region caps for broad qualities; **minimum** critical-region cap for high-risk exposures (running, plyo, deep knee-dominant lifts; see OC-11 for the explicit enumeration). *Test:* hard-running ceiling uses min(knee, ankle, calf) region caps; bike aerobic uses weighted mean. **Confidence: HIGH-MODERATE** (`new` §4 tendon-driven safety justifies the min-policy for high-strain exposures).
+
+- **DC-C13 — Confidence bias (v2 §3.11)** [DEF] — Data completeness ≥ 0.80 → 1.00; 0.60–0.79 → 0.95; < 0.60 → 0.90. *Test:* sparse-data new user (completeness 0.3) gets confidence_bias = 0.90. **Confidence: MODERATE-LOW.**
+
+- **DC-C14 — Region freshness as a first-class derived signal (new in 2026-05-19 MVP scope; v2 §3.2 region ledger + plan §4.3 movement→region mapping)** [EV] — Engine computes `region_freshness_r = clamp(1 − ATL_r / baseline_tolerance_r, 0, 1)` for every tracked region every day. 1.0 = fully fresh; 0.5 = moderately loaded recently; 0.0 = heavily loaded recently (e.g., quads day after heavy squats). Surfaced in today's session UI as a per-region 0–1 reading with a recency timeline ("quads loaded 14 hours ago: freshness 0.3"). Used by: DC-C8 (`N_load_recency` term), DC-P4 signal 6 (regional overload deload-trigger contributor), DC-V2 (load-recency soft block on high-strain work). Replaces the deferred daily symptom self-report for "is this region beat up right now" decisions. *Test:* logging a heavy back squat session (primary regions: quad, glute, lumbar, hip) drops the freshness of those four regions to <0.5 the next morning and recovers them toward 1.0 over 48–96h per their EWMA decay. **Confidence: HIGH-MODERATE** (engine math from v2 §3.2 peer-reviewed-equivalent; per-region freshness derivation is engineering default).
+
+## D. Interference / scheduling / conflict matrix
+
+- **DC-D1 — Modality separation thresholds (v1 §3 Rule 3 + v2 §3.8 + new §1.3 Robineau 2016 HIGH, Fyfe 2014 HIGH)** [EV] — Scheduler treats: **<3h apart = same-session** for interference purposes; **6h+ = substantial mTORC1 recovery**; **24h+ ≈ separate-day gold standard**. Default to ≥ 24h between max-effort lower-body lifts and threshold/VO2 runs; **block** high-intensity running within 6h before heavy lower-body strength; **warn** any endurance >45 min within 6h before heavy strength; **warn** heavy lower-body strength within 24h after a >75 min Z2 run (eccentric residual). Override-settable with consent. *Test:* placing same-day-no-gap conflicts emits the documented warning/block tier. **Confidence: HIGH** (Robineau 2016 peer-reviewed HIGH; v1+v2 qualitative agreement).
+
+- **DC-D2 — Same-day intra-session ordering (v1 §3 Strategy A + new §1.3)** [EV] — When qualities must share a session: strength first if strength is the day's emphasis; endurance first only when (a) endurance is short easy Z2 ≤30 min OR (b) endurance is the day's emphasis AND strength is maintenance volume. Default priority order: power/speed/skill → heavy strength → hypertrophy → conditioning → mobility. Reversible only as an explicit "endurance-priority" mode. *Test:* a same-day strength+conditioning session generated with no explicit mode places strength before conditioning. **Confidence: HIGH-MODERATE** (Coffey & Hawley 2017 HIGH consensus + practitioner Tactical Barbell).
+
+- **DC-D3 — Conflict matrix categories (v1 §13 + v2 §3.8 + new §1.2 Wilson 2012 HIGH meta)** [EV] — High conflict: heavy lower-body strength ↔ hard running intervals; leg hypertrophy ↔ sprint/plyo density; repeated glycolytic ↔ strength progression. Moderate: threshold erg ↔ lower-body hypertrophy; high-axial lifting ↔ rowing volume (posterior-chain overlap). Low: upper-body hypertrophy ↔ easy lower-body aerobic; mobility microdoses ↔ ~anything. Modality tiebreaker via DC-L1 (running > rowing > cycling > swimming/sled for interference). *Test:* conflict matrix seed contains exactly these pairings at their stated severities; running/cycling produce different coefficients for the same volume of "endurance work." **Confidence: HIGH.**
+
+- **DC-D4 — No back-to-back glycolytic sessions (v1 §3 + new §3.3 anaerobic-capacity "used sparingly")** [EV] — Two high-glycolytic sessions on consecutive calendar days require explicit override. *Test:* scheduler emits warning when proposing this. **Confidence: HIGH-MODERATE.**
+
+- **DC-D5 — No sprint/plyo with an active limitation on the loaded region (v1 §3 + new §4.4; MVP revised per § U)** [EV] — **MVP form:** sprint/plyo dose is BLOCKED (not warned) when an active `limitations` row exists for the loaded region (DC-V1). No daily symptom score required — the limitations table is the binding input. **Future form** (when daily symptom self-report returns): also block on symptom score ≥ 4/10 or "pain doesn't clear in warm-up" flag. Engine substitution suggestion fires alongside the block. *Test:* attempting to schedule plyometrics with `limitations.knee.active=true` returns a hard rejection + HSR-substitution suggestion (per DC-O3). **Confidence: HIGH** (Baar/Magnusson HIGH on tendon refractory + injury etiology; v1 sprint-on-irritation rule preserved via limitations-table proxy).
+
+- **DC-D6 — Conditioning modality default = low-impact (v1 §3 Strategy C + v2 §4 archetype B/E + new §1.2 Wilson 2012 HIGH modality table)** [EV] — Default conditioning modality is cycling / rucking / rowing / sled / swimming unless running is an explicit user goal or aerobic-emphasis archetype with established tissue tolerance. *Test:* in strength-biased and aesthetic archetypes, generated conditioning sessions default to bike/erg modality. **Confidence: HIGH.**
+
+- **DC-D7 — Polarized easy:hard conditioning distribution (v1 §3 Strategy C + new §3.1 Seiler 2010 HIGH, Stöggl & Sperlich 2014 HIGH)** [EV] — Rolling 7-day endurance time distribution: **75–85% Z1–Z2, 10–20% Z4–Z5, < 10% Z3 (threshold)**. Threshold work is the worst trade in a budget-constrained hybrid week (highest interference cost relative to stimulus). Default-off; allowed only inside ≤4-week event-prep blocks. *Test:* in a balanced 4-week microcycle generation, Z2 minutes ≥ 4 × Z3 minutes by default; threshold sessions are not seeded unless an event-prep flag is on. **Confidence: HIGH** (Seiler + Stöggl peer-reviewed HIGH; v1 qualitative agreement; replaces draft1 DC-D7's 3:1 heuristic with the polarized literature value).
+
+## E. Anchor-filler model
+
+- **DC-E1 — Anchors are preserved before fillers (v1 §11 + new §10 pre-mortem #2 "adherence > optimality")** [EV] — When time/recovery/equipment tighten, the allocator drops fillers first and preserves anchor exposures. *Test:* a session generated under a 30-min time budget keeps the anchor lift and drops accessories before splitting the anchor. **Confidence: HIGH-MODERATE.**
+
+- **DC-E2 — Anchor classification (v1 §11)** [DEF] — Anchors per block must cover: 1 lower-body strength exposure, 1 upper-body strength exposure, priority hypertrophy allocation, ≥ 1 long/easy aerobic exposure, hard-conditioning touch (when scheduled), region-targeted resilience for any flagged weak link. *Test:* generated balanced block contains all six anchor categories within a 7-day window. **Confidence: MODERATE-LOW.**
+
+- **DC-E3 — Filler-first reduction on schedule compression; no catch-up (v1 §9 + v1 §13 daily-branch + new §10 pre-mortem #2)** [EV] — When `schedule_compressed` signal fires, engine reduces fillers and never proposes catch-up sessions. *Test:* given a missed mid-week session, the engine does NOT add the missed work to the weekend. **Confidence: HIGH-MODERATE.**
+
+## F. Mesocycle archetypes
+
+- **DC-F1 — Five archetypes only (v1 §5 + v2 §4 + new §5.1 emphasis-block + §5.2 emphasis families)** [EV] — Supported archetypes are exactly: `balanced_hybrid_build, strength_biased_hybrid, aesthetic_hybrid, engine_biased_hybrid, rebuild_return`. `new`'s emphasis-block typology (strength / hypertrophy / aerobic_base / VO2 / peak / deload) maps INTO the five archetypes — peak and deload are intra-block phases, not standalone archetypes. *Test:* schema enum is closed; adding requires migration. **Confidence: HIGH-MODERATE.**
+
+- **DC-F2 — Archetype bucket weights (v2 §4.1)** [DEF→cal] — Each archetype seeds the six-bucket weight vector per v2 §4.1 table; rows sum to 1.00. *Test:* sum-to-one + numeric pins for each archetype. **Confidence: MODERATE-LOW.**
+
+- **DC-F3 — Block length defaults (v2 §4.2 + new §5.2, §9)** [DEF] — Balanced 5–6w, strength-biased 4–6w, aesthetic 6–8w, engine-biased 4–6w, rebuild 3–5w. `new` §9 yearly architecture independently supports "4–6 emphasis blocks of 6–10 weeks each" as the upper bound. *Test:* default-length helper returns these ranges; out-of-range custom values raise warning. **Confidence: HIGH-MODERATE.**
+
+- **DC-F4 — Deload protocol embedded per archetype (v2 §4.2 + new §5.2 emphasis-block deload row)** [EV] — Deload definitions (volume cut 50–60%, intensity preservation, anchor preservation) live in the archetype definition row, not in user/program code. `new` §9 confirms: deload week cuts volume 50%; peak week preserves intensity, cuts volume 30%. *Test:* selecting an archetype loads its deload block-definition without additional configuration. **Confidence: HIGH-MODERATE.**
+
+- **DC-F5 — Rebuild has no formal deload (v2 §4.2 E)** [EV] — Rebuild blocks run entirely below ceiling; no deload week. *Test:* attempting to schedule a deload in a rebuild block is a no-op with informational log. **Confidence: MODERATE-LOW.**
+
+- **DC-F6 — Max 2 consecutive specialty blocks (v2 §4.3 + new §5.2 "one emphasis at a time, rotating")** [EV] — Strength-biased, aesthetic, and engine-biased archetypes cannot run > 2 consecutively; the state machine forces a balanced interlude. *Test:* requesting a 3rd consecutive strength-biased block returns a forced-balanced transition. **Confidence: HIGH-MODERATE.**
+
+- **DC-F7 — All specialty transitions route through balanced (v2 §4.3)** [EV] — State machine never transitions specialty → specialty directly; intervening balanced block is mandatory. *Test:* transition aesthetic → engine-biased emits a balanced block insertion. **Confidence: MODERATE-LOW.**
+
+- **DC-F8 — Rebuild max duration 5 weeks (v2 §4.2 E + §4.3)** [EV] — Rebuild auto-transitions to balanced after 5 weeks. *Test:* week 6 of rebuild triggers forced transition. **Confidence: MODERATE-LOW.**
+
+- **DC-F9 — Aesthetic ceiling in deficit (v2 §4.2 C + new §6.1 deficit/MPS HIGH)** [DEF] — Body-comp phase `lean_out` carries a 15–20% lower hypertrophy ceiling than `gain`; cuts cap top-end strength intensity at −5% of historical. *Test:* same user/state in deficit yields a per-muscle target ≤ 0.85× of the surplus target. **Confidence: HIGH-MODERATE.**
+
+## G. User-tier inference
+
+- **DC-G1 — Tier is behavioural, not declared (v2 §5.1, §5.6)** [EV] — Effective tier is inferred from BTS; self-report can downgrade but cannot upgrade beyond what behaviour supports (with one anchor-compliance bypass — DC-G7). *Test:* user self-reports "high_performance" with 60% anchor compliance → effective tier remains intermediate (or below). **Confidence: MODERATE-LOW.**
+
+- **DC-G2 — BTS formula (v2 §5.3)** [DEF→cal] — `BTS = 0.25·anchor_compl + 0.15·session_compl + 0.15·completion_quality + 0.15·schedule_regularity + 0.10·recovery_input_consistency + 0.10·performance_trend + 0.05·frequency + 0.05·feature_engagement`. *Test:* pinned weight vector + computed BTS for a fixture user. **Confidence: MODERATE-LOW.**
+
+- **DC-G3 — Tier thresholds (v2 §5.4)** [DEF] — Consumer 0–49, Intermediate 50–74, High-performance 75–100. *Test:* boundary values yield expected tier. **Confidence: MODERATE-LOW.**
+
+- **DC-G4 — Hysteresis (v2 §5.4)** [EV] — Promotion requires 3 consecutive 28-day windows above threshold; demotion requires 2. *Test:* a single high BTS window does not promote; two low windows demote. **Confidence: MODERATE-LOW.**
+
+- **DC-G5 — Cold-start tier (v2 §5.6)** [DEF] — First 28 days default to intermediate unless onboarding indicates very low experience → consumer. *Test:* new user with no data is intermediate by default; onboarding flag "training_age < 1y" defaults to consumer. **Confidence: MODERATE-LOW.**
+
+- **DC-G6 — Tier-gated planning parameters (v2 §5.5)** [DEF] — Volume-ceiling headroom multiplier per tier (0.85 / 0.95 / 1.00), hard-conditioning sessions/week cap (0–1 / 0–1 / 0–2), autoregulation depth, session complexity cap (≤5 / ≤7 / ≤9 exercises), deload trigger mode. *Test:* a high-perf user can schedule 2 hard-conditioning/week; a consumer cannot. **Confidence: MODERATE-LOW.**
+
+## H. Stall diagnosis
+
+- **DC-H1 — Five-category diagnosis (v2 §6.1)** [EV] — Stall outcomes are exactly one of: `underdosing, fatigue_suppression, cross_quality_interference, local_tissue_limitation, true_plateau`, plus `monitor` for inconclusive. *Test:* enum closed; diagnosis engine never returns an unmodeled label. **Confidence: MODERATE-LOW.**
+
+- **DC-H2 — Signal evaluation order (v2 §6.2 + §6.4)** [EV] — Diagnostic order is fixed: local tissue → systemic fatigue (GRM) → interference → dose adequacy → true plateau. *Test:* with both region_risk > 0.60 AND GRM < 0.90, diagnosis returns LOCAL_TISSUE_LIMITATION (tissue beats fatigue). **Confidence: MODERATE-LOW.**
+
+- **DC-H3 — Diagnostic thresholds (v2 §6.4)** [DEF→cal] — region_risk > 0.60 → local tissue; GRM < 0.90 → fatigue suppression; interference_modifier_q < 0.90 → interference; delivered < 0.85·target → underdosing; stall_duration > 2 mesocycles after all ruled out → true plateau. *Test:* fixture inputs map deterministically to expected diagnosis. **Confidence: MODERATE-LOW.**
+
+- **DC-H4 — Voluntary vs involuntary shortfall (v2 §6.7)** [EV] — If a quality's delivered dose is below target because the ceiling compressed it (not because of missed sessions), the engine does NOT diagnose underdosing — it flags ceiling-suppression. *Test:* a quality with delivered=floor due to GRM 0.85 returns `ceiling_suppressed`, not `underdosing`. **Confidence: MODERATE-LOW.**
+
+- **DC-H5 — Ceiling-suppression triggers transition (v2 §6.7)** [EV] — A quality ceiling-suppressed for 2+ consecutive mesocycles triggers a block-archetype transition recommendation elevating that quality to primary. *Test:* simulated 8 weeks of strength-quality ceiling-suppression in a balanced block produces a strength_biased transition candidate. **Confidence: MODERATE-LOW.**
+
+- **DC-H6 — Per-quality stall KPIs (v2 §6.6 + new §5.5)** [DEF] — Strength: e1RM trend on anchor lifts (>3% decline over 4 wk = declining). Hypertrophy: set-perf trend + circumference/photo. Aerobic: pace/power at easy HR + HR recovery (`new` §5.5 multi-year hybrid composite supports the metric set). Threshold/VO2: interval pace/power + repeatability. Durability: symptom & ROM trends. *Test:* the engine reads the documented KPI for each quality; no quality uses an undocumented metric. **Confidence: HIGH-MODERATE.**
+
+## I. Daily adaptation
+
+- **DC-I1 — Branch logic (v1 §13 + v2 §7.2 phase 4 + new §6.2 monitoring stack)** [EV] — Pre-session adaptation follows the documented branch order: local pain + low systemic → modify region load only; high systemic fatigue + perf down → preserve anchors, reduce accessory + hard conditioning; aerobic down + lifting stable → add easy aerobic frequency; hypertrophy stalled + recovery ok → raise priority-muscle volume with low-fatigue tools; schedule compressed → keep anchors, drop fillers. *Test:* the five fixture inputs produce the five documented branches in order. **Confidence: HIGH-MODERATE.**
+
+- **DC-I2 — Daily GRM recompute drives intensity, not volume (v2 §7.2 phase 4 + new §5.4 autoregulation hierarchy "daily=intensity, weekly=volume, block=direction")** [DEF] — GRM recomputed pre-session using today's readiness; if it falls below the session's minimum threshold, **session scope is reduced (fillers/accessories dropped, anchor intent preserved)** but the week's total volume budget is NOT auto-rebalanced from a single bad day. Weekly volume only adjusts via the composite deload trigger (DC-P4). *Test:* a session with required_GRM 0.95 and today's GRM 0.88 reduces fillers and preserves the anchor; weekly target volume unchanged. **Confidence: HIGH-MODERATE.**
+
+- **DC-I3 — Region cap override at session time (v1 §4 + v2 §7.2 phase 4 + new §4.4)** [EV] — If a region cap falls below a session's requirement, swap exercise/modality rather than dropping the session. *Test:* knee region cap 0.72 with a planned heavy back squat triggers a swap (front squat / leg press) per substitution rules, not a session removal. **Confidence: HIGH.**
+
+## J. Durability / tissue
+
+- **DC-J1 — Durability is a programmed quality, not prehab (v1 §4 + new §4 entire section, Baar 2017 HIGH, Magnusson & Kjaer 2019 HIGH)** [EV] — Tissue-capacity work is allocated within the main plan, not as optional prehab. Every archetype assigns durability ≥ secondary or maintenance with daily microdoses; the weekly bulletproofing stack in DC-O6 is a hard floor. *Test:* every generated week contains ≥ 4 days with at least one resilience microdose AND satisfies the DC-O6 weekly checklist. **Confidence: HIGH.**
+
+- **DC-J2 — Graded reintroduction; 10% rule (v1 §4 + v2 §3.9 + new §4.4)** [EV] — When a tissue has been underexposed (novelty_r > 0.50), the engine ramps; running mileage week-over-week increase capped at +10% by default; plyometric ground contacts ≤ +20%/wk; new movements deliberately submaximal (cap ~70%) first 2 weeks. *Test:* novelty_r > 0.50 caps region exposure increase at +30% week-over-week; running mileage +15% week-over-week is blocked unless overridden. **Confidence: HIGH.**
+
+- **DC-J3 — Local cap, not global collapse (v1 §4 + v2 §3.9 + new §4.4; MVP revised per § U)** [EV] — Active limitation on a region + normal systemic state → compress only that region's ceiling, leave other regions unchanged. *Test:* `limitations.shoulder.active=true` with otherwise-normal GRM reduces overhead/pressing ceiling but leaves lower-body and pulling ceilings unchanged. **Confidence: HIGH.**
+
+## K. Engineering / data hygiene
+
+- **DC-K1 — Recovered-week qualification is explicit (v2 §3.10)** [DEF] — A week is "recovered" iff all five criteria pass; the qualification flag is stored alongside the week record. *Test:* querying recovered-weeks for a user always returns weeks with the boolean flag set. **Confidence: MODERATE-LOW.**
+
+- **DC-K2 — Confidence-aware projection (v2 §3.11)** [EV] — When data completeness is low, the engine projects more conservative ceilings via `confidence_bias`, rather than pretending the user is fresh. *Test:* a sparse-data fixture produces a ceiling ≤ 0.90× of the full-data equivalent, all else equal. **Confidence: MODERATE-LOW.**
+
+- **DC-K3 — Engineering defaults are tunable (v2 §0 + §9 + plan §7)** [EV] — Every coefficient labelled `[DEF→cal]` is read from a config/seed row, not a TS literal, so calibration is data-driven not code-driven. *Test:* swapping a coefficient via the config table changes engine output without code changes. **Confidence: HIGH-MODERATE.**
+
+- **DC-K4 — Override-and-warn with "why this rule fired" transparency (v1 §2 Rule 5 + plan §3 + new §8 "surface why this rule fired" + new §10 pre-mortem #1)** [EV] — When the user overrides a principle-derived default, the engine: (a) records the override, (b) shows the warning text including the cited source (e.g., "Robineau 2016 HIGH: 6h+ between concurrent sessions"), (c) does not silently follow the user. Every guardrail surfaces the trade-off being managed. *Test:* scheduling a high-conflict pairing with override returns the schedule AND a logged override record + warning surface with citation. **Confidence: HIGH.**
+
+- **DC-K5 — Continuity bias in planning (v1 §2 Rule 5 + new §4.4 10% rule)** [EV] — Week-to-week change in total load (sum of bucket ATL deltas) is bounded by default. *Test:* a generated week never increases total bucket-ATL by more than +20% over the prior week without an explicit "push" flag; running mileage capped per DC-J2. **Confidence: HIGH-MODERATE.**
+
+## L. Literature-grounded modality interference (new in this revision)
+
+- **DC-L1 — Modality interference hierarchy (new §1.2 Wilson 2012 HIGH meta)** [DEF→cal] — Endurance modalities carry interference costs in this order (lowest → highest): sled push/drag (very low) ≈ swimming (very low) < cycling steady (low) ≈ rucking (low–moderate) ≈ rowing erg (low–moderate, sequence away from deadlift) < running steady (moderate) < running intervals (moderate–high) < hill sprints (variable: brief = low energy, high neural). Stored as a per-modality `interference_cost ∈ {very_low, low, low_moderate, moderate, moderate_high, variable}` tag used by DC-C7 + DC-D3 conflict math. *Test:* substituting "30 min running steady" with "30 min cycling steady" in the same week produces a lower interference_modifier impact on lower-body strength quality. **Confidence: HIGH-MODERATE** (Wilson 2012 peer-reviewed HIGH; the per-modality tier coefficients are engineering defaults to calibrate).
+
+- **DC-L2 — Endurance frequency interference threshold (new §1.2 Wilson 2012 HIGH)** [DEF] — ≥3 endurance sessions/week predicts greater strength attenuation than 1–2. When `endurance_sessions_per_week ≥ 3` AND `current_archetype ∈ {strength_biased, balanced_during_strength_emphasis}`, the engine auto-suggests substituting one running session for cycling/sled. *Test:* fixture with 3 running sessions/wk under strength-biased archetype emits a substitution proposal. **Confidence: HIGH-MODERATE.**
+
+- **DC-L3 — Endurance session duration interference (new §1.2 Wilson 2012 HIGH)** [DEF] — Endurance sessions > 20–30 min correlate with larger interference; sessions > 45 min within 6h before heavy strength trigger a warning; sessions > 75 min Z2 within 24h before heavy lower-body strength also trigger a warning. *Test:* documented sequencing fires the documented warnings. **Confidence: HIGH-MODERATE.**
+
+- **DC-L4 — Hypertrophy is more robust than strength/power under concurrent stress (new §1.1 Murach & Bagley 2016 HIGH, Coffey & Hawley 2017 HIGH)** [EV] — Under concurrent load, muscle cross-section is largely preserved; what suffers is rate of force development, peak power, and (to a lesser extent) maximal strength. This justifies a higher ceiling on hypertrophy floor doses than on strength/power floor doses during high-conditioning blocks. *Test:* the engine's per-quality ceiling-compression curves apply a smaller penalty to hypertrophy than to strength/power for the same global pressure. **Confidence: HIGH-MODERATE.**
+
+## M. Volume landmarks under concurrent stress (new in this revision)
+
+- **DC-M1 — Per-muscle volume landmarks: MV / MEV / MAV / MRV (new §2.1 Israetel MODERATE-HIGH + Schoenfeld 2017 HIGH)** [DEF→cal] — Engine stores four landmarks per muscle group per user: Maintenance Volume (MV), Minimum Effective Volume (MEV), Maximum Adaptive Volume (MAV), Maximum Recoverable Volume (MRV). Default trained-lifter range: 10–20 hard sets/muscle/wk = MEV → MAV (Schoenfeld 2017). Surface a per-muscle "Volume Status" indicator: GREEN (MEV–MAV), AMBER (approaching MRV), RED (over MRV). *Test:* per-muscle weekly hard-set count is tagged GREEN/AMBER/RED against stored landmarks. **Confidence: HIGH-MODERATE.**
+
+- **DC-M2 — Concurrent volume modifier (new §2.1, §2.4 Israetel/Nuckols MODERATE)** [DEF→cal] — When `weekly_endurance_hours ≥ 4 OR conditioning_sessions_per_week ≥ 3`, apply `concurrent_modifier = 0.70` to MAV and MRV; MV remains unchanged. The safe operating range under concurrent stress shifts from MEV → MAV to **MEV → MEV+30%**, not MEV → MAV. *Test:* a user logging 4h/wk cycling under a balanced block sees their per-muscle MAV displayed at 0.70× of unconditioned-baseline value. **Confidence: MODERATE-LOW** (practitioner consensus, no RCT validation).
+
+- **DC-M3 — Strength maintenance volume floor (new §2.2 Bickel 2011 HIGH)** [EV] — Strength can be maintained at as little as 1/9th peak training volume for 32 weeks IF intensity stays ≥85% on the main lift. Maintenance-phase strength floor = 1–2 sessions/week with heavy singles/doubles/triples on main lifts. *Test:* in an aerobic-emphasis or engine-biased block, generated strength floor sessions include ≥1 set at ≥85% on each main pattern. **Confidence: HIGH** (Bickel 2011 peer-reviewed HIGH).
+
+- **DC-M4 — Emphasis-block weekly templates (new §5.2 table)** [DEF] — Each archetype's weekly structure conforms to the `new` §5.2 emphasis-block table. Strength emphasis: 4 strength sessions/wk MEV–MAV, 1–2 supplementary hypertrophy slots, 2–3h/wk Z2 only, 1 short interval session/wk, background tendon work. Hypertrophy emphasis: 3 strength/wk submax, high-volume hyper at MAV, 2–3h/wk Z2 only, 1 interval session/wk. Aerobic emphasis: 2 strength/wk maintenance, 1 hyper slot, 5–7h/wk Z2 polarized, 1 interval session/wk, maintain HSR/isometrics. VO2/conditioning emphasis: 2 strength/wk maintenance, minimal hyper, 3–4h/wk Z2, 2–3 hard sessions/wk. Peak: all at testing volume; deload: 50–60% volume, 50% hyper, isometrics only for tissue. *Test:* the v2 archetype seed values produce weekly schedules within ±1 session of these templates. **Confidence: HIGH-MODERATE.** (See OC-19 for reconciliation with v2 §4.2.)
+
+## N. Polarized aerobic distribution & top-end (new in this revision)
+
+- **DC-N1 — Polarized weekly distribution enforced for endurance time (new §3.1 Seiler 2010 HIGH, Stöggl & Sperlich 2014 HIGH)** [EV] — Rolling 7-day endurance time distribution targets: 75–85% Z1–Z2, 10–20% Z4–Z5, < 10% Z3 (threshold). Surface a "Distribution Health" widget. WARN if Z3% > 15% sustained over 2 weeks (likely hidden plateau driver). *Test:* a weekly plan with 60% Z2 / 30% Z3 / 10% Z4 produces a distribution warning. **Confidence: HIGH.**
+
+- **DC-N2 — Threshold is default-off; event-prep only (new §3.1, §3.3)** [DEF] — Threshold (Z3) blocks are allowed only in ≤4-week event-prep windows with explicit user opt-in. Default for all archetypes: 0 threshold sessions/wk. *Test:* generated default weekly plans contain 0 threshold sessions outside an event-prep flag. **Confidence: HIGH-MODERATE.**
+
+- **DC-N3 — Z2 prescription via HR + RPE dual cue (new §3.2)** [DEF] — Default Z2 prescription = `HR ≤ (HRR × 0.70 + RHR) AND RPE ≤ 4/10 ("conversational") AND nasal-only breathing comfortable`. Auto-end Z2 if HR drifts >8 bpm at constant pace within session. User may choose Z2 method: MAF | %HRR | Power | Pace | RPE-only. *Test:* prescribed Z2 sessions store both HR cap and RPE cap; either method's breach triggers session-end suggestion. **Confidence: MODERATE-LOW.**
+
+- **DC-N4 — VO2max default protocol (new §3.3 Helgerud 2007 HIGH)** [DEF] — VO2max default = 4×4 min @ 90–95% HRmax / 3 min easy recovery; 1–2×/wk in a focused block, 1×/wk or 1× every 2 wk in maintenance. Alactic default = 6–10 × 10–15s near-max efforts, 1:10 rest; up to 2×/wk year-round (interference cost negligible). *Test:* the VO2max template generator emits exactly these parameters by default. **Confidence: HIGH-MODERATE.**
+
+- **DC-N5 — Z2 volume cap by emphasis (new §3.4, §8)** [DEF] — During strength emphasis cap Z2 at 3–5h/wk; during aerobic emphasis raise to 5–7h/wk. Above 5h/wk running-dominant the recovery benefit is overrun by AMPK accumulation (DC-O1 / `new` §1.1). *Test:* a strength-biased archetype with 6h/wk planned Z2 emits a volume-cap warning. **Confidence: HIGH-MODERATE.**
+
+## O. Tendon / Baar framework (new in this revision)
+
+- **DC-O1 — Tendon adapts 2–10× slower than muscle (new §4.1 Magnusson & Kjaer 2019 HIGH)** [EV] — Tendon is the rate-limiter of long-term hybrid careers. Engine treats tendon-loaded movements with a separate tendon-region ledger and tighter ramp curves than muscle work. *Test:* new movements involving high-strain tendon positions are ramp-capped per DC-J2 + DC-O7; aggressive load progression triggers a tendon-mismatch warning. **Confidence: HIGH** (peer-reviewed HIGH source agreeing with v1's durability framing).
+
+- **DC-O2 — ~6-hour tendon refractory window (new §4.2 Baar 2017 HIGH)** [EV] — Same joint-tendon high-strain stimulus produces no additive collagen synthesis within ~6h but adds damage cost. Tendon work is therefore *less frequent + more decisive*: schedule ≥ 6h between high-strain exposures to the same tendon within a day; ≥ 48h between high-strain exposures to the same tendon across days (new §8). *Test:* attempting two heavy patellar-isometric sessions in the same morning emits a refractory warning; scheduling them 30h apart is allowed; 24h apart emits an advisory. **Confidence: HIGH.**
+
+- **DC-O3 — Tendon protocols catalogued (new §4.2 Baar 2017 HIGH, Kongsgaard 2009 HIGH, Alfredson 1998 HIGH)** [DEF] — Engine maintains three named, citable tendon protocols available to scheduler + AI: (i) **Heavy isometric** — ≥70% MVC, 30s holds, 3 sets, 2×/wk, at high-strain joint position (Baar 2017 HIGH); (ii) **Heavy Slow Resistance (HSR)** — 3×6–10 reps @ 70–85% 1RM, 3s eccentric / 3s concentric, 2×/wk (Kongsgaard 2009 HIGH; preferred for asymptomatic loading); (iii) **Alfredson eccentric** — validated default for symptomatic tendinopathy (Alfredson 1998 HIGH). *Test:* "prescribe tendon work for knee tendinopathy" returns Alfredson by default for symptomatic, HSR for asymptomatic, with citation. **Confidence: HIGH** (three peer-reviewed HIGH sources).
+
+- **DC-O4 — Weekly bulletproofing stack as a floor (new §4.3)** [EV] — Every week template MUST include: ≥1 heavy isometric session (patellar / Achilles / posterior-chain stack); ≥1 HSR or eccentric-emphasis movement; ≥1 plyometric exposure (low-amplitude OK; not required when a tendinopathy flag is active for the affected region); ≥2 carry exposures (farmer / suitcase / overhead). *Test:* a generated week missing any line emits a tissue-stack-deficient warning. **Confidence: HIGH-MODERATE** (`new` synthesis of practitioner + peer-reviewed sources).
+
+- **DC-O5 — Progression ramp caps (new §4.4 "load added faster than tissue adapted")** [DEF] — Running mileage week-over-week increase capped at +10% by default (configurable). Plyometric ground contacts ≤ +20%/wk. Any new movement: first 2 weeks deliberately submaximal (cap at 70%). *Test:* +12% week-over-week running mileage is blocked unless overridden. **Confidence: HIGH-MODERATE.**
+
+- **⏸ [BACKLOG] DC-O6 — Symptom gates (new §4.4)** [EV] — Deferred per § U (requires daily symptom / stiffness self-report). When restored: persistent stiffness > 2 weeks on a joint → auto-suggest swap to HSR / isometric variant of the relevant pattern + flag for user review. Pain that does not clear in warm-up → block high-velocity / high-impact work for that joint until pain resolves. **MVP substitute:** when a `limitations` row is created for a region, DC-O3 + DC-D5 automatically apply the HSR/Alfredson protocol substitution and the high-velocity/impact block. **Confidence: HIGH** (when input source returns).
+
+## P. Monitoring stack & autoregulation hierarchy (new in this revision)
+
+- **DC-P1 — Pre-session check-in: 2 sliders, ~5 seconds (new §6.2; MVP simplified per § U)** [EV] — At session start, user provides exactly two inputs on 1–5 scales: **Fatigue** (1=fresh / 2=ok / 3=heavy / 4=drained / 5=cooked) and **Soreness** (1=none / 2=mild / 3=moderate / 4=high / 5=severe, whole-body). No mood, no energy, no sleep, no per-region symptom — by deliberate scope choice to keep the widget under ~5 seconds (see § U rationale). Both required to start the session; skip allowed once per 7-day window with a logged reason. **Future:** add sleep, mood, energy, per-region inputs when wearable / coach-agent layer arrives — the widget design must remain ≤10 seconds at full expansion. *Test:* session-start flow surfaces exactly 2 sliders + a primary "start session" button; submitting fatigue=3 / soreness=2 takes < 1 second and writes both to `wellness` row. **Confidence: HIGH-MODERATE** (`new` §6.2 monitoring-stack-priority HIGH for "subjective wellness is highest value-to-cost"; the 2-field shape is an MVP UX default).
+
+- **DC-P2 — Autoregulation hierarchy: daily=intensity, weekly=volume, block=direction (new §5.4, §8 trade-off table)** [EV] — RPE/RIR adjusts today's intensity. The composite deload trigger (DC-P4) adjusts the week's volume. The block-transition state machine adjusts direction. Daily signals NEVER auto-rewrite weekly volume or block direction. *Test:* a single low-wellness day reduces today's session scope but does not modify the rest of the week's volume budget. **Confidence: HIGH-MODERATE.**
+
+- **⏸ [BACKLOG] DC-P3 — HRV is a 7-day rolling z-score, never a point reading (new §5.4, §6.2, §10 pre-mortem #4, Plews 2013 HIGH)** [EV] — Deferred per § U (requires HRV input, which requires wearable integration). Binding contract for when HRV returns: input is the 7-day rolling average vs 30-day baseline expressed as a z-score; CV trend surfaced. **A single-day HRV value never drives a user-facing prescription change.** OC-13 is closed by this constraint when HRV ships. **Confidence: HIGH** (when input source returns).
+
+- **DC-P4 — Composite deload trigger (new §5.3; MVP revised per § U + OC-5 / OC-17 verdicts)** [EV] — Score weekly using these **6 MVP signals** (HRV / RHR / sleep dropped to backlog; replaced by derived region overload):
+  1. **+1** if RPE drift +1 at fixed load for 2 consecutive sessions on a main lift
+  2. **+1** if Fatigue ≥ 4/5 in 4+ of the last 7 pre-session check-ins
+  3. **+1** if Soreness ≥ 4/5 in 4+ of the last 7 pre-session check-ins
+  4. **+1** if Z2 pace at fixed HR (Strava-derived) declines > 5% across 2 consecutive sessions — requires HR strap data
+  5. **+1** if anchor compliance < 70% over the last 14 days
+  6. **+1** if any region has `ATL_r > 1.30 × baseline_tolerance_r AND novelty_r > 0.30` sustained for 7+ days (derived from DC-C14 region ledger)
+
+  **Score ≥ 2 → recommend deload (user one-tap accept / dismiss with note).**
+  **Score ≥ 3 → strong recommendation (prominent UI; still user-accept, NOT auto-fire per OC-5 verdict).**
+  Deload = 50–60% volume, intensity preserved, frequency optional. Coexists with v2's GRM-based deload (DC-H3) as the user-facing surface that explains "why this week looks tough" (OC-17 verdict). *Test:* fixture with fatigue + soreness + region-overload simultaneously produces score 3 and fires the strong-recommendation event; user dismissal logs to audit without auto-triggering deload. **Confidence: HIGH-MODERATE** (downgraded one tier from full version because two of the three peer-reviewed-HIGH inputs — HRV, sleep — are deferred to backlog; RPE / wellness-equivalent / pace-at-HR retain Helms/Zourdos/Seiler grounding).
+
+- **⏸ [BACKLOG] DC-P5 — Sleep < 7h is a first-class deload signal (new §6.1 Walker 2017 HIGH)** [EV] — Deferred per § U (requires sleep self-log or wearable input; intentionally not in the MVP 2-slider check-in to keep widget ≤5s). When restored: sleep < 7h for 4+ nights increments the DC-P4 composite. **Confidence: HIGH** (Walker 2017 peer-reviewed HIGH; binding when input source returns).
+
+## Q. Nutrition & lifestyle as load (new in this revision)
+
+- **⏸ [BACKLOG] DC-Q1 — Protein floor (new §6.1 Morton/Phillips meta HIGH)** [DEF] — Deferred per § U (requires nutrition self-log, intentionally out of MVP). When restored: protein floor ≥ 1.6 g/kg/day for hypertrophy; ≥ 1.8 g/kg/day under declared deficit. **Confidence: HIGH-MODERATE** (when input source returns).
+
+- **DC-Q2 — Declared body-comp phases gate prescription (new §6.1, §7.3)** [DEF] — Cuts/bulks must be declared phases of 8–12 weeks with explicit calorie target and protein floor. During a declared cut: cap top-end strength intensity at −5% historical; preserve strength via heavy low-volume work; cap weekly conditioning at current (do not progress). Default body-comp stability = ±2% over 4 weeks; drift > 2% without declared phase → surface review. *Test:* engaging "8-week cut" phase reduces top-end intensity prescription by 5%; weight drift 2.5% over 4 weeks without a declared phase emits a review prompt. **Confidence: MODERATE-LOW.**
+
+- **⏸ [BACKLOG] DC-Q3 — Life-stress modifier (new §6.1)** [DEF] — Deferred per § U (requires periodic life-stress self-report toggle; intentionally out of MVP to avoid widget creep). When restored: `current_life_stress_level ∈ {LOW, MODERATE, HIGH}` modifies weekly volume cap. **Confidence: MODERATE-LOW** (when input source returns).
+
+## R. Architectural skeleton & program structure (new in this revision)
+
+- **DC-R1 — Year-level architecture (new §9)** [DEF] — Default annual structure: 4–6 emphasis blocks (each 6–10 wk) + 3–4 deload weeks (intrinsic to blocks) + 2–3 test/reset windows. Surface a yearly view showing emphasis-block placement and test windows. *Test:* the calendar projection for an active user shows ≥1 test window per quarter. **Confidence: MODERATE-LOW.**
+
+- **DC-R2 — Emphasis-block internal structure (new §9)** [DEF] — Default 8-week emphasis block = 6 weeks progressive loading + 1 week peak (intensity preserved, volume cut 30%) + 1 week deload (volume cut 50%). Other block lengths scale proportionally. *Test:* an 8-week strength_biased block generates weeks with the documented volume/intensity profile. **Confidence: HIGH-MODERATE.**
+
+- **DC-R3 — Week & day templates (new §9)** [DEF] — **Week** = lead-quality 3–4 sessions + other qualities 1–2 maintenance sessions each + tissue work integrated into 2 sessions + aerobic base 2–4 Z2 + ≥1 fully off day (or active recovery only). **Day (1 session)** = warm-up (general + specific + tendon prep) → primary work (intensity, ordered by emphasis) → secondary work (hypertrophy / accessory / tissue) → conditioning (if same-session, observe DC-D2 ordering) → cool-down (Z1 + breathing + mobility). *Test:* a generated week conforms to these line items; a generated day conforms to the five-section template. **Confidence: HIGH-MODERATE.**
+
+- **DC-R4 — Block direction fixed; switching mid-block blocked (new §5.1 "switching mid-block is the most common self-sabotage")** [EV] — Once a block is started, its archetype and weekly volume targets are fixed for the block's duration. Mid-block archetype change is blocked at the API level; requires explicit override + consent + audit log entry. *Test:* attempting to change archetype on week 3 of a 6-week block returns an `override_required` response with the cited rationale. **Confidence: HIGH-MODERATE.**
+
+## S. Pre-mortem-derived guardrails (new in this revision)
+
+- **DC-S1 — Explicit override path with consent for conservative-default deviations (new §10 pre-mortem #1)** [EV] — When a user wants to override a literature-derived conservative default (e.g., DC-D1 separation thresholds, DC-N1 polarized distribution, DC-J2/O5 progression ramps), the engine surfaces the source + confidence label + the specific trade-off, and requires explicit acknowledgement. The override is recorded in the audit log. *Test:* overriding DC-D1 surfaces "Robineau 2016 HIGH: substantial mTORC1 recovery at 6h+" before applying the override. **Confidence: HIGH** (`new` peer-reviewed pre-mortem + plan §3 override-and-warn principle + v1's continuity bias).
+
+- **DC-S2 — Adherence-over-optimality compression (new §10 pre-mortem #2)** [EV] — Engine allows liberal session compression and substitution provided the **weekly architecture** (anchors per DC-E2 + floor doses per DC-B4 + week template per DC-R3) is preserved. A 70%-adherence-of-real-week beats a 95%-adherence-of-theoretical-week. *Test:* an "I have 30 minutes" compression preserves the anchor lift and at least one floor-dose maintenance session for each active quality. **Confidence: HIGH-MODERATE.**
+
+- **DC-S3 — Interference is a soft constraint at scheduler level (new §10 pre-mortem #3 Murach 2016 HIGH)** [EV] — High-conflict pairings (DC-D3) surface warnings but do not hard-block scheduling. High-density tolerators can self-declare via the DC-S1 override path. Exception: tendon-irritation gates (DC-D5, DC-O6) ARE hard blocks because the failure mode is injury, not suboptimality. *Test:* scheduling heavy lower-body strength + threshold run on same day with no override returns a warning + the schedule; same with active knee tendinopathy returns a rejection. **Confidence: HIGH-MODERATE.**
+
+- **DC-S4 — Tendon prep gate (new §10 pre-mortem #5)** [DEF] — Scheduled tissue/tendon prep work for the upcoming session is **gated**: if the bulletproofing dose for the session's loaded regions has not been completed in the prior 24–48h, the session start surfaces a "prep first" prompt with a one-tap "prep workout" launch. User can skip-with-reason (logged). Repeated skips trigger a sterner block per DC-O6 symptom escalation. *Test:* opening a heavy squat session without any patellar isometric / quad HSR completed in the last 48h surfaces the prep-first prompt. **Confidence: MODERATE-LOW** (single-source `new` recommendation; flag in OC-15 for Phase D — soft gate vs hard gate is a product decision).
+
+- **DC-S5 — Schema-field discipline (plan §4.10 + new §10 pre-mortem #5 implicit)** [EV] — Before adding any persisted field, the proposer must answer: (a) what removes it? (b) is it observable from outside the engine? Fields that fail both go in a `definition` JSONB blob, not a column. Every new top-level column requires an ADR. *Test:* PR-time linter flags new top-level column additions without a referenced ADR file. **Confidence: HIGH-MODERATE** (plan + cross-cutting hygiene; not directly from research but earned its place from Wendler-app retrospective).
+
+## T. Aesthetics landmarks (new in this revision)
+
+- **DC-T1 — Per-priority weekly hypertrophy targets (new §7.2 Schoenfeld HIGH + v1 §6 muscle-priority mapping)** [DEF] — User declares physique priorities (multi-select). For each selected priority, the app reserves weekly hard-set targets distributed across the week (not bunched): shoulders 6–12; arms 8–14; calves 8–16; abs 6–10; upper chest emphasised via incline pressing. *Test:* a user with "shoulders + arms" priorities sees per-week targets of 6–12 + 8–14 respectively, with at least 2 sessions per priority per week. **Confidence: HIGH-MODERATE.**
+
+- **DC-T2 — Priority hypertrophy protected through emphasis transitions (new §7.2, §7.3)** [DEF] — When transitioning to AEROBIC_BASE or VO2 emphasis, preserve ≥ 50% of priority hypertrophy weekly volume — don't drop to zero. Cuts: maintain priority hyper at MV (DC-M1) not at zero. *Test:* an engine-biased block following an aesthetic block retains ≥ 50% of the previous block's priority hypertrophy set count per priority muscle. **Confidence: MODERATE-LOW.**
+
+- **DC-T3 — Body-comp drift detection (new §7.3)** [DEF] — Weekly weight + monthly body-comp check-in. If weight drift > 2% over 4 weeks WITHOUT a declared cut/bulk phase (DC-Q2) → surface a review prompt. *Test:* logged weight trend −2.5% over 4 weeks with no declared cut surfaces the review prompt. **Confidence: MODERATE-LOW.**
+
+---
+
+## U. MVP scope (2026-05-19 Phase D decisions)
+
+This section captures the deliberate scope boundary set in the Phase D session of 2026-05-19. It is a **load-bearing scope contract** — every other constraint in this document must be read in light of these in/out decisions. Constraints whose inputs are deferred to backlog are prefixed with **⏸ [BACKLOG]** and kept in the file as forward contracts; the engine MUST NOT depend on them in v1.
+
+### In MVP (v1)
+
+- **Per-set + per-session logging loop** (the heart of the MVP per plan Phase 1): weight, reps, per-set RPE, set kind, notes, sRPE, duration, completion status, free-text notes
+- **Pre-session 2-slider check-in** (DC-P1): Fatigue 1–5 + Soreness 1–5, both global, ~5 second widget
+- **Bodyweight**: captured at onboarding; one weekly nudge thereafter (dismissable, no escalation); user can log anytime from profile
+- **Strava integration** (promoted from Phase 3 → Phase 1): OAuth, auto-pull cardio activities, one-tap match-to-slot, user adds only sRPE + notes
+- **Active limitations** as a structured profile-level table (§ V; already in plan §4.3 data model): set when injured, cleared when resolved — same footing as injury history, NOT daily health data
+- **Region freshness as a derived signal** (DC-C14): inferred from the per-region load ledger + movement→region catalog; zero new self-report
+- **The full deterministic rule-based engine**: ceiling math, bucket pressure, GRM, region caps, archetypes, stall diagnosis, multi-modal deload trigger, anchor-filler model — none of this is "AI"
+
+### Deferred to backlog (post-MVP)
+
+- **All wearable-derived signals**: HRV, RHR, sleep-tracker pull, bar speed (VBT). Constraints affected: DC-P3, parts of DC-C4, DC-C5, DC-H3, DC-H6, DC-P4 signals 2/3 of the original 6 — see ⏸ [BACKLOG] prefixes
+- **Daily health self-report beyond fatigue + soreness**: sleep hours self-log, mood, energy, per-region symptom score, region niggle body-map tap, stiffness scale. Constraints affected: DC-P5, DC-O6, DC-Q1, DC-Q3, daily symptom inputs to DC-C8 / DC-D5 / DC-D7 / DC-J9
+- **Nutrition self-logging**: protein g/kg/day tracking, calorie tracking, declared-cut/bulk gates beyond a coarse phase toggle
+- **Life-stress weekly toggle** beyond the bodycomp-phase profile field
+- **AI layer (entire Phase 4)**: coach agent, programmer agent, periodizer agent, chat orchestrator, per-user wiki memory, preview-before-write diff layer
+- **Garmin / non-Strava wearable integrations**
+
+### Scope rationale
+
+The MVP loop is: *user logs a session → engine derives everything it can from the logs + movement catalog + Strava pull → asks for at most 2 extra numbers (fatigue + soreness) at session start → produces tomorrow's prescription with cited rationale*. Everything that requires a wearable or a daily self-report beyond those 2 sliders is intentionally deferred. The 5-second budget for the pre-session widget is the single most-load-bearing UX constraint in the scope.
+
+When a deferred input source returns (e.g., HRV pull via wearable in v1.x or v2), the ⏸ [BACKLOG] constraints are reactivated as written — no re-architecture required.
+
+## V. Active limitations
+
+- **DC-V1 — Active limitations are a structured profile-level table (plan §4.3 + 2026-05-19 scope decisions)** [EV] — Engine maintains a `limitations` table with rows `(user_id, region, severity ∈ {mild, moderate, severe}, started_at, resolved_at?, notes, adjustments JSONB)`. Users add a row when they get hurt (one screen, one form), edit `severity` as it changes, set `resolved_at` when better. Not asked daily; not surfaced as a check-in. This is the binding input for safety hard-blocks (DC-D5 / DC-D7 / DC-J9) and the `N_history` term in DC-C8 region_risk. *Test:* creating `limitations.knee.active(severity=moderate)` immediately compresses today's knee-region ceiling AND fires the DC-D5 hard-block for plyometric scheduling on that region. **Confidence: HIGH-MODERATE.**
+
+- **DC-V2 — Load-recency soft block on high-strain work (new in 2026-05-19 MVP scope)** [EV] — When `region_freshness_r < 0.20` (DC-C14) AND the planned session would add high-strain work to that region (high_strain_tendon-tagged movement, plyo, sprint, heavy compound primarily loading that region) → scheduler emits a warning (not hard-block), shows the recent-load timeline ("quads loaded heavy 14h ago, freshness 0.17"), suggests substitution. Override per DC-S1 consent path. **Asymmetry vs DC-V1:** injuries hard-block; recent-load fatigue soft-warns. *Test:* the morning after a heavy back squat session, scheduling plyometrics for the legs returns a warning + substitution menu + cited freshness reason, not a rejection. **Confidence: HIGH-MODERATE** (load math from v2 §3.2 + `new` §4 graded-progression principle).
+
+- **DC-V3 — Limitations don't auto-resolve (plan §4.3)** [DEF] — A `limitations` row stays active until the user sets `resolved_at` explicitly. Engine MUST NOT auto-resolve based on time, missed sessions, or absence of pain reports. If a row has been open > 90 days, surface a "still bothering you?" nudge (one tap to confirm-still-active OR resolve), nothing more aggressive. *Test:* a 60-day-old active limitation continues to enforce DC-D5/D7/J9 blocks; at 90 days the nudge surfaces; user can dismiss or resolve. **Confidence: MODERATE-LOW** (engineering default).
+
+---
+
+## Resolutions (2026-05-19 Phase D session)
+
+Verdicts on the 22 Open Conflicts. **Closed** = constraint(s) updated to reflect the resolution. **Deferred** = resolution depends on a backlog input source returning. The full conflict descriptions remain in the Open Conflicts section below for reference.
+
+| OC | Verdict | Resolution |
+|---|---|---|
+| OC-1 | ✅ Closed | GRM rate-limited at −0.10/wk except when multi-modal-deload composite (DC-P4) score ≥ 3 fires a recovery-crisis exception |
+| OC-2 | ✅ Closed | Seed: high=0.85 / mod=0.50 / low=0.15 / none=0.00, × modality sub-modifier (sled 0.3, swim 0.4, cycle 0.6, row 0.8, run 1.0, run-intervals 1.2). All `[DEF→cal]` |
+| OC-3 | ✅ Closed | Cold-start `base_ceiling_q` = onboarding-declared typical week × 0.85, `confidence_bias = 0.90`, until ≥ 3 recovered weeks; trust cap 4 weeks |
+| OC-4 | ✅ Closed | Soft gate: consumer tier may pick any archetype with explicit "I understand" consent + 0.85 headroom + 0–1 hard-conditioning cap |
+| OC-5 | 🔧 Modified | Archetype defines candidate deload week; composite (DC-P4) or GRM may shift ±1 week. **Auto-trigger removed for MVP** — always recommendation with one-tap accept |
+| OC-6 | ✅ Closed | Scheduler emits same-day pairs in canonical order automatically; manual reorder = explicit action + cited warning |
+| OC-7 | ✅ Closed | Confirmed orthogonal: methodology rows (Drizzle, plan §4.3) + engine state (block_state/ceiling_model/bucket_state per v2 §10) stored separately. `Block.kind` → `block_state.current_archetype` |
+| OC-8 | ✅ Closed | Floors live in per-quality native user-facing units; bucket math only at ceiling/pressure layer |
+| OC-9 | ✅ Closed | Aesthetic deficit hypertrophy cut = 17.5% (midpoint), `[DEF→cal]` |
+| OC-10 | ✅ Closed | v2 split kept as written: anchor-compliance bypass grants feature access only; ceiling headroom stays tied to BTS tier |
+| OC-11 | ✅ Closed | High-risk region-min set: hard running, sprinting, plyometrics, deep knee-dominant lower-body (high-bar back squat below parallel, ATG split squat, deep front squat), heavy cleans/snatches, any `high_strain_tendon`-tagged movement |
+| OC-12 | ✅ Closed | BTS performance-trend → continuous mapping per quality KPI; binary form dropped |
+| OC-13 | ⏸ Deferred | Tied to HRV input; closed by DC-P3 when HRV ships post-MVP. Binding contract preserved |
+| OC-14 | ✅ Closed | Strength-block hard-conditioning floor = 1 short alactic session/wk (6–10 × 10–15s, 1:10 rest) |
+| OC-15 | 🔧 Modified | Tendon prep gate stays soft-prompt-only in MVP (no escalation to hard block). Hard-gate logic returns post-MVP with symptom-tracking maturity |
+| OC-16 | ✅ Closed | Concurrent volume modifier = 0.70 × MAV/MRV at ≥ 4h/wk endurance OR ≥ 3 cond sessions, `[DEF→cal]`. Strong calibration candidate |
+| OC-17 | 🔧 Modified | Both DC-P4 (composite) and DC-H3 (GRM-based) active. GRM is primary diagnostic; DC-P4 is the user-facing "why this week looks tough" surface. Union rule; no auto-trigger for MVP |
+| OC-18 | ✅ Closed | Archetype bucket weights = total metabolic budget; DC-N1 polarized distribution = within-budget zone split. Both surfaced |
+| OC-19 | ✅ Closed | v2 numbers default for consumer/intermediate; `new` numbers as upper bound for high-perf tier (when that tier ships) |
+| OC-20 | ✅ Closed | Both scheduler-layer (DC-D1) and ceiling-layer (DC-C7) interference checks active; each surfaces its own citation per DC-K4 |
+| OC-21 | ✅ Closed | Z2 volume cap by emphasis = visible budget meter, not hard block; override per DC-S1 |
+| OC-22 | ⏸ Deferred | Tied to HRV input; no DC-H3 threshold change. Reopens with HRV |
+
+**Plan §7 open questions** (verdicts captured here for completeness; full reasoning in the Phase D handoff note):
+
+| # | Question | Verdict |
+|---|---|---|
+| 1 | DB | ✅ Supabase |
+| 2 | Auth | ✅ Supabase Auth (matches DB choice) |
+| 3 | Region | ✅ EU-central |
+| 4 | Pricing intent | ✅ Free for all + pricing later |
+| 5 | Domain name | ⏸ Owner decides |
+| 6 | Methodology naming | ✅ Already resolved — methodology-pure, owner-confirmed; no re-debate |
+| 7 | Native iOS day one vs web-first | ✅ Web-first, Capacitor in Phase 2 |
+| 8 | Public launch criteria | ⏸ Owner decides |
+
+---
+
+## Open conflicts (for Phase D resolution)
+
+Conflicts inherited from draft1 are renumbered OC-1 through OC-12. New conflicts surfaced by `new` integration are OC-13 onward.
+
+1. **OC-1 — Continuity vs aggressive compression.** v1 §2 Rule 5 ("bias toward continuity, small week-to-week changes") tensions with v2 §3.6 GRM, which can drop to 0.70 in one week. `new` §4.4 supports rate-limited progression (10% rule) which by symmetry should also rate-limit aggressive compression. *Decision needed:* should GRM compression be rate-limited (e.g., GRM cannot fall by > 0.10 in one week unless a "recovery crisis" event fires)? **Recommended default:** yes, rate-limit at −0.10/wk except for explicit crisis flag triggered by DC-P4 score ≥ 3.
+
+2. **OC-2 — Conflict-matrix coefficients are not numerically specified.** v2 §3.8 names high/moderate/low conflict pairings but never publishes the actual `conflict_q,c` numeric coefficients. The plan's example bullet ("0.85 per v2 §3.8 default") cites a number that v2 does not actually publish. *Decision needed:* seed values. **Recommended defaults:** high=0.85, moderate=0.50, low=0.15, none=0.00. With `new` §1.2 modality hierarchy as a sub-modifier: cycling × 0.6, rowing × 0.8, running × 1.0, running-intervals × 1.2, sled × 0.3, swimming × 0.4 applied to the base coefficient. Mark all as `[DEF→cal]`.
+
+3. **OC-3 — Cold-start base ceiling.** v2 §3.10 requires median of last 3 recovered weeks. A new user has zero. v2 mentions only confidence_bias as the cold-start mitigation. *Decision needed:* what is `base_ceiling_q` for week 1? **Recommended defaults:** derive from onboarding-declared training inputs (recent typical week from the intake form) × 0.85, AND set confidence_bias = 0.90, until ≥ 3 recovered weeks accumulate. Cap "trust" of onboarding-declared values at 4 weeks.
+
+4. **OC-4 — Consumer tier archetype gating.** v2 §5.5 restricts consumer tier to `balanced + rebuild` archetypes only. v1 §6 says aesthetics-priority users should be able to enter an aesthetic block. *Decision needed:* hard gate vs soft gate. **Recommended default:** soft gate — allow with explicit "I understand" + apply consumer's 0.85 headroom and 0–1 hard-conditioning cap.
+
+5. **OC-5 — Deload cadence by tier vs by archetype.** v2 §5.5 says consumer = time-based every 4w, intermediate = hybrid, high-perf = signal-driven. v2 §4.2 fixes deload week per archetype (e.g., balanced wk 5–6). `new` §5.3 adds composite signal-based trigger (DC-P4). *Decision needed:* which wins when they conflict? **Recommended default:** archetype defines candidate deload week, tier mode decides whether to force it (consumer) or allow signal-driven shift (high-perf, can move ±1 week based on GRM trajectory and DC-P4 score). DC-P4 score ≥ 3 always wins regardless of tier.
+
+6. **OC-6 — Same-day ordering enforcement.** v1 §3 + `new` §1.3 mandate lift-then-condition default for same-day. v2 §3.8 doesn't model intra-day order. *Decision needed:* hard rule or warning? **Recommended default:** scheduler emits same-day session pairs in the canonical order automatically; manual reordering requires explicit user action with cited warning per DC-S1.
+
+7. **OC-7 — Plan §5.3 data model vs v2 §10 data model.** Plan §5.3 lists `programs/methodologies/blocks/block_days` (methodology-flavored) as Drizzle tables. v2 §10 lists `user_profile/state_model/ceiling_model/block_state` (engine-state-flavored). Plan says "v2 wins" but they're orthogonal — methodology metadata vs engine runtime state. *Decision needed:* confirm the two are kept as separate concerns. **Recommended default:** yes — methodology rows = program definitions (Drizzle tables per plan §5.3); engine state = block_state + ceiling_model + stress_buckets per v2 §10, stored separately. `Block.kind` (plan) maps to `block_state.current_archetype` (v2).
+
+8. **OC-8 — Floor-dose units are inconsistent across qualities.** v1 §2 Rule 4 floors are in mixed units (exposures, sessions, minutes). v2 §2 says "store internal stress ledger by bucket and region, but keep native user-facing units per quality." *Decision needed:* confirm floors live in user-facing units. **Recommended default:** yes — floors are per-quality, in native unit; only ceilings/pressures use internal bucket math.
+
+9. **OC-9 — Aesthetic deficit hypertrophy ceiling cut (15–20%).** v2 §4.2 C states it; v1 §6 says "reduce total volume slightly." `new` §7.3 supports "cap conditioning + soft intensity ceiling" under cuts but doesn't pin a number. *Decision needed:* pick a fixed default. **Recommended:** 17.5% (midpoint of 15–20%), label `[DEF→cal]`.
+
+10. **OC-10 — Anchor compliance bypass for tier override.** v2 §5.6 grants `requested_tier` access if `anchor_compliance_28d ≥ 0.85`, but only for *features*, while keeping the ceiling modifier at current tier. *Decision needed:* is this the right split? **Recommended default:** keep as written; flag to user that ceiling headroom remains tied to BTS.
+
+11. **OC-11 — Region-cap minimum-vs-mean policy boundary.** v2 §3.11 says "weighted mean for broad qualities; minimum for high-risk." The list of "high-risk" qualities isn't enumerated. *Decision needed:* publish the explicit list. **Recommended default high-risk set:** hard running, sprinting, plyometrics, deep knee-dominant lower-body (high-bar back squat below parallel, ATG split squat, deep front squat). Plus, by extension from `new` §4: any movement tagged as `high_strain_tendon` for the loaded tendon. Everything else uses weighted mean.
+
+12. **OC-12 — "Performance trend" component of BTS (v2 §5.3).** Listed in the BTS formula at weight 0.10 but its normalisation ("declining → 0, stable/improving → 100") is binary. *Decision needed:* refine to continuous? **Recommended default:** continuous mapping per quality KPI; binary is too coarse.
+
+13. **OC-13 — HRV daily reading vs 7-day trend (v2 §3.5 vs new §5.4/§6.2/§10 pre-mortem #4, Plews 2013 HIGH).** v2 includes HRV at weight 0.22 in the daily/weekly systemic_penalty, implying daily readings are signal. `new` HIGH-confidence (Plews 2013) says daily HRV has too much within-person variance to be useful prescriptively; only the 7-day rolling z-score and CV trend should drive prescription. v1 ranks HRV as "supporting context" qualitatively. *Decision needed:* confirm DC-P3 as written — HRV input to systemic_penalty (DC-C4) and deload trigger (DC-P4) MUST be the 7-day rolling z-score, never a single-day point. **Recommended default:** confirm. This is the highest-confidence research-driven correction to v2's defaults; treat it as binding.
+
+14. **OC-14 — Hard-conditioning floor for strength-biased blocks (v1 §2 Rule 4 vs v2 §4.2 B vs new §5.2).** v1 says "anaerobic: 1 brief exposure every 7–10 days" as a floor. v2's strength-biased archetype defaults to **0 hard conditioning**. `new` §5.2 strength-emphasis row says **1 short interval session/wk**. Three different numbers from three sources. *Decision needed:* pick. **Recommended default:** **1 short alactic session/wk** (10–15 min, e.g., 6–10×10–15s near-max, 1:10 rest per DC-N4). Rationale: alactic has negligible interference cost per `new` §3.3 HIGH-MODERATE, so it can sit comfortably under a strength block; threshold and lactate-tolerance work stay default-off. This aligns with `new` numerically while preserving v1's "floor" intent.
+
+15. **OC-15 — Tendon prep gating: soft prompt vs hard block (DC-S4).** `new` §10 pre-mortem #5 proposes the next session is gated behind tissue prep completion. This is more aggressive than v1/v2's "include resilience microdoses." *Decision needed:* default = soft (prompt, allow skip with reason logged) or hard (block session start)? **Recommended default:** soft by default; escalate to hard after 3 skipped tissue prep gates in 14 days for the same region OR when DC-D5 / DC-O6 symptom flags are active.
+
+16. **OC-16 — Concurrent volume modifier value (DC-M2).** `new` §2.1 proposes 0.70× MAV/MRV when endurance ≥4h/wk OR conditioning ≥3 sessions/wk. Source is MODERATE practitioner consensus (Israetel, Nuckols). v2 has no equivalent — its interference math is overload-driven, not weekly-hour-driven. *Decision needed:* accept 0.70 default, or pick a different value? **Recommended default:** start with 0.70 + 4h/3-session triggers as written, marked `[DEF→cal]` for calibration. This is one of the strongest "tune from real data" candidates.
+
+17. **OC-17 — Composite deload trigger (DC-P4) interaction with v2 GRM-based deload (DC-H3).** v2 deloads via GRM < 0.90 + per-archetype scheduled deload week. `new` adds a 6-signal composite scorer. They are mostly complementary (GRM is one signal that can independently fire `fatigue_suppression`; DC-P4 fires `auto_deload`). *Decision needed:* are both active, with the union rule (whichever fires first triggers deload)? **Recommended default:** yes — both active. DC-P4 score ≥ 3 OR GRM < 0.85 OR archetype-scheduled deload-week reached → enter deload. DC-P4 score = 2 OR GRM < 0.90 → recommend (user-acceptable). Document this as engine-level "deload arbitration."
+
+18. **OC-18 — Polarized 80/20 (DC-N1) vs archetype bucket-weight metabolic share (v2 §4.1).** Engine archetype bucket weights set the metabolic share at 0.22 / 0.14 / 0.18 / 0.34 / 0.22 for balanced / strength / aesthetic / engine / rebuild. `new`'s polarized distribution is a within-modality split (80% easy / 20% hard / <10% threshold). These operate at different layers and are not strictly contradictory, but the engine must reconcile when the user logs hours. *Decision needed:* confirm policy. **Recommended default:** archetype bucket weights determine *how much metabolic budget total*; DC-N1 polarized distribution governs *how that metabolic budget is split into easy/threshold/hard*. Engine surfaces both: "your metabolic budget this week is 4.5h; of that, 3.7h Z2, 0.5h Z4–Z5, 0.3h Z3 max."
+
+19. **OC-19 — Emphasis-block weekly templates (DC-M4 / new §5.2) vs v2 archetype weekly structures (v2 §4.2).** They're close but not identical. e.g., `new` strength emphasis says 4 strength sessions/wk MEV-MAV; v2 strength-biased says 3 anchor sessions. `new` aerobic emphasis says 2 strength sessions/wk maintenance; v2 engine-biased says 1 strength anchor. *Decision needed:* which template wins, or do we merge? **Recommended default:** merge — adopt `new`'s session counts as the upper bound for high-perf tier, v2's session counts as the consumer/intermediate default. Document the per-tier session count delta in the archetype rows.
+
+20. **OC-20 — Modality separation: scheduler hard rule vs ceiling-modifier soft penalty.** `new` §1.3 + Robineau 2016 HIGH give us hard numbers (6h soft, 24h ideal) used at the scheduler layer (DC-D1). v2 §3.8 has the overload-driven interference modifier at the ceiling layer (DC-C7). They are complementary not contradictory. *Decision needed:* confirm both apply. **Recommended default:** both active. The scheduler emits warnings/blocks per DC-D1 thresholds; the ceiling math compresses dose per DC-C7 when delivered conflict-load is high. Surface "why this rule fired" per DC-K4 with the appropriate citation in each case.
+
+21. **OC-21 — Aerobic Z2 volume cap by emphasis (DC-N5 5h running ceiling).** `new` §3.4 notes 5+ h/wk running-dominant overruns the recovery benefit. v2 doesn't pin a number — its interference math handles it implicitly. *Decision needed:* enforce 5h soft cap by emphasis (3–5h strength, 5–7h aerobic), or rely on bucket math? **Recommended default:** soft surface cap with cited rationale (DC-S1 override path applies); use the cap as a visible budget meter, not a hard block.
+
+22. **OC-22 — Daily HRV in fatigue_suppression diagnosis (DC-H3).** Currently DC-H3 says `GRM < 0.90 → fatigue_suppression`. GRM consumes the (now 7-day-rolling) HRV via systemic_penalty per DC-C4. *Decision needed:* confirm that the upstream change to 7-day rolling HRV per DC-P3 is the only HRV change needed, i.e., DC-H3's threshold is unchanged. **Recommended default:** confirm. No change to thresholds; only the HRV ingestion semantics change.
+
+---
+
+## Phase D resolution checklist (SUPERSEDED 2026-05-19 — see § Resolutions above)
+
+> **Superseded.** The Phase D session of 2026-05-19 closed every Open Conflict and answered most plan §7 questions. The verdicts now live in the **§ Resolutions (2026-05-19)** block earlier in this document; that block is the authoritative record. The original checklist below is preserved as historical context — its suggestions were inputs to the Phase D session, not its outputs.
+
+For each Open Conflict OC-1 through OC-22 above, the deliverable is one of:
+- ✅ **Accept default as written** (suggested values become engine config).
+- 🔧 **Modify** (state the change).
+- ❌ **Reject** (state the alternative).
+
+**Plus the plan §7 open questions** (original suggested defaults; final verdicts in § Resolutions):
+- Q1. **DB:** Supabase vs Neon → *Suggested:* Supabase (bundles auth + storage + DB; faster to ship the multi-tenant foundation; vendor lock is acceptable for a solo project). **→ Accepted in Phase D.**
+- Q2. **Auth library:** Better Auth vs Supabase Auth → *Suggested:* Supabase Auth (bundled with DB; one less moving part; covers email/password + magic link + Google + Apple SSO out of the box). **→ Accepted in Phase D.**
+- Q3. **Region:** EU-central if GDPR-first; us-east otherwise → *Suggested:* EU-central. **→ Accepted in Phase D.**
+- Q4. **Pricing intent:** Free + Pro day one vs free + pricing later → *Suggested:* free for all, pricing-later. **→ Accepted in Phase D.**
+- Q5. **Domain name:** TBD → *Suggested:* park a domain in Phase D so Resend email sender is on the production domain from day one. **→ Deferred 2026-05-19; owner will use personal Gmail as the Resend transactional sender for v0** (Resend supports single-mailbox verified senders without a custom domain). Re-open before any public marketing or paid-tier launch.
+- Q6. **Methodology naming:** engine is **methodology-pure** (zero external program names in catalog, data model, or engine — only the five archetypes). **→ Re-confirmed by owner in Phase D; not for re-debate.** (Earlier draft text referencing specific external program names is obsolete and contradicts §1 of the plan + DC-F1 of this document.)
+- Q7. **Native iOS day one vs web-first:** → *Suggested:* web-first; Capacitor wrap in Phase 2. **→ Accepted in Phase D.**
+- Q8. **Public launch criteria:** → *Suggested:* "personal use rock-solid for ≥ 8 weeks + ≥ 1 external alpha user logging for 4 weeks, no data-loss incidents". **→ Accepted in Phase D.** Engine-level metric: anchor-compliance ≥ 90% over the 8-week window with zero data-loss incidents.
+
+---
+
+**End of design constraints.** Total: **108 constraints** (103 active + 5 ⏸ [BACKLOG]) across 22 sections (A–V) + **0 open conflicts remaining** + **0 plan §7 questions remaining** (Q5 deferred to pre-launch with Gmail-sender interim; Q8 accepted). Constraints document is **ready for Phase E**.
