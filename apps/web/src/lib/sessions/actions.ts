@@ -177,6 +177,96 @@ export async function deleteSet(formData: FormData): Promise<void> {
   revalidatePath(`/app/sessions/${sessionId}`);
 }
 
+const editSetSchema = z.object({
+  id: z.string().uuid(),
+  setKind: z.enum(["warmup", "main", "back_off", "accessory", "tendon"]),
+  weightKg: z.coerce.number().min(0).max(1000).optional().nullable(),
+  reps: z.coerce.number().int().min(0).max(500).optional().nullable(),
+  durationSec: z.coerce.number().int().min(0).max(7200).optional().nullable(),
+  distanceM: z.coerce.number().int().min(0).max(50000).optional().nullable(),
+  rpe: z.coerce.number().min(0).max(10).optional().nullable(),
+  notes: z.string().trim().max(400).optional().nullable(),
+});
+
+export async function editSet(formData: FormData): Promise<void> {
+  const parsed = editSetSchema.safeParse({
+    id: formData.get("id"),
+    setKind: formData.get("setKind") || "main",
+    weightKg: formData.get("weightKg") || undefined,
+    reps: formData.get("reps") || undefined,
+    durationSec: formData.get("durationSec") || undefined,
+    distanceM: formData.get("distanceM") || undefined,
+    rpe: formData.get("rpe") || undefined,
+    notes: formData.get("notes") || undefined,
+  });
+  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
+
+  const { reps, durationSec, distanceM } = parsed.data;
+  if (!reps && !durationSec && !distanceM) {
+    throw new Error("Log at least reps, a hold duration, or a distance.");
+  }
+
+  const sessionId = String(formData.get("sessionId") ?? "");
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("set_logs")
+    .update({
+      set_kind: parsed.data.setKind,
+      weight_kg: parsed.data.weightKg ?? null,
+      reps: parsed.data.reps ?? null,
+      duration_sec: parsed.data.durationSec ?? null,
+      distance_m: parsed.data.distanceM ?? null,
+      rpe: parsed.data.rpe ?? null,
+      notes: parsed.data.notes ?? null,
+    })
+    .eq("id", parsed.data.id);
+
+  if (error) throw new Error(error.message);
+  if (sessionId) revalidatePath(`/app/sessions/${sessionId}`);
+  redirect(`/app/sessions/${sessionId}`);
+}
+
+const editCardioSchema = z.object({
+  id: z.string().uuid(),
+  durationSec: z.coerce.number().int().min(1).max(36000),
+  distanceKm: z.coerce.number().min(0).max(1000).optional().nullable(),
+  avgHrBpm: z.coerce.number().int().min(30).max(240).optional().nullable(),
+  avgPaceSecPerKm: z.coerce.number().int().min(60).max(2000).optional().nullable(),
+  rpe: z.coerce.number().min(0).max(10).optional().nullable(),
+  notes: z.string().trim().max(400).optional().nullable(),
+});
+
+export async function editCardio(formData: FormData): Promise<void> {
+  const parsed = editCardioSchema.safeParse({
+    id: formData.get("id"),
+    durationSec: formData.get("durationSec"),
+    distanceKm: formData.get("distanceKm") || undefined,
+    avgHrBpm: formData.get("avgHrBpm") || undefined,
+    avgPaceSecPerKm: formData.get("avgPaceSecPerKm") || undefined,
+    rpe: formData.get("rpe") || undefined,
+    notes: formData.get("notes") || undefined,
+  });
+  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
+
+  const sessionId = String(formData.get("sessionId") ?? "");
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("cardio_logs")
+    .update({
+      duration_sec: parsed.data.durationSec,
+      distance_km: parsed.data.distanceKm ?? null,
+      avg_hr_bpm: parsed.data.avgHrBpm ?? null,
+      avg_pace_sec_per_km: parsed.data.avgPaceSecPerKm ?? null,
+      rpe: parsed.data.rpe ?? null,
+      notes: parsed.data.notes ?? null,
+    })
+    .eq("id", parsed.data.id);
+
+  if (error) throw new Error(error.message);
+  if (sessionId) revalidatePath(`/app/sessions/${sessionId}`);
+  redirect(`/app/sessions/${sessionId}`);
+}
+
 export async function deleteCardio(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   const sessionId = String(formData.get("sessionId") ?? "");

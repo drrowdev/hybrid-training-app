@@ -43,6 +43,13 @@
       "when": 1779226000000,
       "tag": "0005_region_state",
       "breakpoints": false
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779228000000,
+      "tag": "0006_service_role_grants",
+      "breakpoints": false
     }
   ]
 }

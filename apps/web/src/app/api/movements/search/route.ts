@@ -24,7 +24,9 @@ export async function GET(request: NextRequest) {
     .limit(limit);
 
   if (q.length > 0) {
-    const safe = q.replace(/[%_]/g, "\\$&");
+    // Escape PostgREST .or() metacharacters: % _ (LIKE wildcards), and
+    // , ( ) which terminate / group filters in the .or() syntax.
+    const safe = q.replace(/[%_(),]/g, "\\$&");
     query = query.or(
       `display_name.ilike.%${safe}%,slug.ilike.%${safe}%,pattern.ilike.%${safe}%`,
     );

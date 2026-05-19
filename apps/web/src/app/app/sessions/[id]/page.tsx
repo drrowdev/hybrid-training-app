@@ -108,16 +108,24 @@ export default async function SessionDetailPage({
                     </div>
                   </div>
                   {!isComplete && (
-                    <form action={deleteSet}>
-                      <input type="hidden" name="id" value={s.id} />
-                      <input type="hidden" name="sessionId" value={id} />
-                      <button
-                        type="submit"
-                        className="text-xs text-foreground/40 hover:text-red-600"
+                    <div className="flex items-center gap-2">
+                      <Link
+                        href={`/app/sessions/${id}/sets/${s.id}/edit`}
+                        className="text-xs text-foreground/50 hover:text-foreground"
                       >
-                        delete
-                      </button>
-                    </form>
+                        edit
+                      </Link>
+                      <form action={deleteSet}>
+                        <input type="hidden" name="id" value={s.id} />
+                        <input type="hidden" name="sessionId" value={id} />
+                        <button
+                          type="submit"
+                          className="text-xs text-foreground/40 hover:text-red-600"
+                        >
+                          delete
+                        </button>
+                      </form>
+                    </div>
                   )}
                 </li>
               );
@@ -149,16 +157,24 @@ export default async function SessionDetailPage({
                     </div>
                   </div>
                   {!isComplete && (
-                    <form action={deleteCardio}>
-                      <input type="hidden" name="id" value={c.id} />
-                      <input type="hidden" name="sessionId" value={id} />
-                      <button
-                        type="submit"
-                        className="text-xs text-foreground/40 hover:text-red-600"
+                    <div className="flex items-center gap-2">
+                      <Link
+                        href={`/app/sessions/${id}/cardio/${c.id}/edit`}
+                        className="text-xs text-foreground/50 hover:text-foreground"
                       >
-                        delete
-                      </button>
-                    </form>
+                        edit
+                      </Link>
+                      <form action={deleteCardio}>
+                        <input type="hidden" name="id" value={c.id} />
+                        <input type="hidden" name="sessionId" value={id} />
+                        <button
+                          type="submit"
+                          className="text-xs text-foreground/40 hover:text-red-600"
+                        >
+                          delete
+                        </button>
+                      </form>
+                    </div>
                   )}
                 </li>
               );

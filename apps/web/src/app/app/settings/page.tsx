@@ -180,6 +180,20 @@ export default async function SettingsPage() {
       </section>
 
       <section className="space-y-3 pt-6 border-t border-foreground/10">
+        <h2 className="text-lg font-medium">Your data</h2>
+        <p className="text-xs text-foreground/60">
+          Download everything we hold on you (GDPR Articles 15 + 20).
+        </p>
+        <a
+          href="/api/me/export"
+          download
+          className="inline-block rounded-md border border-foreground/20 px-3 py-1.5 text-sm hover:bg-foreground/5"
+        >
+          Export my data (JSON)
+        </a>
+      </section>
+
+      <section className="space-y-3 pt-6 border-t border-foreground/10">
         <h2 className="text-lg font-medium text-red-700 dark:text-red-400">Danger zone</h2>
         <form action={deleteAccount}>
           <button

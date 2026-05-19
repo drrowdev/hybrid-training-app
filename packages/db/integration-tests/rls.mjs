@@ -159,6 +159,153 @@ await test("admin deletes user A, FK cascades remove profile + limitation + move
   assert.equal((movA ?? []).length, 0, "movement not cascaded");
 });
 
+console.log("\nsessions + set_logs + cardio_logs (logged work, scoped via parent session)");
+
+// Pick a global movement we can reuse across test rows.
+const { data: pickMov, error: pickErr } = await admin
+  .from("movements")
+  .select("id, user_id")
+  .limit(5);
+if (pickErr) {
+  console.error("FAIL: movement query errored:", pickErr.message);
+  process.exit(4);
+}
+const movementId = pickMov?.find((m) => m.user_id === null)?.id ?? pickMov?.[0]?.id;
+if (!movementId) {
+  console.error(`FAIL: no movements at all. Got: ${JSON.stringify(pickMov)}`);
+  process.exit(4);
+}
+
+// Re-provision B (A was just deleted above) and add a fresh user A for the next batch.
+const userA2 = await provision(`rls-test-a2-${Date.now()}@example.test`);
+const clientA2 = await asUser(userA2.email);
+
+let sessionAId = null;
+await test("A can create a session", async () => {
+  const { data, error } = await clientA2.from("sessions").insert({
+    user_id: userA2.id, title: "RLS test session",
+  }).select("id").single();
+  assert.equal(error, null, `insert failed: ${error?.message}`);
+  sessionAId = data.id;
+});
+
+await test("B cannot see A's session", async () => {
+  const { data } = await clientB.from("sessions").select("id").eq("id", sessionAId);
+  assert.equal((data ?? []).length, 0, "B saw A's session");
+});
+
+await test("B cannot insert a session as A (RLS WITH CHECK blocks)", async () => {
+  const { error } = await clientB.from("sessions").insert({
+    user_id: userA2.id, title: "hijack",
+  });
+  assert.notEqual(error, null, "RLS should have blocked");
+});
+
+await test("A can add a set to their own session", async () => {
+  const { error } = await clientA2.from("set_logs").insert({
+    session_id: sessionAId, movement_id: movementId, set_index: 0,
+    set_kind: "main", weight_kg: 100, reps: 5,
+  });
+  assert.equal(error, null, `set insert failed: ${error?.message}`);
+});
+
+await test("B cannot add a set to A's session (scoped via parent)", async () => {
+  const { error } = await clientB.from("set_logs").insert({
+    session_id: sessionAId, movement_id: movementId, set_index: 99,
+    set_kind: "main", weight_kg: 999, reps: 1,
+  });
+  assert.notEqual(error, null, "RLS should have blocked the set insert");
+});
+
+await test("B sees zero sets (A's are isolated through the session RLS chain)", async () => {
+  const { data } = await clientB.from("set_logs").select("id");
+  assert.equal((data ?? []).length, 0);
+});
+
+await test("A can add a cardio block to their own session", async () => {
+  const { error } = await clientA2.from("cardio_logs").insert({
+    session_id: sessionAId, modality: "cycling", duration_sec: 1800,
+  });
+  assert.equal(error, null, `cardio insert failed: ${error?.message}`);
+});
+
+await test("B cannot add cardio to A's session", async () => {
+  const { error } = await clientB.from("cardio_logs").insert({
+    session_id: sessionAId, modality: "cycling", duration_sec: 1800,
+  });
+  assert.notEqual(error, null, "RLS should have blocked the cardio insert");
+});
+
+await test("B sees zero cardio blocks", async () => {
+  const { data } = await clientB.from("cardio_logs").select("id");
+  assert.equal((data ?? []).length, 0);
+});
+
+console.log("\nwellness");
+
+await test("A can log their own bodyweight", async () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const { error } = await clientA2.from("wellness").upsert({
+    user_id: userA2.id, date: today, bodyweight_kg: 80.5,
+  }, { onConflict: "user_id,date" });
+  assert.equal(error, null, `wellness insert failed: ${error?.message}`);
+});
+
+await test("B cannot read A's bodyweight history", async () => {
+  const { data } = await clientB.from("wellness").select("bodyweight_kg").eq("user_id", userA2.id);
+  assert.equal((data ?? []).length, 0);
+});
+
+await test("B cannot upsert wellness as A", async () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const { error } = await clientB.from("wellness").upsert({
+    user_id: userA2.id, date: today, bodyweight_kg: 200,
+  }, { onConflict: "user_id,date" });
+  assert.notEqual(error, null, "RLS should have blocked");
+});
+
+console.log("\nregion_state (read after engine recompute would write)");
+
+// Insert a stub region_state row as A to simulate a recompute.
+await test("A can upsert their own region_state row", async () => {
+  const { error } = await clientA2.from("region_state").upsert({
+    user_id: userA2.id, region: "knee", atl: 50, ctl: 60, baseline_tolerance: 60,
+  }, { onConflict: "user_id,region" });
+  assert.equal(error, null, `region_state upsert failed: ${error?.message}`);
+});
+
+await test("B cannot see A's region_state", async () => {
+  const { data } = await clientB.from("region_state").select("region").eq("user_id", userA2.id);
+  assert.equal((data ?? []).length, 0, "B saw A's region_state");
+});
+
+await test("B cannot insert region_state as A", async () => {
+  const { error } = await clientB.from("region_state").upsert({
+    user_id: userA2.id, region: "knee", atl: 0, ctl: 0, baseline_tolerance: 0,
+  }, { onConflict: "user_id,region" });
+  assert.notEqual(error, null, "RLS should have blocked");
+});
+
+console.log("\nfull-cascade verification (delete userA2 → everything goes)");
+
+await test("deleting userA2 cascades through sessions / sets / cardio / wellness / region_state", async () => {
+  const { error } = await admin.auth.admin.deleteUser(userA2.id);
+  assert.equal(error, null);
+
+  // Use the admin client because RLS is now meaningless (user gone).
+  const tables = [
+    "sessions", "set_logs", "cardio_logs", "wellness", "region_state", "limitations",
+  ];
+  for (const t of tables) {
+    const col = t === "set_logs" || t === "cardio_logs" ? "session_id" : "user_id";
+    let q = admin.from(t).select("id, " + col);
+    if (col === "user_id") q = q.eq("user_id", userA2.id);
+    else q = q.eq("session_id", sessionAId);
+    const { data } = await q;
+    assert.equal((data ?? []).length, 0, `${t} not cascaded`);
+  }
+});
+
 await cleanup();
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
