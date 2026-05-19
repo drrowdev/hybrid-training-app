@@ -22,6 +22,13 @@
       "when": 1779210000000,
       "tag": "0002_movement_metadata",
       "breakpoints": false
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1779216000000,
+      "tag": "0003_logging_tables",
+      "breakpoints": false
     }
   ]
 }

@@ -1,0 +1,233 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { z } from "zod";
+import { createClient } from "@/lib/supabase/server";
+
+const checkInSchema = z.object({
+  fatigue: z.coerce.number().int().min(1).max(5).nullable().optional(),
+  soreness: z.coerce.number().int().min(1).max(5).nullable().optional(),
+  title: z.string().trim().max(120).optional(),
+});
+
+/** Create a new session and redirect to its detail page. */
+export async function startSession(formData: FormData): Promise<void> {
+  const parsed = checkInSchema.safeParse({
+    fatigue: formData.get("fatigue") || undefined,
+    soreness: formData.get("soreness") || undefined,
+    title: formData.get("title") || undefined,
+  });
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data, error } = await supabase
+    .from("sessions")
+    .insert({
+      user_id: user.id,
+      fatigue: parsed.data.fatigue ?? null,
+      soreness: parsed.data.soreness ?? null,
+      title: parsed.data.title ?? null,
+    })
+    .select("id")
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/app");
+  redirect(`/app/sessions/${data.id}`);
+}
+
+const setSchema = z.object({
+  sessionId: z.string().uuid(),
+  movementId: z.string().uuid(),
+  setKind: z.enum(["warmup", "main", "back_off", "accessory", "tendon"]).default("main"),
+  weightKg: z.coerce.number().min(0).max(1000).optional().nullable(),
+  reps: z.coerce.number().int().min(0).max(500).optional().nullable(),
+  durationSec: z.coerce.number().int().min(0).max(7200).optional().nullable(),
+  distanceM: z.coerce.number().int().min(0).max(50000).optional().nullable(),
+  rpe: z.coerce.number().min(0).max(10).optional().nullable(),
+  notes: z.string().trim().max(400).optional().nullable(),
+});
+
+export async function addStrengthSet(
+  formData: FormData,
+): Promise<{ error?: string; ok?: true }> {
+  const parsed = setSchema.safeParse({
+    sessionId: formData.get("sessionId"),
+    movementId: formData.get("movementId"),
+    setKind: formData.get("setKind") || "main",
+    weightKg: formData.get("weightKg") || undefined,
+    reps: formData.get("reps") || undefined,
+    durationSec: formData.get("durationSec") || undefined,
+    distanceM: formData.get("distanceM") || undefined,
+    rpe: formData.get("rpe") || undefined,
+    notes: formData.get("notes") || undefined,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+
+  const { reps, durationSec, distanceM } = parsed.data;
+  if (!reps && !durationSec && !distanceM) {
+    return { error: "Log at least reps, a hold duration, or a distance." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in." };
+
+  const { count } = await supabase
+    .from("set_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("session_id", parsed.data.sessionId);
+
+  const { error } = await supabase.from("set_logs").insert({
+    session_id: parsed.data.sessionId,
+    movement_id: parsed.data.movementId,
+    set_index: count ?? 0,
+    set_kind: parsed.data.setKind,
+    weight_kg: parsed.data.weightKg ?? null,
+    reps: parsed.data.reps ?? null,
+    duration_sec: parsed.data.durationSec ?? null,
+    distance_m: parsed.data.distanceM ?? null,
+    rpe: parsed.data.rpe ?? null,
+    notes: parsed.data.notes ?? null,
+  });
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
+  return { ok: true };
+}
+
+const cardioSchema = z.object({
+  sessionId: z.string().uuid(),
+  movementId: z.string().uuid().optional().nullable(),
+  modality: z.string().trim().min(1).max(40),
+  durationSec: z.coerce.number().int().min(1).max(36000),
+  distanceKm: z.coerce.number().min(0).max(1000).optional().nullable(),
+  avgHrBpm: z.coerce.number().int().min(30).max(240).optional().nullable(),
+  avgPaceSecPerKm: z.coerce.number().int().min(60).max(2000).optional().nullable(),
+  rpe: z.coerce.number().min(0).max(10).optional().nullable(),
+  notes: z.string().trim().max(400).optional().nullable(),
+});
+
+export async function addCardioBlock(
+  formData: FormData,
+): Promise<{ error?: string; ok?: true }> {
+  const parsed = cardioSchema.safeParse({
+    sessionId: formData.get("sessionId"),
+    movementId: formData.get("movementId") || undefined,
+    modality: formData.get("modality") || "other",
+    durationSec: formData.get("durationSec"),
+    distanceKm: formData.get("distanceKm") || undefined,
+    avgHrBpm: formData.get("avgHrBpm") || undefined,
+    avgPaceSecPerKm: formData.get("avgPaceSecPerKm") || undefined,
+    rpe: formData.get("rpe") || undefined,
+    notes: formData.get("notes") || undefined,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in." };
+
+  const { count } = await supabase
+    .from("cardio_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("session_id", parsed.data.sessionId);
+
+  const { error } = await supabase.from("cardio_logs").insert({
+    session_id: parsed.data.sessionId,
+    movement_id: parsed.data.movementId ?? null,
+    block_index: count ?? 0,
+    modality: parsed.data.modality,
+    duration_sec: parsed.data.durationSec,
+    distance_km: parsed.data.distanceKm ?? null,
+    avg_hr_bpm: parsed.data.avgHrBpm ?? null,
+    avg_pace_sec_per_km: parsed.data.avgPaceSecPerKm ?? null,
+    rpe: parsed.data.rpe ?? null,
+    notes: parsed.data.notes ?? null,
+  });
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
+  return { ok: true };
+}
+
+export async function deleteSet(formData: FormData): Promise<void> {
+  const id = String(formData.get("id") ?? "");
+  const sessionId = String(formData.get("sessionId") ?? "");
+  if (!id || !sessionId) return;
+
+  const supabase = await createClient();
+  await supabase.from("set_logs").delete().eq("id", id);
+  revalidatePath(`/app/sessions/${sessionId}`);
+}
+
+export async function deleteCardio(formData: FormData): Promise<void> {
+  const id = String(formData.get("id") ?? "");
+  const sessionId = String(formData.get("sessionId") ?? "");
+  if (!id || !sessionId) return;
+
+  const supabase = await createClient();
+  await supabase.from("cardio_logs").delete().eq("id", id);
+  revalidatePath(`/app/sessions/${sessionId}`);
+}
+
+const completeSchema = z.object({
+  sessionId: z.string().uuid(),
+  sessionRpe: z.coerce.number().min(0).max(10).optional().nullable(),
+  durationMin: z.coerce.number().int().min(0).max(600).optional().nullable(),
+  notes: z.string().trim().max(2000).optional().nullable(),
+});
+
+export async function completeSession(formData: FormData): Promise<void> {
+  const parsed = completeSchema.safeParse({
+    sessionId: formData.get("sessionId"),
+    sessionRpe: formData.get("sessionRpe") || undefined,
+    durationMin: formData.get("durationMin") || undefined,
+    notes: formData.get("notes") || undefined,
+  });
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("sessions")
+    .update({
+      session_rpe: parsed.data.sessionRpe ?? null,
+      duration_min: parsed.data.durationMin ?? null,
+      notes: parsed.data.notes ?? null,
+      completed_at: new Date().toISOString(),
+    })
+    .eq("id", parsed.data.sessionId);
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/app");
+  revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
+  redirect(`/app/sessions/${parsed.data.sessionId}`);
+}
+
+export async function deleteSession(formData: FormData): Promise<void> {
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+
+  const supabase = await createClient();
+  await supabase.from("sessions").delete().eq("id", id);
+  revalidatePath("/app");
+  redirect("/app");
+}
