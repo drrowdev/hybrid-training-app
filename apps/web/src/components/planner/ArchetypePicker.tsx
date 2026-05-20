@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import type { ArchetypeId } from "@/lib/planner/archetypes";
@@ -120,8 +121,30 @@ export function ArchetypePicker({
           The block snaps to the Monday of the chosen week.
         </div>
         {selected && !selected.tmReady && (
-          <div style={{ fontSize: 12, color: "var(--cp-danger)" }}>
-            You&apos;re missing a TM for one or more required lifts. Set them in Settings → Training maxes, then come back.
+          <div
+            style={{
+              fontSize: 13,
+              color: "var(--cp-danger)",
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid var(--cp-danger)",
+              background: "color-mix(in oklab, var(--cp-danger) 8%, transparent)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              alignItems: "flex-start",
+            }}
+          >
+            <div>
+              <strong>You&apos;re missing a TM</strong> for: {selected.missingRoles.join(", ")}.
+            </div>
+            <Link
+              href="/app/settings/training-maxes"
+              className="cp-btn primary"
+              style={{ fontSize: 13 }}
+            >
+              Set TMs now →
+            </Link>
           </div>
         )}
         <div>

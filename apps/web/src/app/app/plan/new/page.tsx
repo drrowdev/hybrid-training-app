@@ -81,8 +81,9 @@ export default async function NewBlockPage() {
         </Link>
         <h1 style={{ fontSize: 28, margin: "8px 0 0", letterSpacing: "-0.01em" }}>Start a block</h1>
         <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-          Pick an archetype. The planner uses whichever lift <em>variant</em> you&apos;ve set a TM for
-          (back squat, front squat, trap-bar deadlift, push press — your choice per role).
+          Pick an archetype. The planner uses whichever lift <em>variant</em>{" "}
+          you&apos;ve set a TM for (back squat, front squat, trap-bar deadlift, push press —
+          your choice per role).
         </p>
       </header>
 
