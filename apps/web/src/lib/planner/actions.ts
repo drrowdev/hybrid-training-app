@@ -8,9 +8,10 @@ import { createClient } from "@/lib/supabase/server";
 import {
   ARCHETYPES,
   type ArchetypeId,
+  allCandidateLiftSlugs,
   buildPrescription,
   requiredCardioSlugs,
-  requiredLiftSlugs,
+  STRENGTH_ROLE_LABELS,
 } from "./archetypes";
 
 const createBlockSchema = z.object({
@@ -21,8 +22,9 @@ const createBlockSchema = z.object({
 /**
  * Create a new block from the wizard input.
  *
- * Validates the user has TMs for every main lift the archetype needs, then
- * generates the planned_sessions in one transaction.
+ * Strength days resolve dynamically: for each role (squat / bench / deadlift /
+ * vertical_press) the planner picks whichever candidate variant the user has a
+ * TM set for. If no candidate has a TM, the role is reported as missing.
  */
 export async function createBlock(formData: FormData): Promise<void> {
   const parsed = createBlockSchema.safeParse({
@@ -40,10 +42,9 @@ export async function createBlock(formData: FormData): Promise<void> {
   const archetype = ARCHETYPES[parsed.data.archetype];
   if (!archetype) throw new Error("Unknown archetype");
 
-  // Resolve required movements: lifts (need TMs) + cardio (no TM check).
-  const liftSlugs = requiredLiftSlugs(archetype);
+  const candidateSlugs = allCandidateLiftSlugs(archetype);
   const cardioSlugs = requiredCardioSlugs(archetype);
-  const allSlugs = Array.from(new Set([...liftSlugs, ...cardioSlugs]));
+  const allSlugs = Array.from(new Set([...candidateSlugs, ...cardioSlugs]));
 
   const { data: movements } = await supabase
     .from("movements")
@@ -51,36 +52,52 @@ export async function createBlock(formData: FormData): Promise<void> {
     .in("slug", allSlugs)
     .is("user_id", null);
 
-  if (!movements || movements.length < allSlugs.length) {
-    const found = new Set((movements ?? []).map((m) => m.slug));
-    const missing = allSlugs.filter((s) => !found.has(s));
+  const movementBySlug = new Map((movements ?? []).map((m) => [m.slug, m]));
+
+  // Verify all cardio slugs exist (these are non-negotiable defaults).
+  const missingCardio = cardioSlugs.filter((s) => !movementBySlug.has(s));
+  if (missingCardio.length > 0) {
     throw new Error(
-      `Catalog is missing required movements: ${missing.join(", ")}. Re-seed movements.`,
+      `Catalog is missing cardio movements: ${missingCardio.join(", ")}. Re-seed movements.`,
     );
   }
-  const movementBySlug = new Map(movements.map((m) => [m.slug, m]));
 
-  // TM check applies only to strength lifts.
-  const liftMovementIds = liftSlugs
+  // For each strength day: find the first candidate slug the user has a TM for.
+  const candidateMovementIds = candidateSlugs
     .map((s) => movementBySlug.get(s)?.id)
     .filter((id): id is string => !!id);
 
   const { data: tms } = await supabase
     .from("training_maxes")
-    .select("movement_id")
-    .in("movement_id", liftMovementIds);
+    .select("movement_id, updated_at")
+    .in("movement_id", candidateMovementIds);
 
-  const tmMovementIds = new Set((tms ?? []).map((r) => r.movement_id));
+  const tmByMovementId = new Map((tms ?? []).map((r) => [r.movement_id, r.updated_at]));
 
-  const missingTm: string[] = [];
+  // Resolve each strength day → chosen movement.
+  const resolved = new Map<number, { movementId: string; slug: string; displayName: string }>();
+  const missingRoles: string[] = [];
+
   for (const day of archetype.days) {
     if (day.kind !== "strength") continue;
-    const mv = movementBySlug.get(day.movementSlug);
-    if (!mv || !tmMovementIds.has(mv.id)) missingTm.push(mv?.display_name ?? day.movementSlug);
+    let chosen: { movementId: string; slug: string; displayName: string } | null = null;
+    for (const slug of day.candidateSlugs) {
+      const mv = movementBySlug.get(slug);
+      if (mv && tmByMovementId.has(mv.id)) {
+        chosen = { movementId: mv.id, slug: mv.slug, displayName: mv.display_name };
+        break;
+      }
+    }
+    if (chosen) {
+      resolved.set(day.dayIndex, chosen);
+    } else {
+      missingRoles.push(STRENGTH_ROLE_LABELS[day.role]);
+    }
   }
-  if (missingTm.length > 0) {
+
+  if (missingRoles.length > 0) {
     throw new Error(
-      `Set a training max for ${missingTm.join(", ")} in Settings → Training maxes first.`,
+      `No TM set for: ${missingRoles.join(", ")}. Go to Settings → Training maxes and add one for each.`,
     );
   }
 
@@ -105,37 +122,44 @@ export async function createBlock(formData: FormData): Promise<void> {
 
   if (blockErr || !block) throw new Error(blockErr?.message ?? "Failed to create block");
 
-  // Generate planned sessions.
   const rows: NewPlannedSession[] = [];
   for (let week = 0; week < archetype.weeks; week++) {
     for (const day of archetype.days) {
-      const movement = movementBySlug.get(day.movementSlug);
-      if (!movement) continue;
-      const finisherMovement =
-        day.kind === "cardio" && day.finisher
-          ? movementBySlug.get(day.finisher.movementSlug)
-          : undefined;
-      const items = buildPrescription(
-        archetype,
-        week,
-        day,
-        { id: movement.id, slug: movement.slug, displayName: movement.display_name },
-        finisherMovement
-          ? {
-              id: finisherMovement.id,
-              slug: finisherMovement.slug,
-              displayName: finisherMovement.display_name,
-            }
-          : undefined,
-      );
+      let movement: { id: string; slug: string; displayName: string } | null = null;
+      let finisherMovement: { id: string; slug: string; displayName: string } | undefined;
+
+      if (day.kind === "strength") {
+        const resolvedMv = resolved.get(day.dayIndex);
+        if (!resolvedMv) continue;
+        movement = { id: resolvedMv.movementId, slug: resolvedMv.slug, displayName: resolvedMv.displayName };
+      } else {
+        const mv = movementBySlug.get(day.movementSlug);
+        if (!mv) continue;
+        movement = { id: mv.id, slug: mv.slug, displayName: mv.display_name };
+        if (day.finisher) {
+          const fin = movementBySlug.get(day.finisher.movementSlug);
+          if (fin) finisherMovement = { id: fin.id, slug: fin.slug, displayName: fin.display_name };
+        }
+      }
+
+      const items = buildPrescription(archetype, week, day, movement, finisherMovement);
       const prescription: Prescription = { items };
       const isDeload = archetype.weekProfiles.find((w) => w.weekIndex === week)?.intensityLabel === "Deload";
+
+      // For strength days, use the chosen variant name in the title.
+      let title = day.title;
+      if (day.kind === "strength") {
+        title = `${movement.displayName}${isDeload ? " (deload)" : ""}`;
+      } else if (isDeload) {
+        title = `${day.title} (deload)`;
+      }
+
       rows.push({
         blockId: block.id,
         userId: user.id,
         weekIndex: week,
         dayIndex: day.dayIndex,
-        title: isDeload ? `${day.title} (deload)` : day.title,
+        title,
         role: day.role,
         prescription,
       });

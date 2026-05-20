@@ -9,37 +9,83 @@ import {
   getTrainingMaxContext,
   type TmRow,
 } from "@/lib/training-maxes/queries";
+import {
+  ARCHETYPES,
+  STRENGTH_ROLE_LABELS,
+  STRENGTH_ROLE_CANDIDATES,
+  type StrengthRole,
+} from "@/lib/planner/archetypes";
+import { getActiveBlock } from "@/lib/planner/queries";
 import { DefaultTmPercentControl } from "@/components/training-maxes/DefaultTmPercentControl";
-
-const SUGGESTED_SLUGS = [
-  "back_squat",
-  "front_squat",
-  "bench_press",
-  "overhead_press",
-  "conventional_deadlift",
-  "sumo_deadlift",
-  "romanian_deadlift",
-];
 
 export default async function TrainingMaxesPage() {
   const supabase = await createClient();
   const ctx = await getTrainingMaxContext();
   const existingMovementIds = new Set(ctx.rows.map((r) => r.movementId));
 
-  const { data: candidates } = await supabase
-    .from("movements")
-    .select("id, slug, display_name")
-    .in("slug", SUGGESTED_SLUGS);
+  const block = await getActiveBlock();
+  const archetype = block ? ARCHETYPES[block.archetype as keyof typeof ARCHETYPES] : undefined;
+  const requiredRoles: StrengthRole[] = archetype
+    ? Array.from(
+        new Set(
+          archetype.days
+            .filter((d) => d.kind === "strength")
+            .map((d) => (d as { role: StrengthRole }).role),
+        ),
+      )
+    : (["squat", "horizontal_press", "deadlift", "vertical_press"] as StrengthRole[]);
 
+  // Resolve display names for every candidate slug we might want to surface.
+  const allCandidateSlugs = Array.from(
+    new Set(
+      requiredRoles.flatMap((r) => STRENGTH_ROLE_CANDIDATES[r] ?? []),
+    ),
+  );
+  const { data: candidateMovements } = await supabase
+    .from("movements")
+    .select("id, slug, display_name, pattern")
+    .in("slug", allCandidateSlugs)
+    .is("user_id", null);
+
+  const candidateBySlug = new Map(
+    (candidateMovements ?? []).map((m) => [m.slug, m]),
+  );
+
+  // For each required role, find the user's chosen variant (a TM whose slug is in the candidate list).
+  // Build the "Required by your block" group.
+  const requiredGroups = requiredRoles.map((role) => {
+    const candidates = STRENGTH_ROLE_CANDIDATES[role]
+      .map((slug) => candidateBySlug.get(slug))
+      .filter((m): m is { id: string; slug: string; display_name: string; pattern: string } => !!m);
+    const setRow = ctx.rows.find((r) =>
+      STRENGTH_ROLE_CANDIDATES[role].includes(r.movementSlug),
+    );
+    return {
+      role,
+      label: STRENGTH_ROLE_LABELS[role],
+      candidates,
+      setRow,
+    };
+  });
+
+  const requiredSlugSet = new Set(
+    requiredGroups.flatMap((g) => g.candidates.map((c) => c.slug)),
+  );
+
+  // "Other" TMs the user has set that aren't for a required role.
+  const otherRows = ctx.rows.filter((r) => !requiredSlugSet.has(r.movementSlug));
+
+  // Catalog for the picker (excluding existing TMs).
   const { data: compounds } = await supabase
     .from("movements")
-    .select("id, slug, display_name")
+    .select("id, slug, display_name, pattern")
     .eq("is_compound", true)
     .is("user_id", null)
+    .order("pattern")
     .order("display_name")
-    .limit(80);
+    .limit(120);
 
-  const suggested = (candidates ?? []).filter((m) => !existingMovementIds.has(m.id));
+  const pickerOptions = (compounds ?? []).filter((m) => !existingMovementIds.has(m.id));
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
@@ -54,9 +100,10 @@ export default async function TrainingMaxesPage() {
           Training maxes
         </h1>
         <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-          Enter your 1RM for each main lift. The app applies a default TM%
-          (typically 85–90%) to compute the working <em>training max</em> used by the planner.
-          Override the % per movement if you want one lift treated differently.
+          Enter your 1RM for each main lift. The app applies a default TM% to compute the
+          working <em>training max</em> used by the planner. Pick whichever variant of squat,
+          bench, deadlift, or overhead press you actually train — back squat, front squat,
+          trap-bar deadlift, push press, etc. are all valid.
         </p>
       </header>
 
@@ -83,7 +130,7 @@ export default async function TrainingMaxesPage() {
           </span>
         </h2>
         <p style={{ margin: "4px 0 14px", fontSize: 12, color: "var(--cp-text-muted)" }}>
-          Used for every lift unless you set a per-movement override below. Pick a preset or fine-tune the number.
+          Used for every lift unless you set a per-movement override below.
         </p>
         <DefaultTmPercentControl
           initialPercent={ctx.defaultPercent}
@@ -91,58 +138,47 @@ export default async function TrainingMaxesPage() {
         />
       </section>
 
-      {/* ── Your maxes ─────────────────────────────────────────── */}
+      {/* ── Required by archetype ──────────────────────────────── */}
       <section className="cp-card" style={{ padding: 20 }}>
-        <h2 style={{ margin: 0, fontSize: 16 }}>Your maxes</h2>
-        {ctx.rows.length === 0 ? (
-          <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--cp-text-muted)" }}>
-            None yet. Add one below — the canonical four are squat, bench, deadlift, overhead press.
+        <h2 style={{ margin: 0, fontSize: 16 }}>
+          {archetype ? "Required for your active block" : "Main lifts"}
+        </h2>
+        <p style={{ margin: "4px 0 14px", fontSize: 12, color: "var(--cp-text-muted)" }}>
+          {archetype
+            ? `${archetype.name} needs one TM per role. Pick whichever variant you actually train.`
+            : "When you start a block, the planner needs a TM for at least one variant of each role here."}
+        </p>
+        <div style={{ display: "grid", gap: 14 }}>
+          {requiredGroups.map((group) => (
+            <RoleGroup
+              key={group.role}
+              label={group.label}
+              candidates={group.candidates}
+              currentRow={group.setRow}
+              defaultPercent={ctx.defaultPercent}
+            />
+          ))}
+        </div>
+      </section>
+
+      {/* ── Other TMs ──────────────────────────────────────────── */}
+      {otherRows.length > 0 && (
+        <section className="cp-card" style={{ padding: 20 }}>
+          <h2 style={{ margin: 0, fontSize: 16 }}>Other lifts</h2>
+          <p style={{ margin: "4px 0 14px", fontSize: 12, color: "var(--cp-text-muted)" }}>
+            TMs you&apos;ve set that aren&apos;t required by the active archetype.
           </p>
-        ) : (
-          <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0", display: "grid", gap: 8 }}>
-            {ctx.rows.map((r) => (
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
+            {otherRows.map((r) => (
               <TmCard key={r.id} row={r} defaultPercent={ctx.defaultPercent} />
             ))}
           </ul>
-        )}
-      </section>
-
-      {/* ── Quick-add canonicals ───────────────────────────────── */}
-      {suggested.length > 0 && (
-        <section className="cp-card" style={{ padding: 20 }}>
-          <h2 style={{ margin: 0, fontSize: 16 }}>Quick add — main lifts</h2>
-          <p style={{ margin: "4px 0 12px", fontSize: 12, color: "var(--cp-text-muted)" }}>
-            Enter your 1RM and the app will derive the TM. Optional column overrides the default % just for that lift.
-          </p>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 1.4fr) 110px 110px auto",
-              gap: 8,
-              padding: "0 0 6px",
-              alignItems: "end",
-            }}
-          >
-            <Label>Movement</Label>
-            <Label>1RM (kg)</Label>
-            <Label>TM% (optional)</Label>
-            <span />
-          </div>
-          <div style={{ display: "grid", gap: 8 }}>
-            {suggested.map((m) => (
-              <QuickAddRow
-                key={m.id}
-                movement={m}
-                defaultPercent={ctx.defaultPercent}
-              />
-            ))}
-          </div>
         </section>
       )}
 
-      {/* ── Add by picker ──────────────────────────────────────── */}
+      {/* ── Add by picker (any compound) ───────────────────────── */}
       <section className="cp-card" style={{ padding: 20 }}>
-        <h2 style={{ margin: 0, fontSize: 16 }}>Add a max for any lift</h2>
+        <h2 style={{ margin: 0, fontSize: 16 }}>Add a max for any other lift</h2>
         <p style={{ margin: "4px 0 12px", fontSize: 12, color: "var(--cp-text-muted)" }}>
           Pick from the catalog of compound movements.
         </p>
@@ -159,13 +195,15 @@ export default async function TrainingMaxesPage() {
             <Label>Movement</Label>
             <select name="movementId" required aria-label="Movement" style={{ padding: "8px 10px", fontSize: 14 }}>
               <option value="">— pick a movement —</option>
-              {(compounds ?? [])
-                .filter((m) => !existingMovementIds.has(m.id))
-                .map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.display_name}
-                  </option>
-                ))}
+              {Array.from(groupBy(pickerOptions, "pattern").entries()).map(([pattern, items]) => (
+                <optgroup key={pattern} label={prettyPattern(pattern)}>
+                  {items.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.display_name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
           </div>
           <div style={{ display: "grid", gap: 2 }}>
@@ -201,6 +239,151 @@ export default async function TrainingMaxesPage() {
           <button type="submit" className="cp-btn primary">Add</button>
         </form>
       </section>
+    </div>
+  );
+}
+
+function groupBy<T, K extends keyof T>(items: T[], key: K): Map<T[K], T[]> {
+  const map = new Map<T[K], T[]>();
+  for (const item of items) {
+    const k = item[key];
+    const arr = map.get(k) ?? [];
+    arr.push(item);
+    map.set(k, arr);
+  }
+  return map;
+}
+
+function prettyPattern(pattern: string): string {
+  const labels: Record<string, string> = {
+    squat: "Squat patterns",
+    hinge: "Hinge / deadlift patterns",
+    press: "Press patterns",
+    pull: "Pull patterns",
+    carry: "Carries",
+    olympic: "Olympic lifts",
+  };
+  return labels[pattern] ?? pattern;
+}
+
+function RoleGroup({
+  label,
+  candidates,
+  currentRow,
+  defaultPercent,
+}: {
+  label: string;
+  candidates: { id: string; slug: string; display_name: string }[];
+  currentRow?: TmRow;
+  defaultPercent: number;
+}) {
+  if (currentRow) {
+    return (
+      <div>
+        <RoleHeader label={label} status="set" />
+        <TmCard row={currentRow} defaultPercent={defaultPercent} />
+      </div>
+    );
+  }
+
+  // No TM yet for this role — show the candidate picker as an inline add form.
+  return (
+    <div>
+      <RoleHeader label={label} status="missing" />
+      <form
+        action={upsertTrainingMax}
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1.4fr) 110px 110px auto",
+          gap: 8,
+          alignItems: "end",
+          border: "1px dashed var(--cp-border-strong)",
+          borderRadius: 12,
+          padding: 12,
+        }}
+      >
+        <div style={{ display: "grid", gap: 2 }}>
+          <Label>Pick your variant</Label>
+          <select
+            name="movementId"
+            required
+            aria-label={`Pick your ${label} variant`}
+            style={{ padding: "8px 10px", fontSize: 14 }}
+          >
+            <option value="">— variant —</option>
+            {candidates.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.display_name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div style={{ display: "grid", gap: 2 }}>
+          <Label>1RM (kg)</Label>
+          <input
+            type="number"
+            name="oneRmKg"
+            step="0.5"
+            min="1"
+            max="1000"
+            inputMode="decimal"
+            required
+            aria-label={`${label} 1RM`}
+            className="mono"
+            style={{ width: "100%", padding: "6px 8px", fontSize: 14, textAlign: "right" }}
+          />
+        </div>
+        <div style={{ display: "grid", gap: 2 }}>
+          <Label>TM% (optional)</Label>
+          <input
+            type="number"
+            name="tmPercent"
+            step="0.5"
+            min="50"
+            max="100"
+            placeholder={`${defaultPercent}`}
+            inputMode="decimal"
+            aria-label={`${label} TM% override`}
+            className="mono"
+            style={{ width: "100%", padding: "6px 8px", fontSize: 14, textAlign: "right" }}
+          />
+        </div>
+        <button type="submit" className="cp-btn primary">Add</button>
+      </form>
+    </div>
+  );
+}
+
+function RoleHeader({ label, status }: { label: string; status: "set" | "missing" }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "baseline",
+        marginBottom: 6,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          color: "var(--cp-text-muted)",
+          fontWeight: 600,
+        }}
+      >
+        {label}
+      </div>
+      <span
+        className="cp-pill"
+        style={{
+          color: status === "set" ? "var(--cp-success)" : "var(--cp-danger)",
+          borderColor: status === "set" ? "var(--cp-success)" : "var(--cp-danger)",
+        }}
+      >
+        {status === "set" ? "✓ set" : "needs a TM"}
+      </span>
     </div>
   );
 }
@@ -313,55 +496,5 @@ function TmCard({ row, defaultPercent }: { row: TmRow; defaultPercent: number })
         </button>
       </form>
     </li>
-  );
-}
-
-function QuickAddRow({
-  movement,
-  defaultPercent,
-}: {
-  movement: { id: string; display_name: string };
-  defaultPercent: number;
-}) {
-  return (
-    <form
-      action={upsertTrainingMax}
-      style={{
-        display: "grid",
-        gridTemplateColumns: "minmax(0, 1.4fr) 110px 110px auto",
-        gap: 8,
-        alignItems: "center",
-        borderTop: "1px solid var(--cp-border)",
-        paddingTop: 10,
-      }}
-    >
-      <input type="hidden" name="movementId" value={movement.id} />
-      <div style={{ fontSize: 14, fontWeight: 500 }}>{movement.display_name}</div>
-      <input
-        type="number"
-        name="oneRmKg"
-        step="0.5"
-        min="1"
-        max="1000"
-        inputMode="decimal"
-        required
-        aria-label={`1RM for ${movement.display_name}`}
-        className="mono"
-        style={{ width: "100%", padding: "6px 8px", fontSize: 14, textAlign: "right" }}
-      />
-      <input
-        type="number"
-        name="tmPercent"
-        step="0.5"
-        min="50"
-        max="100"
-        placeholder={`${defaultPercent}`}
-        inputMode="decimal"
-        aria-label={`TM% override for ${movement.display_name} (optional)`}
-        className="mono"
-        style={{ width: "100%", padding: "6px 8px", fontSize: 14, textAlign: "right" }}
-      />
-      <button type="submit" className="cp-btn primary">Add</button>
-    </form>
   );
 }

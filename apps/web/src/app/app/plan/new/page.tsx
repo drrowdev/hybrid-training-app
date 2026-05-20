@@ -2,7 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createBlock } from "@/lib/planner/actions";
-import { ARCHETYPES, requiredLiftSlugs } from "@/lib/planner/archetypes";
+import {
+  ARCHETYPES,
+  STRENGTH_ROLE_LABELS,
+  type StrengthRole,
+} from "@/lib/planner/archetypes";
 import { todayYmd } from "@/lib/planner/queries";
 import { getTrainingMaxContext } from "@/lib/training-maxes/queries";
 import {
@@ -17,24 +21,45 @@ export default async function NewBlockPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // Resolve display names for every slug used as a strength lift across all archetypes.
-  const allLiftSlugs = Array.from(
-    new Set(Object.values(ARCHETYPES).flatMap((a) => requiredLiftSlugs(a))),
-  );
-  const { data: liftMovements } = await supabase
-    .from("movements")
-    .select("id, slug, display_name")
-    .in("slug", allLiftSlugs)
-    .is("user_id", null);
-
-  const liftBySlug = new Map((liftMovements ?? []).map((m) => [m.slug, m]));
   const tmCtx = await getTrainingMaxContext();
 
+  // Build a slug → role index across all archetypes so we can detect "user has a TM for some candidate".
+  const allCandidateSlugs = new Set<string>();
+  for (const a of Object.values(ARCHETYPES)) {
+    for (const day of a.days) {
+      if (day.kind === "strength") day.candidateSlugs.forEach((s) => allCandidateSlugs.add(s));
+    }
+  }
+
   const options: ArchetypeOption[] = Object.values(ARCHETYPES).map((a) => {
-    const lifts = requiredLiftSlugs(a);
-    const missing = lifts
-      .filter((slug) => !tmCtx.bySlug.has(slug))
-      .map((slug) => liftBySlug.get(slug)?.display_name ?? slug);
+    // For each strength role the archetype needs, check if any candidate slug has a TM.
+    const rolesNeeded = new Map<StrengthRole, { satisfied: boolean; chosen?: string }>();
+    for (const day of a.days) {
+      if (day.kind !== "strength") continue;
+      const chosen = day.candidateSlugs.find((s) => tmCtx.bySlug.has(s));
+      const existing = rolesNeeded.get(day.role);
+      if (!existing) {
+        rolesNeeded.set(day.role, {
+          satisfied: !!chosen,
+          chosen: chosen ?? undefined,
+        });
+      } else if (chosen && !existing.satisfied) {
+        rolesNeeded.set(day.role, { satisfied: true, chosen });
+      }
+    }
+    const missingRoles = Array.from(rolesNeeded.entries())
+      .filter(([, v]) => !v.satisfied)
+      .map(([role]) => STRENGTH_ROLE_LABELS[role]);
+    const chosenLifts = Array.from(rolesNeeded.entries())
+      .filter(([, v]) => v.satisfied && v.chosen)
+      .map(([role, v]) => {
+        // pretty display: look up the movement display name from the TM context.
+        const row = tmCtx.rows.find((r) => r.movementSlug === v.chosen);
+        return {
+          role: STRENGTH_ROLE_LABELS[role],
+          movement: row?.movementName ?? v.chosen!,
+        };
+      });
     return {
       id: a.id,
       name: a.name,
@@ -42,8 +67,9 @@ export default async function NewBlockPage() {
       weeks: a.weeks,
       daysCount: a.days.length,
       weekLabels: a.weekProfiles.map((w) => w.intensityLabel),
-      tmReady: missing.length === 0,
-      missingLifts: missing,
+      tmReady: missingRoles.length === 0,
+      missingRoles,
+      chosenLifts,
     };
   });
 
@@ -55,8 +81,8 @@ export default async function NewBlockPage() {
         </Link>
         <h1 style={{ fontSize: 28, margin: "8px 0 0", letterSpacing: "-0.01em" }}>Start a block</h1>
         <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-          Pick an archetype that matches your current priority. The planner generates 4 weeks of sessions
-          with concrete prescriptions; you log what you actually do.
+          Pick an archetype. The planner uses whichever lift <em>variant</em> you&apos;ve set a TM for
+          (back squat, front squat, trap-bar deadlift, push press — your choice per role).
         </p>
       </header>
 

@@ -1,37 +1,40 @@
 /**
  * Archetype library + planned-session generator.
  *
- * An archetype is the shape of a block — what role each day plays. The
- * concrete prescription (kg/reps for strength; minutes / HR cap for cardio)
- * is computed at generation time from the user's training maxes and the
- * archetype's per-week intensity profile.
+ * Strength days specify a **role** (squat / horizontal_press / deadlift /
+ * vertical_press) and a candidate list of acceptable movement slugs. The
+ * user picks which variant they actually want by setting a TM for that
+ * specific movement; the planner uses whatever variant they've configured.
  *
- * v2 ships two archetypes: Strength Anchor (4 main lifts + 2 polarized
- * cardio days) and Endurance Anchor (cardio-led with strength maintenance).
+ * v2 ships two archetypes: Strength Anchor and Endurance Anchor.
  */
 
 import type { PrescriptionItem, PrescriptionItemKind } from "@hta/db";
 
 export type ArchetypeId = "strength_anchor" | "endurance_anchor";
 
+export type StrengthRole =
+  | "squat"
+  | "horizontal_press"
+  | "deadlift"
+  | "vertical_press";
+
 export type WeekProfile = {
   weekIndex: number;
-  /** Per-set %TM. Strength wave; ignored for cardio days unless explicitly used. */
   setIntensities: number[];
   setReps: number | number[];
   intensityLabel: string;
-  /** Strength volume scaler — applied to strength day prescription. 1.0 = normal, <1 = lighter. */
   strengthVolumeScale?: number;
-  /** Optional duration override (min) for the default Z2 day this week. Deload weeks may shorten. */
   z2DurationMinOverride?: number;
 };
 
 export type StrengthDay = {
   kind: "strength";
   dayIndex: number;
-  role: string;
+  role: StrengthRole;
   title: string;
-  movementSlug: string;
+  /** Acceptable movement slugs in preference order. The first one with a TM set wins. */
+  candidateSlugs: string[];
 };
 
 export type CardioDay = {
@@ -62,15 +65,96 @@ export type Archetype = {
   weekProfiles: WeekProfile[];
 };
 
+// ─── Curated candidate lists per role ──────────────────────────────
+// First entry is the "canonical default" — preferred when multiple variants are tied.
+
+export const STRENGTH_ROLE_LABELS: Record<StrengthRole, string> = {
+  squat: "Squat",
+  horizontal_press: "Horizontal press (bench)",
+  deadlift: "Deadlift",
+  vertical_press: "Vertical press (overhead)",
+};
+
+export const STRENGTH_ROLE_CANDIDATES: Record<StrengthRole, string[]> = {
+  squat: [
+    "back-squat-high-bar",
+    "back-squat-low-bar",
+    "front-squat",
+    "safety-bar-squat",
+    "box-squat",
+    "belt-squat",
+    "hack-squat",
+    "zercher-squat",
+  ],
+  horizontal_press: [
+    "bench-press-flat",
+    "bench-press-incline",
+    "bench-press-paused",
+    "close-grip-bench",
+    "db-bench-flat",
+    "db-bench-incline",
+    "floor-press",
+    "smith-bench-press",
+  ],
+  deadlift: [
+    "conventional-deadlift",
+    "trap-bar-deadlift",
+    "sumo-deadlift",
+    "deficit-deadlift",
+    "block-pull-deadlift",
+    "romanian-deadlift",
+  ],
+  vertical_press: [
+    "ohp-standing",
+    "push-press",
+    "ohp-seated",
+    "db-shoulder-press-standing",
+    "db-shoulder-press-seated",
+    "z-press",
+  ],
+};
+
+// ─── Archetypes ────────────────────────────────────────────────────
+
+const STRENGTH_DAYS: StrengthDay[] = [
+  {
+    kind: "strength",
+    dayIndex: 0,
+    role: "squat",
+    title: "Squat day",
+    candidateSlugs: STRENGTH_ROLE_CANDIDATES.squat,
+  },
+  {
+    kind: "strength",
+    dayIndex: 1,
+    role: "horizontal_press",
+    title: "Bench day",
+    candidateSlugs: STRENGTH_ROLE_CANDIDATES.horizontal_press,
+  },
+  {
+    kind: "strength",
+    dayIndex: 3,
+    role: "deadlift",
+    title: "Deadlift day",
+    candidateSlugs: STRENGTH_ROLE_CANDIDATES.deadlift,
+  },
+  {
+    kind: "strength",
+    dayIndex: 4,
+    role: "vertical_press",
+    title: "Overhead press day",
+    candidateSlugs: STRENGTH_ROLE_CANDIDATES.vertical_press,
+  },
+];
+
 export const STRENGTH_ANCHOR: Archetype = {
   id: "strength_anchor",
   name: "Strength Anchor",
   oneLiner:
-    "Strength-led concurrent training. Four main lifts hit a weekly intensity wave with a deload at week 4. Two polarized cardio days (easy Z2 + long Z2 with alactic finisher) preserve aerobic base without competing with strength.",
+    "Strength-led concurrent training. Four main lifts (your choice of variant per role) hit a weekly intensity wave with a deload at week 4. Two polarized cardio days preserve aerobic base without competing with strength.",
   weeks: 4,
   days: [
-    { kind: "strength", dayIndex: 0, role: "heavy_squat", title: "Squat day", movementSlug: "back_squat" },
-    { kind: "strength", dayIndex: 1, role: "heavy_bench", title: "Bench day", movementSlug: "bench_press" },
+    ...STRENGTH_DAYS,
     {
       kind: "cardio",
       dayIndex: 2,
@@ -81,8 +165,6 @@ export const STRENGTH_ANCHOR: Archetype = {
       durationMin: 45,
       hrCap: "≤ 70% HRR, conversational",
     },
-    { kind: "strength", dayIndex: 3, role: "heavy_deadlift", title: "Deadlift day", movementSlug: "conventional_deadlift" },
-    { kind: "strength", dayIndex: 4, role: "heavy_press", title: "Overhead press day", movementSlug: "overhead_press" },
     {
       kind: "cardio",
       dayIndex: 5,
@@ -118,7 +200,7 @@ export const ENDURANCE_ANCHOR: Archetype = {
   id: "endurance_anchor",
   name: "Endurance Anchor",
   oneLiner:
-    "Cardio-led concurrent training. Five aerobic exposures per week (polarized 80/20: easy Z2 + 1× VO2 intervals), two strength maintenance days using heavy low-volume work to keep strength from drifting.",
+    "Cardio-led concurrent training. Five aerobic exposures per week (polarized 80/20: easy Z2 + 1× VO2 intervals), two strength maintenance days (your choice of squat and deadlift variant) using heavy low-volume work to keep strength from drifting.",
   weeks: 4,
   days: [
     {
@@ -131,7 +213,13 @@ export const ENDURANCE_ANCHOR: Archetype = {
       durationMin: 60,
       hrCap: "≤ 70% HRR, conversational",
     },
-    { kind: "strength", dayIndex: 1, role: "maintain_squat", title: "Squat maintenance", movementSlug: "back_squat" },
+    {
+      kind: "strength",
+      dayIndex: 1,
+      role: "squat",
+      title: "Squat maintenance",
+      candidateSlugs: STRENGTH_ROLE_CANDIDATES.squat,
+    },
     {
       kind: "cardio",
       dayIndex: 2,
@@ -147,7 +235,13 @@ export const ENDURANCE_ANCHOR: Archetype = {
         protocolNote: "6–8 × 10–15s near-max, 1:10 rest",
       },
     },
-    { kind: "strength", dayIndex: 3, role: "maintain_deadlift", title: "Deadlift maintenance", movementSlug: "conventional_deadlift" },
+    {
+      kind: "strength",
+      dayIndex: 3,
+      role: "deadlift",
+      title: "Deadlift maintenance",
+      candidateSlugs: STRENGTH_ROLE_CANDIDATES.deadlift,
+    },
     {
       kind: "cardio",
       dayIndex: 4,
@@ -171,24 +265,9 @@ export const ENDURANCE_ANCHOR: Archetype = {
     },
   ],
   weekProfiles: [
-    {
-      weekIndex: 0,
-      setIntensities: [0.75, 0.85, 0.90],
-      setReps: [5, 3, 3],
-      intensityLabel: "Maintenance base",
-    },
-    {
-      weekIndex: 1,
-      setIntensities: [0.75, 0.85, 0.90],
-      setReps: [5, 3, 3],
-      intensityLabel: "Maintenance build",
-    },
-    {
-      weekIndex: 2,
-      setIntensities: [0.80, 0.85, 0.90],
-      setReps: [3, 3, 3],
-      intensityLabel: "Maintenance peak",
-    },
+    { weekIndex: 0, setIntensities: [0.75, 0.85, 0.90], setReps: [5, 3, 3], intensityLabel: "Maintenance base" },
+    { weekIndex: 1, setIntensities: [0.75, 0.85, 0.90], setReps: [5, 3, 3], intensityLabel: "Maintenance build" },
+    { weekIndex: 2, setIntensities: [0.80, 0.85, 0.90], setReps: [3, 3, 3], intensityLabel: "Maintenance peak" },
     {
       weekIndex: 3,
       setIntensities: [0.50, 0.60, 0.70],
@@ -209,10 +288,20 @@ export function roundToPlate(kg: number, increment = 2.5): number {
   return Math.round(kg / increment) * increment;
 }
 
-export function requiredLiftSlugs(archetype: Archetype): string[] {
+/** All strength roles the archetype needs (deduped). */
+export function requiredStrengthRoles(archetype: Archetype): StrengthRole[] {
+  const set = new Set<StrengthRole>();
+  for (const d of archetype.days) {
+    if (d.kind === "strength") set.add(d.role);
+  }
+  return Array.from(set);
+}
+
+/** Union of all candidate slugs across all strength days. */
+export function allCandidateLiftSlugs(archetype: Archetype): string[] {
   const set = new Set<string>();
   for (const d of archetype.days) {
-    if (d.kind === "strength") set.add(d.movementSlug);
+    if (d.kind === "strength") d.candidateSlugs.forEach((s) => set.add(s));
   }
   return Array.from(set);
 }

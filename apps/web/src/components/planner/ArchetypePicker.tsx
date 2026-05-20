@@ -12,7 +12,8 @@ export type ArchetypeOption = {
   daysCount: number;
   weekLabels: string[];
   tmReady: boolean;
-  missingLifts: string[];
+  missingRoles: string[];
+  chosenLifts: { role: string; movement: string }[];
 };
 
 export function ArchetypePicker({
@@ -84,7 +85,18 @@ export function ArchetypePicker({
                 </div>
                 {!opt.tmReady && (
                   <div style={{ fontSize: 11, color: "var(--cp-danger)" }}>
-                    Needs TM for: {opt.missingLifts.join(", ")}
+                    Needs a TM for: {opt.missingRoles.join(", ")}
+                  </div>
+                )}
+                {opt.tmReady && opt.chosenLifts.length > 0 && (
+                  <div style={{ fontSize: 11, color: "var(--cp-text-muted)", lineHeight: 1.4 }}>
+                    Will use:{" "}
+                    {opt.chosenLifts.map((c, i) => (
+                      <span key={c.role}>
+                        {i > 0 ? " · " : ""}
+                        <span style={{ color: "var(--cp-text)" }}>{c.movement}</span>
+                      </span>
+                    ))}
                   </div>
                 )}
               </button>
