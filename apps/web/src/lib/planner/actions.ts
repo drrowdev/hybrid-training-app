@@ -21,6 +21,7 @@ const createBlockSchema = z.object({
     "strength_anchor",
     "endurance_anchor",
     "rebuild",
+    "hypertrophy_anchor",
   ] satisfies [ArchetypeId, ...ArchetypeId[]]),
   startedOn: z.string().date(),
   daysPerWeek: z.coerce.number().int().min(2).max(7),

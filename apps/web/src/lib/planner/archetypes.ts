@@ -11,7 +11,11 @@
 
 import type { PrescriptionItem, PrescriptionItemKind } from "@hta/db";
 
-export type ArchetypeId = "strength_anchor" | "endurance_anchor" | "rebuild";
+export type ArchetypeId =
+  | "strength_anchor"
+  | "endurance_anchor"
+  | "rebuild"
+  | "hypertrophy_anchor";
 
 export type StrengthRole =
   | "squat"
@@ -446,10 +450,126 @@ export const REBUILD: Archetype = {
   ],
 };
 
+/**
+ * Hypertrophy Anchor — muscle-building block.
+ *
+ * Same four main patterns as Strength Anchor, but tuned for hypertrophy:
+ * - Lower per-set intensity (60–75% TM, so 54–67% of true 1RM at TM 90%)
+ * - Higher rep counts (6–10 reps per set)
+ * - More working sets per pattern (4 sets vs Strength Anchor's 3)
+ * - 4-week block with mild deload
+ *
+ * Caveat shipped in the one-liner: v1 prescribes only the main lift per
+ * session. Accessory work (chest flies, lateral raises, biceps, calves, abs)
+ * is left to the lifter — add it live during the session via the log UI's
+ * "+ add movement" button. A future iteration can add curated accessory
+ * blocks.
+ *
+ * Research grounding: DC-B4 per-quality floors (Hypertrophy = per-muscle
+ * MV/MEV), DC-T1 22-muscle taxonomy. Rep ranges per Murach & Bagley 2016
+ * HIGH — hypertrophy is robust under concurrent load when intensity stays
+ * in the 60–80% 1RM band.
+ *
+ * Why ship this fourth: distinct stimulus from Strength Anchor (different
+ * rep/intensity/volume profile), most-asked archetype after the core two,
+ * reuses existing infrastructure with no new primitive (unlike Rebuild's
+ * tendon-day addition). Quality over quantity threshold met.
+ */
+export const HYPERTROPHY_ANCHOR: Archetype = {
+  id: "hypertrophy_anchor",
+  name: "Hypertrophy Anchor",
+  oneLiner:
+    "Muscle-building block. Same four main patterns as Strength Anchor but at hypertrophy intensity (60–75% TM, 6–10 reps, 4 working sets per pattern). One optional easy Z2 day preserves the aerobic floor. Add accessory work — flies, lateral raises, biceps, calves — live during sessions; v1 prescribes the main lift only.",
+  weeks: 4,
+  days: [
+    {
+      kind: "strength",
+      dayIndex: 0,
+      role: "squat",
+      title: "Squat — hypertrophy",
+      candidateSlugs: STRENGTH_ROLE_CANDIDATES.squat,
+      priority: "anchor",
+      rank: 1,
+    },
+    {
+      kind: "strength",
+      dayIndex: 1,
+      role: "horizontal_press",
+      title: "Bench — hypertrophy",
+      candidateSlugs: STRENGTH_ROLE_CANDIDATES.horizontal_press,
+      priority: "anchor",
+      rank: 2,
+    },
+    {
+      kind: "cardio",
+      dayIndex: 2,
+      role: "easy_z2",
+      title: "Easy Z2",
+      movementSlug: "bike-indoor-z2",
+      cardioKind: "cardio_z2",
+      durationMin: 40,
+      hrCap: "≤ 70% HRR, conversational",
+      priority: "optional",
+      rank: 5,
+    },
+    {
+      kind: "strength",
+      dayIndex: 3,
+      role: "deadlift",
+      title: "Deadlift — hypertrophy",
+      candidateSlugs: STRENGTH_ROLE_CANDIDATES.deadlift,
+      priority: "anchor",
+      rank: 3,
+    },
+    {
+      kind: "strength",
+      dayIndex: 4,
+      role: "vertical_press",
+      title: "Overhead press — hypertrophy",
+      candidateSlugs: STRENGTH_ROLE_CANDIDATES.vertical_press,
+      priority: "anchor",
+      rank: 4,
+    },
+  ],
+  // Hypertrophy wave: 4 working sets each week, building reps then trading
+  // reps for load before deloading. Intensities sit firmly in the 60–75% TM
+  // band (~54–67% of 1RM at TM 90%) — the rep range is what drives the
+  // stimulus, not %TM.
+  weekProfiles: [
+    {
+      weekIndex: 0,
+      setIntensities: [0.60, 0.65, 0.70, 0.70],
+      setReps: [10, 10, 8, 8],
+      intensityLabel: "Volume base",
+    },
+    {
+      weekIndex: 1,
+      setIntensities: [0.60, 0.65, 0.70, 0.75],
+      setReps: [10, 10, 8, 8],
+      intensityLabel: "Volume build",
+    },
+    {
+      weekIndex: 2,
+      setIntensities: [0.65, 0.70, 0.75, 0.75],
+      setReps: [10, 8, 8, 6],
+      intensityLabel: "Volume peak",
+    },
+    {
+      weekIndex: 3,
+      setIntensities: [0.50, 0.60, 0.65],
+      setReps: 8,
+      intensityLabel: "Deload",
+      strengthVolumeScale: 0.75,
+      z2DurationMinOverride: 25,
+    },
+  ],
+};
+
 export const ARCHETYPES: Record<ArchetypeId, Archetype> = {
   strength_anchor: STRENGTH_ANCHOR,
   endurance_anchor: ENDURANCE_ANCHOR,
   rebuild: REBUILD,
+  hypertrophy_anchor: HYPERTROPHY_ANCHOR,
 };
 
 export function roundToPlate(kg: number, increment = 2.5): number {
