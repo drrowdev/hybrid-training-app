@@ -55,18 +55,18 @@ export async function createBlock(formData: FormData): Promise<void> {
 
   const { data: tms } = await supabase
     .from("training_maxes")
-    .select("movement_id, tm_kg")
+    .select("movement_id")
     .in(
       "movement_id",
       movements.map((m) => m.id),
     );
 
-  const tmByMovementId = new Map((tms ?? []).map((r) => [r.movement_id, Number(r.tm_kg)]));
+  const tmMovementIds = new Set((tms ?? []).map((r) => r.movement_id));
 
   const missingTm: string[] = [];
   for (const day of archetype.days) {
     const mv = movementBySlug.get(day.movementSlug);
-    if (!mv || !tmByMovementId.has(mv.id)) missingTm.push(mv?.display_name ?? day.movementSlug);
+    if (!mv || !tmMovementIds.has(mv.id)) missingTm.push(mv?.display_name ?? day.movementSlug);
   }
   if (missingTm.length > 0) {
     throw new Error(

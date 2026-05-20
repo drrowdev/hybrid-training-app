@@ -34,6 +34,10 @@ export const profiles = pgTable("profiles", {
   bodyCompPhase: bodyCompPhase("body_comp_phase").default("maintain").notNull(),
   phaseStartedAt: date("phase_started_at"),
   phaseTargetWeeks: smallint("phase_target_weeks"),
+  /** Default % of 1RM used as the training max when no per-movement override is set. */
+  tmPercentDefault: numeric("tm_percent_default", { precision: 4, scale: 1 })
+    .default("90.0")
+    .notNull(),
   intake: jsonb("intake").$type<Record<string, unknown>>().default({}).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)

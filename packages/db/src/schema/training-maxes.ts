@@ -25,7 +25,10 @@ export const trainingMaxes = pgTable(
     movementId: uuid("movement_id")
       .notNull()
       .references(() => movements.id, { onDelete: "cascade" }),
-    tmKg: numeric("tm_kg", { precision: 6, scale: 2 }).notNull(),
+    /** The user's actual 1RM in kg for this movement. */
+    oneRmKg: numeric("one_rm_kg", { precision: 6, scale: 2 }).notNull(),
+    /** Optional per-movement TM% override; falls back to profile.tm_percent_default. */
+    tmPercent: numeric("tm_percent", { precision: 4, scale: 1 }),
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .default(sql`now()`)

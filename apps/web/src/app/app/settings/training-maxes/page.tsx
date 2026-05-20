@@ -3,10 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import {
   upsertTrainingMax,
   deleteTrainingMax,
+  setDefaultTmPercent,
 } from "@/lib/training-maxes/actions";
-import { listTrainingMaxes } from "@/lib/training-maxes/queries";
+import {
+  getTrainingMaxContext,
+  type TmRow,
+} from "@/lib/training-maxes/queries";
 
-// Canonical main-lift suggestions — slugs come from the movements seed.
 const SUGGESTED_SLUGS = [
   "back_squat",
   "front_squat",
@@ -19,26 +22,23 @@ const SUGGESTED_SLUGS = [
 
 export default async function TrainingMaxesPage() {
   const supabase = await createClient();
-  const existing = await listTrainingMaxes();
+  const ctx = await getTrainingMaxContext();
+  const existingMovementIds = new Set(ctx.rows.map((r) => r.movementId));
 
-  // Suggest only compound, free-bar style movements the user hasn't set yet.
   const { data: candidates } = await supabase
     .from("movements")
-    .select("id, slug, display_name, pattern, primary_region")
+    .select("id, slug, display_name")
     .in("slug", SUGGESTED_SLUGS);
 
-  // Also offer a broader picker: ~50 popular compounds (is_compound = true).
   const { data: compounds } = await supabase
     .from("movements")
-    .select("id, slug, display_name, pattern")
+    .select("id, slug, display_name")
     .eq("is_compound", true)
-    .is("user_id", null) // only seed movements, not custom
+    .is("user_id", null)
     .order("display_name")
     .limit(80);
 
-  const existingMovementIds = new Set(existing.map((r) => r.movementId));
-  const suggested =
-    candidates?.filter((m) => !existingMovementIds.has(m.id)) ?? [];
+  const suggested = (candidates ?? []).filter((m) => !existingMovementIds.has(m.id));
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
@@ -53,162 +53,88 @@ export default async function TrainingMaxesPage() {
           Training maxes
         </h1>
         <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-          A training max (TM) is a deliberate underestimate of your 1RM, used as the
-          reference number for percentage-based prescription. Stays stable across a block,
-          then revisits at deload. Each TM lets the Log show &quot;X% of TM&quot; next to the weight.
+          Enter your 1RM for each main lift. The app applies a default TM%
+          (typically 85–90%) to compute the working <em>training max</em> used by the planner.
+          Override the % per movement if you want one lift treated differently.
         </p>
       </header>
 
-      {/* ── Existing maxes ───────────────────────────────────────── */}
+      {/* ── Default TM% ────────────────────────────────────────── */}
       <section className="cp-card" style={{ padding: 20 }}>
-        <h2 style={{ margin: 0, fontSize: 16 }}>Your TMs</h2>
-        {existing.length === 0 ? (
+        <h2 style={{ margin: 0, fontSize: 16 }}>Default TM%</h2>
+        <p style={{ margin: "4px 0 12px", fontSize: 12, color: "var(--cp-text-muted)" }}>
+          Used for every lift unless you set a per-movement override below.
+        </p>
+        <form action={setDefaultTmPercent} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <input
+            type="number"
+            name="percent"
+            step="0.5"
+            min="50"
+            max="100"
+            defaultValue={ctx.defaultPercent}
+            inputMode="decimal"
+            aria-label="Default training max percent"
+            required
+            className="mono"
+            style={{ width: 110, padding: "8px 10px", fontSize: 16, textAlign: "right" }}
+          />
+          <span style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>% of 1RM</span>
+          <button type="submit" className="cp-btn">Save default</button>
+        </form>
+      </section>
+
+      {/* ── Your maxes ─────────────────────────────────────────── */}
+      <section className="cp-card" style={{ padding: 20 }}>
+        <h2 style={{ margin: 0, fontSize: 16 }}>Your maxes</h2>
+        {ctx.rows.length === 0 ? (
           <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--cp-text-muted)" }}>
-            None set yet. Add one below — the canonical four are squat, bench, deadlift, overhead press.
+            None yet. Add one below — the canonical four are squat, bench, deadlift, overhead press.
           </p>
         ) : (
-          <ul style={{ listStyle: "none", padding: 0, margin: "12px 0 0" }}>
-            {existing.map((r, i) => (
-              <li
-                key={r.id}
-                style={{
-                  borderTop: i === 0 ? "none" : "1px solid var(--cp-border)",
-                  padding: "12px 0",
-                  display: "grid",
-                  gridTemplateColumns: "1fr auto",
-                  gap: 12,
-                  alignItems: "center",
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 500 }}>{r.movementName}</div>
-                  <div className="mono" style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 2 }}>
-                    {r.movementSlug}
-                  </div>
-                </div>
-                <form
-                  action={upsertTrainingMax}
-                  style={{ display: "flex", gap: 6, alignItems: "center" }}
-                >
-                  <input type="hidden" name="movementId" value={r.movementId} />
-                  <input
-                    type="number"
-                    name="tmKg"
-                    step="0.5"
-                    min="1"
-                    max="1000"
-                    defaultValue={r.tmKg}
-                    inputMode="decimal"
-                    aria-label="Training max in kilograms"
-                    style={{
-                      width: 88,
-                      padding: "6px 8px",
-                      borderRadius: 8,
-                      border: "1px solid var(--cp-border)",
-                      background: "var(--cp-surface)",
-                      color: "var(--cp-text)",
-                      fontSize: 14,
-                      textAlign: "right",
-                    }}
-                    className="mono"
-                  />
-                  <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>kg</span>
-                  <button type="submit" className="cp-btn">Save</button>
-                </form>
-                <form
-                  action={deleteTrainingMax}
-                  style={{ gridColumn: "1 / -1", justifySelf: "end", marginTop: -8 }}
-                >
-                  <input type="hidden" name="id" value={r.id} />
-                  <button
-                    type="submit"
-                    className="cp-btn ghost"
-                    style={{ fontSize: 11, color: "var(--cp-text-muted)", padding: "4px 8px" }}
-                  >
-                    remove
-                  </button>
-                </form>
-              </li>
+          <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0", display: "grid", gap: 8 }}>
+            {ctx.rows.map((r) => (
+              <TmCard key={r.id} row={r} defaultPercent={ctx.defaultPercent} />
             ))}
           </ul>
         )}
       </section>
 
-      {/* ── Add by canonical lift ────────────────────────────────── */}
+      {/* ── Quick-add canonicals ───────────────────────────────── */}
       {suggested.length > 0 && (
         <section className="cp-card" style={{ padding: 20 }}>
           <h2 style={{ margin: 0, fontSize: 16 }}>Quick add — main lifts</h2>
           <p style={{ margin: "4px 0 12px", fontSize: 12, color: "var(--cp-text-muted)" }}>
-            Tap the lift, enter your TM in kg, save.
+            Enter your 1RM and the app will derive the TM. Optional column overrides the default % just for that lift.
           </p>
-          <div style={{ display: "grid", gap: 10 }}>
+          <div style={{ display: "grid", gap: 8 }}>
             {suggested.map((m) => (
-              <form
+              <QuickAddRow
                 key={m.id}
-                action={upsertTrainingMax}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr auto auto",
-                  gap: 8,
-                  alignItems: "center",
-                  borderTop: "1px solid var(--cp-border)",
-                  paddingTop: 10,
-                }}
-              >
-                <div style={{ fontSize: 14, fontWeight: 500 }}>{m.display_name}</div>
-                <input type="hidden" name="movementId" value={m.id} />
-                <input
-                  type="number"
-                  name="tmKg"
-                  step="0.5"
-                  min="1"
-                  max="1000"
-                  placeholder="kg"
-                  inputMode="decimal"
-                  aria-label={`Training max for ${m.display_name}`}
-                  required
-                  style={{
-                    width: 88,
-                    padding: "6px 8px",
-                    borderRadius: 8,
-                    border: "1px solid var(--cp-border)",
-                    background: "var(--cp-surface)",
-                    color: "var(--cp-text)",
-                    fontSize: 14,
-                    textAlign: "right",
-                  }}
-                  className="mono"
-                />
-                <button type="submit" className="cp-btn primary">Add</button>
-              </form>
+                movement={m}
+                defaultPercent={ctx.defaultPercent}
+              />
             ))}
           </div>
         </section>
       )}
 
-      {/* ── Add by picking from any compound ─────────────────────── */}
+      {/* ── Add by picker ──────────────────────────────────────── */}
       <section className="cp-card" style={{ padding: 20 }}>
-        <h2 style={{ margin: 0, fontSize: 16 }}>Add a TM for any lift</h2>
+        <h2 style={{ margin: 0, fontSize: 16 }}>Add a max for any lift</h2>
         <p style={{ margin: "4px 0 12px", fontSize: 12, color: "var(--cp-text-muted)" }}>
           Pick from the catalog of compound movements.
         </p>
         <form
           action={upsertTrainingMax}
-          style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 8 }}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr) 110px 110px auto",
+            gap: 8,
+            alignItems: "center",
+          }}
         >
-          <select
-            name="movementId"
-            required
-            aria-label="Movement"
-            style={{
-              padding: "8px 10px",
-              borderRadius: 8,
-              border: "1px solid var(--cp-border)",
-              background: "var(--cp-surface)",
-              color: "var(--cp-text)",
-              fontSize: 14,
-            }}
-          >
+          <select name="movementId" required aria-label="Movement" style={{ padding: "8px 10px", fontSize: 14 }}>
             <option value="">— pick a movement —</option>
             {(compounds ?? [])
               .filter((m) => !existingMovementIds.has(m.id))
@@ -220,29 +146,179 @@ export default async function TrainingMaxesPage() {
           </select>
           <input
             type="number"
-            name="tmKg"
+            name="oneRmKg"
             step="0.5"
             min="1"
             max="1000"
-            placeholder="kg"
+            placeholder="1RM kg"
             inputMode="decimal"
             required
-            aria-label="Training max in kilograms"
-            style={{
-              width: 88,
-              padding: "6px 8px",
-              borderRadius: 8,
-              border: "1px solid var(--cp-border)",
-              background: "var(--cp-surface)",
-              color: "var(--cp-text)",
-              fontSize: 14,
-              textAlign: "right",
-            }}
+            aria-label="One rep max in kilograms"
             className="mono"
+            style={{ width: "100%", padding: "8px 10px", fontSize: 14, textAlign: "right" }}
           />
-          <button type="submit" className="cp-btn primary">Add TM</button>
+          <input
+            type="number"
+            name="tmPercent"
+            step="0.5"
+            min="50"
+            max="100"
+            placeholder={`${ctx.defaultPercent}%`}
+            inputMode="decimal"
+            aria-label="Optional per-movement TM percent override"
+            className="mono"
+            style={{ width: "100%", padding: "8px 10px", fontSize: 14, textAlign: "right" }}
+          />
+          <button type="submit" className="cp-btn primary">Add</button>
         </form>
       </section>
     </div>
+  );
+}
+
+function TmCard({ row, defaultPercent }: { row: TmRow; defaultPercent: number }) {
+  const isOverride = row.tmPercentOverride != null;
+  return (
+    <li
+      style={{
+        border: "1px solid var(--cp-border)",
+        borderRadius: 12,
+        padding: 14,
+        display: "grid",
+        gap: 10,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>{row.movementName}</div>
+          <div className="mono" style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 2 }}>
+            {row.movementSlug}
+          </div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div className="mono" style={{ fontSize: 18, fontWeight: 600, color: "var(--cp-accent)" }}>
+            {row.tmKg} kg
+          </div>
+          <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
+            TM ({row.effectivePercent}% × {row.oneRmKg} kg)
+          </div>
+        </div>
+      </div>
+
+      <form
+        action={upsertTrainingMax}
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr auto",
+          gap: 8,
+          alignItems: "end",
+        }}
+      >
+        <input type="hidden" name="movementId" value={row.movementId} />
+        <div>
+          <label
+            style={{ fontSize: 10, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}
+          >
+            1RM (kg)
+          </label>
+          <input
+            type="number"
+            name="oneRmKg"
+            step="0.5"
+            min="1"
+            max="1000"
+            defaultValue={row.oneRmKg}
+            inputMode="decimal"
+            required
+            aria-label="One rep max"
+            className="mono"
+            style={{ width: "100%", padding: "6px 8px", fontSize: 14, textAlign: "right", marginTop: 2 }}
+          />
+        </div>
+        <div>
+          <label
+            style={{ fontSize: 10, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}
+          >
+            TM% {isOverride ? "(override)" : `(default ${defaultPercent}%)`}
+          </label>
+          <input
+            type="number"
+            name="tmPercent"
+            step="0.5"
+            min="50"
+            max="100"
+            defaultValue={row.tmPercentOverride ?? ""}
+            placeholder={`${defaultPercent}`}
+            inputMode="decimal"
+            aria-label="TM percent override (leave blank to use default)"
+            className="mono"
+            style={{ width: "100%", padding: "6px 8px", fontSize: 14, textAlign: "right", marginTop: 2 }}
+          />
+        </div>
+        <button type="submit" className="cp-btn">Save</button>
+      </form>
+
+      <form action={deleteTrainingMax} style={{ justifySelf: "end" }}>
+        <input type="hidden" name="id" value={row.id} />
+        <button
+          type="submit"
+          className="cp-btn ghost"
+          style={{ fontSize: 11, color: "var(--cp-text-muted)", padding: "4px 8px" }}
+        >
+          remove
+        </button>
+      </form>
+    </li>
+  );
+}
+
+function QuickAddRow({
+  movement,
+  defaultPercent,
+}: {
+  movement: { id: string; display_name: string };
+  defaultPercent: number;
+}) {
+  return (
+    <form
+      action={upsertTrainingMax}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 1.4fr) 110px 110px auto",
+        gap: 8,
+        alignItems: "center",
+        borderTop: "1px solid var(--cp-border)",
+        paddingTop: 10,
+      }}
+    >
+      <input type="hidden" name="movementId" value={movement.id} />
+      <div style={{ fontSize: 14, fontWeight: 500 }}>{movement.display_name}</div>
+      <input
+        type="number"
+        name="oneRmKg"
+        step="0.5"
+        min="1"
+        max="1000"
+        placeholder="1RM kg"
+        inputMode="decimal"
+        required
+        aria-label={`1RM for ${movement.display_name}`}
+        className="mono"
+        style={{ width: "100%", padding: "6px 8px", fontSize: 14, textAlign: "right" }}
+      />
+      <input
+        type="number"
+        name="tmPercent"
+        step="0.5"
+        min="50"
+        max="100"
+        placeholder={`${defaultPercent}%`}
+        inputMode="decimal"
+        aria-label={`TM% override for ${movement.display_name} (optional)`}
+        className="mono"
+        style={{ width: "100%", padding: "6px 8px", fontSize: 14, textAlign: "right" }}
+      />
+      <button type="submit" className="cp-btn primary">Add</button>
+    </form>
   );
 }

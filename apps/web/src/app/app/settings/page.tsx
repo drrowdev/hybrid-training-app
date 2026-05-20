@@ -76,8 +76,8 @@ export default async function SettingsPage() {
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Body composition phase</h2>
         <p className="text-xs text-foreground/60">
-          Declared phases drive DC-F11 / DC-Q2 — engine caps top-end intensity at −5%
-          and protects strength via heavy low-volume work when you&apos;re in a cut.
+          Tell the app whether you&apos;re building, holding, or cutting. During a cut the app
+          pulls back top-end intensity slightly and protects strength via heavy, low-volume work.
         </p>
         <form action={updateProfile} className="space-y-3 rounded-lg border border-foreground/10 p-4">
           <div className="space-y-1">
@@ -109,7 +109,7 @@ export default async function SettingsPage() {
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Bodyweight</h2>
         <p className="text-xs text-foreground/60">
-          Log when you weigh — weekly is plenty. History feeds DC-T3 drift detection.
+          Log when you weigh — weekly is plenty. Helps the app spot weight drift over time.
         </p>
         <form action={logBodyweight} className="space-y-3 rounded-lg border border-foreground/10 p-4">
           <div className="grid grid-cols-2 gap-3">
@@ -158,7 +158,7 @@ export default async function SettingsPage() {
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Active limitations</h2>
         <p className="text-xs text-foreground/60">
-          Per-region injury flags. Drive DC-D5 / DC-D7 / DC-J9 safety hard-blocks.
+          Flag injuries by region. The app avoids loading those regions until you mark them resolved.
         </p>
         <Link
           href="/app/settings/limitations"

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createBlock } from "@/lib/planner/actions";
 import { ARCHETYPES, STRENGTH_ANCHOR } from "@/lib/planner/archetypes";
 import { todayYmd } from "@/lib/planner/queries";
+import { getTrainingMaxContext } from "@/lib/training-maxes/queries";
 
 export default async function NewBlockPage() {
   const supabase = await createClient();
@@ -20,16 +21,8 @@ export default async function NewBlockPage() {
     .in("slug", requiredSlugs)
     .is("user_id", null);
 
-  const { data: tms } = await supabase
-    .from("training_maxes")
-    .select("movement_id, tm_kg, movements(slug, display_name)");
-
-  const tmBySlug = new Map<string, number>();
-  for (const r of tms ?? []) {
-    const mv = Array.isArray(r.movements) ? r.movements[0] : r.movements;
-    if (mv?.slug) tmBySlug.set(mv.slug, Number(r.tm_kg));
-  }
-
+  const tmCtx = await getTrainingMaxContext();
+  const tmBySlug = tmCtx.bySlug;
   const allTmsReady = (movements ?? []).every((m) => tmBySlug.has(m.slug));
 
   return (

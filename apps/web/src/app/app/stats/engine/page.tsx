@@ -70,7 +70,7 @@ export default async function EngineStatePage() {
           </span>
         </h2>
         <p style={{ margin: "4px 0 16px", color: "var(--cp-text-muted)", fontSize: 13 }}>
-          DC-C14 region ledger · updates on session completion.
+          Updates automatically after each completed session.
         </p>
 
         {!hasData ? (

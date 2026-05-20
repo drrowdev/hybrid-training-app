@@ -7,15 +7,20 @@ import { createClient } from "@/lib/supabase/server";
 
 const upsertSchema = z.object({
   movementId: z.string().uuid(),
-  tmKg: z.coerce.number().positive().lte(1000),
-  notes: z.string().trim().max(500).optional().nullable(),
+  oneRmKg: z.coerce.number().positive().lte(1000),
+  tmPercent: z.coerce.number().positive().lte(100).optional().nullable(),
 });
 
 export async function upsertTrainingMax(formData: FormData): Promise<void> {
+  // Empty string from form input → use the profile default (null override).
+  const tmPercentRaw = formData.get("tmPercent");
+  const tmPercentInput =
+    tmPercentRaw == null || String(tmPercentRaw).trim() === "" ? null : tmPercentRaw;
+
   const parsed = upsertSchema.safeParse({
     movementId: formData.get("movementId"),
-    tmKg: formData.get("tmKg"),
-    notes: formData.get("notes") || undefined,
+    oneRmKg: formData.get("oneRmKg"),
+    tmPercent: tmPercentInput,
   });
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
 
@@ -29,8 +34,8 @@ export async function upsertTrainingMax(formData: FormData): Promise<void> {
     {
       user_id: user.id,
       movement_id: parsed.data.movementId,
-      tm_kg: parsed.data.tmKg,
-      notes: parsed.data.notes ?? null,
+      one_rm_kg: parsed.data.oneRmKg,
+      tm_percent: parsed.data.tmPercent ?? null,
     },
     { onConflict: "user_id,movement_id" },
   );
@@ -38,6 +43,7 @@ export async function upsertTrainingMax(formData: FormData): Promise<void> {
 
   revalidatePath("/app/settings/training-maxes");
   revalidatePath("/app");
+  revalidatePath("/app/plan");
 }
 
 export async function deleteTrainingMax(formData: FormData): Promise<void> {
@@ -46,4 +52,29 @@ export async function deleteTrainingMax(formData: FormData): Promise<void> {
   const supabase = await createClient();
   await supabase.from("training_maxes").delete().eq("id", id);
   revalidatePath("/app/settings/training-maxes");
+}
+
+const defaultPercentSchema = z.object({
+  percent: z.coerce.number().positive().lte(100),
+});
+
+export async function setDefaultTmPercent(formData: FormData): Promise<void> {
+  const parsed = defaultPercentSchema.safeParse({ percent: formData.get("percent") });
+  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid percent");
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ tm_percent_default: parsed.data.percent })
+    .eq("id", user.id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/app/settings/training-maxes");
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
 }

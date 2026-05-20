@@ -58,8 +58,8 @@ export default async function LimitationsPage() {
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">Active limitations</h1>
         <p className="text-xs text-foreground/60">
-          Add a row when you&apos;re hurt; mark resolved when better. These drive the
-          engine&apos;s safety hard-blocks (DC-D5 / DC-D7 / DC-J9). Not asked daily.
+          Add a row when you&apos;re hurt; mark resolved when better. The app uses these to avoid
+          loading the affected region until you say it&apos;s fine. Not asked daily.
         </p>
       </header>
 
