@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { listMovementsRanked } from "@/lib/stats/movement";
 
 export default async function StatsPage() {
   const supabase = await createClient();
@@ -14,16 +15,19 @@ export default async function StatsPage() {
   const last30 = completed.filter(
     (s) => Date.now() - new Date(s.performed_at).getTime() < 30 * 86_400_000,
   ).length;
-  const avgRpe =
-    completed.filter((s) => s.session_rpe).reduce((a, s) => a + (s.session_rpe ?? 0), 0) /
-      Math.max(1, completed.filter((s) => s.session_rpe).length) || 0;
+  const rpeSamples = completed.filter((s) => s.session_rpe);
+  const avgRpe = rpeSamples.length
+    ? rpeSamples.reduce((a, s) => a + (s.session_rpe ?? 0), 0) / rpeSamples.length
+    : 0;
+
+  const movements = await listMovementsRanked();
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <header>
         <h1 style={{ fontSize: 28, margin: 0, letterSpacing: "-0.01em" }}>Stats</h1>
         <p style={{ margin: "4px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-          Everything you&apos;ve actually done. Drill into a movement, or peek at what the engine sees.
+          Everything you have actually done. Drill into a movement, or peek at what the engine sees.
         </p>
       </header>
 
@@ -34,22 +38,56 @@ export default async function StatsPage() {
         <Tile label="Engine state" value="View →" href="/app/stats/engine" />
       </div>
 
-      <section className="cp-card" style={{ padding: 20, display: "grid", gap: 8 }}>
-        <h2 style={{ margin: 0, fontSize: 16 }}>Movement drill-down</h2>
-        <p style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 13 }}>
-          Per-movement trends (e1RM curve, volume, RPE histogram, frequency heatmap) land in the next sprint.
-        </p>
+      <section className="cp-card" style={{ padding: 20 }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
+          <h2 style={{ margin: 0, fontSize: 16 }}>Movement drill-down</h2>
+          <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>{movements.length} logged</span>
+        </div>
+        {movements.length === 0 ? (
+          <p style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 13 }}>
+            No movements logged yet. Start a session to start building trends.
+          </p>
+        ) : (
+          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            {movements.slice(0, 15).map((m, i) => (
+              <li key={m.movementId} style={{ borderTop: i === 0 ? "none" : "1px solid var(--cp-border)" }}>
+                <Link
+                  href={`/app/stats/movements/${m.slug}`}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "baseline",
+                    color: "inherit",
+                    textDecoration: "none",
+                    padding: "10px 0",
+                    gap: 12,
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {m.displayName}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 2 }}>
+                      {m.setCount} sets · last {new Date(m.lastPerformed).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>→</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
-      <section className="cp-card" style={{ padding: 20, display: "grid", gap: 8 }}>
+      <section className="cp-card" style={{ padding: 20 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-          <h2 style={{ margin: 0, fontSize: 16 }}>Recent</h2>
+          <h2 style={{ margin: 0, fontSize: 16 }}>Recent sessions</h2>
           <Link href="/app/sessions" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>see all →</Link>
         </div>
         {completed.length === 0 ? (
-          <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>No completed sessions yet.</p>
+          <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--cp-text-muted)" }}>No completed sessions yet.</p>
         ) : (
-          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+          <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0" }}>
             {completed.slice(0, 8).map((s, i) => (
               <li
                 key={s.id}
@@ -63,10 +101,7 @@ export default async function StatsPage() {
                   fontSize: 13,
                 }}
               >
-                <Link
-                  href={`/app/sessions/${s.id}`}
-                  style={{ color: "inherit", textDecoration: "none", flex: 1, minWidth: 0 }}
-                >
+                <Link href={`/app/sessions/${s.id}`} style={{ color: "inherit", textDecoration: "none", flex: 1, minWidth: 0 }}>
                   <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {s.title ?? "Untitled session"}
                   </span>
