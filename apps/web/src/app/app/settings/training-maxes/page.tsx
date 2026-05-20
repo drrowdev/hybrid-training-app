@@ -94,21 +94,53 @@ export default async function TrainingMaxesPage() {
             lineHeight: 1.55,
           }}
         >
-          <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--cp-text)", fontWeight: 600, marginBottom: 6 }}>
-            Suggested range — 85–90%
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "baseline",
+              marginBottom: 6,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 10,
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                color: "var(--cp-text)",
+                fontWeight: 600,
+              }}
+            >
+              Suggested range — 89–92%
+              <span className="cp-info" tabIndex={0} aria-label="Why this range">
+                i
+                <span className="pop" style={{ width: 320 }}>
+                  The literature treats <strong>70–87.5% of true 1RM</strong> as the
+                  daily strength work zone, with <strong>≥85%</strong> needed on the heaviest
+                  exposure to drive strength adaptation (Bickel 2011, HIGH).
+                  &gt;90% of 1RM is reserved for testing or short peaking blocks.
+                  <br /><br />
+                  The planner&apos;s intensity wave tops out at 95% of TM, so a TM% of
+                  ~89–92% lands your top working set inside that 85–87.5% strength-driving band.
+                </span>
+              </span>
+            </div>
           </div>
           <div style={{ display: "grid", gap: 4 }}>
             <div>
               <span className="mono" style={{ color: "var(--cp-text)", fontWeight: 600 }}>85%</span>{" "}
-              · conservative — more reps in reserve, sustainable for long blocks, recommended if you&apos;re newer or running concurrent cardio.
+              · maintenance / cardio-emphasis. Top working set stays below the strength-driving
+              threshold — appropriate when conditioning leads and you&apos;re holding strength, not building.
             </div>
             <div>
-              <span className="mono" style={{ color: "var(--cp-text)", fontWeight: 600 }}>90%</span>{" "}
-              · classic — the standard anchor for percentage-based strength programming. Good default.
+              <span className="mono" style={{ color: "var(--cp-text)", fontWeight: 600 }}>89–92%</span>{" "}
+              · balanced default. Top set lands right at 85–87.5% of 1RM — the daily strength zone.
+              Sustainable for long blocks under concurrent training load.
             </div>
             <div>
-              <span className="mono" style={{ color: "var(--cp-text)", fontWeight: 600 }}>92–95%</span>{" "}
-              · aggressive — for peaking or short blocks. Closer to your real 1RM, less margin if recovery dips.
+              <span className="mono" style={{ color: "var(--cp-text)", fontWeight: 600 }}>93–95%</span>{" "}
+              · peaking / testing. Top set crosses into &gt;90% of 1RM, which the research reserves
+              for short 1–4 week peak windows. Don&apos;t live here.
             </div>
           </div>
         </div>
