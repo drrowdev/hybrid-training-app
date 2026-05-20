@@ -1,7 +1,5 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-
 type Status = "idle" | "saving" | "saved" | "error";
 type Preset = { percent: number; label: string; description: string };
 
@@ -26,58 +24,24 @@ const PRESETS: Preset[] = [
   },
 ];
 
-const DEBOUNCE_MS = 600;
-
+/**
+ * Presentational, controlled. Parent owns the value + persistence; this
+ * component just renders the preset cards + a fine-tune number input and
+ * fires onPresetClick / onFineTune callbacks.
+ */
 export function DefaultTmPercentControl({
-  initialPercent,
-  action,
+  value,
+  onPresetClick,
+  onFineTune,
+  status,
+  errorMsg,
 }: {
-  initialPercent: number;
-  action: (fd: FormData) => Promise<unknown>;
+  value: number;
+  onPresetClick: (n: number) => void;
+  onFineTune: (n: number) => void;
+  status: Status;
+  errorMsg: string | null;
 }) {
-  const [value, setValue] = useState<number>(initialPercent);
-  const [status, setStatus] = useState<Status>("idle");
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSaved = useRef<number>(initialPercent);
-  const [, startTransition] = useTransition();
-
-  // Persist a change after debounce.
-  useEffect(() => {
-    if (value === lastSaved.current) return;
-    if (!Number.isFinite(value) || value <= 0 || value > 100) return;
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      const fd = new FormData();
-      fd.set("percent", String(value));
-      setStatus("saving");
-      setErrorMsg(null);
-      startTransition(async () => {
-        try {
-          const result = (await action(fd)) as
-            | undefined
-            | void
-            | { ok: true }
-            | { ok: false; error: string };
-          if (result && typeof result === "object" && "ok" in result && result.ok === false) {
-            setStatus("error");
-            setErrorMsg(result.error);
-            return;
-          }
-          lastSaved.current = value;
-          setStatus("saved");
-          window.setTimeout(() => setStatus((s) => (s === "saved" ? "idle" : s)), 1800);
-        } catch (e) {
-          setStatus("error");
-          setErrorMsg(e instanceof Error ? e.message : "Failed to save");
-        }
-      });
-    }, DEBOUNCE_MS);
-    return () => {
-      if (timer.current) clearTimeout(timer.current);
-    };
-  }, [value, action]);
-
   return (
     <div style={{ display: "grid", gap: 14 }}>
       <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(3, 1fr)" }}>
@@ -87,7 +51,7 @@ export function DefaultTmPercentControl({
             <button
               type="button"
               key={p.percent}
-              onClick={() => setValue(p.percent)}
+              onClick={() => onPresetClick(p.percent)}
               aria-pressed={selected}
               style={{
                 textAlign: "left",
@@ -147,7 +111,7 @@ export function DefaultTmPercentControl({
           value={value}
           onChange={(e) => {
             const n = Number(e.target.value);
-            if (!Number.isNaN(n)) setValue(n);
+            if (!Number.isNaN(n)) onFineTune(n);
           }}
           inputMode="decimal"
           aria-label="Default training max percent"
@@ -179,15 +143,10 @@ export function DefaultTmPercentControl({
 }
 
 function StatusBadge({ status, errorMsg }: { status: Status; errorMsg: string | null }) {
-  if (status === "idle") {
-    return <span style={{ fontSize: 11, color: "transparent" }}>·</span>;
-  }
-  if (status === "saving") {
-    return <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>saving…</span>;
-  }
-  if (status === "saved") {
+  if (status === "idle") return <span style={{ fontSize: 11, color: "transparent" }}>·</span>;
+  if (status === "saving") return <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>saving…</span>;
+  if (status === "saved")
     return <span style={{ fontSize: 11, color: "var(--cp-success)", fontWeight: 600 }}>✓ saved</span>;
-  }
   return (
     <span title={errorMsg ?? undefined} style={{ fontSize: 11, color: "var(--cp-danger)", fontWeight: 600 }}>
       ✗ failed
