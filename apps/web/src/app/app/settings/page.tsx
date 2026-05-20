@@ -166,6 +166,21 @@ export default async function SettingsPage() {
       </section>
 
       <section className="space-y-3">
+        <h2 className="text-lg font-medium">Training maxes</h2>
+        <p className="text-xs text-foreground/60">
+          Reference numbers for percentage-based prescription. Set one per main lift —
+          the Log shows &quot;% of TM&quot; next to the weight.
+        </p>
+        <Link
+          href="/app/settings/training-maxes"
+          className="inline-flex items-center justify-between gap-3 rounded-lg border border-foreground/10 p-4 w-full hover:bg-foreground/5"
+        >
+          <span className="text-sm">Manage training maxes</span>
+          <span className="text-xs text-foreground/60">→</span>
+        </Link>
+      </section>
+
+      <section className="space-y-3">
         <h2 className="text-lg font-medium">Active limitations</h2>
         <p className="text-xs text-foreground/60">
           Per-region injury flags. Drive DC-D5 / DC-D7 / DC-J9 safety hard-blocks.
