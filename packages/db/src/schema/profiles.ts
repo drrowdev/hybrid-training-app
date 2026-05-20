@@ -40,6 +40,8 @@ export const profiles = pgTable("profiles", {
     .notNull(),
   /** How many days/week the user can realistically train. Drives archetype fit. */
   trainingDaysPerWeek: smallint("training_days_per_week").default(4).notNull(),
+  /** When the first-run onboarding wizard finished or was skipped. null = show wizard. */
+  onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
   intake: jsonb("intake").$type<Record<string, unknown>>().default({}).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)

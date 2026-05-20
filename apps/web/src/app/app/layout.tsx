@@ -16,9 +16,12 @@ export default async function AppLayout({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name")
+    .select("display_name, onboarded_at")
     .eq("id", user.id)
     .maybeSingle();
+
+  // First-run gate: never-onboarded users go to the wizard.
+  if (!profile?.onboarded_at) redirect("/onboarding");
 
   return (
     <AppShell
