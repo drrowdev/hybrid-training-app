@@ -184,6 +184,49 @@ export function ArchetypePicker({
               </button>
             );
           })}
+
+          {/* Custom block — navigates to the builder instead of selecting in-form. */}
+          <Link
+            href="/app/plan/new/custom"
+            style={{
+              textAlign: "left",
+              padding: 16,
+              borderRadius: 12,
+              border: "1px dashed var(--cp-border-strong)",
+              background: "var(--cp-surface)",
+              color: "var(--cp-text)",
+              textDecoration: "none",
+              display: "grid",
+              gap: 10,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+              <h3 style={{ margin: 0, fontSize: 15 }}>Custom block</h3>
+              <span className="cp-pill">build your own</span>
+            </div>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
+              Pick the weeks, intensity wave, and what happens on each day. Same generator as the curated
+              presets — strength days use your chosen variants.
+            </p>
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {(["Block length", "Wave template", "Per-day editor", "Custom durations"] as const).map((label) => (
+                <span
+                  key={label}
+                  className="mono"
+                  style={{
+                    fontSize: 10,
+                    padding: "2px 8px",
+                    borderRadius: 999,
+                    background: "var(--cp-surface-soft)",
+                    color: "var(--cp-text-muted)",
+                  }}
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--cp-link)", marginTop: 2 }}>Open the builder →</div>
+          </Link>
         </div>
       </section>
 
