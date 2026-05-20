@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { deleteAccount } from "@/lib/auth/delete-account";
 import { logBodyweight, updateProfile } from "@/lib/settings/actions";
+import { TrainingDaysControl } from "@/components/settings/TrainingDaysControl";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -14,7 +15,7 @@ export default async function SettingsPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "display_name, units, bodyweight_kg, body_comp_phase, phase_started_at, phase_target_weeks",
+      "display_name, units, bodyweight_kg, body_comp_phase, phase_started_at, phase_target_weeks, training_days_per_week",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -71,6 +72,14 @@ export default async function SettingsPage() {
             Save profile
           </button>
         </form>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-medium">Training days per week</h2>
+        <p className="text-xs text-foreground/60">
+          The default the planner uses when you start a new block. You can still override it per block.
+        </p>
+        <TrainingDaysControl initial={Number(profile?.training_days_per_week ?? 4)} />
       </section>
 
       <section className="space-y-3">
