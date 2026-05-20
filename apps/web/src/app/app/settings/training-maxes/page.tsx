@@ -17,6 +17,7 @@ import {
 } from "@/lib/planner/archetypes";
 import { getActiveBlock } from "@/lib/planner/queries";
 import { DefaultTmPercentControl } from "@/components/training-maxes/DefaultTmPercentControl";
+import { TmAutoForm } from "@/components/training-maxes/TmAutoForm";
 
 export default async function TrainingMaxesPage() {
   const supabase = await createClient();
@@ -180,64 +181,17 @@ export default async function TrainingMaxesPage() {
       <section className="cp-card" style={{ padding: 20 }}>
         <h2 style={{ margin: 0, fontSize: 16 }}>Add a max for any other lift</h2>
         <p style={{ margin: "4px 0 12px", fontSize: 12, color: "var(--cp-text-muted)" }}>
-          Pick from the catalog of compound movements.
+          Pick from the catalog of compound movements — autosaves once you select a movement and enter your 1RM.
         </p>
-        <form
+        <TmAutoForm
+          mode="new"
+          candidateGroups={Array.from(groupBy(pickerOptions, "pattern").entries()).map(([pattern, items]) => ({
+            label: prettyPattern(pattern),
+            items: items.map((m) => ({ id: m.id, display_name: m.display_name })),
+          }))}
+          defaultPercent={ctx.defaultPercent}
           action={upsertTrainingMax}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1fr) 110px 110px auto",
-            gap: 8,
-            alignItems: "end",
-          }}
-        >
-          <div style={{ display: "grid", gap: 2 }}>
-            <Label>Movement</Label>
-            <select name="movementId" required aria-label="Movement" style={{ padding: "8px 10px", fontSize: 14 }}>
-              <option value="">— pick a movement —</option>
-              {Array.from(groupBy(pickerOptions, "pattern").entries()).map(([pattern, items]) => (
-                <optgroup key={pattern} label={prettyPattern(pattern)}>
-                  {items.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.display_name}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          </div>
-          <div style={{ display: "grid", gap: 2 }}>
-            <Label>1RM (kg)</Label>
-            <input
-              type="number"
-              name="oneRmKg"
-              step="0.5"
-              min="1"
-              max="1000"
-              inputMode="decimal"
-              required
-              aria-label="One rep max in kilograms"
-              className="mono"
-              style={{ width: "100%", padding: "8px 10px", fontSize: 14, textAlign: "right" }}
-            />
-          </div>
-          <div style={{ display: "grid", gap: 2 }}>
-            <Label>TM% (optional)</Label>
-            <input
-              type="number"
-              name="tmPercent"
-              step="0.5"
-              min="50"
-              max="100"
-              placeholder={`${ctx.defaultPercent}`}
-              inputMode="decimal"
-              aria-label="Optional per-movement TM percent override"
-              className="mono"
-              style={{ width: "100%", padding: "8px 10px", fontSize: 14, textAlign: "right" }}
-            />
-          </div>
-          <button type="submit" className="cp-btn primary">Add</button>
-        </form>
+        />
       </section>
     </div>
   );
@@ -286,70 +240,15 @@ function RoleGroup({
     );
   }
 
-  // No TM yet for this role — show the candidate picker as an inline add form.
   return (
     <div>
       <RoleHeader label={label} status="missing" />
-      <form
+      <TmAutoForm
+        mode="new"
+        candidates={candidates.map((c) => ({ id: c.id, display_name: c.display_name }))}
+        defaultPercent={defaultPercent}
         action={upsertTrainingMax}
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1.4fr) 110px 110px auto",
-          gap: 8,
-          alignItems: "end",
-          border: "1px dashed var(--cp-border-strong)",
-          borderRadius: 12,
-          padding: 12,
-        }}
-      >
-        <div style={{ display: "grid", gap: 2 }}>
-          <Label>Pick your variant</Label>
-          <select
-            name="movementId"
-            required
-            aria-label={`Pick your ${label} variant`}
-            style={{ padding: "8px 10px", fontSize: 14 }}
-          >
-            <option value="">— variant —</option>
-            {candidates.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.display_name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div style={{ display: "grid", gap: 2 }}>
-          <Label>1RM (kg)</Label>
-          <input
-            type="number"
-            name="oneRmKg"
-            step="0.5"
-            min="1"
-            max="1000"
-            inputMode="decimal"
-            required
-            aria-label={`${label} 1RM`}
-            className="mono"
-            style={{ width: "100%", padding: "6px 8px", fontSize: 14, textAlign: "right" }}
-          />
-        </div>
-        <div style={{ display: "grid", gap: 2 }}>
-          <Label>TM% (optional)</Label>
-          <input
-            type="number"
-            name="tmPercent"
-            step="0.5"
-            min="50"
-            max="100"
-            placeholder={`${defaultPercent}`}
-            inputMode="decimal"
-            aria-label={`${label} TM% override`}
-            className="mono"
-            style={{ width: "100%", padding: "6px 8px", fontSize: 14, textAlign: "right" }}
-          />
-        </div>
-        <button type="submit" className="cp-btn primary">Add</button>
-      </form>
+      />
     </div>
   );
 }
@@ -388,23 +287,7 @@ function RoleHeader({ label, status }: { label: string; status: "set" | "missing
   );
 }
 
-function Label({ children }: { children: React.ReactNode }) {
-  return (
-    <span
-      style={{
-        fontSize: 10,
-        color: "var(--cp-text-muted)",
-        textTransform: "uppercase",
-        letterSpacing: "0.06em",
-      }}
-    >
-      {children}
-    </span>
-  );
-}
-
 function TmCard({ row, defaultPercent }: { row: TmRow; defaultPercent: number }) {
-  const isOverride = row.tmPercentOverride != null;
   return (
     <li
       style={{
@@ -432,58 +315,17 @@ function TmCard({ row, defaultPercent }: { row: TmRow; defaultPercent: number })
         </div>
       </div>
 
-      <form
-        action={upsertTrainingMax}
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr auto",
-          gap: 8,
-          alignItems: "end",
+      <TmAutoForm
+        mode="edit"
+        initial={{
+          movementId: row.movementId,
+          movementName: row.movementName,
+          oneRmKg: row.oneRmKg,
+          tmPercent: row.tmPercentOverride,
         }}
-      >
-        <input type="hidden" name="movementId" value={row.movementId} />
-        <div>
-          <label
-            style={{ fontSize: 10, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}
-          >
-            1RM (kg)
-          </label>
-          <input
-            type="number"
-            name="oneRmKg"
-            step="0.5"
-            min="1"
-            max="1000"
-            defaultValue={row.oneRmKg}
-            inputMode="decimal"
-            required
-            aria-label="One rep max"
-            className="mono"
-            style={{ width: "100%", padding: "6px 8px", fontSize: 14, textAlign: "right", marginTop: 2 }}
-          />
-        </div>
-        <div>
-          <label
-            style={{ fontSize: 10, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}
-          >
-            TM% {isOverride ? "(override)" : `(default ${defaultPercent}%)`}
-          </label>
-          <input
-            type="number"
-            name="tmPercent"
-            step="0.5"
-            min="50"
-            max="100"
-            defaultValue={row.tmPercentOverride ?? ""}
-            placeholder={`${defaultPercent}`}
-            inputMode="decimal"
-            aria-label="TM percent override (leave blank to use default)"
-            className="mono"
-            style={{ width: "100%", padding: "6px 8px", fontSize: 14, textAlign: "right", marginTop: 2 }}
-          />
-        </div>
-        <button type="submit" className="cp-btn">Save</button>
-      </form>
+        defaultPercent={defaultPercent}
+        action={upsertTrainingMax}
+      />
 
       <form action={deleteTrainingMax} style={{ justifySelf: "end" }}>
         <input type="hidden" name="id" value={row.id} />
