@@ -54,15 +54,44 @@ export const trainingBlockSelect = createSelectSchema(trainingBlocks);
  * Intentionally weakly typed (jsonb) at the DB layer; the planner library
  * owns the canonical shape.
  */
+export type PrescriptionItemKind =
+  | "warmup"
+  | "main"
+  | "back_off"
+  | "accessory"
+  | "tendon"
+  | "cardio_z2"
+  | "cardio_alactic"
+  | "cardio_vo2"
+  | "cardio_threshold";
+
+/**
+ * One movement in a planned session.
+ *
+ * Strength items (`warmup` / `main` / `back_off` / `accessory` / `tendon`):
+ *   carry `sets` × `reps` and optionally `percentTm`.
+ *
+ * Cardio items (`cardio_*`):
+ *   carry `durationMin` and optionally an HR cap / pace / RPE note.
+ */
 export type PrescriptionItem = {
   movementId: string;
   movementSlug?: string;
   movementName?: string;
-  sets: number;
-  reps: number;
+  kind: PrescriptionItemKind;
+  /** Strength: sets (typically 1 = a single working set; the planner repeats items for a wave). */
+  sets?: number;
+  /** Strength: reps per set. */
+  reps?: number;
+  /** Strength: % of TM. */
   percentTm?: number;
+  /** Cardio: planned duration in minutes. */
+  durationMin?: number;
+  /** Cardio: optional plain-language HR cap or pace target (e.g. "≤ 70% HRR", "conversational"). */
+  hrCap?: string;
+  /** Cardio: protocol hint (e.g. "6×15s near-max, 1:10 rest" or "4×4 min @ 90–95% HRmax"). */
+  protocolNote?: string;
   intensityLabel?: string;
-  kind: "warmup" | "main" | "back_off" | "accessory" | "tendon";
   notes?: string;
 };
 
