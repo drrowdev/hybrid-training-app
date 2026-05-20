@@ -41,6 +41,8 @@ export type CustomDayInput = {
   /** 0=Mon .. 6=Sun */
   dayIndex: number;
   kind: CustomDayKind;
+  /** Override the default duration (minutes) for cardio days. Ignored for strength/tendon. */
+  durationMinOverride?: number;
 };
 
 export type WaveTemplateId = "fives" | "threes" | "five_three_one" | "hypertrophy" | "maintenance" | "rebuild_flat";
@@ -188,20 +190,97 @@ export const WAVE_TEMPLATES: Record<
 
 // ─── Day kind → label mapping for the UI ───────────────────────────
 
-export const CUSTOM_DAY_OPTIONS: { value: CustomDayKind; label: string; group: string }[] = [
-  { value: "rest", label: "Rest", group: "—" },
-  { value: "strength_squat", label: "Squat (your variant)", group: "Strength" },
-  { value: "strength_horizontal_press", label: "Bench (your variant)", group: "Strength" },
-  { value: "strength_deadlift", label: "Deadlift (your variant)", group: "Strength" },
-  { value: "strength_vertical_press", label: "Overhead press (your variant)", group: "Strength" },
-  { value: "cardio_z2_short", label: "Easy Z2 — short (45 min)", group: "Cardio" },
-  { value: "cardio_z2_long", label: "Long Z2 (75 min)", group: "Cardio" },
-  { value: "cardio_z2_long_plus_alactic", label: "Long Z2 + alactic finisher (85 min)", group: "Cardio" },
-  { value: "cardio_vo2", label: "VO2 intervals (4×4)", group: "Cardio" },
-  { value: "cardio_alactic", label: "Alactic sprints", group: "Cardio" },
-  { value: "tendon_hsr_knee", label: "HSR — knee (leg press)", group: "Tendon" },
-  { value: "tendon_hsr_hinge", label: "HSR — posterior chain (RDL)", group: "Tendon" },
+export const CUSTOM_DAY_OPTIONS: {
+  value: CustomDayKind;
+  label: string;
+  /** Plain-language tooltip-style explainer shown under the picker once chosen. */
+  description: string;
+  group: string;
+}[] = [
+  { value: "rest", label: "Rest", description: "No prescribed session.", group: "—" },
+  {
+    value: "strength_squat",
+    label: "Squat (your variant)",
+    description: "Uses whichever squat variant you've set a TM for (back squat, front squat, safety bar, etc.).",
+    group: "Strength",
+  },
+  {
+    value: "strength_horizontal_press",
+    label: "Bench / horizontal press (your variant)",
+    description: "Uses whichever bench-style press variant you've set a TM for (flat bench, incline, dumbbell, etc.).",
+    group: "Strength",
+  },
+  {
+    value: "strength_deadlift",
+    label: "Deadlift (your variant)",
+    description: "Uses whichever deadlift variant you've set a TM for (conventional, sumo, trap-bar, etc.).",
+    group: "Strength",
+  },
+  {
+    value: "strength_vertical_press",
+    label: "Overhead press (your variant)",
+    description: "Uses whichever overhead variant you've set a TM for (standing OHP, push press, dumbbell, etc.).",
+    group: "Strength",
+  },
+  {
+    value: "cardio_z2_short",
+    label: "Easy aerobic · short",
+    description: "Conversational pace, ≤ 70% of heart-rate reserve. Builds aerobic base without competing with strength.",
+    group: "Cardio",
+  },
+  {
+    value: "cardio_z2_long",
+    label: "Long easy aerobic",
+    description: "Same conversational pace, longer duration. The aerobic-base workhorse — bulk of polarized cardio volume.",
+    group: "Cardio",
+  },
+  {
+    value: "cardio_z2_long_plus_alactic",
+    label: "Long easy aerobic + short sprints",
+    description: "Long Z2 followed by a small dose of short near-max sprints. Polarized: low-intensity base + high-intensity neural ping.",
+    group: "Cardio",
+  },
+  {
+    value: "cardio_vo2",
+    label: "Hard intervals (VO2)",
+    description: "4 × 4 min near-max effort (90–95% HRmax) with 3 min easy recovery. Drives VO2max gains. High recovery cost — 1–2× per week max.",
+    group: "Cardio",
+  },
+  {
+    value: "cardio_alactic",
+    label: "Short power sprints",
+    description: "6–10 × 10–15 s near-max efforts with full walk-down recovery. Trains power without driving aerobic fatigue.",
+    group: "Cardio",
+  },
+  {
+    value: "tendon_hsr_knee",
+    label: "Knee tendon work — slow leg press",
+    description: "Heavy Slow Resistance protocol — 3 × 8 reps @ 70–80% 1RM, 3-up / 3-down tempo. Equivalent tendinopathy outcomes to eccentric-only with better adherence (Kongsgaard 2009).",
+    group: "Tendon",
+  },
+  {
+    value: "tendon_hsr_hinge",
+    label: "Posterior-chain tendon work — slow RDL",
+    description: "Heavy Slow Resistance RDL — 3 × 8 reps @ 70–80% 1RM, 3-up / 3-down tempo. Loads hamstring + Achilles + lower back tendons safely.",
+    group: "Tendon",
+  },
 ];
+
+/** Which kinds expose a user-editable duration in the builder. */
+export const CARDIO_KINDS_WITH_DURATION: CustomDayKind[] = [
+  "cardio_z2_short",
+  "cardio_z2_long",
+  "cardio_z2_long_plus_alactic",
+  "cardio_vo2",
+];
+
+export const DEFAULT_DURATION_FOR: Partial<Record<CustomDayKind, number>> = {
+  cardio_z2_short: 45,
+  cardio_z2_long: 75,
+  cardio_z2_long_plus_alactic: 75, // primary; finisher adds ~10
+  cardio_vo2: 35,
+  cardio_alactic: 10,
+};
 
 // Slugs each cardio/tendon kind resolves to in the catalog.
 const KIND_TO_FIXED_SLUG: Partial<Record<CustomDayKind, { primary: string; finisher?: string }>> = {
@@ -279,14 +358,8 @@ export function compileCustomArchetype(input: CustomArchetypeInput): Archetype {
         : d.kind === "cardio_alactic"
           ? "cardio_alactic"
           : "cardio_z2";
-    const durationMin =
-      d.kind === "cardio_z2_short"
-        ? 45
-        : d.kind === "cardio_z2_long" || d.kind === "cardio_z2_long_plus_alactic"
-          ? 75
-          : d.kind === "cardio_vo2"
-            ? 35
-            : 10;
+    const defaultDuration = DEFAULT_DURATION_FOR[d.kind] ?? 30;
+    const durationMin = d.durationMinOverride ?? defaultDuration;
     const cd: CardioDay = {
       kind: "cardio",
       dayIndex: d.dayIndex,

@@ -234,6 +234,7 @@ const customInputSchema = z.object({
       z.object({
         dayIndex: z.coerce.number().int().min(0).max(6),
         kind: customDayKindEnum,
+        durationMinOverride: z.coerce.number().int().min(5).max(240).optional(),
       }),
     )
     .min(1)

@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import {
+  CARDIO_KINDS_WITH_DURATION,
   CUSTOM_DAY_OPTIONS,
+  DEFAULT_DURATION_FOR,
   WAVE_TEMPLATES,
   type CustomArchetypeInput,
   type CustomDayKind,
@@ -14,7 +16,7 @@ import {
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const WEEKS_OPTIONS = [3, 4, 5, 6];
 
-type DayState = { dayIndex: number; kind: CustomDayKind };
+type DayState = { dayIndex: number; kind: CustomDayKind; durationMinOverride?: number };
 
 export function CustomBlockBuilder({
   defaultStartedOn,
@@ -84,13 +86,22 @@ export function CustomBlockBuilder({
   const setDayKind = (dayIndex: number, kind: CustomDayKind) => {
     setDays((prev) => {
       const next = prev.filter((d) => d.dayIndex !== dayIndex);
+      // When kind changes, drop any prior duration override (defaults take over).
       next.push({ dayIndex, kind });
       next.sort((a, b) => a.dayIndex - b.dayIndex);
       return next;
     });
   };
-  const kindForDay = (dayIndex: number): CustomDayKind =>
-    days.find((d) => d.dayIndex === dayIndex)?.kind ?? "rest";
+  const setDayDuration = (dayIndex: number, minutes: number | undefined) => {
+    setDays((prev) => {
+      const next = prev.map((d) =>
+        d.dayIndex === dayIndex ? { ...d, durationMinOverride: minutes } : d,
+      );
+      return next;
+    });
+  };
+  const dayStateFor = (dayIndex: number): DayState =>
+    days.find((d) => d.dayIndex === dayIndex) ?? { dayIndex, kind: "rest" };
 
   // Group dropdown options for the optgroup-style picker.
   const optionGroups = useMemo(() => {
@@ -217,8 +228,13 @@ export function CustomBlockBuilder({
         </p>
         <div style={{ display: "grid", gap: 6 }}>
           {Array.from({ length: 7 }, (_, dayIndex) => {
-            const kind = kindForDay(dayIndex);
+            const state = dayStateFor(dayIndex);
+            const kind = state.kind;
             const isRest = kind === "rest";
+            const option = CUSTOM_DAY_OPTIONS.find((o) => o.value === kind);
+            const canEditDuration = CARDIO_KINDS_WITH_DURATION.includes(kind);
+            const defaultDuration = DEFAULT_DURATION_FOR[kind];
+            const currentDuration = state.durationMinOverride ?? defaultDuration ?? 0;
             return (
               <div
                 key={dayIndex}
@@ -226,8 +242,9 @@ export function CustomBlockBuilder({
                   display: "grid",
                   gridTemplateColumns: "60px 1fr",
                   gap: 10,
-                  alignItems: "center",
-                  padding: "6px 0",
+                  alignItems: "start",
+                  padding: "8px 0",
+                  borderTop: dayIndex === 0 ? "none" : "1px solid var(--cp-border)",
                 }}
               >
                 <div
@@ -237,38 +254,80 @@ export function CustomBlockBuilder({
                     color: isRest ? "var(--cp-text-muted)" : "var(--cp-text)",
                     textTransform: "uppercase",
                     letterSpacing: "0.06em",
+                    paddingTop: 8,
                   }}
                 >
                   {DOW[dayIndex]}
                 </div>
-                <select
-                  value={kind}
-                  onChange={(e) => setDayKind(dayIndex, e.target.value as CustomDayKind)}
-                  aria-label={`${DOW[dayIndex]} session kind`}
-                  style={{
-                    padding: "8px 10px",
-                    fontSize: 14,
-                    color: isRest ? "var(--cp-text-muted)" : "var(--cp-text)",
-                  }}
-                >
-                  {optionGroups.map(([group, items]) =>
-                    group === "—" ? (
-                      items.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))
-                    ) : (
-                      <optgroup key={group} label={group}>
-                        {items.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ),
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: canEditDuration ? "1fr 110px" : "1fr",
+                      gap: 8,
+                      alignItems: "center",
+                    }}
+                  >
+                    <select
+                      value={kind}
+                      onChange={(e) => setDayKind(dayIndex, e.target.value as CustomDayKind)}
+                      aria-label={`${DOW[dayIndex]} session kind`}
+                      style={{
+                        padding: "8px 10px",
+                        fontSize: 14,
+                        color: isRest ? "var(--cp-text-muted)" : "var(--cp-text)",
+                      }}
+                    >
+                      {optionGroups.map(([group, items]) =>
+                        group === "—" ? (
+                          items.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))
+                        ) : (
+                          <optgroup key={group} label={group}>
+                            {items.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ),
+                      )}
+                    </select>
+                    {canEditDuration && (
+                      <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                        <input
+                          type="number"
+                          value={currentDuration}
+                          min={5}
+                          max={240}
+                          step={5}
+                          onChange={(e) => {
+                            const n = Number(e.target.value);
+                            if (Number.isNaN(n)) return;
+                            // If they typed the default, clear the override so it stays "default".
+                            setDayDuration(
+                              dayIndex,
+                              defaultDuration != null && n === defaultDuration ? undefined : n,
+                            );
+                          }}
+                          inputMode="numeric"
+                          aria-label={`${DOW[dayIndex]} duration in minutes`}
+                          className="mono"
+                          style={{ width: 70, padding: "8px 8px", fontSize: 14, textAlign: "right" }}
+                        />
+                        <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>min</span>
+                      </div>
+                    )}
+                  </div>
+                  {!isRest && option && (
+                    <div style={{ fontSize: 11, color: "var(--cp-text-muted)", lineHeight: 1.45 }}>
+                      {option.description}
+                    </div>
                   )}
-                </select>
+                </div>
               </div>
             );
           })}
