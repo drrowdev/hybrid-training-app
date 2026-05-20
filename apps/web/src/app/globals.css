@@ -30,8 +30,8 @@
   --cp-sheen: rgba(255, 255, 255, 0.55);
   --cp-highlight: rgba(101, 163, 13, 0.14);
 
-  --cp-font-sans: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
-  --cp-font-mono: Consolas, "Courier New", Courier, monospace;
+  --cp-font-sans: var(--font-manrope), "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  --cp-font-mono: var(--font-jetbrains-mono), Consolas, "Courier New", Courier, monospace;
 }
 
 html[data-theme="dark"] {
