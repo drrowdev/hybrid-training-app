@@ -107,6 +107,20 @@ export default async function TrainingMaxesPage() {
           <p style={{ margin: "4px 0 12px", fontSize: 12, color: "var(--cp-text-muted)" }}>
             Enter your 1RM and the app will derive the TM. Optional column overrides the default % just for that lift.
           </p>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 1.4fr) 110px 110px auto",
+              gap: 8,
+              padding: "0 0 6px",
+              alignItems: "end",
+            }}
+          >
+            <Label>Movement</Label>
+            <Label>1RM (kg)</Label>
+            <Label>TM% (optional)</Label>
+            <span />
+          </div>
           <div style={{ display: "grid", gap: 8 }}>
             {suggested.map((m) => (
               <QuickAddRow
@@ -131,48 +145,71 @@ export default async function TrainingMaxesPage() {
             display: "grid",
             gridTemplateColumns: "minmax(0, 1fr) 110px 110px auto",
             gap: 8,
-            alignItems: "center",
+            alignItems: "end",
           }}
         >
-          <select name="movementId" required aria-label="Movement" style={{ padding: "8px 10px", fontSize: 14 }}>
-            <option value="">— pick a movement —</option>
-            {(compounds ?? [])
-              .filter((m) => !existingMovementIds.has(m.id))
-              .map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.display_name}
-                </option>
-              ))}
-          </select>
-          <input
-            type="number"
-            name="oneRmKg"
-            step="0.5"
-            min="1"
-            max="1000"
-            placeholder="1RM kg"
-            inputMode="decimal"
-            required
-            aria-label="One rep max in kilograms"
-            className="mono"
-            style={{ width: "100%", padding: "8px 10px", fontSize: 14, textAlign: "right" }}
-          />
-          <input
-            type="number"
-            name="tmPercent"
-            step="0.5"
-            min="50"
-            max="100"
-            placeholder={`${ctx.defaultPercent}%`}
-            inputMode="decimal"
-            aria-label="Optional per-movement TM percent override"
-            className="mono"
-            style={{ width: "100%", padding: "8px 10px", fontSize: 14, textAlign: "right" }}
-          />
+          <div style={{ display: "grid", gap: 2 }}>
+            <Label>Movement</Label>
+            <select name="movementId" required aria-label="Movement" style={{ padding: "8px 10px", fontSize: 14 }}>
+              <option value="">— pick a movement —</option>
+              {(compounds ?? [])
+                .filter((m) => !existingMovementIds.has(m.id))
+                .map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.display_name}
+                  </option>
+                ))}
+            </select>
+          </div>
+          <div style={{ display: "grid", gap: 2 }}>
+            <Label>1RM (kg)</Label>
+            <input
+              type="number"
+              name="oneRmKg"
+              step="0.5"
+              min="1"
+              max="1000"
+              inputMode="decimal"
+              required
+              aria-label="One rep max in kilograms"
+              className="mono"
+              style={{ width: "100%", padding: "8px 10px", fontSize: 14, textAlign: "right" }}
+            />
+          </div>
+          <div style={{ display: "grid", gap: 2 }}>
+            <Label>TM% (optional)</Label>
+            <input
+              type="number"
+              name="tmPercent"
+              step="0.5"
+              min="50"
+              max="100"
+              placeholder={`${ctx.defaultPercent}`}
+              inputMode="decimal"
+              aria-label="Optional per-movement TM percent override"
+              className="mono"
+              style={{ width: "100%", padding: "8px 10px", fontSize: 14, textAlign: "right" }}
+            />
+          </div>
           <button type="submit" className="cp-btn primary">Add</button>
         </form>
       </section>
     </div>
+  );
+}
+
+function Label({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      style={{
+        fontSize: 10,
+        color: "var(--cp-text-muted)",
+        textTransform: "uppercase",
+        letterSpacing: "0.06em",
+      }}
+    >
+      {children}
+    </span>
   );
 }
 
@@ -299,7 +336,6 @@ function QuickAddRow({
         step="0.5"
         min="1"
         max="1000"
-        placeholder="1RM kg"
         inputMode="decimal"
         required
         aria-label={`1RM for ${movement.display_name}`}
@@ -312,7 +348,7 @@ function QuickAddRow({
         step="0.5"
         min="50"
         max="100"
-        placeholder={`${defaultPercent}%`}
+        placeholder={`${defaultPercent}`}
         inputMode="decimal"
         aria-label={`TM% override for ${movement.display_name} (optional)`}
         className="mono"
