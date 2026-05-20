@@ -9,6 +9,7 @@ import {
   getTrainingMaxContext,
   type TmRow,
 } from "@/lib/training-maxes/queries";
+import { DefaultTmPercentControl } from "@/components/training-maxes/DefaultTmPercentControl";
 
 const SUGGESTED_SLUGS = [
   "back_squat",
@@ -61,89 +62,29 @@ export default async function TrainingMaxesPage() {
 
       {/* ── Default TM% ────────────────────────────────────────── */}
       <section className="cp-card" style={{ padding: 20 }}>
-        <h2 style={{ margin: 0, fontSize: 16 }}>Default TM%</h2>
-        <p style={{ margin: "4px 0 12px", fontSize: 12, color: "var(--cp-text-muted)" }}>
-          Used for every lift unless you set a per-movement override below.
+        <h2 style={{ margin: 0, fontSize: 16 }}>
+          Default TM%
+          <span className="cp-info" tabIndex={0} aria-label="Why these presets">
+            i
+            <span className="pop" style={{ width: 320 }}>
+              The literature treats <strong>70–87.5% of true 1RM</strong> as the daily
+              strength work zone, with <strong>≥85%</strong> needed on the heaviest
+              exposure to drive strength adaptation (Bickel 2011, HIGH).
+              &gt;90% of 1RM is reserved for testing or short peaking blocks.
+              <br /><br />
+              The planner&apos;s intensity wave tops out at 95% of TM, so these presets
+              map directly to those three intents: 85 = below the strength-driving floor,
+              90 = right at it, 95 = into testing territory.
+            </span>
+          </span>
+        </h2>
+        <p style={{ margin: "4px 0 14px", fontSize: 12, color: "var(--cp-text-muted)" }}>
+          Used for every lift unless you set a per-movement override below. Pick a preset or fine-tune the number.
         </p>
-        <form action={setDefaultTmPercent} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <input
-            type="number"
-            name="percent"
-            step="0.5"
-            min="50"
-            max="100"
-            defaultValue={ctx.defaultPercent}
-            inputMode="decimal"
-            aria-label="Default training max percent"
-            required
-            className="mono"
-            style={{ width: 110, padding: "8px 10px", fontSize: 16, textAlign: "right" }}
-          />
-          <span style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>% of 1RM</span>
-          <button type="submit" className="cp-btn">Save default</button>
-        </form>
-        <div
-          style={{
-            marginTop: 14,
-            padding: "10px 12px",
-            background: "var(--cp-surface-soft)",
-            border: "1px solid var(--cp-border)",
-            borderRadius: 10,
-            fontSize: 12,
-            color: "var(--cp-text-muted)",
-            lineHeight: 1.55,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "baseline",
-              marginBottom: 6,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 10,
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                color: "var(--cp-text)",
-                fontWeight: 600,
-              }}
-            >
-              Suggested range — 89–92%
-              <span className="cp-info" tabIndex={0} aria-label="Why this range">
-                i
-                <span className="pop" style={{ width: 320 }}>
-                  The literature treats <strong>70–87.5% of true 1RM</strong> as the
-                  daily strength work zone, with <strong>≥85%</strong> needed on the heaviest
-                  exposure to drive strength adaptation (Bickel 2011, HIGH).
-                  &gt;90% of 1RM is reserved for testing or short peaking blocks.
-                  <br /><br />
-                  The planner&apos;s intensity wave tops out at 95% of TM, so a TM% of
-                  ~89–92% lands your top working set inside that 85–87.5% strength-driving band.
-                </span>
-              </span>
-            </div>
-          </div>
-          <div style={{ display: "grid", gap: 4 }}>
-            <div>
-              <span className="mono" style={{ color: "var(--cp-text)", fontWeight: 600 }}>85%</span>{" "}
-              · maintenance / cardio-emphasis. Top working set stays below the strength-driving
-              threshold — appropriate when conditioning leads and you&apos;re holding strength, not building.
-            </div>
-            <div>
-              <span className="mono" style={{ color: "var(--cp-text)", fontWeight: 600 }}>89–92%</span>{" "}
-              · balanced default. Top set lands right at 85–87.5% of 1RM — the daily strength zone.
-              Sustainable for long blocks under concurrent training load.
-            </div>
-            <div>
-              <span className="mono" style={{ color: "var(--cp-text)", fontWeight: 600 }}>93–95%</span>{" "}
-              · peaking / testing. Top set crosses into &gt;90% of 1RM, which the research reserves
-              for short 1–4 week peak windows. Don&apos;t live here.
-            </div>
-          </div>
-        </div>
+        <DefaultTmPercentControl
+          initialPercent={ctx.defaultPercent}
+          action={setDefaultTmPercent}
+        />
       </section>
 
       {/* ── Your maxes ─────────────────────────────────────────── */}
