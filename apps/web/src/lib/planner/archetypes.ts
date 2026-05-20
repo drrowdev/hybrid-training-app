@@ -11,7 +11,7 @@
 
 import type { PrescriptionItem, PrescriptionItemKind } from "@hta/db";
 
-export type ArchetypeId = "strength_anchor" | "endurance_anchor";
+export type ArchetypeId = "strength_anchor" | "endurance_anchor" | "rebuild";
 
 export type StrengthRole =
   | "squat"
@@ -62,7 +62,32 @@ export type CardioDay = {
   rank: number;
 };
 
-export type DayTemplate = StrengthDay | CardioDay;
+/**
+ * A dedicated tendon-loading day. Used by Rebuild and any archetype that
+ * follows Baar / Kongsgaard / Alfredson protocols.
+ *
+ * Prescriptions are fixed per archetype (not user-tuned via TMs): the loads
+ * are tempo-driven and self-selected in-session ("the weight that lets you
+ * keep the eccentric controlled for the full reps"), so we ship sets/reps +
+ * the protocol note and let the lifter pick the bar weight.
+ */
+export type TendonDay = {
+  kind: "tendon";
+  dayIndex: number;
+  role: string;
+  title: string;
+  movementSlug: string;
+  sets: number;
+  reps: number;
+  /** Plain-language load + tempo guidance (e.g. "70-80% 1RM, 3-0-3-0 tempo"). */
+  protocolNote: string;
+  /** Short tag shown on the card ("HSR knee", "Heavy isometric — knee", etc.). */
+  intensityLabel: string;
+  priority: DayPriority;
+  rank: number;
+};
+
+export type DayTemplate = StrengthDay | CardioDay | TendonDay;
 
 export type Archetype = {
   id: ArchetypeId;
@@ -311,9 +336,120 @@ export const ENDURANCE_ANCHOR: Archetype = {
   ],
 };
 
+/**
+ * Rebuild — return-to-training / post-injury safety block.
+ *
+ * The whole block sits below the strength-driving floor on purpose. Top set
+ * never crosses ~76% of true 1RM at TM 90%. The point is consistency + tissue
+ * adaptation, not progression. Tendon anchors run twice/wk per Kongsgaard's
+ * HSR protocol (3 sets × 8 reps @ 70-85% 1RM, 3-0-3-0 tempo) — equivalent
+ * tendinopathy outcomes to eccentric-only protocols with better adherence
+ * (Kongsgaard 2009 HIGH). Cardio is easy Z2 only — no threshold (DC-D7),
+ * no VO2 until the user transitions out of rebuild.
+ *
+ * Min frequency = 4 d/wk (the 2 tendon + 2 strength anchors). At higher
+ * frequency it adds easy Z2 days, never threshold or VO2.
+ *
+ * Rationale to ship now: every other archetype assumes a healthy athlete.
+ * Rebuild fills the genuinely distinct safety case + introduces the tendon
+ * day primitive that future archetypes can reuse.
+ */
+export const REBUILD: Archetype = {
+  id: "rebuild",
+  name: "Rebuild",
+  oneLiner:
+    "Return-to-training block for after an injury, layoff, or extended deload. Capped intensity (top set ≤80% TM), heavy slow resistance tendon work twice a week, easy Z2 for aerobic floor. Designed to load tissue safely, not to progress.",
+  weeks: 4,
+  days: [
+    {
+      kind: "tendon",
+      dayIndex: 0,
+      role: "hsr_knee",
+      title: "HSR — knee",
+      movementSlug: "hsr-leg-press",
+      sets: 3,
+      reps: 8,
+      protocolNote: "70–80% 1RM, 3-0-3-0 tempo, 3 min rest",
+      intensityLabel: "HSR knee",
+      priority: "anchor",
+      rank: 1,
+    },
+    {
+      kind: "strength",
+      dayIndex: 1,
+      role: "squat",
+      title: "Squat — light",
+      candidateSlugs: STRENGTH_ROLE_CANDIDATES.squat,
+      priority: "anchor",
+      rank: 3,
+    },
+    {
+      kind: "cardio",
+      dayIndex: 2,
+      role: "easy_z2",
+      title: "Easy Z2",
+      movementSlug: "bike-indoor-z2",
+      cardioKind: "cardio_z2",
+      durationMin: 30,
+      hrCap: "≤ 65% HRR, conversational",
+      priority: "optional",
+      rank: 5,
+    },
+    {
+      kind: "tendon",
+      dayIndex: 3,
+      role: "hsr_hinge",
+      title: "HSR — posterior chain",
+      movementSlug: "hsr-rdl",
+      sets: 3,
+      reps: 8,
+      protocolNote: "70–80% 1RM, 3-0-3-0 tempo, 3 min rest",
+      intensityLabel: "HSR hinge",
+      priority: "anchor",
+      rank: 2,
+    },
+    {
+      kind: "strength",
+      dayIndex: 4,
+      role: "deadlift",
+      title: "Deadlift — light",
+      candidateSlugs: STRENGTH_ROLE_CANDIDATES.deadlift,
+      priority: "anchor",
+      rank: 4,
+    },
+    {
+      kind: "cardio",
+      dayIndex: 5,
+      role: "easy_z2",
+      title: "Easy Z2",
+      movementSlug: "run-easy-z2",
+      cardioKind: "cardio_z2",
+      durationMin: 40,
+      hrCap: "≤ 65% HRR, conversational",
+      priority: "optional",
+      rank: 6,
+    },
+  ],
+  weekProfiles: [
+    // Flat intensity ramp — rebuild is about consistency, not progression.
+    { weekIndex: 0, setIntensities: [0.60, 0.65, 0.70], setReps: 5, intensityLabel: "Reload" },
+    { weekIndex: 1, setIntensities: [0.65, 0.70, 0.75], setReps: 5, intensityLabel: "Build" },
+    { weekIndex: 2, setIntensities: [0.65, 0.75, 0.80], setReps: 5, intensityLabel: "Consolidate" },
+    {
+      weekIndex: 3,
+      setIntensities: [0.50, 0.55, 0.60],
+      setReps: 5,
+      intensityLabel: "Deload",
+      strengthVolumeScale: 0.66,
+      z2DurationMinOverride: 25,
+    },
+  ],
+};
+
 export const ARCHETYPES: Record<ArchetypeId, Archetype> = {
   strength_anchor: STRENGTH_ANCHOR,
   endurance_anchor: ENDURANCE_ANCHOR,
+  rebuild: REBUILD,
 };
 
 export function roundToPlate(kg: number, increment = 2.5): number {
@@ -376,6 +512,20 @@ export function requiredCardioSlugs(archetype: Archetype): string[] {
   return Array.from(set);
 }
 
+/** Tendon movement slugs used by the archetype (fixed; not user-pickable). */
+export function requiredTendonSlugs(archetype: Archetype): string[] {
+  const set = new Set<string>();
+  for (const d of archetype.days) {
+    if (d.kind === "tendon") set.add(d.movementSlug);
+  }
+  return Array.from(set);
+}
+
+/** All non-strength slugs the archetype needs in the catalog. */
+export function requiredFixedSlugs(archetype: Archetype): string[] {
+  return Array.from(new Set([...requiredCardioSlugs(archetype), ...requiredTendonSlugs(archetype)]));
+}
+
 export function buildPrescription(
   archetype: Archetype,
   weekIndex: number,
@@ -404,6 +554,27 @@ export function buildPrescription(
     if (profile.strengthVolumeScale != null && profile.strengthVolumeScale < 1) {
       const keep = Math.max(1, Math.round(items.length * profile.strengthVolumeScale));
       return items.slice(0, keep);
+    }
+    return items;
+  }
+
+  if (day.kind === "tendon") {
+    // Tendon prescription is identical across non-deload weeks; deload halves
+    // the set count to keep the protocol while reducing total exposure.
+    const isDeload = profile.intensityLabel === "Deload";
+    const sets = isDeload ? Math.max(1, Math.ceil(day.sets / 2)) : day.sets;
+    const items: PrescriptionItem[] = [];
+    for (let i = 0; i < sets; i++) {
+      items.push({
+        movementId: movement.id,
+        movementSlug: movement.slug,
+        movementName: movement.displayName,
+        kind: "tendon",
+        sets: 1,
+        reps: day.reps,
+        intensityLabel: day.intensityLabel,
+        notes: day.protocolNote,
+      });
     }
     return items;
   }
@@ -451,6 +622,11 @@ export function formatPrescriptionItem(item: PrescriptionItem, tmKg?: number): s
     else if (item.hrCap) parts.push(item.hrCap);
     return parts.join(" · ") || "cardio";
   }
+  if (item.kind === "tendon") {
+    const reps = item.reps != null ? `× ${item.reps}` : "";
+    const note = item.notes ? ` · ${item.notes}` : "";
+    return `${item.intensityLabel ?? "Tendon"} ${reps}${note}`.trim();
+  }
   const weight =
     item.percentTm != null && tmKg
       ? `${roundToPlate(tmKg * (item.percentTm / 100))} kg`
@@ -470,6 +646,11 @@ export function summarisePrescription(items: PrescriptionItem[]): string {
     const totalMin = cardio.reduce((a, i) => a + (i.durationMin ?? 0), 0);
     const labels = Array.from(new Set(cardio.map((i) => i.intensityLabel ?? "cardio")));
     return `${totalMin} min · ${labels.join(" + ")}`;
+  }
+  const tendon = items.filter((i) => i.kind === "tendon");
+  if (tendon.length > 0 && tendon.length === items.length) {
+    const label = tendon[0]?.intensityLabel ?? "Tendon";
+    return `${tendon.length} × ${tendon[0]?.reps ?? "?"} · ${label}`;
   }
   const pcts = items.filter((i) => i.percentTm != null).map((i) => i.percentTm!);
   if (pcts.length > 0) {

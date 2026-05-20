@@ -12,12 +12,16 @@ import {
   buildPrescription,
   daysForFrequency,
   minDaysForArchetype,
-  requiredCardioSlugs,
+  requiredFixedSlugs,
   STRENGTH_ROLE_LABELS,
 } from "./archetypes";
 
 const createBlockSchema = z.object({
-  archetype: z.enum(["strength_anchor", "endurance_anchor"] satisfies [ArchetypeId, ...ArchetypeId[]]),
+  archetype: z.enum([
+    "strength_anchor",
+    "endurance_anchor",
+    "rebuild",
+  ] satisfies [ArchetypeId, ...ArchetypeId[]]),
   startedOn: z.string().date(),
   daysPerWeek: z.coerce.number().int().min(2).max(7),
 });
@@ -57,12 +61,11 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       error: `${archetype.name} needs at least ${minDays} training days/week.`,
     };
   }
-  // The list of days that will actually run at the chosen frequency.
   const activeDays = daysForFrequency(archetype, parsed.data.daysPerWeek);
 
   const candidateSlugs = allCandidateLiftSlugs(archetype);
-  const cardioSlugs = requiredCardioSlugs(archetype);
-  const allSlugs = Array.from(new Set([...candidateSlugs, ...cardioSlugs]));
+  const fixedSlugs = requiredFixedSlugs(archetype);
+  const allSlugs = Array.from(new Set([...candidateSlugs, ...fixedSlugs]));
 
   const { data: movements, error: mvErr } = await supabase
     .from("movements")
@@ -74,11 +77,11 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
 
   const movementBySlug = new Map((movements ?? []).map((m) => [m.slug, m]));
 
-  const missingCardio = cardioSlugs.filter((s) => !movementBySlug.has(s));
-  if (missingCardio.length > 0) {
+  const missingFixed = fixedSlugs.filter((s) => !movementBySlug.has(s));
+  if (missingFixed.length > 0) {
     return {
       ok: false,
-      error: `Catalog is missing cardio movements: ${missingCardio.join(", ")}. Re-seed movements.`,
+      error: `Catalog is missing required movements: ${missingFixed.join(", ")}. Re-seed movements.`,
     };
   }
 
@@ -153,7 +156,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
         const resolvedMv = resolved.get(day.dayIndex);
         if (!resolvedMv) continue;
         movement = { id: resolvedMv.movementId, slug: resolvedMv.slug, displayName: resolvedMv.displayName };
-      } else {
+      } else if (day.kind === "cardio") {
         const mv = movementBySlug.get(day.movementSlug);
         if (!mv) continue;
         movement = { id: mv.id, slug: mv.slug, displayName: mv.display_name };
@@ -161,6 +164,11 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
           const fin = movementBySlug.get(day.finisher.movementSlug);
           if (fin) finisherMovement = { id: fin.id, slug: fin.slug, displayName: fin.display_name };
         }
+      } else {
+        // tendon
+        const mv = movementBySlug.get(day.movementSlug);
+        if (!mv) continue;
+        movement = { id: mv.id, slug: mv.slug, displayName: mv.display_name };
       }
 
       const items = buildPrescription(archetype, week, day, movement, finisherMovement);
