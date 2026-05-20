@@ -66,15 +66,19 @@ export default async function TrainingMaxesPage() {
           Default TM%
           <span className="cp-info" tabIndex={0} aria-label="Why these presets">
             i
-            <span className="pop" style={{ width: 320 }}>
+            <span className="pop" style={{ width: 340 }}>
               The literature treats <strong>70–87.5% of true 1RM</strong> as the daily
               strength work zone, with <strong>≥85%</strong> needed on the heaviest
-              exposure to drive strength adaptation (Bickel 2011, HIGH).
+              exposure to maintain strength (Bickel 2011, HIGH).
               &gt;90% of 1RM is reserved for testing or short peaking blocks.
               <br /><br />
-              The planner&apos;s intensity wave tops out at 95% of TM, so these presets
-              map directly to those three intents: 85 = below the strength-driving floor,
-              90 = right at it, 95 = into testing territory.
+              The planner&apos;s intensity wave tops out at 95% of TM, so:
+              <br />
+              · <strong>TM 85%</strong> → top set ≈ 81% of 1RM (below maintenance floor)
+              <br />
+              · <strong>TM 90%</strong> → top set ≈ 85.5% of 1RM (right at the floor)
+              <br />
+              · <strong>TM 95%</strong> → top set ≈ 90.25% of 1RM (testing/peaking)
             </span>
           </span>
         </h2>

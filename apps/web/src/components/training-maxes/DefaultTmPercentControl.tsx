@@ -12,21 +12,21 @@ type Preset = {
 const PRESETS: Preset[] = [
   {
     percent: 85,
-    label: "Maintain",
+    label: "De-emphasise",
     description:
-      "Cardio-led blocks. Top working set lands below the strength-driving threshold — strength may drift slightly.",
+      "Cardio-led blocks. Top working set lands below the strength-maintenance threshold — strength drifts down. Pick this only if you're consciously trading strength for cardio.",
   },
   {
     percent: 90,
-    label: "Default",
+    label: "Maintain / build",
     description:
-      "Balanced concurrent training. Top set lands right at the strength-driving threshold. Sustainable for long blocks.",
+      "Default for hybrid training. Top set lands right at the strength-driving threshold. Maintains or builds strength depending on your volume — same intensity floor either way.",
   },
   {
     percent: 95,
-    label: "Peak",
+    label: "Peak / test",
     description:
-      "Short 1–4 week testing or peaking windows. Top set crosses into >90% of 1RM. Don't live here.",
+      "Short 1–4 week peaking or testing windows only. Top set crosses into >90% of 1RM. Don't live here.",
   },
 ];
 
