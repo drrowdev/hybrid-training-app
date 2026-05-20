@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { useFormStatus } from "react-dom";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import type { ArchetypeId } from "@/lib/planner/archetypes";
 
 export type ArchetypeOption = {
@@ -24,14 +24,35 @@ export function ArchetypePicker({
 }: {
   options: ArchetypeOption[];
   defaultStartedOn: string;
-  action: (fd: FormData) => Promise<void> | void;
+  action: (fd: FormData) => Promise<{ ok: true } | { ok: false; error: string }>;
 }) {
   const defaultId = options.find((o) => o.tmReady)?.id ?? options[0]?.id ?? "strength_anchor";
   const [selectedId, setSelectedId] = useState<ArchetypeId>(defaultId);
+  const [startedOn, setStartedOn] = useState<string>(defaultStartedOn);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
   const selected = options.find((o) => o.id === selectedId) ?? options[0];
 
+  const submit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+    const fd = new FormData();
+    fd.set("archetype", selectedId);
+    fd.set("startedOn", startedOn);
+    startTransition(async () => {
+      const result = await action(fd);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      router.push("/app/plan");
+      router.refresh();
+    });
+  };
+
   return (
-    <form action={action} style={{ display: "grid", gap: 18 }}>
+    <form onSubmit={submit} style={{ display: "grid", gap: 18 }}>
       <section className="cp-card" style={{ padding: 20 }}>
         <h2 style={{ margin: 0, fontSize: 16 }}>Choose an archetype</h2>
         <p style={{ margin: "4px 0 14px", fontSize: 12, color: "var(--cp-text-muted)" }}>
@@ -106,14 +127,12 @@ export function ArchetypePicker({
         </div>
       </section>
 
-      <input type="hidden" name="archetype" value={selectedId} />
-
       <section className="cp-card" style={{ padding: 20, display: "grid", gap: 12 }}>
         <h2 style={{ margin: 0, fontSize: 16 }}>Start date</h2>
         <input
           type="date"
-          name="startedOn"
-          defaultValue={defaultStartedOn}
+          value={startedOn}
+          onChange={(e) => setStartedOn(e.target.value)}
           required
           style={{ padding: "8px 10px", fontSize: 14, width: "fit-content" }}
         />
@@ -147,19 +166,31 @@ export function ArchetypePicker({
             </Link>
           </div>
         )}
+        {error && (
+          <div
+            role="alert"
+            style={{
+              fontSize: 13,
+              color: "var(--cp-danger)",
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid var(--cp-danger)",
+              background: "color-mix(in oklab, var(--cp-danger) 8%, transparent)",
+            }}
+          >
+            Couldn&apos;t create the block: {error}
+          </div>
+        )}
         <div>
-          <StartButton disabled={selected ? !selected.tmReady : true} weeks={selected?.weeks ?? 4} />
+          <button
+            type="submit"
+            className="cp-btn primary big"
+            disabled={(selected ? !selected.tmReady : true) || isPending}
+          >
+            {isPending ? "Generating…" : `Generate ${selected?.weeks ?? 4}-week block →`}
+          </button>
         </div>
       </section>
     </form>
-  );
-}
-
-function StartButton({ disabled, weeks }: { disabled: boolean; weeks: number }) {
-  const { pending } = useFormStatus();
-  return (
-    <button type="submit" className="cp-btn primary big" disabled={disabled || pending}>
-      {pending ? "Generating…" : `Generate ${weeks}-week block →`}
-    </button>
   );
 }
