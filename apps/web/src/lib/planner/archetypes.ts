@@ -220,7 +220,7 @@ export const ENDURANCE_ANCHOR: Archetype = {
   id: "endurance_anchor",
   name: "Endurance Anchor",
   oneLiner:
-    "Cardio-led concurrent training. Five aerobic exposures per week (polarized 80/20: easy Z2 + 1× VO2 intervals), two strength maintenance days (your choice of squat and deadlift variant) using heavy low-volume work to keep strength from drifting.",
+    "Cardio-led concurrent training. Polarized aerobic exposures (long Z2 + VO2 intervals) anchor the week. Two strength maintenance days (your choice of squat and deadlift variant) keep strength from drifting; extra easy-Z2 days are added when the budget allows.",
   weeks: 4,
   days: [
     {
