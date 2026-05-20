@@ -71,8 +71,9 @@ export function ArchetypePicker({
       <section className="cp-card" style={{ padding: 20 }}>
         <h2 style={{ margin: 0, fontSize: 16 }}>Training days this block</h2>
         <p style={{ margin: "4px 0 12px", fontSize: 12, color: "var(--cp-text-muted)" }}>
-          How many days you can realistically train each week. Drops optional cardio first
-          when the budget is tight; anchors stay regardless.
+          How many days you can realistically train each week. Each archetype keeps its own
+          anchor days first — Strength Anchor protects the four main lifts; Endurance Anchor
+          protects the long run + VO2 day. Optional sessions are dropped to fit the budget.
         </p>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {FREQ_OPTIONS.map((n) => {
