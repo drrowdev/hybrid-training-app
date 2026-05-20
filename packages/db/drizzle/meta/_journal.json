@@ -71,6 +71,13 @@
       "when": 1779260000000,
       "tag": "0009_training_max_model",
       "breakpoints": false
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1779267000000,
+      "tag": "0010_grants_for_planner_and_tm",
+      "breakpoints": false
     }
   ]
 }
