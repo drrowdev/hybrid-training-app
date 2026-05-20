@@ -1,13 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { useFormStatus } from "react-dom";
+import { useEffect, useRef, useState, useTransition } from "react";
 
-type Preset = {
-  percent: number;
-  label: string;
-  description: string;
-};
+type Status = "idle" | "saving" | "saved" | "error";
+type Preset = { percent: number; label: string; description: string };
 
 const PRESETS: Preset[] = [
   {
@@ -30,17 +26,60 @@ const PRESETS: Preset[] = [
   },
 ];
 
+const DEBOUNCE_MS = 600;
+
 export function DefaultTmPercentControl({
   initialPercent,
   action,
 }: {
   initialPercent: number;
-  action: (fd: FormData) => Promise<void> | void;
+  action: (fd: FormData) => Promise<unknown>;
 }) {
   const [value, setValue] = useState<number>(initialPercent);
+  const [status, setStatus] = useState<Status>("idle");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSaved = useRef<number>(initialPercent);
+  const [, startTransition] = useTransition();
+
+  // Persist a change after debounce.
+  useEffect(() => {
+    if (value === lastSaved.current) return;
+    if (!Number.isFinite(value) || value <= 0 || value > 100) return;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      const fd = new FormData();
+      fd.set("percent", String(value));
+      setStatus("saving");
+      setErrorMsg(null);
+      startTransition(async () => {
+        try {
+          const result = (await action(fd)) as
+            | undefined
+            | void
+            | { ok: true }
+            | { ok: false; error: string };
+          if (result && typeof result === "object" && "ok" in result && result.ok === false) {
+            setStatus("error");
+            setErrorMsg(result.error);
+            return;
+          }
+          lastSaved.current = value;
+          setStatus("saved");
+          window.setTimeout(() => setStatus((s) => (s === "saved" ? "idle" : s)), 1800);
+        } catch (e) {
+          setStatus("error");
+          setErrorMsg(e instanceof Error ? e.message : "Failed to save");
+        }
+      });
+    }, DEBOUNCE_MS);
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, [value, action]);
 
   return (
-    <form action={action} style={{ display: "grid", gap: 14 }}>
+    <div style={{ display: "grid", gap: 14 }}>
       <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(3, 1fr)" }}>
         {PRESETS.map((p) => {
           const selected = value === p.percent;
@@ -102,7 +141,6 @@ export function DefaultTmPercentControl({
         <input
           id="percent"
           type="number"
-          name="percent"
           step="0.5"
           min="50"
           max="100"
@@ -118,17 +156,41 @@ export function DefaultTmPercentControl({
           style={{ width: 110, padding: "8px 10px", fontSize: 16, textAlign: "right" }}
         />
         <span style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>% of 1RM</span>
-        <SaveButton />
+        <StatusBadge status={status} errorMsg={errorMsg} />
       </div>
-    </form>
+
+      {status === "error" && errorMsg && (
+        <div
+          role="alert"
+          style={{
+            fontSize: 12,
+            color: "var(--cp-danger)",
+            padding: "6px 10px",
+            borderRadius: 8,
+            background: "color-mix(in oklab, var(--cp-danger) 8%, transparent)",
+            border: "1px solid var(--cp-danger)",
+          }}
+        >
+          Couldn&apos;t save: {errorMsg}
+        </div>
+      )}
+    </div>
   );
 }
 
-function SaveButton() {
-  const { pending } = useFormStatus();
+function StatusBadge({ status, errorMsg }: { status: Status; errorMsg: string | null }) {
+  if (status === "idle") {
+    return <span style={{ fontSize: 11, color: "transparent" }}>·</span>;
+  }
+  if (status === "saving") {
+    return <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>saving…</span>;
+  }
+  if (status === "saved") {
+    return <span style={{ fontSize: 11, color: "var(--cp-success)", fontWeight: 600 }}>✓ saved</span>;
+  }
   return (
-    <button type="submit" className="cp-btn primary" disabled={pending}>
-      {pending ? "Saving…" : "Save default"}
-    </button>
+    <span title={errorMsg ?? undefined} style={{ fontSize: 11, color: "var(--cp-danger)", fontWeight: 600 }}>
+      ✗ failed
+    </span>
   );
 }

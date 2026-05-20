@@ -64,9 +64,11 @@ const defaultPercentSchema = z.object({
   percent: z.coerce.number().positive().lte(100),
 });
 
-export async function setDefaultTmPercent(formData: FormData): Promise<void> {
+export async function setDefaultTmPercent(formData: FormData): Promise<UpsertResult> {
   const parsed = defaultPercentSchema.safeParse({ percent: formData.get("percent") });
-  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid percent");
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid percent" };
+  }
 
   const supabase = await createClient();
   const {
@@ -78,10 +80,13 @@ export async function setDefaultTmPercent(formData: FormData): Promise<void> {
     .from("profiles")
     .update({ tm_percent_default: parsed.data.percent })
     .eq("id", user.id);
-  if (error) throw new Error(error.message);
+  if (error) {
+    return { ok: false, error: error.message };
+  }
 
   revalidatePath("/app/settings/training-maxes");
   revalidatePath("/app");
   revalidatePath("/app/plan");
+  return { ok: true };
 }
 
