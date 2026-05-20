@@ -99,7 +99,7 @@ export default async function TodayPage() {
           <>
             <h2 style={{ fontSize: 22, margin: 0 }}>Start a session</h2>
             <p style={{ color: "var(--cp-text-muted)", margin: 0, fontSize: 14 }}>
-              Once you start one, the engine will tailor recommendations to the regions you've trained recently.
+              Once you start one, the engine will tailor recommendations to the regions you have trained recently.
             </p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <Link href="/app/sessions/new" className="cp-btn primary big">

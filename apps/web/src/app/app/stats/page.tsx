@@ -13,6 +13,7 @@ export default async function StatsPage() {
   const completed = (all ?? []).filter((s) => s.completed_at);
   const total = completed.length;
   const last30 = completed.filter(
+    // eslint-disable-next-line react-hooks/purity -- server-rendered "30 days ago" anchor
     (s) => Date.now() - new Date(s.performed_at).getTime() < 30 * 86_400_000,
   ).length;
   const rpeSamples = completed.filter((s) => s.session_rpe);

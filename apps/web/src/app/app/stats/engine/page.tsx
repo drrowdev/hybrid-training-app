@@ -3,7 +3,9 @@ import { getRegionFreshness, type FreshnessRow } from "@/lib/engine/freshness";
 // Plain-language status from freshness ratio.
 function statusFor(f: number, lastLoadDate: string | null): string {
   const days = lastLoadDate
-    ? Math.floor((Date.now() - new Date(lastLoadDate + "T00:00:00").getTime()) / 86_400_000)
+    ? Math.floor(
+        (Date.now() - new Date(lastLoadDate + "T00:00:00").getTime()) / 86_400_000,
+      )
     : null;
   if (f >= 0.85) return days != null && days < 1 ? "fresh" : "fully recovered";
   if (f >= 0.6) return "moderate";

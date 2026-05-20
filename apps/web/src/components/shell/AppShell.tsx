@@ -177,6 +177,7 @@ function ThemeToggle() {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   useEffect(() => {
     const current = document.documentElement.getAttribute("data-theme");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate from the DOM after the pre-paint bootstrap
     setTheme(current === "dark" ? "dark" : "light");
   }, []);
   const flip = () => {

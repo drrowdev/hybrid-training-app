@@ -55,7 +55,7 @@ export default async function TrainingMaxesPage() {
         <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
           A training max (TM) is a deliberate underestimate of your 1RM, used as the
           reference number for percentage-based prescription. Stays stable across a block,
-          then revisits at deload. Each TM lets the Log show "X% of TM" next to the weight.
+          then revisits at deload. Each TM lets the Log show &quot;X% of TM&quot; next to the weight.
         </p>
       </header>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { MovementPicker, type MovementSearchResult } from "@/components/movement-picker";
 
@@ -79,6 +79,7 @@ export function SessionLogClient({
 
   const [active, setActive] = useState<ActiveMovement | null>(defaultActive);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync local active with new server data after a set is logged
     if (!active && defaultActive) setActive(defaultActive);
   }, [active, defaultActive]);
 
@@ -110,9 +111,11 @@ export function SessionLogClient({
       }
       return null;
     })();
+    /* eslint-disable react-hooks/set-state-in-effect -- snap entry defaults to the freshly-active movement */
     setWeight(lastForThis?.weight_kg ? Number(lastForThis.weight_kg) : 0);
     setReps(lastForThis?.reps ?? 5);
     setRpe(null);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [active, sets]);
 
   const tmKg = active ? tmBySlug[active.slug] : undefined;
