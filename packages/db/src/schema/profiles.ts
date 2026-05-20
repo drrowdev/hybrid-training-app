@@ -38,6 +38,8 @@ export const profiles = pgTable("profiles", {
   tmPercentDefault: numeric("tm_percent_default", { precision: 4, scale: 1 })
     .default("90.0")
     .notNull(),
+  /** How many days/week the user can realistically train. Drives archetype fit. */
+  trainingDaysPerWeek: smallint("training_days_per_week").default(4).notNull(),
   intake: jsonb("intake").$type<Record<string, unknown>>().default({}).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)

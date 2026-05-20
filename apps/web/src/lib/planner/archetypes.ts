@@ -28,6 +28,8 @@ export type WeekProfile = {
   z2DurationMinOverride?: number;
 };
 
+export type DayPriority = "anchor" | "optional";
+
 export type StrengthDay = {
   kind: "strength";
   dayIndex: number;
@@ -35,6 +37,10 @@ export type StrengthDay = {
   title: string;
   /** Acceptable movement slugs in preference order. The first one with a TM set wins. */
   candidateSlugs: string[];
+  /** anchor = required to keep the archetype's identity; optional = dropped first at lower frequencies. */
+  priority: DayPriority;
+  /** Lower = kept longer. Tiebreak between optional days when trimming for capacity. */
+  rank: number;
 };
 
 export type CardioDay = {
@@ -52,6 +58,8 @@ export type CardioDay = {
     durationMin: number;
     protocolNote: string;
   };
+  priority: DayPriority;
+  rank: number;
 };
 
 export type DayTemplate = StrengthDay | CardioDay;
@@ -123,6 +131,8 @@ const STRENGTH_DAYS: StrengthDay[] = [
     role: "squat",
     title: "Squat day",
     candidateSlugs: STRENGTH_ROLE_CANDIDATES.squat,
+    priority: "anchor",
+    rank: 1,
   },
   {
     kind: "strength",
@@ -130,6 +140,8 @@ const STRENGTH_DAYS: StrengthDay[] = [
     role: "horizontal_press",
     title: "Bench day",
     candidateSlugs: STRENGTH_ROLE_CANDIDATES.horizontal_press,
+    priority: "anchor",
+    rank: 2,
   },
   {
     kind: "strength",
@@ -137,6 +149,8 @@ const STRENGTH_DAYS: StrengthDay[] = [
     role: "deadlift",
     title: "Deadlift day",
     candidateSlugs: STRENGTH_ROLE_CANDIDATES.deadlift,
+    priority: "anchor",
+    rank: 3,
   },
   {
     kind: "strength",
@@ -144,6 +158,8 @@ const STRENGTH_DAYS: StrengthDay[] = [
     role: "vertical_press",
     title: "Overhead press day",
     candidateSlugs: STRENGTH_ROLE_CANDIDATES.vertical_press,
+    priority: "anchor",
+    rank: 4,
   },
 ];
 
@@ -164,6 +180,8 @@ export const STRENGTH_ANCHOR: Archetype = {
       cardioKind: "cardio_z2",
       durationMin: 45,
       hrCap: "≤ 70% HRR, conversational",
+      priority: "optional",
+      rank: 5,
     },
     {
       kind: "cardio",
@@ -179,6 +197,8 @@ export const STRENGTH_ANCHOR: Archetype = {
         durationMin: 10,
         protocolNote: "6–10 × 10–15s near-max, walk-down recovery",
       },
+      priority: "optional",
+      rank: 6,
     },
   ],
   weekProfiles: [
@@ -212,6 +232,8 @@ export const ENDURANCE_ANCHOR: Archetype = {
       cardioKind: "cardio_z2",
       durationMin: 60,
       hrCap: "≤ 70% HRR, conversational",
+      priority: "optional",
+      rank: 6,
     },
     {
       kind: "strength",
@@ -219,6 +241,8 @@ export const ENDURANCE_ANCHOR: Archetype = {
       role: "squat",
       title: "Squat maintenance",
       candidateSlugs: STRENGTH_ROLE_CANDIDATES.squat,
+      priority: "anchor",
+      rank: 3,
     },
     {
       kind: "cardio",
@@ -234,6 +258,8 @@ export const ENDURANCE_ANCHOR: Archetype = {
         durationMin: 10,
         protocolNote: "6–8 × 10–15s near-max, 1:10 rest",
       },
+      priority: "optional",
+      rank: 5,
     },
     {
       kind: "strength",
@@ -241,6 +267,8 @@ export const ENDURANCE_ANCHOR: Archetype = {
       role: "deadlift",
       title: "Deadlift maintenance",
       candidateSlugs: STRENGTH_ROLE_CANDIDATES.deadlift,
+      priority: "anchor",
+      rank: 4,
     },
     {
       kind: "cardio",
@@ -252,6 +280,8 @@ export const ENDURANCE_ANCHOR: Archetype = {
       durationMin: 35,
       hrCap: "90–95% HRmax during work",
       protocolNote: "4 × 4 min @ 90–95% HRmax, 3 min easy recovery",
+      priority: "anchor",
+      rank: 2,
     },
     {
       kind: "cardio",
@@ -262,6 +292,8 @@ export const ENDURANCE_ANCHOR: Archetype = {
       cardioKind: "cardio_z2",
       durationMin: 100,
       hrCap: "≤ 70% HRR, conversational",
+      priority: "anchor",
+      rank: 1,
     },
   ],
   weekProfiles: [
@@ -286,6 +318,33 @@ export const ARCHETYPES: Record<ArchetypeId, Archetype> = {
 
 export function roundToPlate(kg: number, increment = 2.5): number {
   return Math.round(kg / increment) * increment;
+}
+
+/** Anchor day count = the minimum frequency at which the archetype is viable. */
+export function minDaysForArchetype(archetype: Archetype): number {
+  return archetype.days.filter((d) => d.priority === "anchor").length;
+}
+
+/** Total day count when the archetype is run at full frequency. */
+export function maxDaysForArchetype(archetype: Archetype): number {
+  return archetype.days.length;
+}
+
+/**
+ * Pick which of the archetype's days run, given a target frequency.
+ * Always keeps every anchor; adds optionals in rank order until the budget is hit.
+ * If `daysPerWeek` is below minDaysForArchetype the result will still include all anchors —
+ * the wizard should refuse to allow this case, but we don't crash.
+ */
+export function daysForFrequency(archetype: Archetype, daysPerWeek: number): DayTemplate[] {
+  const anchors = archetype.days.filter((d) => d.priority === "anchor");
+  const optionals = archetype.days
+    .filter((d) => d.priority === "optional")
+    .sort((a, b) => a.rank - b.rank);
+  const budget = Math.max(0, daysPerWeek - anchors.length);
+  const chosen = [...anchors, ...optionals.slice(0, budget)];
+  // Stable order by dayIndex so the week renders Mon → Sun.
+  return chosen.sort((a, b) => a.dayIndex - b.dayIndex);
 }
 
 /** All strength roles the archetype needs (deduped). */

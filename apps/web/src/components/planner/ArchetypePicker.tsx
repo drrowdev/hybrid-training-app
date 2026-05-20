@@ -10,29 +10,42 @@ export type ArchetypeOption = {
   name: string;
   oneLiner: string;
   weeks: number;
-  daysCount: number;
+  /** Minimum days/week the archetype can run at (= number of anchor days). */
+  minDays: number;
+  /** Maximum days/week (= total days defined). */
+  maxDays: number;
   weekLabels: string[];
   tmReady: boolean;
   missingRoles: string[];
   chosenLifts: { role: string; movement: string }[];
 };
 
+const FREQ_OPTIONS = [3, 4, 5, 6, 7];
+
 export function ArchetypePicker({
   options,
   defaultStartedOn,
+  defaultDaysPerWeek,
+  dayPreviewByArchetype,
   action,
 }: {
   options: ArchetypeOption[];
   defaultStartedOn: string;
+  defaultDaysPerWeek: number;
+  dayPreviewByArchetype: Record<string, Record<number, { strength: number; cardio: number }>>;
   action: (fd: FormData) => Promise<{ ok: true } | { ok: false; error: string }>;
 }) {
-  const defaultId = options.find((o) => o.tmReady)?.id ?? options[0]?.id ?? "strength_anchor";
-  const [selectedId, setSelectedId] = useState<ArchetypeId>(defaultId);
+  const [daysPerWeek, setDaysPerWeek] = useState<number>(defaultDaysPerWeek);
+
+  const archetypesFit = (opt: ArchetypeOption) => daysPerWeek >= opt.minDays;
+  const initialFitting = options.find((o) => o.tmReady && archetypesFit(o)) ?? options.find(archetypesFit) ?? options[0];
+  const [selectedId, setSelectedId] = useState<ArchetypeId>(initialFitting?.id ?? "strength_anchor");
   const [startedOn, setStartedOn] = useState<string>(defaultStartedOn);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
   const selected = options.find((o) => o.id === selectedId) ?? options[0];
+  const selectedFits = selected ? archetypesFit(selected) : false;
 
   const submit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -40,6 +53,7 @@ export function ArchetypePicker({
     const fd = new FormData();
     fd.set("archetype", selectedId);
     fd.set("startedOn", startedOn);
+    fd.set("daysPerWeek", String(daysPerWeek));
     startTransition(async () => {
       const result = await action(fd);
       if (!result.ok) {
@@ -53,6 +67,41 @@ export function ArchetypePicker({
 
   return (
     <form onSubmit={submit} style={{ display: "grid", gap: 18 }}>
+      {/* ── Days/week chip selector ────────────────────────── */}
+      <section className="cp-card" style={{ padding: 20 }}>
+        <h2 style={{ margin: 0, fontSize: 16 }}>Training days this block</h2>
+        <p style={{ margin: "4px 0 12px", fontSize: 12, color: "var(--cp-text-muted)" }}>
+          How many days you can realistically train each week. Drops optional cardio first
+          when the budget is tight; anchors stay regardless.
+        </p>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {FREQ_OPTIONS.map((n) => {
+            const sel = n === daysPerWeek;
+            return (
+              <button
+                type="button"
+                key={n}
+                onClick={() => setDaysPerWeek(n)}
+                aria-pressed={sel}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 999,
+                  border: `1px solid ${sel ? "var(--cp-accent)" : "var(--cp-border)"}`,
+                  background: sel ? "var(--cp-accent-soft)" : "var(--cp-surface)",
+                  color: sel ? "var(--cp-accent)" : "var(--cp-text)",
+                  fontWeight: sel ? 600 : 500,
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                {n} d/wk
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ── Archetype cards ────────────────────────────────── */}
       <section className="cp-card" style={{ padding: 20 }}>
         <h2 style={{ margin: 0, fontSize: 16 }}>Choose an archetype</h2>
         <p style={{ margin: "4px 0 14px", fontSize: 12, color: "var(--cp-text-muted)" }}>
@@ -61,6 +110,9 @@ export function ArchetypePicker({
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 10 }}>
           {options.map((opt) => {
             const isSelected = opt.id === selectedId;
+            const fits = archetypesFit(opt);
+            const preview = dayPreviewByArchetype[opt.id]?.[daysPerWeek];
+            const cardOpacity = fits ? 1 : 0.55;
             return (
               <button
                 type="button"
@@ -77,13 +129,20 @@ export function ArchetypePicker({
                   cursor: "pointer",
                   display: "grid",
                   gap: 10,
+                  opacity: cardOpacity,
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
                   <h3 style={{ margin: 0, fontSize: 15 }}>{opt.name}</h3>
-                  <span className="cp-pill">
-                    {opt.weeks} weeks · {opt.daysCount} d/wk
-                  </span>
+                  {fits && preview ? (
+                    <span className="cp-pill">
+                      {opt.weeks} wk · {preview.strength}S + {preview.cardio}C
+                    </span>
+                  ) : (
+                    <span className="cp-pill" style={{ color: "var(--cp-danger)", borderColor: "var(--cp-danger)" }}>
+                      needs {opt.minDays}+ d/wk
+                    </span>
+                  )}
                 </div>
                 <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
                   {opt.oneLiner}
@@ -105,12 +164,12 @@ export function ArchetypePicker({
                     </span>
                   ))}
                 </div>
-                {!opt.tmReady && (
+                {fits && !opt.tmReady && (
                   <div style={{ fontSize: 11, color: "var(--cp-danger)" }}>
                     Needs a TM for: {opt.missingRoles.join(", ")}
                   </div>
                 )}
-                {opt.tmReady && opt.chosenLifts.length > 0 && (
+                {fits && opt.tmReady && opt.chosenLifts.length > 0 && (
                   <div style={{ fontSize: 11, color: "var(--cp-text-muted)", lineHeight: 1.4 }}>
                     Will use:{" "}
                     {opt.chosenLifts.map((c, i) => (
@@ -127,6 +186,7 @@ export function ArchetypePicker({
         </div>
       </section>
 
+      {/* ── Start date + submit ────────────────────────────── */}
       <section className="cp-card" style={{ padding: 20, display: "grid", gap: 12 }}>
         <h2 style={{ margin: 0, fontSize: 16 }}>Start date</h2>
         <input
@@ -139,7 +199,22 @@ export function ArchetypePicker({
         <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
           The block snaps to the Monday of the chosen week.
         </div>
-        {selected && !selected.tmReady && (
+        {selected && !selectedFits && (
+          <div
+            style={{
+              fontSize: 13,
+              color: "var(--cp-danger)",
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid var(--cp-danger)",
+              background: "color-mix(in oklab, var(--cp-danger) 8%, transparent)",
+            }}
+          >
+            <strong>{selected.name}</strong> needs at least {selected.minDays} training days/week.
+            Pick a higher day-count or a different archetype.
+          </div>
+        )}
+        {selected && selectedFits && !selected.tmReady && (
           <div
             style={{
               fontSize: 13,
@@ -157,11 +232,7 @@ export function ArchetypePicker({
             <div>
               <strong>You&apos;re missing a TM</strong> for: {selected.missingRoles.join(", ")}.
             </div>
-            <Link
-              href="/app/settings/training-maxes"
-              className="cp-btn primary"
-              style={{ fontSize: 13 }}
-            >
+            <Link href="/app/settings/training-maxes" className="cp-btn primary" style={{ fontSize: 13 }}>
               Set TMs now →
             </Link>
           </div>
@@ -185,7 +256,7 @@ export function ArchetypePicker({
           <button
             type="submit"
             className="cp-btn primary big"
-            disabled={(selected ? !selected.tmReady : true) || isPending}
+            disabled={!selected || !selectedFits || !selected.tmReady || isPending}
           >
             {isPending ? "Generating…" : `Generate ${selected?.weeks ?? 4}-week block →`}
           </button>

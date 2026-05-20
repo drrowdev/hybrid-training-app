@@ -5,6 +5,8 @@ import { createBlock } from "@/lib/planner/actions";
 import {
   ARCHETYPES,
   STRENGTH_ROLE_LABELS,
+  daysForFrequency,
+  minDaysForArchetype,
   type StrengthRole,
 } from "@/lib/planner/archetypes";
 import { todayYmd } from "@/lib/planner/queries";
@@ -23,26 +25,25 @@ export default async function NewBlockPage() {
 
   const tmCtx = await getTrainingMaxContext();
 
-  // Build a slug → role index across all archetypes so we can detect "user has a TM for some candidate".
-  const allCandidateSlugs = new Set<string>();
-  for (const a of Object.values(ARCHETYPES)) {
-    for (const day of a.days) {
-      if (day.kind === "strength") day.candidateSlugs.forEach((s) => allCandidateSlugs.add(s));
-    }
-  }
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("training_days_per_week")
+    .eq("id", user.id)
+    .maybeSingle();
+  const defaultDaysPerWeek = Number(profile?.training_days_per_week ?? 4);
 
   const options: ArchetypeOption[] = Object.values(ARCHETYPES).map((a) => {
-    // For each strength role the archetype needs, check if any candidate slug has a TM.
+    const minDays = minDaysForArchetype(a);
+    const maxDays = a.days.length;
+
+    // Resolve strength roles using the user's chosen variant.
     const rolesNeeded = new Map<StrengthRole, { satisfied: boolean; chosen?: string }>();
     for (const day of a.days) {
       if (day.kind !== "strength") continue;
       const chosen = day.candidateSlugs.find((s) => tmCtx.bySlug.has(s));
       const existing = rolesNeeded.get(day.role);
       if (!existing) {
-        rolesNeeded.set(day.role, {
-          satisfied: !!chosen,
-          chosen: chosen ?? undefined,
-        });
+        rolesNeeded.set(day.role, { satisfied: !!chosen, chosen: chosen ?? undefined });
       } else if (chosen && !existing.satisfied) {
         rolesNeeded.set(day.role, { satisfied: true, chosen });
       }
@@ -53,25 +54,42 @@ export default async function NewBlockPage() {
     const chosenLifts = Array.from(rolesNeeded.entries())
       .filter(([, v]) => v.satisfied && v.chosen)
       .map(([role, v]) => {
-        // pretty display: look up the movement display name from the TM context.
         const row = tmCtx.rows.find((r) => r.movementSlug === v.chosen);
         return {
           role: STRENGTH_ROLE_LABELS[role],
           movement: row?.movementName ?? v.chosen!,
         };
       });
+
     return {
       id: a.id,
       name: a.name,
       oneLiner: a.oneLiner,
       weeks: a.weeks,
-      daysCount: a.days.length,
+      minDays,
+      maxDays,
       weekLabels: a.weekProfiles.map((w) => w.intensityLabel),
       tmReady: missingRoles.length === 0,
       missingRoles,
       chosenLifts,
     };
   });
+
+  // Build a preview of which days run at each frequency so the wizard can
+  // show "5 d/wk → 4 strength + 1 cardio" style labels.
+  const dayPreviewByArchetype = Object.fromEntries(
+    Object.values(ARCHETYPES).map((a) => {
+      const previews: Record<number, { strength: number; cardio: number }> = {};
+      for (let d = minDaysForArchetype(a); d <= a.days.length; d++) {
+        const active = daysForFrequency(a, d);
+        previews[d] = {
+          strength: active.filter((x) => x.kind === "strength").length,
+          cardio: active.filter((x) => x.kind === "cardio").length,
+        };
+      }
+      return [a.id, previews];
+    }),
+  );
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
@@ -81,7 +99,8 @@ export default async function NewBlockPage() {
         </Link>
         <h1 style={{ fontSize: 28, margin: "8px 0 0", letterSpacing: "-0.01em" }}>Start a block</h1>
         <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-          Pick an archetype. The planner uses whichever lift <em>variant</em>{" "}
+          Pick how many days you can train this block, then pick an archetype. The planner
+          uses whichever lift <em>variant</em>{" "}
           you&apos;ve set a TM for (back squat, front squat, trap-bar deadlift, push press —
           your choice per role).
         </p>
@@ -90,6 +109,8 @@ export default async function NewBlockPage() {
       <ArchetypePicker
         options={options}
         defaultStartedOn={todayYmd()}
+        defaultDaysPerWeek={defaultDaysPerWeek}
+        dayPreviewByArchetype={dayPreviewByArchetype}
         action={createBlock}
       />
     </div>

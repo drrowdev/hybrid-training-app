@@ -78,6 +78,13 @@
       "when": 1779267000000,
       "tag": "0010_grants_for_planner_and_tm",
       "breakpoints": false
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1779272000000,
+      "tag": "0011_training_days_per_week",
+      "breakpoints": false
     }
   ]
 }

@@ -10,6 +10,8 @@ import {
   type ArchetypeId,
   allCandidateLiftSlugs,
   buildPrescription,
+  daysForFrequency,
+  minDaysForArchetype,
   requiredCardioSlugs,
   STRENGTH_ROLE_LABELS,
 } from "./archetypes";
@@ -17,6 +19,7 @@ import {
 const createBlockSchema = z.object({
   archetype: z.enum(["strength_anchor", "endurance_anchor"] satisfies [ArchetypeId, ...ArchetypeId[]]),
   startedOn: z.string().date(),
+  daysPerWeek: z.coerce.number().int().min(2).max(7),
 });
 
 export type CreateBlockResult =
@@ -32,6 +35,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   const parsed = createBlockSchema.safeParse({
     archetype: formData.get("archetype"),
     startedOn: formData.get("startedOn"),
+    daysPerWeek: formData.get("daysPerWeek"),
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -45,6 +49,16 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
 
   const archetype = ARCHETYPES[parsed.data.archetype];
   if (!archetype) return { ok: false, error: "Unknown archetype" };
+
+  const minDays = minDaysForArchetype(archetype);
+  if (parsed.data.daysPerWeek < minDays) {
+    return {
+      ok: false,
+      error: `${archetype.name} needs at least ${minDays} training days/week.`,
+    };
+  }
+  // The list of days that will actually run at the chosen frequency.
+  const activeDays = daysForFrequency(archetype, parsed.data.daysPerWeek);
 
   const candidateSlugs = allCandidateLiftSlugs(archetype);
   const cardioSlugs = requiredCardioSlugs(archetype);
@@ -84,7 +98,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   const resolved = new Map<number, { movementId: string; slug: string; displayName: string }>();
   const missingRoles: string[] = [];
 
-  for (const day of archetype.days) {
+  for (const day of activeDays) {
     if (day.kind !== "strength") continue;
     let chosen: { movementId: string; slug: string; displayName: string } | null = null;
     for (const slug of day.candidateSlugs) {
@@ -120,6 +134,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       started_on: parsed.data.startedOn,
       weeks: archetype.weeks,
       status: "active",
+      days_per_week: parsed.data.daysPerWeek,
     })
     .select("id")
     .single();
@@ -130,7 +145,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
 
   const rows: NewPlannedSession[] = [];
   for (let week = 0; week < archetype.weeks; week++) {
-    for (const day of archetype.days) {
+    for (const day of activeDays) {
       let movement: { id: string; slug: string; displayName: string };
       let finisherMovement: { id: string; slug: string; displayName: string } | undefined;
 

@@ -34,6 +34,8 @@ export const trainingBlocks = pgTable("training_blocks", {
   weeks: smallint("weeks").notNull(),
   status: trainingBlockStatus("status").default("active").notNull(),
   notes: text("notes"),
+  /** Captured at block start so the plan reflects what the user committed to. */
+  daysPerWeek: smallint("days_per_week"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),
