@@ -50,6 +50,27 @@
       "when": 1779228000000,
       "tag": "0006_service_role_grants",
       "breakpoints": false
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779255000000,
+      "tag": "0007_training_maxes",
+      "breakpoints": false
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1779258000000,
+      "tag": "0008_planner",
+      "breakpoints": false
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1779260000000,
+      "tag": "0009_training_max_model",
+      "breakpoints": false
     }
   ]
 }
