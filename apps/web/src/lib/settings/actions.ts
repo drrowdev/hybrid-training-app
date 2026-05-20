@@ -7,7 +7,6 @@ import { createClient } from "@/lib/supabase/server";
 
 const profileSchema = z.object({
   displayName: z.string().trim().max(60).optional().nullable(),
-  timezone: z.string().trim().max(60).optional(),
   units: z.enum(["metric", "imperial"]).optional(),
   bodyCompPhase: z.enum(["gain", "maintain", "lean_out"]).optional(),
   phaseStartedAt: z.string().date().optional().nullable(),
@@ -17,7 +16,6 @@ const profileSchema = z.object({
 export async function updateProfile(formData: FormData): Promise<void> {
   const parsed = profileSchema.safeParse({
     displayName: formData.get("displayName") || undefined,
-    timezone: formData.get("timezone") || undefined,
     units: formData.get("units") || undefined,
     bodyCompPhase: formData.get("bodyCompPhase") || undefined,
     phaseStartedAt: formData.get("phaseStartedAt") || undefined,
@@ -33,7 +31,6 @@ export async function updateProfile(formData: FormData): Promise<void> {
 
   const updates: Record<string, unknown> = {};
   if (parsed.data.displayName !== undefined) updates.display_name = parsed.data.displayName || null;
-  if (parsed.data.timezone !== undefined) updates.timezone = parsed.data.timezone;
   if (parsed.data.units !== undefined) updates.units = parsed.data.units;
   if (parsed.data.bodyCompPhase !== undefined) updates.body_comp_phase = parsed.data.bodyCompPhase;
   if (parsed.data.phaseStartedAt !== undefined) updates.phase_started_at = parsed.data.phaseStartedAt || null;

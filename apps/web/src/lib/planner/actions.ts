@@ -100,13 +100,11 @@ export async function createBlock(formData: FormData): Promise<void> {
   for (let week = 0; week < archetype.weeks; week++) {
     for (const day of archetype.days) {
       const movement = movementBySlug.get(day.movementSlug)!;
-      const tmKg = tmByMovementId.get(movement.id)!;
       const items = buildPrescription(
         archetype,
         week,
         day,
         { id: movement.id, slug: movement.slug, displayName: movement.display_name },
-        tmKg,
       );
       const prescription: Prescription = { items };
       const isDeload = archetype.weekProfiles.find((w) => w.weekIndex === week)?.intensityLabel === "Deload";

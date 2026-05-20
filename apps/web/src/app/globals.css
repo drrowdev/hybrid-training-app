@@ -79,6 +79,41 @@ a { color: var(--cp-link); }
 
 .mono { font-family: var(--cp-font-mono); }
 
+/* Native form controls — themed so they don't fall back to browser defaults */
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="password"],
+input[type="search"],
+input[type="date"],
+input[type="datetime-local"],
+input[type="time"],
+input[type="tel"],
+input[type="url"],
+textarea,
+select {
+  background: var(--cp-surface);
+  color: var(--cp-text);
+  border: 1px solid var(--cp-border);
+  border-radius: 8px;
+  font-family: inherit;
+}
+input:focus,
+textarea:focus,
+select:focus {
+  outline: 2px solid var(--cp-accent);
+  outline-offset: 1px;
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--cp-text-muted);
+  opacity: 0.7;
+}
+select option {
+  background: var(--cp-surface);
+  color: var(--cp-text);
+}
+
 .cp-card {
   background: var(--cp-surface);
   border: 1px solid var(--cp-border);

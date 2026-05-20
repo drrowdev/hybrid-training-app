@@ -83,7 +83,6 @@ export function buildPrescription(
   weekIndex: number,
   dayTemplate: DayTemplate,
   movement: { id: string; slug: string; displayName: string },
-  _tmKg: number,
 ): PrescriptionItem[] {
   const profile = archetype.weekProfiles.find((w) => w.weekIndex === weekIndex);
   if (!profile) return [];

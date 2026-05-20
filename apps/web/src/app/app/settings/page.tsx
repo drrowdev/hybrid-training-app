@@ -4,16 +4,6 @@ import { createClient } from "@/lib/supabase/server";
 import { deleteAccount } from "@/lib/auth/delete-account";
 import { logBodyweight, updateProfile } from "@/lib/settings/actions";
 
-const TIMEZONES = [
-  "UTC",
-  "America/Los_Angeles",
-  "America/New_York",
-  "Europe/Berlin",
-  "Europe/Helsinki",
-  "Europe/London",
-  "Europe/Stockholm",
-];
-
 export default async function SettingsPage() {
   const supabase = await createClient();
   const {
@@ -24,7 +14,7 @@ export default async function SettingsPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "display_name, timezone, units, bodyweight_kg, body_comp_phase, phase_started_at, phase_target_weeks",
+      "display_name, units, bodyweight_kg, body_comp_phase, phase_started_at, phase_target_weeks",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -62,32 +52,17 @@ export default async function SettingsPage() {
             placeholder="What should we call you?"
             maxLength={60}
           />
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-xs text-foreground/60" htmlFor="timezone">Timezone</label>
-              <select
-                id="timezone"
-                name="timezone"
-                defaultValue={profile?.timezone ?? "UTC"}
-                className="w-full rounded-md border border-foreground/15 bg-transparent px-2 py-2 text-sm"
-              >
-                {TIMEZONES.map((tz) => (
-                  <option key={tz} value={tz}>{tz}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs text-foreground/60" htmlFor="units">Units</label>
-              <select
-                id="units"
-                name="units"
-                defaultValue={profile?.units ?? "metric"}
-                className="w-full rounded-md border border-foreground/15 bg-transparent px-2 py-2 text-sm"
-              >
-                <option value="metric">kg / km</option>
-                <option value="imperial">lb / mi</option>
-              </select>
-            </div>
+          <div className="space-y-1">
+            <label className="text-xs text-foreground/60" htmlFor="units">Units</label>
+            <select
+              id="units"
+              name="units"
+              defaultValue={profile?.units ?? "metric"}
+              className="w-full rounded-md border border-foreground/15 bg-transparent px-2 py-2 text-sm"
+            >
+              <option value="metric">kg / km</option>
+              <option value="imperial">lb / mi</option>
+            </select>
           </div>
           <button
             type="submit"
