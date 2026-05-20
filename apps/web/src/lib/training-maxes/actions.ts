@@ -11,8 +11,9 @@ const upsertSchema = z.object({
   tmPercent: z.coerce.number().positive().lte(100).optional().nullable(),
 });
 
-export async function upsertTrainingMax(formData: FormData): Promise<void> {
-  // Empty string from form input → use the profile default (null override).
+export type UpsertResult = { ok: true } | { ok: false; error: string };
+
+export async function upsertTrainingMax(formData: FormData): Promise<UpsertResult> {
   const tmPercentRaw = formData.get("tmPercent");
   const tmPercentInput =
     tmPercentRaw == null || String(tmPercentRaw).trim() === "" ? null : tmPercentRaw;
@@ -22,7 +23,9 @@ export async function upsertTrainingMax(formData: FormData): Promise<void> {
     oneRmKg: formData.get("oneRmKg"),
     tmPercent: tmPercentInput,
   });
-  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
 
   const supabase = await createClient();
   const {
@@ -39,11 +42,14 @@ export async function upsertTrainingMax(formData: FormData): Promise<void> {
     },
     { onConflict: "user_id,movement_id" },
   );
-  if (error) throw new Error(error.message);
+  if (error) {
+    return { ok: false, error: error.message };
+  }
 
   revalidatePath("/app/settings/training-maxes");
   revalidatePath("/app");
   revalidatePath("/app/plan");
+  return { ok: true };
 }
 
 export async function deleteTrainingMax(formData: FormData): Promise<void> {
@@ -78,3 +84,4 @@ export async function setDefaultTmPercent(formData: FormData): Promise<void> {
   revalidatePath("/app");
   revalidatePath("/app/plan");
 }
+

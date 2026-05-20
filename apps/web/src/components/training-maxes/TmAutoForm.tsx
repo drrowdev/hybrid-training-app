@@ -33,8 +33,8 @@ export function TmAutoForm({
     tmPercent?: number | null;
   };
   defaultPercent: number;
-  /** Bound server action upsertTrainingMax. */
-  action: (fd: FormData) => Promise<void>;
+  /** Bound server action upsertTrainingMax. Returns either void or {ok, error?} */
+  action: (fd: FormData) => Promise<unknown>;
 }) {
   const [movementId, setMovementId] = useState<string>(initial?.movementId ?? "");
   const [oneRmKg, setOneRmKg] = useState<string>(
@@ -67,9 +67,17 @@ export function TmAutoForm({
       setErrorMsg(null);
       startTransition(async () => {
         try {
-          await action(fd);
+          const result = (await action(fd)) as
+            | undefined
+            | void
+            | { ok: true }
+            | { ok: false; error: string };
+          if (result && typeof result === "object" && "ok" in result && result.ok === false) {
+            setStatus("error");
+            setErrorMsg(result.error);
+            return;
+          }
           setStatus("saved");
-          // Briefly highlight "saved" then return to idle.
           window.setTimeout(() => setStatus((s) => (s === "saved" ? "idle" : s)), 1800);
         } catch (e) {
           setStatus("error");
@@ -93,17 +101,18 @@ export function TmAutoForm({
   };
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "minmax(0, 1.4fr) 110px 110px auto",
-        gap: 8,
-        alignItems: "end",
-        ...(mode === "new"
-          ? { border: "1px dashed var(--cp-border-strong)", borderRadius: 12, padding: 12 }
-          : {}),
-      }}
-    >
+    <div style={{ display: "grid", gap: 6 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1.4fr) 110px 110px auto",
+          gap: 8,
+          alignItems: "end",
+          ...(mode === "new"
+            ? { border: "1px dashed var(--cp-border-strong)", borderRadius: 12, padding: 12 }
+            : {}),
+        }}
+      >
       <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
         <Label>{mode === "new" ? "Pick your variant" : "Movement"}</Label>
         {mode === "new" ? (
@@ -167,7 +176,23 @@ export function TmAutoForm({
           style={{ width: "100%", padding: "8px 10px", fontSize: 14, textAlign: "right" }}
         />
       </div>
-      <StatusBadge status={status} errorMsg={errorMsg} />
+        <StatusBadge status={status} errorMsg={errorMsg} />
+      </div>
+      {status === "error" && errorMsg && (
+        <div
+          role="alert"
+          style={{
+            fontSize: 12,
+            color: "var(--cp-danger)",
+            padding: "6px 10px",
+            borderRadius: 8,
+            background: "color-mix(in oklab, var(--cp-danger) 8%, transparent)",
+            border: "1px solid var(--cp-danger)",
+          }}
+        >
+          Couldn&apos;t save: {errorMsg}
+        </div>
+      )}
     </div>
   );
 }
