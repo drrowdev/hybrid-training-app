@@ -167,7 +167,7 @@ export const STRENGTH_ANCHOR: Archetype = {
   id: "strength_anchor",
   name: "Strength Anchor",
   oneLiner:
-    "Strength-led concurrent training. Four main lifts (your choice of variant per role) hit a weekly intensity wave with a deload at week 4. Two polarized cardio days preserve aerobic base without competing with strength.",
+    "Strength-led concurrent training. Four main lifts (your choice of variant per role) hit a weekly intensity wave with a deload at week 4. Polarized cardio is added when the day budget allows.",
   weeks: 4,
   days: [
     ...STRENGTH_DAYS,
