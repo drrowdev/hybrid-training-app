@@ -161,7 +161,7 @@ export function TmSection({
         <section className="cp-card" style={{ padding: 20 }}>
           <h2 style={{ margin: 0, fontSize: 16 }}>Other lifts</h2>
           <p style={{ margin: "4px 0 14px", fontSize: 12, color: "var(--cp-text-muted)" }}>
-            TMs you&apos;ve set that aren&apos;t required by the active archetype.
+            TMs you&apos;ve set that aren&apos;t required by the active focus.
           </p>
           <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
             {otherRows.map((r) => (

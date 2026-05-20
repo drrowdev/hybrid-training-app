@@ -71,7 +71,7 @@ export function ArchetypePicker({
       <section className="cp-card" style={{ padding: 20 }}>
         <h2 style={{ margin: 0, fontSize: 16 }}>Training days this block</h2>
         <p style={{ margin: "4px 0 12px", fontSize: 12, color: "var(--cp-text-muted)" }}>
-          How many days you can realistically train each week. Each archetype keeps its own
+          How many days you can realistically train each week. Each focus keeps its own
           anchor days first — Strength Anchor protects the four main lifts; Endurance Anchor
           protects the long run + VO2 day. Optional sessions are dropped to fit the budget.
         </p>
@@ -102,11 +102,11 @@ export function ArchetypePicker({
         </div>
       </section>
 
-      {/* ── Archetype cards ────────────────────────────────── */}
+      {/* ── Focus cards ───────────────────────────────────── */}
       <section className="cp-card" style={{ padding: 20 }}>
-        <h2 style={{ margin: 0, fontSize: 16 }}>Choose an archetype</h2>
+        <h2 style={{ margin: 0, fontSize: 16 }}>Choose your focus</h2>
         <p style={{ margin: "4px 0 14px", fontSize: 12, color: "var(--cp-text-muted)" }}>
-          Each archetype shapes the week differently. Pick the one that matches your current priority.
+          Each focus shapes the week differently. Pick the one that matches your current priority.
         </p>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 10 }}>
           {options.map((opt) => {
@@ -255,7 +255,7 @@ export function ArchetypePicker({
             }}
           >
             <strong>{selected.name}</strong> needs at least {selected.minDays} training days/week.
-            Pick a higher day-count or a different archetype.
+            Pick a higher day-count or a different focus.
           </div>
         )}
         {selected && selectedFits && !selected.tmReady && (

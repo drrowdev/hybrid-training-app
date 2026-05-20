@@ -56,7 +56,7 @@ const GOALS: Goal[] = [
   {
     id: "explore",
     label: "Just exploring",
-    description: "Skip the recommendation. You can browse archetypes or log freestyle sessions.",
+    description: "Skip the recommendation. You can browse focuses or log freestyle sessions.",
     recommendedArchetypeId: null,
     recommendedArchetypeName: null,
     tmPercentDefault: 90,
@@ -77,6 +77,7 @@ type Payload = {
   displayName?: string;
   units?: "metric" | "imperial";
   trainingDaysPerWeek?: number;
+  allowsTwoADays?: boolean;
   tmPercentDefault?: number;
   oneRmBySlug?: Record<string, number>;
 };
@@ -87,12 +88,14 @@ export function OnboardingWizard({
   initialDisplayName,
   initialUnits,
   initialDaysPerWeek,
+  initialAllowsTwoADays,
   completeAction,
   skipAction,
 }: {
   initialDisplayName: string;
   initialUnits: "metric" | "imperial";
   initialDaysPerWeek: number;
+  initialAllowsTwoADays: boolean;
   completeAction: (fd: FormData) => Promise<{ ok: true } | { ok: false; error: string }>;
   skipAction: () => Promise<void>;
 }) {
@@ -103,6 +106,7 @@ export function OnboardingWizard({
   const [displayName, setDisplayName] = useState(initialDisplayName);
   const [units, setUnits] = useState<"metric" | "imperial">(initialUnits);
   const [daysPerWeek, setDaysPerWeek] = useState(initialDaysPerWeek);
+  const [allowsTwoADays, setAllowsTwoADays] = useState(initialAllowsTwoADays);
   const [goalId, setGoalId] = useState<GoalId>("strength");
   const [oneRmBySlug, setOneRmBySlug] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -138,6 +142,7 @@ export function OnboardingWizard({
       displayName: displayName.trim() || undefined,
       units,
       trainingDaysPerWeek: daysPerWeek,
+      allowsTwoADays,
       tmPercentDefault: goal.tmPercentDefault,
       oneRmBySlug: Object.keys(oneRmNumeric).length > 0 ? oneRmNumeric : undefined,
     };
@@ -207,7 +212,7 @@ export function OnboardingWizard({
             </div>
             <p style={{ margin: 0, fontSize: 14, color: "var(--cp-text-muted)", lineHeight: 1.55 }}>
               We&apos;ll collect a bit about you, your training schedule, and your current goal — then
-              recommend an archetype that fits. Takes ~2 minutes. Skip any time and configure things later in Settings.
+              recommend a training focus that fits. Takes ~2 minutes. Skip any time and configure things later in Settings.
             </p>
           </>
         )}
@@ -255,7 +260,7 @@ export function OnboardingWizard({
             <Heading kicker="Step 3" title="How often can you train?" />
             <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
               Pick the number of days per week you can realistically commit to. We&apos;ll shape the
-              archetype suggestions to fit. Change this any time in Settings.
+              focus suggestions to fit. Change this any time in Settings.
             </p>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {[3, 4, 5, 6, 7].map((n) => {
@@ -273,6 +278,35 @@ export function OnboardingWizard({
                 );
               })}
             </div>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
+                marginTop: 8,
+                padding: "12px 14px",
+                border: "1px solid var(--cp-border)",
+                borderRadius: 10,
+                background: "var(--cp-surface-soft)",
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={allowsTwoADays}
+                onChange={(e) => setAllowsTwoADays(e.target.checked)}
+                style={{ marginTop: 3 }}
+              />
+              <span style={{ display: "grid", gap: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>
+                  I&apos;m open to occasional two-a-day sessions
+                </span>
+                <span style={{ fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
+                  Typical hybrid pattern: AM lift + PM cardio, ideally 6+ hours apart. We&apos;re just
+                  capturing your preference — full two-a-day planning lands in a future update.
+                </span>
+              </span>
+            </label>
           </>
         )}
 
@@ -280,7 +314,7 @@ export function OnboardingWizard({
           <>
             <Heading kicker="Step 4" title="What are you training for right now?" />
             <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
-              Pick the closest match. You can change archetypes between blocks — this just seeds your first one.
+              Pick the closest match. You can change focus between blocks — this just seeds your first one.
             </p>
             <div style={{ display: "grid", gap: 8 }}>
               {GOALS.map((g) => {
@@ -371,11 +405,11 @@ export function OnboardingWizard({
               <p style={{ margin: 0, fontSize: 14, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
                 Based on your goal of <strong>{goal.label.toLowerCase()}</strong> and {daysPerWeek} training days/week,
                 <strong> {goal.recommendedArchetypeName}</strong> is the best fit. You can also browse the other
-                archetypes or build your own — your TMs are saved either way.
+                focuses or build your own — your TMs are saved either way.
               </p>
             ) : (
               <p style={{ margin: 0, fontSize: 14, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
-                You can log freestyle sessions from the Today tab, or browse archetypes from the Plan tab when
+                You can log freestyle sessions from the Today tab, or browse focuses from the Plan tab when
                 you&apos;re ready to start one.
               </p>
             )}
@@ -411,7 +445,7 @@ export function OnboardingWizard({
                 className="cp-btn"
                 disabled={isPending}
               >
-                Browse all archetypes
+                Browse all focuses
               </button>
               <button
                 type="button"

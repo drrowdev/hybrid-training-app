@@ -9,6 +9,7 @@ const onboardingPayloadSchema = z.object({
   displayName: z.string().trim().max(60).optional().nullable(),
   units: z.enum(["metric", "imperial"]).optional(),
   trainingDaysPerWeek: z.coerce.number().int().min(2).max(7).optional(),
+  allowsTwoADays: z.boolean().optional(),
   tmPercentDefault: z.coerce.number().positive().lte(100).optional(),
   oneRmBySlug: z
     .record(z.string(), z.coerce.number().positive().lte(1000))
@@ -44,6 +45,8 @@ export async function completeOnboarding(formData: FormData): Promise<CompleteOn
   if (parsed.data.units !== undefined) update.units = parsed.data.units;
   if (parsed.data.trainingDaysPerWeek !== undefined)
     update.training_days_per_week = parsed.data.trainingDaysPerWeek;
+  if (parsed.data.allowsTwoADays !== undefined)
+    update.allows_two_a_days = parsed.data.allowsTwoADays;
   if (parsed.data.tmPercentDefault !== undefined)
     update.tm_percent_default = parsed.data.tmPercentDefault;
 

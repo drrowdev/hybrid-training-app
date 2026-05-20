@@ -6,6 +6,7 @@
  */
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   date,
   jsonb,
   pgEnum,
@@ -42,6 +43,12 @@ export const profiles = pgTable("profiles", {
   trainingDaysPerWeek: smallint("training_days_per_week").default(4).notNull(),
   /** When the first-run onboarding wizard finished or was skipped. null = show wizard. */
   onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
+  /**
+   * User is open to occasional two-a-day sessions (AM lift + PM cardio).
+   * Engine support is deferred; this only records the preference for now.
+   * See research-new §interference: ≥6h gap between modalities respects AMPK/mTORC1.
+   */
+  allowsTwoADays: boolean("allows_two_a_days").default(false).notNull(),
   intake: jsonb("intake").$type<Record<string, unknown>>().default({}).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)

@@ -12,7 +12,7 @@ export default async function OnboardingPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name, units, training_days_per_week, onboarded_at")
+    .select("display_name, units, training_days_per_week, allows_two_a_days, onboarded_at")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -24,6 +24,7 @@ export default async function OnboardingPage() {
       initialDisplayName={profile?.display_name ?? ""}
       initialUnits={(profile?.units as "metric" | "imperial") ?? "metric"}
       initialDaysPerWeek={Number(profile?.training_days_per_week ?? 4)}
+      initialAllowsTwoADays={Boolean(profile?.allows_two_a_days ?? false)}
       completeAction={completeOnboarding}
       skipAction={skipOnboarding}
     />
