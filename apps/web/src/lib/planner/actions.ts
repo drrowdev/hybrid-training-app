@@ -207,6 +207,212 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   return { ok: true };
 }
 
+// ─── Custom block ──────────────────────────────────────────────────
+
+const customDayKindEnum = z.enum([
+  "rest",
+  "strength_squat",
+  "strength_horizontal_press",
+  "strength_deadlift",
+  "strength_vertical_press",
+  "cardio_z2_short",
+  "cardio_z2_long",
+  "cardio_z2_long_plus_alactic",
+  "cardio_vo2",
+  "cardio_alactic",
+  "tendon_hsr_knee",
+  "tendon_hsr_hinge",
+]);
+
+const customInputSchema = z.object({
+  name: z.string().trim().max(80).optional(),
+  weeks: z.coerce.number().int().min(2).max(8),
+  startedOn: z.string().date(),
+  waveTemplate: z.enum(["fives", "threes", "five_three_one", "hypertrophy", "maintenance", "rebuild_flat"]),
+  days: z
+    .array(
+      z.object({
+        dayIndex: z.coerce.number().int().min(0).max(6),
+        kind: customDayKindEnum,
+      }),
+    )
+    .min(1)
+    .max(7),
+});
+
+/**
+ * Create a block from a user-built custom archetype.
+ *
+ * Compiles the input into the same Archetype shape curated presets use,
+ * then runs the standard buildPrescription pipeline. Stores
+ * archetype = "custom" and the user-supplied name in the notes column.
+ */
+export async function createCustomBlock(formData: FormData): Promise<CreateBlockResult> {
+  // The builder posts a JSON-encoded config in the "config" field.
+  const configRaw = formData.get("config");
+  if (typeof configRaw !== "string") return { ok: false, error: "Missing config payload" };
+
+  let configJson: unknown;
+  try {
+    configJson = JSON.parse(configRaw);
+  } catch (e) {
+    return { ok: false, error: `Invalid config JSON: ${e instanceof Error ? e.message : String(e)}` };
+  }
+
+  const parsed = customInputSchema.safeParse(configJson);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid custom block config" };
+  }
+
+  // Defer to the compiler to convert the input into an Archetype.
+  const { compileCustomArchetype, customInputMinDays } = await import("./custom");
+  const daysPerWeek = customInputMinDays({ ...parsed.data, daysPerWeek: 0 });
+  const archetype = compileCustomArchetype({ ...parsed.data, daysPerWeek });
+
+  if (daysPerWeek < 1) {
+    return { ok: false, error: "Pick at least one non-rest day." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  // Resolve all required movements.
+  const candidateSlugs = allCandidateLiftSlugs(archetype);
+  const fixedSlugs = requiredFixedSlugs(archetype);
+  const allSlugs = Array.from(new Set([...candidateSlugs, ...fixedSlugs]));
+
+  const { data: movements, error: mvErr } = await supabase
+    .from("movements")
+    .select("id, slug, display_name")
+    .in("slug", allSlugs)
+    .is("user_id", null);
+  if (mvErr) return { ok: false, error: `Movement lookup failed: ${mvErr.message}` };
+
+  const movementBySlug = new Map((movements ?? []).map((m) => [m.slug, m]));
+
+  const missingFixed = fixedSlugs.filter((s) => !movementBySlug.has(s));
+  if (missingFixed.length > 0) {
+    return {
+      ok: false,
+      error: `Catalog is missing required movements: ${missingFixed.join(", ")}.`,
+    };
+  }
+
+  // Resolve strength roles → user variants via TM.
+  const candidateMovementIds = candidateSlugs
+    .map((s) => movementBySlug.get(s)?.id)
+    .filter((id): id is string => !!id);
+  const { data: tms, error: tmErr } = await supabase
+    .from("training_maxes")
+    .select("movement_id")
+    .in("movement_id", candidateMovementIds);
+  if (tmErr) return { ok: false, error: `TM lookup failed: ${tmErr.message}` };
+  const tmMovementIds = new Set((tms ?? []).map((r) => r.movement_id));
+
+  const resolved = new Map<number, { movementId: string; slug: string; displayName: string }>();
+  const missingRoles: string[] = [];
+  for (const day of archetype.days) {
+    if (day.kind !== "strength") continue;
+    let chosen: { movementId: string; slug: string; displayName: string } | null = null;
+    for (const slug of day.candidateSlugs) {
+      const mv = movementBySlug.get(slug);
+      if (mv && tmMovementIds.has(mv.id)) {
+        chosen = { movementId: mv.id, slug: mv.slug, displayName: mv.display_name };
+        break;
+      }
+    }
+    if (chosen) resolved.set(day.dayIndex, chosen);
+    else missingRoles.push(STRENGTH_ROLE_LABELS[day.role]);
+  }
+  if (missingRoles.length > 0) {
+    return {
+      ok: false,
+      error: `No TM set for: ${missingRoles.join(", ")}. Go to Settings → Training maxes and add one for each.`,
+    };
+  }
+
+  await supabase
+    .from("training_blocks")
+    .update({ status: "archived" })
+    .eq("user_id", user.id)
+    .eq("status", "active");
+
+  const { data: block, error: blockErr } = await supabase
+    .from("training_blocks")
+    .insert({
+      user_id: user.id,
+      archetype: "custom",
+      started_on: parsed.data.startedOn,
+      weeks: archetype.weeks,
+      status: "active",
+      days_per_week: daysPerWeek,
+      notes: archetype.name,
+    })
+    .select("id")
+    .single();
+  if (blockErr || !block) return { ok: false, error: blockErr?.message ?? "Failed to create block" };
+
+  const rows: NewPlannedSession[] = [];
+  for (let week = 0; week < archetype.weeks; week++) {
+    for (const day of archetype.days) {
+      let movement: { id: string; slug: string; displayName: string };
+      let finisherMovement: { id: string; slug: string; displayName: string } | undefined;
+
+      if (day.kind === "strength") {
+        const resolvedMv = resolved.get(day.dayIndex);
+        if (!resolvedMv) continue;
+        movement = { id: resolvedMv.movementId, slug: resolvedMv.slug, displayName: resolvedMv.displayName };
+      } else if (day.kind === "cardio") {
+        const mv = movementBySlug.get(day.movementSlug);
+        if (!mv) continue;
+        movement = { id: mv.id, slug: mv.slug, displayName: mv.display_name };
+        if (day.finisher) {
+          const fin = movementBySlug.get(day.finisher.movementSlug);
+          if (fin) finisherMovement = { id: fin.id, slug: fin.slug, displayName: fin.display_name };
+        }
+      } else {
+        const mv = movementBySlug.get(day.movementSlug);
+        if (!mv) continue;
+        movement = { id: mv.id, slug: mv.slug, displayName: mv.display_name };
+      }
+
+      const items = buildPrescription(archetype, week, day, movement, finisherMovement);
+      const prescription: Prescription = { items };
+      const isDeload = archetype.weekProfiles.find((w) => w.weekIndex === week)?.intensityLabel === "Deload";
+
+      let title = day.title;
+      if (day.kind === "strength") {
+        title = `${movement.displayName}${isDeload ? " (deload)" : ""}`;
+      } else if (isDeload) {
+        title = `${day.title} (deload)`;
+      }
+
+      rows.push({
+        blockId: block.id,
+        userId: user.id,
+        weekIndex: week,
+        dayIndex: day.dayIndex,
+        title,
+        role: day.role,
+        prescription,
+      });
+    }
+  }
+
+  const { error: psErr } = await supabase.from("planned_sessions").insert(rows);
+  if (psErr) {
+    await supabase.from("training_blocks").delete().eq("id", block.id);
+    return { ok: false, error: `Couldn't create planned sessions: ${psErr.message}` };
+  }
+
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
+  return { ok: true };
+}
+
 const blockIdSchema = z.object({ id: z.string().uuid() });
 
 export async function endBlock(formData: FormData): Promise<void> {

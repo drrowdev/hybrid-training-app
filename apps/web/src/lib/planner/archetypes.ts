@@ -15,7 +15,8 @@ export type ArchetypeId =
   | "strength_anchor"
   | "endurance_anchor"
   | "rebuild"
-  | "hypertrophy_anchor";
+  | "hypertrophy_anchor"
+  | "custom";
 
 export type StrengthRole =
   | "squat"
@@ -565,7 +566,8 @@ export const HYPERTROPHY_ANCHOR: Archetype = {
   ],
 };
 
-export const ARCHETYPES: Record<ArchetypeId, Archetype> = {
+/** Curated archetypes. "custom" is not here — custom blocks are built ad-hoc. */
+export const ARCHETYPES: Record<Exclude<ArchetypeId, "custom">, Archetype> = {
   strength_anchor: STRENGTH_ANCHOR,
   endurance_anchor: ENDURANCE_ANCHOR,
   rebuild: REBUILD,

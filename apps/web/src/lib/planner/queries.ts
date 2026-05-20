@@ -10,6 +10,7 @@ export type ActiveBlock = {
   startedOn: string;
   weeks: number;
   status: "active" | "completed" | "archived";
+  notes: string | null;
 };
 
 export type PlannedDay = {
@@ -59,7 +60,7 @@ export async function getActiveBlock(): Promise<ActiveBlock | null> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("training_blocks")
-    .select("id, archetype, started_on, weeks, status")
+    .select("id, archetype, started_on, weeks, status, notes")
     .eq("status", "active")
     .order("started_on", { ascending: false })
     .limit(1)
@@ -71,6 +72,7 @@ export async function getActiveBlock(): Promise<ActiveBlock | null> {
     startedOn: data.started_on,
     weeks: data.weeks,
     status: data.status,
+    notes: data.notes ?? null,
   };
 }
 

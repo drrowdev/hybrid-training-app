@@ -113,6 +113,27 @@ export default async function NewBlockPage() {
         dayPreviewByArchetype={dayPreviewByArchetype}
         action={createBlock}
       />
+
+      <section
+        className="cp-card"
+        style={{
+          padding: 16,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>None of these fit?</div>
+          <div style={{ fontSize: 12, color: "var(--cp-text-muted)", marginTop: 2 }}>
+            Build a custom block day-by-day from the same primitives the presets use.
+          </div>
+        </div>
+        <Link href="/app/plan/new/custom" className="cp-btn">
+          Build a custom block →
+        </Link>
+      </section>
     </div>
   );
 }

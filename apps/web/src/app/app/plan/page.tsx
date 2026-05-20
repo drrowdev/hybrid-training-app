@@ -49,7 +49,11 @@ export default async function PlanPage({
   }
 
   const archetype = ARCHETYPES[block.archetype as keyof typeof ARCHETYPES];
-  const archetypeName = archetype?.name ?? block.archetype;
+  const isCustom = block.archetype === "custom";
+  const archetypeName = isCustom
+    ? block.notes?.trim() || "Custom block"
+    : archetype?.name ?? block.archetype;
+  const archetypeKicker = isCustom ? "Custom · " : "";
   const all = await getPlannedDays(block.id, block.startedOn);
 
   const sp = await searchParams;
@@ -74,7 +78,7 @@ export default async function PlanPage({
     <div style={{ display: "grid", gap: 18 }}>
       <header>
         <div style={{ fontSize: 12, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-          {archetypeName} · started {new Date(block.startedOn).toLocaleDateString()}
+          {archetypeKicker}{archetypeName} · started {new Date(block.startedOn).toLocaleDateString()}
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
           <h1 style={{ fontSize: 28, margin: "4px 0 0", letterSpacing: "-0.01em" }}>Plan</h1>
