@@ -82,6 +82,36 @@ export default async function TrainingMaxesPage() {
           <span style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>% of 1RM</span>
           <button type="submit" className="cp-btn">Save default</button>
         </form>
+        <div
+          style={{
+            marginTop: 14,
+            padding: "10px 12px",
+            background: "var(--cp-surface-soft)",
+            border: "1px solid var(--cp-border)",
+            borderRadius: 10,
+            fontSize: 12,
+            color: "var(--cp-text-muted)",
+            lineHeight: 1.55,
+          }}
+        >
+          <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--cp-text)", fontWeight: 600, marginBottom: 6 }}>
+            Suggested range — 85–90%
+          </div>
+          <div style={{ display: "grid", gap: 4 }}>
+            <div>
+              <span className="mono" style={{ color: "var(--cp-text)", fontWeight: 600 }}>85%</span>{" "}
+              · conservative — more reps in reserve, sustainable for long blocks, recommended if you&apos;re newer or running concurrent cardio.
+            </div>
+            <div>
+              <span className="mono" style={{ color: "var(--cp-text)", fontWeight: 600 }}>90%</span>{" "}
+              · classic — the standard anchor for percentage-based strength programming. Good default.
+            </div>
+            <div>
+              <span className="mono" style={{ color: "var(--cp-text)", fontWeight: 600 }}>92–95%</span>{" "}
+              · aggressive — for peaking or short blocks. Closer to your real 1RM, less margin if recovery dips.
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* ── Your maxes ─────────────────────────────────────────── */}
