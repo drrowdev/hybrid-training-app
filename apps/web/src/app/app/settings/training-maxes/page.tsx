@@ -299,12 +299,7 @@ function TmCard({ row, defaultPercent }: { row: TmRow; defaultPercent: number })
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>{row.movementName}</div>
-          <div className="mono" style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 2 }}>
-            {row.movementSlug}
-          </div>
-        </div>
+        <div style={{ fontSize: 15, fontWeight: 600 }}>{row.movementName}</div>
         <div style={{ textAlign: "right" }}>
           <div className="mono" style={{ fontSize: 18, fontWeight: 600, color: "var(--cp-accent)" }}>
             {row.tmKg} kg
@@ -315,28 +310,37 @@ function TmCard({ row, defaultPercent }: { row: TmRow; defaultPercent: number })
         </div>
       </div>
 
-      <TmAutoForm
-        mode="edit"
-        initial={{
-          movementId: row.movementId,
-          movementName: row.movementName,
-          oneRmKg: row.oneRmKg,
-          tmPercent: row.tmPercentOverride,
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr auto",
+          gap: 10,
+          alignItems: "end",
         }}
-        defaultPercent={defaultPercent}
-        action={upsertTrainingMax}
-      />
-
-      <form action={deleteTrainingMax} style={{ justifySelf: "end" }}>
-        <input type="hidden" name="id" value={row.id} />
-        <button
-          type="submit"
-          className="cp-btn ghost"
-          style={{ fontSize: 11, color: "var(--cp-text-muted)", padding: "4px 8px" }}
-        >
-          remove
-        </button>
-      </form>
+      >
+        <TmAutoForm
+          mode="edit"
+          initial={{
+            movementId: row.movementId,
+            movementName: row.movementName,
+            oneRmKg: row.oneRmKg,
+            tmPercent: row.tmPercentOverride,
+          }}
+          defaultPercent={defaultPercent}
+          action={upsertTrainingMax}
+        />
+        <form action={deleteTrainingMax}>
+          <input type="hidden" name="id" value={row.id} />
+          <button
+            type="submit"
+            className="cp-btn ghost"
+            style={{ fontSize: 11, color: "var(--cp-text-muted)", padding: "6px 10px" }}
+            aria-label={`Remove ${row.movementName} training max`}
+          >
+            × remove
+          </button>
+        </form>
+      </div>
     </li>
   );
 }

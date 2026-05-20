@@ -105,7 +105,10 @@ export function TmAutoForm({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(0, 1.4fr) 110px 110px auto",
+          gridTemplateColumns:
+            mode === "new"
+              ? "minmax(0, 1.4fr) 110px 110px auto"
+              : "110px 110px auto",
           gap: 8,
           alignItems: "end",
           ...(mode === "new"
@@ -113,9 +116,9 @@ export function TmAutoForm({
             : {}),
         }}
       >
-      <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
-        <Label>{mode === "new" ? "Pick your variant" : "Movement"}</Label>
-        {mode === "new" ? (
+      {mode === "new" && (
+        <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
+          <Label>Pick your variant</Label>
           <select
             value={movementId}
             onChange={(e) => onMovement(e.target.value)}
@@ -139,12 +142,8 @@ export function TmAutoForm({
                   </option>
                 ))}
           </select>
-        ) : (
-          <div style={{ fontSize: 14, fontWeight: 600, padding: "8px 0" }}>
-            {initial?.movementName}
-          </div>
-        )}
-      </div>
+        </div>
+      )}
       <div style={{ display: "grid", gap: 2 }}>
         <Label>1RM (kg)</Label>
         <input
@@ -199,9 +198,8 @@ export function TmAutoForm({
 
 function StatusBadge({ status, errorMsg }: { status: Status; errorMsg: string | null }) {
   if (status === "idle") {
-    return (
-      <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>auto-saves</span>
-    );
+    // Take up the same space so the layout doesn't reflow when status changes.
+    return <span style={{ fontSize: 11, color: "transparent" }}>·</span>;
   }
   if (status === "saving") {
     return (
