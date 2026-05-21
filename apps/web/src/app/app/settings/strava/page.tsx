@@ -6,6 +6,7 @@ import {
   disconnectStrava,
   syncStravaNow,
 } from "@/lib/integrations/strava/actions";
+import { StravaPoweredBadge } from "@/components/StravaPoweredBadge";
 
 function formatTimeAgo(iso: string | null): string {
   if (!iso) return "never";
@@ -48,7 +49,10 @@ export default async function StravaSettingsPage({
         <Link href="/app/settings" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
           ← back to settings
         </Link>
-        <h1 style={{ fontSize: 28, margin: 0 }}>Strava</h1>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <h1 style={{ fontSize: 28, margin: 0 }}>Strava</h1>
+          <StravaPoweredBadge />
+        </div>
         <p style={{ color: "var(--cp-text-muted)", margin: 0, fontSize: 14 }}>
           Pull your runs, rides, swims, and other cardio into the training
           ledger so region freshness reflects all your work, not just lifts.

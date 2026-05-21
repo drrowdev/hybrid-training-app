@@ -11,6 +11,8 @@ import {
 } from "@/lib/planner/queries";
 import { effectiveTimeOfDay, gapHoursBetween } from "@/lib/planner/time-of-day";
 import { getRegionFreshness, findHeavyOnRecoveringConflict, type RegionFreshnessRow, type FreshnessConflict } from "@/lib/stats/region-freshness-queries";
+import { StravaStaleSyncTrigger } from "@/components/StravaStaleSyncTrigger";
+import { StravaPoweredBadge } from "@/components/StravaPoweredBadge";
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -61,6 +63,23 @@ export default async function TodayPage() {
     getUpcomingPlannedSessions(3),
     getRegionFreshness(supabase, userId),
   ]);
+
+  // Strava integration state: do we have a connection (drives the
+  // background stale-sync trigger) and have we ever imported anything
+  // (drives the attribution badge)?
+  const [{ data: stravaConn }, { count: stravaCardioCount }] = await Promise.all([
+    supabase
+      .from("strava_connections")
+      .select("user_id")
+      .eq("user_id", userId)
+      .maybeSingle(),
+    supabase
+      .from("cardio_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("external_source", "strava"),
+  ]);
+  const hasStravaConnection = Boolean(stravaConn);
+  const hasStravaData = (stravaCardioCount ?? 0) > 0;
 
   // DC-V2 soft warning: fetch the regions of the movements planned today
   // so we can flag heavy work on a clearly recovering region.
@@ -121,7 +140,8 @@ export default async function TodayPage() {
         conflictsBySlot={conflictsBySlot}
       />
 
-      <RegionFreshnessCard rows={freshness} />
+      <RegionFreshnessCard rows={freshness} hasStravaData={hasStravaData} />
+      {hasStravaConnection && <StravaStaleSyncTrigger />}
 
       <section className="cp-card" style={{ padding: 20 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
@@ -485,12 +505,15 @@ function timeAgo(iso: string | null): string {
   return `${Math.round(days / 30)}mo ago`;
 }
 
-function RegionFreshnessCard({ rows }: { rows: RegionFreshnessRow[] }) {
+function RegionFreshnessCard({ rows, hasStravaData }: { rows: RegionFreshnessRow[]; hasStravaData: boolean }) {
   return (
     <section className="cp-card" style={{ padding: 20 }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12, gap: 12, flexWrap: "wrap" }}>
         <h2 style={{ fontSize: 16, margin: 0 }}>How recovered you are</h2>
-        <Link href="/app/stats/engine" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>details →</Link>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {hasStravaData && <StravaPoweredBadge variant="compact" />}
+          <Link href="/app/stats/engine" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>details →</Link>
+        </div>
       </div>
       {rows.length === 0 ? (
         <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: 0 }}>

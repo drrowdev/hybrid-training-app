@@ -61,3 +61,38 @@ export async function syncStravaNow(): Promise<void> {
   revalidatePath("/app/settings/strava");
   redirect("/app/settings/strava");
 }
+
+const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Best-effort background sync. Triggered from the Today page on every
+ * load; runs only when the last sync is >24h old. Silently swallows
+ * errors — the user can always trigger a manual sync from settings.
+ */
+export async function triggerStaleStravaSync(): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const { data: conn } = await supabase
+    .from("strava_connections")
+    .select("last_synced_at")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!conn) return;
+
+  const lastSynced = conn.last_synced_at ? new Date(conn.last_synced_at).getTime() : 0;
+  if (Date.now() - lastSynced < STALE_AFTER_MS) return;
+
+  try {
+    await syncStrava(supabase, user.id);
+    revalidatePath("/app");
+  } catch (e) {
+    await supabase
+      .from("strava_connections")
+      .update({ last_sync_error: (e as Error).message.slice(0, 500) })
+      .eq("user_id", user.id);
+  }
+}
