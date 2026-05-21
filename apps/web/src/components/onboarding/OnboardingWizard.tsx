@@ -457,7 +457,8 @@ export function OnboardingWizard({
                               setOneRmBySlug((rmPrev) => {
                                 const carried = rmPrev[prevSlug];
                                 if (carried == null) return rmPrev;
-                                const { [prevSlug]: _drop, ...rest } = rmPrev;
+                                const rest = { ...rmPrev };
+                                delete rest[prevSlug];
                                 return { ...rest, [newSlug]: carried };
                               });
                             }

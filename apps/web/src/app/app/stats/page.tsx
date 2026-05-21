@@ -23,9 +23,11 @@ export default async function StatsPage() {
 
   // Two-a-day breakdown over the last 30 days. Useful at-a-glance signal for
   // whether the AM/PM rhythm is actually landing.
+  // eslint-disable-next-line react-hooks/purity -- server-rendered "30 days ago" anchor
+  const thirtyDaysAgoMs = Date.now() - 30 * 86_400_000;
   const twoADayLast30 = completed.filter((s) => {
     if (s.slot !== "am" && s.slot !== "pm") return false;
-    return Date.now() - new Date(s.performed_at).getTime() < 30 * 86_400_000;
+    return new Date(s.performed_at).getTime() >= thirtyDaysAgoMs;
   }).length;
   const amCount = completed.filter((s) => s.slot === "am").length;
   const pmCount = completed.filter((s) => s.slot === "pm").length;
