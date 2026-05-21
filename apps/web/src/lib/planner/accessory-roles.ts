@@ -1,0 +1,109 @@
+/**
+ * Accessory role taxonomy + AccessoryProfile shape.
+ *
+ * Source of truth for the dynamic accessory picker (lib/planner/accessory-picker.ts).
+ * Per docs/design/accessory-schema.md §19–25:
+ *   - No archetype, week, or day template references a specific movement slug.
+ *   - Selection is by role tag from the tagged movement catalog.
+ *   - Many movements can satisfy the same role (a farmer carry is "carry",
+ *     a suitcase carry is also "carry" AND "anti_rotation", etc.).
+ */
+
+/** Bulletproof roles — DC-O3 protocols + DC-O4 floor items. */
+export const BULLETPROOF_ROLES = [
+  "heavy_isometric",
+  "hsr", // heavy slow resistance, Kongsgaard 2009
+  "alfredson_eccentric", // symptomatic-only, Alfredson 1998
+  "plyometric_low",
+  "plyometric_high",
+  "carry",
+] as const;
+export type BulletproofRole = (typeof BULLETPROOF_ROLES)[number];
+
+/** Functional roles — movement-quality / carryover. */
+export const FUNCTIONAL_ROLES = [
+  "single_leg",
+  "anti_rotation",
+  "anti_extension",
+  "loaded_mobility",
+  "compound_assistance",
+  "velocity_cued",
+  "hip_stabilizer",
+  "ankle_foot",
+] as const;
+export type FunctionalRole = (typeof FUNCTIONAL_ROLES)[number];
+
+/**
+ * DC-O4 weekly floor. Every archetype must hit these counts each week
+ * regardless of emphasis; tendinopathy flag suppresses plyometric_*.
+ */
+export const DC_O4_FLOOR: Record<BulletproofRole, number> = {
+  heavy_isometric: 1,
+  hsr: 1,
+  alfredson_eccentric: 0, // symptomatic-only, not part of floor
+  plyometric_low: 1, // counted by either low or high
+  plyometric_high: 0,
+  carry: 2,
+};
+
+/** Sum of plyometric_low + plyometric_high must be ≥ this for the floor to count satisfied. */
+export const FLOOR_PLYOMETRIC_TOTAL = 1;
+
+export type AccessoryAestheticProfile = {
+  /** Number of aesthetic gap-fill items per strength session. */
+  itemsPerSession: number;
+  /** Default working sets per accessory item. */
+  setsPerItem: number;
+  /** Default rep range — inclusive. */
+  repRange: { min: number; max: number };
+  /** When true, picker prefers is_supported = true under concurrent load. */
+  biasSupported: boolean;
+};
+
+export type AccessoryFunctionalProfile = {
+  /** Weekly required count per functional role. Roles omitted = no requirement. */
+  weeklyRoleRequirements: Partial<Record<FunctionalRole, number>>;
+};
+
+export type AccessoryDurabilityProfile = {
+  /** Extras above the global DC-O4 floor — e.g. Endurance Focus adds Achilles hsr. */
+  extras: { role: BulletproofRole; count: number }[];
+};
+
+export type AccessoryProfile = {
+  aesthetic: AccessoryAestheticProfile;
+  functional: AccessoryFunctionalProfile;
+  durability: AccessoryDurabilityProfile;
+};
+
+/** All-zero profile — used by Custom blocks and as the default no-op. */
+export const EMPTY_ACCESSORY_PROFILE: AccessoryProfile = {
+  aesthetic: {
+    itemsPerSession: 0,
+    setsPerItem: 3,
+    repRange: { min: 10, max: 15 },
+    biasSupported: false,
+  },
+  functional: { weeklyRoleRequirements: {} },
+  durability: { extras: [] },
+};
+
+/**
+ * The full requirement vector for a week — DC-O4 floor + archetype extras.
+ * Picker uses this as the durability deficit target.
+ */
+export function effectiveDurabilityFloor(
+  profile: AccessoryProfile,
+  tendinopathyActive: boolean,
+): Record<BulletproofRole, number> {
+  const floor: Record<BulletproofRole, number> = { ...DC_O4_FLOOR };
+  if (tendinopathyActive) {
+    // Plyometrics suppressed when a tendinopathy flag is active for the loaded region.
+    floor.plyometric_low = 0;
+    floor.plyometric_high = 0;
+  }
+  for (const e of profile.durability.extras) {
+    floor[e.role] = (floor[e.role] ?? 0) + e.count;
+  }
+  return floor;
+}

@@ -16,6 +16,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  smallint,
   text,
   timestamp,
   uuid,
@@ -103,6 +104,20 @@ export const movements = pgTable(
     interferenceCost: interferenceCost("interference_cost").default("low"),
     /** DC-J5: applies the 6h same-tendon refractory rule when true. */
     highStrainTendon: boolean("high_strain_tendon").default(false).notNull(),
+    /** Accessory picker tags (docs/design/accessory-schema.md §22). */
+    bulletproofRoles: text("bulletproof_roles")
+      .array()
+      .default(sql`'{}'::text[]`)
+      .notNull(),
+    functionalRoles: text("functional_roles")
+      .array()
+      .default(sql`'{}'::text[]`)
+      .notNull(),
+    /** Picker filter: prefer is_supported = true under concurrent stress. */
+    isSupported: boolean("is_supported").default(false).notNull(),
+    /** Picker ranking: 1 (low) .. 5 (high). Null = unknown. */
+    eccentricLoadScore: smallint("eccentric_load_score"),
+    stimToFatigueScore: smallint("stim_to_fatigue_score"),
     /** DC-D3 conflict matrix term. */
     axialLoad: axialLoad("axial_load").default("low").notNull(),
     /** DC-O5: prefer supported/fixed_path variants under concurrent stress. */
