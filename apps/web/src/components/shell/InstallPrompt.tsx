@@ -8,13 +8,32 @@ type BeforeInstallPromptEvent = Event & {
 };
 
 const DISMISS_KEY = "cp-install-prompt-dismissed";
+const SNOOZE_UNTIL_KEY = "cp-install-prompt-snooze-until";
 const VISIT_KEY = "cp-visit-count";
+const SNOOZE_DAYS = 14;
+
+/** True when dismissal or snooze is currently active. */
+function isSuppressed(): boolean {
+  try {
+    if (localStorage.getItem(DISMISS_KEY) === "1") return true;
+    const snoozeUntil = Number(localStorage.getItem(SNOOZE_UNTIL_KEY) ?? "0");
+    if (snoozeUntil > Date.now()) return true;
+  } catch {
+    // localStorage unavailable (private mode / cookies blocked) — fail safe by not showing.
+    return true;
+  }
+  return false;
+}
 
 /**
  * Install nudge banner. Renders on the third visit, dismissible. Two flows:
  *  - Chrome/Android: hooks beforeinstallprompt for a native prompt
  *  - iOS Safari: shows a manual "share -> Add to Home Screen" instruction
  *    card (Safari doesn't fire beforeinstallprompt)
+ *
+ * Dismissal model:
+ *  - "Not now" snoozes for 14 days
+ *  - Successful install (`accepted` outcome) permanently dismisses
  */
 export function InstallPrompt() {
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
@@ -25,8 +44,7 @@ export function InstallPrompt() {
     if (typeof window === "undefined") return;
     // Hide if already installed.
     if (window.matchMedia("(display-mode: standalone)").matches) return;
-    // Hide if previously dismissed.
-    if (localStorage.getItem(DISMISS_KEY) === "1") return;
+    if (isSuppressed()) return;
 
     // Bump visit counter (capped — we don't need huge values).
     const current = Number(localStorage.getItem(VISIT_KEY) ?? "0");
@@ -42,10 +60,11 @@ export function InstallPrompt() {
     const queueShow = (val: boolean) => {
       if (cancelled) return;
       queueMicrotask(() => {
-        if (!cancelled) {
-          if (isIOSdevice) setIOS(true);
-          setShow(val);
-        }
+        if (cancelled) return;
+        // Defensive re-check — dismissal may have happened in another tab.
+        if (isSuppressed()) return;
+        if (isIOSdevice) setIOS(true);
+        setShow(val);
       });
     };
 
@@ -61,6 +80,10 @@ export function InstallPrompt() {
       const ev = e as BeforeInstallPromptEvent;
       queueMicrotask(() => {
         if (cancelled) return;
+        // Crucial: re-check suppression INSIDE the listener. Chrome can fire
+        // beforeinstallprompt repeatedly across navigations; once the user
+        // dismissed we must not re-show until the snooze expires.
+        if (isSuppressed()) return;
         setDeferred(ev);
         if (visitsOk) setShow(true);
       });
@@ -73,8 +96,14 @@ export function InstallPrompt() {
   }, []);
 
   const dismiss = () => {
-    localStorage.setItem(DISMISS_KEY, "1");
+    try {
+      const until = Date.now() + SNOOZE_DAYS * 86_400_000;
+      localStorage.setItem(SNOOZE_UNTIL_KEY, String(until));
+    } catch {
+      // localStorage unavailable — at least hide for this session.
+    }
     setShow(false);
+    setDeferred(null);
   };
 
   const install = async () => {
@@ -82,7 +111,19 @@ export function InstallPrompt() {
     await deferred.prompt();
     const choice = await deferred.userChoice;
     if (choice.outcome === "accepted") {
-      localStorage.setItem(DISMISS_KEY, "1");
+      try {
+        localStorage.setItem(DISMISS_KEY, "1");
+      } catch {
+        // ignore
+      }
+    } else {
+      // User dismissed the native prompt — treat as a "not now" snooze.
+      try {
+        const until = Date.now() + SNOOZE_DAYS * 86_400_000;
+        localStorage.setItem(SNOOZE_UNTIL_KEY, String(until));
+      } catch {
+        // ignore
+      }
     }
     setShow(false);
     setDeferred(null);
