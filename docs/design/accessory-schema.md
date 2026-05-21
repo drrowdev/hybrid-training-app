@@ -526,3 +526,175 @@ The original draft had one HIGH source (Schoenfeld 2017) carrying the whole pres
 | Durability | Baar 2017 + Magnusson & Kjaer 2019 + Kongsgaard 2009 + Alfredson 1998 + DC-O3/O4 | **HIGH** (four peer-reviewed sources) |
 
 The pillar I missed in the first pass turned out to be the **best-evidenced** of the three. That's the honest answer to your question.
+
+---
+
+# Revision 2 — Dynamic role-based selection (no hardcoded movements)
+
+The §13–14 per-archetype tables in the previous revision named specific movements as examples ("farmer carry, suitcase carry, Bulgarian split squat"). To be crystal clear: **no archetype, no week template, and no day template ever references a specific movement slug.** Selection is always **role-based and dynamic**, the same way the existing region-freshness picker works for regions.
+
+## 19. The hardcoding rule
+
+> **No archetype, no week, no day, no rule, and no UI defaults reference a specific movement slug.** All selection is by role + filters from a tagged movement catalog. If a feature would need a movement slug, it needs to express that requirement as a role tag instead.
+
+This applies to:
+- Per-archetype accessory profiles
+- DC-O4 bulletproofing slots
+- Variation rotation
+- Daily branch overrides
+- Substitution suggestions
+
+It does **not** apply to:
+- The main strength patterns (squat / horizontal-press / deadlift / overhead-press) — those already use a candidate-slug list per role and the user picks their preferred variant on block creation. That existing mechanism is the model — accessories should work the same way.
+
+## 20. Role taxonomy
+
+Roles are tags on movements, not categories of movements. **One movement carries multiple roles.** A farmer carry is both `carry` AND (often) `trunk_under_load`. A heavy slow Bulgarian split squat is `hsr` AND `single_leg`. A Pallof press is `anti_rotation` AND `core`. The selector picks any movement that satisfies the required role; ties are broken by the other filters.
+
+### 20.1 Bulletproof roles (DC-O4 floor + DC-O3 protocols)
+
+| Role tag | What it means | Movements that satisfy it (examples — not exhaustive, not exclusive) |
+|---|---|---|
+| `heavy_isometric` | DC-O3 protocol (i): ≥70% MVC, 30s hold | Wall sit, Spanish squat hold, split squat ISO, hamstring bridge ISO, plantarflexed calf ISO, Copenhagen plank, side plank, glute bridge ISO |
+| `hsr` | DC-O3 protocol (ii): heavy slow resistance, 3s eccentric | Tempo back squat, tempo RDL, tempo calf raise, tempo single-leg press, tempo front squat, tempo Bulgarian split squat |
+| `alfredson_eccentric` | DC-O3 protocol (iii): symptomatic-only | Alfredson calf protocol, single-leg eccentric squat, eccentric wrist curl |
+| `plyometric_low` | Low-amplitude jump exposure | Pogo hops, ankle hops, line hops, low box step-offs, low broad jumps |
+| `plyometric_high` | High-amplitude jump exposure | Box jumps, depth jumps, broad jumps, bounds, hurdle hops |
+| `carry` | Loaded carry — DC-O4 ≥2 exposures/wk | Farmer carry, suitcase carry, overhead carry, front-rack carry, yoke walk, Zercher carry, sandbag carry, waiter's walk |
+
+### 20.2 Functional roles
+
+| Role tag | What it means | Examples |
+|---|---|---|
+| `single_leg` | Unilateral lower-body force production | Bulgarian split squat, reverse lunge, step-up, pistol squat, single-leg RDL, single-leg press, skater squat, walking lunge |
+| `anti_rotation` | Resist twist under load (lumbar protection) | Pallof press, Pallof step-out, single-arm overhead press, suitcase carry, renegade row, bird-dog, half-kneeling chop, half-kneeling lift |
+| `anti_extension` | Resist lumbar over-extension | Dead bug, ab wheel, hollow hold, hanging leg raise, plank, RKC plank, stir-the-pot |
+| `loaded_mobility` | End-range strength under load | Cossack squat, Jefferson curl, ATG split squat, deep goblet squat, deficit RDL, kettlebell windmill |
+| `compound_assistance` | Multi-joint accessory that builds the main lift | Barbell row, single-leg press, weighted dip, weighted chin-up, RDL, push press |
+| `velocity_cued` | Dynamic-effort variant — explosive concentric, light load | Speed squat, speed bench, speed pull, banded variants, jump squat |
+| `hip_stabilizer` | Hip abduction / external rotation (knee tracking, running) | Hip airplane, side-lying clamshell, banded crab walk, single-leg glute bridge, Copenhagen plank |
+| `ankle_foot` | Ankle dorsiflexion + intrinsic foot capacity (running) | Tibialis raise, calf raise pause variants, short-foot drill, ankle dorsiflexion hold |
+
+### 20.3 Aesthetic targeting (already exists)
+
+The existing `primary_muscles[]` tag on movements drives aesthetic selection. A "side delts" gap is filled by *any* movement whose `primary_muscles` contains `side_delts`. The catalog already has many such options (DB lateral raise, cable lateral raise, machine lateral raise, leaning lateral raise, etc.) — the picker rotates within them.
+
+## 21. The selection algorithm
+
+For each strength session in a generated week, the engine fills accessory slots by walking this list **in order**, stopping when the archetype's per-session slot budget is hit:
+
+```
+1. Compute the durability deficit for this week so far.
+   If any DC-O4 role (heavy_isometric, hsr, plyometric_*, carry) is below
+   its weekly floor, take the next slot for it.
+
+2. Compute the functional deficit for this archetype's profile.
+   If any required functional role (e.g. archetype declares "needs 2x carry,
+   1x single_leg") isn't met for the week, take the next slot for it.
+
+3. Compute the aesthetic deficit per muscle group.
+   Identify the muscle furthest below its per-archetype-week target.
+   The next slot is filled with a movement tagged with that muscle as
+   a primary_muscle.
+
+4. For every "next slot for role X" decision above:
+   a. Filter the catalog to movements tagged with role X.
+   b. Remove movements that load any flagged limitation region.
+   c. If concurrent_modifier is active, prefer is_supported = true
+      movements and demote high eccentric_load_score variants.
+   d. Demote movements that were used in the immediately previous
+      session for the same role (variation rotation).
+   e. Among the remaining, pick the highest-ranked candidate. Ranking
+      considers: equipment availability, stim-to-fatigue ratio,
+      user preferences (when present).
+```
+
+The algorithm reads tag data from the catalog and config data from the archetype. **It never reads a slug from either.**
+
+## 22. What this means for the data model
+
+Compared to the previous revision (§16), the practical implementation is even simpler:
+
+### Movement catalog gets tag arrays
+
+```sql
+ALTER TABLE movements ADD COLUMN bulletproof_roles text[] NOT NULL DEFAULT '{}';
+ALTER TABLE movements ADD COLUMN functional_roles text[] NOT NULL DEFAULT '{}';
+ALTER TABLE movements ADD COLUMN is_supported boolean NOT NULL DEFAULT false;
+ALTER TABLE movements ADD COLUMN eccentric_load_score smallint;  -- 1..5
+ALTER TABLE movements ADD COLUMN stim_to_fatigue_score smallint; -- 1..5
+```
+
+Existing columns reused: `primary_muscles[]`, `secondary_muscles[]`, `high_strain_tendon`, `is_compound`, `interference_cost`, `bilateral`.
+
+### Archetype config carries role budgets, not slugs
+
+```ts
+type AccessoryProfile = {
+  aesthetic: {
+    setsPerItem: number;
+    itemsPerSession: number;
+    repRange: { min: number; max: number };
+    biasSupported: boolean;  // when true, prefer machine/cable variants
+  };
+  functional: {
+    weeklyRoleRequirements: {
+      carry?: number;            // e.g. 2 = need 2 carry exposures/wk
+      single_leg?: number;
+      anti_rotation?: number;
+      hip_stabilizer?: number;
+      // ... any subset of the functional role tags
+    };
+  };
+  durability: {
+    // Beyond the global DC-O4 floor, which roles get extras
+    extras: { role: string; count: number }[];
+    // e.g. Endurance Focus declares [{ role: "hsr", count: 2 }] for Achilles
+  };
+};
+```
+
+No slug appears anywhere in `AccessoryProfile`. Just **roles + counts**.
+
+### Tagging migration
+
+A one-time data migration tags the existing ~250-movement catalog. Estimated effort:
+- **Bulletproof roles** — straightforward, mostly from the existing `high_strain_tendon` + a small manual review. ~30–50 movements get a tag.
+- **Functional roles** — also straightforward, mostly from the existing `is_compound` + `bilateral` + a manual review for `anti_rotation` and `loaded_mobility`. ~80–100 movements get a tag.
+- **`is_supported`** — derives from existing `stability` enum (fixed_path = supported, free = not).
+- **`eccentric_load_score` / `stim_to_fatigue_score`** — manual review per movement; not blocking initial selection (defaults to neutral).
+
+The catalog tags become the **source of truth**. If a new movement gets added later, tagging it correctly is the only thing required for the picker to find it.
+
+## 23. Re-rendering the per-archetype tables
+
+The §13–14 tables, re-expressed in role language (no slugs):
+
+| Archetype | Aesthetic gap-fill items/wk | Functional role requirements (per week) | Durability beyond DC-O4 floor |
+|---|---|---|---|
+| Strength | 8–12 | `carry` ≥ 2, `single_leg` ≥ 1 | none |
+| Hypertrophy | 16+ | `carry` ≥ 2 | none |
+| Hybrid | 8–12 | `carry` ≥ 2, `single_leg` ≥ 1, `anti_rotation` ≥ 1 | none |
+| Endurance | 4–6 (MV floor) | `hip_stabilizer` ≥ 2, `ankle_foot` ≥ 2 | `hsr` ≥ 2 (Achilles) |
+| Maintenance | 0–2 | `carry` ≥ 2 | none (floor only) |
+| Rebuild | 4–6 | `loaded_mobility` ≥ 1 | (TendonDay primitive covers floor + ≥1 of each bulletproof role) |
+
+Every cell is a tag + count. The picker turns those into actual movements at session generation time.
+
+## 24. Why this matters operationally
+
+The benefits of role-based selection over hardcoded slugs:
+
+1. **Adding a movement requires zero code changes** — tag it correctly and it joins the pool everywhere it qualifies.
+2. **User dislikes / equipment constraints become filters, not exceptions** — "I don't have a cable stack" removes all cable-tagged movements from `anti_rotation` candidates; the picker finds Pallof-band variants or suitcase carries instead.
+3. **Variation rotation works correctly** — the picker has many candidates per role, so it can demote-and-rotate without running out of options.
+4. **Substitution under limitations is automatic** — a flagged knee region removes high-impact variants of `single_leg` and `plyometric_*`; the picker still finds a Bulgarian split squat (low-impact) or a step-up (lower-impact still) or a single-leg press (fully supported).
+5. **No 16-file scrub the next time terminology shifts** — the methodology-purity bug we hit on PR/TM doesn't repeat because there's nothing to leak.
+
+## 25. The audit rule
+
+A simple lint that should land alongside the implementation:
+
+> Any file under `apps/web/src/lib/planner/` other than the catalog seeds and the picker itself that contains a hardcoded movement slug (matching the regex `["'`][a-z][a-z0-9-]+["'`]` adjacent to a known catalog-shape pattern) is rejected at PR time.
+
+This makes the rule structural, not aspirational.
