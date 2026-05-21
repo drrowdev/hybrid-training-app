@@ -111,6 +111,15 @@ export type Archetype = {
   oneLiner: string;
   weeks: number;
   days: DayTemplate[];
+  /**
+   * Curated two-a-day variant of `days`. Used when the user has set
+   * `profiles.allows_two_a_days = true`. Same anchors, same total movements,
+   * but cardio is moved into PM slots paired with morning lifts so the
+   * AMPK / mTORC1 ≥ 6h gap (DC-D1) is respected by construction. Optional;
+   * archetypes that don't benefit (e.g. Rebuild — capped intensity, single
+   * sessions throughout) omit it.
+   */
+  twoADayDays?: DayTemplate[];
   weekProfiles: WeekProfile[];
 };
 
@@ -242,6 +251,50 @@ export const STRENGTH_ANCHOR: Archetype = {
       rank: 6,
     },
   ],
+  /**
+   * Two-a-day variant of Strength Anchor. Same four main lifts in AM slots
+   * so they hit fresh; cardio gets absorbed into the same calendar day as
+   * PM Z2, separated by the AM/PM window default (≥8h) to respect DC-D1.
+   * Net result: 4 strength + 2 cardio in 4 calendar days instead of 6,
+   * which mirrors how serious hybrid athletes structure their week.
+   */
+  twoADayDays: [
+    { ...STRENGTH_DAYS[0]!, slot: "am" },
+    {
+      kind: "cardio",
+      dayIndex: 0,
+      slot: "pm",
+      role: "easy_z2",
+      title: "Easy Z2 (PM)",
+      movementSlug: "bike-indoor-z2",
+      cardioKind: "cardio_z2",
+      durationMin: 45,
+      hrCap: "≤ 70% HRR, conversational",
+      priority: "optional",
+      rank: 5,
+    },
+    { ...STRENGTH_DAYS[1]!, slot: "am" },
+    { ...STRENGTH_DAYS[2]!, slot: "am" },
+    {
+      kind: "cardio",
+      dayIndex: 3,
+      slot: "pm",
+      role: "long_z2_plus_alactic",
+      title: "Long Z2 + alactic (PM)",
+      movementSlug: "run-long-z2",
+      cardioKind: "cardio_z2",
+      durationMin: 75,
+      hrCap: "≤ 70% HRR, conversational",
+      finisher: {
+        movementSlug: "run-hill-sprints",
+        durationMin: 10,
+        protocolNote: "6–10 × 10–15s near-max, walk-down recovery",
+      },
+      priority: "optional",
+      rank: 6,
+    },
+    { ...STRENGTH_DAYS[3]!, slot: "am" },
+  ],
   weekProfiles: [
     { weekIndex: 0, setIntensities: [0.65, 0.75, 0.85], setReps: 5, intensityLabel: "5s wave" },
     { weekIndex: 1, setIntensities: [0.70, 0.80, 0.90], setReps: 3, intensityLabel: "3s wave" },
@@ -327,6 +380,108 @@ export const ENDURANCE_ANCHOR: Archetype = {
     {
       kind: "cardio",
       dayIndex: 5,
+      role: "long_z2",
+      title: "Long Z2",
+      movementSlug: "run-long-z2",
+      cardioKind: "cardio_z2",
+      durationMin: 100,
+      hrCap: "≤ 70% HRR, conversational",
+      priority: "anchor",
+      rank: 1,
+    },
+  ],
+  /**
+   * Two-a-day variant of Endurance Anchor. Strength maintenance days get
+   * a PM long Z2 paired with them — DC-D1 ≥6h gap means morning strength
+   * can still pull legitimate aerobic dose later in the day. The VO2
+   * intervals day stays a single session (highest interference modality
+   * per DC-L1; pairing it with anything magnifies the cost). Long-Z2
+   * Sat stays single too — running ≥75 min is a 24h-recovery event per
+   * DC-L3.
+   */
+  twoADayDays: [
+    {
+      kind: "strength",
+      dayIndex: 1,
+      slot: "am",
+      role: "squat",
+      title: "Squat maintenance (AM)",
+      candidateSlugs: STRENGTH_ROLE_CANDIDATES.squat,
+      priority: "anchor",
+      rank: 3,
+    },
+    {
+      kind: "cardio",
+      dayIndex: 1,
+      slot: "pm",
+      role: "easy_z2",
+      title: "Easy Z2 (PM)",
+      movementSlug: "bike-indoor-z2",
+      cardioKind: "cardio_z2",
+      durationMin: 45,
+      hrCap: "≤ 70% HRR, conversational",
+      priority: "optional",
+      rank: 6,
+    },
+    {
+      kind: "cardio",
+      dayIndex: 2,
+      slot: "single",
+      role: "z2_plus_alactic",
+      title: "Z2 + alactic finisher",
+      movementSlug: "bike-indoor-z2",
+      cardioKind: "cardio_z2",
+      durationMin: 45,
+      hrCap: "≤ 70% HRR, conversational",
+      finisher: {
+        movementSlug: "bike-indoor-sprints",
+        durationMin: 10,
+        protocolNote: "6–8 × 10–15s near-max, 1:10 rest",
+      },
+      priority: "optional",
+      rank: 5,
+    },
+    {
+      kind: "strength",
+      dayIndex: 3,
+      slot: "am",
+      role: "deadlift",
+      title: "Deadlift maintenance (AM)",
+      candidateSlugs: STRENGTH_ROLE_CANDIDATES.deadlift,
+      priority: "anchor",
+      rank: 4,
+    },
+    {
+      kind: "cardio",
+      dayIndex: 3,
+      slot: "pm",
+      role: "easy_z2",
+      title: "Easy Z2 (PM)",
+      movementSlug: "bike-indoor-z2",
+      cardioKind: "cardio_z2",
+      durationMin: 45,
+      hrCap: "≤ 70% HRR, conversational",
+      priority: "optional",
+      rank: 7,
+    },
+    {
+      kind: "cardio",
+      dayIndex: 4,
+      slot: "single",
+      role: "vo2_intervals",
+      title: "VO2 intervals",
+      movementSlug: "run-vo2-4x4",
+      cardioKind: "cardio_vo2",
+      durationMin: 35,
+      hrCap: "90–95% HRmax during work",
+      protocolNote: "4 × 4 min @ 90–95% HRmax, 3 min easy recovery",
+      priority: "anchor",
+      rank: 2,
+    },
+    {
+      kind: "cardio",
+      dayIndex: 5,
+      slot: "single",
       role: "long_z2",
       title: "Long Z2",
       movementSlug: "run-long-z2",
@@ -543,6 +698,95 @@ export const HYPERTROPHY_ANCHOR: Archetype = {
       rank: 4,
     },
   ],
+  /**
+   * Two-a-day variant of Hypertrophy Anchor. The hypertrophy stimulus is
+   * the most robust under concurrent load per Murach & Bagley 2016 HIGH,
+   * so we can comfortably double-up on Mon and Thu with PM Z2 — DC-L4
+   * says muscle cross-section is preserved when intensity stays in the
+   * 60-80% 1RM band (which this archetype does). The single optional
+   * Wed Z2 stays untouched.
+   */
+  twoADayDays: [
+    {
+      kind: "strength",
+      dayIndex: 0,
+      slot: "am",
+      role: "squat",
+      title: "Squat — hypertrophy",
+      candidateSlugs: STRENGTH_ROLE_CANDIDATES.squat,
+      priority: "anchor",
+      rank: 1,
+    },
+    {
+      kind: "cardio",
+      dayIndex: 0,
+      slot: "pm",
+      role: "easy_z2",
+      title: "Easy Z2 (PM)",
+      movementSlug: "bike-indoor-z2",
+      cardioKind: "cardio_z2",
+      durationMin: 35,
+      hrCap: "≤ 70% HRR, conversational",
+      priority: "optional",
+      rank: 5,
+    },
+    {
+      kind: "strength",
+      dayIndex: 1,
+      slot: "am",
+      role: "horizontal_press",
+      title: "Bench — hypertrophy",
+      candidateSlugs: STRENGTH_ROLE_CANDIDATES.horizontal_press,
+      priority: "anchor",
+      rank: 2,
+    },
+    {
+      kind: "cardio",
+      dayIndex: 2,
+      slot: "single",
+      role: "easy_z2",
+      title: "Easy Z2",
+      movementSlug: "bike-indoor-z2",
+      cardioKind: "cardio_z2",
+      durationMin: 40,
+      hrCap: "≤ 70% HRR, conversational",
+      priority: "optional",
+      rank: 6,
+    },
+    {
+      kind: "strength",
+      dayIndex: 3,
+      slot: "am",
+      role: "deadlift",
+      title: "Deadlift — hypertrophy",
+      candidateSlugs: STRENGTH_ROLE_CANDIDATES.deadlift,
+      priority: "anchor",
+      rank: 3,
+    },
+    {
+      kind: "cardio",
+      dayIndex: 3,
+      slot: "pm",
+      role: "easy_z2",
+      title: "Easy Z2 (PM)",
+      movementSlug: "bike-indoor-z2",
+      cardioKind: "cardio_z2",
+      durationMin: 35,
+      hrCap: "≤ 70% HRR, conversational",
+      priority: "optional",
+      rank: 7,
+    },
+    {
+      kind: "strength",
+      dayIndex: 4,
+      slot: "am",
+      role: "vertical_press",
+      title: "Overhead press — hypertrophy",
+      candidateSlugs: STRENGTH_ROLE_CANDIDATES.vertical_press,
+      priority: "anchor",
+      rank: 4,
+    },
+  ],
   // Hypertrophy wave: 4 working sets each week, building reps then trading
   // reps for load before deloading. Intensities sit firmly in the 60–75% TM
   // band (~54–67% of 1RM at TM 90%) — the rep range is what drives the
@@ -599,29 +843,66 @@ export function daySlotKey(d: DayTemplate): string {
   return `${d.dayIndex}:${daySlot(d)}`;
 }
 
+/**
+ * Return the day set that should drive planning for this user. When the
+ * user has set allows_two_a_days = true AND the archetype defines a
+ * curated twoADayDays variant, returns that; otherwise the default single-
+ * session days.
+ */
+export function effectiveDays(archetype: Archetype, allowsTwoADays: boolean): DayTemplate[] {
+  if (allowsTwoADays && archetype.twoADayDays && archetype.twoADayDays.length > 0) {
+    return archetype.twoADayDays;
+  }
+  return archetype.days;
+}
+
 /** Anchor day count = the minimum frequency at which the archetype is viable. */
-export function minDaysForArchetype(archetype: Archetype): number {
-  return archetype.days.filter((d) => d.priority === "anchor").length;
+export function minDaysForArchetype(archetype: Archetype, allowsTwoADays = false): number {
+  const days = effectiveDays(archetype, allowsTwoADays);
+  // Count distinct calendar days touched by anchors (so a Mon AM + Mon PM
+  // anchor pair counts as 1 required day).
+  const anchorDayIndices = new Set(days.filter((d) => d.priority === "anchor").map((d) => d.dayIndex));
+  return anchorDayIndices.size;
 }
 
 /** Total day count when the archetype is run at full frequency. */
-export function maxDaysForArchetype(archetype: Archetype): number {
-  return archetype.days.length;
+export function maxDaysForArchetype(archetype: Archetype, allowsTwoADays = false): number {
+  const days = effectiveDays(archetype, allowsTwoADays);
+  return new Set(days.map((d) => d.dayIndex)).size;
 }
 
 /**
  * Pick which of the archetype's days run, given a target frequency.
  * Always keeps every anchor; adds optionals in rank order until the budget is hit.
- * If `daysPerWeek` is below minDaysForArchetype the result will still include all anchors —
- * the wizard should refuse to allow this case, but we don't crash.
+ * Two-a-day pairs share a calendar day, so frequency is measured in distinct
+ * dayIndex values, not total session count.
  */
-export function daysForFrequency(archetype: Archetype, daysPerWeek: number): DayTemplate[] {
-  const anchors = archetype.days.filter((d) => d.priority === "anchor");
-  const optionals = archetype.days
+export function daysForFrequency(
+  archetype: Archetype,
+  daysPerWeek: number,
+  allowsTwoADays = false,
+): DayTemplate[] {
+  const source = effectiveDays(archetype, allowsTwoADays);
+  const anchors = source.filter((d) => d.priority === "anchor");
+  const optionals = source
     .filter((d) => d.priority === "optional")
     .sort((a, b) => a.rank - b.rank);
-  const budget = Math.max(0, daysPerWeek - anchors.length);
-  const chosen = [...anchors, ...optionals.slice(0, budget)];
+  const anchorDayIndices = new Set(anchors.map((d) => d.dayIndex));
+  const budget = Math.max(0, daysPerWeek - anchorDayIndices.size);
+  // Pick optionals greedily: a new calendar day costs 1 against the budget;
+  // an optional that lands on an already-anchored calendar day is free.
+  const chosen: DayTemplate[] = [...anchors];
+  const touched = new Set(anchorDayIndices);
+  let spent = 0;
+  for (const opt of optionals) {
+    const newDay = !touched.has(opt.dayIndex);
+    if (newDay && spent >= budget) continue;
+    if (newDay) {
+      spent += 1;
+      touched.add(opt.dayIndex);
+    }
+    chosen.push(opt);
+  }
   // Stable order by (dayIndex, slot) so the week renders Mon → Sun and AM before PM.
   return chosen.sort((a, b) => {
     if (a.dayIndex !== b.dayIndex) return a.dayIndex - b.dayIndex;
@@ -639,10 +920,11 @@ export function requiredStrengthRoles(archetype: Archetype): StrengthRole[] {
   return Array.from(set);
 }
 
-/** Union of all candidate slugs across all strength days. */
+/** Union of all candidate slugs across all strength days (both single + two-a-day variants). */
 export function allCandidateLiftSlugs(archetype: Archetype): string[] {
   const set = new Set<string>();
-  for (const d of archetype.days) {
+  const pool: DayTemplate[] = [...archetype.days, ...(archetype.twoADayDays ?? [])];
+  for (const d of pool) {
     if (d.kind === "strength") d.candidateSlugs.forEach((s) => set.add(s));
   }
   return Array.from(set);
@@ -650,7 +932,8 @@ export function allCandidateLiftSlugs(archetype: Archetype): string[] {
 
 export function requiredCardioSlugs(archetype: Archetype): string[] {
   const set = new Set<string>();
-  for (const d of archetype.days) {
+  const pool: DayTemplate[] = [...archetype.days, ...(archetype.twoADayDays ?? [])];
+  for (const d of pool) {
     if (d.kind === "cardio") {
       set.add(d.movementSlug);
       if (d.finisher) set.add(d.finisher.movementSlug);
@@ -662,7 +945,8 @@ export function requiredCardioSlugs(archetype: Archetype): string[] {
 /** Tendon movement slugs used by the archetype (fixed; not user-pickable). */
 export function requiredTendonSlugs(archetype: Archetype): string[] {
   const set = new Set<string>();
-  for (const d of archetype.days) {
+  const pool: DayTemplate[] = [...archetype.days, ...(archetype.twoADayDays ?? [])];
+  for (const d of pool) {
     if (d.kind === "tendon") set.add(d.movementSlug);
   }
   return Array.from(set);

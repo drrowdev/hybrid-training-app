@@ -12,21 +12,29 @@ import {
   type CustomDayKind,
   type WaveTemplateId,
 } from "@/lib/planner/custom";
+import type { DaySlot } from "@/lib/planner/archetypes";
 
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const WEEKS_OPTIONS = [3, 4, 5, 6];
 
-type DayState = { dayIndex: number; kind: CustomDayKind; durationMinOverride?: number };
+type DayState = {
+  dayIndex: number;
+  slot: DaySlot;
+  kind: CustomDayKind;
+  durationMinOverride?: number;
+};
 
 export function CustomBlockBuilder({
   defaultStartedOn,
   defaultDaysPerWeek,
   hasAnyStrengthTm,
+  allowsTwoADays,
   action,
 }: {
   defaultStartedOn: string;
   defaultDaysPerWeek: number;
   hasAnyStrengthTm: boolean;
+  allowsTwoADays: boolean;
   action: (fd: FormData) => Promise<{ ok: true } | { ok: false; error: string }>;
 }) {
   const [name, setName] = useState<string>("");
@@ -46,15 +54,17 @@ export function CustomBlockBuilder({
   const strengthDayCount = nonRestDays.filter((d) => d.kind.startsWith("strength_")).length;
   const cardioDayCount = nonRestDays.filter((d) => d.kind.startsWith("cardio_")).length;
   const tendonDayCount = nonRestDays.filter((d) => d.kind.startsWith("tendon_")).length;
-  const daysPerWeek = nonRestDays.length;
+  // Count calendar days touched (a two-a-day day counts as 1 day, 2 sessions).
+  const daysTouched = new Set(nonRestDays.map((d) => d.dayIndex)).size;
+  const sessionsPerWeek = nonRestDays.length;
 
   const hasStrengthDay = strengthDayCount > 0;
-  const isReady = daysPerWeek >= 1 && (!hasStrengthDay || hasAnyStrengthTm);
+  const isReady = sessionsPerWeek >= 1 && (!hasStrengthDay || hasAnyStrengthTm);
 
   const submit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
-    if (daysPerWeek < 1) {
+    if (sessionsPerWeek < 1) {
       setError("Pick at least one non-rest day.");
       return;
     }
@@ -66,9 +76,14 @@ export function CustomBlockBuilder({
       name: name.trim() || undefined,
       weeks,
       startedOn,
-      daysPerWeek,
+      daysPerWeek: daysTouched,
       waveTemplate,
-      days: nonRestDays,
+      days: nonRestDays.map((d) => ({
+        dayIndex: d.dayIndex,
+        slot: d.slot,
+        kind: d.kind,
+        durationMinOverride: d.durationMinOverride,
+      })),
     };
     const fd = new FormData();
     fd.set("config", JSON.stringify(config));
@@ -83,25 +98,51 @@ export function CustomBlockBuilder({
     });
   };
 
-  const setDayKind = (dayIndex: number, kind: CustomDayKind) => {
+  const setDayKind = (dayIndex: number, slot: DaySlot, kind: CustomDayKind) => {
     setDays((prev) => {
-      const next = prev.filter((d) => d.dayIndex !== dayIndex);
       // When kind changes, drop any prior duration override (defaults take over).
-      next.push({ dayIndex, kind });
-      next.sort((a, b) => a.dayIndex - b.dayIndex);
+      const next = prev.filter((d) => !(d.dayIndex === dayIndex && d.slot === slot));
+      next.push({ dayIndex, slot, kind });
+      next.sort((a, b) => a.dayIndex - b.dayIndex || slotOrder(a.slot) - slotOrder(b.slot));
       return next;
     });
   };
-  const setDayDuration = (dayIndex: number, minutes: number | undefined) => {
+  const setDayDuration = (dayIndex: number, slot: DaySlot, minutes: number | undefined) => {
+    setDays((prev) =>
+      prev.map((d) =>
+        d.dayIndex === dayIndex && d.slot === slot ? { ...d, durationMinOverride: minutes } : d,
+      ),
+    );
+  };
+  /** Convert the day's current state into rows the UI renders. */
+  const rowsFor = (dayIndex: number): DayState[] => {
+    const rows = days
+      .filter((d) => d.dayIndex === dayIndex)
+      .sort((a, b) => slotOrder(a.slot) - slotOrder(b.slot));
+    if (rows.length === 0) return [{ dayIndex, slot: "single", kind: "rest" }];
+    return rows;
+  };
+  const splitToTwoADay = (dayIndex: number) => {
     setDays((prev) => {
-      const next = prev.map((d) =>
-        d.dayIndex === dayIndex ? { ...d, durationMinOverride: minutes } : d,
-      );
+      const current = prev.find((d) => d.dayIndex === dayIndex && d.slot === "single");
+      const next = prev.filter((d) => d.dayIndex !== dayIndex);
+      // AM defaults to the existing session (or a strength placeholder); PM defaults to easy cardio.
+      const amKind: CustomDayKind = current?.kind && current.kind !== "rest" ? current.kind : "strength_squat";
+      next.push({ dayIndex, slot: "am", kind: amKind });
+      next.push({ dayIndex, slot: "pm", kind: "cardio_z2_short" });
+      next.sort((a, b) => a.dayIndex - b.dayIndex || slotOrder(a.slot) - slotOrder(b.slot));
       return next;
     });
   };
-  const dayStateFor = (dayIndex: number): DayState =>
-    days.find((d) => d.dayIndex === dayIndex) ?? { dayIndex, kind: "rest" };
+  const collapseToSingle = (dayIndex: number) => {
+    setDays((prev) => {
+      const am = prev.find((d) => d.dayIndex === dayIndex && d.slot === "am");
+      const next = prev.filter((d) => d.dayIndex !== dayIndex);
+      next.push({ dayIndex, slot: "single", kind: am?.kind ?? "rest" });
+      next.sort((a, b) => a.dayIndex - b.dayIndex || slotOrder(a.slot) - slotOrder(b.slot));
+      return next;
+    });
+  };
 
   // Group dropdown options for the optgroup-style picker.
   const optionGroups = useMemo(() => {
@@ -220,7 +261,7 @@ export function CustomBlockBuilder({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
           <h2 style={{ margin: 0, fontSize: 16 }}>Week shape</h2>
           <span className="cp-pill">
-            {daysPerWeek} d/wk · {strengthDayCount}S + {cardioDayCount}C{tendonDayCount > 0 ? ` + ${tendonDayCount}T` : ""}
+            {daysTouched} d/wk · {sessionsPerWeek} session{sessionsPerWeek === 1 ? "" : "s"} · {strengthDayCount}S + {cardioDayCount}C{tendonDayCount > 0 ? ` + ${tendonDayCount}T` : ""}
           </span>
         </div>
         <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--cp-text-muted)" }}>
@@ -228,13 +269,9 @@ export function CustomBlockBuilder({
         </p>
         <div style={{ display: "grid", gap: 6 }}>
           {Array.from({ length: 7 }, (_, dayIndex) => {
-            const state = dayStateFor(dayIndex);
-            const kind = state.kind;
-            const isRest = kind === "rest";
-            const option = CUSTOM_DAY_OPTIONS.find((o) => o.value === kind);
-            const canEditDuration = CARDIO_KINDS_WITH_DURATION.includes(kind);
-            const defaultDuration = DEFAULT_DURATION_FOR[kind];
-            const currentDuration = state.durationMinOverride ?? defaultDuration ?? 0;
+            const rows = rowsFor(dayIndex);
+            const isSplit = rows.length > 1 || rows[0]!.slot !== "single";
+            const isAllRest = !isSplit && rows[0]!.kind === "rest";
             return (
               <div
                 key={dayIndex}
@@ -251,7 +288,7 @@ export function CustomBlockBuilder({
                   style={{
                     fontSize: 12,
                     fontWeight: 600,
-                    color: isRest ? "var(--cp-text-muted)" : "var(--cp-text)",
+                    color: isAllRest ? "var(--cp-text-muted)" : "var(--cp-text)",
                     textTransform: "uppercase",
                     letterSpacing: "0.06em",
                     paddingTop: 8,
@@ -259,73 +296,136 @@ export function CustomBlockBuilder({
                 >
                   {DOW[dayIndex]}
                 </div>
-                <div style={{ display: "grid", gap: 6 }}>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: canEditDuration ? "1fr 110px" : "1fr",
-                      gap: 8,
-                      alignItems: "center",
-                    }}
-                  >
-                    <select
-                      value={kind}
-                      onChange={(e) => setDayKind(dayIndex, e.target.value as CustomDayKind)}
-                      aria-label={`${DOW[dayIndex]} session kind`}
+                <div style={{ display: "grid", gap: 8 }}>
+                  {rows.map((state) => {
+                    const { slot, kind } = state;
+                    const isRest = kind === "rest";
+                    const option = CUSTOM_DAY_OPTIONS.find((o) => o.value === kind);
+                    const canEditDuration = CARDIO_KINDS_WITH_DURATION.includes(kind);
+                    const defaultDuration = DEFAULT_DURATION_FOR[kind];
+                    const currentDuration = state.durationMinOverride ?? defaultDuration ?? 0;
+                    return (
+                      <div key={`${dayIndex}:${slot}`} style={{ display: "grid", gap: 4 }}>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: canEditDuration ? "auto 1fr 110px" : "auto 1fr",
+                            gap: 8,
+                            alignItems: "center",
+                          }}
+                        >
+                          {isSplit && (
+                            <span
+                              className="mono"
+                              style={{
+                                fontSize: 10,
+                                color: "var(--cp-text-muted)",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.08em",
+                                minWidth: 22,
+                              }}
+                            >
+                              {slot}
+                            </span>
+                          )}
+                          {!isSplit && <span style={{ width: 0 }} />}
+                          <select
+                            value={kind}
+                            onChange={(e) => setDayKind(dayIndex, slot, e.target.value as CustomDayKind)}
+                            aria-label={`${DOW[dayIndex]} ${slot === "single" ? "session kind" : `${slot.toUpperCase()} session kind`}`}
+                            style={{
+                              padding: "8px 10px",
+                              fontSize: 14,
+                              color: isRest ? "var(--cp-text-muted)" : "var(--cp-text)",
+                            }}
+                          >
+                            {optionGroups.map(([group, items]) =>
+                              group === "—" ? (
+                                items.map((opt) => (
+                                  <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                  </option>
+                                ))
+                              ) : (
+                                <optgroup key={group} label={group}>
+                                  {items.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              ),
+                            )}
+                          </select>
+                          {canEditDuration && (
+                            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                              <input
+                                type="number"
+                                value={currentDuration}
+                                min={5}
+                                max={240}
+                                step={5}
+                                onChange={(e) => {
+                                  const n = Number(e.target.value);
+                                  if (Number.isNaN(n)) return;
+                                  setDayDuration(
+                                    dayIndex,
+                                    slot,
+                                    defaultDuration != null && n === defaultDuration ? undefined : n,
+                                  );
+                                }}
+                                inputMode="numeric"
+                                aria-label={`${DOW[dayIndex]} ${slot} duration in minutes`}
+                                className="mono"
+                                style={{ width: 70, padding: "8px 8px", fontSize: 14, textAlign: "right" }}
+                              />
+                              <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>min</span>
+                            </div>
+                          )}
+                        </div>
+                        {!isRest && option && (
+                          <div style={{ fontSize: 11, color: "var(--cp-text-muted)", lineHeight: 1.45, paddingLeft: isSplit ? 30 : 0 }}>
+                            {option.description}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {allowsTwoADays && !isSplit && !isAllRest && (
+                    <button
+                      type="button"
+                      onClick={() => splitToTwoADay(dayIndex)}
                       style={{
-                        padding: "8px 10px",
-                        fontSize: 14,
-                        color: isRest ? "var(--cp-text-muted)" : "var(--cp-text)",
+                        justifySelf: "start",
+                        fontSize: 11,
+                        padding: "4px 10px",
+                        border: "1px dashed var(--cp-border)",
+                        borderRadius: 6,
+                        background: "transparent",
+                        color: "var(--cp-text-muted)",
+                        cursor: "pointer",
                       }}
                     >
-                      {optionGroups.map(([group, items]) =>
-                        group === "—" ? (
-                          items.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </option>
-                          ))
-                        ) : (
-                          <optgroup key={group} label={group}>
-                            {items.map((opt) => (
-                              <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ),
-                      )}
-                    </select>
-                    {canEditDuration && (
-                      <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                        <input
-                          type="number"
-                          value={currentDuration}
-                          min={5}
-                          max={240}
-                          step={5}
-                          onChange={(e) => {
-                            const n = Number(e.target.value);
-                            if (Number.isNaN(n)) return;
-                            // If they typed the default, clear the override so it stays "default".
-                            setDayDuration(
-                              dayIndex,
-                              defaultDuration != null && n === defaultDuration ? undefined : n,
-                            );
-                          }}
-                          inputMode="numeric"
-                          aria-label={`${DOW[dayIndex]} duration in minutes`}
-                          className="mono"
-                          style={{ width: 70, padding: "8px 8px", fontSize: 14, textAlign: "right" }}
-                        />
-                        <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>min</span>
-                      </div>
-                    )}
-                  </div>
-                  {!isRest && option && (
-                    <div style={{ fontSize: 11, color: "var(--cp-text-muted)", lineHeight: 1.45 }}>
-                      {option.description}
-                    </div>
+                      + add PM session
+                    </button>
+                  )}
+                  {isSplit && (
+                    <button
+                      type="button"
+                      onClick={() => collapseToSingle(dayIndex)}
+                      style={{
+                        justifySelf: "start",
+                        fontSize: 11,
+                        padding: "4px 10px",
+                        border: "1px solid var(--cp-border)",
+                        borderRadius: 6,
+                        background: "transparent",
+                        color: "var(--cp-text-muted)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      − collapse to single session
+                    </button>
                   )}
                 </div>
               </div>
@@ -404,13 +504,13 @@ function Label({ children }: { children: React.ReactNode }) {
 function seedWeek(daysPerWeek: number): DayState[] {
   // Strength-led default: Mon Squat, Tue Bench, Wed Z2, Thu Deadlift, Fri OHP, Sat Long Z2, Sun rest.
   const all: DayState[] = [
-    { dayIndex: 0, kind: "strength_squat" },
-    { dayIndex: 1, kind: "strength_horizontal_press" },
-    { dayIndex: 2, kind: "cardio_z2_short" },
-    { dayIndex: 3, kind: "strength_deadlift" },
-    { dayIndex: 4, kind: "strength_vertical_press" },
-    { dayIndex: 5, kind: "cardio_z2_long" },
-    { dayIndex: 6, kind: "rest" },
+    { dayIndex: 0, slot: "single", kind: "strength_squat" },
+    { dayIndex: 1, slot: "single", kind: "strength_horizontal_press" },
+    { dayIndex: 2, slot: "single", kind: "cardio_z2_short" },
+    { dayIndex: 3, slot: "single", kind: "strength_deadlift" },
+    { dayIndex: 4, slot: "single", kind: "strength_vertical_press" },
+    { dayIndex: 5, slot: "single", kind: "cardio_z2_long" },
+    { dayIndex: 6, slot: "single", kind: "rest" },
   ];
   // Mark days beyond daysPerWeek as rest.
   const active = Math.min(daysPerWeek, 6);
@@ -423,4 +523,10 @@ function seedWeek(daysPerWeek: number): DayState[] {
     all[cardioIdx]!.kind = "rest";
   }
   return all;
+}
+
+function slotOrder(s: DaySlot): number {
+  if (s === "am") return 0;
+  if (s === "single") return 1;
+  return 2; // pm
 }

@@ -14,6 +14,7 @@ import type {
   Archetype,
   ArchetypeId,
   CardioDay,
+  DaySlot,
   DayTemplate,
   StrengthDay,
   StrengthRole,
@@ -40,6 +41,8 @@ export type CustomDayKind =
 export type CustomDayInput = {
   /** 0=Mon .. 6=Sun */
   dayIndex: number;
+  /** Two-a-day slot. Omit / "single" for legacy one-session-per-day. */
+  slot?: DaySlot;
   kind: CustomDayKind;
   /** Override the default duration (minutes) for cardio days. Ignored for strength/tendon. */
   durationMinOverride?: number;
@@ -320,6 +323,7 @@ export function compileCustomArchetype(input: CustomArchetypeInput): Archetype {
       const sd: StrengthDay = {
         kind: "strength",
         dayIndex: d.dayIndex,
+        slot: d.slot ?? "single",
         role: strengthRole,
         title: `${STRENGTH_ROLE_LABELS[strengthRole]} day`,
         candidateSlugs: STRENGTH_ROLE_CANDIDATES[strengthRole],
@@ -337,6 +341,7 @@ export function compileCustomArchetype(input: CustomArchetypeInput): Archetype {
       const td: TendonDay = {
         kind: "tendon",
         dayIndex: d.dayIndex,
+        slot: d.slot ?? "single",
         role: d.kind === "tendon_hsr_knee" ? "hsr_knee" : "hsr_hinge",
         title: d.kind === "tendon_hsr_knee" ? "HSR — knee" : "HSR — posterior chain",
         movementSlug: fixed.primary,
@@ -363,6 +368,7 @@ export function compileCustomArchetype(input: CustomArchetypeInput): Archetype {
     const cd: CardioDay = {
       kind: "cardio",
       dayIndex: d.dayIndex,
+      slot: d.slot ?? "single",
       role: d.kind,
       title:
         CUSTOM_DAY_OPTIONS.find((o) => o.value === d.kind)?.label ?? "Cardio",

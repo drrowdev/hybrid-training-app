@@ -56,14 +56,22 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   const archetype = ARCHETYPES[parsed.data.archetype];
   if (!archetype) return { ok: false, error: "Unknown archetype" };
 
-  const minDays = minDaysForArchetype(archetype);
+  // Look up the user's two-a-day preference so we pick the right day pool.
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("allows_two_a_days")
+    .eq("id", user.id)
+    .maybeSingle();
+  const allowsTwoADays = Boolean(profile?.allows_two_a_days ?? false);
+
+  const minDays = minDaysForArchetype(archetype, allowsTwoADays);
   if (parsed.data.daysPerWeek < minDays) {
     return {
       ok: false,
       error: `${archetype.name} needs at least ${minDays} training days/week.`,
     };
   }
-  const activeDays = daysForFrequency(archetype, parsed.data.daysPerWeek);
+  const activeDays = daysForFrequency(archetype, parsed.data.daysPerWeek, allowsTwoADays);
 
   const candidateSlugs = allCandidateLiftSlugs(archetype);
   const fixedSlugs = requiredFixedSlugs(archetype);
@@ -235,12 +243,13 @@ const customInputSchema = z.object({
     .array(
       z.object({
         dayIndex: z.coerce.number().int().min(0).max(6),
+        slot: z.enum(["am", "pm", "single"]).optional(),
         kind: customDayKindEnum,
         durationMinOverride: z.coerce.number().int().min(5).max(240).optional(),
       }),
     )
     .min(1)
-    .max(7),
+    .max(14),
 });
 
 /**

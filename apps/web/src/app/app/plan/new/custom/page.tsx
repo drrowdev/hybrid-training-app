@@ -18,10 +18,11 @@ export default async function NewCustomBlockPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("training_days_per_week")
+    .select("training_days_per_week, allows_two_a_days")
     .eq("id", user.id)
     .maybeSingle();
   const defaultDaysPerWeek = Number(profile?.training_days_per_week ?? 4);
+  const allowsTwoADays = Boolean(profile?.allows_two_a_days ?? false);
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
@@ -41,6 +42,7 @@ export default async function NewCustomBlockPage() {
         defaultStartedOn={todayYmd()}
         defaultDaysPerWeek={defaultDaysPerWeek}
         hasAnyStrengthTm={hasAnyStrengthTm}
+        allowsTwoADays={allowsTwoADays}
         action={createCustomBlock}
       />
     </div>

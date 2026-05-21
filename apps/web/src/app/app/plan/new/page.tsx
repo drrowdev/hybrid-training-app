@@ -6,6 +6,7 @@ import {
   ARCHETYPES,
   STRENGTH_ROLE_LABELS,
   daysForFrequency,
+  effectiveDays,
   minDaysForArchetype,
   type StrengthRole,
 } from "@/lib/planner/archetypes";
@@ -27,18 +28,21 @@ export default async function NewBlockPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("training_days_per_week")
+    .select("training_days_per_week, allows_two_a_days")
     .eq("id", user.id)
     .maybeSingle();
   const defaultDaysPerWeek = Number(profile?.training_days_per_week ?? 4);
+  const allowsTwoADays = Boolean(profile?.allows_two_a_days ?? false);
 
   const options: ArchetypeOption[] = Object.values(ARCHETYPES).map((a) => {
-    const minDays = minDaysForArchetype(a);
-    const maxDays = a.days.length;
+    const minDays = minDaysForArchetype(a, allowsTwoADays);
+    const activeDayPool = effectiveDays(a, allowsTwoADays);
+    const maxDays = new Set(activeDayPool.map((d) => d.dayIndex)).size;
+    const hasTwoADayVariant = !!a.twoADayDays && a.twoADayDays.length > 0;
 
     // Resolve strength roles using the user's chosen variant.
     const rolesNeeded = new Map<StrengthRole, { satisfied: boolean; chosen?: string }>();
-    for (const day of a.days) {
+    for (const day of activeDayPool) {
       if (day.kind !== "strength") continue;
       const chosen = day.candidateSlugs.find((s) => tmCtx.bySlug.has(s));
       const existing = rolesNeeded.get(day.role);
@@ -68,6 +72,8 @@ export default async function NewBlockPage() {
       weeks: a.weeks,
       minDays,
       maxDays,
+      twoADay: allowsTwoADays && hasTwoADayVariant,
+      hasTwoADayVariant,
       weekLabels: a.weekProfiles.map((w) => w.intensityLabel),
       tmReady: missingRoles.length === 0,
       missingRoles,
@@ -80,8 +86,10 @@ export default async function NewBlockPage() {
   const dayPreviewByArchetype = Object.fromEntries(
     Object.values(ARCHETYPES).map((a) => {
       const previews: Record<number, { strength: number; cardio: number }> = {};
-      for (let d = minDaysForArchetype(a); d <= a.days.length; d++) {
-        const active = daysForFrequency(a, d);
+      const pool = effectiveDays(a, allowsTwoADays);
+      const maxD = new Set(pool.map((d) => d.dayIndex)).size;
+      for (let d = minDaysForArchetype(a, allowsTwoADays); d <= maxD; d++) {
+        const active = daysForFrequency(a, d, allowsTwoADays);
         previews[d] = {
           strength: active.filter((x) => x.kind === "strength").length,
           cardio: active.filter((x) => x.kind === "cardio").length,

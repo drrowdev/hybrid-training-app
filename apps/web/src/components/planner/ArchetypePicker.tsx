@@ -10,10 +10,14 @@ export type ArchetypeOption = {
   name: string;
   oneLiner: string;
   weeks: number;
-  /** Minimum days/week the archetype can run at (= number of anchor days). */
+  /** Minimum days/week the archetype can run at (= distinct anchor calendar days). */
   minDays: number;
-  /** Maximum days/week (= total days defined). */
+  /** Maximum days/week (= distinct days defined). */
   maxDays: number;
+  /** True when the archetype is rendering its two-a-day variant (user opted in + variant exists). */
+  twoADay: boolean;
+  /** True when this archetype defines a two-a-day variant the user could opt into. */
+  hasTwoADayVariant: boolean;
   weekLabels: string[];
   tmReady: boolean;
   missingRoles: string[];
@@ -137,7 +141,7 @@ export function ArchetypePicker({
                   <h3 style={{ margin: 0, fontSize: 15 }}>{opt.name}</h3>
                   {fits && preview ? (
                     <span className="cp-pill">
-                      {opt.weeks} wk · {preview.strength}S + {preview.cardio}C
+                      {opt.weeks} wk · {preview.strength}S + {preview.cardio}C{opt.twoADay ? " · 2/day" : ""}
                     </span>
                   ) : (
                     <span className="cp-pill" style={{ color: "var(--cp-danger)", borderColor: "var(--cp-danger)" }}>
@@ -145,6 +149,11 @@ export function ArchetypePicker({
                     </span>
                   )}
                 </div>
+                {opt.twoADay && (
+                  <div style={{ fontSize: 11, color: "var(--cp-accent)" }}>
+                    Two-a-day variant — AM lift + PM cardio with ≥6h gap.
+                  </div>
+                )}
                 <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
                   {opt.oneLiner}
                 </p>
