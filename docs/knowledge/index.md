@@ -2,7 +2,7 @@
 
 **Purpose:** Catalog of all hand-off files for the hybrid training app project. Organized by role in the Karpathy personal-knowledge-base pattern (plan §6.10): raw sources are immutable; wiki pages are LLM-maintained; the schema governs ingest, citation, and lint workflows. This file is the seed of `docs/knowledge/index.md` in the eventual repo.
 
-**Last updated:** 2026-05-19
+**Last updated:** 2026-05-21
 
 ---
 
@@ -55,3 +55,11 @@ Created as the repo lands and the engine is built. Each will cite back to the ra
 - `knowledge/themes/` — per-user cross-referenced notes maintained by the coach agent (Phase 4)
 
 Each new page is appended to this index. Each new ingest appends to `hybrid-training-log.md`.
+
+## Feature design docs (LLM-maintained, repo-only)
+
+Per-feature design notes that capture rationale, data model, UX, engine deltas, build sequence, and open questions before a major feature ships. Living documents updated as features land.
+
+| File | One-line summary |
+|---|---|
+| [`docs/design/two-a-days.md`](../design/two-a-days.md) | **Two-a-day sessions.** Pre-build design (status: prep). AM + PM session split for hybrid users. Data model: `sessions.slot`, `sessions.planned_at`. Engine: per-slot interference math. UX: dual cards, AM/PM toggle in custom builder. References DC-D1 / DC-D2 / DC-D3 / DC-L1 / DC-L3 / DC-K4 / DC-S3. Preference column `profiles.allows_two_a_days` shipped 2026-05-21 (commit `fba1f38`). Build kicks off next sync. |
