@@ -48,7 +48,7 @@ export type CustomDayInput = {
   durationMinOverride?: number;
 };
 
-export type WaveTemplateId = "fives" | "threes" | "five_three_one" | "hypertrophy" | "maintenance" | "rebuild_flat";
+export type WaveTemplateId = "fives" | "threes" | "peaking_wave" | "hypertrophy" | "maintenance" | "rebuild_flat";
 
 export type CustomArchetypeInput = {
   /** Optional user-supplied block name; falls back to "Custom block". */
@@ -93,10 +93,10 @@ const THREES_WAVE: WeekProfile[] = [
   },
 ];
 
-const FIVE_THREE_ONE_WAVE: WeekProfile[] = [
+const PEAKING_WAVE: WeekProfile[] = [
   { weekIndex: 0, setIntensities: [0.65, 0.75, 0.85], setReps: 5, intensityLabel: "5s wave" },
   { weekIndex: 1, setIntensities: [0.70, 0.80, 0.90], setReps: 3, intensityLabel: "3s wave" },
-  { weekIndex: 2, setIntensities: [0.75, 0.85, 0.95], setReps: [5, 3, 1], intensityLabel: "5/3/1 peak" },
+  { weekIndex: 2, setIntensities: [0.75, 0.85, 0.95], setReps: [5, 3, 1], intensityLabel: "Heavy peak" },
   {
     weekIndex: 3,
     setIntensities: [0.40, 0.50, 0.60],
@@ -165,11 +165,11 @@ export const WAVE_TEMPLATES: Record<
     description: "Heavier weekly progression peaking near 95% TM with 3s. More CNS cost than 5s; classic strength block.",
     weeks: THREES_WAVE,
   },
-  five_three_one: {
-    id: "five_three_one",
-    name: "5 / 3 / 1 peak",
-    description: "Strength Focus's wave — 5s → 3s → 5/3/1 peak with top single. Best for short focused strength blocks.",
-    weeks: FIVE_THREE_ONE_WAVE,
+  peaking_wave: {
+    id: "peaking_wave",
+    name: "Peaking wave",
+    description: "Strength Focus's wave — 5s → 3s → heavy single peak. Short focused strength blocks with an open-rep top set each week.",
+    weeks: PEAKING_WAVE,
   },
   hypertrophy: {
     id: "hypertrophy",

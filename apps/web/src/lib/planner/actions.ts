@@ -277,7 +277,7 @@ const customInputSchema = z.object({
   name: z.string().trim().max(80).optional(),
   weeks: z.coerce.number().int().min(2).max(8),
   startedOn: z.string().date(),
-  waveTemplate: z.enum(["fives", "threes", "five_three_one", "hypertrophy", "maintenance", "rebuild_flat"]),
+  waveTemplate: z.enum(["fives", "threes", "peaking_wave", "hypertrophy", "maintenance", "rebuild_flat"]),
   days: z
     .array(
       z.object({

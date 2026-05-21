@@ -36,9 +36,8 @@ describe("evaluateBumpGate — hard gates", () => {
 });
 
 describe("evaluateBumpGate — soft signals", () => {
-  it("Wk3 1+ AMRAP beaten by 5 reps fires (Wendler canonical)", () => {
-    // Wk3, target 1, performed 6, weight 100 vs TM 100.
-    // Signals: reps_over≥5 (+1), Wk3_5plus (+2), e1rm_excess (+2 since
+  it("heavy-week 1+ AMRAP beaten by 5 reps fires (strongest progression signal)", () => {
+    // Wk3 = heavy-week index 2. Signals: reps_over≥5 (+1), heavy-week_5plus (+2), e1rm_excess (+2 since
     // Epley 100*1.2 = 120 implies TM = 108, +8% over 100), cycle≥21 (+1) = 6.
     const r = evaluateBumpGate({ ...baseline, performedReps: 6 });
     expect(r.passes).toBe(true);
@@ -48,8 +47,8 @@ describe("evaluateBumpGate — soft signals", () => {
     }
   });
 
-  it("Wk1 5+ AMRAP beaten by 7 reps fires (early-week outlier)", () => {
-    // Wk1, target 5, performed 12. Epley 100*(1+12/30)=140 -> TM 126, +26%.
+  it("early-wave 5+ AMRAP beaten by 7 reps fires (early-wave outlier)", () => {
+    // Week 1 (index 0), target 5, performed 12. Epley 100*(1+12/30)=140 -> TM 126, +26%.
     // Signals: reps_over≥5 (+1), early_week_7 (+2), e1rm_excess (+2),
     // cycle≥21 (+1) = 6 points.
     const r = evaluateBumpGate({
@@ -63,8 +62,8 @@ describe("evaluateBumpGate — soft signals", () => {
   });
 
   it("performance below threshold suppresses", () => {
-    // Wk3, target 1, performed 2. Epley 100*(1+2/30)=106.67 -> TM 96, -4%.
-    // Signals: reps_over=1 (no points), no Wk3 5+, no early_week, no
+    // Heavy-week index 2, target 1, performed 2. Epley 100*(1+2/30)=106.67 -> TM 96, -4%.
+    // Signals: reps_over=1 (no points), no heavy-week 5+, no early_week, no
     // e1rm_excess. Just the +1 for cycle≥21 = 1 point. Below threshold.
     const r = evaluateBumpGate({ ...baseline, performedReps: 2 });
     expect(r.passes).toBe(false);
@@ -72,7 +71,7 @@ describe("evaluateBumpGate — soft signals", () => {
   });
 
   it("GRM<0.93 subtracts a point (acute fatigue mask)", () => {
-    // Same as the Wk3-1+ canonical case (6 points), but cooked today (GRM 0.88).
+    // Same as the heavy-week 1+ canonical case (6 points), but cooked today (GRM 0.88).
     // Should still pass (6-1=5 > 3) but the reason list includes the penalty.
     const r = evaluateBumpGate({ ...baseline, performedReps: 6, todayGrm: 0.88 });
     expect(r.passes).toBe(true);
@@ -103,8 +102,8 @@ describe("evaluateBumpGate — soft signals", () => {
     }
   });
 
-  it("excessive reps (>12) yield no e1RM and no proposal", () => {
-    // Wk1, target 5, performed 15 — Epley invalid above 12.
+  it("early-wave attempt beyond formula-validity threshold yields no proposal", () => {
+    // Week 1 (index 0), target 5, performed 15 — Epley invalid above 12.
     const r = evaluateBumpGate({
       ...baseline,
       weekIndex: 0,

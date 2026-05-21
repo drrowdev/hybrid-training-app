@@ -11,7 +11,7 @@ The planner currently freezes at whatever 1RM the user entered during onboarding
 
 This feature closes the loop: **logged sets feed back into the stored numbers** that drive future prescriptions. Two paired pieces:
 - **PR detection** — every logged main-lift set is checked against history for three kinds of records (weight, reps-at-weight, estimated 1RM).
-- **TM auto-suggestion** — when a 5/3/1 AMRAP set outperforms its wave target by enough signal, the engine proposes a TM bump. User accepts, declines, or modifies.
+- **TM auto-suggestion** — when a top-set AMRAP outperforms its wave target by enough signal, the engine proposes a TM bump. User accepts, declines, or modifies.
 
 The model below is **ported from the user's existing implementation in another app** (more rigorous than my first-draft sketch) with two surgical additions that fit this codebase's research stack.
 
@@ -153,7 +153,7 @@ Fires only when:
 ```
 newTm = bestEstimateOneRm(amrap_weight, amrap_reps, amrap_rpe) * 0.90
 ```
-Wendler's "new TM = 90% of estimated 1RM."
+Conservative practitioner-consensus rule: "new TM = 90% of estimated 1RM."
 
 ### Layer 2 — confidence gate
 
@@ -170,7 +170,7 @@ Wendler's "new TM = 90% of estimated 1RM."
 | Points | Signal |
 |---|---|
 | +1 | reps over the wave's target ≥ 5 |
-| +2 | Wk3 (1+ AMRAP) beaten by ≥ 5 reps — Wendler's canonical bump signal |
+| +2 | Heavy-week (1+ AMRAP) beaten by ≥ 5 reps — strongest top-set progression signal |
 | +2 | Wk1/Wk2 AMRAP beaten by ≥ 7 reps — early-week outlier |
 | +2 | e1RM-implied TM exceeds current TM by ≥ 7% |
 | +1 | per prior AMRAP "smash" on same lift in last ~6 weeks (capped at +2) |
@@ -184,12 +184,12 @@ The contributing signals are passed forward as `reasons[]` on the proposal so th
 
 ## 8. Block-complete bump (secondary trigger)
 
-When a block ends with no AMRAP outperformance (so the confidence gate never fired), still offer a **conservative default bump** so the user can keep moving forward at Wendler's small-jumps cadence:
+When a block ends with no AMRAP outperformance (so the confidence gate never fired), still offer a **conservative default bump** so the user can keep moving forward at small-progression cadence (practitioner consensus across strength templates):
 - Squat / Deadlift: +5 kg
 - Bench / OHP: +2.5 kg
 - Other patterns: +2.5 kg
 
-This shows up as a card at the start of the next block planning flow ("Last block ended clean — bump TMs by the Wendler default?"). The user can accept, decline, or override per-lift.
+This shows up as a card at the start of the next block planning flow ("Last block ended clean — bump TMs by the standard small-progression default?"). The user can accept, decline, or override per-lift.
 
 Idempotency key: `"{block_id}:{movement_id}:block_complete"`.
 
@@ -266,6 +266,6 @@ Existing movement drill-down gets a new section: **TM history**. Time-series cha
 
 - **TSB equivalent.** The original model used Training Stress Balance as a chronic-fatigue mask in the confidence gate. This app has no aggregated weekly load yet. For v1 I'll skip the chronic signal and rely on the per-session GRM only. A future engine pass can add a TSB-like aggregate and re-introduce the signal.
 - **Race-prep window.** Original model suppressed bumps within 21 days of an A-priority race. This app has no race calendar. Defer to a future feature; in the meantime the cooldown + injury gates carry most of the safety.
-- **AMRAP detection on custom blocks.** The 5/3/1 archetype clearly marks Wk3 top sets as `1+`, but a custom block built from `WAVE_TEMPLATES` may or may not have explicit AMRAP semantics. Proposal: only fire AMRAP-driven bumps on curated archetypes that mark their AMRAP set with `reps: "5+"` / `"3+"` / `"1+"` in the prescription. Custom blocks fall back to the block-complete trigger.
+- **AMRAP detection on custom blocks.** The curated peaking-wave archetype clearly marks its heavy-week top set as `1+`, but a custom block built from `WAVE_TEMPLATES` may or may not have explicit AMRAP semantics. Proposal: only fire AMRAP-driven bumps on curated archetypes that mark their top set with `reps: "5+"` / `"3+"` / `"1+"` in the prescription. Custom blocks fall back to the block-complete trigger.
 - **Variant interaction with PRs.** TMs are per `movement_id`. If a user switches squat variant mid-block (back → front), the PR detection should not flag the first front-squat session as a "PR" by default since the variant changed. Proposal: PR kinds compare against history of *this exact movement_id* — natural side-effect, no special-casing needed.
 - **PR streak history.** "First PR in 6 weeks" is the streak context. Computing it requires scanning history. Cheap enough at query time; no caching needed for v1.

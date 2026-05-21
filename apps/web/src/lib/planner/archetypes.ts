@@ -310,7 +310,7 @@ export const STRENGTH_ANCHOR: Archetype = {
   weekProfiles: [
     { weekIndex: 0, setIntensities: [0.65, 0.75, 0.85], setReps: 5, intensityLabel: "5s wave" },
     { weekIndex: 1, setIntensities: [0.70, 0.80, 0.90], setReps: 3, intensityLabel: "3s wave" },
-    { weekIndex: 2, setIntensities: [0.75, 0.85, 0.95], setReps: [5, 3, 1], intensityLabel: "5/3/1 peak" },
+    { weekIndex: 2, setIntensities: [0.75, 0.85, 0.95], setReps: [5, 3, 1], intensityLabel: "Heavy peak" },
     {
       weekIndex: 3,
       setIntensities: [0.40, 0.50, 0.60],

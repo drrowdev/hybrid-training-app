@@ -101,7 +101,9 @@ export function bestEstimateOneRm(input: OneRmInput): number | null {
 }
 
 /**
- * Apply Wendler's "new TM = 90% of estimated 1RM" rule. Rounded to the
+ * Apply the conservative "new TM = 90% of estimated 1RM" rule. Widely-used
+ * practitioner-consensus heuristic — RTS, Helms (Muscle & Strength Pyramids),
+ * and most strength templates land in the 85-90% band. Rounded to the
  * nearest plate-friendly increment (2.5 kg by default).
  */
 export function tmFromOneRm(oneRm: number, plateIncrement = 2.5): number {

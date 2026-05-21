@@ -20,7 +20,7 @@ const GOALS: Goal[] = [
   {
     id: "strength",
     label: "Build strength",
-    description: "Heavy lifts, weekly intensity wave, classic 5/3/1-style peaking with deload.",
+    description: "Heavy lifts, weekly intensity wave, top-set peaking with a deload week.",
     recommendedArchetypeId: "strength_anchor",
     recommendedArchetypeName: "Strength Focus",
     tmPercentDefault: 90,

@@ -53,8 +53,9 @@ export async function acceptTmBumpResult(formData: FormData): Promise<AcceptBump
     .eq("movement_id", parsed.data.movementId)
     .maybeSingle();
 
-  // Reverse Wendler's formula: if the user's TM is 90% of 1RM and we want
-  // their NEW TM to be `newTmKg`, their new stored 1RM is newTmKg / tmPct.
+  // Reverse the conservative TM/1RM convention: if the user's TM is 90% of
+  // their stored 1RM and we want their NEW TM to be `newTmKg`, then the
+  // implied new stored 1RM is newTmKg / tmPct.
   const tmPct = existingTm?.tm_percent != null ? Number(existingTm.tm_percent) / 100 : 0.9;
   const safePct = tmPct > 0 && tmPct <= 1 ? tmPct : 0.9;
   const newOneRm = parsed.data.newTmKg / safePct;

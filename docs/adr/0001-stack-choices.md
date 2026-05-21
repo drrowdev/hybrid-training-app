@@ -17,7 +17,7 @@ The plan §7 listed eight open questions. The Phase D session of 2026-05-19 clos
 | Hosting region | **`aws-eu-west-1`** | GDPR-first; EU residency. Note: Supabase placed the project in `eu-west-1` rather than `eu-central-1`; pooler hostname `aws-0-eu-west-1.pooler.supabase.com` |
 | Pricing intent | **Free for all + pricing later** | Defers Stripe; doesn't shape the data model around tiers. A `subscription_tier` column can be added later |
 | Methodology naming | **Methodology-pure** (re-confirmed) | Zero external program names in catalog, data model, or engine. Only the five archetypes (`balanced_hybrid_build`, `strength_biased_hybrid`, `aesthetic_hybrid`, `engine_biased_hybrid`, `rebuild_return`). Marketing copy may compare externally |
-| Day-one platform | **Web-first**; Capacitor wrap in Phase 2 | Lifts the existing Capacitor scaffold from the wendler-app. PWA explicitly not a substitute |
+| Day-one platform | **Web-first**; Capacitor wrap in Phase 2 | Lifts the existing Capacitor scaffold from a prior personal app. PWA explicitly not a substitute |
 | Public launch criteria | **Personal-use rock-solid ≥ 8 weeks + anchor-compliance ≥ 90% + zero data-loss + ≥ 1 external alpha for 4 weeks** | Engineer-readable gate; KPI-driven; defined before Phase 3 |
 
 ## Owner-deferred (re-open before public launch)

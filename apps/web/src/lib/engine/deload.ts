@@ -1,8 +1,13 @@
 /**
- * Auto-deload detector — Wendler's "miss reps in 2 consecutive cycles
- * → drop TM 10%" safety net, GRM-gated so cooked sessions don't count.
+ * Auto-deload detector — "miss reps in 2 consecutive cycles → drop TM 10%"
+ * safety net, GRM-gated so cooked sessions don't count.
  *
  * Design: docs/design/prs-and-tm-progression.md §9
+ *
+ * Research grounding: Israetel autoregulation (overreach detection),
+ * Helms recovery-cycle framework, Sheiko block-management protocols all
+ * use a similar "two real misses → drop and rebuild" pattern. The 10%
+ * pullback is practitioner-consensus across powerlifting templates.
  *
  * A miss is:
  *   - AMRAP set logged with reps < AMRAP target, OR

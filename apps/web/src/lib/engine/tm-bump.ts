@@ -1,12 +1,19 @@
 /**
  * AMRAP TM-bump confidence gate.
  *
- * Replaces Wendler's classic "+5 reps over target -> bump" rule with a
+ * Replaces the classic "+5 reps over target -> bump" heuristic with a
  * multi-signal scoring approach that doesn't over-fire on conservatively-
  * set TMs. Hard gates suppress entirely; soft signals must clear a
  * threshold for the proposal to surface.
  *
  * Design: docs/design/prs-and-tm-progression.md §7
+ *
+ * Research grounding:
+ *  - RPE / RIR top-set autoregulation: Zourdos 2016, Helms 2018
+ *  - 28-day cooldown / cycle cadence: practitioner consensus on small-
+ *    progression jumps (Sheiko, Helms, RTS, Cube methodology)
+ *  - 7%+ e1RM-over-TM as a recalibrate signal: practitioner consensus
+ *    on Training-Max-to-true-Max gap before re-anchoring
  */
 import type { AmrapTarget } from "./amrap";
 import { bestEstimateOneRm, tmFromOneRm } from "./one-rm";
@@ -16,7 +23,7 @@ export type GateInput = {
   performedReps: number;
   /** AMRAP target (5+, 3+, 1+). */
   target: AmrapTarget;
-  /** Wave week (0-indexed). Wk3 = canonical bump signal in 5/3/1. */
+  /** Zero-indexed wave week. Week 2 = the heavy / peaking week. */
   weekIndex: number;
   /** Top-set weight (used for e1RM math). */
   performedWeight: number;
@@ -135,15 +142,15 @@ export function evaluateBumpGate(input: GateInput): GateResult {
     score += 1;
   }
 
-  // +2: Wk3 (1+) beaten by ≥ 5 reps — Wendler's canonical bump signal
+  // +2: heavy-week 1+ AMRAP beaten by ≥ 5 reps — strongest progression signal
   if (input.weekIndex === 2 && input.target === 1 && repsOverTarget >= 5) {
-    reasons.push({ label: "Wk3 (1+) beaten by 5+ reps — Wendler's canonical bump signal.", points: 2 });
+    reasons.push({ label: "Heavy-week (1+) top set beaten by 5+ reps — strongest progression signal.", points: 2 });
     score += 2;
   }
 
-  // +2: Wk1/Wk2 AMRAP beaten by ≥ 7 reps — early-week outlier
+  // +2: early-week AMRAP beaten by ≥ 7 reps — early-wave outlier
   if ((input.weekIndex === 0 || input.weekIndex === 1) && repsOverTarget >= 7) {
-    reasons.push({ label: `Wk${input.weekIndex + 1} beaten by ${repsOverTarget} reps — early-week outlier.`, points: 2 });
+    reasons.push({ label: `Week ${input.weekIndex + 1} beaten by ${repsOverTarget} reps — early-wave outlier.`, points: 2 });
     score += 2;
   }
 
@@ -190,7 +197,7 @@ export function evaluateBumpGate(input: GateInput): GateResult {
     };
   }
 
-  // Compute the suggested new TM from Wendler's 90% rule.
+  // Compute the suggested new TM from the conservative 90% rule.
   const newTm = tmFromOneRm(estimatedOneRm);
   return {
     passes: true,

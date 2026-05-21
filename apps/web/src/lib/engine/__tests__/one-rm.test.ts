@@ -89,7 +89,7 @@ describe("bestEstimateOneRm — conservative dispatcher", () => {
   });
 });
 
-describe("tmFromOneRm — Wendler 90%", () => {
+describe("tmFromOneRm — conservative 90% rule", () => {
   it("116.67 kg 1RM rounds to 105 kg TM (90% × plate-friendly)", () => {
     expect(tmFromOneRm(116.67)).toBe(105);
   });
