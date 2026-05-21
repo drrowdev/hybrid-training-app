@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { acceptTmBump, declineTmBump } from "@/lib/engine/tm-bump-actions";
+import { findBlockCompleteBump } from "@/lib/engine/block-complete";
 import {
   endBlock,
   setPlannedTime,
@@ -28,6 +30,7 @@ export default async function PlanPage({
   const block = await getActiveBlock();
 
   if (!block) {
+    const blockBump = await findBlockCompleteBump(supabase, user.id);
     return (
       <div style={{ display: "grid", gap: 20 }}>
         <header>
@@ -36,6 +39,7 @@ export default async function PlanPage({
             No active block. Start one to get a forward-looking calendar with prescribed sets per session.
           </p>
         </header>
+        {blockBump && <BlockCompleteCard bump={blockBump} />}
         <section className="cp-card" style={{ padding: 24, display: "grid", gap: 12, justifyItems: "start" }}>
           <h2 style={{ margin: 0, fontSize: 18 }}>Start your first block</h2>
           <p style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 13 }}>
@@ -506,5 +510,90 @@ function DaySessionCard({
         </div>
       )}
     </div>
+  );
+}
+
+function BlockCompleteCard({
+  bump,
+}: {
+  bump: Awaited<ReturnType<typeof findBlockCompleteBump>>;
+}) {
+  if (!bump) return null;
+  return (
+    <section
+      className="cp-card"
+      style={{
+        padding: 20,
+        display: "grid",
+        gap: 12,
+        borderColor: "var(--cp-success)",
+        background: "color-mix(in oklab, var(--cp-success) 6%, transparent)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+        <div style={{ fontSize: 22, lineHeight: 1 }} aria-hidden="true">✓</div>
+        <div style={{ display: "grid", gap: 4, flex: 1 }}>
+          <div style={{ fontSize: 11, color: "var(--cp-success)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+            Last block ended clean
+          </div>
+          <h2 style={{ fontSize: 18, margin: 0, letterSpacing: "-0.01em" }}>
+            Bump your TMs before the next block?
+          </h2>
+          <p style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 13, lineHeight: 1.5 }}>
+            Standard small-progression defaults: <strong>+5 kg</strong> on squat / deadlift,{" "}
+            <strong>+2.5 kg</strong> on bench / overhead. Accept any subset; the rest stay where
+            they are.
+          </p>
+        </div>
+      </div>
+      <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
+        {bump.lifts.map((lift) => (
+          <li
+            key={lift.movementId}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              padding: "10px 12px",
+              background: "var(--cp-surface)",
+              border: "1px solid var(--cp-border)",
+              borderRadius: 10,
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ display: "grid", gap: 2, flex: 1, minWidth: 180 }}>
+              <span style={{ fontSize: 14, fontWeight: 500 }}>{lift.movementDisplayName}</span>
+              <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
+                <span className="mono">{lift.currentTm.toFixed(1)} kg</span>{" "}
+                →{" "}
+                <span className="mono" style={{ color: "var(--cp-success)" }}>
+                  {lift.proposedTm.toFixed(1)} kg
+                </span>{" "}
+                <span style={{ marginLeft: 4 }}>(+{lift.increment} kg)</span>
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <form action={acceptTmBump}>
+                <input type="hidden" name="movementId" value={lift.movementId} />
+                <input type="hidden" name="newTmKg" value={String(lift.proposedTm)} />
+                <input type="hidden" name="reason" value="block_complete" />
+                <input type="hidden" name="triggerKey" value={lift.triggerKey} />
+                <button type="submit" className="cp-btn primary" style={{ fontSize: 12 }}>
+                  Accept
+                </button>
+              </form>
+              <form action={declineTmBump}>
+                <input type="hidden" name="movementId" value={lift.movementId} />
+                <input type="hidden" name="triggerKey" value={lift.triggerKey} />
+                <button type="submit" className="cp-btn ghost" style={{ fontSize: 12 }}>
+                  Skip
+                </button>
+              </form>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
