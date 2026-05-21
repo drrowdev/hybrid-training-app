@@ -71,13 +71,13 @@ const LANDMARKS: Record<string, { label: string; maintenance: number; building: 
   // Upper body — push
   chest: { label: "Chest", maintenance: 8, building: 10, productive: 16, limit: 22 },
   upper_chest: { label: "Upper chest", maintenance: 4, building: 6, productive: 12, limit: 18 },
-  front_delts: { label: "Front delts", maintenance: 0, building: 6, productive: 12, limit: 18 },
-  side_delts: { label: "Side delts", maintenance: 6, building: 8, productive: 20, limit: 26 },
-  rear_delts: { label: "Rear delts", maintenance: 6, building: 8, productive: 18, limit: 24 },
+  front_delts: { label: "Shoulders (front)", maintenance: 0, building: 6, productive: 12, limit: 18 },
+  side_delts: { label: "Shoulders (side)", maintenance: 6, building: 8, productive: 20, limit: 26 },
+  rear_delts: { label: "Shoulders (rear)", maintenance: 6, building: 8, productive: 18, limit: 24 },
   triceps: { label: "Triceps", maintenance: 5, building: 8, productive: 14, limit: 20 },
   // Upper body — pull
   lats: { label: "Lats", maintenance: 8, building: 10, productive: 18, limit: 24 },
-  mid_back: { label: "Mid-back", maintenance: 6, building: 10, productive: 18, limit: 24 },
+  mid_back: { label: "Upper back", maintenance: 6, building: 10, productive: 18, limit: 24 },
   traps: { label: "Traps", maintenance: 0, building: 6, productive: 12, limit: 20 },
   biceps: { label: "Biceps", maintenance: 5, building: 8, productive: 14, limit: 20 },
   forearms: { label: "Forearms", maintenance: 0, building: 4, productive: 10, limit: 16 },
@@ -86,13 +86,12 @@ const LANDMARKS: Record<string, { label: string; maintenance: number; building: 
   hamstrings: { label: "Hamstrings", maintenance: 6, building: 8, productive: 14, limit: 20 },
   glutes: { label: "Glutes", maintenance: 4, building: 6, productive: 12, limit: 18 },
   calves: { label: "Calves", maintenance: 6, building: 8, productive: 14, limit: 20 },
-  soleus: { label: "Soleus", maintenance: 0, building: 4, productive: 10, limit: 16 },
-  tibialis: { label: "Tibialis", maintenance: 0, building: 4, productive: 8, limit: 14 },
-  adductors: { label: "Adductors", maintenance: 0, building: 4, productive: 10, limit: 16 },
-  abductors: { label: "Abductors", maintenance: 0, building: 4, productive: 10, limit: 16 },
+  tibialis: { label: "Shins", maintenance: 0, building: 4, productive: 8, limit: 14 },
+  adductors: { label: "Inner thigh", maintenance: 0, building: 4, productive: 10, limit: 16 },
+  abductors: { label: "Outer hip", maintenance: 0, building: 4, productive: 10, limit: 16 },
   // Core
   abs: { label: "Abs", maintenance: 0, building: 6, productive: 16, limit: 24 },
-  obliques: { label: "Obliques", maintenance: 0, building: 4, productive: 12, limit: 20 },
+  obliques: { label: "Side core", maintenance: 0, building: 4, productive: 12, limit: 20 },
   lower_back: { label: "Lower back", maintenance: 4, building: 6, productive: 12, limit: 18 },
 };
 
@@ -103,7 +102,7 @@ const CONCURRENT_SCALAR = 0.7;
  * Decide which band a sets count lands in for a given muscle. Returns
  * "untouched" when sets is 0 to differentiate from real "below maintenance".
  */
-function classifyBand(
+export function classifyBand(
   sets: number,
   thresholds: { maintenance: number; building: number; productive: number; limit: number },
 ): VolumeBand {
@@ -115,7 +114,7 @@ function classifyBand(
   return "overreaching";
 }
 
-function scaleThresholds(
+export function scaleThresholds(
   base: { maintenance: number; building: number; productive: number; limit: number },
   scalar: number,
 ) {
@@ -130,7 +129,7 @@ function scaleThresholds(
 /** True when the rolling 7-day window has enough cardio to trigger the
  *  concurrent-stress scaling. Heuristic per the design-constraints
  *  practitioner threshold (3 cardio sessions OR 4h of endurance). */
-function isConcurrentWeek(cardioSessions: number, cardioMinutes: number): boolean {
+export function isConcurrentWeek(cardioSessions: number, cardioMinutes: number): boolean {
   return cardioSessions >= 3 || cardioMinutes >= 240;
 }
 
@@ -175,10 +174,12 @@ export async function getWeeklyMuscleVolume(
   }
 
   // Step 2: pull set logs + cardio logs in parallel for those sessions.
+  // Each set credits ONE working set to every muscle in its primary_muscles
+  // array (Schoenfeld 2017 — direct work counts toward the weekly target).
   const [{ data: sets }, { data: cardio }] = await Promise.all([
     supabase
       .from("set_logs")
-      .select("id, set_kind, reps, movement:movements(primary_muscle)")
+      .select("id, set_kind, reps, movement:movements(primary_muscles)")
       .in("session_id", sessionIds)
       .not("reps", "is", null)
       .gt("reps", 0)
@@ -194,13 +195,17 @@ export async function getWeeklyMuscleVolume(
   const concurrentScaled = isConcurrentWeek(cardioSessions, cardioMinutes);
   const scalar = concurrentScaled ? CONCURRENT_SCALAR : 1.0;
 
-  // Step 3: aggregate per primary_muscle.
+  // Step 3: aggregate per primary muscle. Fan out each set across all of
+  // its primary_muscles entries (movements like rows hit lats + mid_back).
   const setsByMuscle = new Map<string, number>();
-  for (const row of (sets ?? []) as Array<{ movement: { primary_muscle: string } | { primary_muscle: string }[] | null }>) {
+  for (const row of (sets ?? []) as Array<{ movement: { primary_muscles: string[] } | { primary_muscles: string[] }[] | null }>) {
     const m = Array.isArray(row.movement) ? row.movement[0] : row.movement;
-    const muscle = m?.primary_muscle;
-    if (!muscle || !(muscle in LANDMARKS)) continue;
-    setsByMuscle.set(muscle, (setsByMuscle.get(muscle) ?? 0) + 1);
+    const muscles = m?.primary_muscles;
+    if (!Array.isArray(muscles)) continue;
+    for (const muscle of muscles) {
+      if (!(muscle in LANDMARKS)) continue;
+      setsByMuscle.set(muscle, (setsByMuscle.get(muscle) ?? 0) + 1);
+    }
   }
 
   // Step 4: build one row per muscle in the landmark table.
