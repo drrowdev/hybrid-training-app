@@ -1,4 +1,8 @@
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
 import { getRegionFreshness, type FreshnessRow } from "@/lib/engine/freshness";
+import { getBucketState, type BucketStateRow } from "@/lib/stats/bucket-state-queries";
+import { getRpeDrift, type RpeDrift } from "@/lib/stats/rpe-drift-queries";
 
 // Plain-language status from freshness ratio.
 function statusFor(f: number, lastLoadDate: string | null): string {
@@ -31,8 +35,17 @@ const REGION_GROUP: Record<string, "upper" | "core" | "lower"> = {
 };
 
 export default async function EngineStatePage() {
-  const rows = await getRegionFreshness();
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const [rows, buckets, drift] = await Promise.all([
+    getRegionFreshness(),
+    user ? getBucketState(supabase, user.id) : Promise.resolve([] as BucketStateRow[]),
+    user ? getRpeDrift(supabase, user.id) : Promise.resolve(null as RpeDrift | null),
+  ]);
   const hasData = rows.length > 0 && rows.some((r) => r.atl > 0 || r.ctl > 0);
+  const hasBucketData = buckets.some((b) => b.atl > 0 || b.ctl > 0);
 
   const grouped: Record<"upper" | "core" | "lower", FreshnessRow[]> = {
     upper: [],
@@ -88,25 +101,176 @@ export default async function EngineStatePage() {
         )}
       </section>
 
-      {/* ── Volume vs landmarks (stub) ───────────────────────── */}
+      {/* ── RPE drift over last 28 days ──────────────────────── */}
+      {drift && (
+        <section className="cp-card" style={{ padding: 20 }}>
+          <h2 style={{ margin: 0, fontSize: 16 }}>
+            How hard sessions have felt
+            <span className="cp-info" tabIndex={0} aria-label="How RPE drift is computed">
+              i
+              <span className="pop" style={{ width: 260 }}>
+                Trend of session RPE across the last 28 days. Same work
+                feeling harder is a leading sign you need a lighter week.
+              </span>
+            </span>
+          </h2>
+          <RpeDriftView drift={drift} />
+        </section>
+      )}
+
+      {/* ── Bucket load — six-bucket stress model ───────────── */}
       <section className="cp-card" style={{ padding: 20 }}>
         <h2 style={{ margin: 0, fontSize: 16 }}>
-          Weekly volume per muscle
-          <span className="cp-info" tabIndex={0} aria-label="Landmark scale">
+          Bucket load
+          <span className="cp-info" tabIndex={0} aria-label="How bucket load is computed">
             i
             <span className="pop" style={{ width: 280 }}>
-              <strong>MV</strong> — maintenance volume (just enough to maintain).<br />
-              <strong>MEV</strong> — minimum effective volume (start growing here).<br />
-              <strong>MAV</strong> — maximum adaptive volume (sweet spot).<br />
-              <strong>MRV</strong> — maximum recoverable volume (above this, you regress).
+              Six global stress dimensions. Each set + cardio block contributes
+              load to each bucket based on movement type, intensity, and reps.
+              Same recovery-ratio math as region freshness.
             </span>
           </span>
         </h2>
+        <p style={{ margin: "4px 0 16px", color: "var(--cp-text-muted)", fontSize: 13 }}>
+          Where on your body the load is concentrated. Different from regions —
+          regions are anatomy; buckets are the type of stress.
+        </p>
+        {!hasBucketData ? (
+          <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: 0 }}>
+            Log a few sessions and bucket load will materialise here.
+          </p>
+        ) : (
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
+            {buckets.map((b) => (
+              <BucketRow key={b.bucket} row={b} />
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* ── Volume vs landmarks ──────────────────────────────── */}
+      <section className="cp-card" style={{ padding: 20 }}>
+        <h2 style={{ margin: 0, fontSize: 16 }}>Weekly volume per muscle</h2>
         <p style={{ margin: "4px 0 0", color: "var(--cp-text-muted)", fontSize: 13 }}>
-          Per-muscle weekly hard-set counts and landmark dots land in the next sprint. The math is already
-          in <code className="mono">@hta/engine</code>; just needs a chart.
+          Per-muscle weekly hard-set counts live on the{" "}
+          <Link href="/app/stats" style={{ color: "var(--cp-link)" }}>Stats overview</Link>.
         </p>
       </section>
+    </div>
+  );
+}
+
+function bucketTone(tone: "ok" | "caution" | "warn"): string {
+  if (tone === "ok") return "var(--cp-success)";
+  if (tone === "caution") return "var(--cp-warning)";
+  return "var(--cp-danger)";
+}
+
+function BucketRow({ row }: { row: BucketStateRow }) {
+  const pct = Math.round(row.freshness * 100);
+  const color = bucketTone(row.tone);
+  return (
+    <li
+      style={{
+        padding: "10px 12px",
+        borderRadius: 10,
+        border: "1px solid var(--cp-border)",
+        background: "var(--cp-surface)",
+        display: "grid",
+        gap: 6,
+      }}
+      title={`${row.label}: freshness ${pct}% · ATL ${row.atl.toFixed(0)} · CTL ${row.ctl.toFixed(0)}`}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+        <div style={{ fontSize: 14, fontWeight: 600 }}>{row.label}</div>
+        <span style={{ fontSize: 12, color, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <span aria-hidden style={{ width: 8, height: 8, borderRadius: 999, background: color, display: "inline-block" }} />
+          {row.bandLabel}
+        </span>
+      </div>
+      <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>{row.description}</div>
+      <div style={{ height: 6, borderRadius: 999, background: "var(--cp-surface-soft)", overflow: "hidden" }}>
+        <div
+          style={{
+            width: `${pct}%`,
+            height: "100%",
+            background: color,
+            transition: "width .3s",
+          }}
+        />
+      </div>
+    </li>
+  );
+}
+
+function driftTone(verdict: RpeDrift["verdict"]): string {
+  if (verdict === "rising") return "var(--cp-warning)";
+  if (verdict === "easing") return "var(--cp-link)";
+  if (verdict === "stable") return "var(--cp-success)";
+  return "var(--cp-text-muted)";
+}
+
+function RpeDriftView({ drift }: { drift: RpeDrift }) {
+  if (drift.verdict === "no-data") {
+    return (
+      <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: "8px 0 0" }}>
+        {drift.verdictLabel}.
+      </p>
+    );
+  }
+  const color = driftTone(drift.verdict);
+  const minRpe = Math.min(4, ...drift.points.map((p) => p.rpe));
+  const maxRpe = Math.max(10, ...drift.points.map((p) => p.rpe));
+  const range = Math.max(0.1, maxRpe - minRpe);
+  const t0 = new Date(drift.points[0]!.date + "T00:00:00").getTime();
+  const tN = new Date(drift.points[drift.points.length - 1]!.date + "T00:00:00").getTime();
+  const span = Math.max(1, tN - t0);
+  const w = 600;
+  const h = 60;
+  const pad = 4;
+  const linePoints = drift.points
+    .map((p) => {
+      const t = new Date(p.date + "T00:00:00").getTime();
+      const x = pad + ((t - t0) / span) * (w - pad * 2);
+      const y = pad + (1 - (p.rpe - minRpe) / range) * (h - pad * 2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  // Trend line endpoints from slope through the mean.
+  const meanY =
+    pad + (1 - ((drift.meanRpe ?? 7) - minRpe) / range) * (h - pad * 2);
+  const slopePerPixel = -drift.slopePerDay * (span / 86_400_000) * ((h - pad * 2) / range) / (w - pad * 2);
+  const trendY0 = meanY + slopePerPixel * ((w - pad * 2) / 2);
+  const trendY1 = meanY - slopePerPixel * ((w - pad * 2) / 2);
+  return (
+    <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color }}>{drift.verdictLabel}</span>
+        <span className="mono" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+          mean {drift.meanRpe?.toFixed(1) ?? "—"} sRPE
+        </span>
+      </div>
+      <svg
+        viewBox={`0 0 ${w} ${h}`}
+        preserveAspectRatio="none"
+        style={{ width: "100%", height: 60, background: "var(--cp-surface-soft)", borderRadius: 8 }}
+        role="img"
+        aria-label="Session RPE drift over the last 28 days"
+      >
+        <polyline points={linePoints} fill="none" stroke="var(--cp-text-muted)" strokeWidth={1.2} />
+        {drift.points.map((p, i) => {
+          const t = new Date(p.date + "T00:00:00").getTime();
+          const x = pad + ((t - t0) / span) * (w - pad * 2);
+          const y = pad + (1 - (p.rpe - minRpe) / range) * (h - pad * 2);
+          return <circle key={i} cx={x} cy={y} r={1.8} fill="var(--cp-text)" />;
+        })}
+        <line x1={pad} y1={trendY0} x2={w - pad} y2={trendY1} stroke={color} strokeWidth={1.5} strokeDasharray="4 3" />
+      </svg>
+      <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
+        {drift.points.length} session{drift.points.length === 1 ? "" : "s"} · slope{" "}
+        {drift.slopePerDay >= 0 ? "+" : ""}
+        {(drift.slopePerDay * 7).toFixed(2)} sRPE/week
+      </div>
     </div>
   );
 }

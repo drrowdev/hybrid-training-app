@@ -13,6 +13,7 @@ import { effectiveTimeOfDay, gapHoursBetween } from "@/lib/planner/time-of-day";
 import { getRegionFreshness, findHeavyOnRecoveringConflict, type RegionFreshnessRow, type FreshnessConflict } from "@/lib/stats/region-freshness-queries";
 import { StravaStaleSyncTrigger } from "@/components/StravaStaleSyncTrigger";
 import { StravaPoweredBadge } from "@/components/StravaPoweredBadge";
+import { computeTaperRecommendation, type TaperRecommendation } from "@/lib/planner/taper";
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -81,6 +82,21 @@ export default async function TodayPage() {
   const hasStravaConnection = Boolean(stravaConn);
   const hasStravaData = (stravaCardioCount ?? 0) > 0;
 
+  // Phase 2: next priority event + taper recommendation.
+  const { data: nextEvent } = await supabase
+    .from("priority_events")
+    .select("name, event_date, priority")
+    .eq("user_id", userId)
+    .gte("event_date", todayIso)
+    .order("event_date", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const taper = computeTaperRecommendation(
+    nextEvent
+      ? { name: nextEvent.name, date: nextEvent.event_date, priority: nextEvent.priority }
+      : null,
+  );
+
   // DC-V2 soft warning: fetch the regions of the movements planned today
   // so we can flag heavy work on a clearly recovering region.
   const plannedMovementIds = Array.from(
@@ -139,6 +155,8 @@ export default async function TodayPage() {
         pmWindowStart={pmWindowStart}
         conflictsBySlot={conflictsBySlot}
       />
+
+      {taper && <TaperCard taper={taper} />}
 
       <RegionFreshnessCard rows={freshness} hasStravaData={hasStravaData} />
       {hasStravaConnection && <StravaStaleSyncTrigger />}
@@ -562,6 +580,33 @@ function RegionFreshnessCard({ rows, hasStravaData }: { rows: RegionFreshnessRow
           ))}
         </div>
       )}
+    </section>
+  );
+}
+
+function TaperCard({ taper }: { taper: TaperRecommendation }) {
+  const color = taper.phase === "polish" || taper.phase === "event_day" ? "var(--cp-danger)" : taper.phase === "deep" ? "var(--cp-warning)" : "var(--cp-link)";
+  return (
+    <section
+      className="cp-card"
+      style={{
+        padding: "14px 18px",
+        display: "grid",
+        gap: 6,
+        borderColor: color,
+        background: `color-mix(in oklab, ${color} 6%, transparent)`,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ fontSize: 11, color, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+          Taper · {taper.eventName}
+        </div>
+        <span className="mono" style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
+          {taper.daysOut === 0 ? "today" : `${taper.daysOut}d`}
+        </span>
+      </div>
+      <div style={{ fontSize: 15, fontWeight: 600 }}>{taper.headline}</div>
+      <div style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>{taper.detail}</div>
     </section>
   );
 }

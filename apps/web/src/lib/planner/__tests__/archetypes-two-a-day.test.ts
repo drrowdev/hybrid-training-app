@@ -198,9 +198,16 @@ describe("daysForFrequency: distinct-day budgeting under two-a-day", () => {
 });
 
 describe("ARCHETYPES registry shape", () => {
-  it("ARCHETYPES contains all four curated focuses", () => {
+  it("ARCHETYPES contains all six curated focuses", () => {
     expect(Object.keys(ARCHETYPES).sort()).toEqual(
-      ["endurance_anchor", "hypertrophy_anchor", "rebuild", "strength_anchor"].sort(),
+      [
+        "concurrent_hybrid",
+        "endurance_anchor",
+        "hypertrophy_anchor",
+        "maintenance",
+        "rebuild",
+        "strength_anchor",
+      ].sort(),
     );
   });
 });

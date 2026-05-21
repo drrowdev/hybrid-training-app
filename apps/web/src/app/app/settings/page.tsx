@@ -232,6 +232,20 @@ export default async function SettingsPage() {
       </section>
 
       <section className="space-y-3">
+        <h2 className="text-lg font-medium">Priority events</h2>
+        <p className="text-xs text-foreground/60">
+          Mark races, comps, and tests. A-priority events trigger a 14-day taper plan.
+        </p>
+        <Link
+          href="/app/settings/events"
+          className="inline-flex items-center justify-between gap-3 rounded-lg border border-foreground/10 p-4 w-full hover:bg-foreground/5"
+        >
+          <span className="text-sm">Manage events</span>
+          <span className="text-xs text-foreground/60">→</span>
+        </Link>
+      </section>
+
+      <section className="space-y-3">
         <h2 className="text-lg font-medium">Connections</h2>
         <p className="text-xs text-foreground/60">
           Import cardio activities so region freshness reflects all your training, not just lifts.

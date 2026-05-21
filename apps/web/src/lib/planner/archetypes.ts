@@ -16,6 +16,8 @@ export type ArchetypeId =
   | "endurance_anchor"
   | "rebuild"
   | "hypertrophy_anchor"
+  | "concurrent_hybrid"
+  | "maintenance"
   | "custom";
 
 export type StrengthRole =
@@ -834,12 +836,184 @@ export const HYPERTROPHY_ANCHOR: Archetype = {
   ],
 };
 
+/**
+ * Concurrent / Hybrid Focus — the intended default for most users.
+ *
+ * Balanced concurrent program: 4 strength days (same patterns as Strength
+ * Focus) at moderate intensity + 2 substantive cardio sessions per week
+ * with polarized distribution (~80% easy Z2, ~20% high-intensity VO2 /
+ * threshold). Top set capped at 85% TM so cardio adaptation isn't
+ * compromised by neural drain — per Wilson 2012 (HIGH meta) the
+ * compatibility window favours intensity below max-strength territory.
+ */
+export const CONCURRENT_HYBRID: Archetype = {
+  id: "concurrent_hybrid",
+  name: "Hybrid Focus",
+  oneLiner:
+    "Balanced strength + cardio. Four main lifts at moderate intensity (top set ≤ 85% TM) protect cardio adaptation, and two substantive aerobic sessions — one polarized Z2, one VO2 / threshold — keep both engines running.",
+  weeks: 4,
+  days: [
+    ...STRENGTH_DAYS,
+    {
+      kind: "cardio",
+      dayIndex: 2,
+      role: "easy_z2",
+      title: "Easy Z2",
+      movementSlug: "bike-indoor-z2",
+      cardioKind: "cardio_z2",
+      durationMin: 60,
+      hrCap: "≤ 70% HRR, conversational",
+      priority: "anchor",
+      rank: 5,
+    },
+    {
+      kind: "cardio",
+      dayIndex: 5,
+      role: "vo2",
+      title: "VO2 intervals",
+      movementSlug: "run-intervals-vo2",
+      cardioKind: "cardio_vo2",
+      durationMin: 45,
+      protocolNote: "4×4 min @ 90–95% HRmax, 3 min easy between",
+      priority: "anchor",
+      rank: 6,
+    },
+  ],
+  twoADayDays: [
+    { ...STRENGTH_DAYS[0]!, slot: "am" },
+    {
+      kind: "cardio",
+      dayIndex: 0,
+      slot: "pm",
+      role: "easy_z2",
+      title: "Easy Z2 (PM)",
+      movementSlug: "bike-indoor-z2",
+      cardioKind: "cardio_z2",
+      durationMin: 45,
+      hrCap: "≤ 70% HRR, conversational",
+      priority: "anchor",
+      rank: 5,
+    },
+    { ...STRENGTH_DAYS[1]!, slot: "am" },
+    { ...STRENGTH_DAYS[2]!, slot: "am" },
+    {
+      kind: "cardio",
+      dayIndex: 3,
+      slot: "pm",
+      role: "vo2",
+      title: "VO2 intervals (PM)",
+      movementSlug: "run-intervals-vo2",
+      cardioKind: "cardio_vo2",
+      durationMin: 45,
+      protocolNote: "4×4 min @ 90–95% HRmax, 3 min easy between",
+      priority: "anchor",
+      rank: 6,
+    },
+    { ...STRENGTH_DAYS[3]!, slot: "am" },
+  ],
+  weekProfiles: [
+    { weekIndex: 0, setIntensities: [0.65, 0.72, 0.78], setReps: 5, intensityLabel: "5s wave" },
+    { weekIndex: 1, setIntensities: [0.70, 0.77, 0.83], setReps: 5, intensityLabel: "5s wave" },
+    { weekIndex: 2, setIntensities: [0.72, 0.79, 0.85], setReps: [5, 3, 3], intensityLabel: "Moderate peak" },
+    {
+      weekIndex: 3,
+      setIntensities: [0.45, 0.55, 0.65],
+      setReps: 5,
+      intensityLabel: "Deload",
+      strengthVolumeScale: 0.5,
+      z2DurationMinOverride: 35,
+    },
+  ],
+};
+
+/**
+ * Maintenance — keep the lights on during a busy stretch.
+ *
+ * Short two-week block at sub-maintenance volumes. Two strength days
+ * (alternating squat/bench and deadlift/OHP) at 65–70% TM, two short Z2
+ * sessions. The goal is to preserve neuromuscular skill and aerobic base
+ * without spending recovery on adaptation. Per Bickel 2011 / Helms 2018:
+ * roughly 1/3 of normal volume sustains strength and hypertrophy for
+ * weeks. Drop this in when life is the limiting factor.
+ */
+export const MAINTENANCE: Archetype = {
+  id: "maintenance",
+  name: "Maintenance",
+  oneLiner:
+    "Two-week keep-the-lights-on block for travel, illness, or busy stretches. Two short strength days (65–70% TM, 3 working sets per lift) and two short Z2 sessions hold the line on strength and aerobic base without spending recovery on adaptation.",
+  weeks: 2,
+  days: [
+    {
+      kind: "strength",
+      dayIndex: 0,
+      role: "squat",
+      title: "Squat + bench (maintenance)",
+      candidateSlugs: STRENGTH_ROLE_CANDIDATES.squat,
+      priority: "anchor",
+      rank: 1,
+    },
+    {
+      kind: "cardio",
+      dayIndex: 2,
+      role: "easy_z2",
+      title: "Easy Z2",
+      movementSlug: "bike-indoor-z2",
+      cardioKind: "cardio_z2",
+      durationMin: 30,
+      hrCap: "≤ 70% HRR, conversational",
+      priority: "anchor",
+      rank: 3,
+    },
+    {
+      kind: "strength",
+      dayIndex: 3,
+      role: "deadlift",
+      title: "Deadlift + overhead (maintenance)",
+      candidateSlugs: STRENGTH_ROLE_CANDIDATES.deadlift,
+      priority: "anchor",
+      rank: 2,
+    },
+    {
+      kind: "cardio",
+      dayIndex: 5,
+      role: "easy_z2",
+      title: "Easy Z2",
+      movementSlug: "bike-indoor-z2",
+      cardioKind: "cardio_z2",
+      durationMin: 30,
+      hrCap: "≤ 70% HRR, conversational",
+      priority: "anchor",
+      rank: 4,
+    },
+  ],
+  // Two-a-day intentionally omitted — maintenance is about doing less, not
+  // more density. The single-session shape is the right answer.
+  weekProfiles: [
+    {
+      weekIndex: 0,
+      setIntensities: [0.60, 0.65, 0.70],
+      setReps: 5,
+      intensityLabel: "Maintenance",
+      strengthVolumeScale: 0.6,
+    },
+    {
+      weekIndex: 1,
+      setIntensities: [0.60, 0.65, 0.70],
+      setReps: 5,
+      intensityLabel: "Maintenance",
+      strengthVolumeScale: 0.6,
+    },
+  ],
+};
+
 /** Curated archetypes. "custom" is not here — custom blocks are built ad-hoc. */
 export const ARCHETYPES: Record<Exclude<ArchetypeId, "custom">, Archetype> = {
   strength_anchor: STRENGTH_ANCHOR,
   endurance_anchor: ENDURANCE_ANCHOR,
   rebuild: REBUILD,
   hypertrophy_anchor: HYPERTROPHY_ANCHOR,
+  concurrent_hybrid: CONCURRENT_HYBRID,
+  maintenance: MAINTENANCE,
 };
 
 export function roundToPlate(kg: number, increment = 2.5): number {
