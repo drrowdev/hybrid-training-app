@@ -104,6 +104,12 @@ export default async function PlanPage({
         </div>
       </header>
 
+      <BlockCalendar
+        all={all}
+        weeks={block.weeks}
+        currentWeek={initialWeek}
+      />
+
       <nav style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }} aria-label="Block weeks">
         <Link
           href={`/app/plan?week=${Math.max(0, initialWeek - 1)}`}
@@ -595,5 +601,129 @@ function BlockCompleteCard({
         ))}
       </ul>
     </section>
+  );
+}
+
+function BlockCalendar({
+  all,
+  weeks,
+  currentWeek,
+}: {
+  all: { weekIndex: number; dayIndex: number; date: string; completedSessionId: string | null; skippedAt: string | null }[];
+  weeks: number;
+  currentWeek: number;
+}) {
+  const today = todayYmd();
+  // Index by (week, day) for O(1) lookup.
+  const byCell = new Map<string, { hasPlan: boolean; completed: boolean; skipped: boolean; date: string }>();
+  for (const d of all) {
+    const k = `${d.weekIndex}:${d.dayIndex}`;
+    const prev = byCell.get(k) ?? { hasPlan: false, completed: false, skipped: false, date: d.date };
+    byCell.set(k, {
+      hasPlan: true,
+      completed: prev.completed || !!d.completedSessionId,
+      skipped: prev.skipped || !!d.skippedAt,
+      date: d.date,
+    });
+  }
+  return (
+    <section className="cp-card" style={{ padding: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10, gap: 8 }}>
+        <h2 style={{ margin: 0, fontSize: 14 }}>Block overview</h2>
+        <div style={{ display: "flex", gap: 10, fontSize: 10, color: "var(--cp-text-muted)", flexWrap: "wrap" }}>
+          <Legend color="var(--cp-success)" label="Done" />
+          <Legend color="var(--cp-text-muted)" label="Skipped" />
+          <Legend color="var(--cp-accent)" label="Planned" />
+          <Legend color="var(--cp-surface-soft)" label="Rest" />
+        </div>
+      </div>
+      <div
+        role="grid"
+        aria-label="Block calendar"
+        style={{
+          display: "grid",
+          gridTemplateColumns: `40px repeat(7, 1fr)`,
+          gap: 4,
+        }}
+      >
+        <div />
+        {DOW.map((d) => (
+          <div key={d} style={{ fontSize: 10, color: "var(--cp-text-muted)", textAlign: "center", fontWeight: 600 }}>
+            {d[0]}
+          </div>
+        ))}
+        {Array.from({ length: weeks }, (_, w) => (
+          <CalendarWeekRow
+            key={w}
+            weekIndex={w}
+            isCurrent={w === currentWeek}
+            byCell={byCell}
+            today={today}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CalendarWeekRow({
+  weekIndex,
+  isCurrent,
+  byCell,
+  today,
+}: {
+  weekIndex: number;
+  isCurrent: boolean;
+  byCell: Map<string, { hasPlan: boolean; completed: boolean; skipped: boolean; date: string }>;
+  today: string;
+}) {
+  return (
+    <>
+      <Link
+        href={`/app/plan?week=${weekIndex}`}
+        style={{
+          fontSize: 10,
+          color: isCurrent ? "var(--cp-accent)" : "var(--cp-text-muted)",
+          fontWeight: isCurrent ? 700 : 500,
+          textDecoration: "none",
+          alignSelf: "center",
+        }}
+      >
+        Wk{weekIndex + 1}
+      </Link>
+      {Array.from({ length: 7 }, (_, dayIndex) => {
+        const cell = byCell.get(`${weekIndex}:${dayIndex}`);
+        const isToday = cell?.date === today;
+        const bg = !cell
+          ? "var(--cp-surface-soft)"
+          : cell.completed
+            ? "var(--cp-success)"
+            : cell.skipped
+              ? "var(--cp-text-muted)"
+              : "var(--cp-accent-soft)";
+        return (
+          <div
+            key={dayIndex}
+            title={cell ? `Wk${weekIndex + 1} ${DOW[dayIndex]} (${cell.date})` : `Wk${weekIndex + 1} ${DOW[dayIndex]} — rest`}
+            style={{
+              height: 18,
+              borderRadius: 4,
+              background: bg,
+              border: isToday ? "1.5px solid var(--cp-accent)" : "1px solid transparent",
+              opacity: cell?.completed ? 1 : cell?.skipped ? 0.5 : 1,
+            }}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+function Legend({ color, label }: { color: string; label: string }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+      <span aria-hidden style={{ width: 10, height: 10, borderRadius: 3, background: color }} />
+      <span>{label}</span>
+    </span>
   );
 }

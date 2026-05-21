@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getRegionFreshness, type FreshnessRow } from "@/lib/engine/freshness";
 import { getBucketState, type BucketStateRow } from "@/lib/stats/bucket-state-queries";
 import { getRpeDrift, type RpeDrift } from "@/lib/stats/rpe-drift-queries";
+import { getCeilingUtilization, type CeilingUtilization } from "@/lib/stats/ceiling-queries";
 
 // Plain-language status from freshness ratio.
 function statusFor(f: number, lastLoadDate: string | null): string {
@@ -39,10 +40,11 @@ export default async function EngineStatePage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const [rows, buckets, drift] = await Promise.all([
+  const [rows, buckets, drift, ceiling] = await Promise.all([
     getRegionFreshness(),
     user ? getBucketState(supabase, user.id) : Promise.resolve([] as BucketStateRow[]),
     user ? getRpeDrift(supabase, user.id) : Promise.resolve(null as RpeDrift | null),
+    user ? getCeilingUtilization(supabase, user.id) : Promise.resolve(null as CeilingUtilization | null),
   ]);
   const hasData = rows.length > 0 && rows.some((r) => r.atl > 0 || r.ctl > 0);
   const hasBucketData = buckets.some((b) => b.atl > 0 || b.ctl > 0);
@@ -100,6 +102,45 @@ export default async function EngineStatePage() {
           </div>
         )}
       </section>
+
+      {/* ── Ceiling utilization vs archetype ─────────────────── */}
+      {ceiling && (
+        <section className="cp-card" style={{ padding: 20 }}>
+          <h2 style={{ margin: 0, fontSize: 16 }}>
+            Ceiling utilization
+            <span className="cp-info" tabIndex={0} aria-label="How ceiling utilization is computed">
+              i
+              <span className="pop" style={{ width: 260 }}>
+                This week&apos;s actual work vs the active archetype&apos;s
+                prescribed dose. 70–110% is the sweet spot.
+              </span>
+            </span>
+          </h2>
+          <p style={{ margin: "4px 0 12px", color: "var(--cp-text-muted)", fontSize: 13 }}>
+            {ceiling.archetypeName} · {ceiling.weekLabel} (week {ceiling.weekIndex + 1})
+          </p>
+          <div style={{ display: "grid", gap: 10 }}>
+            <CeilingRow
+              label="Strength"
+              actual={ceiling.strength.actual}
+              prescribed={ceiling.strength.prescribed}
+              pct={ceiling.strength.pct}
+              bandLabel={ceiling.strength.bandLabel}
+              tone={ceilingTone(ceiling.strength.band)}
+              unit="working sets"
+            />
+            <CeilingRow
+              label="Cardio"
+              actual={ceiling.cardio.actual}
+              prescribed={ceiling.cardio.prescribed}
+              pct={ceiling.cardio.pct}
+              bandLabel={ceiling.cardio.bandLabel}
+              tone={ceilingTone(ceiling.cardio.band)}
+              unit="sessions"
+            />
+          </div>
+        </section>
+      )}
 
       {/* ── RPE drift over last 28 days ──────────────────────── */}
       {drift && (
@@ -317,6 +358,78 @@ function RegionGroup({ title, rows }: { title: string; rows: FreshnessRow[] }) {
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function ceilingTone(band: string): string {
+  if (band === "under") return "var(--cp-link)";
+  if (band === "on-budget") return "var(--cp-success)";
+  if (band === "at-line") return "var(--cp-warning)";
+  return "var(--cp-danger)";
+}
+
+function CeilingRow({
+  label,
+  actual,
+  prescribed,
+  pct,
+  bandLabel,
+  tone,
+  unit,
+}: {
+  label: string;
+  actual: number;
+  prescribed: number;
+  pct: number;
+  bandLabel: string;
+  tone: string;
+  unit: string;
+}) {
+  const widthPct = Math.min(150, pct * 100);
+  return (
+    <div
+      style={{
+        padding: "10px 12px",
+        borderRadius: 10,
+        border: "1px solid var(--cp-border)",
+        background: "var(--cp-surface)",
+        display: "grid",
+        gap: 6,
+      }}
+      title={`${label}: ${actual} ${unit} vs ${prescribed} prescribed = ${(pct * 100).toFixed(0)}%`}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <div style={{ fontSize: 14, fontWeight: 600 }}>{label}</div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+          <span className="mono" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+            {actual} / {prescribed} {unit}
+          </span>
+          <span style={{ fontSize: 12, color: tone, fontWeight: 600 }}>{bandLabel}</span>
+        </div>
+      </div>
+      <div style={{ position: "relative", height: 6, borderRadius: 999, background: "var(--cp-surface-soft)", overflow: "hidden" }}>
+        {/* 100% reference tick */}
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            left: "66.67%",
+            top: 0,
+            bottom: 0,
+            width: 1,
+            background: "var(--cp-border-strong)",
+          }}
+        />
+        <div
+          style={{
+            width: `${(widthPct / 150) * 100}%`,
+            height: "100%",
+            background: tone,
+            transition: "width .3s",
+          }}
+        />
+      </div>
     </div>
   );
 }
