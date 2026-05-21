@@ -282,7 +282,7 @@ function TodaySessionCard({
     <div style={{ display: "grid", gap: 10 }}>
       {isTwoADay && (
         <div
-          role={gapShort ? "alert" : "note"}
+          role="note"
           className="cp-card"
           style={{
             padding: "10px 14px",
@@ -290,36 +290,27 @@ function TodaySessionCard({
             justifyContent: "space-between",
             alignItems: "center",
             gap: 12,
-            background: gapShort
-              ? "color-mix(in oklab, var(--cp-danger) 8%, transparent)"
-              : "color-mix(in oklab, var(--cp-accent) 4%, transparent)",
-            borderColor: gapShort ? "var(--cp-danger)" : "var(--cp-accent)",
+            background: "color-mix(in oklab, var(--cp-accent) 4%, transparent)",
+            borderColor: "var(--cp-accent)",
             fontSize: 12,
           }}
         >
           <span style={{ color: "var(--cp-text)" }}>
-            {gapShort ? (
-              <>
-                <strong style={{ color: "var(--cp-danger)" }}>
-                  Gap is {gapH!.toFixed(1)}h — below the 6h recommendation.
-                </strong>
-                <span style={{ color: "var(--cp-text-muted)", marginLeft: 4 }}>
-                  AMPK from the cardio will blunt the strength signal at this spacing.
-                </span>
-              </>
-            ) : (
-              <>
-                <strong>
-                  Two-a-day{gapH != null ? ` · ${gapH.toFixed(0)}h gap` : ""}.
-                </strong>
-                <span style={{ color: "var(--cp-text-muted)", marginLeft: 4 }}>
-                  AM lift + PM cardio with at least 6 hours between protects the strength signal.
-                </span>
-              </>
-            )}
+            <strong>
+              Two-a-day{gapH != null ? ` · ${gapH.toFixed(0)}h gap` : ""}.
+            </strong>
+            <span style={{ color: "var(--cp-text-muted)", marginLeft: 4 }}>
+              {gapShort
+                ? `Sessions are ${gapH!.toFixed(1)}h apart — research recommends ≥6h between AM lift and PM cardio to protect the strength signal.`
+                : "AM lift + PM cardio with at least 6 hours between protects the strength signal."}
+            </span>
           </span>
-          <span className="mono" style={{ fontSize: 10, color: "var(--cp-text-muted)", flexShrink: 0 }}>
-            Robineau 2016 HIGH
+          <span
+            className="mono"
+            title="Robineau 2016 (HIGH) — recovery between concurrent sessions"
+            style={{ fontSize: 10, color: "var(--cp-text-muted)", flexShrink: 0 }}
+          >
+            Robineau 2016
           </span>
         </div>
       )}

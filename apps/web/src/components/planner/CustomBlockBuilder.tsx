@@ -501,18 +501,23 @@ export function CustomBlockBuilder({
                   )}
                   {conflict && (
                     <div
-                      role="alert"
+                      role="note"
+                      title={conflict.tooltip}
                       style={{
                         fontSize: 11,
                         padding: "6px 10px",
-                        border: "1px solid var(--cp-danger)",
+                        border: "1px solid var(--cp-border)",
                         borderRadius: 6,
-                        background: "color-mix(in oklab, var(--cp-danger) 8%, transparent)",
-                        color: "var(--cp-danger)",
+                        background: "var(--cp-surface-soft)",
+                        color: "var(--cp-text-muted)",
                         lineHeight: 1.4,
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 6,
                       }}
                     >
-                      {conflict}
+                      <span aria-hidden="true" style={{ color: "var(--cp-text)" }}>ⓘ</span>
+                      <span>{conflict.short}</span>
                     </div>
                   )}
                 </div>
@@ -620,14 +625,16 @@ function slotOrder(s: DaySlot): number {
 }
 
 /**
- * Inspect a two-slot day for high-conflict pairings. Returns the warning
- * text to display, or null if the pairing is fine.
+ * Inspect a two-slot day for high-conflict pairings. Returns a short
+ * inline hint + a longer tooltip explanation, or null if the pairing is
+ * fine. Soft info per DC-S3 — surfaces awareness, never blocks submit.
  *
- * Per DC-D2, a two-a-day day is meant to be 1 strength + 1 cardio. Two
- * strengths on the same day burn the CNS twice; two hard cardios stack
- * AMPK / interference doubly.
+ * Per DC-D2, a two-a-day day is typically meant to be 1 strength + 1
+ * cardio. Two strengths burns the CNS twice; two hard cardios stack
+ * AMPK / interference doubly. These aren't bans — just nudges toward
+ * the patterns the research supports.
  */
-function sameDayConflict(rows: DayState[]): string | null {
+function sameDayConflict(rows: DayState[]): { short: string; tooltip: string } | null {
   const am = rows.find((r) => r.slot === "am");
   const pm = rows.find((r) => r.slot === "pm");
   if (!am || !pm) return null;
@@ -636,27 +643,41 @@ function sameDayConflict(rows: DayState[]): string | null {
   const amIsStrength = am.kind.startsWith("strength_");
   const pmIsStrength = pm.kind.startsWith("strength_");
   if (amIsStrength && pmIsStrength) {
-    return "Two strength sessions on the same day burn the CNS twice. Recommended pattern: AM lift + PM cardio (DC-D2).";
+    return {
+      short: "Two strength sessions on the same day. Research-recommended pattern is 1 lift + 1 cardio.",
+      tooltip:
+        "DC-D2 (Coffey & Hawley 2017): hybrid days typically separate strength and conditioning by AM/PM. Two strength sessions on one day load the CNS twice and can compound recovery cost.",
+    };
   }
 
   const hardCardios = new Set(["cardio_vo2", "cardio_alactic"]);
   if (hardCardios.has(am.kind) && hardCardios.has(pm.kind)) {
-    return "Two hard interval sessions stack interference. Pair one hard modality with one easy (DC-L1 / DC-L3).";
+    return {
+      short: "Two hard interval sessions on the same day stack interference.",
+      tooltip:
+        "DC-L1 / DC-L3 (Wilson 2012 meta): high-intensity intervals carry the largest interference cost. Pair one hard modality with one easy modality, or move one to a different day.",
+    };
   }
 
-  // Tendon + strength on the same target tissue (knee tendon + squat,
-  // hinge tendon + deadlift) doubles up local load. Surface as warning.
   if (
     (am.kind === "tendon_hsr_knee" && pm.kind === "strength_squat") ||
     (am.kind === "strength_squat" && pm.kind === "tendon_hsr_knee")
   ) {
-    return "Knee tendon HSR + squat on the same day double-loads the patellar tendon. Consider spacing across days.";
+    return {
+      short: "Knee tendon work + squat on the same day double-loads the patellar tendon.",
+      tooltip:
+        "DC-J/Baar framework (Kongsgaard 2009): heavy slow resistance and heavy compound squatting load the same tissue. Consider spacing across separate days for fuller recovery.",
+    };
   }
   if (
     (am.kind === "tendon_hsr_hinge" && pm.kind === "strength_deadlift") ||
     (am.kind === "strength_deadlift" && pm.kind === "tendon_hsr_hinge")
   ) {
-    return "Posterior-chain HSR + deadlift on the same day double-loads the same tissues. Consider spacing across days.";
+    return {
+      short: "Posterior-chain HSR + deadlift on the same day load the same tissues twice.",
+      tooltip:
+        "DC-J/Baar framework: hamstring + lower-back tendon protocols and heavy hinging share the posterior chain. Spacing across days protects tissue while preserving the stimulus.",
+    };
   }
 
   return null;

@@ -271,31 +271,31 @@ function DayCard({
       )}
       {isTwoADay && (
         <div
-          role={gapShort ? "alert" : "note"}
+          role="note"
           style={{
             margin: "0 14px",
             padding: "8px 10px",
-            border: `1px solid ${gapShort ? "var(--cp-danger)" : "var(--cp-border)"}`,
+            border: "1px solid var(--cp-border)",
             borderRadius: 8,
-            background: gapShort
-              ? "color-mix(in oklab, var(--cp-danger) 8%, transparent)"
-              : "var(--cp-surface-soft)",
+            background: "var(--cp-surface-soft)",
             fontSize: 11,
             color: "var(--cp-text-muted)",
             lineHeight: 1.4,
           }}
+          title="Robineau 2016 (HIGH) — recovery between concurrent sessions"
         >
           {gapShort ? (
-            <strong style={{ color: "var(--cp-danger)" }}>
-              Gap is {gapH!.toFixed(1)}h — below the 6h recommendation.
+            <strong style={{ color: "var(--cp-text)" }}>
+              Sessions are {gapH!.toFixed(1)}h apart
             </strong>
           ) : (
             <strong style={{ color: "var(--cp-text)" }}>≥6 hours between sessions</strong>
           )}{" "}
-          protects the strength signal — AMPK activation from cardio inhibits mTORC1 within shorter
-          windows.
+          {gapShort
+            ? "— research suggests ≥6h between AM lift and PM cardio so the strength signal isn't blunted by AMPK from the cardio."
+            : "protects the strength signal — AMPK activation from cardio inhibits mTORC1 within shorter windows."}
           <span style={{ display: "block", marginTop: 2, fontStyle: "italic" }}>
-            Robineau 2016 (HIGH).
+            Robineau 2016.
           </span>
         </div>
       )}
