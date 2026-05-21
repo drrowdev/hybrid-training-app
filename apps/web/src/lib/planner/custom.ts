@@ -168,7 +168,7 @@ export const WAVE_TEMPLATES: Record<
   five_three_one: {
     id: "five_three_one",
     name: "5 / 3 / 1 peak",
-    description: "Strength Anchor's wave — 5s → 3s → 5/3/1 peak with top single. Best for short focused strength blocks.",
+    description: "Strength Focus's wave — 5s → 3s → 5/3/1 peak with top single. Best for short focused strength blocks.",
     weeks: FIVE_THREE_ONE_WAVE,
   },
   hypertrophy: {
@@ -180,7 +180,7 @@ export const WAVE_TEMPLATES: Record<
   maintenance: {
     id: "maintenance",
     name: "Maintenance",
-    description: "Endurance Anchor's wave — heavy low-volume work to hold strength while cardio leads. Top set at the Bickel ≥85% 1RM floor.",
+    description: "Endurance Focus's wave — heavy low-volume work to hold strength while cardio leads. Top set at the Bickel ≥85% 1RM floor.",
     weeks: MAINTENANCE_WAVE,
   },
   rebuild_flat: {

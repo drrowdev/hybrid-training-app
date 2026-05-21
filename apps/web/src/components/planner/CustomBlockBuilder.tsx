@@ -28,19 +28,23 @@ export function CustomBlockBuilder({
   defaultStartedOn,
   defaultDaysPerWeek,
   hasAnyStrengthTm,
-  allowsTwoADays,
+  allowsTwoADays: initialAllowsTwoADays,
   action,
+  setAllowsTwoADaysAction,
 }: {
   defaultStartedOn: string;
   defaultDaysPerWeek: number;
   hasAnyStrengthTm: boolean;
   allowsTwoADays: boolean;
   action: (fd: FormData) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Persists the two-a-day preference back to the profile. */
+  setAllowsTwoADaysAction: (fd: FormData) => Promise<void>;
 }) {
   const [name, setName] = useState<string>("");
   const [weeks, setWeeks] = useState<number>(4);
   const [startedOn, setStartedOn] = useState<string>(defaultStartedOn);
   const [waveTemplate, setWaveTemplate] = useState<WaveTemplateId>("fives");
+  const [allowsTwoADays, setAllowsTwoADays] = useState(initialAllowsTwoADays);
 
   // Seed a sensible week shape based on the user's typical days/week.
   const initialDays = useMemo<DayState[]>(() => seedWeek(defaultDaysPerWeek), [defaultDaysPerWeek]);
@@ -49,6 +53,42 @@ export function CustomBlockBuilder({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
+
+  const onToggleTwoADays = (checked: boolean) => {
+    // Optimistic local update so the per-day '+ add PM' buttons appear immediately.
+    setAllowsTwoADays(checked);
+    // If we're turning it OFF, collapse every two-slot day back to a single
+    // session so the UI doesn't leave orphan PM sessions the user can't see.
+    if (!checked) {
+      setDays((prev) => {
+        const byDay = new Map<number, DayState[]>();
+        for (const d of prev) {
+          const list = byDay.get(d.dayIndex) ?? [];
+          list.push(d);
+          byDay.set(d.dayIndex, list);
+        }
+        const next: DayState[] = [];
+        for (const rows of byDay.values()) {
+          if (rows.length === 1) {
+            next.push({ ...rows[0]!, slot: "single" });
+          } else {
+            // Two slots — keep AM (the lift), drop PM.
+            const am = rows.find((r) => r.slot === "am") ?? rows[0]!;
+            next.push({ ...am, slot: "single" });
+          }
+        }
+        next.sort((a, b) => a.dayIndex - b.dayIndex);
+        return next;
+      });
+    }
+    // Persist to profile in the background.
+    const fd = new FormData();
+    fd.set("allowsTwoADaysPresent", "1");
+    if (checked) fd.set("allowsTwoADays", "on");
+    startTransition(async () => {
+      await setAllowsTwoADaysAction(fd);
+    });
+  };
 
   const nonRestDays = days.filter((d) => d.kind !== "rest");
   const strengthDayCount = nonRestDays.filter((d) => d.kind.startsWith("strength_")).length;
@@ -267,6 +307,37 @@ export function CustomBlockBuilder({
         <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--cp-text-muted)" }}>
           Pick what happens on each day. Strength days use the variant you&apos;ve set a TM for.
         </p>
+        <label
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 10,
+            padding: "10px 12px",
+            border: "1px solid var(--cp-border)",
+            borderRadius: 10,
+            background: "var(--cp-surface-soft)",
+            marginBottom: 14,
+            cursor: "pointer",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={allowsTwoADays}
+            onChange={(e) => onToggleTwoADays(e.target.checked)}
+            disabled={isPending}
+            style={{ marginTop: 3 }}
+          />
+          <span style={{ display: "grid", gap: 2 }}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>
+              Allow two-a-day sessions
+            </span>
+            <span style={{ fontSize: 11, color: "var(--cp-text-muted)", lineHeight: 1.45 }}>
+              Adds an &quot;+ add PM session&quot; button on each day. Saved to your profile so other
+              blocks pick it up too. Turning it off collapses every two-slot day back to the AM
+              session.
+            </span>
+          </span>
+        </label>
         <div style={{ display: "grid", gap: 6 }}>
           {Array.from({ length: 7 }, (_, dayIndex) => {
             const rows = rowsFor(dayIndex);

@@ -22,7 +22,7 @@ const GOALS: Goal[] = [
     label: "Build strength",
     description: "Heavy lifts, weekly intensity wave, classic 5/3/1-style peaking with deload.",
     recommendedArchetypeId: "strength_anchor",
-    recommendedArchetypeName: "Strength Anchor",
+    recommendedArchetypeName: "Strength Focus",
     tmPercentDefault: 90,
     recommendsTms: true,
   },
@@ -31,7 +31,7 @@ const GOALS: Goal[] = [
     label: "Build muscle",
     description: "Higher rep ranges (6–10), more working sets, moderate intensity (60–75% TM).",
     recommendedArchetypeId: "hypertrophy_anchor",
-    recommendedArchetypeName: "Hypertrophy Anchor",
+    recommendedArchetypeName: "Hypertrophy Focus",
     tmPercentDefault: 90,
     recommendsTms: true,
   },
@@ -40,7 +40,7 @@ const GOALS: Goal[] = [
     label: "Build endurance",
     description: "Cardio-led week with polarized Z2 + VO2, two strength maintenance days to hold strength.",
     recommendedArchetypeId: "endurance_anchor",
-    recommendedArchetypeName: "Endurance Anchor",
+    recommendedArchetypeName: "Endurance Focus",
     tmPercentDefault: 90,
     recommendsTms: true,
   },
@@ -566,6 +566,17 @@ export function OnboardingWizard({
                 disabled={isPending}
               >
                 Set up a block later
+              </button>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-start", marginTop: 4 }}>
+              <button
+                type="button"
+                onClick={back}
+                className="cp-btn ghost"
+                disabled={isPending}
+                style={{ fontSize: 12 }}
+              >
+                ← Back
               </button>
             </div>
           </>

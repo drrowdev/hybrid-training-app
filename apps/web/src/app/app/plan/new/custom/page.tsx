@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createCustomBlock } from "@/lib/planner/actions";
+import { updateProfile } from "@/lib/settings/actions";
 import { todayYmd } from "@/lib/planner/queries";
 import { getTrainingMaxContext } from "@/lib/training-maxes/queries";
 import { CustomBlockBuilder } from "@/components/planner/CustomBlockBuilder";
@@ -44,6 +45,7 @@ export default async function NewCustomBlockPage() {
         hasAnyStrengthTm={hasAnyStrengthTm}
         allowsTwoADays={allowsTwoADays}
         action={createCustomBlock}
+        setAllowsTwoADaysAction={updateProfile}
       />
     </div>
   );

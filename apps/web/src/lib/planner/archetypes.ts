@@ -215,7 +215,7 @@ const STRENGTH_DAYS: StrengthDay[] = [
 
 export const STRENGTH_ANCHOR: Archetype = {
   id: "strength_anchor",
-  name: "Strength Anchor",
+  name: "Strength Focus",
   oneLiner:
     "Strength-led concurrent training. Four main lifts (your choice of variant per role) hit a weekly intensity wave with a deload at week 4. Polarized cardio is added when the day budget allows.",
   weeks: 4,
@@ -312,7 +312,7 @@ export const STRENGTH_ANCHOR: Archetype = {
 
 export const ENDURANCE_ANCHOR: Archetype = {
   id: "endurance_anchor",
-  name: "Endurance Anchor",
+  name: "Endurance Focus",
   oneLiner:
     "Cardio-led concurrent training. Polarized aerobic exposures (long Z2 + VO2 intervals) anchor the week. Two strength maintenance days (your choice of squat and deadlift variant) keep strength from drifting; extra easy-Z2 days are added when the budget allows.",
   weeks: 4,
@@ -644,9 +644,9 @@ export const REBUILD: Archetype = {
  */
 export const HYPERTROPHY_ANCHOR: Archetype = {
   id: "hypertrophy_anchor",
-  name: "Hypertrophy Anchor",
+  name: "Hypertrophy Focus",
   oneLiner:
-    "Muscle-building block. Same four main patterns as Strength Anchor but at hypertrophy intensity (60–75% TM, 6–10 reps, 4 working sets per pattern). One optional easy Z2 day preserves the aerobic floor. Add accessory work — flies, lateral raises, biceps, calves — live during sessions; v1 prescribes the main lift only.",
+    "Muscle-building block. Same four main patterns as Strength Focus but at hypertrophy intensity (60–75% TM, 6–10 reps, 4 working sets per pattern). One optional easy Z2 day preserves the aerobic floor. Add accessory work — flies, lateral raises, biceps, calves — live during sessions; v1 prescribes the main lift only.",
   weeks: 4,
   days: [
     {
