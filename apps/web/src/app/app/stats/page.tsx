@@ -6,7 +6,7 @@ export default async function StatsPage() {
   const supabase = await createClient();
   const { data: all } = await supabase
     .from("sessions")
-    .select("id, title, performed_at, completed_at, session_rpe, duration_min")
+    .select("id, title, slot, performed_at, completed_at, session_rpe, duration_min")
     .order("performed_at", { ascending: false })
     .limit(40);
 
@@ -20,6 +20,15 @@ export default async function StatsPage() {
   const avgRpe = rpeSamples.length
     ? rpeSamples.reduce((a, s) => a + (s.session_rpe ?? 0), 0) / rpeSamples.length
     : 0;
+
+  // Two-a-day breakdown over the last 30 days. Useful at-a-glance signal for
+  // whether the AM/PM rhythm is actually landing.
+  const twoADayLast30 = completed.filter((s) => {
+    if (s.slot !== "am" && s.slot !== "pm") return false;
+    return Date.now() - new Date(s.performed_at).getTime() < 30 * 86_400_000;
+  }).length;
+  const amCount = completed.filter((s) => s.slot === "am").length;
+  const pmCount = completed.filter((s) => s.slot === "pm").length;
 
   const movements = await listMovementsRanked();
 
@@ -38,6 +47,43 @@ export default async function StatsPage() {
         <Tile label="Avg session RPE" value={avgRpe ? avgRpe.toFixed(1) : "—"} />
         <Tile label="Engine state" value="View →" href="/app/stats/engine" />
       </div>
+
+      {(amCount > 0 || pmCount > 0) && (
+        <section className="cp-card" style={{ padding: 20 }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
+            <h2 style={{ margin: 0, fontSize: 16 }}>Two-a-day rhythm</h2>
+            <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>{twoADayLast30} in last 30d</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div
+              style={{
+                padding: "12px 14px",
+                borderRadius: 10,
+                border: "1px solid var(--cp-border)",
+                background: "var(--cp-surface-soft)",
+              }}
+            >
+              <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                AM sessions
+              </div>
+              <div className="mono" style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{amCount}</div>
+            </div>
+            <div
+              style={{
+                padding: "12px 14px",
+                borderRadius: 10,
+                border: "1px solid var(--cp-border)",
+                background: "var(--cp-surface-soft)",
+              }}
+            >
+              <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                PM sessions
+              </div>
+              <div className="mono" style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{pmCount}</div>
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="cp-card" style={{ padding: 20 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>

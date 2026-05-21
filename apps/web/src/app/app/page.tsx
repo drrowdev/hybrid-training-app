@@ -248,16 +248,44 @@ function TodaySessionCard({
 
   // 1 or 2 planned sessions today.
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: isTwoADay ? "repeat(auto-fit, minmax(300px, 1fr))" : "1fr",
-        gap: 12,
-      }}
-    >
-      {plannedToday.map((p) => (
-        <PlannedSessionCard key={p.id} planned={p} isTwoADay={isTwoADay} />
-      ))}
+    <div style={{ display: "grid", gap: 10 }}>
+      {isTwoADay && (
+        <div
+          role="note"
+          className="cp-card"
+          style={{
+            padding: "10px 14px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+            background: "color-mix(in oklab, var(--cp-accent) 4%, transparent)",
+            borderColor: "var(--cp-accent)",
+            fontSize: 12,
+          }}
+        >
+          <span style={{ color: "var(--cp-text)" }}>
+            <strong>Two-a-day · ≥6h gap recommended.</strong>
+            <span style={{ color: "var(--cp-text-muted)", marginLeft: 4 }}>
+              AM lift + PM cardio with at least 6 hours between protects the strength signal.
+            </span>
+          </span>
+          <span className="mono" style={{ fontSize: 10, color: "var(--cp-text-muted)", flexShrink: 0 }}>
+            Robineau 2016 HIGH
+          </span>
+        </div>
+      )}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: isTwoADay ? "repeat(auto-fit, minmax(300px, 1fr))" : "1fr",
+          gap: 12,
+        }}
+      >
+        {plannedToday.map((p) => (
+          <PlannedSessionCard key={p.id} planned={p} isTwoADay={isTwoADay} />
+        ))}
+      </div>
     </div>
   );
 }

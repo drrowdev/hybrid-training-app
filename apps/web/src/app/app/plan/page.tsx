@@ -211,12 +211,33 @@ function DayCard({ dayName, plans }: { dayName: string; plans: PlannedCell[] }) 
       }}
     >
       {isTwoADay && (
-        <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 14px 0", alignItems: "baseline" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 14px 0", alignItems: "baseline", gap: 8 }}>
           <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
             {dayName} · {new Date(dateStr + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}
             {isToday && <span style={{ color: "var(--cp-accent)", marginLeft: 6 }}>· today</span>}
           </div>
           <span className="cp-pill" style={{ color: "var(--cp-accent)", borderColor: "var(--cp-accent)" }}>two-a-day</span>
+        </div>
+      )}
+      {isTwoADay && (
+        <div
+          role="note"
+          style={{
+            margin: "0 14px",
+            padding: "8px 10px",
+            border: "1px solid var(--cp-border)",
+            borderRadius: 8,
+            background: "var(--cp-surface-soft)",
+            fontSize: 11,
+            color: "var(--cp-text-muted)",
+            lineHeight: 1.4,
+          }}
+        >
+          <strong style={{ color: "var(--cp-text)" }}>≥6 hours between sessions</strong> protects the
+          strength signal — AMPK activation from cardio inhibits mTORC1 within shorter windows.
+          <span style={{ display: "block", marginTop: 2, fontStyle: "italic" }}>
+            Robineau 2016 (HIGH).
+          </span>
         </div>
       )}
       {plans.map((planned) => (
