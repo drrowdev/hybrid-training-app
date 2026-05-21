@@ -339,3 +339,190 @@ A + B alone closes the worst of today's gaps (Strength has no accessories, deloa
 | Two-a-day recovery budget shrinks | implied | DC-D1 + recovery basics |
 
 The numeric targets (sets/week per muscle, archetype scalars) are **`[DEF→cal]`** — defaults to ship, calibrate as real logged data accumulates.
+
+---
+
+# Revision — three-pillar accessory model
+
+The original draft above (sections 1–9) covered only the **aesthetic / hypertrophy** pillar. The research mandates two more pillars that are not optional and not archetype-dependent. This revision integrates them.
+
+## 10. The three pillars
+
+Accessories serve three distinct purposes. A complete schema treats each as a first-class slot type, not as a tag on the same pool.
+
+| Pillar | What it produces | Research basis | Confidence |
+|---|---|---|---|
+| **Aesthetic** | Visible muscle development at the muscles compounds under-train (side/rear delts, arms, calves, abs, upper chest) | DC-T1, `new` §7.2 (Schoenfeld 2017 + others) | HIGH |
+| **Functional** | Movement-quality carryover to the main lift / sport — asymmetry control, trunk-under-load, hinge mechanics, single-leg capacity, anti-rotation | `new` §2.3 (compound bias), §9 (skeleton), v1 §11 (anchor-filler); Tactical Barbell / Westside heritage | MODERATE-HIGH |
+| **Durability** | Tissue resilience — tendons, connective tissue, joint health. The rate limiter of long-term hybrid careers | `new` §4 *entire section*, DC-J1, DC-O3, DC-O4 (Baar 2017 HIGH, Magnusson & Kjaer 2019 HIGH, Kongsgaard 2009 HIGH, Alfredson 1998 HIGH) | HIGH |
+
+## 11. Durability is a programmed quality, not optional prehab
+
+**DC-J1 (HIGH):** Tissue-capacity work is allocated within the main plan, not as optional prehab. **Every archetype assigns durability as ≥ secondary or maintenance** with daily microdoses.
+
+**DC-O4 — Weekly bulletproofing stack (HIGH-MODERATE) — every week template MUST include:**
+
+| Slot | Dose | Source |
+|---|---|---|
+| ≥1 heavy isometric session (patellar / Achilles / posterior-chain stack) | 3 × 30s holds at ≥70% MVC, high-strain joint position | Baar 2017 HIGH |
+| ≥1 HSR or eccentric-emphasis movement | 3 × 6–10 @ 70–85% 1RM, 3s eccentric / 3s concentric | Kongsgaard 2009 HIGH |
+| ≥1 plyometric exposure (low-amplitude OK) | 30–80 ground contacts | `new` §4.3 + practitioner |
+| ≥2 carry exposures (farmer / suitcase / overhead) | 3–4 sets of 30–60s | `new` §4.3 + practitioner |
+
+When a tendinopathy flag is active for the affected region, the plyometric line is **omitted** (per DC-D5 hard-block) and the symptomatic-protocol switches to **Alfredson eccentric** (DC-O3, Alfredson 1998 HIGH) until cleared.
+
+**DC-O2 (HIGH):** Tendon refractory is ~6 hours within a day, ~48 hours across days for the same tendon. Bulletproofing items targeting the same tendon must respect both windows. This is enforceable via the existing region ledger + `highStrainTendon` flag.
+
+**DC-S4 — Prep gate (MODERATE-LOW, soft by default):** If the bulletproofing dose for the session's loaded regions hasn't been completed in the prior 24–48h, the session start surfaces a "prep first" prompt. Skip-with-reason allowed; escalates to hard after 3 skips in 14d per OC-15.
+
+## 12. Functional carryover
+
+Less codified in the research (no single dedicated section) but consistent across the docs:
+
+**`new` §2.3 + §9 + v1 §11:**
+- Compound assistance (rows, single-leg presses, RDLs) produces a hypertrophic stimulus AND a movement-quality stimulus simultaneously — earns its place even when the muscle target is otherwise covered.
+- Velocity-cued execution / compensatory acceleration is a free upgrade — costs nothing extra in the recovery budget but offsets the power-suppressing tendency of concurrent training (Wilson 2012 HIGH).
+- Single-leg work is the highest-value functional accessory for hybrid athletes specifically — corrects asymmetry, builds the unilateral force production running demands, and loads the hip stabilizers compound work misses.
+
+**Anti-rotation core (Pallof press, suitcase carries):** Mentioned implicitly in v1 §4 "trunk under load" framing and codified via the carry requirement in DC-O4. The literature is consistent (McGill 2014 et al. — generally MODERATE-HIGH in the back-pain prevention space): anti-rotation core capacity protects the lumbar trunk during heavy compound work.
+
+## 13. Revised per-archetype mix
+
+Each archetype now declares **per-pillar items per week**, not just total accessory volume. The three pillars run in parallel — the aesthetic table from §2 stays as-is for the aesthetic column; this revision adds functional + durability columns.
+
+| Archetype | Aesthetic sets/wk | Functional items/wk | Durability items/wk |
+|---|---|---|---|
+| **Strength Focus** | 16–24 | **2–3** (carries + single-leg) | **DC-O4 floor** (4 items min) |
+| **Hypertrophy Focus** | 40–48 | 1–2 (carries) | **DC-O4 floor** (4 items min) |
+| **Concurrent/Hybrid** | 18–24 | **3** (carries + single-leg + anti-rotation) | **DC-O4 floor** (4 items min) |
+| **Endurance Focus** | 6–8 (MV floor only) | **2–3** (hip stabilizer + ankle/foot for running) | **DC-O4 floor + Achilles HSR 2x/wk** |
+| **Maintenance** | 0–2 | 1 (carry only) | **DC-O4 minimum subset (isometrics + 1 carry)** |
+| **Rebuild** | 4–6 | 1 (tempo/loaded mobility) | **Tendon days carry this** — existing TendonDay primitive |
+
+### 13.1 The durability floor is the same shape across all archetypes
+
+DC-O4 is **not negotiable per archetype**. Every week from every archetype has to satisfy:
+- ≥1 heavy isometric
+- ≥1 HSR or eccentric
+- ≥1 plyometric (unless flagged)
+- ≥2 carries
+
+What varies is **how it gets placed**:
+
+| Archetype | Where bulletproofing lives |
+|---|---|
+| Strength / Hypertrophy / Hybrid | Integrated into existing strength days (HSR substitutes for one accessory; isometric as warm-up extension; carries as session finisher) |
+| Endurance | Integrated into the 2 maintenance strength days |
+| Maintenance | Compressed into the 2 short strength days — the isometric is the warmup, the HSR is the main work |
+| Rebuild | The dedicated TendonDay primitive (already in the codebase) carries all four items |
+
+### 13.2 Endurance Focus needs the Achilles add-on
+
+Per `new` §4.4 (HIGH pattern): "Achilles / patellar: too many running miles ramped too fast, without HSR or isometric calf/quad work." The single highest-ROI durability add for runners is **Achilles HSR 2×/wk** beyond the DC-O4 floor (which already mandates ≥1).
+
+So Endurance Focus carries the bulletproofing floor + a second Achilles HSR exposure. This is the only archetype with a region-specific durability add — earned by the cardio modality.
+
+## 14. Functional accessories — per-archetype defaults
+
+Reading `new` §2.3 + §9, the functional toolkit per archetype:
+
+| Archetype | Primary functional accessories | Why |
+|---|---|---|
+| Strength | Farmer carry, suitcase carry, single-leg press | Carry-over to deadlift / squat; trunk under load |
+| Hypertrophy | Suitcase carry (× 2 per week) | Minimum trunk + grip dose without taxing hypertrophy budget |
+| Hybrid | Farmer + Pallof press + Bulgarian split squat | All three pillars hit per item — multi-purpose under tight recovery budget |
+| Endurance | Bulgarian split squat, hip airplane, ankle dorsiflexion holds | Running-specific stabilizers; mechanics carryover |
+| Maintenance | One carry per session | Cheapest functional dose; protects grip + trunk |
+| Rebuild | Loaded carries at light weight (suitcase only) | Builds tolerance without the eccentric/CNS cost of farmers |
+
+## 15. Selection-rule order (revised)
+
+The §5 selection rules now have a clear priority among pillars:
+
+1. **Durability floor first.** Has the week satisfied DC-O4? If not, the next accessory slot is filled from the bulletproofing pool that closes the gap (isometric / HSR / plyo / carry). This is the only **hard** rule.
+2. **Functional second.** Has the archetype's functional minimum been met? (Carries × 2 for most, single-leg × 1 for Strength/Hybrid, etc.) If not, fill from the functional pool.
+3. **Aesthetic gap-fill third.** Pick from the per-muscle gap-fill picker (§5 original logic).
+4. **Variation rotation fourth.** Within an equal-priority gap, prefer a movement not used in the immediately previous session.
+5. **Concurrent stress filter applied throughout.** If `concurrent_modifier` active, exclude high-eccentric / high-CNS variants.
+6. **Limitations filter applied last.** Skip any movement loading a flagged region; substitute from same-pillar pool.
+
+The order matters: an Endurance Focus user has a tight recovery budget, but DC-O4 is **HIGH evidence-base** and DC-J1 is explicit ("durability is a programmed quality, not prehab"). It comes first.
+
+## 16. Data-model deltas (revised)
+
+The §6 deltas grow modestly:
+
+### Movement-level tags (additive)
+
+```ts
+type MovementBulletproofRole =
+  | "heavy_isometric"        // DC-O3 protocol (i)
+  | "hsr"                    // DC-O3 protocol (ii) — Kongsgaard
+  | "alfredson_eccentric"    // DC-O3 protocol (iii) — symptomatic only
+  | "plyometric_low"         // low-amplitude
+  | "plyometric_high"        // high-amplitude
+  | "carry";
+
+type MovementFunctionalRole =
+  | "single_leg"
+  | "anti_rotation"
+  | "loaded_mobility"
+  | "compound_assistance"
+  | "velocity_cued";
+
+// Movements may have 0..N bulletproof_roles + 0..N functional_roles.
+// E.g. a Bulgarian split squat is { functional: ["single_leg"], bulletproof: [] }
+// E.g. a Spanish squat hold is { bulletproof: ["heavy_isometric"], functional: [] }
+// E.g. a farmer carry is { bulletproof: ["carry"], functional: [] }
+```
+
+These are jsonb tag arrays on `movements`, not enums — multiple movements can serve the same role.
+
+### Archetype-level `accessoryProfile` (replaces §6.3 single-pillar version)
+
+```ts
+type AccessoryProfile = {
+  // Aesthetic pillar (existing)
+  aestheticItemsPerSession: number;
+  aestheticSetsPerItem: number;
+  aestheticReps: { min: number; max: number };
+  aestheticBias: "compound_assistance" | "isolation_machine" | "low_fatigue_only" | "minimal";
+
+  // Functional pillar (new)
+  functionalItemsPerWeek: number;
+  functionalPriorityRoles: MovementFunctionalRole[];
+
+  // Durability pillar — always satisfies DC-O4 floor; archetype may add extras
+  durabilityExtras: MovementBulletproofRole[]; // e.g. Endurance gets ["hsr"] for Achilles
+};
+```
+
+DC-O4 is enforced by the **engine**, not by per-archetype config — the floor is global. The archetype only declares **extras above the floor**.
+
+## 17. Implementation phases (revised)
+
+| Phase | What | Effort |
+|---|---|---|
+| **A** | Aesthetic pillar — per-archetype config + concurrent + deload | small |
+| **B** | Two-a-day + limitation filter | small |
+| **B'** | **Durability floor enforcement (DC-O4)** — engine emits "tissue-stack-deficient" warning when week missing any of the 4 items | small-medium |
+| **B''** | **Movement tags + tagging the existing catalog** — add `bulletproof_role[]` + `functional_role[]` columns; populate ~30-40 movements | small |
+| **C** | Dynamic gap-fill picker (now reads per-pillar gap, not just per-muscle) | medium |
+| **C'** | **Functional pillar fill** — picker selects functional items when archetype hasn't satisfied its functional minimum | small-medium |
+| **D** | Week-by-week variation rotation | medium |
+| **E** | Daily branch overrides (DC-I1) | small-medium |
+| **E'** | **DC-S4 prep gate** — soft prompt when current session's loaded region hasn't seen bulletproofing in 24–48h | small |
+
+**Recommended sequence:** A → B'' → B' → C → C' → B → D → E' → E. The durability work (B' + B'' + E') gates before the dynamic picker (C) because the picker needs the tags to do gap-driven selection across all three pillars.
+
+## 18. Confidence delta vs the original draft
+
+The original draft had one HIGH source (Schoenfeld 2017) carrying the whole prescription. The revised three-pillar model is meaningfully better-evidenced:
+
+| Pillar | Top sources | Confidence |
+|---|---|---|
+| Aesthetic | Schoenfeld 2017 | HIGH |
+| Functional | `new` §2.3 + practitioner + v1 §11 | MODERATE-HIGH |
+| Durability | Baar 2017 + Magnusson & Kjaer 2019 + Kongsgaard 2009 + Alfredson 1998 + DC-O3/O4 | **HIGH** (four peer-reviewed sources) |
+
+The pillar I missed in the first pass turned out to be the **best-evidenced** of the three. That's the honest answer to your question.
