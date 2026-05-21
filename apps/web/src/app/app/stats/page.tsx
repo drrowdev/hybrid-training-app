@@ -1,9 +1,16 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { listMovementsRanked } from "@/lib/stats/movement";
+import { BAND_COLOR, BAND_LABEL, getWeeklyMuscleVolume } from "@/lib/stats/muscle-volume";
 
 export default async function StatsPage() {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
   const { data: all } = await supabase
     .from("sessions")
     .select("id, title, slot, performed_at, completed_at, session_rpe, duration_min")
@@ -33,6 +40,7 @@ export default async function StatsPage() {
   const pmCount = completed.filter((s) => s.slot === "pm").length;
 
   const movements = await listMovementsRanked();
+  const muscleVolume = await getWeeklyMuscleVolume(supabase, user.id);
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
@@ -49,6 +57,38 @@ export default async function StatsPage() {
         <Tile label="Avg session RPE" value={avgRpe ? avgRpe.toFixed(1) : "—"} />
         <Tile label="Engine state" value="View →" href="/app/stats/engine" />
       </div>
+
+      <section className="cp-card" style={{ padding: 20 }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
+          <h2 style={{ margin: 0, fontSize: 16 }}>This week by muscle</h2>
+          <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+            {muscleVolume.totalSets} working sets · rolling 7 days
+          </span>
+        </div>
+        <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
+          One row per muscle. The bar shows working sets this week against the recommended range
+          for that muscle.
+          {muscleVolume.concurrentScaled && (
+            <>
+              {" "}
+              <span style={{ color: "var(--cp-warning)", fontWeight: 600 }}>
+                Cardio is heavy this week — recommended ranges pulled back so you don&apos;t outrun recovery.
+              </span>
+            </>
+          )}
+        </p>
+        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
+          {muscleVolume.rows.map((row) => (
+            <MuscleRow key={row.muscle} row={row} />
+          ))}
+        </ul>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12, fontSize: 10, color: "var(--cp-text-muted)" }}>
+          <LegendChip color="var(--cp-border)" label="Untouched" />
+          <LegendChip color="var(--cp-danger)" label="Below maintenance / Too much" />
+          <LegendChip color="var(--cp-warning)" label="Maintaining / High volume" />
+          <LegendChip color="var(--cp-success)" label="Building" />
+        </div>
+      </section>
 
       {(amCount > 0 || pmCount > 0) && (
         <section className="cp-card" style={{ padding: 20 }}>
@@ -180,5 +220,114 @@ function Tile({ label, value, href }: { label: string; value: string; href?: str
     <Link href={href} style={{ textDecoration: "none", color: "inherit" }}>{body}</Link>
   ) : (
     body
+  );
+}
+
+function MuscleRow({
+  row,
+}: {
+  row: {
+    muscle: string;
+    label: string;
+    sets: number;
+    band: keyof typeof BAND_LABEL;
+    thresholds: { maintenance: number; building: number; productive: number; limit: number };
+  };
+}) {
+  const barMax = Math.max(row.thresholds.limit + 2, row.sets, 8);
+  const pct = (n: number) => `${Math.min(100, (n / barMax) * 100)}%`;
+  const fillPct = pct(row.sets);
+  const buildingStart = pct(row.thresholds.building);
+  const productiveEnd = pct(row.thresholds.productive);
+  const limitEnd = pct(row.thresholds.limit);
+  const color = BAND_COLOR[row.band];
+
+  return (
+    <li
+      style={{
+        display: "grid",
+        gridTemplateColumns: "120px 1fr 60px",
+        alignItems: "center",
+        gap: 10,
+        fontSize: 12,
+      }}
+      title={`${row.label}: ${row.sets} sets · target range ${row.thresholds.building}-${row.thresholds.productive}`}
+    >
+      <div style={{ color: "var(--cp-text)", fontWeight: 500 }}>{row.label}</div>
+      <div
+        style={{
+          position: "relative",
+          height: 18,
+          borderRadius: 6,
+          background: "var(--cp-surface-soft)",
+          overflow: "hidden",
+        }}
+      >
+        {/* Target range band — muted green strip between building and productive. */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            left: buildingStart,
+            width: `calc(${productiveEnd} - ${buildingStart})`,
+            top: 0,
+            bottom: 0,
+            background: "color-mix(in oklab, var(--cp-success) 18%, transparent)",
+          }}
+        />
+        {/* Limit tick — where 'too much' starts. */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            left: limitEnd,
+            top: 0,
+            bottom: 0,
+            width: 1,
+            background: "var(--cp-danger)",
+            opacity: 0.5,
+          }}
+        />
+        {/* Actual sets bar. */}
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 4,
+            bottom: 4,
+            width: fillPct,
+            background: color,
+            borderRadius: 4,
+            transition: "width 0.3s",
+          }}
+        />
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 6 }}>
+        <span className="mono" style={{ fontWeight: 600, color: "var(--cp-text)" }}>
+          {row.sets}
+        </span>
+        <span
+          style={{
+            fontSize: 9,
+            color,
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
+            whiteSpace: "nowrap",
+            display: "none",
+          }}
+        >
+          {BAND_LABEL[row.band]}
+        </span>
+      </div>
+    </li>
+  );
+}
+
+function LegendChip({ color, label }: { color: string; label: string }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+      <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 3, background: color }} />
+      <span>{label}</span>
+    </span>
   );
 }
