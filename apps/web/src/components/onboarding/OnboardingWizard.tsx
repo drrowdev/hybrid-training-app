@@ -120,12 +120,16 @@ export function OnboardingWizard({
     }
     return initial;
   });
-  const [goalId, setGoalId] = useState<GoalId>("strength");
+  const [goalId, setGoalId] = useState<GoalId | null>(null);
   const [oneRmBySlug, setOneRmBySlug] = useState<Record<string, string>>({});
+  const [stepError, setStepError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const goal = useMemo(() => GOALS.find((g) => g.id === goalId) ?? GOALS[0]!, [goalId]);
+  const goal = useMemo(
+    () => GOALS.find((g) => g.id === goalId) ?? GOALS.find((g) => g.id === "strength")!,
+    [goalId],
+  );
   // If the user's goal doesn't recommend TMs, skip the TM step entirely.
   const visibleSteps = useMemo(
     () => (goal.recommendsTms ? STEPS : STEPS.filter((s) => s !== "Training maxes")),
@@ -133,8 +137,46 @@ export function OnboardingWizard({
   );
   const currentStepLabel = visibleSteps[step] ?? "Done";
 
-  const next = () => setStep((s) => Math.min(visibleSteps.length - 1, s + 1));
-  const back = () => setStep((s) => Math.max(0, s - 1));
+  /** Per-step validation. Returns null when ready to advance, or the reason to show. */
+  const canAdvance = (): string | null => {
+    switch (currentStepLabel) {
+      case "Welcome":
+      case "About you":
+        return null;
+      case "Schedule":
+        if (daysPerWeek < 2 || daysPerWeek > 7) return "Pick a training-days-per-week.";
+        return null;
+      case "Goal":
+        if (goalId == null) return "Pick what you're training for.";
+        return null;
+      case "Training maxes": {
+        // At least one role must have a numeric 1RM. Skipping the TM step entirely
+        // is allowed only by going through the explicit Skip button up top.
+        const anyEntered = Object.values(oneRmBySlug).some((v) => {
+          const n = Number(v);
+          return Number.isFinite(n) && n > 0;
+        });
+        if (!anyEntered) return "Enter a 1RM for at least one main lift, or use Skip setup.";
+        return null;
+      }
+      default:
+        return null;
+    }
+  };
+
+  const next = () => {
+    const reason = canAdvance();
+    if (reason) {
+      setStepError(reason);
+      return;
+    }
+    setStepError(null);
+    setStep((s) => Math.min(visibleSteps.length - 1, s + 1));
+  };
+  const back = () => {
+    setStepError(null);
+    setStep((s) => Math.max(0, s - 1));
+  };
 
   const onSkip = () => {
     startTransition(async () => {
@@ -335,7 +377,10 @@ export function OnboardingWizard({
                   <button
                     type="button"
                     key={g.id}
-                    onClick={() => setGoalId(g.id)}
+                    onClick={() => {
+                      setGoalId(g.id);
+                      setStepError(null);
+                    }}
                     aria-pressed={sel}
                     style={{
                       textAlign: "left",
@@ -527,25 +572,43 @@ export function OnboardingWizard({
 
         {/* Footer nav for steps that aren't Done */}
         {currentStepLabel !== "Done" && (
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-            <button
-              type="button"
-              onClick={back}
-              className="cp-btn ghost"
-              disabled={step === 0 || isPending}
-              style={{ visibility: step === 0 ? "hidden" : "visible" }}
-            >
-              ← Back
-            </button>
-            <button
-              type="button"
-              onClick={next}
-              className="cp-btn primary"
-              disabled={isPending}
-            >
-              Next →
-            </button>
-          </div>
+          <>
+            {stepError && (
+              <div
+                role="alert"
+                style={{
+                  fontSize: 12,
+                  color: "var(--cp-danger)",
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid var(--cp-danger)",
+                  background: "color-mix(in oklab, var(--cp-danger) 8%, transparent)",
+                  marginTop: 4,
+                }}
+              >
+                {stepError}
+              </div>
+            )}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+              <button
+                type="button"
+                onClick={back}
+                className="cp-btn ghost"
+                disabled={step === 0 || isPending}
+                style={{ visibility: step === 0 ? "hidden" : "visible" }}
+              >
+                ← Back
+              </button>
+              <button
+                type="button"
+                onClick={next}
+                className="cp-btn primary"
+                disabled={isPending || canAdvance() != null}
+              >
+                Next →
+              </button>
+            </div>
+          </>
         )}
       </main>
 
