@@ -18,6 +18,7 @@ import { acceptTmBump, declineTmBump } from "@/lib/engine/tm-bump-actions";
 import { findDeloadProposalForSession } from "@/lib/engine/deload";
 import { formatHitValue, getSessionPrs } from "@/lib/stats/pr-queries";
 import { findBumpProposalForSession } from "@/lib/stats/bump-proposal";
+import { findPrRecalibrateProposals } from "@/lib/stats/pr-recalibrate";
 import type { Prescription } from "@hta/db";
 
 export default async function SessionDetailPage({
@@ -117,6 +118,16 @@ export default async function SessionDetailPage({
   const deloadProposal = !isComplete && !bumpProposal && sets.length > 0
     ? await findDeloadProposalForSession(supabase, user.id, id)
     : null;
+
+  // PR-driven recalibrate — catches custom blocks, freestyle sessions, and
+  // non-AMRAP top sets in curated blocks. Excludes movements that already
+  // have an AMRAP or deload proposal so we don't double-stack cards.
+  const excludeMovementIds = new Set<string>();
+  if (bumpProposal) excludeMovementIds.add(bumpProposal.movementId);
+  if (deloadProposal) excludeMovementIds.add(deloadProposal.movementId);
+  const prRecalibrateProposals = !isComplete && sets.length > 0
+    ? await findPrRecalibrateProposals(supabase, user.id, id, session.performed_at, excludeMovementIds)
+    : [];
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
@@ -327,6 +338,67 @@ export default async function SessionDetailPage({
               </button>
             </form>
           </div>
+        </section>
+      )}
+
+      {prRecalibrateProposals.length > 0 && (
+        <section style={{ display: "grid", gap: 10 }}>
+          {prRecalibrateProposals.map((p) => (
+            <div
+              key={`pr-recal:${p.movementId}`}
+              className="cp-card"
+              style={{
+                padding: 18,
+                display: "grid",
+                gap: 10,
+                borderColor: "var(--cp-accent)",
+                background: "color-mix(in oklab, var(--cp-accent) 6%, transparent)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                <div style={{ fontSize: 22, lineHeight: 1 }} aria-hidden="true">📈</div>
+                <div style={{ display: "grid", gap: 4, flex: 1 }}>
+                  <div style={{ fontSize: 11, color: "var(--cp-accent)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+                    Recalibrate TM?
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 600 }}>
+                    {p.movementDisplayName} —{" "}
+                    <span className="mono">{p.currentTm.toFixed(1)} kg</span>{" "}
+                    →{" "}
+                    <span className="mono" style={{ color: "var(--cp-accent)" }}>
+                      {p.proposedTm.toFixed(1)} kg
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+                    Today&apos;s top set (<span className="mono">{p.bestSet.weight} kg × {p.bestSet.reps}</span>
+                    {p.bestSet.rpe != null ? <> @ RPE {p.bestSet.rpe}</> : null}) implies an estimated 1RM
+                    of <span className="mono">{p.estimatedOneRm.toFixed(1)} kg</span>. Recalibrating the
+                    TM keeps future prescriptions honest.
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, paddingLeft: 34, flexWrap: "wrap" }}>
+                <form action={acceptTmBump}>
+                  <input type="hidden" name="movementId" value={p.movementId} />
+                  <input type="hidden" name="newTmKg" value={String(p.proposedTm)} />
+                  <input type="hidden" name="reason" value="pr_detection" />
+                  <input type="hidden" name="triggerKey" value={p.triggerKey} />
+                  <input type="hidden" name="sessionId" value={id} />
+                  <button type="submit" className="cp-btn primary">
+                    Accept {p.proposedTm.toFixed(1)} kg
+                  </button>
+                </form>
+                <form action={declineTmBump}>
+                  <input type="hidden" name="movementId" value={p.movementId} />
+                  <input type="hidden" name="triggerKey" value={p.triggerKey} />
+                  <input type="hidden" name="sessionId" value={id} />
+                  <button type="submit" className="cp-btn ghost">
+                    Not now
+                  </button>
+                </form>
+              </div>
+            </div>
+          ))}
         </section>
       )}
 
