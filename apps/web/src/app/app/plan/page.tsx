@@ -5,7 +5,6 @@ import {
   endBlock,
   setPlannedTime,
   skipPlannedSession,
-  startSessionFromPlan,
   unskipPlannedSession,
 } from "@/lib/planner/actions";
 import { ARCHETYPES, formatPrescriptionItem, summarisePrescription } from "@/lib/planner/archetypes";
@@ -474,12 +473,13 @@ function DaySessionCard({
 
       {!done && !skipped && (
         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-          <form action={startSessionFromPlan} style={{ flex: 1 }}>
-            <input type="hidden" name="id" value={planned.id} />
-            <button type="submit" className="cp-btn primary" style={{ width: "100%" }}>
-              {isToday ? "⚡ Start now" : "Start session"}
-            </button>
-          </form>
+          <Link
+            href={`/app/sessions/start/${planned.id}`}
+            className="cp-btn primary"
+            style={{ flex: 1, textAlign: "center" }}
+          >
+            {isToday ? "⚡ Start now" : "Start session"}
+          </Link>
           <form action={skipPlannedSession}>
             <input type="hidden" name="id" value={planned.id} />
             <button type="submit" className="cp-btn ghost">Skip</button>

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { startSessionFromPlan } from "@/lib/planner/actions";
 import {
   formatPrescriptionItem,
   summarisePrescription,
@@ -396,10 +395,9 @@ function PlannedSessionCard({
             ⚡ Continue session
           </Link>
         ) : (
-          <form action={startSessionFromPlan}>
-            <input type="hidden" name="id" value={planned.id} />
-            <button type="submit" className="cp-btn primary big">⚡ Start session</button>
-          </form>
+          <Link href={`/app/sessions/start/${planned.id}`} className="cp-btn primary big">
+            ⚡ Start session
+          </Link>
         )}
         <Link href="/app/plan" className="cp-btn">View plan</Link>
       </div>

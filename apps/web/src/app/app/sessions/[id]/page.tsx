@@ -12,6 +12,8 @@ import {
   SessionLogClient,
   type LoggedSet,
 } from "@/components/session/SessionLogClient";
+import { GRM_RECOMMEND_THRESHOLD, applyGrmToPercent, computeGrm, grmLabel } from "@/lib/engine/grm";
+import type { Prescription } from "@hta/db";
 
 export default async function SessionDetailPage({
   params,
@@ -77,6 +79,21 @@ export default async function SessionDetailPage({
 
   const isComplete = !!session.completed_at;
 
+  // Pull the linked planned_session so we can build a contextual GRM
+  // recommendation ("top set ~81% instead of 90%").
+  const { data: planned } = await supabase
+    .from("planned_sessions")
+    .select("id, prescription")
+    .eq("completed_session_id", id)
+    .maybeSingle();
+  const plannedPrescription = (planned?.prescription as Prescription | null) ?? null;
+  const plannedTopPercent = plannedPrescription?.items
+    .filter((i) => i.kind === "main" && typeof i.percentTm === "number")
+    .reduce((max, i) => Math.max(max, i.percentTm ?? 0), 0);
+  const grm = computeGrm({ fatigue: session.fatigue, soreness: session.soreness });
+  const showRecommendation =
+    grm.hasCheckIn && grm.value < GRM_RECOMMEND_THRESHOLD && !isComplete;
+
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <header>
@@ -103,6 +120,49 @@ export default async function SessionDetailPage({
           )}
         </div>
       </header>
+
+      {showRecommendation && (
+        <section
+          role="note"
+          className="cp-card"
+          style={{
+            padding: "12px 16px",
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 12,
+            background: "var(--cp-surface-soft)",
+            borderColor: "var(--cp-border)",
+          }}
+          title="research-v2 §3.4 — Global Recovery Multiplier"
+        >
+          <div style={{ fontSize: 18, lineHeight: 1, color: "var(--cp-text)" }} aria-hidden="true">
+            ⓘ
+          </div>
+          <div style={{ display: "grid", gap: 4, flex: 1 }}>
+            <div style={{ fontSize: 13, color: "var(--cp-text)" }}>
+              <strong>Feeling {grmLabel(grm.value)}.</strong>
+              <span style={{ color: "var(--cp-text-muted)", marginLeft: 6 }}>
+                Recovery multiplier <span className="mono">{grm.value.toFixed(2)}</span>.
+                {plannedTopPercent && plannedTopPercent > 0 ? (
+                  <>
+                    {" "}
+                    Top set at{" "}
+                    <span className="mono" style={{ color: "var(--cp-text)" }}>
+                      ~{applyGrmToPercent(plannedTopPercent, grm.value)}%
+                    </span>{" "}
+                    instead of {plannedTopPercent}% may be the smarter call today.
+                  </>
+                ) : (
+                  <> Consider pulling back the top-set intensity by ~{Math.round((1 - grm.value) * 100)}%.</>
+                )}
+              </span>
+            </div>
+            <div style={{ fontSize: 10, color: "var(--cp-text-muted)", fontStyle: "italic" }}>
+              Advisory only — research-v2 §3.4 GRM.
+            </div>
+          </div>
+        </section>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
         <Stat label="Fatigue" value={session.fatigue ? `${session.fatigue}/5` : "—"} />
