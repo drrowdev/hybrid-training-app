@@ -14,7 +14,9 @@ import {
 } from "@/components/session/SessionLogClient";
 import { GRM_RECOMMEND_THRESHOLD, applyGrmToPercent, computeGrm, grmLabel } from "@/lib/engine/grm";
 import { PR_KIND_LABEL } from "@/lib/engine/pr";
+import { acceptTmBump, declineTmBump } from "@/lib/engine/tm-bump-actions";
 import { formatHitValue, getSessionPrs } from "@/lib/stats/pr-queries";
+import { findBumpProposalForSession } from "@/lib/stats/bump-proposal";
 import type { Prescription } from "@hta/db";
 
 export default async function SessionDetailPage({
@@ -101,6 +103,13 @@ export default async function SessionDetailPage({
     ? await getSessionPrs(supabase, user.id, id, session.performed_at)
     : [];
 
+  // TM-bump proposal — runs the AMRAP confidence gate. Returns null when
+  // there's no planned-session link, no AMRAP, no qualifying set, or the
+  // gate suppresses (hard gate or below score threshold).
+  const bumpProposal = !isComplete && sets.length > 0
+    ? await findBumpProposalForSession(supabase, user.id, id)
+    : null;
+
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <header>
@@ -167,6 +176,76 @@ export default async function SessionDetailPage({
             <div style={{ fontSize: 10, color: "var(--cp-text-muted)", fontStyle: "italic" }}>
               Advisory only — research-v2 §3.4 GRM.
             </div>
+          </div>
+        </section>
+      )}
+
+      {bumpProposal && (
+        <section
+          className="cp-card"
+          style={{
+            padding: 18,
+            display: "grid",
+            gap: 12,
+            borderColor: "var(--cp-accent)",
+            background: "color-mix(in oklab, var(--cp-accent) 6%, transparent)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+            <div style={{ fontSize: 22, lineHeight: 1 }} aria-hidden="true">📈</div>
+            <div style={{ display: "grid", gap: 4, flex: 1 }}>
+              <div style={{ fontSize: 11, color: "var(--cp-accent)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+                Bump your TM?
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 600 }}>
+                {bumpProposal.movementDisplayName} —{" "}
+                <span className="mono">{bumpProposal.currentTm.toFixed(1)} kg</span>{" "}
+                →{" "}
+                <span className="mono" style={{ color: "var(--cp-accent)" }}>
+                  {bumpProposal.proposal.newTm} kg
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+                Estimated 1RM from today&apos;s top set:{" "}
+                <span className="mono">{bumpProposal.proposal.estimatedOneRm.toFixed(1)} kg</span>. New TM
+                is 90% of that, rounded to the nearest plate.
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "grid", gap: 4, paddingLeft: 34 }}>
+            <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>
+              Why this fired
+            </div>
+            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 2 }}>
+              {bumpProposal.proposal.reasons.map((r, i) => (
+                <li key={i} style={{ fontSize: 12, color: "var(--cp-text-muted)", display: "flex", gap: 6 }}>
+                  <span style={{ color: r.points >= 0 ? "var(--cp-success)" : "var(--cp-danger)", fontWeight: 600, minWidth: 30 }}>
+                    {r.points >= 0 ? `+${r.points}` : r.points}
+                  </span>
+                  <span>{r.label}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div style={{ display: "flex", gap: 8, paddingLeft: 34, flexWrap: "wrap" }}>
+            <form action={acceptTmBump}>
+              <input type="hidden" name="movementId" value={bumpProposal.movementId} />
+              <input type="hidden" name="newTmKg" value={String(bumpProposal.proposal.newTm)} />
+              <input type="hidden" name="reason" value="amrap_bump" />
+              <input type="hidden" name="triggerKey" value={bumpProposal.triggerKey} />
+              <input type="hidden" name="sessionId" value={id} />
+              <button type="submit" className="cp-btn primary">
+                Accept {bumpProposal.proposal.newTm} kg
+              </button>
+            </form>
+            <form action={declineTmBump}>
+              <input type="hidden" name="movementId" value={bumpProposal.movementId} />
+              <input type="hidden" name="triggerKey" value={bumpProposal.triggerKey} />
+              <input type="hidden" name="sessionId" value={id} />
+              <button type="submit" className="cp-btn ghost">
+                Not now
+              </button>
+            </form>
           </div>
         </section>
       )}

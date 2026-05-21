@@ -17,15 +17,18 @@ const acceptBumpSchema = z.object({
 export type AcceptBumpResult = { ok: true } | { ok: false; error: string };
 
 /**
- * Accept a proposed TM bump (or apply a manual change). Writes the new
- * TM to training_maxes and logs the change in tm_history.
- *
- * Idempotency: when triggerKey is provided, a unique-violation on
- * tm_history.(user_id, movement_id, trigger_key) is caught and treated
- * as a no-op. The user can click Accept twice without doubling the
- * progression.
+ * Form-friendly wrapper: <form action> requires Promise<void> in Next 16.
+ * Use acceptTmBumpAction (this) from form actions; acceptTmBumpResult
+ * from callers that need the boolean outcome.
  */
-export async function acceptTmBump(formData: FormData): Promise<AcceptBumpResult> {
+export async function acceptTmBump(formData: FormData): Promise<void> {
+  await acceptTmBumpResult(formData);
+}
+
+/**
+ * Same logic, returns the result. Used by tests + programmatic callers.
+ */
+export async function acceptTmBumpResult(formData: FormData): Promise<AcceptBumpResult> {
   const parsed = acceptBumpSchema.safeParse({
     movementId: formData.get("movementId"),
     newTmKg: formData.get("newTmKg"),
@@ -103,11 +106,12 @@ const declineSchema = z.object({
  * Decline a proposal. Writes a "noop" marker into tm_history with the
  * same trigger_key so the partial unique index suppresses repeats — the
  * card won't reappear on the same session.
- *
- * Implementation: write a tm_history row with new_tm_kg = old_tm_kg (no
- * change). The trigger_key + unique index still blocks duplicates.
  */
-export async function declineTmBump(formData: FormData): Promise<AcceptBumpResult> {
+export async function declineTmBump(formData: FormData): Promise<void> {
+  await declineTmBumpResult(formData);
+}
+
+export async function declineTmBumpResult(formData: FormData): Promise<AcceptBumpResult> {
   const parsed = declineSchema.safeParse({
     movementId: formData.get("movementId"),
     triggerKey: formData.get("triggerKey"),
