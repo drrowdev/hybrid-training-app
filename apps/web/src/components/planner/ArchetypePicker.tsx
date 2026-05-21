@@ -31,12 +31,16 @@ export function ArchetypePicker({
   defaultStartedOn,
   defaultDaysPerWeek,
   dayPreviewByArchetype,
+  amWindowStart,
+  pmWindowStart,
   action,
 }: {
   options: ArchetypeOption[];
   defaultStartedOn: string;
   defaultDaysPerWeek: number;
   dayPreviewByArchetype: Record<string, Record<number, { strength: number; cardio: number }>>;
+  amWindowStart: string;
+  pmWindowStart: string;
   action: (fd: FormData) => Promise<{ ok: true } | { ok: false; error: string }>;
 }) {
   const [daysPerWeek, setDaysPerWeek] = useState<number>(defaultDaysPerWeek);
@@ -151,7 +155,7 @@ export function ArchetypePicker({
                 </div>
                 {opt.twoADay && (
                   <div style={{ fontSize: 11, color: "var(--cp-accent)" }}>
-                    Two-a-day variant — AM lift + PM cardio with ≥6h gap.
+                    Two-a-day variant — AM {amWindowStart} lift + PM {pmWindowStart} cardio.
                   </div>
                 )}
                 <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>

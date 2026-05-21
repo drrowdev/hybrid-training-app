@@ -13,6 +13,14 @@ const profileSchema = z.object({
   phaseTargetWeeks: z.coerce.number().int().min(1).max(52).optional().nullable(),
   trainingDaysPerWeek: z.coerce.number().int().min(2).max(7).optional(),
   allowsTwoADays: z.coerce.boolean().optional(),
+  amWindowStart: z
+    .string()
+    .regex(/^\d{2}:\d{2}(?::\d{2})?$/)
+    .optional(),
+  pmWindowStart: z
+    .string()
+    .regex(/^\d{2}:\d{2}(?::\d{2})?$/)
+    .optional(),
 });
 
 export async function updateProfile(formData: FormData): Promise<void> {
@@ -28,6 +36,8 @@ export async function updateProfile(formData: FormData): Promise<void> {
       formData.get("allowsTwoADaysPresent") === "1"
         ? formData.get("allowsTwoADays") === "on"
         : undefined,
+    amWindowStart: formData.get("amWindowStart") || undefined,
+    pmWindowStart: formData.get("pmWindowStart") || undefined,
   });
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
 
@@ -45,6 +55,17 @@ export async function updateProfile(formData: FormData): Promise<void> {
   if (parsed.data.phaseTargetWeeks !== undefined) updates.phase_target_weeks = parsed.data.phaseTargetWeeks ?? null;
   if (parsed.data.trainingDaysPerWeek !== undefined) updates.training_days_per_week = parsed.data.trainingDaysPerWeek;
   if (parsed.data.allowsTwoADays !== undefined) updates.allows_two_a_days = parsed.data.allowsTwoADays;
+  if (parsed.data.amWindowStart !== undefined) {
+    const hhmm = parsed.data.amWindowStart.slice(0, 5);
+    updates.am_window_start = hhmm;
+    // Default the window end to +2h so the column stays in sync. Wrap at 24.
+    updates.am_window_end = addHours(hhmm, 2);
+  }
+  if (parsed.data.pmWindowStart !== undefined) {
+    const hhmm = parsed.data.pmWindowStart.slice(0, 5);
+    updates.pm_window_start = hhmm;
+    updates.pm_window_end = addHours(hhmm, 2);
+  }
 
   const { error } = await supabase
     .from("profiles")
@@ -55,6 +76,14 @@ export async function updateProfile(formData: FormData): Promise<void> {
 
   revalidatePath("/app");
   revalidatePath("/app/settings");
+}
+
+function addHours(hhmm: string, hours: number): string {
+  const [h, m] = hhmm.split(":").map((s) => Number.parseInt(s, 10));
+  const total = (h * 60 + m + hours * 60) % (24 * 60);
+  const nh = Math.floor(total / 60);
+  const nm = total % 60;
+  return `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
 }
 
 const bodyweightSchema = z.object({

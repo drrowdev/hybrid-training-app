@@ -28,11 +28,13 @@ export default async function NewBlockPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("training_days_per_week, allows_two_a_days")
+    .select("training_days_per_week, allows_two_a_days, am_window_start, pm_window_start")
     .eq("id", user.id)
     .maybeSingle();
   const defaultDaysPerWeek = Number(profile?.training_days_per_week ?? 4);
   const allowsTwoADays = Boolean(profile?.allows_two_a_days ?? false);
+  const amWindowStart = (profile?.am_window_start ?? "07:00:00").slice(0, 5);
+  const pmWindowStart = (profile?.pm_window_start ?? "17:00:00").slice(0, 5);
 
   const options: ArchetypeOption[] = Object.values(ARCHETYPES).map((a) => {
     const minDays = minDaysForArchetype(a, allowsTwoADays);
@@ -119,6 +121,8 @@ export default async function NewBlockPage() {
         defaultStartedOn={todayYmd()}
         defaultDaysPerWeek={defaultDaysPerWeek}
         dayPreviewByArchetype={dayPreviewByArchetype}
+        amWindowStart={amWindowStart}
+        pmWindowStart={pmWindowStart}
         action={createBlock}
       />
     </div>

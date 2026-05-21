@@ -15,7 +15,7 @@ export default async function SettingsPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "display_name, units, bodyweight_kg, body_comp_phase, phase_started_at, phase_target_weeks, training_days_per_week, allows_two_a_days",
+      "display_name, units, bodyweight_kg, body_comp_phase, phase_started_at, phase_target_weeks, training_days_per_week, allows_two_a_days, am_window_start, pm_window_start",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -90,7 +90,7 @@ export default async function SettingsPage() {
           When this is on, curated focuses get a two-a-day variant and the custom builder lets you
           add a PM session per day. New blocks only — existing blocks aren&apos;t re-compiled.
         </p>
-        <form action={updateProfile} className="rounded-lg border border-foreground/10 p-4">
+        <form action={updateProfile} className="rounded-lg border border-foreground/10 p-4 space-y-4">
           <input type="hidden" name="allowsTwoADaysPresent" value="1" />
           <label className="flex items-start gap-3 cursor-pointer">
             <input
@@ -106,9 +106,29 @@ export default async function SettingsPage() {
               </span>
             </span>
           </label>
+          <div className="grid grid-cols-2 gap-3 pt-2 border-t border-foreground/10">
+            <Field
+              name="amWindowStart"
+              label="AM session start"
+              type="time"
+              defaultValue={(profile?.am_window_start ?? "07:00:00").slice(0, 5)}
+              step="300"
+            />
+            <Field
+              name="pmWindowStart"
+              label="PM session start"
+              type="time"
+              defaultValue={(profile?.pm_window_start ?? "17:00:00").slice(0, 5)}
+              step="300"
+            />
+          </div>
+          <p className="text-xs text-foreground/60 -mt-2">
+            Used as the default time-of-day shown on Today and Plan when you haven&apos;t set
+            an explicit time on a session. Override per-session from the Plan page.
+          </p>
           <button
             type="submit"
-            className="mt-3 rounded-md bg-foreground text-background px-3 py-1.5 text-sm font-medium hover:opacity-90"
+            className="rounded-md bg-foreground text-background px-3 py-1.5 text-sm font-medium hover:opacity-90"
           >
             Save preference
           </button>
