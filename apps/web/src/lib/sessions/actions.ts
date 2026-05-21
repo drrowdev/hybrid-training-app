@@ -279,16 +279,50 @@ export async function deleteCardio(formData: FormData): Promise<void> {
 
 const completeSchema = z.object({
   sessionId: z.string().uuid(),
-  sessionRpe: z.coerce.number().min(0).max(10).optional().nullable(),
-  durationMin: z.coerce.number().int().min(0).max(600).optional().nullable(),
   notes: z.string().trim().max(2000).optional().nullable(),
 });
+
+/**
+ * Volume-weighted mean of per-set RPEs.
+ * Sets without RPE or without tonnage are excluded.
+ * Returns null when no usable sets exist.
+ */
+function deriveSessionRpe(
+  sets: Array<{ weight_kg: number | null; reps: number | null; rpe: number | null }>,
+): number | null {
+  let weighted = 0;
+  let totalVolume = 0;
+  for (const s of sets) {
+    if (s.rpe == null) continue;
+    const w = Number(s.weight_kg ?? 0);
+    const r = Number(s.reps ?? 0);
+    const vol = w * r;
+    if (vol <= 0) continue;
+    weighted += Number(s.rpe) * vol;
+    totalVolume += vol;
+  }
+  if (totalVolume <= 0) return null;
+  return Math.round((weighted / totalVolume) * 10) / 10; // 1 decimal
+}
+
+/**
+ * Elapsed minutes between the first and last set timestamp.
+ * Capped at 3 h to swallow "user paused the app mid-session" edge cases.
+ * Returns null when fewer than 2 sets are logged.
+ */
+function deriveDurationMin(timestamps: string[]): number | null {
+  if (timestamps.length < 2) return null;
+  const sorted = [...timestamps].sort();
+  const first = new Date(sorted[0]!).getTime();
+  const last = new Date(sorted[sorted.length - 1]!).getTime();
+  const minutes = Math.round((last - first) / 60_000);
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
+  return Math.min(minutes, 180);
+}
 
 export async function completeSession(formData: FormData): Promise<void> {
   const parsed = completeSchema.safeParse({
     sessionId: formData.get("sessionId"),
-    sessionRpe: formData.get("sessionRpe") || undefined,
-    durationMin: formData.get("durationMin") || undefined,
     notes: formData.get("notes") || undefined,
   });
   if (!parsed.success) {
@@ -301,11 +335,29 @@ export async function completeSession(formData: FormData): Promise<void> {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  // Auto-derive session RPE from per-set RPEs (volume-weighted).
+  // Auto-derive duration from the gap between first and last set timestamps.
+  // No user prompt — keeps the wrap-up flow to a single tap.
+  const { data: sets } = await supabase
+    .from("set_logs")
+    .select("weight_kg, reps, rpe, created_at")
+    .eq("session_id", parsed.data.sessionId);
+  const setRows = sets ?? [];
+
+  const derivedRpe = deriveSessionRpe(
+    setRows.map((s) => ({
+      weight_kg: s.weight_kg == null ? null : Number(s.weight_kg),
+      reps: s.reps == null ? null : Number(s.reps),
+      rpe: s.rpe == null ? null : Number(s.rpe),
+    })),
+  );
+  const derivedDuration = deriveDurationMin(setRows.map((s) => s.created_at as string));
+
   const { error } = await supabase
     .from("sessions")
     .update({
-      session_rpe: parsed.data.sessionRpe ?? null,
-      duration_min: parsed.data.durationMin ?? null,
+      session_rpe: derivedRpe,
+      duration_min: derivedDuration,
       notes: parsed.data.notes ?? null,
       completed_at: new Date().toISOString(),
     })

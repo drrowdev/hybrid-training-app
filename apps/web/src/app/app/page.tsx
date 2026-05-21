@@ -10,6 +10,7 @@ import {
   type PlannedDay,
 } from "@/lib/planner/queries";
 import { effectiveTimeOfDay, gapHoursBetween } from "@/lib/planner/time-of-day";
+import { getRegionFreshness, type RegionFreshnessRow } from "@/lib/stats/region-freshness-queries";
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -44,7 +45,7 @@ export default async function TodayPage() {
 
   const todayIso = new Date().toISOString().slice(0, 10);
 
-  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming] = await Promise.all([
+  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness] = await Promise.all([
     supabase
       .from("sessions")
       .select("id, title, slot, completed_at, performed_at")
@@ -58,6 +59,7 @@ export default async function TodayPage() {
       .limit(6),
     getTodayPlannedSessions(),
     getUpcomingPlannedSessions(3),
+    getRegionFreshness(supabase, userId),
   ]);
 
   const openSession = (todaySessions ?? []).find((s) => !s.completed_at) ?? null;
@@ -86,6 +88,8 @@ export default async function TodayPage() {
         amWindowStart={amWindowStart}
         pmWindowStart={pmWindowStart}
       />
+
+      <RegionFreshnessCard rows={freshness} />
 
       <section className="cp-card" style={{ padding: 20 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
@@ -401,6 +405,80 @@ function PlannedSessionCard({
         )}
         <Link href="/app/plan" className="cp-btn">View plan</Link>
       </div>
+    </section>
+  );
+}
+
+function freshnessColor(tone: "ok" | "caution" | "warn") {
+  if (tone === "ok") return "var(--cp-success)";
+  if (tone === "caution") return "var(--cp-warning)";
+  return "var(--cp-danger)";
+}
+
+function timeAgo(iso: string | null): string {
+  if (!iso) return "";
+  const days = Math.max(0, Math.floor((Date.now() - new Date(iso + "T00:00:00").getTime()) / 86_400_000));
+  if (days === 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days}d ago`;
+  if (days < 60) return `${Math.round(days / 7)}w ago`;
+  return `${Math.round(days / 30)}mo ago`;
+}
+
+function RegionFreshnessCard({ rows }: { rows: RegionFreshnessRow[] }) {
+  return (
+    <section className="cp-card" style={{ padding: 20 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+        <h2 style={{ fontSize: 16, margin: 0 }}>How recovered you are</h2>
+        <Link href="/app/stats/engine" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>details →</Link>
+      </div>
+      {rows.length === 0 ? (
+        <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: 0 }}>
+          Log a session to start tracking how each region recovers.
+        </p>
+      ) : (
+        <div style={{ display: "grid", gap: 8 }}>
+          {rows.map((r) => (
+            <div
+              key={r.region}
+              title={`Freshness ${(r.freshness * 100).toFixed(0)}% · last load ${timeAgo(r.lastLoadDate) || "—"}`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "8px 12px",
+                border: "1px solid var(--cp-border)",
+                borderRadius: 10,
+                background: "var(--cp-surface)",
+              }}
+            >
+              <span style={{ fontSize: 14, fontWeight: 500 }}>{r.regionLabel}</span>
+              <span
+                style={{
+                  fontSize: 12,
+                  color: freshnessColor(r.tone),
+                  fontWeight: 600,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <span
+                  aria-hidden
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 999,
+                    background: freshnessColor(r.tone),
+                    display: "inline-block",
+                  }}
+                />
+                {r.label}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

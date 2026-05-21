@@ -49,42 +49,13 @@ export default async function CompleteSessionPage({
         </p>
       </header>
 
+      <div className="rounded-lg border border-foreground/15 bg-foreground/[0.02] p-4 text-sm text-foreground/70">
+        Session RPE and duration are computed automatically from your logged
+        sets. Just tap complete when you&apos;re done.
+      </div>
+
       <form action={completeSession} className="space-y-4">
         <input type="hidden" name="sessionId" value={id} />
-
-        <div className="space-y-1">
-          <label className="text-sm font-medium" htmlFor="sessionRpe">
-            Session RPE (0–10)
-          </label>
-          <input
-            id="sessionRpe"
-            name="sessionRpe"
-            type="number"
-            step="0.5"
-            min="0"
-            max="10"
-            placeholder="e.g. 7.5"
-            className="w-full rounded-md border border-foreground/15 bg-transparent px-3 py-2 text-sm"
-          />
-          <p className="text-xs text-foreground/50">
-            How hard the whole session felt overall (Helms 2016, Zourdos 2016).
-          </p>
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-sm font-medium" htmlFor="durationMin">
-            Duration (minutes)
-          </label>
-          <input
-            id="durationMin"
-            name="durationMin"
-            type="number"
-            min="0"
-            max="600"
-            placeholder="e.g. 75"
-            className="w-full rounded-md border border-foreground/15 bg-transparent px-3 py-2 text-sm"
-          />
-        </div>
 
         <div className="space-y-1">
           <label className="text-sm font-medium" htmlFor="notes">
@@ -104,7 +75,7 @@ export default async function CompleteSessionPage({
           type="submit"
           className="w-full rounded-md bg-foreground text-background py-2 text-sm font-medium hover:opacity-90"
         >
-          Mark complete
+          Complete session
         </button>
       </form>
     </main>
