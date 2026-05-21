@@ -64,14 +64,17 @@ const GOALS: Goal[] = [
   },
 ];
 
-type CanonicalLift = { slug: string; name: string };
-
-const CANONICAL_LIFTS: CanonicalLift[] = [
-  { slug: "back-squat-high-bar", name: "Back Squat (high-bar)" },
-  { slug: "bench-press-flat", name: "Bench Press (flat)" },
-  { slug: "conventional-deadlift", name: "Conventional Deadlift" },
-  { slug: "ohp-standing", name: "Standing Overhead Press" },
-];
+/**
+ * Per-role variant catalog injected by the onboarding server page. Mirrors
+ * the picker on Settings → Training maxes so the user can choose the lift
+ * they actually do (e.g. front squat, trap-bar deadlift, push press) at
+ * onboarding time rather than being stuck with canonical defaults.
+ */
+export type RoleCandidates = {
+  role: string;
+  label: string;
+  candidates: { slug: string; displayName: string }[];
+};
 
 type Payload = {
   displayName?: string;
@@ -89,6 +92,7 @@ export function OnboardingWizard({
   initialUnits,
   initialDaysPerWeek,
   initialAllowsTwoADays,
+  roleCandidates,
   completeAction,
   skipAction,
 }: {
@@ -96,6 +100,7 @@ export function OnboardingWizard({
   initialUnits: "metric" | "imperial";
   initialDaysPerWeek: number;
   initialAllowsTwoADays: boolean;
+  roleCandidates: RoleCandidates[];
   completeAction: (fd: FormData) => Promise<{ ok: true } | { ok: false; error: string }>;
   skipAction: () => Promise<void>;
 }) {
@@ -107,6 +112,14 @@ export function OnboardingWizard({
   const [units, setUnits] = useState<"metric" | "imperial">(initialUnits);
   const [daysPerWeek, setDaysPerWeek] = useState(initialDaysPerWeek);
   const [allowsTwoADays, setAllowsTwoADays] = useState(initialAllowsTwoADays);
+  // Per-role chosen variant slug, defaulting to the first candidate.
+  const [variantByRole, setVariantByRole] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = {};
+    for (const g of roleCandidates) {
+      if (g.candidates[0]) initial[g.role] = g.candidates[0].slug;
+    }
+    return initial;
+  });
   const [goalId, setGoalId] = useState<GoalId>("strength");
   const [oneRmBySlug, setOneRmBySlug] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -357,42 +370,88 @@ export function OnboardingWizard({
             <Heading kicker="Step 5" title="Your main-lift maxes" />
             <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
               Enter your 1RM for each lift you want the planner to schedule. We&apos;ll apply a default
-              TM% of <strong>{goal.tmPercentDefault}%</strong> to get the working training max. Skip any
-              you don&apos;t do. You can pick different variants (front squat, trap-bar, push press, etc.)
-              in Settings later — these are just the canonical defaults.
+              TM% of <strong>{goal.tmPercentDefault}%</strong> to get the working training max. Pick the
+              variant you actually train (back squat, front squat, trap-bar, push press, etc.) — skip
+              any role you don&apos;t do.
             </p>
-            <div style={{ display: "grid", gap: 10 }}>
-              {CANONICAL_LIFTS.map((l) => (
-                <div
-                  key={l.slug}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 110px",
-                    gap: 10,
-                    alignItems: "center",
-                  }}
-                >
-                  <div style={{ fontSize: 14, fontWeight: 500 }}>{l.name}</div>
-                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                    <input
-                      type="number"
-                      value={oneRmBySlug[l.slug] ?? ""}
-                      onChange={(e) =>
-                        setOneRmBySlug((prev) => ({ ...prev, [l.slug]: e.target.value }))
-                      }
-                      placeholder="1RM"
-                      step="0.5"
-                      min="1"
-                      max="1000"
-                      inputMode="decimal"
-                      aria-label={`${l.name} 1RM`}
-                      className="mono"
-                      style={{ width: 80, padding: "8px 8px", fontSize: 14, textAlign: "right" }}
-                    />
-                    <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>kg</span>
+            <div style={{ display: "grid", gap: 14 }}>
+              {roleCandidates.map((g) => {
+                const selectedSlug = variantByRole[g.role] ?? g.candidates[0]?.slug;
+                if (!selectedSlug || g.candidates.length === 0) return null;
+                return (
+                  <div
+                    key={g.role}
+                    style={{
+                      display: "grid",
+                      gap: 6,
+                      padding: "12px 14px",
+                      border: "1px solid var(--cp-border)",
+                      borderRadius: 10,
+                      background: "var(--cp-surface-soft)",
+                    }}
+                  >
+                    <Label>{g.label}</Label>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 110px",
+                        gap: 10,
+                        alignItems: "center",
+                      }}
+                    >
+                      <select
+                        value={selectedSlug}
+                        onChange={(e) => {
+                          const newSlug = e.target.value;
+                          setVariantByRole((prev) => {
+                            const prevSlug = prev[g.role];
+                            const next = { ...prev, [g.role]: newSlug };
+                            // Move any entered 1RM value across to the new slug so
+                            // switching variants doesn't lose the number.
+                            if (prevSlug && prevSlug !== newSlug) {
+                              setOneRmBySlug((rmPrev) => {
+                                const carried = rmPrev[prevSlug];
+                                if (carried == null) return rmPrev;
+                                const { [prevSlug]: _drop, ...rest } = rmPrev;
+                                return { ...rest, [newSlug]: carried };
+                              });
+                            }
+                            return next;
+                          });
+                        }}
+                        aria-label={`${g.label} variant`}
+                        style={{ padding: "8px 10px", fontSize: 14 }}
+                      >
+                        {g.candidates.map((c) => (
+                          <option key={c.slug} value={c.slug}>
+                            {c.displayName}
+                          </option>
+                        ))}
+                      </select>
+                      <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                        <input
+                          type="number"
+                          value={oneRmBySlug[selectedSlug] ?? ""}
+                          onChange={(e) =>
+                            setOneRmBySlug((prev) => ({ ...prev, [selectedSlug]: e.target.value }))
+                          }
+                          placeholder="1RM"
+                          step="0.5"
+                          min="1"
+                          max="1000"
+                          inputMode="decimal"
+                          aria-label={`${g.label} 1RM`}
+                          className="mono"
+                          style={{ width: 80, padding: "8px 8px", fontSize: 14, textAlign: "right" }}
+                        />
+                        <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
+                          {units === "metric" ? "kg" : "lb"}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </>
         )}
