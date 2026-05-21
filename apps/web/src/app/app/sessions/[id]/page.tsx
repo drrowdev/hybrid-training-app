@@ -15,6 +15,7 @@ import {
 import { GRM_RECOMMEND_THRESHOLD, applyGrmToPercent, computeGrm, grmLabel } from "@/lib/engine/grm";
 import { PR_KIND_LABEL } from "@/lib/engine/pr";
 import { acceptTmBump, declineTmBump } from "@/lib/engine/tm-bump-actions";
+import { findDeloadProposalForSession } from "@/lib/engine/deload";
 import { formatHitValue, getSessionPrs } from "@/lib/stats/pr-queries";
 import { findBumpProposalForSession } from "@/lib/stats/bump-proposal";
 import type { Prescription } from "@hta/db";
@@ -108,6 +109,13 @@ export default async function SessionDetailPage({
   // gate suppresses (hard gate or below score threshold).
   const bumpProposal = !isComplete && sets.length > 0
     ? await findBumpProposalForSession(supabase, user.id, id)
+    : null;
+
+  // Deload proposal — fires when this session AND the prior AMRAP session
+  // on the same movement both missed real (GRM-gated). Mutually exclusive
+  // with bumpProposal in practice (the same set can't both bump and deload).
+  const deloadProposal = !isComplete && !bumpProposal && sets.length > 0
+    ? await findDeloadProposalForSession(supabase, user.id, id)
     : null;
 
   return (
@@ -241,6 +249,78 @@ export default async function SessionDetailPage({
             <form action={declineTmBump}>
               <input type="hidden" name="movementId" value={bumpProposal.movementId} />
               <input type="hidden" name="triggerKey" value={bumpProposal.triggerKey} />
+              <input type="hidden" name="sessionId" value={id} />
+              <button type="submit" className="cp-btn ghost">
+                Not now
+              </button>
+            </form>
+          </div>
+        </section>
+      )}
+
+      {deloadProposal && (
+        <section
+          className="cp-card"
+          style={{
+            padding: 18,
+            display: "grid",
+            gap: 12,
+            borderColor: "var(--cp-warning)",
+            background: "color-mix(in oklab, var(--cp-warning) 6%, transparent)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+            <div style={{ fontSize: 22, lineHeight: 1 }} aria-hidden="true">⚠️</div>
+            <div style={{ display: "grid", gap: 4, flex: 1 }}>
+              <div style={{ fontSize: 11, color: "var(--cp-warning)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+                Consider deloading
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 600 }}>
+                {deloadProposal.movementDisplayName} —{" "}
+                <span className="mono">{deloadProposal.currentTm.toFixed(1)} kg</span>{" "}
+                →{" "}
+                <span className="mono" style={{ color: "var(--cp-warning)" }}>
+                  {deloadProposal.proposedTm.toFixed(1)} kg
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+                Two missed AMRAP top sets in a row (and you weren&apos;t cooked either time). Dropping
+                the TM 10% rebuilds momentum without grinding through under-recovery.
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "grid", gap: 4, paddingLeft: 34 }}>
+            <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>
+              Recent misses
+            </div>
+            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 2 }}>
+              {deloadProposal.missContext.map((m, i) => (
+                <li key={i} style={{ fontSize: 12, color: "var(--cp-text-muted)", display: "flex", gap: 8 }}>
+                  <span className="mono" style={{ minWidth: 92 }}>
+                    {new Date(m.performedAt).toLocaleDateString()}
+                  </span>
+                  <span className="mono">
+                    {m.weight} kg × {m.performedReps}
+                  </span>
+                  <span style={{ fontStyle: "italic" }}>(target {m.targetReps}+)</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div style={{ display: "flex", gap: 8, paddingLeft: 34, flexWrap: "wrap" }}>
+            <form action={acceptTmBump}>
+              <input type="hidden" name="movementId" value={deloadProposal.movementId} />
+              <input type="hidden" name="newTmKg" value={String(deloadProposal.proposedTm)} />
+              <input type="hidden" name="reason" value="deload" />
+              <input type="hidden" name="triggerKey" value={deloadProposal.triggerKey} />
+              <input type="hidden" name="sessionId" value={id} />
+              <button type="submit" className="cp-btn primary">
+                Drop to {deloadProposal.proposedTm.toFixed(1)} kg
+              </button>
+            </form>
+            <form action={declineTmBump}>
+              <input type="hidden" name="movementId" value={deloadProposal.movementId} />
+              <input type="hidden" name="triggerKey" value={deloadProposal.triggerKey} />
               <input type="hidden" name="sessionId" value={id} />
               <button type="submit" className="cp-btn ghost">
                 Not now
