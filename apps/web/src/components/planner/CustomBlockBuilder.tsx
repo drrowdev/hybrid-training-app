@@ -343,6 +343,7 @@ export function CustomBlockBuilder({
             const rows = rowsFor(dayIndex);
             const isSplit = rows.length > 1 || rows[0]!.slot !== "single";
             const isAllRest = !isSplit && rows[0]!.kind === "rest";
+            const conflict = isSplit ? sameDayConflict(rows) : null;
             return (
               <div
                 key={dayIndex}
@@ -498,6 +499,22 @@ export function CustomBlockBuilder({
                       − collapse to single session
                     </button>
                   )}
+                  {conflict && (
+                    <div
+                      role="alert"
+                      style={{
+                        fontSize: 11,
+                        padding: "6px 10px",
+                        border: "1px solid var(--cp-danger)",
+                        borderRadius: 6,
+                        background: "color-mix(in oklab, var(--cp-danger) 8%, transparent)",
+                        color: "var(--cp-danger)",
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {conflict}
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -600,4 +617,47 @@ function slotOrder(s: DaySlot): number {
   if (s === "am") return 0;
   if (s === "single") return 1;
   return 2; // pm
+}
+
+/**
+ * Inspect a two-slot day for high-conflict pairings. Returns the warning
+ * text to display, or null if the pairing is fine.
+ *
+ * Per DC-D2, a two-a-day day is meant to be 1 strength + 1 cardio. Two
+ * strengths on the same day burn the CNS twice; two hard cardios stack
+ * AMPK / interference doubly.
+ */
+function sameDayConflict(rows: DayState[]): string | null {
+  const am = rows.find((r) => r.slot === "am");
+  const pm = rows.find((r) => r.slot === "pm");
+  if (!am || !pm) return null;
+  if (am.kind === "rest" || pm.kind === "rest") return null;
+
+  const amIsStrength = am.kind.startsWith("strength_");
+  const pmIsStrength = pm.kind.startsWith("strength_");
+  if (amIsStrength && pmIsStrength) {
+    return "Two strength sessions on the same day burn the CNS twice. Recommended pattern: AM lift + PM cardio (DC-D2).";
+  }
+
+  const hardCardios = new Set(["cardio_vo2", "cardio_alactic"]);
+  if (hardCardios.has(am.kind) && hardCardios.has(pm.kind)) {
+    return "Two hard interval sessions stack interference. Pair one hard modality with one easy (DC-L1 / DC-L3).";
+  }
+
+  // Tendon + strength on the same target tissue (knee tendon + squat,
+  // hinge tendon + deadlift) doubles up local load. Surface as warning.
+  if (
+    (am.kind === "tendon_hsr_knee" && pm.kind === "strength_squat") ||
+    (am.kind === "strength_squat" && pm.kind === "tendon_hsr_knee")
+  ) {
+    return "Knee tendon HSR + squat on the same day double-loads the patellar tendon. Consider spacing across days.";
+  }
+  if (
+    (am.kind === "tendon_hsr_hinge" && pm.kind === "strength_deadlift") ||
+    (am.kind === "strength_deadlift" && pm.kind === "tendon_hsr_hinge")
+  ) {
+    return "Posterior-chain HSR + deadlift on the same day double-loads the same tissues. Consider spacing across days.";
+  }
+
+  return null;
 }

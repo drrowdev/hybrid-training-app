@@ -466,6 +466,86 @@ export async function unskipPlannedSession(formData: FormData): Promise<void> {
   revalidatePath("/app/plan");
 }
 
+const setPlannedTimeSchema = z.object({
+  id: z.string().uuid(),
+  hhmm: z.string().regex(/^\d{2}:\d{2}$/, "Use HH:mm"),
+});
+
+/**
+ * Set an explicit planned_at on a planned_session. Computes the UTC instant
+ * from the user's profile timezone + the day's calendar date + the HH:mm
+ * the user entered. Empty / cleared input is treated as null (revert to
+ * profile window default).
+ */
+export async function setPlannedTime(formData: FormData): Promise<void> {
+  const raw = {
+    id: formData.get("id"),
+    hhmm: formData.get("hhmm"),
+  };
+  // Empty time field clears the override.
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const idValid = typeof raw.id === "string" && /^[0-9a-f-]{36}$/i.test(raw.id);
+  if (!idValid) return;
+  const id = raw.id as string;
+
+  if (!raw.hhmm || raw.hhmm === "") {
+    await supabase
+      .from("planned_sessions")
+      .update({ planned_at: null })
+      .eq("id", id)
+      .eq("user_id", user.id);
+    revalidatePath("/app");
+    revalidatePath("/app/plan");
+    return;
+  }
+
+  const parsed = setPlannedTimeSchema.safeParse(raw);
+  if (!parsed.success) return;
+
+  // Look up the planned session + its block to compute the day's date.
+  const { data: planned } = await supabase
+    .from("planned_sessions")
+    .select("id, week_index, day_index, block_id")
+    .eq("id", parsed.data.id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!planned) return;
+
+  const { data: block } = await supabase
+    .from("training_blocks")
+    .select("started_on")
+    .eq("id", planned.block_id)
+    .maybeSingle();
+  if (!block) return;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("timezone")
+    .eq("id", user.id)
+    .maybeSingle();
+  const tz = profile?.timezone ?? "UTC";
+
+  // Compute the calendar date this slot falls on.
+  const { dayDate } = await import("./queries");
+  const date = dayDate(block.started_on, planned.week_index, planned.day_index);
+  const { localTimeToUTC } = await import("./time-of-day");
+  const utc = localTimeToUTC(date, parsed.data.hhmm, tz);
+
+  await supabase
+    .from("planned_sessions")
+    .update({ planned_at: utc.toISOString() })
+    .eq("id", parsed.data.id)
+    .eq("user_id", user.id);
+
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
+}
+
 const startPlannedSchema = z.object({ id: z.string().uuid() });
 
 /**

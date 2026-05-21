@@ -10,6 +10,7 @@ import {
   getUpcomingPlannedSessions,
   type PlannedDay,
 } from "@/lib/planner/queries";
+import { effectiveTimeOfDay, gapHoursBetween } from "@/lib/planner/time-of-day";
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -38,7 +39,7 @@ export default async function TodayPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name")
+    .select("display_name, timezone, am_window_start, pm_window_start")
     .eq("id", userId)
     .maybeSingle();
 
@@ -64,6 +65,9 @@ export default async function TodayPage() {
   const completedToday = (todaySessions ?? []).filter((s) => s.completed_at);
   const greeting = profile?.display_name ? `Hey ${profile.display_name}` : "Hey there";
   const isTwoADay = plannedToday.length > 1;
+  const timezone = profile?.timezone ?? "UTC";
+  const amWindowStart = profile?.am_window_start ?? "07:00:00";
+  const pmWindowStart = profile?.pm_window_start ?? "17:00:00";
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
@@ -79,6 +83,9 @@ export default async function TodayPage() {
         completedToday={completedToday}
         plannedToday={plannedToday}
         isTwoADay={isTwoADay}
+        timezone={timezone}
+        amWindowStart={amWindowStart}
+        pmWindowStart={pmWindowStart}
       />
 
       <section className="cp-card" style={{ padding: 20 }}>
@@ -177,11 +184,17 @@ function TodaySessionCard({
   completedToday,
   plannedToday,
   isTwoADay,
+  timezone,
+  amWindowStart,
+  pmWindowStart,
 }: {
   openSession: { id: string; title: string | null } | null;
   completedToday: { id: string; title: string | null }[];
   plannedToday: PlannedDay[];
   isTwoADay: boolean;
+  timezone: string;
+  amWindowStart: string;
+  pmWindowStart: string;
 }) {
   if (openSession) {
     return (
@@ -247,11 +260,29 @@ function TodaySessionCard({
   }
 
   // 1 or 2 planned sessions today.
+  // Compute effective times for AM and PM, then derive the actual gap for
+  // the DC-D1 warning so it shows the real value, not a static reminder.
+  const slotTimes = new Map<string, string>();
+  for (const p of plannedToday) {
+    const t = effectiveTimeOfDay({
+      slot: p.slot,
+      plannedAt: p.plannedAt,
+      amWindowStart,
+      pmWindowStart,
+      timezone,
+    });
+    if (t) slotTimes.set(p.slot, t);
+  }
+  const amTime = slotTimes.get("am");
+  const pmTime = slotTimes.get("pm");
+  const gapH = isTwoADay && amTime && pmTime ? gapHoursBetween(amTime, pmTime) : null;
+  const gapShort = gapH != null && gapH < 6;
+
   return (
     <div style={{ display: "grid", gap: 10 }}>
       {isTwoADay && (
         <div
-          role="note"
+          role={gapShort ? "alert" : "note"}
           className="cp-card"
           style={{
             padding: "10px 14px",
@@ -259,16 +290,33 @@ function TodaySessionCard({
             justifyContent: "space-between",
             alignItems: "center",
             gap: 12,
-            background: "color-mix(in oklab, var(--cp-accent) 4%, transparent)",
-            borderColor: "var(--cp-accent)",
+            background: gapShort
+              ? "color-mix(in oklab, var(--cp-danger) 8%, transparent)"
+              : "color-mix(in oklab, var(--cp-accent) 4%, transparent)",
+            borderColor: gapShort ? "var(--cp-danger)" : "var(--cp-accent)",
             fontSize: 12,
           }}
         >
           <span style={{ color: "var(--cp-text)" }}>
-            <strong>Two-a-day · ≥6h gap recommended.</strong>
-            <span style={{ color: "var(--cp-text-muted)", marginLeft: 4 }}>
-              AM lift + PM cardio with at least 6 hours between protects the strength signal.
-            </span>
+            {gapShort ? (
+              <>
+                <strong style={{ color: "var(--cp-danger)" }}>
+                  Gap is {gapH!.toFixed(1)}h — below the 6h recommendation.
+                </strong>
+                <span style={{ color: "var(--cp-text-muted)", marginLeft: 4 }}>
+                  AMPK from the cardio will blunt the strength signal at this spacing.
+                </span>
+              </>
+            ) : (
+              <>
+                <strong>
+                  Two-a-day{gapH != null ? ` · ${gapH.toFixed(0)}h gap` : ""}.
+                </strong>
+                <span style={{ color: "var(--cp-text-muted)", marginLeft: 4 }}>
+                  AM lift + PM cardio with at least 6 hours between protects the strength signal.
+                </span>
+              </>
+            )}
           </span>
           <span className="mono" style={{ fontSize: 10, color: "var(--cp-text-muted)", flexShrink: 0 }}>
             Robineau 2016 HIGH
@@ -283,14 +331,27 @@ function TodaySessionCard({
         }}
       >
         {plannedToday.map((p) => (
-          <PlannedSessionCard key={p.id} planned={p} isTwoADay={isTwoADay} />
+          <PlannedSessionCard
+            key={p.id}
+            planned={p}
+            isTwoADay={isTwoADay}
+            timeOfDay={slotTimes.get(p.slot) ?? null}
+          />
         ))}
       </div>
     </div>
   );
 }
 
-function PlannedSessionCard({ planned, isTwoADay }: { planned: PlannedDay; isTwoADay: boolean }) {
+function PlannedSessionCard({
+  planned,
+  isTwoADay,
+  timeOfDay,
+}: {
+  planned: PlannedDay;
+  isTwoADay: boolean;
+  timeOfDay: string | null;
+}) {
   const slotLabel =
     planned.slot === "am" ? "Morning" : planned.slot === "pm" ? "Evening" : "Today's session";
   return (
@@ -299,6 +360,11 @@ function PlannedSessionCard({ planned, isTwoADay }: { planned: PlannedDay; isTwo
         {isTwoADay && planned.slot !== "single" ? (
           <span>
             {slotLabel} · <span className="mono">{planned.slot.toUpperCase()}</span>
+            {timeOfDay && (
+              <span className="mono" style={{ color: "var(--cp-text-muted)", marginLeft: 8 }}>
+                {timeOfDay}
+              </span>
+            )}
           </span>
         ) : (
           slotLabel

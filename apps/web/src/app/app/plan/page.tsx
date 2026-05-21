@@ -3,12 +3,14 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
   endBlock,
+  setPlannedTime,
   skipPlannedSession,
   startSessionFromPlan,
   unskipPlannedSession,
 } from "@/lib/planner/actions";
 import { ARCHETYPES, formatPrescriptionItem, summarisePrescription } from "@/lib/planner/archetypes";
 import { getActiveBlock, getPlannedDays, todayYmd } from "@/lib/planner/queries";
+import { effectiveTimeOfDay, gapHoursBetween } from "@/lib/planner/time-of-day";
 import type { Prescription } from "@hta/db";
 
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -55,6 +57,15 @@ export default async function PlanPage({
     : archetype?.name ?? block.archetype;
   const archetypeKicker = isCustom ? "Custom · " : "";
   const all = await getPlannedDays(block.id, block.startedOn);
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("timezone, am_window_start, pm_window_start")
+    .eq("id", user.id)
+    .maybeSingle();
+  const timezone = profile?.timezone ?? "UTC";
+  const amWindowStart = profile?.am_window_start ?? "07:00:00";
+  const pmWindowStart = profile?.pm_window_start ?? "17:00:00";
 
   const sp = await searchParams;
   const today = todayYmd();
@@ -134,7 +145,14 @@ export default async function PlanPage({
 
       <section style={{ display: "grid", gap: 10 }}>
         {cells.map(({ dayIndex, plans }) => (
-          <DayCard key={dayIndex} dayName={DOW[dayIndex]!} plans={plans} />
+          <DayCard
+            key={dayIndex}
+            dayName={DOW[dayIndex]!}
+            plans={plans}
+            timezone={timezone}
+            amWindowStart={amWindowStart}
+            pmWindowStart={pmWindowStart}
+          />
         ))}
       </section>
 
@@ -160,6 +178,7 @@ type PlannedCell = {
   id: string;
   date: string;
   slot: "am" | "pm" | "single";
+  plannedAt: string | null;
   title: string;
   role: string;
   prescription: Prescription;
@@ -173,7 +192,19 @@ function slotOrder(s: "am" | "pm" | "single"): number {
   return 2;
 }
 
-function DayCard({ dayName, plans }: { dayName: string; plans: PlannedCell[] }) {
+function DayCard({
+  dayName,
+  plans,
+  timezone,
+  amWindowStart,
+  pmWindowStart,
+}: {
+  dayName: string;
+  plans: PlannedCell[];
+  timezone: string;
+  amWindowStart: string;
+  pmWindowStart: string;
+}) {
   const today = todayYmd();
   if (plans.length === 0) {
     return (
@@ -199,6 +230,23 @@ function DayCard({ dayName, plans }: { dayName: string; plans: PlannedCell[] }) 
   const isPast = dateStr < today;
   const isTwoADay = plans.length > 1;
 
+  // Compute the effective time-of-day per slot.
+  const slotTimes = new Map<string, string>();
+  for (const p of plans) {
+    const t = effectiveTimeOfDay({
+      slot: p.slot,
+      plannedAt: p.plannedAt,
+      amWindowStart,
+      pmWindowStart,
+      timezone,
+    });
+    if (t) slotTimes.set(p.slot, t);
+  }
+  const amTime = slotTimes.get("am");
+  const pmTime = slotTimes.get("pm");
+  const gapH = isTwoADay && amTime && pmTime ? gapHoursBetween(amTime, pmTime) : null;
+  const gapShort = gapH != null && gapH < 6;
+
   return (
     <div
       style={{
@@ -216,25 +264,36 @@ function DayCard({ dayName, plans }: { dayName: string; plans: PlannedCell[] }) 
             {dayName} · {new Date(dateStr + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}
             {isToday && <span style={{ color: "var(--cp-accent)", marginLeft: 6 }}>· today</span>}
           </div>
-          <span className="cp-pill" style={{ color: "var(--cp-accent)", borderColor: "var(--cp-accent)" }}>two-a-day</span>
+          <span className="cp-pill" style={{ color: "var(--cp-accent)", borderColor: "var(--cp-accent)" }}>
+            two-a-day{gapH != null ? ` · ${gapH.toFixed(0)}h gap` : ""}
+          </span>
         </div>
       )}
       {isTwoADay && (
         <div
-          role="note"
+          role={gapShort ? "alert" : "note"}
           style={{
             margin: "0 14px",
             padding: "8px 10px",
-            border: "1px solid var(--cp-border)",
+            border: `1px solid ${gapShort ? "var(--cp-danger)" : "var(--cp-border)"}`,
             borderRadius: 8,
-            background: "var(--cp-surface-soft)",
+            background: gapShort
+              ? "color-mix(in oklab, var(--cp-danger) 8%, transparent)"
+              : "var(--cp-surface-soft)",
             fontSize: 11,
             color: "var(--cp-text-muted)",
             lineHeight: 1.4,
           }}
         >
-          <strong style={{ color: "var(--cp-text)" }}>≥6 hours between sessions</strong> protects the
-          strength signal — AMPK activation from cardio inhibits mTORC1 within shorter windows.
+          {gapShort ? (
+            <strong style={{ color: "var(--cp-danger)" }}>
+              Gap is {gapH!.toFixed(1)}h — below the 6h recommendation.
+            </strong>
+          ) : (
+            <strong style={{ color: "var(--cp-text)" }}>≥6 hours between sessions</strong>
+          )}{" "}
+          protects the strength signal — AMPK activation from cardio inhibits mTORC1 within shorter
+          windows.
           <span style={{ display: "block", marginTop: 2, fontStyle: "italic" }}>
             Robineau 2016 (HIGH).
           </span>
@@ -249,6 +308,8 @@ function DayCard({ dayName, plans }: { dayName: string; plans: PlannedCell[] }) 
           isPast={isPast}
           showHeader={!isTwoADay}
           isTwoADay={isTwoADay}
+          timeOfDay={slotTimes.get(planned.slot) ?? null}
+          isCustomTime={!!planned.plannedAt}
         />
       ))}
     </div>
@@ -262,6 +323,8 @@ function DaySessionCard({
   isPast,
   showHeader,
   isTwoADay,
+  timeOfDay,
+  isCustomTime,
 }: {
   dayName: string;
   planned: PlannedCell;
@@ -269,6 +332,8 @@ function DaySessionCard({
   isPast: boolean;
   showHeader: boolean;
   isTwoADay: boolean;
+  timeOfDay: string | null;
+  isCustomTime: boolean;
 }) {
   const done = !!planned.completedSessionId;
   const skipped = !!planned.skippedAt;
@@ -307,6 +372,20 @@ function DaySessionCard({
               </span>
             )}
             {planned.title}
+            {timeOfDay && (
+              <span
+                className="mono"
+                style={{
+                  fontSize: 11,
+                  color: "var(--cp-text-muted)",
+                  fontWeight: 500,
+                  marginLeft: 8,
+                }}
+                title={isCustomTime ? "Custom time" : "Default from your AM/PM window"}
+              >
+                {timeOfDay}
+              </span>
+            )}
           </div>
           <div style={{ fontSize: 12, color: "var(--cp-text-muted)", marginTop: 4 }}>
             {summarisePrescription(planned.prescription.items)}
@@ -345,6 +424,52 @@ function DaySessionCard({
             </li>
           ))}
         </ul>
+      )}
+
+      {!done && !skipped && isTwoADay && planned.slot !== "single" && (
+        <form
+          action={setPlannedTime}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            marginTop: 10,
+            fontSize: 11,
+            color: "var(--cp-text-muted)",
+          }}
+        >
+          <input type="hidden" name="id" value={planned.id} />
+          <label htmlFor={`time-${planned.id}`} style={{ flexShrink: 0 }}>
+            {planned.slot === "am" ? "AM time" : "PM time"}
+          </label>
+          <input
+            id={`time-${planned.id}`}
+            type="time"
+            name="hhmm"
+            defaultValue={timeOfDay ?? ""}
+            step={300}
+            className="mono"
+            style={{
+              padding: "4px 8px",
+              fontSize: 12,
+              border: "1px solid var(--cp-border)",
+              borderRadius: 6,
+              background: "var(--cp-surface)",
+              color: "var(--cp-text)",
+              width: 100,
+            }}
+          />
+          <button
+            type="submit"
+            className="cp-btn ghost"
+            style={{ fontSize: 11, padding: "4px 10px" }}
+          >
+            Save
+          </button>
+          {isCustomTime && (
+            <span style={{ fontStyle: "italic", marginLeft: 4 }}>· overrides default window</span>
+          )}
+        </form>
       )}
 
       {!done && !skipped && (
