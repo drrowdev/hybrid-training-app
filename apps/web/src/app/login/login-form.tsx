@@ -41,11 +41,15 @@ export function LoginForm({ next }: { next: string }) {
     <button
       type="button"
       onClick={() => setMode(k)}
-      className={`px-3 py-1.5 text-sm rounded-md transition ${
-        mode === k
-          ? "bg-foreground text-background"
-          : "text-foreground/70 hover:text-foreground"
-      }`}
+      className="cp-btn ghost"
+      style={{
+        padding: "8px 12px",
+        minHeight: 36,
+        fontSize: 13,
+        background: mode === k ? "var(--cp-accent)" : "transparent",
+        color: mode === k ? "var(--cp-accent-fg)" : "var(--cp-text-muted)",
+        borderColor: mode === k ? "var(--cp-accent)" : "transparent",
+      }}
     >
       {label}
     </button>
@@ -80,7 +84,8 @@ export function LoginForm({ next }: { next: string }) {
           <button
             type="submit"
             disabled={signInPending}
-            className="w-full rounded-md bg-foreground text-background py-2 font-medium disabled:opacity-60"
+            className="cp-btn primary big"
+            style={{ width: "100%" }}
           >
             {signInPending ? "Signing in…" : "Sign in"}
           </button>
@@ -110,7 +115,8 @@ export function LoginForm({ next }: { next: string }) {
           <button
             type="submit"
             disabled={signUpPending}
-            className="w-full rounded-md bg-foreground text-background py-2 font-medium disabled:opacity-60"
+            className="cp-btn primary big"
+            style={{ width: "100%" }}
           >
             {signUpPending ? "Creating account…" : "Create account"}
           </button>
@@ -137,7 +143,8 @@ export function LoginForm({ next }: { next: string }) {
           <button
             type="submit"
             disabled={magicPending}
-            className="w-full rounded-md bg-foreground text-background py-2 font-medium disabled:opacity-60"
+            className="cp-btn primary big"
+            style={{ width: "100%" }}
           >
             {magicPending ? "Sending link…" : "Email me a sign-in link"}
           </button>
