@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { listMovementsRanked } from "@/lib/stats/movement";
 import { BAND_COLOR, BAND_LABEL, getWeeklyMuscleVolume } from "@/lib/stats/muscle-volume";
+import { formatHitValue, getRecentPrs } from "@/lib/stats/pr-queries";
+import { PR_KIND_LABEL } from "@/lib/engine/pr";
 
 export default async function StatsPage() {
   const supabase = await createClient();
@@ -41,6 +43,7 @@ export default async function StatsPage() {
 
   const movements = await listMovementsRanked();
   const muscleVolume = await getWeeklyMuscleVolume(supabase, user.id);
+  const recentPrs = await getRecentPrs(supabase, user.id, 5);
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
@@ -57,6 +60,49 @@ export default async function StatsPage() {
         <Tile label="Avg session RPE" value={avgRpe ? avgRpe.toFixed(1) : "—"} />
         <Tile label="Engine state" value="View →" href="/app/stats/engine" />
       </div>
+
+      {recentPrs.length > 0 && (
+        <section className="cp-card" style={{ padding: 20 }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
+            <h2 style={{ margin: 0, fontSize: 16 }}>Recent PRs</h2>
+            <Link href="/app/stats/prs" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+              see all →
+            </Link>
+          </div>
+          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            {recentPrs.map((p, i) => (
+              <li
+                key={`${p.sessionId}:${p.movementId}:${p.hit.kind}`}
+                style={{
+                  borderTop: i === 0 ? "none" : "1px solid var(--cp-border)",
+                  padding: "10px 0",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "baseline",
+                  gap: 10,
+                  fontSize: 13,
+                }}
+              >
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                    <span aria-hidden="true">🏆</span>
+                    <span style={{ fontWeight: 500 }}>{p.movementDisplayName}</span>
+                    <span className="cp-pill" style={{ fontSize: 10 }}>{PR_KIND_LABEL[p.hit.kind]}</span>
+                  </div>
+                </div>
+                <span className="mono" style={{ fontWeight: 600, color: "var(--cp-accent)", flexShrink: 0 }}>
+                  {formatHitValue(p.hit, p.hit.kind)}
+                </span>
+                <span className="mono" style={{ fontSize: 11, color: "var(--cp-text-muted)", flexShrink: 0 }}>
+                  <Link href={`/app/sessions/${p.sessionId}`} style={{ color: "inherit", textDecoration: "none" }}>
+                    {new Date(p.sessionPerformedAt).toLocaleDateString()}
+                  </Link>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="cp-card" style={{ padding: 20 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>

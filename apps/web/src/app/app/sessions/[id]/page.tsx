@@ -13,6 +13,8 @@ import {
   type LoggedSet,
 } from "@/components/session/SessionLogClient";
 import { GRM_RECOMMEND_THRESHOLD, applyGrmToPercent, computeGrm, grmLabel } from "@/lib/engine/grm";
+import { PR_KIND_LABEL } from "@/lib/engine/pr";
+import { formatHitValue, getSessionPrs } from "@/lib/stats/pr-queries";
 import type { Prescription } from "@hta/db";
 
 export default async function SessionDetailPage({
@@ -94,6 +96,11 @@ export default async function SessionDetailPage({
   const showRecommendation =
     grm.hasCheckIn && grm.value < GRM_RECOMMEND_THRESHOLD && !isComplete;
 
+  // PR detection — only meaningful when at least one set has been logged.
+  const prSummaries = sets.length > 0
+    ? await getSessionPrs(supabase, user.id, id, session.performed_at)
+    : [];
+
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <header>
@@ -170,6 +177,53 @@ export default async function SessionDetailPage({
         <Stat label="sRPE" value={session.session_rpe ?? "—"} />
         <Stat label="Duration" value={session.duration_min ? `${session.duration_min}m` : "—"} />
       </div>
+
+      {prSummaries.length > 0 && (
+        <section style={{ display: "grid", gap: 8 }}>
+          {prSummaries.map((s) =>
+            s.hits.map((hit) => (
+              <div
+                key={`${s.movementId}:${hit.kind}`}
+                className="cp-card"
+                style={{
+                  padding: "12px 16px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
+                  borderColor: "var(--cp-accent)",
+                  background: "color-mix(in oklab, var(--cp-accent) 6%, transparent)",
+                }}
+              >
+                <div style={{ fontSize: 22, lineHeight: 1 }} aria-hidden="true">🏆</div>
+                <div style={{ display: "grid", gap: 2, flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--cp-text)" }}>
+                    {PR_KIND_LABEL[hit.kind]} · {s.movementDisplayName}
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+                    <span className="mono" style={{ fontWeight: 600, color: "var(--cp-accent)" }}>
+                      {formatHitValue(hit, hit.kind)}
+                    </span>
+                    {hit.previousBest != null && (
+                      <span style={{ marginLeft: 8 }}>
+                        · previous best{" "}
+                        <span className="mono">{formatHitValue({ ...hit, value: hit.previousBest }, hit.kind)}</span>
+                        {hit.daysSincePrevious != null && hit.daysSincePrevious >= 14 && (
+                          <span style={{ marginLeft: 6, fontStyle: "italic" }}>
+                            · first {hit.kind === "weight" ? "weight" : hit.kind === "reps_at_weight" ? "reps" : "1RM"} PR in {Math.round(hit.daysSincePrevious / 7)} weeks
+                          </span>
+                        )}
+                      </span>
+                    )}
+                    {hit.previousBest == null && (
+                      <span style={{ marginLeft: 8, fontStyle: "italic" }}>· first ever on this lift</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )),
+          )}
+        </section>
+      )}
 
       <SessionLogClient
         sessionId={id}

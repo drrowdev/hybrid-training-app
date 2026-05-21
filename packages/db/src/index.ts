@@ -16,5 +16,6 @@ export * from "./schema/cardio-logs";
 export * from "./schema/wellness";
 export * from "./schema/region-state";
 export * from "./schema/training-maxes";
+export * from "./schema/tm-history";
 export * from "./schema/planner";
 export * from "./client";
