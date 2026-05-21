@@ -21,11 +21,79 @@ import {
   STRENGTH_ROLE_LABELS,
 } from "./archetypes";
 import { ACCESSORY_POOLS, allAccessorySlugs } from "./accessories";
+import {
+  pickAccessoriesForSession,
+  type CatalogMovement,
+  type WeekContextItem,
+} from "./accessory-picker";
+import type { BulletproofRole, FunctionalRole } from "./accessory-roles";
+
+type DbMovement = {
+  id: string;
+  slug: string;
+  display_name: string;
+  primary_region: string;
+  secondary_regions: string[] | null;
+  primary_muscles: string[] | null;
+  secondary_muscles: string[] | null;
+  is_compound: boolean;
+  bulletproof_roles: string[] | null;
+  functional_roles: string[] | null;
+  is_supported: boolean;
+  eccentric_load_score: number | null;
+  stim_to_fatigue_score: number | null;
+  high_strain_tendon: boolean;
+};
+
+function toCatalogMovement(m: DbMovement): CatalogMovement {
+  return {
+    id: m.id,
+    slug: m.slug,
+    displayName: m.display_name,
+    primaryMuscles: m.primary_muscles ?? [],
+    secondaryMuscles: m.secondary_muscles ?? [],
+    primaryRegion: m.primary_region,
+    secondaryRegions: m.secondary_regions ?? [],
+    bulletproofRoles: (m.bulletproof_roles ?? []) as BulletproofRole[],
+    functionalRoles: (m.functional_roles ?? []) as FunctionalRole[],
+    isSupported: m.is_supported,
+    isCompound: m.is_compound,
+    eccentricLoadScore: m.eccentric_load_score,
+    stimToFatigueScore: m.stim_to_fatigue_score,
+    highStrainTendon: m.high_strain_tendon,
+  };
+}
+
+/** Default per-muscle weekly target (MV-floor for trained lifter, Schoenfeld 2017). */
+const DEFAULT_MUSCLE_TARGET = 6;
+const AESTHETIC_TARGET_MUSCLES = [
+  "side_delts",
+  "rear_delts",
+  "biceps",
+  "triceps",
+  "calves",
+  "abs",
+  "upper_chest",
+  "lats",
+  "mid_back",
+  "hamstrings",
+  "forearms",
+];
+
+function defaultMuscleTargets(): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const m of AESTHETIC_TARGET_MUSCLES) out[m] = DEFAULT_MUSCLE_TARGET;
+  return out;
+}
 
 /**
  * Helper: assemble the day's prescription items, optionally appending the
  * curated accessory pool when the archetype + day allow it. Centralised so
  * createBlock and createCustomBlock stay in lockstep.
+ *
+ * When the archetype declares an `accessoryProfile`, the dynamic picker is
+ * used (lib/planner/accessory-picker.ts). Otherwise we fall back to the
+ * legacy static `ACCESSORY_POOLS` for backward compatibility.
  */
 function assemblePrescriptionItems(
   archetype: Archetype,
@@ -34,9 +102,58 @@ function assemblePrescriptionItems(
   movement: { id: string; slug: string; displayName: string },
   finisherMovement: { id: string; slug: string; displayName: string } | undefined,
   movementBySlug: Map<string, { id: string; slug: string; display_name: string }>,
+  /** Full catalog for the picker. Optional for backward-compat callers. */
+  catalog?: CatalogMovement[],
+  /** Rolling per-week context — updated by caller in place. */
+  weekContext?: WeekContextItem[],
+  /** Week deload scalar from the archetype's week profile. */
+  weekDeloadScale: number = 1.0,
 ): PrescriptionItem[] {
   const items = buildPrescription(archetype, weekIndex, day, movement, finisherMovement);
-  if (day.kind === "strength" && shouldIncludeAccessories(archetype, day as StrengthDay)) {
+  if (day.kind !== "strength") return items;
+
+  // Dynamic picker path.
+  if (archetype.accessoryProfile && catalog && weekContext) {
+    const picks = pickAccessoriesForSession({
+      profile: archetype.accessoryProfile,
+      weekDeloadScale,
+      catalog,
+      weekContext,
+      filters: {
+        blockedRegions: new Set(),
+        concurrentStressActive: false, // wired in a follow-up pass
+        recentlyUsedMovementIds: new Set(),
+        tendinopathyActive: false,
+      },
+      perMuscleTargets: defaultMuscleTargets(),
+      maxItems: archetype.accessoryProfile.aesthetic.itemsPerSession + 4, // small budget for durability + functional fills
+    });
+    for (const p of picks) {
+      items.push({
+        movementId: p.movementId,
+        movementSlug: p.slug,
+        movementName: p.displayName,
+        kind: "accessory",
+        sets: p.sets,
+        reps: p.reps,
+        intensityLabel: p.reason,
+        notes: p.rationale,
+      });
+      const catalogEntry = catalog.find((c) => c.id === p.movementId);
+      if (catalogEntry) {
+        weekContext.push({
+          movementId: catalogEntry.id,
+          bulletproofRoles: catalogEntry.bulletproofRoles,
+          functionalRoles: catalogEntry.functionalRoles,
+          primaryMuscles: catalogEntry.primaryMuscles,
+        });
+      }
+    }
+    return items;
+  }
+
+  // Legacy static-pool fallback.
+  if (shouldIncludeAccessories(archetype, day as StrengthDay)) {
     const pool = ACCESSORY_POOLS[(day as StrengthDay).role] ?? [];
     for (const a of pool) {
       const mv = movementBySlug.get(a.slug);
@@ -126,6 +243,20 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
 
   const movementBySlug = new Map((movements ?? []).map((m) => [m.slug, m]));
 
+  // Picker catalog — full global catalog with role tags. Loaded only when
+  // the archetype has an accessoryProfile so legacy archetypes pay nothing.
+  let pickerCatalog: CatalogMovement[] = [];
+  if (archetype.accessoryProfile) {
+    const { data: full, error: catErr } = await supabase
+      .from("movements")
+      .select(
+        "id, slug, display_name, primary_region, secondary_regions, primary_muscles, secondary_muscles, is_compound, bulletproof_roles, functional_roles, is_supported, eccentric_load_score, stim_to_fatigue_score, high_strain_tendon",
+      )
+      .is("user_id", null);
+    if (catErr) return { ok: false, error: `Catalog load failed: ${catErr.message}` };
+    pickerCatalog = (full as DbMovement[]).map(toCatalogMovement);
+  }
+
   const missingFixed = fixedSlugs.filter((s) => !movementBySlug.has(s));
   if (missingFixed.length > 0) {
     return {
@@ -197,6 +328,9 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
 
   const rows: NewPlannedSession[] = [];
   for (let week = 0; week < archetype.weeks; week++) {
+    const weekProfile = archetype.weekProfiles.find((w) => w.weekIndex === week);
+    const weekDeloadScale = weekProfile?.strengthVolumeScale ?? 1.0;
+    const weekContext: WeekContextItem[] = [];
     for (const day of activeDays) {
       let movement: { id: string; slug: string; displayName: string };
       let finisherMovement: { id: string; slug: string; displayName: string } | undefined;
@@ -220,9 +354,19 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
         movement = { id: mv.id, slug: mv.slug, displayName: mv.display_name };
       }
 
-      const items = assemblePrescriptionItems(archetype, week, day, movement, finisherMovement, movementBySlug);
+      const items = assemblePrescriptionItems(
+        archetype,
+        week,
+        day,
+        movement,
+        finisherMovement,
+        movementBySlug,
+        pickerCatalog,
+        weekContext,
+        weekDeloadScale,
+      );
       const prescription: Prescription = { items };
-      const isDeload = archetype.weekProfiles.find((w) => w.weekIndex === week)?.intensityLabel === "Deload";
+      const isDeload = weekProfile?.intensityLabel === "Deload";
 
       let title = day.title;
       if (day.kind === "strength") {

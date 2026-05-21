@@ -10,6 +10,7 @@
  */
 
 import type { PrescriptionItem, PrescriptionItemKind } from "@hta/db";
+import type { AccessoryProfile } from "./accessory-roles";
 
 export type ArchetypeId =
   | "strength_anchor"
@@ -134,6 +135,13 @@ export type Archetype = {
    * Hypertrophy Focus opts in; Strength/Endurance/Rebuild default off.
    */
   accessoriesByDefault?: boolean;
+  /**
+   * Dynamic accessory picker config (docs/design/accessory-schema.md §22).
+   * When present, the picker is invoked instead of the legacy static pool.
+   * Existing archetypes keep `accessoriesByDefault` for the legacy path
+   * until they migrate. New archetypes must declare `accessoryProfile`.
+   */
+  accessoryProfile?: AccessoryProfile;
   weekProfiles: WeekProfile[];
 };
 
@@ -233,6 +241,11 @@ export const STRENGTH_ANCHOR: Archetype = {
   oneLiner:
     "Strength-led concurrent training. Four main lifts (your choice of variant per role) hit a weekly intensity wave with a deload at week 4. Polarized cardio is added when the day budget allows.",
   weeks: 4,
+  accessoryProfile: {
+    aesthetic: { itemsPerSession: 2, setsPerItem: 3, repRange: { min: 8, max: 12 }, biasSupported: false },
+    functional: { weeklyRoleRequirements: { single_leg: 1 } },
+    durability: { extras: [] },
+  },
   days: [
     ...STRENGTH_DAYS,
     {
@@ -330,6 +343,13 @@ export const ENDURANCE_ANCHOR: Archetype = {
   oneLiner:
     "Cardio-led concurrent training. Polarized aerobic exposures (long Z2 + VO2 intervals) anchor the week. Two strength maintenance days (your choice of squat and deadlift variant) keep strength from drifting; extra easy-Z2 days are added when the budget allows.",
   weeks: 4,
+  accessoryProfile: {
+    aesthetic: { itemsPerSession: 1, setsPerItem: 2, repRange: { min: 12, max: 15 }, biasSupported: true },
+    functional: { weeklyRoleRequirements: { hip_stabilizer: 2, ankle_foot: 2 } },
+    // Achilles-specific HSR above the floor — `new` §4.4: running miles
+    // without HSR is the #1 patellar/Achilles tendinopathy etiology.
+    durability: { extras: [{ role: "hsr", count: 1 }] },
+  },
   days: [
     {
       kind: "cardio",
@@ -545,6 +565,13 @@ export const REBUILD: Archetype = {
   oneLiner:
     "Return-to-training block for after an injury, layoff, or extended deload. Capped intensity (top set ≤80% TM), heavy slow resistance tendon work twice a week, easy Z2 for aerobic floor. Designed to load tissue safely, not to progress.",
   weeks: 4,
+  // The dedicated TendonDay primitive carries the DC-O4 floor for Rebuild.
+  // Aesthetic + functional are intentionally minimal.
+  accessoryProfile: {
+    aesthetic: { itemsPerSession: 1, setsPerItem: 2, repRange: { min: 12, max: 15 }, biasSupported: true },
+    functional: { weeklyRoleRequirements: { loaded_mobility: 1 } },
+    durability: { extras: [] },
+  },
   days: [
     {
       kind: "tendon",
@@ -663,6 +690,11 @@ export const HYPERTROPHY_ANCHOR: Archetype = {
     "Muscle-building block. Same four main patterns as Strength Focus but at hypertrophy intensity (60–75% TM, 6–10 reps, 4 working sets per pattern). One optional easy Z2 day preserves the aerobic floor. Curated accessory pool added per main lift — flies, lateral raises, biceps, calves — covering per-muscle volume gaps.",
   weeks: 4,
   accessoriesByDefault: true,
+  accessoryProfile: {
+    aesthetic: { itemsPerSession: 4, setsPerItem: 3, repRange: { min: 8, max: 15 }, biasSupported: false },
+    functional: { weeklyRoleRequirements: {} },
+    durability: { extras: [] },
+  },
   days: [
     {
       kind: "strength",
@@ -852,6 +884,11 @@ export const CONCURRENT_HYBRID: Archetype = {
   oneLiner:
     "Balanced strength + cardio. Four main lifts at moderate intensity (top set ≤ 85% TM) protect cardio adaptation, and two substantive aerobic sessions — one polarized Z2, one VO2 / threshold — keep both engines running.",
   weeks: 4,
+  accessoryProfile: {
+    aesthetic: { itemsPerSession: 2, setsPerItem: 3, repRange: { min: 10, max: 15 }, biasSupported: true },
+    functional: { weeklyRoleRequirements: { single_leg: 1, anti_rotation: 1 } },
+    durability: { extras: [] },
+  },
   days: [
     ...STRENGTH_DAYS,
     {
@@ -942,6 +979,11 @@ export const MAINTENANCE: Archetype = {
   oneLiner:
     "Two-week keep-the-lights-on block for travel, illness, or busy stretches. Two short strength days (65–70% TM, 3 working sets per lift) and two short Z2 sessions hold the line on strength and aerobic base without spending recovery on adaptation.",
   weeks: 2,
+  accessoryProfile: {
+    aesthetic: { itemsPerSession: 0, setsPerItem: 2, repRange: { min: 10, max: 15 }, biasSupported: true },
+    functional: { weeklyRoleRequirements: {} },
+    durability: { extras: [] },
+  },
   days: [
     {
       kind: "strength",

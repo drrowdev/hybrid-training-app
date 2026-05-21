@@ -12,6 +12,7 @@ import {
 import { ARCHETYPES, formatPrescriptionItem, summarisePrescription } from "@/lib/planner/archetypes";
 import { getActiveBlock, getPlannedDays, todayYmd } from "@/lib/planner/queries";
 import { effectiveTimeOfDay, gapHoursBetween } from "@/lib/planner/time-of-day";
+import { getCurrentWeekTissueStackGaps, type TissueStackGap } from "@/lib/stats/tissue-stack-queries";
 import type { Prescription } from "@hta/db";
 
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -90,6 +91,8 @@ export default async function PlanPage({
   const completed = all.filter((d) => d.completedSessionId).length;
   const skipped = all.filter((d) => d.skippedAt).length;
 
+  const tissueGaps = await getCurrentWeekTissueStackGaps(supabase, user.id);
+
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <header>
@@ -103,6 +106,8 @@ export default async function PlanPage({
           </span>
         </div>
       </header>
+
+      {tissueGaps.length > 0 && <TissueStackCard gaps={tissueGaps} />}
 
       <BlockCalendar
         all={all}
@@ -725,5 +730,42 @@ function Legend({ color, label }: { color: string; label: string }) {
       <span aria-hidden style={{ width: 10, height: 10, borderRadius: 3, background: color }} />
       <span>{label}</span>
     </span>
+  );
+}
+
+function TissueStackCard({ gaps }: { gaps: TissueStackGap[] }) {
+  return (
+    <section
+      className="cp-card"
+      role="alert"
+      style={{
+        padding: "14px 18px",
+        display: "grid",
+        gap: 6,
+        borderColor: "var(--cp-warning)",
+        background: "color-mix(in oklab, var(--cp-warning) 6%, transparent)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ fontSize: 11, color: "var(--cp-warning)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+          Tissue-stack deficit
+        </div>
+        <span style={{ fontSize: 10, color: "var(--cp-text-muted)" }} title="Baar 2017 HIGH; Magnusson & Kjaer 2019 HIGH">
+          DC-O4
+        </span>
+      </div>
+      <div style={{ fontSize: 13, color: "var(--cp-text)" }}>
+        This week is missing tendon / connective-tissue work the research
+        treats as a floor, not optional:
+      </div>
+      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "var(--cp-text-muted)" }}>
+        {gaps.map((g) => (
+          <li key={g.role}>
+            <strong style={{ color: "var(--cp-text)" }}>{g.label}</strong>
+            {" "}— logged {g.actual}/{g.required} this week
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
