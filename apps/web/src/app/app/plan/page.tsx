@@ -66,8 +66,10 @@ export default async function PlanPage({
 
   const weekDays = all.filter((d) => d.weekIndex === initialWeek);
   const cells = Array.from({ length: 7 }, (_, dayIndex) => {
-    const planned = weekDays.find((d) => d.dayIndex === dayIndex);
-    return { dayIndex, planned };
+    const plans = weekDays
+      .filter((d) => d.dayIndex === dayIndex)
+      .sort((a, b) => slotOrder(a.slot) - slotOrder(b.slot));
+    return { dayIndex, plans };
   });
 
   const totalPlanned = all.length;
@@ -131,8 +133,8 @@ export default async function PlanPage({
       </nav>
 
       <section style={{ display: "grid", gap: 10 }}>
-        {cells.map(({ dayIndex, planned }) => (
-          <DayCard key={dayIndex} dayName={DOW[dayIndex]!} planned={planned} />
+        {cells.map(({ dayIndex, plans }) => (
+          <DayCard key={dayIndex} dayName={DOW[dayIndex]!} plans={plans} />
         ))}
       </section>
 
@@ -157,6 +159,7 @@ export default async function PlanPage({
 type PlannedCell = {
   id: string;
   date: string;
+  slot: "am" | "pm" | "single";
   title: string;
   role: string;
   prescription: Prescription;
@@ -164,9 +167,15 @@ type PlannedCell = {
   skippedAt: string | null;
 };
 
-function DayCard({ dayName, planned }: { dayName: string; planned?: PlannedCell }) {
+function slotOrder(s: "am" | "pm" | "single"): number {
+  if (s === "am") return 0;
+  if (s === "single") return 1;
+  return 2;
+}
+
+function DayCard({ dayName, plans }: { dayName: string; plans: PlannedCell[] }) {
   const today = todayYmd();
-  if (!planned) {
+  if (plans.length === 0) {
     return (
       <div
         style={{
@@ -185,27 +194,99 @@ function DayCard({ dayName, planned }: { dayName: string; planned?: PlannedCell 
     );
   }
 
-  const isToday = planned.date === today;
-  const isPast = planned.date < today;
+  const dateStr = plans[0]!.date;
+  const isToday = dateStr === today;
+  const isPast = dateStr < today;
+  const isTwoADay = plans.length > 1;
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gap: 8,
+        padding: isToday ? 4 : 0,
+        borderRadius: 14,
+        background: isToday ? "color-mix(in oklab, var(--cp-accent) 6%, transparent)" : undefined,
+        border: isToday ? "1px solid var(--cp-accent)" : undefined,
+      }}
+    >
+      {isTwoADay && (
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 14px 0", alignItems: "baseline" }}>
+          <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+            {dayName} · {new Date(dateStr + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+            {isToday && <span style={{ color: "var(--cp-accent)", marginLeft: 6 }}>· today</span>}
+          </div>
+          <span className="cp-pill" style={{ color: "var(--cp-accent)", borderColor: "var(--cp-accent)" }}>two-a-day</span>
+        </div>
+      )}
+      {plans.map((planned) => (
+        <DaySessionCard
+          key={planned.id}
+          dayName={dayName}
+          planned={planned}
+          isToday={isToday}
+          isPast={isPast}
+          showHeader={!isTwoADay}
+          isTwoADay={isTwoADay}
+        />
+      ))}
+    </div>
+  );
+}
+
+function DaySessionCard({
+  dayName,
+  planned,
+  isToday,
+  isPast,
+  showHeader,
+  isTwoADay,
+}: {
+  dayName: string;
+  planned: PlannedCell;
+  isToday: boolean;
+  isPast: boolean;
+  showHeader: boolean;
+  isTwoADay: boolean;
+}) {
   const done = !!planned.completedSessionId;
   const skipped = !!planned.skippedAt;
+  const slotLabel = planned.slot === "am" ? "AM" : planned.slot === "pm" ? "PM" : null;
 
   return (
     <div
       className="cp-card"
       style={{
         padding: 16,
-        borderColor: isToday ? "var(--cp-accent)" : undefined,
-        background: isToday ? "var(--cp-accent-soft)" : undefined,
+        borderColor: isToday && !isTwoADay ? "var(--cp-accent)" : undefined,
+        background: isToday && !isTwoADay ? "var(--cp-accent-soft)" : undefined,
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
         <div>
-          <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-            {dayName} · {new Date(planned.date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-            {isToday && <span style={{ color: "var(--cp-accent)", marginLeft: 6 }}>· today</span>}
+          {showHeader && (
+            <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+              {dayName} · {new Date(planned.date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+              {isToday && <span style={{ color: "var(--cp-accent)", marginLeft: 6 }}>· today</span>}
+            </div>
+          )}
+          <div style={{ fontSize: 16, fontWeight: 600, marginTop: showHeader ? 2 : 0 }}>
+            {slotLabel && (
+              <span
+                className="mono"
+                style={{
+                  fontSize: 10,
+                  color: "var(--cp-accent)",
+                  fontWeight: 700,
+                  marginRight: 8,
+                  letterSpacing: "0.08em",
+                }}
+              >
+                {slotLabel}
+              </span>
+            )}
+            {planned.title}
           </div>
-          <div style={{ fontSize: 16, fontWeight: 600, marginTop: 2 }}>{planned.title}</div>
           <div style={{ fontSize: 12, color: "var(--cp-text-muted)", marginTop: 4 }}>
             {summarisePrescription(planned.prescription.items)}
           </div>

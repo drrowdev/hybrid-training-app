@@ -487,7 +487,7 @@ export async function startSessionFromPlan(formData: FormData): Promise<void> {
 
   const { data: planned } = await supabase
     .from("planned_sessions")
-    .select("id, title, prescription, completed_session_id")
+    .select("id, title, slot, planned_at, prescription, completed_session_id")
     .eq("id", parsed.data.id)
     .maybeSingle();
 
@@ -503,6 +503,8 @@ export async function startSessionFromPlan(formData: FormData): Promise<void> {
     .insert({
       user_id: user.id,
       title: planned.title,
+      slot: planned.slot ?? "single",
+      planned_at: planned.planned_at,
     })
     .select("id")
     .single();

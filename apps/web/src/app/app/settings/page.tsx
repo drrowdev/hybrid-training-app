@@ -15,7 +15,7 @@ export default async function SettingsPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "display_name, units, bodyweight_kg, body_comp_phase, phase_started_at, phase_target_weeks, training_days_per_week",
+      "display_name, units, bodyweight_kg, body_comp_phase, phase_started_at, phase_target_weeks, training_days_per_week, allows_two_a_days",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -80,6 +80,39 @@ export default async function SettingsPage() {
           The default the planner uses when you start a new block. You can still override it per block.
         </p>
         <TrainingDaysControl initial={Number(profile?.training_days_per_week ?? 4)} />
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-medium">Two-a-day sessions</h2>
+        <p className="text-xs text-foreground/60">
+          Hybrid training pattern: AM lift + PM cardio on the same day, ideally 6+ hours apart so the
+          strength signal and the aerobic signal don&apos;t fight each other (AMPK / mTORC1).
+          When this is on, curated focuses get a two-a-day variant and the custom builder lets you
+          add a PM session per day. New blocks only — existing blocks aren&apos;t re-compiled.
+        </p>
+        <form action={updateProfile} className="rounded-lg border border-foreground/10 p-4">
+          <input type="hidden" name="allowsTwoADaysPresent" value="1" />
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              name="allowsTwoADays"
+              defaultChecked={!!profile?.allows_two_a_days}
+              className="mt-1"
+            />
+            <span className="text-sm">
+              Enable two-a-day sessions
+              <span className="block text-xs text-foreground/60 mt-1">
+                Currently {profile?.allows_two_a_days ? "on" : "off"}.
+              </span>
+            </span>
+          </label>
+          <button
+            type="submit"
+            className="mt-3 rounded-md bg-foreground text-background px-3 py-1.5 text-sm font-medium hover:opacity-90"
+          >
+            Save preference
+          </button>
+        </form>
       </section>
 
       <section className="space-y-3">

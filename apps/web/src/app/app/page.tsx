@@ -6,8 +6,9 @@ import {
   summarisePrescription,
 } from "@/lib/planner/archetypes";
 import {
-  getTodayPlannedSession,
+  getTodayPlannedSessions,
   getUpcomingPlannedSessions,
+  type PlannedDay,
 } from "@/lib/planner/queries";
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -43,10 +44,10 @@ export default async function TodayPage() {
 
   const todayIso = new Date().toISOString().slice(0, 10);
 
-  const [{ data: todaySessions }, { data: recent }, planned, upcoming] = await Promise.all([
+  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming] = await Promise.all([
     supabase
       .from("sessions")
-      .select("id, title, completed_at, performed_at")
+      .select("id, title, slot, completed_at, performed_at")
       .gte("performed_at", `${todayIso}T00:00:00`)
       .lt("performed_at", `${todayIso}T23:59:59`)
       .order("performed_at", { ascending: false }),
@@ -55,13 +56,14 @@ export default async function TodayPage() {
       .select("id, title, performed_at, completed_at, session_rpe, duration_min")
       .order("performed_at", { ascending: false })
       .limit(6),
-    getTodayPlannedSession(),
+    getTodayPlannedSessions(),
     getUpcomingPlannedSessions(3),
   ]);
 
   const openSession = (todaySessions ?? []).find((s) => !s.completed_at) ?? null;
   const completedToday = (todaySessions ?? []).filter((s) => s.completed_at);
   const greeting = profile?.display_name ? `Hey ${profile.display_name}` : "Hey there";
+  const isTwoADay = plannedToday.length > 1;
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
@@ -75,7 +77,8 @@ export default async function TodayPage() {
       <TodaySessionCard
         openSession={openSession}
         completedToday={completedToday}
-        planned={planned}
+        plannedToday={plannedToday}
+        isTwoADay={isTwoADay}
       />
 
       <section className="cp-card" style={{ padding: 20 }}>
@@ -172,11 +175,13 @@ export default async function TodayPage() {
 function TodaySessionCard({
   openSession,
   completedToday,
-  planned,
+  plannedToday,
+  isTwoADay,
 }: {
   openSession: { id: string; title: string | null } | null;
   completedToday: { id: string; title: string | null }[];
-  planned: Awaited<ReturnType<typeof getTodayPlannedSession>>;
+  plannedToday: PlannedDay[];
+  isTwoADay: boolean;
 }) {
   if (openSession) {
     return (
@@ -200,7 +205,8 @@ function TodaySessionCard({
     );
   }
 
-  if (completedToday.length > 0) {
+  if (completedToday.length > 0 && plannedToday.length <= completedToday.length) {
+    // All planned slots for today are logged.
     return (
       <section className="cp-card" style={{ padding: 20, display: "grid", gap: 12 }}>
         <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
@@ -220,65 +226,96 @@ function TodaySessionCard({
     );
   }
 
-  if (planned) {
+  if (plannedToday.length === 0) {
     return (
-      <section className="cp-card" style={{ padding: 20, display: "grid", gap: 12, borderColor: "var(--cp-accent)" }}>
-        <div style={{ fontSize: 11, color: "var(--cp-accent)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-          Today&apos;s session
+      <section className="cp-card" style={{ padding: 20, display: "grid", gap: 12 }}>
+        <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+          Today
         </div>
-        <h2 style={{ fontSize: 22, margin: 0 }}>{planned.title}</h2>
-        <div style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>
-          {summarisePrescription(planned.prescription.items)}
-        </div>
-        {planned.prescription.items.length > 0 && (
-          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 4 }}>
-            {planned.prescription.items.map((item, i) => (
-              <li
-                key={i}
-                style={{
-                  fontSize: 13,
-                  display: "flex",
-                  justifyContent: "space-between",
-                  padding: "6px 10px",
-                  background: "var(--cp-surface-soft)",
-                  borderRadius: 6,
-                }}
-              >
-                <span>
-                  Set {i + 1}
-                  {item.notes ? (
-                    <span style={{ color: "var(--cp-accent)", fontWeight: 600, marginLeft: 4 }}>· {item.notes}</span>
-                  ) : null}
-                </span>
-                <span className="mono" style={{ fontWeight: 600 }}>{formatPrescriptionItem(item)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
+        <h2 style={{ fontSize: 22, margin: 0 }}>Rest or freestyle</h2>
+        <p style={{ color: "var(--cp-text-muted)", margin: 0, fontSize: 14 }}>
+          Nothing on the schedule today. Take it as a rest day, or log a freestyle session.
+        </p>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <form action={startSessionFromPlan}>
-            <input type="hidden" name="id" value={planned.id} />
-            <button type="submit" className="cp-btn primary big">⚡ Start session</button>
-          </form>
+          <Link href="/app/sessions/new" className="cp-btn primary">
+            ⚡ Log a session
+          </Link>
           <Link href="/app/plan" className="cp-btn">View plan</Link>
         </div>
       </section>
     );
   }
 
+  // 1 or 2 planned sessions today.
   return (
-    <section className="cp-card" style={{ padding: 20, display: "grid", gap: 12 }}>
-      <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-        Today
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: isTwoADay ? "repeat(auto-fit, minmax(300px, 1fr))" : "1fr",
+        gap: 12,
+      }}
+    >
+      {plannedToday.map((p) => (
+        <PlannedSessionCard key={p.id} planned={p} isTwoADay={isTwoADay} />
+      ))}
+    </div>
+  );
+}
+
+function PlannedSessionCard({ planned, isTwoADay }: { planned: PlannedDay; isTwoADay: boolean }) {
+  const slotLabel =
+    planned.slot === "am" ? "Morning" : planned.slot === "pm" ? "Evening" : "Today's session";
+  return (
+    <section className="cp-card" style={{ padding: 20, display: "grid", gap: 12, borderColor: "var(--cp-accent)" }}>
+      <div style={{ fontSize: 11, color: "var(--cp-accent)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+        {isTwoADay && planned.slot !== "single" ? (
+          <span>
+            {slotLabel} · <span className="mono">{planned.slot.toUpperCase()}</span>
+          </span>
+        ) : (
+          slotLabel
+        )}
       </div>
-      <h2 style={{ fontSize: 22, margin: 0 }}>Rest or freestyle</h2>
-      <p style={{ color: "var(--cp-text-muted)", margin: 0, fontSize: 14 }}>
-        Nothing on the schedule today. Take it as a rest day, or log a freestyle session.
-      </p>
+      <h2 style={{ fontSize: 20, margin: 0 }}>{planned.title}</h2>
+      <div style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>
+        {summarisePrescription(planned.prescription.items)}
+      </div>
+      {planned.prescription.items.length > 0 && (
+        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 4 }}>
+          {planned.prescription.items.map((item, i) => (
+            <li
+              key={i}
+              style={{
+                fontSize: 13,
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "6px 10px",
+                background: "var(--cp-surface-soft)",
+                borderRadius: 6,
+              }}
+            >
+              <span>
+                Set {i + 1}
+                {item.notes ? (
+                  <span style={{ color: "var(--cp-accent)", fontWeight: 600, marginLeft: 4 }}>· {item.notes}</span>
+                ) : null}
+              </span>
+              <span className="mono" style={{ fontWeight: 600 }}>{formatPrescriptionItem(item)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <Link href="/app/sessions/new" className="cp-btn primary">
-          ⚡ Log a session
-        </Link>
+        {planned.completedSessionId ? (
+          <Link href={`/app/sessions/${planned.completedSessionId}`} className="cp-btn primary big">
+            ⚡ Continue session
+          </Link>
+        ) : (
+          <form action={startSessionFromPlan}>
+            <input type="hidden" name="id" value={planned.id} />
+            <button type="submit" className="cp-btn primary big">⚡ Start session</button>
+          </form>
+        )}
         <Link href="/app/plan" className="cp-btn">View plan</Link>
       </div>
     </section>

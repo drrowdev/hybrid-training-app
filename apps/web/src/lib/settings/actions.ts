@@ -12,6 +12,7 @@ const profileSchema = z.object({
   phaseStartedAt: z.string().date().optional().nullable(),
   phaseTargetWeeks: z.coerce.number().int().min(1).max(52).optional().nullable(),
   trainingDaysPerWeek: z.coerce.number().int().min(2).max(7).optional(),
+  allowsTwoADays: z.coerce.boolean().optional(),
 });
 
 export async function updateProfile(formData: FormData): Promise<void> {
@@ -22,6 +23,11 @@ export async function updateProfile(formData: FormData): Promise<void> {
     phaseStartedAt: formData.get("phaseStartedAt") || undefined,
     phaseTargetWeeks: formData.get("phaseTargetWeeks") || undefined,
     trainingDaysPerWeek: formData.get("trainingDaysPerWeek") || undefined,
+    // Checkbox: present in FormData only when checked. Coerce explicitly.
+    allowsTwoADays:
+      formData.get("allowsTwoADaysPresent") === "1"
+        ? formData.get("allowsTwoADays") === "on"
+        : undefined,
   });
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
 
@@ -38,6 +44,7 @@ export async function updateProfile(formData: FormData): Promise<void> {
   if (parsed.data.phaseStartedAt !== undefined) updates.phase_started_at = parsed.data.phaseStartedAt || null;
   if (parsed.data.phaseTargetWeeks !== undefined) updates.phase_target_weeks = parsed.data.phaseTargetWeeks ?? null;
   if (parsed.data.trainingDaysPerWeek !== undefined) updates.training_days_per_week = parsed.data.trainingDaysPerWeek;
+  if (parsed.data.allowsTwoADays !== undefined) updates.allows_two_a_days = parsed.data.allowsTwoADays;
 
   const { error } = await supabase
     .from("profiles")
