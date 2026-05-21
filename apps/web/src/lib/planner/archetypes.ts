@@ -55,6 +55,12 @@ export type StrengthDay = {
   priority: DayPriority;
   /** Lower = kept longer. Tiebreak between optional days when trimming for capacity. */
   rank: number;
+  /**
+   * Per-day override of the archetype-level accessoriesByDefault flag.
+   * When set, this day either always or never appends the curated
+   * accessory pool to its prescription regardless of the archetype default.
+   */
+  includeAccessories?: boolean;
 };
 
 export type CardioDay = {
@@ -120,6 +126,12 @@ export type Archetype = {
    * sessions throughout) omit it.
    */
   twoADayDays?: DayTemplate[];
+  /**
+   * Default for whether strength days append the curated accessory pool
+   * (lib/planner/accessories.ts). Per-day `includeAccessories` overrides.
+   * Hypertrophy Focus opts in; Strength/Endurance/Rebuild default off.
+   */
+  accessoriesByDefault?: boolean;
   weekProfiles: WeekProfile[];
 };
 
@@ -646,8 +658,9 @@ export const HYPERTROPHY_ANCHOR: Archetype = {
   id: "hypertrophy_anchor",
   name: "Hypertrophy Focus",
   oneLiner:
-    "Muscle-building block. Same four main patterns as Strength Focus but at hypertrophy intensity (60–75% TM, 6–10 reps, 4 working sets per pattern). One optional easy Z2 day preserves the aerobic floor. Add accessory work — flies, lateral raises, biceps, calves — live during sessions; v1 prescribes the main lift only.",
+    "Muscle-building block. Same four main patterns as Strength Focus but at hypertrophy intensity (60–75% TM, 6–10 reps, 4 working sets per pattern). One optional easy Z2 day preserves the aerobic floor. Curated accessory pool added per main lift — flies, lateral raises, biceps, calves — covering per-muscle volume gaps.",
   weeks: 4,
+  accessoriesByDefault: true,
   days: [
     {
       kind: "strength",
@@ -957,6 +970,16 @@ export function requiredFixedSlugs(archetype: Archetype): string[] {
   return Array.from(new Set([...requiredCardioSlugs(archetype), ...requiredTendonSlugs(archetype)]));
 }
 
+/**
+ * True when this strength day should append accessory items. Reads
+ * day.includeAccessories (explicit user override) and falls back to the
+ * archetype's accessoriesByDefault flag.
+ */
+export function shouldIncludeAccessories(archetype: Archetype, day: StrengthDay): boolean {
+  if (day.includeAccessories != null) return day.includeAccessories;
+  return archetype.accessoriesByDefault === true;
+}
+
 export function buildPrescription(
   archetype: Archetype,
   weekIndex: number,
@@ -1058,6 +1081,12 @@ export function formatPrescriptionItem(item: PrescriptionItem, tmKg?: number): s
     const note = item.notes ? ` · ${item.notes}` : "";
     return `${item.intensityLabel ?? "Tendon"} ${reps}${note}`.trim();
   }
+  if (item.kind === "accessory") {
+    const sets = item.sets ?? 3;
+    const reps = item.reps ?? 10;
+    const target = item.intensityLabel ? ` · ${item.intensityLabel}` : "";
+    return `${sets} × ${reps}${target}`;
+  }
   const weight =
     item.percentTm != null && tmKg
       ? `${roundToPlate(tmKg * (item.percentTm / 100))} kg`
@@ -1083,9 +1112,15 @@ export function summarisePrescription(items: PrescriptionItem[]): string {
     const label = tendon[0]?.intensityLabel ?? "Tendon";
     return `${tendon.length} × ${tendon[0]?.reps ?? "?"} · ${label}`;
   }
-  const pcts = items.filter((i) => i.percentTm != null).map((i) => i.percentTm!);
+  const accessories = items.filter((i) => i.kind === "accessory");
+  const mainItems = items.filter((i) => i.kind === "main" || i.kind === "back_off" || i.kind === "warmup");
+  const pcts = mainItems.filter((i) => i.percentTm != null).map((i) => i.percentTm!);
   if (pcts.length > 0) {
-    return `${pcts.length} sets · ${pcts.join("/")}% TM`;
+    const accessorySuffix = accessories.length > 0 ? ` + ${accessories.length} accessor${accessories.length === 1 ? "y" : "ies"}` : "";
+    return `${pcts.length} set${pcts.length === 1 ? "" : "s"} · ${pcts.join("/")}% TM${accessorySuffix}`;
+  }
+  if (accessories.length > 0 && accessories.length === items.length) {
+    return `${accessories.length} accessor${accessories.length === 1 ? "y" : "ies"}`;
   }
   return `${items.length} items`;
 }

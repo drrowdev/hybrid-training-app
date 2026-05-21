@@ -3,19 +3,58 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import type { NewPlannedSession, Prescription } from "@hta/db";
+import type { NewPlannedSession, Prescription, PrescriptionItem } from "@hta/db";
 import { createClient } from "@/lib/supabase/server";
 import {
   ARCHETYPES,
+  type Archetype,
   type ArchetypeId,
+  type DayTemplate,
+  type StrengthDay,
   allCandidateLiftSlugs,
   buildPrescription,
   daysForFrequency,
   daySlotKey,
   minDaysForArchetype,
   requiredFixedSlugs,
+  shouldIncludeAccessories,
   STRENGTH_ROLE_LABELS,
 } from "./archetypes";
+import { ACCESSORY_POOLS, allAccessorySlugs } from "./accessories";
+
+/**
+ * Helper: assemble the day's prescription items, optionally appending the
+ * curated accessory pool when the archetype + day allow it. Centralised so
+ * createBlock and createCustomBlock stay in lockstep.
+ */
+function assemblePrescriptionItems(
+  archetype: Archetype,
+  weekIndex: number,
+  day: DayTemplate,
+  movement: { id: string; slug: string; displayName: string },
+  finisherMovement: { id: string; slug: string; displayName: string } | undefined,
+  movementBySlug: Map<string, { id: string; slug: string; display_name: string }>,
+): PrescriptionItem[] {
+  const items = buildPrescription(archetype, weekIndex, day, movement, finisherMovement);
+  if (day.kind === "strength" && shouldIncludeAccessories(archetype, day as StrengthDay)) {
+    const pool = ACCESSORY_POOLS[(day as StrengthDay).role] ?? [];
+    for (const a of pool) {
+      const mv = movementBySlug.get(a.slug);
+      if (!mv) continue;
+      items.push({
+        movementId: mv.id,
+        movementSlug: mv.slug,
+        movementName: mv.display_name,
+        kind: "accessory",
+        sets: a.sets,
+        reps: parseInt(a.reps, 10),
+        intensityLabel: a.muscleTarget,
+        notes: a.rationale,
+      });
+    }
+  }
+  return items;
+}
 
 const createBlockSchema = z.object({
   archetype: z.enum([
@@ -75,14 +114,14 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
 
   const candidateSlugs = allCandidateLiftSlugs(archetype);
   const fixedSlugs = requiredFixedSlugs(archetype);
-  const allSlugs = Array.from(new Set([...candidateSlugs, ...fixedSlugs]));
+  const accessorySlugs = allAccessorySlugs();
+  const allSlugs = Array.from(new Set([...candidateSlugs, ...fixedSlugs, ...accessorySlugs]));
 
   const { data: movements, error: mvErr } = await supabase
     .from("movements")
     .select("id, slug, display_name")
     .in("slug", allSlugs)
     .is("user_id", null);
-
   if (mvErr) return { ok: false, error: `Movement lookup failed: ${mvErr.message}` };
 
   const movementBySlug = new Map((movements ?? []).map((m) => [m.slug, m]));
@@ -181,7 +220,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
         movement = { id: mv.id, slug: mv.slug, displayName: mv.display_name };
       }
 
-      const items = buildPrescription(archetype, week, day, movement, finisherMovement);
+      const items = assemblePrescriptionItems(archetype, week, day, movement, finisherMovement, movementBySlug);
       const prescription: Prescription = { items };
       const isDeload = archetype.weekProfiles.find((w) => w.weekIndex === week)?.intensityLabel === "Deload";
 
@@ -294,7 +333,8 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
   // Resolve all required movements.
   const candidateSlugs = allCandidateLiftSlugs(archetype);
   const fixedSlugs = requiredFixedSlugs(archetype);
-  const allSlugs = Array.from(new Set([...candidateSlugs, ...fixedSlugs]));
+  const accessorySlugs = allAccessorySlugs();
+  const allSlugs = Array.from(new Set([...candidateSlugs, ...fixedSlugs, ...accessorySlugs]));
 
   const { data: movements, error: mvErr } = await supabase
     .from("movements")
@@ -391,7 +431,7 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
         movement = { id: mv.id, slug: mv.slug, displayName: mv.display_name };
       }
 
-      const items = buildPrescription(archetype, week, day, movement, finisherMovement);
+      const items = assemblePrescriptionItems(archetype, week, day, movement, finisherMovement, movementBySlug);
       const prescription: Prescription = { items };
       const isDeload = archetype.weekProfiles.find((w) => w.weekIndex === week)?.intensityLabel === "Deload";
 
