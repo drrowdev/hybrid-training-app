@@ -402,7 +402,7 @@ export default async function SessionDetailPage({
         </section>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(80px, 1fr))", gap: 10 }}>
         <Stat label="Fatigue" value={session.fatigue ? `${session.fatigue}/5` : "—"} />
         <Stat label="Soreness" value={session.soreness ? `${session.soreness}/5` : "—"} />
         <Stat label="sRPE" value={session.session_rpe ?? "—"} />

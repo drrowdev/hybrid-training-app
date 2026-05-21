@@ -154,7 +154,7 @@ export default async function TodayPage() {
             <Link href="/app/plan" style={{ color: "var(--cp-link)" }}>Start a block</Link> to populate this.
           </p>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(3, upcoming.length)}, 1fr)`, gap: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(140px, 1fr))`, gap: 8 }}>
             {upcoming.map((u) => (
               <Link
                 key={u.id}

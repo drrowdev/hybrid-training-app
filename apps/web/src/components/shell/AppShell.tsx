@@ -145,7 +145,7 @@ export function AppShell({
           .cp-shell { grid-template-columns: 1fr; }
           .cp-sidebar { display: none; }
           .cp-main {
-            padding: 16px 16px calc(72px + env(safe-area-inset-bottom));
+            padding: max(16px, env(safe-area-inset-top)) 16px calc(72px + env(safe-area-inset-bottom));
           }
           .cp-tabbar {
             display: grid;

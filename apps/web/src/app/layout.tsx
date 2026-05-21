@@ -34,7 +34,7 @@ export const viewport: Viewport = {
   ],
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  // No maximumScale — WCAG 2.1 1.4.4 requires text resize / zoom support.
   viewportFit: "cover",
 };
 
