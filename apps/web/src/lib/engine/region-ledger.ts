@@ -17,6 +17,7 @@
 import { finalEwma } from "@hta/domain";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeSetLoad, PRIMARY_REGION_WEIGHT, SECONDARY_REGION_WEIGHT } from "./set-load";
+import { MODALITY_REGION } from "@/lib/integrations/strava/mapping";
 
 const REGIONS = [
   "foot_ankle_calf",
@@ -49,6 +50,7 @@ type CardioRow = {
   performed_at: string;
   duration_sec: number;
   rpe: number | string | null;
+  modality: string | null;
   movement: RegionRefs;
 };
 
@@ -87,7 +89,7 @@ export async function recomputeRegionState(
   // Cardio falls back to duration × rpe-derived load.
   const { data: cardioRaw, error: cardioError } = await supabase
     .from("cardio_logs")
-    .select("session_id, duration_sec, rpe, movement:movements(primary_region, secondary_regions)")
+    .select("session_id, duration_sec, rpe, modality, movement:movements(primary_region, secondary_regions)")
     .in("session_id", sessionIds);
   if (cardioError) throw new Error(cardioError.message);
 
@@ -105,6 +107,7 @@ export async function recomputeRegionState(
     performed_at: performedAtById.get(c.session_id) ?? "",
     duration_sec: c.duration_sec,
     rpe: c.rpe,
+    modality: c.modality,
     movement: normaliseMovement(c.movement),
   }));
 
@@ -128,10 +131,12 @@ export async function recomputeRegionState(
     creditRegions(s.movement, setLoad, dailyLoad, dateIso);
   }
 
-  // Cardio: duration_min × rpe_factor. Falls back to a conservative
-  // RPE-6 equivalent when no RPE is logged (matches the strength default).
+  // Cardio falls back to duration_min × rpe-derived load. When the row
+  // has no movement (e.g. Strava import) we use the modality string to
+  // recover the region attribution.
   for (const c of cardio) {
-    if (!c.movement) continue;
+    const movement = c.movement ?? modalityFallback(c.modality);
+    if (!movement) continue;
     const durMin = c.duration_sec / 60;
     if (durMin <= 0) continue;
     const rpeFactor = c.rpe == null ? 0.5 : Math.min(1.0, Number(c.rpe) / 10);
@@ -139,7 +144,7 @@ export async function recomputeRegionState(
     // The ×8 scalar puts cardio on roughly the same kg-load magnitude as
     // strength tonnage so the EWMA ratios stay comparable across modalities.
     const dateIso = c.performed_at.slice(0, 10);
-    creditRegions(c.movement, cardioLoad, dailyLoad, dateIso);
+    creditRegions(movement, cardioLoad, dailyLoad, dateIso);
   }
 
   const firstDate = (sessions[0]!.performed_at as string).slice(0, 10);
@@ -179,6 +184,20 @@ function normaliseMovement(m: unknown): RegionRefs {
     return first as RegionRefs;
   }
   return m as RegionRefs;
+}
+
+/**
+ * Returns a synthetic RegionRefs derived from a cardio modality string,
+ * used when the cardio_logs row has no movement_id (Strava import).
+ */
+function modalityFallback(modality: string | null): RegionRefs {
+  if (!modality) return null;
+  const m = MODALITY_REGION[modality];
+  if (!m) return null;
+  return {
+    primary_region: m.primaryRegion as Region,
+    secondary_regions: m.secondaryRegions,
+  };
 }
 
 function creditRegions(

@@ -6,6 +6,7 @@
  */
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   integer,
   jsonb,
   numeric,
@@ -60,6 +61,8 @@ export const sessions = pgTable("sessions", {
     .$type<Record<string, number>>()
     .default({})
     .notNull(),
+  /** Optional Strava activity ID when this session was imported. Unique per user. */
+  stravaActivityId: bigint("strava_activity_id", { mode: "number" }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),
