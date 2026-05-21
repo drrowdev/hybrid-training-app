@@ -9,6 +9,7 @@ import {
   integer,
   jsonb,
   numeric,
+  pgEnum,
   pgTable,
   smallint,
   text,
@@ -16,6 +17,16 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
+
+/**
+ * DC-D1 / DC-D2 + docs/design/two-a-days.md: session-slot enum used by both
+ * planned_sessions and sessions to enable AM + PM training on the same day.
+ *
+ * - `single`: legacy one-session-per-day shape; default for new freestyle rows.
+ * - `am` / `pm`: paired entries on the same calendar day; planner enforces
+ *   ≥6h gap (DC-D1) and AM-lift / PM-cardio default ordering (DC-D2).
+ */
+export const sessionSlot = pgEnum("session_slot", ["am", "pm", "single"]);
 
 export const sessions = pgTable("sessions", {
   id: uuid("id")
@@ -35,6 +46,10 @@ export const sessions = pgTable("sessions", {
   /** DC-A2: session RPE 0–10. */
   sessionRpe: numeric("session_rpe", { precision: 3, scale: 1 }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
+  /** Two-a-day slot. Default 'single' = legacy one-session-per-day shape. */
+  slot: sessionSlot("slot").default("single").notNull(),
+  /** Optional explicit planned start time. Defaults applied by the planner from profile AM/PM windows. */
+  plannedAt: timestamp("planned_at", { withTimezone: true }),
   /** DC-A4: six-bucket coefficients (filled post-completion). */
   bucketCoeffs: jsonb("bucket_coeffs")
     .$type<Record<string, number>>()
@@ -57,3 +72,4 @@ export const sessionInsert = createInsertSchema(sessions);
 export const sessionSelect = createSelectSchema(sessions);
 export type Session = typeof sessions.$inferSelect;
 export type NewSession = typeof sessions.$inferInsert;
+export type SessionSlot = (typeof sessionSlot.enumValues)[number];

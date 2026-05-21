@@ -18,7 +18,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
-import { sessions } from "./sessions";
+import { sessions, sessionSlot } from "./sessions";
 
 export const trainingBlockStatus = pgEnum("training_block_status", [
   "active",
@@ -109,6 +109,10 @@ export const plannedSessions = pgTable(
     userId: uuid("user_id").notNull(),
     weekIndex: smallint("week_index").notNull(),
     dayIndex: smallint("day_index").notNull(),
+    /** Two-a-day slot. 'single' for legacy / non-doubled days, 'am' / 'pm' for paired days. */
+    slot: sessionSlot("slot").default("single").notNull(),
+    /** Optional explicit start time; planner default = profile AM/PM window. */
+    plannedAt: timestamp("planned_at", { withTimezone: true }),
     title: text("title").notNull(),
     role: text("role").notNull(),
     prescription: jsonb("prescription").$type<Prescription>().notNull(),
@@ -121,10 +125,11 @@ export const plannedSessions = pgTable(
       .notNull(),
   },
   (t) => ({
-    blockWeekDayUnique: uniqueIndex("planned_sessions_block_week_day_unique_idx").on(
+    blockWeekDaySlotUnique: uniqueIndex("planned_sessions_block_week_day_slot_unique_idx").on(
       t.blockId,
       t.weekIndex,
       t.dayIndex,
+      t.slot,
     ),
   }),
 );

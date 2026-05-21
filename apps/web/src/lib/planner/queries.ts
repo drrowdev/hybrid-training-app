@@ -2,7 +2,7 @@
  * Queries for the planner UI.
  */
 import { createClient } from "@/lib/supabase/server";
-import type { Prescription } from "@hta/db";
+import type { Prescription, SessionSlot } from "@hta/db";
 
 export type ActiveBlock = {
   id: string;
@@ -18,6 +18,10 @@ export type PlannedDay = {
   blockId: string;
   weekIndex: number;
   dayIndex: number;
+  /** Two-a-day slot. "single" = legacy one-session day. */
+  slot: SessionSlot;
+  /** Explicit planned start time, or null when planner defers to profile AM/PM window. */
+  plannedAt: string | null;
   title: string;
   role: string;
   prescription: Prescription;
@@ -81,17 +85,20 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
   const { data } = await supabase
     .from("planned_sessions")
     .select(
-      "id, block_id, week_index, day_index, title, role, prescription, completed_session_id, skipped_at",
+      "id, block_id, week_index, day_index, slot, planned_at, title, role, prescription, completed_session_id, skipped_at",
     )
     .eq("block_id", blockId)
     .order("week_index", { ascending: true })
-    .order("day_index", { ascending: true });
+    .order("day_index", { ascending: true })
+    .order("slot", { ascending: true });
   if (!data) return [];
   return data.map((d) => ({
     id: d.id,
     blockId: d.block_id,
     weekIndex: d.week_index,
     dayIndex: d.day_index,
+    slot: (d.slot as SessionSlot) ?? "single",
+    plannedAt: d.planned_at ?? null,
     title: d.title,
     role: d.role,
     prescription: (d.prescription as Prescription) ?? { items: [] },
@@ -101,13 +108,19 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
   }));
 }
 
-/** Today's planned session (active block + matching date). */
-export async function getTodayPlannedSession(): Promise<PlannedDay | null> {
+/** Today's planned sessions (active block + matching date). Returns both AM and PM if present. */
+export async function getTodayPlannedSessions(): Promise<PlannedDay[]> {
   const block = await getActiveBlock();
-  if (!block) return null;
+  if (!block) return [];
   const all = await getPlannedDays(block.id, block.startedOn);
   const today = todayYmd();
-  return all.find((d) => d.date === today) ?? null;
+  return all.filter((d) => d.date === today);
+}
+
+/** Today's first planned session (back-compat shim for single-slot consumers). */
+export async function getTodayPlannedSession(): Promise<PlannedDay | null> {
+  const sessions = await getTodayPlannedSessions();
+  return sessions[0] ?? null;
 }
 
 /** Next N planned sessions after today (skipping rest days and the current day). */

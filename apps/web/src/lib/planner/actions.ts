@@ -11,6 +11,7 @@ import {
   allCandidateLiftSlugs,
   buildPrescription,
   daysForFrequency,
+  daySlotKey,
   minDaysForArchetype,
   requiredFixedSlugs,
   STRENGTH_ROLE_LABELS,
@@ -99,7 +100,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
 
   const tmByMovementId = new Map((tms ?? []).map((r) => [r.movement_id, r.updated_at]));
 
-  const resolved = new Map<number, { movementId: string; slug: string; displayName: string }>();
+  const resolved = new Map<string, { movementId: string; slug: string; displayName: string }>();
   const missingRoles: string[] = [];
 
   for (const day of activeDays) {
@@ -112,7 +113,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
         break;
       }
     }
-    if (chosen) resolved.set(day.dayIndex, chosen);
+    if (chosen) resolved.set(daySlotKey(day), chosen);
     else missingRoles.push(STRENGTH_ROLE_LABELS[day.role]);
   }
 
@@ -154,7 +155,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       let finisherMovement: { id: string; slug: string; displayName: string } | undefined;
 
       if (day.kind === "strength") {
-        const resolvedMv = resolved.get(day.dayIndex);
+        const resolvedMv = resolved.get(daySlotKey(day));
         if (!resolvedMv) continue;
         movement = { id: resolvedMv.movementId, slug: resolvedMv.slug, displayName: resolvedMv.displayName };
       } else if (day.kind === "cardio") {
@@ -188,6 +189,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
         userId: user.id,
         weekIndex: week,
         dayIndex: day.dayIndex,
+        slot: day.slot ?? "single",
         title,
         role: day.role,
         prescription,
@@ -313,7 +315,7 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
   if (tmErr) return { ok: false, error: `TM lookup failed: ${tmErr.message}` };
   const tmMovementIds = new Set((tms ?? []).map((r) => r.movement_id));
 
-  const resolved = new Map<number, { movementId: string; slug: string; displayName: string }>();
+  const resolved = new Map<string, { movementId: string; slug: string; displayName: string }>();
   const missingRoles: string[] = [];
   for (const day of archetype.days) {
     if (day.kind !== "strength") continue;
@@ -325,7 +327,7 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
         break;
       }
     }
-    if (chosen) resolved.set(day.dayIndex, chosen);
+    if (chosen) resolved.set(daySlotKey(day), chosen);
     else missingRoles.push(STRENGTH_ROLE_LABELS[day.role]);
   }
   if (missingRoles.length > 0) {
@@ -363,7 +365,7 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
       let finisherMovement: { id: string; slug: string; displayName: string } | undefined;
 
       if (day.kind === "strength") {
-        const resolvedMv = resolved.get(day.dayIndex);
+        const resolvedMv = resolved.get(daySlotKey(day));
         if (!resolvedMv) continue;
         movement = { id: resolvedMv.movementId, slug: resolvedMv.slug, displayName: resolvedMv.displayName };
       } else if (day.kind === "cardio") {
@@ -396,6 +398,7 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
         userId: user.id,
         weekIndex: week,
         dayIndex: day.dayIndex,
+        slot: day.slot ?? "single",
         title,
         role: day.role,
         prescription,

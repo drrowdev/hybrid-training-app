@@ -13,6 +13,7 @@ import {
   pgTable,
   smallint,
   text,
+  time,
   timestamp,
   uuid,
   numeric,
@@ -49,6 +50,12 @@ export const profiles = pgTable("profiles", {
    * See research-new §interference: ≥6h gap between modalities respects AMPK/mTORC1.
    */
   allowsTwoADays: boolean("allows_two_a_days").default(false).notNull(),
+  /** Default AM-session window (used when planned_at is unset). */
+  amWindowStart: time("am_window_start").default("07:00").notNull(),
+  amWindowEnd: time("am_window_end").default("09:00").notNull(),
+  /** Default PM-session window. */
+  pmWindowStart: time("pm_window_start").default("17:00").notNull(),
+  pmWindowEnd: time("pm_window_end").default("19:00").notNull(),
   intake: jsonb("intake").$type<Record<string, unknown>>().default({}).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)

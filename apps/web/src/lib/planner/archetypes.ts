@@ -35,9 +35,18 @@ export type WeekProfile = {
 
 export type DayPriority = "anchor" | "optional";
 
+/**
+ * Two-a-day slot. Undefined / "single" = legacy one-session-per-day.
+ * "am" / "pm" pair with another day-template at the same dayIndex.
+ * DC-D1 dictates ≥6h gap between AM and PM; DC-D2 dictates strength-first.
+ */
+export type DaySlot = "am" | "pm" | "single";
+
 export type StrengthDay = {
   kind: "strength";
   dayIndex: number;
+  /** Optional two-a-day slot. Default "single". */
+  slot?: DaySlot;
   role: StrengthRole;
   title: string;
   /** Acceptable movement slugs in preference order. The first one with a TM set wins. */
@@ -51,6 +60,7 @@ export type StrengthDay = {
 export type CardioDay = {
   kind: "cardio";
   dayIndex: number;
+  slot?: DaySlot;
   role: string;
   title: string;
   movementSlug: string;
@@ -79,6 +89,7 @@ export type CardioDay = {
 export type TendonDay = {
   kind: "tendon";
   dayIndex: number;
+  slot?: DaySlot;
   role: string;
   title: string;
   movementSlug: string;
@@ -578,6 +589,16 @@ export function roundToPlate(kg: number, increment = 2.5): number {
   return Math.round(kg / increment) * increment;
 }
 
+/** Resolve a day-template's slot, defaulting to "single" when undefined. */
+export function daySlot(d: DayTemplate): DaySlot {
+  return d.slot ?? "single";
+}
+
+/** Stable key for (dayIndex, slot) — used wherever AM and PM need separate buckets. */
+export function daySlotKey(d: DayTemplate): string {
+  return `${d.dayIndex}:${daySlot(d)}`;
+}
+
 /** Anchor day count = the minimum frequency at which the archetype is viable. */
 export function minDaysForArchetype(archetype: Archetype): number {
   return archetype.days.filter((d) => d.priority === "anchor").length;
@@ -601,8 +622,12 @@ export function daysForFrequency(archetype: Archetype, daysPerWeek: number): Day
     .sort((a, b) => a.rank - b.rank);
   const budget = Math.max(0, daysPerWeek - anchors.length);
   const chosen = [...anchors, ...optionals.slice(0, budget)];
-  // Stable order by dayIndex so the week renders Mon → Sun.
-  return chosen.sort((a, b) => a.dayIndex - b.dayIndex);
+  // Stable order by (dayIndex, slot) so the week renders Mon → Sun and AM before PM.
+  return chosen.sort((a, b) => {
+    if (a.dayIndex !== b.dayIndex) return a.dayIndex - b.dayIndex;
+    const slotOrder = { am: 0, single: 1, pm: 2 } as const;
+    return slotOrder[daySlot(a)] - slotOrder[daySlot(b)];
+  });
 }
 
 /** All strength roles the archetype needs (deduped). */
