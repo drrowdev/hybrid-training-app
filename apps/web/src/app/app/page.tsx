@@ -10,7 +10,7 @@ import {
   type PlannedDay,
 } from "@/lib/planner/queries";
 import { effectiveTimeOfDay, gapHoursBetween } from "@/lib/planner/time-of-day";
-import { getRegionFreshness, type RegionFreshnessRow } from "@/lib/stats/region-freshness-queries";
+import { getRegionFreshness, findHeavyOnRecoveringConflict, type RegionFreshnessRow, type FreshnessConflict } from "@/lib/stats/region-freshness-queries";
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -62,6 +62,37 @@ export default async function TodayPage() {
     getRegionFreshness(supabase, userId),
   ]);
 
+  // DC-V2 soft warning: fetch the regions of the movements planned today
+  // so we can flag heavy work on a clearly recovering region.
+  const plannedMovementIds = Array.from(
+    new Set(plannedToday.flatMap((p) => p.prescription.items.map((i) => i.movementId))),
+  );
+  const movementRegionById = new Map<string, { primaryRegion: string; name: string }>();
+  if (plannedMovementIds.length > 0) {
+    const { data: movs } = await supabase
+      .from("movements")
+      .select("id, name, primary_region")
+      .in("id", plannedMovementIds);
+    for (const m of movs ?? []) {
+      movementRegionById.set(m.id, {
+        primaryRegion: m.primary_region as string,
+        name: m.name as string,
+      });
+    }
+  }
+  const freshnessByRegion = new Map(
+    freshness.map((r) => [r.region, { freshness: r.freshness, regionLabel: r.regionLabel }]),
+  );
+  const conflictsBySlot = new Map<string, FreshnessConflict>();
+  for (const p of plannedToday) {
+    const c = findHeavyOnRecoveringConflict(
+      p.prescription.items,
+      movementRegionById,
+      freshnessByRegion,
+    );
+    if (c) conflictsBySlot.set(p.id, c);
+  }
+
   const openSession = (todaySessions ?? []).find((s) => !s.completed_at) ?? null;
   const completedToday = (todaySessions ?? []).filter((s) => s.completed_at);
   const greeting = profile?.display_name ? `Hey ${profile.display_name}` : "Hey there";
@@ -87,6 +118,7 @@ export default async function TodayPage() {
         timezone={timezone}
         amWindowStart={amWindowStart}
         pmWindowStart={pmWindowStart}
+        conflictsBySlot={conflictsBySlot}
       />
 
       <RegionFreshnessCard rows={freshness} />
@@ -190,6 +222,7 @@ function TodaySessionCard({
   timezone,
   amWindowStart,
   pmWindowStart,
+  conflictsBySlot,
 }: {
   openSession: { id: string; title: string | null } | null;
   completedToday: { id: string; title: string | null }[];
@@ -198,6 +231,7 @@ function TodaySessionCard({
   timezone: string;
   amWindowStart: string;
   pmWindowStart: string;
+  conflictsBySlot: Map<string, FreshnessConflict>;
 }) {
   if (openSession) {
     return (
@@ -330,6 +364,7 @@ function TodaySessionCard({
             planned={p}
             isTwoADay={isTwoADay}
             timeOfDay={slotTimes.get(p.slot) ?? null}
+            conflict={conflictsBySlot.get(p.id) ?? null}
           />
         ))}
       </div>
@@ -341,10 +376,12 @@ function PlannedSessionCard({
   planned,
   isTwoADay,
   timeOfDay,
+  conflict,
 }: {
   planned: PlannedDay;
   isTwoADay: boolean;
   timeOfDay: string | null;
+  conflict: FreshnessConflict | null;
 }) {
   const slotLabel =
     planned.slot === "am" ? "Morning" : planned.slot === "pm" ? "Evening" : "Today's session";
@@ -365,6 +402,29 @@ function PlannedSessionCard({
         )}
       </div>
       <h2 style={{ fontSize: 20, margin: 0 }}>{planned.title}</h2>
+      {conflict && (
+        <div
+          role="note"
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 8,
+            padding: "8px 12px",
+            borderRadius: 10,
+            background: "color-mix(in oklab, var(--cp-warning) 12%, transparent)",
+            border: "1px solid var(--cp-warning)",
+            fontSize: 12,
+            color: "var(--cp-text)",
+            lineHeight: 1.4,
+          }}
+          title={`${conflict.regionLabel} freshness ${(conflict.freshness * 100).toFixed(0)}% — Gabbett 2016 (acute-to-chronic load injury risk)`}
+        >
+          <span aria-hidden style={{ fontSize: 14 }}>⚠</span>
+          <span>
+            <strong>{conflict.regionLabel}</strong> still recovering. Heavy {conflict.movementName} may need a lighter top set or a substitution.
+          </span>
+        </div>
+      )}
       <div style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>
         {summarisePrescription(planned.prescription.items)}
       </div>

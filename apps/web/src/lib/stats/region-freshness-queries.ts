@@ -96,3 +96,55 @@ export async function getRegionFreshness(
   rows.sort((a, b) => a.freshness - b.freshness);
   return rows;
 }
+
+/**
+ * DC-V2 soft warning gate — heavy work planned on a clearly recovering region.
+ *
+ * Intentionally narrow so the warning stays meaningful. Fires only when ALL
+ * of the following are true for at least one prescription item:
+ *   1. The item is a main lift or back-off set (the load drivers).
+ *   2. Intensity is "heavy": planned at ≥80% TM, OR top-set reps ≤5.
+ *   3. The movement's primary region has freshness <0.15 (deep into the
+ *      Gabbett 2016 acute-to-chronic injury-risk zone).
+ *
+ * Returns null when no conflict exists.
+ */
+export type FreshnessConflict = {
+  movementName: string;
+  regionLabel: string;
+  freshness: number;
+};
+
+export function findHeavyOnRecoveringConflict(
+  items: Array<{
+    kind: string;
+    movementId: string;
+    movementName?: string;
+    percentTm?: number | null;
+    reps?: number | null;
+  }>,
+  movementRegionById: Map<string, { primaryRegion: string; name: string }>,
+  freshnessByRegion: Map<string, { freshness: number; regionLabel: string }>,
+): FreshnessConflict | null {
+  const HEAVY_PCT_TM_FLOOR = 80;
+  const HEAVY_REP_CEILING = 5;
+  const FRESHNESS_FLOOR = 0.15;
+  for (const item of items) {
+    if (item.kind !== "main" && item.kind !== "back_off") continue;
+    const isHeavy =
+      (item.percentTm != null && item.percentTm >= HEAVY_PCT_TM_FLOOR) ||
+      (item.reps != null && item.reps > 0 && item.reps <= HEAVY_REP_CEILING);
+    if (!isHeavy) continue;
+    const movement = movementRegionById.get(item.movementId);
+    if (!movement) continue;
+    const fresh = freshnessByRegion.get(movement.primaryRegion);
+    if (!fresh) continue;
+    if (fresh.freshness >= FRESHNESS_FLOOR) continue;
+    return {
+      movementName: item.movementName ?? movement.name,
+      regionLabel: fresh.regionLabel,
+      freshness: fresh.freshness,
+    };
+  }
+  return null;
+}
