@@ -85,7 +85,7 @@ export default async function SettingsPage() {
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Two-a-day sessions</h2>
         <p className="text-xs text-foreground/60">
-          Hybrid training pattern: AM lift + PM cardio on the same day, ideally 6+ hours apart so the
+          Two sessions on the same day: AM lift + PM cardio, ideally 6+ hours apart so the
           strength signal and the aerobic signal don&apos;t fight each other (AMPK / mTORC1).
           When this is on, curated focuses get a two-a-day variant and the custom builder lets you
           add a PM session per day. New blocks only — existing blocks aren&apos;t re-compiled.

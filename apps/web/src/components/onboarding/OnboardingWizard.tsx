@@ -299,11 +299,10 @@ export function OnboardingWizard({
               />
               <span style={{ display: "grid", gap: 4 }}>
                 <span style={{ fontSize: 13, fontWeight: 600 }}>
-                  I&apos;m open to occasional two-a-day sessions
+                  I&apos;m open to two-a-day sessions.
                 </span>
                 <span style={{ fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
-                  Typical hybrid pattern: AM lift + PM cardio, ideally 6+ hours apart. We&apos;re just
-                  capturing your preference — full two-a-day planning lands in a future update.
+                  We&apos;re just capturing your preference — full two-a-day planning lands in a future update.
                 </span>
               </span>
             </label>
