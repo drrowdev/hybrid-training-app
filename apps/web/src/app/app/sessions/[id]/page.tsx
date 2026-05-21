@@ -242,8 +242,12 @@ export default async function SessionDetailPage({
       ) : null}
 
       {!isComplete && (
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-          <Link href={`/app/sessions/${id}/complete`} className="cp-btn primary big">
+        <div className="cp-stickybar" style={{ marginInline: -16 }}>
+          <Link
+            href={`/app/sessions/${id}/complete`}
+            className="cp-btn primary big"
+            style={{ flex: 1 }}
+          >
             Finish session →
           </Link>
         </div>

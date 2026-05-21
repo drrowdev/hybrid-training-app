@@ -133,7 +133,8 @@ select option {
 
 .cp-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 8px 14px;
+  padding: 10px 14px;
+  min-height: 40px;
   border: 1px solid var(--cp-border);
   border-radius: 10px;
   background: var(--cp-surface);
@@ -141,6 +142,8 @@ select option {
   font-size: 13px; font-weight: 500;
   cursor: pointer;
   transition: background .12s, border-color .12s, color .12s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 .cp-btn:hover { background: var(--cp-surface-soft); }
 .cp-btn.primary {
@@ -151,8 +154,71 @@ select option {
 .cp-btn.primary:hover { background: var(--cp-accent-hover); border-color: var(--cp-accent-hover); }
 .cp-btn.danger { color: var(--cp-danger); border-color: var(--cp-danger); }
 .cp-btn.ghost { border-color: transparent; }
-.cp-btn.big { padding: 14px 18px; font-size: 15px; font-weight: 600; }
+.cp-btn.big { padding: 14px 18px; min-height: 48px; font-size: 15px; font-weight: 600; }
 .cp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Mobile: enforce minimum 44px tap targets on every interactive control
+ * and grow the body font so inputs don't trigger the iOS zoom-to-zoom-in
+ * behaviour (which fires when input font-size < 16px). */
+@media (max-width: 640px) {
+  .cp-btn { min-height: 44px; padding: 12px 16px; font-size: 14px; }
+  .cp-btn.big { min-height: 52px; padding: 16px 20px; font-size: 16px; }
+  input, textarea, select {
+    min-height: 44px;
+    font-size: 16px;
+  }
+}
+
+/* Sticky bottom action bar — sits below the fold for one-handed reach.
+ * Used by the session log page for the Next set / Complete pair. */
+.cp-stickybar {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  background: var(--cp-bg-elevated);
+  border-top: 1px solid var(--cp-border);
+  padding: 10px 14px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.16);
+}
+
+/* A "stepper" composite — left button, numeric centre, right button.
+ * The buttons each meet the 44pt minimum so thumbs can hit them while
+ * a barbell is over the user's chest. */
+.cp-stepper {
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  gap: 0;
+  border: 1px solid var(--cp-border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--cp-surface);
+}
+.cp-stepper button {
+  background: var(--cp-surface);
+  color: var(--cp-text);
+  border: 0;
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.cp-stepper button:hover:not(:disabled) { background: var(--cp-surface-soft); }
+.cp-stepper button:disabled { opacity: 0.4; cursor: not-allowed; }
+.cp-stepper input {
+  border: 0;
+  background: transparent;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 600;
+  min-height: 44px;
+  font-family: var(--font-mono, monospace);
+}
 
 .cp-info {
   display: inline-flex; align-items: center; justify-content: center;
