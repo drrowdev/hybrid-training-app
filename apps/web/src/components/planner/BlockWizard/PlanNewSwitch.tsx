@@ -60,6 +60,7 @@ export function PlanNewSwitch({
     fd.set("startedOn", todayYmd);
     fd.set("daysPerWeek", String(submit.daysPerWeek));
     fd.set("dayIndexOverrides", JSON.stringify(submit.dayIndexOverrides));
+    fd.set("powerEmphasis", submit.power ? "true" : "false");
     const result = await action(fd);
     if (result.ok) {
       router.push("/app/plan");
@@ -135,18 +136,21 @@ export function PlanNewSwitch({
                 style={recentCardStyle(pending)}
               >
                 <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>
-                    {b.archetypeName}{" "}
-                    <span style={{ fontSize: 11, color: "var(--cp-text-muted)", fontWeight: 500 }}>
-                      · {b.daysPerWeek ?? "?"} d/wk · started {b.startedOn}
+                  <div style={{ fontWeight: 600, fontSize: 14, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span>
+                      {b.archetypeName}{" "}
+                      <span style={{ fontSize: 11, color: "var(--cp-text-muted)", fontWeight: 500 }}>
+                        · {b.daysPerWeek ?? "?"} d/wk · started {b.startedOn}
+                      </span>
                     </span>
+                    <StatusBadge status={b.status} />
                   </div>
                   <div style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
                     {b.status === "active"
                       ? "Active — clone restarts the block today"
                       : b.status === "completed"
-                        ? "Completed"
-                        : "Archived"}
+                        ? "Completed — every planned session was logged"
+                        : "Ended early — manually archived"}
                   </div>
                 </div>
                 <span style={{ fontSize: 18, color: "var(--cp-text-muted)" }}>↻</span>
@@ -186,6 +190,77 @@ export function PlanNewSwitch({
         </Link>
       </section>
     </div>
+  );
+}
+
+function StatusBadge({ status }: { status: "active" | "completed" | "archived" }) {
+  if (status === "completed") {
+    return (
+      <span
+        data-testid="block-status-badge"
+        data-status="completed"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 3,
+          fontSize: 10,
+          fontWeight: 600,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+          padding: "2px 7px",
+          borderRadius: 999,
+          background: "rgba(34, 197, 94, 0.12)",
+          color: "rgb(22, 163, 74)",
+          border: "1px solid rgba(34, 197, 94, 0.35)",
+        }}
+      >
+        ✓ Completed
+      </span>
+    );
+  }
+  if (status === "archived") {
+    return (
+      <span
+        data-testid="block-status-badge"
+        data-status="archived"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          fontSize: 10,
+          fontWeight: 600,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+          padding: "2px 7px",
+          borderRadius: 999,
+          background: "var(--cp-surface-muted, rgba(0,0,0,0.04))",
+          color: "var(--cp-text-muted)",
+          border: "1px solid var(--cp-border)",
+        }}
+      >
+        Ended
+      </span>
+    );
+  }
+  return (
+    <span
+      data-testid="block-status-badge"
+      data-status="active"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        fontSize: 10,
+        fontWeight: 600,
+        letterSpacing: "0.04em",
+        textTransform: "uppercase",
+        padding: "2px 7px",
+        borderRadius: 999,
+        background: "var(--cp-accent-soft)",
+        color: "var(--cp-accent)",
+        border: "1px solid var(--cp-accent)",
+      }}
+    >
+      Active
+    </span>
   );
 }
 

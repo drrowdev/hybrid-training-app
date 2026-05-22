@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
+import { maybeCompleteBlock } from "@/lib/planner/completion";
 import { getUserTimezone } from "@/lib/planner/queries";
 
 const checkInSchema = z.object({
@@ -375,7 +376,26 @@ export async function completeSession(formData: FormData): Promise<void> {
     console.error("recomputeRegionState failed:", e);
   }
 
+  // Auto-complete the block if this completion fills the last
+  // un-touched planned_session. Resolve the block via the
+  // planned_session linked to THIS session (link is established at
+  // start time by startSessionFromPlan / startCheckInSession).
+  // Failures here must never block the completion itself.
+  try {
+    const { data: linked } = await supabase
+      .from("planned_sessions")
+      .select("block_id")
+      .eq("completed_session_id", parsed.data.sessionId)
+      .maybeSingle();
+    if (linked?.block_id) {
+      await maybeCompleteBlock(supabase, linked.block_id as string);
+    }
+  } catch (e) {
+    console.error("maybeCompleteBlock failed:", e);
+  }
+
   revalidatePath("/app");
+  revalidatePath("/app/plan");
   revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
   redirect(`/app/sessions/${parsed.data.sessionId}`);
 }
