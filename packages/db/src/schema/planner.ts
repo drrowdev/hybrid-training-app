@@ -90,6 +90,7 @@ export type PrescriptionItemKind =
   | "back_off"
   | "accessory"
   | "tendon"
+  | "power_potentiation"
   | "cardio_z2"
   | "cardio_alactic"
   | "cardio_vo2"
@@ -123,6 +124,16 @@ export type PrescriptionItem = {
   protocolNote?: string;
   intensityLabel?: string;
   notes?: string;
+  /**
+   * Open-ended per-item metadata blob. Power Emphasis Phase 3 uses this
+   * to carry the compensatory-acceleration cue on capped top sets and the
+   * rest-period guidance on `power_potentiation` items (PAPE window:
+   * Seitz & Haff 2016; Boullosa 2018).
+   *
+   * Per schema-discipline (plan §6.8): UI-only, not observable from the
+   * engine — kept off the typed top level on purpose.
+   */
+  meta?: Record<string, unknown>;
 };
 
 export type Prescription = {
