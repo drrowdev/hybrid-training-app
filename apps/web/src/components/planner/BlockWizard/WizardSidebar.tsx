@@ -115,7 +115,7 @@ export function WizardSidebar({
             </>
           )}
 
-          {state.power && <Row icon="⚡" label="Power emphasis" value="On" />}
+          {state.power && <PowerBadgeRow />}
           {state.twoADay && <Row icon="🌗" label="Two-a-day" value="AM + PM split" />}
         </div>
 
@@ -147,6 +147,92 @@ function Row({
       <span style={{ color: "var(--cp-text)", fontWeight: 600, marginLeft: "auto" }}>
         {value ?? "—"}
       </span>
+    </div>
+  );
+}
+
+/**
+ * Click-to-expand power badge. Shows the ⚡ Power chip in the
+ * sidebar's Your Block card; expanding reveals what the toggle
+ * actually affects under the hood.
+ */
+function PowerBadgeRow(): ReactElement {
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      data-testid="power-emphasis-badge"
+      style={{
+        ...rowStyle(false),
+        flexDirection: "column",
+        alignItems: "stretch",
+        gap: 6,
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-controls="power-badge-detail"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          width: "100%",
+          background: "transparent",
+          border: "none",
+          padding: 0,
+          fontFamily: "inherit",
+          color: "inherit",
+          fontSize: 13,
+          textAlign: "left",
+          cursor: "pointer",
+        }}
+      >
+        <span style={iconBoxStyle}>⚡</span>
+        <span style={{ color: "var(--cp-text-muted)" }}>Power emphasis</span>
+        <span
+          data-testid="power-emphasis-chip"
+          style={{
+            marginLeft: "auto",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            fontSize: 10,
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+            padding: "2px 8px",
+            borderRadius: 999,
+            background: "var(--cp-accent-soft, rgba(99, 102, 241, 0.12))",
+            color: "var(--cp-accent)",
+            border: "1px solid var(--cp-accent)",
+          }}
+        >
+          ⚡ Power
+        </span>
+      </button>
+      {open && (
+        <div
+          id="power-badge-detail"
+          style={{
+            fontSize: 11.5,
+            color: "var(--cp-text-muted)",
+            lineHeight: 1.5,
+            padding: "6px 0 2px",
+            borderTop: "1px dashed var(--cp-border)",
+          }}
+        >
+          <div style={{ fontWeight: 600, color: "var(--cp-text)", marginBottom: 4 }}>
+            What this changes
+          </div>
+          <ul style={{ margin: 0, padding: "0 0 0 16px" }}>
+            <li>Heavy-week top set capped at ≤ 90% TM (compensatory acceleration cue).</li>
+            <li>One explosive primer prepended to each strength session (PAP/PAPE).</li>
+            <li>Accessory picker biased toward plyometric / ballistic / Olympic work.</li>
+            <li>Hint: 3-week blocks tend to outperform 4-week marathons here.</li>
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
