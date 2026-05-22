@@ -3,6 +3,17 @@
  */
 import { createClient } from "@/lib/supabase/server";
 import type { Prescription, SessionSlot } from "@hta/db";
+import {
+  addDaysToYmd,
+  isoWeekdayYmd,
+  todayYmd as todayYmdImpl,
+  ymdInTimezone as ymdInTimezoneImpl,
+} from "@/lib/dates";
+
+// Re-exports for back-compat: these helpers used to live in this module.
+// New code should import from "@/lib/dates" directly.
+export const todayYmd = todayYmdImpl;
+export const ymdInTimezone = ymdInTimezoneImpl;
 
 export type ActiveBlock = {
   id: string;
@@ -32,78 +43,39 @@ export type PlannedDay = {
 };
 
 /**
- * Pure YYYY-MM-DD arithmetic. We anchor everything in UTC so the math is
- * timezone-free: parsing as UTC, adding days via setUTCDate, and reading
- * back UTC components never crosses a TZ boundary. This is intentional —
- * the date strings themselves carry no timezone, so we must NOT mix in
- * `getDate()` / `toISOString()` style calls that interpret the same Date
- * value through different lenses.
+ * Pure YYYY-MM-DD arithmetic. Anchored in UTC internally so the math is
+ * timezone-free — see `lib/dates.ts` for the shared primitives. The
+ * thin wrappers below remain here because they're planner-internal.
  */
-function ymdUtc(d: Date): string {
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-}
-
-function parseYmdUtc(iso: string): Date {
-  const [y, m, d] = iso.split("-").map((s) => Number.parseInt(s, 10));
-  return new Date(Date.UTC(y, m - 1, d));
-}
-
 function addDays(iso: string, days: number): string {
-  const d = parseYmdUtc(iso);
-  d.setUTCDate(d.getUTCDate() + days);
-  return ymdUtc(d);
+  return addDaysToYmd(iso, days);
 }
 
 /** Mon=0 ... Sun=6 from a YYYY-MM-DD date string. */
 function isoWeekday(iso: string): number {
-  return (parseYmdUtc(iso).getUTCDay() + 6) % 7;
+  return isoWeekdayYmd(iso);
 }
 
 /**
- * Today as YYYY-MM-DD in the given timezone.
- *
- * Timezone source: the caller should pass the user's profile timezone
- * (`profiles.timezone`, which always has a value — defaults to "UTC").
- * Server-rendered pages fetch the profile already; pass that string in.
- *
- * If no tz is provided we fall back to the host's system timezone — on
- * Vercel that's UTC, on local dev it's whatever the developer's machine
- * is set to. The fallback is only safe for non-user-facing call sites.
- *
- * Why Intl.DateTimeFormat: it correctly handles DST and arbitrary IANA
- * zones. The `en-CA` locale natively renders dates as YYYY-MM-DD, which
- * saves a tedious manual reformat (and avoids re-introducing the old
- * UTC/local mixing bug).
- *
- * TODO(profile-tz): `profiles.timezone` is currently populated from the
- * onboarding wizard (best-effort guess from `Intl.DateTimeFormat().resolvedOptions().timeZone`).
- * A future PR could surface it as an explicit setting so users in
- * unusual TZs can correct an incorrect guess.
+ * Today as YYYY-MM-DD in the given timezone. See `lib/dates.ts` for the
+ * canonical implementation — exported above as a re-export.
  */
-export function todayYmd(tz?: string): string {
-  if (tz) {
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone: tz,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date());
-  }
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 /** Read the current user's profile timezone. Falls back to "UTC". */
-export async function getUserTimezone(): Promise<string> {
+export async function getUserTimezone(userId?: string): Promise<string> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return "UTC";
+  let id = userId;
+  if (!id) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return "UTC";
+    id = user.id;
+  }
   const { data } = await supabase
     .from("profiles")
     .select("timezone")
-    .eq("id", user.id)
+    .eq("id", id)
     .maybeSingle();
   return data?.timezone ?? "UTC";
 }
