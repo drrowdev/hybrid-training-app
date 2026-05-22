@@ -1,9 +1,15 @@
 # Playwright E2E
 
 Foundation for browser-level E2E against `apps/web`. Covers the
-**onboarding** and **plan-creation** critical paths from
-[`AGENTS.md`](../../../AGENTS.md). Auth, session-log, program-run and
-multi-user E2E are still pending — see [Follow-ups](#follow-ups).
+**onboarding**, **plan-creation**, and **multi-user RLS** critical
+paths from [`AGENTS.md`](../../../AGENTS.md). Auth, session-log and
+program-run E2E are still pending — see [Follow-ups](#follow-ups).
+
+> The AGENTS.md mandate `Multi-user E2E — at least one test that mutates
+> state from two browser contexts and verifies the server-canonical
+> state` is now satisfied by `multi-user-rls-desktop.spec.ts`. The
+> engineering rule "RLS on every user-data table … verified by the
+> multi-user e2e test in `apps/web`" has its verification on disk.
 
 ## Layout
 
@@ -12,9 +18,13 @@ apps/web/
 ├── playwright.config.ts        # base URL, projects, webServer
 └── e2e/
     ├── fixtures/seed.ts        # freshUser fixture + skip-if-no-env logic
+    ├── fixtures/auth.ts        # signInAs cookie-injection helper
+    ├── fixtures/seed-blocks.ts # direct-DB seed helpers
+    ├── fixtures/multi-user.ts  # twoUsers fixture (parallel provisioning + cascade cleanup)
     ├── onboarding-mobile.spec.ts
     ├── plan-new-wizard-desktop.spec.ts
-    └── plan-new-run-it-again-desktop.spec.ts
+    ├── plan-new-run-it-again-desktop.spec.ts
+    └── multi-user-rls-desktop.spec.ts
 ```
 
 ## Seed strategy
@@ -100,6 +110,7 @@ Column names in these helpers mirror the Drizzle schema in
 | `onboarding-mobile.spec.ts` (full walk)   | **skipped** | TODO: walk all 5 onboarding steps. Blocked on adding stable `data-testid`s to the wizard step controls.       |
 | `plan-new-wizard-desktop.spec.ts`         | passing  | Walks Step 1 → Step 5 and asserts the gated "Start this block" button is enabled. Post-click create + redirect verification is intentionally not asserted — see `actions.ts` camelCase bug below. |
 | `plan-new-run-it-again-desktop.spec.ts`   | passing  | Seeds a completed block, asserts the picker card renders with the right metadata. Click-to-clone is **not** exercised — same camelCase bug. |
+| `multi-user-rls-desktop.spec.ts`          | passing  | Three scenarios: (A) /app/plan RLS isolation across two browser contexts, (B) concurrent block-creation race via `Promise.all`, (C) read-after-write isolation on /app/settings/training-maxes. Closes the AGENTS.md multi-user-E2E mandate. |
 
 ### Known production bug blocking deeper assertions
 
@@ -187,9 +198,6 @@ a one-spec follow-up PR:
 - **Auth E2E** — sign-up, sign-in, sign-out, magic-link / password-reset.
 - **Session log E2E** — start session, log sets/cardio, mark complete.
 - **Program-run E2E** — multi-day cursor advancement, deload, completion.
-- **Multi-user E2E** — at least one spec that mutates state from two
-  browser contexts and verifies the server-canonical state (catches
-  sync-style races). Required by AGENTS.md.
 - **Visual regression** / screenshot diffs.
 - **Firefox + WebKit projects** (first PR is Chromium-only).
 - **Performance budgets** (Lighthouse / web-vitals in CI).
