@@ -21,18 +21,20 @@ apps/web/
 
 The integration-test layer mandated by `AGENTS.md` (Vitest + real
 Postgres via testcontainers) is **not yet wired**. Until it lands, these
-specs talk to a real Supabase test project via the service-role key.
+specs talk to a Supabase project via the service-role key.
 
-Required environment variables:
+The fixture reads either the `E2E_*` variables (when you want a dedicated
+test project) or falls back to the standard Next.js Supabase variables
+that already exist in `apps/web/.env.local` for local dev:
 
-| Variable                              | Purpose                                      |
-| ------------------------------------- | -------------------------------------------- |
-| `PLAYWRIGHT_BASE_URL`                 | Where the app under test is running. Default `http://localhost:3000`. |
-| `E2E_SUPABASE_URL`                    | Supabase project URL (**must be a test/staging project**). |
-| `E2E_SUPABASE_SERVICE_ROLE_KEY`       | Service-role key — used to create/delete users + seed rows. |
-| `E2E_SUPABASE_ANON_KEY`               | Anon key — used by sign-in flows.            |
+| Variable                              | Fallback                              | Purpose                                                    |
+| ------------------------------------- | ------------------------------------- | ---------------------------------------------------------- |
+| `PLAYWRIGHT_BASE_URL`                 | `http://localhost:3000`               | Where the app under test is running.                       |
+| `E2E_SUPABASE_URL`                    | `NEXT_PUBLIC_SUPABASE_URL`            | Supabase project URL.                                      |
+| `E2E_SUPABASE_SERVICE_ROLE_KEY`       | `SUPABASE_SERVICE_ROLE_KEY`           | Service-role key — used to create/delete users + seed rows. |
+| `E2E_SUPABASE_ANON_KEY`               | `NEXT_PUBLIC_SUPABASE_ANON_KEY`       | Anon key — used by sign-in flows.                          |
 
-When any of these is missing, the affected test **skips** with a clear
+When neither set is configured, the affected test **skips** with a clear
 message rather than failing. That keeps CI green for forks / PRs that
 can't see the secrets.
 
@@ -40,9 +42,13 @@ When the integration-test helper lands, replace `fixtures/seed.ts` with
 a fixture that boots the same testcontainers Postgres, runs the Drizzle
 migrations, and seeds a user directly. The spec shape stays the same.
 
-> ⚠️ **Never point these at the production Supabase project.** The fixture
-> creates and deletes users with the service-role key and seeds rows
-> directly into application tables.
+> ⚠️ **If you don't have a dedicated test Supabase project**, the
+> fallback uses your dev project. Test users are created with
+> `e2e-test-*@example.com` emails and auto-deleted in teardown, so the
+> blast radius is small — but **never** run these against a Supabase
+> project that holds real users you can't lose. When you ship to
+> production, create a separate test project and set the `E2E_*` vars
+> to override the fallback.
 
 ## Running locally
 
