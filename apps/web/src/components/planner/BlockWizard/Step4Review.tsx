@@ -279,6 +279,35 @@ export function Step4Review({
         <div style={cardBodyStyle}>{whyMatchText(state, resolved)}</div>
       </section>
 
+      {state.power && (
+        <section
+          data-testid="power-recommendation-card"
+          style={{ ...reviewCardStyle, borderColor: "var(--cp-accent)" }}
+        >
+          <h3 style={cardHeadStyle}>
+            <span aria-hidden="true" style={{ marginRight: 6 }}>⚡</span>
+            Power emphasis — block-length recommendation
+          </h3>
+          <div style={cardBodyStyle}>
+            Power adaptations plateau faster than strength gains. 3-week blocks with frequent
+            re-cycling tend to outperform 4-week marathons. Consider rotating power emphasis ON /
+            OFF every block.
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: 12,
+                color: "var(--cp-text-muted)",
+                lineHeight: 1.5,
+              }}
+            >
+              Recommended block length: <strong>3 weeks</strong> · this block stays at{" "}
+              <strong>{resolved.weeks} weeks</strong> as designed — the recommendation is a hint,
+              not a cap.
+            </div>
+          </div>
+        </section>
+      )}
+
       <section style={reviewCardStyle}>
         <h3 style={cardHeadStyle}>What the weeks look like</h3>
         <div style={cardBodyStyle}>

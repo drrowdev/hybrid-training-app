@@ -63,10 +63,25 @@ export function Step2Focus({
               Explosive intent on main lifts, extra plyometrics, fewer high-rep accessories. Pairs
               well with a strength focus.
             </div>
+            <div
+              className="wiz-power-disclosure"
+              style={{
+                fontSize: 11.5,
+                color: "var(--cp-text-muted)",
+                marginTop: 6,
+                fontStyle: "italic",
+                opacity: 0.85,
+              }}
+            >
+              Trades top-end strength for explosive output. Best alongside, not instead of, your
+              usual strength block.
+            </div>
           </div>
           <button
             type="button"
             aria-pressed={state.power}
+            aria-label="Add power emphasis"
+            title="Trades top-end strength for explosive output. Best alongside, not instead of, your usual strength block."
             onClick={() => dispatch({ type: "toggle-power" })}
             className="wiz-toggle-switch"
             style={switchStyle(state.power)}
