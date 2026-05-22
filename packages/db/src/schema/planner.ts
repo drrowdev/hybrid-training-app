@@ -36,6 +36,13 @@ export const trainingBlocks = pgTable("training_blocks", {
   notes: text("notes"),
   /** Captured at block start so the plan reflects what the user committed to. */
   daysPerWeek: smallint("days_per_week"),
+  /**
+   * Calendar-day layout chosen in the block wizard's step 5
+   * ("Lay out your week"). Shape: `{ days: number[], twoADay: boolean }` where
+   * day indices are Mon=0..Sun=6. Null when the block was created without the
+   * wizard (legacy path, custom builder).
+   */
+  dayIndexOverrides: jsonb("day_index_overrides").$type<DayIndexOverrides>(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),
@@ -47,6 +54,16 @@ export const trainingBlocks = pgTable("training_blocks", {
 export type TrainingBlock = typeof trainingBlocks.$inferSelect;
 export type NewTrainingBlock = typeof trainingBlocks.$inferInsert;
 export type TrainingBlockStatus = (typeof trainingBlockStatus.enumValues)[number];
+
+/**
+ * Block wizard's step-5 schedule layout. `days` are Mon=0..Sun=6 indices
+ * chosen for training (rest days omitted). `twoADay` mirrors the wizard
+ * toggle and matches the localStorage hint shape.
+ */
+export type DayIndexOverrides = {
+  days: number[];
+  twoADay: boolean;
+};
 
 export const trainingBlockInsert = createInsertSchema(trainingBlocks);
 export const trainingBlockSelect = createSelectSchema(trainingBlocks);
