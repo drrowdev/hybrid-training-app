@@ -77,8 +77,8 @@ export function Step5Schedule({
   return (
     <section>
       <div style={pillStyle}>Step 5 of 5 · Schedule</div>
-      <h1 style={titleStyle}>Lay out your week</h1>
-      <p style={subStyle}>
+      <h1 className="wiz-title" style={titleStyle}>Lay out your week</h1>
+      <p className="wiz-sub" style={subStyle}>
         Pick the days you&apos;ll train. Tap two sessions to swap them — we&apos;ll flag spacing
         issues.
       </p>
@@ -99,7 +99,7 @@ export function Step5Schedule({
         </div>
       )}
 
-      <div style={weekGridStyle}>
+      <div className="wiz-week-grid" style={weekGridStyle}>
         {state.schedule.map((cell, idx) => (
           <DayCell
             key={cell.day}
@@ -152,7 +152,7 @@ function DayCell({
 }): React.ReactElement {
   const isRest = !cell.am && !cell.pm;
   return (
-    <div onClick={onClick} style={dayCellStyle({ isRest, isConflict, isSwapSource, otherSwap })}>
+    <div onClick={onClick} className="wiz-day-cell" style={dayCellStyle({ isRest, isConflict, isSwapSource, otherSwap })}>
       <div style={dayLabelStyle}>
         <span>{DAY_LABELS[cell.day]}</span>
         {isConflict && <span style={{ color: "var(--cp-warning, #d97706)", fontSize: 12 }}>⚠</span>}

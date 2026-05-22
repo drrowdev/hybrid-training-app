@@ -271,8 +271,8 @@ export function Step4Review({
   return (
     <section>
       <div style={pillStyle}>Step 4 of 5 · Review</div>
-      <h1 style={titleStyle}>Confirm and start</h1>
-      <p style={subStyle}>Here&apos;s what the block will look like. Tap start when you&apos;re ready.</p>
+      <h1 className="wiz-title" style={titleStyle}>Confirm and start</h1>
+      <p className="wiz-sub" style={subStyle}>Here&apos;s what the block will look like. Tap start when you&apos;re ready.</p>
 
       <section style={reviewCardStyle}>
         <h3 style={cardHeadStyle}>Why this match?</h3>

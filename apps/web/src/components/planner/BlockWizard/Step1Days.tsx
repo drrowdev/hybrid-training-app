@@ -87,13 +87,13 @@ export function Step1Days({
   return (
     <section>
       <div style={pillStyle}>Step 1 of 5</div>
-      <h1 style={titleStyle}>How many days a week?</h1>
-      <p style={subStyle}>
+      <h1 className="wiz-title" style={titleStyle}>How many days a week?</h1>
+      <p className="wiz-sub" style={subStyle}>
         Be honest about what you&apos;ll actually do. The plan adjusts — 4 consistent days beat 6
         inconsistent ones every time.
       </p>
 
-      <div style={segStyle}>
+      <div className="wiz-days-seg" style={segStyle}>
         {[1, 2, 3, 4, 5, 6, 7].map((n) => {
           const active = state.days === n;
           return (
@@ -128,7 +128,7 @@ export function Step1Days({
       )}
 
       {allowsTwoADays && (
-        <div style={toggleRowStyle}>
+        <div className="wiz-two-a-day-row" style={toggleRowStyle}>
           <div>
             <div style={toggleLabelStyle}>Two-a-day split</div>
             <div style={toggleHintStyle}>{twoADayHint(state)}</div>
@@ -137,9 +137,10 @@ export function Step1Days({
             type="button"
             aria-pressed={state.twoADay}
             onClick={() => dispatch({ type: "toggle-two-a-day" })}
+            className="wiz-toggle-switch"
             style={switchStyle(state.twoADay)}
           >
-            <span style={switchKnobStyle(state.twoADay)} />
+            <span className="wiz-toggle-knob" style={switchKnobStyle(state.twoADay)} />
           </button>
         </div>
       )}

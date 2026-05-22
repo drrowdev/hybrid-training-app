@@ -300,7 +300,7 @@ export function OnboardingWizard({
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      <header style={headerStyle}>
+      <header className="ob-header" style={headerStyle}>
         <ProgressPills total={STEPS.length} current={step} labels={STEPS} />
         <button
           type="button"
@@ -313,7 +313,7 @@ export function OnboardingWizard({
         </button>
       </header>
 
-      <main className="cp-card" style={{ padding: 28, display: "grid", gap: 18 }}>
+      <main className="cp-card ob-card" style={{ padding: 28, display: "grid", gap: 18 }}>
         {currentLabel === "Welcome" && (
           <WelcomeStep />
         )}
@@ -376,7 +376,7 @@ export function OnboardingWizard({
         )}
 
         {currentLabel !== "Build your block" && (
-          <div style={navRowStyle}>
+          <div className="ob-nav" style={navRowStyle}>
             <button
               type="button"
               onClick={goBack}
@@ -584,9 +584,9 @@ function TmStep({
 
           return (
             <div key={g.role} style={tmCardStyle(mode)}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div className="ob-tm-card-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <Label>{g.label}</Label>
-                <div style={{ display: "flex", gap: 4 }}>
+                <div className="ob-tm-mode-row" style={{ display: "flex", gap: 4 }}>
                   {(["enter", "seed", "skip"] as const).map((m) => (
                     <button
                       key={m}
@@ -607,6 +607,7 @@ function TmStep({
 
               {mode === "enter" && (
                 <div
+                  className="ob-tm-input-row"
                   style={{
                     display: "grid",
                     gridTemplateColumns: "1fr 110px",
@@ -753,7 +754,7 @@ function ProgressPills({
   labels: readonly string[];
 }) {
   return (
-    <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+    <div className="ob-progress" style={{ display: "flex", gap: 4, alignItems: "center" }}>
       {Array.from({ length: total }).map((_, i) => (
         <span
           key={i}
@@ -764,6 +765,8 @@ function ProgressPills({
             borderRadius: 999,
             background: i <= current ? "var(--cp-accent)" : "var(--cp-border)",
             transition: "width .15s, background .15s",
+            display: "inline-block",
+            flexShrink: 0,
           }}
         />
       ))}
