@@ -36,7 +36,8 @@ type Fixtures = {
 };
 
 async function provisionUser(admin: SupabaseClient): Promise<SeededUser> {
-  const email = `e2e+${Date.now()}+${Math.random().toString(36).slice(2, 10)}@example.test`;
+  // See fixtures/seed.ts for why the @hta-e2e.com domain is used.
+  const email = `e2e+${Date.now()}+${Math.random().toString(36).slice(2, 10)}@hta-e2e.com`;
   const password = `E2E-${Math.random().toString(36).slice(2)}-${Date.now()}`;
   const { data, error } = await admin.auth.admin.createUser({
     email,

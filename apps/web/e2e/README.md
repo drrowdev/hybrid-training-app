@@ -101,7 +101,7 @@ Column names in these helpers mirror the Drizzle schema in
 
 > ⚠️ **If you don't have a dedicated test Supabase project**, the
 > fallback uses your dev project. Test users are created with
-> `e2e+<ts>+<rand>@example.test` emails and auto-deleted in teardown,
+> `e2e+<ts>+<rand>@hta-e2e.com` emails and auto-deleted in teardown,
 > so the blast radius is small — but **never** run these against a
 > Supabase project that holds real users you can't lose. When you ship
 > to production, create a separate test project and set the `E2E_*`
@@ -115,17 +115,18 @@ UI) navigate Supabase's `/auth/v1/verify` action URL minted by
 Playwright `baseURL`. For that to work the Supabase project must:
 
 1. Have the `baseURL` origin (e.g. `http://localhost:3000`) added under
-   **Authentication → URL Configuration → Redirect URLs**, otherwise
+   **Authentication → URL Configuration → Redirect URLs** as
+   `http://localhost:3000/**` (wildcard path required). Without this,
    Supabase silently overrides the `redirectTo` we pass and falls back
    to the project Site URL with an implicit-flow `#access_token=…`
    fragment that `/auth/callback` can't process.
 2. Use PKCE as the default email-link flow (the `@supabase/ssr` default;
    no extra setting needed in modern projects).
-3. For scenario B specifically: allow the `@example.com` test domain
-   (or whichever the spec uses) in the project's email-validation
-   allow-list, and either have SMTP wired or accept that the
-   confirmation email won't actually send — the spec mints the
-   confirmation link directly via the admin API.
+3. For scenario B specifically: the spec uses `@hta-e2e.com` emails
+   (a non-existent .com domain that Supabase's email validator accepts
+   — RFC 2606 reserved TLDs like `.test` and `@example.com` are
+   hardcoded-rejected by Supabase with no dashboard opt-out). The admin
+   API mints the confirmation link directly, so no SMTP is needed.
 
 When any of these aren't satisfied the scenario **skips with a clear
 actionable message** rather than failing. Scenarios C (sign-out) and D
