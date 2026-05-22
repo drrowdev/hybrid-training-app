@@ -19,11 +19,12 @@ export default async function NewCustomBlockPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("training_days_per_week, allows_two_a_days")
+    .select("training_days_per_week, allows_two_a_days, timezone")
     .eq("id", user.id)
     .maybeSingle();
   const defaultDaysPerWeek = Number(profile?.training_days_per_week ?? 4);
   const allowsTwoADays = Boolean(profile?.allows_two_a_days ?? false);
+  const timezone = profile?.timezone ?? "UTC";
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
@@ -40,7 +41,7 @@ export default async function NewCustomBlockPage() {
       </header>
 
       <CustomBlockBuilder
-        defaultStartedOn={todayYmd()}
+        defaultStartedOn={todayYmd(timezone)}
         defaultDaysPerWeek={defaultDaysPerWeek}
         hasAnyStrengthTm={hasAnyStrengthTm}
         allowsTwoADays={allowsTwoADays}

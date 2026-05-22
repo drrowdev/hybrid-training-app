@@ -72,7 +72,7 @@ export default async function PlanPage({
   const pmWindowStart = profile?.pm_window_start ?? "17:00:00";
 
   const sp = await searchParams;
-  const today = todayYmd();
+  const today = todayYmd(timezone);
   const todayWeek = all.find((d) => d.date === today)?.weekIndex;
   const initialWeek =
     sp?.week != null && !Number.isNaN(Number(sp.week))
@@ -113,6 +113,7 @@ export default async function PlanPage({
         all={all}
         weeks={block.weeks}
         currentWeek={initialWeek}
+        today={today}
       />
 
       <nav style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }} aria-label="Block weeks">
@@ -163,6 +164,7 @@ export default async function PlanPage({
             key={dayIndex}
             dayName={DOW[dayIndex]!}
             plans={plans}
+            today={today}
             timezone={timezone}
             amWindowStart={amWindowStart}
             pmWindowStart={pmWindowStart}
@@ -215,17 +217,18 @@ function slotOrder(s: "am" | "pm" | "single"): number {
 function DayCard({
   dayName,
   plans,
+  today,
   timezone,
   amWindowStart,
   pmWindowStart,
 }: {
   dayName: string;
   plans: PlannedCell[];
+  today: string;
   timezone: string;
   amWindowStart: string;
   pmWindowStart: string;
 }) {
-  const today = todayYmd();
   if (plans.length === 0) {
     return (
       <div
@@ -626,12 +629,13 @@ function BlockCalendar({
   all,
   weeks,
   currentWeek,
+  today,
 }: {
   all: { weekIndex: number; dayIndex: number; date: string; completedSessionId: string | null; skippedAt: string | null }[];
   weeks: number;
   currentWeek: number;
+  today: string;
 }) {
-  const today = todayYmd();
   // Index by (week, day) for O(1) lookup.
   const byCell = new Map<string, { hasPlan: boolean; completed: boolean; skipped: boolean; date: string }>();
   for (const d of all) {

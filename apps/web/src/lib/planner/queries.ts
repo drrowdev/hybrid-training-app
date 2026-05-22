@@ -31,26 +31,81 @@ export type PlannedDay = {
   date: string;
 };
 
-function ymd(d: Date): string {
-  return d.toISOString().slice(0, 10);
+/**
+ * Pure YYYY-MM-DD arithmetic. We anchor everything in UTC so the math is
+ * timezone-free: parsing as UTC, adding days via setUTCDate, and reading
+ * back UTC components never crosses a TZ boundary. This is intentional —
+ * the date strings themselves carry no timezone, so we must NOT mix in
+ * `getDate()` / `toISOString()` style calls that interpret the same Date
+ * value through different lenses.
+ */
+function ymdUtc(d: Date): string {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
+function parseYmdUtc(iso: string): Date {
+  const [y, m, d] = iso.split("-").map((s) => Number.parseInt(s, 10));
+  return new Date(Date.UTC(y, m - 1, d));
 }
 
 function addDays(iso: string, days: number): string {
-  const d = new Date(iso + "T00:00:00");
-  d.setDate(d.getDate() + days);
-  return ymd(d);
+  const d = parseYmdUtc(iso);
+  d.setUTCDate(d.getUTCDate() + days);
+  return ymdUtc(d);
 }
 
-/** Mon=0 ... Sun=6 from a JS Date. */
+/** Mon=0 ... Sun=6 from a YYYY-MM-DD date string. */
 function isoWeekday(iso: string): number {
-  const d = new Date(iso + "T00:00:00");
-  return (d.getDay() + 6) % 7;
+  return (parseYmdUtc(iso).getUTCDay() + 6) % 7;
 }
 
-/** Today as YYYY-MM-DD in local time. */
-export function todayYmd(): string {
+/**
+ * Today as YYYY-MM-DD in the given timezone.
+ *
+ * Timezone source: the caller should pass the user's profile timezone
+ * (`profiles.timezone`, which always has a value — defaults to "UTC").
+ * Server-rendered pages fetch the profile already; pass that string in.
+ *
+ * If no tz is provided we fall back to the host's system timezone — on
+ * Vercel that's UTC, on local dev it's whatever the developer's machine
+ * is set to. The fallback is only safe for non-user-facing call sites.
+ *
+ * Why Intl.DateTimeFormat: it correctly handles DST and arbitrary IANA
+ * zones. The `en-CA` locale natively renders dates as YYYY-MM-DD, which
+ * saves a tedious manual reformat (and avoids re-introducing the old
+ * UTC/local mixing bug).
+ *
+ * TODO(profile-tz): `profiles.timezone` is currently populated from the
+ * onboarding wizard (best-effort guess from `Intl.DateTimeFormat().resolvedOptions().timeZone`).
+ * A future PR could surface it as an explicit setting so users in
+ * unusual TZs can correct an incorrect guess.
+ */
+export function todayYmd(tz?: string): string {
+  if (tz) {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+  }
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Read the current user's profile timezone. Falls back to "UTC". */
+export async function getUserTimezone(): Promise<string> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return "UTC";
+  const { data } = await supabase
+    .from("profiles")
+    .select("timezone")
+    .eq("id", user.id)
+    .maybeSingle();
+  return data?.timezone ?? "UTC";
 }
 
 /** Date for week i, day j of a block that started on `startedOn` (snapping start to Monday of that week). */
@@ -112,8 +167,11 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
 export async function getTodayPlannedSessions(): Promise<PlannedDay[]> {
   const block = await getActiveBlock();
   if (!block) return [];
-  const all = await getPlannedDays(block.id, block.startedOn);
-  const today = todayYmd();
+  const [all, tz] = await Promise.all([
+    getPlannedDays(block.id, block.startedOn),
+    getUserTimezone(),
+  ]);
+  const today = todayYmd(tz);
   return all.filter((d) => d.date === today);
 }
 
@@ -127,8 +185,11 @@ export async function getTodayPlannedSession(): Promise<PlannedDay | null> {
 export async function getUpcomingPlannedSessions(limit = 3): Promise<PlannedDay[]> {
   const block = await getActiveBlock();
   if (!block) return [];
-  const all = await getPlannedDays(block.id, block.startedOn);
-  const today = todayYmd();
+  const [all, tz] = await Promise.all([
+    getPlannedDays(block.id, block.startedOn),
+    getUserTimezone(),
+  ]);
+  const today = todayYmd(tz);
   return all
     .filter((d) => d.date > today && !d.completedSessionId && !d.skippedAt)
     .slice(0, limit);
