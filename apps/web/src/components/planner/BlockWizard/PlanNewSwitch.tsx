@@ -60,6 +60,7 @@ export function PlanNewSwitch({
     fd.set("startedOn", todayYmd);
     fd.set("daysPerWeek", String(submit.daysPerWeek));
     fd.set("dayIndexOverrides", JSON.stringify(submit.dayIndexOverrides));
+    fd.set("powerEmphasis", submit.power ? "true" : "false");
     const result = await action(fd);
     if (result.ok) {
       router.push("/app/plan");
