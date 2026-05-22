@@ -62,7 +62,12 @@ export function AppShell({
           ) : null}
           <ThemeToggle />
           <form action={signOutAction}>
-            <button type="submit" className="cp-btn ghost" style={{ width: "100%" }}>
+            <button
+              type="submit"
+              data-testid="sign-out-button"
+              className="cp-btn ghost"
+              style={{ width: "100%" }}
+            >
               Sign out
             </button>
           </form>
