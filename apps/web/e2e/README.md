@@ -231,15 +231,16 @@ a one-spec follow-up PR:
 - **Firefox + WebKit projects** (first PR is Chromium-only).
 - **Performance budgets** (Lighthouse / web-vitals in CI).
 
-### Known TZ-skew in `apps/web/src/lib/planner/queries.ts::dayDate`
+### TZ-skew in `apps/web/src/lib/planner/queries.ts::dayDate` (fixed)
 
-`dayDate` mixes UTC and local-date math: its `ymd` helper uses
-`d.toISOString().slice(0, 10)` (UTC) while `todayYmd` uses local
+`dayDate` previously mixed UTC and local-date math: its `ymd` helper
+used `d.toISOString().slice(0, 10)` (UTC) while `todayYmd` used local
 getFullYear/getMonth/getDate. In timezones with a non-zero UTC offset
-this can shift which `(week_index, day_index)` pair resolves to today
-by ±1–2 days. The program-run fixture replicates this math 1:1 in
-`fixtures/program-run.ts::productionDayDate` and queries the DB to
-identify whichever row /app surfaces as "today", so the spec is robust
-to the skew. The skew itself is out of scope for the program-run E2E
-PR (no production behavior changes); fixing it would be a separate PR
-that touches `queries.ts` and any consumer that re-derives dates.
+this could shift which `(week_index, day_index)` pair resolved to today
+by ±1–2 days. Fixed in `fix(planner): use timezone-aware date arithmetic
+for today resolution`: `dayDate` is now pure UTC string-math (no TZ
+mixing) and `todayYmd(tz)` formats the current instant via
+`Intl.DateTimeFormat` in the user's profile timezone. The
+`fixtures/program-run.ts::productionDayDate` helper now mirrors the
+corrected math, and `__tests__/daydate-tz.test.ts` guards against
+regression in UTC / Europe/Helsinki / America/Los_Angeles.

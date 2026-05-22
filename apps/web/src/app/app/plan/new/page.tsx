@@ -38,10 +38,11 @@ export default async function NewBlockPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("allows_two_a_days")
+    .select("allows_two_a_days, timezone")
     .eq("id", user.id)
     .maybeSingle();
   const allowsTwoADays = Boolean(profile?.allows_two_a_days ?? false);
+  const timezone = profile?.timezone ?? "UTC";
 
   // ── TM readiness per wizard-resolvable archetype ──
   const tmReadinessByArchetype = Object.fromEntries(
@@ -97,7 +98,7 @@ export default async function NewBlockPage() {
         recentBlocks={recentBlocks}
         tmReadinessByArchetype={tmReadinessByArchetype}
         allowsTwoADays={allowsTwoADays}
-        todayYmd={todayYmd()}
+        todayYmd={todayYmd(timezone)}
         action={createBlock}
       />
     </div>
