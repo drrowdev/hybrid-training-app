@@ -70,6 +70,7 @@ type SeededUser = {
 type Fixtures = {
   seedConfig: SeedConfig;
   freshUser: SeededUser;
+  admin: import("@supabase/supabase-js").SupabaseClient;
 };
 
 /**
@@ -108,6 +109,13 @@ export const test = base.extend<Fixtures>({
 
     // Best-effort cleanup. Failures here should not fail the test run.
     await admin.auth.admin.deleteUser(userId).catch(() => {});
+  },
+  admin: async ({ seedConfig }, use) => {
+    const { createClient } = await import("@supabase/supabase-js");
+    const client = createClient(seedConfig.supabaseUrl, seedConfig.serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    await use(client);
   },
   /* eslint-enable react-hooks/rules-of-hooks */
 });
