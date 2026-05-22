@@ -296,7 +296,11 @@ function TodaySessionCard({
   if (completedToday.length > 0 && plannedToday.length <= completedToday.length) {
     // All planned slots for today are logged.
     return (
-      <section className="cp-card" style={{ padding: 20, display: "grid", gap: 12 }}>
+      <section
+        className="cp-card"
+        data-testid="today-logged"
+        style={{ padding: 20, display: "grid", gap: 12 }}
+      >
         <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
           Today, so far
         </div>
@@ -316,7 +320,11 @@ function TodaySessionCard({
 
   if (plannedToday.length === 0) {
     return (
-      <section className="cp-card" style={{ padding: 20, display: "grid", gap: 12 }}>
+      <section
+        className="cp-card"
+        data-testid="today-rest"
+        style={{ padding: 20, display: "grid", gap: 12 }}
+      >
         <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
           Today
         </div>
@@ -424,7 +432,11 @@ function PlannedSessionCard({
   const slotLabel =
     planned.slot === "am" ? "Morning" : planned.slot === "pm" ? "Evening" : "Today's session";
   return (
-    <section className="cp-card" style={{ padding: 20, display: "grid", gap: 12, borderColor: "var(--cp-accent)" }}>
+    <section
+      className="cp-card"
+      data-testid={`today-card-${planned.id}`}
+      style={{ padding: 20, display: "grid", gap: 12, borderColor: "var(--cp-accent)" }}
+    >
       <div style={{ fontSize: 11, color: "var(--cp-accent)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
         {isTwoADay && planned.slot !== "single" ? (
           <span>
