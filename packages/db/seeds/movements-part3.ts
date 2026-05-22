@@ -169,7 +169,7 @@ const OTHER_CARDIO: NewMovement[] = [
   m("ski-erg", "Ski Erg", { pattern: "cardio", primaryRegion: "lumbar_trunk", secondaryRegions: ["shoulder_scapular"], primaryMuscles: ["lats", "abs", "triceps"], secondaryMuscles: ["chest", "mid_back"], interferenceCost: "low_moderate", equipment: "ski-erg", metadata: { modality: "ski-erg", impact: "none" } }),
 ];
 
-// ─── plyo / power (12) ───
+// ─── plyo / power (18) ───
 const plyo = (slug: string, name: string, opts: MoveOpts = {}): NewMovement =>
   m(slug, name, {
     pattern: "plyometric",
@@ -196,9 +196,17 @@ const PLYO: NewMovement[] = [
   plyo("med-ball-slam", "Med Ball Slam", { equipment: "med-ball", primaryMuscles: ["abs", "lats"], highStrainTendon: false, metadata: { emphasis: "explosive-trunk" } }),
   plyo("med-ball-chest-pass", "Med Ball Chest Pass", { equipment: "med-ball", primaryMuscles: ["chest", "triceps", "front_delts"], primaryRegion: "shoulder_scapular", highStrainTendon: false }),
   plyo("med-ball-rotational-throw", "Med Ball Rotational Throw", { equipment: "med-ball", primaryMuscles: ["obliques", "abs"], primaryRegion: "lumbar_trunk", highStrainTendon: false, bilateral: false }),
+  // power_plyometric additions (PR #22 follow-up — proposed slugs that didn't exist in the catalog).
+  plyo("hurdle-hop", "Hurdle Hop", { equipment: "hurdles", primaryMuscles: ["calves", "quads"], secondaryMuscles: ["glutes", "abs"], primaryRegion: "foot_ankle_calf", metadata: { emphasis: "reactive-strength", impact: "high" } }),
+  plyo("skater-jump", "Skater Jump", { equipment: "bodyweight", primaryMuscles: ["glutes", "quads"], secondaryMuscles: ["abs", "calves", "abductors"], bilateral: false, metadata: { emphasis: "frontal-plane-power", impact: "high" } }),
+  plyo("split-squat-jump", "Split Squat Jump", { equipment: "bodyweight", primaryMuscles: ["quads", "glutes"], secondaryMuscles: ["calves", "abs", "hamstrings"], bilateral: false, metadata: { emphasis: "single-leg-power", impact: "high" } }),
+  // power_ballistic additions — loaded / explosive-intent plyometrics. Tagged in 0024.
+  plyo("jump-squat", "Jump Squat", { equipment: "barbell-or-bodyweight", primaryMuscles: ["quads", "glutes"], secondaryMuscles: ["calves", "abs", "hamstrings"], isCompound: true, axialLoad: "high", metadata: { emphasis: "loaded-vertical-power", impact: "high" } }),
+  plyo("banded-jump", "Banded Jump", { equipment: "band", primaryMuscles: ["quads", "glutes"], secondaryMuscles: ["calves", "abs", "hamstrings"], metadata: { emphasis: "eccentric-overload", impact: "high" } }),
+  plyo("medicine-ball-overhead-throw", "Med Ball Overhead Throw", { equipment: "med-ball", primaryMuscles: ["glutes", "hamstrings", "lats"], secondaryMuscles: ["abs", "front_delts", "lower_back"], primaryRegion: "hamstring_posterior", secondaryRegions: ["lumbar_trunk", "shoulder_scapular"], highStrainTendon: false, metadata: { emphasis: "posterior-chain-throw", impact: "low" } }),
 ];
 
-// ─── Olympic lifts (8) ───
+// ─── Olympic lifts (12) ───
 const oly = (slug: string, name: string, opts: MoveOpts = {}): NewMovement =>
   m(slug, name, {
     pattern: "olympic",
@@ -222,6 +230,12 @@ const OLYMPIC: NewMovement[] = [
   oly("hang-snatch", "Hang Snatch", { equipment: "barbell" }),
   oly("snatch-pull", "Snatch Pull", { equipment: "barbell" }),
   oly("push-jerk", "Push Jerk", { equipment: "barbell", primaryMuscles: ["front_delts", "triceps", "quads"], primaryRegion: "shoulder_scapular" }),
+  // power_olympic additions (PR #22 follow-up — proposed slugs that didn't exist in the catalog).
+  oly("split-jerk", "Split Jerk", { equipment: "barbell", primaryMuscles: ["front_delts", "triceps"], secondaryMuscles: ["quads", "glutes", "abs", "side_delts"], primaryRegion: "shoulder_scapular", metadata: { emphasis: "split-stance-overhead-power" } }),
+  oly("dumbbell-snatch", "Dumbbell Snatch", { equipment: "dumbbell", primaryMuscles: ["hamstrings", "glutes", "front_delts", "traps"], secondaryMuscles: ["lower_back", "abs", "quads"], bilateral: false, axialLoad: "moderate" }),
+  oly("kettlebell-snatch", "Kettlebell Snatch", { equipment: "kettlebell", primaryMuscles: ["hamstrings", "glutes", "front_delts"], secondaryMuscles: ["lower_back", "abs", "traps"], bilateral: false, axialLoad: "moderate" }),
+  // power_ballistic + olympic-derivative — KB clean into jerk.
+  oly("kb-clean-and-jerk", "Kettlebell Clean & Jerk", { equipment: "kettlebell", primaryMuscles: ["hamstrings", "glutes", "front_delts", "triceps"], secondaryMuscles: ["lower_back", "abs", "traps", "quads"], axialLoad: "moderate", metadata: { emphasis: "posterior-chain-into-overhead" } }),
 ];
 
 // ─── tendon / resilience (15) — Baar 2017 HIGH protocols ───
