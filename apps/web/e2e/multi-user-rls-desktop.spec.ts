@@ -39,7 +39,10 @@ const PLAN_URL_RE = /\/app\/plan(?:\?|$|#)/;
  */
 async function walkWizardAndStart(page: Page): Promise<void> {
   await page.goto("/app/plan/new");
-  await page.waitForLoadState("networkidle");
+  // Intentionally no waitForLoadState("networkidle"): Next.js dev keeps an
+  // HMR websocket open and emits background RSC prefetches, so networkidle
+  // is unreliable and adds multi-second overhead. The next assertion
+  // auto-waits for the wizard's first interactive button.
   await page.getByRole("button", { name: /build a new block/i }).click();
 
   await expect(page.getByRole("heading", { name: /how many days/i })).toBeVisible();
@@ -70,7 +73,7 @@ async function walkWizardAndStart(page: Page): Promise<void> {
  */
 async function walkWizardToStep5(page: Page): Promise<void> {
   await page.goto("/app/plan/new");
-  await page.waitForLoadState("networkidle");
+  // See walkWizardAndStart re: dropping networkidle.
   await page.getByRole("button", { name: /build a new block/i }).click();
 
   await expect(page.getByRole("heading", { name: /how many days/i })).toBeVisible();
@@ -135,14 +138,28 @@ test.describe("@desktop multi-user RLS", () => {
     admin,
     baseURL,
   }) => {
+    // Scenario A walks the wizard UI twice (once per user) within a
+    // single test. Each walk takes ~10s and under parallel-load
+    // (`fullyParallel: true` + multiple workers hammering the Next.js
+    // dev server) page transitions slow further as Turbopack contends
+    // on route compilation. The default 30s test timeout leaves no
+    // headroom; we extend it to 60s rather than mask the work with
+    // an arbitrary waitForTimeout. Scenarios B (parallel start) and C
+    // (no wizard walk) stay on the default.
+    test.setTimeout(60_000);
+
     const url = baseURL ?? "http://localhost:3000";
     const { userA, userB } = twoUsers;
 
     const ctxA = await browser.newContext();
     const ctxB = await browser.newContext();
     try {
-      await prepUserForWizard(admin, userA, ctxA, seedConfig, url);
-      await prepUserForWizard(admin, userB, ctxB, seedConfig, url);
+      // Prep both users concurrently — independent admin-API calls, no
+      // ordering dependency. Saves ~2-4s wall-clock vs. sequential.
+      await Promise.all([
+        prepUserForWizard(admin, userA, ctxA, seedConfig, url),
+        prepUserForWizard(admin, userB, ctxB, seedConfig, url),
+      ]);
 
       const pageA = await ctxA.newPage();
       const pageB = await ctxB.newPage();
@@ -157,7 +174,6 @@ test.describe("@desktop multi-user RLS", () => {
 
       // 2) User B opens /app/plan — must see the empty state, not A's block.
       await pageB.goto("/app/plan");
-      await pageB.waitForLoadState("networkidle");
       await expect(pageB.getByText(/no active block/i)).toBeVisible();
       await expect(
         pageB.getByRole("link", { name: /start a block/i }),
@@ -170,7 +186,6 @@ test.describe("@desktop multi-user RLS", () => {
       // 4) User A refreshes /app/plan — must STILL see only their own
       //    block, not B's. We assert via the canonical DB state too.
       await pageA.goto("/app/plan");
-      await pageA.waitForLoadState("networkidle");
       await expect(pageA.getByText(/no active block/i)).toHaveCount(0);
 
       // 5) DB invariants: exactly one active block per user, total = 2,
