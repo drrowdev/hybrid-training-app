@@ -1,8 +1,18 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { completeOnboarding, skipOnboarding } from "@/lib/onboarding/actions";
+import {
+  saveOnboardingProfile,
+  saveOnboardingTms,
+  finishOnboarding,
+  skipOnboarding,
+} from "@/lib/onboarding/actions";
 import { OnboardingWizard, type RoleCandidates } from "@/components/onboarding/OnboardingWizard";
-import { STRENGTH_ROLE_CANDIDATES, STRENGTH_ROLE_LABELS, type StrengthRole } from "@/lib/planner/archetypes";
+import {
+  STRENGTH_ROLE_CANDIDATES,
+  STRENGTH_ROLE_LABELS,
+  type StrengthRole,
+} from "@/lib/planner/archetypes";
+import { needsOnboarding } from "@/lib/onboarding/gate";
 
 const MAIN_ROLES: StrengthRole[] = ["squat", "horizontal_press", "deadlift", "vertical_press"];
 
@@ -13,17 +23,31 @@ export default async function OnboardingPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("display_name, units, training_days_per_week, allows_two_a_days, onboarded_at")
-    .eq("id", user.id)
-    .maybeSingle();
+  const [{ data: profile }, { count: tmCount }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("display_name, units, bodyweight_kg, onboarded_at")
+      .eq("id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("training_maxes")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id),
+  ]);
 
-  // Already onboarded? Skip the wizard and send them straight to the app.
-  if (profile?.onboarded_at) redirect("/app");
+  // If the user is already done, don't trap them in onboarding.
+  if (
+    !needsOnboarding({
+      hasAnyTm: (tmCount ?? 0) > 0,
+      onboardedAt: profile?.onboarded_at ?? null,
+    })
+  ) {
+    redirect("/app");
+  }
 
-  // Pull every candidate movement for the four main roles so the wizard can
-  // offer the same per-role dropdown the Settings → Training maxes page does.
+  // Catalog: every candidate movement for the four main roles, so the
+  // wizard can render the same per-role variant picker the Settings →
+  // Training maxes page uses.
   const allSlugs = MAIN_ROLES.flatMap((r) => STRENGTH_ROLE_CANDIDATES[r]);
   const { data: movements } = await supabase
     .from("movements")
@@ -45,10 +69,11 @@ export default async function OnboardingPage() {
     <OnboardingWizard
       initialDisplayName={profile?.display_name ?? ""}
       initialUnits={(profile?.units as "metric" | "imperial") ?? "metric"}
-      initialDaysPerWeek={Number(profile?.training_days_per_week ?? 4)}
-      initialAllowsTwoADays={Boolean(profile?.allows_two_a_days ?? false)}
+      initialBodyweightKg={profile?.bodyweight_kg ? Number(profile.bodyweight_kg) : null}
       roleCandidates={roleCandidates}
-      completeAction={completeOnboarding}
+      saveProfileAction={saveOnboardingProfile}
+      saveTmsAction={saveOnboardingTms}
+      finishAction={finishOnboarding}
       skipAction={skipOnboarding}
     />
   );

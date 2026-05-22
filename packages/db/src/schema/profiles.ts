@@ -45,6 +45,12 @@ export const profiles = pgTable("profiles", {
   /** When the first-run onboarding wizard finished or was skipped. null = show wizard. */
   onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
   /**
+   * Self-reported training age, captured at onboarding. Drives DC-G5
+   * (cold-start tier): `lt_1y` → consumer load tier on the first block.
+   * Constrained at DB level to {lt_1y, 1_3y, gte_3y}; null = unknown.
+   */
+  trainingExperience: text("training_experience"),
+  /**
    * User is open to occasional two-a-day sessions (AM lift + PM cardio).
    * Engine support is deferred; this only records the preference for now.
    * See research-new §interference: ≥6h gap between modalities respects AMPK/mTORC1.
