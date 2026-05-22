@@ -12,8 +12,10 @@
  *     "Start this block" surfaces an inline "Set your training maxes first"
  *     error rather than calling the server action.
  *
- * The localStorage hint key ``hta-day-pref-v1`` matches the mockup shape;
- * the canonical source after Start is the new ``day_index_overrides`` column.
+ * Day-pattern hints are persisted per-archetype × per-session-count under
+ * the ``hta-day-pref-v2`` localStorage key (see ``lib/planner/wizard/day-pref``);
+ * legacy ``hta-day-pref-v1`` values are migrated on first read. The canonical
+ * source after Start is the ``day_index_overrides`` column.
  */
 "use client";
 
@@ -36,17 +38,19 @@ import {
   isHighCNS,
   scheduleSignature,
   sequencingWarnings,
-  type DayPref,
   type ScheduleCell,
 } from "@/lib/planner/wizard/schedule";
+import {
+  migrateV1IfNeeded,
+  readDayPref,
+  writeDayPref,
+} from "@/lib/planner/wizard/day-pref";
 import { Step1Days } from "./Step1Days";
 import { Step2Focus } from "./Step2Focus";
 import { Step3Secondary } from "./Step3Secondary";
 import { Step4Review } from "./Step4Review";
 import { Step5Schedule } from "./Step5Schedule";
 import { WizardSidebar } from "./WizardSidebar";
-
-const PREF_KEY = "hta-day-pref-v1";
 
 export type WizardSubmit = {
   archetypeId: ResolvedArchetype["id"];
@@ -112,7 +116,12 @@ export function BlockWizard({
       secondary: state.secondary,
       twoADay: state.twoADay,
     });
-    const pref = loadDayPref();
+    const sessionCount = sessions.length;
+    const storage = typeof window === "undefined" ? null : window.localStorage;
+    if (storage) {
+      migrateV1IfNeeded(storage, resolved.id, sessionCount);
+    }
+    const pref = storage ? readDayPref(storage, resolved.id, sessionCount) : null;
     const used = applySavedPrefIfPossible(cells, pref, state.twoADay);
     dispatch({ type: "set-schedule", schedule: cells, sig, usingSavedPref: used });
   }, [state.step, state.scheduleSig, state.goal, state.secondary, state.twoADay, state.power, resolved]);
@@ -145,7 +154,13 @@ export function BlockWizard({
     if (!out) return;
     const usedDays = state.schedule.filter((c) => c.am || c.pm).map((c) => c.day);
     const dayIndexOverrides = { days: usedDays, twoADay: state.twoADay };
-    saveDayPref(dayIndexOverrides);
+    if (typeof window !== "undefined") {
+      const sessionCount = state.schedule.reduce(
+        (n, c) => n + (c.am ? 1 : 0) + (c.pm ? 1 : 0),
+        0,
+      );
+      writeDayPref(window.localStorage, resolved.id, sessionCount, dayIndexOverrides);
+    }
     startTransition(async () => {
       const result = await onComplete({
         archetypeId: out.archetypeId,
@@ -220,32 +235,6 @@ export function BlockWizard({
       </aside>
     </div>
   );
-}
-
-// ── Persistence helpers (mockup parity) ───────────────────────────────────
-
-function loadDayPref(): DayPref | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(PREF_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { days?: unknown; twoADay?: unknown };
-    if (!Array.isArray(parsed.days)) return null;
-    if (typeof parsed.twoADay !== "boolean") return null;
-    if (!parsed.days.every((d): d is number => typeof d === "number")) return null;
-    return { days: parsed.days as number[], twoADay: parsed.twoADay };
-  } catch {
-    return null;
-  }
-}
-
-function saveDayPref(pref: DayPref): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(PREF_KEY, JSON.stringify(pref));
-  } catch {
-    // localStorage blocked — fine, the DB column is canonical.
-  }
 }
 
 // ── Local layout styles (kept inline so the wizard is self-contained) ─────
