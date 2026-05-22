@@ -1,4 +1,29 @@
 import { defineConfig, devices } from "@playwright/test";
+import { existsSync, readFileSync } from "fs";
+import { resolve } from "path";
+
+// Load apps/web/.env.local into process.env so e2e tests can see the
+// Supabase credentials Next.js auto-loads for the dev server. We don't
+// pull in dotenv to avoid an extra dev dep — the file is line-based
+// KEY=VALUE so a 10-line parser is enough.
+const envPath = resolve(__dirname, ".env.local");
+if (existsSync(envPath)) {
+  for (const line of readFileSync(envPath, "utf-8").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    let value = trimmed.slice(eq + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (!(key in process.env)) process.env[key] = value;
+  }
+}
 
 const isCI = !!process.env.CI;
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
