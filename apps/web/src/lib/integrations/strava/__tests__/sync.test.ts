@@ -25,6 +25,9 @@ vi.mock("../client", () => ({
 vi.mock("@/lib/engine/region-ledger", () => ({
   recomputeRegionState: (...args: Parameters<typeof recomputeRegionState>) => recomputeRegionState(...args),
 }));
+vi.mock("@/lib/planner/queries", () => ({
+  getUserTimezone: async () => "UTC",
+}));
 
 // Import AFTER the mocks are registered.
 import { syncStrava } from "../sync";

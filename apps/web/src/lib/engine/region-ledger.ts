@@ -18,6 +18,7 @@ import { finalEwma } from "@hta/domain";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeSetLoad, PRIMARY_REGION_WEIGHT, SECONDARY_REGION_WEIGHT } from "./set-load";
 import { MODALITY_REGION } from "@/lib/integrations/strava/mapping";
+import { todayYmd } from "@/lib/dates";
 
 const REGIONS = [
   "foot_ankle_calf",
@@ -57,6 +58,7 @@ type CardioRow = {
 export async function recomputeRegionState(
   supabase: SupabaseClient,
   userId: string,
+  userTz: string,
 ): Promise<{ updated: number; firstDate: string | null; lastDate: string | null }> {
   // Pull completed-session ids in date order so we have the session_id ->
   // performed_at lookup for the per-day bucketing.
@@ -148,7 +150,7 @@ export async function recomputeRegionState(
   }
 
   const firstDate = (sessions[0]!.performed_at as string).slice(0, 10);
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = todayYmd(userTz);
 
   const upserts = REGIONS.map((region) => {
     const series = dailyLoad[region];

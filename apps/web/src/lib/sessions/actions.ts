@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
+import { getUserTimezone } from "@/lib/planner/queries";
 
 const checkInSchema = z.object({
   fatigue: z.coerce.number().int().min(1).max(5).nullable().optional(),
@@ -369,7 +370,7 @@ export async function completeSession(formData: FormData): Promise<void> {
   // counted. Idempotent; failures here shouldn't block the user from
   // marking the session complete, so we swallow + log.
   try {
-    await recomputeRegionState(supabase, user.id);
+    await recomputeRegionState(supabase, user.id, await getUserTimezone(user.id));
   } catch (e) {
     console.error("recomputeRegionState failed:", e);
   }
@@ -386,7 +387,7 @@ export async function recomputeRegionStateAction(): Promise<void> {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  await recomputeRegionState(supabase, user.id);
+  await recomputeRegionState(supabase, user.id, await getUserTimezone(user.id));
   revalidatePath("/app");
   revalidatePath("/app/settings");
 }
