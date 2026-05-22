@@ -129,15 +129,14 @@ test.describe("@desktop auth", () => {
   }, testInfo) => {
     const url = baseURL ?? "http://localhost:3000";
     const baseHost = new URL(url).host;
-    // Use a domain Supabase's email validator accepts. `.test` is the
-    // canonical "this is a test address" TLD per RFC 6761, but many
-    // Supabase projects block it via the disposable-domain list. The
-    // admin-created `freshUser` fixture sidesteps validation; UI signup
-    // doesn't. `@example.com` is the reserved IANA example domain and
-    // is typically allowed; if it's not, the assertion below skips.
+    // Supabase's built-in email validator rejects RFC 2606 reserved TLDs
+    // (.test, .example, .invalid, .localhost) AND @example.com. Use a
+    // non-reserved fake .com — no mail is delivered because the spec only
+    // exercises the UI shape, not real email confirmation. Cleanup runs
+    // via deleteUserByEmail in the finally block below.
     const email = `e2e+signup+${Date.now()}+${Math.random()
       .toString(36)
-      .slice(2, 8)}@example.com`;
+      .slice(2, 8)}@hta-e2e.com`;
     const password = `E2E-${Math.random().toString(36).slice(2)}-${Date.now()}`;
 
     try {

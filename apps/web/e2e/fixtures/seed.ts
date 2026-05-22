@@ -26,7 +26,7 @@ import { test as base, expect } from "@playwright/test";
  *
  * NOTE: when no separate test project exists, this fixture creates real
  * Supabase users in your dev/prod project. They're identified by an
- * `e2e-test-*@example.com` email pattern and auto-deleted on test
+ * `e2e+*@hta-e2e.com` email pattern and auto-deleted on test
  * teardown. Avoid running these against a production project that holds
  * real-user data.
  *
@@ -92,7 +92,12 @@ export const test = base.extend<Fixtures>({
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const email = `e2e+${Date.now()}+${Math.random().toString(36).slice(2, 8)}@example.test`;
+    // Supabase's built-in email validator rejects RFC 2606 reserved TLDs
+    // (.test, .example, .invalid, .localhost) and the @example.com domain.
+    // Use a non-reserved fake .com — no mail is ever delivered because
+    // admin.createUser({ email_confirm: true }) skips delivery, and the
+    // user is auto-deleted on teardown below.
+    const email = `e2e+${Date.now()}+${Math.random().toString(36).slice(2, 8)}@hta-e2e.com`;
     const password = `E2E-${Math.random().toString(36).slice(2)}-${Date.now()}`;
 
     const { data, error } = await admin.auth.admin.createUser({
