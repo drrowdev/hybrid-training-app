@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { getUserTimezone } from "@/lib/planner/queries";
+import { todayYmd } from "@/lib/dates";
 
 const profileSchema = z.object({
   displayName: z.string().trim().max(60).optional().nullable(),
@@ -93,8 +95,12 @@ const bodyweightSchema = z.object({
 });
 
 export async function logBodyweight(formData: FormData): Promise<void> {
+  const submittedDate = formData.get("date");
+  // Fall back to the user's local "today" rather than UTC — a Helsinki
+  // user logging at 00:30 local should land on the right calendar day.
+  const dateDefault = submittedDate ? null : todayYmd(await getUserTimezone());
   const parsed = bodyweightSchema.safeParse({
-    date: formData.get("date") || new Date().toISOString().slice(0, 10),
+    date: submittedDate || dateDefault,
     bodyweightKg: formData.get("bodyweightKg"),
     notes: formData.get("notes") || undefined,
   });

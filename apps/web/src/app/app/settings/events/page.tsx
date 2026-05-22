@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createPriorityEvent, deletePriorityEvent } from "@/lib/planner/events-actions";
+import { getUserTimezone } from "@/lib/planner/queries";
+import { todayYmd } from "@/lib/dates";
 
 type EventRow = {
   id: string;
@@ -31,7 +33,7 @@ export default async function EventsSettingsPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayYmd(await getUserTimezone(user.id));
   const { data: upcoming } = await supabase
     .from("priority_events")
     .select("id, name, event_date, priority, modality, notes")

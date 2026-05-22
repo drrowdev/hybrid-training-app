@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { deleteAccount } from "@/lib/auth/delete-account";
 import { logBodyweight, updateProfile } from "@/lib/settings/actions";
 import { TrainingDaysControl } from "@/components/settings/TrainingDaysControl";
+import { todayYmd } from "@/lib/dates";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -15,7 +16,7 @@ export default async function SettingsPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "display_name, units, bodyweight_kg, body_comp_phase, phase_started_at, phase_target_weeks, training_days_per_week, allows_two_a_days, am_window_start, pm_window_start",
+      "display_name, units, bodyweight_kg, body_comp_phase, phase_started_at, phase_target_weeks, training_days_per_week, allows_two_a_days, am_window_start, pm_window_start, timezone",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -175,7 +176,7 @@ export default async function SettingsPage() {
         </p>
         <form action={logBodyweight} className="space-y-3 rounded-lg border border-foreground/10 p-4">
           <div className="grid grid-cols-2 gap-3">
-            <Field name="date" label="Date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
+            <Field name="date" label="Date" type="date" required defaultValue={todayYmd(profile?.timezone ?? "UTC")} />
             <Field name="bodyweightKg" label="Weight (kg)" type="number" step="0.1" min="20" max="400" required defaultValue={profile?.bodyweight_kg ?? ""} inputMode="decimal" />
           </div>
           <button
