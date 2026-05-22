@@ -574,6 +574,13 @@ Roles are tags on movements, not categories of movements. **One movement carries
 | `velocity_cued` | Dynamic-effort variant — explosive concentric, light load | Speed squat, speed bench, speed pull, banded variants, jump squat |
 | `hip_stabilizer` | Hip abduction / external rotation (knee tracking, running) | Hip airplane, side-lying clamshell, banded crab walk, single-leg glute bridge, Copenhagen plank |
 | `ankle_foot` | Ankle dorsiflexion + intrinsic foot capacity (running) | Tibialis raise, calf raise pause variants, short-foot drill, ankle dorsiflexion hold |
+| `power_olympic` | Triple-extension power from Olympic lift derivatives | Power clean, hang clean, clean pull, power snatch, hang snatch, snatch pull, push press, push jerk |
+| `power_plyometric` | Jump-based stretch-shortening cycle work | Box jump, broad jump, depth jump, tuck jump, pogo hop, single-leg bound, lateral hop, hill bounds |
+| `power_ballistic` | Loaded throw / explosive-intent variants | KB swing (Russian + American), med ball slam, med ball chest pass, med ball rotational throw |
+
+### 20.2.1 Power emphasis (wizard toggle)
+
+The block wizard's step-2 "Add power emphasis" toggle is persisted on `training_blocks.power_emphasis` (migration `0022_power_emphasis.sql`). When `true`, the picker inserts a **power bias pass** between the functional and aesthetic passes: it picks one movement tagged with any of `power_olympic` / `power_plyometric` / `power_ballistic`, prescribed at 3–5 reps with explosive intent. The aesthetic budget is trimmed by ~1 slot in the same session so high-rep hypertrophy fillers don't blunt the RFD signal (Schoenfeld 2017 review on power vs hypertrophy stimulus). Tendinopathy-suppressed regions still skip high-strain-tendon power candidates (DC-J5 / DC-O3 honoured). The catalog is tagged by migration `0023_power_movement_tagging.sql` — tagging is additive so future role layers can stack.
 
 ### 20.3 Aesthetic targeting (already exists)
 

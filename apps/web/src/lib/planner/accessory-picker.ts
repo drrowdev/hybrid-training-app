@@ -25,6 +25,7 @@ import type {
 import {
   DC_O4_FLOOR,
   FLOOR_PLYOMETRIC_TOTAL,
+  POWER_FUNCTIONAL_ROLES,
   effectiveDurabilityFloor,
 } from "./accessory-roles";
 
@@ -70,7 +71,7 @@ export type AccessoryPick = {
   displayName: string;
   sets: number;
   reps: number;
-  reason: "durability" | "functional" | "aesthetic";
+  reason: "durability" | "functional" | "aesthetic" | "power";
   rationale: string;
 };
 
@@ -79,6 +80,13 @@ const PER_MUSCLE_TARGETS_FALLBACK = 6; // default per-muscle weekly target when 
 /**
  * Main entry point. Returns picks in priority order (durability first).
  * Caller is responsible for stopping at the archetype's per-session item cap.
+ *
+ * `powerEmphasis` (wizard step 2 toggle, persisted on
+ * `training_blocks.power_emphasis`) inserts a "power bias" pass between
+ * functional and aesthetic — one power-tagged accessory per session when
+ * the catalog has a clean candidate, and trims the per-session aesthetic
+ * budget so explosive intent isn't drowned in high-rep hypertrophy work
+ * (Schoenfeld 2017 review).
  */
 export function pickAccessoriesForSession({
   profile,
@@ -88,6 +96,7 @@ export function pickAccessoriesForSession({
   filters,
   perMuscleTargets,
   maxItems,
+  powerEmphasis = false,
 }: {
   profile: AccessoryProfile;
   /** Deload scalar from the week profile (e.g. 0.5 on deload weeks). */
@@ -99,6 +108,8 @@ export function pickAccessoriesForSession({
   perMuscleTargets: Record<string, number>;
   /** Hard cap on items for this session — typically archetype.aesthetic.itemsPerSession + a small budget for functional/durability fills. */
   maxItems: number;
+  /** Wizard toggle. Biases the picker toward power-tagged movements + trims hypertrophy filler. */
+  powerEmphasis?: boolean;
 }): AccessoryPick[] {
   const picks: AccessoryPick[] = [];
   const usedThisSession = new Set<string>();
@@ -152,8 +163,47 @@ export function pickAccessoriesForSession({
     }
   }
 
+  // ─── 2.5 Power bias (wizard `power_emphasis = true`) ───
+  // One power-tagged accessory per session when the catalog has a clean
+  // candidate. Per Schoenfeld 2017, RFD/power adaptations and high-rep
+  // hypertrophy work compete for the same recovery budget — so we also
+  // trim the aesthetic budget below.
+  let powerPickAdded = false;
+  if (powerEmphasis && picks.length < maxItems) {
+    const candidate = findPowerCandidate({
+      catalog,
+      filters,
+      usedThisSession,
+    });
+    if (candidate) {
+      picks.push(
+        buildPick(
+          candidate,
+          profile,
+          weekDeloadScale,
+          "power",
+          "Power emphasis: explosive intent (3–5 reps, full recovery)",
+          { repsOverride: 5, setsOverride: profile.aesthetic.setsPerItem },
+        ),
+      );
+      usedThisSession.add(candidate.id);
+      bumpBulletproof(durabilityProgress, candidate.bulletproofRoles);
+      bumpFunctional(functionalProgress, candidate.functionalRoles);
+      for (const m of candidate.primaryMuscles) {
+        muscleProgress.set(m, (muscleProgress.get(m) ?? 0) + 1);
+      }
+      powerPickAdded = true;
+    }
+  }
+
   // ─── 3. Aesthetic gap-fill ───
-  while (picks.length < maxItems) {
+  // When power emphasis is on, trim the aesthetic budget by ~1 item (and at
+  // least leave room for the power pick we just inserted). High-rep
+  // hypertrophy fillers blunt the RFD signal — Schoenfeld 2017.
+  const aestheticCap = powerEmphasis
+    ? Math.max(picks.length, maxItems - (powerPickAdded ? 0 : 1) - 1)
+    : maxItems;
+  while (picks.length < aestheticCap) {
     const gapMuscle = pickLargestAestheticGap(perMuscleTargets, muscleProgress);
     if (!gapMuscle) break;
     const candidate = findCandidate({
@@ -307,6 +357,42 @@ function findCandidate(query: CandidateQuery): CatalogMovement | null {
 }
 
 /**
+ * Find a movement tagged with any of the power functional roles. Honours
+ * blocked regions + the tendinopathy flag (a plyometric/oly variant on a
+ * symptomatic tendon would be unsafe). Returns null if no candidate
+ * matches — caller silently skips the power pass rather than degrading
+ * to an aesthetic pick.
+ */
+function findPowerCandidate(query: {
+  catalog: CatalogMovement[];
+  filters: PickFilters;
+  usedThisSession: Set<string>;
+}): CatalogMovement | null {
+  const candidates: CatalogMovement[] = [];
+  for (const m of query.catalog) {
+    if (query.usedThisSession.has(m.id)) continue;
+    if (loadsBlockedRegion(m, query.filters.blockedRegions)) continue;
+    const hasPowerRole = m.functionalRoles.some((r) =>
+      (POWER_FUNCTIONAL_ROLES as readonly FunctionalRole[]).includes(r),
+    );
+    if (!hasPowerRole) continue;
+    if (query.filters.tendinopathyActive && m.highStrainTendon) continue;
+    candidates.push(m);
+  }
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => {
+    let sa = 0;
+    let sb = 0;
+    if (query.filters.recentlyUsedMovementIds.has(a.id)) sa += 100;
+    if (query.filters.recentlyUsedMovementIds.has(b.id)) sb += 100;
+    if (a.stimToFatigueScore != null) sa -= a.stimToFatigueScore;
+    if (b.stimToFatigueScore != null) sb -= b.stimToFatigueScore;
+    return sa - sb;
+  });
+  return candidates[0] ?? null;
+}
+
+/**
  * Candidate score (lower is better). Encodes the priority order:
  *   1. Variation rotation (don't repeat the previous session's pick)
  *   2. Concurrent-stress filter (prefer supported when active)
@@ -334,15 +420,19 @@ function buildPick(
   weekDeloadScale: number,
   reason: AccessoryPick["reason"],
   rationale: string,
+  overrides?: { repsOverride?: number; setsOverride?: number },
 ): AccessoryPick {
-  const sets = Math.max(1, Math.round(profile.aesthetic.setsPerItem * weekDeloadScale));
-  const repMid = Math.round((profile.aesthetic.repRange.min + profile.aesthetic.repRange.max) / 2);
+  const baseSets = overrides?.setsOverride ?? profile.aesthetic.setsPerItem;
+  const sets = Math.max(1, Math.round(baseSets * weekDeloadScale));
+  const reps =
+    overrides?.repsOverride ??
+    Math.round((profile.aesthetic.repRange.min + profile.aesthetic.repRange.max) / 2);
   return {
     movementId: movement.id,
     slug: movement.slug,
     displayName: movement.displayName,
     sets,
-    reps: repMid,
+    reps,
     reason,
     rationale,
   };

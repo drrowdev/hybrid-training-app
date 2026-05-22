@@ -7,6 +7,7 @@
  */
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   date,
   jsonb,
   pgEnum,
@@ -43,6 +44,16 @@ export const trainingBlocks = pgTable("training_blocks", {
    * wizard (legacy path, custom builder).
    */
   dayIndexOverrides: jsonb("day_index_overrides").$type<DayIndexOverrides>(),
+  /**
+   * Wizard "Add power emphasis" toggle (step 2). When true, the
+   * accessory picker biases the role pool toward power-tagged
+   * movements (`power_olympic` / `power_plyometric` / `power_ballistic`)
+   * and trims high-rep hypertrophy fillers — explosive intent vs
+   * hypertrophy stimulus conflict per Schoenfeld 2017. Only the
+   * power-eligible archetypes (Strength Focus, Hybrid Focus) expose
+   * the toggle in the UI; other archetypes always store `false`.
+   */
+  powerEmphasis: boolean("power_emphasis").default(false),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),
