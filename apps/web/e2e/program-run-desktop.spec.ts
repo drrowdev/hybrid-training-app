@@ -33,18 +33,16 @@ import {
  *       the persisted prescription items use the deload intensities
  *       [40, 50, 60]%TM with `strengthVolumeScale=0.5` (3 → 2 items).
  *
- *   C — Block completion mechanic (manual archive):
- *       Seed an active block where all planned_sessions are completed
- *       except the very last one. Log the last session via UI. Assert
- *       the block stays in `status='active'` (no auto-completion). Then
- *       click "End block" on /app/plan and assert the row flips to
+ *   C — Manual end → archived:
+ *       Seed an active block at week 0 (no prior completions). Click
+ *       "End block" on /app/plan and assert the row flips to
  *       `status='archived'`. The archived block then shows up in the
- *       "Run it again" picker on /app/plan/new.
+ *       "Run it again" picker on /app/plan/new with the muted "Ended"
+ *       badge — NOT the green "Completed" badge.
  *
- *       Observed mechanic: blocks transition active → archived ONLY via
- *       the manual `endBlock` server action (apps/web/src/lib/planner/actions.ts).
- *       There is no auto-complete trigger. The `'completed'` status enum
- *       value exists but is unused by today's code paths.
+ *       Manual ends always write 'archived'; that distinguishes "user
+ *       abandoned the block" from "the engine finished it for them"
+ *       (Scenario E).
  *
  *   D — Multiple active blocks (negative test):
  *       The DB schema has no UNIQUE constraint on (user_id, status='active')
@@ -54,6 +52,13 @@ import {
  *       seeding bypasses that — we insert two active blocks and assert
  *       the observed behavior: `getActiveBlock` (queries.ts) orders by
  *       `started_on DESC LIMIT 1`, so the newer block wins on /app.
+ *
+ *   E — Auto-complete when the last session lands:
+ *       Seed a 4-week block where every planned session except today's
+ *       is already linked-and-completed. Drive the start → log → finish
+ *       flow end-to-end via UI. Assert the block flips to
+ *       `status='completed'` (NOT 'archived') and the badge on the
+ *       /app/plan/new "Run it again" card reads "Completed".
  */
 
 test.describe("@desktop program run", () => {
@@ -229,7 +234,7 @@ test.describe("@desktop program run", () => {
     await expect(page.getByTestId(`start-${seed.todayPlannedId}`)).toBeVisible();
   });
 
-  test("C: block completion is manual via End block → archived", async ({
+  test("C: manual End block → archived (not auto-completed)", async ({
     page,
     context,
     freshUser,
@@ -237,74 +242,21 @@ test.describe("@desktop program run", () => {
     admin,
     baseURL,
   }) => {
-    test.slow(); // logs a session end-to-end + ends the block — near the 30s default
     const url = baseURL ?? "http://localhost:3000";
 
     await markOnboarded(admin, freshUser.userId);
     await seedStrengthTms(admin, freshUser.userId);
+    // Fresh block — no completions. The point of this scenario is the
+    // manual path (button click → 'archived'), not auto-complete.
     const seed = await seedBlockAtWeekDay(admin, freshUser.userId, {
-      weekIndex: 3,
-      completeAllExceptLast: true,
+      weekIndex: 0,
     });
     await signInAs(context, freshUser, seedConfig, url);
 
-    // 1) Sanity: block is active. All rows except the last are linked
-    //    to completed sessions.
-    await assertBlockStatus(admin, seed.blockId, "active");
-    const { count: completedCount } = await admin
-      .from("planned_sessions")
-      .select("id", { count: "exact", head: true })
-      .eq("block_id", seed.blockId)
-      .not("completed_session_id", "is", null);
-    // 4 weeks × 4 days = 16 planned, all except 1 = 15 completed.
-    expect(completedCount).toBe(15);
-
-    // 2) /app — today's card is the only un-completed row. With
-    //    completeAllExceptLast, today's row is in the last week (week 3),
-    //    so its title carries the "(deload)" suffix.
-    await page.goto("/app");
-    await page.waitForLoadState("networkidle");
-    const todayCard = page.getByTestId(`today-card-${seed.todayPlannedId}`);
-    await expect(todayCard).toBeVisible();
-    await expect(todayCard).toContainText(/\(deload\)/);
-
-    // 3) Log the last session end-to-end.
-    await todayCard.getByRole("link", { name: /start session/i }).click();
-    await page.waitForURL(`**/app/sessions/start/${seed.todayPlannedId}`, { timeout: 30_000 });
-    await page.getByRole("button", { name: /skip check-in/i }).click();
-    await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 30_000 });
-    const sessionId = new URL(page.url()).pathname.split("/").pop()!;
-    expect(sessionId).toMatch(/^[0-9a-f-]{36}$/);
-
-    const pickerInput = page.getByPlaceholder(/search the catalog/i);
-    await pickerInput.fill(seed.todayMovementDisplayName.split(" ")[0]!);
-    const liftNameRe = new RegExp(
-      seed.todayMovementDisplayName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-      "i",
-    );
-    await page.getByRole("button", { name: liftNameRe }).first().click();
-    await page.getByLabel("Weight (kg)").fill("60");
-    await page.getByLabel("Reps").fill("5");
-    await page.getByRole("button", { name: /^6$/ }).click();
-    await page.getByRole("button", { name: /^log set/i }).click();
-    await expect(
-      page.getByRole("heading", { name: /this session \(1 sets?\)/i }),
-    ).toBeVisible({ timeout: 30_000 });
-    await page.getByRole("link", { name: /finish session/i }).click();
-    await page.waitForURL(`**/app/sessions/${sessionId}/complete`, { timeout: 30_000 });
-    await page.getByRole("button", { name: /complete session/i }).click();
-    await page.waitForURL(`**/app/sessions/${sessionId}`, { timeout: 30_000 });
-
-    await assertSessionComplete(admin, sessionId, {
-      expectedSetCount: 1,
-      plannedSessionId: seed.todayPlannedId,
-    });
-
-    // 4) Observed mechanic: logging the LAST planned session does NOT
-    //    auto-complete the block. Status stays 'active'.
+    // 1) Sanity: block is active with un-touched plan.
     await assertBlockStatus(admin, seed.blockId, "active");
 
-    // 5) Manual archival via the End block button on /app/plan.
+    // 2) Manual archival via the End block button on /app/plan.
     await page.goto("/app/plan");
     await page.waitForLoadState("networkidle");
     const endBtn = page.getByTestId("end-block-button");
@@ -312,8 +264,7 @@ test.describe("@desktop program run", () => {
     await endBtn.click();
 
     // The endBlock action revalidates /app and /app/plan; after the
-    // server action settles the active block is gone so /app/plan now
-    // renders the "Start your first block" empty state.
+    // server action settles the active block is gone.
     await expect
       .poll(
         async () => {
@@ -329,14 +280,18 @@ test.describe("@desktop program run", () => {
       .toBe("archived");
     await assertBlockStatus(admin, seed.blockId, "archived");
 
-    // 6) The archived block shows up in the "Run it again" picker.
+    // 3) The archived block shows up in the "Run it again" picker with
+    //    the muted "Ended" badge — NOT the green "Completed" badge.
     await page.goto("/app/plan/new");
     await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: /run it again/i })).toBeVisible();
     const recentCard = page.locator(".pn-recent-card").first();
     await expect(recentCard).toBeVisible();
     await expect(recentCard).toContainText(/strength_anchor/i);
-    await expect(recentCard).toContainText(/archived/i);
+    const badge = recentCard.getByTestId("block-status-badge");
+    await expect(badge).toBeVisible();
+    await expect(badge).toHaveAttribute("data-status", "archived");
+    await expect(badge).toContainText(/ended/i);
   });
 
   test("D: two active blocks — newest started_on wins on /app (no DB constraint)", async ({
@@ -380,5 +335,102 @@ test.describe("@desktop program run", () => {
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId(`today-card-${newer.todayPlannedId}`)).toBeVisible();
     await expect(page.getByTestId(`today-card-${older.todayPlannedId}`)).toHaveCount(0);
+  });
+
+  test("E: auto-complete block when last session lands → 'completed'", async ({
+    page,
+    context,
+    freshUser,
+    seedConfig,
+    admin,
+    baseURL,
+  }) => {
+    test.slow(); // logs the last session end-to-end — near the 30s default
+    const url = baseURL ?? "http://localhost:3000";
+
+    await markOnboarded(admin, freshUser.userId);
+    await seedStrengthTms(admin, freshUser.userId);
+    // Seed a block where every planned_session except today's row
+    // is already linked to a completed session. Today is the LAST
+    // remaining planned_session in the block.
+    const seed = await seedBlockAtWeekDay(admin, freshUser.userId, {
+      weekIndex: 3,
+      completeAllExceptLast: true,
+    });
+    await signInAs(context, freshUser, seedConfig, url);
+
+    // 1) Sanity: block is active and exactly one planned row remains.
+    await assertBlockStatus(admin, seed.blockId, "active");
+    const { count: remaining } = await admin
+      .from("planned_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("block_id", seed.blockId)
+      .is("completed_session_id", null);
+    expect(remaining).toBe(1);
+
+    // 2) Drive the last session through the start → log → finish flow.
+    await page.goto("/app");
+    await page.waitForLoadState("networkidle");
+    const todayCard = page.getByTestId(`today-card-${seed.todayPlannedId}`);
+    await expect(todayCard).toBeVisible();
+    await todayCard.getByRole("link", { name: /start session/i }).click();
+    await page.waitForURL(`**/app/sessions/start/${seed.todayPlannedId}`, { timeout: 30_000 });
+    await page.getByRole("button", { name: /skip check-in/i }).click();
+    await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 30_000 });
+    const sessionId = new URL(page.url()).pathname.split("/").pop()!;
+    expect(sessionId).toMatch(/^[0-9a-f-]{36}$/);
+
+    const pickerInput = page.getByPlaceholder(/search the catalog/i);
+    await pickerInput.fill(seed.todayMovementDisplayName.split(" ")[0]!);
+    const liftNameRe = new RegExp(
+      seed.todayMovementDisplayName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      "i",
+    );
+    await page.getByRole("button", { name: liftNameRe }).first().click();
+    await page.getByLabel("Weight (kg)").fill("60");
+    await page.getByLabel("Reps").fill("5");
+    await page.getByRole("button", { name: /^6$/ }).click();
+    await page.getByRole("button", { name: /^log set/i }).click();
+    await expect(
+      page.getByRole("heading", { name: /this session \(1 sets?\)/i }),
+    ).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("link", { name: /finish session/i }).click();
+    await page.waitForURL(`**/app/sessions/${sessionId}/complete`, { timeout: 30_000 });
+    await page.getByRole("button", { name: /complete session/i }).click();
+    await page.waitForURL(`**/app/sessions/${sessionId}`, { timeout: 30_000 });
+
+    await assertSessionComplete(admin, sessionId, {
+      expectedSetCount: 1,
+      plannedSessionId: seed.todayPlannedId,
+    });
+
+    // 3) Service-role assertion: the block auto-flipped to 'completed'
+    //    (NOT 'archived' — manual end is the only path to 'archived').
+    await expect
+      .poll(
+        async () => {
+          const { data } = await admin
+            .from("training_blocks")
+            .select("status")
+            .eq("id", seed.blockId)
+            .maybeSingle();
+          return data?.status ?? null;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe("completed");
+    await assertBlockStatus(admin, seed.blockId, "completed");
+
+    // 4) /app/plan/new — "Run it again" card shows the green Completed
+    //    badge, distinguished from the muted Ended badge.
+    await page.goto("/app/plan/new");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: /run it again/i })).toBeVisible();
+    const recentCard = page.locator(".pn-recent-card").first();
+    await expect(recentCard).toBeVisible();
+    const badge = recentCard.getByTestId("block-status-badge");
+    await expect(badge).toBeVisible();
+    await expect(badge).toHaveAttribute("data-status", "completed");
+    await expect(badge).toContainText(/completed/i);
   });
 });
