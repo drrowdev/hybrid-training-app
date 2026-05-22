@@ -30,12 +30,12 @@ export function Step2Focus({
   return (
     <section>
       <div style={pillStyle}>Step 2 of 5</div>
-      <h1 style={titleStyle}>Choose your first focus</h1>
-      <p style={subStyle}>
+      <h1 className="wiz-title" style={titleStyle}>Choose your first focus</h1>
+      <p className="wiz-sub" style={subStyle}>
         The quality that leads. The others get maintenance dosing around it.
       </p>
 
-      <div style={cardGridStyle}>
+      <div className="wiz-card-grid" style={cardGridStyle}>
         {(Object.keys(GOALS) as Goal[]).map((g) => {
           const selected = state.goal === g;
           const data = GOALS[g];
@@ -56,7 +56,7 @@ export function Step2Focus({
       </div>
 
       {powerEligible && (
-        <div style={powerToggleRowStyle}>
+        <div className="wiz-power-row" style={powerToggleRowStyle}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 500 }}>Add power emphasis</div>
             <div style={{ fontSize: 12, color: "var(--cp-text-muted)", marginTop: 3 }}>
@@ -68,9 +68,10 @@ export function Step2Focus({
             type="button"
             aria-pressed={state.power}
             onClick={() => dispatch({ type: "toggle-power" })}
+            className="wiz-toggle-switch"
             style={switchStyle(state.power)}
           >
-            <span style={knobStyle(state.power)} />
+            <span className="wiz-toggle-knob" style={knobStyle(state.power)} />
           </button>
         </div>
       )}

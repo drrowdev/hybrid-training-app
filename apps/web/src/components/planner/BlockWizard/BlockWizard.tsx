@@ -160,7 +160,7 @@ export function BlockWizard({
   const startDisabled = state.step === 5 && (!resolved || (tmGate && !tmGate.ready) || pending);
 
   return (
-    <div style={layoutStyle}>
+    <div className="wiz-layout" style={layoutStyle}>
       <div>
         <ProgressBar step={state.step} />
         {state.step === 1 && (
@@ -193,11 +193,12 @@ export function BlockWizard({
         )}
         {submitError && <div style={errorBoxStyle}>{submitError}</div>}
 
-        <footer style={footerStyle}>
+        <footer className="wiz-footer" style={footerStyle}>
           <button
             type="button"
             onClick={() => dispatch({ type: "back" })}
             disabled={state.step === 1}
+            className="wiz-footer-back"
             style={ghostBtnStyle(state.step === 1)}
           >
             ← back
@@ -206,6 +207,7 @@ export function BlockWizard({
             type="button"
             onClick={handleNext}
             disabled={!canContinue || startDisabled}
+            className="wiz-footer-primary"
             style={primaryBtnStyle(!canContinue || !!startDisabled)}
           >
             {pending && state.step === 5 ? "Starting…" : nextLabel}
@@ -213,7 +215,7 @@ export function BlockWizard({
         </footer>
       </div>
 
-      <aside style={sidebarColStyle}>
+      <aside className="wiz-sidebar-col" style={sidebarColStyle}>
         <WizardSidebar state={state} resolved={resolved} />
       </aside>
     </div>

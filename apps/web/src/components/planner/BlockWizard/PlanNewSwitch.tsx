@@ -94,6 +94,7 @@ export function PlanNewSwitch({
         <button
           type="button"
           onClick={() => setMode("home")}
+          className="pn-switch-back"
           style={{
             justifySelf: "start",
             background: "transparent",
@@ -130,6 +131,7 @@ export function PlanNewSwitch({
                 type="button"
                 onClick={() => runItAgain(b)}
                 disabled={pending}
+                className="pn-recent-card"
                 style={recentCardStyle(pending)}
               >
                 <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -165,6 +167,7 @@ export function PlanNewSwitch({
             setError(null);
             setMode("wizard");
           }}
+          className="pn-cta"
           style={primaryCtaStyle}
         >
           Build a new block →

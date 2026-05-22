@@ -251,3 +251,223 @@ select option {
   z-index: 50;
 }
 .cp-info:hover > .pop, .cp-info:focus-visible > .pop, .cp-info:focus-within > .pop { opacity: 1; pointer-events: auto; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Mobile responsiveness — BlockWizard, onboarding flow, /plan/new.
+ *
+ * Many wizard components carry inline React style objects (deliberate, so
+ * each step file is self-contained). To layer media-queries on top without
+ * rewriting every style helper, each layout-sensitive element also gets
+ * a className from this block. CSS rules below override inline styles at
+ * mobile breakpoints (using `!important` where the inline style sets the
+ * same property).
+ *
+ * Breakpoints:
+ *   • ≤768 px — sidebar/wizard layout collapses, recents stack
+ *   • ≤640 px — day-grid stacks vertically, card grids go single-col,
+ *               typography drops a notch, footer pins to bottom
+ *
+ * Touch interactions: :hover effects are guarded behind
+ *   @media (hover: hover) so they don't stick on touch devices.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+/* Hover guards — apply existing hover styles only on devices that can hover. */
+@media (hover: none) {
+  .cp-btn:hover { background: var(--cp-surface); }
+  .cp-btn.primary:hover { background: var(--cp-accent); border-color: var(--cp-accent); }
+}
+
+/* ── BlockWizard layout (≤768 px): stack sidebar above the step body ── */
+@media (max-width: 768px) {
+  .wiz-layout {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+  .wiz-sidebar-col {
+    position: static !important;
+    top: auto !important;
+    order: -1; /* sidebar above main column when stacked */
+  }
+}
+
+/* ── BlockWizard sidebar — accordion summary visibility ── */
+/* The summary toggle is hidden on desktop (>768 px); the body always
+ * shows. On mobile, the summary toggle appears, and the body is shown
+ * only when `data-open="true"`. */
+.wiz-sidebar-summary { display: none; }
+@media (max-width: 768px) {
+  .wiz-sidebar-summary { display: flex; }
+  .wiz-sidebar-body[data-open="false"] { display: none !important; }
+}
+
+/* ── Step 1 — days segmented control ── */
+@media (max-width: 480px) {
+  .wiz-days-seg {
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 4px;
+    row-gap: 4px;
+  }
+  .wiz-two-a-day-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .wiz-two-a-day-row > div:first-child { width: 100%; }
+  .wiz-two-a-day-row > button { align-self: flex-end; }
+}
+
+/* Toggle switch — enforce 32×56 minimum tap target on mobile (DC: touch a11y).
+ * The inline style sets width:42/height:24; we override to width:56/height:32. */
+@media (max-width: 768px) {
+  .wiz-toggle-switch {
+    width: 56px !important;
+    height: 32px !important;
+  }
+  .wiz-toggle-knob {
+    width: 26px !important;
+    height: 26px !important;
+    transform: translateX(0) !important;
+  }
+  .wiz-toggle-switch[aria-pressed="true"] .wiz-toggle-knob {
+    transform: translateX(24px) !important;
+  }
+}
+
+/* ── Step 2 / 3 — card grids go single-column on mobile ── */
+@media (max-width: 640px) {
+  .wiz-card-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .wiz-power-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .wiz-power-row > button { align-self: flex-end; }
+}
+
+/* ── Step 5 — schedule grid: 7-col → vertical stack ── */
+@media (max-width: 640px) {
+  .wiz-week-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+  .wiz-day-cell {
+    min-height: 0 !important;
+    padding: 12px 14px !important;
+  }
+}
+
+/* ── Step titles: 28 px → 22 px on phones ── */
+@media (max-width: 640px) {
+  .wiz-title { font-size: 22px !important; }
+  .wiz-sub { font-size: 14px !important; }
+}
+
+/* ── Footer nav (← back / Continue): bottom-pinned, full-width primary ── */
+@media (max-width: 640px) {
+  .wiz-footer {
+    position: sticky;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    margin-top: 20px;
+    padding: 12px 0;
+    background: var(--cp-bg-elevated);
+    border-top: 1px solid var(--cp-border);
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.08);
+    gap: 8px;
+  }
+  .wiz-footer-primary {
+    flex: 1;
+    min-height: 48px;
+    padding: 14px 18px !important;
+    text-align: center;
+    justify-content: center;
+  }
+  .wiz-footer-back {
+    min-height: 48px;
+    min-width: 64px;
+    padding: 12px 14px !important;
+  }
+}
+
+/* ── Onboarding shell — tighter padding on phones, allow step pills to
+ *    scroll horizontally if they overflow ── */
+@media (max-width: 640px) {
+  .ob-shell { padding: 16px 12px 96px !important; }
+  .ob-card { padding: 18px !important; }
+  .ob-header {
+    position: sticky;
+    top: 0;
+    z-index: 15;
+    background: var(--cp-bg);
+    padding: 6px 0;
+    margin: -6px 0 0;
+  }
+  .ob-progress {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+    max-width: calc(100vw - 140px); /* leave room for "Skip" link */
+  }
+  .ob-progress::-webkit-scrollbar { display: none; }
+  .ob-progress > span { flex-shrink: 0; }
+  .ob-nav { gap: 8px; }
+  .ob-nav .cp-btn.primary { flex: 1; }
+
+  /* Confirmation: bottom-pinned start button on phones */
+  .ob-confirm-bottom {
+    position: sticky;
+    bottom: 0;
+    background: var(--cp-bg-elevated);
+    margin-top: 12px;
+    padding-top: 8px;
+  }
+}
+
+/* ── TM step — stack variant picker / 1RM input / mode pills vertically ── */
+@media (max-width: 640px) {
+  .ob-tm-card-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+  .ob-tm-mode-row {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .ob-tm-mode-row > button { flex: 1; min-height: 44px; }
+  .ob-tm-input-row {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+  .ob-tm-input-row input {
+    width: 100% !important;
+    text-align: left !important;
+  }
+  .ob-tm-skip-btn {
+    width: 100%;
+  }
+}
+
+/* ── /plan/new — Run-it-again cards stack on phones, CTA full-width ── */
+@media (max-width: 640px) {
+  .pn-recent-card {
+    padding: 14px !important;
+  }
+  .pn-cta {
+    width: 100%;
+    text-align: center !important;
+  }
+  .pn-switch-back {
+    min-height: 44px;
+    padding: 8px 12px;
+  }
+}
+
+/* ── Body min-font 14 px on mobile (prevents accidental sub-14 shrinks) ── */
+@media (max-width: 480px) {
+  body { font-size: 14px; }
+}

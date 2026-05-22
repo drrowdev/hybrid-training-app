@@ -21,6 +21,7 @@ export default function OnboardingLayout({ children }: { children: ReactNode }) 
       }}
     >
       <main
+        className="ob-shell"
         style={{
           flex: 1,
           display: "flex",
