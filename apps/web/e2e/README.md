@@ -99,9 +99,19 @@ The `e2e (playwright)` job in `.github/workflows/ci.yml`:
 5. Runs `pnpm --filter @hta/web exec playwright test`.
 6. Uploads `apps/web/playwright-report/` as an artifact on failure.
 
-The job is gated on the `E2E_SUPABASE_URL` secret being present — when
-it isn't (e.g. PRs from forks), every test skips cleanly and the job
-still passes.
+**Current policy: secrets are intentionally NOT set in GitHub Actions.**
+The job runs every PR but every test self-skips because the Supabase
+env vars aren't present in CI. This is a deliberate choice — adding the
+service-role key as a GitHub secret means anyone able to push a workflow
+change to a PR could exfiltrate it. The risk isn't worth the coverage at
+this stage.
+
+The expectation is that the author runs `pnpm --filter @hta/web test:e2e`
+locally before pushing significant changes to the wizard / onboarding /
+plan-creation surfaces. When the project ships to production and gets a
+dedicated test Supabase project, set the `E2E_*` secrets (which override
+the standard fallback) so CI can exercise the tests against the test
+project without ever seeing prod credentials.
 
 ## Follow-ups
 
