@@ -3,7 +3,31 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import type { NewPlannedSession, Prescription, PrescriptionItem } from "@hta/db";
+import type { Prescription, PrescriptionItem } from "@hta/db";
+
+/**
+ * Wire shape for `planned_sessions` INSERTs via the Supabase REST API.
+ *
+ * PostgREST takes the literal JS keys you send and looks them up as
+ * column names — it does NOT translate from Drizzle's camelCase property
+ * names to the underlying snake_case DB columns. The Drizzle-derived
+ * `NewPlannedSession` type uses camelCase (blockId, userId, weekIndex,
+ * …) which PostgREST rejects with PGRST204 ("Could not find the
+ * 'blockId' column of 'planned_sessions' in the schema cache").
+ *
+ * This type is intentionally typed against the *DB column names* so the
+ * TypeScript compiler will reject any future drift back to camelCase.
+ */
+type PlannedSessionInsertRow = {
+  block_id: string;
+  user_id: string;
+  week_index: number;
+  day_index: number;
+  slot: "single" | "am" | "pm";
+  title: string;
+  role: string;
+  prescription: Prescription;
+};
 import { createClient } from "@/lib/supabase/server";
 import {
   ARCHETYPES,
@@ -356,7 +380,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
     return { ok: false, error: blockErr?.message ?? "Failed to create block" };
   }
 
-  const rows: NewPlannedSession[] = [];
+  const rows: PlannedSessionInsertRow[] = [];
   for (let week = 0; week < archetype.weeks; week++) {
     const weekProfile = archetype.weekProfiles.find((w) => w.weekIndex === week);
     const weekDeloadScale = weekProfile?.strengthVolumeScale ?? 1.0;
@@ -406,10 +430,10 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       }
 
       rows.push({
-        blockId: block.id,
-        userId: user.id,
-        weekIndex: week,
-        dayIndex: day.dayIndex,
+        block_id: block.id,
+        user_id: user.id,
+        week_index: week,
+        day_index: day.dayIndex,
         slot: day.slot ?? "single",
         title,
         role: day.role,
@@ -581,7 +605,7 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
     .single();
   if (blockErr || !block) return { ok: false, error: blockErr?.message ?? "Failed to create block" };
 
-  const rows: NewPlannedSession[] = [];
+  const rows: PlannedSessionInsertRow[] = [];
   for (let week = 0; week < archetype.weeks; week++) {
     for (const day of archetype.days) {
       let movement: { id: string; slug: string; displayName: string };
@@ -617,10 +641,10 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
       }
 
       rows.push({
-        blockId: block.id,
-        userId: user.id,
-        weekIndex: week,
-        dayIndex: day.dayIndex,
+        block_id: block.id,
+        user_id: user.id,
+        week_index: week,
+        day_index: day.dayIndex,
         slot: day.slot ?? "single",
         title,
         role: day.role,
