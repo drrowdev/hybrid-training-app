@@ -1,12 +1,12 @@
 # Playwright E2E
 
 Foundation for browser-level E2E against `apps/web`. Covers the
-**onboarding**, **plan-creation**, **multi-user RLS**, and
-**session-log** critical paths from [`AGENTS.md`](../../../AGENTS.md).
-With session-log landed, **2 of 3** AGENTS.md critical paths are now
-covered (`log` ✓ + `program-run` partially via the multi-day calendar
-in the plan specs); **auth** is still pending — see
-[Follow-ups](#follow-ups).
+**onboarding**, **plan-creation**, **multi-user RLS**, **session-log**,
+and **auth** critical paths from [`AGENTS.md`](../../../AGENTS.md).
+With auth landed, **all 3 AGENTS.md critical paths are covered**
+(`auth` ✓ + `log` ✓ + multi-user RLS ✓); `program-run` (multi-day
+cursor advancement / deload / completion) remains as the next
+follow-up — see [Follow-ups](#follow-ups).
 
 > The AGENTS.md mandate `Multi-user E2E — at least one test that mutates
 > state from two browser contexts and verifies the server-canonical
@@ -21,10 +21,11 @@ apps/web/
 ├── playwright.config.ts        # base URL, projects, webServer
 └── e2e/
     ├── fixtures/seed.ts        # freshUser fixture + skip-if-no-env logic
-    ├── fixtures/auth.ts        # signInAs cookie-injection helper
+    ├── fixtures/auth.ts        # signInAs cookie-injection + generateMagicLink / generateSignupLink / deleteUserByEmail helpers
     ├── fixtures/seed-blocks.ts # direct-DB seed helpers
     ├── fixtures/session-log.ts # seedActiveBlock + assertSessionComplete helpers
     ├── fixtures/multi-user.ts  # twoUsers fixture (parallel provisioning + cascade cleanup)
+    ├── auth-desktop.spec.ts
     ├── onboarding-mobile.spec.ts
     ├── plan-new-wizard-desktop.spec.ts
     ├── plan-new-run-it-again-desktop.spec.ts
@@ -107,6 +108,30 @@ Column names in these helpers mirror the Drizzle schema in
 > to production, create a separate test project and set the `E2E_*`
 > vars to override the fallback.
 
+### Supabase project setup for auth E2E
+
+`auth-desktop.spec.ts` scenarios A (magic-link sign-in) and B (signup via
+UI) navigate Supabase's `/auth/v1/verify` action URL minted by
+`admin.auth.admin.generateLink` and expect the callback to land on the
+Playwright `baseURL`. For that to work the Supabase project must:
+
+1. Have the `baseURL` origin (e.g. `http://localhost:3000`) added under
+   **Authentication → URL Configuration → Redirect URLs**, otherwise
+   Supabase silently overrides the `redirectTo` we pass and falls back
+   to the project Site URL with an implicit-flow `#access_token=…`
+   fragment that `/auth/callback` can't process.
+2. Use PKCE as the default email-link flow (the `@supabase/ssr` default;
+   no extra setting needed in modern projects).
+3. For scenario B specifically: allow the `@example.com` test domain
+   (or whichever the spec uses) in the project's email-validation
+   allow-list, and either have SMTP wired or accept that the
+   confirmation email won't actually send — the spec mints the
+   confirmation link directly via the admin API.
+
+When any of these aren't satisfied the scenario **skips with a clear
+actionable message** rather than failing. Scenarios C (sign-out) and D
+(protected-route gate) don't depend on any of this and always run.
+
 ## Current specs
 
 | Spec                                      | Status   | Notes                                                                                                            |
@@ -117,6 +142,7 @@ Column names in these helpers mirror the Drizzle schema in
 | `plan-new-run-it-again-desktop.spec.ts`   | passing  | Seeds a completed block, asserts the picker card renders with the right metadata. Click-to-clone is **not** exercised — same camelCase bug. |
 | `multi-user-rls-desktop.spec.ts`          | passing  | Three scenarios: (A) /app/plan RLS isolation across two browser contexts, (B) concurrent block-creation race via `Promise.all`, (C) read-after-write isolation on /app/settings/training-maxes. Closes the AGENTS.md multi-user-E2E mandate. |
 | `session-log-desktop.spec.ts`             | passing  | Three scenarios: (A) seed → /app Start session → log two strength sets → finish → service-role verify `sessions.completed_at`, `set_logs` (×2), `planned_sessions.completed_session_id`. (B) DC-P1 pre-session check-in: fatigue + soreness chips persist to the `sessions` row. (C) Skip a planned session: `planned_sessions.skipped_at` is set; the Start CTA is replaced by the Un-skip button. Closes the AGENTS.md session-log critical-path mandate. |
+| `auth-desktop.spec.ts`                    | passing / 2 conditional skips  | Four scenarios: (A) Magic-link sign-in via admin `generateLink({ type: 'magiclink' })` → navigate to `action_link` → land in `/app`, service-role verify the auth user. (B) Sign-up via the UI form: submit email + password → "check your email" state → admin lookup + `generateLink({ type: 'signup' })` → navigate → land in `/onboarding`. (C) Sign-out: cookie-inject sign in → click the AppShell `data-testid=sign-out-button` → redirect to `/login`; re-visiting `/app` redirects back to `/login?next=/app`. (D) Unauthenticated deep-link to `/app/plan/new` redirects to `/login?next=/app/plan/new`. Closes the AGENTS.md auth critical-path mandate. **A and B skip when the Supabase project isn't configured for localhost E2E** — see "Supabase project setup for auth E2E" below; C and D always run. |
 
 ### Known production bug blocking deeper assertions
 
@@ -201,7 +227,6 @@ project without ever seeing prod credentials.
 Things AGENTS.md mandates that this PR does **not** yet cover. Each is
 a one-spec follow-up PR:
 
-- **Auth E2E** — sign-up, sign-in, sign-out, magic-link / password-reset.
 - **Program-run E2E** — multi-day cursor advancement, deload, completion.
 - **Visual regression** / screenshot diffs.
 - **Firefox + WebKit projects** (first PR is Chromium-only).

@@ -42,6 +42,7 @@ export function LoginForm({ next }: { next: string }) {
       type="button"
       onClick={() => setMode(k)}
       className="cp-btn ghost"
+      data-testid={`auth-tab-${k}`}
       style={{
         padding: "8px 12px",
         minHeight: 36,
@@ -64,13 +65,14 @@ export function LoginForm({ next }: { next: string }) {
       </div>
 
       {mode === "signin" && (
-        <form action={signInForm} className="space-y-3">
+        <form action={signInForm} className="space-y-3" data-testid="auth-form-signin">
           <input type="hidden" name="next" value={next} />
           <input
             name="email"
             type="email"
             required
             placeholder="you@example.com"
+            data-testid="auth-email-input"
             className="w-full rounded-md border border-foreground/15 bg-transparent px-3 py-2"
           />
           <input
@@ -79,11 +81,13 @@ export function LoginForm({ next }: { next: string }) {
             required
             minLength={8}
             placeholder="••••••••"
+            data-testid="auth-password-input"
             className="w-full rounded-md border border-foreground/15 bg-transparent px-3 py-2"
           />
           <button
             type="submit"
             disabled={signInPending}
+            data-testid="auth-submit"
             className="cp-btn primary big"
             style={{ width: "100%" }}
           >
@@ -96,12 +100,13 @@ export function LoginForm({ next }: { next: string }) {
       )}
 
       {mode === "signup" && (
-        <form action={signUpForm} className="space-y-3">
+        <form action={signUpForm} className="space-y-3" data-testid="auth-form-signup">
           <input
             name="email"
             type="email"
             required
             placeholder="you@example.com"
+            data-testid="auth-email-input"
             className="w-full rounded-md border border-foreground/15 bg-transparent px-3 py-2"
           />
           <input
@@ -110,11 +115,13 @@ export function LoginForm({ next }: { next: string }) {
             required
             minLength={8}
             placeholder="At least 8 characters"
+            data-testid="auth-password-input"
             className="w-full rounded-md border border-foreground/15 bg-transparent px-3 py-2"
           />
           <button
             type="submit"
             disabled={signUpPending}
+            data-testid="auth-submit"
             className="cp-btn primary big"
             style={{ width: "100%" }}
           >
@@ -124,7 +131,7 @@ export function LoginForm({ next }: { next: string }) {
             <p className="text-sm text-red-600">{signUpState.error}</p>
           )}
           {signUpState?.ok && (
-            <p className="text-sm text-emerald-600">
+            <p className="text-sm text-emerald-600" data-testid="auth-signup-confirm">
               Check your email to confirm your account.
             </p>
           )}
@@ -132,17 +139,19 @@ export function LoginForm({ next }: { next: string }) {
       )}
 
       {mode === "magic" && (
-        <form action={magicForm} className="space-y-3">
+        <form action={magicForm} className="space-y-3" data-testid="auth-form-magic">
           <input
             name="email"
             type="email"
             required
             placeholder="you@example.com"
+            data-testid="auth-email-input"
             className="w-full rounded-md border border-foreground/15 bg-transparent px-3 py-2"
           />
           <button
             type="submit"
             disabled={magicPending}
+            data-testid="auth-submit"
             className="cp-btn primary big"
             style={{ width: "100%" }}
           >
