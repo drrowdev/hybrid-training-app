@@ -9,7 +9,7 @@
  */
 "use client";
 
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import type { WizardState } from "@/lib/planner/wizard/wizard-state";
 import type { ResolvedArchetype, Goal } from "@/lib/planner/wizard/wizard-mapping";
 import { buildWeekShape, type SessionShape } from "@/lib/planner/wizard/schedule";
@@ -26,74 +26,106 @@ export function WizardSidebar({
   const name = !fullyResolved ? "Pick a few options →" : resolved.name;
   const summary = summarySentence(state, resolved);
 
+  // Mobile-only accordion state. CSS hides the summary button entirely on
+  // desktop (>768 px) and forces the body visible there regardless of
+  // `data-open`, so this only affects the phone layout.
+  const [open, setOpen] = useState(false);
+
+  const collapsedDays =
+    state.days == null ? "—" : `${state.days} day${state.days === 1 ? "" : "s"}/wk`;
+
   return (
     <div style={previewStyle}>
-      <div style={headerStyle}>
-        <span style={kickerStyle}>Your block</span>
-      </div>
-      <div style={nameStyle(fullyResolved)}>{name}</div>
-      <p style={summaryStyle}>{summary}</p>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-controls="wiz-sidebar-body"
+        className="wiz-sidebar-summary"
+        style={summaryToggleStyle}
+      >
+        <span style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "flex-start" }}>
+          <span style={kickerStyle}>Your block</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: fullyResolved ? "var(--cp-accent)" : "var(--cp-text-muted)" }}>
+            {name} · {collapsedDays}
+          </span>
+        </span>
+        <span aria-hidden="true" style={{ fontSize: 18, color: "var(--cp-text-muted)" }}>
+          {open ? "▾" : "▸"}
+        </span>
+      </button>
+      <div
+        id="wiz-sidebar-body"
+        className="wiz-sidebar-body"
+        data-open={open ? "true" : "false"}
+      >
+        <div style={headerStyle}>
+          <span style={kickerStyle}>Your block</span>
+        </div>
+        <div style={nameStyle(fullyResolved)}>{name}</div>
+        <p style={summaryStyle}>{summary}</p>
 
-      <div style={{ display: "grid", gap: 6, marginBottom: 14 }}>
-        <Row icon="📅" label="Days a week" value={state.days == null ? null : `${state.days} day${state.days === 1 ? "" : "s"}`} />
-        {state.secondary === "maintenance" && !state.goal ? (
-          <Row icon="🌴" label="Mode" value="Maintenance (busy stretch)" />
-        ) : (
-          <>
-            <Row
-              icon={state.goal ? GOALS[state.goal].icon : "🎯"}
-              label="First focus"
-              value={state.goal ? GOALS[state.goal].name : null}
-            />
-            {state.goal !== "resilience" && (
+        <div style={{ display: "grid", gap: 6, marginBottom: 14 }}>
+          <Row icon="📅" label="Days a week" value={state.days == null ? null : `${state.days} day${state.days === 1 ? "" : "s"}`} />
+          {state.secondary === "maintenance" && !state.goal ? (
+            <Row icon="🌴" label="Mode" value="Maintenance (busy stretch)" />
+          ) : (
+            <>
               <Row
-                icon={
-                  state.secondary && state.secondary !== "skip" && state.secondary !== "maintenance"
-                    ? GOALS[state.secondary as Goal].icon
-                    : "➕"
-                }
-                label="Second focus"
-                value={
-                  state.secondary === "skip"
-                    ? "Single-focus"
-                    : state.secondary && state.secondary !== "maintenance"
-                      ? GOALS[state.secondary as Goal].name
-                      : null
-                }
+                icon={state.goal ? GOALS[state.goal].icon : "🎯"}
+                label="First focus"
+                value={state.goal ? GOALS[state.goal].name : null}
               />
-            )}
-          </>
-        )}
+              {state.goal !== "resilience" && (
+                <Row
+                  icon={
+                    state.secondary && state.secondary !== "skip" && state.secondary !== "maintenance"
+                      ? GOALS[state.secondary as Goal].icon
+                      : "➕"
+                  }
+                  label="Second focus"
+                  value={
+                    state.secondary === "skip"
+                      ? "Single-focus"
+                      : state.secondary && state.secondary !== "maintenance"
+                        ? GOALS[state.secondary as Goal].name
+                        : null
+                  }
+                />
+              )}
+            </>
+          )}
 
-        {resolved && (
-          <>
-            <div style={{ height: 1, background: "var(--cp-border)", margin: "6px 2px 2px" }} />
-            <SessionBreakdown state={state} resolved={resolved} />
-            <Row icon="🛡️" label="Tendons & joints" value="Integrated" />
-            {(() => {
-              const total = totalSessions(resolved);
-              const calendarDaysUsed = state.twoADay ? Math.ceil(total / 2) : total;
-              if (state.days != null && state.days > calendarDaysUsed) {
-                const rest = state.days - calendarDaysUsed;
-                return (
-                  <Row icon="🛌" label="Rest / flex" value={`${rest} day${rest === 1 ? "" : "s"}/wk`} />
-                );
-              }
-              return null;
-            })()}
-          </>
-        )}
+          {resolved && (
+            <>
+              <div style={{ height: 1, background: "var(--cp-border)", margin: "6px 2px 2px" }} />
+              <SessionBreakdown state={state} resolved={resolved} />
+              <Row icon="🛡️" label="Tendons & joints" value="Integrated" />
+              {(() => {
+                const total = totalSessions(resolved);
+                const calendarDaysUsed = state.twoADay ? Math.ceil(total / 2) : total;
+                if (state.days != null && state.days > calendarDaysUsed) {
+                  const rest = state.days - calendarDaysUsed;
+                  return (
+                    <Row icon="🛌" label="Rest / flex" value={`${rest} day${rest === 1 ? "" : "s"}/wk`} />
+                  );
+                }
+                return null;
+              })()}
+            </>
+          )}
 
-        {state.power && <Row icon="⚡" label="Power emphasis" value="On" />}
-        {state.twoADay && <Row icon="🌗" label="Two-a-day" value="AM + PM split" />}
+          {state.power && <Row icon="⚡" label="Power emphasis" value="On" />}
+          {state.twoADay && <Row icon="🌗" label="Two-a-day" value="AM + PM split" />}
+        </div>
+
+        <WeekLadder resolved={resolved} />
+
+        <p style={noteStyle}>
+          The block-creation engine picks the actual movements from your training maxes and the
+          tagged catalog — no two blocks are identical.
+        </p>
       </div>
-
-      <WeekLadder resolved={resolved} />
-
-      <p style={noteStyle}>
-        The block-creation engine picks the actual movements from your training maxes and the
-        tagged catalog — no two blocks are identical.
-      </p>
     </div>
   );
 }
@@ -271,6 +303,22 @@ const previewStyle: React.CSSProperties = {
   borderRadius: 16,
   padding: 20,
   boxShadow: "0 4px 12px rgba(0,0,0,0.04)",
+};
+const summaryToggleStyle: React.CSSProperties = {
+  width: "100%",
+  background: "transparent",
+  border: "none",
+  padding: 0,
+  margin: "0 0 12px",
+  cursor: "pointer",
+  fontFamily: "inherit",
+  color: "inherit",
+  textAlign: "left",
+  alignItems: "center",
+  justifyContent: "space-between",
+  minHeight: 44,
+  gap: 12,
+  // `display: flex` is applied via the wiz-sidebar-summary class at ≤768 px.
 };
 const headerStyle: React.CSSProperties = {
   display: "flex",

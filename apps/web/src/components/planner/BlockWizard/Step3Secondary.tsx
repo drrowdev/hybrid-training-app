@@ -31,13 +31,13 @@ export function Step3Secondary({
   return (
     <section>
       <div style={pillStyle}>Step 3 of 5</div>
-      <h1 style={titleStyle}>Choose your second focus</h1>
-      <p style={subStyle}>
+      <h1 className="wiz-title" style={titleStyle}>Choose your second focus</h1>
+      <p className="wiz-sub" style={subStyle}>
         Biases accessory work and cardio dose around the first focus. Pick one — or skip to go
         all-in.
       </p>
 
-      <div style={cardGridStyle}>
+      <div className="wiz-card-grid" style={cardGridStyle}>
         {options.map((g) => {
           const selected = state.secondary === g;
           const data = GOALS[g];
