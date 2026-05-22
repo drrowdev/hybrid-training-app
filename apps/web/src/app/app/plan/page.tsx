@@ -492,12 +492,19 @@ function DaySessionCard({
             href={`/app/sessions/start/${planned.id}`}
             className="cp-btn primary"
             style={{ flex: 1, textAlign: "center" }}
+            data-testid={`start-${planned.id}`}
           >
             {isToday ? "⚡ Start now" : "Start session"}
           </Link>
           <form action={skipPlannedSession}>
             <input type="hidden" name="id" value={planned.id} />
-            <button type="submit" className="cp-btn ghost">Skip</button>
+            <button
+              type="submit"
+              className="cp-btn ghost"
+              data-testid={`skip-${planned.id}`}
+            >
+              Skip
+            </button>
           </form>
         </div>
       )}
