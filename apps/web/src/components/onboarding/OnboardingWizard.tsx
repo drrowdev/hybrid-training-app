@@ -16,6 +16,7 @@ import {
   type StrengthRole,
 } from "@/lib/planner/archetypes";
 import { seedDefaultOneRm } from "@/lib/training-maxes/defaults";
+import { addDaysToYmd, isoWeekdayYmd, todayYmd } from "@/lib/dates";
 
 // ── Types coming in from the server page ─────────────────────────────────
 
@@ -902,26 +903,17 @@ function tmCardStyle(mode: "enter" | "seed" | "skip"): React.CSSProperties {
   };
 }
 
-function todayYmd(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
 function tomorrowYmd(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  // Client-only: relies on the browser's local wall clock, which is
+  // what the user actually sees. Same reasoning as the no-arg todayYmd()
+  // fallback in @/lib/dates.
+  return addDaysToYmd(todayYmd(), 1);
 }
 
 function nextMondayYmd(): string {
-  const d = new Date();
-  // JS getDay: 0=Sun..6=Sat. Days until next Monday (1).
-  const dow = d.getDay();
-  const delta = ((1 - dow + 7) % 7) || 7;
-  d.setDate(d.getDate() + delta);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-function pad(n: number): string {
-  return n < 10 ? `0${n}` : String(n);
+  const today = todayYmd();
+  // Days until next Monday — never zero (the picker should always
+  // surface the *following* Monday even if today already is one).
+  const delta = (7 - isoWeekdayYmd(today)) || 7;
+  return addDaysToYmd(today, delta);
 }

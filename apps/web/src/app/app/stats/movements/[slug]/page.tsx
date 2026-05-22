@@ -11,6 +11,7 @@ import {
   type E1rmPoint,
   type WeeklyVolumePoint,
 } from "@/lib/stats/movement";
+import { getUserTimezone } from "@/lib/planner/queries";
 import type { TmChangeReason } from "@hta/db";
 
 export default async function MovementDrillDownPage({
@@ -29,8 +30,9 @@ export default async function MovementDrillDownPage({
   if (!user) redirect("/login");
 
   const sets = await getSetsForMovement(movement.id);
+  const tz = await getUserTimezone(user.id);
   const curve = e1rmCurve(sets);
-  const weekly = bucketWeeklyVolume(sets).slice(-12);
+  const weekly = bucketWeeklyVolume(sets, tz).slice(-12);
   const hist = rpeHistogram(sets);
   const stats = summarise(sets);
   const recent = [...sets].reverse().slice(0, 12);

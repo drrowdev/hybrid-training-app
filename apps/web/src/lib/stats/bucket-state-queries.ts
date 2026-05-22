@@ -18,6 +18,7 @@ import {
   ZERO_BUCKET_LOAD,
   type BucketLoad,
 } from "@/lib/engine/bucket-load";
+import { todayYmd } from "@/lib/dates";
 
 const LOOKBACK_DAYS = 35; // a hair more than CTL window for clean EWMA
 
@@ -93,6 +94,7 @@ function normaliseMovement(m: unknown): RegionRefs {
 export async function getBucketState(
   supabase: SupabaseClient,
   userId: string,
+  userTz: string,
 ): Promise<BucketStateRow[]> {
   const sinceIso = new Date(Date.now() - LOOKBACK_DAYS * 86_400_000).toISOString();
 
@@ -167,7 +169,7 @@ export async function getBucketState(
   }
 
   const firstDate = (sessions[0]!.performed_at as string).slice(0, 10);
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = todayYmd(userTz);
 
   return ALL_BUCKETS.map((bucket) => {
     const atl = finalEwma(series[bucket], firstDate, todayIso, 7);

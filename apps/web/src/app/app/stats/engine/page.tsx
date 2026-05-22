@@ -4,6 +4,7 @@ import { getRegionFreshness, type FreshnessRow } from "@/lib/engine/freshness";
 import { getBucketState, type BucketStateRow } from "@/lib/stats/bucket-state-queries";
 import { getRpeDrift, type RpeDrift } from "@/lib/stats/rpe-drift-queries";
 import { getCeilingUtilization, type CeilingUtilization } from "@/lib/stats/ceiling-queries";
+import { getUserTimezone } from "@/lib/planner/queries";
 
 // Plain-language status from freshness ratio.
 function statusFor(f: number, lastLoadDate: string | null): string {
@@ -40,9 +41,10 @@ export default async function EngineStatePage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const tz = user ? await getUserTimezone(user.id) : "UTC";
   const [rows, buckets, drift, ceiling] = await Promise.all([
     getRegionFreshness(),
-    user ? getBucketState(supabase, user.id) : Promise.resolve([] as BucketStateRow[]),
+    user ? getBucketState(supabase, user.id, tz) : Promise.resolve([] as BucketStateRow[]),
     user ? getRpeDrift(supabase, user.id) : Promise.resolve(null as RpeDrift | null),
     user ? getCeilingUtilization(supabase, user.id) : Promise.resolve(null as CeilingUtilization | null),
   ]);

@@ -11,6 +11,7 @@
  * lives in @hta/engine; this is the display layer.
  */
 import { createClient } from "@/lib/supabase/server";
+import { mondayOfYmd, ymdInTimezone } from "@/lib/dates";
 
 export type MovementSet = {
   id: string;
@@ -78,17 +79,19 @@ export async function getSetsForMovement(movementId: string): Promise<MovementSe
 
 export type WeeklyVolumePoint = { weekStart: string; volume: number; sets: number };
 
-export function bucketWeeklyVolume(sets: MovementSet[]): WeeklyVolumePoint[] {
+/**
+ * Bucket sets into weekly volume rows keyed by the Monday (YYYY-MM-DD)
+ * of each set's week. `userTz` is the user's IANA timezone — we want
+ * "the Monday of the week the user perceived the workout happening
+ * in", which depends on local wall-clock time. Without a tz the bucket
+ * key drifts at midnight.
+ */
+export function bucketWeeklyVolume(sets: MovementSet[], userTz: string): WeeklyVolumePoint[] {
   if (sets.length === 0) return [];
   const buckets = new Map<string, { volume: number; sets: number }>();
   for (const s of sets) {
-    const d = new Date(s.performed_at);
-    const day = d.getDay();
-    const diff = (day + 6) % 7;
-    const monday = new Date(d);
-    monday.setDate(d.getDate() - diff);
-    monday.setHours(0, 0, 0, 0);
-    const key = monday.toISOString().slice(0, 10);
+    const localYmd = ymdInTimezone(new Date(s.performed_at), userTz);
+    const key = mondayOfYmd(localYmd);
     const existing = buckets.get(key) ?? { volume: 0, sets: 0 };
     existing.volume += s.weight_kg * s.reps;
     existing.sets += 1;
