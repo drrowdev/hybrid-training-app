@@ -5,17 +5,27 @@ import { createBlock } from "@/lib/planner/actions";
 import {
   ARCHETYPES,
   STRENGTH_ROLE_LABELS,
-  daysForFrequency,
   effectiveDays,
-  minDaysForArchetype,
-  type StrengthRole,
 } from "@/lib/planner/archetypes";
-import { todayYmd } from "@/lib/planner/queries";
+import { getRecentBlocks, todayYmd } from "@/lib/planner/queries";
 import { getTrainingMaxContext } from "@/lib/training-maxes/queries";
 import {
-  ArchetypePicker,
-  type ArchetypeOption,
-} from "@/components/planner/ArchetypePicker";
+  ARCHETYPE_NAMES,
+  PlanNewSwitch,
+  type RecentBlockCard,
+  type TmReadinessByArchetype,
+} from "@/components/planner/BlockWizard";
+
+// Six wizard-resolvable archetype ids — must stay in sync with
+// `ResolvedArchetype["id"]` in lib/planner/wizard/wizard-mapping.ts.
+const WIZARD_ARCHETYPE_IDS = [
+  "strength_anchor",
+  "endurance_anchor",
+  "concurrent_hybrid",
+  "hypertrophy_anchor",
+  "maintenance",
+  "rebuild",
+] as const;
 
 export default async function NewBlockPage() {
   const supabase = await createClient();
@@ -28,101 +38,66 @@ export default async function NewBlockPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("training_days_per_week, allows_two_a_days, am_window_start, pm_window_start")
+    .select("allows_two_a_days")
     .eq("id", user.id)
     .maybeSingle();
-  const defaultDaysPerWeek = Number(profile?.training_days_per_week ?? 4);
   const allowsTwoADays = Boolean(profile?.allows_two_a_days ?? false);
-  const amWindowStart = (profile?.am_window_start ?? "07:00:00").slice(0, 5);
-  const pmWindowStart = (profile?.pm_window_start ?? "17:00:00").slice(0, 5);
 
-  const options: ArchetypeOption[] = Object.values(ARCHETYPES).map((a) => {
-    const minDays = minDaysForArchetype(a, allowsTwoADays);
-    const activeDayPool = effectiveDays(a, allowsTwoADays);
-    const maxDays = new Set(activeDayPool.map((d) => d.dayIndex)).size;
-    const hasTwoADayVariant = !!a.twoADayDays && a.twoADayDays.length > 0;
-
-    // Resolve strength roles using the user's chosen variant.
-    const rolesNeeded = new Map<StrengthRole, { satisfied: boolean; chosen?: string }>();
-    for (const day of activeDayPool) {
-      if (day.kind !== "strength") continue;
-      const chosen = day.candidateSlugs.find((s) => tmCtx.bySlug.has(s));
-      const existing = rolesNeeded.get(day.role);
-      if (!existing) {
-        rolesNeeded.set(day.role, { satisfied: !!chosen, chosen: chosen ?? undefined });
-      } else if (chosen && !existing.satisfied) {
-        rolesNeeded.set(day.role, { satisfied: true, chosen });
+  // ── TM readiness per wizard-resolvable archetype ──
+  const tmReadinessByArchetype = Object.fromEntries(
+    WIZARD_ARCHETYPE_IDS.map((id) => {
+      const archetype = ARCHETYPES[id];
+      const pool = effectiveDays(archetype, allowsTwoADays);
+      const missingRoles: string[] = [];
+      const rolesSeen = new Map<string, boolean>();
+      for (const day of pool) {
+        if (day.kind !== "strength") continue;
+        const existing = rolesSeen.get(day.role);
+        const hasTm = day.candidateSlugs.some((s) => tmCtx.bySlug.has(s));
+        if (existing === undefined) rolesSeen.set(day.role, hasTm);
+        else if (hasTm) rolesSeen.set(day.role, true);
       }
-    }
-    const missingRoles = Array.from(rolesNeeded.entries())
-      .filter(([, v]) => !v.satisfied)
-      .map(([role]) => STRENGTH_ROLE_LABELS[role]);
-    const chosenLifts = Array.from(rolesNeeded.entries())
-      .filter(([, v]) => v.satisfied && v.chosen)
-      .map(([role, v]) => {
-        const row = tmCtx.rows.find((r) => r.movementSlug === v.chosen);
-        return {
-          role: STRENGTH_ROLE_LABELS[role],
-          movement: row?.movementName ?? v.chosen!,
-        };
-      });
-
-    return {
-      id: a.id,
-      name: a.name,
-      oneLiner: a.oneLiner,
-      weeks: a.weeks,
-      minDays,
-      maxDays,
-      twoADay: allowsTwoADays && hasTwoADayVariant,
-      hasTwoADayVariant,
-      weekLabels: a.weekProfiles.map((w) => w.intensityLabel),
-      tmReady: missingRoles.length === 0,
-      missingRoles,
-      chosenLifts,
-    };
-  });
-
-  // Build a preview of which days run at each frequency so the wizard can
-  // show "5 d/wk → 4 strength + 1 cardio" style labels.
-  const dayPreviewByArchetype = Object.fromEntries(
-    Object.values(ARCHETYPES).map((a) => {
-      const previews: Record<number, { strength: number; cardio: number }> = {};
-      const pool = effectiveDays(a, allowsTwoADays);
-      const maxD = new Set(pool.map((d) => d.dayIndex)).size;
-      for (let d = minDaysForArchetype(a, allowsTwoADays); d <= maxD; d++) {
-        const active = daysForFrequency(a, d, allowsTwoADays);
-        previews[d] = {
-          strength: active.filter((x) => x.kind === "strength").length,
-          cardio: active.filter((x) => x.kind === "cardio").length,
-        };
+      for (const [role, ready] of rolesSeen.entries()) {
+        if (!ready) missingRoles.push(STRENGTH_ROLE_LABELS[role as keyof typeof STRENGTH_ROLE_LABELS]);
       }
-      return [a.id, previews];
+      return [id, { ready: missingRoles.length === 0, missingRoles }];
     }),
-  );
+  ) as TmReadinessByArchetype;
+
+  // ── Recent blocks for "Run it again" ──
+  const recent = await getRecentBlocks(3);
+  const recentBlocks: RecentBlockCard[] = recent.map((b) => ({
+    id: b.id,
+    archetype: b.archetype,
+    archetypeName: ARCHETYPE_NAMES[b.archetype] ?? b.archetype,
+    startedOn: b.startedOn,
+    daysPerWeek: b.daysPerWeek,
+    status: b.status,
+    dayIndexOverrides: b.dayIndexOverrides,
+  }));
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
       <header>
-        <Link href="/app/plan" style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}>
+        <Link
+          href="/app/plan"
+          style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
+        >
           ← plan
         </Link>
-        <h1 style={{ fontSize: 28, margin: "8px 0 0", letterSpacing: "-0.01em" }}>Start a block</h1>
+        <h1 style={{ fontSize: 28, margin: "8px 0 0", letterSpacing: "-0.01em" }}>
+          Start a new block
+        </h1>
         <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-          Pick how many days you can train this block, then pick a focus. The planner
-          uses whichever lift <em>variant</em>{" "}
-          you&apos;ve set a TM for (back squat, front squat, trap-bar deadlift, push press —
-          your choice per role).
+          Pick up where you left off, or shape a new block from your goals.
         </p>
       </header>
 
-      <ArchetypePicker
-        options={options}
-        defaultStartedOn={todayYmd()}
-        defaultDaysPerWeek={defaultDaysPerWeek}
-        dayPreviewByArchetype={dayPreviewByArchetype}
-        amWindowStart={amWindowStart}
-        pmWindowStart={pmWindowStart}
+      <PlanNewSwitch
+        recentBlocks={recentBlocks}
+        tmReadinessByArchetype={tmReadinessByArchetype}
+        allowsTwoADays={allowsTwoADays}
+        todayYmd={todayYmd()}
         action={createBlock}
       />
     </div>

@@ -179,9 +179,17 @@ const createBlockSchema = z.object({
     "endurance_anchor",
     "rebuild",
     "hypertrophy_anchor",
+    "concurrent_hybrid",
+    "maintenance",
   ] satisfies [ArchetypeId, ...ArchetypeId[]]),
   startedOn: z.string().date(),
-  daysPerWeek: z.coerce.number().int().min(2).max(7),
+  daysPerWeek: z.coerce.number().int().min(1).max(7),
+  /**
+   * Optional JSON-stringified ``{ days: number[], twoADay: boolean }`` from
+   * the block wizard's "Lay out your week" step. Persisted on the block row
+   * so re-runs honour the user's calendar layout.
+   */
+  dayIndexOverrides: z.string().optional(),
 });
 
 export type CreateBlockResult =
@@ -198,9 +206,30 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
     archetype: formData.get("archetype"),
     startedOn: formData.get("startedOn"),
     daysPerWeek: formData.get("daysPerWeek"),
+    dayIndexOverrides: formData.get("dayIndexOverrides") ?? undefined,
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  // Parse + validate the dayIndexOverrides JSON payload (wizard step 5).
+  let dayIndexOverrides: { days: number[]; twoADay: boolean } | null = null;
+  if (parsed.data.dayIndexOverrides) {
+    try {
+      const raw = JSON.parse(parsed.data.dayIndexOverrides) as {
+        days?: unknown;
+        twoADay?: unknown;
+      };
+      if (
+        Array.isArray(raw.days) &&
+        raw.days.every((d): d is number => typeof d === "number" && d >= 0 && d <= 6) &&
+        typeof raw.twoADay === "boolean"
+      ) {
+        dayIndexOverrides = { days: raw.days as number[], twoADay: raw.twoADay };
+      }
+    } catch {
+      // Bad JSON — silently drop; the block can still be created without overrides.
+    }
   }
 
   const supabase = await createClient();
@@ -318,6 +347,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       weeks: archetype.weeks,
       status: "active",
       days_per_week: parsed.data.daysPerWeek,
+      day_index_overrides: dayIndexOverrides,
     })
     .select("id")
     .single();
