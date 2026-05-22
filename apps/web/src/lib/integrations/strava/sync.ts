@@ -12,6 +12,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { listActivitiesSince, refreshAccessToken } from "./client";
 import { buildSyncRow } from "./sync-row";
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
+import { getUserTimezone } from "@/lib/planner/queries";
 
 const TOKEN_REFRESH_SAFETY_S = 60; // refresh if expiring within 60s
 const DEFAULT_LOOKBACK_DAYS = 30;
@@ -124,7 +125,7 @@ export async function syncStrava(
   // Refresh the region ledger now that we have new cardio.
   if (imported > 0) {
     try {
-      await recomputeRegionState(supabase, userId);
+      await recomputeRegionState(supabase, userId, await getUserTimezone(userId));
     } catch (e) {
       // Non-fatal — the ledger will catch up on next sync or completion.
       console.error("recomputeRegionState after Strava sync failed:", e);

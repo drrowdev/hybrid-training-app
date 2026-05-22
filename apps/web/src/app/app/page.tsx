@@ -9,6 +9,7 @@ import {
   getUpcomingPlannedSessions,
   type PlannedDay,
 } from "@/lib/planner/queries";
+import { todayYmd } from "@/lib/dates";
 import { effectiveTimeOfDay, gapHoursBetween } from "@/lib/planner/time-of-day";
 import { getRegionFreshness, findHeavyOnRecoveringConflict, type RegionFreshnessRow, type FreshnessConflict } from "@/lib/stats/region-freshness-queries";
 import { StravaStaleSyncTrigger } from "@/components/StravaStaleSyncTrigger";
@@ -46,7 +47,7 @@ export default async function TodayPage() {
     .eq("id", userId)
     .maybeSingle();
 
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = todayYmd(profile?.timezone ?? "UTC");
 
   const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness] = await Promise.all([
     supabase

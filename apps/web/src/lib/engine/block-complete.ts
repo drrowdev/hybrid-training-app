@@ -24,6 +24,7 @@
  *   - Active limitation on the movement's region suppresses that lift
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { addDaysToYmd } from "@/lib/dates";
 
 export type BlockCompleteBump = {
   blockId: string;
@@ -77,12 +78,19 @@ export async function findBlockCompleteBump(
     .maybeSingle();
   if (!block) return null;
 
-  // Block window. started_on + weeks*7 = end date (rough).
+  // Block window. started_on + weeks*7 days = end date.
+  //
+  // `blockEndedOn` is a pure calendar-date calculation off the stored
+  // start date and an integer week count — genuinely UTC-internal,
+  // because both inputs are already TZ-anchored and no wall-clock
+  // "now" is involved. The startedAt/endedAt Date objects below are
+  // only used to build ISO bounds for the tm_history range query.
+  const weeks = Number(block.weeks ?? 4);
+  const blockEndedOn = addDaysToYmd(block.started_on, weeks * 7);
   const startedAt = new Date(`${block.started_on}T00:00:00Z`);
-  const endedAt = new Date(startedAt.getTime() + Number(block.weeks ?? 4) * 7 * 86_400_000);
+  const endedAt = new Date(`${blockEndedOn}T00:00:00Z`);
   const startIso = startedAt.toISOString();
   const endIso = endedAt.toISOString();
-  const blockEndedOn = endedAt.toISOString().slice(0, 10);
 
   // 2. Block completion check — at least COMPLETION_THRESHOLD of planned
   // sessions actually got linked to a completed session.
