@@ -85,7 +85,9 @@ export function Step5Schedule({
 
       {state.usingSavedPref && (
         <div style={prefNoteStyle}>
-          <span>Using your saved training days.</span>
+          <span>
+            Using your saved {resolved.name} {state.days}-day pattern.
+          </span>
           <a
             href="#"
             onClick={(e) => {
