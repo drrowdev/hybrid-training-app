@@ -13,16 +13,11 @@ import { markOnboarded, seedStrengthTms } from "./fixtures/seed-blocks";
  * walking the login UI — the password input has no label and exercising
  * the login form isn't what this spec is for.
  *
- * STATUS: the "end-to-end finish + verify a block was created" tail of
- * this spec is blocked on a separate production bug in
- * `apps/web/src/lib/planner/actions.ts` — `createBlock` inserts
- * `planned_sessions` rows with camelCase keys (`blockId`, `userId`,
- * `weekIndex`, …) which PostgREST rejects with "Could not find the
- * 'blockId' column of 'planned_sessions' in the schema cache". The
- * server action returns ok:false and stays on /plan/new. We assert that
- * the wizard reaches and clicks the final Start button so the UI walk
- * is covered, but skip the post-redirect / row-existence asserts until
- * the camelCase→snake_case fix lands.
+ * Previously this spec was scoped down to "Start button enabled" because
+ * clicking Start hit a snake_case-vs-camelCase bug in createBlock
+ * (PGRST204 — see fix/createblock-snake-case). The fix is in, so this
+ * spec now exercises the full path: click Start → redirect to /app/plan
+ * → assert the training_blocks + planned_sessions rows landed in the DB.
  */
 
 test.describe("@desktop /plan/new wizard", () => {
@@ -62,11 +57,45 @@ test.describe("@desktop /plan/new wizard", () => {
     // Step 4: review → schedule
     await page.getByRole("button", { name: /continue to schedule/i }).click();
 
-    // Step 5: confirm the Start button is reachable and enabled (TM gate
-    // passed). We do not click + verify creation — see file header.
+    // Step 5: click Start. The wizard fires createBlock and on success
+    // navigates to /app/plan via router.push.
     const startBtn = page.getByRole("button", { name: /start this block/i });
     await expect(startBtn).toBeVisible();
     await expect(startBtn).toBeEnabled();
+    await startBtn.click();
+
+    await page.waitForURL("**/app/plan", { timeout: 15_000 });
+
+    // The training_blocks row was created and is active.
+    const { data: blocks, error: blocksErr } = await admin
+      .from("training_blocks")
+      .select("id, archetype, status, days_per_week, weeks")
+      .eq("user_id", freshUser.userId)
+      .eq("status", "active");
+    expect(blocksErr).toBeNull();
+    expect(blocks?.length ?? 0).toBe(1);
+    const block = blocks![0]!;
+    expect(block.archetype).toBe("strength_anchor");
+    expect(block.days_per_week).toBe(4);
+    const weeks = block.weeks;
+
+    // The planned_sessions rows were inserted. The strength_anchor
+    // archetype produces one row per (week × training-day), no rest
+    // days. For a 4d block that's days_per_week * weeks rows.
+    const { data: planned, error: psErr } = await admin
+      .from("planned_sessions")
+      .select("id, week_index, day_index, block_id, user_id")
+      .eq("block_id", block.id);
+    expect(psErr).toBeNull();
+    expect(planned?.length ?? 0).toBe(weeks * 4);
+
+    // Every row carries the snake_case columns populated correctly —
+    // i.e. PGRST204 didn't silently mangle the insert.
+    for (const row of planned ?? []) {
+      expect(row.user_id).toBe(freshUser.userId);
+      expect(row.block_id).toBe(block.id);
+      expect(typeof row.week_index).toBe("number");
+      expect(typeof row.day_index).toBe("number");
+    }
   });
 });
-

@@ -16,20 +16,16 @@ import {
  *
  * Auth is injected via cookie (see e2e/fixtures/auth.ts).
  *
- * STATUS: the click-through (createBlock → redirect → verify second
- * block exists) is blocked on the same production bug as
- * `plan-new-wizard-desktop.spec.ts` — `createBlock` inserts
- * `planned_sessions` with camelCase keys that PostgREST rejects. The
- * action returns ok:false, the page surfaces the error inline, and no
- * redirect happens. We assert here that the card is rendered + the
- * picker stays on screen; the post-click assertions are skipped until
- * the actions.ts fix lands.
+ * Previously this spec was scoped down because clicking the recent
+ * card invoked createBlock which hit the same snake_case-vs-camelCase
+ * bug (PGRST204). Now that the fix is in, we click the card and assert
+ * the resulting block + planned_sessions actually landed in the DB.
  */
 
 test.describe("@desktop /plan/new run-it-again", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "Chromium-only for first PR");
 
-  test("user with a completed block sees the run-it-again card", async ({
+  test("user with a completed block can run it again", async ({
     page,
     context,
     freshUser,
@@ -39,7 +35,7 @@ test.describe("@desktop /plan/new run-it-again", () => {
   }) => {
     await markOnboarded(admin, freshUser.userId);
     await seedStrengthTms(admin, freshUser.userId);
-    await seedRecentBlock(admin, freshUser.userId, {
+    const seededBlockId = await seedRecentBlock(admin, freshUser.userId, {
       archetype: "strength_anchor",
       daysPerWeek: 4,
       status: "completed",
@@ -52,21 +48,43 @@ test.describe("@desktop /plan/new run-it-again", () => {
     await expect(page.getByRole("heading", { name: /run it again/i })).toBeVisible();
     const recentCard = page.locator(".pn-recent-card").first();
     await expect(recentCard).toBeVisible();
-
-    // We assert the card renders with the expected archetype + day count
-    // so a UI regression in the recent-blocks picker would be caught.
+    // The /plan/new card renders the raw archetype slug today (not the
+    // friendlier ARCHETYPE_NAMES lookup) — a separate cosmetic bug, but
+    // it means the slug is what the user sees, so that's what we assert.
     await expect(recentCard).toContainText(/strength_anchor/i);
     await expect(recentCard).toContainText(/4 d\/wk/);
     await expect(recentCard).toContainText(/completed/i);
 
-    // Verify the picker query saw our seeded row (i.e. RLS + auth cookies
-    // wired correctly) without relying on a successful createBlock.
-    const { data: blocks, error: listErr } = await admin
+    // The card *is* the run-it-again button — clicking it invokes
+    // createBlock and on success navigates to /app/plan.
+    await recentCard.click();
+    await page.waitForURL("**/app/plan", { timeout: 15_000 });
+
+    // The new block is active and the seeded block stays completed.
+    const { data: blocks, error: blocksErr } = await admin
       .from("training_blocks")
-      .select("id, archetype")
-      .eq("user_id", freshUser.userId);
-    expect(listErr).toBeNull();
-    expect(blocks?.length ?? 0).toBeGreaterThanOrEqual(1);
+      .select("id, archetype, status, days_per_week, weeks, created_at")
+      .eq("user_id", freshUser.userId)
+      .order("created_at", { ascending: false });
+    expect(blocksErr).toBeNull();
+    expect(blocks?.length ?? 0).toBeGreaterThanOrEqual(2);
+    const active = blocks!.find((b) => b.status === "active");
+    expect(active).toBeDefined();
+    expect(active!.id).not.toBe(seededBlockId);
+    expect(active!.archetype).toBe("strength_anchor");
+    expect(active!.days_per_week).toBe(4);
+
+    // The planned_sessions for the new block landed with snake_case
+    // columns (the PGRST204 regression check).
+    const { data: planned, error: psErr } = await admin
+      .from("planned_sessions")
+      .select("id, week_index, day_index, block_id, user_id")
+      .eq("block_id", active!.id);
+    expect(psErr).toBeNull();
+    expect(planned?.length ?? 0).toBe(active!.weeks * 4);
+    for (const row of planned ?? []) {
+      expect(row.user_id).toBe(freshUser.userId);
+      expect(row.block_id).toBe(active!.id);
+    }
   });
 });
-
