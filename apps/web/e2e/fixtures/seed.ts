@@ -7,22 +7,31 @@ import { test as base, expect } from "@playwright/test";
  * integration test layer with testcontainers Postgres mandated by
  * `AGENTS.md` is still pending (see `docs/knowledge/hybrid-training-app-plan.md`).
  *
- * Until that lands, each spec relies on a small set of environment
- * variables to talk to a real (Supabase) test project:
+ * Until that lands, each spec talks to a Supabase project. The fixture
+ * reads either the `E2E_*` variables (when you want a dedicated test
+ * project) OR falls back to the standard Next.js Supabase variables that
+ * already exist in `apps/web/.env.local` for local dev:
  *
  *   - `PLAYWRIGHT_BASE_URL`              — defaults to http://localhost:3000
- *   - `E2E_SUPABASE_URL`                 — Supabase project URL (test only!)
- *   - `E2E_SUPABASE_SERVICE_ROLE_KEY`    — service-role key for user
- *                                          create/delete + raw inserts
- *   - `E2E_SUPABASE_ANON_KEY`            — anon key for sign-in flows
+ *   - `E2E_SUPABASE_URL`                 — overrides; or fall back to
+ *     `NEXT_PUBLIC_SUPABASE_URL`
+ *   - `E2E_SUPABASE_SERVICE_ROLE_KEY`    — overrides; or fall back to
+ *     `SUPABASE_SERVICE_ROLE_KEY`
+ *   - `E2E_SUPABASE_ANON_KEY`            — overrides; or fall back to
+ *     `NEXT_PUBLIC_SUPABASE_ANON_KEY`
  *
- * If the required env vars are missing, the affected test will SKIP with a
- * clear message rather than fail. That keeps CI green for forks / PRs that
- * don't have the secrets wired up, while still running the tests on the
- * main repo when the secrets are present.
+ * If neither set is configured the test will SKIP with a clear message
+ * rather than fail. That keeps CI green for forks / PRs that don't have
+ * the secrets wired up.
+ *
+ * NOTE: when no separate test project exists, this fixture creates real
+ * Supabase users in your dev/prod project. They're identified by an
+ * `e2e-test-*@example.com` email pattern and auto-deleted on test
+ * teardown. Avoid running these against a production project that holds
+ * real-user data.
  *
  * When the testcontainers integration layer (Vitest + real Postgres)
- * lands, replace this skip with a fixture that boots the same container,
+ * lands, replace this fixture with one that boots the same container,
  * runs migrations and seeds a user — see `apps/web/e2e/README.md`.
  */
 
@@ -33,16 +42,23 @@ export type SeedConfig = {
 };
 
 export function readSeedConfig(): SeedConfig | null {
-  const supabaseUrl = process.env.E2E_SUPABASE_URL;
-  const serviceRoleKey = process.env.E2E_SUPABASE_SERVICE_ROLE_KEY;
-  const anonKey = process.env.E2E_SUPABASE_ANON_KEY;
+  const supabaseUrl =
+    process.env.E2E_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey =
+    process.env.E2E_SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const anonKey =
+    process.env.E2E_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!supabaseUrl || !serviceRoleKey || !anonKey) return null;
   return { supabaseUrl, serviceRoleKey, anonKey };
 }
 
 export const SKIP_MESSAGE =
-  "E2E seed env not configured. Set E2E_SUPABASE_URL, E2E_SUPABASE_SERVICE_ROLE_KEY, " +
-  "E2E_SUPABASE_ANON_KEY to run this test against a real Supabase test project. " +
+  "E2E seed env not configured. Set either E2E_SUPABASE_URL / " +
+  "E2E_SUPABASE_SERVICE_ROLE_KEY / E2E_SUPABASE_ANON_KEY, or fall back to " +
+  "the standard NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / " +
+  "NEXT_PUBLIC_SUPABASE_ANON_KEY (already in apps/web/.env.local for local dev). " +
   "See apps/web/e2e/README.md for details.";
 
 type SeededUser = {
