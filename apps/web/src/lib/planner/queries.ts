@@ -133,3 +133,41 @@ export async function getUpcomingPlannedSessions(limit = 3): Promise<PlannedDay[
     .filter((d) => d.date > today && !d.completedSessionId && !d.skippedAt)
     .slice(0, limit);
 }
+
+/**
+ * One row in the "Run it again" picker on /plan/new. Three most-recent
+ * blocks for the current user, regardless of status, so the user can
+ * 1-click clone any of them.
+ */
+export type RecentBlock = {
+  id: string;
+  archetype: string;
+  startedOn: string;
+  daysPerWeek: number | null;
+  status: "active" | "completed" | "archived";
+  dayIndexOverrides: { days: number[]; twoADay: boolean } | null;
+};
+
+export async function getRecentBlocks(limit = 3): Promise<RecentBlock[]> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data } = await supabase
+    .from("training_blocks")
+    .select("id, archetype, started_on, days_per_week, status, day_index_overrides")
+    .eq("user_id", user.id)
+    .order("started_on", { ascending: false })
+    .limit(limit);
+  if (!data) return [];
+  return data.map((d) => ({
+    id: d.id,
+    archetype: d.archetype,
+    startedOn: d.started_on,
+    daysPerWeek: d.days_per_week ?? null,
+    status: d.status as "active" | "completed" | "archived",
+    dayIndexOverrides:
+      (d.day_index_overrides as { days: number[]; twoADay: boolean } | null) ?? null,
+  }));
+}
