@@ -51,6 +51,12 @@ import {
   type WeekContextItem,
 } from "./accessory-picker";
 import type { BulletproofRole, FunctionalRole } from "./accessory-roles";
+import {
+  applyPowerClampToMainItems,
+  archetypeSupportsPowerTransforms,
+  buildPotentiationItem,
+  pickPotentiationMovement,
+} from "./power-emphasis-transform";
 
 type DbMovement = {
   id: string;
@@ -138,6 +144,16 @@ function assemblePrescriptionItems(
   const items = buildPrescription(archetype, weekIndex, day, movement, finisherMovement);
   if (day.kind !== "strength") return items;
 
+  // ─── Power Emphasis Phase 3 — main-lift transforms ───
+  // Clamp top set + rewrite reps for any set above the rewrite
+  // threshold. No-op on archetypes without heavy strength to cap
+  // (endurance / rebuild / maintenance).
+  const powerTransformsApply =
+    powerEmphasis && archetypeSupportsPowerTransforms(archetype.id);
+  if (powerTransformsApply) {
+    applyPowerClampToMainItems(items);
+  }
+
   // Dynamic picker path.
   if (archetype.accessoryProfile && catalog && weekContext) {
     const picks = pickAccessoriesForSession({
@@ -174,6 +190,23 @@ function assemblePrescriptionItems(
           functionalRoles: catalogEntry.functionalRoles,
           primaryMuscles: catalogEntry.primaryMuscles,
         });
+      }
+    }
+    // ─── Power Emphasis Phase 3 — PAP / PAPE primer ───
+    // Prepended *after* the rest of the prescription is assembled so
+    // it's the first item the lifter sees. Pattern-matched to the
+    // day's primary lift; honours blocked regions + tendinopathy.
+    if (powerTransformsApply) {
+      const strengthDay = day as StrengthDay;
+      const pick = pickPotentiationMovement({
+        strengthRole: strengthDay.role,
+        catalog,
+        blockedRegions: new Set(),
+        tendinopathyActive: false,
+        recentlyUsedMovementIds: new Set(),
+      });
+      if (pick) {
+        items.unshift(buildPotentiationItem(pick.movement));
       }
     }
     return items;

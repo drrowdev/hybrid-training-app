@@ -215,3 +215,165 @@ describe("Phase 2 — accessory picker biases toward power-tagged movements", ()
     expect(picks.some((p) => p.reason === "power")).toBe(false);
   });
 });
+
+// ─── Phase 3 — main-lift intensity caps + reps rewrite ───────────────
+describe("Phase 3 — main-lift power clamp + reps rewrite (Sale 1992 / Häkkinen 1985)", () => {
+  it("clamps a 95% top set to 90% TM", async () => {
+    const { applyPowerClampToMainItems } = await import("../power-emphasis-transform");
+    const items: import("@hta/db").PrescriptionItem[] = [
+      { movementId: "mv1", kind: "main", sets: 1, reps: 1, percentTm: 95, intensityLabel: "95% TM", notes: "top set" },
+    ];
+    applyPowerClampToMainItems(items);
+    expect(items[0]!.percentTm).toBe(90);
+    expect(items[0]!.intensityLabel).toBe("90% TM");
+    expect((items[0]!.meta as Record<string, unknown>).cue).toMatch(/compensatory acceleration/i);
+    expect((items[0]!.meta as Record<string, unknown>).cappedFromPercentTm).toBe(95);
+  });
+
+  it("rewrites reps from 1 → 3 when intensity is above 85% TM after clamp", async () => {
+    const { applyPowerClampToMainItems } = await import("../power-emphasis-transform");
+    const items: import("@hta/db").PrescriptionItem[] = [
+      { movementId: "mv1", kind: "main", sets: 1, reps: 1, percentTm: 95 },
+    ];
+    applyPowerClampToMainItems(items);
+    expect(items[0]!.reps).toBe(3);
+    expect((items[0]!.meta as Record<string, unknown>).repsRewrittenFrom).toBe(1);
+  });
+
+  it("is a no-op at 80% TM (intensity ≤ 85% — leaves load and reps alone)", async () => {
+    const { applyPowerClampToMainItems } = await import("../power-emphasis-transform");
+    const items: import("@hta/db").PrescriptionItem[] = [
+      { movementId: "mv1", kind: "main", sets: 1, reps: 5, percentTm: 80 },
+    ];
+    applyPowerClampToMainItems(items);
+    expect(items[0]!.percentTm).toBe(80);
+    expect(items[0]!.reps).toBe(5);
+  });
+
+  it("only touches main items — accessory / cardio / tendon untouched", async () => {
+    const { applyPowerClampToMainItems } = await import("../power-emphasis-transform");
+    const items: import("@hta/db").PrescriptionItem[] = [
+      { movementId: "a", kind: "main", percentTm: 95, reps: 1 },
+      { movementId: "b", kind: "accessory", sets: 3, reps: 12, percentTm: 95 },
+      { movementId: "c", kind: "cardio_z2", durationMin: 45 },
+    ];
+    applyPowerClampToMainItems(items);
+    expect(items[0]!.percentTm).toBe(90);
+    expect(items[1]!.percentTm).toBe(95); // accessory left alone
+    expect(items[1]!.reps).toBe(12);
+    expect(items[2]!.durationMin).toBe(45);
+  });
+
+  it("clamp + reps rewrite is a no-op when power_emphasis would not apply (endurance archetype)", async () => {
+    const { archetypeSupportsPowerTransforms } = await import("../power-emphasis-transform");
+    expect(archetypeSupportsPowerTransforms("endurance_anchor")).toBe(false);
+    expect(archetypeSupportsPowerTransforms("rebuild")).toBe(false);
+    expect(archetypeSupportsPowerTransforms("maintenance")).toBe(false);
+    // Sanity: still applies to the three strength-led archetypes.
+    expect(archetypeSupportsPowerTransforms("strength_anchor")).toBe(true);
+    expect(archetypeSupportsPowerTransforms("hypertrophy_anchor")).toBe(true);
+    expect(archetypeSupportsPowerTransforms("concurrent_hybrid")).toBe(true);
+  });
+});
+
+// ─── Phase 3 — potentiation movement picker (PAP/PAPE) ───────────────
+describe("Phase 3 — potentiation picker (Seitz & Haff 2016; Boullosa 2018)", () => {
+  it("squat day picks a lower-body plyometric (broad-jump preferred over upper-body throw)", async () => {
+    const { pickPotentiationMovement } = await import("../power-emphasis-transform");
+    const pick = pickPotentiationMovement({
+      strengthRole: "squat",
+      catalog: CATALOG,
+      blockedRegions: new Set<string>(),
+      tendinopathyActive: false,
+      recentlyUsedMovementIds: new Set<string>(),
+    });
+    expect(pick).not.toBeNull();
+    expect(pick!.movement.functionalRoles).toContain("power_plyometric");
+    // Slug should match a squat-pattern plyo from the seeded catalog.
+    expect(["broad-jump", "box-jump-low", "vertical-jump", "depth-jump", "tuck-jump"]).toContain(
+      pick!.movement.slug,
+    );
+  });
+
+  it("bench (horizontal_press) day picks an upper-body ballistic", async () => {
+    const { pickPotentiationMovement } = await import("../power-emphasis-transform");
+    const catalog: CatalogMovement[] = [
+      ...CATALOG,
+      mv({
+        id: "mbcp",
+        slug: "med-ball-chest-pass",
+        functionalRoles: ["power_ballistic"],
+        primaryRegion: "shoulder_scapular",
+        primaryMuscles: ["chest", "triceps"],
+        stimToFatigueScore: 4,
+      }),
+    ];
+    const pick = pickPotentiationMovement({
+      strengthRole: "horizontal_press",
+      catalog,
+      blockedRegions: new Set<string>(),
+      tendinopathyActive: false,
+      recentlyUsedMovementIds: new Set<string>(),
+    });
+    expect(pick).not.toBeNull();
+    expect(pick!.movement.functionalRoles).toContain("power_ballistic");
+    expect(pick!.movement.slug).toBe("med-ball-chest-pass");
+  });
+
+  it("deadlift day picks a posterior-chain power movement", async () => {
+    const { pickPotentiationMovement } = await import("../power-emphasis-transform");
+    const pick = pickPotentiationMovement({
+      strengthRole: "deadlift",
+      catalog: CATALOG,
+      blockedRegions: new Set<string>(),
+      tendinopathyActive: false,
+      recentlyUsedMovementIds: new Set<string>(),
+    });
+    expect(pick).not.toBeNull();
+    expect(["kb-swing-russian", "broad-jump", "power-clean"]).toContain(pick!.movement.slug);
+  });
+
+  it("tendinopathy suppresses high-strain-tendon power candidates", async () => {
+    const { pickPotentiationMovement } = await import("../power-emphasis-transform");
+    // CATALOG has only highStrainTendon power-tagged movements that match
+    // a squat pattern (broad-jump is tagged highStrain: true above).
+    const pick = pickPotentiationMovement({
+      strengthRole: "squat",
+      catalog: CATALOG.filter((m) => m.slug !== "kb-swing-russian"),
+      blockedRegions: new Set<string>(),
+      tendinopathyActive: true,
+      recentlyUsedMovementIds: new Set<string>(),
+    });
+    // The only matching squat-pattern plyo in CATALOG is broad-jump which is
+    // tagged highStrainTendon — tendinopathy must exclude it.
+    expect(pick).toBeNull();
+  });
+
+  it("returns null when no power-tagged movement matches", async () => {
+    const { pickPotentiationMovement } = await import("../power-emphasis-transform");
+    const noPowerCatalog = CATALOG.filter((m) => m.functionalRoles.length === 0);
+    const pick = pickPotentiationMovement({
+      strengthRole: "squat",
+      catalog: noPowerCatalog,
+      blockedRegions: new Set<string>(),
+      tendinopathyActive: false,
+      recentlyUsedMovementIds: new Set<string>(),
+    });
+    expect(pick).toBeNull();
+  });
+});
+
+// ─── Phase 3 — buildPotentiationItem shape ───────────────────────────
+describe("Phase 3 — buildPotentiationItem produces the expected prescription kind", () => {
+  it("produces kind=power_potentiation with reps in [3,5] and PAPE rest guidance in meta", async () => {
+    const { buildPotentiationItem } = await import("../power-emphasis-transform");
+    const item = buildPotentiationItem(CATALOG[5]!); // power-clean
+    expect(item.kind).toBe("power_potentiation");
+    expect(item.sets).toBe(3);
+    expect(item.reps).toBeGreaterThanOrEqual(3);
+    expect(item.reps).toBeLessThanOrEqual(5);
+    const meta = item.meta as Record<string, unknown>;
+    expect(typeof meta.restBeforeMainLift).toBe("string");
+    expect(String(meta.restBeforeMainLift)).toMatch(/4.{0,2}8/);
+  });
+});
