@@ -77,9 +77,12 @@ jobs:
       - name: Check E2E secrets
         id: e2e_secrets
         run: |
-          if [ -n "${{ secrets.E2E_SUPABASE_URL }}" ] \
-             && [ -n "${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}" ] \
-             && [ -n "${{ secrets.E2E_SUPABASE_ANON_KEY }}" ]; then
+          if { [ -n "${{ secrets.E2E_SUPABASE_URL }}" ] \
+               && [ -n "${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}" ] \
+               && [ -n "${{ secrets.E2E_SUPABASE_ANON_KEY }}" ]; } \
+             || { [ -n "${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}" ] \
+                  && [ -n "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" ] \
+                  && [ -n "${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}" ]; }; then
             echo "configured=true" >> "$GITHUB_OUTPUT"
           else
             echo "configured=false" >> "$GITHUB_OUTPUT"
@@ -92,16 +95,16 @@ jobs:
       - name: Build web
         run: pnpm --filter @hta/web build
         env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL || 'https://placeholder.supabase.co' }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY || 'sb_publishable_test_for_ci_build_only' }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_test_for_ci_build_only' }}
 
       - name: Start web (background)
         run: |
           pnpm --filter @hta/web start &
           echo $! > .web.pid
         env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL || 'https://placeholder.supabase.co' }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY || 'sb_publishable_test_for_ci_build_only' }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_test_for_ci_build_only' }}
 
       - name: Wait for app to be ready
         run: npx --yes wait-on http://127.0.0.1:3000 --timeout 120000
@@ -110,9 +113,15 @@ jobs:
         env:
           CI: "true"
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+          # The fixture reads E2E_* first then falls back to the standard
+          # Next.js Supabase names. Passing both lets a dedicated test
+          # project override the dev project when configured.
           E2E_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
           E2E_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}
           E2E_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         run: pnpm --filter @hta/web exec playwright test
 
       - name: Stop web
