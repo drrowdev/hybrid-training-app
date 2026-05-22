@@ -17,6 +17,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *     blockMonday = startedOn - isoWeekday(startedOn)
  *     return blockMonday + w*7 + d
  *
+ * All arithmetic anchored in UTC string-math (post fix/daydate-timezone),
+ * so the resolved date is invariant under host TZ.
+ *
  * To make `dayDate(startedOn, weekIndex, dayIndex)` resolve to TODAY,
  * we set `dayIndex = isoWeekday(today)` and
  * `startedOn = today - (weekIndex * 7 + dayIndex)`. By construction
@@ -65,35 +68,40 @@ export const STRENGTH_ANCHOR_WEEK_PROFILES = [
 ] as const;
 
 /**
- * `apps/web/src/lib/planner/queries.ts::dayDate`, replicated 1:1 INCLUDING
- * its UTC-vs-local quirk: the `ymd` helper there uses
- * `d.toISOString().slice(0, 10)` which returns the *UTC* date, while
- * `todayYmd` uses local getFullYear/getMonth/getDate. In any timezone
- * with a non-zero UTC offset the result of dayDate can differ from the
- * naive local-date math by ±1 day per addDays() call (compounding to ±2
- * total over `isoWeekday(startedOn) + (w*7 + d)` calls).
+ * Pure YYYY-MM-DD arithmetic, identical to production's `dayDate` (post
+ * timezone fix). We anchor everything in UTC so the math is timezone-free:
+ * parsing as UTC, adding days via setUTCDate, and reading back UTC
+ * components never crosses a TZ boundary.
  *
- * The fixture mirrors this exactly so we can find the planned_session
- * /app surfaces as "today" without depending on which timezone the dev
- * server is running in. Re-implementing rather than importing keeps the
- * fixture free of server-only Next.js code.
+ * Re-implemented rather than imported so the fixture stays free of
+ * server-only Next.js code (the queries module pulls in @/lib/supabase/server).
+ * If `dayDate`'s contract ever changes, this fixture and the
+ * `daydate-tz.test.ts` regression suite will diverge from production —
+ * keep them in sync.
  */
 function productionDayDate(startedOn: string, weekIndex: number, dayIndex: number): string {
-  const isoWeekdayStr = (iso: string) => {
-    const d = new Date(iso + "T00:00:00");
-    return (d.getDay() + 6) % 7;
+  const parse = (iso: string) => {
+    const [y, m, d] = iso.split("-").map((s) => Number.parseInt(s, 10));
+    return new Date(Date.UTC(y, m - 1, d));
   };
-  const ymdUtc = (d: Date) => d.toISOString().slice(0, 10);
+  const fmt = (d: Date) =>
+    `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
   const addDays = (iso: string, days: number) => {
-    const d = new Date(iso + "T00:00:00");
-    d.setDate(d.getDate() + days);
-    return ymdUtc(d);
+    const d = parse(iso);
+    d.setUTCDate(d.getUTCDate() + days);
+    return fmt(d);
   };
+  const isoWeekdayStr = (iso: string) => (parse(iso).getUTCDay() + 6) % 7;
   const blockMonday = addDays(startedOn, -isoWeekdayStr(startedOn));
   return addDays(blockMonday, weekIndex * 7 + dayIndex);
 }
 
-/** Local YYYY-MM-DD — matches `queries.ts::todayYmd`. */
+/**
+ * Local YYYY-MM-DD matching production's `todayYmd(tz)` when `tz` is the
+ * host's system timezone — which is what the dev server / Playwright
+ * worker process sees. The Playwright workers don't have a profile row to
+ * pull from, so we anchor on the host's wall clock.
+ */
 function todayLocalYmd(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
