@@ -2,17 +2,14 @@
 
 Foundation for browser-level E2E against `apps/web`. Covers the
 **onboarding**, **plan-creation**, **multi-user RLS**, **session-log**,
-and **auth** critical paths from [`AGENTS.md`](../../../AGENTS.md).
-With auth landed, **all 3 AGENTS.md critical paths are covered**
-(`auth` ✓ + `log` ✓ + multi-user RLS ✓); `program-run` (multi-day
-cursor advancement / deload / completion) remains as the next
-follow-up — see [Follow-ups](#follow-ups).
+**auth**, and **program-run** critical paths from
+[`AGENTS.md`](../../../AGENTS.md). With program-run landed,
+**all 3 AGENTS.md critical paths are covered** (`auth` ✓ + `log` ✓ +
+`program-run` ✓), and the AGENTS.md "Multi-user E2E" mandate stays
+satisfied by `multi-user-rls-desktop.spec.ts`.
 
-> The AGENTS.md mandate `Multi-user E2E — at least one test that mutates
-> state from two browser contexts and verifies the server-canonical
-> state` is now satisfied by `multi-user-rls-desktop.spec.ts`. The
-> engineering rule "RLS on every user-data table … verified by the
-> multi-user e2e test in `apps/web`" has its verification on disk.
+> The engineering rule "E2E — Playwright in `apps/web`. Critical paths:
+> auth + log + program-run" now has a passing spec for each path.
 
 ## Layout
 
@@ -24,13 +21,15 @@ apps/web/
     ├── fixtures/auth.ts        # signInAs cookie-injection + generateMagicLink / generateSignupLink / deleteUserByEmail helpers
     ├── fixtures/seed-blocks.ts # direct-DB seed helpers
     ├── fixtures/session-log.ts # seedActiveBlock + assertSessionComplete helpers
+    ├── fixtures/program-run.ts # seedBlockAtWeekDay + assertBlockStatus + STRENGTH_ANCHOR_WEEK_PROFILES
     ├── fixtures/multi-user.ts  # twoUsers fixture (parallel provisioning + cascade cleanup)
     ├── auth-desktop.spec.ts
     ├── onboarding-mobile.spec.ts
     ├── plan-new-wizard-desktop.spec.ts
     ├── plan-new-run-it-again-desktop.spec.ts
     ├── multi-user-rls-desktop.spec.ts
-    └── session-log-desktop.spec.ts
+    ├── session-log-desktop.spec.ts
+    └── program-run-desktop.spec.ts
 ```
 
 ## Seed strategy
@@ -143,6 +142,7 @@ actionable message** rather than failing. Scenarios C (sign-out) and D
 | `multi-user-rls-desktop.spec.ts`          | passing  | Three scenarios: (A) /app/plan RLS isolation across two browser contexts, (B) concurrent block-creation race via `Promise.all`, (C) read-after-write isolation on /app/settings/training-maxes. Closes the AGENTS.md multi-user-E2E mandate. |
 | `session-log-desktop.spec.ts`             | passing  | Three scenarios: (A) seed → /app Start session → log two strength sets → finish → service-role verify `sessions.completed_at`, `set_logs` (×2), `planned_sessions.completed_session_id`. (B) DC-P1 pre-session check-in: fatigue + soreness chips persist to the `sessions` row. (C) Skip a planned session: `planned_sessions.skipped_at` is set; the Start CTA is replaced by the Un-skip button. Closes the AGENTS.md session-log critical-path mandate. |
 | `auth-desktop.spec.ts`                    | passing / 2 conditional skips  | Four scenarios: (A) Magic-link sign-in via admin `generateLink({ type: 'magiclink' })` → navigate to `action_link` → land in `/app`, service-role verify the auth user. (B) Sign-up via the UI form: submit email + password → "check your email" state → admin lookup + `generateLink({ type: 'signup' })` → navigate → land in `/onboarding`. (C) Sign-out: cookie-inject sign in → click the AppShell `data-testid=sign-out-button` → redirect to `/login`; re-visiting `/app` redirects back to `/login?next=/app`. (D) Unauthenticated deep-link to `/app/plan/new` redirects to `/login?next=/app/plan/new`. Closes the AGENTS.md auth critical-path mandate. **A and B skip when the Supabase project isn't configured for localhost E2E** — see "Supabase project setup for auth E2E" below; C and D always run. |
+| `program-run-desktop.spec.ts`             | passing  | Four scenarios: (A) Multi-day cursor advancement — seed a block at `weekIndex=0`, /app surfaces today's prescription, log it end-to-end, refresh /app → `today-logged` card replaces today-card and `Up next this week` lists future planned sessions. (B) Deload week prescription differs — seed at `weekIndex=3` (strength_anchor's `weekProfiles[3].intensityLabel === "Deload"`), assert today's card title carries the `(deload)` suffix and the persisted prescription items use the deload intensities `[40,50,60]%TM` halved to 2 items by `strengthVolumeScale=0.5`. (C) Block completion — log the only un-completed row in a block where all other rows are pre-completed; assert status stays `active` (no auto-completion in the codebase today), click `data-testid=end-block-button` → status flips to `archived`; archived block surfaces in `/plan/new` "Run it again". (D) Two active blocks — schema has no `(user_id, status='active')` uniqueness and no DC-* mandates it; direct-DB seed inserts two `active` rows and assert `getActiveBlock`'s `started_on DESC LIMIT 1` ordering surfaces the newer one. Closes the AGENTS.md program-run critical-path mandate. |
 
 ### Known production bug blocking deeper assertions
 
@@ -227,7 +227,19 @@ project without ever seeing prod credentials.
 Things AGENTS.md mandates that this PR does **not** yet cover. Each is
 a one-spec follow-up PR:
 
-- **Program-run E2E** — multi-day cursor advancement, deload, completion.
 - **Visual regression** / screenshot diffs.
 - **Firefox + WebKit projects** (first PR is Chromium-only).
 - **Performance budgets** (Lighthouse / web-vitals in CI).
+
+### Known TZ-skew in `apps/web/src/lib/planner/queries.ts::dayDate`
+
+`dayDate` mixes UTC and local-date math: its `ymd` helper uses
+`d.toISOString().slice(0, 10)` (UTC) while `todayYmd` uses local
+getFullYear/getMonth/getDate. In timezones with a non-zero UTC offset
+this can shift which `(week_index, day_index)` pair resolves to today
+by ±1–2 days. The program-run fixture replicates this math 1:1 in
+`fixtures/program-run.ts::productionDayDate` and queries the DB to
+identify whichever row /app surfaces as "today", so the spec is robust
+to the skew. The skew itself is out of scope for the program-run E2E
+PR (no production behavior changes); fixing it would be a separate PR
+that touches `queries.ts` and any consumer that re-derives dates.
