@@ -25,7 +25,10 @@ specs talk to a Supabase project via the service-role key.
 
 The fixture reads either the `E2E_*` variables (when you want a dedicated
 test project) or falls back to the standard Next.js Supabase variables
-that already exist in `apps/web/.env.local` for local dev:
+that already exist in `apps/web/.env.local` for local dev. **The
+playwright config auto-loads `.env.local`** at startup (small inline
+parser, no `dotenv` dep), so locally you don't need to export anything —
+the same vars the dev server uses are visible to Playwright.
 
 | Variable                              | Fallback                              | Purpose                                                    |
 | ------------------------------------- | ------------------------------------- | ---------------------------------------------------------- |
@@ -42,13 +45,76 @@ When the integration-test helper lands, replace `fixtures/seed.ts` with
 a fixture that boots the same testcontainers Postgres, runs the Drizzle
 migrations, and seeds a user directly. The spec shape stays the same.
 
+### Auth (cookie injection, not UI walk)
+
+The login page's password input renders without a `<label>` or
+`aria-label`, so `getByLabel(/password/i)` can't see it — and exercising
+the login UI isn't the point of these specs anyway. Each spec instead
+signs the user in programmatically and injects the resulting cookies
+into the Playwright `BrowserContext`:
+
+```ts
+import { signInAs } from "./fixtures/auth";
+
+await signInAs(context, freshUser, seedConfig, baseURL);
+```
+
+`signInAs` uses the same `@supabase/ssr` `createServerClient` the app's
+middleware uses, with an in-memory Map-backed cookie store. After
+`signInWithPassword`, every captured cookie is forwarded to
+`context.addCookies(...)` for the app's domain. This handles the
+chunked, base64-encoded session-cookie shape Supabase emits without
+re-implementing it.
+
+### Direct-DB seed helpers
+
+`fixtures/seed-blocks.ts` exposes thin helpers that bypass UI walks for
+pre-conditions that aren't what the spec is testing:
+
+- `markOnboarded(admin, userId)` — sets `profiles.onboarded_at = now()`
+  so `/app` doesn't redirect to `/onboarding`.
+- `seedRecentBlock(admin, userId, opts)` — inserts a `training_blocks`
+  row so the "Run it again" picker on `/plan/new` has a card to render.
+- `seedStrengthTms(admin, userId)` — inserts `training_maxes` rows for
+  the canonical squat / deadlift / horizontal-press / vertical-press
+  slugs so the wizard's TM-gating allows clicking "Start this block".
+
+Column names in these helpers mirror the Drizzle schema in
+`packages/db/src/schema` — `profiles.id` (PK = `auth.uid()`),
+`profiles.onboarded_at`, `training_blocks.user_id`,
+`training_blocks.started_on`, `training_blocks.weeks`, etc.
+
 > ⚠️ **If you don't have a dedicated test Supabase project**, the
 > fallback uses your dev project. Test users are created with
-> `e2e-test-*@example.com` emails and auto-deleted in teardown, so the
-> blast radius is small — but **never** run these against a Supabase
-> project that holds real users you can't lose. When you ship to
-> production, create a separate test project and set the `E2E_*` vars
-> to override the fallback.
+> `e2e+<ts>+<rand>@example.test` emails and auto-deleted in teardown,
+> so the blast radius is small — but **never** run these against a
+> Supabase project that holds real users you can't lose. When you ship
+> to production, create a separate test project and set the `E2E_*`
+> vars to override the fallback.
+
+## Current specs
+
+| Spec                                      | Status   | Notes                                                                                                            |
+| ----------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------- |
+| `onboarding-mobile.spec.ts` (gate)        | passing  | Asserts /app → /onboarding redirect + 375px no-horizontal-scroll on a fresh user.                                |
+| `onboarding-mobile.spec.ts` (full walk)   | **skipped** | TODO: walk all 5 onboarding steps. Blocked on adding stable `data-testid`s to the wizard step controls.       |
+| `plan-new-wizard-desktop.spec.ts`         | passing  | Walks Step 1 → Step 5 and asserts the gated "Start this block" button is enabled. Post-click create + redirect verification is intentionally not asserted — see `actions.ts` camelCase bug below. |
+| `plan-new-run-it-again-desktop.spec.ts`   | passing  | Seeds a completed block, asserts the picker card renders with the right metadata. Click-to-clone is **not** exercised — same camelCase bug. |
+
+### Known production bug blocking deeper assertions
+
+`apps/web/src/lib/planner/actions.ts` (`createBlock` + `createCustomBlock`)
+inserts `planned_sessions` rows with camelCase property keys (`blockId`,
+`userId`, `weekIndex`, …). PostgREST rejects with `Could not find the
+'blockId' column of 'planned_sessions' in the schema cache` because the
+columns are snake_case. The action returns `ok:false` and the page
+surfaces an inline error — no block / planned sessions are written.
+
+This bug is out of scope for this E2E-repair PR (rule: no production
+code changes). Once it's fixed in a follow-up, restore the deeper
+assertions in the wizard and run-it-again specs (verify URL changes to
+`/app/plan` after Start / Run-Again, and assert that `training_blocks`
+has the expected row count for the user).
 
 ## Running locally
 
