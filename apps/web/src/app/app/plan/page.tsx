@@ -180,7 +180,13 @@ export default async function PlanPage({
           </div>
           <form action={endBlock}>
             <input type="hidden" name="id" value={block.id} />
-            <button type="submit" className="cp-btn danger">End block</button>
+            <button
+              type="submit"
+              className="cp-btn danger"
+              data-testid="end-block-button"
+            >
+              End block
+            </button>
           </form>
         </div>
       </section>
