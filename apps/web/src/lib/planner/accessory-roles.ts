@@ -30,8 +30,27 @@ export const FUNCTIONAL_ROLES = [
   "velocity_cued",
   "hip_stabilizer",
   "ankle_foot",
+  /** Olympic lift derivatives — triple-extension power. */
+  "power_olympic",
+  /** Jump-based stretch-shortening cycle work. */
+  "power_plyometric",
+  /** Loaded throw / explosive-intent ballistic variants. */
+  "power_ballistic",
 ] as const;
 export type FunctionalRole = (typeof FUNCTIONAL_ROLES)[number];
+
+/**
+ * Roles that the wizard's "Add power emphasis" toggle biases toward.
+ * Read by the accessory picker when `powerEmphasis: true` — the picker
+ * promotes movements tagged with any of these and trims high-rep
+ * hypertrophy fillers (explosive intent vs hypertrophy stimulus per
+ * Schoenfeld 2017 review).
+ */
+export const POWER_FUNCTIONAL_ROLES: readonly FunctionalRole[] = [
+  "power_olympic",
+  "power_plyometric",
+  "power_ballistic",
+] as const;
 
 /**
  * DC-O4 weekly floor. Every archetype must hit these counts each week

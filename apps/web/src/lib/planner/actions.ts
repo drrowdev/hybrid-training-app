@@ -132,6 +132,8 @@ function assemblePrescriptionItems(
   weekContext?: WeekContextItem[],
   /** Week deload scalar from the archetype's week profile. */
   weekDeloadScale: number = 1.0,
+  /** Wizard "Add power emphasis" toggle — persisted on `training_blocks.power_emphasis`. */
+  powerEmphasis: boolean = false,
 ): PrescriptionItem[] {
   const items = buildPrescription(archetype, weekIndex, day, movement, finisherMovement);
   if (day.kind !== "strength") return items;
@@ -151,6 +153,7 @@ function assemblePrescriptionItems(
       },
       perMuscleTargets: defaultMuscleTargets(),
       maxItems: archetype.accessoryProfile.aesthetic.itemsPerSession + 4, // small budget for durability + functional fills
+      powerEmphasis,
     });
     for (const p of picks) {
       items.push({
@@ -214,6 +217,15 @@ const createBlockSchema = z.object({
    * so re-runs honour the user's calendar layout.
    */
   dayIndexOverrides: z.string().optional(),
+  /**
+   * Wizard "Add power emphasis" toggle (step 2). Optional + coerced from
+   * FormData ("true" / "false" / "on" / undefined). When omitted or
+   * falsy the block is created with power_emphasis = false.
+   */
+  powerEmphasis: z
+    .union([z.literal("true"), z.literal("false"), z.literal("on"), z.boolean()])
+    .optional()
+    .transform((v) => v === true || v === "true" || v === "on"),
 });
 
 export type CreateBlockResult =
@@ -231,6 +243,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
     startedOn: formData.get("startedOn"),
     daysPerWeek: formData.get("daysPerWeek"),
     dayIndexOverrides: formData.get("dayIndexOverrides") ?? undefined,
+    powerEmphasis: formData.get("powerEmphasis") ?? undefined,
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -372,6 +385,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       status: "active",
       days_per_week: parsed.data.daysPerWeek,
       day_index_overrides: dayIndexOverrides,
+      power_emphasis: parsed.data.powerEmphasis,
     })
     .select("id")
     .single();
@@ -418,6 +432,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
         pickerCatalog,
         weekContext,
         weekDeloadScale,
+        parsed.data.powerEmphasis,
       );
       const prescription: Prescription = { items };
       const isDeload = weekProfile?.intensityLabel === "Deload";
