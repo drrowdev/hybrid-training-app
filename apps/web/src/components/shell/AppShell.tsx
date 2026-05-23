@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { UndoBanner } from "@/components/trash/UndoBanner";
 
 type Tab = {
   href: string;
@@ -91,6 +92,8 @@ export function AppShell({
       </nav>
 
       <InjuryFab />
+
+      <UndoBanner />
 
       <style jsx global>{`
         .cp-shell {

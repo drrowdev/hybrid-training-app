@@ -73,6 +73,7 @@ export async function findBlockCompleteBump(
     .select("id, archetype, started_on, weeks, status, days_per_week")
     .eq("user_id", userId)
     .neq("status", "active")
+    .is("deleted_at", null)
     .order("started_on", { ascending: false })
     .limit(1)
     .maybeSingle();

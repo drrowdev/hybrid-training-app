@@ -40,6 +40,7 @@ export async function getRpeDrift(
     .eq("user_id", userId)
     .not("completed_at", "is", null)
     .not("session_rpe", "is", null)
+    .is("deleted_at", null)
     .gte("performed_at", sinceIso)
     .order("performed_at", { ascending: true });
 

@@ -183,6 +183,13 @@
       "tag": "0025_block_lifecycle_timestamps",
       "when": 1779534000000,
       "breakpoints": false
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "tag": "0026_soft_delete",
+      "when": 1779540000000,
+      "breakpoints": false
     }
   ]
 }

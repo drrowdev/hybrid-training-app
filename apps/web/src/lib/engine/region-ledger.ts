@@ -67,6 +67,7 @@ export async function recomputeRegionState(
     .select("id, performed_at")
     .eq("user_id", userId)
     .not("completed_at", "is", null)
+    .is("deleted_at", null)
     .order("performed_at", { ascending: true });
   if (se) throw new Error(se.message);
 

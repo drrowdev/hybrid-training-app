@@ -65,6 +65,7 @@ export async function getCeilingUtilization(
     .select("id, archetype, started_on, weeks")
     .eq("user_id", userId)
     .eq("status", "active")
+    .is("deleted_at", null)
     .maybeSingle();
   if (!block) return null;
 
@@ -87,7 +88,8 @@ export async function getCeilingUtilization(
     .from("sessions")
     .select("id")
     .eq("user_id", userId)
-    .gte("performed_at", sevenDaysAgo);
+    .gte("performed_at", sevenDaysAgo)
+    .is("deleted_at", null);
   const sessionIds = (sessions ?? []).map((s) => s.id);
 
   let actualStrength = 0;
