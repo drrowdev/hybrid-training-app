@@ -6,20 +6,26 @@ import {
   addCardioBlock,
   addStrengthSet,
   deleteCardio,
+  fillSessionFromPlan,
 } from "@/lib/sessions/actions";
 import { DeleteSessionButton } from "@/components/trash/DeleteSessionButton";
 import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
 import {
   SessionLogClient,
   type LoggedSet,
+  type LastSetHint,
+  type PriorBest,
 } from "@/components/session/SessionLogClient";
+import { PostSessionSummary } from "@/components/session/PostSessionSummary";
 import { GRM_RECOMMEND_THRESHOLD, applyGrmToPercent, computeGrm, grmLabel } from "@/lib/engine/grm";
 import { PR_KIND_LABEL } from "@/lib/engine/pr";
+import { bestEstimateOneRm } from "@/lib/engine/one-rm";
 import { acceptTmBump, declineTmBump } from "@/lib/engine/tm-bump-actions";
 import { findDeloadProposalForSession } from "@/lib/engine/deload";
 import { formatHitValue, getSessionPrs } from "@/lib/stats/pr-queries";
 import { findBumpProposalForSession } from "@/lib/stats/bump-proposal";
 import { findPrRecalibrateProposals } from "@/lib/stats/pr-recalibrate";
+import { getLastSetLogForMovement, summariseSessionSets } from "@/lib/sessions/queries";
 import type { Prescription } from "@hta/db";
 
 export default async function SessionDetailPage({
@@ -131,6 +137,94 @@ export default async function SessionDetailPage({
     ? await findPrRecalibrateProposals(supabase, user.id, id, session.performed_at, excludeMovementIds)
     : [];
 
+  // Phase 1 B2 — "Last time" inline hints. Resolve the set of movements
+  // relevant to this session: every movement in the prescription PLUS
+  // every movement already logged. Run the lookups in parallel so the
+  // page render cost stays close to a single round-trip.
+  const relevantMovementIds = new Set<string>();
+  for (const s of sets) if (s.movement.id) relevantMovementIds.add(s.movement.id);
+  for (const item of plannedPrescription?.items ?? []) {
+    if (item.movementId) relevantMovementIds.add(item.movementId);
+  }
+  const lastHintsList = await Promise.all(
+    Array.from(relevantMovementIds).map((mid) =>
+      getLastSetLogForMovement(supabase, user.id, mid, { excludeSessionId: id }).then((row) =>
+        row ? ([mid, row] as const) : null,
+      ),
+    ),
+  );
+  const lastSetHints: Record<string, LastSetHint> = {};
+  for (const entry of lastHintsList) {
+    if (!entry) continue;
+    const [mid, row] = entry;
+    lastSetHints[mid] = {
+      weightKg: row.weightKg,
+      reps: row.reps,
+      performedAt: row.performedAt,
+    };
+  }
+
+  // Phase 1 B3 — Prior personal bests snapshot for the client-side PR
+  // badge. We pull the user's strongest prior set per relevant movement
+  // (heaviest weight + best e1RM) so the client can flash ⭐PR! the
+  // instant a new set beats either bar — without waiting for the
+  // canonical server detection (which still runs in `getSessionPrs`).
+  const priorBests: Record<string, PriorBest> = {};
+  if (relevantMovementIds.size > 0 && !isComplete) {
+    const { data: priorRowsRaw } = await supabase
+      .from("set_logs")
+      .select("weight_kg, reps, rpe, movement_id, sessions!inner(id, user_id, performed_at, deleted_at)")
+      .in("movement_id", Array.from(relevantMovementIds))
+      .eq("sessions.user_id", user.id)
+      .is("sessions.deleted_at", null)
+      .neq("set_kind", "warmup")
+      .not("weight_kg", "is", null)
+      .not("reps", "is", null)
+      .gt("reps", 0)
+      .lt("performed_at", session.performed_at)
+      .limit(500);
+    type PriorRow = {
+      weight_kg: number | string;
+      reps: number;
+      rpe: number | string | null;
+      movement_id: string;
+    };
+    for (const r of (priorRowsRaw ?? []) as PriorRow[]) {
+      const weight = Number(r.weight_kg);
+      const reps = Number(r.reps);
+      const rpe = r.rpe == null ? null : Number(r.rpe);
+      if (!Number.isFinite(weight) || weight <= 0) continue;
+      if (!Number.isFinite(reps) || reps <= 0) continue;
+      const e1rm = bestEstimateOneRm({ weight, reps, rpe });
+      const cur = priorBests[r.movement_id] ?? { heaviestWeight: null, bestE1rm: null };
+      if (cur.heaviestWeight == null || weight > cur.heaviestWeight) {
+        cur.heaviestWeight = weight;
+      }
+      if (e1rm != null && (cur.bestE1rm == null || e1rm > cur.bestE1rm)) {
+        cur.bestE1rm = e1rm;
+      }
+      priorBests[r.movement_id] = cur;
+    }
+  }
+
+  // Phase 1 C1/C2 — post-session summary. Materialised on-the-fly from
+  // already-fetched rows; no new schema column.
+  const summary = isComplete
+    ? summariseSessionSets(
+        (setsRaw ?? []).map((s) => ({
+          set_kind: s.set_kind as string,
+          weight_kg: s.weight_kg as number | string | null,
+          reps: (s.reps as number | null) ?? null,
+        })),
+        {
+          performed_at: session.performed_at as string,
+          completed_at: (session.completed_at as string | null) ?? null,
+          duration_min: (session.duration_min as number | null) ?? null,
+        },
+        prSummaries.reduce((acc, s) => acc + s.hits.length, 0),
+      )
+    : null;
+
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <header>
@@ -164,6 +258,14 @@ export default async function SessionDetailPage({
           </div>
         </div>
       </header>
+
+      {isComplete && summary && (
+        <PostSessionSummary
+          sessionId={id}
+          summary={summary}
+          initialNotes={session.notes ?? null}
+        />
+      )}
 
       {showRecommendation && (
         <section
@@ -471,6 +573,10 @@ export default async function SessionDetailPage({
         sets={sets}
         tmBySlug={tmBySlug}
         addStrengthSet={addStrengthSet}
+        fillFromPlan={fillSessionFromPlan}
+        hasPlan={Boolean(plannedPrescription && plannedPrescription.items.length > 0)}
+        lastSetHints={lastSetHints}
+        priorBests={priorBests}
       />
 
       {(cardio && cardio.length > 0) || !isComplete ? (
