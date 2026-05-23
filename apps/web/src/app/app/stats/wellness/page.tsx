@@ -57,6 +57,8 @@ import { MiniLine } from "@/components/stats/charts/MiniLine";
 import { MiniScatter } from "@/components/stats/charts/MiniScatter";
 import { getWeeklyRecoveryRollup, type WeeklyRecoveryRow } from "@/lib/engine/recovered-weeks";
 import { isRecoveredWeek } from "@hta/engine";
+import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
+import { MuscleGrid16 } from "@/components/muscle-grid/MuscleGrid16";
 
 export const dynamic = "force-dynamic";
 
@@ -83,11 +85,13 @@ export default async function StatsWellnessPage({
   const units: WeightUnit = profile?.units === "imperial" ? "imperial" : "metric";
   const tz = profile?.timezone ?? (await getUserTimezone(user.id));
 
-  const [wellness, sessions, recoveryRollup] = await Promise.all([
+  const [wellness, sessions, recoveryRollup, muscleFreshness] = await Promise.all([
     getWellnessTimeseries(supabase, user.id, tz, windowDays),
     getSessionWellness(supabase, user.id, tz, windowDays),
     // DC-K1 — 12-week recovered-week rollup, surfaced as a tile.
     getWeeklyRecoveryRollup(supabase, user.id, { weeks: 12, tz }),
+    // 16-muscle freshness for the body-diagram card (PR muscle-grid-16).
+    getMuscleFreshness(supabase, user.id, { tz }),
   ]);
 
   return (
@@ -128,6 +132,30 @@ export default async function StatsWellnessPage({
       </div>
 
       <PredictionAccuracyCard rows={sessions} />
+
+      <section
+        data-testid="stats-wellness-muscle-grid-card"
+        style={{
+          padding: 16,
+          border: "1px solid var(--cp-border)",
+          borderRadius: 10,
+          background: "var(--cp-surface)",
+          display: "grid",
+          gap: 10,
+        }}
+      >
+        <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <h2 style={{ fontSize: 16, margin: 0 }}>Muscle freshness</h2>
+          <Link
+            href="/app/freshness"
+            data-testid="stats-wellness-freshness-link"
+            style={{ fontSize: 12, color: "var(--cp-accent)", textDecoration: "none" }}
+          >
+            Open full grid →
+          </Link>
+        </header>
+        <MuscleGrid16 rows={muscleFreshness} />
+      </section>
 
       <footer
         style={{

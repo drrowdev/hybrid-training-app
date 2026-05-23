@@ -1,7 +1,8 @@
 /**
  * GET /api/cron/region-state-snapshot — daily snapshot of per-region
- * freshness into `region_state_history`. Triggered by Vercel Cron at
- * 03:00 UTC (see `vercel.json`).
+ * freshness into `region_state_history` AND per-muscle freshness into
+ * `muscle_state_history`. Triggered by Vercel Cron at 03:00 UTC (see
+ * `vercel.json`).
  *
  * ## Why a daily cache?
  *
@@ -10,6 +11,11 @@
  * the last 35 days of `set_logs` to recompute the strip — cost grew
  * linearly with user history. The cache replaces that with a single
  * indexed read of 14 rows per region.
+ *
+ * The 16-muscle grid (/app/freshness, /app/stats/wellness) is the
+ * same story at finer resolution — the same per-user lookback feeds
+ * both tables, so we extend this handler rather than running a
+ * second cron at a separate time.
  *
  * ## Auth
  *
@@ -21,19 +27,25 @@
  * ## Behavior
  *
  * For each user (auth.users):
- *   For each region (ALL_REGIONS):
- *     compute today's freshness via the shared
- *     `deriveRegionFreshnessLive` helper (the same derivation the
- *     read path uses for the today-fallback) and UPSERT into
+ *   - Compute region freshness via the shared
+ *     `deriveRegionFreshnessLive` helper → upsert into
  *     region_state_history keyed on (user_id, region, snapshot_date).
+ *   - Compute muscle freshness via `deriveMuscleLoadEvents` +
+ *     `computeMuscleFreshness` → upsert into muscle_state_history
+ *     keyed on (user_id, muscle, snapshot_date).
  *
- * Errors on a single user are logged and skipped — the batch never
- * bails on one user's data anomaly.
+ * Errors on a single user (or a single table for one user) are
+ * logged and skipped — the batch never bails on one user's anomaly.
  */
 import { NextResponse } from "next/server";
 import { createAdmin } from "@/lib/supabase/server";
 import { ALL_REGIONS } from "@hta/domain";
 import { deriveRegionFreshnessLive } from "@/lib/stats/region-state-snapshot";
+import {
+  ALL_MUSCLE_GROUPS,
+  deriveMuscleLoadEvents,
+  computeMuscleFreshness,
+} from "@/lib/muscle";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,6 +70,7 @@ export async function GET(req: Request): Promise<Response> {
 
   let usersProcessed = 0;
   let snapshotsWritten = 0;
+  let muscleSnapshotsWritten = 0;
   const errors: UserErr[] = [];
 
   for (const userId of userIds) {
@@ -85,16 +98,52 @@ export async function GET(req: Request): Promise<Response> {
       });
 
       usersProcessed++;
-      if (rows.length === 0) continue;
-
-      const { error } = await supabase
-        .from("region_state_history")
-        .upsert(rows, { onConflict: "user_id,region,snapshot_date" });
-      if (error) {
-        errors.push({ userId, error: error.message });
-        continue;
+      if (rows.length > 0) {
+        const { error } = await supabase
+          .from("region_state_history")
+          .upsert(rows, { onConflict: "user_id,region,snapshot_date" });
+        if (error) {
+          errors.push({ userId, error: error.message });
+        } else {
+          snapshotsWritten += rows.length;
+        }
       }
-      snapshotsWritten += rows.length;
+
+      // Muscle snapshots — additive 16-muscle grid alongside the
+      // 7-region model. Same lookback, separate table.
+      try {
+        const events = await deriveMuscleLoadEvents(supabase, userId);
+        const computed = computeMuscleFreshness(events, today);
+        const muscleRows = ALL_MUSCLE_GROUPS.map((muscle) => {
+          const row = computed.get(muscle)!;
+          return {
+            user_id: userId,
+            muscle,
+            snapshot_date: today,
+            freshness_score: roundToScale(row.freshness, 4),
+            days_since_loaded: row.daysSinceLoaded,
+            last_load_date: row.lastLoadDate,
+            context: {
+              atl: row.atl,
+              band: row.band,
+              top_movements: row.topContributors,
+            },
+          };
+        });
+        const { error: mErr } = await supabase
+          .from("muscle_state_history")
+          .upsert(muscleRows, { onConflict: "user_id,muscle,snapshot_date" });
+        if (mErr) {
+          errors.push({ userId, error: `muscle: ${mErr.message}` });
+        } else {
+          muscleSnapshotsWritten += muscleRows.length;
+        }
+      } catch (e) {
+        errors.push({
+          userId,
+          error: `muscle: ${e instanceof Error ? e.message : String(e)}`,
+        });
+      }
     } catch (e) {
       errors.push({ userId, error: e instanceof Error ? e.message : String(e) });
     }
@@ -105,6 +154,7 @@ export async function GET(req: Request): Promise<Response> {
     snapshot_date: today,
     users_processed: usersProcessed,
     snapshots_written: snapshotsWritten,
+    muscle_snapshots_written: muscleSnapshotsWritten,
     errors,
   });
 }
