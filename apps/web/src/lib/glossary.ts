@@ -227,6 +227,21 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     body:
       "A behavioural skill class (novice → advanced) inferred from per-lift e1RM relative to bodyweight, schedule regularity, and check-in fill rate. Used to gate planning defaults — set-rep schemes, deload frequency, archetype options.",
   },
+  bts_tier: {
+    title: "Inferred tier",
+    body:
+      "Same idea as user tier — a behavioural class read off your declared experience plus four observed signals (e1RM-per-kg, 12-week anchor adherence, schedule regularity, check-in fill rate). The confidence % reflects how much data the read is built on.",
+  },
+  rolling_mean: {
+    title: "Rolling mean",
+    body:
+      "An average taken over a moving window (the most recent N days) rather than across the whole history. Smooths daily fluctuations to surface the trend underneath. We use a 7-day window for bodyweight so a single big-meal day doesn't move the line.",
+  },
+  ai_notes: {
+    title: "Training notes",
+    body:
+      "A free-text field where you can record what works for you and the engine can later annotate patterns it notices. Right now you own this entirely — write whatever helps you read your own training.",
+  },
   decision_trace: {
     title: "Decision trace",
     body:

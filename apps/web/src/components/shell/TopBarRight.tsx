@@ -268,12 +268,20 @@ export function TopBarRight({
             </div>
           )}
           <Link
-            href="/app/settings"
+            href="/app/profile"
             className="cp-tbr-pop-item"
             role="menuitem"
             data-testid="topbar-user-profile"
           >
             Profile
+          </Link>
+          <Link
+            href="/app/settings"
+            className="cp-tbr-pop-item"
+            role="menuitem"
+            data-testid="topbar-user-settings"
+          >
+            Settings
           </Link>
           <form action={signOutAction}>
             <button
