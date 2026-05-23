@@ -57,12 +57,14 @@ export function PrescriptionItemsList({
   const [prescription, setPrescription] = useState(initialPrescription);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [errorByIndex, setErrorByIndex] = useState<Record<number, string>>({});
+  const [reasonByIndex, setReasonByIndex] = useState<Record<number, string>>({});
   const [, startTransition] = useTransition();
 
   if (!prescription.items || prescription.items.length === 0) return null;
 
   const onPick = async (index: number, cand: Candidate) => {
     const prev = prescription;
+    const reason = (reasonByIndex[index] ?? "").trim();
     // Optimistic patch.
     const optimistic: Prescription = {
       items: prev.items.map((it, i) =>
@@ -92,12 +94,18 @@ export function PrescriptionItemsList({
       delete next[index];
       return next;
     });
+    setReasonByIndex((m) => {
+      const next = { ...m };
+      delete next[index];
+      return next;
+    });
 
     startTransition(async () => {
       const fd = new FormData();
       fd.set("plannedSessionId", plannedSessionId);
       fd.set("itemIndex", String(index));
       fd.set("newMovementId", cand.id);
+      if (reason.length > 0) fd.set("reason", reason.slice(0, 280));
       const result = await swapAction(fd);
       if (result?.error) {
         // Rollback.
@@ -108,6 +116,9 @@ export function PrescriptionItemsList({
       if (result?.prescription) setPrescription(result.prescription);
     });
   };
+
+  const setReason = (index: number, value: string) =>
+    setReasonByIndex((m) => ({ ...m, [index]: value.slice(0, 280) }));
 
   return (
     <section
@@ -139,8 +150,10 @@ export function PrescriptionItemsList({
         items={prescription.items}
         openIndex={openIndex}
         errorByIndex={errorByIndex}
+        reasonByIndex={reasonByIndex}
         onToggle={(i) => setOpenIndex(openIndex === i ? null : i)}
         onPick={onPick}
+        onReasonChange={setReason}
       />
     </section>
   );
@@ -160,14 +173,18 @@ function PrescriptionItemsCarousel({
   items,
   openIndex,
   errorByIndex,
+  reasonByIndex,
   onToggle,
   onPick,
+  onReasonChange,
 }: {
   items: PrescriptionItem[];
   openIndex: number | null;
   errorByIndex: Record<number, string>;
+  reasonByIndex: Record<number, string>;
   onToggle: (i: number) => void;
   onPick: (i: number, c: Candidate) => void;
+  onReasonChange: (i: number, value: string) => void;
 }) {
   const [isMobile, setIsMobile] = useState(false);
   const [active, setActive] = useState(0);
@@ -197,6 +214,8 @@ function PrescriptionItemsCarousel({
             index={index}
             open={openIndex === index}
             error={errorByIndex[index] ?? null}
+            reason={reasonByIndex[index] ?? ""}
+            onReasonChange={(v) => onReasonChange(index, v)}
             onToggle={() => onToggle(index)}
             onPick={(c) => onPick(index, c)}
           />
@@ -267,6 +286,8 @@ function PrescriptionItemsCarousel({
           index={active}
           open={openIndex === active}
           error={errorByIndex[active] ?? null}
+          reason={reasonByIndex[active] ?? ""}
+          onReasonChange={(v) => onReasonChange(active, v)}
           onToggle={() => onToggle(active)}
           onPick={(c) => onPick(active, c)}
         />
@@ -292,6 +313,8 @@ function PrescriptionRow({
   index,
   open,
   error,
+  reason,
+  onReasonChange,
   onToggle,
   onPick,
 }: {
@@ -299,6 +322,8 @@ function PrescriptionRow({
   index: number;
   open: boolean;
   error: string | null;
+  reason: string;
+  onReasonChange: (value: string) => void;
   onToggle: () => void;
   onPick: (c: Candidate) => void;
 }) {
@@ -374,11 +399,44 @@ function PrescriptionRow({
         </div>
       )}
       {open && (
-        <SwapCandidatePicker
-          originalId={item.movementId}
-          onPick={onPick}
-          onClose={onToggle}
-        />
+        <>
+          <label
+            style={{
+              fontSize: 11,
+              color: "var(--cp-text-muted)",
+              display: "block",
+            }}
+          >
+            Why are you swapping? (optional)
+            <textarea
+              value={reason}
+              onChange={(e) => onReasonChange(e.target.value)}
+              maxLength={280}
+              rows={2}
+              data-testid={`prescription-item-swap-reason-${index}`}
+              placeholder="Bar busy, shoulder twinge, no rack…"
+              style={{
+                display: "block",
+                width: "100%",
+                marginTop: 4,
+                padding: "6px 8px",
+                border: "1px solid var(--cp-border)",
+                borderRadius: 6,
+                background: "var(--cp-surface)",
+                color: "var(--cp-text)",
+                fontSize: 13,
+                fontFamily: "inherit",
+                resize: "vertical",
+                minHeight: 36,
+              }}
+            />
+          </label>
+          <SwapCandidatePicker
+            originalId={item.movementId}
+            onPick={onPick}
+            onClose={onToggle}
+          />
+        </>
       )}
     </li>
   );

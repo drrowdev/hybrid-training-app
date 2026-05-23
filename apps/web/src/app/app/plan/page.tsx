@@ -14,6 +14,8 @@ import { getActiveBlock, getPlannedDays, todayYmd } from "@/lib/planner/queries"
 import { effectiveTimeOfDay, gapHoursBetween } from "@/lib/planner/time-of-day";
 import { getCurrentWeekTissueStackGaps, type TissueStackGap } from "@/lib/stats/tissue-stack-queries";
 import type { Prescription } from "@hta/db";
+import { SkipSessionForm } from "@/components/plan/SkipSessionForm";
+import { EndBlockForm } from "@/components/plan/EndBlockForm";
 
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -194,16 +196,7 @@ export default async function PlanPage({
               Archives the schedule. You keep all logged sessions.
             </div>
           </div>
-          <form action={endBlock}>
-            <input type="hidden" name="id" value={block.id} />
-            <button
-              type="submit"
-              className="cp-btn danger"
-              data-testid="end-block-button"
-            >
-              End block
-            </button>
-          </form>
+          <EndBlockForm blockId={block.id} action={endBlock} />
         </div>
       </section>
     </div>
@@ -519,16 +512,11 @@ function DaySessionCard({
           >
             {isToday ? "⚡ Start now" : "Start session"}
           </Link>
-          <form action={skipPlannedSession}>
-            <input type="hidden" name="id" value={planned.id} />
-            <button
-              type="submit"
-              className="cp-btn ghost"
-              data-testid={`skip-${planned.id}`}
-            >
-              Skip
-            </button>
-          </form>
+          <SkipSessionForm
+            plannedId={planned.id}
+            title={planned.title}
+            action={skipPlannedSession}
+          />
         </div>
       )}
 
