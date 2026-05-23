@@ -59,6 +59,16 @@ export default async function SessionDetailPage({
 
   if (!session) notFound();
 
+  // Phase 3 C1/C2 — load feedback preferences so we can thread them
+  // into the log client (haptic tick on set save + tone at rest=0).
+  const { data: feedbackPrefs } = await supabase
+    .from("profiles")
+    .select("haptics_enabled, timer_sound_enabled")
+    .eq("id", user.id)
+    .maybeSingle();
+  const hapticsEnabled = feedbackPrefs?.haptics_enabled ?? true;
+  const timerSoundEnabled = feedbackPrefs?.timer_sound_enabled ?? true;
+
   const { data: setsRaw } = await supabase
     .from("set_logs")
     .select(
@@ -692,6 +702,8 @@ export default async function SessionDetailPage({
         hasPlan={Boolean(plannedPrescription && plannedPrescription.items.length > 0)}
         lastSetHints={lastSetHints}
         priorBests={priorBests}
+        hapticsEnabled={hapticsEnabled}
+        timerSoundEnabled={timerSoundEnabled}
       />
 
       {(cardio && cardio.length > 0) || !isComplete ? (
@@ -756,17 +768,42 @@ export default async function SessionDetailPage({
         </section>
       ) : null}
 
-      {!isComplete && (
-        <div className="cp-stickybar" style={{ marginInline: -16 }}>
-          <Link
-            href={`/app/sessions/${id}/complete`}
-            className="cp-btn primary big"
-            style={{ flex: 1 }}
+      {!isComplete && (() => {
+        // Phase 3 E2 — sticky CTA only "arms" once every prescription
+        // strength item has at least one set logged for the matching
+        // movement. Before that, it renders dimmed in normal flow so
+        // the user doesn't accidentally finish a partial session.
+        const STRENGTH_ITEM_KINDS = new Set([
+          "warmup", "main", "back_off", "accessory", "tendon", "power_potentiation",
+        ]);
+        const requiredMovementIds = new Set(
+          (plannedPrescription?.items ?? [])
+            .filter((it) => STRENGTH_ITEM_KINDS.has(it.kind))
+            .map((it) => it.movementId),
+        );
+        const loggedMovementIds = new Set(sets.map((s) => s.movement.id));
+        const allLogged =
+          requiredMovementIds.size === 0 ||
+          Array.from(requiredMovementIds).every((mid) => loggedMovementIds.has(mid));
+        const armed = allLogged && sets.length > 0;
+        return (
+          <div
+            data-testid="finish-stickybar"
+            data-armed={armed ? "true" : "false"}
+            className={`cp-stickybar${armed ? "" : " cp-stickybar--dim"}`}
+            style={{ marginInline: -16 }}
           >
-            Finish session →
-          </Link>
-        </div>
-      )}
+            <Link
+              href={`/app/sessions/${id}/complete`}
+              className="cp-btn primary big"
+              style={{ flex: 1 }}
+              aria-disabled={armed ? undefined : "true"}
+            >
+              {armed ? "Finish session →" : "Log every item to finish →"}
+            </Link>
+          </div>
+        );
+      })()}
 
       {isComplete && session.notes && (
         <section className="cp-card" style={{ padding: 20 }}>

@@ -4,20 +4,26 @@
  * Floating rest-timer button (Phase 1 B4 auto rest-timer).
  *
  * Renders a fixed bottom-right pill that counts down mm:ss. Tap to
- * dismiss. Optional Web Vibration buzz + audio chirp when the timer
- * hits zero — gracefully no-op on browsers that don't expose the APIs.
+ * dismiss. Optional Web Vibration buzz + ~200ms 600Hz Web Audio chirp
+ * when the timer hits zero — gracefully no-op on browsers that don't
+ * expose the APIs (or when the user has disabled either in Settings).
  *
  * Owns no domain state — the parent passes a `key` so each new set
  * remounts the component and resets the countdown.
  */
 
 import { useEffect, useRef, useState } from "react";
+import { hapticTick, timerBeep } from "@/lib/feedback";
 
 export type RestTimerProps = {
   /** Total seconds to count down from. Set to 0 to render nothing. */
   seconds: number;
   /** Called when the user dismisses or the timer hits zero. */
   onDone?: () => void;
+  /** Phase 3 C1 — emit a short haptic buzz at zero. Defaults to true. */
+  hapticsEnabled?: boolean;
+  /** Phase 3 C2 — emit a short audio tone at zero. Defaults to true. */
+  timerSoundEnabled?: boolean;
 };
 
 function fmt(secs: number): string {
@@ -27,7 +33,12 @@ function fmt(secs: number): string {
   return `${m}:${String(r).padStart(2, "0")}`;
 }
 
-export function RestTimer({ seconds, onDone }: RestTimerProps) {
+export function RestTimer({
+  seconds,
+  onDone,
+  hapticsEnabled = true,
+  timerSoundEnabled = true,
+}: RestTimerProps) {
   const [remaining, setRemaining] = useState(seconds);
   const [done, setDone] = useState(false);
   const startRef = useRef<number | null>(null);
@@ -46,20 +57,14 @@ export function RestTimer({ seconds, onDone }: RestTimerProps) {
       setRemaining(next);
       if (next <= 0) {
         setDone(true);
-        try {
-          if (typeof navigator !== "undefined" && "vibrate" in navigator) {
-            (navigator as Navigator & { vibrate: (p: number | number[]) => boolean }).vibrate?.([
-              120, 60, 120,
-            ]);
-          }
-        } catch {
-          // Vibration is best-effort — no-op when unsupported / blocked.
-        }
+        // Phase 3 C1/C2 — best-effort feedback at zero.
+        hapticTick(hapticsEnabled, 120);
+        timerBeep(timerSoundEnabled);
         clearInterval(id);
       }
     }, 250);
     return () => clearInterval(id);
-  }, [seconds]);
+  }, [seconds, hapticsEnabled, timerSoundEnabled]);
 
   if (seconds <= 0) return null;
 

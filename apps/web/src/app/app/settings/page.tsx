@@ -16,7 +16,7 @@ export default async function SettingsPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "display_name, units, bodyweight_kg, body_comp_phase, phase_started_at, phase_target_weeks, training_days_per_week, allows_two_a_days, am_window_start, pm_window_start, timezone",
+      "display_name, units, bodyweight_kg, body_comp_phase, phase_started_at, phase_target_weeks, training_days_per_week, allows_two_a_days, am_window_start, pm_window_start, timezone, haptics_enabled, timer_sound_enabled",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -98,6 +98,56 @@ export default async function SettingsPage() {
           The default the planner uses when you start a new block. You can still override it per block.
         </p>
         <TrainingDaysControl initial={Number(profile?.training_days_per_week ?? 4)} />
+      </section>
+
+      <section className="space-y-3" data-testid="settings-feedback">
+        <h2 className="text-lg font-medium">Feedback</h2>
+        <p className="text-xs text-foreground/60">
+          Subtle haptic + audio cues during a session — a short buzz when you commit a set,
+          and a short tone when the rest timer reaches zero. Browser support varies; both are
+          best-effort and silently no-op on devices that don&apos;t expose the underlying APIs.
+        </p>
+        <form action={updateProfile} className="rounded-lg border border-foreground/10 p-4 space-y-3">
+          <input type="hidden" name="hapticsEnabledPresent" value="1" />
+          <input type="hidden" name="timerSoundEnabledPresent" value="1" />
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              name="hapticsEnabled"
+              data-testid="settings-haptics-toggle"
+              defaultChecked={profile?.haptics_enabled !== false}
+              className="mt-1"
+            />
+            <span className="text-sm">
+              Haptic tick on set save
+              <span className="block text-xs text-foreground/60 mt-1">
+                A ~10ms vibration when a logged set commits. Web Vibration API.
+              </span>
+            </span>
+          </label>
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              name="timerSoundEnabled"
+              data-testid="settings-timer-sound-toggle"
+              defaultChecked={profile?.timer_sound_enabled !== false}
+              className="mt-1"
+            />
+            <span className="text-sm">
+              Rest-timer tone at zero
+              <span className="block text-xs text-foreground/60 mt-1">
+                A short 200ms beep when the auto rest timer hits zero. Web Audio API
+                (gated by browser autoplay rules — needs a first user gesture).
+              </span>
+            </span>
+          </label>
+          <button
+            type="submit"
+            className="rounded-md bg-foreground text-background px-3 py-1.5 text-sm font-medium hover:opacity-90"
+          >
+            Save feedback preferences
+          </button>
+        </form>
       </section>
 
       <section className="space-y-3">
