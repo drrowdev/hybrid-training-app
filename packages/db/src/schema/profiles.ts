@@ -74,6 +74,13 @@ export const profiles = pgTable("profiles", {
    * the first user gesture per browser autoplay policy.
    */
   timerSoundEnabled: boolean("timer_sound_enabled").default(true).notNull(),
+  /**
+   * Free-text training profile notes. Writable by both the user (from
+   * the /app/profile page) and — once the AI surface lands — the
+   * engine, which will append pattern observations the user can prune.
+   * Default NULL; no length cap at DB level (server actions trim/limit).
+   */
+  aiNotes: text("ai_notes"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),
