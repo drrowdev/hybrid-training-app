@@ -176,16 +176,51 @@ export async function seedEngineState(
   });
 
   // Skipped planned session — drives the override card's first row.
-  await admin.from("planned_sessions").insert({
-    block_id: blockId,
+  const skippedAt = isoDaysAgo(1);
+  const { data: skippedPs } = await admin
+    .from("planned_sessions")
+    .insert({
+      block_id: blockId,
+      user_id: userId,
+      week_index: 0,
+      day_index: (isoWeekday + 5) % 7,
+      slot: "single",
+      title: "Bench day (skipped)",
+      role: "primary",
+      prescription: { items: [] },
+      skipped_at: skippedAt,
+    })
+    .select("id")
+    .single();
+
+  // Override audit log rows (migration 0028). These power Section F.
+  if (skippedPs) {
+    await admin.from("engine_override_events").insert({
+      user_id: userId,
+      occurred_at: skippedAt,
+      event_type: "skip",
+      planned_session_id: skippedPs.id,
+      block_id: blockId,
+      context: {
+        archetype: "strength_anchor",
+        weekIndex: 0,
+        dayIndex: (isoWeekday + 5) % 7,
+      },
+    });
+  }
+  await admin.from("engine_override_events").insert({
     user_id: userId,
-    week_index: 0,
-    day_index: (isoWeekday + 5) % 7,
-    slot: "single",
-    title: "Bench day (skipped)",
-    role: "primary",
-    prescription: { items: [] },
-    skipped_at: isoDaysAgo(1),
+    occurred_at: isoDaysAgo(2),
+    event_type: "swap",
+    block_id: blockId,
+    original_movement_slug: "front-squat",
+    new_movement_slug: "back-squat",
+    reason: "Bar busy in the rack",
+    context: {
+      archetype: "strength_anchor",
+      weekIndex: 0,
+      dayIndex: (isoWeekday + 6) % 7,
+    },
   });
 
   // Write region_state directly so the freshness card has non-trivial

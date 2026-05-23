@@ -91,7 +91,12 @@ test.describe("@desktop /app/stats/engine", () => {
     const overrides = page.getByTestId("stats-engine-overrides");
     await expect(overrides).toBeVisible();
     const overrideRows = page.getByTestId("stats-engine-override-row");
-    expect(await overrideRows.count()).toBeGreaterThanOrEqual(1);
+    expect(await overrideRows.count()).toBeGreaterThanOrEqual(2);
+    // The swap event was seeded with a reason — assert it renders as
+    // a quoted note (DC-K4 audit log surfaces user-entered reasons).
+    await expect(page.getByTestId("stats-engine-override-note").first()).toContainText(
+      /Bar busy/i,
+    );
 
     // ── G · Engine internals ─────────────────────────────────
     await expect(page.getByTestId("stats-engine-internals")).toBeVisible();
