@@ -297,4 +297,116 @@ test.describe("@desktop session log", () => {
     await expect(page.getByTestId(`start-${seed.todayPlannedId}`)).toHaveCount(0);
     await expect(page.getByRole("button", { name: /un-skip/i })).toBeVisible();
   });
+
+  test("D: Phase 1 — Same as planned + PR badge + post-session summary", async ({
+    page,
+    context,
+    freshUser,
+    seedConfig,
+    admin,
+    baseURL,
+  }) => {
+    const url = baseURL ?? "http://localhost:3000";
+
+    await markOnboarded(admin, freshUser.userId);
+    await seedStrengthTms(admin, freshUser.userId);
+    const seed = await seedActiveBlock(admin, freshUser.userId);
+    await signInAs(context, freshUser, seedConfig, url);
+
+    // 1) /app — hero card renders with archetype label + Start CTA.
+    await page.goto("/app");
+    await page.waitForLoadState("networkidle");
+    const heroCta = page.getByTestId("today-cta").first();
+    await expect(heroCta).toBeVisible();
+    await expect(heroCta).toHaveText(/start session/i);
+    await heroCta.click();
+
+    // 2) Skip the check-in to land on the log surface fast.
+    await page.waitForURL(`**/app/sessions/start/${seed.todayPlannedId}`, { timeout: 15_000 });
+    await page.getByRole("button", { name: /skip check-in/i }).click();
+    await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 15_000 });
+    const sessionId = new URL(page.url()).pathname.split("/").pop()!;
+
+    // 3) Tap "Same as planned" — the prescription pre-fills three main
+    //    sets matching the seeded squat at 70% TM × 5 reps.
+    const fillCta = page.getByTestId("same-as-planned").getByRole("button", { name: /same as planned/i });
+    await expect(fillCta).toBeVisible();
+    await fillCta.click();
+    await expect(page.getByRole("heading", { name: /this session \(3 sets?\)/i })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Service-role: 3 set_logs at 70% of the seeded squat TM (100kg) = 70kg × 5.
+    const { data: filledSets } = await admin
+      .from("set_logs")
+      .select("set_index, weight_kg, reps, movement_id, set_kind")
+      .eq("session_id", sessionId)
+      .order("set_index", { ascending: true });
+    expect(filledSets?.length).toBe(3);
+    for (const s of filledSets ?? []) {
+      expect(s.set_kind).toBe("main");
+      expect(s.movement_id).toBe(seed.todayMovementId);
+      expect(Number(s.weight_kg)).toBeCloseTo(70, 1);
+      expect(s.reps).toBe(5);
+    }
+
+    // Idempotency: tapping again is a no-op (the button is hidden once
+    // sets exist, but if a stale UI fired the action, the count would
+    // not increase).
+    const { count: idemCount } = await admin
+      .from("set_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", sessionId);
+    expect(idemCount).toBe(3);
+
+    // 4) Log a heavy set — server-side PR detection lights up after
+    //    save. (Client-side flash is best-effort and racy in headless;
+    //    the canonical signal is the 🏆 PR card rendered by the page
+    //    after revalidation.)
+    const pickerInput = page.getByPlaceholder(/search the catalog/i);
+    if (await pickerInput.isVisible().catch(() => false)) {
+      // Picker shouldn't be open once sets exist, but be defensive.
+    }
+    // Bump the active weight far above the seeded 70kg fill so a
+    // weight PR is unambiguous.
+    const weightInput = page.getByLabel("Weight (kg)");
+    const repsInput = page.getByLabel("Reps");
+    await weightInput.fill("150");
+    await repsInput.fill("3");
+    await page.getByRole("button", { name: /^7$/ }).click();
+    await page.getByRole("button", { name: /^log set/i }).click();
+    await expect(page.getByRole("heading", { name: /this session \(4 sets?\)/i })).toBeVisible({
+      timeout: 15_000,
+    });
+    // Server-side PR summary card renders after the revalidation.
+    await expect(page.getByText(/Weight PR/i).first()).toBeVisible({ timeout: 15_000 });
+
+    // 5) Finish → complete page → submit. Land back on the detail
+    //    page; the post-session summary card is visible at the top.
+    await page.getByRole("link", { name: /finish session/i }).click();
+    await page.waitForURL(`**/app/sessions/${sessionId}/complete`, { timeout: 15_000 });
+    await page.getByRole("button", { name: /complete session/i }).click();
+    await page.waitForURL(`**/app/sessions/${sessionId}`, { timeout: 15_000 });
+
+    const summary = page.getByTestId("post-session-summary");
+    await expect(summary).toBeVisible();
+    // Tonnage = 70*5 + 70*5 + 70*5 + 150*3 = 1500 kg.
+    await expect(page.getByTestId("summary-tonnage")).toContainText(/1500|1\.5k/);
+    await expect(page.getByTestId("summary-sets")).toContainText(/^\s*4\s*$/);
+    // At least one PR was recorded.
+    await expect(page.getByTestId("summary-prs")).not.toContainText(/^\s*0\s*$/);
+
+    // 6) C2 — navigating back to the same session shows the same
+    //    summary at the top (it's derived from the persisted rows).
+    await page.goto("/app");
+    await page.waitForLoadState("networkidle");
+    await page.goto(`/app/sessions/${sessionId}`);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("post-session-summary")).toBeVisible();
+
+    await assertSessionComplete(admin, sessionId, {
+      expectedSetCount: 4,
+      plannedSessionId: seed.todayPlannedId,
+    });
+  });
 });

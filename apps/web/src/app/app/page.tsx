@@ -3,12 +3,16 @@ import { createClient } from "@/lib/supabase/server";
 import {
   formatPrescriptionItem,
   summarisePrescription,
+  roundToPlate,
 } from "@/lib/planner/archetypes";
 import {
+  archetypeDisplayName,
+  getActiveBlock,
   getTodayPlannedSessions,
   getUpcomingPlannedSessions,
   type PlannedDay,
 } from "@/lib/planner/queries";
+import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
 import { todayYmd } from "@/lib/dates";
 import { effectiveTimeOfDay, gapHoursBetween } from "@/lib/planner/time-of-day";
 import { getRegionFreshness, findHeavyOnRecoveringConflict, type RegionFreshnessRow, type FreshnessConflict } from "@/lib/stats/region-freshness-queries";
@@ -49,7 +53,7 @@ export default async function TodayPage() {
 
   const todayIso = todayYmd(profile?.timezone ?? "UTC");
 
-  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness] = await Promise.all([
+  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness, activeBlock, tmDict] = await Promise.all([
     supabase
       .from("sessions")
       .select("id, title, slot, completed_at, performed_at")
@@ -61,12 +65,22 @@ export default async function TodayPage() {
       .from("sessions")
       .select("id, title, performed_at, completed_at, session_rpe, duration_min")
       .is("deleted_at", null)
+      .not("completed_at", "is", null)
       .order("performed_at", { ascending: false })
-      .limit(6),
+      .limit(3),
     getTodayPlannedSessions(),
     getUpcomingPlannedSessions(3),
     getRegionFreshness(supabase, userId),
+    getActiveBlock(),
+    getTrainingMaxDict(),
   ]);
+
+  const archetypeName = activeBlock
+    ? archetypeDisplayName(activeBlock.archetype, activeBlock.notes)
+    : null;
+  const tmById: Record<string, number> = Object.fromEntries(
+    Array.from(tmDict.byMovementId.entries()),
+  );
 
   // Strava integration state: do we have a connection (drives the
   // background stale-sync trigger) and have we ever imported anything
@@ -157,6 +171,14 @@ export default async function TodayPage() {
         amWindowStart={amWindowStart}
         pmWindowStart={pmWindowStart}
         conflictsBySlot={conflictsBySlot}
+        archetypeName={archetypeName}
+        weekIndex={
+          activeBlock
+            ? Math.max(0, Math.floor((Date.parse(todayIso) - Date.parse(activeBlock.startedOn)) / 86_400_000 / 7))
+            : null
+        }
+        tmById={tmById}
+        nextUpcoming={upcoming[0] ?? null}
       />
 
       {taper && <TaperCard taper={taper} />}
@@ -211,7 +233,7 @@ export default async function TodayPage() {
       <section className="cp-card" style={{ padding: 20 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
           <h2 style={{ fontSize: 16, margin: 0 }}>Recent sessions</h2>
-          <Link href="/app/stats" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>all stats →</Link>
+          <Link href="/app/sessions" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>View all →</Link>
         </div>
         {!recent || recent.length === 0 ? (
           <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: 0 }}>
@@ -264,6 +286,10 @@ function TodaySessionCard({
   amWindowStart,
   pmWindowStart,
   conflictsBySlot,
+  archetypeName,
+  weekIndex,
+  tmById,
+  nextUpcoming,
 }: {
   openSession: { id: string; title: string | null } | null;
   completedToday: { id: string; title: string | null }[];
@@ -273,6 +299,10 @@ function TodaySessionCard({
   amWindowStart: string;
   pmWindowStart: string;
   conflictsBySlot: Map<string, FreshnessConflict>;
+  archetypeName: string | null;
+  weekIndex: number | null;
+  tmById: Record<string, number>;
+  nextUpcoming: PlannedDay | null;
 }) {
   if (openSession) {
     return (
@@ -326,18 +356,52 @@ function TodaySessionCard({
       <section
         className="cp-card"
         data-testid="today-rest"
-        style={{ padding: 20, display: "grid", gap: 12 }}
+        style={{ padding: 24, display: "grid", gap: 14, minHeight: 220 }}
       >
-        <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-          Today
+        <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+          {archetypeName && weekIndex != null
+            ? `${archetypeName} · Week ${weekIndex + 1}`
+            : "Today"}
         </div>
-        <h2 style={{ fontSize: 22, margin: 0 }}>Rest or freestyle</h2>
-        <p style={{ color: "var(--cp-text-muted)", margin: 0, fontSize: 14 }}>
-          Nothing on the schedule today. Take it as a rest day, or log a freestyle session.
+        <h2 style={{ fontSize: 26, margin: 0, letterSpacing: "-0.01em" }}>
+          Rest day · take it easy
+        </h2>
+        <p style={{ color: "var(--cp-text-muted)", margin: 0, fontSize: 14, lineHeight: 1.5 }}>
+          Nothing on the schedule today.{" "}
+          <span className="cp-info" tabIndex={0} aria-label="Why a rest day?">
+            i
+            <span className="pop" style={{ width: 280 }}>
+              <strong>Why a rest day?</strong>
+              <br />
+              Recovery is where adaptation happens. Tendons rebuild on a 24–72h
+              window after heavy work; the central nervous system needs
+              off-days to re-sensitise. Walk, sleep, eat — that&apos;s today&apos;s
+              workout.
+            </span>
+          </span>
         </p>
+        {nextUpcoming && (
+          <div
+            data-testid="rest-tomorrow"
+            style={{
+              fontSize: 13,
+              color: "var(--cp-text-muted)",
+              padding: "10px 12px",
+              borderRadius: 10,
+              background: "var(--cp-surface-soft)",
+              border: "1px solid var(--cp-border)",
+            }}
+          >
+            Up next:{" "}
+            <span style={{ color: "var(--cp-text)", fontWeight: 600 }}>
+              {formatUpcomingDay(nextUpcoming.date)}
+            </span>{" "}
+            · {nextUpcoming.title}
+          </div>
+        )}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Link href="/app/sessions/new" className="cp-btn primary">
-            ⚡ Log a session
+          <Link href="/app/sessions/new" className="cp-btn">
+            Log a freestyle session
           </Link>
           <Link href="/app/plan" className="cp-btn">View plan</Link>
         </div>
@@ -414,9 +478,35 @@ function TodaySessionCard({
             isTwoADay={isTwoADay}
             timeOfDay={slotTimes.get(p.slot) ?? null}
             conflict={conflictsBySlot.get(p.id) ?? null}
+            archetypeName={archetypeName}
+            weekIndex={weekIndex}
+            tmById={tmById}
           />
         ))}
       </div>
+      {nextUpcoming && plannedToday.length === 1 && (
+        <div
+          data-testid="up-next-strip"
+          style={{
+            fontSize: 12,
+            color: "var(--cp-text-muted)",
+            padding: "8px 12px",
+            background: "var(--cp-surface-soft)",
+            borderRadius: 8,
+            border: "1px solid var(--cp-border)",
+          }}
+        >
+          Up next:{" "}
+          <span style={{ color: "var(--cp-text)", fontWeight: 600 }}>
+            {formatUpcomingDay(nextUpcoming.date)}
+          </span>{" "}
+          · {nextUpcoming.title}
+          {(() => {
+            const summary = summarisePrescription(nextUpcoming.prescription.items);
+            return summary ? ` · ${summary}` : "";
+          })()}
+        </div>
+      )}
     </div>
   );
 }
@@ -426,35 +516,108 @@ function PlannedSessionCard({
   isTwoADay,
   timeOfDay,
   conflict,
+  archetypeName,
+  weekIndex,
+  tmById,
 }: {
   planned: PlannedDay;
   isTwoADay: boolean;
   timeOfDay: string | null;
   conflict: FreshnessConflict | null;
+  archetypeName: string | null;
+  weekIndex: number | null;
+  tmById: Record<string, number>;
 }) {
   const slotLabel =
     planned.slot === "am" ? "Morning" : planned.slot === "pm" ? "Evening" : "Today's session";
+
+  // Phase 1 A1 — resolve the top set numbers from the prescription + TM
+  // dict. The "top set" is the main item with the highest %TM. Falls
+  // back to the first main item when nothing carries a percentTm.
+  const mainItems = planned.prescription.items.filter(
+    (i) => i.kind === "main" || i.kind === "back_off",
+  );
+  const topItem =
+    mainItems
+      .slice()
+      .sort((a, b) => (b.percentTm ?? 0) - (a.percentTm ?? 0))[0] ?? mainItems[0];
+  const topTm = topItem ? tmById[topItem.movementId] : undefined;
+  const topWeight =
+    topItem && typeof topItem.percentTm === "number" && topTm
+      ? roundToPlate(topTm * (topItem.percentTm / 100))
+      : null;
+  const topLine =
+    topItem && topWeight && topItem.reps != null
+      ? `Top set ${topWeight} kg × ${topItem.reps}`
+      : topItem && topItem.percentTm && topItem.reps
+        ? `Top set ${topItem.percentTm}% TM × ${topItem.reps}`
+        : null;
+
+  // Estimated session minutes — sum of strength sets × ~3 min and
+  // cardio durationMin. Coarse on purpose; the Today hero only needs a
+  // rough orientation number.
+  const estMin = planned.prescription.items.reduce((acc, i) => {
+    if (i.kind.startsWith("cardio_")) return acc + (i.durationMin ?? 0);
+    const sets = i.sets ?? 1;
+    return acc + sets * (i.kind === "main" ? 4 : i.kind === "back_off" ? 3 : 2);
+  }, 0);
+
   return (
     <section
       className="cp-card"
       data-testid={`today-card-${planned.id}`}
-      style={{ padding: 20, display: "grid", gap: 12, borderColor: "var(--cp-accent)" }}
+      data-hero="planned"
+      style={{
+        padding: 24,
+        display: "grid",
+        gap: 14,
+        borderColor: "var(--cp-accent)",
+        minHeight: isTwoADay ? 220 : 320,
+      }}
     >
-      <div style={{ fontSize: 11, color: "var(--cp-accent)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-        {isTwoADay && planned.slot !== "single" ? (
-          <span>
-            {slotLabel} · <span className="mono">{planned.slot.toUpperCase()}</span>
+      <div style={{ fontSize: 11, color: "var(--cp-accent)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
+        {archetypeName && weekIndex != null
+          ? `${archetypeName} · Week ${weekIndex + 1}`
+          : slotLabel}
+        {isTwoADay && planned.slot !== "single" && (
+          <span style={{ marginLeft: 8 }}>
+            · <span className="mono">{planned.slot.toUpperCase()}</span>
             {timeOfDay && (
               <span className="mono" style={{ color: "var(--cp-text-muted)", marginLeft: 8 }}>
                 {timeOfDay}
               </span>
             )}
           </span>
-        ) : (
-          slotLabel
         )}
       </div>
-      <h2 style={{ fontSize: 20, margin: 0 }}>{planned.title}</h2>
+      <h2 style={{ fontSize: 26, margin: 0, letterSpacing: "-0.01em" }}>{planned.title}</h2>
+      {(topLine || estMin > 0) && (
+        <div
+          data-testid="hero-topline"
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 16,
+            fontSize: 14,
+            color: "var(--cp-text)",
+          }}
+        >
+          {estMin > 0 && (
+            <span>
+              <span style={{ color: "var(--cp-text-muted)" }}>~</span>
+              <span className="mono" style={{ fontWeight: 700 }}>
+                {estMin}
+              </span>
+              <span style={{ color: "var(--cp-text-muted)" }}> min</span>
+            </span>
+          )}
+          {topLine && (
+            <span style={{ fontWeight: 600 }} className="mono">
+              {topLine}
+            </span>
+          )}
+        </div>
+      )}
       {conflict && (
         <div
           role="note"
@@ -501,25 +664,58 @@ function PlannedSessionCard({
                   <span style={{ color: "var(--cp-accent)", fontWeight: 600, marginLeft: 4 }}>· {item.notes}</span>
                 ) : null}
               </span>
-              <span className="mono" style={{ fontWeight: 600 }}>{formatPrescriptionItem(item)}</span>
+              <span className="mono" style={{ fontWeight: 600 }}>{formatPrescriptionItem(item, tmById[item.movementId])}</span>
             </li>
           ))}
         </ul>
       )}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: "auto" }}>
         {planned.completedSessionId ? (
-          <Link href={`/app/sessions/${planned.completedSessionId}`} className="cp-btn primary big">
-            ⚡ Continue session
+          <Link
+            href={`/app/sessions/${planned.completedSessionId}`}
+            className="cp-btn primary big"
+            data-testid="today-cta"
+            style={{ flex: "1 1 auto", minHeight: 56 }}
+          >
+            Continue session →
           </Link>
         ) : (
-          <Link href={`/app/sessions/start/${planned.id}`} className="cp-btn primary big">
-            ⚡ Start session
+          <Link
+            href={`/app/sessions/start/${planned.id}`}
+            className="cp-btn primary big"
+            data-testid="today-cta"
+            style={{ flex: "1 1 auto", minHeight: 56 }}
+          >
+            Start session →
           </Link>
         )}
-        <Link href="/app/plan" className="cp-btn">View plan</Link>
+        <Link
+          href="/app/plan"
+          style={{
+            fontSize: 13,
+            color: "var(--cp-link)",
+            textDecoration: "underline",
+            padding: "10px 6px",
+          }}
+        >
+          Preview
+        </Link>
       </div>
     </section>
   );
+}
+
+function formatUpcomingDay(iso: string): string {
+  const target = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(target.getTime())) return iso;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((target.getTime() - today.getTime()) / 86_400_000);
+  if (diffDays === 1) return "tomorrow";
+  if (diffDays >= 2 && diffDays <= 6) {
+    return target.toLocaleDateString(undefined, { weekday: "long" });
+  }
+  return target.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function freshnessColor(tone: "ok" | "caution" | "warn") {
