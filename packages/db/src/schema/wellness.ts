@@ -41,6 +41,10 @@ export const wellness = pgTable(
     sleepHours: numeric("sleep_hours", { precision: 3, scale: 1 }),
     /** Self-reported motivation, 1=low → 5=high. Phase 3 A1. */
     motivation: smallint("motivation"),
+    /** Day-level fatigue, 1=fresh → 9=wrecked. Today-redesign HowRecoveredCard. */
+    fatigue: smallint("fatigue"),
+    /** Day-level soreness, 1=none → 9=severe. Today-redesign HowRecoveredCard. */
+    soreness: smallint("soreness"),
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .default(sql`now()`)

@@ -19,6 +19,12 @@ export const dailyCheckInSchema = z.object({
   date: z.string().date(),
   bodyweightKg: z.coerce.number().min(20).max(400).optional().nullable(),
   motivation: z.coerce.number().int().min(1).max(5).optional().nullable(),
+  // Phase 3 today-redesign: daily fatigue + soreness on the 1–9 scale
+  // shown by HowRecoveredCard. Stored on `wellness` (not `sessions`)
+  // because the check-in is a day-level reading, independent of any
+  // particular session. Sessions keep their own 1–5 pre-session sliders.
+  fatigue: z.coerce.number().int().min(1).max(9).optional().nullable(),
+  soreness: z.coerce.number().int().min(1).max(9).optional().nullable(),
   notes: z.string().trim().max(400).optional().nullable(),
 });
 
@@ -36,12 +42,16 @@ export function dailyCheckInUpsertColumns(
   date: string;
   bodyweight_kg?: number | null;
   motivation?: number | null;
+  fatigue?: number | null;
+  soreness?: number | null;
   notes?: string | null;
 } {
   const out: ReturnType<typeof dailyCheckInUpsertColumns> = { date: input.date };
   if (input.bodyweightKg !== undefined)
     out.bodyweight_kg = input.bodyweightKg ?? null;
   if (input.motivation !== undefined) out.motivation = input.motivation ?? null;
+  if (input.fatigue !== undefined) out.fatigue = input.fatigue ?? null;
+  if (input.soreness !== undefined) out.soreness = input.soreness ?? null;
   if (input.notes !== undefined) out.notes = input.notes ?? null;
   return out;
 }
