@@ -63,6 +63,17 @@ export const profiles = pgTable("profiles", {
   pmWindowStart: time("pm_window_start").default("17:00").notNull(),
   pmWindowEnd: time("pm_window_end").default("19:00").notNull(),
   intake: jsonb("intake").$type<Record<string, unknown>>().default({}).notNull(),
+  /**
+   * Phase 3 C1 — short haptic tick on set save when supported. Default
+   * TRUE; the Web Vibration API silently no-ops on browsers that don't
+   * expose it (Safari iOS).
+   */
+  hapticsEnabled: boolean("haptics_enabled").default(true).notNull(),
+  /**
+   * Phase 3 C2 — short tone at rest-timer = 0. Default TRUE; gated by
+   * the first user gesture per browser autoplay policy.
+   */
+  timerSoundEnabled: boolean("timer_sound_enabled").default(true).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),
