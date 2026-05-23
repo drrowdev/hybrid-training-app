@@ -11,6 +11,7 @@
  *   - plan exists, all empty weeks → render the bars (they read "0 of 0")
  */
 import { EmptyState } from "@/components/ui/EmptyState";
+import { MetricHelp } from "@/components/ui/MetricHelp";
 import type { WeekRow } from "@/lib/stats/run-plan-adherence";
 import { toneForPct } from "@/lib/stats/run-plan-adherence";
 
@@ -78,6 +79,7 @@ export function RunPlanAdherenceCard({
           }}
         >
           Run-plan adherence
+          <MetricHelp term="run_plan_adherence" />
         </div>
         <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 2 }}>
           Last {weeks.length} weeks · planned (outline) vs actual (filled)

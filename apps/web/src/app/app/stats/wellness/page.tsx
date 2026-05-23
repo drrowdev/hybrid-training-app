@@ -36,6 +36,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserTimezone } from "@/lib/planner/queries";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { MetricHelp } from "@/components/ui/MetricHelp";
 import {
   DEFAULT_RANGE,
   RANGE_LABEL,
@@ -259,7 +260,7 @@ function BodyweightCard({
   if (series.length === 0) {
     return (
       <Card testId="stats-wellness-bodyweight" empty>
-        <CardTitle title="Bodyweight" subtitle={`${unit} · ${subtitle}`} />
+        <CardTitle title="Bodyweight" subtitle={`${unit} · ${subtitle}`} helpTerm="bodyweight_trend" />
         <EmptyState
           variant="inline"
           title="No bodyweight logged"
@@ -282,7 +283,7 @@ function BodyweightCard({
 
   return (
     <Card testId="stats-wellness-bodyweight">
-      <CardTitle title="Bodyweight" subtitle={`${unit} · ${subtitle}`} />
+      <CardTitle title="Bodyweight" subtitle={`${unit} · ${subtitle}`} helpTerm="bodyweight_trend" />
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.01em" }}>
           {display} {unit}
@@ -323,6 +324,7 @@ function FatigueCard({ rows, range }: { rows: SessionWellnessRow[]; range: Range
       subtitle={subtitleForRange(range)}
       ariaLabel="pre-session fatigue (1 fresh - 5 cooked)"
       testId="stats-wellness-fatigue"
+      helpTerm="fatigue_score"
     />
   );
 }
@@ -336,6 +338,7 @@ function SorenessCard({ rows, range }: { rows: SessionWellnessRow[]; range: Rang
       subtitle={subtitleForRange(range)}
       ariaLabel="pre-session soreness (1 none - 5 severe)"
       testId="stats-wellness-soreness"
+      helpTerm="soreness_score"
     />
   );
 }
@@ -347,6 +350,7 @@ function PreCheckInLineCard({
   subtitle,
   ariaLabel,
   testId,
+  helpTerm,
 }: {
   rows: SessionWellnessRow[];
   pick: (r: SessionWellnessRow) => number | null;
@@ -354,6 +358,7 @@ function PreCheckInLineCard({
   subtitle: string;
   ariaLabel: string;
   testId: string;
+  helpTerm?: string;
 }) {
   const values: number[] = [];
   for (const r of rows) {
@@ -363,7 +368,7 @@ function PreCheckInLineCard({
   if (values.length === 0) {
     return (
       <Card testId={testId} empty>
-        <CardTitle title={title} subtitle={subtitle} />
+        <CardTitle title={title} subtitle={subtitle} helpTerm={helpTerm} />
         <EmptyState
           variant="inline"
           title={`No ${title.toLowerCase()} data`}
@@ -378,7 +383,7 @@ function PreCheckInLineCard({
     avg <= 2 ? "success" : avg <= 3.5 ? "warning" : "danger";
   return (
     <Card testId={testId}>
-      <CardTitle title={title} subtitle={subtitle} />
+      <CardTitle title={title} subtitle={subtitle} helpTerm={helpTerm} />
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
         <span
           style={{
@@ -411,7 +416,7 @@ function MotivationCard({ rows, range }: { rows: WellnessRow[]; range: Range }) 
   if (values.length === 0) {
     return (
       <Card testId="stats-wellness-motivation" empty>
-        <CardTitle title="Motivation" subtitle={subtitleForRange(range)} />
+        <CardTitle title="Motivation" subtitle={subtitleForRange(range)} helpTerm="motivation_score" />
         <EmptyState
           variant="inline"
           title="No motivation logged"
@@ -436,7 +441,7 @@ function MotivationCard({ rows, range }: { rows: WellnessRow[]; range: Range }) 
     direction === "up" ? "success" : direction === "down" ? "warning" : "accent";
   return (
     <Card testId="stats-wellness-motivation">
-      <CardTitle title="Motivation" subtitle={subtitleForRange(range)} />
+      <CardTitle title="Motivation" subtitle={subtitleForRange(range)} helpTerm="motivation_score" />
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
         <span
           style={{
@@ -472,10 +477,7 @@ function PredictionAccuracyCard({ rows }: { rows: SessionWellnessRow[] }) {
   if (correlation == null) {
     return (
       <Card testId="stats-wellness-prediction" empty wide>
-        <CardTitle
-          title="How well do you predict your sessions?"
-          subtitle="pre-check-in vs post-session sRPE"
-        />
+        <CardTitle title="How well do you predict your sessions?" subtitle="pre-check-in vs post-session sRPE" helpTerm="prediction_accuracy" />
         <EmptyState
           variant="inline"
           title="Not enough paired sessions"
@@ -500,6 +502,7 @@ function PredictionAccuracyCard({ rows }: { rows: SessionWellnessRow[] }) {
       <CardTitle
         title="How well do you predict your sessions?"
         subtitle="pre-check-in vs post-session sRPE"
+        helpTerm="prediction_accuracy"
       />
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
         <span
@@ -568,7 +571,7 @@ function Card({
   );
 }
 
-function CardTitle({ title, subtitle }: { title: string; subtitle?: string }) {
+function CardTitle({ title, subtitle, helpTerm }: { title: string; subtitle?: string; helpTerm?: string }) {
   return (
     <div>
       <div
@@ -580,6 +583,7 @@ function CardTitle({ title, subtitle }: { title: string; subtitle?: string }) {
         }}
       >
         {title}
+        {helpTerm != null && <MetricHelp term={helpTerm} />}
       </div>
       {subtitle && (
         <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 2 }}>
