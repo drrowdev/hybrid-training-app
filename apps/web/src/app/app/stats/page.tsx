@@ -1,380 +1,631 @@
+/**
+ * /app/stats — Stats overview dashboard (Phase 1 data-driven pass).
+ *
+ * Single landing page that summarises everything the engine has been
+ * collecting (sessions, sets, RPE, wellness, sleep, motivation, PRs,
+ * region freshness, block lifecycle).
+ *
+ * Above-the-fold cards: A (current block) / B (adherence) / C (PRs) /
+ * D (region freshness) / E (sleep) / F (volume) / G (bodyweight).
+ * Bottom: deep-dive link grid. The existing /app/stats/engine and
+ * /app/stats/movements/[slug] surfaces stay where they are — this page
+ * just routes to them.
+ *
+ * Design choices (documented in the PR body too):
+ *  1. Skipped sessions count as MISSED in the 30-day adherence number
+ *     (see `lib/stats/adherence.ts` for the long-form reasoning).
+ *  2. Volume = pure tonnage (Σ weight × reps). Anything fancier moves
+ *     to Phase 2+.
+ *  3. Color semantics: green = fresh / improving, yellow = caution /
+ *     primed, red = problem / heavily loaded, accent = current / featured.
+ *  4. All queries run in parallel (`Promise.all`); each is bounded by
+ *     a 30-day window or a top-N slice — no full-table scans.
+ *  5. Comparison ranges are hardcoded (30 d adherence/volume, 7 d sleep,
+ *     this calendar month for PRs). A range toggle is Phase 2+.
+ */
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { listMovementsRanked } from "@/lib/stats/movement";
-import { BAND_COLOR, BAND_LABEL, getWeeklyMuscleVolume } from "@/lib/stats/muscle-volume";
-import { formatHitValue, getRecentPrs } from "@/lib/stats/pr-queries";
-import { PR_KIND_LABEL } from "@/lib/engine/pr";
+import { getUserTimezone } from "@/lib/planner/queries";
+import { getActiveBlockProgress } from "@/lib/stats/active-block-progress";
+import { getAdherence30d, type AdherenceResult } from "@/lib/stats/adherence";
+import { getMonthlyPrs, type MonthlyPrsResult } from "@/lib/stats/prs-this-month";
+import { getFreshnessMini, type FreshnessMiniRow } from "@/lib/stats/freshness-mini";
+import { getSleep7d, type SleepTrend } from "@/lib/stats/sleep-trend";
+import { getVolume30d, type VolumeResult } from "@/lib/stats/volume";
+import { getBodyweightTrend, type BodyweightTrend } from "@/lib/stats/bodyweight-trend";
+import { displayWeight, weightUnitLabel, type WeightUnit } from "@/lib/stats/units";
+import { Sparkline } from "@/components/stats/charts/Sparkline";
+import { MiniBars } from "@/components/stats/charts/MiniBars";
 
-export default async function StatsPage() {
+export const dynamic = "force-dynamic";
+
+export default async function StatsOverviewPage() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: all } = await supabase
-    .from("sessions")
-    .select("id, title, slot, performed_at, completed_at, session_rpe, duration_min")
-    .is("deleted_at", null)
-    .order("performed_at", { ascending: false })
-    .limit(40);
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("units, timezone")
+    .eq("id", user.id)
+    .maybeSingle();
+  const units: WeightUnit = profile?.units === "imperial" ? "imperial" : "metric";
+  const tz = profile?.timezone ?? (await getUserTimezone(user.id));
 
-  const completed = (all ?? []).filter((s) => s.completed_at);
-  const total = completed.length;
-  const last30 = completed.filter(
-    // eslint-disable-next-line react-hooks/purity -- server-rendered "30 days ago" anchor
-    (s) => Date.now() - new Date(s.performed_at).getTime() < 30 * 86_400_000,
-  ).length;
-  const rpeSamples = completed.filter((s) => s.session_rpe);
-  const avgRpe = rpeSamples.length
-    ? rpeSamples.reduce((a, s) => a + (s.session_rpe ?? 0), 0) / rpeSamples.length
-    : 0;
-
-  // Two-a-day breakdown over the last 30 days. Useful at-a-glance signal for
-  // whether the AM/PM rhythm is actually landing.
-  // eslint-disable-next-line react-hooks/purity -- server-rendered "30 days ago" anchor
-  const thirtyDaysAgoMs = Date.now() - 30 * 86_400_000;
-  const twoADayLast30 = completed.filter((s) => {
-    if (s.slot !== "am" && s.slot !== "pm") return false;
-    return new Date(s.performed_at).getTime() >= thirtyDaysAgoMs;
-  }).length;
-  const amCount = completed.filter((s) => s.slot === "am").length;
-  const pmCount = completed.filter((s) => s.slot === "pm").length;
-
-  const movements = await listMovementsRanked();
-  const muscleVolume = await getWeeklyMuscleVolume(supabase, user.id);
-  const recentPrs = await getRecentPrs(supabase, user.id, 5);
+  // All-parallel reads. Each is bounded (active block only / 30-day
+  // window / this calendar month / 7-day window / top 3 / one row).
+  const [block, adherence, prs, freshness, sleep, volume, bodyweight] = await Promise.all([
+    getActiveBlockProgress(supabase, user.id, tz),
+    getAdherence30d(supabase, user.id, tz),
+    getMonthlyPrs(supabase, user.id),
+    getFreshnessMini(supabase, user.id),
+    getSleep7d(supabase, user.id, tz),
+    getVolume30d(supabase, user.id, tz),
+    getBodyweightTrend(supabase, user.id, tz),
+  ]);
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <header>
         <h1 style={{ fontSize: 28, margin: 0, letterSpacing: "-0.01em" }}>Stats</h1>
         <p style={{ margin: "4px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-          Everything you have actually done. Drill into a movement, or peek at what the engine sees.
+          Your dashboard — block progress, adherence, PRs, freshness, sleep, volume, bodyweight.
         </p>
       </header>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
-        <Tile label="Sessions logged" value={total.toString()} />
-        <Tile label="Last 30 days" value={last30.toString()} />
-        <Tile label="Avg session RPE" value={avgRpe ? avgRpe.toFixed(1) : "—"} />
-        <Tile label="Engine state" value="View →" href="/app/stats/engine" />
-      </div>
+      {/* A — Current block strip */}
+      <CurrentBlockStrip progress={block} />
 
-      {recentPrs.length > 0 && (
-        <section className="cp-card" style={{ padding: 20 }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
-            <h2 style={{ margin: 0, fontSize: 16 }}>Recent PRs</h2>
-            <Link href="/app/stats/prs" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
-              see all →
-            </Link>
-          </div>
-          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-            {recentPrs.map((p, i) => (
-              <li
-                key={`${p.sessionId}:${p.movementId}:${p.hit.kind}`}
-                style={{
-                  borderTop: i === 0 ? "none" : "1px solid var(--cp-border)",
-                  padding: "10px 0",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "baseline",
-                  gap: 10,
-                  fontSize: 13,
-                }}
-              >
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                    <span aria-hidden="true">🏆</span>
-                    <span style={{ fontWeight: 500 }}>{p.movementDisplayName}</span>
-                    <span className="cp-pill" style={{ fontSize: 10 }}>{PR_KIND_LABEL[p.hit.kind]}</span>
-                  </div>
-                </div>
-                <span className="mono" style={{ fontWeight: 600, color: "var(--cp-accent)", flexShrink: 0 }}>
-                  {formatHitValue(p.hit, p.hit.kind)}
-                </span>
-                <span className="mono" style={{ fontSize: 11, color: "var(--cp-text-muted)", flexShrink: 0 }}>
-                  <Link href={`/app/sessions/${p.sessionId}`} style={{ color: "inherit", textDecoration: "none" }}>
-                    {new Date(p.sessionPerformedAt).toLocaleDateString()}
-                  </Link>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      <section className="cp-card" style={{ padding: 20 }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
-          <h2 style={{ margin: 0, fontSize: 16 }}>This week by muscle</h2>
-          <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
-            {muscleVolume.totalSets} working sets · rolling 7 days
-          </span>
-        </div>
-        <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
-          One row per muscle. The bar shows working sets this week against the recommended range
-          for that muscle.
-          {muscleVolume.concurrentScaled && (
-            <>
-              {" "}
-              <span style={{ color: "var(--cp-warning)", fontWeight: 600 }}>
-                Cardio is heavy this week — recommended ranges pulled back so you don&apos;t outrun recovery.
-              </span>
-            </>
-          )}
-        </p>
-        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
-          {muscleVolume.rows.map((row) => (
-            <MuscleRow key={row.muscle} row={row} />
-          ))}
-        </ul>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12, fontSize: 10, color: "var(--cp-text-muted)" }}>
-          <LegendChip color="var(--cp-border)" label="Untouched" />
-          <LegendChip color="var(--cp-danger)" label="Below maintenance / Too much" />
-          <LegendChip color="var(--cp-warning)" label="Maintaining / High volume" />
-          <LegendChip color="var(--cp-success)" label="Building" />
-        </div>
-      </section>
-
-      {(amCount > 0 || pmCount > 0) && (
-        <section className="cp-card" style={{ padding: 20 }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
-            <h2 style={{ margin: 0, fontSize: 16 }}>Two-a-day rhythm</h2>
-            <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>{twoADayLast30} in last 30d</span>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div
-              style={{
-                padding: "12px 14px",
-                borderRadius: 10,
-                border: "1px solid var(--cp-border)",
-                background: "var(--cp-surface-soft)",
-              }}
-            >
-              <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                AM sessions
-              </div>
-              <div className="mono" style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{amCount}</div>
-            </div>
-            <div
-              style={{
-                padding: "12px 14px",
-                borderRadius: 10,
-                border: "1px solid var(--cp-border)",
-                background: "var(--cp-surface-soft)",
-              }}
-            >
-              <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                PM sessions
-              </div>
-              <div className="mono" style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{pmCount}</div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      <section className="cp-card" style={{ padding: 20 }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
-          <h2 style={{ margin: 0, fontSize: 16 }}>Movement drill-down</h2>
-          <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>{movements.length} logged</span>
-        </div>
-        {movements.length === 0 ? (
-          <p style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 13 }}>
-            No movements logged yet. Start a session to start building trends.
-          </p>
-        ) : (
-          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-            {movements.slice(0, 15).map((m, i) => (
-              <li key={m.movementId} style={{ borderTop: i === 0 ? "none" : "1px solid var(--cp-border)" }}>
-                <Link
-                  href={`/app/stats/movements/${m.slug}`}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "baseline",
-                    color: "inherit",
-                    textDecoration: "none",
-                    padding: "10px 0",
-                    gap: 12,
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {m.displayName}
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 2 }}>
-                      {m.setCount} sets · last {new Date(m.lastPerformed).toLocaleDateString()}
-                    </div>
-                  </div>
-                  <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>→</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="cp-card" style={{ padding: 20 }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-          <h2 style={{ margin: 0, fontSize: 16 }}>Recent sessions</h2>
-          <Link href="/app/sessions" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>see all →</Link>
-        </div>
-        {completed.length === 0 ? (
-          <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--cp-text-muted)" }}>No completed sessions yet.</p>
-        ) : (
-          <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0" }}>
-            {completed.slice(0, 8).map((s, i) => (
-              <li
-                key={s.id}
-                style={{
-                  borderTop: i === 0 ? "none" : "1px solid var(--cp-border)",
-                  padding: "8px 0",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "baseline",
-                  gap: 8,
-                  fontSize: 13,
-                }}
-              >
-                <Link href={`/app/sessions/${s.id}`} style={{ color: "inherit", textDecoration: "none", flex: 1, minWidth: 0 }}>
-                  <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {s.title ?? "Untitled session"}
-                  </span>
-                </Link>
-                <span className="mono" style={{ fontSize: 11, color: "var(--cp-text-muted)", flexShrink: 0 }}>
-                  {new Date(s.performed_at).toLocaleDateString()}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </div>
-  );
-}
-
-function Tile({ label, value, href }: { label: string; value: string; href?: string }) {
-  const body = (
-    <div className="cp-card" style={{ padding: 14 }}>
-      <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 22, fontWeight: 600, marginTop: 4, letterSpacing: "-0.01em" }}>{value}</div>
-    </div>
-  );
-  return href ? (
-    <Link href={href} style={{ textDecoration: "none", color: "inherit" }}>{body}</Link>
-  ) : (
-    body
-  );
-}
-
-function MuscleRow({
-  row,
-}: {
-  row: {
-    muscle: string;
-    label: string;
-    sets: number;
-    band: keyof typeof BAND_LABEL;
-    thresholds: { maintenance: number; building: number; productive: number; limit: number };
-  };
-}) {
-  const barMax = Math.max(row.thresholds.limit + 2, row.sets, 8);
-  const pct = (n: number) => `${Math.min(100, (n / barMax) * 100)}%`;
-  const fillPct = pct(row.sets);
-  const buildingStart = pct(row.thresholds.building);
-  const productiveEnd = pct(row.thresholds.productive);
-  const limitEnd = pct(row.thresholds.limit);
-  const color = BAND_COLOR[row.band];
-
-  return (
-    <li
-      style={{
-        display: "grid",
-        gridTemplateColumns: "120px 1fr 60px",
-        alignItems: "center",
-        gap: 10,
-        fontSize: 12,
-      }}
-      title={`${row.label}: ${row.sets} sets · target range ${row.thresholds.building}-${row.thresholds.productive}`}
-    >
-      <div style={{ color: "var(--cp-text)", fontWeight: 500 }}>{row.label}</div>
+      {/* B–G — responsive card grid */}
       <div
+        data-testid="stats-overview-grid"
         style={{
-          position: "relative",
-          height: 18,
-          borderRadius: 6,
-          background: "var(--cp-surface-soft)",
-          overflow: "hidden",
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+          gap: 12,
         }}
       >
-        {/* Target range band — muted green strip between building and productive. */}
+        <AdherenceCard data={adherence} />
+        <PrsCard data={prs} units={units} />
+        <FreshnessCard rows={freshness} />
+        <SleepCard data={sleep} />
+        <VolumeCard data={volume} units={units} />
+        <BodyweightCard data={bodyweight} units={units} />
+      </div>
+
+      {/* Bottom — deep-dive links */}
+      <DeepDiveLinks />
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// A — Current block strip
+// ──────────────────────────────────────────────────────────────────────
+
+function CurrentBlockStrip({
+  progress,
+}: {
+  progress: Awaited<ReturnType<typeof getActiveBlockProgress>>;
+}) {
+  if (!progress) {
+    return (
+      <section
+        className="cp-card"
+        data-testid="stats-card-active-block"
+        data-empty="true"
+        style={{ padding: 18, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+            Current block
+          </div>
+          <div style={{ fontSize: 16, marginTop: 4 }}>No active block.</div>
+        </div>
+        <Link
+          href="/app/plan/new"
+          data-testid="stats-active-block-cta"
+          style={{ color: "var(--cp-accent)", fontSize: 13, textDecoration: "none", fontWeight: 600 }}
+        >
+          Start one →
+        </Link>
+      </section>
+    );
+  }
+  const pct = progress.totalScheduled === 0
+    ? 0
+    : Math.min(100, Math.round((progress.scheduledToDate / progress.totalScheduled) * 100));
+  return (
+    <section
+      className="cp-card"
+      data-testid="stats-card-active-block"
+      style={{ padding: 18, display: "grid", gap: 10 }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+            Current block
+          </div>
+          <div style={{ fontSize: 18, marginTop: 4, fontWeight: 600 }}>
+            You&rsquo;re on <span style={{ color: "var(--cp-accent)" }}>{progress.archetypeName}</span>
+            {" · "}Week {progress.currentWeek} of {progress.weeks}
+            {progress.daysPerWeek != null && (
+              <>
+                {" · "}Day {progress.currentDayInWeek} of {progress.daysPerWeek} days/week
+              </>
+            )}
+          </div>
+          <div style={{ fontSize: 13, color: "var(--cp-text-muted)", marginTop: 2 }}>
+            <span data-testid="stats-active-block-completion">
+              {progress.logged} of {progress.scheduledToDate} sessions logged
+            </span>
+            {progress.skipped > 0 && (
+              <span style={{ marginLeft: 6, color: "var(--cp-warning)" }}>
+                · {progress.skipped} skipped
+              </span>
+            )}
+          </div>
+        </div>
+        <Link
+          href="/app/plan/history"
+          data-testid="stats-active-block-cta"
+          style={{ color: "var(--cp-text-muted)", fontSize: 12, textDecoration: "none" }}
+        >
+          View block details →
+        </Link>
+      </div>
+      <div
+        aria-hidden="true"
+        style={{ height: 6, borderRadius: 3, background: "var(--cp-surface-soft)", overflow: "hidden" }}
+      >
         <div
-          aria-hidden="true"
           style={{
-            position: "absolute",
-            left: buildingStart,
-            width: `calc(${productiveEnd} - ${buildingStart})`,
-            top: 0,
-            bottom: 0,
-            background: "color-mix(in oklab, var(--cp-success) 18%, transparent)",
-          }}
-        />
-        {/* Limit tick — where 'too much' starts. */}
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            left: limitEnd,
-            top: 0,
-            bottom: 0,
-            width: 1,
-            background: "var(--cp-danger)",
-            opacity: 0.5,
-          }}
-        />
-        {/* Actual sets bar. */}
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            top: 4,
-            bottom: 4,
-            width: fillPct,
-            background: color,
-            borderRadius: 4,
+            width: `${pct}%`,
+            height: "100%",
+            background: "var(--cp-accent)",
             transition: "width 0.3s",
           }}
         />
       </div>
-      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 6 }}>
-        <span className="mono" style={{ fontWeight: 600, color: "var(--cp-text)" }}>
-          {row.sets}
-        </span>
-        <span
-          style={{
-            fontSize: 9,
-            color,
-            textTransform: "uppercase",
-            letterSpacing: "0.04em",
-            whiteSpace: "nowrap",
-            display: "none",
-          }}
-        >
-          {BAND_LABEL[row.band]}
-        </span>
-      </div>
-    </li>
+    </section>
   );
 }
 
-function LegendChip({ color, label }: { color: string; label: string }) {
+// ──────────────────────────────────────────────────────────────────────
+// B — Adherence (30 days)
+// ──────────────────────────────────────────────────────────────────────
+
+function AdherenceCard({ data }: { data: AdherenceResult }) {
+  const pct = Math.round(data.ratio * 100);
+  const accent = data.ratio >= 0.8 ? "success" : data.ratio >= 0.5 ? "warning" : "danger";
+  const accentVar = `var(--cp-${accent})`;
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-      <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 3, background: color }} />
-      <span>{label}</span>
-    </span>
+    <section
+      className="cp-card"
+      data-testid="stats-card-adherence"
+      data-empty={data.scheduled === 0 ? "true" : "false"}
+      style={{ padding: 16, display: "grid", gap: 6 }}
+    >
+      <CardTitle title="Adherence" subtitle="last 30 days" />
+      {data.scheduled === 0 ? (
+        <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
+          Nothing scheduled in the last 30 days yet — once a block is live,
+          this card tracks how many planned sessions you actually log.
+        </p>
+      ) : (
+        <>
+          <div style={{ fontSize: 28, fontWeight: 700, color: accentVar, letterSpacing: "-0.01em" }}>
+            {pct}%
+          </div>
+          <div style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+            {data.completed} of {data.scheduled} sessions
+            {data.skipped > 0 && <> · {data.skipped} counted as missed (skipped)</>}
+          </div>
+        </>
+      )}
+    </section>
   );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// C — PRs this month
+// ──────────────────────────────────────────────────────────────────────
+
+function PrsCard({ data, units }: { data: MonthlyPrsResult; units: WeightUnit }) {
+  const unit = weightUnitLabel(units);
+  return (
+    <section
+      className="cp-card"
+      data-testid="stats-card-prs"
+      data-empty={data.uniqueMovementCount === 0 ? "true" : "false"}
+      style={{ padding: 16, display: "grid", gap: 8 }}
+    >
+      <CardTitle title="PRs this month" subtitle={`${data.uniqueMovementCount} ${data.uniqueMovementCount === 1 ? "lift" : "lifts"}`} />
+      {data.uniqueMovementCount === 0 ? (
+        <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
+          No PRs yet this month — your turn.
+        </p>
+      ) : (
+        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
+          {data.topThree.map((p) => (
+            <li
+              key={`${p.movementId}-${p.date}`}
+              data-testid="stats-pr-row"
+              style={{
+                display: "flex",
+                alignItems: "baseline",
+                justifyContent: "space-between",
+                gap: 8,
+                fontSize: 13,
+              }}
+            >
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {p.movementSlug ? (
+                  <Link
+                    href={`/app/stats/movements/${p.movementSlug}`}
+                    style={{ color: "inherit", textDecoration: "none" }}
+                  >
+                    {p.movementDisplayName}
+                  </Link>
+                ) : (
+                  p.movementDisplayName
+                )}
+              </span>
+              <span className="mono" style={{ flexShrink: 0, color: "var(--cp-text-muted)" }}>
+                {round1(displayWeight(p.weight, units))} {unit} × {p.reps}
+                {" · "}
+                {formatDay(p.date)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// D — Region freshness mini
+// ──────────────────────────────────────────────────────────────────────
+
+function FreshnessCard({ rows }: { rows: FreshnessMiniRow[] }) {
+  const colorByAccent: Record<FreshnessMiniRow["accent"], string> = {
+    success: "var(--cp-success)",
+    warning: "var(--cp-warning)",
+    danger: "var(--cp-danger)",
+  };
+  return (
+    <section
+      className="cp-card"
+      data-testid="stats-card-freshness"
+      data-empty={rows.length === 0 ? "true" : "false"}
+      style={{ padding: 16, display: "grid", gap: 8 }}
+    >
+      <CardTitle
+        title="Region freshness"
+        subtitle="right now"
+        right={
+          <Link
+            href="/app/stats/engine"
+            data-testid="stats-freshness-cta"
+            style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
+          >
+            Engine details →
+          </Link>
+        }
+      />
+      {rows.length === 0 ? (
+        <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
+          No region load yet. Log a session to see freshness build up.
+        </p>
+      ) : (
+        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
+          {rows.map((r) => {
+            const pct = Math.round(r.freshness * 100);
+            const color = colorByAccent[r.accent];
+            return (
+              <li
+                key={r.region}
+                data-testid="stats-freshness-row"
+                title={`${r.regionLabel}: ${pct}% fresh`}
+                style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center", fontSize: 12 }}
+              >
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {r.regionLabel}
+                </span>
+                <div
+                  aria-hidden="true"
+                  style={{ width: 80, height: 6, background: "var(--cp-surface-soft)", borderRadius: 3, overflow: "hidden" }}
+                >
+                  <div style={{ width: `${pct}%`, height: "100%", background: color }} />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// E — Sleep (last 7 nights)
+// ──────────────────────────────────────────────────────────────────────
+
+function SleepCard({ data }: { data: SleepTrend }) {
+  return (
+    <section
+      className="cp-card"
+      data-testid="stats-card-sleep"
+      data-empty={data.avgHours == null ? "true" : "false"}
+      style={{ padding: 16, display: "grid", gap: 8 }}
+    >
+      <CardTitle title="Sleep" subtitle="last 7 nights" />
+      {data.avgHours == null ? (
+        <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
+          Track sleep to see patterns — the pre-session chip on the next
+          check-in is the fastest way.
+        </p>
+      ) : (
+        <>
+          <div style={{ fontSize: 22, fontWeight: 600 }}>
+            {data.avgHours.toFixed(1)}h <span style={{ fontSize: 12, color: "var(--cp-text-muted)", fontWeight: 400 }}>avg</span>
+          </div>
+          <MiniBars
+            values={data.nights.map((n) => n.hours ?? 0)}
+            max={10}
+            accent="accent"
+            ariaLabel="sleep hours per night for the last 7 days"
+          />
+        </>
+      )}
+    </section>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// F — Volume (30 days, weekly buckets)
+// ──────────────────────────────────────────────────────────────────────
+
+function VolumeCard({ data, units }: { data: VolumeResult; units: WeightUnit }) {
+  const unit = weightUnitLabel(units);
+  const totalDisplay = displayWeight(data.totalKg, units);
+  const weeklyDisplay = data.weeklyKg.map((kg) => displayWeight(kg, units));
+  return (
+    <section
+      className="cp-card"
+      data-testid="stats-card-volume"
+      data-empty={data.totalKg === 0 ? "true" : "false"}
+      style={{ padding: 16, display: "grid", gap: 8 }}
+    >
+      <CardTitle
+        title="Volume"
+        subtitle={`${unit} · last 30 days`}
+        right={
+          <Link
+            href="/app/stats#movements"
+            data-testid="stats-volume-cta"
+            style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
+          >
+            By movement →
+          </Link>
+        }
+      />
+      {data.totalKg === 0 ? (
+        <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
+          No strength sets logged in the last 30 days yet.
+        </p>
+      ) : (
+        <>
+          <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em" }}>
+            {formatTonnage(totalDisplay)} {unit}
+          </div>
+          <MiniBars
+            values={weeklyDisplay}
+            accent="accent"
+            ariaLabel={`weekly tonnage for the last ${data.weeklyKg.length} weeks`}
+          />
+        </>
+      )}
+    </section>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// G — Bodyweight trend
+// ──────────────────────────────────────────────────────────────────────
+
+function BodyweightCard({ data, units }: { data: BodyweightTrend; units: WeightUnit }) {
+  const unit = weightUnitLabel(units);
+  if (!data.latest) {
+    return (
+      <section
+        className="cp-card"
+        data-testid="stats-card-bodyweight"
+        data-empty="true"
+        style={{ padding: 16, display: "grid", gap: 8 }}
+      >
+        <CardTitle title="Bodyweight" subtitle={`${unit} · 30 d trend`} />
+        <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
+          Log your bodyweight to see the trend. The Today nudge or the
+          settings page both work.
+        </p>
+      </section>
+    );
+  }
+  const latest = displayWeight(data.latest.kg, units);
+  const delta = data.delta30dKg == null ? null : displayWeight(data.delta30dKg, units);
+  const accent: "success" | "warning" | "danger" | "accent" =
+    delta == null
+      ? "accent"
+      : delta > 0
+      ? "warning"
+      : delta < 0
+      ? "success"
+      : "accent";
+  return (
+    <section
+      className="cp-card"
+      data-testid="stats-card-bodyweight"
+      style={{ padding: 16, display: "grid", gap: 8 }}
+    >
+      <CardTitle title="Bodyweight" subtitle={`${unit} · 30 d trend`} />
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+        <span style={{ fontSize: 22, fontWeight: 600 }}>
+          {round1(latest)} {unit}
+        </span>
+        {delta != null && (
+          <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+            {delta > 0 ? "+" : ""}
+            {round1(delta)} {unit} (30 d)
+          </span>
+        )}
+      </div>
+      <Sparkline
+        values={data.series.map((p) => displayWeight(p.kg, units))}
+        accent={accent}
+        ariaLabel="bodyweight over the last 30 days"
+      />
+    </section>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Bottom — deep-dive link grid
+// ──────────────────────────────────────────────────────────────────────
+
+function DeepDiveLinks() {
+  return (
+    <section
+      data-testid="stats-deep-dive-links"
+      style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", marginTop: 4 }}
+    >
+      <DeepDive
+        title="Per-movement stats"
+        body="Top sets, history, e1RM trend."
+        href="/app/stats#movements"
+      />
+      <DeepDive
+        title="Engine internals"
+        body="Buckets, region freshness, RPE drift."
+        href="/app/stats/engine"
+      />
+      <DeepDive
+        title="Block outcomes"
+        body="Past blocks + completion stats."
+        href="/app/plan/history"
+      />
+      {/* Wellness + Adherence deep-dives are Phase 3 / Phase 4. Surfaced
+          as muted placeholders for now so the navigation surface area
+          shows where it's headed without going live. */}
+      <DeepDivePlaceholder
+        title="Wellness dashboard"
+        body="Coming in Phase 3."
+      />
+      <DeepDivePlaceholder
+        title="Adherence dashboard"
+        body="Coming in Phase 4."
+      />
+    </section>
+  );
+}
+
+function DeepDive({ title, body, href }: { title: string; body: string; href: string }) {
+  return (
+    <Link
+      href={href}
+      data-testid="stats-deep-dive"
+      style={{
+        display: "block",
+        padding: 14,
+        border: "1px solid var(--cp-border)",
+        borderRadius: 10,
+        background: "var(--cp-surface)",
+        color: "inherit",
+        textDecoration: "none",
+      }}
+    >
+      <div style={{ fontWeight: 600, fontSize: 14 }}>{title} →</div>
+      <div style={{ fontSize: 12, color: "var(--cp-text-muted)", marginTop: 2 }}>{body}</div>
+    </Link>
+  );
+}
+
+function DeepDivePlaceholder({ title, body }: { title: string; body: string }) {
+  return (
+    <div
+      data-testid="stats-deep-dive-placeholder"
+      aria-disabled="true"
+      style={{
+        padding: 14,
+        border: "1px dashed var(--cp-border)",
+        borderRadius: 10,
+        background: "var(--cp-surface-soft)",
+        color: "var(--cp-text-muted)",
+      }}
+    >
+      <div style={{ fontWeight: 600, fontSize: 14 }}>{title}</div>
+      <div style={{ fontSize: 12, marginTop: 2 }}>{body}</div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Shared bits
+// ──────────────────────────────────────────────────────────────────────
+
+function CardTitle({
+  title,
+  subtitle,
+  right,
+}: {
+  title: string;
+  subtitle?: string;
+  right?: React.ReactNode;
+}) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+      <div>
+        <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+          {title}
+        </div>
+        {subtitle && (
+          <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 2 }}>{subtitle}</div>
+        )}
+      </div>
+      {right}
+    </div>
+  );
+}
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+function formatTonnage(n: number): string {
+  if (n >= 10000) return `${(n / 1000).toFixed(1)}k`;
+  return Math.round(n).toLocaleString();
+}
+
+function formatDay(ymd: string): string {
+  const m = Number(ymd.slice(5, 7));
+  const d = Number(ymd.slice(8, 10));
+  const monthShort = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ][m - 1];
+  return `${monthShort} ${d}`;
 }
