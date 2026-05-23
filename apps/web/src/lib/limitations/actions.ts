@@ -4,6 +4,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import {
+  limitationFormSchema,
+  type LimitationActionResult,
+  type LimitationFormInput,
+} from "./schema";
 
 const REGIONS = [
   "foot_ankle_calf",
@@ -14,6 +19,43 @@ const REGIONS = [
   "shoulder_scapular",
   "elbow_forearm",
 ] as const;
+
+/**
+ * Best-effort region inference for new rows added through the
+ * /app/recovery/injuries muscle picker, which doesn't ask the user
+ * for a region. The engine's existing DC-V safety gates still read
+ * `limitations.region`, so a row with no region is invisible to them.
+ *
+ * Mapping is intentionally lossy (16 muscles → 7 regions). Picks the
+ * first match in the user's selection; if no muscle maps cleanly we
+ * leave `region` null and rely on the muscle/movement arrays.
+ */
+const MUSCLE_TO_REGION: Record<string, (typeof REGIONS)[number]> = {
+  calves: "foot_ankle_calf",
+  quads: "knee",
+  hamstrings: "hamstring_posterior",
+  glutes: "hamstring_posterior",
+  adductors: "adductor_groin",
+  erectors: "lumbar_trunk",
+  core: "lumbar_trunk",
+  obliques: "lumbar_trunk",
+  shoulders: "shoulder_scapular",
+  traps: "shoulder_scapular",
+  lats: "shoulder_scapular",
+  back: "shoulder_scapular",
+  chest: "shoulder_scapular",
+  biceps: "elbow_forearm",
+  triceps: "elbow_forearm",
+  forearms: "elbow_forearm",
+};
+
+function inferRegion(muscles: string[]): (typeof REGIONS)[number] | null {
+  for (const m of muscles) {
+    const r = MUSCLE_TO_REGION[m];
+    if (r) return r;
+  }
+  return null;
+}
 
 const limitationSchema = z.object({
   region: z.enum(REGIONS),
@@ -108,4 +150,128 @@ export async function deleteLimitation(formData: FormData): Promise<void> {
   const supabase = await createClient();
   await supabase.from("limitations").delete().eq("id", id);
   revalidatePath("/app/settings/limitations");
+  revalidatePath("/app/recovery/injuries");
+}
+
+// ─── New /app/recovery/injuries shape ──────────────────────────────
+//
+// The settings-page form actions above only know about `region`,
+// `severity`, and `notes`. The new self-serve page (PR #__ — this
+// branch) feeds a richer object through `createLimitation` /
+// `updateLimitation`: kind, muscles[], movement-ids[], expected
+// duration. We expose those as typed server actions taking a plain
+// object so the client modal doesn't have to encode/decode FormData
+// for arrays. The Zod schema lives in ./schema so it can be imported
+// from both client and server modules.
+
+export async function createLimitation(
+  input: LimitationFormInput,
+): Promise<LimitationActionResult> {
+  const parsed = limitationFormSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid input",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const inferred = inferRegion(parsed.data.affectedMuscles);
+
+  const { data, error } = await supabase
+    .from("limitations")
+    .insert({
+      user_id: user.id,
+      kind: parsed.data.kind,
+      severity: parsed.data.severity,
+      region: inferred,
+      affected_muscles: parsed.data.affectedMuscles,
+      affected_movement_ids: parsed.data.affectedMovementIds,
+      notes: parsed.data.notes ?? null,
+      expected_duration_days: parsed.data.expectedDurationDays ?? null,
+    })
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    return { ok: false, error: error?.message ?? "Insert failed" };
+  }
+
+  revalidatePath("/app");
+  revalidatePath("/app/recovery/injuries");
+  revalidatePath("/app/settings/limitations");
+  return { ok: true, id: data.id };
+}
+
+export async function updateLimitation(
+  id: string,
+  input: LimitationFormInput,
+): Promise<LimitationActionResult> {
+  if (!z.string().uuid().safeParse(id).success) {
+    return { ok: false, error: "Invalid id" };
+  }
+  const parsed = limitationFormSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid input",
+    };
+  }
+
+  const supabase = await createClient();
+  const inferred = inferRegion(parsed.data.affectedMuscles);
+  const { error } = await supabase
+    .from("limitations")
+    .update({
+      kind: parsed.data.kind,
+      severity: parsed.data.severity,
+      region: inferred,
+      affected_muscles: parsed.data.affectedMuscles,
+      affected_movement_ids: parsed.data.affectedMovementIds,
+      notes: parsed.data.notes ?? null,
+      expected_duration_days: parsed.data.expectedDurationDays ?? null,
+    })
+    .eq("id", id);
+
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/app/recovery/injuries");
+  revalidatePath("/app/settings/limitations");
+  return { ok: true, id };
+}
+
+export async function resolveLimitationById(
+  id: string,
+): Promise<LimitationActionResult> {
+  if (!z.string().uuid().safeParse(id).success) {
+    return { ok: false, error: "Invalid id" };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("limitations")
+    .update({ resolved_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/app");
+  revalidatePath("/app/recovery/injuries");
+  revalidatePath("/app/settings/limitations");
+  return { ok: true, id };
+}
+
+export async function deleteLimitationById(
+  id: string,
+): Promise<LimitationActionResult> {
+  if (!z.string().uuid().safeParse(id).success) {
+    return { ok: false, error: "Invalid id" };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase.from("limitations").delete().eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/app/recovery/injuries");
+  revalidatePath("/app/settings/limitations");
+  return { ok: true, id };
 }
