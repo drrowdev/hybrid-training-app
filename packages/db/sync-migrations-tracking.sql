@@ -5,7 +5,7 @@
 -- packages/db/drizzle/ that you also applied out-of-band.
 --
 -- Backfills the missing rows in `drizzle.__drizzle_migrations` for
--- migrations 0016-0028 (applied via the Supabase dashboard
+-- migrations 0016-0029 (applied via the Supabase dashboard
 -- rather than `drizzle-kit migrate`). Safe to re-run — the WHERE NOT
 -- EXISTS guard makes it idempotent.
 --
@@ -35,7 +35,8 @@ WITH wanted (tag, hash, created_at) AS (
     ('0025_block_lifecycle_timestamps', '2ead5ab2c77864d111dce36823d899a9221138648ee87042831a8d6899dfda87', 1779674400000::bigint),
     ('0026_soft_delete'               , '84bab8e8868a7314f957edc40393c2d2c8600d5bb33541888fd795269a3f4993', 1779696000000::bigint),
     ('0027_daily_check_ins'           , '82f0de1ca9ff511f5a39591c4de719750b73430741ac05a62dad41c0a42b21ab', 1779717600000::bigint),
-    ('0028_engine_override_events'    , '2329a24a30b92c5ee3822f0a3fabd9ef3bf70944429c73175e64d7f354a370d5', 1779739200000::bigint)
+    ('0028_engine_override_events'    , '2329a24a30b92c5ee3822f0a3fabd9ef3bf70944429c73175e64d7f354a370d5', 1779739200000::bigint),
+    ('0029_region_state_history'      , '07d5ace50d1d30d7f7595303ab4257e5c81f732ee3e63a867e6a6117d028dfd7', 1779760800000::bigint)
 )
 INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
 SELECT w.hash, w.created_at
