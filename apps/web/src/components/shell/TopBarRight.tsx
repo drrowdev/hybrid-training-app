@@ -276,6 +276,14 @@ export function TopBarRight({
             Profile
           </Link>
           <Link
+            href="/app/races"
+            className="cp-tbr-pop-item"
+            role="menuitem"
+            data-testid="topbar-user-events"
+          >
+            Events
+          </Link>
+          <Link
             href="/app/settings"
             className="cp-tbr-pop-item"
             role="menuitem"
