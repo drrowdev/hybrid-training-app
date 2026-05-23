@@ -259,7 +259,7 @@ function InjuryFab() {
       type="button"
       aria-label="Log an injury or limitation"
       title="Log an injury or limitation"
-      onClick={() => router.push("/app/settings/limitations")}
+      onClick={() => router.push("/app/recovery/injuries")}
       className="cp-fab"
     >
       <span aria-hidden>＋</span>
