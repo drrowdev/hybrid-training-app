@@ -211,6 +211,13 @@
       "tag": "0029_region_state_history",
       "when": 1779558000000,
       "breakpoints": false
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "tag": "0030_wellness_fatigue_soreness",
+      "when": 1779564000000,
+      "breakpoints": false
     }
   ]
 }
