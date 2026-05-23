@@ -605,17 +605,15 @@ function DeepDiveLinks() {
         body="Past blocks + completion stats."
         href="/app/stats/blocks"
       />
-      {/* Wellness + Adherence deep-dives are Phase 3 / Phase 4. Surfaced
-          as muted placeholders for now so the navigation surface area
-          shows where it's headed without going live. */}
       <DeepDive
         title="Wellness dashboard"
         body="Bodyweight, sleep, fatigue, motivation, prediction accuracy."
         href="/app/stats/wellness"
       />
-      <DeepDivePlaceholder
+      <DeepDive
         title="Adherence dashboard"
-        body="Coming in Phase 4."
+        body="Weekly completion, weekday breakdown, archetype mix, skip notes, streaks."
+        href="/app/stats/adherence"
       />
     </section>
   );
@@ -642,24 +640,11 @@ function DeepDive({ title, body, href }: { title: string; body: string; href: st
   );
 }
 
-function DeepDivePlaceholder({ title, body }: { title: string; body: string }) {
-  return (
-    <div
-      data-testid="stats-deep-dive-placeholder"
-      aria-disabled="true"
-      style={{
-        padding: 14,
-        border: "1px dashed var(--cp-border)",
-        borderRadius: 10,
-        background: "var(--cp-surface-soft)",
-        color: "var(--cp-text-muted)",
-      }}
-    >
-      <div style={{ fontWeight: 600, fontSize: 14 }}>{title}</div>
-      <div style={{ fontSize: 12, marginTop: 2 }}>{body}</div>
-    </div>
-  );
-}
+// Note: a `DeepDivePlaceholder` lived here through Phase 3 to advertise
+// the Phase 4 adherence dashboard. With that dashboard now live, every
+// deep-dive card on the overview links to a live page.
+
+
 
 // ──────────────────────────────────────────────────────────────────────
 // Shared bits
