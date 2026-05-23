@@ -237,6 +237,11 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     body:
       "A row written every time you skip a planned session, swap a movement, or end a block early. Used to keep an honest audit log so you can see when the engine's calls and your judgment have diverged.",
   },
+  injury_aware_ceiling: {
+    title: "Injury-aware ceiling",
+    body:
+      "When an active limitation overlaps a movement or muscle, the engine caps the load — and may swap or skip. Cap scales with severity (mild ~80%, moderate ~60%, severe = skip). Lets you keep training around an issue.",
+  },
 };
 
 /**
