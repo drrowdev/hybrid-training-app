@@ -8,6 +8,7 @@ import {
   applyStravaAutofill,
   deleteCardio,
   fillSessionFromPlan,
+  swapPrescriptionItem,
 } from "@/lib/sessions/actions";
 import { DeleteSessionButton } from "@/components/trash/DeleteSessionButton";
 import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
@@ -18,6 +19,7 @@ import {
   type PriorBest,
 } from "@/components/session/SessionLogClient";
 import { PostSessionSummary } from "@/components/session/PostSessionSummary";
+import { PrescriptionItemsList } from "@/components/session/PrescriptionItemsList";
 import { StravaAutofillBanner, type StravaAutofillMatch } from "@/components/session/StravaAutofillBanner";
 import { findMatchingStravaActivity } from "@/lib/integrations/strava/match";
 import { GRM_RECOMMEND_THRESHOLD, applyGrmToPercent, computeGrm, grmLabel } from "@/lib/engine/grm";
@@ -670,6 +672,14 @@ export default async function SessionDetailPage({
             )),
           )}
         </section>
+      )}
+
+      {!isComplete && planned && plannedPrescription && plannedPrescription.items.length > 0 && (
+        <PrescriptionItemsList
+          plannedSessionId={planned.id as string}
+          initialPrescription={plannedPrescription}
+          swapAction={swapPrescriptionItem}
+        />
       )}
 
       <SessionLogClient
