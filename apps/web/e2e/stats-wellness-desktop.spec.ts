@@ -10,12 +10,15 @@ import {
  * Desktop /app/stats/wellness — Phase 3 wellness dashboard.
  *
  * Pre-condition (seeded directly via service-role admin client):
- *  - 30 days of `wellness` rows (bodyweight + sleep + motivation)
+ *  - 30 days of `wellness` rows (bodyweight + motivation)
  *  - 14 sessions carrying fatigue / soreness / session_rpe so the
  *    prediction-accuracy scatter has >= 10 pairs.
  *
  * The spec:
- *  - asserts all 5 cards + the prediction-accuracy card render.
+ *  - asserts the bodyweight / fatigue / soreness / motivation cards +
+ *    the prediction-accuracy card render. (The sleep section was
+ *    removed in fix/sleep-walkback — manual sleep entry is deferred
+ *    to the future health-app integration.)
  *  - exercises the range toggle (30d -> 90d) and asserts the URL +
  *    re-render.
  *  - sanity-checks the empty-state path for a brand-new user.
@@ -40,9 +43,9 @@ test.describe("@desktop /app/stats/wellness", () => {
     await page.goto("/app/stats/wellness");
     await page.waitForLoadState("networkidle");
 
-    // ─── All 5 sections render ─────────────────────────────────────
+    // ─── All sections render (sleep section intentionally absent) ──
     await expect(page.getByTestId("stats-wellness-bodyweight")).toBeVisible();
-    await expect(page.getByTestId("stats-wellness-sleep")).toBeVisible();
+    await expect(page.getByTestId("stats-wellness-sleep")).toHaveCount(0);
     await expect(page.getByTestId("stats-wellness-fatigue")).toBeVisible();
     await expect(page.getByTestId("stats-wellness-soreness")).toBeVisible();
     await expect(page.getByTestId("stats-wellness-motivation")).toBeVisible();
@@ -127,13 +130,8 @@ test.describe("@desktop /app/stats/wellness", () => {
       /Log bodyweight on the Today page/i,
     );
 
-    await expect(page.getByTestId("stats-wellness-sleep")).toHaveAttribute(
-      "data-empty",
-      "true",
-    );
-    await expect(page.getByTestId("stats-wellness-sleep")).toContainText(
-      /Track sleep on pre-session check-in/i,
-    );
+    // Sleep section was removed in fix/sleep-walkback — must not render.
+    await expect(page.getByTestId("stats-wellness-sleep")).toHaveCount(0);
 
     await expect(page.getByTestId("stats-wellness-fatigue")).toContainText(
       /Pre-session check-in not used yet/i,

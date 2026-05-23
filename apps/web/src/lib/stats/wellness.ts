@@ -16,10 +16,10 @@
  *   - DC-P1: pre-session check-in (`sessions.fatigue`, `sessions.soreness`).
  *   - DC-A2: post-session sRPE (`sessions.session_rpe`).
  *
- * Sleep is persisted exclusively to `wellness.sleep_hours` — the
- * pre-session sleep chip writes through `buildWellnessUpsertCols`
- * (see `lib/wellness/check-in.ts`), so there is no duplicate path
- * to de-dupe here.
+ * `wellness.sleep_hours` is intentionally NOT read here — manual sleep
+ * entry was walked back in fix/sleep-walkback. The column remains in
+ * the schema as a reservation for the future health-app integration
+ * (Apple Health / Google Fit).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { addDaysToYmd, todayYmd } from "@/lib/dates";
@@ -31,7 +31,6 @@ import { addDaysToYmd, todayYmd } from "@/lib/dates";
 export type WellnessRow = {
   date: string;
   bodyweight_kg: number | null;
-  sleep_hours: number | null;
   motivation: number | null;
 };
 
@@ -76,7 +75,7 @@ export async function getWellnessTimeseries(
   const today = todayYmd(tz);
   let query = supabase
     .from("wellness")
-    .select("date, bodyweight_kg, sleep_hours, motivation")
+    .select("date, bodyweight_kg, motivation")
     .eq("user_id", userId)
     .lte("date", today)
     .order("date", { ascending: true });
@@ -89,13 +88,11 @@ export async function getWellnessTimeseries(
   type Raw = {
     date: string;
     bodyweight_kg: number | string | null;
-    sleep_hours: number | string | null;
     motivation: number | string | null;
   };
   return ((data ?? []) as Raw[]).map((r) => ({
     date: r.date,
     bodyweight_kg: r.bodyweight_kg == null ? null : Number(r.bodyweight_kg),
-    sleep_hours: r.sleep_hours == null ? null : Number(r.sleep_hours),
     motivation: r.motivation == null ? null : Number(r.motivation),
   }));
 }
@@ -261,60 +258,4 @@ export function linearTrendSeries(
   meanY /= n;
   const intercept = meanY - slope * meanX;
   return Array.from({ length: n }, (_, i) => intercept + slope * i);
-}
-
-/**
- * Centred rolling mean over a numeric series; window = `w` items.
- * Entries with fewer than `w` neighbours collapse to `null` so the
- * overlay doesn't bend toward an undersampled tail. Used for the
- * 7-night sleep overlay (Phase 3 A2).
- */
-export function rollingMean(
-  values: ReadonlyArray<number>,
-  w: number,
-): Array<number | null> {
-  const n = values.length;
-  if (w <= 1) return values.slice() as number[];
-  const out: Array<number | null> = new Array(n).fill(null);
-  if (n < w) return out;
-  let sum = 0;
-  for (let i = 0; i < w; i++) sum += values[i];
-  out[w - 1] = sum / w;
-  for (let i = w; i < n; i++) {
-    sum += values[i] - values[i - w];
-    out[i] = sum / w;
-  }
-  return out;
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// Sleep color bucketing — A2 helper
-// ──────────────────────────────────────────────────────────────────────
-
-export type SleepBucket = "low" | "ok" | "good";
-
-/**
- * Bucket a single night's sleep_hours into A2's color band:
- *   - <6h  → "low"  (red, danger)
- *   - 6–7h → "ok"   (warning)
- *   - ≥7h  → "good" (success; >9h does not get penalised per spec)
- *
- * The boundaries follow the half-open convention `[lo, hi)` so 6.0h
- * falls into "ok" and 7.0h into "good".
- */
-export function sleepBucket(hours: number): SleepBucket {
-  if (hours < 6) return "low";
-  if (hours < 7) return "ok";
-  return "good";
-}
-
-export function sleepBucketColor(b: SleepBucket): string {
-  switch (b) {
-    case "low":
-      return "var(--cp-danger)";
-    case "ok":
-      return "var(--cp-warning)";
-    case "good":
-      return "var(--cp-success)";
-  }
 }

@@ -5,13 +5,14 @@
  * recent first. Each card is its own link into the deep-dive surface
  * (`/app/stats/blocks/[id]`).
  *
- * Cards surface three KPI tiles inline:
+ * Cards surface two KPI tiles inline:
  *   - **e1RM delta**: averaged % delta across the block's main lifts
  *     (uses the canonical `bestEstimateOneRm` so the number matches
  *     the in-session PR pop). Green when positive, red when negative.
  *   - **PRs hit**: count of e1RM PRs on the block's main lifts.
- *   - **Avg sleep**: simple average of `wellness.sleep_hours` rows
- *     whose date sits inside the block window.
+ *
+ * The "Avg sleep" KPI was removed in fix/sleep-walkback — manual
+ * sleep entry is deferred to the future health-app integration.
  *
  * Deleted blocks live on the Trash page (`/app/trash`) — every query
  * here filters `deleted_at IS NULL`.
@@ -174,12 +175,6 @@ function BlockCard({ block, today }: { block: BlockIndexRow; today: string }): R
           label="PRs hit"
           value={`${block.prCount}`}
           accent={block.prCount > 0 ? "success" : "muted"}
-        />
-        <Kpi
-          testid="stats-block-card-sleep"
-          label="Avg sleep"
-          value={block.avgSleepHours == null ? "—" : `${block.avgSleepHours.toFixed(1)}h`}
-          accent="muted"
         />
       </div>
     </Link>

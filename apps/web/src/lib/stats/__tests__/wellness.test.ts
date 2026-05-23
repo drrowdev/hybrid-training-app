@@ -8,8 +8,6 @@
  *     zero-variance → null.
  *   - predictionStrength bands at the boundaries.
  *   - linearTrend: pure math edge cases.
- *   - rollingMean: window edge cases.
- *   - sleepBucket: 5.9 / 6 / 6.9 / 7 / 8.9 / 9 hour boundaries.
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -20,9 +18,6 @@ import {
   predictionStrength,
   linearTrend,
   linearTrendSeries,
-  rollingMean,
-  sleepBucket,
-  sleepBucketColor,
 } from "../wellness";
 import { makeFakeSupabase, type Tables } from "./fake-supabase";
 
@@ -51,12 +46,12 @@ describe("getWellnessTimeseries", () => {
     };
     tables.wellness = [
       // Owner: USER_A, in range.
-      { user_id: "USER_A", date: mkDate(2), bodyweight_kg: 82.0, sleep_hours: 7.5, motivation: 4 },
-      { user_id: "USER_A", date: mkDate(1), bodyweight_kg: 82.2, sleep_hours: 8.0, motivation: 5 },
+      { user_id: "USER_A", date: mkDate(2), bodyweight_kg: 82.0, motivation: 4 },
+      { user_id: "USER_A", date: mkDate(1), bodyweight_kg: 82.2, motivation: 5 },
       // Owner: USER_A, out of range (older than 30d).
-      { user_id: "USER_A", date: mkDate(45), bodyweight_kg: 80.0, sleep_hours: 7.0, motivation: 3 },
+      { user_id: "USER_A", date: mkDate(45), bodyweight_kg: 80.0, motivation: 3 },
       // Other user — must be excluded.
-      { user_id: "USER_B", date: today, bodyweight_kg: 99.0, sleep_hours: 6.0, motivation: 1 },
+      { user_id: "USER_B", date: today, bodyweight_kg: 99.0, motivation: 1 },
     ];
     const sb = makeFakeSupabase(tables);
     const rows = await getWellnessTimeseries(sb, "USER_A", TZ, 30);
@@ -69,8 +64,8 @@ describe("getWellnessTimeseries", () => {
   it("windowDays=null returns all-time", async () => {
     const tables = emptyTables();
     tables.wellness = [
-      { user_id: "USER_A", date: "2024-01-01", bodyweight_kg: 80.0, sleep_hours: null, motivation: null },
-      { user_id: "USER_A", date: "2025-01-01", bodyweight_kg: 82.0, sleep_hours: null, motivation: null },
+      { user_id: "USER_A", date: "2024-01-01", bodyweight_kg: 80.0, motivation: null },
+      { user_id: "USER_A", date: "2025-01-01", bodyweight_kg: 82.0, motivation: null },
     ];
     const sb = makeFakeSupabase(tables);
     const rows = await getWellnessTimeseries(sb, "USER_A", TZ, null);
@@ -212,35 +207,5 @@ describe("linearTrendSeries", () => {
   it("returns null when slope is undefined", () => {
     expect(linearTrendSeries([])).toBeNull();
     expect(linearTrendSeries([5])).toBeNull();
-  });
-});
-
-describe("rollingMean", () => {
-  it("nulls leading entries before the window fills", () => {
-    const out = rollingMean([1, 2, 3, 4, 5], 3);
-    expect(out.slice(0, 2)).toEqual([null, null]);
-    expect(out[2]).toBeCloseTo(2, 10);
-    expect(out[3]).toBeCloseTo(3, 10);
-    expect(out[4]).toBeCloseTo(4, 10);
-  });
-  it("returns all nulls when fewer values than window", () => {
-    expect(rollingMean([1, 2], 3)).toEqual([null, null]);
-  });
-});
-
-describe("sleepBucket", () => {
-  it("buckets at the spec edges (half-open [lo, hi))", () => {
-    expect(sleepBucket(5.9)).toBe("low");
-    expect(sleepBucket(6.0)).toBe("ok");
-    expect(sleepBucket(6.9)).toBe("ok");
-    expect(sleepBucket(7.0)).toBe("good");
-    expect(sleepBucket(8.9)).toBe("good");
-    expect(sleepBucket(9.0)).toBe("good");
-    expect(sleepBucket(10.5)).toBe("good");
-  });
-  it("colors map to the Clawpilot tokens", () => {
-    expect(sleepBucketColor("low")).toBe("var(--cp-danger)");
-    expect(sleepBucketColor("ok")).toBe("var(--cp-warning)");
-    expect(sleepBucketColor("good")).toBe("var(--cp-success)");
   });
 });
