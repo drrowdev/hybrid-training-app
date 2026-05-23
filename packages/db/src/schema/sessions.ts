@@ -69,6 +69,14 @@ export const sessions = pgTable("sessions", {
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),
+  /**
+   * Soft-delete marker (migration 0026). NULL = visible row, set to
+   * NOW() when the user trashes the session. The 30-day cleanup cron
+   * hard-deletes rows where `deleted_at < NOW() - INTERVAL '30 days'`.
+   * Every user-facing query MUST filter `WHERE deleted_at IS NULL` —
+   * the Trash page is the only place that selects the inverse.
+   */
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
 
 export const sessionInsert = createInsertSchema(sessions);
