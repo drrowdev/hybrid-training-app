@@ -409,4 +409,166 @@ test.describe("@desktop session log", () => {
       plannedSessionId: seed.todayPlannedId,
     });
   });
+
+  test("E: Phase 2 — swap an exercise mid-session", async ({
+    page,
+    context,
+    freshUser,
+    seedConfig,
+    admin,
+    baseURL,
+  }) => {
+    const url = baseURL ?? "http://localhost:3000";
+
+    await markOnboarded(admin, freshUser.userId);
+    await seedStrengthTms(admin, freshUser.userId);
+    const seed = await seedActiveBlock(admin, freshUser.userId);
+    await signInAs(context, freshUser, seedConfig, url);
+
+    // Land on the in-progress session for today.
+    await page.goto(`/app/sessions/start/${seed.todayPlannedId}`);
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: /skip check-in/i }).click();
+    await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 15_000 });
+    const sessionId = new URL(page.url()).pathname.split("/").pop()!;
+
+    // The prescription-items list renders with one Swap button for the
+    // seeded squat item. Open the candidate picker.
+    const itemRow = page.getByTestId("prescription-item-0");
+    await expect(itemRow).toBeVisible();
+    await itemRow.getByTestId("prescription-item-swap-button-0").click();
+
+    // The API returns the pattern-compatible squat alternatives. Pick
+    // front squat — different from the seeded high-bar back squat.
+    const candidates = page.getByTestId("swap-candidates");
+    await expect(candidates).toBeVisible({ timeout: 10_000 });
+    const frontSquat = page.getByTestId("swap-candidate-front-squat").first();
+    await expect(frontSquat).toBeVisible({ timeout: 10_000 });
+    await frontSquat.click();
+
+    // Optimistic UI: the swapped badge appears + the row text now shows
+    // Front Squat.
+    await expect(page.getByTestId("prescription-item-swapped-0")).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(itemRow).toContainText(/front squat/i);
+
+    // Reload — the server-side mutation persisted, prescription still
+    // points at front squat.
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("prescription-item-swapped-0")).toBeVisible();
+    await expect(page.getByTestId("prescription-item-0")).toContainText(/front squat/i);
+
+    // Service-role: planned_sessions.prescription.items[0].movementSlug
+    // is now "front-squat" + meta.swappedFrom captures the original.
+    const { data: planned } = await admin
+      .from("planned_sessions")
+      .select("prescription")
+      .eq("id", seed.todayPlannedId)
+      .maybeSingle();
+    const items = (planned?.prescription as { items: Array<{ movementSlug: string; meta?: Record<string, unknown> }> }).items;
+    expect(items[0]!.movementSlug).toBe("front-squat");
+    const meta = items[0]!.meta as
+      | { swappedFrom?: { movementId: string; movementName: string } }
+      | undefined;
+    expect(meta?.swappedFrom?.movementId).toBe(seed.todayMovementId);
+    // Defensive: untouched cardio/other items would also be in this
+    // array on a multi-item prescription; the seed only has the one
+    // strength item so length stays at 1.
+    expect(items.length).toBe(1);
+
+    // The session id is still accessible (no orphaning).
+    expect(sessionId).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  test("F: Phase 2 — Strava autofill banner appears for a recent activity", async ({
+    page,
+    context,
+    freshUser,
+    seedConfig,
+    admin,
+    baseURL,
+  }) => {
+    const url = baseURL ?? "http://localhost:3000";
+
+    await markOnboarded(admin, freshUser.userId);
+    await seedStrengthTms(admin, freshUser.userId);
+    const seed = await seedActiveBlock(admin, freshUser.userId);
+    await signInAs(context, freshUser, seedConfig, url);
+
+    // Seed a "Strava activity" — i.e. a sessions row with a strava_activity_id
+    // and a cardio_logs row with external_source='strava'. Performed time
+    // is just 10 minutes before the open session we're about to start so
+    // the ±90 min match window fires.
+    const stravaPerformedAt = new Date(Date.now() - 10 * 60_000).toISOString();
+    const { data: stravaSession, error: ssErr } = await admin
+      .from("sessions")
+      .insert({
+        user_id: freshUser.userId,
+        title: "Easy spin (Strava)",
+        performed_at: stravaPerformedAt,
+        completed_at: stravaPerformedAt,
+        duration_min: 45,
+        slot: "single",
+        strava_activity_id: 9_999_001,
+      })
+      .select("id")
+      .single();
+    expect(ssErr).toBeNull();
+    expect(stravaSession?.id).toBeTruthy();
+
+    const { error: clErr } = await admin.from("cardio_logs").insert({
+      session_id: stravaSession!.id,
+      modality: "bike",
+      duration_sec: 2700,
+      distance_km: 18.4,
+      avg_hr_bpm: 138,
+      strava_activity_id: "9999001",
+      external_source: "strava",
+    });
+    expect(clErr).toBeNull();
+
+    // Open today's planned session.
+    await page.goto(`/app/sessions/start/${seed.todayPlannedId}`);
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: /skip check-in/i }).click();
+    await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 15_000 });
+    const sessionId = new URL(page.url()).pathname.split("/").pop()!;
+
+    // Strava banner is visible — within window + cardio modality.
+    const banner = page.getByTestId("strava-autofill");
+    await expect(banner).toBeVisible({ timeout: 10_000 });
+    await expect(banner).toContainText(/bike/i);
+    await expect(banner).toContainText(/45 min/i);
+
+    // Apply the autofill.
+    await banner.getByTestId("strava-autofill-use").click();
+    await expect(banner).toHaveAttribute("data-state", "applied", { timeout: 10_000 });
+
+    // A cardio_logs row now exists on the open session with the
+    // expected values.
+    await expect
+      .poll(
+        async () => {
+          const { count } = await admin
+            .from("cardio_logs")
+            .select("id", { count: "exact", head: true })
+            .eq("session_id", sessionId);
+          return count ?? 0;
+        },
+        { timeout: 10_000 },
+      )
+      .toBeGreaterThan(0);
+    const { data: newCardio } = await admin
+      .from("cardio_logs")
+      .select("modality, duration_sec, distance_km, avg_hr_bpm, external_source")
+      .eq("session_id", sessionId)
+      .maybeSingle();
+    expect(newCardio?.modality).toBe("bike");
+    expect(newCardio?.duration_sec).toBe(2700);
+    expect(Number(newCardio?.distance_km)).toBeCloseTo(18.4, 2);
+    expect(newCardio?.avg_hr_bpm).toBe(138);
+    expect(newCardio?.external_source).toBe("strava");
+  });
 });

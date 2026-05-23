@@ -5,8 +5,10 @@ import { AddCardioBlockForm } from "@/components/add-log-forms";
 import {
   addCardioBlock,
   addStrengthSet,
+  applyStravaAutofill,
   deleteCardio,
   fillSessionFromPlan,
+  swapPrescriptionItem,
 } from "@/lib/sessions/actions";
 import { DeleteSessionButton } from "@/components/trash/DeleteSessionButton";
 import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
@@ -17,6 +19,9 @@ import {
   type PriorBest,
 } from "@/components/session/SessionLogClient";
 import { PostSessionSummary } from "@/components/session/PostSessionSummary";
+import { PrescriptionItemsList } from "@/components/session/PrescriptionItemsList";
+import { StravaAutofillBanner, type StravaAutofillMatch } from "@/components/session/StravaAutofillBanner";
+import { findMatchingStravaActivity } from "@/lib/integrations/strava/match";
 import { GRM_RECOMMEND_THRESHOLD, applyGrmToPercent, computeGrm, grmLabel } from "@/lib/engine/grm";
 import { PR_KIND_LABEL } from "@/lib/engine/pr";
 import { bestEstimateOneRm } from "@/lib/engine/one-rm";
@@ -26,6 +31,8 @@ import { formatHitValue, getSessionPrs } from "@/lib/stats/pr-queries";
 import { findBumpProposalForSession } from "@/lib/stats/bump-proposal";
 import { findPrRecalibrateProposals } from "@/lib/stats/pr-recalibrate";
 import { getLastSetLogForMovement, summariseSessionSets } from "@/lib/sessions/queries";
+import { suggestNextWeight } from "@/lib/progression/suggest-next";
+import type { ProgressionHint } from "@/components/session/PostSessionSummary";
 import type { Prescription } from "@hta/db";
 
 export default async function SessionDetailPage({
@@ -225,6 +232,97 @@ export default async function SessionDetailPage({
       )
     : null;
 
+  // Phase 2 D2 — suggested progression hints. Computed only for completed
+  // sessions, only for main lifts (defined as "movement_id has a row in
+  // training_maxes"). For each main lift in this session, find the top
+  // working set, estimate 1RM, and pass through the progression engine.
+  // Prescription gives us the rep target; fall back to logged reps when
+  // the link isn't present.
+  let progressionHints: ProgressionHint[] | undefined;
+  if (isComplete && sets.length > 0) {
+    const targetRepsByMovementId = new Map<string, number>();
+    for (const item of plannedPrescription?.items ?? []) {
+      if (item.kind === "main" && typeof item.reps === "number" && item.reps > 0) {
+        // First main entry wins per movement — multi-main prescriptions
+        // (top + back-off) share the same rep target by design.
+        if (!targetRepsByMovementId.has(item.movementId)) {
+          targetRepsByMovementId.set(item.movementId, item.reps);
+        }
+      }
+    }
+    const topByMovement = new Map<
+      string,
+      { weight: number; reps: number; rpe: number | null; displayName: string }
+    >();
+    for (const s of sets) {
+      if (s.set_kind === "warmup") continue;
+      const tm = tmBySlug[s.movement.slug];
+      if (!tm) continue; // not a main lift
+      const w = Number(s.weight_kg);
+      const r = Number(s.reps);
+      if (!Number.isFinite(w) || w <= 0 || !Number.isFinite(r) || r <= 0) continue;
+      const rpe = s.rpe == null ? null : Number(s.rpe);
+      const cur = topByMovement.get(s.movement.id);
+      if (!cur || w > cur.weight || (w === cur.weight && r > cur.reps)) {
+        topByMovement.set(s.movement.id, {
+          weight: w,
+          reps: r,
+          rpe: Number.isFinite(rpe as number) ? (rpe as number) : null,
+          displayName: s.movement.display_name,
+        });
+      }
+    }
+    const hints: ProgressionHint[] = [];
+    for (const [movementId, top] of topByMovement) {
+      const tmSlug = sets.find((s) => s.movement.id === movementId)?.movement.slug;
+      const tm = tmSlug ? tmBySlug[tmSlug] : undefined;
+      if (!tm) continue;
+      const targetReps = targetRepsByMovementId.get(movementId) ?? top.reps;
+      const e1rm = bestEstimateOneRm({ weight: top.weight, reps: top.reps, rpe: top.rpe });
+      const sugg = suggestNextWeight({
+        lastSet: { weightKg: top.weight, reps: top.reps, rpe: top.rpe },
+        targetReps,
+        e1rmKg: e1rm,
+        trainingMaxKg: tm,
+        plateIncrement: 2.5,
+        isMainLift: true,
+      });
+      hints.push({
+        movementId,
+        movementDisplayName: top.displayName,
+        kind: sugg.kind,
+        nextWeightKg: sugg.nextWeightKg,
+        nextReps: sugg.nextReps,
+        rationale: sugg.rationale,
+      });
+    }
+    progressionHints = hints.length > 0 ? hints : undefined;
+  }
+
+  // Phase 2 C1 — Strava autofill match. Only relevant when the session
+  // is still open (post-completion the cardio is presumably already
+  // logged). Silently no-op when the user has no Strava connection or
+  // no in-window activity.
+  let stravaMatch: StravaAutofillMatch | null = null;
+  if (!isComplete) {
+    const candidate = await findMatchingStravaActivity(
+      supabase,
+      user.id,
+      session.performed_at,
+      { excludeSessionId: id },
+    );
+    if (candidate) {
+      stravaMatch = {
+        cardioLogId: candidate.cardioLogId,
+        stravaActivityId: candidate.stravaActivityId,
+        modality: candidate.modality,
+        durationSec: candidate.durationSec,
+        distanceKm: candidate.distanceKm,
+        avgHrBpm: candidate.avgHrBpm,
+      };
+    }
+  }
+
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <header>
@@ -259,11 +357,20 @@ export default async function SessionDetailPage({
         </div>
       </header>
 
+      {stravaMatch && (
+        <StravaAutofillBanner
+          sessionId={id}
+          match={stravaMatch}
+          applyAction={applyStravaAutofill}
+        />
+      )}
+
       {isComplete && summary && (
         <PostSessionSummary
           sessionId={id}
           summary={summary}
           initialNotes={session.notes ?? null}
+          progressionHints={progressionHints}
         />
       )}
 
@@ -565,6 +672,14 @@ export default async function SessionDetailPage({
             )),
           )}
         </section>
+      )}
+
+      {!isComplete && planned && plannedPrescription && plannedPrescription.items.length > 0 && (
+        <PrescriptionItemsList
+          plannedSessionId={planned.id as string}
+          initialPrescription={plannedPrescription}
+          swapAction={swapPrescriptionItem}
+        />
       )}
 
       <SessionLogClient
