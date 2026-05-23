@@ -127,7 +127,7 @@ test.describe("@desktop /app/stats overview", () => {
 
     // ─── Bottom deep-dive grid + routing ───────────────────────────
     const deepDives = page.getByTestId("stats-deep-dive");
-    await expect(deepDives).toHaveCount(3);
+    await expect(deepDives).toHaveCount(4);
 
     // Per-movement → anchor on the same page.
     await deepDives.nth(0).click();
@@ -144,6 +144,12 @@ test.describe("@desktop /app/stats overview", () => {
     await page.waitForLoadState("networkidle");
     await page.getByTestId("stats-deep-dive").nth(2).click();
     await expect(page).toHaveURL(/\/app\/stats\/blocks$/);
+
+    // Wellness dashboard → /app/stats/wellness (Phase 3).
+    await page.goto("/app/stats");
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("stats-deep-dive").nth(3).click();
+    await expect(page).toHaveURL(/\/app\/stats\/wellness$/);
 
     // Current-block CTA → /app/plan/history.
     await page.goto("/app/stats");
