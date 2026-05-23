@@ -20,24 +20,18 @@ import { StravaStaleSyncTrigger } from "@/components/StravaStaleSyncTrigger";
 import { StravaPoweredBadge } from "@/components/StravaPoweredBadge";
 import { computeTaperRecommendation, type TaperRecommendation } from "@/lib/planner/taper";
 import { BodyweightNudge } from "@/components/today/BodyweightNudge";
+import { HowRecoveredCard } from "@/components/today/HowRecoveredCard";
+import { DataRail } from "@/components/today/DataRail";
+import type { WeekDayCell } from "@/components/today/WeekDotsCard";
 import { recordDailyCheckIn } from "@/lib/wellness/actions";
+import { listTrainingMaxes } from "@/lib/training-maxes/queries";
+import { mondayOfYmd, addDaysToYmd, isoWeekdayYmd } from "@/lib/dates";
 
-const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DOW_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function todayLabel(d = new Date()) {
-  return `${DOW[d.getDay()]} · ${d.getDate()} ${MONTHS[d.getMonth()]}`;
-}
-
-function formatRecentDate(iso: string) {
-  const d = new Date(iso);
-  const now = new Date();
-  const ms = now.getTime() - d.getTime();
-  const days = Math.floor(ms / 86_400_000);
-  if (days <= 0 && d.getDate() === now.getDate()) return "today";
-  if (days <= 1) return "yesterday";
-  if (days < 7) return DOW[d.getDay()];
-  return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+  return `${DOW_LONG[d.getDay()]} · ${d.getDate()} ${MONTHS[d.getMonth()]}`;
 }
 
 export default async function TodayPage() {
@@ -55,7 +49,7 @@ export default async function TodayPage() {
 
   const todayIso = todayYmd(profile?.timezone ?? "UTC");
 
-  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness, activeBlock, tmDict] = await Promise.all([
+  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness, activeBlock, tmDict, tmRows] = await Promise.all([
     supabase
       .from("sessions")
       .select("id, title, slot, completed_at, performed_at")
@@ -69,12 +63,13 @@ export default async function TodayPage() {
       .is("deleted_at", null)
       .not("completed_at", "is", null)
       .order("performed_at", { ascending: false })
-      .limit(3),
+      .limit(8),
     getTodayPlannedSessions(),
     getUpcomingPlannedSessions(5),
     getRegionFreshness(supabase, userId),
     getActiveBlock(),
     getTrainingMaxDict(),
+    listTrainingMaxes(),
   ]);
 
   const archetypeName = activeBlock
@@ -167,148 +162,369 @@ export default async function TodayPage() {
 
   const openSession = (todaySessions ?? []).find((s) => !s.completed_at) ?? null;
   const completedToday = (todaySessions ?? []).filter((s) => s.completed_at);
-  const greeting = profile?.display_name ? `Hey ${profile.display_name}` : "Hey there";
   const isTwoADay = plannedToday.length > 1;
   const timezone = profile?.timezone ?? "UTC";
   const amWindowStart = profile?.am_window_start ?? "07:00:00";
   const pmWindowStart = profile?.pm_window_start ?? "17:00:00";
 
+  // Compute the current ISO week's day cells for the right-rail
+  // WeekDotsCard. Mon=0..Sun=6. We bucket completed sessions into
+  // strength vs cardio by checking cardio_logs membership, and overlay
+  // planned days from the active block.
+  const monday = mondayOfYmd(todayIso);
+  const sunday = addDaysToYmd(monday, 6);
+  const todayDow = isoWeekdayYmd(todayIso); // 0=Mon..6=Sun
+
+  const [{ data: weekSessions }, { data: weekCardioRows }, { data: weekPlannedRows }] = await Promise.all([
+    supabase
+      .from("sessions")
+      .select("id, performed_at")
+      .is("deleted_at", null)
+      .not("completed_at", "is", null)
+      .gte("performed_at", `${monday}T00:00:00`)
+      .lt("performed_at", `${addDaysToYmd(sunday, 1)}T00:00:00`),
+    supabase
+      .from("cardio_logs")
+      .select("session_id, sessions!inner(performed_at, deleted_at, completed_at)")
+      .gte("sessions.performed_at", `${monday}T00:00:00`)
+      .lt("sessions.performed_at", `${addDaysToYmd(sunday, 1)}T00:00:00`)
+      .is("sessions.deleted_at", null)
+      .not("sessions.completed_at", "is", null),
+    activeBlock
+      ? supabase
+          .from("planned_sessions")
+          .select("week_index, day_index, completed_session_id")
+          .eq("block_id", activeBlock.id)
+      : Promise.resolve({ data: [] as Array<{ week_index: number; day_index: number; completed_session_id: string | null }> }),
+  ]);
+
+  const cardioSessionIds = new Set<string>(
+    ((weekCardioRows ?? []) as Array<{ session_id: string }>).map((r) => r.session_id),
+  );
+  const weekStrengthDows = new Set<number>();
+  const weekCardioDows = new Set<number>();
+  for (const s of (weekSessions ?? []) as Array<{ id: string; performed_at: string }>) {
+    const ymd = s.performed_at.slice(0, 10);
+    // Only count days that actually fall in [monday..sunday]; the gte/lt
+    // above scope by absolute instant so a session right after midnight
+    // in a forward-shifted tz could land outside the calendar week.
+    const dow = isoWeekdayYmd(ymd);
+    if (dow < 0 || dow > 6) continue;
+    if (cardioSessionIds.has(s.id)) weekCardioDows.add(dow);
+    else weekStrengthDows.add(dow);
+  }
+
+  // Planned days for the current ISO week from the active block.
+  const weekPlannedDows = new Set<number>();
+  if (activeBlock) {
+    const startMonday = mondayOfYmd(activeBlock.startedOn);
+    for (const p of (weekPlannedRows ?? []) as Array<{
+      week_index: number;
+      day_index: number;
+      completed_session_id: string | null;
+    }>) {
+      const dayYmd = addDaysToYmd(startMonday, p.week_index * 7 + p.day_index);
+      if (dayYmd >= monday && dayYmd <= sunday && !p.completed_session_id) {
+        weekPlannedDows.add(isoWeekdayYmd(dayYmd));
+      }
+    }
+  }
+
+  const weekDays: WeekDayCell[] = Array.from({ length: 7 }, (_, i) => ({
+    strengthDone: weekStrengthDows.has(i),
+    cardioDone: weekCardioDows.has(i),
+    planned: weekPlannedDows.has(i),
+    isToday: i === todayDow,
+  }));
+  const doneCount = weekDays.filter((d) => d.strengthDone || d.cardioDone).length;
+
+  // Today's wellness row drives HowRecoveredCard's initial state.
+  const { data: todayWellness } = await supabase
+    .from("wellness")
+    .select("fatigue, soreness")
+    .eq("date", todayIso)
+    .maybeSingle();
+  const initialFatigue = (todayWellness?.fatigue ?? null) as number | null;
+  const initialSoreness = (todayWellness?.soreness ?? null) as number | null;
+
+  const computedWeekIndex = activeBlock
+    ? Math.max(
+        0,
+        Math.floor(
+          (Date.parse(todayIso) - Date.parse(activeBlock.startedOn)) /
+            86_400_000 /
+            7,
+        ),
+      )
+    : null;
+
+  const subtitleParts: string[] = [];
+  if (archetypeName) subtitleParts.push(archetypeName);
+  if (activeBlock) subtitleParts.push(`Week ${(computedWeekIndex ?? 0) + 1} of ${activeBlock.weeks}`);
+  subtitleParts.push(todayLabel().split(" · ")[0]!); // long weekday
+
   return (
-    <div style={{ display: "grid", gap: 18 }}>
-      <header>
-        <div style={{ fontSize: 12, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-          {todayLabel()}
-        </div>
-        <h1 style={{ fontSize: 28, margin: "4px 0 0", letterSpacing: "-0.01em" }}>{greeting}.</h1>
-      </header>
-
-      <TodaySessionCard
-        openSession={openSession}
-        completedToday={completedToday}
-        plannedToday={plannedToday}
-        isTwoADay={isTwoADay}
-        timezone={timezone}
-        amWindowStart={amWindowStart}
-        pmWindowStart={pmWindowStart}
-        conflictsBySlot={conflictsBySlot}
-        archetypeName={archetypeName}
-        weekIndex={
-          activeBlock
-            ? Math.max(0, Math.floor((Date.parse(todayIso) - Date.parse(activeBlock.startedOn)) / 86_400_000 / 7))
-            : null
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 1fr)",
+        gap: 24,
+      }}
+      className="today-shell"
+    >
+      {/* Two-column layout above 1100px — see <style> block below. */}
+      <style>{`
+        @media (min-width: 1100px) {
+          .today-shell { grid-template-columns: minmax(0, 1fr) 280px !important; align-items: start; }
         }
-        tmById={tmById}
-        nextUpcoming={upcoming[0] ?? null}
-      />
+      `}</style>
 
-      {taper && <TaperCard taper={taper} />}
+      <div style={{ display: "grid", gap: 18, minWidth: 0 }}>
+        <header>
+          <div
+            style={{
+              fontSize: 11,
+              color: "var(--cp-text-muted)",
+              textTransform: "uppercase",
+              letterSpacing: "0.12em",
+              fontWeight: 600,
+            }}
+          >
+            {todayLabel()}
+            {archetypeName && computedWeekIndex != null && (
+              <>
+                <span style={{ margin: "0 8px", opacity: 0.4 }}>·</span>
+                {archetypeName}
+                <span style={{ margin: "0 8px", opacity: 0.4 }}>·</span>
+                Week {computedWeekIndex + 1}
+              </>
+            )}
+          </div>
+          <h1
+            style={{
+              fontSize: 36,
+              margin: "4px 0 0",
+              letterSpacing: "-0.02em",
+              fontWeight: 700,
+            }}
+          >
+            Today
+          </h1>
+          {activeBlock && (
+            <div
+              style={{
+                fontSize: 13,
+                color: "var(--cp-text-muted)",
+                marginTop: 4,
+              }}
+            >
+              {subtitleParts.join(" · ")}
+            </div>
+          )}
+        </header>
 
-      <RegionFreshnessCard rows={freshness} hasStravaData={hasStravaData} />
-      {hasStravaConnection && <StravaStaleSyncTrigger />}
+        {taper && <TaperCard taper={taper} />}
 
+        <TodaySessionCard
+          openSession={openSession}
+          completedToday={completedToday}
+          plannedToday={plannedToday}
+          isTwoADay={isTwoADay}
+          timezone={timezone}
+          amWindowStart={amWindowStart}
+          pmWindowStart={pmWindowStart}
+          conflictsBySlot={conflictsBySlot}
+          archetypeName={archetypeName}
+          weekIndex={computedWeekIndex}
+          tmById={tmById}
+          nextUpcoming={upcoming[0] ?? null}
+        />
+
+        <HowRecoveredCard
+          todayYmd={todayIso}
+          initialFatigue={initialFatigue}
+          initialSoreness={initialSoreness}
+          recordDailyCheckIn={recordDailyCheckIn}
+        />
+
+        <RegionFreshnessCard rows={freshness} hasStravaData={hasStravaData} />
+        {hasStravaConnection && <StravaStaleSyncTrigger />}
+
+        <section className="cp-card" style={{ padding: 20 }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+            <h2 style={{ fontSize: 16, margin: 0 }}>Up next this week</h2>
+            <Link href="/app/plan" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>full plan →</Link>
+          </div>
+          {upcoming.length === 0 ? (
+            <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: 0 }}>
+              No upcoming sessions on the schedule.{" "}
+              <Link href="/app/plan" style={{ color: "var(--cp-link)" }}>Start a block</Link> to populate this.
+            </p>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(140px, 1fr))`, gap: 8 }}>
+              {upcoming.map((u) => (
+                <Link
+                  key={u.id}
+                  href={`/app/plan?week=${u.weekIndex}`}
+                  style={{
+                    border: "1px solid var(--cp-border)",
+                    borderRadius: 12,
+                    padding: 10,
+                    textDecoration: "none",
+                    color: "inherit",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    minHeight: 96,
+                  }}
+                >
+                  <div style={{ fontSize: 10, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                    {new Date(u.date + "T00:00:00").toLocaleDateString(undefined, { weekday: "short" })} ·{" "}
+                    <span style={{ color: "var(--cp-text)" }}>
+                      {new Date(u.date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                    </span>
+                    {u.slot !== "single" && (
+                      <span
+                        data-testid={`upcoming-slot-${u.id}`}
+                        className="mono"
+                        style={{ marginLeft: 6, color: "var(--cp-accent)", fontWeight: 700 }}
+                      >
+                        · {u.slot.toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.25 }}>{u.title}</div>
+                  <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: "auto" }}>
+                    {summarisePrescription(u.prescription.items)}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {showBodyweightNudge && (
+          <BodyweightNudge
+            todayYmd={todayIso}
+            recordDailyCheckIn={recordDailyCheckIn}
+          />
+        )}
+
+        <ActivitySection sessions={recent ?? []} todayIso={todayIso} />
+      </div>
+
+      <DataRail weekDays={weekDays} doneCount={doneCount} tmRows={tmRows} />
+    </div>
+  );
+}
+
+/**
+ * Recent activity grouped by Today / Yesterday / Earlier. Replaces the
+ * original flat list — same row structure, just bucketed.
+ */
+function ActivitySection({
+  sessions,
+  todayIso,
+}: {
+  sessions: Array<{
+    id: string;
+    title: string | null;
+    performed_at: string;
+    completed_at: string | null;
+    session_rpe: number | null;
+    duration_min: number | null;
+  }>;
+  todayIso: string;
+}) {
+  if (sessions.length === 0) {
+    return (
       <section className="cp-card" style={{ padding: 20 }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
-          <h2 style={{ fontSize: 16, margin: 0 }}>Up next this week</h2>
-          <Link href="/app/plan" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>full plan →</Link>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
+          <h2 style={{ fontSize: 16, margin: 0 }}>Recent activity</h2>
+          <Link href="/app/sessions" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>View all →</Link>
         </div>
-        {upcoming.length === 0 ? (
-          <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: 0 }}>
-            No upcoming sessions on the schedule.{" "}
-            <Link href="/app/plan" style={{ color: "var(--cp-link)" }}>Start a block</Link> to populate this.
-          </p>
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(140px, 1fr))`, gap: 8 }}>
-            {upcoming.map((u) => (
+        <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: 0 }}>
+          Nothing logged yet. Your first session will appear here.
+        </p>
+      </section>
+    );
+  }
+
+  const yesterdayIso = addDaysToYmd(todayIso, -1);
+  const groups: Array<{ key: "today" | "yesterday" | "earlier"; label: string; items: typeof sessions }> = [
+    { key: "today", label: "Today", items: [] },
+    { key: "yesterday", label: "Yesterday", items: [] },
+    { key: "earlier", label: "Earlier", items: [] },
+  ];
+  for (const s of sessions) {
+    const ymd = s.performed_at.slice(0, 10);
+    if (ymd === todayIso) groups[0]!.items.push(s);
+    else if (ymd === yesterdayIso) groups[1]!.items.push(s);
+    else groups[2]!.items.push(s);
+  }
+
+  return (
+    <section style={{ display: "grid", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 4 }}>
+        <h2 style={{ fontSize: 16, margin: 0 }}>Recent activity</h2>
+        <Link href="/app/sessions" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>View all →</Link>
+      </div>
+      {groups
+        .filter((g) => g.items.length > 0)
+        .map((g) => (
+          <div key={g.key} style={{ display: "grid", gap: 6 }}>
+            <div
+              style={{
+                fontSize: 11,
+                letterSpacing: "0.1em",
+                color: "var(--cp-text-muted)",
+                textTransform: "uppercase",
+                fontWeight: 600,
+                marginTop: 8,
+              }}
+            >
+              {g.label}
+            </div>
+            {g.items.map((s) => (
               <Link
-                key={u.id}
-                href={`/app/plan?week=${u.weekIndex}`}
+                key={s.id}
+                href={`/app/sessions/${s.id}`}
                 style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  background: "var(--cp-surface)",
                   border: "1px solid var(--cp-border)",
-                  borderRadius: 12,
-                  padding: 12,
+                  borderRadius: 10,
+                  padding: "12px 14px",
                   textDecoration: "none",
                   color: "inherit",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 6,
-                  minHeight: 110,
                 }}
               >
-                <div style={{ fontSize: 10, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                  {new Date(u.date + "T00:00:00").toLocaleDateString(undefined, { weekday: "short" })} ·{" "}
-                  <span style={{ color: "var(--cp-text)" }}>
-                    {new Date(u.date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                  </span>
-                  {u.slot !== "single" && (
-                    <span
-                      data-testid={`upcoming-slot-${u.id}`}
-                      className="mono"
-                      style={{ marginLeft: 6, color: "var(--cp-accent)", fontWeight: 700 }}
-                    >
-                      · {u.slot.toUpperCase()}
-                    </span>
-                  )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 600,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {s.title ?? "Untitled session"}
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--cp-text-muted)", marginTop: 2 }}>
+                    {s.completed_at ? "✓ complete" : "in progress"}
+                    {s.session_rpe ? ` · sRPE ${s.session_rpe}` : ""}
+                    {s.duration_min ? ` · ${s.duration_min} min` : ""}
+                  </div>
                 </div>
-                <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.25 }}>{u.title}</div>
-                <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: "auto" }}>
-                  {summarisePrescription(u.prescription.items)}
-                </div>
+                <span style={{ color: "var(--cp-text-muted)", fontSize: 16 }} aria-hidden>›</span>
               </Link>
             ))}
           </div>
-        )}
-      </section>
-
-      {showBodyweightNudge && (
-        <BodyweightNudge
-          todayYmd={todayIso}
-          recordDailyCheckIn={recordDailyCheckIn}
-        />
-      )}
-
-      <section className="cp-card" style={{ padding: 20 }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
-          <h2 style={{ fontSize: 16, margin: 0 }}>Recent sessions</h2>
-          <Link href="/app/sessions" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>View all →</Link>
-        </div>{!recent || recent.length === 0 ? (
-          <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: 0 }}>
-            Nothing logged yet. Your first session will appear here.
-          </p>
-        ) : (
-          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-            {recent.map((s, i) => (
-              <li key={s.id} style={{ borderTop: i === 0 ? "none" : "1px solid var(--cp-border)", padding: "10px 0" }}>
-                <Link
-                  href={`/app/sessions/${s.id}`}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "baseline",
-                    color: "inherit",
-                    textDecoration: "none",
-                    gap: 12,
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {s.title ?? "Untitled session"}
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 2 }}>
-                      {s.completed_at ? "✓ complete" : "in progress"}
-                      {s.session_rpe ? ` · sRPE ${s.session_rpe}` : ""}
-                      {s.duration_min ? ` · ${s.duration_min} min` : ""}
-                    </div>
-                  </div>
-                  <span className="mono" style={{ fontSize: 11, color: "var(--cp-text-muted)", flexShrink: 0 }}>
-                    {formatRecentDate(s.performed_at)}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </div>
+        ))}
+    </section>
   );
 }
 
@@ -657,17 +873,35 @@ function PlannedSessionCard({
     return acc + sets * (i.kind === "main" ? 4 : i.kind === "back_off" ? 3 : 2);
   }, 0);
 
+  // Movement-name chips for the hero — only main + back-off items,
+  // deduped, capped at 3, with "+ N assistance" for the rest.
+  const mainNames: string[] = [];
+  const seenNames = new Set<string>();
+  let assistanceCount = 0;
+  for (const item of planned.prescription.items) {
+    const name = (item as { movementName?: string }).movementName?.trim();
+    if (item.kind === "main" || item.kind === "back_off") {
+      if (name && !seenNames.has(name)) {
+        seenNames.add(name);
+        mainNames.push(name);
+      }
+    } else {
+      assistanceCount += 1;
+    }
+  }
+  const chipNames = mainNames.slice(0, 3);
+
   return (
     <section
       className="cp-card"
       data-testid={`today-card-${planned.id}`}
       data-hero="planned"
       style={{
-        padding: 24,
+        padding: 18,
         display: "grid",
-        gap: 14,
-        borderColor: "var(--cp-accent)",
-        minHeight: isTwoADay ? 220 : 320,
+        gap: 12,
+        borderColor: "var(--cp-border)",
+        minHeight: isTwoADay ? 200 : 280,
       }}
     >
       <div style={{ fontSize: 11, color: "var(--cp-accent)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
@@ -710,7 +944,40 @@ function PlannedSessionCard({
           </span>
         )}
       </div>
-      <h2 style={{ fontSize: 26, margin: 0, letterSpacing: "-0.01em" }}>{planned.title}</h2>
+      <h2 style={{ fontSize: 24, margin: 0, letterSpacing: "-0.01em", fontWeight: 700 }}>{planned.title}</h2>
+      {(chipNames.length > 0 || assistanceCount > 0) && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {chipNames.map((n) => (
+            <span
+              key={n}
+              style={{
+                background: "var(--cp-surface-soft)",
+                border: "1px solid var(--cp-border)",
+                borderRadius: 8,
+                padding: "4px 10px",
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              {n}
+            </span>
+          ))}
+          {assistanceCount > 0 && (
+            <span
+              style={{
+                background: "transparent",
+                borderRadius: 8,
+                padding: "4px 8px",
+                fontSize: 12,
+                color: "var(--cp-text-muted)",
+                fontStyle: "italic",
+              }}
+            >
+              + {assistanceCount} assistance
+            </span>
+          )}
+        </div>
+      )}
       {(topLine || estMin > 0) && (
         <div
           data-testid="hero-topline"
@@ -718,7 +985,7 @@ function PlannedSessionCard({
             display: "flex",
             flexWrap: "wrap",
             gap: 16,
-            fontSize: 14,
+            fontSize: 13,
             color: "var(--cp-text)",
           }}
         >
