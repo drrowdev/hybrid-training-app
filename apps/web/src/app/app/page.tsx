@@ -25,6 +25,12 @@ import { BodyweightNudge } from "@/components/today/BodyweightNudge";
 import { HowRecoveredCard } from "@/components/today/HowRecoveredCard";
 import { DataRail } from "@/components/today/DataRail";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { TmSuggestionBanner, type TmSuggestionView } from "@/components/today/TmSuggestionBanner";
+import {
+  acceptTmSuggestion,
+  dismissTmSuggestion,
+} from "@/lib/training-maxes/actions";
+import type { TmFormula, TmSource } from "@hta/db";
 import type { WeekDayCell } from "@/components/today/WeekDotsCard";
 import { recordDailyCheckIn } from "@/lib/wellness/actions";
 import { listTrainingMaxes } from "@/lib/training-maxes/queries";
@@ -35,6 +41,20 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 
 function todayLabel(d = new Date()) {
   return `${DOW_LONG[d.getDay()]} · ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+}
+
+/** Coarse "N days/weeks ago" string used by the e1RM hero annotation. */
+function relativeFromIso(iso: string | null, now: Date = new Date()): string {
+  if (!iso) return "recently";
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return "recently";
+  const days = Math.round((now.getTime() - then) / (1000 * 60 * 60 * 24));
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days} days ago`;
+  if (days < 14) return "1 week ago";
+  if (days < 60) return `${Math.round(days / 7)} weeks ago`;
+  return `${Math.round(days / 30)} months ago`;
 }
 
 export default async function TodayPage() {
@@ -81,6 +101,115 @@ export default async function TodayPage() {
   const tmById: Record<string, number> = Object.fromEntries(
     Array.from(tmDict.byMovementId.entries()),
   );
+  // Provenance map keyed by movement_id, used to annotate the hero topline
+  // when the underlying TM came from a derived e1RM rather than a deliberate
+  // entry. Includes the original session timestamp for the relative-date
+  // suffix ("AMRAP 2 weeks ago").
+  type TmHeroMeta = {
+    source: TmSource;
+    formula: TmFormula | null;
+    derivedAt: string | null;
+    derivedFromSessionId: string | null;
+    derivedFromSessionPerformedAt: string | null;
+  };
+  const tmMetaByMovementId: Record<string, TmHeroMeta> = {};
+  const derivedSessionIds = Array.from(
+    new Set(
+      tmRows
+        .filter((r) => r.source !== "entered" && r.derivedFromSessionId)
+        .map((r) => r.derivedFromSessionId!),
+    ),
+  );
+  const sessionPerformedAt = new Map<string, string>();
+  if (derivedSessionIds.length > 0) {
+    const { data: derivedSessions } = await supabase
+      .from("sessions")
+      .select("id, performed_at")
+      .in("id", derivedSessionIds);
+    for (const s of derivedSessions ?? []) {
+      sessionPerformedAt.set(s.id, s.performed_at);
+    }
+  }
+  for (const r of tmRows) {
+    tmMetaByMovementId[r.movementId] = {
+      source: r.source,
+      formula: r.derivedFormula,
+      derivedAt: r.derivedAt,
+      derivedFromSessionId: r.derivedFromSessionId,
+      derivedFromSessionPerformedAt: r.derivedFromSessionId
+        ? sessionPerformedAt.get(r.derivedFromSessionId) ?? null
+        : null,
+    };
+  }
+
+  // Pending TM suggestions — surfaced as a banner above the hero. Joined
+  // with movements + the source set/session so the banner can show "from
+  // your AMRAP X kg × N on Mar 14".
+  const { data: pendingSuggestionsRaw } = await supabase
+    .from("tm_suggestions")
+    .select(
+      "id, movement_id, current_tm_kg, suggested_tm_kg, derived_formula, derived_from_set_log_id, derived_from_session_id, created_at",
+    )
+    .eq("status", "pending")
+    .order("created_at", { ascending: false });
+  let pendingSuggestions: TmSuggestionView[] = [];
+  if (pendingSuggestionsRaw && pendingSuggestionsRaw.length > 0) {
+    const movIds = Array.from(new Set(pendingSuggestionsRaw.map((s) => s.movement_id)));
+    const setIds = Array.from(
+      new Set(
+        pendingSuggestionsRaw
+          .map((s) => s.derived_from_set_log_id)
+          .filter((id): id is string => !!id),
+      ),
+    );
+    const sessIds = Array.from(
+      new Set(
+        pendingSuggestionsRaw
+          .map((s) => s.derived_from_session_id)
+          .filter((id): id is string => !!id),
+      ),
+    );
+    const [{ data: movRows }, { data: setRows }, { data: sessRows }] = await Promise.all([
+      supabase.from("movements").select("id, display_name").in("id", movIds),
+      setIds.length > 0
+        ? supabase.from("set_logs").select("id, weight_kg, reps").in("id", setIds)
+        : Promise.resolve({ data: [] as { id: string; weight_kg: unknown; reps: unknown }[] }),
+      sessIds.length > 0
+        ? supabase.from("sessions").select("id, performed_at").in("id", sessIds)
+        : Promise.resolve({ data: [] as { id: string; performed_at: string }[] }),
+    ]);
+    const movName = new Map((movRows ?? []).map((m) => [m.id, m.display_name as string]));
+    const setMap = new Map(
+      (setRows ?? []).map((s) => [
+        s.id as string,
+        {
+          weightKg: s.weight_kg == null ? null : Number(s.weight_kg),
+          reps: s.reps == null ? null : Number(s.reps),
+        },
+      ]),
+    );
+    const sessMap = new Map((sessRows ?? []).map((s) => [s.id as string, s.performed_at as string]));
+    pendingSuggestions = pendingSuggestionsRaw.map((s) => {
+      const set = s.derived_from_set_log_id ? setMap.get(s.derived_from_set_log_id) : undefined;
+      const formulaRaw = s.derived_formula as string | null;
+      const formula: TmFormula | null =
+        formulaRaw === "epley" || formulaRaw === "brzycki" || formulaRaw === "rpe_zourdos"
+          ? formulaRaw
+          : null;
+      return {
+        id: s.id,
+        movementName: movName.get(s.movement_id) ?? "Lift",
+        currentTmKg: s.current_tm_kg == null ? null : Number(s.current_tm_kg),
+        suggestedTmKg: Number(s.suggested_tm_kg),
+        formula,
+        setWeightKg: set?.weightKg ?? null,
+        setReps: set?.reps ?? null,
+        sessionPerformedAt: s.derived_from_session_id
+          ? sessMap.get(s.derived_from_session_id) ?? null
+          : null,
+      };
+    });
+  }
 
   // Strava integration state: do we have a connection (drives the
   // background stale-sync trigger) and have we ever imported anything
@@ -343,6 +472,12 @@ export default async function TodayPage() {
 
         {taper && <TaperCard taper={taper} />}
 
+        <TmSuggestionBanner
+          suggestions={pendingSuggestions}
+          acceptAction={acceptTmSuggestion}
+          dismissAction={dismissTmSuggestion}
+        />
+
         <TodaySessionCard
           openSession={openSession}
           completedToday={completedToday}
@@ -355,6 +490,7 @@ export default async function TodayPage() {
           archetypeName={archetypeName}
           weekIndex={computedWeekIndex}
           tmById={tmById}
+          tmMetaByMovementId={tmMetaByMovementId}
           nextUpcoming={upcoming[0] ?? null}
         />
 
@@ -562,6 +698,7 @@ function TodaySessionCard({
   archetypeName,
   weekIndex,
   tmById,
+  tmMetaByMovementId,
   nextUpcoming,
 }: {
   openSession: { id: string; title: string | null } | null;
@@ -575,6 +712,13 @@ function TodaySessionCard({
   archetypeName: string | null;
   weekIndex: number | null;
   tmById: Record<string, number>;
+  tmMetaByMovementId: Record<string, {
+    source: TmSource;
+    formula: TmFormula | null;
+    derivedAt: string | null;
+    derivedFromSessionId: string | null;
+    derivedFromSessionPerformedAt: string | null;
+  }>;
   nextUpcoming: PlannedDay | null;
 }) {
   if (openSession) {
@@ -812,6 +956,7 @@ function TodaySessionCard({
                 archetypeName={archetypeName}
                 weekIndex={weekIndex}
                 tmById={tmById}
+                tmMetaByMovementId={tmMetaByMovementId}
               />
             </div>
           );
@@ -852,6 +997,7 @@ function PlannedSessionCard({
   archetypeName,
   weekIndex,
   tmById,
+  tmMetaByMovementId,
 }: {
   planned: PlannedDay;
   isTwoADay: boolean;
@@ -860,6 +1006,13 @@ function PlannedSessionCard({
   archetypeName: string | null;
   weekIndex: number | null;
   tmById: Record<string, number>;
+  tmMetaByMovementId: Record<string, {
+    source: TmSource;
+    formula: TmFormula | null;
+    derivedAt: string | null;
+    derivedFromSessionId: string | null;
+    derivedFromSessionPerformedAt: string | null;
+  }>;
 }) {
   const slotLabel =
     planned.slot === "am" ? "Morning" : planned.slot === "pm" ? "Evening" : "Today's session";
@@ -885,6 +1038,20 @@ function PlannedSessionCard({
       : topItem && topItem.percentTm && topItem.reps
         ? `Top set ${topItem.percentTm}% TM × ${topItem.reps}`
         : null;
+
+  // When the underlying TM is a derived e1RM (AMRAP or RPE), tag the
+  // topline so the user can see the number isn't carved in stone. The
+  // relative-date suffix uses the source session's performed_at so the
+  // hint stays accurate as time passes.
+  const topMeta = topItem ? tmMetaByMovementId[topItem.movementId] : undefined;
+  const topLineAnnotation = (() => {
+    if (!topMeta || topMeta.source === "entered" || !topLine) return null;
+    const when = relativeFromIso(
+      topMeta.derivedFromSessionPerformedAt ?? topMeta.derivedAt,
+    );
+    const kind = topMeta.source === "derived_amrap" ? "AMRAP" : "RPE set";
+    return `based on e1RM (${kind} ${when})`;
+  })();
 
   // Estimated session minutes — sum of strength sets × ~3 min and
   // cardio durationMin. Coarse on purpose; the Today hero only needs a
@@ -1023,6 +1190,18 @@ function PlannedSessionCard({
           {topLine && (
             <span style={{ fontWeight: 600 }} className="mono">
               {topLine}
+            </span>
+          )}
+          {topLineAnnotation && (
+            <span
+              data-testid="hero-topline-e1rm-annotation"
+              style={{
+                color: "var(--cp-text-muted)",
+                fontWeight: 500,
+                fontStyle: "italic",
+              }}
+            >
+              · {topLineAnnotation}
             </span>
           )}
         </div>

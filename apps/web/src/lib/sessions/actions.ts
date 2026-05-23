@@ -398,6 +398,19 @@ export async function completeSession(formData: FormData): Promise<void> {
     console.error("maybeCompleteBlock failed:", e);
   }
 
+  // After completion, scan for AMRAP top sets that warrant a TM bump
+  // suggestion. Never auto-overwrites; only writes pending rows that the
+  // user resolves from the Today banner. Failures here must never block
+  // session completion.
+  try {
+    const { generateTmSuggestionsForSession } = await import(
+      "@/lib/training-maxes/actions"
+    );
+    await generateTmSuggestionsForSession(parsed.data.sessionId);
+  } catch (e) {
+    console.error("generateTmSuggestionsForSession failed:", e);
+  }
+
   revalidatePath("/app");
   revalidatePath("/app/plan");
   revalidatePath("/app/stats");

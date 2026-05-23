@@ -7,6 +7,7 @@
 
 import Link from "next/link";
 import type { TmRow } from "@/lib/training-maxes/queries";
+import { TmSourceBadge } from "@/components/training-maxes/TmSourceBadge";
 
 export function TrainingMaxesCard({ rows }: { rows: TmRow[] }) {
   const sorted = [...rows].sort((a, b) =>
@@ -67,12 +68,23 @@ export function TrainingMaxesCard({ rows }: { rows: TmRow[] }) {
               style={{
                 display: "flex",
                 justifyContent: "space-between",
+                alignItems: "baseline",
+                gap: 8,
                 padding: "8px 0",
                 fontSize: 14,
                 borderBottom: "1px solid var(--cp-border)",
               }}
             >
-              <span>{r.movementName}</span>
+              <span
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 2,
+                }}
+              >
+                <span>{r.movementName}</span>
+                <TmSourceBadge source={r.source} formula={r.derivedFormula} compact />
+              </span>
               <span
                 className="mono"
                 style={{

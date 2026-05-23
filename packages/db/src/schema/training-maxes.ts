@@ -16,6 +16,22 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { movements } from "./movements";
+import { sessions } from "./sessions";
+import { setLogs } from "./set-logs";
+
+/**
+ * TM provenance — where the stored number came from.
+ *
+ *  - 'entered'        · user typed the 1RM themselves.
+ *  - 'derived_amrap'  · accepted from an AMRAP top-set e1RM suggestion.
+ *  - 'derived_rpe'    · accepted from an RPE-anchored e1RM suggestion.
+ */
+export const TM_SOURCES = ["entered", "derived_amrap", "derived_rpe"] as const;
+export type TmSource = (typeof TM_SOURCES)[number];
+
+/** Formula label kept alongside derived TMs for UI disclosure. */
+export const TM_FORMULAS = ["epley", "brzycki", "rpe_zourdos"] as const;
+export type TmFormula = (typeof TM_FORMULAS)[number];
 
 export const trainingMaxes = pgTable(
   "training_maxes",
@@ -30,6 +46,22 @@ export const trainingMaxes = pgTable(
     /** Optional per-movement TM% override; falls back to profile.tm_percent_default. */
     tmPercent: numeric("tm_percent", { precision: 4, scale: 1 }),
     notes: text("notes"),
+    /** Provenance tag — see TM_SOURCES. Defaults to 'entered'. */
+    source: text("source").notNull().default("entered"),
+    /** When source is derived_*, links back to the session that produced it. */
+    derivedFromSessionId: uuid("derived_from_session_id").references(
+      () => sessions.id,
+      { onDelete: "set null" },
+    ),
+    /** When source is derived_*, links back to the specific set log. */
+    derivedFromSetLogId: uuid("derived_from_set_log_id").references(
+      () => setLogs.id,
+      { onDelete: "set null" },
+    ),
+    /** Which formula produced the derived value (epley | brzycki | rpe_zourdos). */
+    derivedFormula: text("derived_formula"),
+    /** Timestamp the derived value was accepted. NULL for entered rows. */
+    derivedAt: timestamp("derived_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .default(sql`now()`)
       .notNull(),
