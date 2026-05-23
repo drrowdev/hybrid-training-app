@@ -1,5 +1,5 @@
 /**
- * wellness — daily check-in row (bodyweight + sleep + motivation + notes).
+ * wellness — daily check-in row (bodyweight + motivation + notes).
  *
  * Phase 3 (migration 0027) extended this table with `sleep_hours` and
  * `motivation` so a single (user_id, date) row carries the full daily
@@ -9,6 +9,11 @@
  * upsert onto the same conflict target.
  *
  * Uniqueness on (user_id, date) prevents accidental duplicates.
+ *
+ * `sleep_hours` is reserved for a future health-app integration
+ * (Apple Health / Google Fit) — no manual entry. The column is kept
+ * so the integration can back-fill it; the UI never reads or writes
+ * it from manual paths.
  */
 import { sql } from "drizzle-orm";
 import {
@@ -32,7 +37,7 @@ export const wellness = pgTable(
     userId: uuid("user_id").notNull(),
     date: date("date").notNull(),
     bodyweightKg: numeric("bodyweight_kg", { precision: 6, scale: 2 }),
-    /** Last night's sleep duration (hours, 0–24). Phase 3 A1/B1. */
+    // Reserved for health-integration auto-fill — no manual entry.
     sleepHours: numeric("sleep_hours", { precision: 3, scale: 1 }),
     /** Self-reported motivation, 1=low → 5=high. Phase 3 A1. */
     motivation: smallint("motivation"),

@@ -16,11 +16,15 @@ import {
  *
  * The spec:
  *  - lists /app/stats/blocks and asserts both cards render with the
- *    archetype display names + the KPI tiles (delta / PRs / sleep).
+ *    archetype display names + the KPI tiles (delta / PRs).
  *  - clicks into the first card and asserts every B1–B6 section
  *    renders (with the empty-state copy where data is absent).
  *  - opens the comparison picker and selects the other block,
  *    asserting the side-by-side comparison view renders.
+ *
+ * The sleep KPI tile + sleep compare section were removed in
+ * fix/sleep-walkback — manual sleep entry is deferred to the future
+ * health-app integration.
  */
 
 test.describe("@desktop /app/stats/blocks deep dive", () => {
@@ -91,10 +95,10 @@ test.describe("@desktop /app/stats/blocks deep dive", () => {
     // Most recent first — block 2 (active hypertrophy) sits on top.
     await expect(cards.nth(0)).toContainText(/Hypertrophy Focus/i);
     await expect(cards.nth(1)).toContainText(/Strength Focus/i);
-    // Each card surfaces the three KPI tiles.
+    // Each card surfaces the two KPI tiles (sleep tile removed).
     await expect(cards.nth(0).getByTestId("stats-block-card-delta")).toBeVisible();
     await expect(cards.nth(0).getByTestId("stats-block-card-prs")).toBeVisible();
-    await expect(cards.nth(0).getByTestId("stats-block-card-sleep")).toBeVisible();
+    await expect(cards.nth(0).getByTestId("stats-block-card-sleep")).toHaveCount(0);
 
     // ── Deep dive ─────────────────────────────────────────────────
     // Click the strength block (bottom card) so the deep dive opens
@@ -126,8 +130,10 @@ test.describe("@desktop /app/stats/blocks deep dive", () => {
     await expect(page.getByTestId("stats-block-power-outcome")).toHaveCount(0);
 
     // B6 wellness — section renders even with no signal (empty tiles).
+    // Sleep tile removed (deferred to health-integration).
     await expect(page.getByTestId("stats-block-wellness")).toBeVisible();
-    await expect(page.getByTestId("stats-block-wellness-sleep")).toBeVisible();
+    await expect(page.getByTestId("stats-block-wellness-sleep")).toHaveCount(0);
+    await expect(page.getByTestId("stats-block-wellness-motivation")).toBeVisible();
 
     // ── Compare picker → comparison view ─────────────────────────
     const picker = page.getByTestId("stats-block-compare-picker");
@@ -147,7 +153,7 @@ test.describe("@desktop /app/stats/blocks deep dive", () => {
     );
     await expect(page.getByTestId("stats-block-compare-adherence")).toBeVisible();
     await expect(page.getByTestId("stats-block-compare-prs")).toBeVisible();
-    await expect(page.getByTestId("stats-block-compare-sleep")).toBeVisible();
+    await expect(page.getByTestId("stats-block-compare-sleep")).toHaveCount(0);
 
     // Clear comparison → back to the deep dive on block 1 alone.
     await page.getByTestId("stats-block-compare-clear").click();

@@ -1,10 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * Phase 3 wellness seed helpers.
+ * Wellness seed helpers.
  *
  * `seedWellnessHistory` upserts daily check-in rows (bodyweight_kg,
- * sleep_hours, motivation) into `public.wellness` for the last N days.
+ * motivation) into `public.wellness` for the last N days. Sleep_hours
+ * is not seeded — manual sleep entry was walked back; the column is
+ * reserved for the future health-app integration.
  *
  * `seedSessionWellness` inserts `sessions` rows carrying pre-check-in
  * fatigue/soreness (DC-P1) and post-session sRPE (DC-A2) — these back
@@ -24,7 +26,6 @@ export async function seedWellnessHistory(
     user_id: string;
     date: string;
     bodyweight_kg: number;
-    sleep_hours: number;
     motivation: number;
   }> = [];
   for (let i = days - 1; i >= 0; i--) {
@@ -33,15 +34,12 @@ export async function seedWellnessHistory(
     const date = d.toISOString().slice(0, 10);
     // Bodyweight: linear drift + small sine wiggle.
     const bw = 82.0 + (days - 1 - i) * 0.05 + Math.sin(i / 3) * 0.4;
-    // Sleep: oscillates between 6.5 and 8.5h.
-    const sleep = 7.5 + Math.sin(i / 2) * 1.0;
     // Motivation: 3..5 range.
     const motivation = 3 + ((i % 3) === 0 ? 2 : i % 2);
     rows.push({
       user_id: userId,
       date,
       bodyweight_kg: Math.round(bw * 10) / 10,
-      sleep_hours: Math.round(sleep * 10) / 10,
       motivation,
     });
   }
