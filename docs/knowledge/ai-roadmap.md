@@ -162,6 +162,36 @@
 
 ---
 
+---
+
+## #7 — AI chat surface (FAB + conversation backend) — deferred for dedicated planning
+
+**Why this is deferred.** Anything AI-touching needs its own planning pass — model selection, prompting strategy, conversation persistence, privacy posture, and rate-limit / cost model are decisions that shouldn't be made in passing as a UI affordance. A floating button is the easy part; the hard part is the engine behind it.
+
+**The original ask.** A floating action button bottom-right on every `/app/*` page that opens a chat surface where the user can ask the engine questions ("Why is this week deload?", "Why did you reduce Tuesday's squat top set?", "Suggest accessories for tomorrow"). The engine already has reasoning surface area — override audit log, region freshness, ceiling explainers, tier-detection contributors — that a chat layer could expose conversationally.
+
+**Open questions to resolve before building (none of these have answers yet):**
+
+1. **Backend model.** Local LLM (Ollama / llama.cpp) vs hosted API (OpenAI / Anthropic / Azure OpenAI)? If hosted, who pays for tokens? Per-user quota? Bring-your-own-key?
+2. **Conversation persistence.** Is each chat a fresh session, or do conversations persist? If persistent, where (Supabase row per turn? per thread?) and with what retention?
+3. **Grounding strategy.** Retrieval over the user's training history + engine state, or stateless prompts? If retrieval, what's in the context window? Tool-calling for engine queries vs pre-fetched bundle?
+4. **Allowed actions.** Read-only (answer questions only) or write-capable (propose-and-apply overrides, log adjustments)? Write-capable opens up DC-K4-style override-and-warn semantics in chat.
+5. **Privacy.** Engine reasoning may include health-adjacent context (fatigue, soreness, injuries). What data goes to the model, what stays local, what's redacted?
+6. **Voice / persona.** Coaching tone? Plain-language only (DC-Q1)? Brand-purity (DC-Q6) — same rule applies: no external program names ever.
+7. **Fallback when unavailable.** When the AI backend is down, slow, or rate-limited — how does the UI degrade? Pre-canned answers for common queries? Just hide the FAB?
+8. **Quality bar before launch.** How do we know the answers are good enough to ship? Eval set? Spot checks by the project owner? Beta-flag for a single user (the dev) first?
+
+**Suggested next step.** Open a planning session purely on AI surface area. Produce a small ADR-style doc covering points 1–8 above, then break the implementation into a sequenced PR plan. Until that planning lands, the UI surface stays unbuilt.
+
+**Provisional UX (not committed).** If the FAB is greenlit later:
+- Floating button, bottom-right, ~56px circle, accent fill with chat icon.
+- Click opens a sheet from the right (desktop) or bottom (mobile), 480px wide max.
+- Header: "Ask the coach" (or whatever name; brand-pure copy).
+- Body: scrollable message list, input at bottom with Send.
+- Optional: surface a "Why did the engine do X?" deep-link from override audit cards to start a pre-seeded conversation.
+
+---
+
 ## Build-order recommendation
 
 When this list is next worked, suggested wave:
@@ -174,6 +204,7 @@ When this list is next worked, suggested wave:
 6. **#12 Calendar view modes** — larger, depends on `/races` for event linkage.
 7. **#16 TAPER auto-detection** — depends on the notifications inbox (out of scope this wave) for the Accept/Dismiss UX. Build the action buttons first, defer the notification thread.
 8. **#13 Phase auto-shift** — bundle with #16 because both ride the same archetype-transition recommendation in the planner.
+9. **#7 AI chat surface** — gated on its own planning ADR (see section above). Do not start until the 8 open questions have written answers.
 
 ---
 
