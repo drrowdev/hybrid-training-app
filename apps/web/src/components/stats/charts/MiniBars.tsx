@@ -29,6 +29,7 @@ export function MiniBars({
   max,
   accent = "accent",
   colors,
+  overlay,
   style,
   ariaLabel,
 }: {
@@ -38,6 +39,14 @@ export function MiniBars({
   accent?: MiniBarsAccent;
   /** Per-bar CSS color, same length as `values`. Overrides `accent`. */
   colors?: string[];
+  /**
+   * Optional second series rendered as a thin dashed line on top of
+   * the bars, sharing the same y-scale. Used for rolling-average
+   * overlays on the Wellness dashboard (Phase 3). Must be the same
+   * length as `values`; `null` entries (e.g. not enough data yet for
+   * a window) are skipped.
+   */
+  overlay?: Array<number | null>;
   style?: CSSProperties;
   ariaLabel?: string;
 }) {
@@ -93,6 +102,29 @@ export function MiniBars({
           />
         );
       })}
+      {overlay && overlay.length === n && (() => {
+        const pts: string[] = [];
+        for (let i = 0; i < n; i++) {
+          const v = overlay[i];
+          if (v == null) continue;
+          const x = PAD + i * (barW + GAP) + barW / 2;
+          const y = H - PAD - ((v > 0 ? v : 0) / safeMax) * (H - 2 * PAD);
+          pts.push(`${x.toFixed(2)},${y.toFixed(2)}`);
+        }
+        if (pts.length < 2) return null;
+        return (
+          <path
+            d={"M" + pts.join(" L")}
+            fill="none"
+            stroke="var(--cp-text-muted)"
+            strokeWidth={1}
+            strokeDasharray="2 2"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            data-testid="minibars-overlay"
+          />
+        );
+      })()}
     </svg>
   );
 }

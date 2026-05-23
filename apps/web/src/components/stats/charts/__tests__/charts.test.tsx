@@ -15,19 +15,23 @@ import { describe, it, expect } from "vitest";
 import type { ReactElement } from "react";
 import { Sparkline } from "../Sparkline";
 import { MiniBars } from "../MiniBars";
+import { MiniLine } from "../MiniLine";
+import { MiniScatter } from "../MiniScatter";
 
 type AnyEl = ReactElement<{ children?: unknown; "data-testid"?: string }>;
 
 function flattenChildren(node: unknown): AnyEl[] {
-  if (node == null || typeof node !== "object") return [];
+  if (node == null) return [];
+  if (Array.isArray(node)) {
+    const out: AnyEl[] = [];
+    for (const child of node) out.push(...flattenChildren(child));
+    return out;
+  }
+  if (typeof node !== "object") return [];
   const el = node as AnyEl;
   const out: AnyEl[] = [el];
   const c = el.props?.children;
-  if (Array.isArray(c)) {
-    for (const child of c) out.push(...flattenChildren(child));
-  } else if (c != null && typeof c === "object") {
-    out.push(...flattenChildren(c));
-  }
+  if (c != null) out.push(...flattenChildren(c));
   return out;
 }
 
@@ -70,5 +74,77 @@ describe("MiniBars", () => {
       (c) => c.props?.["data-testid"] === "minibars-bar",
     );
     expect(bars).toHaveLength(0);
+  });
+
+  it("draws an overlay path when overlay is supplied", () => {
+    const el = MiniBars({
+      values: [1, 2, 3, 4, 5],
+      overlay: [null, null, 2, 3, 4],
+    }) as AnyEl;
+    const all = flattenChildren(el);
+    const overlay = all.find((c) => c.props?.["data-testid"] === "minibars-overlay");
+    expect(overlay).toBeTruthy();
+  });
+
+  it("skips overlay path when fewer than two non-null entries", () => {
+    const el = MiniBars({
+      values: [1, 2, 3],
+      overlay: [null, null, 2],
+    }) as AnyEl;
+    const overlay = flattenChildren(el).find(
+      (c) => c.props?.["data-testid"] === "minibars-overlay",
+    );
+    expect(overlay).toBeUndefined();
+  });
+});
+
+describe("MiniLine", () => {
+  it("renders the main line path for the provided values", () => {
+    const el = MiniLine({ values: [1, 2, 3] }) as AnyEl;
+    const all = flattenChildren(el);
+    expect(all.find((c) => c.props?.["data-testid"] === "miniline-path")).toBeTruthy();
+  });
+
+  it("draws an overlay path when overlay is supplied", () => {
+    const el = MiniLine({ values: [1, 2, 3, 4], overlay: [1.5, 2, 2.5, 3] }) as AnyEl;
+    const all = flattenChildren(el);
+    expect(all.find((c) => c.props?.["data-testid"] === "miniline-overlay")).toBeTruthy();
+  });
+
+  it("does NOT draw an overlay when lengths mismatch", () => {
+    const el = MiniLine({ values: [1, 2, 3, 4], overlay: [1.5, 2] }) as AnyEl;
+    const all = flattenChildren(el);
+    expect(all.find((c) => c.props?.["data-testid"] === "miniline-overlay")).toBeUndefined();
+  });
+});
+
+describe("MiniScatter", () => {
+  it("renders one circle per point", () => {
+    const points = [
+      { x: 1, y: 2 },
+      { x: 3, y: 4 },
+      { x: 5, y: 6 },
+    ];
+    const el = MiniScatter({ points }) as AnyEl;
+    const dots = flattenChildren(el).filter(
+      (c) => c.props?.["data-testid"] === "miniscatter-point",
+    );
+    expect(dots).toHaveLength(points.length);
+  });
+
+  it("renders a reference line when provided", () => {
+    const el = MiniScatter({
+      points: [{ x: 1, y: 1 }, { x: 2, y: 2 }],
+      referenceLine: [0, 0, 10, 10],
+    }) as AnyEl;
+    expect(
+      flattenChildren(el).find((c) => c.props?.["data-testid"] === "miniscatter-reference"),
+    ).toBeTruthy();
+  });
+
+  it("renders axes only on empty input", () => {
+    const el = MiniScatter({ points: [] }) as AnyEl;
+    const all = flattenChildren(el);
+    expect(all.find((c) => c.props?.["data-testid"] === "miniscatter-point")).toBeUndefined();
   });
 });
