@@ -39,6 +39,7 @@ import {
 import { MiniLine } from "@/components/stats/charts/MiniLine";
 import { PressureMeter, pressureTone } from "@/components/stats/charts/PressureMeter";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { MetricHelp } from "@/components/ui/MetricHelp";
 
 export const dynamic = "force-dynamic";
 
@@ -118,6 +119,7 @@ function DecisionTraceCard({ trace }: { trace: DecisionTrace }) {
         }}
       >
         Decision trace · DC-K4
+        <MetricHelp term="decision_trace" />
       </div>
       <h2
         data-testid="stats-engine-decision-headline"
@@ -492,6 +494,7 @@ function CeilingExplainerCard({ ceiling }: { ceiling: CeilingExplain }) {
           : recoveredCount > 0
             ? `Only ${recoveredCount} recovered week${recoveredCount === 1 ? "" : "s"} — cold start`
             : "0 recovered weeks — cold start"}
+        <MetricHelp term="recovered_week" />
       </div>
 
       {/* Recovered-week basis table */}
@@ -576,6 +579,7 @@ function CeilingExplainerCard({ ceiling }: { ceiling: CeilingExplain }) {
           unit="kg/wk"
           cite="DC-C9 · DC-K1"
           help={formulaCopy[ceiling.formula]}
+          helpTerm="ceiling"
         />
         <CeilingInputRow
           label="Recovery multiplier (GRM)"
@@ -583,6 +587,7 @@ function CeilingExplainerCard({ ceiling }: { ceiling: CeilingExplain }) {
           unit="×"
           cite="DC-C5"
           help="Compresses the ceiling when wellness signals dip. MVP = 1.0 until DC-P2/DC-P3 inputs land."
+          helpTerm="grm"
         />
         <CeilingInputRow
           label="Confidence bias"
@@ -594,6 +599,7 @@ function CeilingExplainerCard({ ceiling }: { ceiling: CeilingExplain }) {
               ? "Full data — 3+ recovered weeks (DC-C13)."
               : "Sparse data — confidence collapses to 0.80× until 3 recovered weeks land (DC-C13)."
           }
+          helpTerm="confidence_bias"
         />
         <div
           style={{
@@ -645,18 +651,21 @@ function CeilingInputRow({
   unit,
   cite,
   help,
+  helpTerm,
 }: {
   label: string;
   value: string;
   unit: string;
   cite: string;
   help: string;
+  helpTerm?: string;
 }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
       <div>
         <div style={{ fontSize: 13, fontWeight: 600 }}>
-          {label}{" "}
+          {label}
+          {helpTerm != null && <MetricHelp term={helpTerm} />}{" "}
           <span className="mono" style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
             ({cite})
           </span>
