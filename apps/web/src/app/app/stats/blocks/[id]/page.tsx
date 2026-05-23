@@ -37,6 +37,7 @@ import { StatusBadge } from "@/components/blocks/StatusBadge";
 import { MiniLine } from "@/components/stats/charts/MiniLine";
 import { MiniBars } from "@/components/stats/charts/MiniBars";
 import { Sparkline } from "@/components/stats/charts/Sparkline";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 export const dynamic = "force-dynamic";
 
@@ -171,10 +172,11 @@ function MainLiftsGrid({
     return (
       <section data-testid="stats-block-mainlifts-empty" className="cp-card" style={{ padding: 18 }}>
         <SectionTitle title="Main lifts" />
-        <p style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 13 }}>
-          No main-lift sets were logged in this block. Once a session captures one, the
-          progression cards will populate.
-        </p>
+        <EmptyState
+          variant="inline"
+          title="No main-lift sets"
+          body="Log a top set on a tracked main lift (squat, bench, deadlift, press) and the per-lift progression cards populate."
+        />
       </section>
     );
   }
@@ -376,9 +378,11 @@ function RpeCreepSection({ rows }: { rows: BlockRpeCreepRow[] }): ReactElement {
     return (
       <section className="cp-card" data-testid="stats-block-rpe-creep-empty" style={{ padding: 16 }}>
         <SectionTitle title="RPE creep" />
-        <p style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 13 }}>
-          Log RPE on your main sets to see how your perceived effort evolved across the block.
-        </p>
+        <EmptyState
+          variant="inline"
+          title="No RPE logged"
+          body="Log RPE on your main sets and the per-lift RPE-over-time view populates here."
+        />
       </section>
     );
   }

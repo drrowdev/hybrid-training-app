@@ -38,6 +38,7 @@ import {
 } from "@/lib/stats/engine";
 import { MiniLine } from "@/components/stats/charts/MiniLine";
 import { PressureMeter, pressureTone } from "@/components/stats/charts/PressureMeter";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 export const dynamic = "force-dynamic";
 
@@ -203,10 +204,11 @@ function RegionFreshnessCard({ regions }: { regions: RegionFreshnessDetail[] }) 
         MRV reference lines.
       </p>
       {empty ? (
-        <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: 0 }}>
-          No region load yet. Log a completed session and freshness will
-          materialise here.
-        </p>
+        <EmptyState
+          variant="inline"
+          title="No region load yet"
+          body="Log a completed session — strength or cardio — and per-region freshness materialises here with MV / MEV / MAV / MRV bands."
+        />
       ) : (
         <div style={{ display: "grid", gap: 12 }}>
           {regions.map((r) => (
@@ -344,9 +346,11 @@ function BucketPressureCard({ buckets }: { buckets: BucketPressureRow[] }) {
         are the type of stress.
       </p>
       {!hasData ? (
-        <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: 0 }}>
-          Log a few sessions and bucket pressure will materialise here.
-        </p>
+        <EmptyState
+          variant="inline"
+          title="No stress data yet"
+          body="Log a few sessions and bucket pressure (chronic vs acute, by stress type) materialises here."
+        />
       ) : (
         <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 10 }}>
           {buckets.map((b) => (
@@ -885,9 +889,11 @@ function RecentOverridesCard({
         recommended.
       </p>
       {notTracked ? (
-        <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: 0 }}>
-          No overrides yet — the engine&apos;s calls are sticking.
-        </p>
+        <EmptyState
+          variant="inline"
+          title="No overrides yet"
+          body="When you skip a planned session, swap a movement, or end a block early, the engine logs it here. Quiet means the engine's calls are sticking."
+        />
       ) : (
         <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
           {overrides.map((o, i) => (
