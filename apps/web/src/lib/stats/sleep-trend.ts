@@ -58,3 +58,53 @@ export async function getSleep7d(
 
   return { nights, avgHours, loggedCount: logged.length };
 }
+
+/**
+ * Phase 2 range-aware sleep summary. Reads every wellness row with a
+ * non-null `sleep_hours` since `windowDays` ago (or all time when
+ * null), returns the simple average + a sparkline-ready series of
+ * up to ~12 evenly-spaced points across the window so the card chart
+ * stays compact.
+ */
+export type SleepRangeResult = {
+  avgHours: number | null;
+  /** Logged nights in the window. */
+  loggedCount: number;
+  /** Date-ordered series of hours per logged night (oldest → newest). */
+  series: Array<{ date: string; hours: number }>;
+  /** Window in days, or null for all-time. */
+  windowDays: number | null;
+};
+
+export async function getSleepForRange(
+  supabase: SupabaseClient,
+  userId: string,
+  tz: string,
+  windowDays: number | null,
+): Promise<SleepRangeResult> {
+  const today = todayYmd(tz);
+  let query = supabase
+    .from("wellness")
+    .select("date, sleep_hours")
+    .eq("user_id", userId)
+    .not("sleep_hours", "is", null)
+    .lte("date", today)
+    .order("date", { ascending: true });
+  if (windowDays != null) {
+    const earliest = addDaysToYmd(today, -(windowDays - 1));
+    query = query.gte("date", earliest);
+  }
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  type Row = { date: string; sleep_hours: number | string | null };
+  const series: Array<{ date: string; hours: number }> = [];
+  for (const r of (data ?? []) as Row[]) {
+    if (r.sleep_hours == null) continue;
+    series.push({ date: r.date, hours: Number(r.sleep_hours) });
+  }
+  const avgHours =
+    series.length === 0
+      ? null
+      : Math.round((series.reduce((a, n) => a + n.hours, 0) / series.length) * 10) / 10;
+  return { avgHours, loggedCount: series.length, series, windowDays };
+}

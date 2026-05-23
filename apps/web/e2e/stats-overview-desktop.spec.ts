@@ -101,11 +101,11 @@ test.describe("@desktop /app/stats overview", () => {
     await expect(adherence).toContainText(/%/);
     await expect(adherence).toContainText(/skipped/i);
 
-    // ─── C: PRs this month — empty state in this fixture ───────────
+    // ─── C: PRs window — empty state in this fixture ──────────────
     // No actual set_logs were inserted, so the PR walk finds nothing.
     const prs = page.getByTestId("stats-card-prs");
     await expect(prs).toBeVisible();
-    await expect(prs).toContainText(/PRs this month/i);
+    await expect(prs).toContainText(/PRs/i);
 
     // ─── D: Region freshness — no logged sessions → empty state ───
     const freshness = page.getByTestId("stats-card-freshness");
@@ -139,11 +139,11 @@ test.describe("@desktop /app/stats overview", () => {
     await page.getByTestId("stats-deep-dive").nth(1).click();
     await expect(page).toHaveURL(/\/app\/stats\/engine$/);
 
-    // Block outcomes → /app/plan/history.
+    // Block outcomes → /app/stats/blocks.
     await page.goto("/app/stats");
     await page.waitForLoadState("networkidle");
     await page.getByTestId("stats-deep-dive").nth(2).click();
-    await expect(page).toHaveURL(/\/app\/plan\/history$/);
+    await expect(page).toHaveURL(/\/app\/stats\/blocks$/);
 
     // Current-block CTA → /app/plan/history.
     await page.goto("/app/stats");
@@ -156,6 +156,61 @@ test.describe("@desktop /app/stats overview", () => {
     await page.waitForLoadState("networkidle");
     await page.getByTestId("stats-freshness-cta").click();
     await expect(page).toHaveURL(/\/app\/stats\/engine$/);
+  });
+
+  test("range toggle: clicking 90d / all / 30d updates the URL and re-renders cards", async ({
+    page,
+    context,
+    freshUser,
+    seedConfig,
+    admin,
+    baseURL,
+  }) => {
+    await markOnboarded(admin, freshUser.userId);
+
+    // Seed a minimal block so the page has something to render.
+    const startedOn = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
+    const blockId = await seedRecentBlock(admin, freshUser.userId, {
+      archetype: "strength_anchor",
+      daysPerWeek: 4,
+      weeks: 4,
+      status: "active",
+      startedOn,
+    });
+    await seedPlannedSessionsForBlock(admin, freshUser.userId, blockId, {
+      totalSessions: 4,
+      loggedCount: 2,
+    });
+
+    await signInAs(context, freshUser, seedConfig, baseURL ?? "http://localhost:3000");
+    await page.goto("/app/stats");
+    await page.waitForLoadState("networkidle");
+
+    // Default landing = 30d. Toggle exists and 30d is active.
+    const toggle = page.getByTestId("stats-range-toggle");
+    await expect(toggle).toBeVisible();
+    await expect(page.getByTestId("stats-range-option").filter({ hasText: "30 days" })).toHaveAttribute(
+      "data-active",
+      "true",
+    );
+
+    // Click 90 days → URL gains ?range=90d.
+    await page.getByTestId("stats-range-option").filter({ hasText: "90 days" }).click();
+    await page.waitForLoadState("networkidle");
+    await expect(page).toHaveURL(/\/app\/stats\?range=90d$/);
+    await expect(page.getByTestId("stats-card-adherence")).toContainText(/last 90 days/i);
+    await expect(page.getByTestId("stats-card-prs")).toContainText(/last 90 days/i);
+
+    // Click All-time → URL gains ?range=all.
+    await page.getByTestId("stats-range-option").filter({ hasText: "All-time" }).click();
+    await page.waitForLoadState("networkidle");
+    await expect(page).toHaveURL(/\/app\/stats\?range=all$/);
+    await expect(page.getByTestId("stats-card-adherence")).toContainText(/all-time/i);
+
+    // Click 30 days → URL drops the param (canonical clean URL).
+    await page.getByTestId("stats-range-option").filter({ hasText: "30 days" }).click();
+    await page.waitForLoadState("networkidle");
+    await expect(page).toHaveURL(/\/app\/stats$/);
   });
 
   test("no active block → renders the 'Start one →' CTA", async ({
