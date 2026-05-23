@@ -21,3 +21,4 @@ export * from "./schema/planner";
 export * from "./client";
 export * from "./schema/strava-connections";
 export * from "./schema/priority-events";
+export * from "./schema/engine-override-events";
