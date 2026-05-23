@@ -898,81 +898,140 @@ function sessionsToNextTier(tier: UserTier, completed: number, completionFrac: n
 // ───────────────────────────────────────────────────────────────────
 
 export type OverrideEvent = {
-  kind: "skip" | "movement_swap";
+  kind: "skip" | "movement_swap" | "manual_end" | "custom";
   occurredAt: string; // ISO timestamp
   /** Short headline describing what was overridden. */
   what: string;
   /** What the user actually did, if different from the recommendation. */
   did: string;
-  /** Optional free-form note (currently always null — schema gap). */
+  /** Optional user-entered reason (free-form note). */
   note: string | null;
 };
 
+const WEEKDAY_LONG: Record<number, string> = {
+  1: "Monday",
+  2: "Tuesday",
+  3: "Wednesday",
+  4: "Thursday",
+  5: "Friday",
+  6: "Saturday",
+  7: "Sunday",
+};
+
+const ARCHETYPE_DISPLAY: Record<string, string> = {
+  hypertrophy_focus: "Hypertrophy Focus",
+  strength_anchor: "Strength Focus",
+  hybrid_focus: "Hybrid Focus",
+  resilience_focus: "Resilience Focus",
+  maintenance: "Maintenance",
+};
+
+function describeArchetype(slug: string | undefined): string {
+  if (!slug) return "block";
+  return ARCHETYPE_DISPLAY[slug] ?? slug;
+}
+
+function describeWeekday(weekday: number | undefined): string {
+  if (!weekday) return "";
+  return WEEKDAY_LONG[weekday] ?? "";
+}
+
 /**
- * Last 10 user overrides of engine recommendations, chronological newest-first.
- *
- * Sources we have today:
- *  - `planned_sessions.skipped_at` — DC-K4 records the skip; no separate
- *    audit log yet so we read the column directly.
- *  - `planned_sessions.prescription.items[].meta.swappedFrom` — movement
- *    swaps live in the prescription JSONB. Same source the Phase 5
- *    movement page reads from for swap history.
+ * Last N override events from `engine_override_events` (DC-K4 audit
+ * log), newest-first. Reads the dedicated audit table introduced in
+ * migration 0028 — the prior implementation joined live data from
+ * `planned_sessions.skipped_at` + `prescription.items[].meta.swappedFrom`
+ * and had no place for the user's free-form reason. The legacy data
+ * paths still write their own fields; this table is the analytics
+ * surface.
  *
  * Returns `{ notTracked: true, events: [] }` when the user has no
- * planned-session history (cold start).
+ * recorded overrides yet (cold start).
  */
 export async function getRecentOverrides(
   supabase: SupabaseClient,
   userId: string,
   limit = 10,
 ): Promise<{ events: OverrideEvent[]; notTracked: boolean }> {
-  // Skips
-  const { data: skipped } = await supabase
-    .from("planned_sessions")
-    .select("title, skipped_at, week_index, day_index")
+  const { data } = await supabase
+    .from("engine_override_events")
+    .select(
+      "occurred_at, event_type, original_movement_slug, new_movement_slug, reason, context",
+    )
     .eq("user_id", userId)
-    .not("skipped_at", "is", null)
-    .order("skipped_at", { ascending: false })
+    .order("occurred_at", { ascending: false })
     .limit(limit);
-  // Swaps
-  const { data: swapped } = await supabase
-    .from("planned_sessions")
-    .select("title, prescription, updated_at")
-    .eq("user_id", userId)
-    .order("updated_at", { ascending: false })
-    .limit(40);
 
-  const events: OverrideEvent[] = [];
-  for (const r of skipped ?? []) {
-    events.push({
-      kind: "skip",
-      occurredAt: r.skipped_at as string,
-      what: r.title ?? "Planned session",
-      did: "Skipped this session despite the engine scheduling it.",
-      note: null,
-    });
-  }
-  for (const r of swapped ?? []) {
-    const items = (r.prescription as { items?: Array<{ movementName?: string; meta?: { swappedFrom?: { movementName?: string }; swappedAt?: string } }> })?.items;
-    if (!Array.isArray(items)) continue;
-    for (const it of items) {
-      const swap = it.meta?.swappedFrom;
-      const at = it.meta?.swappedAt;
-      if (!swap || !at) continue;
-      events.push({
-        kind: "movement_swap",
-        occurredAt: at,
-        what: `${swap.movementName ?? "Recommended movement"} (${r.title ?? "session"})`,
-        did: `Swapped to ${it.movementName ?? "another movement"}.`,
-        note: null,
-      });
+  const events: OverrideEvent[] = (data ?? []).map((r) => {
+    const ctx = (r.context as
+      | {
+          archetype?: string;
+          weekday?: number;
+          weeksCompleted?: number;
+          weeks?: number;
+          percentThrough?: number;
+        }
+      | null) ?? null;
+    const weekday = describeWeekday(ctx?.weekday);
+    const archetypeLabel = describeArchetype(ctx?.archetype);
+    const reason = (r.reason as string | null) ?? null;
+    switch (r.event_type as string) {
+      case "skip": {
+        const where = weekday ? ` (${weekday})` : "";
+        return {
+          kind: "skip" as const,
+          occurredAt: r.occurred_at as string,
+          what: `Skipped ${archetypeLabel} day${where}`,
+          did: "Marked the planned session as skipped.",
+          note: reason,
+        };
+      }
+      case "swap": {
+        const orig = (r.original_movement_slug as string | null) ?? "previous movement";
+        const next = (r.new_movement_slug as string | null) ?? "another movement";
+        const where = weekday ? ` on ${weekday}` : "";
+        return {
+          kind: "movement_swap" as const,
+          occurredAt: r.occurred_at as string,
+          what: `Swapped ${prettySlug(orig)} → ${prettySlug(next)}${where}`,
+          did: `Replaced the prescribed movement mid-session.`,
+          note: reason,
+        };
+      }
+      case "manual_end": {
+        const wc = ctx?.weeksCompleted;
+        const wk = ctx?.weeks;
+        const progress =
+          typeof wc === "number" && typeof wk === "number"
+            ? ` (week ${wc} of ${wk})`
+            : "";
+        return {
+          kind: "manual_end" as const,
+          occurredAt: r.occurred_at as string,
+          what: `Ended ${archetypeLabel} early${progress}`,
+          did: "Pressed End block before the planner auto-completed it.",
+          note: reason,
+        };
+      }
+      default:
+        return {
+          kind: "custom" as const,
+          occurredAt: r.occurred_at as string,
+          what: "Custom override",
+          did: "Recorded a manual override.",
+          note: reason,
+        };
     }
-  }
+  });
 
-  events.sort((a, b) => (a.occurredAt < b.occurredAt ? 1 : -1));
-  const trimmed = events.slice(0, limit);
-  const notTracked = trimmed.length === 0;
-  return { events: trimmed, notTracked };
+  return { events, notTracked: events.length === 0 };
+}
+
+function prettySlug(slug: string): string {
+  return slug
+    .split("-")
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join(" ");
 }
 
 // ───────────────────────────────────────────────────────────────────

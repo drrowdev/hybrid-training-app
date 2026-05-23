@@ -630,10 +630,9 @@ function RecentOverridesCard({
         <span className="cp-info" tabIndex={0} aria-label="What counts as an override">
           i
           <span className="pop" style={{ width: 280 }}>
-            DC-K4 — when you override an engine recommendation, the engine
-            records it and surfaces it here. Today this captures skips and
-            movement swaps. A dedicated override-audit table is deferred to
-            a later phase.
+            DC-K4 — every time you skip a planned session, swap a
+            movement, or end a block early, the engine writes a row to
+            the override audit log. Last 10 surfaced here, newest first.
           </span>
         </span>
       </h2>
@@ -643,8 +642,7 @@ function RecentOverridesCard({
       </p>
       {notTracked ? (
         <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: 0 }}>
-          No overrides logged yet. Skips and movement swaps will appear here
-          as you use the planner.
+          No overrides yet — the engine&apos;s calls are sticking.
         </p>
       ) : (
         <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
@@ -663,7 +661,12 @@ function RecentOverridesCard({
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>{o.what}</span>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>
+                  <span aria-hidden style={{ marginRight: 6 }}>
+                    {overrideIcon(o.kind)}
+                  </span>
+                  {o.what}
+                </span>
                 <span
                   className="mono"
                   style={{ fontSize: 11, color: "var(--cp-text-muted)" }}
@@ -674,6 +677,23 @@ function RecentOverridesCard({
               <div style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
                 {o.did}
               </div>
+              {o.note && (
+                <blockquote
+                  data-testid="stats-engine-override-note"
+                  style={{
+                    margin: "4px 0 0",
+                    padding: "6px 10px",
+                    borderLeft: "3px solid var(--cp-border)",
+                    background: "var(--cp-surface-soft)",
+                    color: "var(--cp-text)",
+                    fontSize: 12,
+                    fontStyle: "italic",
+                    borderRadius: 4,
+                  }}
+                >
+                  “{o.note}”
+                </blockquote>
+              )}
             </li>
           ))}
         </ul>
@@ -691,6 +711,19 @@ function formatRelativeDate(iso: string): string {
   if (days < 7) return `${days}d ago`;
   if (days < 30) return `${Math.floor(days / 7)}w ago`;
   return d.toISOString().slice(0, 10);
+}
+
+function overrideIcon(kind: OverrideEvent["kind"]): string {
+  switch (kind) {
+    case "skip":
+      return "⤳";
+    case "movement_swap":
+      return "↔";
+    case "manual_end":
+      return "■";
+    default:
+      return "•";
+  }
 }
 
 // ─── G · Engine internals ──────────────────────────────────────────
