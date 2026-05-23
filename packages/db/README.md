@@ -111,3 +111,25 @@ pnpm --filter @hta/db typecheck      # tsc --noEmit
 The DB integration tests (`integration-tests/*.mjs`) require a live
 Postgres + `DATABASE_URL`; they're run separately in CI against a
 disposable Supabase project, not on every `pnpm test`.
+
+
+## One-shot ops scripts
+
+### `backfill-region-state-history`
+
+Populates `region_state_history` (migration 0029) with the trailing 30
+days of per-region freshness for every existing user. Run once after
+deploying the migration so existing users have a 14-day strip on the
+engine page without waiting two weeks for the cron to fill in.
+
+```bash
+# requires NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY
+pnpm --filter @hta/db exec tsx scripts/backfill-region-state-history.ts
+```
+
+Idempotent — re-running overwrites existing rows via
+`ON CONFLICT (user_id, region, snapshot_date) DO UPDATE`. Safe to
+run repeatedly during development or after a data re-import.
+
+After this one-shot, ongoing snapshots are written daily by the Vercel
+cron at `/api/cron/region-state-snapshot` (03:00 UTC).
