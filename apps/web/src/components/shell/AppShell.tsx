@@ -4,6 +4,9 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { UndoBanner } from "@/components/trash/UndoBanner";
+import { TopBarRight, type TopBarAuditEntry } from "@/components/shell/TopBarRight";
+
+export type { TopBarAuditEntry } from "@/components/shell/TopBarRight";
 
 type Tab = {
   href: string;
@@ -25,11 +28,21 @@ export function AppShell({
   signOutAction,
   displayName,
   email,
+  hasStravaConnection = false,
+  lastSyncedAt = null,
+  recentAudit = [],
+  auditCount = 0,
+  buildSha = "dev",
 }: {
   children: React.ReactNode;
   signOutAction: () => Promise<void>;
   displayName?: string | null;
   email?: string | null;
+  hasStravaConnection?: boolean;
+  lastSyncedAt?: string | null;
+  recentAudit?: TopBarAuditEntry[];
+  auditCount?: number;
+  buildSha?: string;
 }) {
   const pathname = usePathname() ?? "/app";
   const isActive = (t: Tab) => (t.match ? t.match(pathname) : pathname.startsWith(t.href));
@@ -75,7 +88,22 @@ export function AppShell({
         </div>
       </aside>
 
-      <main className="cp-main">{children}</main>
+      <div className="cp-main-col">
+        <header className="cp-topbar" data-testid="app-topbar">
+          <div className="cp-topbar-spacer" aria-hidden />
+          <TopBarRight
+            signOutAction={signOutAction}
+            displayName={displayName ?? null}
+            email={email ?? null}
+            hasStravaConnection={hasStravaConnection}
+            lastSyncedAt={lastSyncedAt}
+            recentAudit={recentAudit}
+            auditCount={auditCount}
+            buildSha={buildSha}
+          />
+        </header>
+        <main className="cp-main">{children}</main>
+      </div>
 
       <nav className="cp-tabbar" aria-label="Primary navigation">
         {TABS.map((t) => (
@@ -140,6 +168,25 @@ export function AppShell({
         .cp-who-name { font-size: 13px; font-weight: 600; }
         .cp-who-mail { font-size: 10px; color: var(--cp-text-muted); margin-top: 2px; word-break: break-all; }
 
+        .cp-main-col {
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+        }
+        .cp-topbar {
+          position: sticky;
+          top: 0;
+          z-index: 20;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          padding: 10px 24px;
+          background: var(--cp-bg-elevated);
+          border-bottom: 1px solid var(--cp-border);
+        }
+        .cp-topbar-spacer { flex: 1; }
+
         .cp-main {
           min-width: 0;
           padding: 24px 28px 80px;
@@ -152,8 +199,12 @@ export function AppShell({
         @media (max-width: 900px) {
           .cp-shell { grid-template-columns: 1fr; }
           .cp-sidebar { display: none; }
+          .cp-topbar {
+            padding: 8px 14px;
+            padding-top: max(8px, env(safe-area-inset-top));
+          }
           .cp-main {
-            padding: max(16px, env(safe-area-inset-top)) 16px calc(72px + env(safe-area-inset-bottom));
+            padding: 16px 16px calc(72px + env(safe-area-inset-bottom));
           }
           .cp-tabbar {
             display: grid;
