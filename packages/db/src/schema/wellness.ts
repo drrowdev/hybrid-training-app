@@ -1,9 +1,12 @@
 /**
- * wellness — bodyweight per day (MVP).
+ * wellness — daily check-in row (bodyweight + sleep + motivation + notes).
  *
- * Per § U MVP scope: only bodyweight + free-text notes live here in v1.
- * Daily wellness check-in fields (sleep, mood, energy) are backlogged
- * until wearables / daily self-report widgets return.
+ * Phase 3 (migration 0027) extended this table with `sleep_hours` and
+ * `motivation` so a single (user_id, date) row carries the full daily
+ * check-in surface — what the Phase 3 spec called `daily_check_ins`.
+ * Server actions: `recordDailyCheckIn` (apps/web/src/lib/wellness)
+ * and the legacy `logBodyweight` (apps/web/src/lib/settings) both
+ * upsert onto the same conflict target.
  *
  * Uniqueness on (user_id, date) prevents accidental duplicates.
  */
@@ -12,6 +15,7 @@ import {
   date,
   numeric,
   pgTable,
+  smallint,
   text,
   timestamp,
   uuid,
@@ -28,6 +32,10 @@ export const wellness = pgTable(
     userId: uuid("user_id").notNull(),
     date: date("date").notNull(),
     bodyweightKg: numeric("bodyweight_kg", { precision: 6, scale: 2 }),
+    /** Last night's sleep duration (hours, 0–24). Phase 3 A1/B1. */
+    sleepHours: numeric("sleep_hours", { precision: 3, scale: 1 }),
+    /** Self-reported motivation, 1=low → 5=high. Phase 3 A1. */
+    motivation: smallint("motivation"),
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .default(sql`now()`)

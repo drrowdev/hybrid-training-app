@@ -101,4 +101,51 @@ test.describe("@desktop today page (Phase 1)", () => {
     // Tomorrow strip should reference the next planned session.
     await expect(page.getByTestId("rest-tomorrow")).toBeVisible();
   });
+
+  test("Phase 3 A2 — bodyweight nudge appears when no recent entry, disappears after save", async ({
+    page,
+    context,
+    freshUser,
+    seedConfig,
+    admin,
+    baseURL,
+  }) => {
+    const url = baseURL ?? "http://localhost:3000";
+
+    await markOnboarded(admin, freshUser.userId);
+    await signInAs(context, freshUser, seedConfig, url);
+
+    // Fresh user — no wellness rows yet. Nudge should render.
+    await page.goto("/app");
+    await page.waitForLoadState("networkidle");
+
+    const nudge = page.getByTestId("bw-nudge");
+    await expect(nudge).toBeVisible();
+
+    // Fill in a bodyweight and save.
+    await page.getByTestId("bw-nudge-input").fill("84.2");
+    await page.getByTestId("bw-nudge-save").click();
+
+    // After the action completes the form swaps to the success state
+    // (same component instance — no reload).
+    await expect(page.getByTestId("bw-nudge-saved")).toBeVisible({ timeout: 10_000 });
+
+    // Service-role verifies the wellness row exists for today.
+    const today = new Date().toISOString().slice(0, 10);
+    const { data: w } = await admin
+      .from("wellness")
+      .select("date, bodyweight_kg")
+      .eq("user_id", freshUser.userId)
+      .eq("date", today)
+      .maybeSingle();
+    expect(w).not.toBeNull();
+    expect(Number(w!.bodyweight_kg)).toBeCloseTo(84.2, 1);
+
+    // Reload — the nudge should now stay hidden (query: bodyweight
+    // logged within last 7 days).
+    await page.goto("/app");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("bw-nudge")).toHaveCount(0);
+    await expect(page.getByTestId("bw-nudge-saved")).toHaveCount(0);
+  });
 });

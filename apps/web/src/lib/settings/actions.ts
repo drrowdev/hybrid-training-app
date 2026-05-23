@@ -15,6 +15,8 @@ const profileSchema = z.object({
   phaseTargetWeeks: z.coerce.number().int().min(1).max(52).optional().nullable(),
   trainingDaysPerWeek: z.coerce.number().int().min(2).max(7).optional(),
   allowsTwoADays: z.coerce.boolean().optional(),
+  hapticsEnabled: z.coerce.boolean().optional(),
+  timerSoundEnabled: z.coerce.boolean().optional(),
   amWindowStart: z
     .string()
     .regex(/^\d{2}:\d{2}(?::\d{2})?$/)
@@ -38,6 +40,14 @@ export async function updateProfile(formData: FormData): Promise<void> {
       formData.get("allowsTwoADaysPresent") === "1"
         ? formData.get("allowsTwoADays") === "on"
         : undefined,
+    hapticsEnabled:
+      formData.get("hapticsEnabledPresent") === "1"
+        ? formData.get("hapticsEnabled") === "on"
+        : undefined,
+    timerSoundEnabled:
+      formData.get("timerSoundEnabledPresent") === "1"
+        ? formData.get("timerSoundEnabled") === "on"
+        : undefined,
     amWindowStart: formData.get("amWindowStart") || undefined,
     pmWindowStart: formData.get("pmWindowStart") || undefined,
   });
@@ -57,6 +67,8 @@ export async function updateProfile(formData: FormData): Promise<void> {
   if (parsed.data.phaseTargetWeeks !== undefined) updates.phase_target_weeks = parsed.data.phaseTargetWeeks ?? null;
   if (parsed.data.trainingDaysPerWeek !== undefined) updates.training_days_per_week = parsed.data.trainingDaysPerWeek;
   if (parsed.data.allowsTwoADays !== undefined) updates.allows_two_a_days = parsed.data.allowsTwoADays;
+  if (parsed.data.hapticsEnabled !== undefined) updates.haptics_enabled = parsed.data.hapticsEnabled;
+  if (parsed.data.timerSoundEnabled !== undefined) updates.timer_sound_enabled = parsed.data.timerSoundEnabled;
   if (parsed.data.amWindowStart !== undefined) {
     const hhmm = parsed.data.amWindowStart.slice(0, 5);
     updates.am_window_start = hhmm;
