@@ -1,15 +1,15 @@
-# AI Roadmap — Wendler-Port Deferred Items
+# AI Roadmap — Deferred UX & Feature Items
 
-**Purpose:** Captures features audited from the user's older Wendler 5/3/1 app (red-moss-02386a803.7.azurestaticapps.net) that we elected to **defer** rather than build in the current Today-page → command-palette → stats wave. Each item lists rationale, the current Hybrid-app gap, a UX sketch, and dependencies so a future planning session can lift it straight into a PR brief.
+**Purpose:** Captures UX and feature items that we elected to **defer** rather than build in the current Today-page → command-palette → stats wave. Each item lists rationale, the current app gap, a UX sketch, and dependencies so a future planning session can lift it straight into a PR brief.
 
-**Created:** 2026-05-23 (after the cross-app audit in chat session `2d49dc63-b811-4838-ae33-d0dece44a44b`)
-**Wave context:** of the 18-item porting candidate list, items #1, #2, #4, #5, #6, #7, #17, #18 were lifted into the active build queue; items below were parked here.
+**Created:** 2026-05-23 (after a UX audit pass)
+**Wave context:** of an 18-item candidate list, items #1, #2, #4, #5, #6, #7, #17, #18 were lifted into the active build queue; items below were parked here.
 
 ---
 
 ## #9 — `/races` dedicated page
 
-**Rationale.** The hybrid engine already understands priority events (`priority_events` table, taper recommendation logic in `lib/planner/taper.ts`) but has no first-class UI for managing them. Wendler exposes a `/races` route with calendar, A/B/C priority, taper status, and post-event results — the data model on our side is richer (multi-modality), so the UX needs to handle non-running events too.
+**Rationale.** The engine already understands priority events (`priority_events` table, taper recommendation logic in `lib/planner/taper.ts`) but has no first-class UI for managing them. A dedicated `/races` route would centralise calendar, A/B/C priority, taper status, and post-event results. The data model is multi-modality, so the UX needs to handle non-running events too.
 
 **Current gap.**
 - Priority events are read on the Today page (taper card) and presumably from `/app/plan`, but the user can't list, edit, or delete them in one place.
@@ -36,7 +36,7 @@
 - No Coach-proposed-adjustment UI surface.
 
 **UX sketch.**
-- Route: `/app/recovery/injuries` (mirrors Wendler).
+- Route: `/app/recovery/injuries`.
 - Top: "Active limitations" list with severity badge, affected region(s)/movement(s), reason, start date, "End" button.
 - Below: "History" collapsed by default — past limitations with start/end dates.
 - Add-limitation form: region picker (using the 16-muscle grid from PR #44 once shipped), severity (mild/moderate/severe), affected movement list, free-text notes, expected duration.
@@ -50,7 +50,7 @@
 
 ## #11 — Training Profile page
 
-**Rationale.** Currently the user's "profile" data (display name, timezone, AM/PM windows, bodyweight, movement focus, archetype preference, AI notes) is scattered across `/app/settings`, the onboarding flow, and various card-level surfaces. Wendler centralises it on a focused profile page.
+**Rationale.** Currently the user's "profile" data (display name, timezone, AM/PM windows, bodyweight, movement focus, archetype preference, AI notes) is scattered across `/app/settings`, the onboarding flow, and various card-level surfaces. A focused profile page would centralise it.
 
 **Current gap.**
 - No single place to see "who am I as a trainee" — movement focus, current phase, AI notes about your patterns, recent bodyweight trend.
@@ -72,7 +72,7 @@
 
 ## #12 — Calendar view modes + filters + legend
 
-**Rationale.** Wendler's calendar has month-grid AND timeline views with strength/cardio filters and a colour legend. Ours (`/app/plan`) shows a list.
+**Rationale.** A month-grid + timeline view of training (with strength/cardio filters and a colour legend) makes "what did I do this month?" answerable at a glance. The current `/app/plan` only shows a list.
 
 **Current gap.**
 - No month-grid view — hard to see "what did I do this month?"
@@ -92,7 +92,7 @@
 
 ## #13 — Phase auto-shift on race calendar
 
-**Rationale.** When an A-race is N days out, the engine should auto-shift the active block's archetype (e.g., from Hypertrophy Anchor → Peak/Taper). Wendler does this and surfaces it as a notification ("Phase auto-shifted to peak (B-race in 19 days)") with Accept/Dismiss.
+**Rationale.** When an A-race is N days out, the engine should auto-shift the active block's archetype (e.g., from Hypertrophy Anchor → Peak/Taper) and surface it as a notification ("Phase auto-shifted to peak (B-race in 19 days)") with Accept/Dismiss.
 
 **Current gap.**
 - Taper card on `/app` is read-only — no action surface.
@@ -111,7 +111,7 @@
 
 ## #14 — "What is this?" inline help (i icons) on metrics
 
-**Rationale.** Wendler puts a small `i` icon next to every load metric (CTL, ATL, TSB, ACWR, freshness, etc.) that opens a short explanation on hover/tap. Lowers the explanation burden the engine-page documentation otherwise carries.
+**Rationale.** A small `i` icon next to every load metric (CTL, ATL, TSB, ACWR, freshness, etc.) that opens a short explanation on hover/tap lowers the explanation burden the engine-page documentation otherwise carries.
 
 **Current gap.**
 - Some metrics on `/app/stats/engine` already have help-text via `<span className="cp-info">` (used on the Rest day card for "Why a rest day?"). Pattern exists but isn't applied consistently.
@@ -127,7 +127,7 @@
 
 ## #15 — AMRAP → e1RM vs entered 1RM distinction
 
-**Rationale.** Wendler clearly distinguishes between an estimated 1RM (from an AMRAP top set, via Epley or Brzycki) and an entered 1RM (user-typed). The hybrid app probably has e1RM math (check `lib/training-maxes/`) but the UI doesn't surface the difference.
+**Rationale.** An estimated 1RM (from an AMRAP top set, via Epley or Brzycki) is a different number than an entered 1RM (user-typed). The app probably has e1RM math (check `lib/training-maxes/`) but the UI doesn't surface the difference.
 
 **Current gap.**
 - TMs page shows one number — the user can't tell if it came from a recent AMRAP or a manual entry.
@@ -144,7 +144,7 @@
 
 ## #16 — TAPER auto-detection with Accept/Dismiss
 
-**Rationale.** Hybrid already computes a taper recommendation (`lib/planner/taper.ts`, surfaced as the Today TaperCard). Wendler takes it one step further: it auto-detects taper conditions AND proposes specific actions (Insert deload, Activate competition peaking goal flag) with Accept/Dismiss buttons.
+**Rationale.** The app already computes a taper recommendation (`lib/planner/taper.ts`, surfaced as the Today TaperCard). One step further: auto-detect taper conditions AND propose specific actions (Insert deload, Activate competition peaking goal flag) with Accept/Dismiss buttons.
 
 **Current gap.**
 - Taper card is informational — no actionable buttons.
@@ -192,7 +192,7 @@ If these get added, drop them in above #13/#16 and rewire the build order.
 
 ### #18 — `EmptyState` primitive + audit pass (shipped 2026-05-24)
 
-**What landed.** New shared component `apps/web/src/components/ui/EmptyState.tsx` with two variants (`card` full-card replacement; `inline` compact in-card). Every empty branch now follows the Wendler-app "explain what unlocks the card" voice: a one-sentence body telling the user the answer + action + reason. Applied to:
+**What landed.** New shared component `apps/web/src/components/ui/EmptyState.tsx` with two variants (`card` full-card replacement; `inline` compact in-card). Every empty branch now follows the "explain what unlocks this card" voice: a one-sentence body telling the user the answer + action + reason. Applied to:
 
 - Today page — "Up next this week" + "Recent activity" + Goals rail card.
 - Stats overview (`/app/stats`) — current block strip, adherence card, PRs card, region freshness card, volume card, bodyweight trend card.
