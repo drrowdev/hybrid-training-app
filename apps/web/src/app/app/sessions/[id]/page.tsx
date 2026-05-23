@@ -5,6 +5,7 @@ import { AddCardioBlockForm } from "@/components/add-log-forms";
 import {
   addCardioBlock,
   addStrengthSet,
+  applyStravaAutofill,
   deleteCardio,
   fillSessionFromPlan,
 } from "@/lib/sessions/actions";
@@ -17,6 +18,8 @@ import {
   type PriorBest,
 } from "@/components/session/SessionLogClient";
 import { PostSessionSummary } from "@/components/session/PostSessionSummary";
+import { StravaAutofillBanner, type StravaAutofillMatch } from "@/components/session/StravaAutofillBanner";
+import { findMatchingStravaActivity } from "@/lib/integrations/strava/match";
 import { GRM_RECOMMEND_THRESHOLD, applyGrmToPercent, computeGrm, grmLabel } from "@/lib/engine/grm";
 import { PR_KIND_LABEL } from "@/lib/engine/pr";
 import { bestEstimateOneRm } from "@/lib/engine/one-rm";
@@ -294,6 +297,30 @@ export default async function SessionDetailPage({
     progressionHints = hints.length > 0 ? hints : undefined;
   }
 
+  // Phase 2 C1 — Strava autofill match. Only relevant when the session
+  // is still open (post-completion the cardio is presumably already
+  // logged). Silently no-op when the user has no Strava connection or
+  // no in-window activity.
+  let stravaMatch: StravaAutofillMatch | null = null;
+  if (!isComplete) {
+    const candidate = await findMatchingStravaActivity(
+      supabase,
+      user.id,
+      session.performed_at,
+      { excludeSessionId: id },
+    );
+    if (candidate) {
+      stravaMatch = {
+        cardioLogId: candidate.cardioLogId,
+        stravaActivityId: candidate.stravaActivityId,
+        modality: candidate.modality,
+        durationSec: candidate.durationSec,
+        distanceKm: candidate.distanceKm,
+        avgHrBpm: candidate.avgHrBpm,
+      };
+    }
+  }
+
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <header>
@@ -327,6 +354,14 @@ export default async function SessionDetailPage({
           </div>
         </div>
       </header>
+
+      {stravaMatch && (
+        <StravaAutofillBanner
+          sessionId={id}
+          match={stravaMatch}
+          applyAction={applyStravaAutofill}
+        />
+      )}
 
       {isComplete && summary && (
         <PostSessionSummary

@@ -674,3 +674,104 @@ export async function updateSessionNotes(
   revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
   return { ok: true };
 }
+
+const stravaAutofillSchema = z.object({
+  sessionId: z.string().uuid(),
+  cardioLogId: z.string().uuid(),
+});
+
+/**
+ * Phase 2 C2 — apply Strava autofill.
+ *
+ * Looks up a previously-synced Strava cardio_logs row (verified to be
+ * owned by the user via RLS-aware join), then inserts a new cardio_logs
+ * row on the target session copying the duration / distance / HR / RPE.
+ *
+ * We deliberately copy ``strava_activity_id`` and ``external_source``
+ * onto the new row so analytics (region ledger, mileage ramps) can
+ * still see the Strava attribution. The original Strava-imported session
+ * remains untouched; deduping it is a Phase 3 follow-up.
+ */
+export async function applyStravaAutofill(
+  formData: FormData,
+): Promise<{ ok?: true; error?: string; cardioLogId?: string }> {
+  const parsed = stravaAutofillSchema.safeParse({
+    sessionId: formData.get("sessionId"),
+    cardioLogId: formData.get("cardioLogId"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in." };
+
+  // Fetch the source row through a user-id join so RLS rules out
+  // someone else's activity. ``external_source = 'strava'`` is the
+  // narrow contract for this action.
+  const { data: srcRaw, error: srcErr } = await supabase
+    .from("cardio_logs")
+    .select(
+      "id, modality, duration_sec, distance_km, avg_hr_bpm, max_hr_bpm, avg_pace_sec_per_km, rpe, strava_activity_id, external_source, sessions!inner(user_id, deleted_at)",
+    )
+    .eq("id", parsed.data.cardioLogId)
+    .eq("external_source", "strava")
+    .eq("sessions.user_id", user.id)
+    .is("sessions.deleted_at", null)
+    .maybeSingle();
+  if (srcErr) return { error: srcErr.message };
+  if (!srcRaw) return { error: "Strava activity not found." };
+
+  const src = srcRaw as {
+    id: string;
+    modality: string;
+    duration_sec: number;
+    distance_km: number | string | null;
+    avg_hr_bpm: number | null;
+    max_hr_bpm: number | null;
+    avg_pace_sec_per_km: number | null;
+    rpe: number | string | null;
+    strava_activity_id: string | null;
+    external_source: string | null;
+  };
+
+  // Verify the target session is owned by the user before inserting.
+  const { data: target, error: tErr } = await supabase
+    .from("sessions")
+    .select("id, user_id, deleted_at")
+    .eq("id", parsed.data.sessionId)
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (tErr) return { error: tErr.message };
+  if (!target) return { error: "Session not found." };
+
+  const { count } = await supabase
+    .from("cardio_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("session_id", parsed.data.sessionId);
+
+  const { data: inserted, error: insErr } = await supabase
+    .from("cardio_logs")
+    .insert({
+      session_id: parsed.data.sessionId,
+      block_index: count ?? 0,
+      modality: src.modality,
+      duration_sec: src.duration_sec,
+      distance_km: src.distance_km,
+      avg_hr_bpm: src.avg_hr_bpm,
+      max_hr_bpm: src.max_hr_bpm,
+      avg_pace_sec_per_km: src.avg_pace_sec_per_km,
+      rpe: src.rpe,
+      strava_activity_id: src.strava_activity_id,
+      external_source: src.external_source,
+      notes: "Autofilled from Strava",
+    })
+    .select("id")
+    .maybeSingle();
+  if (insErr) return { error: insErr.message };
+
+  revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
+  return { ok: true, cardioLogId: inserted?.id };
+}
