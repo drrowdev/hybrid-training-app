@@ -15,7 +15,9 @@ import {
 import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
 import { todayYmd } from "@/lib/dates";
 import { effectiveTimeOfDay, gapHoursBetween } from "@/lib/planner/time-of-day";
-import { getRegionFreshness, findHeavyOnRecoveringConflict, type RegionFreshnessRow, type FreshnessConflict } from "@/lib/stats/region-freshness-queries";
+import { getRegionFreshness, type RegionFreshnessRow, type FreshnessConflict } from "@/lib/stats/region-freshness-queries";
+import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
+import { findHeavyOnRecoveringConflictWithMuscles } from "@/lib/muscle/muscle-conflict";
 import { StravaStaleSyncTrigger } from "@/components/StravaStaleSyncTrigger";
 import { StravaPoweredBadge } from "@/components/StravaPoweredBadge";
 import { computeTaperRecommendation, type TaperRecommendation } from "@/lib/planner/taper";
@@ -130,32 +132,47 @@ export default async function TodayPage() {
   );
 
   // DC-V2 soft warning: fetch the regions of the movements planned today
-  // so we can flag heavy work on a clearly recovering region.
+  // so we can flag heavy work on a clearly recovering region. The PR
+  // feat/muscle-grid-16 also adds muscle-level resolution when the
+  // movement has a known slug fanout.
   const plannedMovementIds = Array.from(
     new Set(plannedToday.flatMap((p) => p.prescription.items.map((i) => i.movementId))),
   );
   const movementRegionById = new Map<string, { primaryRegion: string; name: string }>();
+  const movementSlugById = new Map<string, string | null>();
   if (plannedMovementIds.length > 0) {
     const { data: movs } = await supabase
       .from("movements")
-      .select("id, name, primary_region")
+      .select("id, name, slug, primary_region")
       .in("id", plannedMovementIds);
     for (const m of movs ?? []) {
       movementRegionById.set(m.id, {
         primaryRegion: m.primary_region as string,
         name: m.name as string,
       });
+      movementSlugById.set(m.id, (m.slug as string | null) ?? null);
     }
   }
   const freshnessByRegion = new Map(
     freshness.map((r) => [r.region, { freshness: r.freshness, regionLabel: r.regionLabel }]),
   );
+  // Muscle-level freshness (PR feat/muscle-grid-16). Cheap when cached
+  // by the 03:00 UTC cron; otherwise computed live in parallel above
+  // is not yet wired — fetch here.
+  const muscleFreshnessRows = await getMuscleFreshness(supabase, userId, {
+    tz: profile?.timezone ?? "UTC",
+  });
   const conflictsBySlot = new Map<string, FreshnessConflict>();
   for (const p of plannedToday) {
-    const c = findHeavyOnRecoveringConflict(
-      p.prescription.items,
+    const itemsWithSlug = p.prescription.items.map((i) => ({
+      ...i,
+      movementSlug: movementSlugById.get(i.movementId) ?? null,
+    }));
+    const c = findHeavyOnRecoveringConflictWithMuscles(
+      itemsWithSlug,
       movementRegionById,
       freshnessByRegion,
+      muscleFreshnessRows,
     );
     if (c) conflictsBySlot.set(p.id, c);
   }
