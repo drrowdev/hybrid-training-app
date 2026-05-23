@@ -137,40 +137,56 @@ describe("getCeilingExplain — DC-K1 / DC-C9 / DC-C11 / DC-C13", () => {
 });
 
 describe("getUserTier — DC-G1..G6 inference", () => {
-  it("cold start (no planned sessions) defaults to intermediate per DC-G5", async () => {
-    const supabase = makeStub({ planned_sessions: [], sessions: [] }, { sessions: 0 });
+  it("cold start (no profile, no TMs, no sessions) → consumer + low confidence (DC-G5)", async () => {
+    const supabase = makeStub(
+      { profiles: [], training_maxes: [], planned_sessions: [], sessions: [] },
+      { sessions: 0 },
+    );
     const out = await getUserTier(supabase, "u1");
-    expect(out.tier).toBe("intermediate");
+    expect(out.tier).toBe("consumer");
+    expect(out.inferred).toBe("consumer");
     expect(out.isColdStart).toBe(true);
-    expect(out.bts).toBe(50);
+    expect(out.confidence).toBe("low");
+    expect(out.declared).toBeNull();
+    expect(out.mismatch).toBe(false);
   });
 
-  it("intermediate user with low volume cannot promote (DC-G2 volume gate)", async () => {
-    // 100% completion but only 6 sessions in 56 days → BTS capped below 75.
-    const planned = Array.from({ length: 6 }, (_, i) => ({
-      user_id: "u1",
-      completed_session_id: `s${i}`,
-      skipped_at: null,
-      created_at: "2026-04-15T10:00:00Z",
-    }));
-    const supabase = makeStub({ planned_sessions: planned, sessions: [] }, { sessions: 6 });
+  it("declared 1_3y with no observed data → intermediate, declared wins", async () => {
+    const supabase = makeStub(
+      {
+        profiles: [
+          { id: "u1", training_experience: "1_3y", bodyweight_kg: null },
+        ],
+        training_maxes: [],
+        planned_sessions: [],
+        sessions: [],
+      },
+      { sessions: 0 },
+    );
     const out = await getUserTier(supabase, "u1");
     expect(out.tier).toBe("intermediate");
-    expect(out.bts).toBeLessThan(75);
+    expect(out.declared).toBe("intermediate");
+    expect(out.declaredYearsLabel).toMatch(/1.{0,2}3 years/i);
+    // Inferred falls back to declared when no signal → no mismatch.
+    expect(out.mismatch).toBe(false);
+    expect(out.isColdStart).toBe(false);
   });
 
-  it("high-volume + high-completion → high_performance", async () => {
-    const planned = Array.from({ length: 20 }, (_, i) => ({
-      user_id: "u1",
-      completed_session_id: `s${i}`,
-      skipped_at: null,
-      created_at: "2026-04-15T10:00:00Z",
-    }));
-    const supabase = makeStub({ planned_sessions: planned, sessions: [] }, { sessions: 20 });
+  it("declared gte_3y but no observed strength data still falls back to declared tier", async () => {
+    const supabase = makeStub(
+      {
+        profiles: [
+          { id: "u1", training_experience: "gte_3y", bodyweight_kg: 80 },
+        ],
+        training_maxes: [],
+        planned_sessions: [],
+        sessions: [],
+      },
+      { sessions: 0 },
+    );
     const out = await getUserTier(supabase, "u1");
     expect(out.tier).toBe("high_performance");
-    expect(out.bts).toBeGreaterThanOrEqual(75);
-    expect(out.sessionsUntilNextTier).toBeNull();
+    expect(out.declared).toBe("high_performance");
   });
 });
 
