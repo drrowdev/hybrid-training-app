@@ -28,19 +28,34 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserTimezone } from "@/lib/planner/queries";
 import { getActiveBlockProgress } from "@/lib/stats/active-block-progress";
-import { getAdherence30d, type AdherenceResult } from "@/lib/stats/adherence";
-import { getMonthlyPrs, type MonthlyPrsResult } from "@/lib/stats/prs-this-month";
+import { getAdherenceForWindow, type AdherenceResult } from "@/lib/stats/adherence";
+import { getPrsForRange, type PrsRangeResult } from "@/lib/stats/prs-range";
 import { getFreshnessMini, type FreshnessMiniRow } from "@/lib/stats/freshness-mini";
-import { getSleep7d, type SleepTrend } from "@/lib/stats/sleep-trend";
-import { getVolume30d, type VolumeResult } from "@/lib/stats/volume";
+import { getSleepForRange, type SleepRangeResult } from "@/lib/stats/sleep-trend";
+import { getVolumeForRange, type VolumeRangeResult } from "@/lib/stats/volume";
 import { getBodyweightTrend, type BodyweightTrend } from "@/lib/stats/bodyweight-trend";
 import { displayWeight, weightUnitLabel, type WeightUnit } from "@/lib/stats/units";
+import {
+  DEFAULT_RANGE,
+  RANGE_LABEL,
+  parseRange,
+  rangeWindowDays,
+  type Range,
+} from "@/lib/stats/range";
 import { Sparkline } from "@/components/stats/charts/Sparkline";
 import { MiniBars } from "@/components/stats/charts/MiniBars";
 
 export const dynamic = "force-dynamic";
 
-export default async function StatsOverviewPage() {
+export default async function StatsOverviewPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string | string[] }>;
+}) {
+  const params = await searchParams;
+  const range = parseRange(params.range);
+  const windowDays = rangeWindowDays(range);
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -55,15 +70,17 @@ export default async function StatsOverviewPage() {
   const units: WeightUnit = profile?.units === "imperial" ? "imperial" : "metric";
   const tz = profile?.timezone ?? (await getUserTimezone(user.id));
 
-  // All-parallel reads. Each is bounded (active block only / 30-day
-  // window / this calendar month / 7-day window / top 3 / one row).
+  // All-parallel reads. The four time-bounded cards (adherence / PRs /
+  // sleep / volume) take the same `windowDays` so the toggle drives
+  // them in lockstep; bodyweight + freshness stay on their existing
+  // bounded reads (30-day trend / right-now snapshot).
   const [block, adherence, prs, freshness, sleep, volume, bodyweight] = await Promise.all([
     getActiveBlockProgress(supabase, user.id, tz),
-    getAdherence30d(supabase, user.id, tz),
-    getMonthlyPrs(supabase, user.id),
+    getAdherenceForWindow(supabase, user.id, tz, windowDays),
+    getPrsForRange(supabase, user.id, tz, windowDays),
     getFreshnessMini(supabase, user.id),
-    getSleep7d(supabase, user.id, tz),
-    getVolume30d(supabase, user.id, tz),
+    getSleepForRange(supabase, user.id, tz, windowDays),
+    getVolumeForRange(supabase, user.id, tz, windowDays),
     getBodyweightTrend(supabase, user.id, tz),
   ]);
 
@@ -79,6 +96,9 @@ export default async function StatsOverviewPage() {
       {/* A — Current block strip */}
       <CurrentBlockStrip progress={block} />
 
+      {/* Range toggle — drives adherence / PRs / sleep / volume queries */}
+      <RangeToggle current={range} />
+
       {/* B–G — responsive card grid */}
       <div
         data-testid="stats-overview-grid"
@@ -88,17 +108,69 @@ export default async function StatsOverviewPage() {
           gap: 12,
         }}
       >
-        <AdherenceCard data={adherence} />
-        <PrsCard data={prs} units={units} />
+        <AdherenceCard data={adherence} range={range} />
+        <PrsCard data={prs} units={units} range={range} />
         <FreshnessCard rows={freshness} />
-        <SleepCard data={sleep} />
-        <VolumeCard data={volume} units={units} />
+        <SleepCard data={sleep} range={range} />
+        <VolumeCard data={volume} units={units} range={range} />
         <BodyweightCard data={bodyweight} units={units} />
       </div>
 
       {/* Bottom — deep-dive links */}
       <DeepDiveLinks />
     </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Range toggle (Phase 2)
+// ──────────────────────────────────────────────────────────────────────
+
+function RangeToggle({ current }: { current: Range }) {
+  const opts: Range[] = ["30d", "90d", "all"];
+  return (
+    <nav
+      data-testid="stats-range-toggle"
+      aria-label="Range"
+      style={{
+        display: "inline-flex",
+        gap: 4,
+        padding: 3,
+        borderRadius: 999,
+        border: "1px solid var(--cp-border)",
+        background: "var(--cp-surface)",
+        width: "fit-content",
+      }}
+    >
+      {opts.map((opt) => {
+        const active = opt === current;
+        // Default range = 30d, so omit the query param when picking it
+        // (keeps the canonical URL clean on initial load).
+        const href = opt === DEFAULT_RANGE ? "/app/stats" : `/app/stats?range=${opt}`;
+        return (
+          <Link
+            key={opt}
+            href={href}
+            data-testid="stats-range-option"
+            data-range={opt}
+            data-active={active ? "true" : "false"}
+            scroll={false}
+            style={{
+              fontSize: 12,
+              padding: "5px 12px",
+              borderRadius: 999,
+              textDecoration: "none",
+              fontWeight: 600,
+              letterSpacing: "0.02em",
+              color: active ? "var(--cp-accent)" : "var(--cp-text-muted)",
+              background: active ? "var(--cp-accent-soft)" : "transparent",
+            }}
+          >
+            {RANGE_LABEL[opt]}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
 
@@ -198,10 +270,12 @@ function CurrentBlockStrip({
 // B — Adherence (30 days)
 // ──────────────────────────────────────────────────────────────────────
 
-function AdherenceCard({ data }: { data: AdherenceResult }) {
+function AdherenceCard({ data, range }: { data: AdherenceResult; range: Range }) {
   const pct = Math.round(data.ratio * 100);
   const accent = data.ratio >= 0.8 ? "success" : data.ratio >= 0.5 ? "warning" : "danger";
   const accentVar = `var(--cp-${accent})`;
+  const subtitle =
+    range === "all" ? "all-time" : range === "90d" ? "last 90 days" : "last 30 days";
   return (
     <section
       className="cp-card"
@@ -209,10 +283,10 @@ function AdherenceCard({ data }: { data: AdherenceResult }) {
       data-empty={data.scheduled === 0 ? "true" : "false"}
       style={{ padding: 16, display: "grid", gap: 6 }}
     >
-      <CardTitle title="Adherence" subtitle="last 30 days" />
+      <CardTitle title="Adherence" subtitle={subtitle} />
       {data.scheduled === 0 ? (
         <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
-          Nothing scheduled in the last 30 days yet — once a block is live,
+          Nothing scheduled in this window yet — once a block is live,
           this card tracks how many planned sessions you actually log.
         </p>
       ) : (
@@ -234,8 +308,10 @@ function AdherenceCard({ data }: { data: AdherenceResult }) {
 // C — PRs this month
 // ──────────────────────────────────────────────────────────────────────
 
-function PrsCard({ data, units }: { data: MonthlyPrsResult; units: WeightUnit }) {
+function PrsCard({ data, units, range }: { data: PrsRangeResult; units: WeightUnit; range: Range }) {
   const unit = weightUnitLabel(units);
+  const title =
+    range === "all" ? "PRs (all-time)" : range === "90d" ? "PRs (last 90 days)" : "PRs (last 30 days)";
   return (
     <section
       className="cp-card"
@@ -243,10 +319,13 @@ function PrsCard({ data, units }: { data: MonthlyPrsResult; units: WeightUnit })
       data-empty={data.uniqueMovementCount === 0 ? "true" : "false"}
       style={{ padding: 16, display: "grid", gap: 8 }}
     >
-      <CardTitle title="PRs this month" subtitle={`${data.uniqueMovementCount} ${data.uniqueMovementCount === 1 ? "lift" : "lifts"}`} />
+      <CardTitle
+        title={title}
+        subtitle={`${data.uniqueMovementCount} ${data.uniqueMovementCount === 1 ? "lift" : "lifts"}`}
+      />
       {data.uniqueMovementCount === 0 ? (
         <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
-          No PRs yet this month — your turn.
+          No PRs in this window yet — your turn.
         </p>
       ) : (
         <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
@@ -355,7 +434,9 @@ function FreshnessCard({ rows }: { rows: FreshnessMiniRow[] }) {
 // E — Sleep (last 7 nights)
 // ──────────────────────────────────────────────────────────────────────
 
-function SleepCard({ data }: { data: SleepTrend }) {
+function SleepCard({ data, range }: { data: SleepRangeResult; range: Range }) {
+  const subtitle =
+    range === "all" ? "all-time" : range === "90d" ? "last 90 days" : "last 30 days";
   return (
     <section
       className="cp-card"
@@ -363,7 +444,7 @@ function SleepCard({ data }: { data: SleepTrend }) {
       data-empty={data.avgHours == null ? "true" : "false"}
       style={{ padding: 16, display: "grid", gap: 8 }}
     >
-      <CardTitle title="Sleep" subtitle="last 7 nights" />
+      <CardTitle title="Sleep" subtitle={subtitle} />
       {data.avgHours == null ? (
         <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
           Track sleep to see patterns — the pre-session chip on the next
@@ -375,10 +456,10 @@ function SleepCard({ data }: { data: SleepTrend }) {
             {data.avgHours.toFixed(1)}h <span style={{ fontSize: 12, color: "var(--cp-text-muted)", fontWeight: 400 }}>avg</span>
           </div>
           <MiniBars
-            values={data.nights.map((n) => n.hours ?? 0)}
+            values={data.series.map((n) => n.hours)}
             max={10}
             accent="accent"
-            ariaLabel="sleep hours per night for the last 7 days"
+            ariaLabel="sleep hours per night in the selected window"
           />
         </>
       )}
@@ -390,10 +471,16 @@ function SleepCard({ data }: { data: SleepTrend }) {
 // F — Volume (30 days, weekly buckets)
 // ──────────────────────────────────────────────────────────────────────
 
-function VolumeCard({ data, units }: { data: VolumeResult; units: WeightUnit }) {
+function VolumeCard({ data, units, range }: { data: VolumeRangeResult; units: WeightUnit; range: Range }) {
   const unit = weightUnitLabel(units);
   const totalDisplay = displayWeight(data.totalKg, units);
   const weeklyDisplay = data.weeklyKg.map((kg) => displayWeight(kg, units));
+  const subtitle =
+    range === "all"
+      ? `${unit} · all-time (${data.weeklyKg.length} wk)`
+      : range === "90d"
+      ? `${unit} · last 90 days`
+      : `${unit} · last 30 days`;
   return (
     <section
       className="cp-card"
@@ -403,7 +490,7 @@ function VolumeCard({ data, units }: { data: VolumeResult; units: WeightUnit }) 
     >
       <CardTitle
         title="Volume"
-        subtitle={`${unit} · last 30 days`}
+        subtitle={subtitle}
         right={
           <Link
             href="/app/stats#movements"
@@ -416,7 +503,7 @@ function VolumeCard({ data, units }: { data: VolumeResult; units: WeightUnit }) 
       />
       {data.totalKg === 0 ? (
         <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
-          No strength sets logged in the last 30 days yet.
+          No strength sets logged in this window yet.
         </p>
       ) : (
         <>
@@ -516,7 +603,7 @@ function DeepDiveLinks() {
       <DeepDive
         title="Block outcomes"
         body="Past blocks + completion stats."
-        href="/app/plan/history"
+        href="/app/stats/blocks"
       />
       {/* Wellness + Adherence deep-dives are Phase 3 / Phase 4. Surfaced
           as muted placeholders for now so the navigation surface area
