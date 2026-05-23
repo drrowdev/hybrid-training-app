@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/server";
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
 import { maybeCompleteBlock } from "@/lib/planner/completion";
 import { getUserTimezone } from "@/lib/planner/queries";
+import { roundToPlate } from "@/lib/planner/archetypes";
+import type { Prescription, PrescriptionItem } from "@hta/db";
 
 const checkInSchema = z.object({
   fatigue: z.coerce.number().int().min(1).max(5).nullable().optional(),
@@ -497,5 +499,178 @@ export async function permanentlyDeleteSession(
   revalidatePath("/app");
   revalidatePath("/app/sessions");
   revalidatePath("/app/settings/trash");
+  return { ok: true };
+}
+
+/**
+ * "Same as planned" — pre-fill set_logs from the linked planned_session
+ * prescription (Phase 1 B1).
+ *
+ * Idempotent by design: for each strength PrescriptionItem (`main`,
+ * `back_off`, `accessory`, `tendon`, `warmup`) we already have rows for
+ * (movement_id × set_kind), we DO NOT insert duplicates. Cardio items
+ * are ignored — they go through the cardio block flow (B2 / Phase 2).
+ *
+ * Tapping twice is a no-op once everything is in place. We fan the
+ * `sets` count out into separate set_logs rows so the per-set log
+ * surface and PR detection behave the same as if the user had tapped
+ * "Log set" N times manually.
+ */
+const fillFromPlanSchema = z.object({
+  sessionId: z.string().uuid(),
+});
+
+type SetInsert = {
+  session_id: string;
+  movement_id: string;
+  set_index: number;
+  set_kind: "warmup" | "main" | "back_off" | "accessory" | "tendon";
+  weight_kg: number | null;
+  reps: number | null;
+};
+
+const STRENGTH_KINDS: ReadonlyArray<SetInsert["set_kind"]> = [
+  "warmup",
+  "main",
+  "back_off",
+  "accessory",
+  "tendon",
+];
+
+export async function fillSessionFromPlan(
+  formData: FormData,
+): Promise<{ ok?: true; error?: string; inserted?: number }> {
+  const parsed = fillFromPlanSchema.safeParse({
+    sessionId: formData.get("sessionId"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in." };
+
+  // Resolve the linked plan + TM dict in parallel so the cost is one
+  // round-trip per data source.
+  const [plannedRes, existingRes, tmsRes] = await Promise.all([
+    supabase
+      .from("planned_sessions")
+      .select("id, prescription")
+      .eq("completed_session_id", parsed.data.sessionId)
+      .maybeSingle(),
+    supabase
+      .from("set_logs")
+      .select("movement_id, set_kind, set_index")
+      .eq("session_id", parsed.data.sessionId),
+    supabase
+      .from("training_maxes")
+      .select("movement_id, value_kg, movements!inner(slug)")
+      .eq("user_id", user.id),
+  ]);
+
+  const planned = plannedRes.data as { id: string; prescription: Prescription | null } | null;
+  if (!planned || !planned.prescription) {
+    return { error: "No planned session is linked to this log." };
+  }
+
+  // Build a tm lookup by movement_id for percentTm resolution.
+  const tmByMovementId = new Map<string, number>();
+  for (const row of (tmsRes.data ?? []) as Array<{ movement_id: string; value_kg: number | string }>) {
+    const v = Number(row.value_kg);
+    if (Number.isFinite(v) && v > 0) tmByMovementId.set(row.movement_id, v);
+  }
+
+  // Group existing set_logs by (movement_id, set_kind) so the
+  // idempotency check is O(1) per planned item.
+  const existingByKey = new Map<string, number>();
+  for (const r of (existingRes.data ?? []) as Array<{ movement_id: string; set_kind: string }>) {
+    const key = `${r.movement_id}::${r.set_kind}`;
+    existingByKey.set(key, (existingByKey.get(key) ?? 0) + 1);
+  }
+
+  const items = planned.prescription.items ?? [];
+  let nextIndex = (existingRes.data ?? []).length;
+  const inserts: SetInsert[] = [];
+
+  for (const item of items as PrescriptionItem[]) {
+    if (!STRENGTH_KINDS.includes(item.kind as SetInsert["set_kind"])) continue;
+    const setKind = item.kind as SetInsert["set_kind"];
+    const setCount = Math.max(1, item.sets ?? 1);
+    const reps = item.reps ?? null;
+
+    // Resolve target weight: percentTm × TM, rounded to plate. When no
+    // TM is set we leave weight null — the user will be nudged by the
+    // empty input, not by a guessed default.
+    const tm = tmByMovementId.get(item.movementId);
+    let weight: number | null = null;
+    if (typeof item.percentTm === "number" && tm) {
+      weight = roundToPlate(tm * (item.percentTm / 100));
+    }
+
+    const key = `${item.movementId}::${setKind}`;
+    const alreadyHave = existingByKey.get(key) ?? 0;
+    const need = Math.max(0, setCount - alreadyHave);
+    for (let i = 0; i < need; i++) {
+      inserts.push({
+        session_id: parsed.data.sessionId,
+        movement_id: item.movementId,
+        set_index: nextIndex++,
+        set_kind: setKind,
+        weight_kg: weight,
+        reps,
+      });
+    }
+    // Update the existing map so the same movement appearing twice in
+    // the plan (rare but possible) doesn't double-count.
+    existingByKey.set(key, alreadyHave + need);
+  }
+
+  if (inserts.length === 0) {
+    return { ok: true, inserted: 0 };
+  }
+
+  const { error } = await supabase.from("set_logs").insert(inserts);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
+  return { ok: true, inserted: inserts.length };
+}
+
+const updateNotesSchema = z.object({
+  sessionId: z.string().uuid(),
+  notes: z.string().trim().max(2000).optional().nullable(),
+});
+
+/**
+ * Phase 1 C1 — append/replace the session.notes from the post-session
+ * summary card. We deliberately overwrite rather than append; the card
+ * is meant for quick reflections (one block of text) and the existing
+ * `/complete` flow already allows pre-completion notes. The latest
+ * write wins.
+ */
+export async function updateSessionNotes(
+  formData: FormData,
+): Promise<{ ok?: true; error?: string }> {
+  const parsed = updateNotesSchema.safeParse({
+    sessionId: formData.get("sessionId"),
+    notes: formData.get("notes") || undefined,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in." };
+
+  const { error } = await supabase
+    .from("sessions")
+    .update({ notes: parsed.data.notes ?? null })
+    .eq("id", parsed.data.sessionId)
+    .eq("user_id", user.id);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
   return { ok: true };
 }

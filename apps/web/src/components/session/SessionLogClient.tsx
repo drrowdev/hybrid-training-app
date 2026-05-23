@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { MovementPicker, type MovementSearchResult } from "@/components/movement-picker";
+import { bestEstimateOneRm } from "@/lib/engine/one-rm";
+import { restSecondsForKind } from "@/lib/sessions/rest";
+import { RestTimer } from "./RestTimer";
 
 export type LoggedSet = {
   id: string;
@@ -28,7 +31,30 @@ export type ActiveMovement = {
   primary_region: string;
 };
 
+/** "Last time" hint for a movement — top set from the prior session. */
+export type LastSetHint = {
+  weightKg: number;
+  reps: number;
+  performedAt: string;
+};
+
+/**
+ * Pre-existing personal best for a movement, captured server-side at
+ * page render. Used by the client-side PR badge to give instant
+ * feedback without waiting for the next server round-trip — the
+ * canonical PR detection still runs server-side in `getSessionPrs`.
+ */
+export type PriorBest = {
+  /** Heaviest weight ever lifted on this movement. */
+  heaviestWeight: number | null;
+  /** Highest estimated 1RM across all prior sets. */
+  bestE1rm: number | null;
+};
+
 type SetAction = (fd: FormData) => Promise<{ error?: string; ok?: true }>;
+type FillAction = (
+  fd: FormData,
+) => Promise<{ ok?: true; error?: string; inserted?: number }>;
 
 const SET_KINDS = ["warmup", "main", "back_off", "accessory", "tendon"] as const;
 
@@ -48,12 +74,24 @@ export function SessionLogClient({
   sets,
   tmBySlug,
   addStrengthSet,
+  fillFromPlan,
+  hasPlan,
+  lastSetHints,
+  priorBests,
 }: {
   sessionId: string;
   isComplete: boolean;
   sets: LoggedSet[];
   tmBySlug: Record<string, number>;
   addStrengthSet: SetAction;
+  /** Server action for "Same as planned" — null when there is no linked plan. */
+  fillFromPlan?: FillAction | null;
+  /** True when a planned_session is linked, so the "Same as planned" CTA is meaningful. */
+  hasPlan?: boolean;
+  /** Map of movement_id → top set from the user's most recent prior session (B2). */
+  lastSetHints?: Record<string, LastSetHint>;
+  /** Map of movement_id → prior personal-best snapshot used for the PR badge (B3). */
+  priorBests?: Record<string, PriorBest>;
 }) {
   // Distinct movements logged so far in order of first appearance.
   const movementsInSession = useMemo(() => {
@@ -102,6 +140,16 @@ export function SessionLogClient({
   const [setKind, setSetKind] = useState<(typeof SET_KINDS)[number]>("main");
   const [error, setError] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(movementsInSession.length === 0);
+
+  // Rest-timer state (B4). `restToken` forces a remount when a new
+  // set fires so the countdown restarts cleanly. `restSeconds=0` is
+  // the "no timer running" sentinel.
+  const [restSeconds, setRestSeconds] = useState(0);
+  const [restToken, setRestToken] = useState(0);
+
+  // Client-side "just logged a PR" badge state (B3). The canonical
+  // detection runs server-side; this is the instant-feedback layer.
+  const [pendingPrFlash, setPendingPrFlash] = useState<{ movementId: string; setId?: string } | null>(null);
 
   useEffect(() => {
     if (!active) return;
@@ -158,16 +206,41 @@ export function SessionLogClient({
     fd.set("weightKg", String(weight));
     fd.set("reps", String(reps));
     if (rpe != null) fd.set("rpe", String(rpe));
+
+    // Client-side PR detection BEFORE we hit the server so the badge
+    // can light up the instant the form submits. The server-side
+    // detection in `getSessionPrs` is the canonical record — this
+    // mirror avoids a second flash when the server response arrives.
+    const prior = priorBests?.[active.id];
+    const newE1rm = bestEstimateOneRm({ weight, reps, rpe: rpe ?? null });
+    const isWeightPr = prior?.heaviestWeight != null && weight > prior.heaviestWeight;
+    const isE1rmPr =
+      newE1rm != null && prior?.bestE1rm != null && newE1rm > prior.bestE1rm + 0.05;
+    if ((isWeightPr || isE1rmPr) && (rpe == null || rpe < 10)) {
+      setPendingPrFlash({ movementId: active.id });
+    }
+
     const result = await addStrengthSet(fd);
     if (result?.error) {
       setError(result.error);
+      setPendingPrFlash(null);
       return;
     }
     setRpe(null);
+    // Kick the rest timer based on the set kind (B4).
+    const secs = restSecondsForKind(setKind);
+    if (secs > 0) {
+      setRestSeconds(secs);
+      setRestToken((t) => t + 1);
+    }
   };
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
+      {!isComplete && hasPlan && fillFromPlan && sets.length === 0 && (
+        <SameAsPlannedCard fillFromPlan={fillFromPlan} sessionId={sessionId} />
+      )}
+
       <div className="cp-card" style={{ padding: 12, display: "grid", gap: 8 }}>
         <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
           Session
@@ -183,13 +256,14 @@ export function SessionLogClient({
                 onClick={() => setActive(m)}
                 style={{
                   flexShrink: 0,
-                  padding: "6px 12px",
+                  padding: "10px 16px",
+                  minHeight: 44,
                   borderRadius: 999,
                   border: `1px solid ${isActiveM ? "var(--cp-accent)" : "var(--cp-border)"}`,
                   background: isActiveM ? "var(--cp-accent-soft)" : "var(--cp-surface)",
                   color: isActiveM ? "var(--cp-accent)" : "var(--cp-text)",
                   fontWeight: isActiveM ? 600 : 500,
-                  fontSize: 12,
+                  fontSize: 13,
                   cursor: "pointer",
                   whiteSpace: "nowrap",
                 }}
@@ -207,12 +281,13 @@ export function SessionLogClient({
               onClick={() => setShowPicker((v) => !v)}
               style={{
                 flexShrink: 0,
-                padding: "6px 12px",
+                padding: "10px 16px",
+                minHeight: 44,
                 borderRadius: 999,
                 border: "1px dashed var(--cp-border-strong)",
                 background: "transparent",
                 color: "var(--cp-text-muted)",
-                fontSize: 12,
+                fontSize: 13,
                 cursor: "pointer",
                 whiteSpace: "nowrap",
               }}
@@ -243,7 +318,35 @@ export function SessionLogClient({
             <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
               Now logging
             </div>
-            <div style={{ fontSize: 22, fontWeight: 600, marginTop: 2 }}>{active.display_name}</div>
+            <div
+              style={{
+                fontSize: 22,
+                fontWeight: 600,
+                marginTop: 2,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              {active.display_name}
+              {pendingPrFlash?.movementId === active.id && (
+                <span
+                  data-testid="pr-badge"
+                  aria-label="Personal record"
+                  style={{
+                    fontSize: 11,
+                    padding: "2px 8px",
+                    borderRadius: 999,
+                    background: "var(--cp-accent)",
+                    color: "var(--cp-accent-fg)",
+                    fontWeight: 700,
+                    letterSpacing: "0.06em",
+                  }}
+                >
+                  ⭐ PR!
+                </span>
+              )}
+            </div>
             {lastSetForActive && (
               <div style={{ fontSize: 12, color: "var(--cp-text-muted)", marginTop: 4 }}>
                 Last set:{" "}
@@ -251,6 +354,20 @@ export function SessionLogClient({
                   {lastSetForActive.weight_kg ? `${lastSetForActive.weight_kg} kg` : ""}
                   {lastSetForActive.reps ? ` × ${lastSetForActive.reps}` : ""}
                   {lastSetForActive.rpe ? ` @ ${lastSetForActive.rpe}` : ""}
+                </span>
+              </div>
+            )}
+            {!lastSetForActive && lastSetHints?.[active.id] && (
+              <div
+                data-testid="last-time-hint"
+                style={{ fontSize: 12, color: "var(--cp-text-muted)", marginTop: 4 }}
+              >
+                Last {active.display_name.toLowerCase()}:{" "}
+                <span style={{ color: "var(--cp-text)", fontWeight: 500 }} className="mono">
+                  {lastSetHints[active.id]!.weightKg} kg × {lastSetHints[active.id]!.reps}
+                </span>
+                <span style={{ marginLeft: 6, color: "var(--cp-text-muted)" }}>
+                  ({formatHintDate(lastSetHints[active.id]!.performedAt)})
                 </span>
               </div>
             )}
@@ -338,7 +455,8 @@ export function SessionLogClient({
                     key={n}
                     onClick={() => setRpe(sel ? null : n)}
                     style={{
-                      padding: "10px 0",
+                      padding: "14px 0",
+                      minHeight: 44,
                       borderRadius: 8,
                       border: `1px solid ${sel ? "var(--cp-accent)" : "var(--cp-border)"}`,
                       background: sel ? "var(--cp-accent)" : "var(--cp-surface)",
@@ -403,8 +521,88 @@ export function SessionLogClient({
           </div>
         </section>
       )}
+
+      {!isComplete && (
+        <RestTimer
+          key={restToken}
+          seconds={restSeconds}
+          onDone={() => setRestSeconds(0)}
+        />
+      )}
     </div>
   );
+}
+
+function SameAsPlannedCard({
+  fillFromPlan,
+  sessionId,
+}: {
+  fillFromPlan: FillAction;
+  sessionId: string;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const submit = async (fd: FormData) => {
+    setError(null);
+    fd.set("sessionId", sessionId);
+    const result = await fillFromPlan(fd);
+    if (result?.error) setError(result.error);
+  };
+  return (
+    <form
+      action={submit}
+      data-testid="same-as-planned"
+      className="cp-card"
+      style={{
+        padding: 16,
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        borderColor: "var(--cp-accent)",
+        background: "color-mix(in oklab, var(--cp-accent) 6%, transparent)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 13, color: "var(--cp-text)" }}>
+          <strong>Logging the planned session?</strong>{" "}
+          <span style={{ color: "var(--cp-text-muted)" }}>
+            Pre-fill every set from the prescription — adjust later if anything changes.
+          </span>
+        </div>
+        <SameAsPlannedButton />
+      </div>
+      {error && (
+        <div style={{ fontSize: 12, color: "var(--cp-danger)" }} role="alert">
+          {error}
+        </div>
+      )}
+    </form>
+  );
+}
+
+function SameAsPlannedButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      className="cp-btn primary"
+      disabled={pending}
+      style={{ minHeight: 48 }}
+    >
+      {pending ? "Filling…" : "Same as planned"}
+    </button>
+  );
+}
+
+function formatHintDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const now = new Date();
+  const days = Math.floor((now.getTime() - d.getTime()) / 86_400_000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days}d ago`;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${months[d.getMonth()]} ${d.getDate()}`;
 }
 
 function EntryBlock({
