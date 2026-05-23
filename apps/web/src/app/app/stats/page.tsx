@@ -16,6 +16,7 @@ export default async function StatsPage() {
   const { data: all } = await supabase
     .from("sessions")
     .select("id, title, slot, performed_at, completed_at, session_rpe, duration_min")
+    .is("deleted_at", null)
     .order("performed_at", { ascending: false })
     .limit(40);
 

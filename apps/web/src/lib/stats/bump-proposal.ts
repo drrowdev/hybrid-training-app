@@ -141,6 +141,7 @@ export async function findBumpProposalForSession(
     .eq("user_id", userId)
     .gte("performed_at", sixWeeksAgo)
     .lt("performed_at", new Date().toISOString())
+    .is("deleted_at", null)
     .order("performed_at", { ascending: false });
 
   let priorSmashCount = 0;
@@ -163,6 +164,7 @@ export async function findBumpProposalForSession(
     .from("sessions")
     .select("fatigue, soreness")
     .eq("id", sessionId)
+    .is("deleted_at", null)
     .maybeSingle();
   const grm = computeGrm({ fatigue: thisSession?.fatigue ?? null, soreness: thisSession?.soreness ?? null });
   const todayGrm = grm.hasCheckIn ? grm.value : null;

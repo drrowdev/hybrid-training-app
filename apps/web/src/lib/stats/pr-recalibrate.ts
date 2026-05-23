@@ -87,7 +87,8 @@ export async function findPrRecalibrateProposals(
     .from("sessions")
     .select("id")
     .eq("user_id", userId)
-    .lt("performed_at", sessionPerformedAt);
+    .lt("performed_at", sessionPerformedAt)
+    .is("deleted_at", null);
   const priorIds = (priorSessions ?? []).map((s) => s.id);
 
   type PriorSet = { movement_id: string; weight_kg: number; reps: number; rpe: number | null; performed_at: string };

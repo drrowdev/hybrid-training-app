@@ -20,6 +20,7 @@ export default async function CompleteSessionPage({
     .from("sessions")
     .select("id, title, performed_at, completed_at")
     .eq("id", id)
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (!session) notFound();

@@ -412,12 +412,90 @@ export async function recomputeRegionStateAction(): Promise<void> {
   revalidatePath("/app/settings");
 }
 
-export async function deleteSession(formData: FormData): Promise<void> {
+export async function deleteSession(
+  formData: FormData,
+): Promise<{ ok: true; sessionId: string; restoreUrl: string } | { ok: false; error: string }> {
   const id = String(formData.get("id") ?? "");
-  if (!id) return;
+  if (!id) return { ok: false, error: "Missing session id." };
 
   const supabase = await createClient();
-  await supabase.from("sessions").delete().eq("id", id);
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  // Soft-delete: SET deleted_at = NOW() instead of removing the row.
+  // RLS (sessions_update_self) restricts this to rows where
+  // user_id = auth.uid(), so the explicit `eq("user_id", ...)` is
+  // belt-and-suspenders defense. AGENTS.md DC-K4: destructive actions
+  // are reversible by default — the calling UI surfaces the Undo
+  // banner via the returned restoreUrl.
+  const { error } = await supabase
+    .from("sessions")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
+
   revalidatePath("/app");
-  redirect("/app");
+  revalidatePath("/app/sessions");
+  revalidatePath("/app/settings/trash");
+  return { ok: true, sessionId: id, restoreUrl: `/api/sessions/${id}/restore` };
+}
+
+/**
+ * Restore a soft-deleted session — flips `deleted_at` back to NULL.
+ * RLS (sessions_update_self) covers ownership. Called both from the
+ * Undo banner (via the API route) and from the Trash page Recover
+ * button.
+ */
+export async function restoreSession(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!id) return { ok: false, error: "Missing session id." };
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const { error } = await supabase
+    .from("sessions")
+    .update({ deleted_at: null })
+    .eq("id", id)
+    .eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/app");
+  revalidatePath("/app/sessions");
+  revalidatePath("/app/settings/trash");
+  return { ok: true };
+}
+
+/**
+ * Permanently delete a session — hard `.delete()`. Only callable from
+ * the Trash page after the user has typed the session's date as a
+ * type-to-confirm. Cascades via the FK in migration 0003
+ * (set_logs.session_id ON DELETE CASCADE, cardio_logs.session_id ON
+ * DELETE CASCADE). RLS (sessions_delete_self) covers ownership.
+ */
+export async function permanentlyDeleteSession(
+  id: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!id) return { ok: false, error: "Missing session id." };
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const { error } = await supabase
+    .from("sessions")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/app");
+  revalidatePath("/app/sessions");
+  revalidatePath("/app/settings/trash");
+  return { ok: true };
 }

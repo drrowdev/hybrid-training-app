@@ -76,7 +76,8 @@ export async function getSessionPrs(
     .from("sessions")
     .select("id")
     .eq("user_id", userId)
-    .lt("performed_at", sessionPerformedAt);
+    .lt("performed_at", sessionPerformedAt)
+    .is("deleted_at", null);
 
   const priorIds = (priorSessions ?? []).map((s) => s.id);
 
@@ -164,6 +165,7 @@ export async function getRecentPrs(
     .select("id, performed_at")
     .eq("user_id", userId)
     .not("completed_at", "is", null)
+    .is("deleted_at", null)
     .order("performed_at", { ascending: false })
     .limit(30); // scan the last 30 completed sessions
 
