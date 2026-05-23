@@ -608,9 +608,10 @@ function DeepDiveLinks() {
       {/* Wellness + Adherence deep-dives are Phase 3 / Phase 4. Surfaced
           as muted placeholders for now so the navigation surface area
           shows where it's headed without going live. */}
-      <DeepDivePlaceholder
+      <DeepDive
         title="Wellness dashboard"
-        body="Coming in Phase 3."
+        body="Bodyweight, sleep, fatigue, motivation, prediction accuracy."
+        href="/app/stats/wellness"
       />
       <DeepDivePlaceholder
         title="Adherence dashboard"
