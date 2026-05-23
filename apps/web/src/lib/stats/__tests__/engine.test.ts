@@ -100,52 +100,39 @@ describe("btsToTier — DC-G3 thresholds", () => {
   });
 });
 
-describe("getCeilingExplain — DC-C11 arithmetic", () => {
-  it("cold-start: zero sessions → ceiling collapses via confidence_bias = 0.90", async () => {
-    const supabase = makeStub({ sessions: [], wellness: [] }, { sessions: 0 });
+describe("getCeilingExplain — DC-K1 / DC-C9 / DC-C11 / DC-C13", () => {
+  it("true cold start (no planned sessions, no sessions, no sets) → cold_start_conservative", async () => {
+    // 0 recovered weeks in the lookback → DC-C13 ladder collapses
+    // base to 0 (min of 0 last-4 volumes × 0.9) and pins
+    // confidenceBias at 0.8.
+    const supabase = makeStub(
+      { sessions: [], wellness: [], planned_sessions: [], set_logs: [], training_blocks: [] },
+      { sessions: 0 },
+    );
     const out = await getCeilingExplain(supabase, "user-1");
+    expect(out.formula).toBe("cold_start_conservative");
     expect(out.recoveryMultiplier).toBe(1.0);
-    expect(out.confidenceBias).toBe(0.9); // DC-C13: data completeness < 0.6
-    // base_ceiling floors at 1; final = base × GRM × confidence = 1 × 1 × 0.9.
-    expect(out.baseCeiling).toBe(1);
-    expect(out.finalCeiling).toBeCloseTo(0.9, 6);
-    expect(out.inputs.completedSessions28d).toBe(0);
-    expect(out.inputs.dataCompleteness).toBe(0);
+    expect(out.confidenceBias).toBe(0.8);
+    expect(out.baseCeiling).toBe(0);
+    expect(out.finalCeiling).toBe(0);
+    expect(out.inputs.recoveredWeeksCount).toBe(0);
+    // Cold-start conservative shows the last 4 weeks for context (all
+    // with `included: false`) — the "we don't trust the data" surface.
+    expect(out.basisWeeks).toHaveLength(4);
+    expect(out.basisWeeks.every((b) => !b.included)).toBe(true);
+    expect(out.inputs.notes.some((n) => /No fully recovered weeks|cold start/i.test(n))).toBe(true);
   });
 
-  it("full data: 28 days of activity → confidence_bias = 1.0", async () => {
-    // 28 unique recent days → completeness = 1.0.
-    const sessions = Array.from({ length: 28 }, (_, i) => {
-      const d = new Date(Date.now() - i * 86_400_000).toISOString();
-      return {
-        performed_at: d,
-        completed_at: d,
-        deleted_at: null,
-        user_id: "u1",
-      };
-    });
-    const supabase = makeStub({ sessions, wellness: [] }, { sessions: 16 });
-    const out = await getCeilingExplain(supabase, "u1");
-    expect(out.confidenceBias).toBe(1.0);
-    // base_ceiling = round(16/4 × 1.05) = round(4.2) = 4
-    expect(out.baseCeiling).toBe(4);
-    expect(out.finalCeiling).toBeCloseTo(4 * 1.0 * 1.0, 6);
-  });
-
-  it("mid completeness band: 0.60–0.79 → confidence_bias = 0.95", async () => {
-    // 20 unique recent days → completeness = 20/28 ≈ 0.714.
-    const sessions = Array.from({ length: 20 }, (_, i) => {
-      const d = new Date(Date.now() - i * 86_400_000).toISOString();
-      return {
-        performed_at: d,
-        completed_at: d,
-        deleted_at: null,
-        user_id: "u1",
-      };
-    });
-    const supabase = makeStub({ sessions, wellness: [] }, { sessions: 12 });
-    const out = await getCeilingExplain(supabase, "u1");
-    expect(out.confidenceBias).toBe(0.95);
+  it("returns the new explainer shape with basisWeeks + formula tag (DC-K1)", async () => {
+    const supabase = makeStub(
+      { sessions: [], wellness: [], planned_sessions: [], set_logs: [], training_blocks: [] },
+      { sessions: 0 },
+    );
+    const out = await getCeilingExplain(supabase, "user-1");
+    // Shape contract — the page imports these fields.
+    expect(Array.isArray(out.basisWeeks)).toBe(true);
+    expect(typeof out.formula).toBe("string");
+    expect(out.inputs.notes.length).toBeGreaterThan(0);
   });
 });
 

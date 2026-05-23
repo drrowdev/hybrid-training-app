@@ -74,11 +74,23 @@ test.describe("@desktop /app/stats/engine", () => {
       page.getByTestId("stats-engine-bucket-why-pop").first(),
     ).toContainText(/pressure|EWMA|ceiling|interference|tendon|GRM|MEV/i);
 
-    // ── D · Ceiling explainer ────────────────────────────────
+    // ── D · Ceiling explainer (DC-C9 · DC-K1 — median of recovered weeks) ─
     await expect(page.getByTestId("stats-engine-ceiling")).toBeVisible();
     await expect(page.getByTestId("stats-engine-ceiling-final")).toContainText(
-      /hard sessions/i,
+      /kg/i,
     );
+    // The DC-K1 recovered-weeks badge must render with a formula attribute.
+    await expect(
+      page.getByTestId("stats-engine-ceiling-recovered-badge"),
+    ).toBeVisible();
+    await expect(page.getByTestId("stats-engine-ceiling")).toHaveAttribute(
+      "data-formula",
+      /median_of_recovered|cold_start_partial|cold_start_conservative/,
+    );
+    // "Why these weeks?" tooltip — DC-K1 explainer affordance.
+    const whyWeeks = page.getByTestId("stats-engine-ceiling-why-weeks");
+    await expect(whyWeeks).toBeVisible();
+    await whyWeeks.focus();
 
     // ── E · User tier ────────────────────────────────────────
     const tier = page.getByTestId("stats-engine-tier");

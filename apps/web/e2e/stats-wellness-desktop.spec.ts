@@ -50,6 +50,13 @@ test.describe("@desktop /app/stats/wellness", () => {
     await expect(page.getByTestId("stats-wellness-soreness")).toBeVisible();
     await expect(page.getByTestId("stats-wellness-motivation")).toBeVisible();
     await expect(page.getByTestId("stats-wellness-prediction")).toBeVisible();
+    // DC-K1 recovered-weeks tile (Phase 6.x — smarter ceiling).
+    const recoveredTile = page.getByTestId("stats-wellness-recovered-weeks");
+    await expect(recoveredTile).toBeVisible();
+    await expect(page.getByTestId("stats-wellness-recovered-summary")).toContainText(
+      /of last \d+/,
+    );
+    await expect(recoveredTile).toHaveAttribute("data-tone", /ok|warning|danger/);
 
     // Bodyweight card has a delta string.
     await expect(page.getByTestId("stats-wellness-bodyweight-delta")).toContainText(

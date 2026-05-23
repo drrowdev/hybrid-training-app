@@ -55,6 +55,8 @@ import {
 import { displayWeight, weightUnitLabel, type WeightUnit } from "@/lib/stats/units";
 import { MiniLine } from "@/components/stats/charts/MiniLine";
 import { MiniScatter } from "@/components/stats/charts/MiniScatter";
+import { getWeeklyRecoveryRollup, type WeeklyRecoveryRow } from "@/lib/engine/recovered-weeks";
+import { isRecoveredWeek } from "@hta/engine";
 
 export const dynamic = "force-dynamic";
 
@@ -81,9 +83,11 @@ export default async function StatsWellnessPage({
   const units: WeightUnit = profile?.units === "imperial" ? "imperial" : "metric";
   const tz = profile?.timezone ?? (await getUserTimezone(user.id));
 
-  const [wellness, sessions] = await Promise.all([
+  const [wellness, sessions, recoveryRollup] = await Promise.all([
     getWellnessTimeseries(supabase, user.id, tz, windowDays),
     getSessionWellness(supabase, user.id, tz, windowDays),
+    // DC-K1 — 12-week recovered-week rollup, surfaced as a tile.
+    getWeeklyRecoveryRollup(supabase, user.id, { weeks: 12, tz }),
   ]);
 
   return (
@@ -120,6 +124,7 @@ export default async function StatsWellnessPage({
         <FatigueCard rows={sessions} range={range} />
         <SorenessCard rows={sessions} range={range} />
         <MotivationCard rows={wellness} range={range} />
+        <RecoveredWeeksCard rollup={recoveryRollup} />
       </div>
 
       <PredictionAccuracyCard rows={sessions} />
@@ -553,4 +558,89 @@ function EmptyText({ children }: { children: React.ReactNode }) {
 
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Recovered weeks (DC-K1)
+// ──────────────────────────────────────────────────────────────────────
+
+
+function RecoveredWeeksCard({ rollup }: { rollup: WeeklyRecoveryRow[] }) {
+  // DC-K1 — count weeks that qualify as recovered across the 12-week lookback.
+  const qualified = rollup.map((w) => ({ week: w, q: isRecoveredWeek(w) }));
+  const total = qualified.length;
+  const recovered = qualified.filter((q) => q.q.isRecovered).length;
+  const tone: "ok" | "warning" | "danger" =
+    recovered >= 8 ? "ok" : recovered >= 5 ? "warning" : "danger";
+  const accent =
+    tone === "ok"
+      ? "var(--cp-success, var(--cp-accent))"
+      : tone === "warning"
+        ? "var(--cp-warning, var(--cp-text))"
+        : "var(--cp-danger, var(--cp-text))";
+
+  return (
+    <section
+      className="cp-card"
+      data-testid="stats-wellness-recovered-weeks"
+      data-tone={tone}
+      data-recovered-count={recovered}
+      data-total-weeks={total}
+      style={{ padding: 16, display: "grid", gap: 8 }}
+    >
+      <h3 style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
+        Recovered weeks{" "}
+        <span className="cp-info" tabIndex={0} aria-label="What counts as recovered?">
+          i
+          <span className="pop" style={{ width: 280 }}>
+            DC-K1 — a week is &quot;recovered&quot; when every planned session
+            was logged (no skips / no missed past-due), no session sRPE
+            exceeded 9, and average pre-session fatigue + soreness both
+            stayed below 4 on the 1–5 scale. Drives the ceiling base
+            (DC-C9).
+          </span>
+        </span>
+      </h3>
+      <div
+        data-testid="stats-wellness-recovered-summary"
+        style={{ fontSize: 24, fontWeight: 700, color: accent }}
+      >
+        {recovered} <span style={{ color: "var(--cp-text-muted)", fontSize: 14, fontWeight: 500 }}>of last {total}</span>
+      </div>
+      <details
+        data-testid="stats-wellness-recovered-details"
+        style={{ fontSize: 12, color: "var(--cp-text-muted)" }}
+      >
+        <summary style={{ cursor: "pointer" }}>
+          {recovered === total ? "Every week qualified" : "See each week's reason"}
+        </summary>
+        <ul style={{ margin: "6px 0 0", padding: 0, listStyle: "none", display: "grid", gap: 2 }}>
+          {qualified.map(({ week, q }) => (
+            <li
+              key={week.weekStart}
+              data-testid="stats-wellness-recovered-row"
+              data-recovered={q.isRecovered ? "true" : "false"}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 8,
+                padding: "2px 0",
+                borderBottom: "1px dashed var(--cp-border)",
+              }}
+            >
+              <span className="mono">
+                {q.isRecovered ? "✓" : "·"} {week.weekStart}
+              </span>
+              <span style={{ textAlign: "right", color: q.isRecovered ? "var(--cp-text)" : "var(--cp-text-muted)" }}>
+                {q.reason}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </details>
+      <p style={{ margin: 0, fontSize: 11, color: "var(--cp-text-muted)", fontStyle: "italic" }}>
+        DC-K1 · feeds the ceiling base (DC-C9)
+      </p>
+    </section>
+  );
 }

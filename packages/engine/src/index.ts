@@ -8,3 +8,14 @@
  */
 
 export const ENGINE_VERSION = "0.0.0" as const;
+
+export {
+  isRecoveredWeek,
+  median,
+  pickCeilingBase,
+  type WeekRecoveryInput,
+  type WeekRecoveryResult,
+  type CeilingBaseFormula,
+  type CeilingBaseResult,
+  type CeilingBasisWeek,
+} from "./recovered-weeks";
