@@ -5,6 +5,7 @@ import { useFormStatus } from "react-dom";
 import { MovementPicker, type MovementSearchResult } from "@/components/movement-picker";
 import { bestEstimateOneRm } from "@/lib/engine/one-rm";
 import { restSecondsForKind } from "@/lib/sessions/rest";
+import { hapticTick } from "@/lib/feedback";
 import { RestTimer } from "./RestTimer";
 
 export type LoggedSet = {
@@ -78,6 +79,8 @@ export function SessionLogClient({
   hasPlan,
   lastSetHints,
   priorBests,
+  hapticsEnabled = true,
+  timerSoundEnabled = true,
 }: {
   sessionId: string;
   isComplete: boolean;
@@ -92,6 +95,10 @@ export function SessionLogClient({
   lastSetHints?: Record<string, LastSetHint>;
   /** Map of movement_id → prior personal-best snapshot used for the PR badge (B3). */
   priorBests?: Record<string, PriorBest>;
+  /** Phase 3 C1 — haptic tick on set save + rest-timer zero. */
+  hapticsEnabled?: boolean;
+  /** Phase 3 C2 — tone at rest-timer zero. */
+  timerSoundEnabled?: boolean;
 }) {
   // Distinct movements logged so far in order of first appearance.
   const movementsInSession = useMemo(() => {
@@ -226,6 +233,8 @@ export function SessionLogClient({
       setPendingPrFlash(null);
       return;
     }
+    // Phase 3 C1 — haptic tick on a committed set (server returned ok).
+    hapticTick(hapticsEnabled);
     setRpe(null);
     // Kick the rest timer based on the set kind (B4).
     const secs = restSecondsForKind(setKind);
@@ -497,7 +506,19 @@ export function SessionLogClient({
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                     <tbody>
                       {arr.map((s) => (
-                        <tr key={s.id} style={{ borderTop: "1px solid var(--cp-border)" }}>
+                        <tr
+                          key={s.id}
+                          data-testid={`logged-set-row-${s.id}`}
+                          data-state="done"
+                          style={{
+                            borderTop: "1px solid var(--cp-border)",
+                            // Phase 3 E3 — committed sets get a subtle
+                            // success tint so the user can scan at a
+                            // glance which prescription items are done.
+                            background:
+                              "color-mix(in oklab, var(--cp-success) 6%, transparent)",
+                          }}
+                        >
                           <td className="mono" style={{ padding: "6px 8px 6px 0", color: "var(--cp-text-muted)", width: 28 }}>
                             #{s.set_index + 1}
                           </td>
@@ -527,6 +548,8 @@ export function SessionLogClient({
           key={restToken}
           seconds={restSeconds}
           onDone={() => setRestSeconds(0)}
+          hapticsEnabled={hapticsEnabled}
+          timerSoundEnabled={timerSoundEnabled}
         />
       )}
     </div>
@@ -644,12 +667,11 @@ function EntryBlock({
           const n = Number(e.target.value);
           if (!Number.isNaN(n)) onSet(n);
         }}
-        className="mono"
+        className="mono cp-entry-input"
         style={{
           background: "transparent",
           border: "none",
           outline: "none",
-          fontSize: 28,
           fontWeight: 600,
           letterSpacing: "-0.01em",
           padding: 0,

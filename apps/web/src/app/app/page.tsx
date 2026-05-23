@@ -19,6 +19,8 @@ import { getRegionFreshness, findHeavyOnRecoveringConflict, type RegionFreshness
 import { StravaStaleSyncTrigger } from "@/components/StravaStaleSyncTrigger";
 import { StravaPoweredBadge } from "@/components/StravaPoweredBadge";
 import { computeTaperRecommendation, type TaperRecommendation } from "@/lib/planner/taper";
+import { BodyweightNudge } from "@/components/today/BodyweightNudge";
+import { recordDailyCheckIn } from "@/lib/wellness/actions";
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -98,6 +100,24 @@ export default async function TodayPage() {
   ]);
   const hasStravaConnection = Boolean(stravaConn);
   const hasStravaData = (stravaCardioCount ?? 0) > 0;
+
+  // Phase 3 A2 — bodyweight nudge: only render the card if the user
+  // hasn't logged a bodyweight in the past 7 days. RLS scopes the
+  // query to the current user automatically.
+  const sevenDaysAgoIso = (() => {
+    const d = new Date(todayIso + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() - 7);
+    return d.toISOString().slice(0, 10);
+  })();
+  const { data: recentBodyweight } = await supabase
+    .from("wellness")
+    .select("date")
+    .not("bodyweight_kg", "is", null)
+    .gte("date", sevenDaysAgoIso)
+    .order("date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const showBodyweightNudge = !recentBodyweight;
 
   // Phase 2: next priority event + taper recommendation.
   const { data: nextEvent } = await supabase
@@ -239,12 +259,18 @@ export default async function TodayPage() {
         )}
       </section>
 
+      {showBodyweightNudge && (
+        <BodyweightNudge
+          todayYmd={todayIso}
+          recordDailyCheckIn={recordDailyCheckIn}
+        />
+      )}
+
       <section className="cp-card" style={{ padding: 20 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
           <h2 style={{ fontSize: 16, margin: 0 }}>Recent sessions</h2>
           <Link href="/app/sessions" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>View all →</Link>
-        </div>
-        {!recent || recent.length === 0 ? (
+        </div>{!recent || recent.length === 0 ? (
           <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: 0 }}>
             Nothing logged yet. Your first session will appear here.
           </p>

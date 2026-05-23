@@ -15,9 +15,13 @@
  *
  * A swapped item shows a "Swapped" badge whose ``title`` attribute
  * reveals the original movement on hover/tap.
+ *
+ * Phase 3 D1 — on viewports ≤640px the list collapses into a swipeable
+ * single-item carousel with dot indicators. Swipe horizontally to
+ * advance / retreat. Desktop is unaffected.
  */
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useRef, useTransition } from "react";
 import type { Prescription, PrescriptionItem } from "@hta/db";
 import { isSwapped, originalMovementName } from "@/lib/sessions/prescription-mutations";
 import type { swapPrescriptionItem } from "@/lib/sessions/actions";
@@ -113,29 +117,173 @@ export function PrescriptionItemsList({
     >
       <div
         style={{
-          fontSize: 11,
-          color: "var(--cp-text-muted)",
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-          fontWeight: 600,
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          gap: 8,
         }}
       >
-        Today&apos;s prescription
+        <div
+          style={{
+            fontSize: 11,
+            color: "var(--cp-text-muted)",
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+            fontWeight: 600,
+          }}
+        >
+          Today&apos;s prescription
+        </div>
       </div>
+      <PrescriptionItemsCarousel
+        items={prescription.items}
+        openIndex={openIndex}
+        errorByIndex={errorByIndex}
+        onToggle={(i) => setOpenIndex(openIndex === i ? null : i)}
+        onPick={onPick}
+      />
+    </section>
+  );
+}
+
+/**
+ * Renders the prescription items list AND its mobile carousel
+ * variant. The desktop branch keeps the full vertical list — same
+ * shape as before Phase 3. The mobile branch (≤640px) shows ONE item
+ * at a time with dot indicators above and a horizontal touch-swipe
+ * handler that advances / retreats.
+ *
+ * Detection runs once on mount via `matchMedia` and re-runs on resize
+ * so the layout adapts to device rotation.
+ */
+function PrescriptionItemsCarousel({
+  items,
+  openIndex,
+  errorByIndex,
+  onToggle,
+  onPick,
+}: {
+  items: PrescriptionItem[];
+  openIndex: number | null;
+  errorByIndex: Record<number, string>;
+  onToggle: (i: number) => void;
+  onPick: (i: number, c: Candidate) => void;
+}) {
+  const [isMobile, setIsMobile] = useState(false);
+  const [active, setActive] = useState(0);
+  const touchStartX = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 640px)");
+    const sync = () => setIsMobile(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect -- clamp index after items shrink */
+    if (active >= items.length) setActive(Math.max(0, items.length - 1));
+  }, [items.length, active]);
+
+  if (!isMobile) {
+    return (
       <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
-        {prescription.items.map((item, index) => (
+        {items.map((item, index) => (
           <PrescriptionRow
             key={`${index}-${item.movementId}`}
             item={item}
             index={index}
             open={openIndex === index}
             error={errorByIndex[index] ?? null}
-            onToggle={() => setOpenIndex(openIndex === index ? null : index)}
+            onToggle={() => onToggle(index)}
             onPick={(c) => onPick(index, c)}
           />
         ))}
       </ul>
-    </section>
+    );
+  }
+
+  const SWIPE_THRESHOLD = 50;
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0]?.clientX ?? null;
+  };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const start = touchStartX.current;
+    if (start == null) return;
+    const end = e.changedTouches[0]?.clientX ?? start;
+    const dx = end - start;
+    touchStartX.current = null;
+    if (Math.abs(dx) < SWIPE_THRESHOLD) return;
+    if (dx < 0 && active < items.length - 1) setActive((i) => i + 1);
+    if (dx > 0 && active > 0) setActive((i) => i - 1);
+  };
+
+  const item = items[active];
+  if (!item) return null;
+
+  return (
+    <div data-testid="prescription-items-carousel">
+      <div
+        role="tablist"
+        aria-label="Prescription item"
+        style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 8 }}
+      >
+        {items.map((_, i) => {
+          const sel = i === active;
+          return (
+            <button
+              key={i}
+              type="button"
+              role="tab"
+              aria-selected={sel}
+              data-testid={`prescription-dot-${i}`}
+              onClick={() => setActive(i)}
+              style={{
+                width: sel ? 18 : 8,
+                height: 8,
+                borderRadius: 999,
+                border: "none",
+                background: sel ? "var(--cp-accent)" : "var(--cp-border-strong)",
+                cursor: "pointer",
+                padding: 0,
+                transition: "width 120ms ease-out",
+              }}
+              aria-label={`Show item ${i + 1} of ${items.length}`}
+            />
+          );
+        })}
+      </div>
+      <ul
+        style={{ listStyle: "none", padding: 0, margin: 0 }}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        data-testid="prescription-items-swipe-zone"
+      >
+        <PrescriptionRow
+          key={`${active}-${item.movementId}`}
+          item={item}
+          index={active}
+          open={openIndex === active}
+          error={errorByIndex[active] ?? null}
+          onToggle={() => onToggle(active)}
+          onPick={(c) => onPick(active, c)}
+        />
+      </ul>
+      <div
+        style={{
+          marginTop: 6,
+          fontSize: 10,
+          color: "var(--cp-text-muted)",
+          textAlign: "center",
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+        }}
+      >
+        {active + 1} / {items.length} · swipe →
+      </div>
+    </div>
   );
 }
 
