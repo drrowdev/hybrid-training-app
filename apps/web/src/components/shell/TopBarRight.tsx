@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TopBarRight — Wendler-style status cluster for the /app top bar.
+ * TopBarRight — status cluster for the /app top bar.
  *
  * Renders, left → right:
  *   1. ⌘K / Ctrl K hint chip (clicking opens the palette).
