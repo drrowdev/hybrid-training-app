@@ -33,6 +33,23 @@ export default async function SettingsPage() {
     .select("id", { count: "exact", head: true })
     .is("resolved_at", null);
 
+  // Trash count = soft-deleted blocks + sessions belonging to the
+  // current user. Both queries are cheap (partial index in 0026 on
+  // `deleted_at IS NOT NULL`).
+  const [{ count: trashedBlockCount }, { count: trashedSessionCount }] = await Promise.all([
+    supabase
+      .from("training_blocks")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .not("deleted_at", "is", null),
+    supabase
+      .from("sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .not("deleted_at", "is", null),
+  ]);
+  const trashCount = (trashedBlockCount ?? 0) + (trashedSessionCount ?? 0);
+
   return (
     <main className="min-h-screen px-6 py-8 max-w-2xl mx-auto space-y-8">
       <header className="space-y-1">
@@ -262,6 +279,16 @@ export default async function SettingsPage() {
 
       <section className="space-y-3 pt-6 border-t border-foreground/10">
         <h2 className="text-lg font-medium">Your data</h2>
+        <Link
+          href="/app/settings/trash"
+          data-testid="settings-trash-link"
+          className="inline-flex items-center justify-between gap-3 rounded-lg border border-foreground/10 p-4 w-full hover:bg-foreground/5"
+        >
+          <span className="text-sm">Trash</span>
+          <span className="text-xs text-foreground/60">
+            {trashCount} item{trashCount === 1 ? "" : "s"} →
+          </span>
+        </Link>
         <p className="text-xs text-foreground/60">
           Download everything we hold on you (GDPR Articles 15 + 20).
         </p>
