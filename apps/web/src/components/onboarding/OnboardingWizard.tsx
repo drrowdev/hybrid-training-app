@@ -38,9 +38,21 @@ type ProfilePayload = {
 type TrainingExperience = "lt_1y" | "1_3y" | "gte_3y";
 
 const EXPERIENCE_OPTIONS: { id: TrainingExperience; label: string; hint: string }[] = [
-  { id: "lt_1y", label: "≤ 1 year", hint: "New or returning — starts on the consumer load tier." },
-  { id: "1_3y", label: "1–3 years", hint: "Past the novice phase, recovers fine from normal weeks." },
-  { id: "gte_3y", label: "3+ years", hint: "Experienced — knows their lifts and how to push them." },
+  {
+    id: "lt_1y",
+    label: "≤ 1 year",
+    hint: "Beginner · still building habits.",
+  },
+  {
+    id: "1_3y",
+    label: "1–3 years",
+    hint: "Intermediate · regular training, clear progress.",
+  },
+  {
+    id: "gte_3y",
+    label: "3+ years",
+    hint: "Advanced · structured programming, plateau-aware.",
+  },
 ];
 
 const STEPS = ["Welcome", "Profile", "Training maxes", "Build your block", "Confirm"] as const;
@@ -514,9 +526,10 @@ function ProfileStep({
         </div>
 
         <div>
-          <Label>Training experience</Label>
+          <Label>How long have you been training consistently?</Label>
           <p style={{ margin: "4px 0 8px", fontSize: 12, color: "var(--cp-text-muted)" }}>
-            Drives the cold-start tier on your first block (DC-G5).
+            Seeds your starting tier — DC-G1 keeps it behavioural, so the
+            app refines it as it observes your training.
           </p>
           <div style={{ display: "grid", gap: 8 }}>
             {EXPERIENCE_OPTIONS.map((opt) => {
@@ -527,6 +540,7 @@ function ProfileStep({
                   key={opt.id}
                   onClick={() => setTrainingExperience(opt.id)}
                   aria-pressed={sel}
+                  data-testid={`onboarding-experience-${opt.id}`}
                   style={cardOptionStyle(sel)}
                 >
                   <div style={{ fontSize: 14, fontWeight: 600 }}>{opt.label}</div>
