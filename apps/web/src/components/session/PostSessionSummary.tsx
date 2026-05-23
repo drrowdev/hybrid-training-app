@@ -17,15 +17,33 @@ import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import type { SessionSummary } from "@/lib/sessions/queries";
 import { updateSessionNotes } from "@/lib/sessions/actions";
+import type { ProgressionKind } from "@/lib/progression/suggest-next";
+
+/**
+ * Phase 2 D2 — "Next time" suggestion shown for each main lift in the
+ * completed session. Computed server-side from the top set + TM; the
+ * card is informational, not commanding (no auto-apply).
+ */
+export type ProgressionHint = {
+  movementId: string;
+  movementDisplayName: string;
+  kind: ProgressionKind;
+  nextWeightKg: number;
+  nextReps: number;
+  rationale: string;
+};
 
 export function PostSessionSummary({
   sessionId,
   summary,
   initialNotes,
+  progressionHints,
 }: {
   sessionId: string;
   summary: SessionSummary;
   initialNotes: string | null;
+  /** Up to 3 suggested-progression hints for the main lifts (Phase 2 D2). */
+  progressionHints?: ProgressionHint[];
 }) {
   const [showNote, setShowNote] = useState(false);
   const [savedNote, setSavedNote] = useState<string | null>(initialNotes);
@@ -101,6 +119,53 @@ export function PostSessionSummary({
           testId="summary-prs"
         />
       </div>
+
+      {progressionHints && progressionHints.length > 0 && (
+        <div
+          data-testid="progression-hints"
+          style={{
+            background: "var(--cp-surface)",
+            border: "1px solid var(--cp-border)",
+            borderRadius: 12,
+            padding: "12px 14px",
+            display: "grid",
+            gap: 8,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              color: "var(--cp-text-muted)",
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              fontWeight: 600,
+            }}
+          >
+            Next time
+          </div>
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
+            {progressionHints.slice(0, 3).map((h) => (
+              <li
+                key={h.movementId}
+                data-testid={`progression-hint-${h.movementId}`}
+                style={{ display: "flex", gap: 10, alignItems: "baseline", fontSize: 13 }}
+              >
+                <span
+                  aria-hidden
+                  title={progressionKindLabel(h.kind)}
+                  style={{ fontSize: 14, lineHeight: 1, minWidth: 18, textAlign: "center" }}
+                >
+                  {progressionKindGlyph(h.kind)}
+                </span>
+                <span style={{ fontWeight: 600, color: "var(--cp-text)" }}>
+                  {h.movementDisplayName}:
+                </span>
+                <span style={{ color: "var(--cp-text-muted)" }}>{h.rationale}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {savedNote && !showNote && (
         <div
@@ -260,4 +325,30 @@ function formatKg(n: number): string {
   if (n >= 10_000) return `${Math.round(n / 100) / 10}k`;
   if (Math.abs(n - Math.round(n)) < 0.05) return String(Math.round(n));
   return n.toFixed(1);
+}
+
+function progressionKindGlyph(kind: ProgressionKind): string {
+  switch (kind) {
+    case "increase":
+      return "↑";
+    case "hold":
+      return "→";
+    case "retry":
+      return "↻";
+    case "reset":
+      return "↓";
+  }
+}
+
+function progressionKindLabel(kind: ProgressionKind): string {
+  switch (kind) {
+    case "increase":
+      return "Add load next time";
+    case "hold":
+      return "Hold weight, chase a rep";
+    case "retry":
+      return "Same weight — try again";
+    case "reset":
+      return "Reset and rebuild";
+  }
 }
