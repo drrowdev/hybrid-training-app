@@ -246,6 +246,13 @@
       "tag": "0034_profiles_ai_notes",
       "when": 1779588000000,
       "breakpoints": false
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "tag": "0035_priority_events_full_shape",
+      "when": 1779594000000,
+      "breakpoints": false
     }
   ]
 }

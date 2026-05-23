@@ -21,6 +21,7 @@ export const STATIC_PAGES: PaletteItem[] = [
   { id: "page-stats-adherence", kind: "page", title: "Stats — Adherence", subtitle: "Planned vs. logged", href: "/app/stats/adherence", icon: "▲" },
   { id: "page-stats-engine", kind: "page", title: "Stats — Engine", subtitle: "Region freshness + engine internals", href: "/app/stats/engine", icon: "▲" },
   { id: "page-stats-prs", kind: "page", title: "Stats — PRs", subtitle: "Personal records", href: "/app/stats/prs", icon: "▲" },
+  { id: "page-races", kind: "page", title: "Events", subtitle: "Races, comps, meets — priority events", href: "/app/races", icon: "◆" },
   { id: "page-freshness", kind: "page", title: "Freshness", subtitle: "Per-region recovery state", href: "/app/freshness", icon: "◐" },
   { id: "page-log", kind: "page", title: "Log", subtitle: "Daily check-ins + wellness", href: "/app/log", icon: "▮" },
   { id: "page-settings", kind: "page", title: "Settings", subtitle: "Profile, integrations, preferences", href: "/app/settings", icon: "⚙" },
