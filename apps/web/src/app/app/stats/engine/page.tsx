@@ -218,6 +218,13 @@ function RegionFreshnessCard({ regions }: { regions: RegionFreshnessDetail[] }) 
   );
 }
 
+function computeDaysSince(iso: string | null): number | null {
+  if (!iso) return null;
+  const then = new Date(iso + "T00:00:00").getTime();
+  if (Number.isNaN(then)) return null;
+  return Math.max(0, Math.floor((Date.now() - then) / 86_400_000));
+}
+
 function RegionRow({ row }: { row: RegionFreshnessDetail }) {
   const pct = Math.round(row.currentFreshness * 100);
   const tone =
@@ -226,14 +233,7 @@ function RegionRow({ row }: { row: RegionFreshnessDetail }) {
       : row.currentFreshness >= 0.4
         ? "var(--cp-warning)"
         : "var(--cp-danger)";
-  const daysSinceLast = row.lastLoadDate
-    ? Math.max(
-        0,
-        Math.floor(
-          (Date.now() - new Date(row.lastLoadDate + "T00:00:00").getTime()) / 86_400_000,
-        ),
-      )
-    : null;
+  const daysSinceLast = computeDaysSince(row.lastLoadDate);
   return (
     <div
       data-testid="stats-engine-region-row"
