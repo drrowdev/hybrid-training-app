@@ -1,0 +1,113 @@
+# `@hta/db`
+
+Drizzle ORM schemas + raw SQL migrations for the HTA Supabase project.
+
+## Layout
+
+```
+packages/db/
+├── src/schema/              # Drizzle table definitions (the camelCase mirror)
+├── drizzle/                 # Raw SQL migrations (the snake_case source of truth)
+│   ├── meta/_journal.json   # Drizzle's manifest — one entry per migration
+│   └── 00NN_*.sql           # Numbered, append-only. NEVER edit a committed one
+│                            # except for idempotency tweaks (ADD COLUMN IF NOT EXISTS).
+├── seeds/                   # Data-only seeds (movements, archetypes, …)
+├── scripts/                 # One-off ops helpers (e.g. tracking resync)
+├── sync-migrations-tracking.sql   # Backfill rows for __drizzle_migrations
+└── drizzle.config.ts        # drizzle-kit config (reads DATABASE_URL)
+```
+
+## Day-to-day commands
+
+```bash
+pnpm --filter @hta/db db:generate   # diff schema → emit a new 00NN_*.sql
+pnpm --filter @hta/db db:migrate    # apply pending migrations to DATABASE_URL
+pnpm --filter @hta/db db:studio     # open drizzle-studio against DATABASE_URL
+pnpm --filter @hta/db db:seed       # idempotent data seeds
+```
+
+## Schema discipline (plan §6.8)
+
+Before adding a top-level column, answer:
+
+1. What removes it?
+2. Is it observable from outside the engine?
+
+If both answers are "no", put it in a `definition` / `metadata` JSONB blob
+and skip the migration entirely. ADR required for any new top-level column.
+
+## Migration runbook
+
+### Normal path
+
+1. Edit the Drizzle schema under `src/schema/`.
+2. Run `pnpm --filter @hta/db db:generate` — produces the next-numbered SQL
+   file in `drizzle/` and appends to `meta/_journal.json`.
+3. Inspect the generated SQL. Add `IF NOT EXISTS` / `WHERE NOT EXISTS`
+   guards if the change is not purely additive — defense in depth against
+   accidental re-runs.
+4. Run `pnpm --filter @hta/db db:migrate` against your local Supabase /
+   the staging DB.
+5. Commit the schema change + the new SQL file + the journal update
+   together in one PR.
+
+### Out-of-band path (Supabase dashboard) — discouraged
+
+Sometimes — usually for emergency hotfixes — a migration is run by hand
+in the Supabase SQL editor instead of through `drizzle-kit migrate`.
+When that happens, `drizzle.__drizzle_migrations` doesn't get the row
+that `drizzle-kit migrate` would have written, and the next normal
+migrate run will try to re-apply the SQL from scratch.
+
+To re-sync the tracking table:
+
+1. Make sure the migration file is committed to `drizzle/` with **the
+   exact SQL you ran in the dashboard**. Wrap every statement in
+   `IF NOT EXISTS` / `WHERE NOT EXISTS` so the file is safe to re-run.
+2. Add the matching journal entry to `meta/_journal.json` (drizzle-kit
+   `migrate` only sees migrations it knows about via the journal).
+3. Regenerate `sync-migrations-tracking.sql` to include the new tag:
+   ```bash
+   pnpm --filter @hta/db tsx scripts/sync-migrations-tracking.ts --write
+   ```
+   The script hashes each migration file with **LF-normalized** content
+   so the output matches what drizzle-kit will compute on Linux/CI. If
+   your local checkout has CRLF endings the hash will still match
+   because the script normalizes before hashing.
+4. Apply the SQL against the affected DB(s):
+   ```bash
+   psql "$DATABASE_URL" -f packages/db/sync-migrations-tracking.sql
+   # …or paste it into the Supabase SQL editor
+   ```
+   The script uses `WHERE NOT EXISTS (… WHERE hash = …)` so it's safe
+   to re-run; it only inserts rows for migrations not already tracked.
+5. Confirm `drizzle-kit migrate` reports "nothing to apply" against the
+   freshly-synced DB before merging anything that depends on the new
+   migration.
+
+### Why the helper script exists
+
+Drizzle's tracking table stores `sha256(<file contents>)` in hex. That
+hash is line-ending-sensitive: the same file checked out on Windows
+(CRLF) and Linux (LF) hashes differently. To avoid OS drift between
+contributors, `scripts/sync-migrations-tracking.ts` normalizes file
+content to LF before hashing — matching the canonical Linux/CI form.
+If you ever need the raw on-disk hash (e.g. for debugging an existing
+tracking row), use:
+
+```ts
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+console.log(createHash("sha256").update(readFileSync(path)).digest("hex"));
+```
+
+## Testing
+
+```bash
+pnpm --filter @hta/db test           # vitest (currently --passWithNoTests)
+pnpm --filter @hta/db typecheck      # tsc --noEmit
+```
+
+The DB integration tests (`integration-tests/*.mjs`) require a live
+Postgres + `DATABASE_URL`; they're run separately in CI against a
+disposable Supabase project, not on every `pnpm test`.

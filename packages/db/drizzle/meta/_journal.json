@@ -110,8 +110,71 @@
     {
       "idx": 15,
       "version": "7",
-      "when": 1779420000000,
       "tag": "0015_tm_history",
+      "when": 1779420000000,
+      "breakpoints": false
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "tag": "0016_strava_integration",
+      "when": 1779480000000,
+      "breakpoints": false
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "tag": "0017_events",
+      "when": 1779486000000,
+      "breakpoints": false
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "tag": "0018_accessory_roles",
+      "when": 1779492000000,
+      "breakpoints": false
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "tag": "0019_tag_accessory_roles",
+      "when": 1779498000000,
+      "breakpoints": false
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "tag": "0020_block_day_index_overrides",
+      "when": 1779504000000,
+      "breakpoints": false
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "tag": "0021_training_experience",
+      "when": 1779510000000,
+      "breakpoints": false
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "tag": "0022_power_emphasis",
+      "when": 1779516000000,
+      "breakpoints": false
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "tag": "0023_power_movement_tagging",
+      "when": 1779522000000,
+      "breakpoints": false
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "tag": "0024_power_movements_seed",
+      "when": 1779528000000,
       "breakpoints": false
     }
   ]
