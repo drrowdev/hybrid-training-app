@@ -45,6 +45,7 @@ import {
 import type { Bucket } from "@hta/domain";
 import { todayYmd as todayYmdFn, addDaysToYmd, isoWeekdayYmd } from "@/lib/dates";
 import { getWeeklyRecoveryRollup } from "@/lib/engine/recovered-weeks";
+import { deriveRegionFreshnessLive } from "@/lib/stats/region-state-snapshot";
 
 const REGION_LABELS: Record<Region, string> = {
   foot_ankle_calf: "Calves & feet",
@@ -315,128 +316,110 @@ const HISTORY_LOOKBACK_DAYS = 35;
 const HISTORY_WINDOW_DAYS = 14;
 
 /**
- * Per-region 14-day freshness history derived from set_logs.
+ * Per-region 14-day freshness history — cache-backed.
  *
- * The engine persists only the *current* ATL/CTL per region in
- * `region_state` (DC-C14). To draw a 14-day timeline we re-walk the
- * last 35 days of completed-session set data and apply the EWMA
- * recurrence day-by-day, then slice the last 14 entries. Cost is the
- * same order as `region-ledger.recomputeRegionState`, bounded by the
- * lookback window.
+ * Reads the last 14 rows per region from `region_state_history`, the
+ * daily snapshot table written by the 03:00 UTC cron at
+ * `/api/cron/region-state-snapshot`.
+ *
+ * ## Today fallback
+ *
+ * The cron runs once a day, so for any visit between 00:00 UTC and the
+ * 03:00 UTC cron the row for "today" hasn't been written yet. We don't
+ * want to show stale data ("freshness as of midnight") to the user —
+ * so the read path falls back to computing today's value live via
+ * `deriveRegionFreshnessLive` (the same derivation the cron uses) and
+ * either appends it as a 15th point or replaces today's already-
+ * snapshotted point. The user always sees up-to-the-minute current
+ * freshness; the strip background remains the cached series.
+ *
+ * The live derivation also supplies the `setCounts` / `lastLoadDate`
+ * because those are "current" by definition — we don't render a
+ * historical version of them.
+ *
+ * If no cached rows exist for a region (cron never ran, or backfill
+ * hasn't been done) AND no live data exists, the region is omitted —
+ * matching the previous behaviour.
  */
 export async function getRegionFreshnessDetail(
   supabase: SupabaseClient,
   userId: string,
   tz: string,
 ): Promise<RegionFreshnessDetail[]> {
-  const sinceIso = new Date(Date.now() - HISTORY_LOOKBACK_DAYS * 86_400_000).toISOString();
-
-  const [{ data: regionStateRows }, { data: sessions }] = await Promise.all([
-    supabase
-      .from("region_state")
-      .select("region, atl, ctl, baseline_tolerance, last_load_date")
-      .eq("user_id", userId),
-    supabase
-      .from("sessions")
-      .select("id, performed_at")
-      .eq("user_id", userId)
-      .not("completed_at", "is", null)
-      .is("deleted_at", null)
-      .gte("performed_at", sinceIso)
-      .order("performed_at", { ascending: true }),
-  ]);
-
-  const baselineByRegion = new Map<Region, number>();
-  const lastLoadByRegion = new Map<Region, string | null>();
-  for (const r of regionStateRows ?? []) {
-    baselineByRegion.set(r.region as Region, Number(r.baseline_tolerance ?? 0));
-    lastLoadByRegion.set(r.region as Region, (r.last_load_date as string | null) ?? null);
-  }
-
-  // Per-day per-region load series.
-  const dailyByRegion: Record<Region, Map<string, number>> = Object.fromEntries(
-    ALL_REGIONS.map((r) => [r, new Map<string, number>()]),
-  ) as Record<Region, Map<string, number>>;
-
-  if (sessions && sessions.length > 0) {
-    const sessionIds = sessions.map((s) => s.id);
-    const performedAtById = new Map(sessions.map((s) => [s.id, s.performed_at as string]));
-    const { data: sets } = await supabase
-      .from("set_logs")
-      .select(
-        "session_id, weight_kg, reps, rpe, set_kind, movement:movements(primary_region, secondary_regions)",
-      )
-      .in("session_id", sessionIds)
-      .not("reps", "is", null)
-      .gt("reps", 0);
-
-    for (const row of sets ?? []) {
-      if (row.set_kind === "warmup") continue;
-      const performedAt = performedAtById.get(row.session_id);
-      if (!performedAt) continue;
-      const date = performedAt.slice(0, 10);
-      const movement = normaliseMovement(row.movement);
-      if (!movement) continue;
-      const reps = Number(row.reps);
-      const weight = Number(row.weight_kg ?? 0);
-      const rpe = row.rpe == null ? 7 : Number(row.rpe);
-      if (reps <= 0 || weight <= 0) continue;
-      // Approximate per-set kg-load = reps × weight × rpe-factor; same
-      // shape as region-ledger so the EWMA scale lines up.
-      const setLoad = reps * weight * Math.max(0.3, Math.min(1.0, rpe / 10));
-      const primary = movement.primary_region as Region;
-      if (ALL_REGIONS.includes(primary)) {
-        const prev = dailyByRegion[primary].get(date) ?? 0;
-        dailyByRegion[primary].set(date, prev + setLoad);
-      }
-      if (Array.isArray(movement.secondary_regions)) {
-        for (const r of movement.secondary_regions as string[]) {
-          const region = r as Region;
-          if (ALL_REGIONS.includes(region)) {
-            const prev = dailyByRegion[region].get(date) ?? 0;
-            dailyByRegion[region].set(date, prev + setLoad * 0.5);
-          }
-        }
-      }
-    }
-  }
-
-  // Walk the calendar and emit a 14-day freshness history per region.
   const today = todayYmdFn(tz);
   const windowStart = addDaysToYmd(today, -(HISTORY_WINDOW_DAYS - 1));
 
+  const { data: historyRows } = await supabase
+    .from("region_state_history")
+    .select("region, snapshot_date, freshness_score, context")
+    .eq("user_id", userId)
+    .gte("snapshot_date", windowStart)
+    .lte("snapshot_date", today)
+    .order("snapshot_date", { ascending: true });
+
+  const cachedByRegion = new Map<Region, Array<{ date: string; freshness: number; context: unknown }>>();
+  for (const r of historyRows ?? []) {
+    const region = r.region as Region;
+    if (!ALL_REGIONS.includes(region)) continue;
+    const arr = cachedByRegion.get(region) ?? [];
+    arr.push({
+      date: r.snapshot_date as string,
+      freshness: Number(r.freshness_score),
+      context: r.context,
+    });
+    cachedByRegion.set(region, arr);
+  }
+
+  // Always pull live for today — cheap (already bounded by 35-day
+  // lookback) and guarantees the "today" column reflects the user's
+  // most-recent log without waiting for the cron. Also used as the
+  // source of truth for setCounts / lastLoadDate.
+  const live = await deriveRegionFreshnessLive(supabase, userId, tz);
+
   const out: RegionFreshnessDetail[] = [];
   for (const region of ALL_REGIONS) {
-    const series = dailyByRegion[region];
-    const baseline = baselineByRegion.get(region) ?? 0;
-    if (baseline <= 0 && series.size === 0) {
-      // Empty — skip the region from output. The page renders an
-      // "untouched" badge in this case.
-      continue;
-    }
-    // Apply EWMA across the full lookback window so the windowStart
-    // value isn't biased by missing earlier history.
-    let atl = 0;
-    const history: number[] = [];
-    const start = new Date(Date.now() - HISTORY_LOOKBACK_DAYS * 86_400_000)
-      .toISOString()
-      .slice(0, 10);
-    for (let cursor = start; cursor <= today; cursor = addDaysToYmd(cursor, 1)) {
-      const load = series.get(cursor) ?? 0;
-      atl = ewmaStep(atl, load, 7);
-      if (cursor >= windowStart) {
-        history.push(computeRegionFreshness(atl, baseline > 0 ? baseline : Math.max(atl, 1)));
-      }
-    }
-    const currentFreshness = history.length > 0 ? history[history.length - 1]! : 1;
+    const cached = cachedByRegion.get(region) ?? [];
+    const liveRow = live.get(region) ?? null;
+    if (cached.length === 0 && !liveRow) continue;
 
-    // Hard-set counts for the 7d / 14d / 28d windows.
-    const setCounts = countSetsInWindows(series, today);
+    const history: number[] = cached.map((c) => c.freshness);
+    let currentFreshness: number;
+    let lastLoadDate: string | null = null;
+    let setCounts = { d7: 0, d14: 0, d28: 0 };
+
+    if (liveRow) {
+      const last = cached[cached.length - 1];
+      if (!last || last.date !== today) {
+        // Cron hasn't snapshotted today yet — append the live value.
+        history.push(liveRow.freshness);
+      } else {
+        // Today is already snapshotted; the live value is fresher
+        // (the user may have logged a set since 03:00 UTC).
+        history[history.length - 1] = liveRow.freshness;
+      }
+      currentFreshness = liveRow.freshness;
+      lastLoadDate = liveRow.lastLoadDate;
+      setCounts = liveRow.setCounts;
+    } else {
+      // No live data for this region — fall back entirely to cache.
+      const last = cached[cached.length - 1]!;
+      currentFreshness = last.freshness;
+      const ctx = (last.context as Record<string, unknown> | null) ?? null;
+      lastLoadDate = (ctx?.last_hit_date as string | null) ?? null;
+      setCounts = {
+        d7: Number(ctx?.sets_7d ?? 0),
+        d14: Number(ctx?.sets_14d ?? 0),
+        d28: Number(ctx?.sets_28d ?? 0),
+      };
+    }
+
+    if (history.length === 0) continue;
+
     out.push({
       region,
       label: REGION_LABELS[region] ?? region,
       currentFreshness,
-      lastLoadDate: lastLoadByRegion.get(region) ?? null,
+      lastLoadDate,
       history,
       setCounts,
     });
@@ -444,42 +427,6 @@ export async function getRegionFreshnessDetail(
 
   out.sort((a, b) => a.currentFreshness - b.currentFreshness);
   return out;
-}
-
-function countSetsInWindows(
-  series: Map<string, number>,
-  today: string,
-): { d7: number; d14: number; d28: number } {
-  // The series stores load magnitude per day, not set count. We
-  // approximate "sets accumulated" via the *number of days with any
-  // load* (proxy useful for the user-facing 7d/14d/28d label).
-  // Cheaper than re-querying set_logs.
-  let d7 = 0;
-  let d14 = 0;
-  let d28 = 0;
-  for (const [date, load] of series) {
-    if (load <= 0) continue;
-    const diff = daysSinceYmd(date, today);
-    if (diff < 0) continue;
-    if (diff < 7) d7++;
-    if (diff < 14) d14++;
-    if (diff < 28) d28++;
-  }
-  return { d7, d14, d28 };
-}
-
-type MovementRefs = {
-  primary_region: string;
-  secondary_regions: unknown;
-};
-
-function normaliseMovement(m: unknown): MovementRefs | null {
-  if (!m) return null;
-  if (Array.isArray(m)) {
-    const first = m[0];
-    return (first as MovementRefs) ?? null;
-  }
-  return m as MovementRefs;
 }
 
 // ───────────────────────────────────────────────────────────────────
