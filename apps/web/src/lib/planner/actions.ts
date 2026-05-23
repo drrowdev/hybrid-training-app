@@ -503,6 +503,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
 
   revalidatePath("/app");
   revalidatePath("/app/plan");
+  revalidatePath("/app/stats");
   return { ok: true };
 }
 
@@ -767,6 +768,7 @@ export async function deleteBlock(
   revalidatePath("/app");
   revalidatePath("/app/plan");
   revalidatePath("/app/plan/history");
+  revalidatePath("/app/stats");
   revalidatePath("/app/settings/trash");
   return { ok: true, blockId: parsed.data.id };
 }
@@ -792,6 +794,7 @@ export async function restoreBlock(
   revalidatePath("/app");
   revalidatePath("/app/plan");
   revalidatePath("/app/plan/history");
+  revalidatePath("/app/stats");
   revalidatePath("/app/settings/trash");
   return { ok: true };
 }
@@ -822,6 +825,7 @@ export async function permanentlyDeleteBlock(
   revalidatePath("/app");
   revalidatePath("/app/plan");
   revalidatePath("/app/plan/history");
+  revalidatePath("/app/stats");
   revalidatePath("/app/settings/trash");
   return { ok: true };
 }
