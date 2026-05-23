@@ -10,6 +10,7 @@
  * least that distance. Per-activity splits will refine this later.
  */
 import { EmptyState } from "@/components/ui/EmptyState";
+import { MetricHelp } from "@/components/ui/MetricHelp";
 import {
   formatDelta,
   formatDuration,
@@ -130,6 +131,7 @@ export function PacePRsCard({ state }: PacePRsCardProps) {
           }}
         >
           Pace PRs
+          <MetricHelp term="pace_pr" />
         </div>
         <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 2 }}>
           Best time per distance · current 12 months vs the previous 12

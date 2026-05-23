@@ -51,6 +51,7 @@ import {
 import { Sparkline } from "@/components/stats/charts/Sparkline";
 import { MiniBars } from "@/components/stats/charts/MiniBars";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { MetricHelp } from "@/components/ui/MetricHelp";
 
 export const dynamic = "force-dynamic";
 
@@ -291,7 +292,7 @@ function AdherenceCard({ data, range }: { data: AdherenceResult; range: Range })
       data-empty={data.scheduled === 0 ? "true" : "false"}
       style={{ padding: 16, display: "grid", gap: 6 }}
     >
-      <CardTitle title="Adherence" subtitle={subtitle} />
+      <CardTitle title="Adherence" subtitle={subtitle} helpTerm="adherence" />
       {data.scheduled === 0 ? (
         <EmptyState
           variant="inline"
@@ -397,6 +398,7 @@ function FreshnessCard({ rows }: { rows: FreshnessMiniRow[] }) {
       <CardTitle
         title="Region freshness"
         subtitle="right now"
+        helpTerm="region_freshness"
         right={
           <Link
             href="/app/stats/engine"
@@ -467,6 +469,7 @@ function VolumeCard({ data, units, range }: { data: VolumeRangeResult; units: We
       <CardTitle
         title="Volume"
         subtitle={subtitle}
+        helpTerm="weekly_tonnage"
         right={
           <Link
             href="/app/stats#movements"
@@ -513,7 +516,7 @@ function BodyweightCard({ data, units }: { data: BodyweightTrend; units: WeightU
         data-empty="true"
         style={{ padding: 16, display: "grid", gap: 8 }}
       >
-        <CardTitle title="Bodyweight" subtitle={`${unit} · 30 d trend`} />
+        <CardTitle title="Bodyweight" subtitle={`${unit} · 30 d trend`} helpTerm="bodyweight_trend" />
         <EmptyState
           variant="inline"
           title="No bodyweight logged"
@@ -538,7 +541,7 @@ function BodyweightCard({ data, units }: { data: BodyweightTrend; units: WeightU
       data-testid="stats-card-bodyweight"
       style={{ padding: 16, display: "grid", gap: 8 }}
     >
-      <CardTitle title="Bodyweight" subtitle={`${unit} · 30 d trend`} />
+      <CardTitle title="Bodyweight" subtitle={`${unit} · 30 d trend`} helpTerm="bodyweight_trend" />
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
         <span style={{ fontSize: 22, fontWeight: 600 }}>
           {round1(latest)} {unit}
@@ -633,16 +636,19 @@ function CardTitle({
   title,
   subtitle,
   right,
+  helpTerm,
 }: {
   title: string;
   subtitle?: string;
   right?: React.ReactNode;
+  helpTerm?: string;
 }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
       <div>
         <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
           {title}
+          {helpTerm != null && <MetricHelp term={helpTerm} />}
         </div>
         {subtitle && (
           <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 2 }}>{subtitle}</div>

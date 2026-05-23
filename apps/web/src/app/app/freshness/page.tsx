@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
 import { MuscleGrid16 } from "@/components/muscle-grid/MuscleGrid16";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { MetricHelp } from "@/components/ui/MetricHelp";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +44,7 @@ export default async function FreshnessPage() {
         </Link>
         <h1 style={{ fontSize: 28, margin: "8px 0 0", letterSpacing: "-0.01em" }}>
           Muscle freshness
+          <MetricHelp term="muscle_freshness" />
         </h1>
         <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
           16-muscle resolution. Green ≥ 4 days fresh · yellow 2–3 days

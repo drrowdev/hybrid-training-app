@@ -46,6 +46,7 @@ import { PacePRsCard } from "@/components/cardio/PacePRsCard";
 import { getRunPlanAdherence } from "@/lib/stats/run-plan-adherence";
 import { getHrZones } from "@/lib/stats/hr-zones";
 import { getPacePrs } from "@/lib/stats/pace-prs";
+import { MetricHelp } from "@/components/ui/MetricHelp";
 
 export const dynamic = "force-dynamic";
 
@@ -221,6 +222,7 @@ function WeeklyCard({ weeks, range }: { weeks: WeekBucket[]; range: AdherenceRan
         <CardTitle
           title="Sessions completed vs planned"
           subtitle="Skipped sessions count as missed"
+          helpTerm="adherence"
         />
         <EmptyText>Build a block to see adherence trends</EmptyText>
       </Card>
@@ -244,6 +246,7 @@ function WeeklyCard({ weeks, range }: { weeks: WeekBucket[]; range: AdherenceRan
         title="Sessions completed vs planned"
         subtitle={subtitle}
         tooltip="Skipped sessions count as missed: the user explicitly chose not to do the planned session, so it's a deviation from the plan — not a neutral 'didn't happen'."
+        helpTerm="adherence"
       />
       <div style={{ display: "flex", gap: 12, alignItems: "stretch", flexWrap: "wrap" }}>
         <div
@@ -702,6 +705,7 @@ function StreaksCard({
       <CardTitle
         title="Streaks"
         subtitle="Logged sessions and rest days count. Skips break the streak."
+        helpTerm="streak"
       />
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
         <div style={{ display: "grid", gap: 2 }}>
@@ -773,10 +777,12 @@ function CardTitle({
   title,
   subtitle,
   tooltip,
+  helpTerm,
 }: {
   title: string;
   subtitle?: string;
   tooltip?: string;
+  helpTerm?: string;
 }) {
   return (
     <div>
@@ -789,6 +795,7 @@ function CardTitle({
         }}
       >
         {title}
+        {helpTerm != null && <MetricHelp term={helpTerm} />}
       </div>
       {subtitle && (
         <div
