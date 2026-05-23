@@ -28,6 +28,7 @@ vi.mock("@/lib/supabase/server", () => ({
         if (col === "user_id") captured.eq = { col, val };
         return builder;
       }),
+      is: vi.fn().mockReturnValue(builder),
       order: vi.fn((col: string, opts: { ascending: boolean }) => {
         captured.order = { col, opts };
         return builder;
