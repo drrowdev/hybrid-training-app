@@ -24,6 +24,7 @@ import { computeTaperRecommendation, type TaperRecommendation } from "@/lib/plan
 import { BodyweightNudge } from "@/components/today/BodyweightNudge";
 import { HowRecoveredCard } from "@/components/today/HowRecoveredCard";
 import { DataRail } from "@/components/today/DataRail";
+import { EmptyState } from "@/components/ui/EmptyState";
 import type { WeekDayCell } from "@/components/today/WeekDotsCard";
 import { recordDailyCheckIn } from "@/lib/wellness/actions";
 import { listTrainingMaxes } from "@/lib/training-maxes/queries";
@@ -373,10 +374,12 @@ export default async function TodayPage() {
             <Link href="/app/plan" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>full plan →</Link>
           </div>
           {upcoming.length === 0 ? (
-            <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: 0 }}>
-              No upcoming sessions on the schedule.{" "}
-              <Link href="/app/plan" style={{ color: "var(--cp-link)" }}>Start a block</Link> to populate this.
-            </p>
+            <EmptyState
+              variant="inline"
+              title="No plan yet"
+              body="Start a block and your upcoming sessions appear here. Pick an archetype that matches your current goal."
+              action={{ label: "Start a block →", href: "/app/plan" }}
+            />
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(140px, 1fr))`, gap: 8 }}>
               {upcoming.map((u) => (
@@ -460,9 +463,11 @@ function ActivitySection({
           <h2 style={{ fontSize: 16, margin: 0 }}>Recent activity</h2>
           <Link href="/app/sessions" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>View all →</Link>
         </div>
-        <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: 0 }}>
-          Nothing logged yet. Your first session will appear here.
-        </p>
+        <EmptyState
+          variant="inline"
+          title="No sessions yet"
+          body="Sessions you log or import from Strava appear here, grouped by date."
+        />
       </section>
     );
   }
