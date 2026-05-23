@@ -38,6 +38,7 @@ import {
   type WeekdayBucket,
   type WeekdayBuckets,
 } from "@/lib/stats/adherence-detail";
+import type { WeekdayOverrideSummary } from "@/lib/engine/overrides";
 import { StackedBars } from "@/components/stats/charts/StackedBars";
 
 export const dynamic = "force-dynamic";
@@ -97,7 +98,10 @@ export default async function StatsAdherencePage({
           gap: 12,
         }}
       >
-        <WeekdayCard weekday={dashboard.weekday} />
+        <WeekdayCard
+          weekday={dashboard.weekday}
+          overrides={dashboard.overridesByWeekday}
+        />
         <ArchetypeCard rows={dashboard.archetypes} />
         <StreaksCard streaks={dashboard.streaks} totalPlanned={dashboard.totalPlanned} />
       </div>
@@ -296,7 +300,13 @@ function WeeklyCard({ weeks, range }: { weeks: WeekBucket[]; range: AdherenceRan
 // A2 — Weekday breakdown
 // ──────────────────────────────────────────────────────────────────────
 
-function WeekdayCard({ weekday }: { weekday: WeekdayBuckets }) {
+function WeekdayCard({
+  weekday,
+  overrides,
+}: {
+  weekday: WeekdayBuckets;
+  overrides: WeekdayOverrideSummary[];
+}) {
   const cols: WeekdayBucket[] = [
     weekday.mon,
     weekday.tue,
@@ -306,6 +316,9 @@ function WeekdayCard({ weekday }: { weekday: WeekdayBuckets }) {
     weekday.sat,
     weekday.sun,
   ];
+  // ISO weekday Mon=1..Sun=7 → align to cols index 0..6.
+  const overrideByIndex = new Map<number, WeekdayOverrideSummary>();
+  for (const o of overrides) overrideByIndex.set(o.weekday - 1, o);
   if (weekday.totalPlanned === 0 || weekday.rangeWeeks < 4) {
     return (
       <Card testId="stats-adherence-weekday" empty>
@@ -334,13 +347,15 @@ function WeekdayCard({ weekday }: { weekday: WeekdayBuckets }) {
           gap: 4,
         }}
       >
-        {cols.map((col) => {
+        {cols.map((col, idx) => {
           const total = col.logged + col.skipped + col.missed;
+          const overrideCount = overrideByIndex.get(idx)?.totalCount ?? 0;
           return (
             <div
               key={col.weekdayIndex}
               data-testid="stats-adherence-weekday-cell"
               data-weekday={col.weekdayLabel}
+              data-override-count={overrideCount}
               style={{
                 display: "flex",
                 flexDirection: "column",
@@ -370,6 +385,15 @@ function WeekdayCard({ weekday }: { weekday: WeekdayBuckets }) {
               <span style={{ fontSize: 9, color: "var(--cp-text-muted)" }}>
                 {col.logged}/{total}
               </span>
+              {overrideCount > 0 && (
+                <span
+                  style={{ fontSize: 9, color: "var(--cp-text-muted)" }}
+                  title={`${overrideCount} override event${overrideCount === 1 ? "" : "s"} on ${col.weekdayLabel} in this range`}
+                  data-testid="stats-adherence-weekday-overrides"
+                >
+                  · {overrideCount}↯
+                </span>
+              )}
             </div>
           );
         })}
