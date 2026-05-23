@@ -38,6 +38,7 @@ import { MiniLine } from "@/components/stats/charts/MiniLine";
 import { MiniBars } from "@/components/stats/charts/MiniBars";
 import { Sparkline } from "@/components/stats/charts/Sparkline";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { MetricHelp } from "@/components/ui/MetricHelp";
 
 export const dynamic = "force-dynamic";
 
@@ -229,7 +230,10 @@ function MainLiftCard({
       style={{ padding: 14, display: "grid", gap: 8 }}
     >
       <div>
-        <div style={{ fontSize: 14, fontWeight: 600 }}>{MAIN_LIFT_LABEL[lift.role]}</div>
+        <div style={{ fontSize: 14, fontWeight: 600 }}>
+          {MAIN_LIFT_LABEL[lift.role]}
+          <MetricHelp term="e1rm" />
+        </div>
         <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
           {lift.movementDisplayName} · {weekRange}
         </div>
@@ -286,7 +290,7 @@ function AdherenceSection({ adherence }: { adherence: BlockAdherence }): ReactEl
       data-testid="stats-block-adherence"
       style={{ padding: 16, display: "grid", gap: 10 }}
     >
-      <SectionTitle title="Adherence" />
+      <SectionTitle title="Adherence" helpTerm="adherence" />
       <div style={{ fontSize: 14 }}>
         <strong data-testid="stats-block-adherence-summary">
           {adherence.completed} of {adherence.scheduled} sessions logged
@@ -377,7 +381,7 @@ function RpeCreepSection({ rows }: { rows: BlockRpeCreepRow[] }): ReactElement {
   if (rows.length === 0) {
     return (
       <section className="cp-card" data-testid="stats-block-rpe-creep-empty" style={{ padding: 16 }}>
-        <SectionTitle title="RPE creep" />
+        <SectionTitle title="RPE creep" helpTerm="rpe_creep" />
         <EmptyState
           variant="inline"
           title="No RPE logged"
@@ -392,7 +396,7 @@ function RpeCreepSection({ rows }: { rows: BlockRpeCreepRow[] }): ReactElement {
       data-testid="stats-block-rpe-creep"
       style={{ padding: 16, display: "grid", gap: 10 }}
     >
-      <SectionTitle title="RPE creep" />
+      <SectionTitle title="RPE creep" helpTerm="rpe_creep" />
       <div
         style={{
           display: "grid",
@@ -546,18 +550,21 @@ function WellnessSection({
           label="Avg motivation"
           value={wellness.motivationAvg == null ? "—" : `${wellness.motivationAvg.toFixed(1)} / 5`}
           series={wellness.motivationSeries}
+          helpTerm="motivation_score"
         />
         <WellnessTile
           testid="stats-block-wellness-fatigue"
           label="Avg fatigue"
           value={wellness.fatigueAvg == null ? "—" : `${wellness.fatigueAvg.toFixed(1)} / 5`}
           series={wellness.fatigueSeries}
+          helpTerm="fatigue_score"
         />
         <WellnessTile
           testid="stats-block-wellness-soreness"
           label="Avg soreness"
           value={wellness.sorenessAvg == null ? "—" : `${wellness.sorenessAvg.toFixed(1)} / 5`}
           series={wellness.sorenessSeries}
+          helpTerm="soreness_score"
         />
       </div>
     </section>
@@ -569,11 +576,13 @@ function WellnessTile({
   label,
   value,
   series,
+  helpTerm,
 }: {
   testid: string;
   label: string;
   value: string;
   series: Array<number | null>;
+  helpTerm?: string;
 }): ReactElement {
   return (
     <div
@@ -595,6 +604,7 @@ function WellnessTile({
         }}
       >
         {label}
+        {helpTerm != null && <MetricHelp term={helpTerm} />}
       </div>
       <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2 }}>{value}</div>
       <Sparkline
@@ -790,7 +800,7 @@ function ComparisonView({
         data-testid="stats-block-compare-adherence"
         style={{ padding: 16, display: "grid", gap: 8 }}
       >
-        <SectionTitle title="Adherence" />
+        <SectionTitle title="Adherence" helpTerm="adherence" />
         <CompareScalar
           aLabel={a.block.archetypeName}
           aValue={`${a.adherence.completed} / ${a.adherence.scheduled}`}
@@ -929,7 +939,7 @@ function Side({
 // Shared bits
 // ──────────────────────────────────────────────────────────────────────
 
-function SectionTitle({ title }: { title: string }): ReactElement {
+function SectionTitle({ title, helpTerm }: { title: string; helpTerm?: string }): ReactElement {
   return (
     <div
       style={{
@@ -941,6 +951,7 @@ function SectionTitle({ title }: { title: string }): ReactElement {
       }}
     >
       {title}
+      {helpTerm != null && <MetricHelp term={helpTerm} />}
     </div>
   );
 }

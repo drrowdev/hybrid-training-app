@@ -11,6 +11,7 @@
  * comparison.
  */
 import { EmptyState } from "@/components/ui/EmptyState";
+import { MetricHelp } from "@/components/ui/MetricHelp";
 import type { HrZoneState, Zone, ZoneTotals } from "@/lib/stats/hr-zones";
 
 export type HrZonesCardProps = {
@@ -86,6 +87,7 @@ export function HrZonesCard({ state }: HrZonesCardProps) {
           }}
         >
           Time in HR zones
+          <MetricHelp term="hr_zones" />
         </div>
         <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 2 }}>
           Last {Math.round(state.windowDays / 7)} weeks · {state.activityCount} HR-tagged session
@@ -162,6 +164,7 @@ export function HrZonesCard({ state }: HrZonesCardProps) {
 
       <footer style={{ fontSize: 11, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
         Seiler 2010 polarised model targets ~80% Z1–Z2 + ~20% Z4–Z5, minimising Z3.
+        <MetricHelp term="polarised_distribution" />
         {" "}
         <span style={{ fontStyle: "italic" }}>
           Approximated from session average HR; per-second streams will refine this when available.
