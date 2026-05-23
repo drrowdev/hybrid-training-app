@@ -214,6 +214,18 @@ function RegionFreshnessCard({ regions }: { regions: RegionFreshnessDetail[] }) 
           ))}
         </div>
       )}
+      {!empty && (
+        <p
+          data-testid="stats-engine-regions-footnote"
+          style={{
+            margin: "12px 0 0",
+            fontSize: 11,
+            color: "var(--cp-text-muted)",
+          }}
+        >
+          Updated daily at 03:00 UTC · today&apos;s value is live
+        </p>
+      )}
     </section>
   );
 }

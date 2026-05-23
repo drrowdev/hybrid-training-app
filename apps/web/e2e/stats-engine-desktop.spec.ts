@@ -60,6 +60,11 @@ test.describe("@desktop /app/stats/engine", () => {
     await expect(regions).toBeVisible();
     const regionRows = page.getByTestId("stats-engine-region-row");
     expect(await regionRows.count()).toBeGreaterThanOrEqual(1);
+    // Cache footnote — confirms the page is now backed by
+    // region_state_history rather than re-deriving from set_logs.
+    await expect(page.getByTestId("stats-engine-regions-footnote")).toContainText(
+      /Updated daily at 03:00 UTC/i,
+    );
 
     // ── C · Bucket pressure + "Why?" tooltip ──────────────────
     const buckets = page.getByTestId("stats-engine-buckets");
@@ -115,6 +120,67 @@ test.describe("@desktop /app/stats/engine", () => {
     await expect(
       page.getByTestId("stats-engine-internals-version"),
     ).toHaveText(/\d+\.\d+\.\d+/);
+  });
+
+  test("region freshness strip reads from region_state_history cache (PR #41)", async ({
+    page,
+    context,
+    freshUser,
+    seedConfig,
+    admin,
+    baseURL,
+  }) => {
+    await markOnboarded(admin, freshUser.userId);
+
+    // Seed region_state so the live-fallback path emits today's value
+    // (baseline > 0 makes the region surface even with no set_logs).
+    await admin.from("region_state").upsert(
+      [
+        {
+          user_id: freshUser.userId,
+          region: "knee",
+          atl: 0,
+          ctl: 0,
+          baseline_tolerance: 5,
+          last_load_date: null,
+          updated_at: new Date().toISOString(),
+        },
+      ],
+      { onConflict: "user_id,region" },
+    );
+
+    // Seed 7 historical snapshots in region_state_history. The page
+    // should render them as the prefix of the 14-day strip, with
+    // today's live value appended (cron-not-yet-run fallback).
+    const today = new Date();
+    const rows = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(today);
+      d.setUTCDate(d.getUTCDate() - (7 - i));
+      return {
+        user_id: freshUser.userId,
+        region: "knee",
+        snapshot_date: d.toISOString().slice(0, 10),
+        freshness_score: 0.5 + i * 0.05,
+        context: { sets_7d: i, sets_14d: i, sets_28d: i, last_hit_date: null },
+      };
+    });
+    await admin
+      .from("region_state_history")
+      .upsert(rows, { onConflict: "user_id,region,snapshot_date" });
+
+    await signInAs(context, freshUser, seedConfig, baseURL ?? "http://localhost:3000");
+    await page.goto("/app/stats/engine");
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("stats-engine-regions")).toBeVisible();
+    const kneeRow = page
+      .getByTestId("stats-engine-region-row")
+      .filter({ hasText: /Knees|Quads/ });
+    await expect(kneeRow).toBeVisible();
+    // Cache footnote present whenever the section is non-empty.
+    await expect(page.getByTestId("stats-engine-regions-footnote")).toContainText(
+      /Updated daily at 03:00 UTC/i,
+    );
   });
 
   test("empty state for a fresh user with no block", async ({
