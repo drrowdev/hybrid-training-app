@@ -10,7 +10,6 @@ import {
 import { getRecentBlocks, todayYmd } from "@/lib/planner/queries";
 import { getTrainingMaxContext } from "@/lib/training-maxes/queries";
 import {
-  ARCHETYPE_NAMES,
   PlanNewSwitch,
   type RecentBlockCard,
   type TmReadinessByArchetype,
@@ -70,7 +69,7 @@ export default async function NewBlockPage() {
   const recentBlocks: RecentBlockCard[] = recent.map((b) => ({
     id: b.id,
     archetype: b.archetype,
-    archetypeName: ARCHETYPE_NAMES[b.archetype] ?? b.archetype,
+    archetypeName: b.archetypeName,
     startedOn: b.startedOn,
     daysPerWeek: b.daysPerWeek,
     status: b.status,

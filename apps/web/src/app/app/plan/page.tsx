@@ -49,6 +49,12 @@ export default async function PlanPage({
           <Link href="/app/plan/new" className="cp-btn primary">
             Start a block
           </Link>
+          <Link
+            href="/app/plan/history"
+            style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
+          >
+            View history →
+          </Link>
         </section>
       </div>
     );
@@ -104,6 +110,14 @@ export default async function PlanPage({
           <span className="mono" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
             {completed}/{totalPlanned} done · {skipped} skipped
           </span>
+        </div>
+        <div style={{ marginTop: 6 }}>
+          <Link
+            href="/app/plan/history"
+            style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
+          >
+            View history →
+          </Link>
         </div>
       </header>
 

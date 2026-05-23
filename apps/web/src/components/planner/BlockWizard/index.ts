@@ -1,9 +1,10 @@
 export { BlockWizard } from "./BlockWizard";
 export type {
+  BlockWizardPrefill,
   BlockWizardProps,
   TmGate,
   TmReadinessByArchetype,
   WizardSubmit,
 } from "./BlockWizard";
-export { PlanNewSwitch, ARCHETYPE_NAMES } from "./PlanNewSwitch";
+export { PlanNewSwitch } from "./PlanNewSwitch";
 export type { RecentBlockCard, CreateBlockResult } from "./PlanNewSwitch";
