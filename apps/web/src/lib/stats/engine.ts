@@ -26,6 +26,12 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ENGINE_VERSION } from "@hta/engine";
+import {
+  pickCeilingBase,
+  isRecoveredWeek,
+  type CeilingBaseFormula,
+  type CeilingBasisWeek,
+} from "@hta/engine";
 import { ALL_REGIONS, type Region } from "@hta/domain";
 import { computeRegionFreshness, ewmaStep } from "@hta/domain";
 import { ARCHETYPES, type ArchetypeId } from "@/lib/planner/archetypes";
@@ -38,6 +44,7 @@ import {
 } from "@/lib/engine/bucket-load";
 import type { Bucket } from "@hta/domain";
 import { todayYmd as todayYmdFn, addDaysToYmd, isoWeekdayYmd } from "@/lib/dates";
+import { getWeeklyRecoveryRollup } from "@/lib/engine/recovered-weeks";
 
 const REGION_LABELS: Record<Region, string> = {
   foot_ankle_calf: "Calves & feet",
@@ -653,18 +660,22 @@ function accumulateBuckets(
 }
 
 // ───────────────────────────────────────────────────────────────────
-// D · Ceiling explainer (DC-C11 + DC-C13)
+// D · Ceiling explainer (DC-C9 · DC-C11 · DC-C13 · DC-K1)
 // ───────────────────────────────────────────────────────────────────
 
 export type CeilingExplain = {
-  /** Median dose of the last 3 recovered weeks (DC-C9). MVP proxy: hard sessions/week. */
+  /** Median weekly tonnage (kg) across the last 3 recovered weeks per DC-C9 / DC-K1. */
   baseCeiling: number;
   /** Global recovery multiplier — DC-C5. MVP proxy: 1.0 (no daily wellness inputs). */
   recoveryMultiplier: number;
   /** Confidence bias — DC-C13. */
   confidenceBias: number;
-  /** Final ceiling for the week, in "hard sessions worth of stress". */
+  /** Final ceiling for the week (baseCeiling × GRM × confidenceBias). */
   finalCeiling: number;
+  /** Which weeks (and their volumes) feed the base — for the UI table. */
+  basisWeeks: CeilingBasisWeek[];
+  /** Which DC-K1 / DC-C13 branch produced the base. */
+  formula: CeilingBaseFormula;
   /** Inputs feeding the equation, for the UI explainer panel. */
   inputs: {
     completedSessions28d: number;
@@ -678,6 +689,23 @@ export async function getCeilingExplain(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<CeilingExplain> {
+  // DC-K1: 12-week lookback rolls up to per-week recovery rows.
+  const rollup = await getWeeklyRecoveryRollup(supabase, userId, { weeks: 12 });
+  const recoveredCount = rollup.filter((w) => isRecoveredWeek(w).isRecovered).length;
+
+  // Wire the volume metric (re-used: Σ weight × reps per non-warmup
+  // set, same definition as lib/stats/volume.ts) through to the pure
+  // ceiling-base picker.
+  const volumeByWeek = new Map(rollup.map((w) => [w.weekStart, w.weeklyTonnageKg]));
+  const base = pickCeilingBase(rollup, (ws) => volumeByWeek.get(ws) ?? 0);
+
+  // GRM placeholder — DC-C5 wellness inputs deferred (out of scope
+  // for this PR; tied to sleep which is in walkback).
+  const recoveryMultiplier = 1.0;
+  const finalCeiling = base.baseCeiling * recoveryMultiplier * base.confidenceBias;
+
+  // Headcount of completed sessions in the last 28 days — kept for
+  // backwards-compat with surfaces that still display it.
   const since28d = new Date(Date.now() - 28 * 86_400_000).toISOString();
   const { count: completed28d } = await supabase
     .from("sessions")
@@ -686,46 +714,37 @@ export async function getCeilingExplain(
     .not("completed_at", "is", null)
     .is("deleted_at", null)
     .gte("performed_at", since28d);
-
   const completed = completed28d ?? 0;
-  const weeklyAverage = completed / 4;
-  // Base ceiling = median(last-3-recovered-weeks-dose) per DC-C9. Until
-  // recovered-week tagging lands (DC-K1) we use the 28d average × 1.05
-  // headroom as a conservative proxy and surface that in `notes`.
-  const baseCeiling = Math.max(1, Math.round(weeklyAverage * 1.05));
-
-  // Confidence bias — DC-C13. Data completeness = fraction of last 28
-  // days with at least one completed session OR wellness entry.
   const dataCompleteness = await computeDataCompleteness(supabase, userId);
-  const confidenceBias =
-    dataCompleteness >= 0.8 ? 1.0 : dataCompleteness >= 0.6 ? 0.95 : 0.9;
-
-  // GRM proxy — defaults to 1.0 until DC-C4/DC-C5 wellness inputs land.
-  const recoveryMultiplier = 1.0;
-
-  const finalCeiling = baseCeiling * recoveryMultiplier * confidenceBias;
 
   const notes: string[] = [];
-  if (completed === 0) {
+  if (base.formula === "median_of_recovered") {
     notes.push(
-      "Cold start — no completed sessions in the last 28 days. Ceiling defaults to a conservative floor (DC-C9 cold-start).",
+      `Base = median weekly tonnage across your last 3 recovered weeks (DC-C9 · DC-K1). ${recoveredCount} of last 12 weeks qualified.`,
+    );
+  } else if (base.formula === "cold_start_partial") {
+    notes.push(
+      `Cold start — only ${recoveredCount} recovered week${recoveredCount === 1 ? "" : "s"} in the last 12. Base = median of those, with a 0.80× confidence collapse (DC-C13).`,
+    );
+  } else {
+    notes.push(
+      "Cold start — no fully recovered weeks in the last 12. Base = lowest of the last 4 weeks × 0.9, with a 0.80× confidence collapse (DC-K1 · DC-C13).",
     );
   }
   notes.push(
     "Recovery multiplier = 1.0 — daily wellness inputs (DC-P2/DC-P3) are deferred to a later phase.",
   );
-  notes.push(
-    `Confidence bias = ${confidenceBias.toFixed(2)} (data completeness ${(dataCompleteness * 100).toFixed(0)}%, DC-C13).`,
-  );
 
   return {
-    baseCeiling,
+    baseCeiling: base.baseCeiling,
     recoveryMultiplier,
-    confidenceBias,
+    confidenceBias: base.confidenceBias,
     finalCeiling,
+    basisWeeks: base.basisWeeks,
+    formula: base.formula,
     inputs: {
       completedSessions28d: completed,
-      recoveredWeeksCount: 0,
+      recoveredWeeksCount: recoveredCount,
       dataCompleteness,
       notes,
     },
