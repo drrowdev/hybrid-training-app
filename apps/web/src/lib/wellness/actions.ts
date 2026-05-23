@@ -43,6 +43,8 @@ export async function recordDailyCheckIn(
     date: submittedDate || dateDefault,
     bodyweightKg: formData.get("bodyweightKg") || undefined,
     motivation: formData.get("motivation") || undefined,
+    fatigue: formData.get("fatigue") || undefined,
+    soreness: formData.get("soreness") || undefined,
     notes: formData.get("notes") || undefined,
   });
   if (!parsed.success) {
@@ -78,7 +80,7 @@ export async function persistDailyCheckIn(
   // the health-integration).
   const { data: existing } = await supabase
     .from("wellness")
-    .select("bodyweight_kg, motivation, notes")
+    .select("bodyweight_kg, motivation, fatigue, soreness, notes")
     .eq("user_id", user.id)
     .eq("date", input.date)
     .maybeSingle();
@@ -94,6 +96,14 @@ export async function persistDailyCheckIn(
       cols.motivation !== undefined
         ? cols.motivation
         : existing?.motivation ?? null,
+    fatigue:
+      cols.fatigue !== undefined
+        ? cols.fatigue
+        : existing?.fatigue ?? null,
+    soreness:
+      cols.soreness !== undefined
+        ? cols.soreness
+        : existing?.soreness ?? null,
     notes: cols.notes !== undefined ? cols.notes : existing?.notes ?? null,
   };
 
