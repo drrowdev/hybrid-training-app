@@ -60,7 +60,7 @@ describe("MiniBars", () => {
     expect(bars).toHaveLength(values.length);
   });
 
-  it("renders exactly 7 bars for a week-of-sleep input", () => {
+  it("renders exactly 7 bars for a week-of-values input", () => {
     const week = [7.5, 8.0, 6.5, 7.2, 8.1, 7.8, 7.0];
     const el = MiniBars({ values: week, max: 10 }) as AnyEl;
     const bars = flattenChildren(el).filter(

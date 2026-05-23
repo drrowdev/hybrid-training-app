@@ -11,7 +11,7 @@ import {
  *
  * Pre-condition (seeded directly via service-role admin client):
  *  - one active block + 5 completed planned sessions + 2 skipped
- *  - one bodyweight + one sleep wellness entry
+ *  - one bodyweight wellness entry
  *
  * The spec then signs the user in, lands on /app/stats, asserts every
  * card renders with non-empty data, and clicks each "View / deep dive"
@@ -61,7 +61,7 @@ test.describe("@desktop /app/stats overview", () => {
       if (error) throw new Error(`seed skipped planned: ${error.message}`);
     }
 
-    // Wellness: one bodyweight + one sleep_hours entry.
+    // Wellness: one bodyweight entry.
     {
       const today = new Date().toISOString().slice(0, 10);
       const { error } = await admin
@@ -71,7 +71,6 @@ test.describe("@desktop /app/stats overview", () => {
             user_id: freshUser.userId,
             date: today,
             bodyweight_kg: 82.5,
-            sleep_hours: 7.5,
           },
           { onConflict: "user_id,date" },
         );
@@ -110,11 +109,6 @@ test.describe("@desktop /app/stats overview", () => {
     // ─── D: Region freshness — no logged sessions → empty state ───
     const freshness = page.getByTestId("stats-card-freshness");
     await expect(freshness).toBeVisible();
-
-    // ─── E: Sleep card ─────────────────────────────────────────────
-    const sleep = page.getByTestId("stats-card-sleep");
-    await expect(sleep).toBeVisible();
-    await expect(sleep).toContainText(/7\.5h/);
 
     // ─── F: Volume — no set_logs → empty state but card renders ───
     const volume = page.getByTestId("stats-card-volume");

@@ -8,7 +8,7 @@
  *   B3 adherence        — completed / skipped / weekday breakdown
  *   B4 RPE creep        — per-week avg RPE per role, "creep" flag
  *   B5 power emphasis   — only when the block had power_emphasis=true
- *   B6 wellness         — sleep / motivation / fatigue / soreness
+ *   B6 wellness         — motivation / fatigue / soreness
  *   B7 comparison       — `?compare=<id>` renders side-by-side
  *
  * Every read fans out via `getBlockSummary` / `compareBlocks` which run
@@ -529,7 +529,7 @@ function WellnessSection({
       data-testid="stats-block-wellness"
       style={{ padding: 16, display: "grid", gap: 10 }}
     >
-      <SectionTitle title="Sleep & wellness during the block" />
+      <SectionTitle title="Wellness during the block" />
       <div
         style={{
           display: "grid",
@@ -537,12 +537,6 @@ function WellnessSection({
           gap: 8,
         }}
       >
-        <WellnessTile
-          testid="stats-block-wellness-sleep"
-          label="Avg sleep"
-          value={wellness.sleepHoursAvg == null ? "—" : `${wellness.sleepHoursAvg.toFixed(1)}h`}
-          series={wellness.sleepSeries}
-        />
         <WellnessTile
           testid="stats-block-wellness-motivation"
           label="Avg motivation"
@@ -820,26 +814,6 @@ function ComparisonView({
           bLabel={b.block.archetypeName}
           bValue={`${b.prCount} PRs`}
           aBetter={a.prCount > b.prCount}
-        />
-      </section>
-
-      {/* Sleep avg side-by-side */}
-      <section
-        className="cp-card"
-        data-testid="stats-block-compare-sleep"
-        style={{ padding: 16, display: "grid", gap: 8 }}
-      >
-        <SectionTitle title="Avg sleep" />
-        <CompareScalar
-          aLabel={a.block.archetypeName}
-          aValue={a.wellness.sleepHoursAvg == null ? "—" : `${a.wellness.sleepHoursAvg.toFixed(1)}h`}
-          bLabel={b.block.archetypeName}
-          bValue={b.wellness.sleepHoursAvg == null ? "—" : `${b.wellness.sleepHoursAvg.toFixed(1)}h`}
-          aBetter={
-            a.wellness.sleepHoursAvg != null &&
-            b.wellness.sleepHoursAvg != null &&
-            a.wellness.sleepHoursAvg > b.wellness.sleepHoursAvg
-          }
         />
       </section>
 

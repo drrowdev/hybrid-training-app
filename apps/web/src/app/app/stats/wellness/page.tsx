@@ -1,14 +1,11 @@
 /**
- * /app/stats/wellness — Phase 3 wellness dashboard.
+ * /app/stats/wellness — Wellness dashboard.
  *
- * Five sections, mobile-first stack (2-col on tablet+, 3-col on
- * desktop):
+ * Sections (mobile-first stack, 2-col on tablet+, 3-col on desktop):
  *
  *   A1 Bodyweight — latest value + delta from start of range, daily
  *     line with a thin regression-trend overlay. Unit follows
  *     profile.units (kg/lb).
- *   A2 Sleep — avg hours in range, per-night bars color-coded by
- *     <6/6-7/>=7 buckets, with a centred 7-night rolling-mean overlay.
  *   A3 Fatigue & soreness — two cards. Mean value in range + line
  *     chart over time. HIGH values are red on both (1=fresh/none,
  *     5=cooked/severe). Pulled from sessions (DC-P1).
@@ -18,6 +15,13 @@
  *     against post-session sRPE (DC-A2). Pearson correlation labelled
  *     weak / moderate / strong / very strong per spec. Requires n>=10
  *     paired sessions to render.
+ *
+ * Section A2 ("Sleep") was removed in fix/sleep-walkback — manual
+ * sleep entry is deferred to the future health-app integration. The
+ * `wellness.sleep_hours` column remains for the integration to
+ * back-fill; the dashboard will gain a sleep section once that data
+ * source returns. Section ids (A1, A3, A4, A5) are intentionally
+ * left non-contiguous to make the gap explicit.
  *
  * The page reuses Phase 1+2 conventions:
  *   - `?range=30d|90d|all` parses through `parseRange`.
@@ -45,15 +49,11 @@ import {
   calcPredictionCorrelation,
   predictionStrength,
   linearTrendSeries,
-  rollingMean,
-  sleepBucket,
-  sleepBucketColor,
   type SessionWellnessRow,
   type WellnessRow,
 } from "@/lib/stats/wellness";
 import { displayWeight, weightUnitLabel, type WeightUnit } from "@/lib/stats/units";
 import { MiniLine } from "@/components/stats/charts/MiniLine";
-import { MiniBars } from "@/components/stats/charts/MiniBars";
 import { MiniScatter } from "@/components/stats/charts/MiniScatter";
 
 export const dynamic = "force-dynamic";
@@ -100,7 +100,7 @@ export default async function StatsWellnessPage({
           Wellness
         </h1>
         <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-          Bodyweight, sleep, fatigue, soreness, motivation, and how
+          Bodyweight, fatigue, soreness, motivation, and how
           well your pre-session gut-feel predicts post-session
           difficulty.
         </p>
@@ -117,7 +117,6 @@ export default async function StatsWellnessPage({
         }}
       >
         <BodyweightCard rows={wellness} units={units} range={range} />
-        <SleepCard rows={wellness} range={range} />
         <FatigueCard rows={sessions} range={range} />
         <SorenessCard rows={sessions} range={range} />
         <MotivationCard rows={wellness} range={range} />
@@ -268,48 +267,6 @@ function BodyweightCard({
         overlay={trend}
         accent="accent"
         ariaLabel={`bodyweight over the ${subtitle}`}
-      />
-    </Card>
-  );
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// A2 — Sleep
-// ──────────────────────────────────────────────────────────────────────
-
-function SleepCard({ rows, range }: { rows: WellnessRow[]; range: Range }) {
-  const series = rows.filter((r) => r.sleep_hours != null) as Array<
-    WellnessRow & { sleep_hours: number }
-  >;
-  const subtitle =
-    range === "all" ? "all-time" : range === "90d" ? "last 90 days" : "last 30 days";
-
-  if (series.length === 0) {
-    return (
-      <Card testId="stats-wellness-sleep" empty>
-        <CardTitle title="Sleep" subtitle={subtitle} />
-        <EmptyText>Track sleep on pre-session check-in to see patterns</EmptyText>
-      </Card>
-    );
-  }
-
-  const hours = series.map((r) => r.sleep_hours);
-  const avg = round1(hours.reduce((a, b) => a + b, 0) / hours.length);
-  const colors = hours.map((h) => sleepBucketColor(sleepBucket(h)));
-  const overlay = rollingMean(hours, 7);
-
-  return (
-    <Card testId="stats-wellness-sleep">
-      <CardTitle title="Sleep" subtitle={subtitle} />
-      <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.01em" }}>
-        {avg}h <span style={{ fontSize: 12, color: "var(--cp-text-muted)", fontWeight: 400 }}>avg</span>
-      </div>
-      <MiniBars
-        values={hours}
-        max={Math.max(10, ...hours)}
-        colors={colors}
-        overlay={overlay}
-        ariaLabel={`sleep hours per night, ${subtitle}, with 7-night rolling average`}
       />
     </Card>
   );

@@ -2,14 +2,19 @@
  * /app/stats — Stats overview dashboard (Phase 1 data-driven pass).
  *
  * Single landing page that summarises everything the engine has been
- * collecting (sessions, sets, RPE, wellness, sleep, motivation, PRs,
+ * collecting (sessions, sets, RPE, wellness, motivation, PRs,
  * region freshness, block lifecycle).
  *
  * Above-the-fold cards: A (current block) / B (adherence) / C (PRs) /
- * D (region freshness) / E (sleep) / F (volume) / G (bodyweight).
+ * D (region freshness) / F (volume) / G (bodyweight).
  * Bottom: deep-dive link grid. The existing /app/stats/engine and
  * /app/stats/movements/[slug] surfaces stay where they are — this page
  * just routes to them.
+ *
+ * Sleep card was removed in fix/sleep-walkback — manual sleep entry is
+ * deferred to the future health-app integration (Apple Health /
+ * Google Fit). The `wellness.sleep_hours` column remains for that
+ * integration to back-fill.
  *
  * Design choices (documented in the PR body too):
  *  1. Skipped sessions count as MISSED in the 30-day adherence number
@@ -20,7 +25,7 @@
  *     primed, red = problem / heavily loaded, accent = current / featured.
  *  4. All queries run in parallel (`Promise.all`); each is bounded by
  *     a 30-day window or a top-N slice — no full-table scans.
- *  5. Comparison ranges are hardcoded (30 d adherence/volume, 7 d sleep,
+ *  5. Comparison ranges are hardcoded (30 d adherence/volume,
  *     this calendar month for PRs). A range toggle is Phase 2+.
  */
 import Link from "next/link";
@@ -31,7 +36,6 @@ import { getActiveBlockProgress } from "@/lib/stats/active-block-progress";
 import { getAdherenceForWindow, type AdherenceResult } from "@/lib/stats/adherence";
 import { getPrsForRange, type PrsRangeResult } from "@/lib/stats/prs-range";
 import { getFreshnessMini, type FreshnessMiniRow } from "@/lib/stats/freshness-mini";
-import { getSleepForRange, type SleepRangeResult } from "@/lib/stats/sleep-trend";
 import { getVolumeForRange, type VolumeRangeResult } from "@/lib/stats/volume";
 import { getBodyweightTrend, type BodyweightTrend } from "@/lib/stats/bodyweight-trend";
 import { displayWeight, weightUnitLabel, type WeightUnit } from "@/lib/stats/units";
@@ -70,16 +74,15 @@ export default async function StatsOverviewPage({
   const units: WeightUnit = profile?.units === "imperial" ? "imperial" : "metric";
   const tz = profile?.timezone ?? (await getUserTimezone(user.id));
 
-  // All-parallel reads. The four time-bounded cards (adherence / PRs /
-  // sleep / volume) take the same `windowDays` so the toggle drives
-  // them in lockstep; bodyweight + freshness stay on their existing
-  // bounded reads (30-day trend / right-now snapshot).
-  const [block, adherence, prs, freshness, sleep, volume, bodyweight] = await Promise.all([
+  // All-parallel reads. The three time-bounded cards (adherence / PRs /
+  // volume) take the same `windowDays` so the toggle drives them in
+  // lockstep; bodyweight + freshness stay on their existing bounded
+  // reads (30-day trend / right-now snapshot).
+  const [block, adherence, prs, freshness, volume, bodyweight] = await Promise.all([
     getActiveBlockProgress(supabase, user.id, tz),
     getAdherenceForWindow(supabase, user.id, tz, windowDays),
     getPrsForRange(supabase, user.id, tz, windowDays),
     getFreshnessMini(supabase, user.id),
-    getSleepForRange(supabase, user.id, tz, windowDays),
     getVolumeForRange(supabase, user.id, tz, windowDays),
     getBodyweightTrend(supabase, user.id, tz),
   ]);
@@ -89,14 +92,14 @@ export default async function StatsOverviewPage({
       <header>
         <h1 style={{ fontSize: 28, margin: 0, letterSpacing: "-0.01em" }}>Stats</h1>
         <p style={{ margin: "4px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-          Your dashboard — block progress, adherence, PRs, freshness, sleep, volume, bodyweight.
+          Your dashboard — block progress, adherence, PRs, freshness, volume, bodyweight.
         </p>
       </header>
 
       {/* A — Current block strip */}
       <CurrentBlockStrip progress={block} />
 
-      {/* Range toggle — drives adherence / PRs / sleep / volume queries */}
+      {/* Range toggle — drives adherence / PRs / volume queries */}
       <RangeToggle current={range} />
 
       {/* B–G — responsive card grid */}
@@ -111,7 +114,6 @@ export default async function StatsOverviewPage({
         <AdherenceCard data={adherence} range={range} />
         <PrsCard data={prs} units={units} range={range} />
         <FreshnessCard rows={freshness} />
-        <SleepCard data={sleep} range={range} />
         <VolumeCard data={volume} units={units} range={range} />
         <BodyweightCard data={bodyweight} units={units} />
       </div>
@@ -431,43 +433,6 @@ function FreshnessCard({ rows }: { rows: FreshnessMiniRow[] }) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// E — Sleep (last 7 nights)
-// ──────────────────────────────────────────────────────────────────────
-
-function SleepCard({ data, range }: { data: SleepRangeResult; range: Range }) {
-  const subtitle =
-    range === "all" ? "all-time" : range === "90d" ? "last 90 days" : "last 30 days";
-  return (
-    <section
-      className="cp-card"
-      data-testid="stats-card-sleep"
-      data-empty={data.avgHours == null ? "true" : "false"}
-      style={{ padding: 16, display: "grid", gap: 8 }}
-    >
-      <CardTitle title="Sleep" subtitle={subtitle} />
-      {data.avgHours == null ? (
-        <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
-          Track sleep to see patterns — the pre-session chip on the next
-          check-in is the fastest way.
-        </p>
-      ) : (
-        <>
-          <div style={{ fontSize: 22, fontWeight: 600 }}>
-            {data.avgHours.toFixed(1)}h <span style={{ fontSize: 12, color: "var(--cp-text-muted)", fontWeight: 400 }}>avg</span>
-          </div>
-          <MiniBars
-            values={data.series.map((n) => n.hours)}
-            max={10}
-            accent="accent"
-            ariaLabel="sleep hours per night in the selected window"
-          />
-        </>
-      )}
-    </section>
-  );
-}
-
-// ──────────────────────────────────────────────────────────────────────
 // F — Volume (30 days, weekly buckets)
 // ──────────────────────────────────────────────────────────────────────
 
@@ -607,7 +572,7 @@ function DeepDiveLinks() {
       />
       <DeepDive
         title="Wellness dashboard"
-        body="Bodyweight, sleep, fatigue, motivation, prediction accuracy."
+        body="Bodyweight, fatigue, motivation, prediction accuracy."
         href="/app/stats/wellness"
       />
       <DeepDive
