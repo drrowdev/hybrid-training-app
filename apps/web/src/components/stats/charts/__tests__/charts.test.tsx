@@ -17,6 +17,7 @@ import { Sparkline } from "../Sparkline";
 import { MiniBars } from "../MiniBars";
 import { MiniLine } from "../MiniLine";
 import { MiniScatter } from "../MiniScatter";
+import { PressureMeter, pressureTone } from "../PressureMeter";
 
 type AnyEl = ReactElement<{ children?: unknown; "data-testid"?: string }>;
 
@@ -116,6 +117,30 @@ describe("MiniLine", () => {
     const all = flattenChildren(el);
     expect(all.find((c) => c.props?.["data-testid"] === "miniline-overlay")).toBeUndefined();
   });
+
+  it("renders one threshold line per entry (Phase 6 region freshness bands)", () => {
+    const el = MiniLine({
+      values: [0.4, 0.5, 0.6, 0.5, 0.4],
+      thresholds: [
+        { value: 0.85, label: "MV" },
+        { value: 0.6, label: "MEV" },
+        { value: 0.3, label: "MAV" },
+        { value: 0.1, label: "MRV" },
+      ],
+    }) as AnyEl;
+    const lines = flattenChildren(el).filter(
+      (c) => c.props?.["data-testid"] === "miniline-threshold",
+    );
+    expect(lines).toHaveLength(4);
+  });
+
+  it("renders no threshold lines when thresholds is omitted", () => {
+    const el = MiniLine({ values: [1, 2, 3] }) as AnyEl;
+    const lines = flattenChildren(el).filter(
+      (c) => c.props?.["data-testid"] === "miniline-threshold",
+    );
+    expect(lines).toHaveLength(0);
+  });
 });
 
 describe("MiniScatter", () => {
@@ -146,5 +171,43 @@ describe("MiniScatter", () => {
     const el = MiniScatter({ points: [] }) as AnyEl;
     const all = flattenChildren(el);
     expect(all.find((c) => c.props?.["data-testid"] === "miniscatter-point")).toBeUndefined();
+  });
+});
+
+describe("PressureMeter", () => {
+  it("renders a track + fill for an in-bounds value", () => {
+    const el = PressureMeter({ value: 0.6 }) as AnyEl;
+    const all = flattenChildren(el);
+    expect(all.find((c) => c.props?.["data-testid"] === "pressure-meter-track")).toBeTruthy();
+    expect(all.find((c) => c.props?.["data-testid"] === "pressure-meter-fill")).toBeTruthy();
+    expect(all.find((c) => c.props?.["data-testid"] === "pressure-meter-over")).toBeUndefined();
+  });
+
+  it("renders an over-ceiling stripe when value > 1.0", () => {
+    const el = PressureMeter({ value: 1.2 }) as AnyEl;
+    const all = flattenChildren(el);
+    expect(all.find((c) => c.props?.["data-testid"] === "pressure-meter-over")).toBeTruthy();
+  });
+
+  it("renders one mark per reference (Phase 6 ceiling references)", () => {
+    const el = PressureMeter({
+      value: 0.6,
+      marks: [
+        { at: 0.7, label: "70%" },
+        { at: 0.9, label: "90%" },
+        { at: 1.0, label: "Ceiling" },
+      ],
+    }) as AnyEl;
+    const marks = flattenChildren(el).filter(
+      (c) => c.props?.["data-testid"] === "pressure-meter-mark",
+    );
+    expect(marks).toHaveLength(3);
+  });
+
+  it("classifies pressure bands per DC-C2", () => {
+    expect(pressureTone(0.5)).toBe("ok");
+    expect(pressureTone(0.8)).toBe("caution");
+    expect(pressureTone(1.0)).toBe("warn");
+    expect(pressureTone(1.2)).toBe("danger");
   });
 });

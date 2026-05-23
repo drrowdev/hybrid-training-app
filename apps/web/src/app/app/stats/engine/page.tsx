@@ -1,219 +1,243 @@
+/**
+ * /app/stats/engine — Phase 6 refresh.
+ *
+ * "How the planner sees you." Seven sections, mobile-first stack, all
+ * read-only views over the engine's live state:
+ *
+ *   A · Header + decision trace (DC-K4 transparency)
+ *   B · Region freshness expanded with MV/MEV/MAV/MRV bands (DC-C14, DC-M1)
+ *   C · Bucket pressure meters (DC-C2)
+ *   D · Ceiling equation explainer (DC-C11, DC-C13)
+ *   E · User tier (DC-G1..G6)
+ *   F · Recent overrides (DC-K4 audit trail)
+ *   G · Engine internals — version + last computation timestamp
+ *
+ * No new engine logic; this surface only reads from helpers in
+ * `lib/stats/engine.ts` and the existing region/bucket ledgers.
+ */
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getRegionFreshness, type FreshnessRow } from "@/lib/engine/freshness";
-import { getBucketState, type BucketStateRow } from "@/lib/stats/bucket-state-queries";
-import { getRpeDrift, type RpeDrift } from "@/lib/stats/rpe-drift-queries";
-import { getCeilingUtilization, type CeilingUtilization } from "@/lib/stats/ceiling-queries";
 import { getUserTimezone } from "@/lib/planner/queries";
+import {
+  getDecisionTrace,
+  getRegionFreshnessDetail,
+  getBucketPressure,
+  getCeilingExplain,
+  getUserTier,
+  getRecentOverrides,
+  getEngineInternals,
+  FRESHNESS_THRESHOLD_LABELS,
+  type DecisionTrace,
+  type RegionFreshnessDetail,
+  type BucketPressureRow,
+  type CeilingExplain,
+  type UserTierState,
+  type OverrideEvent,
+  type EngineInternals,
+} from "@/lib/stats/engine";
+import { MiniLine } from "@/components/stats/charts/MiniLine";
+import { PressureMeter, pressureTone } from "@/components/stats/charts/PressureMeter";
 
-// Plain-language status from freshness ratio.
-function statusFor(f: number, lastLoadDate: string | null): string {
-  const days = lastLoadDate
-    ? Math.floor(
-        (Date.now() - new Date(lastLoadDate + "T00:00:00").getTime()) / 86_400_000,
-      )
-    : null;
-  if (f >= 0.85) return days != null && days < 1 ? "fresh" : "fully recovered";
-  if (f >= 0.6) return "moderate";
-  if (f >= 0.3) return days != null ? `loaded ${days}d ago` : "loaded";
-  return days != null ? `heavily loaded ${days}d ago` : "heavily loaded";
-}
+export const dynamic = "force-dynamic";
 
-function tone(f: number): string {
-  if (f >= 0.7) return "var(--cp-success)";
-  if (f >= 0.4) return "var(--cp-warning)";
-  return "var(--cp-danger)";
-}
-
-// Group by anatomical region.
-const REGION_GROUP: Record<string, "upper" | "core" | "lower"> = {
-  foot_ankle_calf: "lower",
-  knee: "lower",
-  hamstring_posterior: "lower",
-  adductor_groin: "lower",
-  lumbar_trunk: "core",
-  shoulder_scapular: "upper",
-  elbow_forearm: "upper",
-};
-
-export default async function EngineStatePage() {
+export default async function EnginePage() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const tz = user ? await getUserTimezone(user.id) : "UTC";
-  const [rows, buckets, drift, ceiling] = await Promise.all([
-    getRegionFreshness(),
-    user ? getBucketState(supabase, user.id, tz) : Promise.resolve([] as BucketStateRow[]),
-    user ? getRpeDrift(supabase, user.id) : Promise.resolve(null as RpeDrift | null),
-    user ? getCeilingUtilization(supabase, user.id) : Promise.resolve(null as CeilingUtilization | null),
-  ]);
-  const hasData = rows.length > 0 && rows.some((r) => r.atl > 0 || r.ctl > 0);
-  const hasBucketData = buckets.some((b) => b.atl > 0 || b.ctl > 0);
+  if (!user) redirect("/login");
 
-  const grouped: Record<"upper" | "core" | "lower", FreshnessRow[]> = {
-    upper: [],
-    core: [],
-    lower: [],
-  };
-  rows.forEach((r) => grouped[REGION_GROUP[r.region] ?? "core"].push(r));
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("timezone")
+    .eq("id", user.id)
+    .maybeSingle();
+  const tz = profile?.timezone ?? (await getUserTimezone(user.id));
+
+  const [trace, regions, buckets, ceiling, tier, overrides, internals] = await Promise.all([
+    getDecisionTrace(supabase, user.id, tz),
+    getRegionFreshnessDetail(supabase, user.id, tz),
+    getBucketPressure(supabase, user.id, tz),
+    getCeilingExplain(supabase, user.id),
+    getUserTier(supabase, user.id),
+    getRecentOverrides(supabase, user.id, 10),
+    getEngineInternals(supabase, user.id),
+  ]);
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
-      <header>
-        <div style={{ fontSize: 12, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-          Stats · Engine state
-        </div>
-        <h1 style={{ fontSize: 28, margin: "4px 0 0", letterSpacing: "-0.01em" }}>
-          What the engine sees
+      <header data-testid="stats-engine-header">
+        <Link
+          href="/app/stats"
+          data-testid="stats-engine-back"
+          style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
+        >
+          ← stats
+        </Link>
+        <h1 style={{ fontSize: 28, margin: "8px 0 0", letterSpacing: "-0.01em" }}>
+          How the planner sees you
         </h1>
+        <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
+          Plain-language explanation of why today&apos;s session is what it is.
+        </p>
       </header>
 
-      {/* ── Region freshness table ───────────────────────────── */}
-      <section className="cp-card" style={{ padding: 20 }}>
-        <h2 style={{ margin: 0, fontSize: 16 }}>
-          Region freshness
-          <span
-            className="cp-info"
-            tabIndex={0}
-            aria-label="How region freshness is computed"
-          >
-            i
-            <span className="pop">
-              Each region carries an <strong>acute load</strong> (last few days) divided by
-              <strong> baseline tolerance</strong>. 100% = fully recovered, 0% = hammered.
-              Drives recommendations and stops collisions between strength and cardio in the same area.
-            </span>
-          </span>
-        </h2>
-        <p style={{ margin: "4px 0 16px", color: "var(--cp-text-muted)", fontSize: 13 }}>
-          Updates automatically after each completed session.
-        </p>
-
-        {!hasData ? (
-          <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: 0 }}>
-            No data yet. Log and complete a session — region freshness materialises automatically.
-          </p>
-        ) : (
-          <div style={{ display: "grid", gap: 16 }}>
-            {(["upper", "core", "lower"] as const).map((group) =>
-              grouped[group].length === 0 ? null : (
-                <RegionGroup key={group} title={GROUP_LABELS[group]} rows={grouped[group]} />
-              ),
-            )}
-          </div>
-        )}
-      </section>
-
-      {/* ── Ceiling utilization vs archetype ─────────────────── */}
-      {ceiling && (
-        <section className="cp-card" style={{ padding: 20 }}>
-          <h2 style={{ margin: 0, fontSize: 16 }}>
-            Ceiling utilization
-            <span className="cp-info" tabIndex={0} aria-label="How ceiling utilization is computed">
-              i
-              <span className="pop" style={{ width: 260 }}>
-                This week&apos;s actual work vs the active archetype&apos;s
-                prescribed dose. 70–110% is the sweet spot.
-              </span>
-            </span>
-          </h2>
-          <p style={{ margin: "4px 0 12px", color: "var(--cp-text-muted)", fontSize: 13 }}>
-            {ceiling.archetypeName} · {ceiling.weekLabel} (week {ceiling.weekIndex + 1})
-          </p>
-          <div style={{ display: "grid", gap: 10 }}>
-            <CeilingRow
-              label="Strength"
-              actual={ceiling.strength.actual}
-              prescribed={ceiling.strength.prescribed}
-              pct={ceiling.strength.pct}
-              bandLabel={ceiling.strength.bandLabel}
-              tone={ceilingTone(ceiling.strength.band)}
-              unit="working sets"
-            />
-            <CeilingRow
-              label="Cardio"
-              actual={ceiling.cardio.actual}
-              prescribed={ceiling.cardio.prescribed}
-              pct={ceiling.cardio.pct}
-              bandLabel={ceiling.cardio.bandLabel}
-              tone={ceilingTone(ceiling.cardio.band)}
-              unit="sessions"
-            />
-          </div>
-        </section>
-      )}
-
-      {/* ── RPE drift over last 28 days ──────────────────────── */}
-      {drift && (
-        <section className="cp-card" style={{ padding: 20 }}>
-          <h2 style={{ margin: 0, fontSize: 16 }}>
-            How hard sessions have felt
-            <span className="cp-info" tabIndex={0} aria-label="How RPE drift is computed">
-              i
-              <span className="pop" style={{ width: 260 }}>
-                Trend of session RPE across the last 28 days. Same work
-                feeling harder is a leading sign you need a lighter week.
-              </span>
-            </span>
-          </h2>
-          <RpeDriftView drift={drift} />
-        </section>
-      )}
-
-      {/* ── Bucket load — six-bucket stress model ───────────── */}
-      <section className="cp-card" style={{ padding: 20 }}>
-        <h2 style={{ margin: 0, fontSize: 16 }}>
-          Bucket load
-          <span className="cp-info" tabIndex={0} aria-label="How bucket load is computed">
-            i
-            <span className="pop" style={{ width: 280 }}>
-              Six global stress dimensions. Each set + cardio block contributes
-              load to each bucket based on movement type, intensity, and reps.
-              Same recovery-ratio math as region freshness.
-            </span>
-          </span>
-        </h2>
-        <p style={{ margin: "4px 0 16px", color: "var(--cp-text-muted)", fontSize: 13 }}>
-          Where on your body the load is concentrated. Different from regions —
-          regions are anatomy; buckets are the type of stress.
-        </p>
-        {!hasBucketData ? (
-          <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: 0 }}>
-            Log a few sessions and bucket load will materialise here.
-          </p>
-        ) : (
-          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
-            {buckets.map((b) => (
-              <BucketRow key={b.bucket} row={b} />
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {/* ── Volume vs landmarks ──────────────────────────────── */}
-      <section className="cp-card" style={{ padding: 20 }}>
-        <h2 style={{ margin: 0, fontSize: 16 }}>Weekly volume per muscle</h2>
-        <p style={{ margin: "4px 0 0", color: "var(--cp-text-muted)", fontSize: 13 }}>
-          Per-muscle weekly hard-set counts live on the{" "}
-          <Link href="/app/stats" style={{ color: "var(--cp-link)" }}>Stats overview</Link>.
-        </p>
-      </section>
+      <DecisionTraceCard trace={trace} />
+      <RegionFreshnessCard regions={regions} />
+      <BucketPressureCard buckets={buckets} />
+      <CeilingExplainerCard ceiling={ceiling} />
+      <UserTierCard tier={tier} />
+      <RecentOverridesCard overrides={overrides.events} notTracked={overrides.notTracked} />
+      <EngineInternalsCard internals={internals} />
     </div>
   );
 }
 
-function bucketTone(tone: "ok" | "caution" | "warn"): string {
-  if (tone === "ok") return "var(--cp-success)";
-  if (tone === "caution") return "var(--cp-warning)";
-  return "var(--cp-danger)";
+// ─── A · Decision trace ────────────────────────────────────────────
+
+function DecisionTraceCard({ trace }: { trace: DecisionTrace }) {
+  return (
+    <section
+      className="cp-card"
+      data-testid="stats-engine-decision-trace"
+      style={{
+        padding: 20,
+        background: "var(--cp-surface-raised)",
+        borderColor: "var(--cp-accent)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          color: "var(--cp-accent)",
+          fontWeight: 600,
+        }}
+      >
+        Decision trace · DC-K4
+      </div>
+      <h2
+        data-testid="stats-engine-decision-headline"
+        style={{ fontSize: 20, margin: "6px 0 12px", letterSpacing: "-0.01em" }}
+      >
+        {trace.headline}
+      </h2>
+      {trace.reasons.length > 0 && (
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+          Chosen because:
+        </div>
+      )}
+      <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
+        {trace.reasons.map((r, i) => (
+          <li
+            key={i}
+            data-testid="stats-engine-decision-reason"
+            style={{
+              fontSize: 14,
+              lineHeight: 1.5,
+              paddingLeft: 18,
+              position: "relative",
+              color: "var(--cp-text)",
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                position: "absolute",
+                left: 0,
+                top: 8,
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                background: "var(--cp-accent)",
+              }}
+            />
+            {r.text}
+            {r.cite && (
+              <span
+                className="mono"
+                style={{ marginLeft: 6, fontSize: 11, color: "var(--cp-text-muted)" }}
+              >
+                ({r.cite})
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
-function BucketRow({ row }: { row: BucketStateRow }) {
-  const pct = Math.round(row.freshness * 100);
-  const color = bucketTone(row.tone);
+// ─── B · Region freshness ──────────────────────────────────────────
+
+function RegionFreshnessCard({ regions }: { regions: RegionFreshnessDetail[] }) {
+  const empty = regions.length === 0;
   return (
-    <li
+    <section
+      className="cp-card"
+      data-testid="stats-engine-regions"
+      data-empty={empty ? "true" : "false"}
+      style={{ padding: 20 }}
+    >
+      <h2 style={{ margin: 0, fontSize: 16 }}>
+        Region freshness
+        <span
+          className="cp-info"
+          tabIndex={0}
+          aria-label="How region freshness is computed"
+        >
+          i
+          <span className="pop" style={{ width: 280 }}>
+            <strong>MEV</strong> = minimum effective volume ·{" "}
+            <strong>MAV</strong> = maximum adaptive volume ·{" "}
+            <strong>MRV</strong> = maximum recoverable volume (Israetel /
+            Schoenfeld). Bands shown on a freshness axis: above MEV =
+            productive, below MRV = overstrained. DC-C14 / DC-M1.
+          </span>
+        </span>
+      </h2>
+      <p style={{ margin: "4px 0 16px", color: "var(--cp-text-muted)", fontSize: 13 }}>
+        Per-region freshness over the last 14 days, with MV / MEV / MAV /
+        MRV reference lines.
+      </p>
+      {empty ? (
+        <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: 0 }}>
+          No region load yet. Log a completed session and freshness will
+          materialise here.
+        </p>
+      ) : (
+        <div style={{ display: "grid", gap: 12 }}>
+          {regions.map((r) => (
+            <RegionRow key={r.region} row={r} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function computeDaysSince(iso: string | null): number | null {
+  if (!iso) return null;
+  const then = new Date(iso + "T00:00:00").getTime();
+  if (Number.isNaN(then)) return null;
+  return Math.max(0, Math.floor((Date.now() - then) / 86_400_000));
+}
+
+function RegionRow({ row }: { row: RegionFreshnessDetail }) {
+  const pct = Math.round(row.currentFreshness * 100);
+  const tone =
+    row.currentFreshness >= 0.7
+      ? "var(--cp-success)"
+      : row.currentFreshness >= 0.4
+        ? "var(--cp-warning)"
+        : "var(--cp-danger)";
+  const daysSinceLast = computeDaysSince(row.lastLoadDate);
+  return (
+    <div
+      data-testid="stats-engine-region-row"
+      data-region={row.region}
       style={{
         padding: "10px 12px",
         borderRadius: 10,
@@ -222,216 +246,498 @@ function BucketRow({ row }: { row: BucketStateRow }) {
         display: "grid",
         gap: 6,
       }}
-      title={`${row.label}: freshness ${pct}% · ATL ${row.atl.toFixed(0)} · CTL ${row.ctl.toFixed(0)}`}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
         <div style={{ fontSize: 14, fontWeight: 600 }}>{row.label}</div>
-        <span style={{ fontSize: 12, color, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <span aria-hidden style={{ width: 8, height: 8, borderRadius: 999, background: color, display: "inline-block" }} />
-          {row.bandLabel}
+        <span
+          className="mono"
+          style={{ fontSize: 12, color: tone, fontWeight: 600 }}
+        >
+          {pct}% fresh
         </span>
       </div>
-      <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>{row.description}</div>
       <div style={{ height: 6, borderRadius: 999, background: "var(--cp-surface-soft)", overflow: "hidden" }}>
         <div
           style={{
             width: `${pct}%`,
-            height: "100%",
-            background: color,
-            transition: "width .3s",
-          }}
-        />
-      </div>
-    </li>
-  );
-}
-
-function driftTone(verdict: RpeDrift["verdict"]): string {
-  if (verdict === "rising") return "var(--cp-warning)";
-  if (verdict === "easing") return "var(--cp-link)";
-  if (verdict === "stable") return "var(--cp-success)";
-  return "var(--cp-text-muted)";
-}
-
-function RpeDriftView({ drift }: { drift: RpeDrift }) {
-  if (drift.verdict === "no-data") {
-    return (
-      <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: "8px 0 0" }}>
-        {drift.verdictLabel}.
-      </p>
-    );
-  }
-  const color = driftTone(drift.verdict);
-  const minRpe = Math.min(4, ...drift.points.map((p) => p.rpe));
-  const maxRpe = Math.max(10, ...drift.points.map((p) => p.rpe));
-  const range = Math.max(0.1, maxRpe - minRpe);
-  const t0 = new Date(drift.points[0]!.date + "T00:00:00").getTime();
-  const tN = new Date(drift.points[drift.points.length - 1]!.date + "T00:00:00").getTime();
-  const span = Math.max(1, tN - t0);
-  const w = 600;
-  const h = 60;
-  const pad = 4;
-  const linePoints = drift.points
-    .map((p) => {
-      const t = new Date(p.date + "T00:00:00").getTime();
-      const x = pad + ((t - t0) / span) * (w - pad * 2);
-      const y = pad + (1 - (p.rpe - minRpe) / range) * (h - pad * 2);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
-  // Trend line endpoints from slope through the mean.
-  const meanY =
-    pad + (1 - ((drift.meanRpe ?? 7) - minRpe) / range) * (h - pad * 2);
-  const slopePerPixel = -drift.slopePerDay * (span / 86_400_000) * ((h - pad * 2) / range) / (w - pad * 2);
-  const trendY0 = meanY + slopePerPixel * ((w - pad * 2) / 2);
-  const trendY1 = meanY - slopePerPixel * ((w - pad * 2) / 2);
-  return (
-    <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-        <span style={{ fontSize: 14, fontWeight: 600, color }}>{drift.verdictLabel}</span>
-        <span className="mono" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
-          mean {drift.meanRpe?.toFixed(1) ?? "—"} sRPE
-        </span>
-      </div>
-      <svg
-        viewBox={`0 0 ${w} ${h}`}
-        preserveAspectRatio="none"
-        style={{ width: "100%", height: 60, background: "var(--cp-surface-soft)", borderRadius: 8 }}
-        role="img"
-        aria-label="Session RPE drift over the last 28 days"
-      >
-        <polyline points={linePoints} fill="none" stroke="var(--cp-text-muted)" strokeWidth={1.2} />
-        {drift.points.map((p, i) => {
-          const t = new Date(p.date + "T00:00:00").getTime();
-          const x = pad + ((t - t0) / span) * (w - pad * 2);
-          const y = pad + (1 - (p.rpe - minRpe) / range) * (h - pad * 2);
-          return <circle key={i} cx={x} cy={y} r={1.8} fill="var(--cp-text)" />;
-        })}
-        <line x1={pad} y1={trendY0} x2={w - pad} y2={trendY1} stroke={color} strokeWidth={1.5} strokeDasharray="4 3" />
-      </svg>
-      <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-        {drift.points.length} session{drift.points.length === 1 ? "" : "s"} · slope{" "}
-        {drift.slopePerDay >= 0 ? "+" : ""}
-        {(drift.slopePerDay * 7).toFixed(2)} sRPE/week
-      </div>
-    </div>
-  );
-}
-
-const GROUP_LABELS = {
-  upper: "Upper body",
-  core: "Core / trunk",
-  lower: "Lower body",
-} as const;
-
-function RegionGroup({ title, rows }: { title: string; rows: FreshnessRow[] }) {
-  return (
-    <div>
-      <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
-        {title}
-      </div>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <tbody>
-          {rows.map((r) => {
-            const pct = Math.round(r.freshness * 100);
-            return (
-              <tr key={r.region} style={{ borderTop: "1px solid var(--cp-border)" }}>
-                <td style={{ padding: "10px 8px 10px 0", fontSize: 13, fontWeight: 500 }}>{r.label}</td>
-                <td style={{ padding: "10px 8px", minWidth: 90 }}>
-                  <div style={{ height: 8, borderRadius: 999, background: "var(--cp-surface-soft)", overflow: "hidden" }}>
-                    <div
-                      style={{
-                        width: `${pct}%`,
-                        height: "100%",
-                        background: tone(r.freshness),
-                        transition: "width .3s",
-                      }}
-                    />
-                  </div>
-                </td>
-                <td className="mono" style={{ padding: "10px 8px", width: 44, textAlign: "right", fontSize: 12, color: "var(--cp-text-muted)" }}>
-                  {pct}%
-                </td>
-                <td style={{ padding: "10px 0 10px 8px", fontSize: 12, color: "var(--cp-text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>
-                  {statusFor(r.freshness, r.lastLoadDate)}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function ceilingTone(band: string): string {
-  if (band === "under") return "var(--cp-link)";
-  if (band === "on-budget") return "var(--cp-success)";
-  if (band === "at-line") return "var(--cp-warning)";
-  return "var(--cp-danger)";
-}
-
-function CeilingRow({
-  label,
-  actual,
-  prescribed,
-  pct,
-  bandLabel,
-  tone,
-  unit,
-}: {
-  label: string;
-  actual: number;
-  prescribed: number;
-  pct: number;
-  bandLabel: string;
-  tone: string;
-  unit: string;
-}) {
-  const widthPct = Math.min(150, pct * 100);
-  return (
-    <div
-      style={{
-        padding: "10px 12px",
-        borderRadius: 10,
-        border: "1px solid var(--cp-border)",
-        background: "var(--cp-surface)",
-        display: "grid",
-        gap: 6,
-      }}
-      title={`${label}: ${actual} ${unit} vs ${prescribed} prescribed = ${(pct * 100).toFixed(0)}%`}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <div style={{ fontSize: 14, fontWeight: 600 }}>{label}</div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-          <span className="mono" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
-            {actual} / {prescribed} {unit}
-          </span>
-          <span style={{ fontSize: 12, color: tone, fontWeight: 600 }}>{bandLabel}</span>
-        </div>
-      </div>
-      <div style={{ position: "relative", height: 6, borderRadius: 999, background: "var(--cp-surface-soft)", overflow: "hidden" }}>
-        {/* 100% reference tick */}
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            left: "66.67%",
-            top: 0,
-            bottom: 0,
-            width: 1,
-            background: "var(--cp-border-strong)",
-          }}
-        />
-        <div
-          style={{
-            width: `${(widthPct / 150) * 100}%`,
             height: "100%",
             background: tone,
             transition: "width .3s",
           }}
         />
       </div>
+      <div style={{ overflowX: "auto" }}>
+        <MiniLine
+          values={row.history}
+          height={60}
+          accent="accent"
+          thresholds={FRESHNESS_THRESHOLD_LABELS.map((t) => ({
+            value: t.value,
+            label: t.label,
+          }))}
+          ariaLabel={`14-day freshness history for ${row.label}`}
+        />
+      </div>
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 12,
+          fontSize: 11,
+          color: "var(--cp-text-muted)",
+        }}
+      >
+        <span>
+          Last hit:{" "}
+          {daysSinceLast == null
+            ? "—"
+            : daysSinceLast === 0
+              ? "today"
+              : `${daysSinceLast}d ago`}
+        </span>
+        <span>
+          Loaded days · 7d {row.setCounts.d7} / 14d {row.setCounts.d14} / 28d{" "}
+          {row.setCounts.d28}
+        </span>
+      </div>
     </div>
+  );
+}
+
+// ─── C · Bucket pressure ───────────────────────────────────────────
+
+function BucketPressureCard({ buckets }: { buckets: BucketPressureRow[] }) {
+  const hasData = buckets.some((b) => b.atl > 0 || b.ctl > 0);
+  return (
+    <section
+      className="cp-card"
+      data-testid="stats-engine-buckets"
+      data-empty={hasData ? "false" : "true"}
+      style={{ padding: 20 }}
+    >
+      <h2 style={{ margin: 0, fontSize: 16 }}>
+        Stress budget
+        <span className="cp-info" tabIndex={0} aria-label="How bucket pressure is computed">
+          i
+          <span className="pop" style={{ width: 280 }}>
+            Six global stress buckets per DC-A3. Each bucket&apos;s current
+            7-day EWMA is compared to its 28-day chronic norm — the closer
+            to 100% of ceiling, the less headroom you have. DC-C2.
+          </span>
+        </span>
+      </h2>
+      <p style={{ margin: "4px 0 16px", color: "var(--cp-text-muted)", fontSize: 13 }}>
+        Where the load is concentrated, and how close each bucket is to its
+        own ceiling. Different from regions — regions are anatomy; buckets
+        are the type of stress.
+      </p>
+      {!hasData ? (
+        <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: 0 }}>
+          Log a few sessions and bucket pressure will materialise here.
+        </p>
+      ) : (
+        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 10 }}>
+          {buckets.map((b) => (
+            <BucketRow key={b.bucket} row={b} />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function BucketRow({ row }: { row: BucketPressureRow }) {
+  const tone = pressureTone(row.percentOfCeiling);
+  const toneColor =
+    tone === "ok"
+      ? "var(--cp-success)"
+      : tone === "danger"
+        ? "var(--cp-danger)"
+        : "var(--cp-warning)";
+  const label =
+    row.percentOfCeiling < 0.7
+      ? "Low pressure"
+      : row.percentOfCeiling < 0.9
+        ? "Approaching ceiling"
+        : row.percentOfCeiling < 1.1
+          ? "At the line"
+          : "Over ceiling";
+  return (
+    <li
+      data-testid="stats-engine-bucket-row"
+      data-bucket={row.bucket}
+      style={{
+        padding: "10px 12px",
+        borderRadius: 10,
+        border: "1px solid var(--cp-border)",
+        background: "var(--cp-surface)",
+        display: "grid",
+        gap: 6,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+        <div style={{ fontSize: 14, fontWeight: 600 }}>
+          {row.label}
+          <span
+            className="cp-info"
+            tabIndex={0}
+            aria-label={`Why: ${row.label}`}
+            data-testid="stats-engine-bucket-why"
+          >
+            ?
+            <span className="pop" style={{ width: 280 }} data-testid="stats-engine-bucket-why-pop">
+              {row.why}
+            </span>
+          </span>
+        </div>
+        <span
+          className="mono"
+          style={{ fontSize: 12, color: toneColor, fontWeight: 600 }}
+        >
+          {Math.round(row.percentOfCeiling * 100)}% · {label}
+        </span>
+      </div>
+      <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>{row.description}</div>
+      <PressureMeter
+        value={row.percentOfCeiling}
+        marks={[
+          { at: 0.7, label: "70% — leaving the safe zone" },
+          { at: 0.9, label: "90% — approaching ceiling" },
+          { at: 1.0, label: "Ceiling" },
+        ]}
+        ariaLabel={`${row.label} pressure: ${Math.round(row.percentOfCeiling * 100)}% of ceiling`}
+      />
+    </li>
+  );
+}
+
+// ─── D · Ceiling explainer ─────────────────────────────────────────
+
+function CeilingExplainerCard({ ceiling }: { ceiling: CeilingExplain }) {
+  return (
+    <section
+      className="cp-card"
+      data-testid="stats-engine-ceiling"
+      style={{ padding: 20 }}
+    >
+      <h2 style={{ margin: 0, fontSize: 16 }}>
+        Your ceiling this week
+        <span className="cp-info" tabIndex={0} aria-label="How the ceiling is computed">
+          i
+          <span className="pop" style={{ width: 280 }}>
+            Final ceiling = base × GRM × confidence (DC-C11 simplified).
+            Base = median of your last 3 recovered weeks (DC-C9). Confidence
+            bias compresses the ceiling when data is sparse (DC-C13) so the
+            engine projects conservatively instead of pretending you&apos;re
+            fresh.
+          </span>
+        </span>
+      </h2>
+      <p style={{ margin: "4px 0 16px", color: "var(--cp-text-muted)", fontSize: 13 }}>
+        Plain-language render of the engine&apos;s ceiling equation —
+        inputs you can see, output the engine actually uses.
+      </p>
+
+      <div
+        style={{
+          padding: 14,
+          borderRadius: 10,
+          background: "var(--cp-surface-soft)",
+          border: "1px solid var(--cp-border)",
+          display: "grid",
+          gap: 8,
+          fontSize: 13,
+        }}
+      >
+        <CeilingInputRow
+          label="Base ceiling"
+          value={ceiling.baseCeiling.toFixed(1)}
+          unit="sessions/wk"
+          cite="DC-C9"
+          help="Median dose of your last recovered weeks."
+        />
+        <CeilingInputRow
+          label="Recovery multiplier (GRM)"
+          value={ceiling.recoveryMultiplier.toFixed(2)}
+          unit="×"
+          cite="DC-C5"
+          help="Compresses the ceiling when wellness signals dip. MVP = 1.0 until DC-P2/DC-P3 inputs land."
+        />
+        <CeilingInputRow
+          label="Confidence bias"
+          value={ceiling.confidenceBias.toFixed(2)}
+          unit="×"
+          cite="DC-C13"
+          help={`Data completeness ${(ceiling.inputs.dataCompleteness * 100).toFixed(0)}% over the last 28 days.`}
+        />
+        <div
+          style={{
+            borderTop: "1px dashed var(--cp-border)",
+            marginTop: 4,
+            paddingTop: 8,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+          }}
+        >
+          <span style={{ fontWeight: 600 }}>This week&apos;s ceiling</span>
+          <span
+            className="mono"
+            data-testid="stats-engine-ceiling-final"
+            style={{ fontWeight: 700, color: "var(--cp-accent)", fontSize: 18 }}
+          >
+            ≈ {ceiling.finalCeiling.toFixed(1)} hard sessions
+          </span>
+        </div>
+      </div>
+
+      <ul
+        style={{
+          margin: "12px 0 0",
+          padding: 0,
+          listStyle: "none",
+          display: "grid",
+          gap: 4,
+          fontSize: 11,
+          color: "var(--cp-text-muted)",
+        }}
+      >
+        {ceiling.inputs.notes.map((n, i) => (
+          <li key={i}>· {n}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function CeilingInputRow({
+  label,
+  value,
+  unit,
+  cite,
+  help,
+}: {
+  label: string;
+  value: string;
+  unit: string;
+  cite: string;
+  help: string;
+}) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>
+          {label}{" "}
+          <span className="mono" style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
+            ({cite})
+          </span>
+        </div>
+        <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>{help}</div>
+      </div>
+      <div
+        className="mono"
+        style={{ fontSize: 14, fontWeight: 600, whiteSpace: "nowrap" }}
+      >
+        {value} {unit}
+      </div>
+    </div>
+  );
+}
+
+// ─── E · User tier ─────────────────────────────────────────────────
+
+function UserTierCard({ tier }: { tier: UserTierState }) {
+  return (
+    <section
+      className="cp-card"
+      data-testid="stats-engine-tier"
+      data-tier={tier.tier}
+      style={{ padding: 20 }}
+    >
+      <h2 style={{ margin: 0, fontSize: 16 }}>
+        Your tier
+        <span className="cp-info" tabIndex={0} aria-label="How tier is computed">
+          i
+          <span className="pop" style={{ width: 280 }}>
+            DC-G1: tier is behavioural, not declared. Inferred from anchor
+            compliance, session completion, schedule regularity, and
+            recovery-input consistency over the last 56 days. DC-G3
+            thresholds: consumer 0–49, intermediate 50–74, high-performance
+            75–100.
+          </span>
+        </span>
+      </h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, margin: "8px 0" }}>
+        <div>
+          <div
+            data-testid="stats-engine-tier-label"
+            style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.01em" }}
+          >
+            {tier.tierLabel}
+          </div>
+          <div style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>
+            {tier.description}
+          </div>
+        </div>
+        <div
+          className="mono"
+          style={{ fontSize: 12, color: "var(--cp-text-muted)" }}
+        >
+          BTS {tier.bts}/100
+          {tier.isColdStart && " · cold-start default (DC-G5)"}
+        </div>
+      </div>
+      {tier.sessionsUntilNextTier != null && (
+        <div style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>
+          Sessions until next tier: ~{tier.sessionsUntilNextTier} (volume +
+          completion thresholds, DC-G3).
+        </div>
+      )}
+      <details
+        style={{
+          marginTop: 10,
+          fontSize: 12,
+          color: "var(--cp-text-muted)",
+        }}
+      >
+        <summary style={{ cursor: "pointer", color: "var(--cp-text)" }}>
+          How is this computed?
+        </summary>
+        <p style={{ margin: "8px 0 0", lineHeight: 1.5 }}>{tier.explanation}</p>
+      </details>
+    </section>
+  );
+}
+
+// ─── F · Recent overrides ──────────────────────────────────────────
+
+function RecentOverridesCard({
+  overrides,
+  notTracked,
+}: {
+  overrides: OverrideEvent[];
+  notTracked: boolean;
+}) {
+  return (
+    <section
+      className="cp-card"
+      data-testid="stats-engine-overrides"
+      data-empty={notTracked ? "true" : "false"}
+      style={{ padding: 20 }}
+    >
+      <h2 style={{ margin: 0, fontSize: 16 }}>
+        Recent overrides
+        <span className="cp-info" tabIndex={0} aria-label="What counts as an override">
+          i
+          <span className="pop" style={{ width: 280 }}>
+            DC-K4 — when you override an engine recommendation, the engine
+            records it and surfaces it here. Today this captures skips and
+            movement swaps. A dedicated override-audit table is deferred to
+            a later phase.
+          </span>
+        </span>
+      </h2>
+      <p style={{ margin: "4px 0 12px", color: "var(--cp-text-muted)", fontSize: 13 }}>
+        Last 10 cases where you took a different action than the engine
+        recommended.
+      </p>
+      {notTracked ? (
+        <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: 0 }}>
+          No overrides logged yet. Skips and movement swaps will appear here
+          as you use the planner.
+        </p>
+      ) : (
+        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
+          {overrides.map((o, i) => (
+            <li
+              key={i}
+              data-testid="stats-engine-override-row"
+              data-kind={o.kind}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid var(--cp-border)",
+                background: "var(--cp-surface)",
+                display: "grid",
+                gap: 4,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>{o.what}</span>
+                <span
+                  className="mono"
+                  style={{ fontSize: 11, color: "var(--cp-text-muted)" }}
+                >
+                  {formatRelativeDate(o.occurredAt)}
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+                {o.did}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function formatRelativeDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+  const days = Math.floor((Date.now() - d.getTime()) / 86_400_000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days}d ago`;
+  if (days < 30) return `${Math.floor(days / 7)}w ago`;
+  return d.toISOString().slice(0, 10);
+}
+
+// ─── G · Engine internals ──────────────────────────────────────────
+
+function EngineInternalsCard({ internals }: { internals: EngineInternals }) {
+  return (
+    <section
+      className="cp-card"
+      data-testid="stats-engine-internals"
+      style={{
+        padding: 16,
+        background: "var(--cp-surface-soft)",
+        fontSize: 12,
+        color: "var(--cp-text-muted)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          fontWeight: 600,
+          marginBottom: 6,
+        }}
+      >
+        Engine internals
+      </div>
+      <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 4 }}>
+        <li>
+          Engine package version:{" "}
+          <span className="mono" data-testid="stats-engine-internals-version">
+            {internals.engineVersion}
+          </span>
+        </li>
+        <li>
+          Region state regions tracked:{" "}
+          <span className="mono">{internals.regionsTracked}</span>
+        </li>
+        <li>
+          Last region-ledger computation:{" "}
+          <span className="mono">
+            {internals.lastRegionStateAt
+              ? internals.lastRegionStateAt.replace("T", " ").slice(0, 19)
+              : "never"}
+          </span>
+        </li>
+      </ul>
+    </section>
   );
 }
