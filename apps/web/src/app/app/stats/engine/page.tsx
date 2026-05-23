@@ -414,22 +414,36 @@ function BucketRow({ row }: { row: BucketPressureRow }) {
 // ─── D · Ceiling explainer ─────────────────────────────────────────
 
 function CeilingExplainerCard({ ceiling }: { ceiling: CeilingExplain }) {
+  const formulaCopy: Record<typeof ceiling.formula, string> = {
+    median_of_recovered: "Median of your last 3 recovered weeks",
+    cold_start_partial: "Median of your available recovered weeks (cold start)",
+    cold_start_conservative: "Conservative floor — no recovered weeks yet (cold start)",
+  };
+  const recoveredOk = ceiling.formula === "median_of_recovered";
+  const recoveredCount = ceiling.inputs.recoveredWeeksCount;
   return (
     <section
       className="cp-card"
       data-testid="stats-engine-ceiling"
+      data-formula={ceiling.formula}
       style={{ padding: 20 }}
     >
       <h2 style={{ margin: 0, fontSize: 16 }}>
         Your ceiling this week
         <span className="cp-info" tabIndex={0} aria-label="How the ceiling is computed">
           i
-          <span className="pop" style={{ width: 280 }}>
+          <span
+            className="pop"
+            data-testid="stats-engine-ceiling-why-pop"
+            style={{ width: 320 }}
+          >
             Final ceiling = base × GRM × confidence (DC-C11 simplified).
-            Base = median of your last 3 recovered weeks (DC-C9). Confidence
-            bias compresses the ceiling when data is sparse (DC-C13) so the
-            engine projects conservatively instead of pretending you&apos;re
-            fresh.
+            Base = median weekly tonnage across your last 3 recovered
+            weeks (DC-C9 · DC-K1). A week qualifies as recovered when
+            every planned session was logged, no session sRPE exceeded
+            9, and pre-session fatigue + soreness both averaged below 4.
+            When fewer than 3 qualify we walk down a cold-start ladder
+            (DC-C13) so the engine projects conservatively.
           </span>
         </span>
       </h2>
@@ -437,6 +451,97 @@ function CeilingExplainerCard({ ceiling }: { ceiling: CeilingExplain }) {
         Plain-language render of the engine&apos;s ceiling equation —
         inputs you can see, output the engine actually uses.
       </p>
+
+      {/* "Why this many?" recovered-weeks badge */}
+      <div
+        data-testid="stats-engine-ceiling-recovered-badge"
+        data-tone={recoveredOk ? "ok" : recoveredCount > 0 ? "warning" : "danger"}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "4px 10px",
+          borderRadius: 999,
+          background: recoveredOk
+            ? "var(--cp-success-soft, var(--cp-accent-soft))"
+            : "var(--cp-warning-soft, var(--cp-surface-soft))",
+          color: recoveredOk ? "var(--cp-success, var(--cp-accent))" : "var(--cp-warning, var(--cp-text))",
+          fontSize: 12,
+          fontWeight: 600,
+          marginBottom: 12,
+        }}
+      >
+        {recoveredOk
+          ? `${recoveredCount} recovered weeks ✓`
+          : recoveredCount > 0
+            ? `Only ${recoveredCount} recovered week${recoveredCount === 1 ? "" : "s"} — cold start`
+            : "0 recovered weeks — cold start"}
+      </div>
+
+      {/* Recovered-week basis table */}
+      {ceiling.basisWeeks.length > 0 ? (
+        <div
+          data-testid="stats-engine-ceiling-basis"
+          style={{
+            marginBottom: 12,
+            borderRadius: 10,
+            border: "1px solid var(--cp-border)",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              padding: "8px 12px",
+              background: "var(--cp-surface-soft)",
+              fontSize: 11,
+              color: "var(--cp-text-muted)",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <span>{formulaCopy[ceiling.formula]}</span>
+            <span
+              className="cp-info"
+              tabIndex={0}
+              aria-label="Why these weeks?"
+              data-testid="stats-engine-ceiling-why-weeks"
+            >
+              ?
+              <span className="pop" style={{ width: 260 }}>
+                A week is &quot;recovered&quot; (DC-K1) when every planned
+                session was logged, no session sRPE exceeded 9, and avg
+                pre-session fatigue + soreness both stayed below 4
+                (1–5 scale). Cold-start weeks shown for context only.
+              </span>
+            </span>
+          </div>
+          <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+            {ceiling.basisWeeks.map((b) => (
+              <li
+                key={b.weekStart}
+                data-testid="stats-engine-ceiling-basis-row"
+                data-included={b.included ? "true" : "false"}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  padding: "6px 12px",
+                  fontSize: 12,
+                  borderTop: "1px solid var(--cp-border)",
+                  opacity: b.included ? 1 : 0.55,
+                }}
+              >
+                <span className="mono">
+                  {b.included ? "✓" : "·"} {b.weekStart}
+                </span>
+                <span className="mono">
+                  {b.volume.toLocaleString()} kg
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <div
         style={{
@@ -451,10 +556,10 @@ function CeilingExplainerCard({ ceiling }: { ceiling: CeilingExplain }) {
       >
         <CeilingInputRow
           label="Base ceiling"
-          value={ceiling.baseCeiling.toFixed(1)}
-          unit="sessions/wk"
-          cite="DC-C9"
-          help="Median dose of your last recovered weeks."
+          value={Math.round(ceiling.baseCeiling).toLocaleString()}
+          unit="kg/wk"
+          cite="DC-C9 · DC-K1"
+          help={formulaCopy[ceiling.formula]}
         />
         <CeilingInputRow
           label="Recovery multiplier (GRM)"
@@ -468,7 +573,11 @@ function CeilingExplainerCard({ ceiling }: { ceiling: CeilingExplain }) {
           value={ceiling.confidenceBias.toFixed(2)}
           unit="×"
           cite="DC-C13"
-          help={`Data completeness ${(ceiling.inputs.dataCompleteness * 100).toFixed(0)}% over the last 28 days.`}
+          help={
+            ceiling.formula === "median_of_recovered"
+              ? "Full data — 3+ recovered weeks (DC-C13)."
+              : "Sparse data — confidence collapses to 0.80× until 3 recovered weeks land (DC-C13)."
+          }
         />
         <div
           style={{
@@ -486,7 +595,7 @@ function CeilingExplainerCard({ ceiling }: { ceiling: CeilingExplain }) {
             data-testid="stats-engine-ceiling-final"
             style={{ fontWeight: 700, color: "var(--cp-accent)", fontSize: 18 }}
           >
-            ≈ {ceiling.finalCeiling.toFixed(1)} hard sessions
+            ≈ {Math.round(ceiling.finalCeiling).toLocaleString()} kg
           </span>
         </div>
       </div>
@@ -505,6 +614,10 @@ function CeilingExplainerCard({ ceiling }: { ceiling: CeilingExplain }) {
         {ceiling.inputs.notes.map((n, i) => (
           <li key={i}>· {n}</li>
         ))}
+        <li style={{ marginTop: 4, fontStyle: "italic" }}>
+          See DC-K1 in <span className="mono">docs/knowledge/hybrid-training-design-constraints.md</span> for the
+          recovered-week qualification rule.
+        </li>
       </ul>
     </section>
   );
