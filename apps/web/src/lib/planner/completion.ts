@@ -19,6 +19,11 @@
  * reconciles. Existing 'archived' and 'completed' blocks are never
  * touched — manual archive always wins, and the no-op case is silent.
  *
+ * When the flip fires, `completed_at` and `ended_at` are written to
+ * NOW() alongside the status change (migration 0025). The `status='active'`
+ * guard on the UPDATE keeps that idempotent — a second invocation
+ * doesn't overwrite the original timestamp.
+ *
  * "Done" criterion mirrors the existing planner queries: a planned
  * session counts as remaining iff `completed_session_id IS NULL AND
  * skipped_at IS NULL`. Treating skipped rows as done matches user
@@ -61,10 +66,14 @@ export async function maybeCompleteBlock(
 
   // 4. Flip. Guarded by `status='active'` so a concurrent endBlock
   //    (which writes 'archived') wins the race rather than getting
-  //    overwritten back to 'completed'.
+  //    overwritten back to 'completed'. The `status='active'` guard
+  //    also makes the timestamp write idempotent — re-running this
+  //    on a row that's already 'completed' is a no-op (zero rows
+  //    matched), so completed_at/ended_at are written exactly once.
+  const nowIso = new Date().toISOString();
   await supabase
     .from("training_blocks")
-    .update({ status: "completed" })
+    .update({ status: "completed", completed_at: nowIso, ended_at: nowIso })
     .eq("id", blockId)
     .eq("status", "active");
 }

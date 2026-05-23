@@ -176,6 +176,13 @@
       "tag": "0024_power_movements_seed",
       "when": 1779528000000,
       "breakpoints": false
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "tag": "0025_block_lifecycle_timestamps",
+      "when": 1779534000000,
+      "breakpoints": false
     }
   ]
 }
