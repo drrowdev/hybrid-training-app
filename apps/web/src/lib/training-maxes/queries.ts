@@ -6,11 +6,21 @@
  * "training max" is the computed product, rounded to the plate increment.
  */
 import { createClient } from "@/lib/supabase/server";
+import type { TmFormula, TmSource } from "@hta/db";
 
 /** Round to the nearest plate increment (default 2.5 kg). */
 export function roundToPlate(kg: number, increment = 2.5): number {
   return Math.round(kg / increment) * increment;
 }
+
+/** Provenance metadata kept alongside derived TM rows for UI disclosure. */
+export type TmProvenance = {
+  source: TmSource;
+  derivedFromSessionId: string | null;
+  derivedFromSetLogId: string | null;
+  derivedFormula: TmFormula | null;
+  derivedAt: string | null;
+};
 
 export type TmRow = {
   id: string;
@@ -22,7 +32,7 @@ export type TmRow = {
   effectivePercent: number;
   tmKg: number;
   updatedAt: string;
-};
+} & TmProvenance;
 
 export type TmContext = {
   defaultPercent: number;
@@ -49,7 +59,7 @@ export async function getTrainingMaxContext(): Promise<TmContext> {
     supabase
       .from("training_maxes")
       .select(
-        "id, movement_id, one_rm_kg, tm_percent, updated_at, movements(display_name, slug)",
+        "id, movement_id, one_rm_kg, tm_percent, updated_at, source, derived_from_session_id, derived_from_set_log_id, derived_formula, derived_at, movements(display_name, slug)",
       )
       .order("updated_at", { ascending: false }),
   ]);
@@ -61,6 +71,16 @@ export async function getTrainingMaxContext(): Promise<TmContext> {
     const oneRm = Number(r.one_rm_kg);
     const override = r.tm_percent == null ? null : Number(r.tm_percent);
     const effective = override ?? defaultPercent;
+    const sourceRaw = (r as { source?: string }).source ?? "entered";
+    const source: TmSource =
+      sourceRaw === "derived_amrap" || sourceRaw === "derived_rpe"
+        ? sourceRaw
+        : "entered";
+    const formulaRaw = (r as { derived_formula?: string | null }).derived_formula ?? null;
+    const formula: TmFormula | null =
+      formulaRaw === "epley" || formulaRaw === "brzycki" || formulaRaw === "rpe_zourdos"
+        ? formulaRaw
+        : null;
     return {
       id: r.id,
       movementId: r.movement_id,
@@ -71,6 +91,13 @@ export async function getTrainingMaxContext(): Promise<TmContext> {
       effectivePercent: effective,
       tmKg: roundToPlate((oneRm * effective) / 100),
       updatedAt: r.updated_at,
+      source,
+      derivedFromSessionId:
+        (r as { derived_from_session_id?: string | null }).derived_from_session_id ?? null,
+      derivedFromSetLogId:
+        (r as { derived_from_set_log_id?: string | null }).derived_from_set_log_id ?? null,
+      derivedFormula: formula,
+      derivedAt: (r as { derived_at?: string | null }).derived_at ?? null,
     };
   });
 
@@ -95,4 +122,54 @@ export async function getTrainingMaxDict(): Promise<{
 export async function listTrainingMaxes(): Promise<TmRow[]> {
   const ctx = await getTrainingMaxContext();
   return ctx.rows;
+}
+
+/**
+ * Source-set context for a derived TM — the set the e1RM was computed from.
+ * Returns null when the row is `entered` or when the linked set/session has
+ * been hard-deleted (FK SET NULL).
+ */
+export type TmSourceSet = {
+  sessionId: string;
+  setLogId: string | null;
+  performedAt: string;
+  weightKg: number | null;
+  reps: number | null;
+  rpe: number | null;
+};
+
+export async function getTmSourceSet(row: TmRow): Promise<TmSourceSet | null> {
+  if (row.source === "entered" || !row.derivedFromSessionId) return null;
+  const supabase = await createClient();
+  const { data: session } = await supabase
+    .from("sessions")
+    .select("id, performed_at")
+    .eq("id", row.derivedFromSessionId)
+    .maybeSingle();
+  if (!session) return null;
+
+  let weightKg: number | null = null;
+  let reps: number | null = null;
+  let rpe: number | null = null;
+  if (row.derivedFromSetLogId) {
+    const { data: setLog } = await supabase
+      .from("set_logs")
+      .select("weight_kg, reps, rpe")
+      .eq("id", row.derivedFromSetLogId)
+      .maybeSingle();
+    if (setLog) {
+      weightKg = setLog.weight_kg == null ? null : Number(setLog.weight_kg);
+      reps = setLog.reps == null ? null : Number(setLog.reps);
+      rpe = setLog.rpe == null ? null : Number(setLog.rpe);
+    }
+  }
+
+  return {
+    sessionId: session.id,
+    setLogId: row.derivedFromSetLogId,
+    performedAt: session.performed_at,
+    weightKg,
+    reps,
+    rpe,
+  };
 }
