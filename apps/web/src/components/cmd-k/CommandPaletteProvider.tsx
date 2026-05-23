@@ -5,11 +5,33 @@
  * global Cmd-K / Ctrl-K keyboard listener. Wraps children unchanged
  * so it can be slotted into `app/layout.tsx` without touching the
  * existing `AppShell` layout.
+ *
+ * Also exposes an `open()` / `toggle()` API via React context so the
+ * top-bar ⌘K hint chip (and any other UI surface) can trigger the
+ * palette without re-binding the keyboard listener.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { CommandPalette } from "./CommandPalette";
 import type { PaletteIndices } from "@/lib/cmd-k/types";
+
+type CommandPaletteApi = {
+  open: () => void;
+  close: () => void;
+  toggle: () => void;
+};
+
+const CommandPaletteContext = createContext<CommandPaletteApi | null>(null);
+
+export function useCommandPalette(): CommandPaletteApi {
+  const ctx = useContext(CommandPaletteContext);
+  if (!ctx) {
+    throw new Error(
+      "useCommandPalette must be used inside <CommandPaletteProvider>",
+    );
+  }
+  return ctx;
+}
 
 export function CommandPaletteProvider({
   indices,
@@ -18,10 +40,11 @@ export function CommandPaletteProvider({
   indices: PaletteIndices;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
 
-  const toggle = useCallback(() => setOpen((v) => !v), []);
-  const close = useCallback(() => setOpen(false), []);
+  const open = useCallback(() => setIsOpen(true), []);
+  const close = useCallback(() => setIsOpen(false), []);
+  const toggle = useCallback(() => setIsOpen((v) => !v), []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -39,10 +62,15 @@ export function CommandPaletteProvider({
     return () => window.removeEventListener("keydown", onKey);
   }, [toggle]);
 
+  const api = useMemo<CommandPaletteApi>(
+    () => ({ open, close, toggle }),
+    [open, close, toggle],
+  );
+
   return (
-    <>
+    <CommandPaletteContext.Provider value={api}>
       {children}
-      <CommandPalette open={open} onClose={close} indices={indices} />
-    </>
+      <CommandPalette open={isOpen} onClose={close} indices={indices} />
+    </CommandPaletteContext.Provider>
   );
 }
