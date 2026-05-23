@@ -9,6 +9,7 @@ import { maybeCompleteBlock } from "@/lib/planner/completion";
 import { getUserTimezone } from "@/lib/planner/queries";
 import { roundToPlate } from "@/lib/planner/archetypes";
 import type { Prescription, PrescriptionItem } from "@hta/db";
+import { applyPrescriptionSwap } from "./prescription-mutations";
 
 const checkInSchema = z.object({
   fatigue: z.coerce.number().int().min(1).max(5).nullable().optional(),
@@ -774,4 +775,98 @@ export async function applyStravaAutofill(
 
   revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
   return { ok: true, cardioLogId: inserted?.id };
+}
+
+const swapItemSchema = z.object({
+  plannedSessionId: z.string().uuid(),
+  itemIndex: z.coerce.number().int().min(0).max(64),
+  newMovementId: z.string().uuid(),
+});
+
+/**
+ * Phase 2 A2 — swap a single prescription item on today's planned session.
+ *
+ * Mutates the ``prescription.items[itemIndex]`` JSONB in place: replaces
+ * ``movementId`` / ``movementSlug`` / ``movementName`` with the picked
+ * candidate, and records the original movement under ``meta.swappedFrom``
+ * so analytics can later see "user swapped X% of prescribed work" and
+ * the UI can surface a "Swapped" badge with the prior name on hover.
+ *
+ * Only affects today's prescription — no implicit "always do floor press"
+ * propagation. A future "always swap" preference is a separate feature.
+ *
+ * Returns the updated prescription so the client can paint instantly.
+ */
+export async function swapPrescriptionItem(
+  formData: FormData,
+): Promise<{ ok?: true; error?: string; prescription?: Prescription }> {
+  const parsed = swapItemSchema.safeParse({
+    plannedSessionId: formData.get("plannedSessionId"),
+    itemIndex: formData.get("itemIndex"),
+    newMovementId: formData.get("newMovementId"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in." };
+
+  const [{ data: plannedRow, error: pErr }, { data: newMov, error: mErr }] = await Promise.all([
+    supabase
+      .from("planned_sessions")
+      .select("id, user_id, prescription")
+      .eq("id", parsed.data.plannedSessionId)
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("movements")
+      .select("id, slug, display_name")
+      .eq("id", parsed.data.newMovementId)
+      .maybeSingle(),
+  ]);
+  if (pErr) return { error: pErr.message };
+  if (!plannedRow) return { error: "Planned session not found." };
+  if (mErr) return { error: mErr.message };
+  if (!newMov) return { error: "Replacement movement not found." };
+
+  const prescription = (plannedRow.prescription as Prescription | null) ?? { items: [] };
+  if (parsed.data.itemIndex >= (prescription.items?.length ?? 0)) {
+    return { error: "Item index out of range." };
+  }
+
+  let nextPrescription: Prescription;
+  try {
+    nextPrescription = applyPrescriptionSwap(prescription, {
+      itemIndex: parsed.data.itemIndex,
+      newMovement: {
+        id: newMov.id as string,
+        slug: newMov.slug as string,
+        displayName: newMov.display_name as string,
+      },
+    });
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+
+  const { error: uErr } = await supabase
+    .from("planned_sessions")
+    .update({ prescription: nextPrescription })
+    .eq("id", parsed.data.plannedSessionId)
+    .eq("user_id", user.id);
+  if (uErr) return { error: uErr.message };
+
+  // Revalidate Today + any in-progress session that links to this plan.
+  revalidatePath("/app");
+  const { data: linked } = await supabase
+    .from("planned_sessions")
+    .select("completed_session_id")
+    .eq("id", parsed.data.plannedSessionId)
+    .maybeSingle();
+  if (linked?.completed_session_id) {
+    revalidatePath(`/app/sessions/${linked.completed_session_id}`);
+  }
+
+  return { ok: true, prescription: nextPrescription };
 }
