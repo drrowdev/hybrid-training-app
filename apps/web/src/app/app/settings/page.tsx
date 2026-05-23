@@ -363,7 +363,7 @@ export default async function SettingsPage() {
           Flag injuries by region. The app avoids loading those regions until you mark them resolved.
         </p>
         <Link
-          href="/app/settings/limitations"
+          href="/app/recovery/injuries"
           className="inline-flex items-center justify-between gap-3 rounded-lg border border-foreground/10 p-4 w-full hover:bg-foreground/5"
         >
           <span className="text-sm">Manage limitations</span>
