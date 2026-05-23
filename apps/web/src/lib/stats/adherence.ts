@@ -1,5 +1,5 @@
 /**
- * Adherence — 30-day completion ratio for the Stats overview card.
+ * Adherence — completion ratio for the Stats overview card.
  *
  * Phase 1 brief decision (Stats Overview §B): **skipped sessions count
  * as MISSED for adherence**. The user explicitly chose not to do the
@@ -10,9 +10,11 @@
  * later want a softer view (e.g. "intentional rest", "auto-skipped
  * after deload"), Phase 2's adherence dashboard is the right venue.
  *
- * Denominator: every planned_session whose calendar date is ≥ today−30
+ * Denominator: every planned_session whose calendar date is ≥ today−N
  * AND ≤ today (i.e. "was scheduled to be done by now"). Future-dated
  * planned sessions are not yet due, so they don't penalise the user.
+ * When `windowDays === null` (Phase 2 "all-time" range), the lower
+ * bound is dropped entirely — every past planned session counts.
  *
  * Numerator: planned_sessions with `completed_session_id IS NOT NULL`.
  *
@@ -27,8 +29,11 @@ import { addDaysToYmd, daysBetweenYmd, isoWeekdayYmd, todayYmd } from "@/lib/dat
 export type AdherenceInput = {
   /** Today as YYYY-MM-DD in the user's timezone. */
   today: string;
-  /** Window length in days (default 30). */
-  windowDays?: number;
+  /**
+   * Window length in days. `null` skips the lower bound (all-time).
+   * Default is 30, matching the Phase 1 card.
+   */
+  windowDays?: number | null;
   /** Planned-session rows joined with their block.started_on. */
   planned: Array<{
     weekIndex: number;
@@ -58,15 +63,15 @@ export type AdherenceResult = {
  * inclusive) and then buckets them.
  */
 export function computeAdherence(input: AdherenceInput): AdherenceResult {
-  const windowDays = input.windowDays ?? 30;
-  const earliest = addDaysToYmd(input.today, -windowDays);
+  const windowDays = input.windowDays === undefined ? 30 : input.windowDays;
+  const earliest = windowDays == null ? null : addDaysToYmd(input.today, -windowDays);
   let scheduled = 0;
   let completed = 0;
   let skipped = 0;
 
   for (const row of input.planned) {
     const date = dayDateFor(row.blockStartedOn, row.weekIndex, row.dayIndex);
-    if (date < earliest) continue;
+    if (earliest != null && date < earliest) continue;
     if (date > input.today) continue;
     scheduled++;
     if (row.completedSessionId) completed++;
@@ -135,4 +140,50 @@ export async function getAdherence30d(
     .filter((r): r is NonNullable<typeof r> => r != null);
 
   return computeAdherence({ today: todayYmd(tz), planned });
+}
+
+/**
+ * Phase 2 range-aware adherence reader. Identical to `getAdherence30d`
+ * but parametrised by window in days; `null` = all-time.
+ */
+export async function getAdherenceForWindow(
+  supabase: SupabaseClient,
+  userId: string,
+  tz: string,
+  windowDays: number | null,
+): Promise<AdherenceResult> {
+  const { data, error } = await supabase
+    .from("planned_sessions")
+    .select(
+      "week_index, day_index, completed_session_id, skipped_at, training_blocks!inner(started_on, deleted_at, user_id)",
+    )
+    .eq("training_blocks.user_id", userId)
+    .is("training_blocks.deleted_at", null);
+  if (error) throw new Error(error.message);
+  type Row = {
+    week_index: number;
+    day_index: number;
+    completed_session_id: string | null;
+    skipped_at: string | null;
+    training_blocks:
+      | { started_on: string }
+      | Array<{ started_on: string }>
+      | null;
+  };
+  const rows = (data ?? []) as Row[];
+  const planned = rows
+    .map((r) => {
+      const blk = Array.isArray(r.training_blocks) ? r.training_blocks[0] : r.training_blocks;
+      if (!blk?.started_on) return null;
+      return {
+        weekIndex: r.week_index,
+        dayIndex: r.day_index,
+        completedSessionId: r.completed_session_id,
+        skippedAt: r.skipped_at,
+        blockStartedOn: blk.started_on,
+      };
+    })
+    .filter((r): r is NonNullable<typeof r> => r != null);
+
+  return computeAdherence({ today: todayYmd(tz), windowDays, planned });
 }
