@@ -784,18 +784,51 @@ async function computeDataCompleteness(
 // E · User tier (DC-G1..G6)
 // ───────────────────────────────────────────────────────────────────
 
-export type UserTier = "consumer" | "intermediate" | "high_performance";
+import {
+  computeTier,
+  DECLARED_TO_TIER,
+  type DeclaredExperience,
+  type TierLevel,
+  type TierResult,
+  type Contributor,
+} from "@hta/engine";
+import { gatherTierInputs } from "@/lib/engine/tier-detection";
+
+export type UserTier = TierLevel;
+
+export type UserTierContributor = Contributor;
 
 export type UserTierState = {
+  /** Final tier used by the UI (declared wins when set — DC-K4 soft-warn
+   *  semantics surface mismatch separately). */
   tier: UserTier;
   tierLabel: string;
-  /** Behavioural-training-score (DC-G2). 0..100. Cold-start defaults to 50. */
-  bts: number;
-  /** True when the tier is the DC-G5 cold-start default (no behavioural signal). */
+  /** The tier the user declared during onboarding, if any. */
+  declared: UserTier | null;
+  declaredLabel: string | null;
+  /** Raw declared training-experience enum (lt_1y / 1_3y / gte_3y). */
+  declaredExperience: DeclaredExperience | null;
+  /** Human-friendly years description, e.g. "1–3 years of consistent training". */
+  declaredYearsLabel: string | null;
+  /** Tier the observed signals lean toward, before respecting the declaration. */
+  inferred: UserTier;
+  inferredLabel: string;
+  /** True when declared and inferred disagree (DC-K4 soft warn). */
+  mismatch: boolean;
+  /** "low" | "moderate" | "high" — drives the confidence badge. */
+  confidence: TierResult["confidence"];
+  /** Number of contributors with data — surfaces alongside confidence. */
+  contributorCount: number;
+  /** Per-contributor breakdown for the "How is this computed?" panel. */
+  contributors: UserTierContributor[];
+  scoresByTier: Record<UserTier, number>;
+  /** Cold-start when no observed signal AND nothing declared (DC-G5). */
   isColdStart: boolean;
-  /** Approximate number of additional completed sessions before next-tier threshold (DC-G3). */
+  /** Approximate number of sessions until the next-tier gate (DC-G3). */
   sessionsUntilNextTier: number | null;
-  /** Plain-language description for the UI. */
+  /** Plain-language description of what gates the next tier. */
+  nextTierGateNote: string | null;
+  /** Plain-language description for the UI ("You're at X · Y years of training"). */
   description: string;
   /** "How is this computed?" inline-doc paragraph (DC-G1/G2 narration). */
   explanation: string;
@@ -807,109 +840,105 @@ const TIER_LABELS: Record<UserTier, string> = {
   high_performance: "High-performance",
 };
 
-const TIER_THRESHOLDS = { intermediate: 50, high_performance: 75 } as const;
+/**
+ * Years-bucket → human description (DC-G5 cold-start anchor). Kept in
+ * sync with the onboarding wizard copy and the settings page.
+ */
+const DECLARED_YEARS_LABEL: Record<DeclaredExperience, string> = {
+  lt_1y: "≤ 1 year of consistent training",
+  "1_3y": "1–3 years of consistent training",
+  gte_3y: "3+ years of consistent training",
+};
 
 /**
- * MVP tier inference — pinned to the DC-G5 cold-start default until the
- * behavioural-training-score (DC-G2) lands. The behavioural signals are:
- *  - anchor compliance (weight 0.25)
- *  - session completion (weight 0.15)
- *  - completion quality, schedule regularity, recovery inputs, ...
+ * User tier — declared + 4-input weighted formula (DC-G1..G6).
  *
- * For Phase 6 we *do* compute a simplified BTS = session-completion-
- * fraction over the last 56 days, mapped to a 0..100 scale. This gives
- * the tier a non-trivial movement story until the full DC-G2 formula
- * is implemented.
+ * Pure derivation lives in `@hta/engine::computeTier`. This function
+ * fetches the live signals via `gatherTierInputs` and packages the
+ * result for the engine-page UI.
+ *
+ * DC-K4 soft-warn: when declared and inferred disagree, declared wins
+ * (the user owns that declaration) and the mismatch is surfaced as a
+ * note — never silently overruled.
  */
 export async function getUserTier(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<UserTierState> {
-  const since = new Date(Date.now() - 56 * 86_400_000).toISOString();
-  const [completedRes, plannedRes] = await Promise.all([
-    supabase
-      .from("sessions")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .not("completed_at", "is", null)
-      .is("deleted_at", null)
-      .gte("performed_at", since),
-    supabase
-      .from("planned_sessions")
-      .select("id, completed_session_id, skipped_at", { count: "exact" })
-      .eq("user_id", userId)
-      .gte("created_at", since),
-  ]);
+  const inputs = await gatherTierInputs(supabase, userId);
+  const result = computeTier(inputs);
 
-  const completed = completedRes.count ?? 0;
-  const planned = plannedRes.data ?? [];
-  const totalPlanned = planned.length;
-  const loggedPlanned = planned.filter((p) => p.completed_session_id != null).length;
+  const declared = inputs.declaredExperience
+    ? DECLARED_TO_TIER[inputs.declaredExperience]
+    : null;
+  const declaredYearsLabel = inputs.declaredExperience
+    ? DECLARED_YEARS_LABEL[inputs.declaredExperience]
+    : null;
+  const declaredLabel = declared ? TIER_LABELS[declared] : null;
 
-  // No planned sessions yet → cold-start default per DC-G5.
-  const isColdStart = totalPlanned === 0;
-  const completionFrac = totalPlanned > 0 ? loggedPlanned / totalPlanned : 0;
-  // Engineering MVP BTS: 60 + 40 × completion. Yields:
-  //   100% completion → BTS 100 (high_performance)
-  //   75% completion  → BTS 90 (high_performance)
-  //   50% completion  → BTS 80 (high_performance)
-  //   25% completion  → BTS 70 (intermediate)
-  //   0% completion   → BTS 60 (intermediate)
-  // Compounded with the absolute volume floor: < 8 completed sessions in
-  // 56 days → max intermediate (high-perf requires 16+ sessions = ≥2/wk).
-  let bts: number;
-  if (isColdStart) {
-    bts = 50; // DC-G5 cold-start
-  } else {
-    bts = Math.round(60 + 40 * completionFrac);
-    if (completed < 8) bts = Math.min(bts, TIER_THRESHOLDS.high_performance - 1);
-  }
+  const isColdStart =
+    inputs.declaredExperience == null &&
+    Object.keys(inputs.e1rmKgByRole).length === 0 &&
+    inputs.anchorAdherenceLast12w == null &&
+    inputs.scheduleRegularity == null &&
+    inputs.recoveryInputConsistency == null;
 
-  const tier = btsToTier(bts);
-  const sessionsUntilNextTier = sessionsToNextTier(tier, completed, completionFrac);
+  const description = buildDescription(result, declaredYearsLabel, isColdStart);
+
+  const explanation =
+    "Your tier is computed from declared experience plus four observed signals: " +
+    "per-lift e1RM relative to bodyweight (or absolute kg as a fallback), 12-week " +
+    "anchor adherence, schedule regularity, and recovery check-in fill rate. Each " +
+    "input contributes weighted evidence toward one of three tiers; the highest " +
+    "weighted sum wins. Declared experience anchors the verdict — DC-G1 keeps tier " +
+    "behavioural, but DC-K4 surfaces any declared-vs-observed mismatch as a soft note " +
+    "rather than silently overruling. See `docs/knowledge/hybrid-training-design-constraints.md` " +
+    "§G for the full DC-G1..G6 contract.";
 
   return {
-    tier,
-    tierLabel: TIER_LABELS[tier],
-    bts,
+    tier: result.tier,
+    tierLabel: TIER_LABELS[result.tier],
+    declared,
+    declaredLabel,
+    declaredExperience: inputs.declaredExperience,
+    declaredYearsLabel,
+    inferred: result.inferred,
+    inferredLabel: TIER_LABELS[result.inferred],
+    mismatch: result.mismatch,
+    confidence: result.confidence,
+    contributorCount: result.contributors.length,
+    contributors: result.contributors,
+    scoresByTier: result.scoresByTier,
     isColdStart,
-    sessionsUntilNextTier,
-    description: describeTier(tier, completed),
-    explanation:
-      "Tier is inferred from behavioural signals — completion rate of planned sessions, " +
-      "absolute session volume, and (when wellness logging is enabled) recovery-input " +
-      "consistency. DC-G1/G2 in the design constraints. Self-report can downgrade your tier " +
-      "but cannot upgrade beyond what your behaviour supports.",
+    sessionsUntilNextTier: result.sessionsUntilNextTier,
+    nextTierGateNote: result.nextTierGateNote,
+    description,
+    explanation,
   };
 }
 
+function buildDescription(
+  result: TierResult,
+  declaredYearsLabel: string | null,
+  isColdStart: boolean,
+): string {
+  if (isColdStart) {
+    return "Cold start — log a few sessions so the engine can read your training signals (DC-G5).";
+  }
+  if (declaredYearsLabel) return declaredYearsLabel;
+  const cContrib = result.contributors.length;
+  return `${cContrib} observed signal${cContrib === 1 ? "" : "s"} — declared experience not set.`;
+}
+
+/**
+ * Legacy BTS-style tier-from-score helper. Retained for back-compat
+ * with callers that map a 0..100 score to the DC-G3 thresholds; new
+ * code should use `computeTier` from `@hta/engine` directly.
+ */
 export function btsToTier(bts: number): UserTier {
-  if (bts >= TIER_THRESHOLDS.high_performance) return "high_performance";
-  if (bts >= TIER_THRESHOLDS.intermediate) return "intermediate";
+  if (bts >= 75) return "high_performance";
+  if (bts >= 50) return "intermediate";
   return "consumer";
-}
-
-function describeTier(tier: UserTier, completed: number): string {
-  if (tier === "consumer") {
-    return `Less than 8 completed sessions in 56 days — habits still forming.`;
-  }
-  if (tier === "intermediate") {
-    return `${completed} completed sessions in the last 56 days. Solid baseline; engine uses moderate headroom.`;
-  }
-  return `${completed} completed sessions in the last 56 days. Engine permits the highest dose headroom + 2 hard cardios/week.`;
-}
-
-function sessionsToNextTier(tier: UserTier, completed: number, completionFrac: number): number | null {
-  if (tier === "high_performance") return null;
-  if (tier === "consumer") {
-    // Target: 8 completed sessions to leave consumer.
-    return Math.max(1, 8 - completed);
-  }
-  // Intermediate → high_performance requires BTS ≥ 75, which under our MVP
-  // formula needs completionFrac ≥ 0.375 AND ≥ 16 completed sessions in 56d.
-  const sessionsForVolume = Math.max(0, 16 - completed);
-  const sessionsForCompletion = completionFrac >= 0.375 ? 0 : Math.max(1, Math.round((0.375 - completionFrac) * 20));
-  return Math.max(sessionsForVolume, sessionsForCompletion, 1);
 }
 
 // ───────────────────────────────────────────────────────────────────
