@@ -38,7 +38,7 @@ import { fileURLToPath } from "node:url";
 // alone (new migrations applied normally through `drizzle-kit migrate`
 // must NOT appear in this list, or drizzle will skip applying them).
 const FIRST_UNTRACKED_IDX = 16;
-const LAST_UNTRACKED_IDX = 27;
+const LAST_UNTRACKED_IDX = 28;
 
 // Anchor `created_at` ~roughly to when each migration was authored.
 // Drizzle doesn't actually care about this value for migrate behavior;
