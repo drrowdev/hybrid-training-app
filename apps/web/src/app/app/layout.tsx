@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/lib/auth/actions";
-import { AppShell } from "@/components/shell/AppShell";
+import { AppShell, type TopBarAuditEntry } from "@/components/shell/AppShell";
 import { CommandPaletteProvider } from "@/components/cmd-k/CommandPaletteProvider";
 import { needsOnboarding } from "@/lib/onboarding/gate";
 import { loadPaletteIndices } from "@/lib/cmd-k/indices";
@@ -45,12 +45,50 @@ export default async function AppLayout({
   // the client filters in-memory without a per-keystroke round trip.
   const paletteIndices = await loadPaletteIndices(supabase, user.id);
 
+  // Top-bar status cluster — read sync state + recent overrides in
+  // parallel. Both are best-effort: any failure leaves the cluster in
+  // its empty-state so a missing/borked row never blocks the layout.
+  const [stravaRes, auditRes, auditCountRes] = await Promise.all([
+    supabase
+      .from("strava_connections")
+      .select("last_synced_at")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("engine_override_events")
+      .select("id, event_type, occurred_at, planned_session_id, reason")
+      .eq("user_id", user.id)
+      .order("occurred_at", { ascending: false })
+      .limit(5),
+    supabase
+      .from("engine_override_events")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id),
+  ]);
+
+  const hasStravaConnection = !!stravaRes.data;
+  const lastSyncedAt = stravaRes.data?.last_synced_at ?? null;
+
+  const recentAudit: TopBarAuditEntry[] = (auditRes.data ?? []).map((row) => ({
+    id: row.id as string,
+    eventType: row.event_type as string,
+    occurredAt: row.occurred_at as string,
+    plannedSessionId: (row.planned_session_id as string | null) ?? null,
+    reason: (row.reason as string | null) ?? null,
+  }));
+  const auditCount = auditCountRes.count ?? recentAudit.length;
+
   return (
     <CommandPaletteProvider indices={paletteIndices}>
       <AppShell
         signOutAction={signOut}
         displayName={profile?.display_name ?? null}
         email={user.email ?? null}
+        hasStravaConnection={hasStravaConnection}
+        lastSyncedAt={lastSyncedAt}
+        recentAudit={recentAudit}
+        auditCount={auditCount}
+        buildSha={process.env.NEXT_PUBLIC_BUILD_SHA ?? "dev"}
       >
         {children}
       </AppShell>
