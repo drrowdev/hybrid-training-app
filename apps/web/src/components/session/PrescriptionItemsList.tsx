@@ -183,7 +183,7 @@ function PrescriptionItemsCarousel({
   }, []);
 
   useEffect(() => {
-    // Keep `active` clamped if the items list shrinks (post-swap edge).
+    /* eslint-disable-next-line react-hooks/set-state-in-effect -- clamp index after items shrink */
     if (active >= items.length) setActive(Math.max(0, items.length - 1));
   }, [items.length, active]);
 
