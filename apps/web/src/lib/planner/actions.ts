@@ -401,9 +401,10 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
     };
   }
 
+  const archNow = new Date().toISOString();
   const { error: archErr } = await supabase
     .from("training_blocks")
-    .update({ status: "archived" })
+    .update({ status: "archived", archived_at: archNow, ended_at: archNow })
     .eq("user_id", user.id)
     .eq("status", "active");
   if (archErr) return { ok: false, error: `Couldn't archive prior block: ${archErr.message}` };
@@ -632,9 +633,10 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
     };
   }
 
+  const customArchNow = new Date().toISOString();
   await supabase
     .from("training_blocks")
-    .update({ status: "archived" })
+    .update({ status: "archived", archived_at: customArchNow, ended_at: customArchNow })
     .eq("user_id", user.id)
     .eq("status", "active");
 
@@ -718,9 +720,10 @@ export async function endBlock(formData: FormData): Promise<void> {
   const parsed = blockIdSchema.safeParse({ id: formData.get("id") });
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
   const supabase = await createClient();
+  const nowIso = new Date().toISOString();
   await supabase
     .from("training_blocks")
-    .update({ status: "archived" })
+    .update({ status: "archived", archived_at: nowIso, ended_at: nowIso })
     .eq("id", parsed.data.id);
   revalidatePath("/app");
   revalidatePath("/app/plan");

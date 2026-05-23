@@ -54,6 +54,24 @@ export const trainingBlocks = pgTable("training_blocks", {
    * the toggle in the UI; other archetypes always store `false`.
    */
   powerEmphasis: boolean("power_emphasis").default(false),
+  /**
+   * Set when status transitions out of 'active' (manual end → 'archived'
+   * or auto-complete → 'completed'). Single source of truth for
+   * "when did this block end"; survives later `updated_at` touches
+   * (notes edits, etc.). See migration 0025.
+   */
+  endedAt: timestamp("ended_at", { withTimezone: true }),
+  /**
+   * Set only when status transitions to 'completed' via
+   * `maybeCompleteBlock` (every planned session done/skipped). Distinguishes
+   * "finished the program" from "manually ended" for stats. See migration 0025.
+   */
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  /**
+   * Set only when status transitions to 'archived' via `endBlock`
+   * (manual press of the End block button). See migration 0025.
+   */
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),

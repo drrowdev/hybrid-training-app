@@ -280,6 +280,19 @@ test.describe("@desktop program run", () => {
       .toBe("archived");
     await assertBlockStatus(admin, seed.blockId, "archived");
 
+    // 2b) Lifecycle timestamps (migration 0025): manual end populates
+    //     ended_at AND archived_at, but never completed_at.
+    {
+      const { data } = await admin
+        .from("training_blocks")
+        .select("ended_at, archived_at, completed_at")
+        .eq("id", seed.blockId)
+        .maybeSingle();
+      expect(data?.ended_at).toBeTruthy();
+      expect(data?.archived_at).toBeTruthy();
+      expect(data?.completed_at).toBeNull();
+    }
+
     // 3) The archived block shows up in the "Run it again" picker with
     //    the muted "Ended" badge — NOT the green "Completed" badge.
     await page.goto("/app/plan/new");
@@ -420,6 +433,19 @@ test.describe("@desktop program run", () => {
       )
       .toBe("completed");
     await assertBlockStatus(admin, seed.blockId, "completed");
+
+    // 3b) Lifecycle timestamps (migration 0025): auto-complete populates
+    //     ended_at AND completed_at, but never archived_at.
+    {
+      const { data } = await admin
+        .from("training_blocks")
+        .select("ended_at, completed_at, archived_at")
+        .eq("id", seed.blockId)
+        .maybeSingle();
+      expect(data?.ended_at).toBeTruthy();
+      expect(data?.completed_at).toBeTruthy();
+      expect(data?.archived_at).toBeNull();
+    }
 
     // 4) /app/plan/new — "Run it again" card shows the green Completed
     //    badge, distinguished from the muted Ended badge.

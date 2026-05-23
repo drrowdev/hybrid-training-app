@@ -274,9 +274,9 @@ export async function getRecentBlocks(limit = 3): Promise<RecentBlock[]> {
  * of `RecentBlock` so the page can render "12 of 16 sessions logged"
  * without an extra round-trip per block.
  *
- * `endedOn` is best-effort: the schema doesn't have an explicit ended_on
- * column (out of scope for this change), so we surface `updated_at` for
- * non-active blocks as a proxy for when the block was closed.
+ * `endedOn` prefers the explicit `ended_at` column (migration 0025) and
+ * falls back to `updated_at` for older rows that pre-date the backfill
+ * — defensive so the history page never blanks the date out.
  */
 export type BlockWithCompletionStats = RecentBlock & {
   weeks: number;
@@ -307,7 +307,7 @@ export async function getAllBlocksWithCompletionStats(
   const { data } = await supabase
     .from("training_blocks")
     .select(
-      "id, archetype, started_on, updated_at, weeks, days_per_week, status, day_index_overrides, notes, planned_sessions(id, completed_session_id, skipped_at, week_index, day_index)",
+      "id, archetype, started_on, updated_at, ended_at, weeks, days_per_week, status, day_index_overrides, notes, planned_sessions(id, completed_session_id, skipped_at, week_index, day_index)",
     )
     .eq("user_id", user.id)
     .order("started_on", { ascending: false })
@@ -346,7 +346,10 @@ export async function getAllBlocksWithCompletionStats(
         archetype: d.archetype,
         archetypeName: archetypeDisplayName(d.archetype, d.notes),
         startedOn: d.started_on,
-        endedOn: d.status === "active" ? null : (d.updated_at ?? null),
+        endedOn:
+          d.status === "active"
+            ? null
+            : ((d.ended_at ?? d.updated_at) ?? null),
         weeks: d.weeks,
         daysPerWeek,
         status: d.status as "active" | "completed" | "archived",
