@@ -252,7 +252,6 @@ function SwapCandidatePicker({
   // preload — keeps the per-item DOM cost low.
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     fetch(`/api/movements/swap-candidates?originalId=${encodeURIComponent(originalId)}`)
       .then(async (r) => {
         if (!r.ok) {
