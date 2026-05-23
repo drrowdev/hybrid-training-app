@@ -19,6 +19,7 @@ export * from "./schema/region-state-history";
 export * from "./schema/muscle-state";
 export * from "./schema/training-maxes";
 export * from "./schema/tm-history";
+export * from "./schema/tm-suggestions";
 export * from "./schema/planner";
 export * from "./client";
 export * from "./schema/strava-connections";
