@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 
 type Level = 1 | 2 | 3 | 4 | 5;
+type SleepChip = "lt6" | "6to8" | "gte8";
 
 const FATIGUE_OPTIONS: { value: Level; label: string; hint: string }[] = [
   { value: 1, label: "Fresh", hint: "Slept well, ready to go" },
@@ -21,6 +22,12 @@ const SORENESS_OPTIONS: { value: Level; label: string; hint: string }[] = [
   { value: 5, label: "Severe", hint: "Painful — would skip if pushed" },
 ];
 
+const SLEEP_OPTIONS: { value: SleepChip; label: string; hint: string }[] = [
+  { value: "lt6", label: "<6h", hint: "Short — expect some drag" },
+  { value: "6to8", label: "6-8h", hint: "Around the recommended range" },
+  { value: "gte8", label: "8h+", hint: "Well-rested" },
+];
+
 export function CheckInForm({
   plannedId,
   sessionTitle,
@@ -32,6 +39,7 @@ export function CheckInForm({
 }) {
   const [fatigue, setFatigue] = useState<Level | null>(null);
   const [soreness, setSoreness] = useState<Level | null>(null);
+  const [sleep, setSleep] = useState<SleepChip | null>(null);
   const [notes, setNotes] = useState("");
   const [isPending, startTransition] = useTransition();
 
@@ -42,6 +50,7 @@ export function CheckInForm({
     fd.set("id", plannedId);
     fd.set("fatigue", String(fatigue));
     fd.set("soreness", String(soreness));
+    if (sleep) fd.set("sleepChip", sleep);
     if (notes.trim()) fd.set("notes", notes.trim());
     startTransition(async () => {
       await startAction(fd);
@@ -51,6 +60,7 @@ export function CheckInForm({
   const skip = () => {
     const fd = new FormData();
     fd.set("id", plannedId);
+    if (sleep) fd.set("sleepChip", sleep);
     startTransition(async () => {
       await startAction(fd);
     });
@@ -99,6 +109,53 @@ export function CheckInForm({
         {soreness != null && (
           <div style={{ fontSize: 11, color: "var(--cp-text-muted)", lineHeight: 1.4 }}>
             {SORENESS_OPTIONS.find((o) => o.value === soreness)?.hint}
+          </div>
+        )}
+      </section>
+
+      <section className="cp-card" style={{ padding: 18, display: "grid", gap: 8 }}>
+        <Label>
+          Sleep last night{" "}
+          <span style={{ color: "var(--cp-text-muted)", fontWeight: 400 }}>(optional)</span>
+        </Label>
+        <div
+          role="radiogroup"
+          aria-label="Sleep last night"
+          data-testid="sleep-chips"
+          style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
+        >
+          {SLEEP_OPTIONS.map((opt) => {
+            const sel = sleep === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="radio"
+                aria-checked={sel}
+                data-testid={`sleep-chip-${opt.value}`}
+                onClick={() => setSleep(sel ? null : opt.value)}
+                style={{
+                  flex: 1,
+                  minWidth: 80,
+                  minHeight: 44,
+                  padding: "10px 12px",
+                  borderRadius: 999,
+                  border: `1px solid ${sel ? "var(--cp-accent)" : "var(--cp-border)"}`,
+                  background: sel ? "var(--cp-accent-soft)" : "var(--cp-surface)",
+                  color: sel ? "var(--cp-accent)" : "var(--cp-text)",
+                  fontWeight: sel ? 600 : 500,
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+        {sleep != null && (
+          <div style={{ fontSize: 11, color: "var(--cp-text-muted)", lineHeight: 1.4 }}>
+            {SLEEP_OPTIONS.find((o) => o.value === sleep)?.hint}
           </div>
         )}
       </section>

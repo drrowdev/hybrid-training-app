@@ -4,6 +4,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import type { Prescription, PrescriptionItem } from "@hta/db";
+import { todayYmd } from "@/lib/dates";
+import { getUserTimezone } from "@/lib/planner/queries";
+import { sleepHoursForChip } from "@/lib/wellness/check-in";
 
 /**
  * Wire shape for `planned_sessions` INSERTs via the Supabase REST API.
@@ -988,6 +991,7 @@ const startCheckInSchema = z.object({
   id: z.string().uuid(),
   fatigue: z.coerce.number().int().min(1).max(5).optional(),
   soreness: z.coerce.number().int().min(1).max(5).optional(),
+  sleepChip: z.enum(["lt6", "6to8", "gte8"]).optional(),
   notes: z.string().trim().max(280).optional().nullable(),
 });
 
@@ -998,12 +1002,17 @@ const startCheckInSchema = z.object({
  * sliders onto the new sessions row. When fatigue / soreness are absent
  * (user clicked Skip), persists null so the GRM falls back to 1.00 and
  * downstream analytics knows the check-in was skipped.
+ *
+ * Phase 3 B1/B2 — if the user tapped a sleep chip, mirror the resolved
+ * hours into `wellness` (keyed by user_id + today_ymd) so the value is
+ * available for any future stats join on session date.
  */
 export async function startCheckInSession(formData: FormData): Promise<void> {
   const parsed = startCheckInSchema.safeParse({
     id: formData.get("id"),
     fatigue: formData.get("fatigue") || undefined,
     soreness: formData.get("soreness") || undefined,
+    sleepChip: formData.get("sleepChip") || undefined,
     notes: formData.get("notes") || undefined,
   });
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid check-in");
@@ -1048,6 +1057,33 @@ export async function startCheckInSession(formData: FormData): Promise<void> {
     .from("planned_sessions")
     .update({ completed_session_id: session.id })
     .eq("id", planned.id);
+
+  // Phase 3 B1/B2 — mirror the sleep chip into today's wellness row
+  // (idempotent upsert; preserves bodyweight + other fields).
+  if (parsed.data.sleepChip) {
+    const tz = await getUserTimezone();
+    const today = todayYmd(tz);
+    const hours = sleepHoursForChip(parsed.data.sleepChip);
+    const { data: existing } = await supabase
+      .from("wellness")
+      .select("bodyweight_kg, motivation, notes")
+      .eq("user_id", user.id)
+      .eq("date", today)
+      .maybeSingle();
+    await supabase
+      .from("wellness")
+      .upsert(
+        {
+          user_id: user.id,
+          date: today,
+          sleep_hours: hours,
+          bodyweight_kg: existing?.bodyweight_kg ?? null,
+          motivation: existing?.motivation ?? null,
+          notes: existing?.notes ?? null,
+        },
+        { onConflict: "user_id,date" },
+      );
+  }
 
   revalidatePath("/app");
   revalidatePath("/app/plan");
