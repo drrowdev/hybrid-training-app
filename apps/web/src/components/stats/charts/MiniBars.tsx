@@ -20,7 +20,7 @@ const ACCENT_VAR: Record<MiniBarsAccent, string> = {
 };
 
 const W = 120;
-const H = 40;
+const DEFAULT_H = 40;
 const PAD = 2;
 const GAP = 2;
 
@@ -30,6 +30,7 @@ export function MiniBars({
   accent = "accent",
   colors,
   overlay,
+  height,
   style,
   ariaLabel,
 }: {
@@ -47,10 +48,13 @@ export function MiniBars({
    * a window) are skipped.
    */
   overlay?: Array<number | null>;
+  /** SVG viewport height — defaults to the compact 40px card variant. */
+  height?: number;
   style?: CSSProperties;
   ariaLabel?: string;
 }) {
   const baseColor = ACCENT_VAR[accent];
+  const H = height && height > 0 ? height : DEFAULT_H;
   const n = values.length;
   if (n === 0) {
     return (
