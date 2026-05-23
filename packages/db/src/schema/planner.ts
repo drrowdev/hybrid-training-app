@@ -78,6 +78,14 @@ export const trainingBlocks = pgTable("training_blocks", {
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),
+  /**
+   * Soft-delete marker (migration 0026). NULL = visible row, set to
+   * NOW() when the user trashes the block. Cascade is implicit: child
+   * `planned_sessions` are hidden by every query that joins through
+   * the block. Hard-deletion only happens from the Trash page (after
+   * type-to-confirm) or via the 30-day cleanup cron.
+   */
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
 
 export type TrainingBlock = typeof trainingBlocks.$inferSelect;

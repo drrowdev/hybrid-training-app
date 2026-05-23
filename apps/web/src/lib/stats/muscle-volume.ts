@@ -157,7 +157,8 @@ export async function getWeeklyMuscleVolume(
     .from("sessions")
     .select("id")
     .eq("user_id", userId)
-    .gte("performed_at", sevenDaysAgo);
+    .gte("performed_at", sevenDaysAgo)
+    .is("deleted_at", null);
 
   const sessionIds = (sessions ?? []).map((s) => s.id);
   if (sessionIds.length === 0) {

@@ -53,12 +53,14 @@ export default async function TodayPage() {
     supabase
       .from("sessions")
       .select("id, title, slot, completed_at, performed_at")
+      .is("deleted_at", null)
       .gte("performed_at", `${todayIso}T00:00:00`)
       .lt("performed_at", `${todayIso}T23:59:59`)
       .order("performed_at", { ascending: false }),
     supabase
       .from("sessions")
       .select("id, title, performed_at, completed_at, session_rpe, duration_min")
+      .is("deleted_at", null)
       .order("performed_at", { ascending: false })
       .limit(6),
     getTodayPlannedSessions(),

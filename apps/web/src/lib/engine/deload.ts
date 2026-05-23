@@ -172,6 +172,7 @@ async function wasRealMiss(
     .select("id, performed_at, fatigue, soreness")
     .eq("id", sessionId)
     .eq("user_id", userId)
+    .is("deleted_at", null)
     .maybeSingle();
   if (!session) return null;
   const grm = computeGrm({ fatigue: session.fatigue, soreness: session.soreness });
