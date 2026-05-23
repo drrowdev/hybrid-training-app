@@ -40,6 +40,12 @@ import {
 } from "@/lib/stats/adherence-detail";
 import type { WeekdayOverrideSummary } from "@/lib/engine/overrides";
 import { StackedBars } from "@/components/stats/charts/StackedBars";
+import { RunPlanAdherenceCard } from "@/components/cardio/RunPlanAdherenceCard";
+import { HrZonesCard } from "@/components/cardio/HrZonesCard";
+import { PacePRsCard } from "@/components/cardio/PacePRsCard";
+import { getRunPlanAdherence } from "@/lib/stats/run-plan-adherence";
+import { getHrZones } from "@/lib/stats/hr-zones";
+import { getPacePrs } from "@/lib/stats/pace-prs";
 
 export const dynamic = "force-dynamic";
 
@@ -64,7 +70,12 @@ export default async function StatsAdherencePage({
     .maybeSingle();
   const tz = profile?.timezone ?? (await getUserTimezone(user.id));
 
-  const dashboard = await getAdherenceDashboard(supabase, user.id, tz, range);
+  const [dashboard, runPlan, hrZones, pacePrs] = await Promise.all([
+    getAdherenceDashboard(supabase, user.id, tz, range),
+    getRunPlanAdherence(supabase, user.id, tz),
+    getHrZones(supabase, user.id, tz),
+    getPacePrs(supabase, user.id, tz),
+  ]);
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
@@ -87,6 +98,16 @@ export default async function StatsAdherencePage({
       </header>
 
       <RangeToggle current={range} />
+
+      <RunPlanAdherenceCard
+        weeks={runPlan.weeks}
+        hasPlan={runPlan.hasPlan}
+        hasStravaConnection={runPlan.hasStravaConnection}
+      />
+
+      <HrZonesCard state={hrZones} />
+
+      <PacePRsCard state={pacePrs} />
 
       <WeeklyCard weeks={dashboard.weekly} range={range} />
 
