@@ -35,6 +35,7 @@ export function BodyweightNudge({
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- sync visible state with localStorage on mount */
     try {
       const until = window.localStorage.getItem(DISMISS_KEY);
       if (until && Date.now() < Number.parseInt(until, 10)) {
@@ -45,6 +46,7 @@ export function BodyweightNudge({
       // localStorage may be unavailable — fall through and show the nudge.
     }
     setHidden(false);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   if (hidden) return null;
