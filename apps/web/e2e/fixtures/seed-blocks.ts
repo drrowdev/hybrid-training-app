@@ -77,6 +77,66 @@ export async function seedRecentBlock(
 }
 
 /**
+ * Seed a few `planned_sessions` rows for an existing block so the
+ * /app/plan/history page has something to render in its expanded
+ * panel + completion ratio. The `loggedCount` parameter wires up
+ * `completed_session_id` to a `sessions` row so the per-session
+ * "Logged" chip + click-through can be exercised. Returns the
+ * inserted planned_session ids in order.
+ */
+export async function seedPlannedSessionsForBlock(
+  admin: AdminClient,
+  userId: string,
+  blockId: string,
+  opts: { totalSessions?: number; loggedCount?: number } = {},
+): Promise<string[]> {
+  const total = opts.totalSessions ?? 4;
+  const loggedCount = Math.min(opts.loggedCount ?? 0, total);
+
+  // Reserve a real `sessions` row per logged planned session so the
+  // FK on `planned_sessions.completed_session_id` stays valid.
+  const sessionIds: string[] = [];
+  for (let i = 0; i < loggedCount; i++) {
+    const { data, error } = await admin
+      .from("sessions")
+      .insert({
+        user_id: userId,
+        performed_at: new Date(
+          Date.now() - (loggedCount - i) * 24 * 60 * 60 * 1000,
+        ).toISOString(),
+        title: `Seeded session ${i + 1}`,
+        completed_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+    if (error || !data) {
+      throw new Error(`seedPlannedSessionsForBlock: insert session: ${error?.message}`);
+    }
+    sessionIds.push(data.id);
+  }
+
+  const rows = Array.from({ length: total }, (_, i) => ({
+    block_id: blockId,
+    user_id: userId,
+    week_index: 0,
+    day_index: i,
+    slot: "single",
+    title: `Planned session ${i + 1}`,
+    role: "primary",
+    prescription: { items: [] },
+    completed_session_id: i < loggedCount ? sessionIds[i] : null,
+  }));
+  const { data: inserted, error } = await admin
+    .from("planned_sessions")
+    .insert(rows)
+    .select("id");
+  if (error || !inserted) {
+    throw new Error(`seedPlannedSessionsForBlock: insert planned: ${error?.message}`);
+  }
+  return inserted.map((r) => r.id);
+}
+
+/**
  * Seed one or more training_maxes rows so the wizard's TM-gating logic
  * (see `getTrainingMaxContext`) marks the strength archetypes as ready.
  *
