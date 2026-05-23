@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import type { TmRow } from "@/lib/training-maxes/queries";
+import type { TmRow, TmSourceSet } from "@/lib/training-maxes/queries";
 import { DefaultTmPercentControl } from "./DefaultTmPercentControl";
 import { TmAutoForm } from "./TmAutoForm";
+import { TmSourceBadge } from "./TmSourceBadge";
+import { TmSourceDetail } from "./TmSourceDetail";
 
 export type Candidate = { id: string; slug: string; display_name: string };
 export type RoleGroupInput = {
@@ -12,6 +14,7 @@ export type RoleGroupInput = {
   label: string;
   candidates: Candidate[];
   setRow?: TmRow;
+  setRowSourceSet?: TmSourceSet | null;
 };
 export type PickerGroup = { label: string; items: { id: string; display_name: string }[] };
 
@@ -33,20 +36,24 @@ export function TmSection({
   initialDefaultPercent,
   requiredGroups,
   otherRows,
+  otherRowSourceSets,
   pickerGroups,
   hasActiveBlock,
   upsertAction,
   setDefaultAction,
   deleteAction,
+  lockAction,
 }: {
   initialDefaultPercent: number;
   requiredGroups: RoleGroupInput[];
   otherRows: TmRow[];
+  otherRowSourceSets?: Record<string, TmSourceSet | null>;
   pickerGroups: PickerGroup[];
   hasActiveBlock: boolean;
   upsertAction: (fd: FormData) => Promise<unknown>;
   setDefaultAction: (fd: FormData) => Promise<unknown>;
   deleteAction: (fd: FormData) => Promise<void>;
+  lockAction: (fd: FormData) => Promise<unknown>;
 }) {
   const [defaultPercent, setDefaultPercent] = useState<number>(initialDefaultPercent);
   const [defaultStatus, setDefaultStatus] = useState<Status>("idle");
@@ -149,9 +156,11 @@ export function TmSection({
               label={group.label}
               candidates={group.candidates}
               currentRow={group.setRow}
+              currentRowSourceSet={group.setRowSourceSet ?? null}
               defaultPercent={defaultPercent}
               upsertAction={upsertAction}
               deleteAction={deleteAction}
+              lockAction={lockAction}
             />
           ))}
         </div>
@@ -168,9 +177,11 @@ export function TmSection({
               <TmCard
                 key={r.id}
                 row={r}
+                sourceSet={otherRowSourceSets?.[r.id] ?? null}
                 defaultPercent={defaultPercent}
                 upsertAction={upsertAction}
                 deleteAction={deleteAction}
+                lockAction={lockAction}
               />
             ))}
           </ul>
@@ -203,22 +214,33 @@ function RoleGroupCard({
   label,
   candidates,
   currentRow,
+  currentRowSourceSet,
   defaultPercent,
   upsertAction,
   deleteAction,
+  lockAction,
 }: {
   label: string;
   candidates: Candidate[];
   currentRow?: TmRow;
+  currentRowSourceSet?: TmSourceSet | null;
   defaultPercent: number;
   upsertAction: (fd: FormData) => Promise<unknown>;
   deleteAction: (fd: FormData) => Promise<void>;
+  lockAction: (fd: FormData) => Promise<unknown>;
 }) {
   return (
     <div>
       <RoleHeader label={label} status={currentRow ? "set" : "missing"} />
       {currentRow ? (
-        <TmCard row={currentRow} defaultPercent={defaultPercent} upsertAction={upsertAction} deleteAction={deleteAction} />
+        <TmCard
+          row={currentRow}
+          sourceSet={currentRowSourceSet ?? null}
+          defaultPercent={defaultPercent}
+          upsertAction={upsertAction}
+          deleteAction={deleteAction}
+          lockAction={lockAction}
+        />
       ) : (
         <TmAutoForm
           mode="new"
@@ -267,14 +289,18 @@ function RoleHeader({ label, status }: { label: string; status: "set" | "missing
 
 function TmCard({
   row,
+  sourceSet,
   defaultPercent,
   upsertAction,
   deleteAction,
+  lockAction,
 }: {
   row: TmRow;
+  sourceSet: TmSourceSet | null;
   defaultPercent: number;
   upsertAction: (fd: FormData) => Promise<unknown>;
   deleteAction: (fd: FormData) => Promise<void>;
+  lockAction: (fd: FormData) => Promise<unknown>;
 }) {
   // Live-compute the displayed TM from the user's stored 1RM × the live default %
   // (or the per-movement override if set). This is what makes preset clicks feel snappy.
@@ -288,6 +314,8 @@ function TmCard({
 
   return (
     <li
+      data-testid={`tm-card-${row.id}`}
+      data-source={row.source}
       style={{
         border: "1px solid var(--cp-border)",
         borderRadius: 12,
@@ -297,7 +325,10 @@ function TmCard({
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-        <div style={{ fontSize: 15, fontWeight: 600 }}>{row.movementName}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <div style={{ fontSize: 15, fontWeight: 600 }}>{row.movementName}</div>
+          <TmSourceBadge source={row.source} formula={row.derivedFormula} />
+        </div>
         <div style={{ textAlign: "right" }}>
           <div className="mono" style={{ fontSize: 18, fontWeight: 600, color: "var(--cp-accent)" }}>
             {displayTmKg} kg
@@ -307,6 +338,8 @@ function TmCard({
           </div>
         </div>
       </div>
+
+      <TmSourceDetail row={row} sourceSet={sourceSet} lockAction={lockAction} />
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "end" }}>
         <TmAutoForm

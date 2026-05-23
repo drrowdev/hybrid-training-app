@@ -3,8 +3,9 @@ import {
   upsertTrainingMax,
   deleteTrainingMax,
   setDefaultTmPercent,
+  lockTrainingMaxAsEntered,
 } from "@/lib/training-maxes/actions";
-import { getTrainingMaxContext } from "@/lib/training-maxes/queries";
+import { getTmSourceSet, getTrainingMaxContext, type TmSourceSet } from "@/lib/training-maxes/queries";
 import {
   ARCHETYPES,
   STRENGTH_ROLE_LABELS,
@@ -42,22 +43,32 @@ export default async function TrainingMaxesPage() {
     .is("user_id", null);
   const candidateBySlug = new Map((candidateMovements ?? []).map((m) => [m.slug, m]));
 
-  const requiredGroups: RoleGroupInput[] = requiredRoles.map((role) => {
-    const candidates = STRENGTH_ROLE_CANDIDATES[role]
-      .map((slug) => candidateBySlug.get(slug))
-      .filter((m): m is { id: string; slug: string; display_name: string; pattern: string } => !!m)
-      .map((m) => ({ id: m.id, slug: m.slug, display_name: m.display_name }));
-    const setRow = ctx.rows.find((r) => STRENGTH_ROLE_CANDIDATES[role].includes(r.movementSlug));
-    return {
-      role,
-      label: STRENGTH_ROLE_LABELS[role],
-      candidates,
-      setRow,
-    };
-  });
+  const requiredGroups: RoleGroupInput[] = await Promise.all(
+    requiredRoles.map(async (role) => {
+      const candidates = STRENGTH_ROLE_CANDIDATES[role]
+        .map((slug) => candidateBySlug.get(slug))
+        .filter((m): m is { id: string; slug: string; display_name: string; pattern: string } => !!m)
+        .map((m) => ({ id: m.id, slug: m.slug, display_name: m.display_name }));
+      const setRow = ctx.rows.find((r) => STRENGTH_ROLE_CANDIDATES[role].includes(r.movementSlug));
+      const setRowSourceSet = setRow ? await getTmSourceSet(setRow) : null;
+      return {
+        role,
+        label: STRENGTH_ROLE_LABELS[role],
+        candidates,
+        setRow,
+        setRowSourceSet,
+      };
+    }),
+  );
 
   const requiredSlugSet = new Set(requiredGroups.flatMap((g) => g.candidates.map((c) => c.slug)));
   const otherRows = ctx.rows.filter((r) => !requiredSlugSet.has(r.movementSlug));
+  const otherRowSourceSets: Record<string, TmSourceSet | null> = {};
+  await Promise.all(
+    otherRows.map(async (r) => {
+      otherRowSourceSets[r.id] = await getTmSourceSet(r);
+    }),
+  );
 
   const { data: compounds } = await supabase
     .from("movements")
@@ -113,11 +124,13 @@ export default async function TrainingMaxesPage() {
         initialDefaultPercent={ctx.defaultPercent}
         requiredGroups={requiredGroups}
         otherRows={otherRows}
+        otherRowSourceSets={otherRowSourceSets}
         pickerGroups={pickerGroups}
         hasActiveBlock={!!archetype}
         upsertAction={upsertTrainingMax}
         setDefaultAction={setDefaultTmPercent}
         deleteAction={deleteTrainingMax}
+        lockAction={lockTrainingMaxAsEntered}
       />
     </div>
   );

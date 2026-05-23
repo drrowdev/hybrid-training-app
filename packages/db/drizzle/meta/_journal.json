@@ -225,6 +225,13 @@
       "tag": "0031_muscle_state_history",
       "when": 1779570000000,
       "breakpoints": false
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "tag": "0032_training_maxes_source",
+      "when": 1779576000000,
+      "breakpoints": false
     }
   ]
 }
