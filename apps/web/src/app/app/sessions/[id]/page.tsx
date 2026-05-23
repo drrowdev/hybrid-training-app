@@ -26,6 +26,8 @@ import { formatHitValue, getSessionPrs } from "@/lib/stats/pr-queries";
 import { findBumpProposalForSession } from "@/lib/stats/bump-proposal";
 import { findPrRecalibrateProposals } from "@/lib/stats/pr-recalibrate";
 import { getLastSetLogForMovement, summariseSessionSets } from "@/lib/sessions/queries";
+import { suggestNextWeight } from "@/lib/progression/suggest-next";
+import type { ProgressionHint } from "@/components/session/PostSessionSummary";
 import type { Prescription } from "@hta/db";
 
 export default async function SessionDetailPage({
@@ -225,6 +227,73 @@ export default async function SessionDetailPage({
       )
     : null;
 
+  // Phase 2 D2 — suggested progression hints. Computed only for completed
+  // sessions, only for main lifts (defined as "movement_id has a row in
+  // training_maxes"). For each main lift in this session, find the top
+  // working set, estimate 1RM, and pass through the progression engine.
+  // Prescription gives us the rep target; fall back to logged reps when
+  // the link isn't present.
+  let progressionHints: ProgressionHint[] | undefined;
+  if (isComplete && sets.length > 0) {
+    const targetRepsByMovementId = new Map<string, number>();
+    for (const item of plannedPrescription?.items ?? []) {
+      if (item.kind === "main" && typeof item.reps === "number" && item.reps > 0) {
+        // First main entry wins per movement — multi-main prescriptions
+        // (top + back-off) share the same rep target by design.
+        if (!targetRepsByMovementId.has(item.movementId)) {
+          targetRepsByMovementId.set(item.movementId, item.reps);
+        }
+      }
+    }
+    const topByMovement = new Map<
+      string,
+      { weight: number; reps: number; rpe: number | null; displayName: string }
+    >();
+    for (const s of sets) {
+      if (s.set_kind === "warmup") continue;
+      const tm = tmBySlug[s.movement.slug];
+      if (!tm) continue; // not a main lift
+      const w = Number(s.weight_kg);
+      const r = Number(s.reps);
+      if (!Number.isFinite(w) || w <= 0 || !Number.isFinite(r) || r <= 0) continue;
+      const rpe = s.rpe == null ? null : Number(s.rpe);
+      const cur = topByMovement.get(s.movement.id);
+      if (!cur || w > cur.weight || (w === cur.weight && r > cur.reps)) {
+        topByMovement.set(s.movement.id, {
+          weight: w,
+          reps: r,
+          rpe: Number.isFinite(rpe as number) ? (rpe as number) : null,
+          displayName: s.movement.display_name,
+        });
+      }
+    }
+    const hints: ProgressionHint[] = [];
+    for (const [movementId, top] of topByMovement) {
+      const tmSlug = sets.find((s) => s.movement.id === movementId)?.movement.slug;
+      const tm = tmSlug ? tmBySlug[tmSlug] : undefined;
+      if (!tm) continue;
+      const targetReps = targetRepsByMovementId.get(movementId) ?? top.reps;
+      const e1rm = bestEstimateOneRm({ weight: top.weight, reps: top.reps, rpe: top.rpe });
+      const sugg = suggestNextWeight({
+        lastSet: { weightKg: top.weight, reps: top.reps, rpe: top.rpe },
+        targetReps,
+        e1rmKg: e1rm,
+        trainingMaxKg: tm,
+        plateIncrement: 2.5,
+        isMainLift: true,
+      });
+      hints.push({
+        movementId,
+        movementDisplayName: top.displayName,
+        kind: sugg.kind,
+        nextWeightKg: sugg.nextWeightKg,
+        nextReps: sugg.nextReps,
+        rationale: sugg.rationale,
+      });
+    }
+    progressionHints = hints.length > 0 ? hints : undefined;
+  }
+
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <header>
@@ -264,6 +333,7 @@ export default async function SessionDetailPage({
           sessionId={id}
           summary={summary}
           initialNotes={session.notes ?? null}
+          progressionHints={progressionHints}
         />
       )}
 
