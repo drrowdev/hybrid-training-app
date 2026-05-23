@@ -38,6 +38,8 @@ import { getPrsForRange, type PrsRangeResult } from "@/lib/stats/prs-range";
 import { getFreshnessMini, type FreshnessMiniRow } from "@/lib/stats/freshness-mini";
 import { getVolumeForRange, type VolumeRangeResult } from "@/lib/stats/volume";
 import { getBodyweightTrend, type BodyweightTrend } from "@/lib/stats/bodyweight-trend";
+import { getTrainingHeatmap } from "@/lib/stats/training-heatmap-data";
+import { TrainingHeatmap } from "@/components/stats/TrainingHeatmap";
 import { displayWeight, weightUnitLabel, type WeightUnit } from "@/lib/stats/units";
 import {
   DEFAULT_RANGE,
@@ -78,13 +80,14 @@ export default async function StatsOverviewPage({
   // volume) take the same `windowDays` so the toggle drives them in
   // lockstep; bodyweight + freshness stay on their existing bounded
   // reads (30-day trend / right-now snapshot).
-  const [block, adherence, prs, freshness, volume, bodyweight] = await Promise.all([
+  const [block, adherence, prs, freshness, volume, bodyweight, heatmapCells] = await Promise.all([
     getActiveBlockProgress(supabase, user.id, tz),
     getAdherenceForWindow(supabase, user.id, tz, windowDays),
     getPrsForRange(supabase, user.id, tz, windowDays),
     getFreshnessMini(supabase, user.id),
     getVolumeForRange(supabase, user.id, tz, windowDays),
     getBodyweightTrend(supabase, user.id, tz),
+    getTrainingHeatmap(supabase, user.id, tz, 20),
   ]);
 
   return (
@@ -98,6 +101,9 @@ export default async function StatsOverviewPage({
 
       {/* A — Current block strip */}
       <CurrentBlockStrip progress={block} />
+
+      {/* Training calendar heatmap — last 20 weeks at a glance. */}
+      <TrainingHeatmap cells={heatmapCells} weeks={20} />
 
       {/* Range toggle — drives adherence / PRs / volume queries */}
       <RangeToggle current={range} />
