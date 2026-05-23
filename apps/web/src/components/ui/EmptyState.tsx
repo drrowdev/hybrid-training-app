@@ -1,7 +1,7 @@
 /**
  * EmptyState — shared empty-card primitive.
  *
- * Wendler-style "explain what unlocks this card": every empty surface
+ * "Explain what unlocks this card": every empty surface
  * should tell the user the answer ("no data"), the action ("connect
  * Strava"), and the reason ("…with HR streams populate this card") in
  * one short block. This component is the canonical render for that

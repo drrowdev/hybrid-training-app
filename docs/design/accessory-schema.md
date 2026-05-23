@@ -78,7 +78,7 @@ Under conditioning load:
 
 > "Accessory variation distributes stress across tissues" — v1 §6
 
-Wendler 5/3/1 explicitly endorses varying assistance week-to-week ("It is the work that matters"). The principle generalises: **rotate within a muscle target** rather than stacking identical exercises. Targets stay the same; movements rotate.
+Practitioner consensus across strength-coaching literature endorses varying assistance week-to-week — the work matters more than the exact exercise. The principle generalises: **rotate within a muscle target** rather than stacking identical exercises. Targets stay the same; movements rotate.
 
 ---
 
