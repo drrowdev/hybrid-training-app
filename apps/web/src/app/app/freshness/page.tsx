@@ -11,6 +11,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
 import { MuscleGrid16 } from "@/components/muscle-grid/MuscleGrid16";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +62,12 @@ export default async function FreshnessPage() {
       >
         <MuscleGrid16 rows={rows} />
       </section>
+
+      <EmptyState
+        variant="inline"
+        title="Some muscles still grey?"
+        body="Log strength sessions with main lifts or cardio with relevant modalities to start tracking freshness on every muscle. Grey means no load recorded yet."
+      />
 
       <footer>
         <Link

@@ -6,7 +6,7 @@
  * stable once goals ship.
  */
 
-import Link from "next/link";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 export function GoalsCard() {
   return (
@@ -25,22 +25,11 @@ export function GoalsCard() {
       >
         <h4 style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>Goals</h4>
       </div>
-      <p
-        style={{
-          margin: 0,
-          fontSize: 12,
-          color: "var(--cp-text-muted)",
-          lineHeight: 1.5,
-        }}
-      >
-        Goals coming soon.{" "}
-        <Link
-          href="/app/more"
-          style={{ color: "var(--cp-link)", textDecoration: "none" }}
-        >
-          Set a target →
-        </Link>
-      </p>
+      <EmptyState
+        variant="inline"
+        title="No goals set"
+        body="Set a goal (race date, lift target, weekly volume) and we'll show progress here."
+      />
     </section>
   );
 }

@@ -188,4 +188,23 @@ If these get added, drop them in above #13/#16 and rewire the build order.
 
 ---
 
+## Closed — moved to active wave
+
+### #18 — `EmptyState` primitive + audit pass (shipped 2026-05-24)
+
+**What landed.** New shared component `apps/web/src/components/ui/EmptyState.tsx` with two variants (`card` full-card replacement; `inline` compact in-card). Every empty branch now follows the Wendler-app "explain what unlocks the card" voice: a one-sentence body telling the user the answer + action + reason. Applied to:
+
+- Today page — "Up next this week" + "Recent activity" + Goals rail card.
+- Stats overview (`/app/stats`) — current block strip, adherence card, PRs card, region freshness card, volume card, bodyweight trend card.
+- Stats wellness (`/app/stats/wellness`) — bodyweight, fatigue, soreness, motivation, prediction-accuracy cards (preserves e2e text anchors).
+- Stats engine (`/app/stats/engine`) — region freshness, bucket pressure, recent overrides.
+- Stats blocks index + detail — empty blocks list, no main lifts logged, no RPE creep data.
+- `/app/freshness` — explainer inline under the grey-state grid.
+- `/app/sessions` — empty sessions list.
+
+**Pattern from here on.** Any new card whose data can be missing should reach for `<EmptyState>` rather than ad-hoc microcopy. Use `card` for full-card empties and `inline` when sitting inside an existing `cp-card` body. Copy voice: short, no exclamation marks, second person, prescriptive — "Log your…", "…populate this card."
+
+Stats adherence is intentionally not in scope here; its empty-state pass is owned by #17 (run-plan adherence card).
+
+
 *Maintained per the Karpathy pattern (plan §6.10). Update the index and append to the log when this file changes.*

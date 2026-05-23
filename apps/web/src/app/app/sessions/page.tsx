@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { DeleteSessionButton } from "@/components/trash/DeleteSessionButton";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 export default async function SessionsListPage() {
   const supabase = await createClient();
@@ -42,7 +43,11 @@ export default async function SessionsListPage() {
       </header>
 
       {(!sessions || sessions.length === 0) && (
-        <p className="text-sm text-foreground/50">No sessions yet.</p>
+        <EmptyState
+          title="No sessions yet"
+          body="Tap +New session or sync from Strava and your logged training appears here, newest first."
+          action={{ label: "Log a session →", href: "/app/sessions/new" }}
+        />
       )}
 
       {sessions && sessions.length > 0 && (
