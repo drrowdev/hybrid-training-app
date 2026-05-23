@@ -263,6 +263,131 @@ export type AssertSessionCompleteOptions = {
   expectedSoreness?: number;
 };
 
+export type SeedTwoADayResult = {
+  blockId: string;
+  amPlannedId: string;
+  pmPlannedId: string;
+  amMovementId: string;
+  pmMovementId: string;
+};
+
+/**
+ * Phase 2 B — seed a single training_blocks row with TWO planned_sessions
+ * for today, one ``slot='am'`` (strength) and one ``slot='pm'`` (cardio).
+ * Used by the two-a-day Today-page spec.
+ *
+ * Assumes ``seedStrengthTms`` has run so the AM hero renders a TM-resolved
+ * top-set line.
+ */
+export async function seedTwoADay(
+  admin: AdminClient,
+  userId: string,
+): Promise<SeedTwoADayResult> {
+  const { data: movs, error: mErr } = await admin
+    .from("movements")
+    .select("id, slug, display_name")
+    .in("slug", ["back-squat-high-bar", "easy-run"]);
+  if (mErr) throw new Error(`seedTwoADay: movements: ${mErr.message}`);
+  const squat = movs?.find((m) => m.slug === "back-squat-high-bar");
+  const easyRun = movs?.find((m) => m.slug === "easy-run");
+  if (!squat) throw new Error("seedTwoADay: missing back-squat-high-bar");
+  // Fallback if the cardio catalog name differs — use the first cardio_*
+  // catalog movement instead.
+  let cardio = easyRun;
+  if (!cardio) {
+    const { data: anyCardio } = await admin
+      .from("movements")
+      .select("id, slug, display_name")
+      .like("pattern", "cardio%")
+      .limit(1);
+    cardio = anyCardio?.[0];
+  }
+  if (!cardio) throw new Error("seedTwoADay: no cardio movement in catalog");
+
+  const startedOn = ymd(new Date());
+  const todayDayIdx = isoWeekday(new Date());
+
+  const { data: block, error: bErr } = await admin
+    .from("training_blocks")
+    .insert({
+      user_id: userId,
+      archetype: "concurrent_hybrid",
+      started_on: startedOn,
+      weeks: 4,
+      days_per_week: 4,
+      status: "active",
+    })
+    .select("id")
+    .single();
+  if (bErr || !block) throw new Error(`seedTwoADay: block: ${bErr?.message ?? "no row"}`);
+
+  const rows = [
+    {
+      block_id: block.id,
+      user_id: userId,
+      week_index: 0,
+      day_index: todayDayIdx,
+      slot: "am" as const,
+      title: `${squat.display_name} day`,
+      role: squat.slug,
+      prescription: {
+        items: [
+          {
+            movementId: squat.id,
+            movementSlug: squat.slug,
+            movementName: squat.display_name,
+            kind: "main",
+            sets: 3,
+            reps: 5,
+            percentTm: 70,
+          },
+        ],
+      },
+    },
+    {
+      block_id: block.id,
+      user_id: userId,
+      week_index: 0,
+      day_index: todayDayIdx,
+      slot: "pm" as const,
+      title: "Easy Z2",
+      role: cardio.slug,
+      prescription: {
+        items: [
+          {
+            movementId: cardio.id,
+            movementSlug: cardio.slug,
+            movementName: cardio.display_name,
+            kind: "cardio_z2",
+            durationMin: 45,
+          },
+        ],
+      },
+    },
+  ];
+  const { error: psErr } = await admin.from("planned_sessions").insert(rows);
+  if (psErr) throw new Error(`seedTwoADay: planned_sessions: ${psErr.message}`);
+
+  const { data: inserted, error: rErr } = await admin
+    .from("planned_sessions")
+    .select("id, slot")
+    .eq("block_id", block.id)
+    .eq("week_index", 0)
+    .eq("day_index", todayDayIdx);
+  if (rErr || !inserted) throw new Error(`seedTwoADay: read-back: ${rErr?.message ?? "no rows"}`);
+  const amRow = inserted.find((r) => r.slot === "am");
+  const pmRow = inserted.find((r) => r.slot === "pm");
+  if (!amRow || !pmRow) throw new Error("seedTwoADay: missing am/pm rows after insert");
+
+  return {
+    blockId: block.id,
+    amPlannedId: amRow.id,
+    pmPlannedId: pmRow.id,
+    amMovementId: squat.id,
+    pmMovementId: cardio.id,
+  };
+}
+
 /**
  * Service-role assertion that a session is in the canonical "complete"
  * shape: completed_at populated, optional set_logs count match, and
