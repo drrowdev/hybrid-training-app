@@ -35,6 +35,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserTimezone } from "@/lib/planner/queries";
+import { EmptyState } from "@/components/ui/EmptyState";
 import {
   DEFAULT_RANGE,
   RANGE_LABEL,
@@ -259,7 +260,11 @@ function BodyweightCard({
     return (
       <Card testId="stats-wellness-bodyweight" empty>
         <CardTitle title="Bodyweight" subtitle={`${unit} · ${subtitle}`} />
-        <EmptyText>Log bodyweight on the Today page to see your trend</EmptyText>
+        <EmptyState
+          variant="inline"
+          title="No bodyweight logged"
+          body="Log bodyweight on the Today page (How recovered? check-in) and your trend populates this card."
+        />
       </Card>
     );
   }
@@ -359,7 +364,11 @@ function PreCheckInLineCard({
     return (
       <Card testId={testId} empty>
         <CardTitle title={title} subtitle={subtitle} />
-        <EmptyText>Pre-session check-in not used yet — try it tomorrow</EmptyText>
+        <EmptyState
+          variant="inline"
+          title={`No ${title.toLowerCase()} data`}
+          body="Pre-session check-in not used yet — log fatigue + soreness before a session and this card populates."
+        />
       </Card>
     );
   }
@@ -403,9 +412,11 @@ function MotivationCard({ rows, range }: { rows: WellnessRow[]; range: Range }) 
     return (
       <Card testId="stats-wellness-motivation" empty>
         <CardTitle title="Motivation" subtitle={subtitleForRange(range)} />
-        <EmptyText>
-          Track motivation on daily check-ins to see your patterns
-        </EmptyText>
+        <EmptyState
+          variant="inline"
+          title="No motivation logged"
+          body="Log your daily motivation on Today (How recovered? check-in) and your patterns populate this card."
+        />
       </Card>
     );
   }
@@ -465,10 +476,11 @@ function PredictionAccuracyCard({ rows }: { rows: SessionWellnessRow[] }) {
           title="How well do you predict your sessions?"
           subtitle="pre-check-in vs post-session sRPE"
         />
-        <EmptyText>
-          Need at least 10 sessions with both pre-check-in and
-          post-session RPE
-        </EmptyText>
+        <EmptyState
+          variant="inline"
+          title="Not enough paired sessions"
+          body="Need at least 10 sessions with both a pre-session check-in and a post-session RPE before this card can compute."
+        />
       </Card>
     );
   }
@@ -575,12 +587,6 @@ function CardTitle({ title, subtitle }: { title: string; subtitle?: string }) {
         </div>
       )}
     </div>
-  );
-}
-
-function EmptyText({ children }: { children: React.ReactNode }) {
-  return (
-    <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>{children}</p>
   );
 }
 

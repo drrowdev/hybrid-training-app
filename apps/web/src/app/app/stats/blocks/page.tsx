@@ -25,6 +25,7 @@ import { getUserTimezone } from "@/lib/planner/queries";
 import { todayYmd } from "@/lib/dates";
 import { getBlockIndex, type BlockIndexRow } from "@/lib/stats/blocks";
 import { StatusBadge } from "@/components/blocks/StatusBadge";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 export const dynamic = "force-dynamic";
 
@@ -64,7 +65,7 @@ export default async function StatsBlocksIndexPage() {
       </header>
 
       {blocks.length === 0 ? (
-        <EmptyState />
+        <BlocksEmpty />
       ) : (
         <ul
           data-testid="stats-blocks-list"
@@ -81,20 +82,17 @@ export default async function StatsBlocksIndexPage() {
   );
 }
 
-function EmptyState(): ReactElement {
+function BlocksEmpty(): ReactElement {
   return (
     <section
-      className="cp-card"
       data-testid="stats-blocks-empty"
-      style={{ padding: 24, display: "grid", gap: 10, justifyItems: "start" }}
+      style={{ display: "grid", gap: 10 }}
     >
-      <h2 style={{ margin: 0, fontSize: 16 }}>No blocks yet</h2>
-      <p style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 13 }}>
-        Start your first one and the outcomes report will populate as you log.
-      </p>
-      <Link href="/app/plan/new" className="cp-btn primary">
-        Start your first →
-      </Link>
+      <EmptyState
+        title="No blocks finished yet"
+        body="Once you complete a block it'll appear here with summary stats — e1RM delta, PRs hit, adherence, and wellness during the block."
+        action={{ label: "Start your first →", href: "/app/plan/new" }}
+      />
     </section>
   );
 }

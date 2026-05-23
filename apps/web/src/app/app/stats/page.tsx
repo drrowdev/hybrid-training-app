@@ -50,6 +50,7 @@ import {
 } from "@/lib/stats/range";
 import { Sparkline } from "@/components/stats/charts/Sparkline";
 import { MiniBars } from "@/components/stats/charts/MiniBars";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 export const dynamic = "force-dynamic";
 
@@ -199,12 +200,11 @@ function CurrentBlockStrip({
         data-empty="true"
         style={{ padding: 18, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}
       >
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-            Current block
-          </div>
-          <div style={{ fontSize: 16, marginTop: 4 }}>No active block.</div>
-        </div>
+        <EmptyState
+          variant="inline"
+          title="No active block"
+          body="Start a block and your weekly progression, adherence, and ceiling all light up here."
+        />
         <Link
           href="/app/plan/new"
           data-testid="stats-active-block-cta"
@@ -293,10 +293,11 @@ function AdherenceCard({ data, range }: { data: AdherenceResult; range: Range })
     >
       <CardTitle title="Adherence" subtitle={subtitle} />
       {data.scheduled === 0 ? (
-        <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
-          Nothing scheduled in this window yet — once a block is live,
-          this card tracks how many planned sessions you actually log.
-        </p>
+        <EmptyState
+          variant="inline"
+          title="Nothing scheduled"
+          body="Once a block is live, this card tracks how many planned sessions you actually log in the window."
+        />
       ) : (
         <>
           <div style={{ fontSize: 28, fontWeight: 700, color: accentVar, letterSpacing: "-0.01em" }}>
@@ -332,9 +333,11 @@ function PrsCard({ data, units, range }: { data: PrsRangeResult; units: WeightUn
         subtitle={`${data.uniqueMovementCount} ${data.uniqueMovementCount === 1 ? "lift" : "lifts"}`}
       />
       {data.uniqueMovementCount === 0 ? (
-        <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
-          No PRs in this window yet — your turn.
-        </p>
+        <EmptyState
+          variant="inline"
+          title="No PRs in window"
+          body="Log a top set or AMRAP heavier than your previous best on a tracked lift and it lands here."
+        />
       ) : (
         <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
           {data.topThree.map((p) => (
@@ -405,9 +408,11 @@ function FreshnessCard({ rows }: { rows: FreshnessMiniRow[] }) {
         }
       />
       {rows.length === 0 ? (
-        <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
-          No region load yet. Log a session to see freshness build up.
-        </p>
+        <EmptyState
+          variant="inline"
+          title="No region load yet"
+          body="Log a session (strength or cardio) and freshness builds up region by region."
+        />
       ) : (
         <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
           {rows.map((r) => {
@@ -473,9 +478,11 @@ function VolumeCard({ data, units, range }: { data: VolumeRangeResult; units: We
         }
       />
       {data.totalKg === 0 ? (
-        <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
-          No strength sets logged in this window yet.
-        </p>
+        <EmptyState
+          variant="inline"
+          title="No strength sets"
+          body="Log a strength session in this window and weekly tonnage populates here."
+        />
       ) : (
         <>
           <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em" }}>
@@ -507,10 +514,11 @@ function BodyweightCard({ data, units }: { data: BodyweightTrend; units: WeightU
         style={{ padding: 16, display: "grid", gap: 8 }}
       >
         <CardTitle title="Bodyweight" subtitle={`${unit} · 30 d trend`} />
-        <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
-          Log your bodyweight to see the trend. The Today nudge or the
-          settings page both work.
-        </p>
+        <EmptyState
+          variant="inline"
+          title="No bodyweight logged"
+          body="Log your bodyweight on Today (How recovered? check-in) or in Settings and your 30-day trend populates here."
+        />
       </section>
     );
   }
