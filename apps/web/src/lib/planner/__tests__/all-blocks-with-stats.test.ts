@@ -23,6 +23,7 @@ vi.mock("@/lib/supabase/server", () => ({
             archetype: "strength_anchor",
             started_on: "2026-05-10",
             updated_at: "2026-05-15T00:00:00Z",
+            ended_at: null,
             weeks: 4,
             days_per_week: 4,
             status: "active",
@@ -40,6 +41,7 @@ vi.mock("@/lib/supabase/server", () => ({
             archetype: "endurance_anchor",
             started_on: "2026-03-01",
             updated_at: "2026-04-01T00:00:00Z",
+            ended_at: "2026-03-28T12:00:00Z",
             weeks: 4,
             // legacy null — derived from planned_sessions week 0
             days_per_week: null,
@@ -58,6 +60,7 @@ vi.mock("@/lib/supabase/server", () => ({
             archetype: "custom",
             started_on: "2026-01-01",
             updated_at: "2026-01-20T00:00:00Z",
+            ended_at: null,
             weeks: 2,
             days_per_week: 2,
             status: "archived",
@@ -94,8 +97,15 @@ describe("getAllBlocksWithCompletionStats", () => {
     const rows = await getAllBlocksWithCompletionStats({ limit: 20 });
     const done = rows.find((r) => r.id === "b-done")!;
     expect(done.daysPerWeek).toBe(3);
-    // updated_at proxies as endedOn for non-active blocks
-    expect(done.endedOn).toBe("2026-04-01T00:00:00Z");
+    // endedOn prefers ended_at over updated_at when both are present
+    expect(done.endedOn).toBe("2026-03-28T12:00:00Z");
+  });
+
+  it("falls back to updated_at when ended_at is null on a non-active block", async () => {
+    const { getAllBlocksWithCompletionStats } = await import("../queries");
+    const rows = await getAllBlocksWithCompletionStats({ limit: 20 });
+    const custom = rows.find((r) => r.id === "b-custom")!;
+    expect(custom.endedOn).toBe("2026-01-20T00:00:00Z");
   });
 
   it("uses notes as the display name for custom blocks", async () => {
