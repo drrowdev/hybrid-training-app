@@ -2,7 +2,9 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/lib/auth/actions";
 import { AppShell } from "@/components/shell/AppShell";
+import { CommandPaletteProvider } from "@/components/cmd-k/CommandPaletteProvider";
 import { needsOnboarding } from "@/lib/onboarding/gate";
+import { loadPaletteIndices } from "@/lib/cmd-k/indices";
 
 export default async function AppLayout({
   children,
@@ -39,13 +41,19 @@ export default async function AppLayout({
     redirect("/onboarding");
   }
 
+  // Quick-jump (⌘K) indices — small bundle preloaded server-side so
+  // the client filters in-memory without a per-keystroke round trip.
+  const paletteIndices = await loadPaletteIndices(supabase, user.id);
+
   return (
-    <AppShell
-      signOutAction={signOut}
-      displayName={profile?.display_name ?? null}
-      email={user.email ?? null}
-    >
-      {children}
-    </AppShell>
+    <CommandPaletteProvider indices={paletteIndices}>
+      <AppShell
+        signOutAction={signOut}
+        displayName={profile?.display_name ?? null}
+        email={user.email ?? null}
+      >
+        {children}
+      </AppShell>
+    </CommandPaletteProvider>
   );
 }
