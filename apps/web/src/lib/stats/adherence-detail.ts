@@ -38,6 +38,10 @@ import {
   todayYmd,
 } from "@/lib/dates";
 import { archetypeDisplayName } from "@/lib/planner/queries";
+import {
+  summariseOverridesByWeekday,
+  type WeekdayOverrideSummary,
+} from "@/lib/engine/overrides";
 
 // ──────────────────────────────────────────────────────────────────────
 // Range — adherence uses week-units (the natural bucket here).
@@ -636,6 +640,13 @@ export async function getAdherenceDashboard(
   skipped: SkippedNote[];
   streaks: Streaks;
   totalPlanned: number;
+  /**
+   * Override audit-log summary by ISO weekday across the same range.
+   * Powers the "you skip 60% of Sundays" analytic surfaced next to
+   * the weekday card. Wired in for first-class engine override audit
+   * log (DC-K4).
+   */
+  overridesByWeekday: WeekdayOverrideSummary[];
 }> {
   const today = todayYmd(tz);
   const start = startOfRange(today, range);
@@ -657,6 +668,11 @@ export async function getAdherenceDashboard(
   const archetypes = computeArchetypeAdherence(rows, today, start);
   const streaks = computeStreaks(rows, today, streakStart);
 
+  // Read reasons from the override audit log (migration 0028) so the
+  // skip-notes card can finally surface free-form user notes. Falls
+  // back to NULL when no audit row exists (pre-migration skips).
+  const skipReasonByPlannedId = await readSkipReasons(supabase, userId);
+
   const skipped = rows
     .filter((r) => r.skippedAt != null)
     .map((r) => ({
@@ -666,11 +682,18 @@ export async function getAdherenceDashboard(
       archetype: r.archetype,
       archetypeDisplayName: archetypeDisplayName(r.archetype, r.blockNotes),
       title: r.title,
-      note: null as string | null,
+      note: skipReasonByPlannedId.get(r.plannedId) ?? null,
     }))
     .filter((s) => (start ? s.date >= start : true) && s.date <= today)
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 10);
+
+  const rangeFromIso = start ? `${start}T00:00:00Z` : "1970-01-01T00:00:00Z";
+  const overridesByWeekday = await summariseOverridesByWeekday(
+    supabase,
+    userId,
+    { fromIso: rangeFromIso, toIso: `${today}T23:59:59Z` },
+  );
 
   return {
     weekly,
@@ -679,5 +702,25 @@ export async function getAdherenceDashboard(
     skipped,
     streaks,
     totalPlanned: weekday.totalPlanned,
+    overridesByWeekday,
   };
+}
+
+async function readSkipReasons(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const { data } = await supabase
+    .from("engine_override_events")
+    .select("planned_session_id, reason")
+    .eq("user_id", userId)
+    .eq("event_type", "skip")
+    .not("reason", "is", null);
+  for (const r of data ?? []) {
+    const id = r.planned_session_id as string | null;
+    const reason = r.reason as string | null;
+    if (id && reason) out.set(id, reason);
+  }
+  return out;
 }
