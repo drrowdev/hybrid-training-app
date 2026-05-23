@@ -30,10 +30,29 @@ export type MiniLineMarker = {
   label?: string;
 };
 
+/**
+ * Horizontal reference band rendered at a fixed y-value on the chart.
+ *
+ * Used by the Phase 6 region-freshness card to overlay the
+ * MV / MEV / MAV / MRV volume-landmark thresholds (DC-M1) on top of a
+ * 14-day ATL strip. The threshold is rendered as a thin dashed line
+ * spanning the full chart width; the optional `label` is emitted as an
+ * SVG <title> so screen-readers + hover tooltips get the same text.
+ */
+export type MiniLineThreshold = {
+  /** Y-axis value, on the same scale as `values` / `overlay`. */
+  value: number;
+  /** Per-threshold color. Defaults to var(--cp-border-strong). */
+  color?: string;
+  /** Optional tooltip / aria text (e.g. "MEV — minimum effective volume"). */
+  label?: string;
+};
+
 export function MiniLine({
   values,
   overlay,
   markers,
+  thresholds,
   accent = "accent",
   height,
   style,
@@ -54,6 +73,13 @@ export function MiniLine({
    * dot is rendered at that point on the line.
    */
   markers?: MiniLineMarker[];
+  /**
+   * Optional horizontal reference bands. Each threshold renders as a
+   * thin dashed line at its `value` on the y-axis. The y-scale expands
+   * to cover the union of values + overlay + thresholds so a threshold
+   * above the data range remains visible (Phase 6 region freshness).
+   */
+  thresholds?: MiniLineThreshold[];
   accent?: MiniLineAccent;
   /** SVG viewport height — defaults to the compact 40px card variant. */
   height?: number;
@@ -83,8 +109,9 @@ export function MiniLine({
       </svg>
     );
   }
-  const max = Math.max(...values, ...(overlay ?? []));
-  const min = Math.min(...values, ...(overlay ?? []));
+  const thresholdValues = (thresholds ?? []).map((t) => t.value);
+  const max = Math.max(...values, ...(overlay ?? []), ...thresholdValues);
+  const min = Math.min(...values, ...(overlay ?? []), ...thresholdValues);
   const span = max - min || 1;
   const stepX = n === 1 ? 0 : (W - 2 * PAD) / (n - 1);
   const yAt = (v: number) => H - PAD - ((v - min) / span) * (H - 2 * PAD);
@@ -139,6 +166,22 @@ export function MiniLine({
           data-testid="miniline-overlay"
         />
       )}
+      {(thresholds ?? []).map((t, i) => (
+        <line
+          key={`t${i}`}
+          x1={PAD}
+          x2={W - PAD}
+          y1={yAt(t.value)}
+          y2={yAt(t.value)}
+          stroke={t.color ?? "var(--cp-border-strong)"}
+          strokeWidth={0.8}
+          strokeDasharray="3 2"
+          vectorEffect="non-scaling-stroke"
+          data-testid="miniline-threshold"
+        >
+          {t.label ? <title>{t.label}</title> : null}
+        </line>
+      ))}
       {markerDots.map((m) => (
         <circle
           key={m.index}
