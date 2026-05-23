@@ -660,66 +660,185 @@ function CeilingInputRow({
 // ─── E · User tier ─────────────────────────────────────────────────
 
 function UserTierCard({ tier }: { tier: UserTierState }) {
+  const confidenceLabel: Record<UserTierState["confidence"], string> = {
+    high: "High confidence",
+    moderate: "Moderate confidence",
+    low: "Low confidence",
+  };
   return (
     <section
       className="cp-card"
       data-testid="stats-engine-tier"
       data-tier={tier.tier}
+      data-inferred={tier.inferred}
+      data-confidence={tier.confidence}
+      data-mismatch={tier.mismatch ? "true" : "false"}
       style={{ padding: 20 }}
     >
       <h2 style={{ margin: 0, fontSize: 16 }}>
         Your tier
         <span className="cp-info" tabIndex={0} aria-label="How tier is computed">
           i
-          <span className="pop" style={{ width: 280 }}>
-            DC-G1: tier is behavioural, not declared. Inferred from anchor
-            compliance, session completion, schedule regularity, and
-            recovery-input consistency over the last 56 days. DC-G3
-            thresholds: consumer 0–49, intermediate 50–74, high-performance
-            75–100.
+          <span className="pop" style={{ width: 300 }}>
+            DC-G1: tier stays behavioural. Inferred from per-lift e1RM relative
+            to bodyweight, 12-week anchor adherence, schedule regularity, and
+            recovery check-in fill rate — combined with your declared
+            experience from onboarding. DC-K4 surfaces any declared-vs-observed
+            mismatch as a soft warning, never a silent overrule.
           </span>
         </span>
       </h2>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, margin: "8px 0" }}>
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          gap: 12,
+          margin: "10px 0 4px",
+          flexWrap: "wrap",
+        }}
+      >
         <div>
+          <div style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+            You&apos;re at
+          </div>
           <div
             data-testid="stats-engine-tier-label"
-            style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.01em" }}
+            style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.01em" }}
           >
             {tier.tierLabel}
-          </div>
-          <div style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>
-            {tier.description}
+            {tier.declaredYearsLabel && (
+              <span
+                style={{
+                  fontSize: 13,
+                  fontWeight: 400,
+                  color: "var(--cp-text-muted)",
+                  marginLeft: 8,
+                }}
+              >
+                · {tier.declaredYearsLabel}
+              </span>
+            )}
           </div>
         </div>
         <div
+          data-testid="stats-engine-tier-confidence"
           className="mono"
-          style={{ fontSize: 12, color: "var(--cp-text-muted)" }}
+          style={{
+            fontSize: 12,
+            color: "var(--cp-text-muted)",
+            whiteSpace: "nowrap",
+          }}
         >
-          BTS {tier.bts}/100
-          {tier.isColdStart && " · cold-start default (DC-G5)"}
+          {confidenceLabel[tier.confidence]} ·{" "}
+          {tier.contributorCount} observed contributor
+          {tier.contributorCount === 1 ? "" : "s"}
+          {tier.isColdStart && " · cold-start (DC-G5)"}
         </div>
       </div>
-      {tier.sessionsUntilNextTier != null && (
-        <div style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>
-          Sessions until next tier: ~{tier.sessionsUntilNextTier} (volume +
-          completion thresholds, DC-G3).
+
+      {tier.description && (
+        <div style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: "4px 0 8px" }}>
+          {tier.description}
         </div>
       )}
-      <details
-        style={{
-          marginTop: 10,
-          fontSize: 12,
-          color: "var(--cp-text-muted)",
-        }}
-      >
-        <summary style={{ cursor: "pointer", color: "var(--cp-text)" }}>
-          How is this computed?
-        </summary>
-        <p style={{ margin: "8px 0 0", lineHeight: 1.5 }}>{tier.explanation}</p>
-      </details>
+
+      {tier.mismatch && (
+        <div
+          data-testid="stats-engine-tier-mismatch"
+          role="note"
+          style={{
+            fontSize: 12,
+            margin: "8px 0",
+            padding: "8px 10px",
+            borderRadius: 6,
+            background: "var(--cp-warn-bg, rgba(255, 196, 0, 0.08))",
+            border: "1px solid var(--cp-warn-border, rgba(255, 196, 0, 0.32))",
+            color: "var(--cp-text)",
+          }}
+        >
+          You declared <strong>{tier.declaredLabel}</strong>, observed signals
+          lean toward <strong>{tier.inferredLabel}</strong>. The app keeps your
+          declaration; this is a soft note, not a block (DC-K4).
+        </div>
+      )}
+
+      {tier.sessionsUntilNextTier != null && (
+        <div
+          data-testid="stats-engine-tier-next-gate"
+          style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: "6px 0" }}
+        >
+          Sessions until next tier: ~{tier.sessionsUntilNextTier}
+          {tier.nextTierGateNote && (
+            <span style={{ marginLeft: 6 }}>· {tier.nextTierGateNote}</span>
+          )}
+        </div>
+      )}
+      {tier.sessionsUntilNextTier == null && tier.nextTierGateNote && (
+        <div style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: "6px 0" }}>
+          {tier.nextTierGateNote}
+        </div>
+      )}
+
+      {tier.contributors.length > 0 && (
+        <details
+          data-testid="stats-engine-tier-contributors"
+          style={{ marginTop: 10, fontSize: 12, color: "var(--cp-text-muted)" }}
+        >
+          <summary style={{ cursor: "pointer", color: "var(--cp-text)" }}>
+            How is this computed?
+          </summary>
+          <ul
+            style={{
+              margin: "8px 0 0",
+              padding: 0,
+              listStyle: "none",
+              display: "grid",
+              gap: 4,
+            }}
+          >
+            {tier.contributors.map((c, i) => (
+              <li
+                key={`${c.name}-${i}`}
+                data-testid="stats-engine-tier-contributor-row"
+                data-points-toward={c.pointsToward}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                }}
+              >
+                <span>{c.name}</span>
+                <span>
+                  {formatContributorValue(c.value)} · w {c.weight.toFixed(2)} →{" "}
+                  {c.pointsToward}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p style={{ margin: "10px 0 0", lineHeight: 1.5 }}>{tier.explanation}</p>
+          <p
+            style={{
+              margin: "8px 0 0",
+              fontSize: 11,
+              color: "var(--cp-text-muted)",
+            }}
+          >
+            Refs: DC-G1..G6 (tier definition + thresholds + cold start +
+            tier-gated planning params), DC-K4 (override-and-warn).
+          </p>
+        </details>
+      )}
     </section>
   );
+}
+
+function formatContributorValue(v: number): string {
+  if (!Number.isFinite(v)) return "—";
+  if (v < 10) return v.toFixed(2);
+  return Math.round(v).toString();
 }
 
 // ─── F · Recent overrides ──────────────────────────────────────────
