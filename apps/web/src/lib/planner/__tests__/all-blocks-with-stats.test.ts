@@ -15,6 +15,7 @@ vi.mock("@/lib/supabase/server", () => ({
     const query = {
       select: vi.fn().mockReturnValue(builder),
       eq: vi.fn().mockReturnValue(builder),
+      is: vi.fn().mockReturnValue(builder),
       order: vi.fn().mockReturnValue(builder),
       range: vi.fn().mockResolvedValue({
         data: [
