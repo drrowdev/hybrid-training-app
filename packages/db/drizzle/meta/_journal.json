@@ -239,6 +239,13 @@
       "tag": "0033_limitations_full_shape",
       "when": 1779582000000,
       "breakpoints": false
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "tag": "0034_profiles_ai_notes",
+      "when": 1779588000000,
+      "breakpoints": false
     }
   ]
 }
