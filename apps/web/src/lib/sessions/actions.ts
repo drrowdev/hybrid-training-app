@@ -10,6 +10,7 @@ import { getUserTimezone } from "@/lib/planner/queries";
 import { roundToPlate } from "@/lib/planner/archetypes";
 import type { Prescription, PrescriptionItem } from "@hta/db";
 import { applyPrescriptionSwap } from "./prescription-mutations";
+import { recordOverrideEvent } from "@/lib/engine/overrides";
 
 const checkInSchema = z.object({
   fatigue: z.coerce.number().int().min(1).max(5).nullable().optional(),
@@ -785,6 +786,7 @@ const swapItemSchema = z.object({
   plannedSessionId: z.string().uuid(),
   itemIndex: z.coerce.number().int().min(0).max(64),
   newMovementId: z.string().uuid(),
+  reason: z.string().max(280).optional(),
 });
 
 /**
@@ -799,6 +801,12 @@ const swapItemSchema = z.object({
  * Only affects today's prescription — no implicit "always do floor press"
  * propagation. A future "always swap" preference is a separate feature.
  *
+ * Per DC-K4 ("override-and-warn, never silent overrule") the swap also
+ * lands a row in `engine_override_events` with the original / new
+ * movement slugs and the optional user reason. The legacy
+ * `meta.swappedFrom` write stays — kept backwards-compatible for the
+ * Phase 5 movement-page swap history.
+ *
  * Returns the updated prescription so the client can paint instantly.
  */
 export async function swapPrescriptionItem(
@@ -808,6 +816,7 @@ export async function swapPrescriptionItem(
     plannedSessionId: formData.get("plannedSessionId"),
     itemIndex: formData.get("itemIndex"),
     newMovementId: formData.get("newMovementId"),
+    reason: (formData.get("reason") as string | null) ?? undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
 
@@ -820,7 +829,9 @@ export async function swapPrescriptionItem(
   const [{ data: plannedRow, error: pErr }, { data: newMov, error: mErr }] = await Promise.all([
     supabase
       .from("planned_sessions")
-      .select("id, user_id, prescription")
+      .select(
+        "id, user_id, block_id, week_index, day_index, prescription, training_blocks!inner(archetype, started_on)",
+      )
       .eq("id", parsed.data.plannedSessionId)
       .eq("user_id", user.id)
       .maybeSingle(),
@@ -839,6 +850,9 @@ export async function swapPrescriptionItem(
   if (parsed.data.itemIndex >= (prescription.items?.length ?? 0)) {
     return { error: "Item index out of range." };
   }
+
+  const originalItem = prescription.items[parsed.data.itemIndex];
+  const originalSlug = originalItem?.movementSlug ?? null;
 
   let nextPrescription: Prescription;
   try {
@@ -860,6 +874,40 @@ export async function swapPrescriptionItem(
     .eq("id", parsed.data.plannedSessionId)
     .eq("user_id", user.id);
   if (uErr) return { error: uErr.message };
+
+  // DC-K4 audit-log write — best-effort, fire-and-forget. Even if it
+  // fails the legacy `meta.swappedFrom` JSONB write above survives so
+  // the swap is still observable to the engine page (degraded mode).
+  const block = (plannedRow as unknown as {
+    training_blocks?: { archetype?: string; started_on?: string };
+  }).training_blocks;
+  const startedOn = block?.started_on;
+  const weekIndex = plannedRow.week_index as number;
+  const dayIndex = plannedRow.day_index as number;
+  let weekday: number | undefined;
+  if (startedOn) {
+    const startMs = Date.parse(`${startedOn}T12:00:00Z`);
+    if (!Number.isNaN(startMs)) {
+      const dayMs = startMs + (weekIndex * 7 + dayIndex) * 86_400_000;
+      const d = new Date(dayMs);
+      weekday = ((d.getUTCDay() + 6) % 7) + 1;
+    }
+  }
+  await recordOverrideEvent(supabase, {
+    userId: user.id,
+    eventType: "swap",
+    plannedSessionId: parsed.data.plannedSessionId,
+    blockId: (plannedRow.block_id as string | null) ?? null,
+    originalMovementSlug: originalSlug,
+    newMovementSlug: (newMov.slug as string) ?? null,
+    reason: parsed.data.reason ?? null,
+    context: {
+      archetype: block?.archetype,
+      weekIndex,
+      dayIndex,
+      weekday,
+    },
+  });
 
   // Revalidate Today + any in-progress session that links to this plan.
   revalidatePath("/app");

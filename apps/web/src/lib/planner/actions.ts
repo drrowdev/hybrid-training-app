@@ -45,6 +45,7 @@ import {
   STRENGTH_ROLE_LABELS,
 } from "./archetypes";
 import { ACCESSORY_POOLS, allAccessorySlugs } from "./accessories";
+import { recordOverrideEvent } from "@/lib/engine/overrides";
 import {
   pickAccessoriesForSession,
   type CatalogMovement,
@@ -717,15 +718,77 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
 
 const blockIdSchema = z.object({ id: z.string().uuid() });
 
+const endBlockSchema = z.object({
+  id: z.string().uuid(),
+  reason: z.string().max(280).optional(),
+});
+
 export async function endBlock(formData: FormData): Promise<void> {
-  const parsed = blockIdSchema.safeParse({ id: formData.get("id") });
+  const parsed = endBlockSchema.safeParse({
+    id: formData.get("id"),
+    reason: (formData.get("reason") as string | null) ?? undefined,
+  });
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
   const supabase = await createClient();
   const nowIso = new Date().toISOString();
+
+  // Capture engine context BEFORE the archive write so the snapshot
+  // reflects the block as the user last saw it (active, week N of K).
+  // DC-K4: every override carries the engine state at decision time.
+  const [{ data: blockRow }, { data: completionRow }] = await Promise.all([
+    supabase
+      .from("training_blocks")
+      .select("archetype, weeks, started_on")
+      .eq("id", parsed.data.id)
+      .maybeSingle(),
+    supabase
+      .from("planned_sessions")
+      .select("id, completed_session_id, skipped_at", { count: "exact" })
+      .eq("block_id", parsed.data.id),
+  ]);
+
   await supabase
     .from("training_blocks")
     .update({ status: "archived", archived_at: nowIso, ended_at: nowIso })
     .eq("id", parsed.data.id);
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) {
+    const totalPlanned = completionRow?.length ?? 0;
+    const totalDone = (completionRow ?? []).filter(
+      (r) => r.completed_session_id || r.skipped_at,
+    ).length;
+    const percentThrough = totalPlanned > 0 ? totalDone / totalPlanned : 0;
+    const weeks = blockRow?.weeks as number | undefined;
+    const startedOn = blockRow?.started_on as string | undefined;
+    let weeksCompleted: number | undefined;
+    if (startedOn) {
+      const startMs = Date.parse(`${startedOn}T00:00:00Z`);
+      if (!Number.isNaN(startMs)) {
+        const days = Math.max(0, Math.floor((Date.now() - startMs) / 86_400_000));
+        weeksCompleted = Math.floor(days / 7);
+        if (typeof weeks === "number") {
+          weeksCompleted = Math.min(weeksCompleted, weeks);
+        }
+      }
+    }
+    await recordOverrideEvent(supabase, {
+      userId: user.id,
+      eventType: "manual_end",
+      occurredAt: nowIso,
+      blockId: parsed.data.id,
+      reason: parsed.data.reason ?? null,
+      context: {
+        archetype: blockRow?.archetype as string | undefined,
+        weeks,
+        weeksCompleted,
+        percentThrough: Number(percentThrough.toFixed(3)),
+      },
+    });
+  }
+
   revalidatePath("/app");
   revalidatePath("/app/plan");
 }
@@ -827,22 +890,75 @@ export async function permanentlyDeleteBlock(
   return { ok: true };
 }
 
-const skipSchema = z.object({ id: z.string().uuid() });
+const skipSchema = z.object({
+  id: z.string().uuid(),
+  reason: z.string().max(280).optional(),
+});
 
 export async function skipPlannedSession(formData: FormData): Promise<void> {
-  const parsed = skipSchema.safeParse({ id: formData.get("id") });
+  const parsed = skipSchema.safeParse({
+    id: formData.get("id"),
+    reason: (formData.get("reason") as string | null) ?? undefined,
+  });
   if (!parsed.success) return;
   const supabase = await createClient();
+  const skippedAt = new Date().toISOString();
+
+  // Read planned + block context BEFORE the update so the audit row
+  // carries the engine state the user actually saw when skipping.
+  const { data: planned } = await supabase
+    .from("planned_sessions")
+    .select(
+      "id, user_id, block_id, week_index, day_index, training_blocks!inner(archetype, started_on)",
+    )
+    .eq("id", parsed.data.id)
+    .maybeSingle();
+
   await supabase
     .from("planned_sessions")
-    .update({ skipped_at: new Date().toISOString() })
+    .update({ skipped_at: skippedAt })
     .eq("id", parsed.data.id);
+
+  if (planned) {
+    const block = (planned as unknown as {
+      training_blocks: { archetype: string; started_on: string };
+    }).training_blocks;
+    const startedOn = block?.started_on as string | undefined;
+    const weekIndex = planned.week_index as number;
+    const dayIndex = planned.day_index as number;
+    let weekday: number | undefined;
+    if (startedOn) {
+      const startMs = Date.parse(`${startedOn}T12:00:00Z`);
+      if (!Number.isNaN(startMs)) {
+        const dayMs = startMs + (weekIndex * 7 + dayIndex) * 86_400_000;
+        const d = new Date(dayMs);
+        weekday = ((d.getUTCDay() + 6) % 7) + 1;
+      }
+    }
+    await recordOverrideEvent(supabase, {
+      userId: planned.user_id as string,
+      eventType: "skip",
+      occurredAt: skippedAt,
+      plannedSessionId: parsed.data.id,
+      blockId: planned.block_id as string,
+      reason: parsed.data.reason ?? null,
+      context: {
+        archetype: block?.archetype,
+        weekIndex,
+        dayIndex,
+        weekday,
+      },
+    });
+  }
+
   revalidatePath("/app");
   revalidatePath("/app/plan");
 }
 
+const unskipSchema = z.object({ id: z.string().uuid() });
+
 export async function unskipPlannedSession(formData: FormData): Promise<void> {
-  const parsed = skipSchema.safeParse({ id: formData.get("id") });
+  const parsed = unskipSchema.safeParse({ id: formData.get("id") });
   if (!parsed.success) return;
   const supabase = await createClient();
   await supabase
