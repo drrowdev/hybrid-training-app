@@ -18,6 +18,7 @@ import {
   type BlockWithCompletionStats,
 } from "@/lib/planner/queries";
 import { DeleteBlockMenu } from "@/components/trash/DeleteBlockMenu";
+import { StatusBadge } from "@/components/blocks/StatusBadge";
 
 const PAGE_SIZE = 20;
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
@@ -355,81 +356,6 @@ function SessionStatusChip({
       }}
     >
       Not yet
-    </span>
-  );
-}
-
-function StatusBadge({
-  status,
-}: {
-  status: "active" | "completed" | "archived";
-}): React.ReactElement {
-  if (status === "completed") {
-    return (
-      <span
-        data-testid="block-status-badge"
-        data-status="completed"
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 3,
-          fontSize: 10,
-          fontWeight: 600,
-          letterSpacing: "0.04em",
-          textTransform: "uppercase",
-          padding: "2px 7px",
-          borderRadius: 999,
-          background: "rgba(34, 197, 94, 0.12)",
-          color: "rgb(22, 163, 74)",
-          border: "1px solid rgba(34, 197, 94, 0.35)",
-        }}
-      >
-        ✓ Completed
-      </span>
-    );
-  }
-  if (status === "archived") {
-    return (
-      <span
-        data-testid="block-status-badge"
-        data-status="archived"
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          fontSize: 10,
-          fontWeight: 600,
-          letterSpacing: "0.04em",
-          textTransform: "uppercase",
-          padding: "2px 7px",
-          borderRadius: 999,
-          background: "var(--cp-surface-muted, rgba(0,0,0,0.04))",
-          color: "var(--cp-text-muted)",
-          border: "1px solid var(--cp-border)",
-        }}
-      >
-        Ended
-      </span>
-    );
-  }
-  return (
-    <span
-      data-testid="block-status-badge"
-      data-status="active"
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        fontSize: 10,
-        fontWeight: 600,
-        letterSpacing: "0.04em",
-        textTransform: "uppercase",
-        padding: "2px 7px",
-        borderRadius: 999,
-        background: "var(--cp-accent-soft)",
-        color: "var(--cp-accent)",
-        border: "1px solid var(--cp-accent)",
-      }}
-    >
-      Active
     </span>
   );
 }
