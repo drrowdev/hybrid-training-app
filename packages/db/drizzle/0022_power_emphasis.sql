@@ -11,6 +11,14 @@
 -- Nullable + default false so old rows + legacy custom blocks keep
 -- working unchanged. No top-level RLS change — power_emphasis is a
 -- per-block scalar that follows the same training_blocks policies.
+--
+-- IF NOT EXISTS: this migration (and 0023, 0024) were originally
+-- applied via the Supabase dashboard rather than through
+-- `drizzle-kit migrate`, so the column may already exist when the
+-- migration runner re-encounters this file. Idempotent ADD COLUMN
+-- IF NOT EXISTS keeps the runner from blowing up. See
+-- packages/db/sync-migrations-tracking.sql for the matching
+-- __drizzle_migrations backfill.
 
 ALTER TABLE "training_blocks"
-  ADD COLUMN "power_emphasis" boolean DEFAULT false;
+  ADD COLUMN IF NOT EXISTS "power_emphasis" boolean DEFAULT false;
