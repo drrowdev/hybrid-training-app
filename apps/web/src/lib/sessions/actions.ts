@@ -399,6 +399,7 @@ export async function completeSession(formData: FormData): Promise<void> {
 
   revalidatePath("/app");
   revalidatePath("/app/plan");
+  revalidatePath("/app/stats");
   revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
   redirect(`/app/sessions/${parsed.data.sessionId}`);
 }
@@ -442,6 +443,7 @@ export async function deleteSession(
 
   revalidatePath("/app");
   revalidatePath("/app/sessions");
+  revalidatePath("/app/stats");
   revalidatePath("/app/settings/trash");
   return { ok: true, sessionId: id, restoreUrl: `/api/sessions/${id}/restore` };
 }
@@ -469,6 +471,7 @@ export async function restoreSession(id: string): Promise<{ ok: true } | { ok: f
 
   revalidatePath("/app");
   revalidatePath("/app/sessions");
+  revalidatePath("/app/stats");
   revalidatePath("/app/settings/trash");
   return { ok: true };
 }
@@ -499,6 +502,7 @@ export async function permanentlyDeleteSession(
 
   revalidatePath("/app");
   revalidatePath("/app/sessions");
+  revalidatePath("/app/stats");
   revalidatePath("/app/settings/trash");
   return { ok: true };
 }
