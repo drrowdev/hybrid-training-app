@@ -14,7 +14,13 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { maybeCompleteBlock } from "../completion";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-type Block = { id: string; status: "active" | "completed" | "archived" };
+type Block = {
+  id: string;
+  status: "active" | "completed" | "archived";
+  completed_at?: string | null;
+  archived_at?: string | null;
+  ended_at?: string | null;
+};
 type Planned = {
   id: string;
   block_id: string;
@@ -121,7 +127,7 @@ function seedBlock(
     });
   }
   return {
-    training_blocks: [{ id: blockId, status }],
+    training_blocks: [{ id: blockId, status, completed_at: null, archived_at: null, ended_at: null }],
     planned_sessions: planned,
   };
 }
@@ -141,8 +147,19 @@ describe("maybeCompleteBlock", () => {
   it("flips to 'completed' when every planned session is linked (28/28)", async () => {
     store = seedBlock("active", 28, 28);
     const sb = makeClient(store);
+    const before = Date.now();
     await maybeCompleteBlock(sb, "blk-1");
-    expect(store.training_blocks[0]!.status).toBe("completed");
+    const after = Date.now();
+    const blk = store.training_blocks[0]!;
+    expect(blk.status).toBe("completed");
+    // Both completed_at AND ended_at must be set on the auto-complete path.
+    expect(blk.completed_at).toBeTruthy();
+    expect(blk.ended_at).toBeTruthy();
+    expect(blk.completed_at).toBe(blk.ended_at);
+    expect(blk.archived_at).toBeNull();
+    const ts = new Date(blk.completed_at!).getTime();
+    expect(ts).toBeGreaterThanOrEqual(before);
+    expect(ts).toBeLessThanOrEqual(after);
   });
 
   it("flips to 'completed' when all sessions are either linked or skipped", async () => {
@@ -163,9 +180,17 @@ describe("maybeCompleteBlock", () => {
 
   it("is idempotent on 'completed'", async () => {
     store = seedBlock("completed", 28, 28);
+    // Pre-existing timestamps from the original completion.
+    store.training_blocks[0]!.completed_at = "2026-01-01T00:00:00.000Z";
+    store.training_blocks[0]!.ended_at = "2026-01-01T00:00:00.000Z";
     const sb = makeClient(store);
     await maybeCompleteBlock(sb, "blk-1");
-    expect(store.training_blocks[0]!.status).toBe("completed");
+    const blk = store.training_blocks[0]!;
+    expect(blk.status).toBe("completed");
+    // The status='active' guard on the UPDATE means a re-invocation
+    // mustn't touch the original timestamps.
+    expect(blk.completed_at).toBe("2026-01-01T00:00:00.000Z");
+    expect(blk.ended_at).toBe("2026-01-01T00:00:00.000Z");
   });
 
   it("does nothing for a block with zero planned_sessions (never started)", async () => {
