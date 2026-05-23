@@ -729,6 +729,100 @@ export async function endBlock(formData: FormData): Promise<void> {
   revalidatePath("/app/plan");
 }
 
+/**
+ * Soft-delete a training block. Distinct from `endBlock` which writes
+ * status='archived' to mark "no longer active". `deleteBlock` is the
+ * stronger intent: remove from history, recoverable for 30 days via
+ * the Trash page. AGENTS.md DC-K4 — destructive, reversible.
+ *
+ * Cascade is implicit: every query that lists planned_sessions joins
+ * through the block and the block filter `deleted_at IS NULL` hides
+ * the children too. Hard cascade to planned_sessions only fires when
+ * the block is permanently deleted (FK ON DELETE CASCADE in 0008).
+ *
+ * RLS (training_blocks_update_self) covers ownership; the explicit
+ * `eq("user_id", ...)` is defense in depth.
+ */
+export async function deleteBlock(
+  formData: FormData,
+): Promise<{ ok: true; blockId: string } | { ok: false; error: string }> {
+  const parsed = blockIdSchema.safeParse({ id: formData.get("id") });
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const { error } = await supabase
+    .from("training_blocks")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", parsed.data.id)
+    .eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
+  revalidatePath("/app/plan/history");
+  revalidatePath("/app/settings/trash");
+  return { ok: true, blockId: parsed.data.id };
+}
+
+/** Restore a soft-deleted block — flips `deleted_at` back to NULL. */
+export async function restoreBlock(
+  id: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!id) return { ok: false, error: "Missing block id." };
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const { error } = await supabase
+    .from("training_blocks")
+    .update({ deleted_at: null })
+    .eq("id", id)
+    .eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
+  revalidatePath("/app/plan/history");
+  revalidatePath("/app/settings/trash");
+  return { ok: true };
+}
+
+/**
+ * Hard-delete a block. Only callable from the Trash page after the
+ * user types the block's archetype name as type-to-confirm. Cascades
+ * to planned_sessions via the FK in migration 0008
+ * (planned_sessions.block_id ON DELETE CASCADE).
+ */
+export async function permanentlyDeleteBlock(
+  id: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!id) return { ok: false, error: "Missing block id." };
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const { error } = await supabase
+    .from("training_blocks")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
+  revalidatePath("/app/plan/history");
+  revalidatePath("/app/settings/trash");
+  return { ok: true };
+}
+
 const skipSchema = z.object({ id: z.string().uuid() });
 
 export async function skipPlannedSession(formData: FormData): Promise<void> {

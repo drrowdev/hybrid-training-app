@@ -17,6 +17,7 @@ import {
   getAllBlocksWithCompletionStats,
   type BlockWithCompletionStats,
 } from "@/lib/planner/queries";
+import { DeleteBlockMenu } from "@/components/trash/DeleteBlockMenu";
 
 const PAGE_SIZE = 20;
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
@@ -175,6 +176,9 @@ function BlockHistoryRow({
           <div style={summaryHeadStyle}>
             <span style={{ fontWeight: 600, fontSize: 14 }}>{block.archetypeName}</span>
             <StatusBadge status={block.status} />
+            <span style={{ marginLeft: "auto" }}>
+              <DeleteBlockMenu blockId={block.id} archetypeName={block.archetypeName} />
+            </span>
           </div>
           <div style={summaryMetaStyle}>
             <span>

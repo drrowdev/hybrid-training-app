@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { deleteSession } from "@/lib/sessions/actions";
+import { DeleteSessionButton } from "@/components/trash/DeleteSessionButton";
 
 export default async function SessionsListPage() {
   const supabase = await createClient();
@@ -15,6 +15,7 @@ export default async function SessionsListPage() {
     .select(
       "id, title, performed_at, completed_at, fatigue, soreness, session_rpe, duration_min",
     )
+    .is("deleted_at", null)
     .order("performed_at", { ascending: false })
     .limit(100);
 
@@ -66,15 +67,7 @@ export default async function SessionsListPage() {
                   {s.duration_min ? ` · ${s.duration_min} min` : ""}
                 </div>
               </Link>
-              <form action={deleteSession}>
-                <input type="hidden" name="id" value={s.id} />
-                <button
-                  type="submit"
-                  className="text-xs text-foreground/40 hover:text-red-600 shrink-0"
-                >
-                  delete
-                </button>
-              </form>
+              <DeleteSessionButton sessionId={s.id} label={s.title || "Session"} />
             </li>
           ))}
         </ul>

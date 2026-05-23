@@ -7,6 +7,7 @@ import {
   addStrengthSet,
   deleteCardio,
 } from "@/lib/sessions/actions";
+import { DeleteSessionButton } from "@/components/trash/DeleteSessionButton";
 import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
 import {
   SessionLogClient,
@@ -40,6 +41,7 @@ export default async function SessionDetailPage({
       "id, performed_at, title, fatigue, soreness, session_rpe, duration_min, notes, completed_at",
     )
     .eq("id", id)
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (!session) notFound();
@@ -139,20 +141,27 @@ export default async function SessionDetailPage({
           <h1 style={{ fontSize: 26, margin: "4px 0 0", letterSpacing: "-0.01em" }}>
             {session.title ?? "Session"}
           </h1>
-          {isComplete && (
-            <span
-              style={{
-                fontSize: 11,
-                padding: "2px 8px",
-                borderRadius: 999,
-                background: "color-mix(in oklab, var(--cp-success) 18%, transparent)",
-                color: "var(--cp-success)",
-                fontWeight: 600,
-              }}
-            >
-              completed
-            </span>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {isComplete && (
+              <span
+                style={{
+                  fontSize: 11,
+                  padding: "2px 8px",
+                  borderRadius: 999,
+                  background: "color-mix(in oklab, var(--cp-success) 18%, transparent)",
+                  color: "var(--cp-success)",
+                  fontWeight: 600,
+                }}
+              >
+                completed
+              </span>
+            )}
+            <DeleteSessionButton
+              sessionId={session.id}
+              label={session.title || "Session"}
+              redirectTo="/app/sessions"
+            />
+          </div>
         </div>
       </header>
 

@@ -113,6 +113,7 @@ export async function getActiveBlock(): Promise<ActiveBlock | null> {
     .from("training_blocks")
     .select("id, archetype, started_on, weeks, status, notes")
     .eq("status", "active")
+    .is("deleted_at", null)
     .order("started_on", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -242,6 +243,7 @@ export async function getRecentBlocks(limit = 3): Promise<RecentBlock[]> {
     .from("training_blocks")
     .select("id, archetype, started_on, days_per_week, status, day_index_overrides, notes")
     .eq("user_id", user.id)
+    .is("deleted_at", null)
     .order("started_on", { ascending: false })
     .limit(limit);
   if (!data) return [];
@@ -310,6 +312,7 @@ export async function getAllBlocksWithCompletionStats(
       "id, archetype, started_on, updated_at, ended_at, weeks, days_per_week, status, day_index_overrides, notes, planned_sessions(id, completed_session_id, skipped_at, week_index, day_index)",
     )
     .eq("user_id", user.id)
+    .is("deleted_at", null)
     .order("started_on", { ascending: false })
     .range(offset, offset + limit - 1);
   if (!data) return [];
@@ -361,4 +364,90 @@ export async function getAllBlocksWithCompletionStats(
       };
     }),
   );
+}
+
+/**
+ * One row in the Trash page list — covers both block and session
+ * deletions in a single shape so the page can render a unified list.
+ * `archetypeName` for blocks resolves through `archetypeDisplayName`
+ * so custom blocks render their user-supplied label.
+ *
+ * Selected fields are intentionally minimal: enough to render the row
+ * + drive the type-to-confirm token (archetype name for blocks,
+ * `YYYY-MM-DD` performed_at for sessions). Recovery and permanent
+ * delete actions take just the id.
+ */
+export type TrashedBlock = {
+  kind: "block";
+  id: string;
+  archetype: string;
+  archetypeName: string;
+  startedOn: string;
+  deletedAt: string;
+};
+
+export type TrashedSession = {
+  kind: "session";
+  id: string;
+  title: string | null;
+  performedAt: string;
+  /** YYYY-MM-DD slice of performed_at — used as the type-to-confirm token. */
+  performedOn: string;
+  deletedAt: string;
+};
+
+export type TrashedItems = {
+  blocks: TrashedBlock[];
+  sessions: TrashedSession[];
+};
+
+/**
+ * List every soft-deleted block + session belonging to the current
+ * user. The only query in the app that selects `deleted_at IS NOT
+ * NULL` (every other query filters the inverse). Sorted by
+ * `deleted_at DESC` so the most-recent deletions surface first — that
+ * matches the user's mental model (the thing I just trashed should be
+ * at the top of the Trash).
+ */
+export async function getTrashedItems(): Promise<TrashedItems> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { blocks: [], sessions: [] };
+
+  const [{ data: blockRows }, { data: sessionRows }] = await Promise.all([
+    supabase
+      .from("training_blocks")
+      .select("id, archetype, started_on, notes, deleted_at")
+      .eq("user_id", user.id)
+      .not("deleted_at", "is", null)
+      .order("deleted_at", { ascending: false }),
+    supabase
+      .from("sessions")
+      .select("id, title, performed_at, deleted_at")
+      .eq("user_id", user.id)
+      .not("deleted_at", "is", null)
+      .order("deleted_at", { ascending: false }),
+  ]);
+
+  const blocks: TrashedBlock[] = (blockRows ?? []).map((b) => ({
+    kind: "block" as const,
+    id: b.id,
+    archetype: b.archetype,
+    archetypeName: archetypeDisplayName(b.archetype, b.notes),
+    startedOn: b.started_on,
+    deletedAt: b.deleted_at,
+  }));
+
+  const sessions: TrashedSession[] = (sessionRows ?? []).map((s) => ({
+    kind: "session" as const,
+    id: s.id,
+    title: s.title ?? null,
+    performedAt: s.performed_at,
+    performedOn: String(s.performed_at).slice(0, 10),
+    deletedAt: s.deleted_at,
+  }));
+
+  return { blocks, sessions };
 }

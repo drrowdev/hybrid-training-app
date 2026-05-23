@@ -40,6 +40,7 @@ export async function getCurrentWeekTissueStackGaps(
     .select("id, started_on, weeks")
     .eq("user_id", userId)
     .eq("status", "active")
+    .is("deleted_at", null)
     .maybeSingle();
   if (!block) return [];
 

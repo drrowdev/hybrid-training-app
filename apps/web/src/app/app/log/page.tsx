@@ -13,6 +13,7 @@ export default async function LogTabEntry() {
     .from("sessions")
     .select("id")
     .is("completed_at", null)
+    .is("deleted_at", null)
     .gte("performed_at", `${todayIso}T00:00:00`)
     .order("performed_at", { ascending: false })
     .limit(1)
