@@ -69,7 +69,7 @@ export default async function TodayPage() {
       .order("performed_at", { ascending: false })
       .limit(3),
     getTodayPlannedSessions(),
-    getUpcomingPlannedSessions(3),
+    getUpcomingPlannedSessions(5),
     getRegionFreshness(supabase, userId),
     getActiveBlock(),
     getTrainingMaxDict(),
@@ -219,6 +219,15 @@ export default async function TodayPage() {
                   <span style={{ color: "var(--cp-text)" }}>
                     {new Date(u.date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}
                   </span>
+                  {u.slot !== "single" && (
+                    <span
+                      data-testid={`upcoming-slot-${u.id}`}
+                      className="mono"
+                      style={{ marginLeft: 6, color: "var(--cp-accent)", fontWeight: 700 }}
+                    >
+                      · {u.slot.toUpperCase()}
+                    </span>
+                  )}
                 </div>
                 <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.25 }}>{u.title}</div>
                 <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: "auto" }}>
@@ -428,6 +437,45 @@ function TodaySessionCard({
   const gapH = isTwoADay && amTime && pmTime ? gapHoursBetween(amTime, pmTime) : null;
   const gapShort = gapH != null && gapH < 6;
 
+  // Phase 2 B2 — when one slot of a two-a-day is already complete, lead
+  // with the still-open slot. Incomplete cards come first; completed
+  // cards drop to the bottom (de-emphasised but still visible).
+  const orderedPlannedToday = isTwoADay
+    ? [...plannedToday].sort((a, b) => {
+        const aDone = a.completedSessionId ? 1 : 0;
+        const bDone = b.completedSessionId ? 1 : 0;
+        if (aDone !== bDone) return aDone - bDone;
+        // Within same completion bucket: AM before PM.
+        const slotOrder = (s: string) => (s === "am" ? 0 : s === "pm" ? 1 : 2);
+        return slotOrder(a.slot) - slotOrder(b.slot);
+      })
+    : plannedToday;
+
+  // PM-next hint (B2). When the AM slot is logged and PM remains, show
+  // a ~Xh count-down above the PM card. Computed from the PM slot time
+  // minus now-in-user-timezone — falls back to "PM session next" when
+  // we can't resolve a clock time.
+  const completedAmSlot = isTwoADay
+    ? plannedToday.find((p) => p.slot === "am" && p.completedSessionId)
+    : null;
+  const openPmSlot = completedAmSlot
+    ? plannedToday.find((p) => p.slot === "pm" && !p.completedSessionId)
+    : null;
+  const pmHoursFromNow = (() => {
+    if (!openPmSlot) return null;
+    const pmClock = slotTimes.get("pm");
+    if (!pmClock) return null;
+    const [hh, mm] = pmClock.split(":").map((n) => parseInt(n, 10));
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+    // Approximate: assume the user's clock matches "now" — this is a
+    // rough hours-from-now display, not a precise countdown.
+    const now = new Date();
+    const target = new Date(now);
+    target.setHours(hh!, mm!, 0, 0);
+    const diffH = (target.getTime() - now.getTime()) / 3_600_000;
+    return diffH;
+  })();
+
   return (
     <div style={{ display: "grid", gap: 10 }}>
       {isTwoADay && (
@@ -471,18 +519,39 @@ function TodaySessionCard({
           gap: 12,
         }}
       >
-        {plannedToday.map((p) => (
-          <PlannedSessionCard
-            key={p.id}
-            planned={p}
-            isTwoADay={isTwoADay}
-            timeOfDay={slotTimes.get(p.slot) ?? null}
-            conflict={conflictsBySlot.get(p.id) ?? null}
-            archetypeName={archetypeName}
-            weekIndex={weekIndex}
-            tmById={tmById}
-          />
-        ))}
+        {orderedPlannedToday.map((p) => {
+          const isOpenPm = openPmSlot?.id === p.id;
+          return (
+            <div key={p.id} style={{ display: "grid", gap: 6 }}>
+              {isOpenPm && (
+                <div
+                  data-testid="pm-next-hint"
+                  style={{
+                    fontSize: 12,
+                    color: "var(--cp-accent)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    fontWeight: 700,
+                  }}
+                >
+                  PM session{" "}
+                  {pmHoursFromNow != null && pmHoursFromNow > 0
+                    ? `in ~${Math.max(1, Math.round(pmHoursFromNow))}h`
+                    : "next"}
+                </div>
+              )}
+              <PlannedSessionCard
+                planned={p}
+                isTwoADay={isTwoADay}
+                timeOfDay={slotTimes.get(p.slot) ?? null}
+                conflict={conflictsBySlot.get(p.id) ?? null}
+                archetypeName={archetypeName}
+                weekIndex={weekIndex}
+                tmById={tmById}
+              />
+            </div>
+          );
+        })}
       </div>
       {nextUpcoming && plannedToday.length === 1 && (
         <div
@@ -576,17 +645,42 @@ function PlannedSessionCard({
       }}
     >
       <div style={{ fontSize: 11, color: "var(--cp-accent)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
-        {archetypeName && weekIndex != null
-          ? `${archetypeName} · Week ${weekIndex + 1}`
-          : slotLabel}
-        {isTwoADay && planned.slot !== "single" && (
-          <span style={{ marginLeft: 8 }}>
-            · <span className="mono">{planned.slot.toUpperCase()}</span>
+        {isTwoADay && planned.slot !== "single" ? (
+          <>
+            <span data-testid={`slot-label-${planned.slot}`}>{slotLabel}</span>
+            {archetypeName && weekIndex != null && (
+              <span style={{ color: "var(--cp-text-muted)", fontWeight: 600, marginLeft: 8 }}>
+                · {archetypeName} · Week {weekIndex + 1}
+              </span>
+            )}
             {timeOfDay && (
               <span className="mono" style={{ color: "var(--cp-text-muted)", marginLeft: 8 }}>
                 {timeOfDay}
               </span>
             )}
+          </>
+        ) : (
+          <>
+            {archetypeName && weekIndex != null
+              ? `${archetypeName} · Week ${weekIndex + 1}`
+              : slotLabel}
+          </>
+        )}
+        {planned.completedSessionId && (
+          <span
+            data-testid="slot-complete-badge"
+            style={{
+              marginLeft: 10,
+              fontSize: 10,
+              padding: "1px 6px",
+              borderRadius: 999,
+              background: "color-mix(in oklab, var(--cp-success) 18%, transparent)",
+              color: "var(--cp-success)",
+              fontWeight: 700,
+              letterSpacing: "0.06em",
+            }}
+          >
+            ✓ logged
           </span>
         )}
       </div>
