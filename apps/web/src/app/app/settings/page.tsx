@@ -16,7 +16,7 @@ export default async function SettingsPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "display_name, units, bodyweight_kg, body_comp_phase, phase_started_at, phase_target_weeks, training_days_per_week, allows_two_a_days, am_window_start, pm_window_start, timezone, haptics_enabled, timer_sound_enabled",
+      "display_name, units, bodyweight_kg, body_comp_phase, phase_started_at, phase_target_weeks, training_days_per_week, training_experience, allows_two_a_days, am_window_start, pm_window_start, timezone, haptics_enabled, timer_sound_enabled",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -89,6 +89,78 @@ export default async function SettingsPage() {
           >
             Save profile
           </button>
+        </form>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-medium">Training experience</h2>
+        <p className="text-xs text-foreground/60">
+          How long you&apos;ve been training consistently. Used to seed your
+          training tier — your tier adjusts automatically as the app observes
+          your training (DC-G1).
+        </p>
+        <form
+          action={updateProfile}
+          className="space-y-3 rounded-lg border border-foreground/10 p-4"
+          data-testid="settings-training-experience-form"
+        >
+          <div className="space-y-2">
+            {(
+              [
+                { id: "lt_1y", label: "≤ 1 year", hint: "Beginner · still building habits." },
+                { id: "1_3y", label: "1–3 years", hint: "Intermediate · regular training, clear progress." },
+                { id: "gte_3y", label: "3+ years", hint: "Advanced · structured programming, plateau-aware." },
+              ] as const
+            ).map((opt) => {
+              const sel = (profile?.training_experience ?? null) === opt.id;
+              return (
+                <label
+                  key={opt.id}
+                  className="flex items-start gap-3 rounded-md border border-foreground/10 p-3 cursor-pointer hover:bg-foreground/5"
+                  data-testid={`settings-experience-${opt.id}`}
+                  data-selected={sel ? "true" : "false"}
+                >
+                  <input
+                    type="radio"
+                    name="trainingExperience"
+                    value={opt.id}
+                    defaultChecked={sel}
+                    className="mt-1"
+                  />
+                  <span className="text-sm">
+                    {opt.label}
+                    <span className="block text-xs text-foreground/60 mt-1">
+                      {opt.hint}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          <button
+            type="submit"
+            className="rounded-md bg-foreground text-background px-3 py-1.5 text-sm font-medium hover:opacity-90"
+            data-testid="settings-experience-save"
+          >
+            Save experience
+          </button>
+          <details className="text-xs text-foreground/60" data-testid="settings-experience-how">
+            <summary className="cursor-pointer select-none hover:text-foreground">
+              How does this work?
+            </summary>
+            <p className="mt-2 leading-relaxed">
+              Your declared experience anchors your starting tier. From there,
+              the engine refines it from four observed signals: per-lift e1RM
+              relative to bodyweight, 12-week anchor adherence, schedule
+              regularity, and recovery check-in fill rate. When your declared
+              tier and observed signals disagree, the app keeps your
+              declaration and surfaces a soft note (DC-K4 — override and warn,
+              never silent overrule). See <code>/app/stats/engine</code>{" "}
+              section E for the live contributor breakdown, and{" "}
+              <code>docs/knowledge/hybrid-training-design-constraints.md</code>{" "}
+              §G (DC-G1..G6) for the constraint contract.
+            </p>
+          </details>
         </form>
       </section>
 

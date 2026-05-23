@@ -19,3 +19,17 @@ export {
   type CeilingBaseResult,
   type CeilingBasisWeek,
 } from "./recovered-weeks";
+
+export {
+  classifyBodyweightRatio,
+  classifyAbsoluteThreshold,
+  computeTier,
+  DECLARED_TO_TIER,
+  MAIN_LIFTS,
+  type TierLevel,
+  type DeclaredExperience,
+  type MainLift,
+  type TierInputs,
+  type TierResult,
+  type Contributor,
+} from "./tier-detection";
