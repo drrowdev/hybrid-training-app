@@ -218,6 +218,13 @@
       "tag": "0030_wellness_fatigue_soreness",
       "when": 1779564000000,
       "breakpoints": false
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "tag": "0031_muscle_state_history",
+      "when": 1779570000000,
+      "breakpoints": false
     }
   ]
 }

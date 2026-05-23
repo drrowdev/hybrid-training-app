@@ -130,13 +130,33 @@ describe("/api/cron/region-state-snapshot", () => {
     });
   });
 
+  it("also upserts muscle_state_history snapshots alongside regions", async () => {
+    const res = await GET(req({ authorization: "Bearer test-secret" }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(typeof body.muscle_snapshots_written).toBe("number");
+    // 16 muscles × 2 users = 32 expected snapshot rows.
+    expect(body.muscle_snapshots_written).toBe(32);
+    const muscle = upsertCalls.filter((c) => c.table === "muscle_state_history");
+    expect(muscle).toHaveLength(2);
+    expect(muscle[0].opts).toEqual({ onConflict: "user_id,muscle,snapshot_date" });
+    const firstMuscleRow = (muscle[0].rows as Array<Record<string, unknown>>)[0];
+    expect(firstMuscleRow.user_id).toBe("user-a");
+    expect(typeof firstMuscleRow.muscle).toBe("string");
+    expect(firstMuscleRow.snapshot_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(typeof firstMuscleRow.freshness_score).toBe("number");
+  });
+
   it("continues past per-user upsert errors", async () => {
     upsertShouldErrorFor = "user-a";
     const res = await GET(req({ authorization: "Bearer test-secret" }));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.errors).toHaveLength(1);
-    expect(body.errors[0].userId).toBe("user-a");
+    // user-a fails on both the region and the muscle upsert; the
+    // batch should record errors for both but keep going.
+    expect(body.errors.length).toBeGreaterThanOrEqual(1);
+    expect(body.errors.every((e: { userId: string }) => e.userId === "user-a")).toBe(true);
     // user-b still got upserted.
     expect(body.snapshots_written).toBeGreaterThan(0);
   });
