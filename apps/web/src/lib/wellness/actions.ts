@@ -1,11 +1,16 @@
 "use server";
 
 /**
- * Server actions for the Phase 3 daily check-in surface.
+ * Server actions for the daily check-in surface.
  *
- * - `recordDailyCheckIn` — idempotent upsert of bodyweight / sleep /
- *   motivation / notes for `(user_id, today)`. Powers the Today-page
- *   bodyweight nudge and the pre-session sleep chip.
+ * - `recordDailyCheckIn` — idempotent upsert of bodyweight / motivation
+ *   / notes for `(user_id, today)`. Powers the Today-page bodyweight
+ *   nudge.
+ *
+ * Sleep is intentionally NOT collected by any manual path — `sleep_hours`
+ * is reserved for the future health-app integration (Apple Health /
+ * Google Fit). The column remains on `wellness` so the integration can
+ * back-fill it; we just never write it from the UI.
  *
  * - `dismissBodyweightNudge` — writes an empty (notes-only) row marker
  *   we don't actually need server-side; the dismissal is client-only
@@ -31,11 +36,12 @@ export async function recordDailyCheckIn(
   // Fall back to the user's local "today" rather than UTC.
   const dateDefault = submittedDate ? null : todayYmd(await getUserTimezone());
 
+  // sleep* form fields are intentionally NOT read here — sleep is
+  // deferred to the health-integration backlog. Any inbound sleep
+  // field is silently ignored.
   const parsed = dailyCheckInSchema.safeParse({
     date: submittedDate || dateDefault,
     bodyweightKg: formData.get("bodyweightKg") || undefined,
-    sleepHours: formData.get("sleepHours") || undefined,
-    sleepChip: formData.get("sleepChip") || undefined,
     motivation: formData.get("motivation") || undefined,
     notes: formData.get("notes") || undefined,
   });
@@ -51,10 +57,9 @@ export async function recordDailyCheckIn(
 }
 
 /**
- * Internal helper used by the form action above AND by the
- * pre-session check-in path (which already does its own RPC). Pulled
- * out so callers can compose the same upsert without going through a
- * FormData round-trip.
+ * Internal helper used by the form action above. Pulled out so callers
+ * can compose the same upsert without going through a FormData
+ * round-trip.
  */
 export async function persistDailyCheckIn(
   input: DailyCheckInInput,
@@ -68,11 +73,12 @@ export async function persistDailyCheckIn(
   const cols = dailyCheckInUpsertColumns(input);
 
   // Read current row so the upsert preserves columns the caller didn't
-  // touch (e.g. logging bodyweight via the nudge must not clobber a
-  // previously-recorded sleep_hours from the morning).
+  // touch (e.g. logging bodyweight via the nudge must not clobber an
+  // existing motivation entry, or any sleep_hours back-filled later by
+  // the health-integration).
   const { data: existing } = await supabase
     .from("wellness")
-    .select("bodyweight_kg, sleep_hours, motivation, notes")
+    .select("bodyweight_kg, motivation, notes")
     .eq("user_id", user.id)
     .eq("date", input.date)
     .maybeSingle();
@@ -84,10 +90,6 @@ export async function persistDailyCheckIn(
       cols.bodyweight_kg !== undefined
         ? cols.bodyweight_kg
         : existing?.bodyweight_kg ?? null,
-    sleep_hours:
-      cols.sleep_hours !== undefined
-        ? cols.sleep_hours
-        : existing?.sleep_hours ?? null,
     motivation:
       cols.motivation !== undefined
         ? cols.motivation

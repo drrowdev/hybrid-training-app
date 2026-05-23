@@ -139,12 +139,9 @@ export type ComparisonBlockSummary = {
 };
 
 export type BlockWellnessAverages = {
-  sleepHoursAvg: number | null;
   motivationAvg: number | null;
   fatigueAvg: number | null;
   sorenessAvg: number | null;
-  /** Per-week sleep average sparkline; null when no nights logged that week. */
-  sleepSeries: Array<number | null>;
   motivationSeries: Array<number | null>;
   fatigueSeries: Array<number | null>;
   sorenessSeries: Array<number | null>;
@@ -181,7 +178,6 @@ export type BlockIndexRow = {
   skippedSessions: number;
   avgE1RmDeltaPct: number | null;
   prCount: number;
-  avgSleepHours: number | null;
 };
 
 // ──────────────────────────────────────────────────────────────────────
@@ -819,9 +815,13 @@ export async function getBlockPowerOutcome(
 /**
  * Wellness averages during the block's calendar window.
  *
- *  - sleep / motivation from `wellness` (one row per date)
+ *  - motivation from `wellness` (one row per date)
  *  - fatigue / soreness from session pre-check-ins (one per session,
  *    1–5 scale, DC-P1)
+ *
+ * Sleep was previously read from `wellness.sleep_hours` here; the
+ * manual-sleep walk-back deferred that to the future health-app
+ * integration so it's been dropped from the response shape.
  *
  * Series are per-week values (oldest-first), null when the week had
  * no signal — feeds the per-tile sparkline.
@@ -838,14 +838,14 @@ export async function getBlockWellnessAverages(
   // Bound on whichever is earlier: block end or today (active blocks).
   const endBound = meta.lastDayYmd < today ? meta.lastDayYmd : today;
 
-  // Wellness: sleep + motivation by date.
+  // Wellness: motivation by date.
   const { data: wellnessRows } = await supabase
     .from("wellness")
-    .select("date, sleep_hours, motivation")
+    .select("date, motivation")
     .eq("user_id", userId)
     .gte("date", startedOn)
     .lte("date", endBound);
-  type WRow = { date: string; sleep_hours: number | string | null; motivation: number | null };
+  type WRow = { date: string; motivation: number | null };
 
   // Sessions: fatigue + soreness with performed_at.
   const { data: sessionRows } = await supabase
@@ -858,7 +858,6 @@ export async function getBlockWellnessAverages(
   type SRow = { performed_at: string; fatigue: number | null; soreness: number | null };
 
   const weeks = meta.weeks;
-  const sleepBuckets = Array.from({ length: weeks }, () => ({ sum: 0, n: 0 }));
   const motivBuckets = Array.from({ length: weeks }, () => ({ sum: 0, n: 0 }));
   const fatigueBuckets = Array.from({ length: weeks }, () => ({ sum: 0, n: 0 }));
   const sorenessBuckets = Array.from({ length: weeks }, () => ({ sum: 0, n: 0 }));
@@ -879,10 +878,6 @@ export async function getBlockWellnessAverages(
   for (const r of (wellnessRows ?? []) as WRow[]) {
     const w = bucketIndex(r.date);
     if (w < 0) continue;
-    if (r.sleep_hours != null) {
-      sleepBuckets[w].sum += Number(r.sleep_hours);
-      sleepBuckets[w].n += 1;
-    }
     if (r.motivation != null) {
       motivBuckets[w].sum += r.motivation;
       motivBuckets[w].n += 1;
@@ -916,11 +911,9 @@ export async function getBlockWellnessAverages(
   }
 
   return {
-    sleepHoursAvg: avg(sleepBuckets),
     motivationAvg: avg(motivBuckets),
     fatigueAvg: avg(fatigueBuckets),
     sorenessAvg: avg(sorenessBuckets),
-    sleepSeries: series(sleepBuckets),
     motivationSeries: series(motivBuckets),
     fatigueSeries: series(fatigueBuckets),
     sorenessSeries: series(sorenessBuckets),
@@ -1139,11 +1132,9 @@ export async function getBlockSummary(
     rpeCreep,
     powerOutcome,
     wellness: wellness ?? {
-      sleepHoursAvg: null,
       motivationAvg: null,
       fatigueAvg: null,
       sorenessAvg: null,
-      sleepSeries: [],
       motivationSeries: [],
       fatigueSeries: [],
       sorenessSeries: [],
@@ -1186,16 +1177,23 @@ export async function compareBlocks(
 
 /**
  * List of all user blocks (deleted_at IS NULL), each enriched with the
- * Phase 2 KPI tile values: avg e1RM delta, PR count, avg sleep.
+ * Phase 2 KPI tile values: avg e1RM delta, PR count.
  *
  * We reuse `getAllBlocksWithCompletionStats` for the heavy lifting and
  * compute KPIs per block in parallel. Cost is bounded by the page size
  * (default 20) — well below the I/O budget for the dashboard.
+ *
+ * The avg-sleep KPI was removed in fix/sleep-walkback (manual sleep
+ * deferred to health-integration). The wellness.sleep_hours column
+ * remains; we just don't surface it.
  */
 export async function getBlockIndex(
   supabase: SupabaseClient,
   userId: string,
-  today: string,
+  // _today kept for API compatibility; sleep-window read that used it was
+  // removed in fix/sleep-walkback.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _today: string,
 ): Promise<BlockIndexRow[]> {
   const { data: blocks } = await supabase
     .from("training_blocks")
@@ -1226,25 +1224,6 @@ export async function getBlockIndex(
       }
       const summary = await summariseBlockForComparison(supabase, b.id, userId);
 
-      // Average sleep during the block (cheap one-shot read).
-      let avgSleepHours: number | null = null;
-      {
-        const startedOn = b.started_on as string;
-        const lastDay = blockLastDay(startedOn, b.weeks);
-        const endBound = lastDay < today ? lastDay : today;
-        const { data: w } = await supabase
-          .from("wellness")
-          .select("sleep_hours")
-          .eq("user_id", userId)
-          .gte("date", startedOn)
-          .lte("date", endBound)
-          .not("sleep_hours", "is", null);
-        const nums = ((w ?? []) as Array<{ sleep_hours: number | string }>).map((r) => Number(r.sleep_hours));
-        if (nums.length > 0) {
-          avgSleepHours = Math.round((nums.reduce((a, n) => a + n, 0) / nums.length) * 10) / 10;
-        }
-      }
-
       const status = b.status as BlockIndexRow["status"];
       return {
         id: b.id,
@@ -1260,7 +1239,6 @@ export async function getBlockIndex(
         skippedSessions,
         avgE1RmDeltaPct: summary?.avgE1RmDeltaPct ?? null,
         prCount: summary?.prCount ?? 0,
-        avgSleepHours,
       } satisfies BlockIndexRow;
     }),
   );

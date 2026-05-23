@@ -237,7 +237,9 @@
   **Score ≥ 3 → strong recommendation (prominent UI; still user-accept, NOT auto-fire per OC-5 verdict).**
   Deload = 50–60% volume, intensity preserved, frequency optional. Coexists with v2's GRM-based deload (DC-H3) as the user-facing surface that explains "why this week looks tough" (OC-17 verdict). *Test:* fixture with fatigue + soreness + region-overload simultaneously produces score 3 and fires the strong-recommendation event; user dismissal logs to audit without auto-triggering deload. **Confidence: HIGH-MODERATE** (downgraded one tier from full version because two of the three peer-reviewed-HIGH inputs — HRV, sleep — are deferred to backlog; RPE / wellness-equivalent / pace-at-HR retain Helms/Zourdos/Seiler grounding).
 
-- **⏸ [BACKLOG] DC-P5 — Sleep < 7h is a first-class deload signal (new §6.1 Walker 2017 HIGH)** [EV] — Deferred per § U (requires sleep self-log or wearable input; intentionally not in the MVP 2-slider check-in to keep widget ≤5s). When restored: sleep < 7h for 4+ nights increments the DC-P4 composite. **Confidence: HIGH** (Walker 2017 peer-reviewed HIGH; binding when input source returns).
+- **⏸ [BACKLOG] DC-P5 — Sleep < 7h is a first-class deload signal (new §6.1 Walker 2017 HIGH)** [EV] — Deferred per § U (requires sleep self-log or wearable input; intentionally not in the MVP 2-slider check-in to keep widget ≤5s). When restored: sleep < 7h for 4+ nights increments the DC-P4 composite. **Confidence: HIGH** (Walker 2017 peer-reviewed HIGH; binding when input source returns).<sup>†</sup>
+
+> <sup>†</sup> Sleep input deferred to health integration (Apple Health / Google Fit). The `wellness.sleep_hours` column remains as a reservation; manual sleep entry was walked back in the `fix/sleep-walkback` PR pending the integration.
 
 ## Q. Nutrition & lifestyle as load (new in this revision)
 

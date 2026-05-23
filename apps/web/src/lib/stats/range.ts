@@ -2,7 +2,7 @@
  * Range toggle — `?range=30d|90d|all` (Phase 2).
  *
  * The Phase 1 overview hardcoded 30-day windows for adherence / PRs /
- * volume / sleep. Phase 2 adds a user-facing toggle above the cards
+ * volume. Phase 2 adds a user-facing toggle above the cards
  * that consume time-bounded data; the toggle changes the query window
  * only, the cards re-render with the new bounds.
  *
