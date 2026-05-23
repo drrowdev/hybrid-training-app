@@ -19,7 +19,7 @@
  */
 "use client";
 
-import { useEffect, useMemo, useReducer, useState, useTransition } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState, useTransition } from "react";
 import {
   initialWizardState,
   wizardReducer,
@@ -68,22 +68,64 @@ export type TmGate = {
 
 export type TmReadinessByArchetype = Record<ResolvedArchetype["id"], TmGate>;
 
+/**
+ * Seed values for the wizard when launched from "Customize first" on a
+ * recent-block card. We only know the source block's archetype + days
+ * + schedule overrides — goal/secondary are reverse-mapped to a
+ * best-guess starting point that the user can adjust before committing.
+ *
+ * Day-of-week overrides flow into step-5 via the existing localStorage
+ * pref slot (`applySavedPrefIfPossible`) so the wizard preserves the
+ * source block's chosen days without a schema change.
+ */
+export type BlockWizardPrefill = {
+  archetype: string;
+  daysPerWeek: number;
+  dayIndexOverrides: { days: number[]; twoADay: boolean } | null;
+};
+
 export type BlockWizardProps = {
   onComplete: (submit: WizardSubmit) => Promise<{ ok: true } | { ok: false; error: string }>;
   /** TM-readiness per resolved archetype id. Computed server-side from the user's TM context. */
   tmReadinessByArchetype: TmReadinessByArchetype;
   /** When false, the two-a-day toggle stays disabled (matches profile flag). */
   allowsTwoADays: boolean;
+  /** Optional pre-fill from a recent block ("Customize first" flow). */
+  prefill?: BlockWizardPrefill | null;
 };
 
 export function BlockWizard({
   onComplete,
   tmReadinessByArchetype,
   allowsTwoADays,
+  prefill,
 }: BlockWizardProps): React.ReactElement {
-  const [state, dispatch] = useReducer(wizardReducer, initialWizardState);
+  const [state, dispatch] = useReducer(
+    wizardReducer,
+    prefill ?? null,
+    (seed) => (seed ? wizardStateFromPrefill(seed) : initialWizardState),
+  );
   const [pending, startTransition] = useTransition();
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // ── One-shot: seed the step-5 day-pref from the source block's
+  //    day_index_overrides so "Customize first" preserves the day-of-week
+  //    layout the user originally chose. `applySavedPrefIfPossible` (used
+  //    by the schedule init effect below) reads from localStorage, so we
+  //    write the pref there once and let the existing flow apply it.
+  const prefillSeededRef = useRef(false);
+  useEffect(() => {
+    if (prefillSeededRef.current) return;
+    if (!prefill?.dayIndexOverrides) return;
+    if (typeof window === "undefined") return;
+    prefillSeededRef.current = true;
+    const archetypeId = prefilledArchetypeId(prefill.archetype);
+    if (!archetypeId) return;
+    const sessionCount = prefill.dayIndexOverrides.twoADay
+      ? prefill.daysPerWeek * 2
+      : prefill.daysPerWeek;
+    writeDayPref(window.localStorage, archetypeId, sessionCount, prefill.dayIndexOverrides);
+  }, [prefill]);
 
   // ── Resolved archetype (memoised — single canonical reducer) ──
   const resolved = useMemo<ResolvedArchetype | null>(
@@ -209,21 +251,22 @@ export function BlockWizard({
         {submitError && <div style={errorBoxStyle}>{submitError}</div>}
 
         <footer className="wiz-footer" style={footerStyle}>
-          <button
-            type="button"
-            onClick={() => dispatch({ type: "back" })}
-            disabled={state.step === 1}
-            className="wiz-footer-back"
-            style={ghostBtnStyle(state.step === 1)}
-          >
-            ← back
-          </button>
+          {state.step > 1 && (
+            <button
+              type="button"
+              onClick={() => dispatch({ type: "back" })}
+              className="wiz-footer-back"
+              style={ghostBtnStyle(false)}
+            >
+              ← back
+            </button>
+          )}
           <button
             type="button"
             onClick={handleNext}
             disabled={!canContinue || startDisabled}
             className="wiz-footer-primary"
-            style={primaryBtnStyle(!canContinue || !!startDisabled)}
+            style={{ ...primaryBtnStyle(!canContinue || !!startDisabled), marginLeft: "auto" }}
           >
             {pending && state.step === 5 ? "Starting…" : nextLabel}
           </button>
@@ -330,3 +373,121 @@ function ProgressBar({ step }: { step: WizardState["step"] }): React.ReactElemen
 // reach them without a longer import path.
 export { DAY_LABELS, isHighCNS, sequencingWarnings };
 export type { ScheduleCell };
+
+// ── Prefill helpers (Customize first flow) ─────────────────────────────
+
+type PrefilledArchetype =
+  | "strength_anchor"
+  | "endurance_anchor"
+  | "concurrent_hybrid"
+  | "hypertrophy_anchor"
+  | "maintenance"
+  | "rebuild";
+
+/**
+ * Narrow a stored archetype slug to one the wizard knows how to render.
+ * `custom` blocks fall through (the wizard can't re-shape them) so the
+ * caller should fall back to the default empty state.
+ */
+function prefilledArchetypeId(slug: string): PrefilledArchetype | null {
+  switch (slug) {
+    case "strength_anchor":
+    case "endurance_anchor":
+    case "concurrent_hybrid":
+    case "hypertrophy_anchor":
+    case "maintenance":
+    case "rebuild":
+      return slug;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Reverse-map an archetype id back to a wizard {goal, secondary} pair.
+ * Hybrid blocks pick the strength→cardio side as a sensible default —
+ * the user can flip to muscle→cardio in step 2 if they want.
+ *
+ * `maintenance` resolves through the synthetic "See lighter options"
+ * shortcut so the wizard renders the maintenance pre-step-4 path. We
+ * jump straight to step 4 to mirror that flow without forcing the
+ * user to re-pick days they already selected.
+ */
+function wizardStateFromPrefill(prefill: BlockWizardPrefill): WizardState {
+  const id = prefilledArchetypeId(prefill.archetype);
+  const days = prefill.daysPerWeek;
+  const twoADay = prefill.dayIndexOverrides?.twoADay ?? false;
+
+  // Fall back to a clean step-1 start for archetypes the wizard can't
+  // re-shape (custom blocks). Days still pre-fills so the user keeps
+  // their committed dose.
+  if (!id) {
+    return { ...initialWizardState, days };
+  }
+
+  if (id === "maintenance") {
+    return {
+      ...initialWizardState,
+      days,
+      goal: null,
+      secondary: "maintenance",
+      twoADay: false,
+      cameFromMaintenanceLink: true,
+      step: 4,
+    };
+  }
+
+  if (id === "rebuild") {
+    return {
+      ...initialWizardState,
+      days,
+      goal: "resilience",
+      secondary: "skip",
+      twoADay,
+      step: 4,
+    };
+  }
+
+  if (id === "endurance_anchor") {
+    return {
+      ...initialWizardState,
+      days,
+      goal: "cardio",
+      secondary: "skip",
+      twoADay,
+      step: 4,
+    };
+  }
+
+  if (id === "hypertrophy_anchor") {
+    return {
+      ...initialWizardState,
+      days,
+      goal: "muscle",
+      secondary: "skip",
+      twoADay,
+      step: 4,
+    };
+  }
+
+  if (id === "concurrent_hybrid") {
+    return {
+      ...initialWizardState,
+      days,
+      goal: "strength",
+      secondary: "cardio",
+      twoADay,
+      step: 4,
+    };
+  }
+
+  // strength_anchor
+  return {
+    ...initialWizardState,
+    days,
+    goal: "strength",
+    secondary: "skip",
+    twoADay,
+    step: 4,
+  };
+}

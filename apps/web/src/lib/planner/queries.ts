@@ -9,6 +9,26 @@ import {
   todayYmd as todayYmdImpl,
   ymdInTimezone as ymdInTimezoneImpl,
 } from "@/lib/dates";
+import { ARCHETYPES, type ArchetypeId } from "./archetypes";
+
+/**
+ * Resolve a block's `archetype` column to the human-facing display name.
+ *
+ * Lives server-side so we don't ship the whole `ARCHETYPES` registry to
+ * the browser. For `custom` blocks the user-supplied name lives in
+ * `training_blocks.notes` — fall through to that, or to the literal
+ * "Custom block" if unset. Unknown archetype slugs fall back to the slug
+ * itself rather than throwing so a future archetype id can't silently
+ * crash the planner UI.
+ */
+export function archetypeDisplayName(
+  archetype: string,
+  notes?: string | null,
+): string {
+  if (archetype === "custom") return notes?.trim() || "Custom block";
+  const a = ARCHETYPES[archetype as Exclude<ArchetypeId, "custom">];
+  return a?.name ?? archetype;
+}
 
 // Re-exports for back-compat: these helpers used to live in this module.
 // New code should import from "@/lib/dates" directly.
@@ -171,15 +191,46 @@ export async function getUpcomingPlannedSessions(limit = 3): Promise<PlannedDay[
  * One row in the "Run it again" picker on /plan/new. Three most-recent
  * blocks for the current user, regardless of status, so the user can
  * 1-click clone any of them.
+ *
+ * `archetypeName` is resolved server-side from the archetype registry
+ * so the client doesn't need to ship `ARCHETYPES` (40k+ chars). For
+ * legacy blocks where `days_per_week` was never persisted (`null`), we
+ * derive the value from the block's planned_sessions (count of
+ * distinct day_index in week 0). The UI renders "Unknown frequency"
+ * when even that derivation fails.
  */
 export type RecentBlock = {
   id: string;
   archetype: string;
+  archetypeName: string;
   startedOn: string;
   daysPerWeek: number | null;
   status: "active" | "completed" | "archived";
   dayIndexOverrides: { days: number[]; twoADay: boolean } | null;
 };
+
+/**
+ * Derive `daysPerWeek` from a block's planned_sessions when the column
+ * is null. Counts the number of distinct day_index values in the first
+ * week — every block's week 0 is fully scheduled, so this is a stable
+ * proxy. Returns null when there are no planned_sessions for the block
+ * (e.g. partially-seeded fixtures), letting the caller render the
+ * "Unknown frequency" placeholder.
+ */
+export async function deriveDaysPerWeek(blockId: string): Promise<number | null> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("planned_sessions")
+    .select("day_index")
+    .eq("block_id", blockId)
+    .eq("week_index", 0);
+  if (!data || data.length === 0) return null;
+  const distinct = new Set<number>();
+  for (const row of data) {
+    if (typeof row.day_index === "number") distinct.add(row.day_index);
+  }
+  return distinct.size > 0 ? distinct.size : null;
+}
 
 export async function getRecentBlocks(limit = 3): Promise<RecentBlock[]> {
   const supabase = await createClient();
@@ -189,18 +240,122 @@ export async function getRecentBlocks(limit = 3): Promise<RecentBlock[]> {
   if (!user) return [];
   const { data } = await supabase
     .from("training_blocks")
-    .select("id, archetype, started_on, days_per_week, status, day_index_overrides")
+    .select("id, archetype, started_on, days_per_week, status, day_index_overrides, notes")
     .eq("user_id", user.id)
     .order("started_on", { ascending: false })
     .limit(limit);
   if (!data) return [];
-  return data.map((d) => ({
-    id: d.id,
-    archetype: d.archetype,
-    startedOn: d.started_on,
-    daysPerWeek: d.days_per_week ?? null,
-    status: d.status as "active" | "completed" | "archived",
-    dayIndexOverrides:
-      (d.day_index_overrides as { days: number[]; twoADay: boolean } | null) ?? null,
-  }));
+
+  // Resolve daysPerWeek for any block where the column is null by
+  // counting distinct day_index in week 0 of planned_sessions. Runs in
+  // parallel — most lists are 3-5 blocks so the fan-out is bounded.
+  const resolved = await Promise.all(
+    data.map(async (d) => {
+      const stored = d.days_per_week ?? null;
+      const daysPerWeek =
+        typeof stored === "number" ? stored : await deriveDaysPerWeek(d.id);
+      return {
+        id: d.id,
+        archetype: d.archetype,
+        archetypeName: archetypeDisplayName(d.archetype, d.notes),
+        startedOn: d.started_on,
+        daysPerWeek,
+        status: d.status as "active" | "completed" | "archived",
+        dayIndexOverrides:
+          (d.day_index_overrides as { days: number[]; twoADay: boolean } | null) ?? null,
+      };
+    }),
+  );
+  return resolved;
+}
+
+/**
+ * One row in the /app/plan/history list. Adds completion stats on top
+ * of `RecentBlock` so the page can render "12 of 16 sessions logged"
+ * without an extra round-trip per block.
+ *
+ * `endedOn` is best-effort: the schema doesn't have an explicit ended_on
+ * column (out of scope for this change), so we surface `updated_at` for
+ * non-active blocks as a proxy for when the block was closed.
+ */
+export type BlockWithCompletionStats = RecentBlock & {
+  weeks: number;
+  endedOn: string | null;
+  totalSessions: number;
+  loggedSessions: number;
+  skippedSessions: number;
+};
+
+/**
+ * Lists all blocks for the current user with derived completion stats.
+ * Pagination is offset-based; the history page uses 20-per-page.
+ *
+ * Joining via Supabase's relationship-select pulls the planned_sessions
+ * rows alongside the block so the completion counts can be computed in
+ * a single round-trip instead of an N+1 fan-out.
+ */
+export async function getAllBlocksWithCompletionStats(
+  opts: { limit?: number; offset?: number } = {},
+): Promise<BlockWithCompletionStats[]> {
+  const limit = opts.limit ?? 20;
+  const offset = opts.offset ?? 0;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data } = await supabase
+    .from("training_blocks")
+    .select(
+      "id, archetype, started_on, updated_at, weeks, days_per_week, status, day_index_overrides, notes, planned_sessions(id, completed_session_id, skipped_at, week_index, day_index)",
+    )
+    .eq("user_id", user.id)
+    .order("started_on", { ascending: false })
+    .range(offset, offset + limit - 1);
+  if (!data) return [];
+
+  return Promise.all(
+    data.map(async (d) => {
+      const planned = (d.planned_sessions ?? []) as Array<{
+        id: string;
+        completed_session_id: string | null;
+        skipped_at: string | null;
+        week_index: number;
+        day_index: number;
+      }>;
+      const totalSessions = planned.length;
+      let loggedSessions = 0;
+      let skippedSessions = 0;
+      for (const p of planned) {
+        if (p.completed_session_id) loggedSessions++;
+        else if (p.skipped_at) skippedSessions++;
+      }
+      const stored = d.days_per_week ?? null;
+      let daysPerWeek: number | null = typeof stored === "number" ? stored : null;
+      if (daysPerWeek == null) {
+        const distinct = new Set<number>();
+        for (const p of planned) {
+          if (p.week_index === 0 && typeof p.day_index === "number") {
+            distinct.add(p.day_index);
+          }
+        }
+        if (distinct.size > 0) daysPerWeek = distinct.size;
+      }
+      return {
+        id: d.id,
+        archetype: d.archetype,
+        archetypeName: archetypeDisplayName(d.archetype, d.notes),
+        startedOn: d.started_on,
+        endedOn: d.status === "active" ? null : (d.updated_at ?? null),
+        weeks: d.weeks,
+        daysPerWeek,
+        status: d.status as "active" | "completed" | "archived",
+        dayIndexOverrides:
+          (d.day_index_overrides as { days: number[]; twoADay: boolean } | null) ?? null,
+        totalSessions,
+        loggedSessions,
+        skippedSessions,
+      };
+    }),
+  );
 }
