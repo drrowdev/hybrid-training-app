@@ -10,7 +10,7 @@ import type { PaletteItem } from "./types";
 
 export const STATIC_PAGES: PaletteItem[] = [
   { id: "page-today", kind: "page", title: "Today", subtitle: "Today's session + check-in", href: "/app", icon: "◉" },
-  { id: "page-plan", kind: "page", title: "Plan", subtitle: "Current block + weekly preview", href: "/app/plan", icon: "▦" },
+  { id: "page-plan", kind: "page", title: "Plan", subtitle: "Calendar / Timeline / List", href: "/app/plan", icon: "▦" },
   { id: "page-plan-history", kind: "page", title: "Plan — History", subtitle: "Past + archived blocks", href: "/app/plan/history", icon: "▦" },
   { id: "page-plan-new", kind: "page", title: "Plan — New block", subtitle: "Run the block wizard", href: "/app/plan/new", icon: "＋" },
   { id: "page-sessions", kind: "page", title: "Sessions", subtitle: "Logged sessions", href: "/app/sessions", icon: "▮" },
