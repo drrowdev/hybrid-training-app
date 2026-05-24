@@ -18,7 +18,7 @@ import {
   roundToPlate,
   type MovementGroup,
 } from "@/lib/sessions/movement-grouping";
-import { bestEstimateOneRm } from "@/lib/engine/one-rm";
+import { detectTmAnchoredPr } from "@/lib/engine/tm-anchored-pr";
 import { restSecondsForKind } from "@/lib/sessions/rest";
 import { resolveBarKind } from "@/lib/sessions/bar-kind";
 import { hapticTick } from "@/lib/feedback";
@@ -41,6 +41,8 @@ export type FocusViewProps = {
   sessionId: string;
   group: MovementGroup;
   tmKg: number | undefined;
+  /** Saved 1RM from training_maxes.one_rm_kg. Drives TM-anchored PR flash. */
+  oneRmKg: number | undefined;
   loggedItemIndices: ReadonlySet<number>;
   /** Subset of loggedItemIndices that were skipped (for dot-strip render). */
   skippedItemIndices?: ReadonlySet<number>;
@@ -93,6 +95,7 @@ export function MovementFocusView({
   sessionId,
   group,
   tmKg,
+  oneRmKg,
   loggedItemIndices,
   skippedItemIndices,
   loggedSetIdByItemIndex,
@@ -107,6 +110,11 @@ export function MovementFocusView({
   initialCursor = null,
   onSaved,
 }: FocusViewProps) {
+  // priorBest is no longer consumed for PR detection — the flash is now
+  // anchored to the saved 1RM (see lib/engine/tm-anchored-pr.ts). The
+  // prop is preserved on the public type to keep the parent prop chain
+  // intact (the server still computes priorBests for other consumers).
+  void priorBest;
   const totalSlots = group.itemIndices.length;
   const autoCursor = useMemo(
     () => autoCursorForGroup(group, loggedItemIndices),
@@ -215,18 +223,20 @@ export function MovementFocusView({
       fd.set("rpe", String(rpe));
     }
 
-    // Optimistic PR detection against the prior-best snapshot.
-    const newE1rm = bestEstimateOneRm({ weight, reps, rpe: null });
-    const flash: PrFlash = {
-      isWeightPr:
-        priorBest?.heaviestWeight != null && weight > priorBest.heaviestWeight,
-      isE1rmPr:
-        newE1rm != null &&
-        priorBest?.bestE1rm != null &&
-        newE1rm > priorBest.bestE1rm + 0.05,
-      isRepPr: false,
-      e1rmKg: isAmrap ? newE1rm : null,
-    };
+    // TM-anchored PR detection. The flash fires only when the new set
+    // beats the user's saved 1RM (Weight / e1RM) or, in an AMRAP context,
+    // exceeds the prescribed rep count (Rep PR). If `oneRmKg` is unset,
+    // no PR can fire — we don't celebrate against a missing claim.
+    const setKindForPr = SET_KIND_TO_LOG[activeItem.kind] ?? "main";
+    const flash = detectTmAnchoredPr({
+      weightKg: weight,
+      reps,
+      rpe: !isWarmup ? rpe : null,
+      kind: setKindForPr,
+      prescribedReps: isAmrap ? (activeItem.reps ?? null) : null,
+      isTopSet: isAmrap,
+      tmKg: oneRmKg ?? null,
+    });
 
     try {
       const result = await addStrengthSet(fd);
@@ -239,7 +249,7 @@ export function MovementFocusView({
       // with the new loggedItemIndices.
       setManualCursor(null);
       setJustLoggedAt(Date.now());
-      if (flash.isWeightPr || flash.isE1rmPr || flash.e1rmKg != null) {
+      if (flash.isWeightPr || flash.isE1rmPr || flash.isRepPr || flash.e1rmKg != null) {
         setPrFlash(flash);
       }
       // Inline rest timer.

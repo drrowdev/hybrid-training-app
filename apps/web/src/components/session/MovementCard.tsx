@@ -33,6 +33,8 @@ export type MovementCardProps = {
   sessionId: string;
   group: MovementGroup;
   tmKg: number | undefined;
+  /** Saved 1RM from training_maxes.one_rm_kg. Drives TM-anchored PR flash. */
+  oneRmKg: number | undefined;
   loggedItemIndices: ReadonlySet<number>;
   skippedItemIndices?: ReadonlySet<number>;
   loggedSetIdByItemIndex: Readonly<Record<number, string>>;
@@ -58,6 +60,7 @@ export function MovementCard({
   sessionId,
   group,
   tmKg,
+  oneRmKg,
   loggedItemIndices,
   skippedItemIndices,
   loggedSetIdByItemIndex,
@@ -365,6 +368,7 @@ export function MovementCard({
             sessionId={sessionId}
             group={group}
             tmKg={tmKg}
+            oneRmKg={oneRmKg}
             loggedItemIndices={loggedItemIndices}
             skippedItemIndices={skippedItemIndices}
             loggedSetIdByItemIndex={loggedSetIdByItemIndex}
