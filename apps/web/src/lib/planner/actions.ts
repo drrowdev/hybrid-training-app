@@ -45,6 +45,7 @@ import {
   STRENGTH_ROLE_LABELS,
 } from "./archetypes";
 import { ACCESSORY_POOLS, allAccessorySlugs } from "./accessories";
+import { sanitiseSlotForMode } from "./slot";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
 import {
   pickAccessoriesForSession,
@@ -484,7 +485,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
         user_id: user.id,
         week_index: week,
         day_index: day.dayIndex,
-        slot: day.slot ?? "single",
+        slot: sanitiseSlotForMode(day.slot, allowsTwoADays),
         title,
         role: day.role,
         prescription,

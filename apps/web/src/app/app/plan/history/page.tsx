@@ -152,11 +152,17 @@ function BlockHistoryRow({
 
   // Group by week for the expanded view. `weeks` from the block row
   // gives the canonical count even if some weeks have zero sessions.
+  // Also count sessions per (week, day) so the AM/PM slot label only
+  // renders when a calendar day genuinely pairs two sessions
+  // (Stage C/D in feat/slot-semantics).
   const byWeek = new Map<number, PlannedRow[]>();
+  const dayCounts = new Map<string, number>();
   for (const s of sessions) {
     const list = byWeek.get(s.week_index) ?? [];
     list.push(s);
     byWeek.set(s.week_index, list);
+    const key = `${s.week_index}-${s.day_index}`;
+    dayCounts.set(key, (dayCounts.get(key) ?? 0) + 1);
   }
   const weekIndices = Array.from(byWeek.keys()).sort((a, b) => a - b);
 
@@ -203,7 +209,12 @@ function BlockHistoryRow({
         ) : (
           <div data-testid="block-history-sessions" style={{ padding: "4px 0 12px" }}>
             {weekIndices.map((w) => (
-              <WeekGroup key={w} weekIndex={w} sessions={byWeek.get(w) ?? []} />
+              <WeekGroup
+                key={w}
+                weekIndex={w}
+                sessions={byWeek.get(w) ?? []}
+                dayCounts={dayCounts}
+              />
             ))}
           </div>
         )}
@@ -215,9 +226,11 @@ function BlockHistoryRow({
 function WeekGroup({
   weekIndex,
   sessions,
+  dayCounts,
 }: {
   weekIndex: number;
   sessions: PlannedRow[];
+  dayCounts: Map<string, number>;
 }): React.ReactElement {
   return (
     <div style={{ padding: "8px 18px", borderTop: "1px solid var(--cp-border)" }}>
@@ -234,18 +247,32 @@ function WeekGroup({
         Week {weekIndex + 1}
       </div>
       <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 4 }}>
-        {sessions.map((s) => (
-          <SessionRow key={s.id} session={s} />
-        ))}
+        {sessions.map((s) => {
+          const isTwoADay = (dayCounts.get(`${s.week_index}-${s.day_index}`) ?? 0) >= 2;
+          return <SessionRow key={s.id} session={s} isTwoADay={isTwoADay} />;
+        })}
       </ul>
     </div>
   );
 }
 
-function SessionRow({ session }: { session: PlannedRow }): React.ReactElement {
+function SessionRow({
+  session,
+  isTwoADay,
+}: {
+  session: PlannedRow;
+  isTwoADay: boolean;
+}): React.ReactElement {
   const dayLabel = DAY_LABELS[session.day_index] ?? `D${session.day_index}`;
-  const slotLabel =
-    session.slot === "am" ? "AM" : session.slot === "pm" ? "PM" : null;
+  // Only surface the AM/PM badge when the day actually pairs two
+  // sessions. See Stage C in feat/slot-semantics.
+  const slotLabel = isTwoADay
+    ? session.slot === "am"
+      ? "AM"
+      : session.slot === "pm"
+        ? "PM"
+        : null
+    : null;
   const status: "logged" | "skipped" | "pending" = session.completed_session_id
     ? "logged"
     : session.skipped_at

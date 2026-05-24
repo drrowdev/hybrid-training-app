@@ -46,6 +46,14 @@ export type CalendarItem = {
   stravaId?: string | null;
   /** A/B/C priority for `kind === "event"`. */
   priority?: "A" | "B" | "C";
+  /**
+   * AM/PM slot badge for the view chip. Populated by
+   * `buildCalendarItems` only when the date has ≥2 planned sessions
+   * (Stage C in feat/slot-semantics). The UI just reads this field
+   * and renders the badge if present — single source of truth for
+   * "is this day a two-a-day?".
+   */
+  slotBadge?: "am" | "pm";
 };
 
 export type RawPlannedRow = {
@@ -58,6 +66,12 @@ export type RawPlannedRow = {
   completedSessionId: string | null;
   skippedAt: string | null;
   summary?: string;
+  /**
+   * Stored slot tag from `planned_sessions.slot`. Used to decide
+   * whether a `slotBadge` should be attached to the calendar item —
+   * see `buildCalendarItems`. Defaults to "single" when omitted.
+   */
+  slot?: "single" | "am" | "pm";
 };
 
 export type RawSessionRow = {
@@ -103,6 +117,22 @@ function plannedKind(row: RawPlannedRow): "planned_strength" | "planned_cardio" 
 export function buildCalendarItems(input: BuildCalendarInput): CalendarItem[] {
   const items: CalendarItem[] = [];
 
+  // Stage C: count active planned sessions per date so the AM/PM
+  // `slotBadge` only attaches when the day genuinely pairs two
+  // sessions. Skipped + completed rows are still counted because
+  // two-a-day INTENT survives a partner being skipped or already
+  // logged via a separate flow.
+  const plannedCountByDate = new Map<string, number>();
+  for (const p of input.planned) {
+    plannedCountByDate.set(p.date, (plannedCountByDate.get(p.date) ?? 0) + 1);
+  }
+  const isPairedDay = (date: string) => (plannedCountByDate.get(date) ?? 0) >= 2;
+  const badgeFor = (p: RawPlannedRow): "am" | "pm" | undefined => {
+    if (!isPairedDay(p.date)) return undefined;
+    if (p.slot === "am" || p.slot === "pm") return p.slot;
+    return undefined;
+  };
+
   for (const p of input.planned) {
     if (p.skippedAt) {
       // Skipped → gap on the calendar. The existing list view keeps
@@ -122,6 +152,7 @@ export function buildCalendarItems(input: BuildCalendarInput): CalendarItem[] {
         href: `/app/plan?match=${p.id}`,
         sessionId: p.id,
         modality: p.cardioModality ?? undefined,
+        slotBadge: badgeFor(p),
       });
     } else {
       items.push({
@@ -132,6 +163,7 @@ export function buildCalendarItems(input: BuildCalendarInput): CalendarItem[] {
         href: `/app/sessions/start/${p.id}`,
         sessionId: p.id,
         modality: p.cardioModality ?? undefined,
+        slotBadge: badgeFor(p),
       });
     }
   }
@@ -294,7 +326,7 @@ export async function getCalendarItems(
     supabase
       .from("planned_sessions")
       .select(
-        "id, week_index, day_index, title, role, prescription, completed_session_id, skipped_at, training_blocks!inner(id, user_id, started_on, status, deleted_at)",
+        "id, week_index, day_index, slot, title, role, prescription, completed_session_id, skipped_at, training_blocks!inner(id, user_id, started_on, status, deleted_at)",
       )
       .eq("training_blocks.user_id", userId)
       .is("training_blocks.deleted_at", null),
@@ -364,6 +396,7 @@ export async function getCalendarItems(
     id: string;
     week_index: number;
     day_index: number;
+    slot: "single" | "am" | "pm" | null;
     title: string;
     role: string;
     prescription: { items?: Array<{ kind?: string }> } | null;
@@ -396,6 +429,7 @@ export async function getCalendarItems(
       completedSessionId: p.completed_session_id ?? null,
       skippedAt: p.skipped_at ?? null,
       summary: summarisePlanned(items),
+      slot: p.slot ?? "single",
     });
   }
 
