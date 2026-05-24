@@ -263,3 +263,145 @@ describe("summariseGroupForHeader — warmup exclusion", () => {
   });
 });
 
+describe("summariseGroupForHeader — loaded carries", () => {
+  function carryLogged(
+    rows: Array<{ weightKg: number | null; distanceM: number | null; skipped?: boolean }>,
+  ): FocusLoggedSet[] {
+    return rows.map((r, i) => ({
+      id: `c${i}`,
+      weightKg: r.weightKg,
+      // Carries are saved with reps=0 by the focus view.
+      reps: 0,
+      distanceM: r.distanceM,
+      rpe: null,
+      skipped: r.skipped ?? false,
+      skipReason: null,
+    }));
+  }
+
+  it("not started: 2 × 30–40m carry plan summary", () => {
+    const g = groupOf([
+      {
+        movementId: "fc",
+        kind: "accessory",
+        sets: 1,
+        distanceM: { min: 30, max: 40 },
+      },
+      {
+        movementId: "fc",
+        kind: "accessory",
+        sets: 1,
+        distanceM: { min: 30, max: 40 },
+      },
+    ]);
+    expect(summariseGroupForHeader(g, [])).toBe("2 × 30–40m carry");
+  });
+
+  it("not started: 3 × 30m carry plan summary (flat range)", () => {
+    const g = groupOf([
+      {
+        movementId: "fc",
+        kind: "accessory",
+        sets: 1,
+        distanceM: { min: 30, max: 30 },
+      },
+      {
+        movementId: "fc",
+        kind: "accessory",
+        sets: 1,
+        distanceM: { min: 30, max: 30 },
+      },
+      {
+        movementId: "fc",
+        kind: "accessory",
+        sets: 1,
+        distanceM: { min: 30, max: 30 },
+      },
+    ]);
+    expect(summariseGroupForHeader(g, [])).toBe("3 × 30m carry");
+  });
+
+  it("completed uniform carries render as N×{m} @ Wkg ✓", () => {
+    const g = groupOf([
+      {
+        movementId: "fc",
+        kind: "accessory",
+        sets: 1,
+        distanceM: { min: 30, max: 40 },
+      },
+      {
+        movementId: "fc",
+        kind: "accessory",
+        sets: 1,
+        distanceM: { min: 30, max: 40 },
+      },
+    ]);
+    const sets = carryLogged([
+      { weightKg: 24, distanceM: 30 },
+      { weightKg: 24, distanceM: 30 },
+    ]);
+    expect(summariseGroupForHeader(g, sets)).toBe("2×30m @ 24kg ✓");
+  });
+
+  it("varying-distance carries → top-trip summary", () => {
+    const g = groupOf([
+      {
+        movementId: "fc",
+        kind: "accessory",
+        sets: 1,
+        distanceM: { min: 25, max: 40 },
+      },
+      {
+        movementId: "fc",
+        kind: "accessory",
+        sets: 1,
+        distanceM: { min: 25, max: 40 },
+      },
+    ]);
+    const sets = carryLogged([
+      { weightKg: 24, distanceM: 30 },
+      { weightKg: 26, distanceM: 40 },
+    ]);
+    expect(summariseGroupForHeader(g, sets)).toBe("Top: 26kg × 40m ✓");
+  });
+
+  it("partial progress: 1/2 carries logged shows last distance + weight", () => {
+    const g = groupOf([
+      {
+        movementId: "fc",
+        kind: "accessory",
+        sets: 1,
+        distanceM: { min: 30, max: 40 },
+      },
+      {
+        movementId: "fc",
+        kind: "accessory",
+        sets: 1,
+        distanceM: { min: 30, max: 40 },
+      },
+    ]);
+    const sets = carryLogged([{ weightKg: 24, distanceM: 30 }]);
+    expect(summariseGroupForHeader(g, sets)).toBe("1/2 · last 30m @ 24kg");
+  });
+
+  it("legacy carry items (reps baked in, no distanceM) fall back to rep render", () => {
+    // Existing DB rows from before this change — should not crash, and
+    // should render via the legacy "NxR" branch since `distanceM` is
+    // absent on the prescription item AND on the logged set.
+    const g = groupOf([
+      { movementId: "fc", kind: "accessory", sets: 1, reps: 10 },
+      { movementId: "fc", kind: "accessory", sets: 1, reps: 10 },
+    ]);
+    const legacy: FocusLoggedSet[] = [
+      {
+        id: "L1",
+        weightKg: 24,
+        reps: 10,
+        rpe: null,
+        skipped: false,
+        skipReason: null,
+      },
+    ];
+    expect(summariseGroupForHeader(g, legacy)).toBe("1/2 · last 24kg");
+  });
+});

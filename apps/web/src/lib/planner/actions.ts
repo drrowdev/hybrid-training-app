@@ -54,6 +54,7 @@ import {
 } from "./accessory-picker";
 import {
   accessoryIntensity,
+  accessoryItemPrescription,
   inferAccessoryBucket,
 } from "./accessory-intensity";
 import type { BulletproofRole, FunctionalRole } from "./accessory-roles";
@@ -274,20 +275,20 @@ function assemblePrescriptionItems(
         bucket,
         weekIndex,
       });
+      const slice = accessoryItemPrescription({
+        bucket,
+        intensity,
+        reps: p.reps,
+      });
       items.push({
         movementId: p.movementId,
         movementSlug: p.slug,
         movementName: p.displayName,
         kind: "accessory",
         sets: p.sets,
-        reps: p.reps,
         intensityLabel: p.reason,
         notes: p.rationale ? p.rationale : undefined,
-        targetRir: intensity.targetRir,
-        targetRpe: intensity.targetRpe,
-        tempoEccentricSec: intensity.tempoEccentricSec,
-        holdSec: intensity.holdSec,
-        intensityCue: intensity.intensityCue,
+        ...slice,
       });
       if (catalogEntry) {
         weekContext.push({
@@ -333,20 +334,20 @@ function assemblePrescriptionItems(
         bucket,
         weekIndex,
       });
+      const slice = accessoryItemPrescription({
+        bucket,
+        intensity,
+        reps: parseInt(a.reps, 10),
+      });
       items.push({
         movementId: mv.id,
         movementSlug: mv.slug,
         movementName: mv.display_name,
         kind: "accessory",
         sets: a.sets,
-        reps: parseInt(a.reps, 10),
         intensityLabel: a.muscleTarget,
         notes: a.rationale,
-        targetRir: intensity.targetRir,
-        targetRpe: intensity.targetRpe,
-        tempoEccentricSec: intensity.tempoEccentricSec,
-        holdSec: intensity.holdSec,
-        intensityCue: intensity.intensityCue,
+        ...slice,
       });
     }
   }

@@ -308,6 +308,8 @@ function PrescribedCard(props: {
     id: s.id,
     weightKg: s.weight_kg == null ? null : Number(s.weight_kg),
     reps: s.reps,
+    distanceM: s.distance_m ?? null,
+    durationSec: s.duration_sec ?? null,
     rpe: s.rpe == null ? null : Number(s.rpe),
     skipped: s.skipped ?? false,
     skipReason: (s.skip_reason as

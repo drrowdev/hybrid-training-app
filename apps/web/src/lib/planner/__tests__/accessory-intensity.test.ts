@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { ArchetypeId } from "../archetypes";
 import {
   accessoryIntensity,
+  accessoryItemPrescription,
   inferAccessoryBucket,
   type AccessoryBucket,
 } from "../accessory-intensity";
@@ -41,16 +42,31 @@ describe("inferAccessoryBucket", () => {
     expect(inferAccessoryBucket({ slug: "jump-squat" })).toBe("plyometric");
   });
 
-  it("returns isometric for carry / plank / wall-sit", () => {
+  it("returns carry for farmer / suitcase / overhead / Zercher / front-loaded carries", () => {
     expect(
       inferAccessoryBucket({
-        slug: "farmer-carry",
+        slug: "farmer_carry",
         bulletproofRoles: ["carry"],
       }),
-    ).toBe("isometric");
+    ).toBe("carry");
+    expect(inferAccessoryBucket({ slug: "suitcase_carry_db" })).toBe("carry");
+    expect(inferAccessoryBucket({ slug: "overhead_carry" })).toBe("carry");
+    expect(inferAccessoryBucket({ slug: "zercher_carry" })).toBe("carry");
+    expect(inferAccessoryBucket({ slug: "front_loaded_carry" })).toBe("carry");
+    // Bulletproof role alone is enough — slug doesn't need to contain the word.
+    expect(
+      inferAccessoryBucket({
+        slug: "yoke_walk",
+        bulletproofRoles: ["carry"],
+      }),
+    ).toBe("carry");
+  });
+
+  it("returns isometric for plank / wall-sit / dead-bug (non-carry holds)", () => {
     expect(inferAccessoryBucket({ slug: "side-plank" })).toBe("isometric");
     expect(inferAccessoryBucket({ slug: "wall-sit" })).toBe("isometric");
     expect(inferAccessoryBucket({ slug: "dead-bug" })).toBe("isometric");
+    expect(inferAccessoryBucket({ slug: "front-plank" })).toBe("isometric");
   });
 
   it("returns isolation for single-muscle non-compound movements", () => {
@@ -124,6 +140,7 @@ const BUCKETS: AccessoryBucket[] = [
   "compound",
   "isolation",
   "isometric",
+  "carry",
   "plyometric",
   "tendon",
 ];
@@ -146,10 +163,19 @@ describe("accessoryIntensity — matrix coverage (bucket × archetype × week)",
             expect(out.targetRpe).toEqual({ min: 10, max: 10 });
             expect(out.targetRir).toBeUndefined();
             expect(out.holdSec).toBeUndefined();
+            expect(out.distanceM).toBeUndefined();
           } else if (bucket === "isometric") {
             expect(out.holdSec).toBeTruthy();
             expect(out.holdSec!.min).toBeGreaterThan(0);
             expect(out.targetRir).toBeUndefined();
+            expect(out.distanceM).toBeUndefined();
+          } else if (bucket === "carry") {
+            expect(out.distanceM).toBeTruthy();
+            expect(out.distanceM!.min).toBeGreaterThan(0);
+            expect(out.distanceM!.max).toBeGreaterThanOrEqual(out.distanceM!.min);
+            expect(out.holdSec).toBeUndefined();
+            expect(out.targetRir).toBeUndefined();
+            expect(out.targetRpe).toBeUndefined();
           } else if (bucket === "tendon") {
             expect(out.tempoEccentricSec).toBe(3);
             expect(out.targetRir).toBeTruthy();
@@ -274,9 +300,112 @@ describe("accessoryIntensity — targeted matrix values", () => {
     });
     expect(cust).toEqual(sa);
   });
-});
 
-// ─── Brand purity ──────────────────────────────────────────────────
+  // ─── Carry distance matrix ────────────────────────────────────────
+  // McGill 2014: loaded carries are distance/time bouts. The matrix
+  // below comes from practitioner consensus + the design spec; this
+  // describe locks each cell so a future contributor can't silently
+  // swap a value.
+
+  it("carry × strength_anchor week 1..4 = 20–30 / 30–40 / 30–40 / 20m", () => {
+    expect(
+      accessoryIntensity({ archetype: "strength_anchor", bucket: "carry", weekIndex: 0 }).distanceM,
+    ).toEqual({ min: 20, max: 30 });
+    expect(
+      accessoryIntensity({ archetype: "strength_anchor", bucket: "carry", weekIndex: 1 }).distanceM,
+    ).toEqual({ min: 30, max: 40 });
+    expect(
+      accessoryIntensity({ archetype: "strength_anchor", bucket: "carry", weekIndex: 2 }).distanceM,
+    ).toEqual({ min: 30, max: 40 });
+    expect(
+      accessoryIntensity({ archetype: "strength_anchor", bucket: "carry", weekIndex: 3 }).distanceM,
+    ).toEqual({ min: 20, max: 20 });
+  });
+
+  it("carry × hypertrophy_anchor week 1..4 = 30–40 / 40–50 / 40–50 / 25m", () => {
+    expect(
+      accessoryIntensity({ archetype: "hypertrophy_anchor", bucket: "carry", weekIndex: 0 }).distanceM,
+    ).toEqual({ min: 30, max: 40 });
+    expect(
+      accessoryIntensity({ archetype: "hypertrophy_anchor", bucket: "carry", weekIndex: 1 }).distanceM,
+    ).toEqual({ min: 40, max: 50 });
+    expect(
+      accessoryIntensity({ archetype: "hypertrophy_anchor", bucket: "carry", weekIndex: 2 }).distanceM,
+    ).toEqual({ min: 40, max: 50 });
+    expect(
+      accessoryIntensity({ archetype: "hypertrophy_anchor", bucket: "carry", weekIndex: 3 }).distanceM,
+    ).toEqual({ min: 25, max: 25 });
+  });
+
+  it("carry × endurance_anchor stays flat 30–40 / deload 20m", () => {
+    for (const w of [0, 1, 2]) {
+      expect(
+        accessoryIntensity({ archetype: "endurance_anchor", bucket: "carry", weekIndex: w }).distanceM,
+      ).toEqual({ min: 30, max: 40 });
+    }
+    expect(
+      accessoryIntensity({ archetype: "endurance_anchor", bucket: "carry", weekIndex: 3 }).distanceM,
+    ).toEqual({ min: 20, max: 20 });
+  });
+
+  it("carry × concurrent_hybrid week 1..4 = 25–35 / 30–40 / 30–40 / 20m", () => {
+    const got = [0, 1, 2, 3].map(
+      (w) =>
+        accessoryIntensity({ archetype: "concurrent_hybrid", bucket: "carry", weekIndex: w })
+          .distanceM,
+    );
+    expect(got).toEqual([
+      { min: 25, max: 35 },
+      { min: 30, max: 40 },
+      { min: 30, max: 40 },
+      { min: 20, max: 20 },
+    ]);
+  });
+
+  it("carry × rebuild week 1..4 = 15–20 / 20–25 / 20–25 / 15m", () => {
+    const got = [0, 1, 2, 3].map(
+      (w) =>
+        accessoryIntensity({ archetype: "rebuild", bucket: "carry", weekIndex: w }).distanceM,
+    );
+    expect(got).toEqual([
+      { min: 15, max: 20 },
+      { min: 20, max: 25 },
+      { min: 20, max: 25 },
+      { min: 15, max: 15 },
+    ]);
+  });
+
+  it("carry × maintenance is a flat 20m every prescribed week", () => {
+    for (const w of [0, 1, 2, 3]) {
+      expect(
+        accessoryIntensity({ archetype: "maintenance", bucket: "carry", weekIndex: w }).distanceM,
+      ).toEqual({ min: 20, max: 20 });
+    }
+  });
+
+  it("carry cue mentions bracing + heavy walking, never a program name", () => {
+    const cue = accessoryIntensity({
+      archetype: "concurrent_hybrid",
+      bucket: "carry",
+      weekIndex: 1,
+    }).intensityCue!;
+    expect(cue.toLowerCase()).toMatch(/brace/);
+    expect(cue.toLowerCase()).toMatch(/walk|step/);
+    expect(cue).not.toMatch(/wendler|5\/3\/1|531|sheiko|smolov|westside|rp |renaissance/i);
+  });
+
+  it("carry items never emit reps / RIR / hold / tempo / RPE", () => {
+    const out = accessoryIntensity({
+      archetype: "strength_anchor",
+      bucket: "carry",
+      weekIndex: 1,
+    });
+    expect(out.targetRir).toBeUndefined();
+    expect(out.targetRpe).toBeUndefined();
+    expect(out.holdSec).toBeUndefined();
+    expect(out.tempoEccentricSec).toBeUndefined();
+  });
+});
 
 describe("accessoryIntensity — brand purity", () => {
   it("no cue mentions an external program or methodology", () => {
@@ -294,5 +423,70 @@ describe("accessoryIntensity — brand purity", () => {
         }
       }
     }
+  });
+});
+
+// ─── accessoryItemPrescription — assembler contract ───────────────
+
+describe("accessoryItemPrescription — carry items never carry a rep target", () => {
+  it("strips reps for the carry bucket regardless of picker rep value", () => {
+    const intensity = accessoryIntensity({
+      archetype: "strength_anchor",
+      bucket: "carry",
+      weekIndex: 1,
+    });
+    const slice = accessoryItemPrescription({
+      bucket: "carry",
+      intensity,
+      reps: 10,
+    });
+    expect(slice.reps).toBeUndefined();
+    expect(slice.distanceM).toEqual({ min: 30, max: 40 });
+    expect(slice.intensityCue).toBeTruthy();
+  });
+
+  it("keeps reps on non-carry buckets (compound stays 10)", () => {
+    const intensity = accessoryIntensity({
+      archetype: "strength_anchor",
+      bucket: "compound",
+      weekIndex: 1,
+    });
+    const slice = accessoryItemPrescription({
+      bucket: "compound",
+      intensity,
+      reps: 10,
+    });
+    expect(slice.reps).toBe(10);
+    expect(slice.distanceM).toBeUndefined();
+  });
+
+  it("isolation items keep reps + emit no distance", () => {
+    const intensity = accessoryIntensity({
+      archetype: "hypertrophy_anchor",
+      bucket: "isolation",
+      weekIndex: 1,
+    });
+    const slice = accessoryItemPrescription({
+      bucket: "isolation",
+      intensity,
+      reps: 12,
+    });
+    expect(slice.reps).toBe(12);
+    expect(slice.distanceM).toBeUndefined();
+  });
+
+  it("carry slice survives picker passing undefined reps", () => {
+    const intensity = accessoryIntensity({
+      archetype: "rebuild",
+      bucket: "carry",
+      weekIndex: 0,
+    });
+    const slice = accessoryItemPrescription({
+      bucket: "carry",
+      intensity,
+      reps: undefined,
+    });
+    expect(slice.reps).toBeUndefined();
+    expect(slice.distanceM).toEqual({ min: 15, max: 20 });
   });
 });
