@@ -13,6 +13,7 @@ import { useState, type ReactElement } from "react";
 import type { WizardState } from "@/lib/planner/wizard/wizard-state";
 import type { ResolvedArchetype, Goal } from "@/lib/planner/wizard/wizard-mapping";
 import { buildWeekShape, type SessionShape } from "@/lib/planner/wizard/schedule";
+import { MetricHelp } from "@/components/ui/MetricHelp";
 import { GOALS } from "./shared";
 
 export function WizardSidebar({
@@ -108,7 +109,12 @@ export function WizardSidebar({
             <>
               <div style={{ height: 1, background: "var(--cp-border)", margin: "6px 2px 2px" }} />
               <SessionBreakdown state={state} resolved={resolved} />
-              <Row icon="🛡️" label="Tendons & joints" value="Integrated" />
+              <Row
+                icon="🛡️"
+                label="Tendons & joints"
+                value="Integrated"
+                help="tendons_joints_integrated"
+              />
               {(() => {
                 const total = totalSessions(resolved);
                 const calendarDaysUsed = state.twoADay ? Math.ceil(total / 2) : total;
@@ -142,16 +148,29 @@ function Row({
   icon,
   label,
   value,
+  help,
 }: {
   icon: string;
   label: string;
   value: string | null;
+  /** Glossary term key to surface a small `<MetricHelp>` icon next to the label. */
+  help?: string;
 }): ReactElement {
   const pending = value == null;
   return (
     <div style={rowStyle(pending)}>
       <span style={iconBoxStyle}>{icon}</span>
-      <span style={{ color: "var(--cp-text-muted)" }}>{label}</span>
+      <span
+        style={{
+          color: "var(--cp-text-muted)",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+        }}
+      >
+        {label}
+        {help && <MetricHelp term={help} />}
+      </span>
       <span style={{ color: "var(--cp-text)", fontWeight: 600, marginLeft: "auto" }}>
         {value ?? "—"}
       </span>
@@ -252,96 +271,35 @@ function SessionBreakdown({
   state: WizardState;
   resolved: ResolvedArchetype;
 }): ReactElement {
+  // One row per session — no grouping, no consolidation. The previous
+  // "× N" collapse and Strength/Cardio headers created inconsistent
+  // layouts (two strength rows merged into one, four cardio rows shown
+  // separately) which made the week shape harder to read at a glance.
   const sessions = buildWeekShape(resolved, { goal: state.goal, secondary: state.secondary });
   const total = sessions.length;
-  const consolidated = consolidate(sessions);
-
-  // Group by modality so the user can see "X strength sessions" vs "Y
-  // cardio sessions" at a glance instead of reading row-by-row.
-  const groups: { label: string; rows: Consolidated[] }[] = [];
-  const buckets: Record<"strength" | "cardio" | "tendon", Consolidated[]> = {
-    strength: [],
-    cardio: [],
-    tendon: [],
-  };
-  for (const c of consolidated) buckets[modalityForWeightKey(c.weightKey)].push(c);
-  if (buckets.strength.length) groups.push({ label: "Strength", rows: buckets.strength });
-  if (buckets.cardio.length) groups.push({ label: "Cardio", rows: buckets.cardio });
-  if (buckets.tendon.length) groups.push({ label: "Tendons & joints", rows: buckets.tendon });
-
   return (
     <>
       <div style={breakdownHeadingStyle}>
         Your week ({total} session{total === 1 ? "" : "s"})
       </div>
-      {groups.map((g, gi) => (
-        <div key={gi} style={{ display: "grid", gap: 4 }}>
-          <div style={groupLabelStyle}>{g.label}</div>
-          {g.rows.map((s, i) => (
-            <SessionRow key={`${gi}-${i}`} session={s} count={s.count} />
-          ))}
-        </div>
+      {sessions.map((s, i) => (
+        <SessionRow key={i} session={s} />
       ))}
     </>
   );
 }
 
-/**
- * Maps the `weightKey` taxonomy (used for stimulus + severity scoring)
- * down to the three modality buckets the sidebar groups by. Keeps the
- * mapping in one place so adding a new weight key surfaces a TS error.
- */
-function modalityForWeightKey(
-  key: SessionShape["weightKey"],
-): "strength" | "cardio" | "tendon" {
-  if (key === "Tendon day") return "tendon";
-  if (
-    key === "Easy Z2 (recovery)" ||
-    key === "Polarized Z2" ||
-    key === "VO2 intervals" ||
-    key === "Long Z2 + alactic finisher" ||
-    key === "Maintenance Z2"
-  ) {
-    return "cardio";
-  }
-  return "strength";
-}
-
-function SessionRow({
-  session,
-  count,
-}: {
-  session: SessionShape;
-  count: number;
-}): ReactElement {
-  const durationLabel = count > 1 ? `${count} × ${session.durationMin} min` : `${session.durationMin} min`;
+function SessionRow({ session }: { session: SessionShape }): ReactElement {
   return (
     <div style={sessionRowStyle}>
       <span style={iconBoxStyle}>{session.icon}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={sessionTitleStyle}>
-          {session.title}
-          {count > 1 && <span style={sessionCountStyle}>× {count}</span>}
-        </div>
+        <div style={sessionTitleStyle}>{session.title}</div>
         <div style={sessionMetaStyle}>{session.meta}</div>
       </div>
-      <span style={sessionDurationStyle}>{durationLabel}</span>
+      <span style={sessionDurationStyle}>{session.durationMin} min</span>
     </div>
   );
-}
-
-type Consolidated = SessionShape & { count: number };
-function consolidate(sessions: SessionShape[]): Consolidated[] {
-  const out: Consolidated[] = [];
-  for (const s of sessions) {
-    const last = out[out.length - 1];
-    if (last && last.title === s.title && last.meta === s.meta && last.durationMin === s.durationMin) {
-      last.count++;
-    } else {
-      out.push({ ...s, count: 1 });
-    }
-  }
-  return out;
 }
 
 function totalSessions(a: ResolvedArchetype): number {
@@ -590,17 +548,6 @@ const sessionTitleStyle: React.CSSProperties = {
   gap: 6,
 };
 
-const sessionCountStyle: React.CSSProperties = {
-  fontFamily: "Consolas, monospace",
-  fontSize: 11,
-  color: "var(--cp-text-muted)",
-  fontWeight: 600,
-  background: "var(--cp-bg-elevated)",
-  border: "1px solid var(--cp-border)",
-  borderRadius: 999,
-  padding: "1px 8px",
-};
-
 const sessionMetaStyle: React.CSSProperties = {
   fontSize: 11,
   color: "var(--cp-text-muted)",
@@ -624,15 +571,6 @@ const breakdownHeadingStyle: React.CSSProperties = {
   letterSpacing: "0.06em",
   fontWeight: 600,
   padding: "4px 2px 2px",
-};
-
-const groupLabelStyle: React.CSSProperties = {
-  fontSize: 10,
-  color: "var(--cp-text-soft, var(--cp-text-muted))",
-  textTransform: "uppercase",
-  letterSpacing: "0.08em",
-  fontWeight: 700,
-  padding: "8px 2px 2px",
 };
 
 const noteStyle: React.CSSProperties = {
