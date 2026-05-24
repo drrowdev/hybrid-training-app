@@ -6,6 +6,7 @@ import {
   finishOnboarding,
   skipOnboarding,
 } from "@/lib/onboarding/actions";
+import { submitBwAssessment } from "@/lib/onboarding/bw-assessment";
 import { updateEquipmentV2 } from "@/lib/settings/equipment-actions";
 import { OnboardingWizard, type RoleCandidates } from "@/components/onboarding/OnboardingWizard";
 import {
@@ -83,6 +84,7 @@ export default async function OnboardingPage() {
       saveProfileAction={saveOnboardingProfile}
       saveEquipmentAction={updateEquipmentV2}
       saveTmsAction={saveOnboardingTms}
+      submitBwAssessmentAction={submitBwAssessment}
       finishAction={finishOnboarding}
       skipAction={skipOnboarding}
     />

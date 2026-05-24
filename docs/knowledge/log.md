@@ -151,3 +151,12 @@ families (push H/V, pull H/V, squat uni/bi, hinge, planche, levers, flag,
 muscle-up, handstand, core). effectiveDifficulty helper exported.
 Validation tests pin the DAG shape (no cycles, every family has an entry
 node, every prereq resolves).
+
+## [2026-05-24] refine | BW progression Phase 2 — assessment onboarding (feat/bw-phase2-assessment)
+
+3-page assessment wizard replaces TM step for bodyweight_only users.
+Page 1 rep tests (push-up, pull-up, squat, plank), page 2 12-chip skill
+grid, page 3 hinge-gap acknowledgement. Maps to bw_progress entry nodes
+per family with skill-chip overrides. Migration 0043 adds
+profiles.bw_assessment_completed_at. Settings → Bodyweight progression
+preview page shows current node per family.
