@@ -9,9 +9,17 @@ import {
   setPlannedTime,
   skipPlannedSession,
   unskipPlannedSession,
+  createBlock,
 } from "@/lib/planner/actions";
-import { ARCHETYPES, formatPrescriptionItem, summarisePrescription } from "@/lib/planner/archetypes";
-import { getActiveBlock, getPlannedDays, todayYmd } from "@/lib/planner/queries";
+import {
+  ARCHETYPES,
+  STRENGTH_ROLE_LABELS,
+  effectiveDays,
+  formatPrescriptionItem,
+  summarisePrescription,
+} from "@/lib/planner/archetypes";
+import { getActiveBlock, getPlannedDays, getRecentBlocks, todayYmd } from "@/lib/planner/queries";
+import { getTrainingMaxContext } from "@/lib/training-maxes/queries";
 import { effectiveTimeOfDay, gapHoursBetween } from "@/lib/planner/time-of-day";
 import { getCurrentWeekTissueStackGaps, type TissueStackGap } from "@/lib/stats/tissue-stack-queries";
 import type { Prescription } from "@hta/db";
@@ -19,6 +27,11 @@ import { SkipSessionForm } from "@/components/plan/SkipSessionForm";
 import { EndBlockForm } from "@/components/plan/EndBlockForm";
 import { PlanViews, type ViewMode } from "@/components/plan/PlanViews";
 import type { StravaCandidate } from "@/components/plan/MatchUnfulfilledModal";
+import {
+  PlanNewSwitch,
+  type RecentBlockCard,
+  type TmReadinessByArchetype,
+} from "@/components/planner/BlockWizard";
 import {
   buildCalendarItems,
   type CalendarFilter,
@@ -30,6 +43,17 @@ import {
 import { addDaysToYmd, ymdInTimezone } from "@/lib/dates";
 
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+// Six wizard-resolvable archetype ids — must stay in sync with
+// `ResolvedArchetype["id"]` in lib/planner/wizard/wizard-mapping.ts.
+const WIZARD_ARCHETYPE_IDS = [
+  "strength_anchor",
+  "endurance_anchor",
+  "concurrent_hybrid",
+  "hypertrophy_anchor",
+  "maintenance",
+  "rebuild",
+] as const;
 
 export default async function PlanPage({
   searchParams,
@@ -51,31 +75,87 @@ export default async function PlanPage({
   const block = await getActiveBlock();
 
   if (!block) {
+    // No active block — render the wizard inline with optional "Run it
+    // again" cards above. Previously the user had to:
+    //   /app/plan → click "Start a block" → /app/plan/new → click
+    //   "Build a new block" → wizard.
+    // Four clicks for an empty state. Now the wizard is right here.
     const blockBump = await findBlockCompleteBump(supabase, user.id);
+
+    const [tmCtx, { data: prof }, recent] = await Promise.all([
+      getTrainingMaxContext(),
+      supabase
+        .from("profiles")
+        .select("allows_two_a_days, timezone")
+        .eq("id", user.id)
+        .maybeSingle(),
+      getRecentBlocks(3),
+    ]);
+    const allowsTwoADays = Boolean(prof?.allows_two_a_days ?? false);
+    const tz = prof?.timezone ?? "UTC";
+
+    const tmReadinessByArchetype = Object.fromEntries(
+      WIZARD_ARCHETYPE_IDS.map((id) => {
+        const a = ARCHETYPES[id];
+        const pool = effectiveDays(a, allowsTwoADays);
+        const missingRoles: string[] = [];
+        const rolesSeen = new Map<string, boolean>();
+        for (const day of pool) {
+          if (day.kind !== "strength") continue;
+          const existing = rolesSeen.get(day.role);
+          const hasTm = day.candidateSlugs.some((s) => tmCtx.bySlug.has(s));
+          if (existing === undefined) rolesSeen.set(day.role, hasTm);
+          else if (hasTm) rolesSeen.set(day.role, true);
+        }
+        for (const [role, ready] of rolesSeen.entries()) {
+          if (!ready) {
+            missingRoles.push(STRENGTH_ROLE_LABELS[role as keyof typeof STRENGTH_ROLE_LABELS]);
+          }
+        }
+        return [id, { ready: missingRoles.length === 0, missingRoles }];
+      }),
+    ) as TmReadinessByArchetype;
+
+    const recentBlocks: RecentBlockCard[] = recent.map((b) => ({
+      id: b.id,
+      archetype: b.archetype,
+      archetypeName: b.archetypeName,
+      startedOn: b.startedOn,
+      daysPerWeek: b.daysPerWeek,
+      status: b.status,
+      dayIndexOverrides: b.dayIndexOverrides,
+    }));
+
+    const firstTime = recentBlocks.length === 0;
+
     return (
       <div style={{ display: "grid", gap: 20 }}>
         <header>
           <h1 style={{ fontSize: 28, margin: 0, letterSpacing: "-0.01em" }}>Plan</h1>
           <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-            No active block. Start one to get a forward-looking calendar with prescribed sets per session.
+            {firstTime
+              ? "Let's shape your first block. The engine picks the days, weights, and weekly wave — you log what actually happens."
+              : "Start a new block, or run a recent one again."}
           </p>
         </header>
         {blockBump && <BlockCompleteCard bump={blockBump} />}
-        <section className="cp-card" style={{ padding: 24, display: "grid", gap: 12, justifyItems: "start" }}>
-          <h2 style={{ margin: 0, fontSize: 18 }}>Start your first block</h2>
-          <p style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 13 }}>
-            The planner picks the days, weights, and weekly intensity wave. You log what actually happens.
-          </p>
-          <Link href="/app/plan/new" className="cp-btn primary">
-            Start a block
-          </Link>
+        <PlanNewSwitch
+          recentBlocks={recentBlocks}
+          tmReadinessByArchetype={tmReadinessByArchetype}
+          allowsTwoADays={allowsTwoADays}
+          todayYmd={todayYmd(tz)}
+          action={createBlock}
+          initialMode={firstTime ? "wizard" : "home"}
+          hideBuildCta={firstTime}
+        />
+        {recentBlocks.length > 0 && (
           <Link
             href="/app/plan/history"
             style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
           >
-            View history →
+            View full history →
           </Link>
-        </section>
+        )}
       </div>
     );
   }
