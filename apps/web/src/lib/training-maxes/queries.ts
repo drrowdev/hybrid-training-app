@@ -114,9 +114,24 @@ export async function getTrainingMaxContext(): Promise<TmContext> {
 export async function getTrainingMaxDict(): Promise<{
   byMovementId: Map<string, number>;
   bySlug: Map<string, number>;
+  /** Saved one-rep max per movement, slug-keyed. Used for TM-anchored PR detection. */
+  oneRmBySlug: Map<string, number>;
+  /** Saved one-rep max per movement, id-keyed. */
+  oneRmByMovementId: Map<string, number>;
 }> {
   const ctx = await getTrainingMaxContext();
-  return { byMovementId: ctx.byMovementId, bySlug: ctx.bySlug };
+  const oneRmBySlug = new Map<string, number>();
+  const oneRmByMovementId = new Map<string, number>();
+  for (const r of ctx.rows) {
+    oneRmByMovementId.set(r.movementId, r.oneRmKg);
+    if (r.movementSlug) oneRmBySlug.set(r.movementSlug, r.oneRmKg);
+  }
+  return {
+    byMovementId: ctx.byMovementId,
+    bySlug: ctx.bySlug,
+    oneRmBySlug,
+    oneRmByMovementId,
+  };
 }
 
 export async function listTrainingMaxes(): Promise<TmRow[]> {

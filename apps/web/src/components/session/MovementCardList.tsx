@@ -36,6 +36,7 @@ export type MovementCardListProps = {
   prescription: Prescription | null;
   sets: LoggedSet[];
   tmBySlug: Record<string, number>;
+  oneRmBySlug: Record<string, number>;
   loggedItemIndices: ReadonlySet<number>;
   skippedItemIndices?: ReadonlySet<number>;
   loggedSetIdByItemIndex: Readonly<Record<number, string>>;
@@ -56,6 +57,7 @@ export function MovementCardList({
   prescription,
   sets,
   tmBySlug,
+  oneRmBySlug,
   loggedItemIndices,
   skippedItemIndices,
   loggedSetIdByItemIndex,
@@ -173,6 +175,7 @@ export function MovementCardList({
         sessionId={sessionId}
         group={group}
         tmBySlug={tmBySlug}
+        oneRmBySlug={oneRmBySlug}
         loggedItemIndices={loggedItemIndices}
         skippedItemIndices={skippedItemIndices}
         loggedSetIdByItemIndex={loggedSetIdByItemIndex}
@@ -221,6 +224,7 @@ export function MovementCardList({
           movement={m}
           loggedSets={setsByMovement.get(m.id) ?? []}
           tmKg={tmBySlug[m.slug]}
+          oneRmKg={oneRmBySlug[m.slug]}
           priorBest={priorBests[m.id]}
           addStrengthSet={addStrengthSet}
           hapticsEnabled={hapticsEnabled}
@@ -389,6 +393,7 @@ function PrescribedCard(props: {
   sessionId: string;
   group: MovementGroup;
   tmBySlug: Record<string, number>;
+  oneRmBySlug: Record<string, number>;
   loggedItemIndices: ReadonlySet<number>;
   skippedItemIndices?: ReadonlySet<number>;
   loggedSetIdByItemIndex: Readonly<Record<number, string>>;
@@ -405,6 +410,9 @@ function PrescribedCard(props: {
 }) {
   const tmKg = props.group.movementSlug
     ? props.tmBySlug[props.group.movementSlug]
+    : undefined;
+  const oneRmKg = props.group.movementSlug
+    ? props.oneRmBySlug[props.group.movementSlug]
     : undefined;
   const priorBest = props.priorBests[props.group.movementId];
   const focusLogged = props.loggedSets.map((s) => ({
@@ -427,6 +435,7 @@ function PrescribedCard(props: {
       sessionId={props.sessionId}
       group={props.group}
       tmKg={tmKg}
+      oneRmKg={oneRmKg}
       loggedItemIndices={props.loggedItemIndices}
       skippedItemIndices={props.skippedItemIndices}
       loggedSetIdByItemIndex={props.loggedSetIdByItemIndex}

@@ -38,6 +38,7 @@ export function SessionWorkArea({
   sessionRpe,
   sets,
   tmBySlug,
+  oneRmBySlug,
   addStrengthSet,
   fillFromPlan,
   hapticsEnabled,
@@ -65,6 +66,7 @@ export function SessionWorkArea({
   sessionRpe: number | string | null;
   sets: LoggedSet[];
   tmBySlug: Record<string, number>;
+  oneRmBySlug: Record<string, number>;
   addStrengthSet: AddStrengthSetAction;
   fillFromPlan: FillSessionFromPlanAction;
   hapticsEnabled: boolean;
@@ -113,6 +115,7 @@ export function SessionWorkArea({
         prescription={prescription}
         sets={sets}
         tmBySlug={tmBySlug}
+        oneRmBySlug={oneRmBySlug}
         loggedItemIndices={loggedSet}
         skippedItemIndices={skippedSet}
         loggedSetIdByItemIndex={loggedSetIdByItemIndex}

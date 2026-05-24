@@ -27,7 +27,7 @@ import { PR_KIND_LABEL } from "@/lib/engine/pr";
 import { bestEstimateOneRm } from "@/lib/engine/one-rm";
 import { acceptTmBump, declineTmBump } from "@/lib/engine/tm-bump-actions";
 import { findDeloadProposalForSession } from "@/lib/engine/deload";
-import { formatHitValue, getSessionPrs } from "@/lib/stats/pr-queries";
+import { formatHitValue, countSessionTmAnchoredPrs, getSessionTmAnchoredPrSummaries } from "@/lib/stats/pr-queries";
 import { findBumpProposalForSession } from "@/lib/stats/bump-proposal";
 import { findPrRecalibrateProposals } from "@/lib/stats/pr-recalibrate";
 import { getLastSetLogForMovement, summariseSessionSets } from "@/lib/sessions/queries";
@@ -127,6 +127,7 @@ export default async function SessionDetailPage({
 
   const tmDict = await getTrainingMaxDict();
   const tmBySlug: Record<string, number> = Object.fromEntries(tmDict.bySlug);
+  const oneRmBySlug: Record<string, number> = Object.fromEntries(tmDict.oneRmBySlug);
 
   const isComplete = !!session.completed_at;
 
@@ -145,9 +146,31 @@ export default async function SessionDetailPage({
   const showRecommendation =
     grm.hasCheckIn && grm.value < GRM_RECOMMEND_THRESHOLD && !isComplete;
 
-  // PR detection — only meaningful when at least one set has been logged.
-  const prSummaries = sets.length > 0
-    ? await getSessionPrs(supabase, user.id, id, session.performed_at)
+  // PR detection — the user-facing in-session 🏆 PR callout uses
+  // TM-anchored detection: only fires when the new set beats the
+  // user's saved 1RM (Weight / e1RM) or the prescription's top-set
+  // reps (Rep PR). The historical-max detector (`getSessionPrs`)
+  // still backs the lifetime catalog at /app/stats/prs — see the
+  // two-tier rationale on the `feat/pr-vs-tm` PR.
+  const tmAnchoredPrSummaries = sets.length > 0
+    ? getSessionTmAnchoredPrSummaries(
+        (setsRaw ?? []).map((s) => ({
+          set_kind: s.set_kind as string,
+          weight_kg: s.weight_kg as number | string | null,
+          reps: (s.reps as number | null) ?? null,
+          rpe: (s.rpe as number | string | null) ?? null,
+          movement: (() => {
+            const m = Array.isArray(s.movement) ? s.movement[0] : s.movement;
+            return {
+              id: m?.id ?? "",
+              slug: m?.slug ?? "",
+              display_name: m?.display_name ?? "Unknown movement",
+            };
+          })(),
+        })),
+        oneRmBySlug,
+        plannedPrescription,
+      )
     : [];
 
   // TM-bump proposal — runs the AMRAP confidence gate. Returns null when
@@ -246,6 +269,29 @@ export default async function SessionDetailPage({
 
   // Phase 1 C1/C2 — post-session summary. Materialised on-the-fly from
   // already-fetched rows; no new schema column.
+  //
+  // The "PRs" tile uses TM-anchored detection (see lib/engine/tm-anchored-pr.ts)
+  // so the post-session callout lines up with the in-session ⭐ flash:
+  // both fire only when the user beats their saved 1RM, not their
+  // historical max from the log. The lifetime catalog at /app/stats/prs
+  // continues to use historical-max detection — see the two-tier
+  // rationale in `feat/pr-vs-tm` PR notes.
+  const tmAnchoredPrCount = isComplete
+    ? countSessionTmAnchoredPrs(
+        (setsRaw ?? []).map((s) => ({
+          set_kind: s.set_kind as string,
+          weight_kg: s.weight_kg as number | string | null,
+          reps: (s.reps as number | null) ?? null,
+          rpe: (s.rpe as number | string | null) ?? null,
+          movement: (() => {
+            const m = Array.isArray(s.movement) ? s.movement[0] : s.movement;
+            return { id: m?.id ?? "", slug: m?.slug ?? "" };
+          })(),
+        })),
+        oneRmBySlug,
+        plannedPrescription,
+      )
+    : 0;
   const summary = isComplete
     ? summariseSessionSets(
         (setsRaw ?? []).map((s) => ({
@@ -258,7 +304,7 @@ export default async function SessionDetailPage({
           completed_at: (session.completed_at as string | null) ?? null,
           duration_min: (session.duration_min as number | null) ?? null,
         },
-        prSummaries.reduce((acc, s) => acc + s.hits.length, 0),
+        tmAnchoredPrCount,
       )
     : null;
 
@@ -732,9 +778,9 @@ export default async function SessionDetailPage({
         </div>
       )}
 
-      {prSummaries.length > 0 && (
+      {tmAnchoredPrSummaries.length > 0 && (
         <section style={{ display: "grid", gap: 8 }}>
-          {prSummaries.map((s) =>
+          {tmAnchoredPrSummaries.map((s) =>
             s.hits.map((hit) => (
               <div
                 key={`${s.movementId}:${hit.kind}`}
@@ -755,22 +801,11 @@ export default async function SessionDetailPage({
                   </div>
                   <div style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
                     <span className="mono" style={{ fontWeight: 600, color: "var(--cp-accent)" }}>
-                      {formatHitValue(hit, hit.kind)}
+                      {formatHitValue({ ...hit, previousBest: null, daysSincePrevious: null }, hit.kind)}
                     </span>
-                    {hit.previousBest != null && (
-                      <span style={{ marginLeft: 8 }}>
-                        · previous best{" "}
-                        <span className="mono">{formatHitValue({ ...hit, value: hit.previousBest }, hit.kind)}</span>
-                        {hit.daysSincePrevious != null && hit.daysSincePrevious >= 14 && (
-                          <span style={{ marginLeft: 6, fontStyle: "italic" }}>
-                            · first {hit.kind === "weight" ? "weight" : hit.kind === "reps_at_weight" ? "reps" : "1RM"} PR in {Math.round(hit.daysSincePrevious / 7)} weeks
-                          </span>
-                        )}
-                      </span>
-                    )}
-                    {hit.previousBest == null && (
-                      <span style={{ marginLeft: 8, fontStyle: "italic" }}>· first ever on this lift</span>
-                    )}
+                    <span style={{ marginLeft: 8, fontStyle: "italic" }}>
+                      · beats your saved 1RM
+                    </span>
                   </div>
                 </div>
               </div>
@@ -787,6 +822,7 @@ export default async function SessionDetailPage({
         sessionRpe={(session.session_rpe as number | string | null) ?? null}
         sets={sets}
         tmBySlug={tmBySlug}
+        oneRmBySlug={oneRmBySlug}
         addStrengthSet={addStrengthSet}
         fillFromPlan={fillSessionFromPlan}
         hapticsEnabled={hapticsEnabled}
