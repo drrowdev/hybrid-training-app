@@ -40,7 +40,7 @@ export function AddStrengthSetForm({
           >
             <option value="warmup">warmup</option>
             <option value="main">main</option>
-            <option value="back_off">back-off</option>
+            <option value="back_off">Volume set</option>
             <option value="accessory">accessory</option>
             <option value="tendon">tendon</option>
           </select>

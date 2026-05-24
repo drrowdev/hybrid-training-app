@@ -19,6 +19,7 @@ import {
   summarisePrescription,
 } from "@/lib/planner/archetypes";
 import { getActiveBlock, getPlannedDays, getRecentBlocks, todayYmd } from "@/lib/planner/queries";
+import { cleanPrescriptionNotes } from "@/lib/planner/clean-prescription-notes";
 import { getTrainingMaxContext } from "@/lib/training-maxes/queries";
 import { effectiveTimeOfDay, gapHoursBetween } from "@/lib/planner/time-of-day";
 import { getCurrentWeekTissueStackGaps, type TissueStackGap } from "@/lib/stats/tissue-stack-queries";
@@ -753,9 +754,12 @@ function DaySessionCard({
             >
               <span>
                 Set {i + 1}
-                {item.notes ? (
-                  <span style={{ color: "var(--cp-accent)", fontWeight: 600, marginLeft: 4 }}>· {item.notes}</span>
-                ) : null}
+                {(() => {
+                  const cleanedNote = cleanPrescriptionNotes(item.notes);
+                  return cleanedNote ? (
+                    <span style={{ color: "var(--cp-accent)", fontWeight: 600, marginLeft: 4 }}>· {cleanedNote}</span>
+                  ) : null;
+                })()}
               </span>
               <span className="mono" style={{ fontWeight: 600 }}>
                 {formatPrescriptionItem(item)}

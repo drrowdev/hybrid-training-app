@@ -11,6 +11,7 @@
 
 import type { PrescriptionItem, PrescriptionItemKind } from "@hta/db";
 import type { AccessoryProfile } from "./accessory-roles";
+import { cleanPrescriptionNotes } from "./clean-prescription-notes";
 
 export type ArchetypeId =
   | "strength_anchor"
@@ -1294,14 +1295,18 @@ export function formatPrescriptionItem(item: PrescriptionItem, tmKg?: number): s
   }
   if (item.kind === "tendon") {
     const reps = item.reps != null ? `× ${item.reps}` : "";
-    const note = item.notes ? ` · ${item.notes}` : "";
+    const cleanedNotes = cleanPrescriptionNotes(item.notes);
+    const note = cleanedNotes ? ` · ${cleanedNotes}` : "";
     return `${item.intensityLabel ?? "Tendon"} ${reps}${note}`.trim();
   }
   if (item.kind === "accessory") {
     const sets = item.sets ?? 3;
     const reps = item.reps ?? 10;
-    const target = item.intensityLabel ? ` · ${item.intensityLabel}` : "";
-    return `${sets} × ${reps}${target}`;
+    // Internal category tags ("durability" / "functional" / "aesthetic" /
+    // "power") live on intensityLabel for engine bookkeeping but must not
+    // be rendered to the user — the movement name (e.g. "Farmer carry")
+    // shown alongside this row is enough.
+    return `${sets} × ${reps}`;
   }
   const weight =
     item.percentTm != null && tmKg
