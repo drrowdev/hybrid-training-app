@@ -30,7 +30,7 @@ test.describe("@desktop onboarding · training experience", () => {
     await page.waitForLoadState("networkidle");
 
     // Advance Welcome → Profile.
-    await page.getByRole("button", { name: /next/i }).first().click();
+    await page.getByRole("button", { name: /next|continue/i }).first().click();
 
     await expect(page.getByText(/how long have you been training consistently/i)).toBeVisible();
 
@@ -62,7 +62,7 @@ test.describe("@desktop onboarding · training experience", () => {
     await page.waitForLoadState("networkidle");
 
     // Welcome → Profile
-    await page.getByRole("button", { name: /next/i }).first().click();
+    await page.getByRole("button", { name: /next|continue/i }).first().click();
     await expect(
       page.getByText(/how long have you been training consistently/i),
     ).toBeVisible();
@@ -70,9 +70,13 @@ test.describe("@desktop onboarding · training experience", () => {
     // Pick the intermediate (1–3 years) option.
     await page.getByTestId("onboarding-experience-1_3y").click();
 
-    // Advance to Training maxes — fires the saveProfileAction.
-    await page.getByRole("button", { name: /next/i }).first().click();
-    // Wait for the next step to render.
+    // Advance to Equipment — fires the saveProfileAction.
+    await page.getByRole("button", { name: /next|continue/i }).first().click();
+    await expect(page.getByText(/what equipment do you train with\?/i)).toBeVisible();
+    // Tap a preset and advance through the new Equipment step.
+    await page.getByTestId("onboarding-equipment-preset-commercial_gym").click();
+    await page.getByRole("button", { name: /next|continue/i }).first().click();
+    // Wait for the Training maxes step to render.
     await expect(page.getByText(/training max/i).first()).toBeVisible();
 
     // Persisted column matches the DB enum value.
