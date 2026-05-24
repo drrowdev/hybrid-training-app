@@ -494,11 +494,50 @@ export default async function SessionDetailPage({
                 completed
               </span>
             )}
-            <DeleteSessionButton
-              sessionId={session.id}
-              label={session.title || "Session"}
-              redirectTo="/app/sessions"
-            />
+            <details className="cp-menu" style={{ position: "relative" }}>
+              <summary
+                aria-label="More actions"
+                title="More actions"
+                style={{
+                  listStyle: "none",
+                  cursor: "pointer",
+                  width: 36,
+                  height: 36,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 8,
+                  color: "var(--cp-text-muted)",
+                  fontSize: 18,
+                  fontWeight: 700,
+                  userSelect: "none",
+                }}
+              >
+                ⋯
+              </summary>
+              <div
+                role="menu"
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  top: "calc(100% + 4px)",
+                  zIndex: 50,
+                  minWidth: 200,
+                  background: "var(--cp-surface)",
+                  border: "1px solid var(--cp-border)",
+                  borderRadius: 10,
+                  boxShadow: "var(--cp-shadow, 0 8px 24px rgba(0,0,0,0.18))",
+                  padding: 4,
+                }}
+              >
+                <DeleteSessionButton
+                  sessionId={session.id}
+                  label={session.title || "Session"}
+                  redirectTo="/app/sessions"
+                  variant="menu"
+                />
+              </div>
+            </details>
           </div>
         </div>
       </header>
