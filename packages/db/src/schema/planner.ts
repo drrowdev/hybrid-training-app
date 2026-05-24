@@ -151,6 +151,37 @@ export type PrescriptionItem = {
   intensityLabel?: string;
   notes?: string;
   /**
+   * Reps-in-reserve target for accessories. Range or single value
+   * (min === max). Mutually exclusive with `targetRpe`. Populated by the
+   * accessory-intensity matrix — see `lib/planner/accessory-intensity.ts`.
+   * Grounded in Helms 2018 (autoregulation for accessories) + Schoenfeld
+   * 2017 (RPE 7–9 / RIR 1–3 hypertrophy window).
+   */
+  targetRir?: { min: number; max: number };
+  /**
+   * RPE (Rate of Perceived Exertion) target. Range or single value.
+   * Used for max-effort lifts where the "leave reps in reserve" framing
+   * is less natural than "near-max effort". Convention: rpe = 10 − rir.
+   */
+  targetRpe?: { min: number; max: number };
+  /**
+   * Eccentric tempo in seconds (lowering phase). Used for tendon / HSR
+   * items where time-under-tension drives the adaptation rather than
+   * proximity to failure (Baar 2017, Kongsgaard 2009).
+   */
+  tempoEccentricSec?: number;
+  /**
+   * Hold duration in seconds for isometric items (carries, planks,
+   * wall sits, dead bugs). Replaces the rep target on the focus card.
+   */
+  holdSec?: { min: number; max: number };
+  /**
+   * Free-form coaching cue (≤ 80 chars). Rendered under the RIR chip on
+   * the accessory focus card. Plain English, second person, no
+   * methodology names or external program references (brand purity).
+   */
+  intensityCue?: string;
+  /**
    * Open-ended per-item metadata blob. Power Emphasis Phase 3 uses this
    * to carry the compensatory-acceleration cue on capped top sets and the
    * rest-period guidance on `power_potentiation` items (PAPE window:

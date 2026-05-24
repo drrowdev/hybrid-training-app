@@ -103,3 +103,29 @@ Follow-up to DC-Q6 methodology-pure operation. Removed forward-looking external-
 ## [2026-05-23] decision | AI chat FAB deferred for dedicated planning
 The AI chat FAB (originally tracked as #7 in the UX wave) is removed from the active build queue and added to `docs/knowledge/ai-roadmap.md` as a deferred item. Rationale: anything AI-touching needs its own planning pass — model selection, prompting strategy, conversation persistence, privacy posture, allowed actions, cost model, fallback behaviour, and quality bar are decisions that shouldn't be made in passing as a UI affordance. The roadmap entry lists 8 open questions that must have written answers before a UI surface is built. Build-order recommendation updated; the AI chat is now item 9 in the deferred queue, gated on its own ADR.
 
+
+
+## [2026-05-24] refine | Accessory intensity matrix (feat/accessory-rir-intensity)
+Added a research-grounded RIR / RPE / tempo prescription layer for accessory + tendon items. The strength engine continues to drive main lifts off %TM via the standard 4-week peaking wave on `training_blocks.weekProfiles`; accessories now carry an autoregulation cue instead — implemented in `apps/web/src/lib/planner/accessory-intensity.ts` as two pure functions: `inferAccessoryBucket()` (compound | isolation | isometric | plyometric | tendon) and `accessoryIntensity({ archetype, bucket, weekIndex })`.
+
+Bucket detection runs off the catalog's `bulletproof_roles` / `functional_roles` / `primary_muscles` / `is_compound` columns plus a slug-keyword fallback for legacy items. Matrix output is attached to each `PrescriptionItem` (now extended with optional `targetRir`, `targetRpe`, `tempoEccentricSec`, `holdSec`, `intensityCue` fields on the JSONB blob — no migration needed, drizzle column type is `jsonb` in `packages/db/src/schema/planner.ts`). Existing planned sessions without RIR fields render gracefully via fallbacks in `MovementFocusView.tsx` and `movement-summary.ts`.
+
+**Matrix shape** (base × archetype, with week-of-block modifier on top):
+- **Bilateral compound** (RDL, leg press, goblet squat): strength_anchor RIR 2–3, hypertrophy_anchor RIR 1–2, endurance_anchor RIR 3, concurrent_hybrid RIR 2, rebuild RIR 3 + 3s tempo, maintenance RIR 3.
+- **Isolation** (curl, lateral raise, leg extension, pulldown, fly): strength_anchor RIR 2, hypertrophy_anchor RIR 0–1 (last set to failure cue), endurance_anchor RIR 3, concurrent_hybrid RIR 2, rebuild RIR 2, maintenance RIR 3.
+- **Isometric** (carry, plank, wall sit, dead bug): hold 20–60s depending on archetype; week-4 deload drops to 60% of base duration.
+- **Plyometric / power** (broad jump, jump squat, med ball throw): max intent · 3–5 reps · 2–3 min rest. No RIR modifier — Behm & Sale 1993: neural / RFD adaptation, not metabolic.
+- **Tendon** (HSR, copenhagen plank, eccentric heel raise): 3s eccentric tempo at RIR 2 (RIR 3 on endurance / maintenance). Baar 2017 / Kongsgaard 2009.
+
+**Week modifier:** weekIndex 0 (ramp) +1 RIR; weekIndex 1 (build) and weekIndex 2 (push) baseline; weekIndex 3 (deload) +2 RIR. Isometric: deload-week holds = 60% of base duration. Plyometric: ignores modifier.
+
+**Citations** (kept in source comments + this log, never in user-facing UI copy):
+- Helms 2018 — autoregulation via RPE/RIR is the appropriate cue for accessories (1RM-based load doesn't translate to isolation work).
+- Schoenfeld 2017 — RPE 7–9 (RIR 1–3) effective for 6–12 rep hypertrophy; RPE 7–8 (RIR 2–3) for 12–20 rep work.
+- Israetel — MEV → MAV → MRV volume landmarks; RIR tightens at the volume peak, opens up on deload.
+- Baar 2017 / Kongsgaard 2009 — HSR tendon work needs 3 s+ eccentric at sub-maximal load; time-under-tension, not failure.
+- Behm & Sale 1993 — plyometric / power work uses max intent at low rep counts; RPE/RIR don't apply.
+
+**UI:** the focus card now renders a chip (`RIR 1–2`, `Hold 30–60s`, `3s lower · RIR 2`, `Max intent`) + a plain-English cue under the weight readout when an item carries no %TM. Brand purity preserved — no methodology names in any cue copy; ESLint-friendly regex assertion in the test suite blocks regressions. Collapsed-card summary chip (`movement-summary.ts`) now reads `3×10 @ RIR 1–2` or `3 × 30s hold` instead of a bare `3×10`.
+
+**Tests:** 141 cases on `accessoryIntensity` (5 buckets × 6 archetypes × 4 weeks + targeted value locks + a brand-purity regex sweep), 9 cases on `inferAccessoryBucket`, 1 unit test verifying main items never get RIR / cue fields. New Playwright spec `accessory-rir-cue.spec.ts` drives a seeded session and asserts the chip + cue render.
