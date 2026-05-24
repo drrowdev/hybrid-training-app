@@ -52,6 +52,10 @@ import {
   type CatalogMovement,
   type WeekContextItem,
 } from "./accessory-picker";
+import {
+  accessoryIntensity,
+  inferAccessoryBucket,
+} from "./accessory-intensity";
 import type { BulletproofRole, FunctionalRole } from "./accessory-roles";
 import {
   applyPowerClampToMainItems,
@@ -254,6 +258,22 @@ function assemblePrescriptionItems(
       powerEmphasis,
     });
     for (const p of picks) {
+      const catalogEntry = catalog.find((c) => c.id === p.movementId);
+      const bucket = inferAccessoryBucket({
+        reason: p.reason,
+        slug: catalogEntry?.slug ?? p.slug,
+        primaryRegion: catalogEntry?.primaryRegion,
+        primaryMuscles: catalogEntry?.primaryMuscles,
+        isCompound: catalogEntry?.isCompound,
+        bulletproofRoles: catalogEntry?.bulletproofRoles,
+        functionalRoles: catalogEntry?.functionalRoles,
+        highStrainTendon: catalogEntry?.highStrainTendon,
+      });
+      const intensity = accessoryIntensity({
+        archetype: archetype.id,
+        bucket,
+        weekIndex,
+      });
       items.push({
         movementId: p.movementId,
         movementSlug: p.slug,
@@ -263,8 +283,12 @@ function assemblePrescriptionItems(
         reps: p.reps,
         intensityLabel: p.reason,
         notes: p.rationale ? p.rationale : undefined,
+        targetRir: intensity.targetRir,
+        targetRpe: intensity.targetRpe,
+        tempoEccentricSec: intensity.tempoEccentricSec,
+        holdSec: intensity.holdSec,
+        intensityCue: intensity.intensityCue,
       });
-      const catalogEntry = catalog.find((c) => c.id === p.movementId);
       if (catalogEntry) {
         weekContext.push({
           movementId: catalogEntry.id,
@@ -300,6 +324,15 @@ function assemblePrescriptionItems(
     for (const a of pool) {
       const mv = movementBySlug.get(a.slug);
       if (!mv) continue;
+      // Legacy items don't carry catalog metadata — infer from slug
+      // alone. Bucket falls back to "compound" if no keyword hits, which
+      // gives a sensible RIR 2–3 default for unknown legacy accessories.
+      const bucket = inferAccessoryBucket({ slug: a.slug });
+      const intensity = accessoryIntensity({
+        archetype: archetype.id,
+        bucket,
+        weekIndex,
+      });
       items.push({
         movementId: mv.id,
         movementSlug: mv.slug,
@@ -309,6 +342,11 @@ function assemblePrescriptionItems(
         reps: parseInt(a.reps, 10),
         intensityLabel: a.muscleTarget,
         notes: a.rationale,
+        targetRir: intensity.targetRir,
+        targetRpe: intensity.targetRpe,
+        tempoEccentricSec: intensity.tempoEccentricSec,
+        holdSec: intensity.holdSec,
+        intensityCue: intensity.intensityCue,
       });
     }
   }
