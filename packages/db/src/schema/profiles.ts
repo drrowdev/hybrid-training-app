@@ -103,6 +103,21 @@ export const profiles = pgTable("profiles", {
    * when `units = 'imperial'`. Default mirrors a sensible Olympic
    * plate set.
    */
+  /**
+   * Warmup-ladder configuration. NULL is treated as the default
+   * `{ setCount: 3, percentLadder: [40, 50, 60], repLadder: [5, 3, 2] }`
+   * at read time. `setCount = 0` disables auto-warmups entirely.
+   *
+   * Ladders are the practitioner-consensus ramp pattern: rehearse the
+   * motor pattern at light loads, then ramp so connective tissue
+   * acclimates before the first working set (Baar 2017 tendon-adaptation
+   * literature on submaximal exposure prior to heavy loading).
+   */
+  warmupScheme: jsonb("warmup_scheme").$type<{
+    setCount: number;
+    percentLadder: number[];
+    repLadder: number[];
+  }>(),
   plateInventoryKg: jsonb("plate_inventory_kg")
     .$type<Array<{ weight_kg: number; pair_count: number }>>()
     .default(

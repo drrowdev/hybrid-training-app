@@ -209,3 +209,57 @@ describe("summariseGroupForHeader — edges", () => {
     expect(summariseGroupForHeader(g, sets)).toBe("1×5 @ 80kg ✓");
   });
 });
+
+describe("summariseGroupForHeader — warmup exclusion", () => {
+  it("warmups don't inflate the planned total", () => {
+    const g = groupOf([
+      { movementId: "sq", kind: "warmup", sets: 1, reps: 5, percentTm: 34 },
+      { movementId: "sq", kind: "warmup", sets: 1, reps: 3, percentTm: 42.5 },
+      { movementId: "sq", kind: "warmup", sets: 1, reps: 2, percentTm: 51 },
+      { movementId: "sq", kind: "main", sets: 1, reps: 5, percentTm: 75 },
+      { movementId: "sq", kind: "main", sets: 1, reps: 5, percentTm: 80 },
+      { movementId: "sq", kind: "main", sets: 1, reps: 5, percentTm: 85 },
+    ]);
+    // No sets logged → planned summary of working items only.
+    expect(summariseGroupForHeader(g, [])).toBe("5·5·5 @ 75/80/85% TM");
+  });
+
+  it("after logging 3 warmups, in-progress counts working sets as 0/3", () => {
+    const g = groupOf([
+      { movementId: "sq", kind: "warmup", sets: 1, reps: 5, percentTm: 34 },
+      { movementId: "sq", kind: "warmup", sets: 1, reps: 3, percentTm: 42.5 },
+      { movementId: "sq", kind: "warmup", sets: 1, reps: 2, percentTm: 51 },
+      { movementId: "sq", kind: "main", sets: 1, reps: 5, percentTm: 75 },
+      { movementId: "sq", kind: "main", sets: 1, reps: 5, percentTm: 80 },
+      { movementId: "sq", kind: "main", sets: 1, reps: 5, percentTm: 85 },
+    ]);
+    const sets = logged([
+      { weightKg: 50, reps: 5 }, // warmup 1
+      { weightKg: 60, reps: 3 }, // warmup 2
+      { weightKg: 75, reps: 2 }, // warmup 3
+    ]);
+    // 3 warmups consumed, 0 working logged yet → planned summary
+    // since covered === 0 against the 3-set working total.
+    expect(summariseGroupForHeader(g, sets)).toBe("5·5·5 @ 75/80/85% TM");
+  });
+
+  it("after warmups + 2 working sets, shows 2/3 against working total", () => {
+    const g = groupOf([
+      { movementId: "sq", kind: "warmup", sets: 1, reps: 5, percentTm: 34 },
+      { movementId: "sq", kind: "warmup", sets: 1, reps: 3, percentTm: 42.5 },
+      { movementId: "sq", kind: "warmup", sets: 1, reps: 2, percentTm: 51 },
+      { movementId: "sq", kind: "main", sets: 1, reps: 5, percentTm: 80 },
+      { movementId: "sq", kind: "main", sets: 1, reps: 5, percentTm: 80 },
+      { movementId: "sq", kind: "main", sets: 1, reps: 5, percentTm: 80 },
+    ]);
+    const sets = logged([
+      { weightKg: 50, reps: 5 },
+      { weightKg: 60, reps: 3 },
+      { weightKg: 75, reps: 2 },
+      { weightKg: 100, reps: 5 },
+      { weightKg: 100, reps: 5 },
+    ]);
+    expect(summariseGroupForHeader(g, sets)).toBe("2/3 · last 100kg");
+  });
+});
+
