@@ -19,6 +19,7 @@ import {
   groupPrescriptionByMovement,
   type MovementGroup,
 } from "@/lib/sessions/movement-grouping";
+import { bucketForGroup } from "@/lib/sessions/movement-summary";
 import { MovementCard } from "./MovementCard";
 import { FreestyleMovementCard } from "./FreestyleMovementCard";
 import type { PlateInventoryItem } from "./plate-math";
@@ -136,34 +137,82 @@ export function MovementCardList({
     setShowPicker(false);
   };
 
+  // Partition prescribed groups into main vs accessory buckets for
+  // the two sub-section headings. Order within each bucket is the
+  // original first-appearance order from the prescription.
+  const { mainGroups, accessoryGroups, otherGroups } = useMemo(() => {
+    const main: MovementGroup[] = [];
+    const accessory: MovementGroup[] = [];
+    const other: MovementGroup[] = [];
+    for (const g of groups) {
+      const b = bucketForGroup(g);
+      if (b === "main") main.push(g);
+      else if (b === "accessory") accessory.push(g);
+      else other.push(g);
+    }
+    return { mainGroups: main, accessoryGroups: accessory, otherGroups: other };
+  }, [groups]);
+
   const allSetsLoggedAcrossSession = sets.length;
   // First prescribed card with no logged sets across the whole session
   // shows the session-level "Same as planned" button.
   const showFillOnFirst = !isComplete && sets.length === 0;
 
+  // Build a single ordered render list so the "first card" check for
+  // the session-level fill button stays correct across both sections.
+  const orderedGroups: MovementGroup[] = useMemo(
+    () => [...mainGroups, ...accessoryGroups, ...otherGroups],
+    [mainGroups, accessoryGroups, otherGroups],
+  );
+
+  const renderCard = (group: MovementGroup) => {
+    const idx = orderedGroups.indexOf(group);
+    return (
+      <PrescribedCard
+        key={group.movementId}
+        sessionId={sessionId}
+        group={group}
+        tmBySlug={tmBySlug}
+        loggedItemIndices={loggedItemIndices}
+        skippedItemIndices={skippedItemIndices}
+        loggedSetIdByItemIndex={loggedSetIdByItemIndex}
+        loggedSets={setsByMovement.get(group.movementId) ?? []}
+        priorBests={priorBests}
+        addStrengthSet={addStrengthSet}
+        fillFromPlan={fillFromPlan}
+        showFillFromPlan={idx === 0 && showFillOnFirst}
+        hapticsEnabled={hapticsEnabled}
+        timerSoundEnabled={timerSoundEnabled}
+        barbellKg={barbellKg}
+        trapBarKg={trapBarKg}
+        plateInventory={plateInventory}
+      />
+    );
+  };
+
   return (
     <div data-testid="movement-card-list" style={{ display: "grid", gap: 12 }}>
-      {groups.map((group, i) => (
-        <PrescribedCard
-          key={group.movementId}
-          sessionId={sessionId}
-          group={group}
-          tmBySlug={tmBySlug}
-          loggedItemIndices={loggedItemIndices}
-          skippedItemIndices={skippedItemIndices}
-          loggedSetIdByItemIndex={loggedSetIdByItemIndex}
-          loggedSets={setsByMovement.get(group.movementId) ?? []}
-          priorBests={priorBests}
-          addStrengthSet={addStrengthSet}
-          fillFromPlan={fillFromPlan}
-          showFillFromPlan={i === 0 && showFillOnFirst}
-          hapticsEnabled={hapticsEnabled}
-          timerSoundEnabled={timerSoundEnabled}
-          barbellKg={barbellKg}
-          trapBarKg={trapBarKg}
-          plateInventory={plateInventory}
-        />
-      ))}
+      {mainGroups.length > 0 && (
+        <>
+          <SectionDivider label="Main lifts" testId="movement-group-main" />
+          {mainGroups.map(renderCard)}
+        </>
+      )}
+
+      {accessoryGroups.length > 0 && (
+        <>
+          <SectionDivider
+            label="Accessory work"
+            testId="movement-group-accessory"
+          />
+          {accessoryGroups.map(renderCard)}
+        </>
+      )}
+
+      {(otherGroups.length > 0 || freestyleMerged.length > 0) && (
+        <SectionDivider label="Other" testId="movement-group-other" />
+      )}
+      {otherGroups.map(renderCard)}
 
       {freestyleMerged.map((m) => (
         <FreestyleMovementCard
@@ -393,5 +442,40 @@ function PrescribedCard(props: {
       plateInventory={props.plateInventory}
       persistKeyPrefix={`mc:${props.sessionId}`}
     />
+  );
+}
+
+function SectionDivider({
+  label,
+  testId,
+}: {
+  label: string;
+  testId: string;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        fontSize: 10,
+        textTransform: "uppercase",
+        letterSpacing: "0.08em",
+        color: "var(--cp-text-muted)",
+        fontWeight: 600,
+        padding: "10px 0 2px",
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{ height: 1, flex: 1, background: "var(--cp-border)" }}
+      />
+      {label}
+      <span
+        aria-hidden="true"
+        style={{ height: 1, flex: 1, background: "var(--cp-border)" }}
+      />
+    </div>
   );
 }
