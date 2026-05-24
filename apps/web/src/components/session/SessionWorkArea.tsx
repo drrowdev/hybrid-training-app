@@ -1,35 +1,21 @@
 "use client";
 
 /**
- * Client wrapper that stitches `<PrescriptionItemsList>` to
- * `<SessionLogClient>` so a prescription row tap one-shot-prefills the
- * logger. Owning this state on the client means the server page can
- * stay a server component — we just hand both children the data they
- * need, plus an `onItemTap` callback for the prescription list and a
- * `prefillRequest` prop for the logger.
+ * Session work-area shell: the "Session in progress" banner up top
+ * plus the movement-grouped logging surface below.
  *
- * Also owns the "Session in progress" sticky banner (sibling card at
- * the top of the page) so its "Finish session →" duplicate-CTA can
- * point at the same href as the bottom `<FinishSessionBar>` without
- * having to thread two refs across the server/client boundary.
- *
- * The banner re-derives "minutes in" client-side on a 60s tick so the
- * counter stays honest during a long session — server-rendered initial
- * value avoids hydration flicker.
+ * Originally stitched `<PrescriptionItemsList>` to `<SessionLogClient>`
+ * with a tap-to-prefill bridge. That two-component layout is replaced
+ * here by `<MovementCardList>` — one collapsible card per movement
+ * with an inline focus view, dot strip, and per-set save flow.
  */
 
 import { useEffect, useState } from "react";
-import type { Prescription, PrescriptionItem } from "@hta/db";
-import {
-  PrescriptionItemsList,
-  type PrescriptionItemTapHandler,
-} from "./PrescriptionItemsList";
-import {
-  SessionLogClient,
-  type LoggedSet,
-  type LastSetHint,
-  type PriorBest,
-  type PrescriptionPrefillRequest,
+import type { Prescription } from "@hta/db";
+import type {
+  LoggedSet,
+  LastSetHint,
+  PriorBest,
 } from "./SessionLogClient";
 import type {
   addStrengthSet as addStrengthSetAction,
@@ -37,32 +23,11 @@ import type {
   swapPrescriptionItem as swapPrescriptionItemAction,
 } from "@/lib/sessions/actions";
 import { FinishSessionBar } from "./FinishSessionBar";
+import { MovementCardList } from "./MovementCardList";
 
 type AddStrengthSetAction = typeof addStrengthSetAction;
 type FillSessionFromPlanAction = typeof fillSessionFromPlanAction;
 type SwapAction = typeof swapPrescriptionItemAction;
-
-const STRENGTH_SETKINDS = new Set([
-  "warmup",
-  "main",
-  "back_off",
-  "accessory",
-  "tendon",
-]);
-
-function setKindForPrescription(
-  kind: PrescriptionItem["kind"],
-): "warmup" | "main" | "back_off" | "accessory" | "tendon" {
-  // power_potentiation maps onto "main" at the set-log level — the
-  // setKind enum on set_logs intentionally stays narrower than the
-  // prescription kind enum (DC-J7 keeps `power_potentiation` as a
-  // planner-only label so historical analytics don't fragment).
-  if (kind === "power_potentiation") return "main";
-  if (STRENGTH_SETKINDS.has(kind)) {
-    return kind as "warmup" | "main" | "back_off" | "accessory" | "tendon";
-  }
-  return "main";
-}
 
 export function SessionWorkArea({
   sessionId,
@@ -76,6 +41,9 @@ export function SessionWorkArea({
   fillFromPlan,
   hapticsEnabled,
   timerSoundEnabled,
+  // `lastSetHints` is still computed server-side for backward compat
+  // (analytics consumers can read it), but the new card layout
+  // surfaces "last set" inline via the priorBest/loggedSets pair.
   lastSetHints,
   priorBests,
   // Prescription wiring (null when the session is freestyle / unlinked).
@@ -104,40 +72,18 @@ export function SessionWorkArea({
   loggedItemIndices: number[];
   loggedSetIdByItemIndex: Record<number, string>;
 }) {
-  const [prefillRequest, setPrefillRequest] = useState<PrescriptionPrefillRequest | null>(null);
+  // The card-list layout doesn't currently surface `lastSetHints`,
+  // `plannedSessionId`, or the page-level swap server action — they're
+  // accepted to preserve the existing prop contract from the server
+  // page (and to keep tests that reach into the prop shape happy).
+  void lastSetHints;
+  void plannedSessionId;
+  void swapAction;
   const loggedSet = new Set<number>(loggedItemIndices);
-
-  const handlePrescriptionTap: PrescriptionItemTapHandler = ({ index, item, loggedSetId }) => {
-    if (loggedSetId) {
-      // Already logged — scroll the user to the existing row in the
-      // "This session" table instead of prefilling. The row carries a
-      // `data-testid="logged-set-row-${id}"` already.
-      if (typeof document === "undefined") return;
-      const target = document.querySelector(`[data-testid="logged-set-row-${loggedSetId}"]`);
-      if (target && "scrollIntoView" in target) {
-        (target as HTMLElement).scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-      return;
-    }
-    const tm = item.movementSlug ? tmBySlug[item.movementSlug] : undefined;
-    const weightKg =
-      typeof item.percentTm === "number" && tm
-        ? Math.round((tm * (item.percentTm / 100)) / 2.5) * 2.5
-        : 0;
-    setPrefillRequest({
-      token: Date.now(),
-      movement: {
-        id: item.movementId,
-        slug: item.movementSlug ?? "",
-        display_name: item.movementName ?? item.movementSlug ?? "Movement",
-        primary_region: "",
-      },
-      weightKg,
-      reps: item.reps ?? 5,
-      setKind: setKindForPrescription(item.kind),
-      prescriptionItemIndex: index,
-    });
-  };
+  const priorBestsForCards: Record<
+    string,
+    { heaviestWeight: number | null; bestE1rm: number | null }
+  > = priorBests;
 
   return (
     <>
@@ -151,30 +97,19 @@ export function SessionWorkArea({
         prescriptionItemCount={prescription?.items?.length ?? 0}
       />
 
-      {!isComplete && plannedSessionId && prescription && prescription.items.length > 0 && (
-        <PrescriptionItemsList
-          plannedSessionId={plannedSessionId}
-          initialPrescription={prescription}
-          swapAction={swapAction}
-          loggedItemIndices={loggedSet}
-          loggedSetIdByItemIndex={loggedSetIdByItemIndex}
-          onItemTap={handlePrescriptionTap}
-        />
-      )}
-
-      <SessionLogClient
+      <MovementCardList
         sessionId={sessionId}
         isComplete={isComplete}
+        prescription={prescription}
         sets={sets}
         tmBySlug={tmBySlug}
+        loggedItemIndices={loggedSet}
+        loggedSetIdByItemIndex={loggedSetIdByItemIndex}
+        priorBests={priorBestsForCards}
         addStrengthSet={addStrengthSet}
         fillFromPlan={fillFromPlan}
-        hasPlan={Boolean(prescription && prescription.items.length > 0)}
-        lastSetHints={lastSetHints}
-        priorBests={priorBests}
         hapticsEnabled={hapticsEnabled}
         timerSoundEnabled={timerSoundEnabled}
-        prefillRequest={prefillRequest}
       />
     </>
   );
