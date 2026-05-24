@@ -15,13 +15,14 @@
  * this group with its TM-derived target.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Prescription } from "@hta/db";
 import {
   deriveCardState,
   isMovementComplete,
   type MovementGroup,
 } from "@/lib/sessions/movement-grouping";
+import { summariseGroupForHeader } from "@/lib/sessions/movement-summary";
 import { buildMovementRecap } from "@/lib/sessions/movement-recap";
 import { MovementFocusView, type FocusLoggedSet } from "./MovementFocusView";
 import { SwapMovementModal } from "./SwapMovementModal";
@@ -183,6 +184,13 @@ export function MovementCard({
   // `N skipped (reason)` row when any skips were recorded.
   const recapLines = buildMovementRecap(group.items, loggedSets);
 
+  // One-line summary for the collapsed header chip. Hidden on narrow
+  // viewports via the `cp-mc-summary` class (see globals.css).
+  const headerSummary = useMemo(
+    () => summariseGroupForHeader(group, loggedSets, tmKg),
+    [group, loggedSets, tmKg],
+  );
+
   return (
     <section
       data-testid={`movement-card-${group.movementId}`}
@@ -231,6 +239,22 @@ export function MovementCard({
             }}
           >
             TM {tmKg} kg
+          </span>
+        )}
+        {collapsed && headerSummary && (
+          <span
+            data-testid={`movement-card-summary-${group.movementId}`}
+            className="cp-mc-summary mono"
+            style={{
+              fontSize: 12,
+              color: "var(--cp-text-muted)",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              maxWidth: "60%",
+            }}
+          >
+            {headerSummary}
           </span>
         )}
         <span
