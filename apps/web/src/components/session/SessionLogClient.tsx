@@ -8,6 +8,7 @@ import { bestEstimateOneRm } from "@/lib/engine/one-rm";
 import { restSecondsForKind } from "@/lib/sessions/rest";
 import { hapticTick } from "@/lib/feedback";
 import { RestTimer } from "./RestTimer";
+import { SwapMovementModal } from "./SwapMovementModal";
 
 export type LoggedSet = {
   id: string;
@@ -144,6 +145,7 @@ export function SessionLogClient({
     null;
 
   const [active, setActive] = useState<ActiveMovement | null>(defaultActive);
+  const [swapOpen, setSwapOpen] = useState(false);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sync local active with new server data after a set is logged
     if (!active && defaultActive) setActive(defaultActive);
@@ -321,6 +323,14 @@ export function SessionLogClient({
         <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
           Session
         </div>
+        {!isComplete && !active && sets.length === 0 && (
+          <div
+            data-testid="empty-session-helper"
+            style={{ fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.4 }}
+          >
+            Pick a movement to start logging, or tap a planned set above to prefill the form.
+          </div>
+        )}
         <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4 }}>
           {movementsInSession.map((m) => {
             const isActiveM = active?.id === m.id;
@@ -424,6 +434,27 @@ export function SessionLogClient({
                   ⭐ PR!
                 </span>
               )}
+              <button
+                type="button"
+                data-testid="swap-movement-trigger"
+                onClick={() => setSwapOpen(true)}
+                style={{
+                  marginLeft: 4,
+                  background: "transparent",
+                  border: 0,
+                  padding: "2px 4px",
+                  color: "var(--cp-text-muted)",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  textDecoration: "underline",
+                  textDecorationStyle: "dotted",
+                  textUnderlineOffset: 3,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                Swap movement
+              </button>
             </div>
             {lastSetForActive && (
               <div style={{ fontSize: 12, color: "var(--cp-text-muted)", marginTop: 4 }}>
@@ -642,6 +673,24 @@ export function SessionLogClient({
           onDone={() => setRestSeconds(0)}
           hapticsEnabled={hapticsEnabled}
           timerSoundEnabled={timerSoundEnabled}
+          movementName={active?.display_name ?? null}
+        />
+      )}
+
+      {active && (
+        <SwapMovementModal
+          open={swapOpen}
+          onClose={() => setSwapOpen(false)}
+          sessionId={sessionId}
+          original={{ id: active.id, displayName: active.display_name }}
+          onSwapped={(next) => {
+            setActive({
+              id: next.id,
+              slug: next.slug,
+              display_name: next.displayName,
+              primary_region: active.primary_region,
+            });
+          }}
         />
       )}
     </div>

@@ -19,6 +19,7 @@ import {
 } from "@/lib/planner/queries";
 import { DeleteBlockMenu } from "@/components/trash/DeleteBlockMenu";
 import { StatusBadge } from "@/components/blocks/StatusBadge";
+import { groupBlocksByMonth } from "@/lib/plan/history-grouping";
 
 const PAGE_SIZE = 20;
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
@@ -117,18 +118,43 @@ export default async function PlanHistoryPage({
           </Link>
         </section>
       ) : (
-        <ul
+        <div
           data-testid="plan-history-list"
-          style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 10 }}
+          style={{ display: "grid", gap: 14 }}
         >
-          {pageBlocks.map((b) => (
-            <BlockHistoryRow
-              key={b.id}
-              block={b}
-              sessions={sessionsByBlock.get(b.id) ?? []}
-            />
+          {groupBlocksByMonth(pageBlocks).map((group) => (
+            <section key={group.key} data-testid="plan-history-month-group" data-month={group.key}>
+              <h2
+                data-testid="plan-history-month-header"
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 1,
+                  margin: 0,
+                  padding: "8px 4px",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                  color: "var(--cp-text-muted)",
+                  background: "var(--cp-bg)",
+                  borderBottom: "1px solid var(--cp-border)",
+                }}
+              >
+                {group.label}
+              </h2>
+              <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0", display: "grid", gap: 10 }}>
+                {group.blocks.map((b) => (
+                  <BlockHistoryRow
+                    key={b.id}
+                    block={b}
+                    sessions={sessionsByBlock.get(b.id) ?? []}
+                  />
+                ))}
+              </ul>
+            </section>
           ))}
-        </ul>
+        </div>
       )}
 
       <Pagination page={page} hasNext={hasNext} />
@@ -345,44 +371,53 @@ function SessionStatusChip({
   if (status === "logged") {
     return (
       <span
+        data-testid="session-status-icon"
+        data-status="logged"
+        aria-label="logged"
         style={{
-          fontSize: 10,
-          fontWeight: 600,
-          textTransform: "uppercase",
-          letterSpacing: "0.04em",
-          color: "rgb(22, 163, 74)",
+          fontSize: 14,
+          fontWeight: 700,
+          color: "var(--cp-success)",
+          minWidth: 14,
+          textAlign: "center",
         }}
       >
-        ✓ Logged
+        ✓
       </span>
     );
   }
   if (status === "skipped") {
     return (
       <span
+        data-testid="session-status-icon"
+        data-status="skipped"
+        aria-label="skipped"
         style={{
-          fontSize: 10,
-          fontWeight: 600,
-          textTransform: "uppercase",
-          letterSpacing: "0.04em",
+          fontSize: 14,
+          fontWeight: 700,
           color: "var(--cp-text-muted)",
+          minWidth: 14,
+          textAlign: "center",
         }}
       >
-        Skipped
+        ✗
       </span>
     );
   }
   return (
     <span
+      data-testid="session-status-icon"
+      data-status="pending"
+      aria-label="not logged"
       style={{
-        fontSize: 10,
-        fontWeight: 600,
-        textTransform: "uppercase",
-        letterSpacing: "0.04em",
+        fontSize: 14,
+        fontWeight: 700,
         color: "var(--cp-text-muted)",
+        minWidth: 14,
+        textAlign: "center",
       }}
     >
-      Not yet
+      —
     </span>
   );
 }

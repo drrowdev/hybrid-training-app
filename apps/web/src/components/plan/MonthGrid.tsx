@@ -275,7 +275,8 @@ function Chip({ item, compact }: { item: CalendarItem; compact?: boolean }) {
       )}
       {item.slotBadge && (
         <span
-          aria-label={item.slotBadge === "am" ? "morning session" : "evening session"}
+          aria-label={item.slotBadge === "am" ? "two-a-day morning session" : "two-a-day evening session"}
+          title="Two-a-day · tap the AM/PM badge on the day card for details"
           className="mono"
           style={{
             fontSize: compact ? 8 : 9,
