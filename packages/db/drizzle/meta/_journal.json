@@ -253,6 +253,13 @@
       "tag": "0035_priority_events_full_shape",
       "when": 1779594000000,
       "breakpoints": false
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "tag": "0036_set_logs_prescription_link",
+      "when": 1779680400000,
+      "breakpoints": false
     }
   ]
 }

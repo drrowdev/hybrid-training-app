@@ -44,6 +44,12 @@ export const setLogs = pgTable("set_logs", {
   setKind: setKind("set_kind").default("main").notNull(),
   percentOfTm: numeric("percent_of_tm", { precision: 5, scale: 2 }),
   notes: text("notes"),
+  // Index into the planned_session.prescription.items array that this
+  // set was logged against (when the user tapped a prescription row to
+  // prefill the logger). Null for free-form / legacy logs and for
+  // sessions with no linked plan. See migration
+  // 0036_set_logs_prescription_link.sql.
+  prescriptionItemIndex: smallint("prescription_item_index"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),

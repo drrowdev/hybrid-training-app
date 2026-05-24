@@ -62,6 +62,11 @@ const setSchema = z.object({
   distanceM: z.coerce.number().int().min(0).max(50000).optional().nullable(),
   rpe: z.coerce.number().min(0).max(10).optional().nullable(),
   notes: z.string().trim().max(400).optional().nullable(),
+  // Index into the linked planned_session.prescription.items array
+  // when this set was logged via a prescription row click. The session
+  // detail page uses this to paint a per-item ✓ check. Free-form logs
+  // (picker, "+ add movement") leave it null.
+  prescriptionItemIndex: z.coerce.number().int().min(0).max(500).optional().nullable(),
 });
 
 export async function addStrengthSet(
@@ -77,6 +82,7 @@ export async function addStrengthSet(
     distanceM: formData.get("distanceM") || undefined,
     rpe: formData.get("rpe") || undefined,
     notes: formData.get("notes") || undefined,
+    prescriptionItemIndex: formData.get("prescriptionItemIndex") ?? undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
 
@@ -107,6 +113,7 @@ export async function addStrengthSet(
     distance_m: parsed.data.distanceM ?? null,
     rpe: parsed.data.rpe ?? null,
     notes: parsed.data.notes ?? null,
+    prescription_item_index: parsed.data.prescriptionItemIndex ?? null,
   });
 
   if (error) return { error: error.message };
@@ -546,6 +553,7 @@ type SetInsert = {
   set_kind: "warmup" | "main" | "back_off" | "accessory" | "tendon";
   weight_kg: number | null;
   reps: number | null;
+  prescription_item_index: number | null;
 };
 
 const STRENGTH_KINDS: ReadonlyArray<SetInsert["set_kind"]> = [
@@ -612,7 +620,8 @@ export async function fillSessionFromPlan(
   let nextIndex = (existingRes.data ?? []).length;
   const inserts: SetInsert[] = [];
 
-  for (const item of items as PrescriptionItem[]) {
+  for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
+    const item = items[itemIdx] as PrescriptionItem;
     if (!STRENGTH_KINDS.includes(item.kind as SetInsert["set_kind"])) continue;
     const setKind = item.kind as SetInsert["set_kind"];
     const setCount = Math.max(1, item.sets ?? 1);
@@ -638,6 +647,7 @@ export async function fillSessionFromPlan(
         set_kind: setKind,
         weight_kg: weight,
         reps,
+        prescription_item_index: itemIdx,
       });
     }
     // Update the existing map so the same movement appearing twice in
