@@ -13,13 +13,13 @@ import {
 import { DeleteSessionButton } from "@/components/trash/DeleteSessionButton";
 import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
 import {
-  SessionLogClient,
   type LoggedSet,
   type LastSetHint,
   type PriorBest,
 } from "@/components/session/SessionLogClient";
+import { SessionWorkArea } from "@/components/session/SessionWorkArea";
+import { FinishSessionBar } from "@/components/session/FinishSessionBar";
 import { PostSessionSummary } from "@/components/session/PostSessionSummary";
-import { PrescriptionItemsList } from "@/components/session/PrescriptionItemsList";
 import { StravaAutofillBanner, type StravaAutofillMatch } from "@/components/session/StravaAutofillBanner";
 import { findMatchingStravaActivity } from "@/lib/integrations/strava/match";
 import { GRM_RECOMMEND_THRESHOLD, applyGrmToPercent, computeGrm, grmLabel } from "@/lib/engine/grm";
@@ -32,6 +32,10 @@ import { findBumpProposalForSession } from "@/lib/stats/bump-proposal";
 import { findPrRecalibrateProposals } from "@/lib/stats/pr-recalibrate";
 import { getLastSetLogForMovement, summariseSessionSets } from "@/lib/sessions/queries";
 import { suggestNextWeight } from "@/lib/progression/suggest-next";
+import {
+  matchPrescriptionItems,
+  countStrengthPrescriptionItems,
+} from "@/lib/sessions/prescription-progress";
 import type { ProgressionHint } from "@/components/session/PostSessionSummary";
 import type { Prescription } from "@hta/db";
 
@@ -72,7 +76,7 @@ export default async function SessionDetailPage({
   const { data: setsRaw } = await supabase
     .from("set_logs")
     .select(
-      "id, set_index, set_kind, weight_kg, reps, duration_sec, distance_m, rpe, notes, movement:movements(id, slug, display_name, primary_region)",
+      "id, set_index, set_kind, weight_kg, reps, duration_sec, distance_m, rpe, notes, prescription_item_index, movement:movements(id, slug, display_name, primary_region)",
     )
     .eq("session_id", id)
     .order("set_index", { ascending: true });
@@ -332,6 +336,72 @@ export default async function SessionDetailPage({
       };
     }
   }
+
+  // feat/logging-works — which prescription items have been satisfied
+  // by ≥1 logged set, and the canonical set_logs.id for each (so the
+  // prescription row can scroll the user to the right "This session"
+  // entry). Lifts the new explicit `prescription_item_index` link
+  // first, then falls back to movement-based matching for sets logged
+  // before the column existed.
+  const loggedForMatch = (setsRaw ?? []).map((s) => {
+    const m = Array.isArray(s.movement) ? s.movement[0] : s.movement;
+    return {
+      id: s.id as string,
+      movementId: (m?.id as string | undefined) ?? "",
+      setKind: s.set_kind as string,
+      prescriptionItemIndex: (s.prescription_item_index as number | null) ?? null,
+    };
+  });
+  const loggedItemIndexSet = matchPrescriptionItems(
+    plannedPrescription,
+    loggedForMatch.map((s) => ({
+      movementId: s.movementId,
+      setKind: s.setKind,
+      prescriptionItemIndex: s.prescriptionItemIndex,
+    })),
+  );
+  const loggedItemIndices = Array.from(loggedItemIndexSet).sort((a, b) => a - b);
+  const loggedSetIdByItemIndex: Record<number, string> = {};
+  // Pick the FIRST logged set per matched index (the one the user
+  // scrolls back to). Explicit links win; movement-fallback fills the
+  // rest, mirroring `matchPrescriptionItems` so the two stay aligned.
+  if (plannedPrescription) {
+    const claimed = new Set<number>();
+    for (const s of loggedForMatch) {
+      if (
+        s.prescriptionItemIndex != null &&
+        s.prescriptionItemIndex >= 0 &&
+        s.prescriptionItemIndex < (plannedPrescription.items?.length ?? 0) &&
+        !loggedSetIdByItemIndex[s.prescriptionItemIndex]
+      ) {
+        loggedSetIdByItemIndex[s.prescriptionItemIndex] = s.id;
+        claimed.add(s.prescriptionItemIndex);
+      }
+    }
+    for (const s of loggedForMatch) {
+      if (s.prescriptionItemIndex != null) continue;
+      if (s.setKind === "warmup") continue;
+      for (let i = 0; i < (plannedPrescription.items?.length ?? 0); i++) {
+        if (claimed.has(i)) continue;
+        const it = plannedPrescription.items[i]!;
+        if (
+          it.movementId === s.movementId &&
+          (it.kind === "warmup" ||
+            it.kind === "main" ||
+            it.kind === "back_off" ||
+            it.kind === "accessory" ||
+            it.kind === "tendon" ||
+            it.kind === "power_potentiation")
+        ) {
+          claimed.add(i);
+          loggedSetIdByItemIndex[i] = s.id;
+          break;
+        }
+      }
+    }
+  }
+  const strengthItemCount = countStrengthPrescriptionItems(plannedPrescription);
+  const unloggedStrengthCount = Math.max(0, strengthItemCount - loggedItemIndexSet.size);
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
@@ -684,26 +754,25 @@ export default async function SessionDetailPage({
         </section>
       )}
 
-      {!isComplete && planned && plannedPrescription && plannedPrescription.items.length > 0 && (
-        <PrescriptionItemsList
-          plannedSessionId={planned.id as string}
-          initialPrescription={plannedPrescription}
-          swapAction={swapPrescriptionItem}
-        />
-      )}
-
-      <SessionLogClient
+      <SessionWorkArea
         sessionId={id}
         isComplete={isComplete}
+        performedAt={session.performed_at as string}
+        durationMin={(session.duration_min as number | null) ?? null}
+        sessionRpe={(session.session_rpe as number | string | null) ?? null}
         sets={sets}
         tmBySlug={tmBySlug}
         addStrengthSet={addStrengthSet}
         fillFromPlan={fillSessionFromPlan}
-        hasPlan={Boolean(plannedPrescription && plannedPrescription.items.length > 0)}
-        lastSetHints={lastSetHints}
-        priorBests={priorBests}
         hapticsEnabled={hapticsEnabled}
         timerSoundEnabled={timerSoundEnabled}
+        lastSetHints={lastSetHints}
+        priorBests={priorBests}
+        plannedSessionId={(planned?.id as string | undefined) ?? null}
+        prescription={plannedPrescription}
+        swapAction={swapPrescriptionItem}
+        loggedItemIndices={loggedItemIndices}
+        loggedSetIdByItemIndex={loggedSetIdByItemIndex}
       />
 
       {(cardio && cardio.length > 0) || !isComplete ? (
@@ -769,39 +838,27 @@ export default async function SessionDetailPage({
       ) : null}
 
       {!isComplete && (() => {
-        // Phase 3 E2 — sticky CTA only "arms" once every prescription
-        // strength item has at least one set logged for the matching
-        // movement. Before that, it renders dimmed in normal flow so
-        // the user doesn't accidentally finish a partial session.
-        const STRENGTH_ITEM_KINDS = new Set([
-          "warmup", "main", "back_off", "accessory", "tendon", "power_potentiation",
-        ]);
-        const requiredMovementIds = new Set(
-          (plannedPrescription?.items ?? [])
-            .filter((it) => STRENGTH_ITEM_KINDS.has(it.kind))
-            .map((it) => it.movementId),
-        );
-        const loggedMovementIds = new Set(sets.map((s) => s.movement.id));
-        const allLogged =
-          requiredMovementIds.size === 0 ||
-          Array.from(requiredMovementIds).every((mid) => loggedMovementIds.has(mid));
-        const armed = allLogged && sets.length > 0;
+        // feat/logging-works — relaxed finish gate. The user can finish
+        // the session as soon as ≥1 set has been logged; partial
+        // sessions are explicitly allowed (call-outs flagged the strict
+        // gate as a P1 dead-end). If some prescribed items are still
+        // unlogged we surface a count and a "Finish anyway" subtitle so
+        // the choice is intentional, not accidental.
+        const canFinish = sets.length > 0;
+        const partial = canFinish && unloggedStrengthCount > 0;
+        const subtitle = !canFinish
+          ? "Log at least 1 set to finish."
+          : partial
+            ? `${unloggedStrengthCount} of ${strengthItemCount} planned sets aren't logged. You can still finish; the session will be marked complete with what you logged. · Finish anyway`
+            : null;
         return (
-          <div
-            data-testid="finish-stickybar"
-            data-armed={armed ? "true" : "false"}
-            className={`cp-stickybar${armed ? "" : " cp-stickybar--dim"}`}
-            style={{ marginInline: -16 }}
-          >
-            <Link
-              href={`/app/sessions/${id}/complete`}
-              className="cp-btn primary big"
-              style={{ flex: 1 }}
-              aria-disabled={armed ? undefined : "true"}
-            >
-              {armed ? "Finish session →" : "Log every item to finish →"}
-            </Link>
-          </div>
+          <FinishSessionBar
+            sessionId={id}
+            variant="bottom"
+            disabled={!canFinish}
+            subtitle={subtitle}
+            testId="finish-stickybar"
+          />
         );
       })()}
 

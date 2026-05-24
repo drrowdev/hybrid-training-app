@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useFormStatus } from "react-dom";
 import { MovementPicker, type MovementSearchResult } from "@/components/movement-picker";
 import { bestEstimateOneRm } from "@/lib/engine/one-rm";
@@ -52,6 +53,23 @@ export type PriorBest = {
   bestE1rm: number | null;
 };
 
+/**
+ * Driven by the parent when the user taps a prescription row. Each new
+ * tap MUST bump `token` even if the underlying values match the
+ * previous tap so the form re-applies the prefill (a stale tap on the
+ * same item still feels responsive). `prescriptionItemIndex` is
+ * threaded through `addStrengthSet` so the resulting set_logs row
+ * carries the canonical link to the planned item.
+ */
+export type PrescriptionPrefillRequest = {
+  token: number;
+  movement: ActiveMovement;
+  weightKg: number;
+  reps: number;
+  setKind: "warmup" | "main" | "back_off" | "accessory" | "tendon";
+  prescriptionItemIndex: number;
+};
+
 type SetAction = (fd: FormData) => Promise<{ error?: string; ok?: true }>;
 type FillAction = (
   fd: FormData,
@@ -81,6 +99,7 @@ export function SessionLogClient({
   priorBests,
   hapticsEnabled = true,
   timerSoundEnabled = true,
+  prefillRequest = null,
 }: {
   sessionId: string;
   isComplete: boolean;
@@ -99,6 +118,8 @@ export function SessionLogClient({
   hapticsEnabled?: boolean;
   /** Phase 3 C2 — tone at rest-timer zero. */
   timerSoundEnabled?: boolean;
+  /** feat/logging-works — prefill driven by a prescription row tap. */
+  prefillRequest?: PrescriptionPrefillRequest | null;
 }) {
   // Distinct movements logged so far in order of first appearance.
   const movementsInSession = useMemo(() => {
@@ -127,6 +148,17 @@ export function SessionLogClient({
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sync local active with new server data after a set is logged
     if (!active && defaultActive) setActive(defaultActive);
   }, [active, defaultActive]);
+
+  // Form ref for scroll-into-view when a prescription row prefills. The
+  // rest-timer wraps this whole component so we scroll the entry form,
+  // not the page top.
+  const entryFormRef = useRef<HTMLFormElement | null>(null);
+
+  // Pending prescription-item link applied to the next submitted set.
+  // Cleared after submit (or when the user manually switches movement).
+  const [pendingPrescriptionItemIndex, setPendingPrescriptionItemIndex] = useState<number | null>(
+    null,
+  );
 
   const lastSetForActive = useMemo(() => {
     if (!active) return null;
@@ -173,6 +205,32 @@ export function SessionLogClient({
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [active, sets]);
 
+  // Apply a prescription-row prefill request. Keyed on `token` so a
+  // repeat tap on the same row still re-snaps the form. The setKind
+  // here is the prescription's classification — the user can still
+  // tweak the pill row before logging.
+  useEffect(() => {
+    if (!prefillRequest) return;
+    /* eslint-disable react-hooks/set-state-in-effect -- prefill is a deliberate one-shot reset triggered by parent */
+    setActive(prefillRequest.movement);
+    setWeight(prefillRequest.weightKg);
+    setReps(prefillRequest.reps);
+    setRpe(null);
+    setSetKind(prefillRequest.setKind);
+    setShowPicker(false);
+    setPendingPrescriptionItemIndex(prefillRequest.prescriptionItemIndex);
+    setError(null);
+    /* eslint-enable react-hooks/set-state-in-effect */
+    // Defer the scroll until React has flushed the state update so the
+    // form is mounted and visible.
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        entryFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only fires on token change
+  }, [prefillRequest?.token]);
+
   const tmKg = active ? tmBySlug[active.slug] : undefined;
   const tmPct = tmKg && weight > 0 ? Math.round((weight / tmKg) * 100) : null;
 
@@ -189,6 +247,8 @@ export function SessionLogClient({
     setWeight(0);
     setReps(5);
     setRpe(null);
+    // Free-form movement add isn't tied to any prescription item.
+    setPendingPrescriptionItemIndex(null);
   };
 
   const setsByMovement = useMemo(() => {
@@ -213,6 +273,9 @@ export function SessionLogClient({
     fd.set("weightKg", String(weight));
     fd.set("reps", String(reps));
     if (rpe != null) fd.set("rpe", String(rpe));
+    if (pendingPrescriptionItemIndex != null) {
+      fd.set("prescriptionItemIndex", String(pendingPrescriptionItemIndex));
+    }
 
     // Client-side PR detection BEFORE we hit the server so the badge
     // can light up the instant the form submits. The server-side
@@ -236,6 +299,10 @@ export function SessionLogClient({
     // Phase 3 C1 — haptic tick on a committed set (server returned ok).
     hapticTick(hapticsEnabled);
     setRpe(null);
+    // Each prescription row tap is a one-shot — clear the link so the
+    // user's next free-form set on the same movement doesn't double-
+    // mark the prescription item as done.
+    setPendingPrescriptionItemIndex(null);
     // Kick the rest timer based on the set kind (B4).
     const secs = restSecondsForKind(setKind);
     if (secs > 0) {
@@ -320,6 +387,8 @@ export function SessionLogClient({
       {!isComplete && active && (
         <form
           action={submit}
+          ref={entryFormRef}
+          data-testid="session-log-form"
           className="cp-card"
           style={{ padding: 20, display: "grid", gap: 14 }}
         >
@@ -529,9 +598,32 @@ export function SessionLogClient({
                           <td style={{ padding: "6px 8px", color: "var(--cp-text-muted)" }}>
                             {s.set_kind.replace("_", " ")}
                           </td>
-                          <td className="mono" style={{ padding: "6px 0 6px 8px", textAlign: "right", color: "var(--cp-text-muted)" }}>
+                          <td className="mono" style={{ padding: "6px 8px", textAlign: "right", color: "var(--cp-text-muted)" }}>
                             {s.rpe ? `@ ${s.rpe}` : ""}
                           </td>
+                          {!isComplete && (
+                            <td style={{ padding: "6px 0 6px 8px", textAlign: "right", width: 36 }}>
+                              <Link
+                                href={`/app/sessions/${sessionId}/sets/${s.id}/edit`}
+                                data-testid={`logged-set-edit-${s.id}`}
+                                aria-label="Edit set"
+                                title="Edit set"
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  width: 28,
+                                  height: 28,
+                                  borderRadius: 6,
+                                  color: "var(--cp-text-muted)",
+                                  fontSize: 13,
+                                  textDecoration: "none",
+                                }}
+                              >
+                                ✎
+                              </Link>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
