@@ -126,7 +126,7 @@ test.describe("@desktop program run", () => {
       page.getByRole("heading", { name: /this session \(2 sets?\)/i }),
     ).toBeVisible({ timeout: 30_000 });
 
-    await page.getByRole("link", { name: /finish session/i }).click();
+    await page.getByTestId("finish-stickybar").getByRole("link", { name: /finish session/i }).click();
     await page.waitForURL(`**/app/sessions/${sessionId}/complete`, { timeout: 30_000 });
     await page.getByRole("button", { name: /complete session/i }).click();
     await page.waitForURL(`**/app/sessions/${sessionId}`, { timeout: 30_000 });
@@ -398,7 +398,7 @@ test.describe("@desktop program run", () => {
     await expect(
       page.getByRole("heading", { name: /this session \(1 sets?\)/i }),
     ).toBeVisible({ timeout: 30_000 });
-    await page.getByRole("link", { name: /finish session/i }).click();
+    await page.getByTestId("finish-stickybar").getByRole("link", { name: /finish session/i }).click();
     await page.waitForURL(`**/app/sessions/${sessionId}/complete`, { timeout: 30_000 });
     await page.getByRole("button", { name: /complete session/i }).click();
     await page.waitForURL(`**/app/sessions/${sessionId}`, { timeout: 30_000 });

@@ -1,20 +1,26 @@
 "use client";
 
 /**
- * Prescription items list with mid-workout swap affordance (Phase 2 A1 + A3).
+ * Prescription items list with mid-workout swap affordance (Phase 2 A1 + A3)
+ * AND one-tap "log against this item" prefill (feat/logging-works).
  *
- * Rendered on the session detail page when the session is in progress
- * AND linked to a planned_session. Each strength prescription item gets
- * a "Swap exercise" button that opens an inline dropdown of
- * pattern-compatible alternatives fetched from
- * ``/api/movements/swap-candidates``.
+ * Each strength prescription row is now an interactive button: tap to
+ * prefill the linked `<SessionLogClient>` quick-entry form with the
+ * item's movement / weight / reps / kind so the user can commit a
+ * matching set in one tap. Rows whose item has already been logged
+ * show a small ✓ chip (--cp-success) instead of the chevron and
+ * scroll the user to the logged-set row when tapped (no prefill).
+ *
+ * Above the list a slim progress chip — "5 of 9 sets logged" — shows
+ * how much of the prescription has been satisfied.
+ *
+ * The Swap affordance is unchanged; tapping "Swap" still opens the
+ * candidate picker and does NOT trigger prefill (the click is
+ * intercepted via stopPropagation).
  *
  * Optimistic update: as soon as the user picks a replacement we paint
  * the new name immediately and call the server action in the background.
  * Failures roll back and surface an error (red ring around the item).
- *
- * A swapped item shows a "Swapped" badge whose ``title`` attribute
- * reveals the original movement on hover/tap.
  *
  * Phase 3 D1 — on viewports ≤640px the list collapses into a swipeable
  * single-item carousel with dot indicators. Swipe horizontally to
@@ -45,14 +51,34 @@ const STRENGTH_KINDS = new Set([
   "power_potentiation",
 ]);
 
+/**
+ * Public callback the session work area uses to react to a row tap.
+ * `loggedSetId` is the canonical id of the satisfying set when the row
+ * is already done (so the caller can scroll to it); null otherwise.
+ */
+export type PrescriptionItemTapHandler = (args: {
+  index: number;
+  item: PrescriptionItem;
+  loggedSetId: string | null;
+}) => void;
+
 export function PrescriptionItemsList({
   plannedSessionId,
   initialPrescription,
   swapAction,
+  loggedItemIndices,
+  loggedSetIdByItemIndex,
+  onItemTap,
 }: {
   plannedSessionId: string;
   initialPrescription: Prescription;
   swapAction: SwapAction;
+  /** Item indices that already have ≥1 matching logged set. */
+  loggedItemIndices?: ReadonlySet<number>;
+  /** For "done" rows, the canonical id of the satisfying logged set (so the caller can scroll to it). */
+  loggedSetIdByItemIndex?: Readonly<Record<number, string>>;
+  /** Fires on row tap. Receives logged-set id when the row is already done. */
+  onItemTap?: PrescriptionItemTapHandler;
 }) {
   const [prescription, setPrescription] = useState(initialPrescription);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
@@ -61,6 +87,12 @@ export function PrescriptionItemsList({
   const [, startTransition] = useTransition();
 
   if (!prescription.items || prescription.items.length === 0) return null;
+
+  const strengthItemCount = prescription.items.filter((it) => STRENGTH_KINDS.has(it.kind)).length;
+  const loggedCount = loggedItemIndices ? loggedItemIndices.size : 0;
+  const cappedLogged = Math.min(loggedCount, strengthItemCount);
+  const progressPct =
+    strengthItemCount > 0 ? Math.round((cappedLogged / strengthItemCount) * 100) : 0;
 
   const onPick = async (index: number, cand: Candidate) => {
     const prev = prescription;
@@ -120,6 +152,14 @@ export function PrescriptionItemsList({
   const setReason = (index: number, value: string) =>
     setReasonByIndex((m) => ({ ...m, [index]: value.slice(0, 280) }));
 
+  const handleRowTap = (index: number) => {
+    if (!onItemTap) return;
+    const item = prescription.items[index];
+    if (!item) return;
+    const loggedSetId = loggedSetIdByItemIndex?.[index] ?? null;
+    onItemTap({ index, item, loggedSetId });
+  };
+
   return (
     <section
       data-testid="prescription-items"
@@ -132,6 +172,7 @@ export function PrescriptionItemsList({
           alignItems: "baseline",
           justifyContent: "space-between",
           gap: 8,
+          flexWrap: "wrap",
         }}
       >
         <div
@@ -145,15 +186,58 @@ export function PrescriptionItemsList({
         >
           Today&apos;s prescription
         </div>
+        {strengthItemCount > 0 && (
+          <div
+            data-testid="prescription-progress-chip"
+            data-logged={cappedLogged}
+            data-total={strengthItemCount}
+            style={{
+              fontSize: 11,
+              color: "var(--cp-text-muted)",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <span className="mono" style={{ color: "var(--cp-text)" }}>
+              {cappedLogged} of {strengthItemCount}
+            </span>{" "}
+            <span>sets logged</span>
+            <span
+              aria-hidden="true"
+              style={{
+                width: 64,
+                height: 4,
+                borderRadius: 999,
+                background: "var(--cp-surface-soft)",
+                overflow: "hidden",
+                display: "inline-block",
+              }}
+            >
+              <span
+                style={{
+                  display: "block",
+                  width: `${progressPct}%`,
+                  height: "100%",
+                  background: "var(--cp-accent)",
+                  transition: "width 180ms ease-out",
+                }}
+              />
+            </span>
+          </div>
+        )}
       </div>
       <PrescriptionItemsCarousel
         items={prescription.items}
         openIndex={openIndex}
         errorByIndex={errorByIndex}
         reasonByIndex={reasonByIndex}
+        loggedItemIndices={loggedItemIndices}
         onToggle={(i) => setOpenIndex(openIndex === i ? null : i)}
         onPick={onPick}
         onReasonChange={setReason}
+        onRowTap={handleRowTap}
+        tapEnabled={Boolean(onItemTap)}
       />
     </section>
   );
@@ -174,17 +258,23 @@ function PrescriptionItemsCarousel({
   openIndex,
   errorByIndex,
   reasonByIndex,
+  loggedItemIndices,
   onToggle,
   onPick,
   onReasonChange,
+  onRowTap,
+  tapEnabled,
 }: {
   items: PrescriptionItem[];
   openIndex: number | null;
   errorByIndex: Record<number, string>;
   reasonByIndex: Record<number, string>;
+  loggedItemIndices?: ReadonlySet<number>;
   onToggle: (i: number) => void;
   onPick: (i: number, c: Candidate) => void;
   onReasonChange: (i: number, value: string) => void;
+  onRowTap: (i: number) => void;
+  tapEnabled: boolean;
 }) {
   const [isMobile, setIsMobile] = useState(false);
   const [active, setActive] = useState(0);
@@ -215,9 +305,12 @@ function PrescriptionItemsCarousel({
             open={openIndex === index}
             error={errorByIndex[index] ?? null}
             reason={reasonByIndex[index] ?? ""}
+            logged={loggedItemIndices?.has(index) ?? false}
+            tapEnabled={tapEnabled}
             onReasonChange={(v) => onReasonChange(index, v)}
             onToggle={() => onToggle(index)}
             onPick={(c) => onPick(index, c)}
+            onRowTap={() => onRowTap(index)}
           />
         ))}
       </ul>
@@ -287,9 +380,12 @@ function PrescriptionItemsCarousel({
           open={openIndex === active}
           error={errorByIndex[active] ?? null}
           reason={reasonByIndex[active] ?? ""}
+          logged={loggedItemIndices?.has(active) ?? false}
+          tapEnabled={tapEnabled}
           onReasonChange={(v) => onReasonChange(active, v)}
           onToggle={() => onToggle(active)}
           onPick={(c) => onPick(active, c)}
+          onRowTap={() => onRowTap(active)}
         />
       </ul>
       <div
@@ -314,92 +410,159 @@ function PrescriptionRow({
   open,
   error,
   reason,
+  logged,
+  tapEnabled,
   onReasonChange,
   onToggle,
   onPick,
+  onRowTap,
 }: {
   item: PrescriptionItem;
   index: number;
   open: boolean;
   error: string | null;
   reason: string;
+  logged: boolean;
+  tapEnabled: boolean;
   onReasonChange: (value: string) => void;
   onToggle: () => void;
   onPick: (c: Candidate) => void;
+  onRowTap: () => void;
 }) {
   const swapped = isSwapped(item);
   const originalName = originalMovementName(item);
   const swappable = STRENGTH_KINDS.has(item.kind) || item.kind.startsWith("cardio_");
+  // Cardio items aren't logged from this list (they have their own
+  // form), so don't pretend they're tappable for prefill.
+  const rowTappable = tapEnabled && STRENGTH_KINDS.has(item.kind);
+
+  // The interactive surface is a transparent button that overlays the
+  // row content. We stop click propagation on the inner Swap button so
+  // the user can swap without accidentally triggering prefill.
+  const handleSwapClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggle();
+  };
 
   return (
     <li
       data-testid={`prescription-item-${index}`}
       data-swapped={swapped ? "true" : "false"}
+      data-logged={logged ? "true" : "false"}
       style={{
-        border: `1px solid ${error ? "var(--cp-danger)" : "var(--cp-border)"}`,
+        border: `1px solid ${error ? "var(--cp-danger)" : logged ? "color-mix(in oklab, var(--cp-success) 50%, var(--cp-border))" : "var(--cp-border)"}`,
         borderRadius: 10,
-        padding: "8px 10px",
-        background: "var(--cp-surface-soft)",
+        padding: 0,
+        background: logged
+          ? "color-mix(in oklab, var(--cp-success) 7%, var(--cp-surface-soft))"
+          : "var(--cp-surface-soft)",
         display: "grid",
-        gap: 8,
+        gap: 0,
+        position: "relative",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 13, fontWeight: 600, flex: "1 1 auto" }}>
-          {item.movementName ?? item.movementSlug ?? "Movement"}
-        </span>
-        {swapped && (
+      <button
+        type="button"
+        onClick={rowTappable ? onRowTap : undefined}
+        disabled={!rowTappable}
+        data-testid={`prescription-item-tap-${index}`}
+        aria-label={
+          logged
+            ? `Show logged set for ${item.movementName ?? item.movementSlug ?? "this movement"}`
+            : `Log set for ${item.movementName ?? item.movementSlug ?? "this movement"}`
+        }
+        style={{
+          all: "unset",
+          display: "block",
+          padding: "8px 10px",
+          cursor: rowTappable ? "pointer" : "default",
+          borderRadius: 10,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {logged && (
+            <span
+              data-testid={`prescription-item-check-${index}`}
+              aria-label="Logged"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 18,
+                height: 18,
+                borderRadius: 999,
+                background: "var(--cp-success)",
+                color: "var(--cp-accent-fg, #fff)",
+                fontSize: 11,
+                fontWeight: 700,
+                lineHeight: 1,
+                flex: "0 0 auto",
+              }}
+            >
+              ✓
+            </span>
+          )}
           <span
-            data-testid={`prescription-item-swapped-${index}`}
-            title={originalName ? `Originally: ${originalName}` : "Swapped"}
             style={{
-              fontSize: 10,
-              padding: "2px 6px",
-              borderRadius: 999,
-              background: "var(--cp-accent-soft)",
-              color: "var(--cp-accent)",
+              fontSize: 13,
               fontWeight: 600,
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
+              flex: "1 1 auto",
+              color: logged ? "var(--cp-text-muted)" : "var(--cp-text)",
+              textDecoration: logged ? "line-through" : "none",
             }}
           >
-            Swapped
+            {item.movementName ?? item.movementSlug ?? "Movement"}
           </span>
-        )}
-        <span
-          className="mono"
-          style={{ fontSize: 12, color: "var(--cp-text-muted)" }}
-        >
-          {formatItemBrief(item)}
-        </span>
-        {swappable && (
-          <button
-            type="button"
-            onClick={onToggle}
-            data-testid={`prescription-item-swap-button-${index}`}
-            style={{
-              fontSize: 11,
-              padding: "4px 8px",
-              borderRadius: 999,
-              border: "1px solid var(--cp-border)",
-              background: "var(--cp-surface)",
-              color: "var(--cp-text-muted)",
-              cursor: "pointer",
-              minHeight: 28,
-            }}
-            aria-expanded={open}
-          >
-            {open ? "× cancel" : "Swap"}
-          </button>
-        )}
-      </div>
+          {swapped && (
+            <span
+              data-testid={`prescription-item-swapped-${index}`}
+              title={originalName ? `Originally: ${originalName}` : "Swapped"}
+              style={{
+                fontSize: 10,
+                padding: "2px 6px",
+                borderRadius: 999,
+                background: "var(--cp-accent-soft)",
+                color: "var(--cp-accent)",
+                fontWeight: 600,
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+              }}
+            >
+              Swapped
+            </span>
+          )}
+          <span className="mono" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+            {formatItemBrief(item)}
+          </span>
+          {swappable && (
+            <button
+              type="button"
+              onClick={handleSwapClick}
+              data-testid={`prescription-item-swap-button-${index}`}
+              style={{
+                fontSize: 11,
+                padding: "4px 8px",
+                borderRadius: 999,
+                border: "1px solid var(--cp-border)",
+                background: "var(--cp-surface)",
+                color: "var(--cp-text-muted)",
+                cursor: "pointer",
+                minHeight: 28,
+              }}
+              aria-expanded={open}
+            >
+              {open ? "× cancel" : "Swap"}
+            </button>
+          )}
+        </div>
+      </button>
       {error && (
-        <div role="alert" style={{ fontSize: 12, color: "var(--cp-danger)" }}>
+        <div role="alert" style={{ fontSize: 12, color: "var(--cp-danger)", padding: "0 10px 8px" }}>
           {error}
         </div>
       )}
       {open && (
-        <>
+        <div style={{ padding: "0 10px 10px", display: "grid", gap: 8 }}>
           <label
             style={{
               fontSize: 11,
@@ -436,7 +599,7 @@ function PrescriptionRow({
             onPick={onPick}
             onClose={onToggle}
           />
-        </>
+        </div>
       )}
     </li>
   );

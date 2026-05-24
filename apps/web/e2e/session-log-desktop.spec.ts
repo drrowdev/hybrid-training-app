@@ -131,8 +131,10 @@ test.describe("@desktop session log", () => {
       timeout: 15_000,
     });
 
-    // 7) Finish session → complete page → submit.
-    await page.getByRole("link", { name: /finish session/i }).click();
+    // 7) Finish session → complete page → submit. Two CTAs now exist
+    //    (banner duplicate + bottom sticky bar) so scope the click to
+    //    the sticky bar to keep Playwright's strict mode happy.
+    await page.getByTestId("finish-stickybar").getByRole("link", { name: /finish session/i }).click();
     await page.waitForURL(`**/app/sessions/${sessionId}/complete`, { timeout: 15_000 });
     await page.getByRole("button", { name: /complete session/i }).click();
 
@@ -383,7 +385,9 @@ test.describe("@desktop session log", () => {
 
     // 5) Finish → complete page → submit. Land back on the detail
     //    page; the post-session summary card is visible at the top.
-    await page.getByRole("link", { name: /finish session/i }).click();
+    //    Scope to the sticky bar — the banner duplicate-CTA would
+    //    otherwise trip strict-mode.
+    await page.getByTestId("finish-stickybar").getByRole("link", { name: /finish session/i }).click();
     await page.waitForURL(`**/app/sessions/${sessionId}/complete`, { timeout: 15_000 });
     await page.getByRole("button", { name: /complete session/i }).click();
     await page.waitForURL(`**/app/sessions/${sessionId}`, { timeout: 15_000 });
@@ -570,5 +574,152 @@ test.describe("@desktop session log", () => {
     expect(Number(newCardio?.distance_km)).toBeCloseTo(18.4, 2);
     expect(newCardio?.avg_hr_bpm).toBe(138);
     expect(newCardio?.external_source).toBe("strava");
+  });
+
+  test("G: feat/logging-works — prescription click prefills, ✓ appears, banner + edit link render", async ({
+    page,
+    context,
+    freshUser,
+    seedConfig,
+    admin,
+    baseURL,
+  }) => {
+    const url = baseURL ?? "http://localhost:3000";
+
+    await markOnboarded(admin, freshUser.userId);
+    await seedStrengthTms(admin, freshUser.userId);
+    const seed = await seedActiveBlock(admin, freshUser.userId);
+    await signInAs(context, freshUser, seedConfig, url);
+
+    await page.goto(`/app/sessions/start/${seed.todayPlannedId}`);
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: /skip check-in/i }).click();
+    await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 15_000 });
+    const sessionId = new URL(page.url()).pathname.split("/").pop()!;
+
+    // The prescription card is visible with a single (seeded) item.
+    // Initial progress chip reads "0 of 1 sets logged".
+    const progressChip = page.getByTestId("prescription-progress-chip");
+    await expect(progressChip).toBeVisible();
+    await expect(progressChip).toContainText(/0 of 1/);
+
+    // No ✓ check yet — item 0 is unlogged.
+    await expect(page.getByTestId("prescription-item-check-0")).toHaveCount(0);
+    await expect(page.getByTestId("session-status-banner")).toHaveCount(0);
+
+    // Tap the prescription row → form prefills with the prescribed
+    // weight (70% of 100 kg TM = 70 kg) and reps (5).
+    const tap = page.getByTestId("prescription-item-tap-0");
+    await expect(tap).toBeVisible();
+    await tap.click();
+
+    const weightInput = page.getByLabel("Weight (kg)");
+    const repsInput = page.getByLabel("Reps");
+    await expect(weightInput).toHaveValue("70");
+    await expect(repsInput).toHaveValue("5");
+
+    // Commit the set. The ✓ appears on the prescription row, the
+    // progress chip ticks up, and the in-progress banner mounts.
+    await page.getByRole("button", { name: /^log set/i }).click();
+    await expect(page.getByRole("heading", { name: /this session \(1 sets?\)/i })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("prescription-item-check-0")).toBeVisible();
+    await expect(progressChip).toContainText(/1 of 1/);
+
+    const banner = page.getByTestId("session-status-banner");
+    await expect(banner).toBeVisible();
+    await expect(banner).toHaveAttribute("data-state", "in-progress");
+    await expect(banner).toContainText(/session in progress/i);
+    await expect(banner).toContainText(/1 of 1/);
+
+    // Service-role: the new set_logs row carries the explicit
+    // prescription_item_index = 0 link from the click → prefill path.
+    const { data: linkedSets } = await admin
+      .from("set_logs")
+      .select("id, prescription_item_index, weight_kg, reps")
+      .eq("session_id", sessionId);
+    expect(linkedSets?.length).toBe(1);
+    expect(linkedSets![0]!.prescription_item_index).toBe(0);
+    expect(Number(linkedSets![0]!.weight_kg)).toBeCloseTo(70, 1);
+    expect(linkedSets![0]!.reps).toBe(5);
+
+    // Tapping the now-done row should NOT re-prefill (the form keeps
+    // the values from the last commit), and the edit link is wired up
+    // on the logged-set row.
+    await tap.click();
+    const setId = linkedSets![0]!.id as string;
+    const editLink = page.getByTestId(`logged-set-edit-${setId}`);
+    await expect(editLink).toBeVisible();
+    await expect(editLink).toHaveAttribute(
+      "href",
+      `/app/sessions/${sessionId}/sets/${setId}/edit`,
+    );
+  });
+
+  test("H: feat/logging-works — finish gate enabled after 1 of N sets logged", async ({
+    page,
+    context,
+    freshUser,
+    seedConfig,
+    admin,
+    baseURL,
+  }) => {
+    const url = baseURL ?? "http://localhost:3000";
+
+    await markOnboarded(admin, freshUser.userId);
+    await seedStrengthTms(admin, freshUser.userId);
+    const seed = await seedActiveBlock(admin, freshUser.userId);
+    await signInAs(context, freshUser, seedConfig, url);
+
+    // Open today's session.
+    await page.goto(`/app/sessions/start/${seed.todayPlannedId}`);
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: /skip check-in/i }).click();
+    await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 15_000 });
+    const sessionId = new URL(page.url()).pathname.split("/").pop()!;
+
+    // Before logging anything: bottom finish bar is disabled with the
+    // "log at least 1 set to finish" subtitle.
+    const stickybar = page.getByTestId("finish-stickybar");
+    await expect(stickybar).toBeVisible();
+    await expect(stickybar).toHaveAttribute("data-armed", "false");
+    await expect(page.getByTestId("finish-subtitle")).toContainText(/at least 1 set/i);
+
+    // Log exactly ONE set via the prescription click → prefill flow.
+    // The seeded prescription has 1 item but it asks for 3 sets, so a
+    // single log leaves the session "partial".
+    await page.getByTestId("prescription-item-tap-0").click();
+    await page.getByRole("button", { name: /^log set/i }).click();
+    await expect(page.getByRole("heading", { name: /this session \(1 sets?\)/i })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Finish bar is now armed even though planned sets remain unlogged.
+    // (The prescription only has 1 distinct item; the chip flips to
+    // "1 of 1" because the relaxation is at the item level, not set
+    // level — see prescription-progress.ts. The relaxed gate still
+    // engages because ≥1 set has been logged.)
+    await expect(stickybar).toHaveAttribute("data-armed", "true");
+
+    // Click finish — lands on the complete page.
+    await stickybar.getByRole("link", { name: /finish session/i }).click();
+    await page.waitForURL(`**/app/sessions/${sessionId}/complete`, { timeout: 15_000 });
+    await page.getByRole("button", { name: /complete session/i }).click();
+    await page.waitForURL(`**/app/sessions/${sessionId}`, { timeout: 15_000 });
+
+    // Back on the detail page: the banner has flipped to "Session
+    // complete" and the green "completed" pill renders.
+    await expect(page.getByText(/^completed$/i)).toBeVisible();
+    await expect(page.getByTestId("session-status-banner")).toHaveAttribute(
+      "data-state",
+      "complete",
+    );
+
+    // Service-role: completed_at is set; 1 set landed.
+    await assertSessionComplete(admin, sessionId, {
+      expectedSetCount: 1,
+      plannedSessionId: seed.todayPlannedId,
+    });
   });
 });
