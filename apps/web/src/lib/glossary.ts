@@ -257,6 +257,12 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     body:
       "When an active limitation overlaps a movement or muscle, the engine caps the load — and may swap or skip. Cap scales with severity (mild ~80%, moderate ~60%, severe = skip). Lets you keep training around an issue.",
   },
+  tendons_joints_integrated: {
+    title: "Tendons & joints — integrated",
+    body:
+      "Tendon work lives inside every block, not as a separate day. Heavy-slow-resistance tempo on main lifts and short isometric holds (30–45 s) for vulnerable areas. Tendons adapt to load + time-under-tension, not extra sessions.",
+    citation: "Baar 2017; Kongsgaard 2009",
+  },
 };
 
 /**
