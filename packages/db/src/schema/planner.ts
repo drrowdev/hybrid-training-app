@@ -9,7 +9,9 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   date,
+  index,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   smallint,
@@ -260,6 +262,26 @@ export const plannedSessions = pgTable(
       onDelete: "set null",
     }),
     skippedAt: timestamp("skipped_at", { withTimezone: true }),
+    /**
+     * Phase 5 — modality classifier output. One of
+     * pure_strength / pure_hypertrophy / pure_z2_aerobic / pure_hiit /
+     * mixed_modal / skill_focused / restorative. Stamped at planner-
+     * generation time by `classifySessionModality`. NULL on legacy
+     * rows created before migration 0046 — consumers fall back to the
+     * pure_hypertrophy default when absent.
+     */
+    sessionModality: text("session_modality"),
+    /**
+     * Phase 5 — hard-set count × modality multiplier. Persisted so the
+     * recovery aggregator doesn't have to re-classify every session
+     * on every read. Mixed-modal gets 1.25× (addendum §6), HIIT 1.3×,
+     * skill-focused 1.2× (addendum §5), Z2 0.4×, restorative 0.2×;
+     * baseline is 1.0×.
+     */
+    effectiveStressLoad: numeric("effective_stress_load", {
+      precision: 6,
+      scale: 2,
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .default(sql`now()`)
       .notNull(),
@@ -271,6 +293,7 @@ export const plannedSessions = pgTable(
       t.dayIndex,
       t.slot,
     ),
+    modalityIdx: index("planned_sessions_modality_idx").on(t.sessionModality),
   }),
 );
 

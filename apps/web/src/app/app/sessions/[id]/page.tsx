@@ -22,6 +22,7 @@ import { SessionWorkArea } from "@/components/session/SessionWorkArea";
 import { FinishSessionBar } from "@/components/session/FinishSessionBar";
 import { PostSessionSummary } from "@/components/session/PostSessionSummary";
 import { StravaAutofillBanner, type StravaAutofillMatch } from "@/components/session/StravaAutofillBanner";
+import { SessionModalityChip } from "@/components/session/SessionModalityChip";
 import { findMatchingStravaActivity } from "@/lib/integrations/strava/match";
 import { GRM_RECOMMEND_THRESHOLD, applyGrmToPercent, computeGrm, grmLabel } from "@/lib/engine/grm";
 import { PR_KIND_LABEL } from "@/lib/engine/pr";
@@ -135,10 +136,20 @@ export default async function SessionDetailPage({
   // recommendation ("top set ~81% instead of 90%").
   const { data: planned } = await supabase
     .from("planned_sessions")
-    .select("id, prescription")
+    .select("id, prescription, session_modality")
     .eq("completed_session_id", id)
     .maybeSingle();
   const plannedPrescription = (planned?.prescription as Prescription | null) ?? null;
+  const sessionModality = (planned?.session_modality as
+    | "pure_strength"
+    | "pure_hypertrophy"
+    | "pure_z2_aerobic"
+    | "pure_hiit"
+    | "mixed_modal"
+    | "skill_focused"
+    | "restorative"
+    | null
+    | undefined) ?? null;
   const bwGateStateByFamily = await loadBwGateStatesForPrescription({
     supabase,
     userId: user.id,
@@ -477,8 +488,11 @@ export default async function SessionDetailPage({
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <header>
-        <div style={{ fontSize: 12, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-          {formatDateTime(session.performed_at, feedbackPrefs)}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+            {formatDateTime(session.performed_at, feedbackPrefs)}
+          </span>
+          <SessionModalityChip modality={sessionModality} />
         </div>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
           <h1 style={{ fontSize: 26, margin: "4px 0 0", letterSpacing: "-0.01em" }}>
