@@ -97,6 +97,7 @@ export async function deriveRegionFreshnessLive(
         "session_id, weight_kg, reps, rpe, set_kind, movement:movements(primary_region, secondary_regions)",
       )
       .in("session_id", sessionIds)
+      .eq("skipped", false)
       .not("reps", "is", null)
       .gt("reps", 0);
 

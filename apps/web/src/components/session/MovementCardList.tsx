@@ -35,6 +35,7 @@ export type MovementCardListProps = {
   sets: LoggedSet[];
   tmBySlug: Record<string, number>;
   loggedItemIndices: ReadonlySet<number>;
+  skippedItemIndices?: ReadonlySet<number>;
   loggedSetIdByItemIndex: Readonly<Record<number, string>>;
   priorBests: Record<string, { heaviestWeight: number | null; bestE1rm: number | null }>;
   addStrengthSet: typeof addStrengthSetAction;
@@ -50,6 +51,7 @@ export function MovementCardList({
   sets,
   tmBySlug,
   loggedItemIndices,
+  skippedItemIndices,
   loggedSetIdByItemIndex,
   priorBests,
   addStrengthSet,
@@ -140,6 +142,7 @@ export function MovementCardList({
           group={group}
           tmBySlug={tmBySlug}
           loggedItemIndices={loggedItemIndices}
+          skippedItemIndices={skippedItemIndices}
           loggedSetIdByItemIndex={loggedSetIdByItemIndex}
           loggedSets={setsByMovement.get(group.movementId) ?? []}
           priorBests={priorBests}
@@ -236,68 +239,83 @@ export function MovementCardList({
               }}
             >
               <tbody>
-                {sets.map((s) => (
-                  <tr
-                    key={s.id}
-                    data-testid={`logged-set-row-${s.id}`}
-                    style={{ borderTop: "1px solid var(--cp-border)" }}
-                  >
-                    <td
-                      className="mono"
+                {sets.map((s) => {
+                  const isSkipped = !!s.skipped;
+                  return (
+                    <tr
+                      key={s.id}
+                      data-testid={`logged-set-row-${s.id}`}
+                      data-skipped={isSkipped ? "true" : "false"}
                       style={{
-                        padding: "6px 8px 6px 0",
-                        color: "var(--cp-text-muted)",
-                        width: 28,
+                        borderTop: "1px solid var(--cp-border)",
+                        opacity: isSkipped ? 0.6 : 1,
                       }}
                     >
-                      #{s.set_index + 1}
-                    </td>
-                    <td style={{ padding: "6px 8px", fontWeight: 500 }}>
-                      {s.movement.display_name}
-                    </td>
-                    <td className="mono" style={{ padding: "6px 8px" }}>
-                      {s.weight_kg ? `${s.weight_kg} kg` : ""}
-                      {s.reps ? ` × ${s.reps}` : ""}
-                    </td>
-                    <td
-                      style={{
-                        padding: "6px 8px",
-                        color: "var(--cp-text-muted)",
-                      }}
-                    >
-                      {String(s.set_kind).replace("_", " ")}
-                    </td>
-                    {!isComplete && (
                       <td
+                        className="mono"
                         style={{
-                          padding: "6px 0 6px 8px",
-                          textAlign: "right",
-                          width: 36,
+                          padding: "6px 8px 6px 0",
+                          color: "var(--cp-text-muted)",
+                          width: 28,
                         }}
                       >
-                        <Link
-                          href={`/app/sessions/${sessionId}/sets/${s.id}/edit`}
-                          data-testid={`logged-set-edit-${s.id}`}
-                          aria-label="Edit set"
-                          title="Edit set"
+                        #{s.set_index + 1}
+                      </td>
+                      <td style={{ padding: "6px 8px", fontWeight: 500 }}>
+                        {s.movement.display_name}
+                      </td>
+                      <td className="mono" style={{ padding: "6px 8px" }}>
+                        {isSkipped ? (
+                          <span style={{ color: "var(--cp-warning)" }}>
+                            skipped{s.skip_reason ? ` (${s.skip_reason})` : ""}
+                          </span>
+                        ) : (
+                          <>
+                            {s.weight_kg ? `${s.weight_kg} kg` : ""}
+                            {s.reps ? ` × ${s.reps}` : ""}
+                          </>
+                        )}
+                      </td>
+                      <td
+                        style={{
+                          padding: "6px 8px",
+                          color: "var(--cp-text-muted)",
+                        }}
+                      >
+                        {String(s.set_kind).replace("_", " ")}
+                      </td>
+                      {!isComplete && (
+                        <td
                           style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            width: 28,
-                            height: 28,
-                            borderRadius: 6,
-                            color: "var(--cp-text-muted)",
-                            fontSize: 13,
-                            textDecoration: "none",
+                            padding: "6px 0 6px 8px",
+                            textAlign: "right",
+                            width: 36,
                           }}
                         >
-                          ✎
-                        </Link>
-                      </td>
-                    )}
-                  </tr>
-                ))}
+                          <Link
+                            href={`/app/sessions/${sessionId}/sets/${s.id}/edit`}
+                            data-testid={`logged-set-edit-${s.id}`}
+                            aria-label="Edit set"
+                            title="Edit set"
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              width: 28,
+                              height: 28,
+                              borderRadius: 6,
+                              color: "var(--cp-text-muted)",
+                              fontSize: 13,
+                              textDecoration: "none",
+                            }}
+                          >
+                            ✎
+                          </Link>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -312,6 +330,7 @@ function PrescribedCard(props: {
   group: MovementGroup;
   tmBySlug: Record<string, number>;
   loggedItemIndices: ReadonlySet<number>;
+  skippedItemIndices?: ReadonlySet<number>;
   loggedSetIdByItemIndex: Readonly<Record<number, string>>;
   loggedSets: LoggedSet[];
   priorBests: Record<string, { heaviestWeight: number | null; bestE1rm: number | null }>;
@@ -330,6 +349,15 @@ function PrescribedCard(props: {
     weightKg: s.weight_kg == null ? null : Number(s.weight_kg),
     reps: s.reps,
     rpe: s.rpe == null ? null : Number(s.rpe),
+    skipped: s.skipped ?? false,
+    skipReason: (s.skip_reason as
+      | "pain"
+      | "fatigue"
+      | "time"
+      | "equipment"
+      | "other"
+      | null
+      | undefined) ?? null,
   }));
   return (
     <MovementCard
@@ -337,6 +365,7 @@ function PrescribedCard(props: {
       group={props.group}
       tmKg={tmKg}
       loggedItemIndices={props.loggedItemIndices}
+      skippedItemIndices={props.skippedItemIndices}
       loggedSetIdByItemIndex={props.loggedSetIdByItemIndex}
       loggedSets={focusLogged}
       priorBest={priorBest}

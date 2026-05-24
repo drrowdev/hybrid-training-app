@@ -67,6 +67,14 @@ const setSchema = z.object({
   // detail page uses this to paint a per-item ✓ check. Free-form logs
   // (picker, "+ add movement") leave it null.
   prescriptionItemIndex: z.coerce.number().int().min(0).max(500).optional().nullable(),
+  // Per-set skip surface (migration 0037). When `skipped` is true the
+  // row is persisted with weight 0 / reps 0 / no rpe and is treated as
+  // "no work" by every tonnage-summing engine helper.
+  skipped: z.coerce.boolean().optional(),
+  skipReason: z
+    .enum(["pain", "fatigue", "time", "equipment", "other"])
+    .optional()
+    .nullable(),
 });
 
 export async function addStrengthSet(
@@ -83,11 +91,18 @@ export async function addStrengthSet(
     rpe: formData.get("rpe") || undefined,
     notes: formData.get("notes") || undefined,
     prescriptionItemIndex: formData.get("prescriptionItemIndex") ?? undefined,
+    skipped: formData.get("skipped") ?? undefined,
+    skipReason: formData.get("skipReason") || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
 
+  const isSkipped = parsed.data.skipped === true;
+  if (isSkipped && !parsed.data.skipReason) {
+    return { error: "Pick a reason before skipping." };
+  }
+
   const { reps, durationSec, distanceM } = parsed.data;
-  if (!reps && !durationSec && !distanceM) {
+  if (!isSkipped && !reps && !durationSec && !distanceM) {
     return { error: "Log at least reps, a hold duration, or a distance." };
   }
 
@@ -107,13 +122,18 @@ export async function addStrengthSet(
     movement_id: parsed.data.movementId,
     set_index: count ?? 0,
     set_kind: parsed.data.setKind,
-    weight_kg: parsed.data.weightKg ?? null,
-    reps: parsed.data.reps ?? null,
-    duration_sec: parsed.data.durationSec ?? null,
-    distance_m: parsed.data.distanceM ?? null,
-    rpe: parsed.data.rpe ?? null,
+    // Skipped rows always persist as 0 / 0 / null rpe — every engine
+    // helper either ignores them (.eq('skipped', false)) or treats
+    // the zero weight as a no-op.
+    weight_kg: isSkipped ? 0 : (parsed.data.weightKg ?? null),
+    reps: isSkipped ? 0 : (parsed.data.reps ?? null),
+    duration_sec: isSkipped ? null : (parsed.data.durationSec ?? null),
+    distance_m: isSkipped ? null : (parsed.data.distanceM ?? null),
+    rpe: isSkipped ? null : (parsed.data.rpe ?? null),
     notes: parsed.data.notes ?? null,
     prescription_item_index: parsed.data.prescriptionItemIndex ?? null,
+    skipped: isSkipped,
+    skip_reason: isSkipped ? (parsed.data.skipReason ?? null) : null,
   });
 
   if (error) return { error: error.message };
@@ -354,7 +374,8 @@ export async function completeSession(formData: FormData): Promise<void> {
   const { data: sets } = await supabase
     .from("set_logs")
     .select("weight_kg, reps, rpe, created_at")
-    .eq("session_id", parsed.data.sessionId);
+    .eq("session_id", parsed.data.sessionId)
+    .eq("skipped", false);
   const setRows = sets ?? [];
 
   const derivedRpe = deriveSessionRpe(

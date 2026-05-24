@@ -79,11 +79,14 @@ export async function recomputeRegionState(
   const sessionIds = sessions.map((s) => s.id);
   const performedAtById = new Map(sessions.map((s) => [s.id, s.performed_at as string]));
 
-  // Per-set strength data — the new primary load source.
+  // Per-set strength data — the new primary load source. Skipped sets
+  // (migration 0037) explicitly do NOT count as work, so the ledger
+  // filters them out at the source.
   const { data: setsRaw, error: setError } = await supabase
     .from("set_logs")
     .select("session_id, weight_kg, reps, rpe, set_kind, movement:movements(primary_region, secondary_regions)")
     .in("session_id", sessionIds)
+    .eq("skipped", false)
     .not("weight_kg", "is", null)
     .not("reps", "is", null)
     .gt("reps", 0);

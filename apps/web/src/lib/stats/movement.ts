@@ -67,6 +67,7 @@ export async function getSetsForMovement(movementId: string): Promise<MovementSe
       "id, weight_kg, reps, rpe, set_kind, session:sessions(performed_at, completed_at)",
     )
     .eq("movement_id", movementId)
+    .eq("skipped", false)
     .order("created_at", { ascending: true });
 
   if (!data) return [];
@@ -502,6 +503,7 @@ export async function getWorkingSetsForMovement(
     .eq("sessions.user_id", userId)
     .is("sessions.deleted_at", null)
     .not("sessions.completed_at", "is", null)
+    .eq("skipped", false)
     .neq("set_kind", "warmup")
     .not("weight_kg", "is", null)
     .not("reps", "is", null)

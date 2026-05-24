@@ -22,6 +22,8 @@ export type LoggedSetForMatch = {
   movementId: string;
   setKind: string;
   prescriptionItemIndex: number | null;
+  /** Set in migration 0037 — true when this row is a "skip with reason". */
+  skipped?: boolean;
 };
 
 const STRENGTH_ITEM_KINDS = new Set([
@@ -43,8 +45,22 @@ export function matchPrescriptionItems(
   prescription: Prescription | null,
   loggedSets: LoggedSetForMatch[],
 ): Set<number> {
+  return matchPrescriptionItemsDetailed(prescription, loggedSets).matched;
+}
+
+/**
+ * Same as `matchPrescriptionItems` but also reports which of the
+ * claimed indices were claimed by a "skipped" row. The dot strip + the
+ * "All logged sets" table use this to render skipped slots with the
+ * muted hollow-dashed treatment.
+ */
+export function matchPrescriptionItemsDetailed(
+  prescription: Prescription | null,
+  loggedSets: LoggedSetForMatch[],
+): { matched: Set<number>; skipped: Set<number> } {
   const matched = new Set<number>();
-  if (!prescription?.items?.length) return matched;
+  const skipped = new Set<number>();
+  if (!prescription?.items?.length) return { matched, skipped };
 
   // First pass — explicit links win. An out-of-bounds index is treated
   // as "no link" (can happen after a swap reorders items).
@@ -55,14 +71,11 @@ export function matchPrescriptionItems(
       s.prescriptionItemIndex < prescription.items.length
     ) {
       matched.add(s.prescriptionItemIndex);
+      if (s.skipped) skipped.add(s.prescriptionItemIndex);
     }
   }
 
-  // Second pass — fallback movement match for unlinked sets. Walk
-  // strength items in order; each set without an explicit index claims
-  // the first matching unsatisfied item for its movement. An
-  // out-of-bounds index is treated as "unlinked" so a stale link
-  // doesn't silently lose a logged set after a prescription resize.
+  // Second pass — fallback movement match for unlinked sets.
   const claimed = new Set(matched);
   for (const s of loggedSets) {
     const hasValidLink =
@@ -78,11 +91,12 @@ export function matchPrescriptionItems(
       if (it.movementId !== s.movementId) continue;
       claimed.add(i);
       matched.add(i);
+      if (s.skipped) skipped.add(i);
       break;
     }
   }
 
-  return matched;
+  return { matched, skipped };
 }
 
 /**

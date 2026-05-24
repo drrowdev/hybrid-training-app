@@ -88,6 +88,7 @@ export async function getVolume30d(
     .is("sessions.deleted_at", null)
     .gte("sessions.performed_at", earliestIso)
     .neq("set_kind", "warmup")
+    .eq("skipped", false)
     .not("weight_kg", "is", null)
     .not("reps", "is", null);
   if (error) throw new Error(error.message);
@@ -164,6 +165,7 @@ export async function getVolumeForRange(
     .eq("sessions.user_id", userId)
     .is("sessions.deleted_at", null)
     .neq("set_kind", "warmup")
+    .eq("skipped", false)
     .not("weight_kg", "is", null)
     .not("reps", "is", null);
   if (earliestMondayCap != null) {

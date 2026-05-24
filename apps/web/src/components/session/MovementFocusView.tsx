@@ -9,6 +9,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PrescriptionItem } from "@hta/db";
+import type { SkipReason } from "@/lib/sessions/skip-reasons";
 import {
   autoCursorForGroup,
   effectiveCursor,
@@ -21,12 +22,16 @@ import { bestEstimateOneRm } from "@/lib/engine/one-rm";
 import { restSecondsForKind } from "@/lib/sessions/rest";
 import { hapticTick } from "@/lib/feedback";
 import { RestTimer } from "./RestTimer";
+import { RpeZonePicker } from "./RpeZonePicker";
+import { SkipSetMenu } from "./SkipSetMenu";
 
 export type FocusLoggedSet = {
   id: string;
   weightKg: number | null;
   reps: number | null;
   rpe: number | null;
+  skipped?: boolean;
+  skipReason?: SkipReason | null;
 };
 
 export type FocusViewProps = {
@@ -34,6 +39,8 @@ export type FocusViewProps = {
   group: MovementGroup;
   tmKg: number | undefined;
   loggedItemIndices: ReadonlySet<number>;
+  /** Subset of loggedItemIndices that were skipped (for dot-strip render). */
+  skippedItemIndices?: ReadonlySet<number>;
   /** Canonical logged set per matched item index (used for the edit link). */
   loggedSetIdByItemIndex: Readonly<Record<number, string>>;
   /** All logged sets for this movement, in order. Used for prior-best fallback. */
@@ -68,6 +75,7 @@ export function MovementFocusView({
   group,
   tmKg,
   loggedItemIndices,
+  skippedItemIndices,
   loggedSetIdByItemIndex,
   loggedSets,
   priorBest,
@@ -88,6 +96,7 @@ export function MovementFocusView({
   const activeItemIndex = group.itemIndices[cursor]!;
   const isActiveLogged = loggedItemIndices.has(activeItemIndex);
   const loggedSetId = loggedSetIdByItemIndex[activeItemIndex];
+  const isWarmup = activeItem?.kind === "warmup";
 
   const lastMain = lastMainSlot(group);
   const isAmrap =
@@ -108,6 +117,7 @@ export function MovementFocusView({
   // moves so the user always starts at the prescription.
   const [weight, setWeight] = useState<number>(targetWeight);
   const [reps, setReps] = useState<number>(targetReps);
+  const [rpe, setRpe] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [prFlash, setPrFlash] = useState<PrFlash | null>(null);
@@ -115,6 +125,9 @@ export function MovementFocusView({
   const [restSeconds, setRestSeconds] = useState(0);
   const [restToken, setRestToken] = useState(0);
   const [justLogged, setJustLogged] = useState(false);
+  const [skipMenuOpen, setSkipMenuOpen] = useState(false);
+  const [skipPending, setSkipPending] = useState(false);
+  const [skipError, setSkipError] = useState<string | null>(null);
   useEffect(() => {
     if (justLoggedAt == null) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- mirror the just-logged flag locally so the PR flash can self-clear
@@ -124,6 +137,7 @@ export function MovementFocusView({
   }, [justLoggedAt]);
 
   // Snap weight/reps to the target whenever the active slot changes.
+  // Also reset RPE + close the skip menu so each set starts clean.
   const cursorKey = `${group.movementId}:${cursor}:${isActiveLogged ? "done" : "open"}`;
   const lastCursorKey = useRef(cursorKey);
   useEffect(() => {
@@ -131,8 +145,16 @@ export function MovementFocusView({
     lastCursorKey.current = cursorKey;
     setWeight(targetWeight);
     setReps(targetReps);
+    // Pre-select RPE from an already-logged set when re-opening it,
+    // otherwise clear so the picker is the empty "no zone" state.
+    const existing = isActiveLogged
+      ? loggedSets.find((s) => s.id === loggedSetId)
+      : null;
+    setRpe(existing?.rpe ?? null);
     setError(null);
-  }, [cursorKey, targetWeight, targetReps]);
+    setSkipMenuOpen(false);
+    setSkipError(null);
+  }, [cursorKey, targetWeight, targetReps, isActiveLogged, loggedSetId, loggedSets]);
 
   // Auto-clear PR flash after 4.5s.
   useEffect(() => {
@@ -158,6 +180,9 @@ export function MovementFocusView({
     fd.set("weightKg", String(weight));
     fd.set("reps", String(reps));
     fd.set("prescriptionItemIndex", String(activeItemIndex));
+    if (rpe != null && !isWarmup) {
+      fd.set("rpe", String(rpe));
+    }
 
     // Optimistic PR detection against the prior-best snapshot.
     const newE1rm = bestEstimateOneRm({ weight, reps, rpe: null });
@@ -203,6 +228,40 @@ export function MovementFocusView({
 
   if (!activeItem) return null;
 
+  const handleSkip = async (reason: SkipReason, note: string | null) => {
+    if (skipPending) return;
+    setSkipPending(true);
+    setSkipError(null);
+    const fd = new FormData();
+    fd.set("sessionId", sessionId);
+    fd.set("movementId", group.movementId);
+    fd.set("setKind", SET_KIND_TO_LOG[activeItem.kind] ?? "main");
+    fd.set("weightKg", "0");
+    fd.set("reps", "0");
+    fd.set("prescriptionItemIndex", String(activeItemIndex));
+    fd.set("skipped", "true");
+    fd.set("skipReason", reason);
+    if (note) fd.set("notes", note);
+    try {
+      const result = await addStrengthSet(fd);
+      if (result?.error) {
+        setSkipError(result.error);
+        return;
+      }
+      hapticTick(hapticsEnabled);
+      setSkipMenuOpen(false);
+      setManualCursor(null);
+      // Skipped sets must not trigger PR/e1RM toasts or the rest timer
+      // — they are intentionally "no work".
+      onSaved?.({
+        itemIndex: activeItemIndex,
+        isLast: cursor >= totalSlots - 1,
+      });
+    } finally {
+      setSkipPending(false);
+    }
+  };
+
   const ctaLabel = isActiveLogged ? "Update set ↗" : submitting ? "Logging…" : "Log set";
   const nextSlot = cursor + 1 < totalSlots ? cursor + 1 : null;
   const nextItem = nextSlot != null ? group.items[nextSlot]! : null;
@@ -230,6 +289,7 @@ export function MovementFocusView({
       <DotStrip
         group={group}
         loggedItemIndices={loggedItemIndices}
+        skippedItemIndices={skippedItemIndices}
         cursor={cursor}
         onPickSlot={(i) => setManualCursor(i)}
       />
@@ -372,6 +432,14 @@ export function MovementFocusView({
           />
         </div>
 
+        {!isWarmup && (
+          <RpeZonePicker
+            value={rpe}
+            onChange={(next) => setRpe(next)}
+            disabled={submitting}
+          />
+        )}
+
         {error && (
           <div role="alert" style={{ fontSize: 12, color: "var(--cp-danger)" }}>
             {error}
@@ -388,22 +456,59 @@ export function MovementFocusView({
             {ctaLabel}
           </a>
         ) : (
-          <button
-            type="submit"
-            className="cp-btn primary big"
-            disabled={submitting}
-            data-testid="movement-focus-log-button"
-          >
-            {ctaLabel}
-            {!submitting && weight > 0 && reps > 0 && (
-              <>
-                {" · "}
-                <span className="mono">
-                  {weight} kg × {reps}
-                </span>
-              </>
+          <div style={{ display: "grid", gap: 8 }}>
+            <button
+              type="submit"
+              className="cp-btn primary big"
+              disabled={submitting}
+              data-testid="movement-focus-log-button"
+            >
+              {ctaLabel}
+              {!submitting && weight > 0 && reps > 0 && (
+                <>
+                  {" · "}
+                  <span className="mono">
+                    {weight} kg × {reps}
+                  </span>
+                </>
+              )}
+            </button>
+            {!isActiveLogged && (
+              <div style={{ display: "flex", justifyContent: "flex-start" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSkipMenuOpen((v) => !v);
+                    setSkipError(null);
+                  }}
+                  data-testid="movement-focus-skip-button"
+                  disabled={submitting || skipPending}
+                  style={{
+                    all: "unset",
+                    cursor: submitting || skipPending ? "default" : "pointer",
+                    fontSize: 12,
+                    color: "var(--cp-text-muted)",
+                    textDecoration: "underline",
+                    padding: "4px 0",
+                  }}
+                >
+                  {skipMenuOpen ? "Cancel skip" : "Skip set"}
+                </button>
+              </div>
             )}
-          </button>
+          </div>
+        )}
+
+        {skipMenuOpen && !isActiveLogged && (
+          <SkipSetMenu
+            onConfirm={handleSkip}
+            onCancel={() => {
+              setSkipMenuOpen(false);
+              setSkipError(null);
+            }}
+            pending={skipPending}
+            error={skipError}
+          />
         )}
 
         {nextItem && (
@@ -445,11 +550,13 @@ function badgeStyle(color: string): React.CSSProperties {
 function DotStrip({
   group,
   loggedItemIndices,
+  skippedItemIndices,
   cursor,
   onPickSlot,
 }: {
   group: MovementGroup;
   loggedItemIndices: ReadonlySet<number>;
+  skippedItemIndices?: ReadonlySet<number>;
   cursor: number;
   onPickSlot: (slot: number) => void;
 }) {
@@ -461,6 +568,7 @@ function DotStrip({
     >
       {group.itemIndices.map((idx, slot) => {
         const isLogged = loggedItemIndices.has(idx);
+        const isSkipped = !!skippedItemIndices?.has(idx);
         const isActive = slot === cursor;
         const base: React.CSSProperties = {
           height: 10,
@@ -471,7 +579,23 @@ function DotStrip({
           transition: "all 140ms ease-out",
         };
         let style: React.CSSProperties;
-        if (isLogged) {
+        if (isSkipped) {
+          // Hollow dashed warning — same height as logged so the row
+          // stays visually aligned.
+          style = {
+            ...base,
+            width: isActive ? 26 : 18,
+            background: "transparent",
+            border: "1.5px dashed var(--cp-warning)",
+            color: "var(--cp-warning)",
+            fontSize: 8,
+            fontWeight: 700,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            lineHeight: 1,
+          };
+        } else if (isLogged) {
           style = {
             ...base,
             width: isActive ? 26 : 18,
@@ -506,11 +630,12 @@ function DotStrip({
             aria-selected={isActive}
             data-testid={`movement-dot-${slot}`}
             data-logged={isLogged ? "true" : "false"}
+            data-skipped={isSkipped ? "true" : "false"}
             onClick={() => onPickSlot(slot)}
             style={style}
-            aria-label={`Set ${slot + 1} of ${group.itemIndices.length}${isLogged ? " — logged" : ""}`}
+            aria-label={`Set ${slot + 1} of ${group.itemIndices.length}${isSkipped ? " — skipped" : isLogged ? " — logged" : ""}`}
           >
-            {isLogged && isActive ? "✓" : null}
+            {isSkipped && isActive ? "—" : isLogged && isActive ? "✓" : null}
           </button>
         );
       })}

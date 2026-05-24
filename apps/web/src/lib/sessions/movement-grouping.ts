@@ -70,7 +70,16 @@ export function deriveCardState(
   return "in_progress";
 }
 
-/** Movement is "complete" when every prescribed item has ≥1 matching logged set. */
+/**
+ * Movement is "complete" when every prescribed item has ≥1 matching
+ * logged-or-skipped row. Skipped sets count as "covered" because they
+ * explicitly close out the slot (the user made a conscious decision
+ * about it) even though they contribute zero work to tonnage / PRs.
+ *
+ * Pass the set of indices that have any logged row as `loggedItemIndices`
+ * — the caller computes it the same way for both logged and skipped
+ * rows, so this helper does NOT need a separate skipped argument.
+ */
 export function isMovementComplete(
   group: MovementGroup,
   loggedItemIndices: ReadonlySet<number>,
