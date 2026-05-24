@@ -1,17 +1,27 @@
 "use server";
 
 /**
- * Equipment-settings server actions: bar weights + plate inventory.
+ * Equipment-settings server actions.
  *
- * Kept in its own file (rather than appended to the catch-all
- * `lib/settings/actions.ts`) so the equipment editor can iterate
- * without dragging the rest of settings through `"use server"`
- * recompiles. Same RLS contract — `id = auth.uid()` updates only.
+ * Two actions live here:
+ *  - `updateEquipment` (legacy, @deprecated) — writes the
+ *    pre-overhaul bar weights + `{ weight_kg, pair_count }` plate
+ *    rows to the legacy columns. Kept so any caller that hasn't
+ *    been ported keeps working until the legacy columns are
+ *    dropped in a follow-up PR.
+ *  - `updateEquipmentV2` — writes the rich `profiles.equipment`
+ *    JSONB introduced in migration 0040. The settings page uses
+ *    this; legacy columns are left untouched so a rollback only
+ *    has to clear the JSONB blob.
+ *
+ * Same RLS contract on both — the underlying `profiles_self` policy
+ * gates updates to `id = auth.uid()`.
  */
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { parseEquipment } from "./equipment-schema";
 
 const PLATE_ITEM = z.object({
   weight_kg: z.coerce.number().positive().max(100),
@@ -25,11 +35,14 @@ const EQUIPMENT_SCHEMA = z.object({
 });
 
 /**
+ * @deprecated Use `updateEquipmentV2` instead. The bar / plate-pair
+ * legacy columns are scheduled for removal in a follow-up PR once
+ * every active profile has been migrated to the new `equipment`
+ * JSONB shape.
+ *
  * Persist the user's bar masses + plate inventory.
  *
- * FormData layout (the matching `<EquipmentSettings>` component
- * stringifies the inventory before submit so we don't have to walk
- * indexed keys here):
+ * FormData layout:
  *   barbellKg          = "20"
  *   trapBarKg          = "25"
  *   plateInventoryJson = JSON-encoded array of `{weight_kg, pair_count}`
@@ -61,8 +74,6 @@ export async function updateEquipment(formData: FormData): Promise<void> {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // Deduplicate plate rows by weight — if the user typed 20 twice we
-  // sum the pair counts so the inventory stays predictable.
   const dedup = new Map<number, number>();
   for (const p of parsed.data.plateInventory) {
     if (p.pair_count <= 0) continue;
@@ -79,6 +90,47 @@ export async function updateEquipment(formData: FormData): Promise<void> {
       trap_bar_kg: parsed.data.trapBarKg,
       plate_inventory_kg: inventory,
     })
+    .eq("id", user.id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/app/settings/equipment");
+  revalidatePath("/app/settings");
+}
+
+/**
+ * Persist the rich equipment inventory to `profiles.equipment`.
+ *
+ * FormData layout:
+ *   equipmentJson = JSON-encoded `Equipment` object (see
+ *                   `equipment-schema.ts`). The editor stringifies
+ *                   its local form state before submit so we
+ *                   don't have to walk indexed FormData keys.
+ */
+export async function updateEquipmentV2(formData: FormData): Promise<void> {
+  const raw = formData.get("equipmentJson");
+  if (typeof raw !== "string" || raw.trim().length === 0) {
+    throw new Error("Missing equipment payload");
+  }
+  let candidate: unknown;
+  try {
+    candidate = JSON.parse(raw);
+  } catch {
+    throw new Error("Invalid equipment payload");
+  }
+
+  // `parseEquipment` throws with a human-readable message for the
+  // first invalid field — surface it directly to the editor.
+  const equipment = parseEquipment(candidate);
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ equipment })
     .eq("id", user.id);
   if (error) throw new Error(error.message);
 

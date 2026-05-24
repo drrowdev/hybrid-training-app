@@ -16,7 +16,9 @@
  *      per side comfortably; beyond that, swap to 25s.
  *   3. Working with per-side load (`(target - bar) / 2`), walk the
  *      gated-and-sorted-desc inventory and for each plate weight take
- *      as many pairs as both `pair_count` and the remaining load allow.
+ *      as many pairs as the remaining load allows — pair counts are
+ *      no longer tracked (a "real gym" assumption: if a plate weight
+ *      is listed, infinite pairs are available).
  *   4. Whatever load remains after the lightest plate is reported as
  *      the `remainderKg` (× 2 — the caller cares about total miss,
  *      not per-side miss).
@@ -26,7 +28,7 @@
  * but the reference doc explicitly opts for greedy + report-the-miss
  * over backtracking.
  */
-export type PlateInventoryItem = { weightKg: number; pairCount: number };
+export type PlateInventoryItem = { weightKg: number };
 
 export type PlateBreakdown = {
   /** Plates on one side of the bar, ordered heaviest → lightest. */
@@ -65,18 +67,16 @@ export function computePlateBreakdown(
   const include25 = perSideTarget >= HEAVY_THRESHOLD_KG;
 
   const sorted = [...inventory]
-    .filter((p) => p.weightKg > 0 && p.pairCount > 0)
+    .filter((p) => p.weightKg > 0)
     .filter((p) => include25 || p.weightKg < 25)
     .sort((a, b) => b.weightKg - a.weightKg);
   // Floating-point tolerance — Olympic micro plates introduce 0.005 kg
   // round-trip noise. 0.001 kg per side is well below any plate step.
   const EPS = 0.001;
   for (const plate of sorted) {
-    let pairsLeft = plate.pairCount;
-    while (pairsLeft > 0 && perSideRemaining >= plate.weightKg - EPS) {
+    while (perSideRemaining >= plate.weightKg - EPS) {
       perSide.push(plate.weightKg);
       perSideRemaining -= plate.weightKg;
-      pairsLeft--;
     }
   }
   return {

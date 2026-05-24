@@ -1,0 +1,54 @@
+-- 0040_profiles_equipment.sql
+--
+-- Adds a richer, JSONB-backed equipment inventory to `profiles`. The
+-- session logger's plate calculator + (future) accessory picker read
+-- from this column; the old per-column legacy fields stay in place so
+-- nothing reading them breaks during the rollout.
+--
+-- Shape (TypeScript-side `Equipment` in
+-- `apps/web/src/lib/settings/equipment-schema.ts`):
+--
+--   {
+--     preset: "commercial_gym" | "home_gym" | "travel_hotel" | "custom",
+--     bars: { barbellKg, trapBarKg, safetyBarKg },
+--     plates: number[],                       -- sorted desc, no pair counts
+--     dumbbells: { minKg, maxKg, stepKg } | null,
+--     kettlebells: number[],                  -- sorted asc
+--     machines: MachineType[],
+--     cardio: CardioMachineType[],
+--     accessories: {
+--       weightedVest: { kg } | false,
+--       sandbag:      { kg } | false,
+--       dipBelt: boolean,
+--       bands: boolean,
+--       pullUpBar: boolean,
+--       rings: boolean,
+--     },
+--   }
+--
+-- Storage rules:
+--   * Nullable on purpose — read-time fallback (`resolveEquipment`)
+--     either returns the Commercial gym preset when the column AND
+--     legacy fields are empty, or lifts the legacy fields into the
+--     new shape (preset = "custom") when they're present.
+--   * All weights in kilograms. The UI flips display to lb at the
+--     render boundary when `profiles.units = 'imperial'`.
+--   * No pair counts. A "real gym" assumption — every plate weight
+--     listed is treated as having infinite pairs available.
+--
+-- Legacy columns (`barbell_kg`, `trap_bar_kg`, `plate_inventory_kg`)
+-- stay in place this migration. They are slated for removal in a
+-- follow-up once every active profile has been migrated to the new
+-- JSONB shape. Read paths prefer `equipment` when present and fall
+-- back to the legacy columns otherwise.
+--
+-- RLS: inherits the existing `profiles_self` SELECT/UPDATE policies
+-- via the unchanged `id = auth.uid()` predicate. No policy edits.
+--
+-- Backfill: no SQL backfill — `resolveEquipment(profile)` in
+-- `apps/web/src/lib/settings/equipment-presets.ts` synthesises the
+-- new shape from legacy fields at read time. Cleaner and reversible
+-- without a follow-up migration.
+
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS equipment jsonb;
