@@ -13,7 +13,6 @@
  */
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import type { Prescription } from "@hta/db";
 import {
   groupPrescriptionByMovement,
@@ -109,7 +108,6 @@ export function MovementCardList({
   // anything they've already logged off-plan.
   const [pendingFreestyle, setPendingFreestyle] = useState<LoggedSet["movement"][]>([]);
   const [showPicker, setShowPicker] = useState(false);
-  const [allSetsExpanded, setAllSetsExpanded] = useState(false);
 
   const freestyleMerged = useMemo(() => {
     const out: LoggedSet["movement"][] = [...freestyleMovements];
@@ -155,7 +153,6 @@ export function MovementCardList({
     return { mainGroups: main, accessoryGroups: accessory, otherGroups: other };
   }, [groups]);
 
-  const allSetsLoggedAcrossSession = sets.length;
   // First prescribed card with no logged sets across the whole session
   // shows the session-level "Same as planned" button.
   const showFillOnFirst = !isComplete && sets.length === 0;
@@ -233,22 +230,32 @@ export function MovementCardList({
       ))}
 
       {!isComplete && (
-        <div
-          className="cp-card"
-          style={{ padding: 12, display: "grid", gap: 8 }}
-        >
+        <div style={{ display: "flex", justifyContent: "center", padding: "8px 0" }}>
           {!showPicker ? (
             <button
               type="button"
               onClick={() => setShowPicker(true)}
               data-testid="movement-card-add"
-              className="cp-btn"
-              style={{ padding: "10px 12px", fontSize: 13 }}
+              style={{
+                // Small text-link-style button so it doesn't compete with the
+                // movement cards above. Reporting an off-plan movement is
+                // rare; the button shouldn't read as a primary action.
+                background: "transparent",
+                border: "1px dashed var(--cp-border)",
+                borderRadius: 999,
+                padding: "4px 14px",
+                fontSize: 12,
+                color: "var(--cp-text-muted)",
+                cursor: "pointer",
+              }}
             >
-              + Add movement
+              + Add off-plan movement
             </button>
           ) : (
-            <div style={{ display: "grid", gap: 8 }}>
+            <div
+              className="cp-card"
+              style={{ padding: 12, display: "grid", gap: 8, width: "100%", maxWidth: 520 }}
+            >
               <MovementPicker
                 name="__add_movement"
                 onChange={handlePick}
@@ -267,124 +274,6 @@ export function MovementCardList({
         </div>
       )}
 
-      {allSetsLoggedAcrossSession > 0 && (
-        <section
-          className="cp-card"
-          data-testid="all-logged-sets"
-          style={{ padding: 12 }}
-        >
-          <button
-            type="button"
-            onClick={() => setAllSetsExpanded((v) => !v)}
-            aria-expanded={allSetsExpanded}
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              width: "100%",
-            }}
-          >
-            <span style={{ fontWeight: 600, fontSize: 13, flex: "1 1 auto" }}>
-              All logged sets ({allSetsLoggedAcrossSession})
-            </span>
-            <span aria-hidden="true" style={{ color: "var(--cp-text-muted)" }}>
-              {allSetsExpanded ? "▾" : "▸"}
-            </span>
-          </button>
-          {allSetsExpanded && (
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: 12,
-                marginTop: 8,
-              }}
-            >
-              <tbody>
-                {sets.map((s) => {
-                  const isSkipped = !!s.skipped;
-                  return (
-                    <tr
-                      key={s.id}
-                      data-testid={`logged-set-row-${s.id}`}
-                      data-skipped={isSkipped ? "true" : "false"}
-                      style={{
-                        borderTop: "1px solid var(--cp-border)",
-                        opacity: isSkipped ? 0.6 : 1,
-                      }}
-                    >
-                      <td
-                        className="mono"
-                        style={{
-                          padding: "6px 8px 6px 0",
-                          color: "var(--cp-text-muted)",
-                          width: 28,
-                        }}
-                      >
-                        #{s.set_index + 1}
-                      </td>
-                      <td style={{ padding: "6px 8px", fontWeight: 500 }}>
-                        {s.movement.display_name}
-                      </td>
-                      <td className="mono" style={{ padding: "6px 8px" }}>
-                        {isSkipped ? (
-                          <span style={{ color: "var(--cp-warning)" }}>
-                            skipped{s.skip_reason ? ` (${s.skip_reason})` : ""}
-                          </span>
-                        ) : (
-                          <>
-                            {s.weight_kg ? `${s.weight_kg} kg` : ""}
-                            {s.reps ? ` × ${s.reps}` : ""}
-                          </>
-                        )}
-                      </td>
-                      <td
-                        style={{
-                          padding: "6px 8px",
-                          color: "var(--cp-text-muted)",
-                        }}
-                      >
-                        {String(s.set_kind).replace("_", " ")}
-                      </td>
-                      {!isComplete && (
-                        <td
-                          style={{
-                            padding: "6px 0 6px 8px",
-                            textAlign: "right",
-                            width: 36,
-                          }}
-                        >
-                          <Link
-                            href={`/app/sessions/${sessionId}/sets/${s.id}/edit`}
-                            data-testid={`logged-set-edit-${s.id}`}
-                            aria-label="Edit set"
-                            title="Edit set"
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              width: 28,
-                              height: 28,
-                              borderRadius: 6,
-                              color: "var(--cp-text-muted)",
-                              fontSize: 13,
-                              textDecoration: "none",
-                            }}
-                          >
-                            ✎
-                          </Link>
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </section>
-      )}
     </div>
   );
 }
