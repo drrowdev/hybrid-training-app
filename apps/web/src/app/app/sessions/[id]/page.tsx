@@ -720,12 +720,17 @@ export default async function SessionDetailPage({
         </section>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(80px, 1fr))", gap: 10 }}>
-        <Stat label="Fatigue" value={session.fatigue ? `${session.fatigue}/5` : "—"} />
-        <Stat label="Soreness" value={session.soreness ? `${session.soreness}/5` : "—"} />
-        <Stat label="sRPE" value={session.session_rpe ?? "—"} />
-        <Stat label="Duration" value={session.duration_min ? `${session.duration_min}m` : "—"} />
-      </div>
+      {session.duration_min != null && (
+        <div
+          style={{
+            fontSize: 12,
+            color: "var(--cp-text-muted)",
+            padding: "6px 0",
+          }}
+        >
+          Duration · <span className="mono">{session.duration_min}m</span>
+        </div>
+      )}
 
       {prSummaries.length > 0 && (
         <section style={{ display: "grid", gap: 8 }}>
@@ -894,15 +899,6 @@ export default async function SessionDetailPage({
           </p>
         </section>
       )}
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div style={{ background: "var(--cp-surface)", border: "1px solid var(--cp-border)", borderRadius: 12, padding: "10px 12px" }}>
-      <div style={{ fontSize: 10, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2 }}>{value}</div>
     </div>
   );
 }
