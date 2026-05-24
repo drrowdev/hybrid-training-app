@@ -10,6 +10,7 @@ import { useState } from "react";
 import type { LoggedSet } from "./SessionLogClient";
 import type { addStrengthSet as addStrengthSetAction } from "@/lib/sessions/actions";
 import { bestEstimateOneRm } from "@/lib/engine/one-rm";
+import { detectTmAnchoredPr } from "@/lib/engine/tm-anchored-pr";
 import { restSecondsForKind } from "@/lib/sessions/rest";
 import { hapticTick } from "@/lib/feedback";
 import { RestTimer } from "./RestTimer";
@@ -23,6 +24,7 @@ export function FreestyleMovementCard({
   movement,
   loggedSets,
   tmKg,
+  oneRmKg,
   priorBest,
   addStrengthSet,
   hapticsEnabled,
@@ -32,11 +34,17 @@ export function FreestyleMovementCard({
   movement: LoggedSet["movement"];
   loggedSets: LoggedSet[];
   tmKg: number | undefined;
+  /** Saved 1RM from training_maxes.one_rm_kg. Drives TM-anchored PR flash. */
+  oneRmKg: number | undefined;
   priorBest: { heaviestWeight: number | null; bestE1rm: number | null } | undefined;
   addStrengthSet: typeof addStrengthSetAction;
   hapticsEnabled: boolean;
   timerSoundEnabled: boolean;
 }) {
+  // priorBest used to drive historical-max PR detection; the flash is
+  // now anchored to the saved 1RM (see lib/engine/tm-anchored-pr.ts).
+  // The prop is retained for back-compat with the parent prop chain.
+  void priorBest;
   const [collapsed, setCollapsed] = useState(false);
   const last = loggedSets[loggedSets.length - 1];
   const [weight, setWeight] = useState<number>(
@@ -70,14 +78,24 @@ export function FreestyleMovementCard({
     fd.set("weightKg", String(weight));
     fd.set("reps", String(reps));
 
-    const newE1rm = bestEstimateOneRm({ weight, reps, rpe: null });
+    // TM-anchored PR detection. Freestyle cards have no prescription
+    // so there's no Rep PR (no prescribed-reps anchor). The Weight /
+    // e1RM flags still fire against the user's saved 1RM. When `oneRmKg`
+    // is unset, no PR can fire.
+    const tmAnchored = detectTmAnchoredPr({
+      weightKg: weight,
+      reps,
+      rpe: null,
+      kind: setKind,
+      prescribedReps: null,
+      isTopSet: setKind === "main",
+      tmKg: oneRmKg ?? null,
+    });
+    const newE1rmDisplay = bestEstimateOneRm({ weight, reps, rpe: null });
     const flash = {
-      weight: priorBest?.heaviestWeight != null && weight > priorBest.heaviestWeight,
-      e1rm:
-        newE1rm != null &&
-        priorBest?.bestE1rm != null &&
-        newE1rm > priorBest.bestE1rm + 0.05,
-      e1rmKg: newE1rm,
+      weight: tmAnchored.isWeightPr,
+      e1rm: tmAnchored.isE1rmPr,
+      e1rmKg: newE1rmDisplay,
     };
 
     try {
