@@ -7,12 +7,14 @@
  * points at /app/profile, which surfaces the same destinations that the
  * desktop avatar dropdown does.
  *
- * Hidden ≥ 769 px via CSS — the TopNav's centred tabs handle desktop.
+ * Hidden ≥ 769 px via a matchMedia hook — the TopNav's centred tabs handle
+ * desktop. Inline styles only; the global `a { color: var(--cp-link) }`
+ * rule would otherwise paint every tab blue.
  */
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 type Tab = {
   href: string;
@@ -22,7 +24,7 @@ type Tab = {
   icon: ReactNode;
 };
 
-const ICON_SIZE = 24;
+const ICON_SIZE = 22;
 
 function IconToday() {
   return (
@@ -135,12 +137,37 @@ const TABS: Tab[] = [
 
 export function BottomTabBar() {
   const pathname = usePathname() ?? "/app";
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 768px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  if (!isMobile) return null;
 
   return (
     <nav
-      className="cp-bottomtabs"
       aria-label="Primary navigation"
       data-testid="bottom-tabbar"
+      style={{
+        position: "fixed",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 40,
+        display: "grid",
+        gridTemplateColumns: "repeat(4, 1fr)",
+        background: "var(--cp-bg-elevated)",
+        borderTop: "1px solid var(--cp-border)",
+        paddingBottom: "env(safe-area-inset-bottom)",
+        paddingLeft: "env(safe-area-inset-left)",
+        paddingRight: "env(safe-area-inset-right)",
+        backdropFilter: "blur(12px)",
+      }}
     >
       {TABS.map((t) => {
         const active = t.match(pathname);
@@ -148,70 +175,37 @@ export function BottomTabBar() {
           <Link
             key={t.href}
             href={t.href}
-            className={`cp-bottomtab${active ? " is-active" : ""}`}
-            aria-current={active ? "page" : undefined}
             data-testid={t.testid}
             data-active={active ? "true" : "false"}
+            aria-current={active ? "page" : undefined}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 3,
+              height: 56,
+              color: active ? "var(--cp-accent)" : "var(--cp-text-muted)",
+              textDecoration: "none",
+              WebkitTapHighlightColor: "transparent",
+            }}
           >
-            <span className="cp-bottomtab-icon">{t.icon}</span>
-            <span className="cp-bottomtab-label">{t.label}</span>
+            <span style={{ display: "inline-flex", lineHeight: 0 }}>
+              {t.icon}
+            </span>
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+              }}
+            >
+              {t.label}
+            </span>
           </Link>
         );
       })}
-
-      <style jsx>{`
-        .cp-bottomtabs {
-          display: none;
-        }
-
-        @media (max-width: 768px) {
-          .cp-bottomtabs {
-            position: fixed;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            z-index: 40;
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            background: var(--cp-bg-elevated);
-            border-top: 1px solid var(--cp-border);
-            padding-bottom: env(safe-area-inset-bottom);
-            padding-left: env(safe-area-inset-left);
-            padding-right: env(safe-area-inset-right);
-            backdrop-filter: blur(12px);
-          }
-          .cp-bottomtab {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 2px;
-            height: 56px;
-            color: var(--cp-text-muted);
-            text-decoration: none;
-            -webkit-tap-highlight-color: transparent;
-          }
-          .cp-bottomtab.is-active {
-            color: var(--cp-accent);
-          }
-          .cp-bottomtab-icon {
-            display: inline-flex;
-            line-height: 0;
-          }
-          .cp-bottomtab-label {
-            font-size: 10px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-          }
-        }
-
-        @media (min-width: 769px) {
-          .cp-bottomtabs {
-            display: none;
-          }
-        }
-      `}</style>
     </nav>
   );
 }
