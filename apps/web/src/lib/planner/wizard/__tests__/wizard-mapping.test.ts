@@ -84,6 +84,30 @@ describe("resolveArchetype — primary × secondary mapping", () => {
     // 3 days × 2 = 6 effective sessions, all-strength when secondary=skip.
     expect(r?.sessions.strength).toBe(6);
   });
+
+  // ── Step-2 live-preview contract ─────────────────────────────────────
+  // When the user has picked a primary but not yet visited Step 3, the
+  // sidebar must reflect what they actually chose — primary only, with
+  // no phantom secondary sessions. Once Step 3 lands a value, the
+  // distribution rebalances.
+
+  it("cardio + null (primary picked, secondary pending) → pure cardio preview", () => {
+    const r = resolveArchetype({ days: 6, goal: "cardio", secondary: null, twoADay: false });
+    expect(r?.id).toBe("endurance_anchor");
+    expect(r?.sessions).toEqual({ strength: 0, hypertrophy: 0, cardio: 6, tendon: 0 });
+  });
+
+  it("muscle + null (primary picked, secondary pending) → pure hypertrophy preview", () => {
+    const r = resolveArchetype({ days: 4, goal: "muscle", secondary: null, twoADay: false });
+    expect(r?.id).toBe("hypertrophy_anchor");
+    expect(r?.sessions).toEqual({ strength: 0, hypertrophy: 4, cardio: 0, tendon: 0 });
+  });
+
+  it("strength + null (primary picked, secondary pending) → pure strength preview", () => {
+    const r = resolveArchetype({ days: 4, goal: "strength", secondary: null, twoADay: false });
+    expect(r?.id).toBe("strength_anchor");
+    expect(r?.sessions).toEqual({ strength: 4, hypertrophy: 0, cardio: 0, tendon: 0 });
+  });
 });
 
 describe("wizardOutput — narrow submit shape", () => {
