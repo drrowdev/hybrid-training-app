@@ -16,6 +16,7 @@
 export type EquipmentPreset =
   | "commercial_gym"
   | "home_gym"
+  | "bodyweight_only"
   | "travel_hotel"
   | "custom";
 
@@ -112,6 +113,7 @@ export type Equipment = {
 const PRESETS: ReadonlySet<EquipmentPreset> = new Set<EquipmentPreset>([
   "commercial_gym",
   "home_gym",
+  "bodyweight_only",
   "travel_hotel",
   "custom",
 ]);

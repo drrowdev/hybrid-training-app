@@ -28,6 +28,11 @@ import { SkipSessionForm } from "@/components/plan/SkipSessionForm";
 import { EndBlockForm } from "@/components/plan/EndBlockForm";
 import { PlanViews, type ViewMode } from "@/components/plan/PlanViews";
 import { GlossaryBadge } from "@/components/ui/GlossaryBadge";
+import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner";
+import {
+  hasLoadableMainLift,
+  resolveEquipment,
+} from "@/lib/settings/equipment-presets";
 import type { StravaCandidate } from "@/components/plan/MatchUnfulfilledModal";
 import {
   PlanNewSwitch,
@@ -391,6 +396,20 @@ export default async function PlanPage({
   const matchPlannedId =
     sp?.match && plannedById[sp.match] ? sp.match : undefined;
 
+  // Bodyweight-only banner trigger: no loadable main lift in the
+  // equipment row AND no training maxes set. Loaded inline rather than
+  // joined into the top of-page fetches because it's a cheap one-shot
+  // check used only for this banner.
+  const { data: planEquipProfile } = await supabase
+    .from("profiles")
+    .select("equipment, barbell_kg, trap_bar_kg, plate_inventory_kg")
+    .eq("id", user.id)
+    .maybeSingle();
+  const planTmCtx = await getTrainingMaxContext();
+  const showBodyweightBanner =
+    !hasLoadableMainLift(resolveEquipment(planEquipProfile)) &&
+    planTmCtx.rows.length === 0;
+
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <header>
@@ -414,6 +433,8 @@ export default async function PlanPage({
       </header>
 
       {tissueGaps.length > 0 && <TissueStackCard gaps={tissueGaps} />}
+
+      {showBodyweightBanner && <BodyweightOnlyBanner />}
 
       <PlanViews
         items={calendarItems}

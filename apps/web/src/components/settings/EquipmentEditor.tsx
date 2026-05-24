@@ -40,6 +40,7 @@ type Props = {
 const PRESET_ORDER: EquipmentPreset[] = [
   "commercial_gym",
   "home_gym",
+  "bodyweight_only",
   "travel_hotel",
   "custom",
 ];

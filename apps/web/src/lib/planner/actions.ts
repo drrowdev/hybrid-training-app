@@ -228,8 +228,18 @@ function assemblePrescriptionItems(
    * missing — see `equipment-requirements.ts`.
    */
   equipment?: Equipment,
+  /**
+   * When true, the strength day's main-lift items (and their auto-warmup
+   * ramp) are skipped — only accessories + power primer are emitted.
+   * Set by the caller for the bodyweight-only / no-TM path where there
+   * is no %TM number to multiply against.
+   */
+  omitMainStrength: boolean = false,
 ): PrescriptionItem[] {
-  const items = buildPrescription(archetype, weekIndex, day, movement, finisherMovement);
+  const items =
+    day.kind === "strength" && omitMainStrength
+      ? []
+      : buildPrescription(archetype, weekIndex, day, movement, finisherMovement);
   if (day.kind !== "strength") return items;
 
   // ─── Power Emphasis Phase 3 — main-lift transforms ───
@@ -246,7 +256,8 @@ function assemblePrescriptionItems(
   // Prepend warmup items for every main-lift movement (one ramp per
   // movement, built off its TOP planned working set so a 65/75/85
   // wave gets one warmup series, not three). `setCount === 0`
-  // disables the feature for the user.
+  // disables the feature for the user. No-op when items has no main
+  // lifts (the bodyweight-only path).
   prependWarmupsForMainLifts(items, warmupScheme);
 
   // Dynamic picker path.
@@ -509,6 +520,17 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
 
   const tmByMovementId = new Map((tms ?? []).map((r) => [r.movement_id, r.updated_at]));
 
+  /**
+   * Bodyweight-only / no-TM path. When the user has no training maxes
+   * at all (e.g. they picked the bodyweight-only equipment preset and
+   * skipped the TM step), the planner can't produce %TM-based main
+   * lift items. Build the block anyway with accessories + tendon work
+   * only — the picker keys off equipment, so a bodyweight setup yields
+   * push-up / pull-up / single-leg / plank variants prescribed via
+   * RPE / RIR rather than %TM.
+   */
+  const hasAnyTm = tmByMovementId.size > 0;
+
   const resolved = new Map<string, { movementId: string; slug: string; displayName: string }>();
   const missingRoles: string[] = [];
 
@@ -522,11 +544,24 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
         break;
       }
     }
+    // Fallback for the no-TM path: use the first available candidate
+    // movement purely as a catalog reference. The day will be built
+    // accessory-only below (no %TM items), so this is only used so the
+    // row has a valid movement_id to attach the prescription to.
+    if (!chosen && !hasAnyTm) {
+      for (const slug of day.candidateSlugs) {
+        const mv = movementBySlug.get(slug);
+        if (mv) {
+          chosen = { movementId: mv.id, slug: mv.slug, displayName: mv.display_name };
+          break;
+        }
+      }
+    }
     if (chosen) resolved.set(daySlotKey(day), chosen);
     else missingRoles.push(STRENGTH_ROLE_LABELS[day.role]);
   }
 
-  if (missingRoles.length > 0) {
+  if (missingRoles.length > 0 && hasAnyTm) {
     return {
       ok: false,
       error: `No TM set for: ${missingRoles.join(", ")}. Go to Settings → Training maxes and add one for each.`,
@@ -552,6 +587,9 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       days_per_week: parsed.data.daysPerWeek,
       day_index_overrides: dayIndexOverrides,
       power_emphasis: parsed.data.powerEmphasis,
+      notes: hasAnyTm
+        ? null
+        : "Bodyweight-only block — main-lift progression coming soon. Accessories programmed per RPE/RIR.",
     })
     .select("id")
     .single();
@@ -601,12 +639,13 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
         parsed.data.powerEmphasis,
         warmupScheme,
         equipment,
+        !hasAnyTm,
       );
       const prescription: Prescription = { items };
       const isDeload = weekProfile?.intensityLabel === "Deload";
 
       let title = day.title;
-      if (day.kind === "strength") {
+      if (day.kind === "strength" && hasAnyTm) {
         title = `${movement.displayName}${isDeload ? " (deload)" : ""}`;
       } else if (isDeload) {
         title = `${day.title} (deload)`;
