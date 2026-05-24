@@ -4,17 +4,21 @@
  * TopNav — desktop top navigation bar.
  *
  * Layout (left → centre → right):
- *   1. Brand glyph + wordmark → /app
- *   2. Primary tabs: Today / Plan / Stats / Settings, with active-route
- *      highlighting via usePathname().
+ *   1. Brand glyph (big green H) → /app
+ *   2. Primary tabs: Today / Plan / Stats / Settings with pill-style active
+ *      highlight via usePathname().
  *   3. Status cluster (TopBarRight): Search / sync / bell / avatar.
  *
- * Mobile (≤768 px): primary tabs are hidden (the BottomTabBar takes over);
- * the brand and right cluster remain.
+ * Mobile (≤768 px): primary tabs are hidden via inline display rule on the
+ * <nav> wrapper, so the BottomTabBar takes over. Brand + right cluster stay.
+ *
+ * Inline styles only — global `a { color: var(--cp-link) }` would otherwise
+ * paint every link blue and we don't want that here.
  */
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   TopBarRight,
   type TopBarAuditEntry,
@@ -75,32 +79,101 @@ export function TopNav({
   auditCount: number;
 }) {
   const pathname = usePathname() ?? "/app";
-  const isActive = (t: Tab) => t.match(pathname);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 768px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
 
   return (
     <header
-      className="cp-topnav"
       data-testid="app-topbar"
       aria-label="Primary navigation"
+      style={{
+        position: "sticky",
+        top: 0,
+        zIndex: 30,
+        display: "grid",
+        gridTemplateColumns: isMobile ? "auto 1fr auto" : "auto 1fr auto",
+        alignItems: "center",
+        gap: isMobile ? 12 : 24,
+        height: 56,
+        padding: `0 ${isMobile ? 14 : 24}px`,
+        paddingLeft: `max(${isMobile ? 14 : 24}px, env(safe-area-inset-left))`,
+        paddingRight: `max(${isMobile ? 14 : 24}px, env(safe-area-inset-right))`,
+        paddingTop: isMobile ? "env(safe-area-inset-top)" : 0,
+        background: "var(--cp-bg-elevated)",
+        borderBottom: "1px solid var(--cp-border)",
+      }}
     >
-      <Link href="/app" className="cp-topnav-brand" data-testid="topnav-brand">
-        <span className="cp-topnav-brand-mark" aria-hidden>
-          ●
-        </span>
-        <span className="cp-topnav-brand-name">Hybrid</span>
+      <Link
+        href="/app"
+        data-testid="topnav-brand"
+        aria-label="Hybrid — home"
+        style={{
+          textDecoration: "none",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "var(--cp-accent)",
+          fontWeight: 800,
+          fontSize: 24,
+          lineHeight: 1,
+          letterSpacing: "-0.02em",
+          width: 32,
+          height: 32,
+        }}
+      >
+        H
       </Link>
 
-      <nav className="cp-topnav-tabs" aria-label="Primary">
+      <nav
+        aria-label="Primary"
+        style={{
+          display: isMobile ? "none" : "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 4,
+          height: "100%",
+        }}
+      >
         {TABS.map((t) => {
-          const active = isActive(t);
+          const active = t.match(pathname);
           return (
             <Link
               key={t.href}
               href={t.href}
-              className={`cp-topnav-tab${active ? " is-active" : ""}`}
-              aria-current={active ? "page" : undefined}
               data-testid={t.testid}
               data-active={active ? "true" : "false"}
+              aria-current={active ? "page" : undefined}
+              style={{
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "6px 14px",
+                borderRadius: 999,
+                fontSize: 14,
+                fontWeight: active ? 600 : 500,
+                color: active ? "var(--cp-accent)" : "var(--cp-text-muted)",
+                background: active ? "var(--cp-accent-soft)" : "transparent",
+                transition: "color 0.12s, background 0.12s",
+              }}
+              onMouseEnter={(e) => {
+                if (!active) {
+                  (e.currentTarget as HTMLAnchorElement).style.color =
+                    "var(--cp-text)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!active) {
+                  (e.currentTarget as HTMLAnchorElement).style.color =
+                    "var(--cp-text-muted)";
+                }
+              }}
             >
               {t.label}
             </Link>
@@ -108,7 +181,13 @@ export function TopNav({
         })}
       </nav>
 
-      <div className="cp-topnav-right">
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifySelf: "end",
+        }}
+      >
         <TopBarRight
           signOutAction={signOutAction}
           displayName={displayName}
@@ -119,100 +198,6 @@ export function TopNav({
           auditCount={auditCount}
         />
       </div>
-
-      <style jsx>{`
-        .cp-topnav {
-          position: sticky;
-          top: 0;
-          z-index: 30;
-          display: grid;
-          grid-template-columns: auto 1fr auto;
-          align-items: center;
-          gap: 24px;
-          height: 56px;
-          padding: 0 24px;
-          padding-left: max(24px, env(safe-area-inset-left));
-          padding-right: max(24px, env(safe-area-inset-right));
-          background: var(--cp-bg-elevated);
-          border-bottom: 1px solid var(--cp-border);
-        }
-
-        .cp-topnav-brand {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          text-decoration: none;
-          color: var(--cp-text);
-          font-weight: 700;
-          letter-spacing: -0.01em;
-        }
-        .cp-topnav-brand-mark {
-          color: var(--cp-accent);
-          font-size: 14px;
-          line-height: 1;
-        }
-        .cp-topnav-brand-name {
-          font-size: 15px;
-        }
-
-        .cp-topnav-tabs {
-          display: flex;
-          align-items: stretch;
-          justify-content: center;
-          gap: 4px;
-          height: 100%;
-        }
-        .cp-topnav-tab {
-          position: relative;
-          display: inline-flex;
-          align-items: center;
-          padding: 0 14px;
-          height: 100%;
-          color: var(--cp-text-muted);
-          text-decoration: none;
-          font-size: 14px;
-          font-weight: 500;
-          transition: color 0.12s;
-        }
-        .cp-topnav-tab:hover {
-          color: var(--cp-text);
-        }
-        .cp-topnav-tab.is-active {
-          color: var(--cp-accent);
-          font-weight: 600;
-        }
-        .cp-topnav-tab.is-active::after {
-          content: "";
-          position: absolute;
-          left: 8px;
-          right: 8px;
-          bottom: -1px;
-          height: 2px;
-          background: var(--cp-accent);
-          border-radius: 2px 2px 0 0;
-        }
-
-        .cp-topnav-right {
-          display: flex;
-          align-items: center;
-          justify-self: end;
-        }
-
-        /* Hide the centre tabs on mobile — BottomTabBar takes over. */
-        @media (max-width: 768px) {
-          .cp-topnav {
-            grid-template-columns: auto 1fr auto;
-            gap: 12px;
-            padding: 0 14px;
-            padding-top: env(safe-area-inset-top);
-            padding-left: max(14px, env(safe-area-inset-left));
-            padding-right: max(14px, env(safe-area-inset-right));
-          }
-          .cp-topnav-tabs {
-            display: none;
-          }
-        }
-      `}</style>
     </header>
   );
 }
