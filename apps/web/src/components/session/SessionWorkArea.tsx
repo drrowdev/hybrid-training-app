@@ -51,6 +51,7 @@ export function SessionWorkArea({
   prescription,
   swapAction,
   loggedItemIndices,
+  skippedItemIndices,
   loggedSetIdByItemIndex,
 }: {
   sessionId: string;
@@ -70,6 +71,7 @@ export function SessionWorkArea({
   prescription: Prescription | null;
   swapAction: SwapAction;
   loggedItemIndices: number[];
+  skippedItemIndices?: number[];
   loggedSetIdByItemIndex: Record<number, string>;
 }) {
   // The card-list layout doesn't currently surface `lastSetHints`,
@@ -80,6 +82,7 @@ export function SessionWorkArea({
   void plannedSessionId;
   void swapAction;
   const loggedSet = new Set<number>(loggedItemIndices);
+  const skippedSet = new Set<number>(skippedItemIndices ?? []);
   const priorBestsForCards: Record<
     string,
     { heaviestWeight: number | null; bestE1rm: number | null }
@@ -104,6 +107,7 @@ export function SessionWorkArea({
         sets={sets}
         tmBySlug={tmBySlug}
         loggedItemIndices={loggedSet}
+        skippedItemIndices={skippedSet}
         loggedSetIdByItemIndex={loggedSetIdByItemIndex}
         priorBests={priorBestsForCards}
         addStrengthSet={addStrengthSet}

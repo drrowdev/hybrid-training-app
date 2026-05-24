@@ -57,6 +57,7 @@ export async function getPrsForRange(
       "session_id, weight_kg, reps, rpe, set_kind, movement:movements(id, slug, display_name)",
     )
     .in("session_id", windowSessionIds)
+    .eq("skipped", false)
     .neq("set_kind", "warmup")
     .not("weight_kg", "is", null)
     .not("reps", "is", null)
@@ -130,6 +131,7 @@ export async function getPrsForRange(
       .eq("sessions.user_id", userId)
       .is("sessions.deleted_at", null)
       .lt("sessions.performed_at", earliestIso)
+      .eq("skipped", false)
       .neq("set_kind", "warmup")
       .not("weight_kg", "is", null)
       .not("reps", "is", null)

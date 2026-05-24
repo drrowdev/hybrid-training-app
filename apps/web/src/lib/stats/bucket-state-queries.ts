@@ -127,6 +127,7 @@ export async function getBucketState(
       .from("set_logs")
       .select("session_id, reps, weight_kg, rpe, set_kind, movement:movements(axial_load, high_strain_tendon)")
       .in("session_id", sessionIds)
+      .eq("skipped", false)
       .not("reps", "is", null)
       .gt("reps", 0),
     supabase

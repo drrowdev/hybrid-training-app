@@ -377,6 +377,7 @@ async function fetchSetLogsForSessions(
     )
     .in("session_id", sessionIds)
     .is("sessions.deleted_at", null)
+    .eq("skipped", false)
     .not("weight_kg", "is", null)
     .not("reps", "is", null)
     .gt("reps", 0);
@@ -705,6 +706,7 @@ export async function getBlockPowerOutcome(
       .eq("sessions.user_id", userId)
       .is("sessions.deleted_at", null)
       .lt("sessions.performed_at", `${meta.startedOn}T00:00:00Z`)
+      .eq("skipped", false)
       .neq("set_kind", "warmup")
       .not("weight_kg", "is", null)
       .not("reps", "is", null)
@@ -975,6 +977,7 @@ async function buildMainLifts(
       .eq("sessions.user_id", userId)
       .is("sessions.deleted_at", null)
       .lt("sessions.performed_at", `${meta.startedOn}T00:00:00Z`)
+      .eq("skipped", false)
       .neq("set_kind", "warmup")
       .not("weight_kg", "is", null)
       .not("reps", "is", null)

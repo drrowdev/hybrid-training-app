@@ -65,6 +65,14 @@ describe("deriveCardState / isMovementComplete", () => {
     expect(deriveCardState(group, new Set([0, 1, 2]))).toBe("completed");
     expect(isMovementComplete(group, new Set([0, 1, 2]))).toBe(true);
   });
+  it("treats skipped sets as covered for completion (mixed logged + skipped)", () => {
+    // Caller passes the union of logged-and-skipped indices in
+    // `loggedItemIndices`. The page-render path builds it that way via
+    // matchPrescriptionItemsDetailed.
+    const covered = new Set([0, 1, 2]); // 0 logged, 1 skipped, 2 logged
+    expect(isMovementComplete(group, covered)).toBe(true);
+    expect(deriveCardState(group, covered)).toBe("completed");
+  });
 });
 
 describe("autoCursorForGroup + effectiveCursor", () => {

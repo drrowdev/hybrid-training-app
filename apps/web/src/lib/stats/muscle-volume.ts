@@ -182,6 +182,7 @@ export async function getWeeklyMuscleVolume(
       .from("set_logs")
       .select("id, set_kind, reps, movement:movements(primary_muscles)")
       .in("session_id", sessionIds)
+      .eq("skipped", false)
       .not("reps", "is", null)
       .gt("reps", 0)
       .neq("set_kind", "warmup"),

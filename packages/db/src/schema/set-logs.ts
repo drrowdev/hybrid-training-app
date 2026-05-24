@@ -10,6 +10,7 @@
  */
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   integer,
   numeric,
   pgEnum,
@@ -50,6 +51,12 @@ export const setLogs = pgTable("set_logs", {
   // sessions with no linked plan. See migration
   // 0036_set_logs_prescription_link.sql.
   prescriptionItemIndex: smallint("prescription_item_index"),
+  // Migration 0037: per-set skip with reason. Skipped rows still occupy
+  // a slot in the dot strip / "covered" count, but never contribute to
+  // tonnage, PR detection, or e1RM. CHECK constraint at the SQL layer
+  // restricts the reason to the picker's chip allowlist.
+  skipped: boolean("skipped").default(false).notNull(),
+  skipReason: text("skip_reason"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),
@@ -60,3 +67,6 @@ export const setLogSelect = createSelectSchema(setLogs);
 export type SetLog = typeof setLogs.$inferSelect;
 export type NewSetLog = typeof setLogs.$inferInsert;
 export type SetKind = (typeof setKind.enumValues)[number];
+
+export const SKIP_REASONS = ["pain", "fatigue", "time", "equipment", "other"] as const;
+export type SkipReason = (typeof SKIP_REASONS)[number];

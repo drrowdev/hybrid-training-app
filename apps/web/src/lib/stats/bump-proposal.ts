@@ -54,6 +54,7 @@ export async function findBumpProposalForSession(
     .select("weight_kg, reps, rpe, set_kind")
     .eq("session_id", sessionId)
     .eq("movement_id", movementId)
+    .eq("skipped", false)
     .neq("set_kind", "warmup")
     .not("weight_kg", "is", null)
     .not("reps", "is", null)
@@ -153,6 +154,7 @@ export async function findBumpProposalForSession(
         .select("reps, set_kind")
         .in("session_id", priorIds)
         .eq("movement_id", movementId)
+        .eq("skipped", false)
         .neq("set_kind", "warmup")
         .gt("reps", amrap.target + 4); // reps >= target + 5
       priorSmashCount = priorSets?.length ?? 0;

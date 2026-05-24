@@ -113,3 +113,40 @@ describe("countStrengthPrescriptionItems", () => {
     expect(countStrengthPrescriptionItems(p)).toBe(1);
   });
 });
+
+describe("matchPrescriptionItemsDetailed — skipped flagging", () => {
+  it("marks skipped indices in both the matched and skipped sets", async () => {
+    const { matchPrescriptionItemsDetailed } = await import(
+      "../prescription-progress"
+    );
+    const p = makePrescription([
+      { movementId: "squat", kind: "main", sets: 1, reps: 5 },
+      { movementId: "squat", kind: "back_off", sets: 1, reps: 8 },
+      { movementId: "bench", kind: "main", sets: 1, reps: 5 },
+    ]);
+    const { matched, skipped } = matchPrescriptionItemsDetailed(p, [
+      {
+        movementId: "squat",
+        setKind: "main",
+        prescriptionItemIndex: 0,
+        skipped: false,
+      },
+      {
+        movementId: "squat",
+        setKind: "back_off",
+        prescriptionItemIndex: 1,
+        skipped: true,
+      },
+      {
+        movementId: "bench",
+        setKind: "main",
+        prescriptionItemIndex: null,
+        skipped: false,
+      },
+    ]);
+    expect([...matched].sort()).toEqual([0, 1, 2]);
+    expect([...skipped]).toEqual([1]);
+  });
+});
+
+
