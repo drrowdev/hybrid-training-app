@@ -15,6 +15,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { MOVEMENT_FAMILIES, type MovementFamily } from "@hta/db";
 import { tutThreshold } from "@/lib/planner/bw-progression";
+import { loadAndRunBwDiagnostics } from "@/lib/planner/bw-diagnostics-loader";
+import { BwDiagnosticsSection } from "@/components/settings/BwDiagnosticsSection";
 
 /** Human-readable family labels — kept local because the catalog
  *  table doesn't carry one. Brand-purity: pure descriptors. */
@@ -160,6 +162,13 @@ export default async function BodyweightProgressionPage() {
   const seeded = rows.some((r) => r.current != null);
   const events: ProgressionEventRow[] = (eventRows ?? []) as ProgressionEventRow[];
 
+  // Phase 6 — surface the live diagnostics signal stack above the
+  // family table. Loader does its own per-table reads (no shared
+  // shape with the rest of this page yet) and runs the pure engine.
+  const diagnostics = seeded
+    ? await loadAndRunBwDiagnostics({ supabase, userId: user.id })
+    : [];
+
   // Phase 5 — find the most recent hinge-compensation injection in
   // the current week of the active block. The injected accessory
   // carries `meta.hinge_compensation = true` and a
@@ -250,6 +259,10 @@ export default async function BodyweightProgressionPage() {
             starting nodes.
           </p>
         </div>
+      )}
+
+      {seeded && (
+        <BwDiagnosticsSection results={diagnostics} />
       )}
 
       {seeded && (
