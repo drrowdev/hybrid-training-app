@@ -31,6 +31,7 @@ export type MovementCardProps = {
   group: MovementGroup;
   tmKg: number | undefined;
   loggedItemIndices: ReadonlySet<number>;
+  skippedItemIndices?: ReadonlySet<number>;
   loggedSetIdByItemIndex: Readonly<Record<number, string>>;
   loggedSets: FocusLoggedSet[];
   priorBest: { heaviestWeight: number | null; bestE1rm: number | null } | undefined;
@@ -51,6 +52,7 @@ export function MovementCard({
   group,
   tmKg,
   loggedItemIndices,
+  skippedItemIndices,
   loggedSetIdByItemIndex,
   loggedSets,
   priorBest,
@@ -132,19 +134,40 @@ export function MovementCard({
         ? "var(--cp-accent)"
         : "var(--cp-text-muted)";
   const chipLabel =
-    cardState === "completed" ? "✓" : cardState === "in_progress" ? `${done}/${total}` : "·";
+    cardState === "completed"
+      ? `${done}/${total} ✓`
+      : cardState === "in_progress"
+        ? `${done}/${total}`
+        : "·";
 
-  // Summary line for the recap row.
+  // Summary line for the recap row. Calls out skips inline so the
+  // collapsed card surface still tells the user what happened
+  // ("5 sets · 3 logged · 2 skipped (pain)"). When every set was
+  // skipped we keep the wording legible by dropping the "0 logged"
+  // tail.
   const summaryLine = (() => {
     if (loggedSets.length === 0) return null;
-    const repList = loggedSets
+    const loggedOnly = loggedSets.filter((s) => !s.skipped);
+    const skipped = loggedSets.filter((s) => s.skipped);
+    const repList = loggedOnly
       .filter((s) => s.reps != null && s.reps > 0)
       .map((s) => s.reps)
       .join("/");
-    const topWeight = loggedSets.reduce(
+    const topWeight = loggedOnly.reduce(
       (max, s) => (s.weightKg != null && s.weightKg > max ? s.weightKg : max),
       0,
     );
+    if (skipped.length > 0) {
+      const reasons = Array.from(
+        new Set(skipped.map((s) => s.skipReason).filter(Boolean) as string[]),
+      );
+      const reasonTail = reasons.length > 0 ? ` (${reasons.join(", ")})` : "";
+      const parts: string[] = [`${loggedSets.length} sets`];
+      if (loggedOnly.length > 0) parts.push(`${loggedOnly.length} logged`);
+      parts.push(`${skipped.length} skipped${reasonTail}`);
+      if (topWeight > 0) parts.push(`top set ${topWeight} kg`);
+      return parts.join(" · ");
+    }
     return `${loggedSets.length} sets · ${repList} reps${topWeight > 0 ? ` · top set ${topWeight} kg` : ""}`;
   })();
 
@@ -271,6 +294,7 @@ export function MovementCard({
             group={group}
             tmKg={tmKg}
             loggedItemIndices={loggedItemIndices}
+            skippedItemIndices={skippedItemIndices}
             loggedSetIdByItemIndex={loggedSetIdByItemIndex}
             loggedSets={loggedSets}
             priorBest={priorBest}

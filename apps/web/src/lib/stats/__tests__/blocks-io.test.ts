@@ -282,5 +282,6 @@ function log(
     weight_kg: weight,
     reps,
     rpe,
+    skipped: false,
   };
 }

@@ -19,6 +19,8 @@ export type LoggedSet = {
   duration_sec: number | null;
   distance_m: number | null;
   rpe: number | string | null;
+  skipped?: boolean;
+  skip_reason?: string | null;
   movement: {
     id: string;
     slug: string;
