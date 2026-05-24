@@ -497,6 +497,18 @@ export async function completeSession(formData: FormData): Promise<void> {
     console.error("applyBwSessionCompletionSideEffects failed:", e);
   }
 
+  // Bodyweight Phase 6 — capture a diagnostics snapshot after the
+  // side-effects hook so any newly-opened gate, fresh TUT, or fresh
+  // weeks_at_node is reflected in the stored payload. Non-blocking.
+  try {
+    const { captureBwDiagnosticsSnapshot } = await import(
+      "@/lib/planner/bw-diagnostics-snapshot"
+    );
+    await captureBwDiagnosticsSnapshot({ supabase, userId: user.id });
+  } catch (e) {
+    console.error("captureBwDiagnosticsSnapshot (completion) failed:", e);
+  }
+
   revalidatePath("/app");
   revalidatePath("/app/plan");
   revalidatePath("/app/stats");

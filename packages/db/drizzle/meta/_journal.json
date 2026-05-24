@@ -302,6 +302,13 @@
       "tag": "0046_session_modality",
       "when": 1780038000000,
       "breakpoints": false
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "tag": "0047_bw_diagnostics_snapshots",
+      "when": 1780124400000,
+      "breakpoints": false
     }
   ]
 }

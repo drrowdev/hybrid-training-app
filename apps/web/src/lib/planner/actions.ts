@@ -1094,6 +1094,18 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   revalidatePath("/app");
   revalidatePath("/app/plan");
   revalidatePath("/app/stats");
+  // Bodyweight Phase 6 — capture a diagnostics snapshot now that the
+  // block's planned sessions exist (drift detection reads the
+  // planner items via `planned_sessions`, so the post-creation
+  // shape is the one we want frozen). Non-blocking.
+  try {
+    const { captureBwDiagnosticsSnapshot } = await import(
+      "@/lib/planner/bw-diagnostics-snapshot"
+    );
+    await captureBwDiagnosticsSnapshot({ supabase, userId: user.id });
+  } catch (e) {
+    console.error("captureBwDiagnosticsSnapshot (createBlock) failed:", e);
+  }
   return { ok: true };
 }
 
@@ -1337,6 +1349,15 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
 
   revalidatePath("/app");
   revalidatePath("/app/plan");
+  // Bodyweight Phase 6 — diagnostics snapshot, see createBlock note.
+  try {
+    const { captureBwDiagnosticsSnapshot } = await import(
+      "@/lib/planner/bw-diagnostics-snapshot"
+    );
+    await captureBwDiagnosticsSnapshot({ supabase, userId: user.id });
+  } catch (e) {
+    console.error("captureBwDiagnosticsSnapshot (createCustomBlock) failed:", e);
+  }
   return { ok: true };
 }
 

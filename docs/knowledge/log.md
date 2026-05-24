@@ -191,3 +191,18 @@ session would otherwise lack posterior-chain loading (addendum 3),
 gated by acknowledged hinge gap. Migration 0046 stores modality +
 effective_stress_load on planned sessions. Session header shows modality
 chip; settings page shows current hinge compensation state.
+
+
+## [2026-05-24] refine | BW progression Phase 6 -- stall + drift detection (feat/bw-phase6-drift-detection)
+
+runDiagnostics surfaces 7 signal kinds: stall_at_node (soft 4wk / hard
+6wk), aesthetics_drift_upper_strong (upper/lower ratio >= 2.5),
+aesthetics_drift_pull_dominant (pull/push > 1.6), tendon_load_undercooked
+(skill family TUT < anchor x 8 after 3wk, anchor >= 50), cns_overreach_risk
+(>=5 skill-focused sessions in 14d), hinge_gap_active (no hinge work 14d),
+regression_risk (>3 missed sessions/family/14d with positive TUT). Pure
+read-only module -- never writes back to bw_progress. Dashboard surface
+(BwDiagnosticsSection) renders top 5 by severity with All-clear chip on
+empty; session recap surfaces up to 2 family-relevant signals. Migration
+0047 adds bw_diagnostics_snapshots (jsonb, capped at 100/user, RLS
+self-only). Snapshots captured at session completion + block creation.
