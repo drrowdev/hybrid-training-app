@@ -115,11 +115,19 @@ function summariseStrengthBlock(items: PrescriptionItem[]): string {
 }
 
 function summariseAccessoryBlock(items: PrescriptionItem[]): string {
-  // RIR / hold / intent cue takes priority over a bare rep count when the
-  // accessory carries intensity guidance. Legacy items without these
-  // fields fall through to the original "NxR" / "5/8/8" format.
+  // RIR / hold / intent / distance cue takes priority over a bare rep
+  // count when the accessory carries intensity guidance. Legacy items
+  // without these fields fall through to the original "NxR" / "5/8/8"
+  // format.
   const first = items[0];
   if (first) {
+    // Loaded carry — distance replaces reps. "3 × 30m carry" or
+    // "3 × 30–40m carry".
+    if (first.distanceM) {
+      const { min, max } = first.distanceM;
+      const range = min === max ? `${min}m` : `${min}–${max}m`;
+      return `${items.length} × ${range} carry`;
+    }
     // Isometric hold — "3 × 30s" or "3 × 30–60s hold".
     if (first.holdSec) {
       const { min, max } = first.holdSec;
@@ -163,10 +171,54 @@ function workingSets(
   return out;
 }
 
+/**
+ * Loaded-carry sets logged against the focus view. A row counts as a
+ * "carry log" when it has a positive `distance_m` value (the focus
+ * view writes `reps: 0` for carries, so the standard `workingSets`
+ * filter drops them).
+ */
+function carrySets(
+  loggedSets: ReadonlyArray<FocusLoggedSet>,
+): Array<{ weightKg: number; distanceM: number }> {
+  const out: Array<{ weightKg: number; distanceM: number }> = [];
+  for (const s of loggedSets) {
+    if (s.skipped) continue;
+    if (s.distanceM == null || s.distanceM <= 0) continue;
+    out.push({
+      weightKg: s.weightKg ?? 0,
+      distanceM: s.distanceM,
+    });
+  }
+  return out;
+}
+
 function summariseCompleted(
   loggedSets: ReadonlyArray<FocusLoggedSet>,
 ): string {
+  // Carry sets first — they don't carry a rep count so the default
+  // `workingSets` filter would drop them, leaving a misleading "✓".
+  const carries = carrySets(loggedSets);
   const work = workingSets(loggedSets);
+  if (carries.length > 0 && work.length === 0) {
+    const dists = carries.map((s) => s.distanceM);
+    const weights = carries.map((s) => s.weightKg);
+    const sameD = dists.every((d) => d === dists[0]);
+    const sameW = weights.every((w) => Math.abs(w - weights[0]!) < 0.001);
+    if (sameD && sameW) {
+      return truncate(
+        `${carries.length}×${dists[0]}m @ ${formatWeight(weights[0]!)}kg ✓`,
+      );
+    }
+    // Top trip = furthest distance, tie-broken by weight.
+    let top = carries[0]!;
+    for (const s of carries) {
+      if (s.distanceM > top.distanceM) top = s;
+      else if (s.distanceM === top.distanceM && s.weightKg > top.weightKg) top = s;
+    }
+    return truncate(
+      `Top: ${formatWeight(top.weightKg)}kg × ${top.distanceM}m ✓`,
+    );
+  }
   if (work.length === 0) return "✓";
   const weights = work.map((s) => s.weightKg);
   const reps = work.map((s) => s.reps);
@@ -222,8 +274,9 @@ export function summariseGroupForHeader(
 
   const total = workingItems.length;
   const work = workingSets(workingLogged);
+  const carries = carrySets(workingLogged);
   const skipped = workingLogged.filter((s) => s.skipped).length;
-  const covered = work.length + skipped;
+  const covered = work.length + carries.length + skipped;
 
   if (total === 0 && workingLogged.length === 0) return "";
 
@@ -231,9 +284,15 @@ export function summariseGroupForHeader(
     return summarisePlanned(workingItems);
   }
   if (total > 0 && covered < total) {
-    const last = work.length > 0 ? work[work.length - 1]! : null;
-    if (last) {
-      return truncate(`${covered}/${total} · last ${formatWeight(last.weightKg)}kg`);
+    const lastRep = work.length > 0 ? work[work.length - 1]! : null;
+    const lastCarry = carries.length > 0 ? carries[carries.length - 1]! : null;
+    if (lastRep) {
+      return truncate(`${covered}/${total} · last ${formatWeight(lastRep.weightKg)}kg`);
+    }
+    if (lastCarry) {
+      return truncate(
+        `${covered}/${total} · last ${lastCarry.distanceM}m @ ${formatWeight(lastCarry.weightKg)}kg`,
+      );
     }
     return truncate(`${covered}/${total} sets`);
   }
