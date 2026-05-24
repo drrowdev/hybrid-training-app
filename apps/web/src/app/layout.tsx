@@ -31,8 +31,11 @@ export const metadata: Metadata = {
     apple: "/icons/apple-touch-icon.png",
   },
   other: {
-    // Older Chromium / non-Apple PWAs read this legacy flag instead of the
-    // apple-mobile-web-app-capable meta. Cheap to include.
+    // Next.js 15's `appleWebApp.capable: true` no longer emits this — only
+    // emits the title + status-bar-style tags. iOS still reads the legacy
+    // tag for standalone-mode detection, so add it explicitly. The newer
+    // `mobile-web-app-capable` covers Chromium PWAs.
+    "apple-mobile-web-app-capable": "yes",
     "mobile-web-app-capable": "yes",
   },
 };
