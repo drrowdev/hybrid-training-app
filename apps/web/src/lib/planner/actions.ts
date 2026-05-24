@@ -890,6 +890,34 @@ export async function permanentlyDeleteBlock(
   return { ok: true };
 }
 
+const linkPlannedSchema = z.object({
+  plannedId: z.string().uuid(),
+  sessionId: z.string().uuid(),
+});
+
+/**
+ * Link a past planned_session to an already-logged sessions row. Used
+ * by the past-unfulfilled match modal in the calendar views: when the
+ * user identifies a Strava-imported activity (or any logged session
+ * on the same calendar day) as the realisation of a planned slot, we
+ * point `completed_session_id` at it. RLS + the inner-join through
+ * training_blocks ensures only the owning user can mutate the row.
+ */
+export async function linkPlannedToSession(formData: FormData): Promise<void> {
+  const parsed = linkPlannedSchema.safeParse({
+    plannedId: formData.get("plannedId"),
+    sessionId: formData.get("sessionId"),
+  });
+  if (!parsed.success) return;
+  const supabase = await createClient();
+  await supabase
+    .from("planned_sessions")
+    .update({ completed_session_id: parsed.data.sessionId })
+    .eq("id", parsed.data.plannedId);
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
+}
+
 const skipSchema = z.object({
   id: z.string().uuid(),
   reason: z.string().max(280).optional(),

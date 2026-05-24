@@ -5,6 +5,7 @@ import { acceptTmBump, declineTmBump } from "@/lib/engine/tm-bump-actions";
 import { findBlockCompleteBump } from "@/lib/engine/block-complete";
 import {
   endBlock,
+  linkPlannedToSession,
   setPlannedTime,
   skipPlannedSession,
   unskipPlannedSession,
@@ -16,13 +17,30 @@ import { getCurrentWeekTissueStackGaps, type TissueStackGap } from "@/lib/stats/
 import type { Prescription } from "@hta/db";
 import { SkipSessionForm } from "@/components/plan/SkipSessionForm";
 import { EndBlockForm } from "@/components/plan/EndBlockForm";
+import { PlanViews, type ViewMode } from "@/components/plan/PlanViews";
+import type { StravaCandidate } from "@/components/plan/MatchUnfulfilledModal";
+import {
+  buildCalendarItems,
+  type CalendarFilter,
+  type CalendarItem,
+  type RawEventRow,
+  type RawPlannedRow,
+  type RawSessionRow,
+} from "@/lib/plan/calendar-data";
+import { addDaysToYmd, ymdInTimezone } from "@/lib/dates";
 
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export default async function PlanPage({
   searchParams,
 }: {
-  searchParams: Promise<{ week?: string }>;
+  searchParams: Promise<{
+    week?: string;
+    view?: string;
+    filter?: string;
+    date?: string;
+    match?: string;
+  }>;
 }) {
   const supabase = await createClient();
   const {
@@ -101,6 +119,185 @@ export default async function PlanPage({
 
   const tissueGaps = await getCurrentWeekTissueStackGaps(supabase, user.id);
 
+  // ── View modes (Month / Timeline / List) ─────────────────────────
+  //
+  // The view-mode tabs read the same underlying `CalendarItem[]` so
+  // filter chips behave uniformly. We fetch the supporting data
+  // (logged sessions, cardio_logs, priority_events) inside a wide
+  // window around the block so the month grid can navigate without
+  // re-querying.
+  const viewMode: ViewMode = ((): ViewMode => {
+    if (sp?.view === "timeline" || sp?.view === "list" || sp?.view === "month") {
+      return sp.view;
+    }
+    return "month";
+  })();
+  const filter: CalendarFilter = ((): CalendarFilter => {
+    if (sp?.filter === "strength" || sp?.filter === "cardio" || sp?.filter === "all") {
+      return sp.filter;
+    }
+    return "all";
+  })();
+  const anchor = sp?.date && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) ? sp.date : today;
+
+  // Window covers everything from 60 days before the earliest planned
+  // day to 60 days after the latest — generous enough to navigate one
+  // month forward/back without re-querying, and bounded so we don't
+  // accidentally scan the whole user history.
+  const allPlannedDates = all.map((d) => d.date);
+  const windowStart = addDaysToYmd(
+    allPlannedDates.length ? minStr(allPlannedDates, today) : today,
+    -60,
+  );
+  const windowEnd = addDaysToYmd(
+    allPlannedDates.length ? maxStr(allPlannedDates, today) : today,
+    60,
+  );
+
+  const [sessionRowsRes, eventsRes] = await Promise.all([
+    supabase
+      .from("sessions")
+      .select("id, performed_at, title, duration_min, strava_activity_id")
+      .eq("user_id", user.id)
+      .is("deleted_at", null)
+      .not("completed_at", "is", null)
+      .gte("performed_at", `${windowStart}T00:00:00.000Z`)
+      .lt("performed_at", `${addDaysToYmd(windowEnd, 1)}T00:00:00.000Z`),
+    supabase
+      .from("priority_events")
+      .select("id, name, event_date, priority, modality")
+      .eq("user_id", user.id)
+      .gte("event_date", windowStart)
+      .lte("event_date", windowEnd),
+  ]);
+  const sessionRows = (sessionRowsRes.data ?? []) as Array<{
+    id: string;
+    performed_at: string;
+    title: string | null;
+    duration_min: number | null;
+    strava_activity_id: number | string | null;
+  }>;
+  const eventRows = (eventsRes.data ?? []) as Array<{
+    id: string;
+    name: string;
+    event_date: string;
+    priority: "A" | "B" | "C";
+    modality: string | null;
+  }>;
+
+  const sessionIds = sessionRows.map((r) => r.id);
+  const cardioBySession = new Map<
+    string,
+    { modality: string | null; duration_sec: number | null; external_source: string | null }
+  >();
+  const strengthIds = new Set<string>();
+  if (sessionIds.length > 0) {
+    const [cardioRes, setRes] = await Promise.all([
+      supabase
+        .from("cardio_logs")
+        .select("session_id, modality, duration_sec, external_source")
+        .in("session_id", sessionIds),
+      supabase.from("set_logs").select("session_id").in("session_id", sessionIds),
+    ]);
+    for (const c of (cardioRes.data ?? []) as Array<{
+      session_id: string;
+      modality: string | null;
+      duration_sec: number | null;
+      external_source: string | null;
+    }>) {
+      if (!cardioBySession.has(c.session_id)) {
+        cardioBySession.set(c.session_id, {
+          modality: c.modality ?? null,
+          duration_sec: c.duration_sec ?? null,
+          external_source: c.external_source ?? null,
+        });
+      }
+    }
+    for (const r of (setRes.data ?? []) as Array<{ session_id: string }>) {
+      strengthIds.add(r.session_id);
+    }
+  }
+
+  const plannedRaw: RawPlannedRow[] = all.map((p) => {
+    const items = p.prescription?.items ?? [];
+    const isCardio =
+      items.length > 0 && items.every((i) => (i.kind ?? "").startsWith("cardio_"));
+    return {
+      id: p.id,
+      date: p.date,
+      title: p.title,
+      isCardio,
+      cardioModality: isCardio ? guessCardioModalityFromTitle(p.title) : null,
+      completedSessionId: p.completedSessionId,
+      skippedAt: p.skippedAt,
+      summary: summarisePrescription(p.prescription.items),
+    };
+  });
+  const sessionRaw: RawSessionRow[] = sessionRows.map((s) => {
+    const performedYmd = ymdInTimezone(new Date(s.performed_at), timezone);
+    const cardio = cardioBySession.get(s.id);
+    const hasCardio = cardio != null;
+    const hasStrength = strengthIds.has(s.id);
+    return {
+      id: s.id,
+      performedYmd,
+      title: s.title,
+      isCardio: hasCardio,
+      isStrength: hasCardio ? hasStrength : true,
+      modality: cardio?.modality ?? null,
+      durationMin: s.duration_min ?? (cardio?.duration_sec ? Math.round(cardio.duration_sec / 60) : null),
+      stravaActivityId: s.strava_activity_id ? String(s.strava_activity_id) : null,
+    };
+  });
+  const eventRaw: RawEventRow[] = eventRows.map((e) => ({
+    id: e.id,
+    name: e.name,
+    date: e.event_date,
+    priority: e.priority,
+    modality: e.modality,
+  }));
+
+  const calendarItems: CalendarItem[] = buildCalendarItems({
+    today,
+    planned: plannedRaw,
+    sessions: sessionRaw,
+    events: eventRaw,
+  });
+
+  // Strava candidates per planned id: same-day Strava-sourced sessions
+  // that haven't been linked to any planned row yet.
+  const linkedSessionIds = new Set(
+    plannedRaw
+      .filter((p) => p.completedSessionId)
+      .map((p) => p.completedSessionId as string),
+  );
+  const candidatesByDate = new Map<string, StravaCandidate[]>();
+  for (const s of sessionRaw) {
+    if (linkedSessionIds.has(s.id)) continue;
+    const cardio = cardioBySession.get(s.id);
+    if (cardio?.external_source !== "strava" && !s.stravaActivityId) continue;
+    const bucket = candidatesByDate.get(s.performedYmd) ?? [];
+    bucket.push({
+      sessionId: s.id,
+      title: s.title?.trim() || (s.modality ?? "Cardio"),
+      modality: s.modality ?? null,
+      durationMin: s.durationMin ?? null,
+      stravaActivityId: s.stravaActivityId ?? null,
+    });
+    candidatesByDate.set(s.performedYmd, bucket);
+  }
+  const candidatesByPlannedId: Record<string, StravaCandidate[]> = {};
+  const plannedById: Record<string, { id: string; date: string; title: string; summary?: string }> = {};
+  for (const p of plannedRaw) {
+    if (p.skippedAt || p.completedSessionId) continue;
+    if (p.date >= today) continue;
+    candidatesByPlannedId[p.id] = candidatesByDate.get(p.date) ?? [];
+    plannedById[p.id] = { id: p.id, date: p.date, title: p.title, summary: p.summary };
+  }
+
+  const matchPlannedId =
+    sp?.match && plannedById[sp.match] ? sp.match : undefined;
+
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <header>
@@ -124,6 +321,20 @@ export default async function PlanPage({
       </header>
 
       {tissueGaps.length > 0 && <TissueStackCard gaps={tissueGaps} />}
+
+      <PlanViews
+        items={calendarItems}
+        view={viewMode}
+        filter={filter}
+        anchor={anchor}
+        today={today}
+        defaultLegendOpen={true}
+        initialMatchPlannedId={matchPlannedId}
+        candidatesByPlannedId={candidatesByPlannedId}
+        plannedById={plannedById}
+        linkAction={linkPlannedToSession}
+        skipAction={skipPlannedSession}
+      />
 
       <BlockCalendar
         all={all}
@@ -219,6 +430,24 @@ function slotOrder(s: "am" | "pm" | "single"): number {
   if (s === "am") return 0;
   if (s === "single") return 1;
   return 2;
+}
+
+function minStr(xs: string[], floor: string): string {
+  let m = floor;
+  for (const x of xs) if (x < m) m = x;
+  return m;
+}
+function maxStr(xs: string[], ceil: string): string {
+  let m = ceil;
+  for (const x of xs) if (x > m) m = x;
+  return m;
+}
+function guessCardioModalityFromTitle(title: string): string | null {
+  const t = title.toLowerCase();
+  for (const m of ["run", "bike", "swim", "row", "ski", "padel"]) {
+    if (t.includes(m)) return m;
+  }
+  return null;
 }
 
 function DayCard({
