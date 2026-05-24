@@ -3,15 +3,21 @@
  * plate inventory, returning a per-side stack ordered heaviest →
  * lightest plus any remainder that couldn't be matched exactly.
  *
- * Algorithm (greedy, no backtracking):
+ * Algorithm (greedy with a 25 kg gate, no backtracking):
  *
  *   1. Subtract bar weight from target. If the difference is ≤ 0, the
  *      bar is already heavy enough — return `{ perSide: [], remainder
  *      = bar - target }`.
- *   2. Working with per-side load (`(target - bar) / 2`), walk the
- *      sorted-desc inventory and for each plate weight take as many
- *      pairs as both `pair_count` and the remaining load allow.
- *   3. Whatever load remains after the lightest plate is reported as
+ *   2. Prefer **20 kg plates as the largest stocked size** for typical
+ *      loads. 25 kg plates only enter the breakdown when the per-side
+ *      load is ≥ HEAVY_THRESHOLD_KG — at that point fewer-thicker plates
+ *      load faster and read cleaner. The threshold matches what most
+ *      lifters do in a barbell rack: 5-6 plates of 20 reaches ~120 kg
+ *      per side comfortably; beyond that, swap to 25s.
+ *   3. Working with per-side load (`(target - bar) / 2`), walk the
+ *      gated-and-sorted-desc inventory and for each plate weight take
+ *      as many pairs as both `pair_count` and the remaining load allow.
+ *   4. Whatever load remains after the lightest plate is reported as
  *      the `remainderKg` (× 2 — the caller cares about total miss,
  *      not per-side miss).
  *
@@ -29,6 +35,13 @@ export type PlateBreakdown = {
   remainderKg: number;
 };
 
+/**
+ * Per-side load (kg) at which we unlock 25 kg plates. Below this, the
+ * breakdown sticks to 20 kg as the heaviest plate so the user loads the
+ * bar with the more common sizes. Tunable here only.
+ */
+export const HEAVY_THRESHOLD_KG = 80;
+
 export function computePlateBreakdown(
   targetWeightKg: number,
   barWeightKg: number,
@@ -41,10 +54,19 @@ export function computePlateBreakdown(
   if (delta <= 0) {
     return { perSide: [], remainderKg: Math.max(0, barWeightKg - targetWeightKg) };
   }
-  let perSideRemaining = delta / 2;
+  const perSideTarget = delta / 2;
+  let perSideRemaining = perSideTarget;
   const perSide: number[] = [];
+
+  // 25 kg plates only enter the sorted pool when the per-side load
+  // crosses HEAVY_THRESHOLD_KG. The threshold is per-side, so a
+  // 220 kg total / 100 kg per-side load brings the 25s in; a
+  // 140 kg total / 60 kg per-side load uses 20s + smaller.
+  const include25 = perSideTarget >= HEAVY_THRESHOLD_KG;
+
   const sorted = [...inventory]
     .filter((p) => p.weightKg > 0 && p.pairCount > 0)
+    .filter((p) => include25 || p.weightKg < 25)
     .sort((a, b) => b.weightKg - a.weightKg);
   // Floating-point tolerance — Olympic micro plates introduce 0.005 kg
   // round-trip noise. 0.001 kg per side is well below any plate step.
