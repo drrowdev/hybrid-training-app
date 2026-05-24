@@ -20,10 +20,13 @@ import {
 } from "@/lib/sessions/movement-grouping";
 import { bestEstimateOneRm } from "@/lib/engine/one-rm";
 import { restSecondsForKind } from "@/lib/sessions/rest";
+import { resolveBarKind } from "@/lib/sessions/bar-kind";
 import { hapticTick } from "@/lib/feedback";
 import { RestTimer } from "./RestTimer";
 import { RpeZonePicker } from "./RpeZonePicker";
 import { SkipSetMenu } from "./SkipSetMenu";
+import { PlateView } from "./PlateView";
+import type { PlateInventoryItem } from "./plate-math";
 
 export type FocusLoggedSet = {
   id: string;
@@ -50,6 +53,22 @@ export type FocusViewProps = {
   addStrengthSet: (fd: FormData) => Promise<{ error?: string; ok?: true }>;
   hapticsEnabled: boolean;
   timerSoundEnabled: boolean;
+  /**
+   * Equipment — fed in by the parent card from the user's profile so
+   * the plate-per-side breakdown can subtract the correct bar weight
+   * and walk a real inventory. When `plateInventory` is empty the
+   * focus view renders a "Set up plate inventory →" link instead of
+   * the breakdown.
+   */
+  barbellKg?: number;
+  trapBarKg?: number;
+  plateInventory?: PlateInventoryItem[];
+  /**
+   * Optional manual cursor pinned by the parent — e.g. clicking
+   * "Edit sets" on a recap-row opens the focus view at the last
+   * logged slot. Null means "let the auto cursor decide".
+   */
+  initialCursor?: number | null;
   /** Called after a successful save so the parent can run auto-collapse logic. */
   onSaved?: (info: { itemIndex: number; isLast: boolean }) => void;
 };
@@ -82,6 +101,10 @@ export function MovementFocusView({
   addStrengthSet,
   hapticsEnabled,
   timerSoundEnabled,
+  barbellKg = 20,
+  trapBarKg = 25,
+  plateInventory,
+  initialCursor = null,
   onSaved,
 }: FocusViewProps) {
   const totalSlots = group.itemIndices.length;
@@ -89,7 +112,15 @@ export function MovementFocusView({
     () => autoCursorForGroup(group, loggedItemIndices),
     [group, loggedItemIndices],
   );
-  const [manualCursor, setManualCursor] = useState<number | null>(null);
+  const [manualCursor, setManualCursor] = useState<number | null>(initialCursor);
+  // Adopt parent-pinned cursor changes (e.g. user taps "Edit sets" on
+  // a different completed card). We do NOT clear back to null when
+  // the parent passes null — `setManualCursor(null)` after a save is
+  // already the path that hands control back to the auto cursor.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mirror parent-pinned cursor into local state
+    if (initialCursor != null) setManualCursor(initialCursor);
+  }, [initialCursor]);
   const cursor = effectiveCursor(autoCursor, manualCursor);
 
   const activeItem = group.items[cursor];
@@ -279,6 +310,7 @@ export function MovementFocusView({
         <RestTimer
           key={restToken}
           seconds={restSeconds}
+          defaultSeconds={restSeconds}
           onDone={() => setRestSeconds(0)}
           hapticsEnabled={hapticsEnabled}
           timerSoundEnabled={timerSoundEnabled}
@@ -405,6 +437,39 @@ export function MovementFocusView({
           </div>
         )}
       </div>
+
+      {(() => {
+        const barKind = resolveBarKind(group.movementSlug);
+        if (barKind == null) return null;
+        const barWeightKg = barKind === "trap_bar" ? trapBarKg : barbellKg;
+        const inv = plateInventory ?? [];
+        if (inv.length === 0) {
+          return (
+            <div
+              data-testid="plate-view-empty"
+              style={{
+                fontSize: 11,
+                color: "var(--cp-text-muted)",
+                textAlign: "center",
+              }}
+            >
+              <a
+                href="/app/settings/equipment"
+                style={{ color: "var(--cp-link)", textDecoration: "underline" }}
+              >
+                Set up plate inventory →
+              </a>
+            </div>
+          );
+        }
+        return (
+          <PlateView
+            targetWeightKg={weight}
+            barWeightKg={barWeightKg}
+            inventory={inv}
+          />
+        );
+      })()}
 
       <form
         onSubmit={handleSubmit}

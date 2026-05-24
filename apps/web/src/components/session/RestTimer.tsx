@@ -18,6 +18,13 @@ import { hapticTick, timerBeep } from "@/lib/feedback";
 export type RestTimerProps = {
   /** Total seconds to count down from. Set to 0 to render nothing. */
   seconds: number;
+  /**
+   * Optional kind-specific default — surfaced for the caller's bench-
+   * mark / debugging. Not used by the countdown itself; the actual
+   * countdown reads `seconds`. Kept on the type so callers can pass a
+   * label without a TS lint.
+   */
+  defaultSeconds?: number;
   /** Called when the user dismisses or the timer hits zero. */
   onDone?: () => void;
   /** Phase 3 C1 — emit a short haptic buzz at zero. Defaults to true. */
@@ -45,12 +52,17 @@ export function RestTimer({
   timerSoundEnabled = true,
   movementName = null,
 }: RestTimerProps) {
-  const [remaining, setRemaining] = useState(seconds);
+  // The user can nudge ±30s mid-countdown. Adjustments are session-
+  // scoped only — we never persist them. Resetting `seconds` (parent
+  // remounts the component with a new key) clears the adjustment.
+  const [adjustSec, setAdjustSec] = useState(0);
+  const effectiveSeconds = Math.max(0, seconds + adjustSec);
+  const [remaining, setRemaining] = useState(effectiveSeconds);
   const [done, setDone] = useState(false);
   const startRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (seconds <= 0) {
+    if (effectiveSeconds <= 0) {
       startRef.current = null;
       return;
     }
@@ -59,7 +71,7 @@ export function RestTimer({
       const start = startRef.current;
       if (start == null) return;
       const elapsed = (Date.now() - start) / 1000;
-      const next = Math.max(0, seconds - elapsed);
+      const next = Math.max(0, effectiveSeconds - elapsed);
       setRemaining(next);
       if (next <= 0) {
         setDone(true);
@@ -70,7 +82,7 @@ export function RestTimer({
       }
     }, 250);
     return () => clearInterval(id);
-  }, [seconds, hapticsEnabled, timerSoundEnabled]);
+  }, [effectiveSeconds, hapticsEnabled, timerSoundEnabled]);
 
   if (seconds <= 0) return null;
 
@@ -111,57 +123,117 @@ export function RestTimer({
   }
 
   return (
-    <button
-      type="button"
-      data-testid="rest-timer"
-      onClick={dismiss}
-      aria-label={
-        movementName
-          ? `Rest timer ${fmt(remaining)} before next ${movementName} set — tap to dismiss`
-          : `Rest timer ${fmt(remaining)} — tap to dismiss`
-      }
+    <div
+      data-testid="rest-timer-shell"
       style={{
         position: "fixed",
         right: 16,
         bottom: 88,
         zIndex: 40,
-        minWidth: 96,
-        minHeight: 56,
-        padding: "10px 18px",
-        borderRadius: 999,
-        border: "1px solid var(--cp-border-strong)",
-        background: "var(--cp-bg-elevated)",
-        color: "var(--cp-text)",
-        fontFamily: "var(--cp-font-mono)",
-        fontWeight: 700,
-        fontSize: 18,
-        cursor: "pointer",
-        boxShadow: "0 10px 24px rgba(0,0,0,0.18)",
-        display: "inline-flex",
-        flexDirection: "column",
+        display: "flex",
         alignItems: "center",
-        gap: 2,
-        lineHeight: 1.1,
+        gap: 6,
       }}
     >
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-        <span aria-hidden style={{ fontSize: 14 }}>⏱</span>
-        <span>{fmt(remaining)}</span>
-      </span>
-      {movementName && (
-        <span
-          data-testid="rest-timer-context"
-          style={{
-            fontFamily: "var(--cp-font)",
-            fontWeight: 500,
-            fontSize: 11,
-            color: "var(--cp-text-muted)",
-            letterSpacing: "0.02em",
-          }}
-        >
-          next {movementName}
+      <button
+        type="button"
+        data-testid="rest-timer-minus-30"
+        onClick={(e) => {
+          e.stopPropagation();
+          setAdjustSec((v) => v - 30);
+        }}
+        aria-label="Subtract 30 seconds from rest timer"
+        style={{
+          minWidth: 40,
+          minHeight: 40,
+          padding: "6px 8px",
+          borderRadius: 999,
+          border: "1px solid var(--cp-border-strong)",
+          background: "var(--cp-bg-elevated)",
+          color: "var(--cp-text)",
+          fontFamily: "var(--cp-font-mono)",
+          fontWeight: 700,
+          fontSize: 12,
+          cursor: "pointer",
+          boxShadow: "0 6px 14px rgba(0,0,0,0.12)",
+        }}
+      >
+        −30s
+      </button>
+      <button
+        type="button"
+        data-testid="rest-timer"
+        data-default-seconds={seconds}
+        onClick={dismiss}
+        aria-label={
+          movementName
+            ? `Rest timer ${fmt(remaining)} before next ${movementName} set — tap to dismiss`
+            : `Rest timer ${fmt(remaining)} — tap to dismiss`
+        }
+        style={{
+          minWidth: 96,
+          minHeight: 56,
+          padding: "10px 18px",
+          borderRadius: 999,
+          border: "1px solid var(--cp-border-strong)",
+          background: "var(--cp-bg-elevated)",
+          color: "var(--cp-text)",
+          fontFamily: "var(--cp-font-mono)",
+          fontWeight: 700,
+          fontSize: 18,
+          cursor: "pointer",
+          boxShadow: "0 10px 24px rgba(0,0,0,0.18)",
+          display: "inline-flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 2,
+          lineHeight: 1.1,
+        }}
+      >
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <span aria-hidden style={{ fontSize: 14 }}>⏱</span>
+          <span>{fmt(remaining)}</span>
         </span>
-      )}
-    </button>
+        {movementName && (
+          <span
+            data-testid="rest-timer-context"
+            style={{
+              fontFamily: "var(--cp-font)",
+              fontWeight: 500,
+              fontSize: 11,
+              color: "var(--cp-text-muted)",
+              letterSpacing: "0.02em",
+            }}
+          >
+            next {movementName}
+          </span>
+        )}
+      </button>
+      <button
+        type="button"
+        data-testid="rest-timer-plus-30"
+        onClick={(e) => {
+          e.stopPropagation();
+          setAdjustSec((v) => v + 30);
+        }}
+        aria-label="Add 30 seconds to rest timer"
+        style={{
+          minWidth: 40,
+          minHeight: 40,
+          padding: "6px 8px",
+          borderRadius: 999,
+          border: "1px solid var(--cp-border-strong)",
+          background: "var(--cp-bg-elevated)",
+          color: "var(--cp-text)",
+          fontFamily: "var(--cp-font-mono)",
+          fontWeight: 700,
+          fontSize: 12,
+          cursor: "pointer",
+          boxShadow: "0 6px 14px rgba(0,0,0,0.12)",
+        }}
+      >
+        +30s
+      </button>
+    </div>
   );
 }
