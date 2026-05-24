@@ -97,39 +97,49 @@ export function TopNav({
         position: "sticky",
         top: 0,
         zIndex: 30,
-        display: "grid",
-        gridTemplateColumns: isMobile ? "auto 1fr auto" : "auto 1fr auto",
-        alignItems: "center",
-        gap: isMobile ? 12 : 24,
         height: 56,
-        padding: `0 ${isMobile ? 14 : 24}px`,
-        paddingLeft: `max(${isMobile ? 14 : 24}px, env(safe-area-inset-left))`,
-        paddingRight: `max(${isMobile ? 14 : 24}px, env(safe-area-inset-right))`,
-        paddingTop: isMobile ? "env(safe-area-inset-top)" : 0,
         background: "var(--cp-bg-elevated)",
         borderBottom: "1px solid var(--cp-border)",
+        paddingTop: isMobile ? "env(safe-area-inset-top)" : 0,
+        paddingLeft: `max(${isMobile ? 14 : 24}px, env(safe-area-inset-left))`,
+        paddingRight: `max(${isMobile ? 14 : 24}px, env(safe-area-inset-right))`,
       }}
     >
-      <Link
-        href="/app"
-        data-testid="topnav-brand"
-        aria-label="Hybrid — home"
+      <div
         style={{
-          textDecoration: "none",
-          display: "inline-flex",
+          // Constrain nav contents to the same max-width as the page
+          // content (880px on .cp-main) so the brand on the left and
+          // the right cluster visually align with the column edges
+          // instead of sticking to the screen edges.
+          maxWidth: 880,
+          margin: "0 auto",
+          height: "100%",
+          display: "grid",
+          gridTemplateColumns: "auto 1fr auto",
           alignItems: "center",
-          justifyContent: "center",
-          color: "var(--cp-accent)",
-          fontWeight: 800,
-          fontSize: 24,
-          lineHeight: 1,
-          letterSpacing: "-0.02em",
-          width: 32,
-          height: 32,
+          gap: isMobile ? 12 : 24,
         }}
       >
-        H
-      </Link>
+        <Link
+          href="/app"
+          data-testid="topnav-brand"
+          aria-label="Hybrid — home"
+          style={{
+            textDecoration: "none",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--cp-accent)",
+            fontWeight: 800,
+            fontSize: 24,
+            lineHeight: 1,
+            letterSpacing: "-0.02em",
+            width: 32,
+            height: 32,
+          }}
+        >
+          H
+        </Link>
 
       <nav
         aria-label="Primary"
@@ -181,22 +191,23 @@ export function TopNav({
         })}
       </nav>
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifySelf: "end",
-        }}
-      >
-        <TopBarRight
-          signOutAction={signOutAction}
-          displayName={displayName}
-          email={email}
-          hasStravaConnection={hasStravaConnection}
-          lastSyncedAt={lastSyncedAt}
-          recentAudit={recentAudit}
-          auditCount={auditCount}
-        />
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifySelf: "end",
+          }}
+        >
+          <TopBarRight
+            signOutAction={signOutAction}
+            displayName={displayName}
+            email={email}
+            hasStravaConnection={hasStravaConnection}
+            lastSyncedAt={lastSyncedAt}
+            recentAudit={recentAudit}
+            auditCount={auditCount}
+          />
+        </div>
       </div>
     </header>
   );
