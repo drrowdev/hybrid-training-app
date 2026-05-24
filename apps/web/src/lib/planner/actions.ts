@@ -71,7 +71,13 @@ import {
   type WarmupScheme,
 } from "./warmups";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
+import { hasLoadableMainLift } from "@/lib/settings/equipment-presets";
 import type { Equipment } from "@/lib/settings/equipment-schema";
+import type { MovementFamily, MovementNode } from "@hta/db";
+import {
+  buildBwMainItemsForSession,
+  type BwFamilyContext,
+} from "./bw-main-items";
 
 type DbMovement = {
   id: string;
@@ -531,6 +537,95 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
    */
   const hasAnyTm = tmByMovementId.size > 0;
 
+  // ─── Bodyweight Phase 3 — main-lift prescription ─────────────────
+  // When the user has no loadable kit AND has populated bw_progress
+  // (via the Phase 2 assessment wizard), the planner emits BW main +
+  // back-off items per session from the per-family DAG node. Detection
+  // matches the plan: `!hasLoadableMainLift(equipment)` AND at least
+  // one bw_progress row.
+  const bwActive = !hasLoadableMainLift(equipment);
+  const bwByFamily = new Map<MovementFamily, BwFamilyContext>();
+  if (bwActive) {
+    const { data: bwRows } = await supabase
+      .from("bw_progress")
+      .select("family, current_node_id, clean_rep_history")
+      .eq("user_id", user.id);
+    const nodeIds = (bwRows ?? [])
+      .map((r) => r.current_node_id as string | null)
+      .filter((id): id is string => !!id);
+    if (nodeIds.length > 0) {
+      const { data: nodes } = await supabase
+        .from("movement_nodes")
+        .select(
+          "id, family, node_key, display_name, prerequisites, external_load_capable, isometric_capable, unilateral, default_tempo_seconds, tut_per_rep_seconds, difficulty_anchor, created_at",
+        )
+        .in("id", nodeIds);
+      const nodeById = new Map<string, MovementNode>();
+      for (const n of nodes ?? []) {
+        // PostgREST returns snake_case columns; hydrate into the typed
+        // MovementNode shape used by the matrix helper.
+        const row = n as Record<string, unknown>;
+        nodeById.set(row.id as string, {
+          id: row.id as string,
+          family: row.family as MovementFamily,
+          nodeKey: row.node_key as string,
+          displayName: row.display_name as string,
+          prerequisites: (row.prerequisites as string[]) ?? [],
+          externalLoadCapable: Boolean(row.external_load_capable),
+          isometricCapable: Boolean(row.isometric_capable),
+          unilateral: Boolean(row.unilateral),
+          defaultTempoSeconds: row.default_tempo_seconds as number,
+          tutPerRepSeconds: row.tut_per_rep_seconds as number,
+          difficultyAnchor: row.difficulty_anchor as number,
+          createdAt: row.created_at as unknown as Date,
+        });
+      }
+
+      // Resolve a real `movements` row per node so the focus view's
+      // per-movement grouping keeps working. We look up by slug ==
+      // node_key against the global catalog; nodes without a matching
+      // catalog movement borrow whichever movement row the day already
+      // resolved to (set later, inside the day loop).
+      const bwNodeSlugs = Array.from(
+        new Set(Array.from(nodeById.values()).map((n) => n.nodeKey)),
+      );
+      const { data: bwMovements } = await supabase
+        .from("movements")
+        .select("id, slug, display_name")
+        .in("slug", bwNodeSlugs)
+        .is("user_id", null);
+      const bwMovementBySlug = new Map(
+        (bwMovements ?? []).map((m) => [m.slug as string, m] as const),
+      );
+
+      for (const row of bwRows ?? []) {
+        const node = nodeById.get(row.current_node_id as string);
+        if (!node) continue;
+        const family = row.family as MovementFamily;
+        const movementRow = bwMovementBySlug.get(node.nodeKey);
+        const cleanRepHistory = Array.isArray(row.clean_rep_history)
+          ? (row.clean_rep_history as ReadonlyArray<{ reps?: number; seconds?: number }>)
+          : [];
+        bwByFamily.set(family, {
+          family,
+          node,
+          // Fallback: when the catalog has no row matching the node_key
+          // we still need a uuid for movementId — borrow the node's own
+          // id, which is rejected by `movement-grouping` only if it
+          // collides with a real movements row (it doesn't — disjoint
+          // tables). The focus view reads displayName off the item, not
+          // the movements row, so the rendered name stays correct.
+          movementId: movementRow?.id ?? node.id,
+          movementSlug: (movementRow?.slug as string | undefined) ?? node.nodeKey,
+          movementName:
+            (movementRow?.display_name as string | undefined) ?? node.displayName,
+          cleanRepHistory,
+        });
+      }
+    }
+  }
+  const bwHasAnyFamily = bwByFamily.size > 0;
+
   const resolved = new Map<string, { movementId: string; slug: string; displayName: string }>();
   const missingRoles: string[] = [];
 
@@ -589,7 +684,9 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       power_emphasis: parsed.data.powerEmphasis,
       notes: hasAnyTm
         ? null
-        : "Bodyweight-only block — main-lift progression coming soon. Accessories programmed per RPE/RIR.",
+        : bwHasAnyFamily
+          ? "Bodyweight block — main lifts prescribed from your assessed skill nodes."
+          : "Bodyweight-only block — main-lift progression coming soon. Accessories programmed per RPE/RIR.",
     })
     .select("id")
     .single();
@@ -641,6 +738,27 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
         equipment,
         !hasAnyTm,
       );
+
+      // ─── Bodyweight Phase 3 — prepend BW main + back_off items ───
+      // Only on strength days, only when the user has bw_progress rows
+      // populated AND has no loadable kit. The matrix runs against the
+      // user's current node per family; the rotation seeds off (block,
+      // day, slot) so consecutive sessions don't double-stack the same
+      // patterns. Pad weekIndex into the matrix's expected 0..3 domain
+      // for blocks longer than 4 weeks.
+      if (day.kind === "strength" && bwActive && bwHasAnyFamily) {
+        const wIdx = (Math.max(0, Math.min(3, week)) as 0 | 1 | 2 | 3);
+        const seed = `${block.id}:${day.dayIndex}:${day.slot ?? "single"}`;
+        const bwItems = buildBwMainItemsForSession({
+          byFamily: bwByFamily,
+          archetype: archetype.id,
+          weekIndex: wIdx,
+          seed,
+        });
+        // Prepend so BW mains come before accessories (mirrors the
+        // legacy main → accessory ordering on the barbell path).
+        items.unshift(...bwItems);
+      }
       const prescription: Prescription = { items };
       const isDeload = weekProfile?.intensityLabel === "Deload";
 

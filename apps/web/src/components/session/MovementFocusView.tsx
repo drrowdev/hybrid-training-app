@@ -157,13 +157,20 @@ export function MovementFocusView({
   const targetReps = activeItem?.reps ?? 5;
   // Detect kind from prescription fields. `distanceM` = loaded carry
   // (programmed by metres, McGill 2014); `holdSec` = isometric hold.
+  // `bw` = bodyweight Phase 3 prescription (reps OR isometric hold;
+  // hides the weight column because no TM anchors a load).
   // Legacy items that don't carry these fields stay on the default
   // weight + reps grid.
-  const itemKind: "carry" | "isometric" | "default" = activeItem?.distanceM
+  const isBwItem = !!activeItem?.bw && tmKg == null;
+  const isBwHold =
+    isBwItem && activeItem?.bw?.prescriptionType === "isometric_hold";
+  const itemKind: "carry" | "isometric" | "bw_reps" | "default" = activeItem?.distanceM
     ? "carry"
-    : activeItem?.holdSec
+    : activeItem?.holdSec || isBwHold
       ? "isometric"
-      : "default";
+      : isBwItem
+        ? "bw_reps"
+        : "default";
   const targetDistance = useMemo(() => {
     const d = activeItem?.distanceM;
     if (!d) return 0;
@@ -248,6 +255,12 @@ export function MovementFocusView({
         setError("Enter a hold time before logging.");
         return;
       }
+    } else if (itemKind === "bw_reps") {
+      // Bodyweight Phase 3 — no weight required, reps only.
+      if (reps <= 0) {
+        setError("Enter reps before logging.");
+        return;
+      }
     } else {
       if (weight <= 0 || reps <= 0) {
         setError("Enter weight and reps before logging.");
@@ -267,6 +280,11 @@ export function MovementFocusView({
     } else if (itemKind === "isometric") {
       fd.set("reps", "0");
       fd.set("durationSec", String(durationSec));
+    } else if (itemKind === "bw_reps") {
+      // Bodyweight Phase 3: no weight, reps only. weight = 0 lets the
+      // logging path treat it as a non-loaded set without inventing a
+      // bodyweight kg value (we don't track per-user BW snapshots yet).
+      fd.set("reps", String(reps));
     } else {
       fd.set("reps", String(reps));
     }
@@ -479,18 +497,30 @@ export function MovementFocusView({
               </span>
             )}
         </div>
-        <div
-          className="mono"
-          style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.05 }}
-        >
-          {weight > 0 ? `${weight}` : "—"}
-          <span style={{ fontSize: 15, color: "var(--cp-text-muted)", marginLeft: 6 }}>
-            kg
-          </span>
-        </div>
-        <div style={{ fontSize: 14, color: "var(--cp-text-muted)" }}>
-          {renderTargetLine(activeItem, targetReps, isAmrap)}
-        </div>
+        {isBwItem ? (
+          <div
+            className="mono"
+            data-testid="bw-prescription-headline"
+            style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1 }}
+          >
+            {renderBwHeadline(activeItem)}
+          </div>
+        ) : (
+          <div
+            className="mono"
+            style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.05 }}
+          >
+            {weight > 0 ? `${weight}` : "—"}
+            <span style={{ fontSize: 15, color: "var(--cp-text-muted)", marginLeft: 6 }}>
+              kg
+            </span>
+          </div>
+        )}
+        {!isBwItem && (
+          <div style={{ fontSize: 14, color: "var(--cp-text-muted)" }}>
+            {renderTargetLine(activeItem, targetReps, isAmrap)}
+          </div>
+        )}
         {activeItem.percentTm == null && activeItem.intensityCue && (
           <div
             data-testid="accessory-intensity-cue"
@@ -504,6 +534,31 @@ export function MovementFocusView({
           >
             {activeItem.intensityCue}
           </div>
+        )}
+        {isBwItem && activeItem.bw?.notes && (
+          <details
+            data-testid="bw-prescription-notes"
+            style={{
+              fontSize: 12,
+              color: "var(--cp-text-muted)",
+              lineHeight: 1.4,
+              maxWidth: 320,
+              marginInline: "auto",
+              textAlign: "left",
+            }}
+          >
+            <summary
+              style={{
+                cursor: "pointer",
+                color: "var(--cp-link)",
+                textDecoration: "underline",
+                fontSize: 11,
+              }}
+            >
+              Why this prescription
+            </summary>
+            <div style={{ marginTop: 6 }}>{activeItem.bw.notes}</div>
+          </details>
         )}
 
         {prFlash && (
@@ -597,16 +652,24 @@ export function MovementFocusView({
         data-testid="session-log-form"
         style={{ display: "grid", gap: 12 }}
       >
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <Stepper
-            label="Weight (kg)"
-            value={weight}
-            step={2.5}
-            integer={false}
-            onMinus={() => setWeight((v) => Math.max(0, Math.round((v - 2.5) * 10) / 10))}
-            onPlus={() => setWeight((v) => Math.round((v + 2.5) * 10) / 10)}
-            onSet={setWeight}
-          />
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isBwItem ? "1fr" : "1fr 1fr",
+            gap: 10,
+          }}
+        >
+          {!isBwItem && (
+            <Stepper
+              label="Weight (kg)"
+              value={weight}
+              step={2.5}
+              integer={false}
+              onMinus={() => setWeight((v) => Math.max(0, Math.round((v - 2.5) * 10) / 10))}
+              onPlus={() => setWeight((v) => Math.round((v + 2.5) * 10) / 10)}
+              onSet={setWeight}
+            />
+          )}
           {itemKind === "carry" ? (
             <Stepper
               label="Distance (m)"
@@ -642,7 +705,7 @@ export function MovementFocusView({
           )}
         </div>
 
-        {!isWarmup && (
+        {!isWarmup && !isBwItem && (
           <RpeZonePicker
             value={rpe}
             onChange={(next) => setRpe(next)}
@@ -674,19 +737,25 @@ export function MovementFocusView({
               data-testid="movement-focus-log-button"
             >
               {ctaLabel}
-              {!submitting && weight > 0 && (
-                (itemKind === "carry" && distanceM > 0) ||
-                (itemKind === "isometric" && durationSec > 0) ||
-                (itemKind === "default" && reps > 0)
-              ) && (
+              {!submitting &&
+                ((itemKind === "bw_reps" && reps > 0) ||
+                  (itemKind === "isometric" && durationSec > 0 && (isBwHold || weight > 0)) ||
+                  (weight > 0 &&
+                    ((itemKind === "carry" && distanceM > 0) ||
+                      (itemKind === "isometric" && durationSec > 0) ||
+                      (itemKind === "default" && reps > 0)))) && (
                 <>
                   {" · "}
                   <span className="mono">
                     {itemKind === "carry"
                       ? `${weight} kg × ${distanceM} m`
                       : itemKind === "isometric"
-                        ? `${weight} kg × ${durationSec} s`
-                        : `${weight} kg × ${reps}`}
+                        ? isBwHold
+                          ? `${durationSec} s`
+                          : `${weight} kg × ${durationSec} s`
+                        : itemKind === "bw_reps"
+                          ? `× ${reps}`
+                          : `${weight} kg × ${reps}`}
                   </span>
                 </>
               )}
@@ -763,6 +832,31 @@ function badgeStyle(color: string): React.CSSProperties {
     fontSize: 11,
     fontWeight: 700,
   };
+}
+
+/**
+ * Format the bodyweight Phase 3 prescription headline. Variants:
+ *   - reps:           "X sets × Y reps · Ts lower · RIR R"
+ *   - tempo_reps:     "X sets × Y reps · Ts eccentric · RIR R"
+ *   - isometric_hold: "X sets × Y sec hold · RIR R"
+ *
+ * Source: bodyweight progression plan Phase 3 — main-lift focus card
+ * copy contract. Plain English, no methodology names (DC-Q6).
+ */
+function renderBwHeadline(item: PrescriptionItem): string {
+  const bw = item.bw;
+  if (!bw) return "";
+  const rir = `RIR ${bw.targetRir}`;
+  if (bw.prescriptionType === "isometric_hold" && bw.holdSeconds != null) {
+    return `${bw.sets} sets × ${bw.holdSeconds}s hold · ${rir}`;
+  }
+  if (bw.prescriptionType === "tempo_reps" && bw.reps != null) {
+    return `${bw.sets} sets × ${bw.reps} reps · ${bw.tempoEccentricSec}s eccentric · ${rir}`;
+  }
+  if (bw.reps != null) {
+    return `${bw.sets} sets × ${bw.reps} reps · ${bw.tempoEccentricSec}s lower · ${rir}`;
+  }
+  return `${bw.sets} sets · ${rir}`;
 }
 
 /**
