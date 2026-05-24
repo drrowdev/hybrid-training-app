@@ -18,6 +18,7 @@ import { useFormStatus } from "react-dom";
 import type { SessionSummary } from "@/lib/sessions/queries";
 import { updateSessionNotes } from "@/lib/sessions/actions";
 import type { ProgressionKind } from "@/lib/progression/suggest-next";
+import type { DiagnosticResult } from "@/lib/planner/bw-diagnostics";
 
 /**
  * Phase 2 D2 — "Next time" suggestion shown for each main lift in the
@@ -38,12 +39,20 @@ export function PostSessionSummary({
   summary,
   initialNotes,
   progressionHints,
+  bwDiagnostics,
 }: {
   sessionId: string;
   summary: SessionSummary;
   initialNotes: string | null;
   /** Up to 3 suggested-progression hints for the main lifts (Phase 2 D2). */
   progressionHints?: ProgressionHint[];
+  /**
+   * Phase 6 — diagnostic signals relevant to this session's movement
+   * families (already filtered server-side, capped at 2). Rendered
+   * under the per-set summary as soft-yellow info cards that deep-link
+   * to the settings page for full context.
+   */
+  bwDiagnostics?: DiagnosticResult[];
 }) {
   const [showNote, setShowNote] = useState(false);
   const [savedNote, setSavedNote] = useState<string | null>(initialNotes);
@@ -164,6 +173,56 @@ export function PostSessionSummary({
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {bwDiagnostics && bwDiagnostics.length > 0 && (
+        <div
+          data-testid="bw-session-diagnostics"
+          style={{
+            background: "color-mix(in oklab, var(--cp-warning) 8%, transparent)",
+            border: "1px solid var(--cp-warning)",
+            borderRadius: 12,
+            padding: "12px 14px",
+            display: "grid",
+            gap: 8,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              color: "var(--cp-warning)",
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              fontWeight: 700,
+            }}
+          >
+            Heads up
+          </div>
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
+            {bwDiagnostics.slice(0, 2).map((d, i) => (
+              <li
+                key={`${d.signal.kind}-${i}`}
+                data-testid={`bw-session-diagnostic-${d.signal.kind}`}
+                style={{ fontSize: 13, color: "var(--cp-text)", lineHeight: 1.5 }}
+              >
+                {d.intervention.copy}
+              </li>
+            ))}
+          </ul>
+          <Link
+            href="/app/settings/bodyweight-progression"
+            data-testid="bw-session-diagnostics-link"
+            style={{
+              fontSize: 11,
+              color: "var(--cp-warning)",
+              fontWeight: 600,
+              textDecoration: "none",
+              alignSelf: "start",
+            }}
+          >
+            View all diagnostics →
+          </Link>
         </div>
       )}
 
