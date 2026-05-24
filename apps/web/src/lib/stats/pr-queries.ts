@@ -6,6 +6,8 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { detectPrs, type HistoricalSet, type PrHit, type PrKind } from "@/lib/engine/pr";
+import { detectTmAnchoredPr } from "@/lib/engine/tm-anchored-pr";
+import type { Prescription, SetKind } from "@hta/db";
 
 export type SessionPrSummary = {
   movementId: string;
@@ -139,6 +141,210 @@ export function formatHitValue(hit: PrHit, kind: PrKind): string {
     case "reps_at_weight": return `${hit.value} reps`;
     case "e1rm": return `${hit.value} kg est.`;
   }
+}
+
+/**
+ * Pure TM-anchored PR count for a *completed* session.
+ *
+ * Counts each ⭐ flag (Weight / Rep / e1RM) raised against the user's
+ * saved one-rep max. Mirrors the in-session flash semantics so the
+ * "PRs: N" tile on `<PostSessionSummary>` lines up with what the user
+ * just saw in real time. Movements with no saved 1RM contribute 0.
+ *
+ * Rep PR is only counted when the prescription marks the heaviest main
+ * set as the top set (last main-kind item per movement) AND the logged
+ * reps exceed that item's prescribed reps. Freestyle / unlinked
+ * sessions therefore can't fire a Rep PR — same rule as the in-session
+ * detector.
+ *
+ * Pure / synchronous so it lives next to the I/O wrappers but doesn't
+ * touch Supabase.
+ */
+export function countSessionTmAnchoredPrs(
+  sets: ReadonlyArray<{
+    set_kind: SetKind | string;
+    weight_kg: number | string | null;
+    reps: number | null;
+    rpe: number | string | null;
+    movement: { id: string; slug: string };
+  }>,
+  oneRmBySlug: Record<string, number>,
+  prescription: Prescription | null,
+): number {
+  // Identify the *top* main set per movement from the prescription —
+  // the last `kind === "main"` item with a positive rep target. That
+  // mirrors `lastMainSlot` in movement-grouping.ts.
+  const topByMovementId = new Map<string, { prescribedReps: number }>();
+  for (const item of prescription?.items ?? []) {
+    if (item.kind !== "main") continue;
+    if (typeof item.reps !== "number" || item.reps <= 0) continue;
+    // Last write wins — matches "last main slot".
+    topByMovementId.set(item.movementId, { prescribedReps: item.reps });
+  }
+
+  // For each movement: collapse to the strongest (heaviest, then most
+  // reps) set in this session, like getSessionPrs does.
+  type Best = {
+    weight: number;
+    reps: number;
+    rpe: number | null;
+    kind: SetKind;
+    slug: string;
+    movementId: string;
+  };
+  const bestByMovement = new Map<string, Best>();
+  for (const s of sets) {
+    if (!s.movement?.id) continue;
+    const kindStr = String(s.set_kind);
+    if (kindStr === "warmup") continue;
+    const w = s.weight_kg == null ? NaN : Number(s.weight_kg);
+    const r = s.reps == null ? NaN : Number(s.reps);
+    if (!Number.isFinite(w) || w <= 0) continue;
+    if (!Number.isFinite(r) || r <= 0) continue;
+    const rpe = s.rpe == null ? null : Number(s.rpe);
+    const candidate: Best = {
+      weight: w,
+      reps: r,
+      rpe: Number.isFinite(rpe as number) ? (rpe as number) : null,
+      kind: kindStr as SetKind,
+      slug: s.movement.slug,
+      movementId: s.movement.id,
+    };
+    const cur = bestByMovement.get(s.movement.id);
+    if (
+      !cur ||
+      candidate.weight > cur.weight ||
+      (candidate.weight === cur.weight && candidate.reps > cur.reps)
+    ) {
+      bestByMovement.set(s.movement.id, candidate);
+    }
+  }
+
+  let count = 0;
+  for (const best of bestByMovement.values()) {
+    const oneRm = oneRmBySlug[best.slug];
+    if (oneRm == null) continue;
+    const top = topByMovementId.get(best.movementId);
+    const flash = detectTmAnchoredPr({
+      weightKg: best.weight,
+      reps: best.reps,
+      rpe: best.rpe,
+      kind: best.kind,
+      prescribedReps: top?.prescribedReps ?? null,
+      isTopSet: top != null,
+      tmKg: oneRm,
+    });
+    if (flash.isWeightPr) count++;
+    if (flash.isE1rmPr) count++;
+    if (flash.isRepPr) count++;
+  }
+  return count;
+}
+
+/**
+ * TM-anchored equivalent of `getSessionPrs` for the in-session 🏆 PR
+ * callout card. Same shape as `SessionPrSummary` but PR hits are
+ * detected against the user's saved 1RM (and prescription for Rep PR),
+ * not historical max from the log. Pure / synchronous.
+ */
+export type TmAnchoredSessionPrHit = {
+  kind: PrKind; // reuses "weight" | "reps_at_weight" | "e1rm" for label compatibility
+  value: number;
+};
+
+export type TmAnchoredSessionPrSummary = {
+  movementId: string;
+  movementDisplayName: string;
+  bestSet: { weight: number; reps: number; rpe: number | null };
+  hits: TmAnchoredSessionPrHit[];
+};
+
+export function getSessionTmAnchoredPrSummaries(
+  sets: ReadonlyArray<{
+    set_kind: SetKind | string;
+    weight_kg: number | string | null;
+    reps: number | null;
+    rpe: number | string | null;
+    movement: { id: string; slug: string; display_name: string };
+  }>,
+  oneRmBySlug: Record<string, number>,
+  prescription: Prescription | null,
+): TmAnchoredSessionPrSummary[] {
+  const topByMovementId = new Map<string, { prescribedReps: number }>();
+  for (const item of prescription?.items ?? []) {
+    if (item.kind !== "main") continue;
+    if (typeof item.reps !== "number" || item.reps <= 0) continue;
+    topByMovementId.set(item.movementId, { prescribedReps: item.reps });
+  }
+
+  type Best = {
+    weight: number;
+    reps: number;
+    rpe: number | null;
+    kind: SetKind;
+    slug: string;
+    movementId: string;
+    displayName: string;
+  };
+  const bestByMovement = new Map<string, Best>();
+  for (const s of sets) {
+    if (!s.movement?.id) continue;
+    const kindStr = String(s.set_kind);
+    if (kindStr === "warmup") continue;
+    const w = s.weight_kg == null ? NaN : Number(s.weight_kg);
+    const r = s.reps == null ? NaN : Number(s.reps);
+    if (!Number.isFinite(w) || w <= 0) continue;
+    if (!Number.isFinite(r) || r <= 0) continue;
+    const rpe = s.rpe == null ? null : Number(s.rpe);
+    const candidate: Best = {
+      weight: w,
+      reps: r,
+      rpe: Number.isFinite(rpe as number) ? (rpe as number) : null,
+      kind: kindStr as SetKind,
+      slug: s.movement.slug,
+      movementId: s.movement.id,
+      displayName: s.movement.display_name,
+    };
+    const cur = bestByMovement.get(s.movement.id);
+    if (
+      !cur ||
+      candidate.weight > cur.weight ||
+      (candidate.weight === cur.weight && candidate.reps > cur.reps)
+    ) {
+      bestByMovement.set(s.movement.id, candidate);
+    }
+  }
+
+  const out: TmAnchoredSessionPrSummary[] = [];
+  for (const best of bestByMovement.values()) {
+    const oneRm = oneRmBySlug[best.slug];
+    if (oneRm == null) continue;
+    const top = topByMovementId.get(best.movementId);
+    const flash = detectTmAnchoredPr({
+      weightKg: best.weight,
+      reps: best.reps,
+      rpe: best.rpe,
+      kind: best.kind,
+      prescribedReps: top?.prescribedReps ?? null,
+      isTopSet: top != null,
+      tmKg: oneRm,
+    });
+    const hits: TmAnchoredSessionPrHit[] = [];
+    if (flash.isWeightPr) hits.push({ kind: "weight", value: best.weight });
+    if (flash.isRepPr) hits.push({ kind: "reps_at_weight", value: best.reps });
+    if (flash.isE1rmPr && flash.e1rmKg != null) {
+      hits.push({ kind: "e1rm", value: Math.round(flash.e1rmKg * 10) / 10 });
+    }
+    if (hits.length > 0) {
+      out.push({
+        movementId: best.movementId,
+        movementDisplayName: best.displayName,
+        bestSet: { weight: best.weight, reps: best.reps, rpe: best.rpe },
+        hits,
+      });
+    }
+  }
+  return out;
 }
 
 export type RecentPr = {
