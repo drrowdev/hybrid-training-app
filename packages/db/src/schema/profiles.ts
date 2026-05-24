@@ -45,6 +45,17 @@ export const profiles = pgTable("profiles", {
   /** When the first-run onboarding wizard finished or was skipped. null = show wizard. */
   onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
   /**
+   * When the bodyweight-only onboarding assessment was last completed.
+   * NULL = never run (engine can use this to invite the user to
+   * calibrate). Updated by `submitBwAssessment` after seeding
+   * bw_progress rows; intentionally decoupled from `onboardedAt` so
+   * the user can re-open the assessment from settings later without
+   * re-running the rest of the wizard. See migration 0043.
+   */
+  bwAssessmentCompletedAt: timestamp("bw_assessment_completed_at", {
+    withTimezone: true,
+  }),
+  /**
    * Self-reported training age, captured at onboarding. Drives DC-G5
    * (cold-start tier): `lt_1y` → consumer load tier on the first block.
    * Constrained at DB level to {lt_1y, 1_3y, gte_3y}; null = unknown.

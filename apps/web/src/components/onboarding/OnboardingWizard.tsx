@@ -18,6 +18,8 @@ import {
 import { seedDefaultOneRm } from "@/lib/training-maxes/defaults";
 import { addDaysToYmd, isoWeekdayYmd, todayYmd } from "@/lib/dates";
 import { EquipmentStep } from "@/components/onboarding/EquipmentStep";
+import { BwAssessmentStep } from "@/components/onboarding/bw-assessment/BwAssessmentStep";
+import type { BwAssessmentPayload } from "@/components/onboarding/bw-assessment/BwAssessmentStep";
 import {
   hasLoadableMainLift,
   PRESET_BY_KEY,
@@ -88,6 +90,7 @@ export function OnboardingWizard({
   saveProfileAction,
   saveEquipmentAction,
   saveTmsAction,
+  submitBwAssessmentAction,
   finishAction,
   skipAction,
 }: {
@@ -100,6 +103,9 @@ export function OnboardingWizard({
   saveProfileAction: (fd: FormData) => Promise<OnboardingResult>;
   saveEquipmentAction: (fd: FormData) => Promise<void>;
   saveTmsAction: (fd: FormData) => Promise<OnboardingResult>;
+  submitBwAssessmentAction: (
+    payload: BwAssessmentPayload,
+  ) => Promise<OnboardingResult>;
   finishAction: (fd: FormData) => Promise<OnboardingResult>;
   skipAction: () => Promise<void>;
 }) {
@@ -208,8 +214,9 @@ export function OnboardingWizard({
    * Derived from the freshly-tapped preset card when present; falls
    * back to the previously-saved equipment row when the user hasn't
    * touched a card yet. Pure bodyweight setups (no bars, no DBs)
-   * return false — the wizard skips the Training Maxes step in that
-   * case because there's no number to multiply against.
+   * return false — for those we swap the Training Maxes step out for
+   * the 3-page bodyweight assessment (Phase 2 of the BW progression
+   * plan) rather than skipping the step entirely.
    *
    * Recomputed reactively: going back to the Equipment step and
    * picking, say, "Home gym" re-introduces the TM step on the way
@@ -222,20 +229,25 @@ export function OnboardingWizard({
     return hasLoadableMainLift(equipForCheck);
   }, [equipmentPreset, initialEquipment]);
 
+  /**
+   * Bodyweight-only branch: the Training Maxes step index is reused
+   * for the BW assessment so the step count stays the same and the
+   * downstream Build-your-block / Confirm flow is untouched.
+   */
+  const useBwAssessment = !needsTrainingMaxes;
+
   /** Labels of the steps actually visible to the user — used to size
-   *  the progress pill row when the TM step is skipped. */
-  const visibleStepLabels = useMemo<readonly StepLabel[]>(
+   *  the progress pill row. The TM slot is renamed to
+   *  "Bodyweight assessment" on the BW branch. */
+  const visibleStepLabels = useMemo<readonly string[]>(
     () =>
-      needsTrainingMaxes
-        ? STEPS
-        : (STEPS.filter((s) => s !== "Training maxes") as StepLabel[]),
-    [needsTrainingMaxes],
+      useBwAssessment
+        ? STEPS.map((s) => (s === "Training maxes" ? "Bodyweight assessment" : s))
+        : STEPS,
+    [useBwAssessment],
   );
   /** Index of the current step within the *visible* step list. */
-  const visibleStepIndex = useMemo<number>(() => {
-    const visibleIdx = visibleStepLabels.indexOf(currentLabel);
-    return visibleIdx < 0 ? 0 : visibleIdx;
-  }, [visibleStepLabels, currentLabel]);
+  const visibleStepIndex = useMemo<number>(() => Math.max(0, step), [step]);
 
   const canAdvance = (): string | null => {
     switch (currentLabel) {
@@ -250,6 +262,12 @@ export function OnboardingWizard({
         // in saveEquipment and log a console.info for visibility.
         return null;
       case "Training maxes": {
+        if (useBwAssessment) {
+          // BW assessment step owns its own internal nav + submit;
+          // the outer Continue button is hidden when this branch is
+          // active (see render below), so canAdvance is never read.
+          return null;
+        }
         // Allow continue when at least one role is ready OR all roles are skipped.
         const anyReady = readyRoles.size > 0;
         const allSkipped = MAIN_ROLES.every((r) => modeByRole[r] === "skip");
@@ -282,20 +300,19 @@ export function OnboardingWizard({
     }
     if (currentLabel === "Equipment") {
       saveEquipment(() => {
-        // Skip the Training Maxes step when the chosen equipment has no
-        // loadable main-lift (pure bodyweight). The TM page would have
-        // no number to multiply against.
-        const tmsIndex = STEPS.indexOf("Training maxes");
-        const buildIndex = STEPS.indexOf("Build your block");
-        if (!needsTrainingMaxes && tmsIndex >= 0 && buildIndex >= 0) {
-          setStep(buildIndex);
-        } else {
-          setStep((s) => s + 1);
-        }
+        // Both branches advance to the same step index — when
+        // bodyweight-only, that index renders the BW assessment
+        // step instead of the TM step. No skipping needed.
+        setStep((s) => s + 1);
       });
       return;
     }
     if (currentLabel === "Training maxes") {
+      if (useBwAssessment) {
+        // BW branch: BwAssessmentStep fires its own onComplete after
+        // a successful submit; the outer Continue button is hidden.
+        return;
+      }
       saveTms(() => setStep((s) => s + 1));
       return;
     }
@@ -304,18 +321,7 @@ export function OnboardingWizard({
 
   const goBack = () => {
     setError(null);
-    setStep((s) => {
-      const prev = Math.max(0, s - 1);
-      // Skip the Training Maxes step on the way back too when the
-      // selected equipment has no loadable main-lift.
-      if (
-        !needsTrainingMaxes &&
-        STEPS[prev] === "Training maxes"
-      ) {
-        return Math.max(0, prev - 1);
-      }
-      return prev;
-    });
+    setStep((s) => Math.max(0, s - 1));
   };
 
   const saveProfile = (after: () => void) => {
@@ -502,7 +508,7 @@ export function OnboardingWizard({
           />
         )}
 
-        {currentLabel === "Training maxes" && (
+        {currentLabel === "Training maxes" && !useBwAssessment && (
           <TmStep
             roleCandidates={roleCandidates}
             variantByRole={variantByRole}
@@ -513,6 +519,19 @@ export function OnboardingWizard({
             setModeByRole={setModeByRole}
             bodyweightKg={bodyweightKg ? Number(bodyweightKg) : null}
             units={units}
+          />
+        )}
+
+        {currentLabel === "Training maxes" && useBwAssessment && (
+          <BwAssessmentStep
+            submitAction={async (payload) => {
+              const r = await submitBwAssessmentAction(payload);
+              return r;
+            }}
+            onComplete={() => {
+              setError(null);
+              setStep((s) => s + 1);
+            }}
           />
         )}
 
@@ -546,7 +565,8 @@ export function OnboardingWizard({
           </div>
         )}
 
-        {currentLabel !== "Build your block" && (
+        {currentLabel !== "Build your block" &&
+          !(currentLabel === "Training maxes" && useBwAssessment) && (
           <div className="ob-nav" style={navRowStyle}>
             <button
               type="button"
