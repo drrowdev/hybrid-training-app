@@ -14,6 +14,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { MOVEMENT_FAMILIES, type MovementFamily } from "@hta/db";
+import { tutThreshold } from "@/lib/planner/bw-progression";
 
 /** Human-readable family labels — kept local because the catalog
  *  table doesn't carry one. Brand-purity: pure descriptors. */
@@ -42,11 +43,21 @@ type CatalogNode = {
   display_name: string;
   prerequisites: string[];
   difficulty_anchor: number;
+  isometric_capable: boolean;
 };
 
 type ProgressRow = {
   family: MovementFamily;
   current_node_id: string;
+  weeks_at_node: number;
+  accumulated_tut_seconds: number;
+};
+
+type ProgressionEventRow = {
+  occurred_at: string;
+  family: MovementFamily;
+  from_node_id: string;
+  to_node_id: string;
 };
 
 export default async function BodyweightProgressionPage() {
@@ -56,15 +67,26 @@ export default async function BodyweightProgressionPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: progressRows }, { data: catalogRows }] = await Promise.all([
-    supabase
-      .from("bw_progress")
-      .select("family, current_node_id")
-      .eq("user_id", user.id),
-    supabase
-      .from("movement_nodes")
-      .select("id, family, node_key, display_name, prerequisites, difficulty_anchor"),
-  ]);
+  const [{ data: progressRows }, { data: catalogRows }, { data: eventRows }] =
+    await Promise.all([
+      supabase
+        .from("bw_progress")
+        .select(
+          "family, current_node_id, weeks_at_node, accumulated_tut_seconds",
+        )
+        .eq("user_id", user.id),
+      supabase
+        .from("movement_nodes")
+        .select(
+          "id, family, node_key, display_name, prerequisites, difficulty_anchor, isometric_capable",
+        ),
+      supabase
+        .from("bw_progression_events")
+        .select("occurred_at, family, from_node_id, to_node_id")
+        .eq("user_id", user.id)
+        .order("occurred_at", { ascending: false })
+        .limit(10),
+    ]);
 
   const catalog: CatalogNode[] = (catalogRows ?? []) as CatalogNode[];
   const nodeById = new Map(catalog.map((n) => [n.id, n]));
@@ -86,7 +108,14 @@ export default async function BodyweightProgressionPage() {
     const progress = progressByFamily.get(family);
     const familyNodes = nodesByFamily.get(family) ?? [];
     if (!progress) {
-      return { family, current: null, next: null };
+      return {
+        family,
+        current: null,
+        next: null,
+        weeksAtNode: 0,
+        tutAccumulated: 0,
+        tutRequired: 0,
+      };
     }
     const current = nodeById.get(progress.current_node_id) ?? null;
     const next =
@@ -96,10 +125,29 @@ export default async function BodyweightProgressionPage() {
             .filter((n) => n.prerequisites.includes(current.id))
             .sort((a, b) => a.difficulty_anchor - b.difficulty_anchor)[0] ??
           null;
-    return { family, current, next };
+    const tutRequired = current
+      ? tutThreshold({
+          id: current.id,
+          nodeKey: current.node_key,
+          displayName: current.display_name,
+          family: current.family,
+          difficultyAnchor: current.difficulty_anchor,
+          isometricCapable: current.isometric_capable,
+          prerequisites: current.prerequisites,
+        } as never)
+      : 0;
+    return {
+      family,
+      current,
+      next,
+      weeksAtNode: progress.weeks_at_node,
+      tutAccumulated: progress.accumulated_tut_seconds,
+      tutRequired,
+    };
   });
 
   const seeded = rows.some((r) => r.current != null);
+  const events: ProgressionEventRow[] = (eventRows ?? []) as ProgressionEventRow[];
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
@@ -139,43 +187,161 @@ export default async function BodyweightProgressionPage() {
 
       {seeded && (
         <div data-testid="bw-progression-table" style={{ display: "grid", gap: 8 }}>
-          {rows.map(({ family, current, next }) => {
-            if (current == null) return null;
-            return (
-              <div
-                key={family}
-                data-testid={`bw-progression-row-${family}`}
-                style={rowStyle}
-              >
-                <div style={{ display: "grid", gap: 2 }}>
-                  <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-                    {FAMILY_LABEL[family]}
-                  </span>
-                  <span style={{ fontSize: 15, fontWeight: 600 }}>
-                    {current.display_name}
-                  </span>
-                </div>
+          {rows.map(
+            ({ family, current, next, weeksAtNode, tutAccumulated, tutRequired }) => {
+              if (current == null) return null;
+              const tutPct =
+                tutRequired > 0
+                  ? Math.min(100, Math.round((tutAccumulated / tutRequired) * 100))
+                  : 0;
+              return (
                 <div
-                  style={{
-                    fontSize: 12,
-                    color: "var(--cp-text-muted)",
-                    textAlign: "right",
-                    lineHeight: 1.45,
-                  }}
+                  key={family}
+                  data-testid={`bw-progression-row-${family}`}
+                  style={rowStyle}
                 >
-                  Next:{" "}
-                  <strong style={{ color: "var(--cp-text)" }}>
-                    {next ? next.display_name : "—"}
-                  </strong>
+                  <div style={{ display: "grid", gap: 4 }}>
+                    <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
+                      {FAMILY_LABEL[family]}
+                    </span>
+                    <span style={{ fontSize: 15, fontWeight: 600 }}>
+                      {current.display_name}
+                    </span>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 8,
+                        alignItems: "center",
+                        marginTop: 2,
+                      }}
+                    >
+                      <span
+                        data-testid={`bw-weeks-badge-${family}`}
+                        style={badgeStyle}
+                      >
+                        weeks {Math.min(weeksAtNode, 2)}/2
+                      </span>
+                      <div
+                        data-testid={`bw-tut-bar-${family}`}
+                        style={{ flex: 1, minWidth: 90 }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 10,
+                            color: "var(--cp-text-muted)",
+                            marginBottom: 2,
+                          }}
+                        >
+                          TUT {tutAccumulated}/{tutRequired} sec
+                        </div>
+                        <div
+                          style={{
+                            height: 6,
+                            borderRadius: 3,
+                            background: "var(--cp-border)",
+                            overflow: "hidden",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: `${tutPct}%`,
+                              height: "100%",
+                              background: "var(--cp-accent, var(--cp-text))",
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "var(--cp-text-muted)",
+                      textAlign: "right",
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    Next:{" "}
+                    <strong style={{ color: "var(--cp-text)" }}>
+                      {next ? next.display_name : "—"}
+                    </strong>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            },
+          )}
         </div>
+      )}
+
+      {seeded && (
+        <section
+          data-testid="bw-progression-recent"
+          style={{ display: "grid", gap: 8 }}
+        >
+          <h2 style={{ fontSize: 14, margin: 0 }}>Recent progressions</h2>
+          {events.length === 0 ? (
+            <p
+              style={{
+                margin: 0,
+                fontSize: 12,
+                color: "var(--cp-text-muted)",
+                lineHeight: 1.5,
+              }}
+            >
+              No advancements yet. The engine logs an entry here every time you
+              earn the next node — keep banking time under tension and clean
+              over-completed sessions to open the gate.
+            </p>
+          ) : (
+            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 6 }}>
+              {events.map((ev, i) => {
+                const from = nodeById.get(ev.from_node_id);
+                const to = nodeById.get(ev.to_node_id);
+                return (
+                  <li
+                    key={`${ev.occurred_at}-${i}`}
+                    data-testid="bw-progression-event"
+                    style={{
+                      padding: "8px 12px",
+                      border: "1px solid var(--cp-border)",
+                      borderRadius: 8,
+                      background: "var(--cp-surface)",
+                      fontSize: 12,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                    }}
+                  >
+                    <span>
+                      <span style={{ color: "var(--cp-text-muted)" }}>
+                        {FAMILY_LABEL[ev.family]}:
+                      </span>{" "}
+                      {from?.display_name ?? "—"} →{" "}
+                      <strong>{to?.display_name ?? "—"}</strong>
+                    </span>
+                    <span style={{ color: "var(--cp-text-muted)" }}>
+                      {new Date(ev.occurred_at).toISOString().slice(0, 10)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
       )}
     </div>
   );
 }
+
+const badgeStyle: React.CSSProperties = {
+  display: "inline-block",
+  padding: "1px 6px",
+  borderRadius: 999,
+  border: "1px solid var(--cp-border)",
+  fontSize: 10,
+  color: "var(--cp-text-muted)",
+  whiteSpace: "nowrap",
+};
 
 const emptyStyle: React.CSSProperties = {
   padding: 14,

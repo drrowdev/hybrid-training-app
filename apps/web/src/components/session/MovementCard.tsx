@@ -52,6 +52,19 @@ export type MovementCardProps = {
   plateInventory?: PlateInventoryItem[];
   /** Persistence key prefix — combined with movementId for localStorage. */
   persistKeyPrefix: string;
+  /** Phase 4 BW gate state — passed through verbatim to the focus view. */
+  bwGateStateByFamily?: Readonly<
+    Record<
+      string,
+      {
+        weeksAtNode: number;
+        weeksRequired: number;
+        tutAccumulated: number;
+        tutRequired: number;
+        recentOverCompleted: boolean;
+      }
+    >
+  >;
 };
 
 const RECAP_DELAY_MS = 4500;
@@ -75,6 +88,7 @@ export function MovementCard({
   trapBarKg,
   plateInventory,
   persistKeyPrefix,
+  bwGateStateByFamily,
 }: MovementCardProps) {
   const cardState = deriveCardState(group, loggedItemIndices);
   const complete = isMovementComplete(group, loggedItemIndices);
@@ -382,6 +396,7 @@ export function MovementCard({
             plateInventory={plateInventory}
             initialCursor={pinnedCursor}
             onSaved={() => setPinnedCursor(null)}
+            bwGateStateByFamily={bwGateStateByFamily}
           />
         </div>
       )}

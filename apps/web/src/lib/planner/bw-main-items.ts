@@ -29,6 +29,13 @@ export type BwFamilyContext = {
   movementSlug?: string;
   movementName?: string;
   cleanRepHistory?: ReadonlyArray<{ reps?: number; seconds?: number }>;
+  /**
+   * Same-family children of the current node, lowest difficulty
+   * first. Used by `buildBwPrescriptionItem` to stamp the Phase 4
+   * "Next:" hint into the prescription payload. Empty array means
+   * the family is at a terminal node ("Mastered" chip).
+   */
+  candidateNextNodes?: ReadonlyArray<MovementNode>;
 };
 
 /**
@@ -70,6 +77,10 @@ export function buildBwPrescriptionItem(args: {
       nodeKey: args.ctx.node.nodeKey,
       nodeDisplayName: args.ctx.node.displayName,
       family: args.ctx.family,
+      nextNodePreview: previewFromCandidates(
+        args.ctx.candidateNextNodes,
+        args.ctx.family,
+      ),
     },
   };
 
@@ -142,4 +153,33 @@ export function buildBwMainItemsForSession(args: {
     }
   }
   return items;
+}
+
+/**
+ * Stamp the Phase 4 "Next:" hint onto a prescription item. Picks the
+ * lowest-anchor same-family child of the current node, or returns the
+ * `mastered: true` terminal marker when none exist.
+ */
+function previewFromCandidates(
+  candidates: ReadonlyArray<MovementNode> | undefined,
+  family: MovementFamily,
+):
+  | { nodeKey: string; displayName: string; difficultyAnchor: number }
+  | { mastered: true }
+  | undefined {
+  if (!candidates) return undefined;
+  const sameFamily = candidates.filter((n) => n.family === family);
+  if (sameFamily.length === 0) return { mastered: true };
+  const sorted = [...sameFamily].sort((a, b) => {
+    if (a.difficultyAnchor !== b.difficultyAnchor) {
+      return a.difficultyAnchor - b.difficultyAnchor;
+    }
+    return a.nodeKey.localeCompare(b.nodeKey);
+  });
+  const next = sorted[0]!;
+  return {
+    nodeKey: next.nodeKey,
+    displayName: next.displayName,
+    difficultyAnchor: next.difficultyAnchor,
+  };
 }
