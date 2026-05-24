@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import {
-  formatPrescriptionItem,
   summarisePrescription,
   roundToPlate,
 } from "@/lib/planner/archetypes";
@@ -15,15 +14,12 @@ import {
 import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
 import { todayYmd } from "@/lib/dates";
 import { effectiveTimeOfDay, gapHoursBetween } from "@/lib/planner/time-of-day";
-import { getRegionFreshness, type RegionFreshnessRow, type FreshnessConflict } from "@/lib/stats/region-freshness-queries";
+import { getRegionFreshness, type FreshnessConflict } from "@/lib/stats/region-freshness-queries";
 import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
 import { findHeavyOnRecoveringConflictWithMuscles } from "@/lib/muscle/muscle-conflict";
 import { StravaStaleSyncTrigger } from "@/components/StravaStaleSyncTrigger";
-import { StravaPoweredBadge } from "@/components/StravaPoweredBadge";
 import { computeTaperRecommendation, type TaperRecommendation } from "@/lib/planner/taper";
-import { BodyweightNudge } from "@/components/today/BodyweightNudge";
-import { HowRecoveredCard } from "@/components/today/HowRecoveredCard";
-import { DataRail } from "@/components/today/DataRail";
+import { TrainingMaxesCard } from "@/components/today/TrainingMaxesCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { TmSuggestionBanner, type TmSuggestionView } from "@/components/today/TmSuggestionBanner";
 import {
@@ -31,17 +27,27 @@ import {
   dismissTmSuggestion,
 } from "@/lib/training-maxes/actions";
 import type { TmFormula, TmSource } from "@hta/db";
-import type { WeekDayCell } from "@/components/today/WeekDotsCard";
-import { recordDailyCheckIn } from "@/lib/wellness/actions";
 import { listTrainingMaxes } from "@/lib/training-maxes/queries";
 import { mondayOfYmd, addDaysToYmd, isoWeekdayYmd } from "@/lib/dates";
 
-const DOW_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const DOW_SHORT = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+const MONTHS_UPPER = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 
-function todayLabel(d = new Date()) {
-  return `${DOW_LONG[d.getDay()]} · ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+/** Eyebrow-style short date — "SUN 24 MAY". */
+function eyebrowDate(d = new Date()) {
+  return `${DOW_SHORT[d.getDay()]} ${d.getDate()} ${MONTHS_UPPER[d.getMonth()]}`;
 }
+
+/**
+ * Per-day cell used by the inline week strip. Mirrors the legacy
+ * WeekDotsCard shape so the existing fetcher can stay unchanged.
+ */
+type WeekDayCell = {
+  strengthDone: boolean;
+  cardioDone: boolean;
+  planned: boolean;
+  isToday: boolean;
+};
 
 /** Coarse "N days/weeks ago" string used by the e1RM hero annotation. */
 function relativeFromIso(iso: string | null, now: Date = new Date()): string {
@@ -212,39 +218,13 @@ export default async function TodayPage() {
   }
 
   // Strava integration state: do we have a connection (drives the
-  // background stale-sync trigger) and have we ever imported anything
-  // (drives the attribution badge)?
-  const [{ data: stravaConn }, { count: stravaCardioCount }] = await Promise.all([
-    supabase
-      .from("strava_connections")
-      .select("user_id")
-      .eq("user_id", userId)
-      .maybeSingle(),
-    supabase
-      .from("cardio_logs")
-      .select("id", { count: "exact", head: true })
-      .eq("external_source", "strava"),
-  ]);
-  const hasStravaConnection = Boolean(stravaConn);
-  const hasStravaData = (stravaCardioCount ?? 0) > 0;
-
-  // Phase 3 A2 — bodyweight nudge: only render the card if the user
-  // hasn't logged a bodyweight in the past 7 days. RLS scopes the
-  // query to the current user automatically.
-  const sevenDaysAgoIso = (() => {
-    const d = new Date(todayIso + "T00:00:00Z");
-    d.setUTCDate(d.getUTCDate() - 7);
-    return d.toISOString().slice(0, 10);
-  })();
-  const { data: recentBodyweight } = await supabase
-    .from("wellness")
-    .select("date")
-    .not("bodyweight_kg", "is", null)
-    .gte("date", sevenDaysAgoIso)
-    .order("date", { ascending: false })
-    .limit(1)
+  // background stale-sync trigger).
+  const { data: stravaConn } = await supabase
+    .from("strava_connections")
+    .select("user_id")
+    .eq("user_id", userId)
     .maybeSingle();
-  const showBodyweightNudge = !recentBodyweight;
+  const hasStravaConnection = Boolean(stravaConn);
 
   // Phase 2: next priority event + taper recommendation.
   const { data: nextEvent } = await supabase
@@ -385,15 +365,6 @@ export default async function TodayPage() {
   }));
   const doneCount = weekDays.filter((d) => d.strengthDone || d.cardioDone).length;
 
-  // Today's wellness row drives HowRecoveredCard's initial state.
-  const { data: todayWellness } = await supabase
-    .from("wellness")
-    .select("fatigue, soreness")
-    .eq("date", todayIso)
-    .maybeSingle();
-  const initialFatigue = (todayWellness?.fatigue ?? null) as number | null;
-  const initialSoreness = (todayWellness?.soreness ?? null) as number | null;
-
   const computedWeekIndex = activeBlock
     ? Math.max(
         0,
@@ -405,10 +376,17 @@ export default async function TodayPage() {
       )
     : null;
 
-  const subtitleParts: string[] = [];
-  if (archetypeName) subtitleParts.push(archetypeName);
-  if (activeBlock) subtitleParts.push(`Week ${(computedWeekIndex ?? 0) + 1} of ${activeBlock.weeks}`);
-  subtitleParts.push(todayLabel().split(" · ")[0]!); // long weekday
+  // Determine whether the page-level layout should be 2-col (training day
+  // — show right rail with TMs) or 1-col (rest day — no rail). We treat
+  // the "all logged today" branch as a training day too (rail stays).
+  const isRestDay = plannedToday.length === 0 && !openSession;
+  const todayDate = new Date();
+  const eyebrowLine = (() => {
+    const datePart = eyebrowDate(todayDate);
+    if (!activeBlock || !archetypeName) return datePart;
+    const week = (computedWeekIndex ?? 0) + 1;
+    return `${archetypeName.toUpperCase()} · WEEK ${week} · ${datePart}`;
+  })();
 
   return (
     <div
@@ -417,34 +395,43 @@ export default async function TodayPage() {
         gridTemplateColumns: "minmax(0, 1fr)",
         gap: 24,
       }}
-      className="today-shell"
+      className={`today-shell${isRestDay ? " is-rest" : ""}`}
     >
-      {/* Two-column layout above 1100px — see <style> block below. */}
+      {/* Two-column layout above 1100px (training day only). Rest day
+          collapses to a single column so the banner can breathe. */}
       <style>{`
         @media (min-width: 1100px) {
-          .today-shell { grid-template-columns: minmax(0, 1fr) 280px !important; align-items: start; }
+          .today-shell:not(.is-rest) {
+            grid-template-columns: minmax(0, 1fr) 280px !important;
+            align-items: start;
+          }
         }
       `}</style>
 
       <div style={{ display: "grid", gap: 18, minWidth: 0 }}>
         <header>
           <div
+            data-testid="today-eyebrow"
             style={{
               fontSize: 11,
               color: "var(--cp-text-muted)",
               textTransform: "uppercase",
-              letterSpacing: "0.12em",
+              letterSpacing: "0.08em",
               fontWeight: 600,
             }}
           >
-            {todayLabel()}
-            {archetypeName && computedWeekIndex != null && (
+            {activeBlock && archetypeName ? (
               <>
-                <span style={{ margin: "0 8px", opacity: 0.4 }}>·</span>
-                {archetypeName}
-                <span style={{ margin: "0 8px", opacity: 0.4 }}>·</span>
-                Week {computedWeekIndex + 1}
+                <span style={{ color: "var(--cp-accent)" }}>
+                  {archetypeName.toUpperCase()}
+                </span>
+                <span style={{ margin: "0 8px", opacity: 0.5 }}>·</span>
+                WEEK {(computedWeekIndex ?? 0) + 1}
+                <span style={{ margin: "0 8px", opacity: 0.5 }}>·</span>
+                {eyebrowDate(todayDate)}
               </>
+            ) : (
+              eyebrowLine
             )}
           </div>
           <h1
@@ -457,17 +444,6 @@ export default async function TodayPage() {
           >
             Today
           </h1>
-          {activeBlock && (
-            <div
-              style={{
-                fontSize: 13,
-                color: "var(--cp-text-muted)",
-                marginTop: 4,
-              }}
-            >
-              {subtitleParts.join(" · ")}
-            </div>
-          )}
         </header>
 
         {taper && <TaperCard taper={taper} />}
@@ -494,84 +470,137 @@ export default async function TodayPage() {
           nextUpcoming={upcoming[0] ?? null}
         />
 
-        <HowRecoveredCard
-          todayYmd={todayIso}
-          initialFatigue={initialFatigue}
-          initialSoreness={initialSoreness}
-          recordDailyCheckIn={recordDailyCheckIn}
-        />
+        <WeekStrip days={weekDays} doneCount={doneCount} isRestDay={isRestDay} />
 
-        <RegionFreshnessCard rows={freshness} hasStravaData={hasStravaData} />
         {hasStravaConnection && <StravaStaleSyncTrigger />}
-
-        <section className="cp-card" style={{ padding: 20 }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
-            <h2 style={{ fontSize: 16, margin: 0 }}>Up next this week</h2>
-            <Link href="/app/plan" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>full plan →</Link>
-          </div>
-          {upcoming.length === 0 ? (
-            <EmptyState
-              variant="inline"
-              title="No plan yet"
-              body="Start a block and your upcoming sessions appear here. Pick an archetype that matches your current goal."
-              action={{ label: "Start a block →", href: "/app/plan" }}
-            />
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(140px, 1fr))`, gap: 8 }}>
-              {upcoming.map((u) => (
-                <Link
-                  key={u.id}
-                  href={`/app/plan?week=${u.weekIndex}`}
-                  style={{
-                    border: "1px solid var(--cp-border)",
-                    borderRadius: 12,
-                    padding: 10,
-                    textDecoration: "none",
-                    color: "inherit",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 6,
-                    minHeight: 96,
-                  }}
-                >
-                  <div style={{ fontSize: 10, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                    {new Date(u.date + "T00:00:00").toLocaleDateString(undefined, { weekday: "short" })} ·{" "}
-                    <span style={{ color: "var(--cp-text)" }}>
-                      {new Date(u.date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                    </span>
-                    {u.slot !== "single" && (
-                      <span
-                        data-testid={`upcoming-slot-${u.id}`}
-                        className="mono"
-                        style={{ marginLeft: 6, color: "var(--cp-accent)", fontWeight: 700 }}
-                      >
-                        · {u.slot.toUpperCase()}
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.25 }}>{u.title}</div>
-                  <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: "auto" }}>
-                    {summarisePrescription(u.prescription.items)}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {showBodyweightNudge && (
-          <BodyweightNudge
-            todayYmd={todayIso}
-            recordDailyCheckIn={recordDailyCheckIn}
-          />
-        )}
 
         <ActivitySection sessions={recent ?? []} todayIso={todayIso} />
       </div>
 
-      <DataRail weekDays={weekDays} doneCount={doneCount} tmRows={tmRows} />
+      {!isRestDay && (
+        <aside style={{ display: "grid", gap: 16, alignContent: "start" }}>
+          <TrainingMaxesCard rows={tmRows} />
+        </aside>
+      )}
     </div>
   );
+}
+
+/**
+ * Compressed week strip — single row with day dots + a summary on the
+ * right. Pulls from the same week-aggregation data the right-rail
+ * WeekDotsCard used; rendered inline on Today between the hero and
+ * Recent activity. Mon-anchored to match the existing convention.
+ */
+function WeekStrip({
+  days,
+  doneCount,
+  isRestDay,
+}: {
+  days: WeekDayCell[];
+  doneCount: number;
+  isRestDay: boolean;
+}) {
+  const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
+  const todayCell = days.find((d) => d.isToday);
+  const plannedToday = todayCell?.planned ?? false;
+  const summary = isRestDay
+    ? `${doneCount} done · rest today`
+    : `${doneCount} done · today ${plannedToday ? "planned" : "—"}`;
+  return (
+    <div
+      data-testid="today-week-strip"
+      aria-label="This week"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 14,
+        padding: "10px 16px",
+        background: "var(--cp-surface)",
+        border: "1px solid var(--cp-border)",
+        borderRadius: 10,
+        fontSize: 12,
+        flexWrap: "wrap",
+      }}
+    >
+      <span
+        style={{
+          color: "var(--cp-text-muted)",
+          fontSize: 11,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          fontWeight: 600,
+        }}
+      >
+        This week
+      </span>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        {days.map((d, i) => (
+          <WeekStripDot key={i} label={DAY_LABELS[i]!} cell={d} />
+        ))}
+      </div>
+      <span style={{ color: "var(--cp-text-muted)", marginLeft: "auto" }}>{summary}</span>
+    </div>
+  );
+}
+
+function WeekStripDot({ label, cell }: { label: string; cell: WeekDayCell }) {
+  const base: React.CSSProperties = {
+    width: 22,
+    height: 22,
+    borderRadius: "50%",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 10,
+    fontWeight: 600,
+    border: "1px solid var(--cp-border)",
+    color: "var(--cp-text-muted)",
+  };
+  if (cell.isToday) {
+    base.borderColor = "var(--cp-accent)";
+    base.color = "var(--cp-text)";
+  }
+  if (cell.strengthDone) {
+    return (
+      <span
+        title="Strength done"
+        style={{
+          ...base,
+          background: "var(--cp-accent)",
+          color: "var(--cp-accent-fg, #0a0a0a)",
+          borderColor: "var(--cp-accent)",
+          fontWeight: 700,
+        }}
+      >
+        {label}
+      </span>
+    );
+  }
+  if (cell.cardioDone) {
+    return (
+      <span
+        title="Cardio done"
+        style={{
+          ...base,
+          background: "var(--cp-link)",
+          color: "#001028",
+          borderColor: "var(--cp-link)",
+          fontWeight: 700,
+        }}
+      >
+        {label}
+      </span>
+    );
+  }
+  if (cell.planned) {
+    return (
+      <span title="Planned" style={{ ...base, borderStyle: "dashed" }}>
+        {label}
+      </span>
+    );
+  }
+  return <span style={base}>{label}</span>;
 }
 
 /**
@@ -769,58 +798,59 @@ function TodaySessionCard({
   }
 
   if (plannedToday.length === 0) {
+    // Compact 1-row rest banner. Replaces the older Why-rest-day card.
+    // The next-session preview pulls top-set numbers from the same
+    // prescription + TM math the hero uses so the line reads identically.
+    const nextTopLine = nextUpcoming ? topSetLine(nextUpcoming, tmById) : null;
     return (
       <section
-        className="cp-card"
         data-testid="today-rest"
-        style={{ padding: 24, display: "grid", gap: 14, minHeight: 220 }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 14,
+          padding: "14px 18px",
+          background: "var(--cp-surface)",
+          border: "1px solid var(--cp-border)",
+          borderRadius: 12,
+          flexWrap: "wrap",
+        }}
       >
-        <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-          {archetypeName && weekIndex != null
-            ? `${archetypeName} · Week ${weekIndex + 1}`
-            : "Today"}
-        </div>
-        <h2 style={{ fontSize: 26, margin: 0, letterSpacing: "-0.01em" }}>
-          Rest day · take it easy
-        </h2>
-        <p style={{ color: "var(--cp-text-muted)", margin: 0, fontSize: 14, lineHeight: 1.5 }}>
-          Nothing on the schedule today.{" "}
-          <span className="cp-info" tabIndex={0} aria-label="Why a rest day?">
-            i
-            <span className="pop" style={{ width: 280 }}>
-              <strong>Why a rest day?</strong>
-              <br />
-              Recovery is where adaptation happens. Tendons rebuild on a 24–72h
-              window after heavy work; the central nervous system needs
-              off-days to re-sensitise. Walk, sleep, eat — that&apos;s today&apos;s
-              workout.
-            </span>
-          </span>
-        </p>
-        {nextUpcoming && (
-          <div
-            data-testid="rest-tomorrow"
-            style={{
-              fontSize: 13,
-              color: "var(--cp-text-muted)",
-              padding: "10px 12px",
-              borderRadius: 10,
-              background: "var(--cp-surface-soft)",
-              border: "1px solid var(--cp-border)",
-            }}
-          >
-            Up next:{" "}
-            <span style={{ color: "var(--cp-text)", fontWeight: 600 }}>
-              {formatUpcomingDay(nextUpcoming.date)}
-            </span>{" "}
-            · {nextUpcoming.title}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+          <span aria-hidden style={{ fontSize: 18 }}>☕</span>
+          <div style={{ fontSize: 13, color: "var(--cp-text-muted)", minWidth: 0 }}>
+            <strong style={{ color: "var(--cp-text)", fontSize: 14, fontWeight: 600, marginRight: 6 }}>
+              Rest day.
+            </strong>
+            {nextUpcoming ? (
+              <span data-testid="rest-tomorrow">
+                Next session:{" "}
+                <strong style={{ color: "var(--cp-text)", fontWeight: 600 }}>
+                  {formatUpcomingDay(nextUpcoming.date)} · {nextUpcoming.title}
+                </strong>
+                {nextTopLine && (
+                  <span style={{ color: "var(--cp-text-muted)" }}> · {nextTopLine}</span>
+                )}
+              </span>
+            ) : (
+              <span>Nothing on the schedule.</span>
+            )}
           </div>
-        )}
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Link href="/app/sessions/new" className="cp-btn">
-            Log a freestyle session
+        </div>
+        <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+          <Link
+            href="/app/sessions/new"
+            style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
+          >
+            Log freestyle
           </Link>
-          <Link href="/app/plan" className="cp-btn">View plan</Link>
+          <Link
+            href="/app/plan"
+            style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
+          >
+            View plan →
+          </Link>
         </div>
       </section>
     );
@@ -1232,31 +1262,6 @@ function PlannedSessionCard({
       <div style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>
         {summarisePrescription(planned.prescription.items)}
       </div>
-      {planned.prescription.items.length > 0 && (
-        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 4 }}>
-          {planned.prescription.items.map((item, i) => (
-            <li
-              key={i}
-              style={{
-                fontSize: 13,
-                display: "flex",
-                justifyContent: "space-between",
-                padding: "6px 10px",
-                background: "var(--cp-surface-soft)",
-                borderRadius: 6,
-              }}
-            >
-              <span>
-                Set {i + 1}
-                {item.notes ? (
-                  <span style={{ color: "var(--cp-accent)", fontWeight: 600, marginLeft: 4 }}>· {item.notes}</span>
-                ) : null}
-              </span>
-              <span className="mono" style={{ fontWeight: 600 }}>{formatPrescriptionItem(item, tmById[item.movementId])}</span>
-            </li>
-          ))}
-        </ul>
-      )}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: "auto" }}>
         {planned.completedSessionId ? (
           <Link
@@ -1281,16 +1286,47 @@ function PlannedSessionCard({
           href="/app/plan"
           style={{
             fontSize: 13,
-            color: "var(--cp-link)",
-            textDecoration: "underline",
+            color: "var(--cp-text-muted)",
+            textDecoration: "none",
             padding: "10px 6px",
           }}
         >
-          Preview
+          Preview plan
         </Link>
       </div>
     </section>
   );
+}
+
+/**
+ * Top-set summary line for a planned day. Mirrors the hero topline
+ * computation in PlannedSessionCard — extracted so the rest-day banner
+ * can render the same "102 kg × 5" string for the next upcoming session.
+ */
+function topSetLine(
+  planned: PlannedDay,
+  tmById: Record<string, number>,
+): string | null {
+  const mainItems = planned.prescription.items.filter(
+    (i) => i.kind === "main" || i.kind === "back_off",
+  );
+  const topItem =
+    mainItems
+      .slice()
+      .sort((a, b) => (b.percentTm ?? 0) - (a.percentTm ?? 0))[0] ?? mainItems[0];
+  if (!topItem) return null;
+  const topTm = tmById[topItem.movementId];
+  const topWeight =
+    typeof topItem.percentTm === "number" && topTm
+      ? roundToPlate(topTm * (topItem.percentTm / 100))
+      : null;
+  if (topWeight && topItem.reps != null) {
+    return `top set ${topWeight} kg × ${topItem.reps}`;
+  }
+  if (topItem.percentTm && topItem.reps) {
+    return `top set ${topItem.percentTm}% TM × ${topItem.reps}`;
+  }
+  return null;
 }
 
 function formatUpcomingDay(iso: string): string {
@@ -1304,83 +1340,6 @@ function formatUpcomingDay(iso: string): string {
     return target.toLocaleDateString(undefined, { weekday: "long" });
   }
   return target.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
-function freshnessColor(tone: "ok" | "caution" | "warn") {
-  if (tone === "ok") return "var(--cp-success)";
-  if (tone === "caution") return "var(--cp-warning)";
-  return "var(--cp-danger)";
-}
-
-function timeAgo(iso: string | null): string {
-  if (!iso) return "";
-  const days = Math.max(0, Math.floor((Date.now() - new Date(iso + "T00:00:00").getTime()) / 86_400_000));
-  if (days === 0) return "today";
-  if (days === 1) return "yesterday";
-  if (days < 7) return `${days}d ago`;
-  if (days < 60) return `${Math.round(days / 7)}w ago`;
-  return `${Math.round(days / 30)}mo ago`;
-}
-
-function RegionFreshnessCard({ rows, hasStravaData }: { rows: RegionFreshnessRow[]; hasStravaData: boolean }) {
-  return (
-    <section className="cp-card" style={{ padding: 20 }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12, gap: 12, flexWrap: "wrap" }}>
-        <h2 style={{ fontSize: 16, margin: 0 }}>How recovered you are</h2>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {hasStravaData && <StravaPoweredBadge variant="compact" />}
-          <Link href="/app/stats/engine" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>details →</Link>
-        </div>
-      </div>
-      {rows.length === 0 ? (
-        <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: 0 }}>
-          Log a session to start tracking how each region recovers.
-        </p>
-      ) : (
-        <div style={{ display: "grid", gap: 8 }}>
-          {rows.map((r) => (
-            <div
-              key={r.region}
-              title={`Freshness ${(r.freshness * 100).toFixed(0)}% · last load ${timeAgo(r.lastLoadDate) || "—"}`}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "8px 12px",
-                border: "1px solid var(--cp-border)",
-                borderRadius: 10,
-                background: "var(--cp-surface)",
-              }}
-            >
-              <span style={{ fontSize: 14, fontWeight: 500 }}>{r.regionLabel}</span>
-              <span
-                style={{
-                  fontSize: 12,
-                  color: freshnessColor(r.tone),
-                  fontWeight: 600,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <span
-                  aria-hidden
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 999,
-                    background: freshnessColor(r.tone),
-                    display: "inline-block",
-                  }}
-                />
-                {r.label}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
 }
 
 function TaperCard({ taper }: { taper: TaperRecommendation }) {

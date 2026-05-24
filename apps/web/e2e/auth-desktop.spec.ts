@@ -234,7 +234,11 @@ test.describe("@desktop auth", () => {
 
     await page.goto("/app");
     await page.waitForLoadState("networkidle");
-    const signOut = page.getByTestId("sign-out-button");
+    // Sign-out moved from the sidebar to the avatar dropdown in the top
+    // bar — the single sign-out path. Open the dropdown, then click the
+    // sign-out button inside it.
+    await page.getByTestId("topbar-avatar").click();
+    const signOut = page.getByTestId("topbar-sign-out-button");
     await expect(signOut).toBeVisible();
     await signOut.click();
 
