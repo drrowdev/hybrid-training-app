@@ -267,6 +267,13 @@
       "tag": "0041_profiles_time_date_format",
       "when": 1779686400000,
       "breakpoints": false
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "tag": "0042_bw_skill_tree",
+      "when": 1779692400000,
+      "breakpoints": false
     }
   ]
 }
