@@ -142,3 +142,12 @@ Closes the gap where users training without a barbell still got prompted for mai
 ## [2026-05-24] extract | bodyweight-progression-plan.md
 7-phase implementation plan for bodyweight-only progression. Operationalises hybrid-training-bodyweight-addendum.md (also added in this commit). Phase 1: skill-tree DAG schema + catalog seed. Phase 2: 3-page onboarding assessment (rep tests + skill chips + hinge-gap ack). Phase 3: engine prescription with archetype × week × node matrix + skill-CNS scheduling. Phase 4: TUT-gated progression engine. Phase 5: mixed-modal classifier + hinge compensator. Phase 6: strength-mass drift detection. Phase 7: loaded bodyweight (deferred). Decision matrix A-F pending project-owner confirmation before Phase 1 dispatches.
 
+
+## [2026-05-24] refine | BW progression Phase 1 — schema + catalog (feat/bw-phase1-schema-catalog)
+
+Migration 0042 adds movement_nodes + bw_progress + extends training_maxes
+with bw_node_id (CHECK weight OR bw_node_id). 75 nodes seeded across 15
+families (push H/V, pull H/V, squat uni/bi, hinge, planche, levers, flag,
+muscle-up, handstand, core). effectiveDifficulty helper exported.
+Validation tests pin the DAG shape (no cycles, every family has an entry
+node, every prereq resolves).
