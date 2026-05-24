@@ -41,6 +41,7 @@ export type AccessoryBucket =
   | "compound"
   | "isolation"
   | "isometric"
+  | "carry"
   | "plyometric"
   | "tendon";
 
@@ -69,8 +70,24 @@ export type AccessoryBucketInput = {
  * picker's role tags so legacy / custom-block items still classify
  * correctly when role metadata is missing.
  */
-const ISOMETRIC_KEYWORDS = [
+/**
+ * Slug fragments that identify a loaded-carry variant. Carries are
+ * programmed by distance (meters) or time — never by reps — per the
+ * trunk-endurance literature (McGill 2014: loaded carries train the
+ * trunk to resist motion under load over a meaningful work bout).
+ */
+const CARRY_KEYWORDS = [
   "carry",
+  "farmer_walk",
+  "farmer-walk",
+  "farmer walk",
+  "suitcase_walk",
+  "suitcase-walk",
+  "loaded-walk",
+  "loaded_walk",
+];
+
+const ISOMETRIC_KEYWORDS = [
   "plank",
   "wall-sit",
   "wall_sit",
@@ -126,10 +143,13 @@ function slugHas(slug: string | undefined, keywords: string[]): boolean {
  *   2. Plyometric — `reason === "power"`, OR bulletproof plyo roles,
  *      OR slug matches a plyo keyword. Honours the catalog's
  *      `highStrainTendon` flag as a separate plyo signal.
- *   3. Isometric — bulletproof "carry" / "heavy_isometric" roles, or
- *      slug matches an isometric keyword.
- *   4. Isolation — single-muscle, non-compound movement.
- *   5. Compound — everything else (default).
+ *   3. Carry — loaded-carry variants (farmer / suitcase / overhead /
+ *      front-loaded / Zercher). Programmed as distance, not reps —
+ *      McGill 2014 + practitioner consensus.
+ *   4. Isometric — bulletproof "heavy_isometric" role, or slug matches
+ *      a plank / wall-sit / dead-bug / hold keyword.
+ *   5. Isolation — single-muscle, non-compound movement.
+ *   6. Compound — everything else (default).
  */
 export function inferAccessoryBucket(
   input: AccessoryBucketInput,
@@ -155,9 +175,18 @@ export function inferAccessoryBucket(
     return "plyometric";
   }
 
-  // 3. Isometric
+  // 3. Carry — must precede isometric so the "carry" bulletproof
+  //    role lands in the distance-prescribed bucket rather than the
+  //    legacy hold-time bucket.
   if (
     bulletproof.has("carry") ||
+    slugHas(slug, CARRY_KEYWORDS)
+  ) {
+    return "carry";
+  }
+
+  // 4. Isometric
+  if (
     bulletproof.has("heavy_isometric") ||
     slugHas(slug, ISOMETRIC_KEYWORDS)
   ) {
@@ -216,6 +245,12 @@ export type AccessoryIntensity = {
   tempoEccentricSec?: number;
   /** Hold duration range for isometric items. */
   holdSec?: { min: number; max: number };
+  /**
+   * Distance range in metres for loaded-carry items. Carries are
+   * programmed as distance (or time), never reps — McGill 2014
+   * (trunk-endurance under load) + practitioner consensus.
+   */
+  distanceM?: { min: number; max: number };
   /** Plain-English coaching cue. ≤ 80 chars. */
   intensityCue?: string;
 };
@@ -243,6 +278,8 @@ type BaseEntry = {
   /** Used in lieu of `rir` for plyometric. */
   rpe?: RirRange;
   hold?: { min: number; max: number };
+  /** Per-week distance range for carries (one entry per week index 0..3). */
+  distance?: { min: number; max: number };
   tempoEccentricSec?: number;
 };
 
@@ -272,6 +309,17 @@ const BASE_MATRIX: Record<AccessoryBucket, Record<MatrixArchetype, BaseEntry>> =
     rebuild: { hold: { min: 30, max: 30 } },
     maintenance: { hold: { min: 20, max: 20 } },
   },
+  // Carries are handled out-of-band via CARRY_DISTANCE_MATRIX below —
+  // distance prescriptions vary explicitly per week rather than via a
+  // uniform week offset.
+  carry: {
+    strength_anchor: {},
+    hypertrophy_anchor: {},
+    endurance_anchor: {},
+    concurrent_hybrid: {},
+    rebuild: {},
+    maintenance: {},
+  },
   plyometric: {
     // RPE phrasing here is conventional — max-intent at low rep counts.
     // Behm & Sale 1993: not autoregulated; we encode the cue separately.
@@ -290,6 +338,59 @@ const BASE_MATRIX: Record<AccessoryBucket, Record<MatrixArchetype, BaseEntry>> =
     rebuild: { rir: { min: 2, max: 2 }, tempoEccentricSec: 3 },
     maintenance: { rir: { min: 3, max: 3 }, tempoEccentricSec: 3 },
   },
+};
+
+/**
+ * Per-week distance prescription for loaded carries, in metres.
+ * Index 0..3 maps to week 1..4 of the standard 4-week wave.
+ *
+ * Sources:
+ *   - McGill 2014 — loaded carries train trunk endurance under load;
+ *     work intervals are time / distance based, not rep based.
+ *   - Practitioner consensus for hybrid blocks: 20–50 m per trip, 2–4
+ *     trips, with the heaviest week landing in week 2 or 3 and a
+ *     reduced bout on the deload week.
+ *
+ * Maintenance archetype only runs two prescribed weeks (3 / 4 fall
+ * through to the same minimal distance as week 1/2).
+ */
+const CARRY_DISTANCE_MATRIX: Record<MatrixArchetype, ReadonlyArray<{ min: number; max: number }>> = {
+  strength_anchor: [
+    { min: 20, max: 30 },
+    { min: 30, max: 40 },
+    { min: 30, max: 40 },
+    { min: 20, max: 20 },
+  ],
+  hypertrophy_anchor: [
+    { min: 30, max: 40 },
+    { min: 40, max: 50 },
+    { min: 40, max: 50 },
+    { min: 25, max: 25 },
+  ],
+  endurance_anchor: [
+    { min: 30, max: 40 },
+    { min: 30, max: 40 },
+    { min: 30, max: 40 },
+    { min: 20, max: 20 },
+  ],
+  concurrent_hybrid: [
+    { min: 25, max: 35 },
+    { min: 30, max: 40 },
+    { min: 30, max: 40 },
+    { min: 20, max: 20 },
+  ],
+  rebuild: [
+    { min: 15, max: 20 },
+    { min: 20, max: 25 },
+    { min: 20, max: 25 },
+    { min: 15, max: 15 },
+  ],
+  maintenance: [
+    { min: 20, max: 20 },
+    { min: 20, max: 20 },
+    { min: 20, max: 20 },
+    { min: 20, max: 20 },
+  ],
 };
 
 /**
@@ -313,6 +414,9 @@ function cueFor(
   }
   if (bucket === "isometric") {
     return "Hold steady. Stop when bracing breaks.";
+  }
+  if (bucket === "carry") {
+    return "Brace hard. Walk heavy with controlled steps. Set the load down between trips.";
   }
   if (bucket === "tendon") {
     return "3-second lowering. Smooth and controlled — load adapts, not fatigue.";
@@ -382,6 +486,16 @@ export function accessoryIntensity(args: {
     return out;
   }
 
+  if (bucket === "carry") {
+    // Distance-based prescription — McGill 2014 + practitioner
+    // consensus. Week index is clamped into the matrix range so
+    // 5+ week experiments don't crash.
+    const idx = Math.max(0, Math.min(3, args.weekIndex));
+    const row = CARRY_DISTANCE_MATRIX[archetype][idx];
+    if (row) out.distanceM = { ...row };
+    return out;
+  }
+
   if (bucket === "isometric") {
     if (base.hold) {
       if (args.weekIndex === 3) {
@@ -402,4 +516,40 @@ export function accessoryIntensity(args: {
     out.tempoEccentricSec = base.tempoEccentricSec;
   }
   return out;
+}
+
+/**
+ * Build the autoregulation slice of a `PrescriptionItem` from the
+ * matrix output. Keeps the picker-path and legacy-pool-path in
+ * actions.ts in sync, and crucially enforces the carry contract:
+ * carries are programmed by distance, never reps, so we strip the
+ * caller's tentative rep target when the bucket is `"carry"`.
+ *
+ * Returns a partial — the caller layers it on top of the movement
+ * identifier + set count fields it owns.
+ */
+export function accessoryItemPrescription(args: {
+  bucket: AccessoryBucket;
+  intensity: AccessoryIntensity;
+  /** Tentative rep target from the picker. Dropped for carries. */
+  reps: number | undefined;
+}): {
+  reps: number | undefined;
+  targetRir?: RirRange;
+  targetRpe?: RirRange;
+  tempoEccentricSec?: number;
+  holdSec?: { min: number; max: number };
+  distanceM?: { min: number; max: number };
+  intensityCue?: string;
+} {
+  const isCarry = args.bucket === "carry";
+  return {
+    reps: isCarry ? undefined : args.reps,
+    targetRir: args.intensity.targetRir,
+    targetRpe: args.intensity.targetRpe,
+    tempoEccentricSec: args.intensity.tempoEccentricSec,
+    holdSec: args.intensity.holdSec,
+    distanceM: args.intensity.distanceM,
+    intensityCue: args.intensity.intensityCue,
+  };
 }
