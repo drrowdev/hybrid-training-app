@@ -273,6 +273,21 @@ function Chip({ item, compact }: { item: CalendarItem; compact?: boolean }) {
           ◆
         </span>
       )}
+      {item.slotBadge && (
+        <span
+          aria-label={item.slotBadge === "am" ? "morning session" : "evening session"}
+          className="mono"
+          style={{
+            fontSize: compact ? 8 : 9,
+            fontWeight: 700,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            opacity: 0.85,
+          }}
+        >
+          {item.slotBadge}
+        </span>
+      )}
       <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</span>
     </Link>
   );

@@ -145,6 +145,21 @@ function Row({
   const body = (
     <>
       {swatch}
+      {item.slotBadge && (
+        <span
+          aria-label={item.slotBadge === "am" ? "morning session" : "evening session"}
+          className="mono"
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            color: "var(--cp-accent)",
+          }}
+        >
+          {item.slotBadge}
+        </span>
+      )}
       <span style={{ fontSize: 13, fontWeight: 500 }}>{item.title}</span>
       {item.meta && (
         <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>· {item.meta}</span>
