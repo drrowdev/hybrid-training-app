@@ -11,6 +11,7 @@
 
 import type { PrescriptionItem, PrescriptionItemKind } from "@hta/db";
 import type { AccessoryProfile } from "./accessory-roles";
+import { accessoryIntensity } from "./accessory-intensity";
 import { cleanPrescriptionNotes } from "./clean-prescription-notes";
 
 export type ArchetypeId =
@@ -1257,6 +1258,14 @@ export function buildPrescription(
     // the set count to keep the protocol while reducing total exposure.
     const isDeload = profile.intensityLabel === "Deload";
     const sets = isDeload ? Math.max(1, Math.ceil(day.sets / 2)) : day.sets;
+    // Tendon items always classify as the "tendon" bucket — the matrix
+    // emits a 3 s eccentric tempo + RIR cue grounded in Baar 2017 /
+    // Kongsgaard 2009 HSR protocols.
+    const intensity = accessoryIntensity({
+      archetype: archetype.id,
+      bucket: "tendon",
+      weekIndex,
+    });
     const items: PrescriptionItem[] = [];
     for (let i = 0; i < sets; i++) {
       items.push({
@@ -1268,6 +1277,11 @@ export function buildPrescription(
         reps: day.reps,
         intensityLabel: day.intensityLabel,
         notes: day.protocolNote,
+        targetRir: intensity.targetRir,
+        targetRpe: intensity.targetRpe,
+        tempoEccentricSec: intensity.tempoEccentricSec,
+        holdSec: intensity.holdSec,
+        intensityCue: intensity.intensityCue,
       });
     }
     return items;

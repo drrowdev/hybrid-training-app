@@ -115,6 +115,35 @@ function summariseStrengthBlock(items: PrescriptionItem[]): string {
 }
 
 function summariseAccessoryBlock(items: PrescriptionItem[]): string {
+  // RIR / hold / intent cue takes priority over a bare rep count when the
+  // accessory carries intensity guidance. Legacy items without these
+  // fields fall through to the original "NxR" / "5/8/8" format.
+  const first = items[0];
+  if (first) {
+    // Isometric hold — "3 × 30s" or "3 × 30–60s hold".
+    if (first.holdSec) {
+      const { min, max } = first.holdSec;
+      const range = min === max ? `${min}s` : `${min}–${max}s`;
+      return `${items.length} × ${range} hold`;
+    }
+    // Plyometric / max-intent — "5 jumps · max intent".
+    if (
+      first.targetRpe &&
+      first.targetRpe.min === 10 &&
+      first.targetRpe.max === 10
+    ) {
+      return `${first.reps ?? 0} reps · max intent`;
+    }
+    // RIR-guided accessory — "3×10 @ RIR 1–2".
+    if (first.targetRir) {
+      const r = first.targetRir;
+      const rir = r.min === r.max ? `RIR ${r.min}` : `RIR ${r.min}–${r.max}`;
+      const reps = items.map((it) => it.reps ?? 0);
+      const sameReps = reps.every((rp) => rp === reps[0]);
+      const head = sameReps ? `${items.length}×${reps[0]}` : reps.join("/");
+      return `${head} @ ${rir}`;
+    }
+  }
   // Group consecutive same-spec items into NxR, otherwise list reps.
   const reps = items.map((it) => it.reps ?? 0);
   const sameReps = reps.every((r) => r === reps[0]);
