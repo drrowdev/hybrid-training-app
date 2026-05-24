@@ -488,3 +488,9 @@ select option {
 @media (max-width: 480px) {
   body { font-size: 14px; }
 }
+
+/* ── Movement card collapsed-header summary chip ── */
+/* Hide on narrow viewports — the user can expand the card for details. */
+@media (max-width: 419px) {
+  .cp-mc-summary { display: none !important; }
+}
