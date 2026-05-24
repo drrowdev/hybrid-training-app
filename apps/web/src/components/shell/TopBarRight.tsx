@@ -4,13 +4,14 @@
  * TopBarRight — status cluster for the /app top bar.
  *
  * Renders, left → right:
- *   1. ⌘K / Ctrl K hint chip (clicking opens the palette).
+ *   1. Search button (magnifier + label + ⌘K/Ctrl K kbd chip). Clicking
+ *      opens the quick-jump palette.
  *   2. Strava sync indicator (dot + label). Hidden when the user has
  *      no `strava_connections` row.
  *   3. Notifications bell with unread badge + popover listing the most
  *      recent engine-override audit entries.
- *   4. Build SHA chip (first 7 chars). Hidden on small screens.
- *   5. User-initials avatar with a Profile / Sign out dropdown.
+ *   4. User-initials avatar with a Profile / Limitations / Settings /
+ *      Sign out dropdown.
  *
  * All visuals lean on the existing `--cp-*` CSS variable tokens so the
  * cluster picks up theme changes for free. No new npm deps.
@@ -89,7 +90,9 @@ export function TopBarRight({
   lastSyncedAt,
   recentAudit,
   auditCount,
-  buildSha,
+  // `buildSha` is still accepted for backwards-compat with AppShell and
+  // the /app layout's env wiring, but the SHA chip itself is no longer
+  // rendered. The prop is intentionally not destructured.
 }: {
   signOutAction: () => Promise<void>;
   displayName: string | null;
@@ -98,7 +101,7 @@ export function TopBarRight({
   lastSyncedAt: string | null;
   recentAudit: TopBarAuditEntry[];
   auditCount: number;
-  buildSha: string;
+  buildSha?: string;
 }) {
   const palette = useCommandPalette();
 
@@ -136,20 +139,33 @@ export function TopBarRight({
   }, [auditCount]);
 
   const initials = initialsFrom(displayName, email);
-  const shaShort =
-    (buildSha || "dev").slice(0, 7) || "dev";
 
   return (
     <div className="cp-topbar-right">
-      {/* 1. ⌘K hint chip */}
+      {/* 1. Search button — magnifier + label + kbd chip */}
       <button
         type="button"
         data-testid="topbar-cmdk"
-        className="cp-tbr-chip cp-tbr-cmdk"
+        className="cp-tbr-search cp-tbr-cmdk"
         onClick={() => palette.open()}
         aria-label="Open quick-jump palette"
         title="Open quick-jump palette"
       >
+        <svg
+          aria-hidden
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <circle cx="11" cy="11" r="7" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <span className="cp-tbr-search-label">Search</span>
         <kbd className="cp-tbr-kbd">{isMac ? "⌘K" : "Ctrl K"}</kbd>
       </button>
 
@@ -238,16 +254,7 @@ export function TopBarRight({
         </div>
       </details>
 
-      {/* 4. Build SHA */}
-      <span
-        className="cp-tbr-build mono"
-        data-testid="topbar-build"
-        title={`Build ${shaShort}`}
-      >
-        {shaShort}
-      </span>
-
-      {/* 5. User-initials avatar + dropdown */}
+      {/* 4. User-initials avatar + dropdown */}
       <details className="cp-tbr-pop cp-tbr-user" data-testid="topbar-user-wrap">
         <summary
           className="cp-tbr-avatar"
@@ -274,6 +281,14 @@ export function TopBarRight({
             data-testid="topbar-user-profile"
           >
             Profile
+          </Link>
+          <Link
+            href="/app/recovery/injuries"
+            className="cp-tbr-pop-item"
+            role="menuitem"
+            data-testid="topbar-user-limitations"
+          >
+            Limitations
           </Link>
           <Link
             href="/app/races"
@@ -310,33 +325,40 @@ export function TopBarRight({
           align-items: center;
           gap: 14px;
         }
-        .cp-tbr-chip,
-        .cp-tbr-sync,
-        .cp-tbr-build {
+        .cp-tbr-search,
+        .cp-tbr-sync {
           display: inline-flex;
           align-items: center;
-          gap: 6px;
-          height: 28px;
+          gap: 8px;
+          height: 30px;
           padding: 0 10px;
-          border-radius: 999px;
+          border-radius: 8px;
           border: 1px solid var(--cp-border);
-          background: var(--cp-surface-soft);
+          background: transparent;
           color: var(--cp-text-muted);
-          font-size: 12px;
+          font-size: 13px;
           line-height: 1;
         }
-        .cp-tbr-chip {
+        .cp-tbr-search {
           cursor: pointer;
           transition: background 0.12s, color 0.12s, border-color 0.12s;
+          font: inherit;
         }
-        .cp-tbr-chip:hover {
+        .cp-tbr-search:hover {
           color: var(--cp-text);
-          border-color: var(--cp-text-muted);
+          border-color: var(--cp-border-strong, var(--cp-text-muted));
+        }
+        .cp-tbr-search-label {
+          font-size: 13px;
         }
         .cp-tbr-kbd {
-          font-family: inherit;
-          font-size: 11px;
-          font-weight: 600;
+          font-family: var(--font-mono, Consolas, monospace);
+          font-size: 10px;
+          padding: 2px 5px;
+          background: var(--cp-surface-soft);
+          border-radius: 4px;
+          border: 1px solid var(--cp-border);
+          color: var(--cp-text-muted);
           letter-spacing: 0.02em;
         }
         .cp-tbr-dot {
@@ -347,10 +369,6 @@ export function TopBarRight({
         }
         .cp-tbr-sync-label {
           font-weight: 500;
-        }
-        .cp-tbr-build {
-          font-size: 11px;
-          letter-spacing: 0.02em;
         }
 
         /* Bell + avatar share the <details>/<summary> popover pattern. */
@@ -511,14 +529,10 @@ export function TopBarRight({
           word-break: break-all;
         }
 
-        /* Responsive: hide ⌘K hint < 640px and build SHA < 768px. */
+        /* Responsive: collapse the Search label < 640px, keep the icon. */
         @media (max-width: 639px) {
-          .cp-tbr-cmdk {
-            display: none;
-          }
-        }
-        @media (max-width: 767px) {
-          .cp-tbr-build {
+          .cp-tbr-search-label,
+          .cp-tbr-kbd {
             display: none;
           }
         }

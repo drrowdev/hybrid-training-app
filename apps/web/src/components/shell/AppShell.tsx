@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { UndoBanner } from "@/components/trash/UndoBanner";
 import { TopBarRight, type TopBarAuditEntry } from "@/components/shell/TopBarRight";
@@ -75,16 +75,6 @@ export function AppShell({
             </div>
           ) : null}
           <ThemeToggle />
-          <form action={signOutAction}>
-            <button
-              type="submit"
-              data-testid="sign-out-button"
-              className="cp-btn ghost"
-              style={{ width: "100%" }}
-            >
-              Sign out
-            </button>
-          </form>
         </div>
       </aside>
 
@@ -118,8 +108,6 @@ export function AppShell({
           </Link>
         ))}
       </nav>
-
-      <InjuryFab />
 
       <UndoBanner />
 
@@ -248,42 +236,6 @@ function ThemeToggle() {
   return (
     <button type="button" onClick={flip} className="cp-btn ghost" style={{ width: "100%" }}>
       {theme === "dark" ? "◑ Light" : "◐ Dark"}
-    </button>
-  );
-}
-
-function InjuryFab() {
-  const router = useRouter();
-  return (
-    <button
-      type="button"
-      aria-label="Log an injury or limitation"
-      title="Log an injury or limitation"
-      onClick={() => router.push("/app/recovery/injuries")}
-      className="cp-fab"
-    >
-      <span aria-hidden>＋</span>
-      <style jsx>{`
-        .cp-fab {
-          position: fixed;
-          right: 18px;
-          bottom: calc(86px + env(safe-area-inset-bottom));
-          width: 52px; height: 52px;
-          border-radius: 50%;
-          background: var(--cp-accent);
-          color: var(--cp-accent-fg);
-          border: none;
-          font-size: 24px; font-weight: 600;
-          box-shadow: var(--cp-shadow);
-          cursor: pointer;
-          z-index: 30;
-          transition: transform .12s, background .12s;
-        }
-        .cp-fab:hover { background: var(--cp-accent-hover); transform: scale(1.04); }
-        @media (min-width: 901px) {
-          .cp-fab { bottom: 24px; right: 24px; }
-        }
-      `}</style>
     </button>
   );
 }
