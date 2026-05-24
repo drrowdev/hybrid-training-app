@@ -459,8 +459,22 @@ export function MovementFocusView({
       </div>
 
       {(() => {
+        // Plate calculator is only meaningful for main / back-off / warmup
+        // sets of a barbell movement (those are the ones loaded on a bar
+        // by %TM). Accessories, tendon work, cardio, and freestyle items
+        // don't carry plates — hide the breakdown entirely so we don't
+        // imply a bar where there isn't one.
+        const itemKind = activeItem.kind;
+        const isBarbellEligibleKind =
+          itemKind === "main" ||
+          itemKind === "back_off" ||
+          itemKind === "warmup";
+        if (!isBarbellEligibleKind) return null;
         const barKind = resolveBarKind(group.movementSlug);
         if (barKind == null) return null;
+        // Additional safety: if the movement has no training max set,
+        // it isn't a tracked main lift and shouldn't claim a bar.
+        if (tmKg == null) return null;
         const barWeightKg = barKind === "trap_bar" ? trapBarKg : barbellKg;
         const inv = plateInventory ?? [];
         if (inv.length === 0) {
