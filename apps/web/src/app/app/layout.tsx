@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/lib/auth/actions";
 import { AppShell, type TopBarAuditEntry } from "@/components/shell/AppShell";
+import { PullToRefresh } from "@/components/shell/PullToRefresh";
 import { CommandPaletteProvider } from "@/components/cmd-k/CommandPaletteProvider";
 import { needsOnboarding } from "@/lib/onboarding/gate";
 import { loadPaletteIndices } from "@/lib/cmd-k/indices";
@@ -80,6 +81,7 @@ export default async function AppLayout({
 
   return (
     <CommandPaletteProvider indices={paletteIndices}>
+      <PullToRefresh />
       <AppShell
         signOutAction={signOut}
         displayName={profile?.display_name ?? null}

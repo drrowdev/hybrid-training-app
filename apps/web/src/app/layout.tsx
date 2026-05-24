@@ -25,6 +25,18 @@ export const metadata: Metadata = {
     title: "Hybrid",
     statusBarStyle: "black-translucent",
   },
+  icons: {
+    // 180×180, full-bleed (no transparency, no pre-rounded corners) — iOS
+    // applies its own mask. Source: scripts/generate-icons.mjs.
+    apple: "/icons/apple-touch-icon.png",
+  },
+  other: {
+    // Next.js 15's `appleWebApp.capable: true` emits the modern
+    // `mobile-web-app-capable` meta but NOT the legacy iOS-specific
+    // `apple-mobile-web-app-capable`. iOS still reads the legacy tag for
+    // standalone-mode detection on older devices, so emit it explicitly.
+    "apple-mobile-web-app-capable": "yes",
+  },
 };
 
 export const viewport: Viewport = {

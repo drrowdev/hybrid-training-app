@@ -69,6 +69,15 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Standalone PWA (Add-to-Home-Screen on iOS, installed app on Chromium):
+ * stop the OS WebView from rubber-banding the whole page so our custom
+ * pull-to-refresh gesture isn't fighting a parallel native overscroll. */
+@media (display-mode: standalone) {
+  html, body {
+    overscroll-behavior-y: contain;
+  }
+}
+
 * { border-color: var(--cp-border); }
 
 ::selection { background: var(--cp-accent-soft); color: var(--cp-text); }
@@ -170,7 +179,11 @@ select option {
 }
 
 /* Sticky bottom action bar — sits below the fold for one-handed reach.
- * Used by the session log page for the Next set / Complete pair. */
+ * Used by the session log page for the Next set / Complete pair.
+ *
+ * `padding-bottom` uses safe-area-inset so on iOS standalone (where the
+ * page extends under the home indicator with viewport-fit=cover) the
+ * primary button never sits under the OS gesture pill. */
 .cp-stickybar {
   position: sticky;
   bottom: 0;
@@ -180,6 +193,9 @@ select option {
   background: var(--cp-bg-elevated);
   border-top: 1px solid var(--cp-border);
   padding: 10px 14px;
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  padding-left: max(14px, env(safe-area-inset-left));
+  padding-right: max(14px, env(safe-area-inset-right));
   display: flex;
   gap: 8px;
   align-items: center;
