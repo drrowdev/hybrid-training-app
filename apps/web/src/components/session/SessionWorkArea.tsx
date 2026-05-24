@@ -58,6 +58,7 @@ export function SessionWorkArea({
   barbellKg,
   trapBarKg,
   plateInventory,
+  bwGateStateByFamily,
 }: {
   sessionId: string;
   isComplete: boolean;
@@ -82,6 +83,18 @@ export function SessionWorkArea({
   barbellKg?: number;
   trapBarKg?: number;
   plateInventory?: PlateInventoryItem[];
+  bwGateStateByFamily?: Readonly<
+    Record<
+      string,
+      {
+        weeksAtNode: number;
+        weeksRequired: number;
+        tutAccumulated: number;
+        tutRequired: number;
+        recentOverCompleted: boolean;
+      }
+    >
+  >;
 }) {
   // The card-list layout doesn't currently surface `lastSetHints`,
   // `plannedSessionId`, or the page-level swap server action — they're
@@ -127,6 +140,7 @@ export function SessionWorkArea({
         barbellKg={barbellKg}
         trapBarKg={trapBarKg}
         plateInventory={plateInventory}
+        bwGateStateByFamily={bwGateStateByFamily}
       />
     </>
   );

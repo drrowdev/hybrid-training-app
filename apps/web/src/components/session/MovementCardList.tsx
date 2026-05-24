@@ -48,6 +48,23 @@ export type MovementCardListProps = {
   barbellKg?: number;
   trapBarKg?: number;
   plateInventory?: PlateInventoryItem[];
+  /**
+   * Phase 4 BW gate state, keyed by movement family. Forwarded verbatim
+   * to each prescribed `<MovementCard>` so the focus view can render the
+   * "Next:" chip + popover.
+   */
+  bwGateStateByFamily?: Readonly<
+    Record<
+      string,
+      {
+        weeksAtNode: number;
+        weeksRequired: number;
+        tutAccumulated: number;
+        tutRequired: number;
+        recentOverCompleted: boolean;
+      }
+    >
+  >;
 };
 
 export function MovementCardList({
@@ -68,6 +85,7 @@ export function MovementCardList({
   barbellKg,
   trapBarKg,
   plateInventory,
+  bwGateStateByFamily,
 }: MovementCardListProps) {
   const groups = useMemo(
     () => groupPrescriptionByMovement(prescription),
@@ -186,6 +204,7 @@ export function MovementCardList({
         barbellKg={barbellKg}
         trapBarKg={trapBarKg}
         plateInventory={plateInventory}
+        bwGateStateByFamily={bwGateStateByFamily}
       />
     );
   };
@@ -296,6 +315,18 @@ function PrescribedCard(props: {
   barbellKg?: number;
   trapBarKg?: number;
   plateInventory?: PlateInventoryItem[];
+  bwGateStateByFamily?: Readonly<
+    Record<
+      string,
+      {
+        weeksAtNode: number;
+        weeksRequired: number;
+        tutAccumulated: number;
+        tutRequired: number;
+        recentOverCompleted: boolean;
+      }
+    >
+  >;
 }) {
   const tmKg = props.group.movementSlug
     ? props.tmBySlug[props.group.movementSlug]
@@ -341,6 +372,7 @@ function PrescribedCard(props: {
       trapBarKg={props.trapBarKg}
       plateInventory={props.plateInventory}
       persistKeyPrefix={`mc:${props.sessionId}`}
+      bwGateStateByFamily={props.bwGateStateByFamily}
     />
   );
 }
