@@ -28,8 +28,11 @@ export function restSecondsForKind(kind: PrescriptionItemKind | RestableSetKind)
     case "warmup":
       return 60;
     case "main":
-    case "back_off":
       return 180;
+    case "back_off":
+      // Supplemental volume after the main work — 2 min keeps the bar
+      // moving without dragging the session out.
+      return 120;
     case "tendon":
       // Long-duration isometric / HSR holds: ~2 min between sets keeps
       // the tissue stack productive without dragging the session out.

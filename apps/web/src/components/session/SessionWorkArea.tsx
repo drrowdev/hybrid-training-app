@@ -24,6 +24,7 @@ import type {
 } from "@/lib/sessions/actions";
 import { FinishSessionBar } from "./FinishSessionBar";
 import { MovementCardList } from "./MovementCardList";
+import type { PlateInventoryItem } from "./plate-math";
 
 type AddStrengthSetAction = typeof addStrengthSetAction;
 type FillSessionFromPlanAction = typeof fillSessionFromPlanAction;
@@ -53,6 +54,9 @@ export function SessionWorkArea({
   loggedItemIndices,
   skippedItemIndices,
   loggedSetIdByItemIndex,
+  barbellKg,
+  trapBarKg,
+  plateInventory,
 }: {
   sessionId: string;
   isComplete: boolean;
@@ -73,6 +77,9 @@ export function SessionWorkArea({
   loggedItemIndices: number[];
   skippedItemIndices?: number[];
   loggedSetIdByItemIndex: Record<number, string>;
+  barbellKg?: number;
+  trapBarKg?: number;
+  plateInventory?: PlateInventoryItem[];
 }) {
   // The card-list layout doesn't currently surface `lastSetHints`,
   // `plannedSessionId`, or the page-level swap server action — they're
@@ -114,6 +121,9 @@ export function SessionWorkArea({
         fillFromPlan={fillFromPlan}
         hapticsEnabled={hapticsEnabled}
         timerSoundEnabled={timerSoundEnabled}
+        barbellKg={barbellKg}
+        trapBarKg={trapBarKg}
+        plateInventory={plateInventory}
       />
     </>
   );
