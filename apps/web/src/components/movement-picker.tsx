@@ -85,7 +85,7 @@ export function MovementPicker({
   }
 
   return (
-    <div ref={wrapRef} className="relative">
+    <div ref={wrapRef} style={{ position: "relative" }}>
       <input type="hidden" name={name} value={selected?.id ?? ""} />
       <input
         type="text"
@@ -98,24 +98,61 @@ export function MovementPicker({
           if (selected) setSelected(null);
           setOpen(true);
         }}
-        className="w-full rounded-md border border-foreground/15 bg-transparent px-3 py-2 text-sm"
+        style={{
+          width: "100%",
+          padding: "8px 12px",
+          fontSize: 13,
+          borderRadius: 8,
+          border: "1px solid var(--cp-border)",
+          background: "var(--cp-surface)",
+          color: "var(--cp-text)",
+          outline: "none",
+        }}
       />
       {selected && (
         <button
           type="button"
           onClick={clear}
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-foreground/50 hover:text-foreground"
+          style={{
+            position: "absolute",
+            right: 8,
+            top: "50%",
+            transform: "translateY(-50%)",
+            background: "transparent",
+            border: "none",
+            color: "var(--cp-text-muted)",
+            fontSize: 11,
+            cursor: "pointer",
+          }}
         >
           ✕
         </button>
       )}
       {open && !selected && (
-        <ul className="absolute z-10 mt-1 max-h-72 w-full overflow-y-auto rounded-md border border-foreground/15 bg-background shadow-lg">
+        <ul
+          style={{
+            position: "absolute",
+            zIndex: 50,
+            marginTop: 4,
+            maxHeight: "18rem",
+            width: "100%",
+            overflowY: "auto",
+            background: "var(--cp-surface)",
+            border: "1px solid var(--cp-border)",
+            borderRadius: 8,
+            boxShadow: "var(--cp-shadow, 0 8px 24px rgba(0,0,0,0.18))",
+            padding: 0,
+            margin: 0,
+            listStyle: "none",
+          }}
+        >
           {loading && (
-            <li className="px-3 py-2 text-xs text-foreground/50">Searching…</li>
+            <li style={{ padding: "8px 12px", fontSize: 12, color: "var(--cp-text-muted)" }}>
+              Searching…
+            </li>
           )}
           {!loading && results.length === 0 && (
-            <li className="px-3 py-2 text-xs text-foreground/50">
+            <li style={{ padding: "8px 12px", fontSize: 12, color: "var(--cp-text-muted)" }}>
               No matches. Try &ldquo;squat&rdquo;, &ldquo;bench&rdquo;,
               &ldquo;run&rdquo;…
             </li>
@@ -125,10 +162,26 @@ export function MovementPicker({
               <button
                 type="button"
                 onClick={() => pick(m)}
-                className="w-full text-left px-3 py-2 text-sm hover:bg-foreground/5"
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "8px 12px",
+                  fontSize: 13,
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--cp-text)",
+                  cursor: "pointer",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background = "var(--cp-surface-soft)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+                }}
               >
-                <div className="font-medium">{m.display_name}</div>
-                <div className="text-xs text-foreground/50">
+                <div style={{ fontWeight: 500 }}>{m.display_name}</div>
+                <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
                   {m.pattern} · {m.primary_region.replace(/_/g, " ")}
                   {m.primary_muscles.length > 0 &&
                     ` · ${m.primary_muscles.join(", ").replace(/_/g, " ")}`}

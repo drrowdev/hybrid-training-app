@@ -304,7 +304,17 @@ export function MovementFocusView({
   return (
     <div
       data-testid="movement-focus-view"
-      style={{ display: "grid", gap: 14 }}
+      style={{
+        display: "grid",
+        gap: 14,
+        // On wide screens the focus card otherwise stretches to ~900px and
+        // makes the weight/buttons look oversized. Cap at a comfortable
+        // mobile-equivalent width and center.
+        maxWidth: 520,
+        marginLeft: "auto",
+        marginRight: "auto",
+        width: "100%",
+      }}
     >
       {restSeconds > 0 && (
         <RestTimer
@@ -388,10 +398,10 @@ export function MovementFocusView({
         </div>
         <div
           className="mono"
-          style={{ fontSize: 44, fontWeight: 700, lineHeight: 1.05 }}
+          style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.05 }}
         >
           {weight > 0 ? `${weight}` : "—"}
-          <span style={{ fontSize: 18, color: "var(--cp-text-muted)", marginLeft: 6 }}>
+          <span style={{ fontSize: 15, color: "var(--cp-text-muted)", marginLeft: 6 }}>
             kg
           </span>
         </div>
@@ -515,7 +525,7 @@ export function MovementFocusView({
           <a
             href={`/app/sessions/${sessionId}/sets/${loggedSetId}/edit`}
             data-testid={`logged-set-edit-${loggedSetId}`}
-            className="cp-btn primary big"
+            className="cp-btn primary"
             style={{ textDecoration: "none", textAlign: "center" }}
           >
             {ctaLabel}
@@ -524,7 +534,7 @@ export function MovementFocusView({
           <div style={{ display: "grid", gap: 8 }}>
             <button
               type="submit"
-              className="cp-btn primary big"
+              className="cp-btn primary"
               disabled={submitting}
               data-testid="movement-focus-log-button"
             >
@@ -772,7 +782,7 @@ function Stepper({
             outline: "none",
             textAlign: "center",
             fontWeight: 700,
-            fontSize: 20,
+            fontSize: 17,
             width: "100%",
             padding: 0,
             color: "var(--cp-text)",
