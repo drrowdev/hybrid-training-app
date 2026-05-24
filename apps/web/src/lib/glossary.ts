@@ -263,6 +263,12 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
       "Tendon work lives inside every block, not as a separate day. Heavy-slow-resistance tempo on main lifts and short isometric holds (30–45 s) for vulnerable areas. Tendons adapt to load + time-under-tension, not extra sessions.",
     citation: "Baar 2017; Kongsgaard 2009",
   },
+  two_a_day: {
+    title: "Two-a-day",
+    body:
+      "This day has two sessions — an AM and a PM. Research recommends ≥6 h between sessions when one is heavy lifting and the other is cardio, to protect the strength signal.",
+    citation: "Robineau 2016",
+  },
 };
 
 /**
