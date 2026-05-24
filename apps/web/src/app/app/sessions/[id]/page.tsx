@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import { AddCardioBlockForm } from "@/components/add-log-forms";
 import {
   addCardioBlock,
@@ -70,22 +71,19 @@ export default async function SessionDetailPage({
   const { data: feedbackPrefs } = await supabase
     .from("profiles")
     .select(
-      "haptics_enabled, timer_sound_enabled, barbell_kg, trap_bar_kg, plate_inventory_kg",
+      "haptics_enabled, timer_sound_enabled, barbell_kg, trap_bar_kg, plate_inventory_kg, equipment",
     )
     .eq("id", user.id)
     .maybeSingle();
   const hapticsEnabled = feedbackPrefs?.haptics_enabled ?? true;
   const timerSoundEnabled = feedbackPrefs?.timer_sound_enabled ?? true;
-  const barbellKg = Number(feedbackPrefs?.barbell_kg ?? 20);
-  const trapBarKg = Number(feedbackPrefs?.trap_bar_kg ?? 25);
-  const plateInventory = Array.isArray(feedbackPrefs?.plate_inventory_kg)
-    ? (feedbackPrefs?.plate_inventory_kg as Array<{ weight_kg: number; pair_count: number }>)
-        .map((p) => ({
-          weightKg: Number(p.weight_kg),
-          pairCount: Number(p.pair_count),
-        }))
-        .filter((p) => Number.isFinite(p.weightKg) && p.weightKg > 0 && p.pairCount > 0)
-    : [];
+  // Resolve via the same canonical helper the settings page uses, so
+  // a profile written through the new editor and a legacy profile
+  // both surface a fully-typed Equipment blob here.
+  const equipment = resolveEquipment(feedbackPrefs ?? null);
+  const barbellKg = equipment.bars.barbellKg || 20;
+  const trapBarKg = equipment.bars.trapBarKg ?? 25;
+  const plateInventory = equipment.plates.map((weightKg) => ({ weightKg }));
 
   const { data: setsRaw } = await supabase
     .from("set_logs")

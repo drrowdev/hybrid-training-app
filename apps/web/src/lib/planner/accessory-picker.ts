@@ -16,6 +16,15 @@
  * Per docs/design/accessory-schema.md §21. The picker NEVER reads a
  * specific slug from the archetype config — all decisions flow from
  * role tags on the catalog.
+ *
+ * TODO(equipment): the picker doesn't yet read `profiles.equipment`
+ * (added in migration 0040). Once the editor has been live long
+ * enough for the JSONB blob to be reliably populated, plumb it into
+ * `PickFilters` and exclude candidates that require gear the user
+ * doesn't own (e.g. machine-only movements when `equipment.machines`
+ * is empty, kettlebell movements when `equipment.kettlebells` is
+ * empty, banded movements when `accessories.bands === false`).
+ * Until then equipment data is informational only.
  */
 import type {
   AccessoryProfile,

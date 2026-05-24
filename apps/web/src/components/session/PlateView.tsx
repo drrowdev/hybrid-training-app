@@ -62,7 +62,7 @@ export function PlateView({ targetWeightKg, barWeightKg, inventory }: PlateViewP
   const { perSide, remainderKg } = computePlateBreakdown(
     targetWeightKg,
     barWeightKg,
-    inventory.map((p) => ({ weightKg: p.weightKg, pairCount: p.pairCount })),
+    inventory.map((p) => ({ weightKg: p.weightKg })),
   );
   // perSide is ordered heaviest → lightest; render heaviest closest
   // to the bar (centre) and lighter ones outward.
