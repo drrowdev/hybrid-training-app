@@ -598,6 +598,40 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
         (bwMovements ?? []).map((m) => [m.slug as string, m] as const),
       );
 
+      // Phase 4 — fetch DAG children of every current node so we can
+      // stamp the "Next:" preview onto each BW prescription item.
+      // One round-trip via `overlaps` against the prerequisites
+      // array; results filtered to same-family children below.
+      const { data: childRowsRaw } = await supabase
+        .from("movement_nodes")
+        .select(
+          "id, family, node_key, display_name, prerequisites, external_load_capable, isometric_capable, unilateral, default_tempo_seconds, tut_per_rep_seconds, difficulty_anchor, created_at",
+        )
+        .overlaps("prerequisites", nodeIds);
+      const childrenByCurrentId = new Map<string, MovementNode[]>();
+      for (const r of (childRowsRaw ?? []) as Array<Record<string, unknown>>) {
+        const childNode: MovementNode = {
+          id: r.id as string,
+          family: r.family as MovementFamily,
+          nodeKey: r.node_key as string,
+          displayName: r.display_name as string,
+          prerequisites: (r.prerequisites as string[]) ?? [],
+          externalLoadCapable: Boolean(r.external_load_capable),
+          isometricCapable: Boolean(r.isometric_capable),
+          unilateral: Boolean(r.unilateral),
+          defaultTempoSeconds: r.default_tempo_seconds as number,
+          tutPerRepSeconds: r.tut_per_rep_seconds as number,
+          difficultyAnchor: r.difficulty_anchor as number,
+          createdAt: r.created_at as unknown as Date,
+        };
+        for (const prereq of childNode.prerequisites) {
+          if (!nodeIds.includes(prereq)) continue;
+          const arr = childrenByCurrentId.get(prereq) ?? [];
+          arr.push(childNode);
+          childrenByCurrentId.set(prereq, arr);
+        }
+      }
+
       for (const row of bwRows ?? []) {
         const node = nodeById.get(row.current_node_id as string);
         if (!node) continue;
@@ -620,6 +654,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
           movementName:
             (movementRow?.display_name as string | undefined) ?? node.displayName,
           cleanRepHistory,
+          candidateNextNodes: childrenByCurrentId.get(node.id) ?? [],
         });
       }
     }

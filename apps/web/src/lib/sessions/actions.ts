@@ -138,6 +138,46 @@ export async function addStrengthSet(
 
   if (error) return { error: error.message };
 
+  // Bodyweight Phase 4 — accumulate TUT + clean_rep_history when the
+  // logged set was prescribed via a BW main-lift item. Failures here
+  // must never block the logging UI.
+  try {
+    if (
+      !isSkipped &&
+      parsed.data.prescriptionItemIndex != null
+    ) {
+      const { data: planned } = await supabase
+        .from("planned_sessions")
+        .select("prescription")
+        .eq("completed_session_id", parsed.data.sessionId)
+        .maybeSingle();
+      const items =
+        (planned?.prescription as { items?: PrescriptionItem[] } | null)
+          ?.items ?? [];
+      const item = items[parsed.data.prescriptionItemIndex];
+      if (item?.bw) {
+        const { applyBwSetSideEffects } = await import(
+          "@/lib/sessions/bw-set-logging"
+        );
+        const rpe = parsed.data.rpe ?? null;
+        const rir = rpe != null ? Math.max(0, 10 - rpe) : 2;
+        await applyBwSetSideEffects({
+          supabase,
+          userId: user.id,
+          bw: item.bw,
+          actualReps: parsed.data.reps ?? null,
+          actualSeconds: parsed.data.durationSec ?? null,
+          rir,
+          cleanForm: rir >= 1,
+          setDateIso: new Date().toISOString(),
+          skipped: false,
+        });
+      }
+    }
+  } catch (e) {
+    console.error("applyBwSetSideEffects failed:", e);
+  }
+
   revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
   return { ok: true };
 }
@@ -437,6 +477,24 @@ export async function completeSession(formData: FormData): Promise<void> {
     await generateTmSuggestionsForSession(parsed.data.sessionId);
   } catch (e) {
     console.error("generateTmSuggestionsForSession failed:", e);
+  }
+
+  // Bodyweight Phase 4 — bump weeks_at_node + evaluate TUT-gated
+  // progression for each BW family in this session. Inserts a
+  // bw_progression_events row when the gate opens.
+  try {
+    const { applyBwSessionCompletionSideEffects } = await import(
+      "@/lib/sessions/bw-set-logging"
+    );
+    await applyBwSessionCompletionSideEffects({
+      supabase,
+      userId: user.id,
+      sessionId: parsed.data.sessionId,
+      timezone: await getUserTimezone(user.id),
+    });
+    revalidatePath("/app/settings/bodyweight-progression");
+  } catch (e) {
+    console.error("applyBwSessionCompletionSideEffects failed:", e);
   }
 
   revalidatePath("/app");

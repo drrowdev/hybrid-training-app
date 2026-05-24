@@ -60,6 +60,24 @@ export type FocusViewProps = {
   hapticsEnabled: boolean;
   timerSoundEnabled: boolean;
   /**
+   * Phase 4 — per-BW-family gate state, keyed by family. Surfaced
+   * inside the "Next:" popover beneath each BW main-lift's headline.
+   * Optional — when missing, the popover collapses to the prescription
+   * preview without the live counters.
+   */
+  bwGateStateByFamily?: Readonly<
+    Record<
+      string,
+      {
+        weeksAtNode: number;
+        weeksRequired: number;
+        tutAccumulated: number;
+        tutRequired: number;
+        recentOverCompleted: boolean;
+      }
+    >
+  >;
+  /**
    * Equipment — fed in by the parent card from the user's profile so
    * the plate-per-side breakdown can subtract the correct bar weight
    * and walk a real inventory. When `plateInventory` is empty the
@@ -113,6 +131,7 @@ export function MovementFocusView({
   plateInventory,
   initialCursor = null,
   onSaved,
+  bwGateStateByFamily,
 }: FocusViewProps) {
   // priorBest is no longer consumed for PR detection — the flash is now
   // anchored to the saved 1RM (see lib/engine/tm-anchored-pr.ts). The
@@ -516,6 +535,16 @@ export function MovementFocusView({
             </span>
           </div>
         )}
+        {isBwItem && activeItem.bw && (
+          <BwNextHint
+            preview={activeItem.bw.nextNodePreview}
+            gateState={
+              activeItem.bw.family
+                ? bwGateStateByFamily?.[activeItem.bw.family]
+                : undefined
+            }
+          />
+        )}
         {!isBwItem && (
           <div style={{ fontSize: 14, color: "var(--cp-text-muted)" }}>
             {renderTargetLine(activeItem, targetReps, isAmrap)}
@@ -857,6 +886,112 @@ function renderBwHeadline(item: PrescriptionItem): string {
     return `${bw.sets} sets × ${bw.reps} reps · ${bw.tempoEccentricSec}s lower · ${rir}`;
   }
   return `${bw.sets} sets · ${rir}`;
+}
+
+/**
+ * Phase 4 — "Next:" chip + gate-state popover beneath the BW headline.
+ *
+ * When the user is at a terminal node we render a "Mastered" chip in
+ * `--cp-success`. Otherwise the chip names the lowest-anchor child
+ * (stamped at planner-generation time on `bw.nextNodePreview`).
+ * Tapping the chip toggles a small absolutely-positioned popover with
+ * the three gate counters (weeks at node, TUT, recent over-completion).
+ */
+function BwNextHint({
+  preview,
+  gateState,
+}: {
+  preview?:
+    | { nodeKey: string; displayName: string; difficultyAnchor: number }
+    | { mastered: true };
+  gateState?: {
+    weeksAtNode: number;
+    weeksRequired: number;
+    tutAccumulated: number;
+    tutRequired: number;
+    recentOverCompleted: boolean;
+  };
+}) {
+  const [open, setOpen] = useState(false);
+  if (!preview) return null;
+  const mastered = "mastered" in preview && preview.mastered;
+  const label = mastered
+    ? "Mastered"
+    : `Next: ${"displayName" in preview ? preview.displayName : ""}`;
+  const color = mastered ? "var(--cp-success)" : "var(--cp-text-muted)";
+  return (
+    <div
+      style={{
+        position: "relative",
+        display: "inline-block",
+        marginTop: 2,
+      }}
+    >
+      <button
+        type="button"
+        data-testid="bw-next-chip"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          padding: "2px 8px",
+          borderRadius: 999,
+          border: `1px solid ${mastered ? "var(--cp-success)" : "var(--cp-border)"}`,
+          background: "transparent",
+          color,
+          fontSize: 11,
+          lineHeight: 1.2,
+          cursor: gateState ? "pointer" : "default",
+        }}
+      >
+        {label}
+      </button>
+      {open && gateState && (
+        <div
+          data-testid="bw-next-popover"
+          role="dialog"
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 20,
+            minWidth: 200,
+            padding: 10,
+            borderRadius: 10,
+            border: "1px solid var(--cp-border)",
+            background: "var(--cp-surface)",
+            color: "var(--cp-text)",
+            fontSize: 11,
+            lineHeight: 1.45,
+            boxShadow: "0 6px 18px rgba(0,0,0,0.18)",
+            textAlign: "left",
+          }}
+        >
+          <div>
+            weeks at node {gateState.weeksAtNode}/{gateState.weeksRequired}
+          </div>
+          <div>
+            TUT {gateState.tutAccumulated}/{gateState.tutRequired} sec
+          </div>
+          <div>
+            last 2 sessions over-completed{" "}
+            <span
+              style={{
+                color: gateState.recentOverCompleted
+                  ? "var(--cp-success)"
+                  : "var(--cp-text-muted)",
+              }}
+            >
+              {gateState.recentOverCompleted ? "✓" : "✗"}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**
