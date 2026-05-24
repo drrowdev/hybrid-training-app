@@ -31,12 +31,11 @@ export const metadata: Metadata = {
     apple: "/icons/apple-touch-icon.png",
   },
   other: {
-    // Next.js 15's `appleWebApp.capable: true` no longer emits this — only
-    // emits the title + status-bar-style tags. iOS still reads the legacy
-    // tag for standalone-mode detection, so add it explicitly. The newer
-    // `mobile-web-app-capable` covers Chromium PWAs.
+    // Next.js 15's `appleWebApp.capable: true` emits the modern
+    // `mobile-web-app-capable` meta but NOT the legacy iOS-specific
+    // `apple-mobile-web-app-capable`. iOS still reads the legacy tag for
+    // standalone-mode detection on older devices, so emit it explicitly.
     "apple-mobile-web-app-capable": "yes",
-    "mobile-web-app-capable": "yes",
   },
 };
 
