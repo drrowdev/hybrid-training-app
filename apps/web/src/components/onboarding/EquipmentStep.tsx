@@ -34,6 +34,7 @@ import type {
 const PRESET_ORDER: EquipmentPreset[] = [
   "commercial_gym",
   "home_gym",
+  "bodyweight_only",
   "travel_hotel",
   "custom",
 ];
@@ -49,6 +50,8 @@ const PRESET_HINT: Record<EquipmentPreset, string> = {
     "Full plate range, dumbbells, kettlebells, machines, cables, cardio gear.",
   home_gym:
     "Barbell + plates, optional dumbbells / kettlebells, no machines.",
+  bodyweight_only:
+    "No equipment beyond your body. Pull-up bar optional.",
   travel_hotel:
     "Limited dumbbells, treadmill, bands. Mostly bodyweight.",
   custom: "Configure exactly what you have.",
@@ -59,6 +62,7 @@ const PRESET_HINT: Record<EquipmentPreset, string> = {
 const PRESET_GLYPH: Record<EquipmentPreset, string> = {
   commercial_gym: "🏋️",
   home_gym: "🏠",
+  bodyweight_only: "🤸",
   travel_hotel: "🧳",
   custom: "⚙️",
 };

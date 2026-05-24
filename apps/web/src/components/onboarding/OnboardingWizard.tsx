@@ -18,7 +18,10 @@ import {
 import { seedDefaultOneRm } from "@/lib/training-maxes/defaults";
 import { addDaysToYmd, isoWeekdayYmd, todayYmd } from "@/lib/dates";
 import { EquipmentStep } from "@/components/onboarding/EquipmentStep";
-import { PRESET_BY_KEY } from "@/lib/settings/equipment-presets";
+import {
+  hasLoadableMainLift,
+  PRESET_BY_KEY,
+} from "@/lib/settings/equipment-presets";
 import type {
   Equipment,
   EquipmentPreset,
@@ -198,6 +201,42 @@ export function OnboardingWizard({
 
   const currentLabel: StepLabel = STEPS[step] ?? "Welcome";
 
+  /**
+   * Does the user's current equipment selection imply any loadable
+   * main-lift (barbell / trap bar / safety squat bar / dumbbells)?
+   *
+   * Derived from the freshly-tapped preset card when present; falls
+   * back to the previously-saved equipment row when the user hasn't
+   * touched a card yet. Pure bodyweight setups (no bars, no DBs)
+   * return false — the wizard skips the Training Maxes step in that
+   * case because there's no number to multiply against.
+   *
+   * Recomputed reactively: going back to the Equipment step and
+   * picking, say, "Home gym" re-introduces the TM step on the way
+   * forward.
+   */
+  const needsTrainingMaxes = useMemo<boolean>(() => {
+    const equipForCheck: Equipment = equipmentPreset
+      ? PRESET_BY_KEY[equipmentPreset]
+      : initialEquipment;
+    return hasLoadableMainLift(equipForCheck);
+  }, [equipmentPreset, initialEquipment]);
+
+  /** Labels of the steps actually visible to the user — used to size
+   *  the progress pill row when the TM step is skipped. */
+  const visibleStepLabels = useMemo<readonly StepLabel[]>(
+    () =>
+      needsTrainingMaxes
+        ? STEPS
+        : (STEPS.filter((s) => s !== "Training maxes") as StepLabel[]),
+    [needsTrainingMaxes],
+  );
+  /** Index of the current step within the *visible* step list. */
+  const visibleStepIndex = useMemo<number>(() => {
+    const visibleIdx = visibleStepLabels.indexOf(currentLabel);
+    return visibleIdx < 0 ? 0 : visibleIdx;
+  }, [visibleStepLabels, currentLabel]);
+
   const canAdvance = (): string | null => {
     switch (currentLabel) {
       case "Welcome":
@@ -242,7 +281,18 @@ export function OnboardingWizard({
       return;
     }
     if (currentLabel === "Equipment") {
-      saveEquipment(() => setStep((s) => s + 1));
+      saveEquipment(() => {
+        // Skip the Training Maxes step when the chosen equipment has no
+        // loadable main-lift (pure bodyweight). The TM page would have
+        // no number to multiply against.
+        const tmsIndex = STEPS.indexOf("Training maxes");
+        const buildIndex = STEPS.indexOf("Build your block");
+        if (!needsTrainingMaxes && tmsIndex >= 0 && buildIndex >= 0) {
+          setStep(buildIndex);
+        } else {
+          setStep((s) => s + 1);
+        }
+      });
       return;
     }
     if (currentLabel === "Training maxes") {
@@ -254,7 +304,18 @@ export function OnboardingWizard({
 
   const goBack = () => {
     setError(null);
-    setStep((s) => Math.max(0, s - 1));
+    setStep((s) => {
+      const prev = Math.max(0, s - 1);
+      // Skip the Training Maxes step on the way back too when the
+      // selected equipment has no loadable main-lift.
+      if (
+        !needsTrainingMaxes &&
+        STEPS[prev] === "Training maxes"
+      ) {
+        return Math.max(0, prev - 1);
+      }
+      return prev;
+    });
   };
 
   const saveProfile = (after: () => void) => {
@@ -388,7 +449,11 @@ export function OnboardingWizard({
   return (
     <div style={{ display: "grid", gap: 20 }}>
       <header className="ob-header" style={headerStyle}>
-        <ProgressPills total={STEPS.length} current={step} labels={STEPS} />
+        <ProgressPills
+          total={visibleStepLabels.length}
+          current={visibleStepIndex}
+          labels={visibleStepLabels}
+        />
         <button
           type="button"
           onClick={onSkip}

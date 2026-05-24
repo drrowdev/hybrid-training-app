@@ -8,7 +8,10 @@ import {
   COMMERCIAL_GYM_PRESET,
   HOME_GYM_PRESET,
   TRAVEL_HOTEL_PRESET,
+  BODYWEIGHT_ONLY_PRESET,
   CUSTOM_EMPTY_PRESET,
+  hasLoadableMainLift,
+  presetKeyForScheme,
   resolveEquipment,
 } from "../equipment-presets";
 
@@ -55,6 +58,69 @@ describe("equipment presets — shape sanity", () => {
     expect(CUSTOM_EMPTY_PRESET.plates).toEqual([]);
     expect(CUSTOM_EMPTY_PRESET.kettlebells).toEqual([]);
     expect(CUSTOM_EMPTY_PRESET.machines).toEqual([]);
+  });
+
+  it("Bodyweight-only preset zeroes the bars and loadable kit", () => {
+    expect(BODYWEIGHT_ONLY_PRESET.preset).toBe("bodyweight_only");
+    expect(BODYWEIGHT_ONLY_PRESET.bars.barbellKg).toBe(0);
+    expect(BODYWEIGHT_ONLY_PRESET.bars.trapBarKg).toBeNull();
+    expect(BODYWEIGHT_ONLY_PRESET.bars.safetyBarKg).toBeNull();
+    expect(BODYWEIGHT_ONLY_PRESET.plates).toEqual([]);
+    expect(BODYWEIGHT_ONLY_PRESET.dumbbells).toBeNull();
+    expect(BODYWEIGHT_ONLY_PRESET.kettlebells).toEqual([]);
+    expect(BODYWEIGHT_ONLY_PRESET.machines).toEqual([]);
+    expect(BODYWEIGHT_ONLY_PRESET.cardio).toEqual([]);
+    // Pull-up bar is the realistic floor for bodyweight programmes.
+    expect(BODYWEIGHT_ONLY_PRESET.accessories.pullUpBar).toBe(true);
+    expect(BODYWEIGHT_ONLY_PRESET.accessories.dipBelt).toBe(false);
+    expect(BODYWEIGHT_ONLY_PRESET.accessories.weightedVest).toBe(false);
+  });
+});
+
+describe("hasLoadableMainLift", () => {
+  it("false for the bodyweight-only preset", () => {
+    expect(hasLoadableMainLift(BODYWEIGHT_ONLY_PRESET)).toBe(false);
+  });
+
+  it("true when a barbell is present", () => {
+    expect(hasLoadableMainLift(COMMERCIAL_GYM_PRESET)).toBe(true);
+    expect(hasLoadableMainLift(HOME_GYM_PRESET)).toBe(true);
+  });
+
+  it("true when dumbbells are present (travel / hotel)", () => {
+    expect(hasLoadableMainLift(TRAVEL_HOTEL_PRESET)).toBe(true);
+  });
+
+  it("true when only a trap bar or safety squat bar is present", () => {
+    expect(
+      hasLoadableMainLift({
+        ...BODYWEIGHT_ONLY_PRESET,
+        bars: { barbellKg: 0, trapBarKg: 25, safetyBarKg: null },
+      }),
+    ).toBe(true);
+    expect(
+      hasLoadableMainLift({
+        ...BODYWEIGHT_ONLY_PRESET,
+        bars: { barbellKg: 0, trapBarKg: null, safetyBarKg: 25 },
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("presetKeyForScheme", () => {
+  it("recognises a stored bodyweight-only blob even with a wrong saved preset", () => {
+    expect(
+      presetKeyForScheme({
+        ...BODYWEIGHT_ONLY_PRESET,
+        preset: "custom",
+      }),
+    ).toBe("bodyweight_only");
+  });
+
+  it("returns the stored preset when the shape doesn't match bodyweight", () => {
+    expect(presetKeyForScheme(COMMERCIAL_GYM_PRESET)).toBe("commercial_gym");
+    expect(presetKeyForScheme(HOME_GYM_PRESET)).toBe("home_gym");
+    expect(presetKeyForScheme(TRAVEL_HOTEL_PRESET)).toBe("travel_hotel");
   });
 });
 
