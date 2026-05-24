@@ -4,7 +4,14 @@ import { createClient } from "@/lib/supabase/server";
 import { deleteAccount } from "@/lib/auth/delete-account";
 import { logBodyweight, updateProfile } from "@/lib/settings/actions";
 import { TrainingDaysControl } from "@/components/settings/TrainingDaysControl";
+import { DateTimeFormatCard } from "@/components/settings/DateTimeFormatCard";
 import { todayYmd } from "@/lib/dates";
+import {
+  isDateFormat,
+  isTimeFormat,
+  resolveDateFormat,
+  resolveTimeFormat,
+} from "@/lib/format/datetime";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -16,7 +23,7 @@ export default async function SettingsPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "display_name, units, bodyweight_kg, body_comp_phase, phase_started_at, phase_target_weeks, training_days_per_week, training_experience, allows_two_a_days, am_window_start, pm_window_start, timezone, haptics_enabled, timer_sound_enabled",
+      "display_name, units, bodyweight_kg, body_comp_phase, phase_started_at, phase_target_weeks, training_days_per_week, training_experience, allows_two_a_days, am_window_start, pm_window_start, timezone, haptics_enabled, timer_sound_enabled, time_format, date_format",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -340,6 +347,20 @@ export default async function SettingsPage() {
             </ul>
           </details>
         )}
+      </section>
+
+      <section className="space-y-3" data-testid="settings-datetime-format">
+        <h2 className="text-lg font-medium">Time &amp; date format</h2>
+        <p className="text-xs text-foreground/60">
+          How wall-clock times and calendar dates render across the app.
+          Durations like the rest-timer countdown stay in mm:ss regardless.
+        </p>
+        <DateTimeFormatCard
+          initialTimeFormat={isTimeFormat(profile?.time_format) ? profile.time_format : null}
+          initialDateFormat={isDateFormat(profile?.date_format) ? profile.date_format : null}
+          resolvedTimeFormat={resolveTimeFormat(profile ?? null)}
+          resolvedDateFormat={resolveDateFormat(profile ?? null)}
+        />
       </section>
 
       <section className="space-y-3">

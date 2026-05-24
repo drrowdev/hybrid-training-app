@@ -28,6 +28,7 @@ import { SkipSessionForm } from "@/components/plan/SkipSessionForm";
 import { EndBlockForm } from "@/components/plan/EndBlockForm";
 import { PlanViews, type ViewMode } from "@/components/plan/PlanViews";
 import { GlossaryBadge } from "@/components/ui/GlossaryBadge";
+import { formatDate, type ProfileForFormat } from "@/lib/format/datetime";
 import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner";
 import {
   hasLoadableMainLift,
@@ -402,19 +403,26 @@ export default async function PlanPage({
   // check used only for this banner.
   const { data: planEquipProfile } = await supabase
     .from("profiles")
-    .select("equipment, barbell_kg, trap_bar_kg, plate_inventory_kg")
+    .select("equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, timezone, time_format, date_format")
     .eq("id", user.id)
     .maybeSingle();
   const planTmCtx = await getTrainingMaxContext();
   const showBodyweightBanner =
     !hasLoadableMainLift(resolveEquipment(planEquipProfile)) &&
     planTmCtx.rows.length === 0;
+  const planFmtProfile: ProfileForFormat = planEquipProfile
+    ? {
+        timezone: planEquipProfile.timezone,
+        time_format: planEquipProfile.time_format ?? null,
+        date_format: planEquipProfile.date_format ?? null,
+      }
+    : null;
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <header>
         <div style={{ fontSize: 12, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-          {archetypeKicker}{archetypeName} · started {new Date(block.startedOn).toLocaleDateString()}
+          {archetypeKicker}{archetypeName} · started {formatDate(block.startedOn, planFmtProfile)}
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
           <h1 style={{ fontSize: 28, margin: "4px 0 0", letterSpacing: "-0.01em" }}>Plan</h1>
@@ -448,6 +456,7 @@ export default async function PlanPage({
         plannedById={plannedById}
         linkAction={linkPlannedToSession}
         skipAction={skipPlannedSession}
+        formatProfile={planFmtProfile}
       />
 
       <BlockCalendar
@@ -510,6 +519,7 @@ export default async function PlanPage({
             timezone={timezone}
             amWindowStart={amWindowStart}
             pmWindowStart={pmWindowStart}
+            formatProfile={planFmtProfile}
           />
         ))}
       </section>
@@ -573,6 +583,7 @@ function DayCard({
   timezone,
   amWindowStart,
   pmWindowStart,
+  formatProfile,
 }: {
   dayName: string;
   plans: PlannedCell[];
@@ -581,6 +592,7 @@ function DayCard({
   timezone: string;
   amWindowStart: string;
   pmWindowStart: string;
+  formatProfile: ProfileForFormat;
 }) {
   if (plans.length === 0) {
     return (
@@ -639,7 +651,7 @@ function DayCard({
       {isTwoADay && (
         <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 14px 0", alignItems: "baseline", gap: 8 }}>
           <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-            {dayName} · {new Date(dateStr + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+            {dayName} · {formatDate(dateStr + "T00:00:00Z", { ...(formatProfile ?? {}), timezone: "UTC" }, "short_date")}
             {isToday && <span style={{ color: "var(--cp-accent)", marginLeft: 6 }}>· today</span>}
           </div>
           <span className="cp-pill" style={{ color: "var(--cp-accent)", borderColor: "var(--cp-accent)" }}>
@@ -688,6 +700,7 @@ function DayCard({
           isTwoADay={isTwoADay}
           timeOfDay={slotTimes.get(planned.slot) ?? null}
           isCustomTime={!!planned.plannedAt}
+          formatProfile={formatProfile}
         />
       ))}
     </div>
@@ -703,6 +716,7 @@ function DaySessionCard({
   isTwoADay,
   timeOfDay,
   isCustomTime,
+  formatProfile,
 }: {
   dayName: string;
   planned: PlannedCell;
@@ -712,6 +726,7 @@ function DaySessionCard({
   isTwoADay: boolean;
   timeOfDay: string | null;
   isCustomTime: boolean;
+  formatProfile: ProfileForFormat;
 }) {
   const done = !!planned.completedSessionId;
   const skipped = !!planned.skippedAt;
@@ -739,7 +754,7 @@ function DaySessionCard({
         <div>
           {showHeader && (
             <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-              {dayName} · {new Date(planned.date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+              {dayName} · {formatDate(planned.date + "T00:00:00Z", { ...(formatProfile ?? {}), timezone: "UTC" }, "short_date")}
               {isToday && <span style={{ color: "var(--cp-accent)", marginLeft: 6 }}>· today</span>}
             </div>
           )}

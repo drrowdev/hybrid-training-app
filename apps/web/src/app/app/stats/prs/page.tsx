@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { formatHitValue, getRecentPrs } from "@/lib/stats/pr-queries";
 import { PR_KIND_LABEL } from "@/lib/engine/pr";
+import { formatDate } from "@/lib/format/datetime";
 
 export default async function AllPrsPage() {
   const supabase = await createClient();
@@ -11,7 +12,14 @@ export default async function AllPrsPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const prs = await getRecentPrs(supabase, user.id, 60);
+  const [{ data: profile }, prs] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("timezone, time_format, date_format")
+      .eq("id", user.id)
+      .maybeSingle(),
+    getRecentPrs(supabase, user.id, 60),
+  ]);
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
@@ -76,7 +84,7 @@ export default async function AllPrsPage() {
                 </span>
                 <span style={{ fontSize: 11, color: "var(--cp-text-muted)", flexShrink: 0, minWidth: 80, textAlign: "right" }}>
                   <Link href={`/app/sessions/${p.sessionId}`} style={{ color: "inherit", textDecoration: "none" }}>
-                    {new Date(p.sessionPerformedAt).toLocaleDateString()}
+                    {formatDate(p.sessionPerformedAt, profile)}
                   </Link>
                 </span>
               </li>

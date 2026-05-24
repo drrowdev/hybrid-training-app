@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { DeleteSessionButton } from "@/components/trash/DeleteSessionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { formatDate } from "@/lib/format/datetime";
 
 export default async function SessionsListPage() {
   const supabase = await createClient();
@@ -11,14 +12,21 @@ export default async function SessionsListPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: sessions } = await supabase
-    .from("sessions")
-    .select(
-      "id, title, performed_at, completed_at, fatigue, soreness, session_rpe, duration_min",
-    )
-    .is("deleted_at", null)
-    .order("performed_at", { ascending: false })
-    .limit(100);
+  const [{ data: profile }, { data: sessions }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("timezone, time_format, date_format")
+      .eq("id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("sessions")
+      .select(
+        "id, title, performed_at, completed_at, fatigue, soreness, session_rpe, duration_min",
+      )
+      .is("deleted_at", null)
+      .order("performed_at", { ascending: false })
+      .limit(100),
+  ]);
 
   return (
     <main className="min-h-screen px-6 py-8 max-w-2xl mx-auto space-y-6">
@@ -63,7 +71,7 @@ export default async function SessionsListPage() {
                     {s.title || "Untitled session"}
                   </span>
                   <span className="text-xs text-foreground/50 shrink-0">
-                    {new Date(s.performed_at).toLocaleDateString()}
+                    {formatDate(s.performed_at, profile)}
                   </span>
                 </div>
                 <div className="text-xs text-foreground/60">
