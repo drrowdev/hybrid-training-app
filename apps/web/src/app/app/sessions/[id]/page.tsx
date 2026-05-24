@@ -391,6 +391,32 @@ export default async function SessionDetailPage({
     progressionHints = hints.length > 0 ? hints : undefined;
   }
 
+  // Phase 6 — surface up to 2 bodyweight diagnostic signals on the
+  // post-session recap. We filter to signals whose `family` matches
+  // one of this session's BW prescription items, plus the
+  // non-family-specific `cns_overreach_risk` signal which is always
+  // relevant. The diagnostics module is read-only of session data
+  // and never writes back to bw_progress.
+  let bwSessionDiagnostics: import("@/lib/planner/bw-diagnostics").DiagnosticResult[] | undefined;
+  if (isComplete) {
+    const sessionFamilies = new Set<string>();
+    for (const it of plannedPrescription?.items ?? []) {
+      if (it.bw?.family) sessionFamilies.add(it.bw.family);
+    }
+    if (sessionFamilies.size > 0) {
+      const { loadAndRunBwDiagnostics } = await import(
+        "@/lib/planner/bw-diagnostics-loader"
+      );
+      const all = await loadAndRunBwDiagnostics({ supabase, userId: user.id });
+      const filtered = all.filter((d) => {
+        if (d.signal.kind === "cns_overreach_risk") return true;
+        const fam = (d.signal as { family?: string }).family;
+        return fam != null && sessionFamilies.has(fam);
+      });
+      bwSessionDiagnostics = filtered.length > 0 ? filtered.slice(0, 2) : undefined;
+    }
+  }
+
   // Phase 2 C1 — Strava autofill match. Only relevant when the session
   // is still open (post-completion the cardio is presumably already
   // logged). Silently no-op when the user has no Strava connection or
@@ -575,6 +601,7 @@ export default async function SessionDetailPage({
           summary={summary}
           initialNotes={session.notes ?? null}
           progressionHints={progressionHints}
+          bwDiagnostics={bwSessionDiagnostics}
         />
       )}
 
