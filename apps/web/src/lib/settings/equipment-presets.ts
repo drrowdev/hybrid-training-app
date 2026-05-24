@@ -74,6 +74,32 @@ export const HOME_GYM_PRESET: Equipment = {
   },
 };
 
+/**
+ * Bodyweight-only: no loadable kit. We keep a pull-up bar as the
+ * realistic floor — most bodyweight programmes assume one — but
+ * everything else is off. Detection of "should we ask for training
+ * maxes?" downstream keys off `bars.barbellKg === 0 && trapBarKg ===
+ * null && safetyBarKg === null && dumbbells === null`, which matches
+ * this shape exactly.
+ */
+export const BODYWEIGHT_ONLY_PRESET: Equipment = {
+  preset: "bodyweight_only",
+  bars: { barbellKg: 0, trapBarKg: null, safetyBarKg: null },
+  plates: [],
+  dumbbells: null,
+  kettlebells: [],
+  machines: [],
+  cardio: [],
+  accessories: {
+    weightedVest: false,
+    sandbag: false,
+    dipBelt: false,
+    bands: false,
+    pullUpBar: true,
+    rings: false,
+  },
+};
+
 export const TRAVEL_HOTEL_PRESET: Equipment = {
   preset: "travel_hotel",
   // No bar in a hotel gym — barbellKg = 0 signals "no bar" without
@@ -115,6 +141,7 @@ export const CUSTOM_EMPTY_PRESET: Equipment = {
 export const PRESET_BY_KEY: Record<EquipmentPreset, Equipment> = {
   commercial_gym: COMMERCIAL_GYM_PRESET,
   home_gym: HOME_GYM_PRESET,
+  bodyweight_only: BODYWEIGHT_ONLY_PRESET,
   travel_hotel: TRAVEL_HOTEL_PRESET,
   custom: CUSTOM_EMPTY_PRESET,
 };
@@ -122,9 +149,54 @@ export const PRESET_BY_KEY: Record<EquipmentPreset, Equipment> = {
 export const PRESET_LABEL: Record<EquipmentPreset, string> = {
   commercial_gym: "Commercial gym",
   home_gym: "Home gym",
+  bodyweight_only: "Bodyweight only",
   travel_hotel: "Travel / hotel",
   custom: "Custom",
 };
+
+/**
+ * Does this equipment configuration imply at least one loadable main
+ * lift (barbell, trap bar, safety squat bar, or dumbbell range)?
+ *
+ * Used by the onboarding step machine to skip the Training Maxes step
+ * for bodyweight-only setups (no number to multiply against), and by
+ * the planner / UI to surface the soft "bodyweight programming is in
+ * early support" messaging.
+ */
+export function hasLoadableMainLift(equipment: Equipment): boolean {
+  return (
+    equipment.bars.barbellKg > 0 ||
+    equipment.bars.trapBarKg !== null ||
+    equipment.bars.safetyBarKg !== null ||
+    equipment.dumbbells !== null
+  );
+}
+
+/**
+ * Reverse-lookup: which preset best describes this stored equipment
+ * shape? Compares the canonical fingerprint (bars empty / loadable,
+ * dumbbells, kettlebells, machines) rather than trusting the saved
+ * `preset` field — that way users who pruned every barbell out of a
+ * "commercial gym" save are still recognised as bodyweight.
+ *
+ * Returns the matched preset key or `"custom"` when nothing fits.
+ */
+export function presetKeyForScheme(equipment: Equipment): EquipmentPreset {
+  const noBars =
+    equipment.bars.barbellKg === 0 &&
+    equipment.bars.trapBarKg === null &&
+    equipment.bars.safetyBarKg === null;
+  if (
+    noBars &&
+    equipment.plates.length === 0 &&
+    equipment.dumbbells === null &&
+    equipment.kettlebells.length === 0 &&
+    equipment.machines.length === 0
+  ) {
+    return "bodyweight_only";
+  }
+  return equipment.preset;
+}
 
 export type LegacyProfile = {
   equipment?: unknown;

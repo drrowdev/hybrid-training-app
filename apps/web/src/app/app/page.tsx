@@ -18,6 +18,11 @@ import { getRegionFreshness, type FreshnessConflict } from "@/lib/stats/region-f
 import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
 import { findHeavyOnRecoveringConflictWithMuscles } from "@/lib/muscle/muscle-conflict";
 import { StravaStaleSyncTrigger } from "@/components/StravaStaleSyncTrigger";
+import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner";
+import {
+  hasLoadableMainLift,
+  resolveEquipment,
+} from "@/lib/settings/equipment-presets";
 import { computeTaperRecommendation, type TaperRecommendation } from "@/lib/planner/taper";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { TmSuggestionBanner, type TmSuggestionView } from "@/components/today/TmSuggestionBanner";
@@ -71,7 +76,9 @@ export default async function TodayPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name, timezone, am_window_start, pm_window_start")
+    .select(
+      "display_name, timezone, am_window_start, pm_window_start, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg",
+    )
     .eq("id", userId)
     .maybeSingle();
 
@@ -430,6 +437,10 @@ export default async function TodayPage() {
         </header>
 
         {taper && <TaperCard taper={taper} />}
+
+        {!hasLoadableMainLift(resolveEquipment(profile)) && tmRows.length === 0 && (
+          <BodyweightOnlyBanner />
+        )}
 
         <TmSuggestionBanner
           suggestions={pendingSuggestions}

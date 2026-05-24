@@ -239,3 +239,8 @@ Stats adherence is intentionally not in scope here; its empty-state pass is owne
 
 
 *Maintained per the Karpathy pattern (plan §6.10). Update the index and append to the log when this file changes.*
+
+## Open follow-ups
+
+### Bodyweight progression engine
+Proper push-up / pull-up / squat progression ladders with rep-based "training max" equivalents (e.g. `5 strict pull-ups` is a 1RM-equivalent that should drive band-assisted / weighted-vest progression). Currently bodyweight-only blocks fall back to accessories-only with RPE intensity ÔÇö the `BodyweightOnlyBanner` flags this as early support. Scope when picked up: a parallel main-lift slot for bodyweight movements, a rep-floor / rep-ceiling progression mechanic, and weighted-vest / dip-belt / band-assist tooling that the picker already understands.
