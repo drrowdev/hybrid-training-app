@@ -160,3 +160,11 @@ grid, page 3 hinge-gap acknowledgement. Maps to bw_progress entry nodes
 per family with skill-chip overrides. Migration 0043 adds
 profiles.bw_assessment_completed_at. Settings → Bodyweight progression
 preview page shows current node per family.
+
+## [2026-05-25] refine | BW progression Phase 3 ÔÇö engine prescription (feat/bw-phase3-engine-prescription)
+
+bwPrescription matrix returns sets/reps/RIR/tempo/hold per (node, family,
+archetype, bucket, week). Strength/hypertrophy/endurance branches with
+research-grounded defaults; deload week 3 scales down. createBlock writes
+prescription_json on bodyweight_only paths. MovementFocusView renders
+prescription cue + hides weight column for BW main lifts.
