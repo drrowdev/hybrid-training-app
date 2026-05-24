@@ -17,20 +17,20 @@ import {
   type PacePrState,
   type PrRow,
 } from "@/lib/stats/pace-prs";
+import { formatDate, type ProfileForFormat } from "@/lib/format/datetime";
 
 export type PacePRsCardProps = {
   state: PacePrState;
+  formatProfile?: ProfileForFormat;
 };
 
-function fmtDate(ymd: string): string {
+function fmtDate(ymd: string, profile: ProfileForFormat): string {
   const [y, m, d] = ymd.split("-").map((n) => Number(n));
   const date = new Date(Date.UTC(y, m - 1, d));
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  });
+  const utcProfile: ProfileForFormat = profile
+    ? { ...profile, timezone: "UTC" }
+    : { timezone: "UTC" };
+  return formatDate(date, utcProfile);
 }
 
 function StravaLink({ activityId }: { activityId: string }) {
@@ -53,7 +53,7 @@ function StravaLink({ activityId }: { activityId: string }) {
   );
 }
 
-function Row({ row }: { row: PrRow }) {
+function Row({ row, formatProfile }: { row: PrRow; formatProfile: ProfileForFormat }) {
   const delta = formatDelta(row.deltaSec);
   const deltaColor =
     delta.tone === "success"
@@ -85,7 +85,7 @@ function Row({ row }: { row: PrRow }) {
       <td style={{ padding: "6px 8px", fontSize: 12, color: "var(--cp-text-muted)" }}>
         {row.current ? (
           <>
-            {fmtDate(row.current.date)}
+            {fmtDate(row.current.date, formatProfile)}
             {row.current.stravaActivityId ? <StravaLink activityId={row.current.stravaActivityId} /> : null}
           </>
         ) : (
@@ -96,7 +96,7 @@ function Row({ row }: { row: PrRow }) {
   );
 }
 
-export function PacePRsCard({ state }: PacePRsCardProps) {
+export function PacePRsCard({ state, formatProfile }: PacePRsCardProps) {
   if (state.kind === "no-strava") {
     return (
       <EmptyState
@@ -164,7 +164,7 @@ export function PacePRsCard({ state }: PacePRsCardProps) {
         </thead>
         <tbody>
           {state.rows.map((r) => (
-            <Row key={r.key} row={r} />
+            <Row key={r.key} row={r} formatProfile={formatProfile ?? null} />
           ))}
         </tbody>
       </table>

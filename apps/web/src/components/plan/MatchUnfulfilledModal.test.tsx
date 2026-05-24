@@ -22,13 +22,13 @@ describe("MatchUnfulfilledModal", () => {
           summary: "Top set 102 kg × 5 · 3 working sets",
         }}
         candidates={[]}
+        formatProfile={{ date_format: "dmy_long", timezone: "UTC" }}
       />,
     );
     expect(html).toContain('data-testid="match-modal-planned-title"');
     expect(html).toContain("Squat day");
     expect(html).toContain('data-testid="match-modal-planned-date"');
-    // toLocaleDateString("en-GB") → "Tue, 19 May" or "Tue 19 May" depending on platform;
-    // assert the day + month are surfaced.
+    // Format helper renders "Tue 19 May" for a DMY profile in weekday_short mode.
     expect(html).toMatch(/19/);
     expect(html).toMatch(/May/);
     expect(html).toContain('data-testid="match-modal-planned-summary"');

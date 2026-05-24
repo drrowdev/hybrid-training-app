@@ -8,6 +8,7 @@ import {
   reopenLimitation,
   resolveLimitation,
 } from "@/lib/limitations/actions";
+import { formatDate } from "@/lib/format/datetime";
 
 const REGIONS: { value: string; label: string }[] = [
   { value: "foot_ankle_calf", label: "Foot / ankle / calf" },
@@ -34,10 +35,17 @@ export default async function LimitationsPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: all } = await supabase
-    .from("limitations")
-    .select("id, region, severity, started_at, resolved_at, notes")
-    .order("started_at", { ascending: false });
+  const [{ data: profile }, { data: all }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("timezone, time_format, date_format")
+      .eq("id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("limitations")
+      .select("id, region, severity, started_at, resolved_at, notes")
+      .order("started_at", { ascending: false }),
+  ]);
 
   const active = (all ?? []).filter((l) => !l.resolved_at);
   const resolved = (all ?? []).filter((l) => l.resolved_at);
@@ -134,7 +142,7 @@ export default async function LimitationsPage() {
                     </span>
                   </div>
                   <div className="text-xs text-foreground/50">
-                    started {new Date(l.started_at).toLocaleDateString()}
+                    started {formatDate(l.started_at, profile)}
                   </div>
                 </div>
                 <form action={resolveLimitation}>
@@ -191,8 +199,8 @@ export default async function LimitationsPage() {
                     {REGIONS.find((r) => r.value === l.region)?.label ?? l.region}
                   </span>{" "}
                   <span className="text-xs text-foreground/50">
-                    {l.severity} · {new Date(l.started_at).toLocaleDateString()}
-                    {l.resolved_at && ` → ${new Date(l.resolved_at).toLocaleDateString()}`}
+                    {l.severity} · {formatDate(l.started_at, profile)}
+                    {l.resolved_at && ` → ${formatDate(l.resolved_at, profile)}`}
                   </span>
                 </div>
                 <form action={reopenLimitation}>

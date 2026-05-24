@@ -151,6 +151,19 @@ export const profiles = pgTable("profiles", {
    *   }
    */
   equipment: jsonb("equipment").$type<Record<string, unknown>>(),
+  /**
+   * Wall-clock time-format preference. NULL = derive from locale at
+   * read time (see `resolveTimeFormat` in
+   * `apps/web/src/lib/format/datetime.ts`). Constrained at DB level
+   * to {'12h', '24h'}.
+   */
+  timeFormat: text("time_format"),
+  /**
+   * Calendar-date format preference. NULL = derive from locale at
+   * read time (see `resolveDateFormat`). Constrained at DB level to
+   * {'iso', 'dmy_long', 'mdy_long', 'dmy_short', 'mdy_short'}.
+   */
+  dateFormat: text("date_format"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),
