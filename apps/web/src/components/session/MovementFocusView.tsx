@@ -405,6 +405,22 @@ export function MovementFocusView({
               {activeItem.percentTm}% TM
             </span>
           )}
+          {activeItem.percentTm == null &&
+            renderIntensityChip(activeItem) && (
+              <span
+                className="mono"
+                data-testid="accessory-intensity-chip"
+                style={{
+                  padding: "1px 6px",
+                  borderRadius: 999,
+                  background: "var(--cp-accent-soft)",
+                  color: "var(--cp-accent)",
+                  fontSize: 10,
+                }}
+              >
+                {renderIntensityChip(activeItem)}
+              </span>
+            )}
         </div>
         <div
           className="mono"
@@ -416,8 +432,22 @@ export function MovementFocusView({
           </span>
         </div>
         <div style={{ fontSize: 14, color: "var(--cp-text-muted)" }}>
-          × {targetReps} {isAmrap ? "reps+" : "reps"}
+          {renderTargetLine(activeItem, targetReps, isAmrap)}
         </div>
+        {activeItem.percentTm == null && activeItem.intensityCue && (
+          <div
+            data-testid="accessory-intensity-cue"
+            style={{
+              fontSize: 12,
+              color: "var(--cp-text-muted)",
+              lineHeight: 1.35,
+              maxWidth: 320,
+              marginInline: "auto",
+            }}
+          >
+            {activeItem.intensityCue}
+          </div>
+        )}
 
         {prFlash && (
           <div
@@ -644,6 +674,67 @@ function badgeStyle(color: string): React.CSSProperties {
     fontSize: 11,
     fontWeight: 700,
   };
+}
+
+/**
+ * Format a RIR / RPE / hold range as a single label. Returns null when
+ * the item carries no autoregulation fields — caller falls back to the
+ * legacy "× N reps" render.
+ */
+function renderIntensityChip(item: PrescriptionItem): string | null {
+  if (item.holdSec) {
+    const { min, max } = item.holdSec;
+    return min === max ? `Hold ${min}s` : `Hold ${min}–${max}s`;
+  }
+  if (item.tempoEccentricSec != null && item.targetRir) {
+    const r = item.targetRir;
+    const rir = r.min === r.max ? `RIR ${r.min}` : `RIR ${r.min}–${r.max}`;
+    return `${item.tempoEccentricSec}s lower · ${rir}`;
+  }
+  if (item.tempoEccentricSec != null) {
+    return `${item.tempoEccentricSec}s lower`;
+  }
+  if (item.targetRir) {
+    const r = item.targetRir;
+    return r.min === r.max ? `RIR ${r.min}` : `RIR ${r.min}–${r.max}`;
+  }
+  if (item.targetRpe) {
+    const r = item.targetRpe;
+    // RPE 10 is the conventional "max intent" marker for plyo / power work.
+    if (r.min === r.max && r.min === 10) return "Max intent";
+    return r.min === r.max ? `RPE ${r.min}` : `RPE ${r.min}–${r.max}`;
+  }
+  return null;
+}
+
+/**
+ * Compose the target-line under the weight readout. Variants:
+ *   - Isometric:   "Hold 30–60s"
+ *   - Plyometric:  "× 3–5 reps · max intent"
+ *   - Tendon:      "× 8–10 reps · 3s lower"
+ *   - Accessory:   "× 8–12 reps"
+ *   - Main lift:   "× 5 reps" (legacy, untouched)
+ */
+function renderTargetLine(
+  item: PrescriptionItem,
+  targetReps: number,
+  isAmrap: boolean,
+): string {
+  // Isometric — hold replaces the rep readout entirely.
+  if (item.holdSec) {
+    const { min, max } = item.holdSec;
+    return min === max ? `Hold ${min}s` : `Hold ${min}–${max}s`;
+  }
+  const repsLabel = `${targetReps} ${isAmrap ? "reps+" : "reps"}`;
+  // Plyometric — explicit intent cue alongside reps.
+  if (item.targetRpe && item.targetRpe.min === 10 && item.targetRpe.max === 10) {
+    return `× ${repsLabel} · max intent`;
+  }
+  // Tendon — surface the eccentric tempo next to the rep line.
+  if (item.tempoEccentricSec != null) {
+    return `× ${repsLabel} · ${item.tempoEccentricSec}s lower`;
+  }
+  return `× ${repsLabel}`;
 }
 
 function DotStrip({
