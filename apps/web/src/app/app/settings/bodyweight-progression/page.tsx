@@ -67,7 +67,12 @@ export default async function BodyweightProgressionPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: progressRows }, { data: catalogRows }, { data: eventRows }] =
+  // Phase 5 — look up the current week's hinge-compensation status.
+  // We surface "injected this week?" + which node was used by joining
+  // through the user's active block to the most recent planned-session
+  // row that carries a `meta.hinge_compensation` flagged item. Pure
+  // read; no write, no UI override (deferred to Phase 7).
+  const [{ data: progressRows }, { data: catalogRows }, { data: eventRows }, { data: activeBlock }] =
     await Promise.all([
       supabase
         .from("bw_progress")
@@ -86,6 +91,12 @@ export default async function BodyweightProgressionPage() {
         .eq("user_id", user.id)
         .order("occurred_at", { ascending: false })
         .limit(10),
+      supabase
+        .from("training_blocks")
+        .select("id, started_on, weeks")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .maybeSingle(),
     ]);
 
   const catalog: CatalogNode[] = (catalogRows ?? []) as CatalogNode[];
@@ -148,6 +159,62 @@ export default async function BodyweightProgressionPage() {
 
   const seeded = rows.some((r) => r.current != null);
   const events: ProgressionEventRow[] = (eventRows ?? []) as ProgressionEventRow[];
+
+  // Phase 5 — find the most recent hinge-compensation injection in
+  // the current week of the active block. The injected accessory
+  // carries `meta.hinge_compensation = true` and a
+  // `meta.hinge_compensation_node` slug, so we filter the user's
+  // planned-session rows for this-week + scan the prescription items.
+  // Read-only; UI is purely informational ("here's what we injected
+  // and why"). Phase 7 will add manual override controls.
+  let hingeCompensationState: {
+    injectedThisWeek: boolean;
+    nodeKey: string | null;
+    nodeDisplayName: string | null;
+  } = { injectedThisWeek: false, nodeKey: null, nodeDisplayName: null };
+  if (activeBlock?.id) {
+    const startedOn = new Date(activeBlock.started_on as string);
+    const today = new Date();
+    const weekIndex = Math.max(
+      0,
+      Math.min(
+        (activeBlock.weeks as number) - 1,
+        Math.floor(
+          (today.getTime() - startedOn.getTime()) /
+            (7 * 24 * 60 * 60 * 1000),
+        ),
+      ),
+    );
+    const { data: weekSessions } = await supabase
+      .from("planned_sessions")
+      .select("prescription")
+      .eq("block_id", activeBlock.id)
+      .eq("week_index", weekIndex);
+    for (const row of (weekSessions ?? []) as Array<{
+      prescription: { items?: Array<Record<string, unknown>> } | null;
+    }>) {
+      const items = row.prescription?.items ?? [];
+      for (const it of items) {
+        const meta = (it as { meta?: Record<string, unknown> }).meta;
+        if (meta && meta.hinge_compensation === true) {
+          const nodeKey =
+            typeof meta.hinge_compensation_node === "string"
+              ? (meta.hinge_compensation_node as string)
+              : null;
+          const node = nodeKey
+            ? catalog.find((c) => c.node_key === nodeKey)
+            : null;
+          hingeCompensationState = {
+            injectedThisWeek: true,
+            nodeKey,
+            nodeDisplayName: node?.display_name ?? null,
+          };
+          break;
+        }
+      }
+      if (hingeCompensationState.injectedThisWeek) break;
+    }
+  }
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
@@ -271,6 +338,62 @@ export default async function BodyweightProgressionPage() {
             },
           )}
         </div>
+      )}
+
+      {seeded && (
+        <section
+          data-testid="bw-hinge-compensation"
+          style={{ display: "grid", gap: 8 }}
+        >
+          <h2 style={{ fontSize: 14, margin: 0 }}>Hinge compensation</h2>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 12,
+              color: "var(--cp-text-muted)",
+              lineHeight: 1.5,
+            }}
+          >
+            Bodyweight programming can&apos;t load the hinge like a deadlift.
+            When your session rotation skips the hinge family, the planner
+            injects a slow-tempo or eccentric hinge movement to keep the
+            posterior chain covered.
+          </p>
+          <div
+            data-testid={
+              hingeCompensationState.injectedThisWeek
+                ? "bw-hinge-injected"
+                : "bw-hinge-not-injected"
+            }
+            style={{
+              padding: "10px 14px",
+              border: "1px solid var(--cp-border)",
+              borderRadius: 8,
+              background: "var(--cp-surface)",
+              fontSize: 12,
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              alignItems: "center",
+            }}
+          >
+            <span style={{ color: "var(--cp-text-muted)" }}>This week</span>
+            <span style={{ color: "var(--cp-text)", textAlign: "right" }}>
+              {hingeCompensationState.injectedThisWeek ? (
+                <>
+                  Injected ·{" "}
+                  <strong>
+                    {hingeCompensationState.nodeDisplayName ??
+                      hingeCompensationState.nodeKey ??
+                      "—"}
+                  </strong>
+                </>
+              ) : (
+                "Not injected — hinge already in your rotation, or recovery day"
+              )}
+            </span>
+          </div>
+        </section>
       )}
 
       {seeded && (
