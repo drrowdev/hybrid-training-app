@@ -139,29 +139,20 @@ test.describe("@desktop program run", () => {
 
     // 4) Refresh /app. The today-card test-id for today's row is gone
     //    (it transitions into the "completedToday" / "Session logged"
-    //    branch of TodaySessionCard) and "Up next this week" surfaces
-    //    the next planned_session by date.
+    //    branch of TodaySessionCard). The dedicated "Up next this week"
+    //    section was removed from Today in feat/today-v3-simplify —
+    //    /app/plan owns that surface now.
     await page.goto("/app");
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId(`today-card-${seed.todayPlannedId}`)).toHaveCount(0);
     await expect(page.getByTestId("today-logged")).toBeVisible();
     await expect(page.getByText(/session logged/i)).toBeVisible();
 
-    // Cursor consistency: "Up next this week" surfaces at least one
-    // upcoming planned session whose calendar date is strictly after
-    // today. We don't pin a specific row because the page orders by
-    // production's `dayDate` (which has its own TZ math we don't want
-    // to re-derive in the spec). The heading + upcoming-cards live in
-    // sibling divs under the same <section>, so we anchor on the
-    // ancestor <section>.
-    const upNextSection = page
-      .getByRole("heading", { name: /up next this week/i })
-      .locator("xpath=ancestor::section[1]");
-    await expect(upNextSection).toBeVisible();
-    const upcomingLinks = upNextSection
-      .getByRole("link")
-      .filter({ hasNotText: /full plan/i });
-    await expect(upcomingLinks.first()).toBeVisible({ timeout: 10_000 });
+    // Regression guard: the old "Up next this week" heading must NOT
+    // come back on Today — that surface lives on /app/plan now.
+    await expect(
+      page.getByRole("heading", { name: /up next this week/i }),
+    ).toHaveCount(0);
   });
 
   test("B: deload week prescription differs (week 3 of strength_anchor)", async ({
