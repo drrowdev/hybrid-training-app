@@ -288,6 +288,13 @@
       "tag": "0044_bw_main_prescription",
       "when": 1779865200000,
       "breakpoints": false
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "tag": "0045_bw_progression_events",
+      "when": 1779951600000,
+      "breakpoints": false
     }
   ]
 }

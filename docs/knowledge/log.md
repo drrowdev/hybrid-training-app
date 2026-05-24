@@ -168,3 +168,17 @@ archetype, bucket, week). Strength/hypertrophy/endurance branches with
 research-grounded defaults; deload week 3 scales down. createBlock writes
 prescription_json on bodyweight_only paths. MovementFocusView renders
 prescription cue + hides weight column for BW main lifts.
+
+## [2026-05-26] refine | BW progression Phase 4 ÔÇö TUT-gated progression engine (feat/bw-phase4-tut-progression)
+Pure progression engine (apps/web/src/lib/planner/bw-progression.ts) decides
+advancement per family based on weeks-at-node (>=2), accumulated time-under-
+tension vs. anchor-scaled threshold (anchor x 12 for skill / isometric_capable,
+anchor x 6 otherwise; floor 60s / ceiling 1500s), and over-completion of the
+last 2 sessions (reps +2, hold +3s, tempo_reps +1; RIR>=1, cleanForm).
+Migration 0045 adds bw_progression_events audit table (RLS self_read/self_write).
+Server hooks in lib/sessions/bw-set-logging.ts accumulate TUT per logged set
+and evaluate + persist advancement on completeSession. Planner stamps
+nextNodePreview onto each BW PrescriptionItem so MovementFocusView can render
+a 'Next:' chip + gate-state popover (weeks/TUT/recent counter). Settings ÔåÆ
+Bodyweight progression page gains TUT progress bar, weeks badge, and a Recent
+progressions list (last 10 events). Brand-purity (DC-Q6) preserved.

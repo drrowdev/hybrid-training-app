@@ -224,6 +224,16 @@ export type PrescriptionItem = {
     nodeKey?: string;
     nodeDisplayName?: string;
     family?: string;
+    /**
+     * Phase 4 hint — what the engine would advance to once the gate
+     * (weeks + TUT + 2 over-completed sessions) opens. Stamped at
+     * planner-generation time. UI renders it as a small "Next:" chip
+     * under the prescription headline. `{ mastered: true }` signals
+     * a terminal node ("Mastered" chip).
+     */
+    nextNodePreview?:
+      | { nodeKey: string; displayName: string; difficultyAnchor: number }
+      | { mastered: true };
   };
 };
 

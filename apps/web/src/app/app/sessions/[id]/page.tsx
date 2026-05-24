@@ -40,6 +40,7 @@ import {
 } from "@/lib/sessions/prescription-progress";
 import type { ProgressionHint } from "@/components/session/PostSessionSummary";
 import type { Prescription } from "@hta/db";
+import { loadBwGateStatesForPrescription } from "@/lib/planner/bw-gate-state-loader";
 
 export default async function SessionDetailPage({
   params,
@@ -138,6 +139,11 @@ export default async function SessionDetailPage({
     .eq("completed_session_id", id)
     .maybeSingle();
   const plannedPrescription = (planned?.prescription as Prescription | null) ?? null;
+  const bwGateStateByFamily = await loadBwGateStatesForPrescription({
+    supabase,
+    userId: user.id,
+    prescription: plannedPrescription,
+  });
   const plannedTopPercent = plannedPrescription?.items
     .filter((i) => i.kind === "main" && typeof i.percentTm === "number")
     .reduce((max, i) => Math.max(max, i.percentTm ?? 0), 0);
@@ -876,6 +882,7 @@ export default async function SessionDetailPage({
         barbellKg={barbellKg}
         trapBarKg={trapBarKg}
         plateInventory={plateInventory}
+        bwGateStateByFamily={bwGateStateByFamily}
       />
 
       {(cardio && cardio.length > 0) || !isComplete ? (
