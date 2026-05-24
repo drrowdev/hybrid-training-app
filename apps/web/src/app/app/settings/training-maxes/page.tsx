@@ -13,6 +13,10 @@ import {
   type StrengthRole,
 } from "@/lib/planner/archetypes";
 import { getActiveBlock } from "@/lib/planner/queries";
+import {
+  hasLoadableMainLift,
+  resolveEquipment,
+} from "@/lib/settings/equipment-presets";
 import { TmSection, type PickerGroup, type RoleGroupInput } from "@/components/training-maxes/TmSection";
 import Link from "next/link";
 
@@ -20,6 +24,19 @@ export default async function TrainingMaxesPage() {
   const supabase = await createClient();
   const ctx = await getTrainingMaxContext();
   const existingMovementIds = new Set(ctx.rows.map((r) => r.movementId));
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { data: profile } = user
+    ? await supabase
+        .from("profiles")
+        .select("equipment, barbell_kg, trap_bar_kg, plate_inventory_kg")
+        .eq("id", user.id)
+        .maybeSingle()
+    : { data: null };
+  const equipment = resolveEquipment(profile);
+  const bodyweightOnly = !hasLoadableMainLift(equipment);
 
   const block = await getActiveBlock();
   const archetype = block ? ARCHETYPES[block.archetype as keyof typeof ARCHETYPES] : undefined;
@@ -112,12 +129,27 @@ export default async function TrainingMaxesPage() {
         <h1 style={{ fontSize: 26, margin: "8px 0 0", letterSpacing: "-0.01em" }}>
           Training maxes
         </h1>
-        <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-          Enter your 1RM for each main lift. The app applies a default TM% to compute the
-          working <em>training max</em> used by the planner. Pick whichever variant of squat,
-          bench, deadlift, or overhead press you actually train — back squat, front squat,
-          trap-bar deadlift, push press, etc. are all valid.
-        </p>
+        {bodyweightOnly ? (
+          <p
+            data-testid="training-maxes-bodyweight-note"
+            style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14, lineHeight: 1.55 }}
+          >
+            Training maxes are 1-rep estimates for your main lifts. You&apos;re on a
+            bodyweight-only setup, so there&apos;s no main lift to attach a number to yet.
+            If you add a barbell or dumbbells in{" "}
+            <Link href="/app/settings/equipment" style={{ color: "var(--cp-accent)" }}>
+              Settings → Equipment
+            </Link>{" "}
+            later, this page becomes useful again.
+          </p>
+        ) : (
+          <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
+            Enter your 1RM for each main lift. The app applies a default TM% to compute the
+            working <em>training max</em> used by the planner. Pick whichever variant of squat,
+            bench, deadlift, or overhead press you actually train — back squat, front squat,
+            trap-bar deadlift, push press, etc. are all valid.
+          </p>
+        )}
       </header>
 
       <TmSection
