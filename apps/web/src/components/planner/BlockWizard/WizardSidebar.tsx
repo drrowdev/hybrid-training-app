@@ -63,7 +63,15 @@ export function WizardSidebar({
           <span style={kickerStyle}>Your block</span>
         </div>
         <div style={nameStyle(fullyResolved)}>{name}</div>
-        <p style={summaryStyle}>{summary}</p>
+        <p style={summaryStyle}>
+          {summary.prefix}
+          {summary.emphasis && (
+            <strong style={{ color: "var(--cp-text)", fontWeight: 700 }}>
+              {summary.emphasis}
+            </strong>
+          )}
+          {summary.suffix}
+        </p>
 
         <div style={{ display: "grid", gap: 6, marginBottom: 14 }}>
           <Row icon="📅" label="Days a week" value={state.days == null ? null : `${state.days} day${state.days === 1 ? "" : "s"}`} />
@@ -247,16 +255,56 @@ function SessionBreakdown({
   const sessions = buildWeekShape(resolved, { goal: state.goal, secondary: state.secondary });
   const total = sessions.length;
   const consolidated = consolidate(sessions);
+
+  // Group by modality so the user can see "X strength sessions" vs "Y
+  // cardio sessions" at a glance instead of reading row-by-row.
+  const groups: { label: string; rows: Consolidated[] }[] = [];
+  const buckets: Record<"strength" | "cardio" | "tendon", Consolidated[]> = {
+    strength: [],
+    cardio: [],
+    tendon: [],
+  };
+  for (const c of consolidated) buckets[modalityForWeightKey(c.weightKey)].push(c);
+  if (buckets.strength.length) groups.push({ label: "Strength", rows: buckets.strength });
+  if (buckets.cardio.length) groups.push({ label: "Cardio", rows: buckets.cardio });
+  if (buckets.tendon.length) groups.push({ label: "Tendons & joints", rows: buckets.tendon });
+
   return (
     <>
       <div style={breakdownHeadingStyle}>
         Your week ({total} session{total === 1 ? "" : "s"})
       </div>
-      {consolidated.map((s, i) => (
-        <SessionRow key={i} session={s} count={s.count} />
+      {groups.map((g, gi) => (
+        <div key={gi} style={{ display: "grid", gap: 4 }}>
+          <div style={groupLabelStyle}>{g.label}</div>
+          {g.rows.map((s, i) => (
+            <SessionRow key={`${gi}-${i}`} session={s} count={s.count} />
+          ))}
+        </div>
       ))}
     </>
   );
+}
+
+/**
+ * Maps the `weightKey` taxonomy (used for stimulus + severity scoring)
+ * down to the three modality buckets the sidebar groups by. Keeps the
+ * mapping in one place so adding a new weight key surfaces a TS error.
+ */
+function modalityForWeightKey(
+  key: SessionShape["weightKey"],
+): "strength" | "cardio" | "tendon" {
+  if (key === "Tendon day") return "tendon";
+  if (
+    key === "Easy Z2 (recovery)" ||
+    key === "Polarized Z2" ||
+    key === "VO2 intervals" ||
+    key === "Long Z2 + alactic finisher" ||
+    key === "Maintenance Z2"
+  ) {
+    return "cardio";
+  }
+  return "strength";
 }
 
 function SessionRow({
@@ -300,24 +348,50 @@ function totalSessions(a: ResolvedArchetype): number {
   return a.sessions.strength + a.sessions.hypertrophy + a.sessions.cardio + a.sessions.tendon;
 }
 
-function summarySentence(state: WizardState, a: ResolvedArchetype | null): string {
+type SummaryParts = { prefix: string; emphasis: string | null; suffix: string };
+
+function summarySentence(state: WizardState, a: ResolvedArchetype | null): SummaryParts {
   const dayLabel =
     state.days == null ? "? days/week" : `${state.days} day${state.days === 1 ? "" : "s"}/week`;
   if (state.secondary === "maintenance" && a) {
-    return `Short maintenance block. ${formatSessions(a)} over ${dayLabel} — protects what you have without spending recovery on adaptation.`;
+    return {
+      prefix: "Short maintenance block. ",
+      emphasis: `${formatSessions(a)} over ${dayLabel}`,
+      suffix: " — protects what you have without spending recovery on adaptation.",
+    };
   }
-  if (!state.goal || !a) return "The program shapes up as you choose.";
-  if (state.goal === "resilience")
-    return "Tendon-led return-to-load block. Top set capped at 80% TM; dedicated heavy slow resistance and isometric hold sessions across the week.";
+  if (!state.goal || !a) {
+    return { prefix: "The program shapes up as you choose.", emphasis: null, suffix: "" };
+  }
+  if (state.goal === "resilience") {
+    return {
+      prefix:
+        "Tendon-led return-to-load block. Top set capped at 80% TM; dedicated heavy slow resistance and isometric hold sessions across the week.",
+      emphasis: null,
+      suffix: "",
+    };
+  }
   const primary = GOALS[state.goal].short;
   if (state.secondary && state.secondary !== "skip") {
     const sec = GOALS[state.secondary as Goal]?.short;
-    return `Based on ${primary} + ${sec}, you'll do ${a.name}. ${formatSessions(a)} over ${dayLabel}, with a deload in week ${a.weeks}.`;
+    return {
+      prefix: `Based on ${primary} + ${sec}, you'll do ${a.name}. `,
+      emphasis: `${formatSessions(a)} over ${dayLabel}`,
+      suffix: `, with a deload in week ${a.weeks}.`,
+    };
   }
   if (state.secondary === "skip") {
-    return `Single-focus ${a.name}. ${formatSessions(a)} over ${dayLabel}.`;
+    return {
+      prefix: `Single-focus ${a.name}. `,
+      emphasis: `${formatSessions(a)} over ${dayLabel}`,
+      suffix: ".",
+    };
   }
-  return `Leading ${primary}. ${formatSessions(a)}.`;
+  return {
+    prefix: `Leading ${primary}. `,
+    emphasis: formatSessions(a),
+    suffix: ".",
+  };
 }
 
 function formatSessions(a: ResolvedArchetype): string {
@@ -344,7 +418,7 @@ function WeekLadder({ resolved }: { resolved: ResolvedArchetype | null }): React
       {Array.from({ length: 4 }, (_, i) => {
         const filled = !!resolved && i < resolved.weeks;
         const label = filled ? labelForWave(resolved!, i) : "—";
-        const isDeload = filled && /recovery|deload/i.test(label);
+        const isDeload = filled && /^Recover\b/i.test(label);
         return (
           <div key={i} style={weekCellStyle(filled, isDeload)}>
             <div
@@ -369,16 +443,47 @@ function WeekLadder({ resolved }: { resolved: ResolvedArchetype | null }): React
 }
 
 function labelForWave(a: ResolvedArchetype, i: number): string {
-  if (a.id === "strength_anchor") return ["Build", "Add weight", "Heavy week", "Recovery week"][i] ?? "—";
+  // Plain-language week labels. Each archetype reads as a 4-week story
+  // the user can mentally rehearse: ramp-in -> build -> hardest week ->
+  // recovery. Avoids jargon ("heavy week", "volume peak") in favour of
+  // what the user will actually do.
+  if (a.id === "strength_anchor")
+    return [
+      "Ramp in — get your bar speed back",
+      "Build — heavier top sets each session",
+      "Push — your hardest week",
+      "Recover — lighter loads, sleep more",
+    ][i] ?? "—";
   if (a.id === "hypertrophy_anchor")
-    return ["Volume base", "Add a set", "Volume peak", "Recovery week"][i] ?? "—";
+    return [
+      "Ramp in — find your working weights",
+      "Build — add a working set per lift",
+      "Push — most sets of the block",
+      "Recover — half the volume, full sleep",
+    ][i] ?? "—";
   if (a.id === "endurance_anchor")
-    return ["Build the base", "Add minutes", "Add the hard day", "Recovery week"][i] ?? "—";
+    return [
+      "Build — easy aerobic base",
+      "Stretch — longer Z2 sessions",
+      "Push — add the hard interval day",
+      "Recover — easy minutes only",
+    ][i] ?? "—";
   if (a.id === "concurrent_hybrid")
-    return ["Build", "Add weight", "Add the hard day", "Recovery week"][i] ?? "—";
+    return [
+      "Ramp in — both engines at low load",
+      "Build — add weight + minutes",
+      "Push — your hardest week",
+      "Recover — lighter on both",
+    ][i] ?? "—";
   if (a.id === "rebuild")
-    return ["Ease in", "Step up", "Consolidate", "Recovery week"][i] ?? "—";
-  if (a.id === "maintenance") return ["Steady week", "Steady week"][i] ?? "—";
+    return [
+      "Ease in — pain-free range only",
+      "Step up — modest load progression",
+      "Consolidate — hold the new range",
+      "Recover — back off to feel-good loads",
+    ][i] ?? "—";
+  if (a.id === "maintenance")
+    return ["Steady — keep what you have", "Steady — keep what you have"][i] ?? "—";
   return "—";
 }
 
@@ -519,6 +624,15 @@ const breakdownHeadingStyle: React.CSSProperties = {
   letterSpacing: "0.06em",
   fontWeight: 600,
   padding: "4px 2px 2px",
+};
+
+const groupLabelStyle: React.CSSProperties = {
+  fontSize: 10,
+  color: "var(--cp-text-soft, var(--cp-text-muted))",
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+  fontWeight: 700,
+  padding: "8px 2px 2px",
 };
 
 const noteStyle: React.CSSProperties = {
