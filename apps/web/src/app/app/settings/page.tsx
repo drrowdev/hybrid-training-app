@@ -359,6 +359,22 @@ export default async function SettingsPage() {
       </section>
 
       <section className="space-y-3">
+        <h2 className="text-lg font-medium">Warmups</h2>
+        <p className="text-xs text-foreground/60">
+          Auto-generated warmup ladder before each main lift. Pick a preset or
+          dial in a custom percent/rep ramp.
+        </p>
+        <Link
+          href="/app/settings/training"
+          data-testid="settings-warmups-link"
+          className="inline-flex items-center justify-between gap-3 rounded-lg border border-foreground/10 p-4 w-full hover:bg-foreground/5"
+        >
+          <span className="text-sm">Configure warmups</span>
+          <span className="text-xs text-foreground/60">→</span>
+        </Link>
+      </section>
+
+      <section className="space-y-3">
         <h2 className="text-lg font-medium">Training maxes</h2>
         <p className="text-xs text-foreground/60">
           Reference numbers for percentage-based prescription. Set one per main lift —

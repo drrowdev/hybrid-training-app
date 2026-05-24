@@ -59,6 +59,12 @@ import {
   buildPotentiationItem,
   pickPotentiationMovement,
 } from "./power-emphasis-transform";
+import {
+  DEFAULT_WARMUP_SCHEME,
+  generateWarmupItems,
+  resolveWarmupScheme,
+  type WarmupScheme,
+} from "./warmups";
 
 type DbMovement = {
   id: string;
@@ -119,6 +125,67 @@ function defaultMuscleTargets(): Record<string, number> {
 }
 
 /**
+ * Mutates `items` in place, prepending a warmup ladder for every
+ * distinct main-lift movement. The ladder is built off the heaviest
+ * planned `kind === "main"` set per movement so a wave-loaded session
+ * (e.g. 65/75/85% TM) gets one ramp keyed to the top set, not three
+ * separate ramps.
+ *
+ * `kind === "back_off"` is intentionally NOT a warmup trigger — back-off
+ * sets always follow main sets and don't need their own ramp.
+ */
+function prependWarmupsForMainLifts(
+  items: PrescriptionItem[],
+  scheme: WarmupScheme,
+): void {
+  if (scheme.setCount <= 0) return;
+
+  // Find the heaviest main set per movement and remember the position
+  // of that movement's FIRST main item so we can insert before it.
+  type TopInfo = {
+    movementId: string;
+    movementSlug?: string;
+    movementName?: string;
+    topPct: number;
+    firstMainIdx: number;
+  };
+  const byMovement = new Map<string, TopInfo>();
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i]!;
+    if (it.kind !== "main") continue;
+    if (it.percentTm == null) continue;
+    const existing = byMovement.get(it.movementId);
+    if (!existing) {
+      byMovement.set(it.movementId, {
+        movementId: it.movementId,
+        movementSlug: it.movementSlug,
+        movementName: it.movementName,
+        topPct: it.percentTm,
+        firstMainIdx: i,
+      });
+    } else if (it.percentTm > existing.topPct) {
+      existing.topPct = it.percentTm;
+    }
+  }
+
+  if (byMovement.size === 0) return;
+
+  // Insert from the LATEST first-main index back to the earliest so
+  // the recorded indices stay valid as we mutate `items`.
+  const ordered = Array.from(byMovement.values()).sort(
+    (a, b) => b.firstMainIdx - a.firstMainIdx,
+  );
+  for (const info of ordered) {
+    const warmups = generateWarmupItems(info.movementId, info.topPct, scheme, {
+      movementSlug: info.movementSlug,
+      movementName: info.movementName,
+    });
+    if (warmups.length === 0) continue;
+    items.splice(info.firstMainIdx, 0, ...warmups);
+  }
+}
+
+/**
  * Helper: assemble the day's prescription items, optionally appending the
  * curated accessory pool when the archetype + day allow it. Centralised so
  * createBlock and createCustomBlock stay in lockstep.
@@ -142,6 +209,12 @@ function assemblePrescriptionItems(
   weekDeloadScale: number = 1.0,
   /** Wizard "Add power emphasis" toggle — persisted on `training_blocks.power_emphasis`. */
   powerEmphasis: boolean = false,
+  /**
+   * User's warmup-ladder configuration (from `profiles.warmup_scheme`).
+   * Pre-resolved by the caller via `resolveWarmupScheme` so we don't
+   * re-validate per day. `setCount === 0` skips warmup generation.
+   */
+  warmupScheme: WarmupScheme = DEFAULT_WARMUP_SCHEME,
 ): PrescriptionItem[] {
   const items = buildPrescription(archetype, weekIndex, day, movement, finisherMovement);
   if (day.kind !== "strength") return items;
@@ -155,6 +228,13 @@ function assemblePrescriptionItems(
   if (powerTransformsApply) {
     applyPowerClampToMainItems(items);
   }
+
+  // ─── Auto-warmup ladder ───
+  // Prepend warmup items for every main-lift movement (one ramp per
+  // movement, built off its TOP planned working set so a 65/75/85
+  // wave gets one warmup series, not three). `setCount === 0`
+  // disables the feature for the user.
+  prependWarmupsForMainLifts(items, warmupScheme);
 
   // Dynamic picker path.
   if (archetype.accessoryProfile && catalog && weekContext) {
@@ -313,13 +393,14 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   const archetype = ARCHETYPES[parsed.data.archetype];
   if (!archetype) return { ok: false, error: "Unknown archetype" };
 
-  // Look up the user's two-a-day preference so we pick the right day pool.
+  // Look up the user's two-a-day preference + warmup-ladder config so we pick the right day pool and prepend warmups.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("allows_two_a_days")
+    .select("allows_two_a_days, warmup_scheme")
     .eq("id", user.id)
     .maybeSingle();
   const allowsTwoADays = Boolean(profile?.allows_two_a_days ?? false);
+  const warmupScheme = resolveWarmupScheme(profile?.warmup_scheme);
 
   const minDays = minDaysForArchetype(archetype, allowsTwoADays);
   if (parsed.data.daysPerWeek < minDays) {
@@ -469,6 +550,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
         weekContext,
         weekDeloadScale,
         parsed.data.powerEmphasis,
+        warmupScheme,
       );
       const prescription: Prescription = { items };
       const isDeload = weekProfile?.intensityLabel === "Deload";
@@ -580,6 +662,15 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  // Pull the user's warmup-ladder config so custom blocks also pick up
+  // auto-warmups for main lifts. NULL → default scheme via resolver.
+  const { data: customProfile } = await supabase
+    .from("profiles")
+    .select("warmup_scheme")
+    .eq("id", user.id)
+    .maybeSingle();
+  const customWarmupScheme = resolveWarmupScheme(customProfile?.warmup_scheme);
+
   // Resolve all required movements.
   const candidateSlugs = allCandidateLiftSlugs(archetype);
   const fixedSlugs = requiredFixedSlugs(archetype);
@@ -682,7 +773,19 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
         movement = { id: mv.id, slug: mv.slug, displayName: mv.display_name };
       }
 
-      const items = assemblePrescriptionItems(archetype, week, day, movement, finisherMovement, movementBySlug);
+      const items = assemblePrescriptionItems(
+        archetype,
+        week,
+        day,
+        movement,
+        finisherMovement,
+        movementBySlug,
+        undefined,
+        undefined,
+        1.0,
+        false,
+        customWarmupScheme,
+      );
       const prescription: Prescription = { items };
       const isDeload = archetype.weekProfiles.find((w) => w.weekIndex === week)?.intensityLabel === "Deload";
 

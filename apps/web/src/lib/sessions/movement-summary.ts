@@ -134,20 +134,6 @@ function workingSets(
   return out;
 }
 
-function summariseInProgress(
-  group: MovementGroup,
-  loggedSets: ReadonlyArray<FocusLoggedSet>,
-): string {
-  const done = loggedSets.length;
-  const total = group.itemIndices.length;
-  const work = workingSets(loggedSets);
-  const last = work.length > 0 ? work[work.length - 1]! : null;
-  if (last) {
-    return truncate(`${done}/${total} · last ${formatWeight(last.weightKg)}kg`);
-  }
-  return truncate(`${done}/${total} sets`);
-}
-
 function summariseCompleted(
   loggedSets: ReadonlyArray<FocusLoggedSet>,
 ): string {
@@ -174,6 +160,17 @@ function summariseCompleted(
  * Returns "" when there's nothing useful to show (no prescription,
  * no logged sets).
  *
+ * Warmup items are excluded from the "X of Y sets" count — the
+ * collapsed summary is a glance at *working* sets, and auto-warmups
+ * would inflate the total in a misleading way. The dot-strip pips in
+ * the focus view still surface every warmup.
+ *
+ * Because `loggedSets` is a flat in-order list (not keyed by
+ * prescription position), we assume the user logs in prescription
+ * order — warmups first — and discard the first `warmupCount` rows
+ * when partitioning. That matches how the focus-view auto-cursor
+ * advances.
+ *
  * The `tmKg` argument is accepted for symmetry with `formatPrescriptionItem`
  * but is intentionally unused: the TM is already visible in its own
  * header chip and we don't want to repeat it.
@@ -184,20 +181,34 @@ export function summariseGroupForHeader(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _tmKg?: number,
 ): string {
-  const total = group.itemIndices.length;
-  const work = workingSets(loggedSets);
-  const skipped = loggedSets.filter((s) => s.skipped).length;
+  const warmupCount = group.items.filter((it) => it.kind === "warmup").length;
+  const workingItems = group.items.filter((it) => it.kind !== "warmup");
+  // Drop the leading `warmupCount` logged rows — they're warmup logs.
+  // If the user hasn't yet logged all warmups, slice still trims
+  // correctly: it returns fewer rows when there's nothing past them.
+  const workingLogged =
+    warmupCount > 0 && loggedSets.length > 0
+      ? loggedSets.slice(warmupCount)
+      : loggedSets;
+
+  const total = workingItems.length;
+  const work = workingSets(workingLogged);
+  const skipped = workingLogged.filter((s) => s.skipped).length;
   const covered = work.length + skipped;
 
-  if (total === 0 && loggedSets.length === 0) return "";
+  if (total === 0 && workingLogged.length === 0) return "";
 
   if (total > 0 && covered === 0) {
-    return summarisePlanned(group.items);
+    return summarisePlanned(workingItems);
   }
   if (total > 0 && covered < total) {
-    return summariseInProgress(group, loggedSets);
+    const last = work.length > 0 ? work[work.length - 1]! : null;
+    if (last) {
+      return truncate(`${covered}/${total} · last ${formatWeight(last.weightKg)}kg`);
+    }
+    return truncate(`${covered}/${total} sets`);
   }
   // Completed (covered >= total) — or freestyle (no prescription) with
   // logged sets: fall through to the completed summary.
-  return summariseCompleted(loggedSets);
+  return summariseCompleted(workingLogged);
 }
