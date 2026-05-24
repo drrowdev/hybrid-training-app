@@ -290,16 +290,67 @@ function SessionBreakdown({
 }
 
 function SessionRow({ session }: { session: SessionShape }): ReactElement {
+  // Title + meta only. No duration on the right — durations change
+  // week-to-week (especially in endurance / hypertrophy blocks where
+  // minutes or set counts grow over the wave), so a static "75 min"
+  // label would contradict the per-week narrative shown in Step 4.
   return (
     <div style={sessionRowStyle}>
       <span style={iconBoxStyle}>{session.icon}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={sessionTitleStyle}>{session.title}</div>
-        <div style={sessionMetaStyle}>{session.meta}</div>
+        <div style={sessionTitleStyle}>{generalizeTitle(session.title)}</div>
+        <div style={sessionMetaStyle}>{generalizeMeta(session.meta)}</div>
       </div>
-      <span style={sessionDurationStyle}>{session.durationMin} min</span>
     </div>
   );
+}
+
+/**
+ * Strip wave-specific or methodology-specific framing from session
+ * titles so the right rail reads as "what you'll do every week" rather
+ * than "what week 1 looks like". E.g. "Long Z2 + alactic finisher" →
+ * "Long run / ride". The full session prescription lives on the Plan
+ * page once the block exists.
+ */
+function generalizeTitle(title: string): string {
+  if (title === "Long Z2" || title === "Long Z2 + alactic finisher") return "Long aerobic";
+  if (title === "Easy Z2") return "Easy aerobic";
+  if (title === "Polarized Z2") return "Long aerobic";
+  if (title === "VO2 intervals") return "Intervals (hard day)";
+  if (title === "Maintenance lift") return "Maintenance lift";
+  if (title === "Strength day") return "Strength day";
+  if (title === "Hypertrophy day") return "Hypertrophy day";
+  if (title === "Capped lift") return "Capped lift";
+  if (title === "Tendon day") return "Tendon day";
+  return title;
+}
+
+/**
+ * Strip duration / set-count / percent numbers from the secondary meta
+ * line for the same reason — those scale per week. Keep the qualitative
+ * descriptor ("conversational pace", "near-max effort", "accessory
+ * pool").
+ */
+function generalizeMeta(meta: string): string {
+  // Endurance descriptors — pace, not minutes.
+  if (meta.startsWith("aerobic base")) return "conversational pace";
+  if (meta.startsWith("recovery between")) return "easy recovery pace";
+  if (meta.startsWith("aerobic floor")) return "easy aerobic floor";
+  if (meta.startsWith("maintenance dose")) return "short and easy";
+  if (meta.includes("90–95% HRmax")) return "hard intervals near max";
+  if (meta.includes("near-max")) return "easy with short hard finishers";
+  // Strength descriptors — strip the explicit %TM and set counts.
+  if (meta.includes("≥ 95% TM") || meta.includes("≥ 90% TM"))
+    return "heavy top set · few working sets";
+  if (meta.includes("≥ 85% TM")) return "moderate-heavy top set";
+  if (meta.includes("≤ 95% TM")) return "heavy top set";
+  if (meta.includes("≤ 85% TM")) return "cardio-safe top set";
+  if (meta.includes("≤ 80% TM")) return "capped top set";
+  if (meta.includes("accessory")) return "moderate weight + accessories";
+  if (meta.includes("HSR")) return "heavy-slow-resistance + isometric holds";
+  if (meta.includes("65–70% TM")) return "submaximal lifts";
+  if (meta.includes("60–75% TM")) return "moderate weight · multiple sets";
+  return meta;
 }
 
 function totalSessions(a: ResolvedArchetype): number {
@@ -553,15 +604,6 @@ const sessionMetaStyle: React.CSSProperties = {
   color: "var(--cp-text-muted)",
   marginTop: 2,
   lineHeight: 1.4,
-};
-
-const sessionDurationStyle: React.CSSProperties = {
-  fontFamily: "Consolas, monospace",
-  fontSize: 11,
-  color: "var(--cp-text-muted)",
-  flexShrink: 0,
-  marginTop: 1,
-  textAlign: "right",
 };
 
 const breakdownHeadingStyle: React.CSSProperties = {
