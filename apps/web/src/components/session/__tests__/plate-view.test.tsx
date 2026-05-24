@@ -2,6 +2,9 @@
  * Unit coverage for the plate-per-side breakdown helper that feeds
  * `<PlateView>`. Greedy + report-remainder — see plate-math.ts for
  * the contract notes.
+ *
+ * Pair counts are no longer tracked (PR: feat/equipment-overhaul);
+ * the inventory is now just a list of available plate weights.
  */
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -9,13 +12,13 @@ import { computePlateBreakdown, type PlateInventoryItem } from "../plate-math";
 import { PlateView } from "../PlateView";
 
 const FULL_INVENTORY: PlateInventoryItem[] = [
-  { weightKg: 25, pairCount: 2 },
-  { weightKg: 20, pairCount: 2 },
-  { weightKg: 15, pairCount: 1 },
-  { weightKg: 10, pairCount: 2 },
-  { weightKg: 5, pairCount: 2 },
-  { weightKg: 2.5, pairCount: 2 },
-  { weightKg: 1.25, pairCount: 2 },
+  { weightKg: 25 },
+  { weightKg: 20 },
+  { weightKg: 15 },
+  { weightKg: 10 },
+  { weightKg: 5 },
+  { weightKg: 2.5 },
+  { weightKg: 1.25 },
 ];
 
 describe("computePlateBreakdown", () => {
@@ -31,18 +34,9 @@ describe("computePlateBreakdown", () => {
 
   it("unlocks 25 kg plates when per-side load is ≥ 80 kg", () => {
     // 200 kg total / 20 kg bar → 90 kg per side → above threshold,
-    // so 25s join the pool. Greedy on full inventory: 25+25+20+15+5
+    // so 25s join the pool. Greedy on full inventory: 25+25+25+15
     // = 90 per side.
-    const heavyInventory: PlateInventoryItem[] = [
-      { weightKg: 25, pairCount: 4 },
-      { weightKg: 20, pairCount: 2 },
-      { weightKg: 15, pairCount: 1 },
-      { weightKg: 10, pairCount: 2 },
-      { weightKg: 5, pairCount: 2 },
-      { weightKg: 2.5, pairCount: 2 },
-      { weightKg: 1.25, pairCount: 2 },
-    ];
-    const out = computePlateBreakdown(200, 20, heavyInventory);
+    const out = computePlateBreakdown(200, 20, FULL_INVENTORY);
     expect(out.perSide[0]).toBe(25);
     expect(out.perSide.includes(25)).toBe(true);
     expect(out.remainderKg).toBe(0);
@@ -50,14 +44,7 @@ describe("computePlateBreakdown", () => {
 
   it("stays in 20s right at the threshold (per-side 79.5 < 80)", () => {
     // 179 kg total / 20 kg bar → 79.5 kg per side → just under, no 25s.
-    const inv: PlateInventoryItem[] = [
-      { weightKg: 25, pairCount: 4 },
-      { weightKg: 20, pairCount: 4 },
-      { weightKg: 10, pairCount: 2 },
-      { weightKg: 5, pairCount: 2 },
-      { weightKg: 2.5, pairCount: 2 },
-    ];
-    const out = computePlateBreakdown(179, 20, inv);
+    const out = computePlateBreakdown(179, 20, FULL_INVENTORY);
     expect(out.perSide.includes(25)).toBe(false);
   });
 
@@ -80,25 +67,22 @@ describe("computePlateBreakdown", () => {
     expect(out.remainderKg).toBe(0);
   });
 
-  it("respects pair_count limits — exhausts the only 15-pair before falling back", () => {
-    const inv: PlateInventoryItem[] = [
-      { weightKg: 20, pairCount: 1 },
-      { weightKg: 15, pairCount: 1 },
-      { weightKg: 5, pairCount: 1 },
-    ];
-    // Target = 20 + 2*(20+15+5) = 100 kg per side capacity available.
-    // We want 90: 20 bar + 70 total → 35 per side. Greedy: 20+15 = 35 ✓.
-    const out = computePlateBreakdown(90, 20, inv);
-    expect(out.perSide).toEqual([20, 15]);
+  it("treats every listed plate weight as having infinite pairs", () => {
+    // Inventory = a single 20 kg plate weight. With the old per-pair
+    // model this would have capped at one pair; under the real-gym
+    // assumption it stacks as many as the load needs.
+    const out = computePlateBreakdown(100, 20, [{ weightKg: 20 }]);
+    expect(out.perSide).toEqual([20, 20]);
     expect(out.remainderKg).toBe(0);
   });
 
-  it("reports the unmatched remainder when the inventory cannot reach the target", () => {
-    const inv: PlateInventoryItem[] = [{ weightKg: 20, pairCount: 1 }];
-    const out = computePlateBreakdown(80, 20, inv);
-    expect(out.perSide).toEqual([20]);
-    // 80 - 20 = 60 desired load. One 20-pair = 40 kg. Short 20 kg.
-    expect(out.remainderKg).toBe(20);
+  it("reports the unmatched remainder when the listed plates can't reach the target", () => {
+    // No micro plates available — target 81.25 kg on a 20 kg bar
+    // leaves 30.625 kg per side. Greedy with 20+5: [20, 5, 5] eats
+    // 30 kg per side, 0.625 kg short → 1.25 kg total remainder.
+    const out = computePlateBreakdown(81.25, 20, [{ weightKg: 20 }, { weightKg: 5 }]);
+    expect(out.perSide).toEqual([20, 5, 5]);
+    expect(out.remainderKg).toBeCloseTo(1.25, 5);
   });
 });
 

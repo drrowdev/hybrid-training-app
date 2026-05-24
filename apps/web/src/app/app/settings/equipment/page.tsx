@@ -1,29 +1,20 @@
 /**
- * /app/settings/equipment — bar weights + plate-inventory editor.
+ * /app/settings/equipment — rich equipment-inventory editor (bars,
+ * plates, dumbbells, kettlebells, machines, cardio, accessories).
  *
- * The plate breakdown rendered by `<MovementFocusView>` reads from
- * the same `profiles` columns this page writes (`barbell_kg`,
- * `trap_bar_kg`, `plate_inventory_kg`). All values stored canonically
+ * Reads `profiles.equipment` (jsonb, added in migration 0040) when
+ * present and falls back to the legacy `barbell_kg` / `trap_bar_kg`
+ * / `plate_inventory_kg` columns via `resolveEquipment` — see
+ * `@/lib/settings/equipment-presets`. All weights stored canonically
  * in kg; lb display flips at the render boundary.
  */
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { EquipmentSettings } from "@/components/settings/EquipmentSettings";
+import { EquipmentEditor } from "@/components/settings/EquipmentEditor";
+import { resolveEquipment } from "@/lib/settings/equipment-presets";
 
 export const dynamic = "force-dynamic";
-
-type PlateRow = { weight_kg: number; pair_count: number };
-
-const DEFAULT_INVENTORY: PlateRow[] = [
-  { weight_kg: 25, pair_count: 2 },
-  { weight_kg: 20, pair_count: 2 },
-  { weight_kg: 15, pair_count: 1 },
-  { weight_kg: 10, pair_count: 2 },
-  { weight_kg: 5, pair_count: 2 },
-  { weight_kg: 2.5, pair_count: 2 },
-  { weight_kg: 1.25, pair_count: 2 },
-];
 
 export default async function EquipmentSettingsPage() {
   const supabase = await createClient();
@@ -34,28 +25,21 @@ export default async function EquipmentSettingsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("units, barbell_kg, trap_bar_kg, plate_inventory_kg")
+    .select("units, barbell_kg, trap_bar_kg, plate_inventory_kg, equipment")
     .eq("id", user.id)
     .maybeSingle();
 
   const units = (profile?.units === "imperial" ? "imperial" : "metric") as
     | "metric"
     | "imperial";
-  const barbellKg = Number(profile?.barbell_kg ?? 20);
-  const trapBarKg = Number(profile?.trap_bar_kg ?? 25);
-  const inventoryRaw = Array.isArray(profile?.plate_inventory_kg)
-    ? (profile?.plate_inventory_kg as PlateRow[])
-    : DEFAULT_INVENTORY;
-  const inventory = inventoryRaw
-    .map((p) => ({ weight_kg: Number(p.weight_kg), pair_count: Number(p.pair_count) }))
-    .filter((p) => Number.isFinite(p.weight_kg) && p.weight_kg > 0 && p.pair_count > 0);
+  const equipment = resolveEquipment(profile ?? null);
 
   return (
     <main
       style={{
         display: "grid",
         gap: 16,
-        maxWidth: 560,
+        maxWidth: 720,
         margin: "0 auto",
         padding: "24px 16px",
       }}
@@ -70,12 +54,21 @@ export default async function EquipmentSettingsPage() {
         <h1 style={{ fontSize: 24, margin: "8px 0 0", letterSpacing: "-0.01em" }}>
           Equipment
         </h1>
+        <p
+          style={{
+            margin: "6px 0 0",
+            fontSize: 13,
+            color: "var(--cp-text-muted)",
+            lineHeight: 1.5,
+          }}
+        >
+          Tell us what you have to train with. We use this to pick the right
+          plate breakdown and (later) to filter accessory suggestions to gear
+          you actually own.
+        </p>
       </header>
 
-      <EquipmentSettings
-        initial={{ barbellKg, trapBarKg, plateInventoryKg: inventory }}
-        units={units}
-      />
+      <EquipmentEditor initial={equipment} units={units} />
     </main>
   );
 }
