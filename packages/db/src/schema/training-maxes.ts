@@ -16,6 +16,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { movements } from "./movements";
+import { movementNodes } from "./movement-nodes";
 import { sessions } from "./sessions";
 import { setLogs } from "./set-logs";
 
@@ -41,8 +42,21 @@ export const trainingMaxes = pgTable(
     movementId: uuid("movement_id")
       .notNull()
       .references(() => movements.id, { onDelete: "cascade" }),
-    /** The user's actual 1RM in kg for this movement. */
-    oneRmKg: numeric("one_rm_kg", { precision: 6, scale: 2 }).notNull(),
+    /**
+     * The user's actual 1RM in kg for this movement. Nullable since
+     * migration 0042 — a TM row can anchor on `bwNodeId` instead for
+     * bodyweight-only families. The table-level CHECK enforces that
+     * at least one of (oneRmKg, bwNodeId) is set.
+     */
+    oneRmKg: numeric("one_rm_kg", { precision: 6, scale: 2 }),
+    /**
+     * For bodyweight-anchored TMs: the user's current node in the
+     * skill-tree DAG. NULL for barbell-anchored TMs (the existing
+     * majority of rows).
+     */
+    bwNodeId: uuid("bw_node_id").references(() => movementNodes.id, {
+      onDelete: "set null",
+    }),
     /** Optional per-movement TM% override; falls back to profile.tm_percent_default. */
     tmPercent: numeric("tm_percent", { precision: 4, scale: 1 }),
     notes: text("notes"),
