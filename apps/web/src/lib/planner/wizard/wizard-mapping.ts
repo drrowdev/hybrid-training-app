@@ -129,8 +129,12 @@ export function resolveArchetype(input: {
 
   if (goal === "cardio") {
     const dist = distributeEnduranceLed(effective);
+    // Secondary not yet picked (null) is treated like an explicit "skip"
+    // so the live preview reflects what the user has actually chosen.
+    // The sidebar will rebalance once the user picks a secondary on the
+    // next step.
     const sessions: SessionBreakdown =
-      secondary === "skip"
+      secondary === "skip" || secondary == null
         ? { ...empty, cardio: effective }
         : { ...empty, strength: dist.strength, cardio: dist.cardio };
     return {
@@ -155,10 +159,12 @@ export function resolveArchetype(input: {
 
   if (goal === "muscle") {
     const dist = distributeLiftLed(effective);
+    // Secondary not yet picked (null) is treated like an explicit "skip"
+    // so the live preview reflects what the user has actually chosen.
     const sessions: SessionBreakdown =
       secondary === "strength"
         ? { ...empty, hypertrophy: dist.primary, strength: dist.secondary }
-        : secondary === "skip"
+        : secondary === "skip" || secondary == null
           ? { ...empty, hypertrophy: effective }
           : { ...empty, hypertrophy: dist.primary, cardio: dist.secondary };
     return {
@@ -183,10 +189,12 @@ export function resolveArchetype(input: {
 
   if (goal === "strength") {
     const dist = distributeLiftLed(effective);
+    // Secondary not yet picked (null) is treated like an explicit "skip"
+    // so the live preview reflects what the user has actually chosen.
     const sessions: SessionBreakdown =
       secondary === "muscle"
         ? { ...empty, strength: dist.primary, hypertrophy: dist.secondary }
-        : secondary === "skip"
+        : secondary === "skip" || secondary == null
           ? { ...empty, strength: effective }
           : { ...empty, strength: dist.primary, cardio: dist.secondary };
     return {
