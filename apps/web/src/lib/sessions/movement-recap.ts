@@ -19,6 +19,7 @@ export type RecapLine = {
 };
 
 type WorkSet = { weightKg: number; reps: number };
+type CarryWorkSet = { weightKg: number; distanceM: number };
 
 const BUCKET_LABEL: Record<RecapBucketKey, string> = {
   warmup: "Warm-ups",
@@ -79,6 +80,34 @@ function summariseBucket(bucket: RecapBucketKey, sets: WorkSet[]): string {
   return `${label} · ${reps.join("/")} @ ${formatRange(minW, maxW)}`;
 }
 
+/**
+ * Carry recap formatter. Loaded carries are logged as distance + weight
+ * (never reps), so they need their own summariser. Output examples:
+ *   "Accessory · 2×30m @ 24 kg"      (uniform)
+ *   "Accessory · 30/40m @ 24 kg"     (varying distance)
+ *   "Accessory · 2×30m @ 22 – 26 kg" (varying load)
+ */
+function summariseCarryBucket(
+  bucket: RecapBucketKey,
+  sets: CarryWorkSet[],
+): string {
+  const label = BUCKET_LABEL[bucket];
+  if (sets.length === 0) return label;
+  const weights = sets.map((s) => s.weightKg);
+  const dists = sets.map((s) => s.distanceM);
+  const minW = Math.min(...weights);
+  const maxW = Math.max(...weights);
+  const sameDist = dists.every((d) => d === dists[0]);
+  const sameWeight = Math.abs(maxW - minW) < 0.001;
+  if (sameDist && sameWeight) {
+    return `${label} · ${sets.length}×${dists[0]}m @ ${formatWeight(minW)} kg`;
+  }
+  if (sameDist) {
+    return `${label} · ${sets.length}×${dists[0]}m @ ${formatRange(minW, maxW)}`;
+  }
+  return `${label} · ${dists.join("/")}m @ ${formatRange(minW, maxW)}`;
+}
+
 export function buildMovementRecap(
   items: PrescriptionItem[],
   loggedSets: FocusLoggedSet[],
@@ -98,6 +127,13 @@ export function buildMovementRecap(
     accessory: [],
     tendon: [],
   };
+  const carryByBucket: Record<RecapBucketKey, CarryWorkSet[]> = {
+    warmup: [],
+    main: [],
+    back_off: [],
+    accessory: [],
+    tendon: [],
+  };
   // Pair each logged set with the prescription item at the same index
   // (skip placeholders for skipped sets so the indexing stays aligned
   // even when some slots were skipped).
@@ -105,16 +141,30 @@ export function buildMovementRecap(
   for (let i = 0; i < allLoggedInOrder.length; i++) {
     const s = allLoggedInOrder[i]!;
     if (s.skipped) continue;
-    if (s.weightKg == null || s.reps == null || s.reps <= 0) continue;
     const item = items[i];
     const bucket = resolveBucket(item?.kind) ?? "main";
+    // Loaded carry — `distance_m > 0` is the canonical signal; the
+    // focus view writes `reps: 0` for carries so the standard branch
+    // would otherwise drop the row.
+    if (s.distanceM != null && s.distanceM > 0) {
+      carryByBucket[bucket].push({
+        weightKg: s.weightKg ?? 0,
+        distanceM: s.distanceM,
+      });
+      continue;
+    }
+    if (s.weightKg == null || s.reps == null || s.reps <= 0) continue;
     byBucket[bucket].push({ weightKg: s.weightKg, reps: s.reps });
   }
 
   const lines: RecapLine[] = [];
   (Object.keys(byBucket) as RecapBucketKey[]).forEach((k) => {
-    if (byBucket[k].length === 0) return;
-    lines.push({ kind: k, text: summariseBucket(k, byBucket[k]) });
+    if (byBucket[k].length > 0) {
+      lines.push({ kind: k, text: summariseBucket(k, byBucket[k]) });
+    }
+    if (carryByBucket[k].length > 0) {
+      lines.push({ kind: k, text: summariseCarryBucket(k, carryByBucket[k]) });
+    }
   });
 
   if (skipped.length > 0) {

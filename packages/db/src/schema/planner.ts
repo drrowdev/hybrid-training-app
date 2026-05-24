@@ -171,10 +171,19 @@ export type PrescriptionItem = {
    */
   tempoEccentricSec?: number;
   /**
-   * Hold duration in seconds for isometric items (carries, planks,
-   * wall sits, dead bugs). Replaces the rep target on the focus card.
+   * Hold duration in seconds for isometric items (planks, wall sits,
+   * dead bugs). Replaces the rep target on the focus card.
    */
   holdSec?: { min: number; max: number };
+  /**
+   * Distance range in metres for loaded-carry items (farmer / suitcase /
+   * overhead / front-loaded / Zercher). Carries are prescribed by
+   * distance — never reps — per McGill 2014 (loaded carries train trunk
+   * endurance under load) + practitioner consensus. When set, the focus
+   * view swaps the reps stepper for a distance stepper and routes the
+   * logged value into `set_logs.distance_m`.
+   */
+  distanceM?: { min: number; max: number };
   /**
    * Free-form coaching cue (≤ 80 chars). Rendered under the RIR chip on
    * the accessory focus card. Plain English, second person, no

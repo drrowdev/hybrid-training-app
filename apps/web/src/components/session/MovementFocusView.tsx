@@ -32,6 +32,10 @@ export type FocusLoggedSet = {
   id: string;
   weightKg: number | null;
   reps: number | null;
+  /** Distance in metres for loaded-carry sets (set_logs.distance_m). */
+  distanceM?: number | null;
+  /** Hold duration in seconds for isometric sets (set_logs.duration_sec). */
+  durationSec?: number | null;
   rpe: number | null;
   skipped?: boolean;
   skipReason?: SkipReason | null;
@@ -151,11 +155,34 @@ export function MovementFocusView({
     return loggedSets[loggedSets.length - 1]?.weightKg ?? 0;
   }, [activeItem, tmKg, loggedSets]);
   const targetReps = activeItem?.reps ?? 5;
+  // Detect kind from prescription fields. `distanceM` = loaded carry
+  // (programmed by metres, McGill 2014); `holdSec` = isometric hold.
+  // Legacy items that don't carry these fields stay on the default
+  // weight + reps grid.
+  const itemKind: "carry" | "isometric" | "default" = activeItem?.distanceM
+    ? "carry"
+    : activeItem?.holdSec
+      ? "isometric"
+      : "default";
+  const targetDistance = useMemo(() => {
+    const d = activeItem?.distanceM;
+    if (!d) return 0;
+    // Default to the midpoint, rounded to the nearest 5 m step so the
+    // stepper's stable interval matches the prescription range.
+    return Math.round((d.min + d.max) / 2 / 5) * 5;
+  }, [activeItem]);
+  const targetDuration = useMemo(() => {
+    const h = activeItem?.holdSec;
+    if (!h) return 0;
+    return Math.round((h.min + h.max) / 2 / 5) * 5;
+  }, [activeItem]);
 
   // Stepper state. We snap defaults back to target whenever the cursor
   // moves so the user always starts at the prescription.
   const [weight, setWeight] = useState<number>(targetWeight);
   const [reps, setReps] = useState<number>(targetReps);
+  const [distanceM, setDistanceM] = useState<number>(targetDistance);
+  const [durationSec, setDurationSec] = useState<number>(targetDuration);
   const [rpe, setRpe] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -184,6 +211,8 @@ export function MovementFocusView({
     lastCursorKey.current = cursorKey;
     setWeight(targetWeight);
     setReps(targetReps);
+    setDistanceM(targetDistance);
+    setDurationSec(targetDuration);
     // Pre-select RPE from an already-logged set when re-opening it,
     // otherwise clear so the picker is the empty "no zone" state.
     const existing = isActiveLogged
@@ -193,7 +222,7 @@ export function MovementFocusView({
     setError(null);
     setSkipMenuOpen(false);
     setSkipError(null);
-  }, [cursorKey, targetWeight, targetReps, isActiveLogged, loggedSetId, loggedSets]);
+  }, [cursorKey, targetWeight, targetReps, targetDistance, targetDuration, isActiveLogged, loggedSetId, loggedSets]);
 
   // Auto-clear PR flash after 4.5s.
   useEffect(() => {
@@ -206,9 +235,24 @@ export function MovementFocusView({
     e.preventDefault();
     if (submitting) return;
     if (!activeItem) return;
-    if (weight <= 0 || reps <= 0) {
-      setError("Enter weight and reps before logging.");
-      return;
+    // Per-kind validation. Carries log weight + distance (the rep
+    // stepper is hidden); isometric holds log weight (optional) +
+    // duration; everything else logs weight + reps.
+    if (itemKind === "carry") {
+      if (weight <= 0 || distanceM <= 0) {
+        setError("Enter weight and distance before logging.");
+        return;
+      }
+    } else if (itemKind === "isometric") {
+      if (durationSec <= 0) {
+        setError("Enter a hold time before logging.");
+        return;
+      }
+    } else {
+      if (weight <= 0 || reps <= 0) {
+        setError("Enter weight and reps before logging.");
+        return;
+      }
     }
     setError(null);
     setSubmitting(true);
@@ -217,7 +261,15 @@ export function MovementFocusView({
     fd.set("movementId", group.movementId);
     fd.set("setKind", SET_KIND_TO_LOG[activeItem.kind] ?? "main");
     fd.set("weightKg", String(weight));
-    fd.set("reps", String(reps));
+    if (itemKind === "carry") {
+      fd.set("reps", "0");
+      fd.set("distanceM", String(distanceM));
+    } else if (itemKind === "isometric") {
+      fd.set("reps", "0");
+      fd.set("durationSec", String(durationSec));
+    } else {
+      fd.set("reps", String(reps));
+    }
     fd.set("prescriptionItemIndex", String(activeItemIndex));
     if (rpe != null && !isWarmup) {
       fd.set("rpe", String(rpe));
@@ -227,16 +279,21 @@ export function MovementFocusView({
     // beats the user's saved 1RM (Weight / e1RM) or, in an AMRAP context,
     // exceeds the prescribed rep count (Rep PR). If `oneRmKg` is unset,
     // no PR can fire — we don't celebrate against a missing claim.
+    // Carries / isometric holds don't trigger TM-anchored PRs (no rep
+    // count to anchor an e1RM estimate against).
     const setKindForPr = SET_KIND_TO_LOG[activeItem.kind] ?? "main";
-    const flash = detectTmAnchoredPr({
-      weightKg: weight,
-      reps,
-      rpe: !isWarmup ? rpe : null,
-      kind: setKindForPr,
-      prescribedReps: isAmrap ? (activeItem.reps ?? null) : null,
-      isTopSet: isAmrap,
-      tmKg: oneRmKg ?? null,
-    });
+    const flash =
+      itemKind === "default"
+        ? detectTmAnchoredPr({
+            weightKg: weight,
+            reps,
+            rpe: !isWarmup ? rpe : null,
+            kind: setKindForPr,
+            prescribedReps: isAmrap ? (activeItem.reps ?? null) : null,
+            isTopSet: isAmrap,
+            tmKg: oneRmKg ?? null,
+          })
+        : null;
 
     try {
       const result = await addStrengthSet(fd);
@@ -249,7 +306,7 @@ export function MovementFocusView({
       // with the new loggedItemIndices.
       setManualCursor(null);
       setJustLoggedAt(Date.now());
-      if (flash.isWeightPr || flash.isE1rmPr || flash.isRepPr || flash.e1rmKg != null) {
+      if (flash && (flash.isWeightPr || flash.isE1rmPr || flash.isRepPr || flash.e1rmKg != null)) {
         setPrFlash(flash);
       }
       // Inline rest timer.
@@ -550,15 +607,39 @@ export function MovementFocusView({
             onPlus={() => setWeight((v) => Math.round((v + 2.5) * 10) / 10)}
             onSet={setWeight}
           />
-          <Stepper
-            label="Reps"
-            value={reps}
-            step={1}
-            integer
-            onMinus={() => setReps((v) => Math.max(0, v - 1))}
-            onPlus={() => setReps((v) => v + 1)}
-            onSet={(n) => setReps(Math.max(0, Math.round(n)))}
-          />
+          {itemKind === "carry" ? (
+            <Stepper
+              label="Distance (m)"
+              value={distanceM}
+              step={5}
+              integer
+              testId="stepper-distance"
+              onMinus={() => setDistanceM((v) => Math.max(0, v - 5))}
+              onPlus={() => setDistanceM((v) => v + 5)}
+              onSet={(n) => setDistanceM(Math.max(0, Math.round(n)))}
+            />
+          ) : itemKind === "isometric" ? (
+            <Stepper
+              label="Time (s)"
+              value={durationSec}
+              step={5}
+              integer
+              testId="stepper-duration"
+              onMinus={() => setDurationSec((v) => Math.max(0, v - 5))}
+              onPlus={() => setDurationSec((v) => v + 5)}
+              onSet={(n) => setDurationSec(Math.max(0, Math.round(n)))}
+            />
+          ) : (
+            <Stepper
+              label="Reps"
+              value={reps}
+              step={1}
+              integer
+              onMinus={() => setReps((v) => Math.max(0, v - 1))}
+              onPlus={() => setReps((v) => v + 1)}
+              onSet={(n) => setReps(Math.max(0, Math.round(n)))}
+            />
+          )}
         </div>
 
         {!isWarmup && (
@@ -593,11 +674,19 @@ export function MovementFocusView({
               data-testid="movement-focus-log-button"
             >
               {ctaLabel}
-              {!submitting && weight > 0 && reps > 0 && (
+              {!submitting && weight > 0 && (
+                (itemKind === "carry" && distanceM > 0) ||
+                (itemKind === "isometric" && durationSec > 0) ||
+                (itemKind === "default" && reps > 0)
+              ) && (
                 <>
                   {" · "}
                   <span className="mono">
-                    {weight} kg × {reps}
+                    {itemKind === "carry"
+                      ? `${weight} kg × ${distanceM} m`
+                      : itemKind === "isometric"
+                        ? `${weight} kg × ${durationSec} s`
+                        : `${weight} kg × ${reps}`}
                   </span>
                 </>
               )}
@@ -682,6 +771,10 @@ function badgeStyle(color: string): React.CSSProperties {
  * legacy "× N reps" render.
  */
 function renderIntensityChip(item: PrescriptionItem): string | null {
+  if (item.distanceM) {
+    const { min, max } = item.distanceM;
+    return min === max ? `${min}m carry` : `${min}–${max}m carry`;
+  }
   if (item.holdSec) {
     const { min, max } = item.holdSec;
     return min === max ? `Hold ${min}s` : `Hold ${min}–${max}s`;
@@ -709,6 +802,7 @@ function renderIntensityChip(item: PrescriptionItem): string | null {
 
 /**
  * Compose the target-line under the weight readout. Variants:
+ *   - Carry:       "× 30–40m carry" (loaded carry — McGill 2014)
  *   - Isometric:   "Hold 30–60s"
  *   - Plyometric:  "× 3–5 reps · max intent"
  *   - Tendon:      "× 8–10 reps · 3s lower"
@@ -720,6 +814,11 @@ function renderTargetLine(
   targetReps: number,
   isAmrap: boolean,
 ): string {
+  // Carry — distance replaces the rep readout entirely.
+  if (item.distanceM) {
+    const { min, max } = item.distanceM;
+    return min === max ? `× ${min}m carry` : `× ${min}–${max}m carry`;
+  }
   // Isometric — hold replaces the rep readout entirely.
   if (item.holdSec) {
     const { min, max } = item.holdSec;
@@ -841,6 +940,7 @@ function Stepper({
   onMinus,
   onPlus,
   onSet,
+  testId,
 }: {
   label: string;
   value: number;
@@ -849,9 +949,11 @@ function Stepper({
   onMinus: () => void;
   onPlus: () => void;
   onSet: (n: number) => void;
+  testId?: string;
 }) {
   return (
     <div
+      data-testid={testId}
       style={{
         background: "var(--cp-surface)",
         border: "1px solid var(--cp-border)",
