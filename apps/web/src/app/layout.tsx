@@ -25,6 +25,16 @@ export const metadata: Metadata = {
     title: "Hybrid",
     statusBarStyle: "black-translucent",
   },
+  icons: {
+    // 180×180, full-bleed (no transparency, no pre-rounded corners) — iOS
+    // applies its own mask. Source: scripts/generate-icons.mjs.
+    apple: "/icons/apple-touch-icon.png",
+  },
+  other: {
+    // Older Chromium / non-Apple PWAs read this legacy flag instead of the
+    // apple-mobile-web-app-capable meta. Cheap to include.
+    "mobile-web-app-capable": "yes",
+  },
 };
 
 export const viewport: Viewport = {
