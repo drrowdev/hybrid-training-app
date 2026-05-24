@@ -70,6 +70,8 @@ import {
   resolveWarmupScheme,
   type WarmupScheme,
 } from "./warmups";
+import { resolveEquipment } from "@/lib/settings/equipment-presets";
+import type { Equipment } from "@/lib/settings/equipment-schema";
 
 type DbMovement = {
   id: string;
@@ -220,6 +222,12 @@ function assemblePrescriptionItems(
    * re-validate per day. `setCount === 0` skips warmup generation.
    */
   warmupScheme: WarmupScheme = DEFAULT_WARMUP_SCHEME,
+  /**
+   * User's equipment inventory (from `profiles.equipment`). When supplied
+   * the dynamic picker drops candidates whose required implement is
+   * missing — see `equipment-requirements.ts`.
+   */
+  equipment?: Equipment,
 ): PrescriptionItem[] {
   const items = buildPrescription(archetype, weekIndex, day, movement, finisherMovement);
   if (day.kind !== "strength") return items;
@@ -257,6 +265,7 @@ function assemblePrescriptionItems(
       perMuscleTargets: defaultMuscleTargets(),
       maxItems: archetype.accessoryProfile.aesthetic.itemsPerSession + 4, // small budget for durability + functional fills
       powerEmphasis,
+      equipment,
     });
     for (const p of picks) {
       const catalogEntry = catalog.find((c) => c.id === p.movementId);
@@ -432,14 +441,15 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   const archetype = ARCHETYPES[parsed.data.archetype];
   if (!archetype) return { ok: false, error: "Unknown archetype" };
 
-  // Look up the user's two-a-day preference + warmup-ladder config so we pick the right day pool and prepend warmups.
+  // Look up the user's two-a-day preference + warmup-ladder config + equipment so we pick the right day pool, prepend warmups, and only prescribe movements they can actually do.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("allows_two_a_days, warmup_scheme")
+    .select("allows_two_a_days, warmup_scheme, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg")
     .eq("id", user.id)
     .maybeSingle();
   const allowsTwoADays = Boolean(profile?.allows_two_a_days ?? false);
   const warmupScheme = resolveWarmupScheme(profile?.warmup_scheme);
+  const equipment = resolveEquipment(profile);
 
   const minDays = minDaysForArchetype(archetype, allowsTwoADays);
   if (parsed.data.daysPerWeek < minDays) {
@@ -590,6 +600,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
         weekDeloadScale,
         parsed.data.powerEmphasis,
         warmupScheme,
+        equipment,
       );
       const prescription: Prescription = { items };
       const isDeload = weekProfile?.intensityLabel === "Deload";
@@ -701,14 +712,16 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // Pull the user's warmup-ladder config so custom blocks also pick up
-  // auto-warmups for main lifts. NULL → default scheme via resolver.
+  // Pull the user's warmup-ladder config + equipment so custom blocks
+  // also pick up auto-warmups for main lifts and respect the
+  // equipment-aware accessory filter. NULL → defaults via resolvers.
   const { data: customProfile } = await supabase
     .from("profiles")
-    .select("warmup_scheme")
+    .select("warmup_scheme, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg")
     .eq("id", user.id)
     .maybeSingle();
   const customWarmupScheme = resolveWarmupScheme(customProfile?.warmup_scheme);
+  const customEquipment = resolveEquipment(customProfile);
 
   // Resolve all required movements.
   const candidateSlugs = allCandidateLiftSlugs(archetype);
@@ -824,6 +837,7 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
         1.0,
         false,
         customWarmupScheme,
+        customEquipment,
       );
       const prescription: Prescription = { items };
       const isDeload = archetype.weekProfiles.find((w) => w.weekIndex === week)?.intensityLabel === "Deload";

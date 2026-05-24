@@ -8,6 +8,9 @@
  *   - the rolling week context (what's already been picked for this week)
  *   - the tagged catalog of candidate movements
  *   - filters: limitations, concurrent stress, recent-history rotation
+ *   - the user's equipment inventory (optional; when present, candidates
+ *     whose inferred required implement is missing are dropped before
+ *     ranking)
  *
  * Returns a list of accessory items to append to this day's prescription,
  * in priority order (durability deficit > functional deficit > aesthetic
@@ -17,14 +20,12 @@
  * specific slug from the archetype config — all decisions flow from
  * role tags on the catalog.
  *
- * TODO(equipment): the picker doesn't yet read `profiles.equipment`
- * (added in migration 0040). Once the editor has been live long
- * enough for the JSONB blob to be reliably populated, plumb it into
- * `PickFilters` and exclude candidates that require gear the user
- * doesn't own (e.g. machine-only movements when `equipment.machines`
- * is empty, kettlebell movements when `equipment.kettlebells` is
- * empty, banded movements when `accessories.bands === false`).
- * Until then equipment data is informational only.
+ * Equipment filtering applies to *every* candidate the picker considers
+ * (it only ever produces accessory/tendon-class picks — main lifts come
+ * from the TM-resolved variant path in `actions.ts` and bypass the
+ * picker entirely). The filter is intentionally conservative: when the
+ * slug doesn't clearly imply a specific implement, `inferRequiredEquipment`
+ * returns `bodyweight_or_generic` and the movement is allowed through.
  */
 import type {
   AccessoryProfile,
@@ -37,6 +38,11 @@ import {
   POWER_FUNCTIONAL_ROLES,
   effectiveDurabilityFloor,
 } from "./accessory-roles";
+import type { Equipment } from "@/lib/settings/equipment-schema";
+import {
+  inferRequiredEquipment,
+  isEquipmentAvailable,
+} from "./equipment-requirements";
 
 export type CatalogMovement = {
   id: string;
@@ -106,6 +112,7 @@ export function pickAccessoriesForSession({
   perMuscleTargets,
   maxItems,
   powerEmphasis = false,
+  equipment,
 }: {
   profile: AccessoryProfile;
   /** Deload scalar from the week profile (e.g. 0.5 on deload weeks). */
@@ -119,7 +126,26 @@ export function pickAccessoriesForSession({
   maxItems: number;
   /** Wizard toggle. Biases the picker toward power-tagged movements + trims hypertrophy filler. */
   powerEmphasis?: boolean;
+  /**
+   * User equipment inventory from `profiles.equipment`. When supplied,
+   * candidates whose inferred required implement is missing are
+   * dropped from the pool. Optional so older call-sites and tests that
+   * don't care about equipment keep working unchanged.
+   */
+  equipment?: Equipment;
 }): AccessoryPick[] {
+  const filteredCatalog = equipment
+    ? catalog.filter((m) => isEquipmentAvailable(inferRequiredEquipment(m), equipment))
+    : catalog;
+  if (equipment && filteredCatalog.length === 0) {
+    // Pathological: every catalog entry was rejected. Surface so we
+    // notice in logs rather than silently producing an empty
+    // prescription.
+    console.warn(
+      "[accessory-picker] equipment filter rejected every catalog candidate",
+    );
+  }
+  const workingCatalog = filteredCatalog;
   const picks: AccessoryPick[] = [];
   const usedThisSession = new Set<string>();
 
@@ -135,7 +161,7 @@ export function pickAccessoriesForSession({
     const target = effectiveBulletproofTarget(role, durFloor);
     if (current >= target) continue;
     const candidate = findCandidate({
-      catalog,
+      catalog: workingCatalog,
       requiredBulletproofRole: role,
       filters,
       usedThisSession,
@@ -159,7 +185,7 @@ export function pickAccessoriesForSession({
     const current = functionalProgress.get(role) ?? 0;
     if (current >= required) continue;
     const candidate = findCandidate({
-      catalog,
+      catalog: workingCatalog,
       requiredFunctionalRole: role,
       filters,
       usedThisSession,
@@ -183,7 +209,7 @@ export function pickAccessoriesForSession({
   let powerPickAdded = false;
   if (powerEmphasis && picks.length < maxItems) {
     const candidate = findPowerCandidate({
-      catalog,
+      catalog: workingCatalog,
       filters,
       usedThisSession,
     });
@@ -219,7 +245,7 @@ export function pickAccessoriesForSession({
     const gapMuscle = pickLargestAestheticGap(perMuscleTargets, muscleProgress);
     if (!gapMuscle) break;
     const candidate = findCandidate({
-      catalog,
+      catalog: workingCatalog,
       requiredMuscle: gapMuscle,
       filters,
       usedThisSession,
