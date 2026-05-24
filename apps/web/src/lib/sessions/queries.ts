@@ -50,6 +50,7 @@ export async function getLastSetLogForMovement(
     .eq("movement_id", movementId)
     .eq("sessions.user_id", userId)
     .is("sessions.deleted_at", null)
+    .eq("skipped", false)
     .neq("set_kind", "warmup")
     .not("weight_kg", "is", null)
     .not("reps", "is", null)

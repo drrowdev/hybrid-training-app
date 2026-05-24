@@ -262,6 +262,7 @@ export async function getWeeklyRecoveryRollup(
     .eq("sessions.user_id", userId)
     .is("sessions.deleted_at", null)
     .neq("set_kind", "warmup")
+    .eq("skipped", false)
     .not("weight_kg", "is", null)
     .not("reps", "is", null)
     .gte("sessions.performed_at", earliestIso);

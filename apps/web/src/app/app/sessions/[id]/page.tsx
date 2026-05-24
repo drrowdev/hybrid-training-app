@@ -33,7 +33,7 @@ import { findPrRecalibrateProposals } from "@/lib/stats/pr-recalibrate";
 import { getLastSetLogForMovement, summariseSessionSets } from "@/lib/sessions/queries";
 import { suggestNextWeight } from "@/lib/progression/suggest-next";
 import {
-  matchPrescriptionItems,
+  matchPrescriptionItemsDetailed,
   countStrengthPrescriptionItems,
 } from "@/lib/sessions/prescription-progress";
 import type { ProgressionHint } from "@/components/session/PostSessionSummary";
@@ -76,7 +76,7 @@ export default async function SessionDetailPage({
   const { data: setsRaw } = await supabase
     .from("set_logs")
     .select(
-      "id, set_index, set_kind, weight_kg, reps, duration_sec, distance_m, rpe, notes, prescription_item_index, movement:movements(id, slug, display_name, primary_region)",
+      "id, set_index, set_kind, weight_kg, reps, duration_sec, distance_m, rpe, notes, prescription_item_index, skipped, skip_reason, movement:movements(id, slug, display_name, primary_region)",
     )
     .eq("session_id", id)
     .order("set_index", { ascending: true });
@@ -100,6 +100,8 @@ export default async function SessionDetailPage({
       duration_sec: s.duration_sec,
       distance_m: s.distance_m,
       rpe: s.rpe,
+      skipped: s.skipped ?? false,
+      skip_reason: (s.skip_reason as string | null) ?? null,
       movement: m ?? {
         id: "",
         slug: "",
@@ -350,17 +352,21 @@ export default async function SessionDetailPage({
       movementId: (m?.id as string | undefined) ?? "",
       setKind: s.set_kind as string,
       prescriptionItemIndex: (s.prescription_item_index as number | null) ?? null,
+      skipped: (s.skipped as boolean | null) ?? false,
     };
   });
-  const loggedItemIndexSet = matchPrescriptionItems(
-    plannedPrescription,
-    loggedForMatch.map((s) => ({
-      movementId: s.movementId,
-      setKind: s.setKind,
-      prescriptionItemIndex: s.prescriptionItemIndex,
-    })),
-  );
+  const { matched: loggedItemIndexSet, skipped: skippedItemIndexSet } =
+    matchPrescriptionItemsDetailed(
+      plannedPrescription,
+      loggedForMatch.map((s) => ({
+        movementId: s.movementId,
+        setKind: s.setKind,
+        prescriptionItemIndex: s.prescriptionItemIndex,
+        skipped: s.skipped,
+      })),
+    );
   const loggedItemIndices = Array.from(loggedItemIndexSet).sort((a, b) => a - b);
+  const skippedItemIndices = Array.from(skippedItemIndexSet).sort((a, b) => a - b);
   const loggedSetIdByItemIndex: Record<number, string> = {};
   // Pick the FIRST logged set per matched index (the one the user
   // scrolls back to). Explicit links win; movement-fallback fills the
@@ -772,6 +778,7 @@ export default async function SessionDetailPage({
         prescription={plannedPrescription}
         swapAction={swapPrescriptionItem}
         loggedItemIndices={loggedItemIndices}
+        skippedItemIndices={skippedItemIndices}
         loggedSetIdByItemIndex={loggedSetIdByItemIndex}
       />
 

@@ -186,6 +186,7 @@ async function wasRealMiss(
     .select("weight_kg, reps, set_kind")
     .eq("session_id", sessionId)
     .eq("movement_id", movementId)
+    .eq("skipped", false)
     .neq("set_kind", "warmup")
     .not("weight_kg", "is", null)
     .not("reps", "is", null);
