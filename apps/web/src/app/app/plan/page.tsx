@@ -187,11 +187,21 @@ export default async function PlanPage({
       : todayWeek ?? 0;
 
   const weekDays = all.filter((d) => d.weekIndex === initialWeek);
+  // Stage D: detect two-a-day intent from the FULL planned-days list,
+  // not just renderable plans. A session keeps its "pair" context even
+  // when its partner is skipped/deleted, so the slot badge logic and
+  // the two-a-day banner stay stable across the week's lifecycle.
+  const sessionCountByDayKey = new Map<string, number>();
+  for (const d of all) {
+    const key = `${d.weekIndex}-${d.dayIndex}`;
+    sessionCountByDayKey.set(key, (sessionCountByDayKey.get(key) ?? 0) + 1);
+  }
   const cells = Array.from({ length: 7 }, (_, dayIndex) => {
     const plans = weekDays
       .filter((d) => d.dayIndex === dayIndex)
       .sort((a, b) => slotOrder(a.slot) - slotOrder(b.slot));
-    return { dayIndex, plans };
+    const isTwoADay = (sessionCountByDayKey.get(`${initialWeek}-${dayIndex}`) ?? 0) >= 2;
+    return { dayIndex, plans, isTwoADay };
   });
 
   const totalPlanned = all.length;
@@ -312,6 +322,7 @@ export default async function PlanPage({
       completedSessionId: p.completedSessionId,
       skippedAt: p.skippedAt,
       summary: summarisePrescription(p.prescription.items),
+      slot: p.slot,
     };
   });
   const sessionRaw: RawSessionRow[] = sessionRows.map((s) => {
@@ -467,11 +478,12 @@ export default async function PlanPage({
       </nav>
 
       <section style={{ display: "grid", gap: 10 }}>
-        {cells.map(({ dayIndex, plans }) => (
+        {cells.map(({ dayIndex, plans, isTwoADay }) => (
           <DayCard
             key={dayIndex}
             dayName={DOW[dayIndex]!}
             plans={plans}
+            isTwoADay={isTwoADay}
             today={today}
             timezone={timezone}
             amWindowStart={amWindowStart}
@@ -534,6 +546,7 @@ function guessCardioModalityFromTitle(title: string): string | null {
 function DayCard({
   dayName,
   plans,
+  isTwoADay,
   today,
   timezone,
   amWindowStart,
@@ -541,6 +554,7 @@ function DayCard({
 }: {
   dayName: string;
   plans: PlannedCell[];
+  isTwoADay: boolean;
   today: string;
   timezone: string;
   amWindowStart: string;
@@ -568,7 +582,9 @@ function DayCard({
   const dateStr = plans[0]!.date;
   const isToday = dateStr === today;
   const isPast = dateStr < today;
-  const isTwoADay = plans.length > 1;
+  // `isTwoADay` is computed upstream from the full planned-days array
+  // so it survives a skipped/deleted partner — see Stage D in
+  // feat/slot-semantics.
 
   // Compute the effective time-of-day per slot.
   const slotTimes = new Map<string, string>();
@@ -677,7 +693,16 @@ function DaySessionCard({
 }) {
   const done = !!planned.completedSessionId;
   const skipped = !!planned.skippedAt;
-  const slotLabel = planned.slot === "am" ? "AM" : planned.slot === "pm" ? "PM" : null;
+  // Stage C: slot badges only render when the day genuinely pairs two
+  // sessions. A `slot` of "am" or "pm" without a partner is treated as
+  // a single-session day for display purposes.
+  const slotLabel = isTwoADay
+    ? planned.slot === "am"
+      ? "AM"
+      : planned.slot === "pm"
+        ? "PM"
+        : null
+    : null;
 
   return (
     <div
@@ -700,6 +725,8 @@ function DaySessionCard({
             {slotLabel && (
               <span
                 className="mono"
+                data-testid="day-card-slot-label"
+                data-slot={planned.slot}
                 style={{
                   fontSize: 10,
                   color: "var(--cp-accent)",
