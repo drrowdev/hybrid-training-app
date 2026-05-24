@@ -52,7 +52,7 @@ export default async function EditSetPage({
           <select id="setKind" name="setKind" defaultValue={set.set_kind} className="w-full rounded-md border border-foreground/15 bg-transparent px-2 py-2 text-sm">
             <option value="warmup">warmup</option>
             <option value="main">main</option>
-            <option value="back_off">back-off</option>
+            <option value="back_off">Volume set</option>
             <option value="accessory">accessory</option>
             <option value="tendon">tendon</option>
           </select>
