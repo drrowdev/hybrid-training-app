@@ -132,6 +132,25 @@ export const profiles = pgTable("profiles", {
       ]'::jsonb`,
     )
     .notNull(),
+  /**
+   * Rich equipment inventory — bars, plates, dumbbells, kettlebells,
+   * machines, cardio kit, accessories. Nullable: NULL falls back at
+   * read time (see `resolveEquipment` in
+   * `apps/web/src/lib/settings/equipment-presets.ts`) to either the
+   * Commercial-gym preset (no legacy data) or a "custom" shape
+   * synthesised from the legacy `barbell_kg`/`trap_bar_kg`/
+   * `plate_inventory_kg` columns.
+   *
+   * Schema (kept loose at the DB layer — validated in the server
+   * action, typed in the editor):
+   *   {
+   *     preset, bars: { barbellKg, trapBarKg, safetyBarKg },
+   *     plates: number[], dumbbells: { minKg, maxKg, stepKg } | null,
+   *     kettlebells: number[], machines: string[], cardio: string[],
+   *     accessories: { ... },
+   *   }
+   */
+  equipment: jsonb("equipment").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),
