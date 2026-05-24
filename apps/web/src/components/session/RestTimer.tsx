@@ -24,6 +24,11 @@ export type RestTimerProps = {
   hapticsEnabled?: boolean;
   /** Phase 3 C2 — emit a short audio tone at zero. Defaults to true. */
   timerSoundEnabled?: boolean;
+  /**
+   * Optional active-movement name. When provided, the timer surfaces
+   * "next <name>" so the lifter knows which lift they're resting before.
+   */
+  movementName?: string | null;
 };
 
 function fmt(secs: number): string {
@@ -38,6 +43,7 @@ export function RestTimer({
   onDone,
   hapticsEnabled = true,
   timerSoundEnabled = true,
+  movementName = null,
 }: RestTimerProps) {
   const [remaining, setRemaining] = useState(seconds);
   const [done, setDone] = useState(false);
@@ -109,7 +115,11 @@ export function RestTimer({
       type="button"
       data-testid="rest-timer"
       onClick={dismiss}
-      aria-label={`Rest timer ${fmt(remaining)} — tap to dismiss`}
+      aria-label={
+        movementName
+          ? `Rest timer ${fmt(remaining)} before next ${movementName} set — tap to dismiss`
+          : `Rest timer ${fmt(remaining)} — tap to dismiss`
+      }
       style={{
         position: "fixed",
         right: 16,
@@ -117,7 +127,7 @@ export function RestTimer({
         zIndex: 40,
         minWidth: 96,
         minHeight: 56,
-        padding: "12px 18px",
+        padding: "10px 18px",
         borderRadius: 999,
         border: "1px solid var(--cp-border-strong)",
         background: "var(--cp-bg-elevated)",
@@ -128,12 +138,30 @@ export function RestTimer({
         cursor: "pointer",
         boxShadow: "0 10px 24px rgba(0,0,0,0.18)",
         display: "inline-flex",
+        flexDirection: "column",
         alignItems: "center",
-        gap: 8,
+        gap: 2,
+        lineHeight: 1.1,
       }}
     >
-      <span aria-hidden style={{ fontSize: 14 }}>⏱</span>
-      <span>{fmt(remaining)}</span>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <span aria-hidden style={{ fontSize: 14 }}>⏱</span>
+        <span>{fmt(remaining)}</span>
+      </span>
+      {movementName && (
+        <span
+          data-testid="rest-timer-context"
+          style={{
+            fontFamily: "var(--cp-font)",
+            fontWeight: 500,
+            fontSize: 11,
+            color: "var(--cp-text-muted)",
+            letterSpacing: "0.02em",
+          }}
+        >
+          next {movementName}
+        </span>
+      )}
     </button>
   );
 }

@@ -25,6 +25,17 @@ export type StravaCandidate = {
   stravaActivityId: string | null;
 };
 
+function formatHeaderDate(iso: string): string {
+  // Accepts ISO date (YYYY-MM-DD) or full ISO timestamp.
+  const d = new Date(iso.length === 10 ? `${iso}T00:00:00` : iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+}
+
 export type MatchUnfulfilledModalProps = {
   open: boolean;
   onClose: () => void;
@@ -125,10 +136,19 @@ export function MatchUnfulfilledModal({
               Past unfulfilled · {planned.date}
             </span>
             <h2 id="match-modal-title" style={{ margin: 0, fontSize: 16 }}>
-              {planned.title}
+              <span data-testid="match-modal-planned-title">{planned.title}</span>
+              <span style={{ color: "var(--cp-text-muted)", fontWeight: 500 }}>
+                {" · "}
+                <span data-testid="match-modal-planned-date">{formatHeaderDate(planned.date)}</span>
+              </span>
             </h2>
             {planned.summary && (
-              <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>{planned.summary}</span>
+              <span
+                data-testid="match-modal-planned-summary"
+                style={{ fontSize: 12, color: "var(--cp-text-muted)", fontStyle: "italic" }}
+              >
+                {planned.summary}
+              </span>
             )}
           </div>
           <button

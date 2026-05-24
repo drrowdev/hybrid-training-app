@@ -66,7 +66,7 @@ export function EndBlockForm({
         </div>
       </div>
       <label style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
-        Why are you ending early? (optional)
+        What happened? (optional)
         <textarea
           value={reason}
           onChange={(e) => setReason(e.target.value.slice(0, 280))}

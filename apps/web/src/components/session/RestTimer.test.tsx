@@ -1,0 +1,32 @@
+/**
+ * RestTimer label test — verifies the active-movement context renders
+ * inside the visible rest-timer pill when a `movementName` is passed.
+ *
+ * Static render only (project test env is Node, no DOM) — the
+ * countdown/interaction path is covered by the existing Playwright
+ * `session-log-desktop.spec.ts` regression suite.
+ */
+import { describe, it, expect } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
+import { RestTimer } from "./RestTimer";
+
+describe("RestTimer", () => {
+  it("renders the active-movement name in the label when provided", () => {
+    const html = renderToStaticMarkup(
+      <RestTimer seconds={90} movementName="Front Squat" />,
+    );
+    expect(html).toContain('data-testid="rest-timer-context"');
+    expect(html).toContain("next Front Squat");
+    expect(html).toMatch(/before next Front Squat set/i);
+  });
+
+  it("omits the movement context line when no name is given", () => {
+    const html = renderToStaticMarkup(<RestTimer seconds={60} />);
+    expect(html).not.toContain('data-testid="rest-timer-context"');
+  });
+
+  it("renders nothing when seconds <= 0", () => {
+    const html = renderToStaticMarkup(<RestTimer seconds={0} movementName="Squat" />);
+    expect(html).toBe("");
+  });
+});

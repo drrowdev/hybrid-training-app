@@ -17,8 +17,7 @@ type Tab = {
 
 const TABS: Tab[] = [
   { href: "/app", label: "Today", icon: "◉", match: (p) => p === "/app" },
-  { href: "/app/log", label: "Log", icon: "▮", match: (p) => p.startsWith("/app/log") || p.startsWith("/app/sessions") },
-  { href: "/app/plan", label: "Plan", icon: "▦", match: (p) => p.startsWith("/app/plan") },
+  { href: "/app/plan", label: "Plan", icon: "▦", match: (p) => p.startsWith("/app/plan") || p.startsWith("/app/sessions") || p.startsWith("/app/log") },
   { href: "/app/stats", label: "Stats", icon: "▲", match: (p) => p.startsWith("/app/stats") || p.startsWith("/app/freshness") },
   { href: "/app/settings", label: "Settings", icon: "⚙", match: (p) => p.startsWith("/app/settings") },
 ];
