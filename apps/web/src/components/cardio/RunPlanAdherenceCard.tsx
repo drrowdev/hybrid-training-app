@@ -14,11 +14,13 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { MetricHelp } from "@/components/ui/MetricHelp";
 import type { WeekRow } from "@/lib/stats/run-plan-adherence";
 import { toneForPct } from "@/lib/stats/run-plan-adherence";
+import { formatDate, type ProfileForFormat } from "@/lib/format/datetime";
 
 export type RunPlanAdherenceCardProps = {
   weeks: WeekRow[];
   hasPlan: boolean;
   hasStravaConnection: boolean;
+  formatProfile?: ProfileForFormat;
 };
 
 const TONE_FILL: Record<ReturnType<typeof toneForPct>, string> = {
@@ -28,16 +30,20 @@ const TONE_FILL: Record<ReturnType<typeof toneForPct>, string> = {
   neutral: "var(--cp-border)",
 };
 
-function fmtMon(weekStart: string): string {
+function fmtMon(weekStart: string, profile: ProfileForFormat): string {
   const [y, m, d] = weekStart.split("-").map((n) => Number(n));
   const date = new Date(Date.UTC(y, m - 1, d));
-  return date.toLocaleDateString("en-US", { month: "short", day: "2-digit", timeZone: "UTC" });
+  const utcProfile: ProfileForFormat = profile
+    ? { ...profile, timezone: "UTC" }
+    : { timezone: "UTC" };
+  return formatDate(date, utcProfile, "short_date");
 }
 
 export function RunPlanAdherenceCard({
   weeks,
   hasPlan,
   hasStravaConnection,
+  formatProfile,
 }: RunPlanAdherenceCardProps) {
   if (!hasStravaConnection) {
     return (
@@ -121,7 +127,7 @@ export function RunPlanAdherenceCard({
                 }}
               />
               <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 2 }}>
-                Wk of {fmtMon(w.weekStart)} · {w.actualSessions} of {w.plannedSessions} sessions ·{" "}
+                Wk of {fmtMon(w.weekStart, formatProfile ?? null)} · {w.actualSessions} of {w.plannedSessions} sessions ·{" "}
                 {w.actualMin} of {w.plannedMin} min
               </div>
             </li>

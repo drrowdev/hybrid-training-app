@@ -16,6 +16,7 @@
  * `{ plannedId, sessionId }`; the page revalidates.
  */
 import { useState } from "react";
+import { formatDate, type ProfileForFormat } from "@/lib/format/datetime";
 
 export type StravaCandidate = {
   sessionId: string;
@@ -25,15 +26,10 @@ export type StravaCandidate = {
   stravaActivityId: string | null;
 };
 
-function formatHeaderDate(iso: string): string {
-  // Accepts ISO date (YYYY-MM-DD) or full ISO timestamp.
-  const d = new Date(iso.length === 10 ? `${iso}T00:00:00` : iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
+function formatHeaderDate(iso: string, profile: ProfileForFormat): string {
+  if (!iso) return iso;
+  const input = iso.length === 10 ? `${iso}T00:00:00` : iso;
+  return formatDate(input, profile, "weekday_short");
 }
 
 export type MatchUnfulfilledModalProps = {
@@ -50,6 +46,7 @@ export type MatchUnfulfilledModalProps = {
   onLink?: (formData: FormData) => Promise<void> | void;
   /** Server action marking a planned row as skipped. */
   onSkip?: (formData: FormData) => Promise<void> | void;
+  formatProfile?: ProfileForFormat;
 };
 
 export function MatchUnfulfilledModal({
@@ -59,6 +56,7 @@ export function MatchUnfulfilledModal({
   candidates,
   onLink,
   onSkip,
+  formatProfile,
 }: MatchUnfulfilledModalProps) {
   const [pending, setPending] = useState<string | null>(null);
   if (!open || !planned) return null;
@@ -139,7 +137,7 @@ export function MatchUnfulfilledModal({
               <span data-testid="match-modal-planned-title">{planned.title}</span>
               <span style={{ color: "var(--cp-text-muted)", fontWeight: 500 }}>
                 {" · "}
-                <span data-testid="match-modal-planned-date">{formatHeaderDate(planned.date)}</span>
+                <span data-testid="match-modal-planned-date">{formatHeaderDate(planned.date, formatProfile ?? null)}</span>
               </span>
             </h2>
             {planned.summary && (

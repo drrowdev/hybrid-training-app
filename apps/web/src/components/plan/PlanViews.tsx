@@ -25,6 +25,7 @@ import {
   type StravaCandidate,
 } from "./MatchUnfulfilledModal";
 import { LEGEND_ITEMS, chipPaint } from "./calendar-paint";
+import type { ProfileForFormat } from "@/lib/format/datetime";
 
 export type ViewMode = "month" | "timeline" | "list";
 
@@ -50,6 +51,7 @@ export type PlanViewsProps = {
   >;
   linkAction: (formData: FormData) => Promise<void> | void;
   skipAction: (formData: FormData) => Promise<void> | void;
+  formatProfile?: ProfileForFormat;
 };
 
 const TABS: { id: ViewMode; label: string }[] = [
@@ -76,6 +78,7 @@ export function PlanViews({
   plannedById,
   linkAction,
   skipAction,
+  formatProfile,
 }: PlanViewsProps) {
   const [filter, setFilter] = useState<CalendarFilter>(initialFilter);
   const [legendOpen, setLegendOpen] = useState(defaultLegendOpen);
@@ -249,6 +252,7 @@ export function PlanViews({
           items={filtered}
           today={today}
           onMatchUnfulfilled={setMatchPlannedId}
+          formatProfile={formatProfile}
         />
       )}
       {view === "list" && (
@@ -256,6 +260,7 @@ export function PlanViews({
           items={filtered}
           today={today}
           onMatchUnfulfilled={setMatchPlannedId}
+          formatProfile={formatProfile}
         />
       )}
 
@@ -266,6 +271,7 @@ export function PlanViews({
         onClose={() => setMatchPlannedId(null)}
         onLink={linkAction}
         onSkip={skipAction}
+        formatProfile={formatProfile}
       />
     </div>
   );

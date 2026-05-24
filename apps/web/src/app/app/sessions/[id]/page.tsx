@@ -28,6 +28,7 @@ import { PR_KIND_LABEL } from "@/lib/engine/pr";
 import { bestEstimateOneRm } from "@/lib/engine/one-rm";
 import { acceptTmBump, declineTmBump } from "@/lib/engine/tm-bump-actions";
 import { findDeloadProposalForSession } from "@/lib/engine/deload";
+import { formatDate, formatDateTime } from "@/lib/format/datetime";
 import { formatHitValue, countSessionTmAnchoredPrs, getSessionTmAnchoredPrSummaries } from "@/lib/stats/pr-queries";
 import { findBumpProposalForSession } from "@/lib/stats/bump-proposal";
 import { findPrRecalibrateProposals } from "@/lib/stats/pr-recalibrate";
@@ -71,7 +72,7 @@ export default async function SessionDetailPage({
   const { data: feedbackPrefs } = await supabase
     .from("profiles")
     .select(
-      "haptics_enabled, timer_sound_enabled, barbell_kg, trap_bar_kg, plate_inventory_kg, equipment",
+      "haptics_enabled, timer_sound_enabled, barbell_kg, trap_bar_kg, plate_inventory_kg, equipment, timezone, time_format, date_format",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -471,7 +472,7 @@ export default async function SessionDetailPage({
     <div style={{ display: "grid", gap: 18 }}>
       <header>
         <div style={{ fontSize: 12, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-          {new Date(session.performed_at).toLocaleString()}
+          {formatDateTime(session.performed_at, feedbackPrefs)}
         </div>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
           <h1 style={{ fontSize: 26, margin: "4px 0 0", letterSpacing: "-0.01em" }}>
@@ -709,7 +710,7 @@ export default async function SessionDetailPage({
               {deloadProposal.missContext.map((m, i) => (
                 <li key={i} style={{ fontSize: 12, color: "var(--cp-text-muted)", display: "flex", gap: 8 }}>
                   <span className="mono" style={{ minWidth: 92 }}>
-                    {new Date(m.performedAt).toLocaleDateString()}
+                    {formatDate(m.performedAt, feedbackPrefs)}
                   </span>
                   <span className="mono">
                     {m.weight} kg × {m.performedReps}

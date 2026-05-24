@@ -16,12 +16,14 @@ import Link from "next/link";
 import { useState, useMemo } from "react";
 import type { CalendarItem } from "@/lib/plan/calendar-data";
 import { mondayOfYmd, addDaysToYmd } from "@/lib/dates";
+import { formatDate, type ProfileForFormat } from "@/lib/format/datetime";
 import { chipPaint } from "./calendar-paint";
 
 export type TimelineProps = {
   items: CalendarItem[];
   today: string;
   onMatchUnfulfilled?: (plannedId: string) => void;
+  formatProfile?: ProfileForFormat;
 };
 
 type Week = {
@@ -30,7 +32,7 @@ type Week = {
   items: CalendarItem[];
 };
 
-export function Timeline({ items, today, onMatchUnfulfilled }: TimelineProps) {
+export function Timeline({ items, today, onMatchUnfulfilled, formatProfile }: TimelineProps) {
   const weeks = useMemo(() => bucketByWeek(items), [items]);
   const todayMonday = mondayOfYmd(today);
 
@@ -60,6 +62,7 @@ export function Timeline({ items, today, onMatchUnfulfilled }: TimelineProps) {
           isCurrent={w.monday === todayMonday}
           isFuture={w.monday > todayMonday}
           onMatchUnfulfilled={onMatchUnfulfilled}
+          formatProfile={formatProfile}
         />
       ))}
     </section>
@@ -89,18 +92,20 @@ function WeekPanel({
   isCurrent,
   isFuture,
   onMatchUnfulfilled,
+  formatProfile,
 }: {
   week: Week;
   today: string;
   isCurrent: boolean;
   isFuture: boolean;
   onMatchUnfulfilled?: (plannedId: string) => void;
+  formatProfile?: ProfileForFormat;
 }) {
   const collapsedByDefault = !isCurrent && !isFuture;
   const [expanded, setExpanded] = useState(!collapsedByDefault);
 
   const stats = countStats(week.items);
-  const label = `Week of ${formatRange(week.monday, week.sunday)}`;
+  const label = `Week of ${formatRange(week.monday, week.sunday, formatProfile ?? null)}`;
 
   return (
     <div
@@ -164,6 +169,7 @@ function WeekPanel({
               key={`${it.kind}-${it.sessionId ?? it.eventId ?? i}`}
               item={it}
               onMatchUnfulfilled={onMatchUnfulfilled}
+              formatProfile={formatProfile}
             />
           ))}
         </div>
@@ -195,19 +201,28 @@ function summaryText(s: { done: number; missed: number; planned: number; events:
   return parts.join(" · ") || "Nothing scheduled";
 }
 
-function formatRange(monday: string, sunday: string): string {
-  const m = new Date(monday + "T00:00:00Z");
-  const s = new Date(sunday + "T00:00:00Z");
-  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", timeZone: "UTC" };
-  return `${m.toLocaleDateString("en-US", opts)} – ${s.toLocaleDateString("en-US", opts)}`;
+function formatRange(
+  monday: string,
+  sunday: string,
+  profile: ProfileForFormat,
+): string {
+  // YYYY-MM-DD inputs are calendar dates with no timezone; route them
+  // through the helper using UTC so the day doesn't drift on the
+  // server.
+  const utcProfile: ProfileForFormat = profile
+    ? { ...profile, timezone: "UTC" }
+    : { timezone: "UTC" };
+  return `${formatDate(monday + "T00:00:00Z", utcProfile, "short_date")} – ${formatDate(sunday + "T00:00:00Z", utcProfile, "short_date")}`;
 }
 
 function MiniCard({
   item,
   onMatchUnfulfilled,
+  formatProfile,
 }: {
   item: CalendarItem;
   onMatchUnfulfilled?: (plannedId: string) => void;
+  formatProfile?: ProfileForFormat;
 }) {
   const paint = chipPaint(item.kind, item.priority);
   const body = (
@@ -244,7 +259,7 @@ function MiniCard({
         <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>· {item.meta}</span>
       )}
       <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--cp-text-muted)" }}>
-        {formatShort(item.date)}
+        {formatShort(item.date, formatProfile ?? null)}
       </span>
     </>
   );
@@ -280,10 +295,9 @@ function MiniCard({
   );
 }
 
-function formatShort(date: string): string {
-  return new Date(date + "T00:00:00Z").toLocaleDateString("en-US", {
-    weekday: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
+function formatShort(date: string, profile: ProfileForFormat): string {
+  const utcProfile: ProfileForFormat = profile
+    ? { ...profile, timezone: "UTC" }
+    : { timezone: "UTC" };
+  return formatDate(date + "T00:00:00Z", utcProfile, "weekday_short");
 }

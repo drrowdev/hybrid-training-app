@@ -33,14 +33,11 @@ import {
 import type { TmFormula, TmSource } from "@hta/db";
 import { listTrainingMaxes } from "@/lib/training-maxes/queries";
 import { mondayOfYmd, addDaysToYmd, isoWeekdayYmd } from "@/lib/dates";
-
-const DOW_SHORT = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
-const MONTHS_UPPER = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-
-/** Eyebrow-style short date — "SUN 24 MAY". */
-function eyebrowDate(d = new Date()) {
-  return `${DOW_SHORT[d.getDay()]} ${d.getDate()} ${MONTHS_UPPER[d.getMonth()]}`;
-}
+import {
+  formatDate,
+  formatEyebrowDate,
+  type ProfileForFormat,
+} from "@/lib/format/datetime";
 
 /**
  * Per-day cell used by the inline week strip. Mirrors the legacy
@@ -77,7 +74,7 @@ export default async function TodayPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "display_name, timezone, am_window_start, pm_window_start, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg",
+      "display_name, timezone, am_window_start, pm_window_start, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, time_format, date_format",
     )
     .eq("id", userId)
     .maybeSingle();
@@ -387,11 +384,18 @@ export default async function TodayPage() {
   // /app/profile and /app/settings/training-maxes now.
   const isRestDay = plannedToday.length === 0 && !openSession;
   const todayDate = new Date();
+  const formatProfile: ProfileForFormat = profile
+    ? {
+        timezone: profile.timezone,
+        time_format: profile.time_format ?? null,
+        date_format: profile.date_format ?? null,
+      }
+    : null;
+  const eyebrowText = formatEyebrowDate(todayDate, formatProfile);
   const eyebrowLine = (() => {
-    const datePart = eyebrowDate(todayDate);
-    if (!activeBlock || !archetypeName) return datePart;
+    if (!activeBlock || !archetypeName) return eyebrowText;
     const week = (computedWeekIndex ?? 0) + 1;
-    return `${archetypeName.toUpperCase()} · WEEK ${week} · ${datePart}`;
+    return `${archetypeName.toUpperCase()} · WEEK ${week} · ${eyebrowText}`;
   })();
 
   return (
@@ -418,7 +422,7 @@ export default async function TodayPage() {
                 <span style={{ margin: "0 8px", opacity: 0.5 }}>·</span>
                 WEEK {(computedWeekIndex ?? 0) + 1}
                 <span style={{ margin: "0 8px", opacity: 0.5 }}>·</span>
-                {eyebrowDate(todayDate)}
+                {eyebrowText}
               </>
             ) : (
               eyebrowLine
@@ -462,6 +466,7 @@ export default async function TodayPage() {
           tmById={tmById}
           tmMetaByMovementId={tmMetaByMovementId}
           nextUpcoming={upcoming[0] ?? null}
+          formatProfile={formatProfile}
         />
 
         <WeekStrip days={weekDays} doneCount={doneCount} isRestDay={isRestDay} />
@@ -716,6 +721,7 @@ function TodaySessionCard({
   tmById,
   tmMetaByMovementId,
   nextUpcoming,
+  formatProfile,
 }: {
   openSession: { id: string; title: string | null } | null;
   completedToday: { id: string; title: string | null }[];
@@ -736,6 +742,7 @@ function TodaySessionCard({
     derivedFromSessionPerformedAt: string | null;
   }>;
   nextUpcoming: PlannedDay | null;
+  formatProfile: ProfileForFormat;
 }) {
   if (openSession) {
     return (
@@ -814,7 +821,7 @@ function TodaySessionCard({
               <span data-testid="rest-tomorrow">
                 Next session:{" "}
                 <strong style={{ color: "var(--cp-text)", fontWeight: 600 }}>
-                  {formatUpcomingDay(nextUpcoming.date)} · {nextUpcoming.title}
+                  {formatUpcomingDay(nextUpcoming.date, formatProfile)} · {nextUpcoming.title}
                 </strong>
                 {nextTopLine && (
                   <span style={{ color: "var(--cp-text-muted)" }}> · {nextTopLine}</span>
@@ -993,7 +1000,7 @@ function TodaySessionCard({
         >
           Up next:{" "}
           <span style={{ color: "var(--cp-text)", fontWeight: 600 }}>
-            {formatUpcomingDay(nextUpcoming.date)}
+            {formatUpcomingDay(nextUpcoming.date, formatProfile)}
           </span>{" "}
           · {nextUpcoming.title}
           {(() => {
@@ -1316,7 +1323,7 @@ function topSetLine(
   return null;
 }
 
-function formatUpcomingDay(iso: string): string {
+function formatUpcomingDay(iso: string, profile: ProfileForFormat): string {
   const target = new Date(`${iso}T00:00:00`);
   if (Number.isNaN(target.getTime())) return iso;
   const today = new Date();
@@ -1326,7 +1333,7 @@ function formatUpcomingDay(iso: string): string {
   if (diffDays >= 2 && diffDays <= 6) {
     return target.toLocaleDateString(undefined, { weekday: "long" });
   }
-  return target.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return formatDate(target, profile, "short_date");
 }
 
 function TaperCard({ taper }: { taper: TaperRecommendation }) {
