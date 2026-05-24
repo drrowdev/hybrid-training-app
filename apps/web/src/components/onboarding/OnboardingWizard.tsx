@@ -17,6 +17,12 @@ import {
 } from "@/lib/planner/archetypes";
 import { seedDefaultOneRm } from "@/lib/training-maxes/defaults";
 import { addDaysToYmd, isoWeekdayYmd, todayYmd } from "@/lib/dates";
+import { EquipmentStep } from "@/components/onboarding/EquipmentStep";
+import { PRESET_BY_KEY } from "@/lib/settings/equipment-presets";
+import type {
+  Equipment,
+  EquipmentPreset,
+} from "@/lib/settings/equipment-schema";
 
 // ── Types coming in from the server page ─────────────────────────────────
 
@@ -55,7 +61,14 @@ const EXPERIENCE_OPTIONS: { id: TrainingExperience; label: string; hint: string 
   },
 ];
 
-const STEPS = ["Welcome", "Profile", "Training maxes", "Build your block", "Confirm"] as const;
+export const STEPS = [
+  "Welcome",
+  "Profile",
+  "Equipment",
+  "Training maxes",
+  "Build your block",
+  "Confirm",
+] as const;
 type StepLabel = (typeof STEPS)[number];
 
 const MAIN_ROLES: StrengthRole[] = ["squat", "horizontal_press", "deadlift", "vertical_press"];
@@ -66,8 +79,11 @@ export function OnboardingWizard({
   initialDisplayName,
   initialUnits,
   initialBodyweightKg,
+  initialEquipment,
+  hasEquipmentRow,
   roleCandidates,
   saveProfileAction,
+  saveEquipmentAction,
   saveTmsAction,
   finishAction,
   skipAction,
@@ -75,8 +91,11 @@ export function OnboardingWizard({
   initialDisplayName: string;
   initialUnits: "metric" | "imperial";
   initialBodyweightKg: number | null;
+  initialEquipment: Equipment;
+  hasEquipmentRow: boolean;
   roleCandidates: RoleCandidates[];
   saveProfileAction: (fd: FormData) => Promise<OnboardingResult>;
+  saveEquipmentAction: (fd: FormData) => Promise<void>;
   saveTmsAction: (fd: FormData) => Promise<OnboardingResult>;
   finishAction: (fd: FormData) => Promise<OnboardingResult>;
   skipAction: () => Promise<void>;
@@ -94,7 +113,20 @@ export function OnboardingWizard({
     initialBodyweightKg != null ? String(initialBodyweightKg) : "",
   );
 
-  // Step 3 state — per-role variant slug + per-slug 1RM string + per-role mode.
+  // Equipment step state. `selectedPreset === null` means the user hasn't
+  // tapped a preset card yet — Continue still works (defaults to
+  // commercial_gym + console.info per spec), but the card UI shows
+  // Commercial gym only as a faint suggestion.
+  const initialPresetFromProfile: EquipmentPreset | null = hasEquipmentRow
+    ? initialEquipment.preset
+    : null;
+  const [equipmentPreset, setEquipmentPreset] = useState<EquipmentPreset | null>(
+    initialPresetFromProfile,
+  );
+  const [equipmentCustomizing, setEquipmentCustomizing] = useState(false);
+  const [equipmentConfigured, setEquipmentConfigured] = useState(false);
+
+  // Step 4 state — per-role variant slug + per-slug 1RM string + per-role mode.
   type RoleMode = "enter" | "seed" | "skip";
   const [variantByRole, setVariantByRole] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
@@ -173,6 +205,11 @@ export function OnboardingWizard({
       case "Profile":
         if (trainingExperience == null) return "Pick your training experience to continue.";
         return null;
+      case "Equipment":
+        // Equipment step is foundational; Continue is always enabled.
+        // If the user hasn't tapped a card, we default to commercial_gym
+        // in saveEquipment and log a console.info for visibility.
+        return null;
       case "Training maxes": {
         // Allow continue when at least one role is ready OR all roles are skipped.
         const anyReady = readyRoles.size > 0;
@@ -202,6 +239,10 @@ export function OnboardingWizard({
 
     if (currentLabel === "Profile") {
       saveProfile(() => setStep((s) => s + 1));
+      return;
+    }
+    if (currentLabel === "Equipment") {
+      saveEquipment(() => setStep((s) => s + 1));
       return;
     }
     if (currentLabel === "Training maxes") {
@@ -274,6 +315,39 @@ export function OnboardingWizard({
     });
   };
 
+  const saveEquipment = (after: () => void) => {
+    // If the user tapped the "Customize" expander, the inline editor
+    // owns the save (it writes via its own form submit). Advancing
+    // here without re-writing avoids clobbering their customisations.
+    if (equipmentCustomizing) {
+      setEquipmentConfigured(true);
+      after();
+      return;
+    }
+    let preset = equipmentPreset;
+    if (preset == null) {
+      // Spec: don't get the user stuck on a forgotten tap — default to
+      // commercial_gym and surface the decision in dev tools.
+      console.info("onboarding: equipment defaulted");
+      preset = "commercial_gym";
+    }
+    const equipment: Equipment = structuredClone(PRESET_BY_KEY[preset]);
+    const fd = new FormData();
+    fd.set("equipmentJson", JSON.stringify(equipment));
+    startTransition(async () => {
+      try {
+        await saveEquipmentAction(fd);
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Failed to save equipment",
+        );
+        return;
+      }
+      setEquipmentConfigured(true);
+      after();
+    });
+  };
+
   // BlockWizard's onComplete: capture the submit and advance to confirm.
   const onWizardComplete = async (submit: WizardSubmit): Promise<OnboardingResult> => {
     setWizardSubmit(submit);
@@ -326,7 +400,11 @@ export function OnboardingWizard({
         </button>
       </header>
 
-      <main className="cp-card ob-card" style={{ padding: 28, display: "grid", gap: 18 }}>
+      <main
+        className="cp-card ob-card"
+        data-equipment-configured={equipmentConfigured ? "true" : "false"}
+        style={{ padding: 28, display: "grid", gap: 18 }}
+      >
         {currentLabel === "Welcome" && (
           <WelcomeStep />
         )}
@@ -341,6 +419,21 @@ export function OnboardingWizard({
             setTrainingExperience={setTrainingExperience}
             bodyweightKg={bodyweightKg}
             setBodyweightKg={setBodyweightKg}
+          />
+        )}
+
+        {currentLabel === "Equipment" && (
+          <EquipmentStep
+            initialEquipment={initialEquipment}
+            hasEquipmentRow={hasEquipmentRow}
+            units={units}
+            selectedPreset={equipmentPreset}
+            onSelectPreset={(p) => {
+              setEquipmentPreset(p);
+              setError(null);
+            }}
+            customizing={equipmentCustomizing}
+            onToggleCustomize={(next) => setEquipmentCustomizing(next)}
           />
         )}
 
@@ -360,7 +453,7 @@ export function OnboardingWizard({
 
         {currentLabel === "Build your block" && (
           <div style={{ display: "grid", gap: 12 }}>
-            <Heading kicker="Step 4" title="Build your first block" />
+            <Heading kicker="Step 5" title="Build your first block" />
             <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.55 }}>
               The wizard below shapes a week from your goals and your TMs. Start with 3 or 4
               days/week if you&apos;re unsure — you can rebuild any time. The &quot;Why this match?&quot;
@@ -580,7 +673,7 @@ function TmStep({
 }) {
   return (
     <>
-      <Heading kicker="Step 3" title="Your main-lift maxes" />
+      <Heading kicker="Step 4" title="Your main-lift maxes" />
       <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.55 }}>
         Enter your 1RM for each of the four main lifts, pick a conservative seed if you&apos;re
         not sure, or skip a lift entirely. You can update everything later in Settings.
@@ -725,7 +818,7 @@ function ConfirmStep({
 
   return (
     <>
-      <Heading kicker="Step 5" title="When does your first block start?" />
+      <Heading kicker="Step 6" title="When does your first block start?" />
       <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.55 }}>
         Your first <strong>{wizardSubmit.daysPerWeek}-day</strong> block is ready. Pick a start
         date and we&apos;ll create the calendar.

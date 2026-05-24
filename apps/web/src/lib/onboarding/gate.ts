@@ -14,6 +14,12 @@
  *      the wizard (created their first block), not when they bailed.
  *   3. A returning user with TMs (or an explicit completion marker) is
  *      never sent through onboarding again.
+ *   4. Equipment configuration is collected inside the wizard for fresh
+ *      users (post-onboarding step), but a NULL `profiles.equipment`
+ *      row on an already-onboarded account does NOT re-route them
+ *      back through the wizard — `resolveEquipment` falls back to the
+ *      commercial-gym default at read time. Equipment is therefore
+ *      intentionally NOT part of the gate signal set.
  *
  * Signal: any of the following marks the user as "done":
  *   - profile.onboardedAt is non-null (explicit completion)

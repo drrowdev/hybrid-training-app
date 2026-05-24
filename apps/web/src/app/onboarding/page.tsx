@@ -6,6 +6,7 @@ import {
   finishOnboarding,
   skipOnboarding,
 } from "@/lib/onboarding/actions";
+import { updateEquipmentV2 } from "@/lib/settings/equipment-actions";
 import { OnboardingWizard, type RoleCandidates } from "@/components/onboarding/OnboardingWizard";
 import {
   STRENGTH_ROLE_CANDIDATES,
@@ -13,6 +14,7 @@ import {
   type StrengthRole,
 } from "@/lib/planner/archetypes";
 import { needsOnboarding } from "@/lib/onboarding/gate";
+import { resolveEquipment } from "@/lib/settings/equipment-presets";
 
 const MAIN_ROLES: StrengthRole[] = ["squat", "horizontal_press", "deadlift", "vertical_press"];
 
@@ -26,7 +28,9 @@ export default async function OnboardingPage() {
   const [{ data: profile }, { count: tmCount }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("display_name, units, bodyweight_kg, onboarded_at")
+      .select(
+        "display_name, units, bodyweight_kg, onboarded_at, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg",
+      )
       .eq("id", user.id)
       .maybeSingle(),
     supabase
@@ -65,13 +69,19 @@ export default async function OnboardingPage() {
       .map((m) => ({ slug: m.slug, displayName: m.display_name })),
   }));
 
+  const hasEquipmentRow = profile?.equipment != null && typeof profile.equipment === "object";
+  const initialEquipment = resolveEquipment(profile ?? null);
+
   return (
     <OnboardingWizard
       initialDisplayName={profile?.display_name ?? ""}
       initialUnits={(profile?.units as "metric" | "imperial") ?? "metric"}
       initialBodyweightKg={profile?.bodyweight_kg ? Number(profile.bodyweight_kg) : null}
+      initialEquipment={initialEquipment}
+      hasEquipmentRow={hasEquipmentRow}
       roleCandidates={roleCandidates}
       saveProfileAction={saveOnboardingProfile}
+      saveEquipmentAction={updateEquipmentV2}
       saveTmsAction={saveOnboardingTms}
       finishAction={finishOnboarding}
       skipAction={skipOnboarding}
