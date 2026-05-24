@@ -19,7 +19,6 @@ import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
 import { findHeavyOnRecoveringConflictWithMuscles } from "@/lib/muscle/muscle-conflict";
 import { StravaStaleSyncTrigger } from "@/components/StravaStaleSyncTrigger";
 import { computeTaperRecommendation, type TaperRecommendation } from "@/lib/planner/taper";
-import { TrainingMaxesCard } from "@/components/today/TrainingMaxesCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { TmSuggestionBanner, type TmSuggestionView } from "@/components/today/TmSuggestionBanner";
 import {
@@ -376,9 +375,9 @@ export default async function TodayPage() {
       )
     : null;
 
-  // Determine whether the page-level layout should be 2-col (training day
-  // — show right rail with TMs) or 1-col (rest day — no rail). We treat
-  // the "all logged today" branch as a training day too (rail stays).
+  // Today is a single-column layout — the right rail (Training Maxes
+  // summary) was retired with the shell refresh; TM details live on
+  // /app/profile and /app/settings/training-maxes now.
   const isRestDay = plannedToday.length === 0 && !openSession;
   const todayDate = new Date();
   const eyebrowLine = (() => {
@@ -390,26 +389,10 @@ export default async function TodayPage() {
 
   return (
     <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "minmax(0, 1fr)",
-        gap: 24,
-      }}
+      style={{ display: "grid", gap: 18, minWidth: 0 }}
       className={`today-shell${isRestDay ? " is-rest" : ""}`}
     >
-      {/* Two-column layout above 1100px (training day only). Rest day
-          collapses to a single column so the banner can breathe. */}
-      <style>{`
-        @media (min-width: 1100px) {
-          .today-shell:not(.is-rest) {
-            grid-template-columns: minmax(0, 1fr) 280px !important;
-            align-items: start;
-          }
-        }
-      `}</style>
-
-      <div style={{ display: "grid", gap: 18, minWidth: 0 }}>
-        <header>
+      <header>
           <div
             data-testid="today-eyebrow"
             style={{
@@ -475,13 +458,6 @@ export default async function TodayPage() {
         {hasStravaConnection && <StravaStaleSyncTrigger />}
 
         <ActivitySection sessions={recent ?? []} todayIso={todayIso} />
-      </div>
-
-      {!isRestDay && (
-        <aside style={{ display: "grid", gap: 16, alignContent: "start" }}>
-          <TrainingMaxesCard rows={tmRows} />
-        </aside>
-      )}
     </div>
   );
 }
