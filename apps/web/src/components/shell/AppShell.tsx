@@ -189,9 +189,13 @@ export function AppShell({
           .cp-topbar {
             padding: 8px 14px;
             padding-top: max(8px, env(safe-area-inset-top));
+            padding-left: max(14px, env(safe-area-inset-left));
+            padding-right: max(14px, env(safe-area-inset-right));
           }
           .cp-main {
             padding: 16px 16px calc(72px + env(safe-area-inset-bottom));
+            padding-left: max(16px, env(safe-area-inset-left));
+            padding-right: max(16px, env(safe-area-inset-right));
           }
           .cp-tabbar {
             display: grid;
@@ -202,6 +206,8 @@ export function AppShell({
             backdrop-filter: blur(12px);
             border-top: 1px solid var(--cp-border);
             padding-bottom: env(safe-area-inset-bottom);
+            padding-left: env(safe-area-inset-left);
+            padding-right: env(safe-area-inset-right);
           }
           .cp-tab {
             display: flex; flex-direction: column; align-items: center; gap: 2px;
