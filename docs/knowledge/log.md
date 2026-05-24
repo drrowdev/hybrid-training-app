@@ -182,3 +182,12 @@ nextNodePreview onto each BW PrescriptionItem so MovementFocusView can render
 a 'Next:' chip + gate-state popover (weeks/TUT/recent counter). Settings ÔåÆ
 Bodyweight progression page gains TUT progress bar, weeks badge, and a Recent
 progressions list (last 10 events). Brand-purity (DC-Q6) preserved.
+
+## [2026-05-24] refine | BW progression Phase 5 -- mixed-modal + hinge compensation (feat/bw-phase5-mixed-modal-hinge)
+classifySessionModality buckets sessions into 7 classes; mixed_modal
+(strength + cardio) gets 1.25x stress multiplier per addendum 6.
+maybeInjectHingeCompensation adds tempo/isometric hinge work when the
+session would otherwise lack posterior-chain loading (addendum 3),
+gated by acknowledged hinge gap. Migration 0046 stores modality +
+effective_stress_load on planned sessions. Session header shows modality
+chip; settings page shows current hinge compensation state.
