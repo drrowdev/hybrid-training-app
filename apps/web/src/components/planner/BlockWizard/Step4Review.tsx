@@ -17,21 +17,22 @@ type Wave = { label: string; detail: string };
 function strengthWaves(strengthHypDays: number): Wave[] {
   const base: Wave[] = [
     {
-      label: "Build",
+      label: "Ramp in — get your bar speed back",
       detail:
-        "Sets of 5 at moderate weight. Foundation week — get your reps in and rehearse the lifts before adding load.",
+        "Sets of 5 at moderate weight. Foundation week — rehearse the lifts and find your groove before adding load.",
     },
     {
-      label: "Add weight",
-      detail: "Sets of 3 at heavier weight. Same lifts, fewer reps, more weight on the bar.",
-    },
-    {
-      label: "Heavy week",
+      label: "Build — heavier top sets each session",
       detail:
-        "Top single up to ~95% of your training max — the heaviest work of the block. This is where the strength gains from the previous weeks show up.",
+        "Sets of 3 at heavier weight. Same lifts, fewer reps, more weight on the bar each time you train.",
     },
     {
-      label: "Recovery week",
+      label: "Push — your hardest week",
+      detail:
+        "Top single up to ~95% of your training max — the heaviest work of the block. This is where the gains from the earlier weeks show up.",
+    },
+    {
+      label: "Recover — lighter loads, sleep more",
       detail: "Half the sets at the same weights. Fatigue clears so the heavy work locks in.",
     },
   ];
@@ -56,22 +57,23 @@ function strengthWaves(strengthHypDays: number): Wave[] {
 function hypertrophyWaves(hypStrengthDays: number): Wave[] {
   const base: Wave[] = [
     {
-      label: "Volume base",
+      label: "Ramp in — find your working weights",
       detail:
         "4 working sets per lift at 6–10 reps. Moderate weights, leave 1–2 reps in the tank — this is your foundation.",
     },
     {
-      label: "Add a set",
-      detail: "5 working sets per lift at the same reps and weights. More total work this week.",
+      label: "Build — add a working set per lift",
+      detail:
+        "5 working sets per lift at the same reps and weights. More total work this week without changing the lifts.",
     },
     {
-      label: "Volume peak",
+      label: "Push — most sets of the block",
       detail: "Highest weekly set count of the block — the top of your recoverable volume.",
     },
     {
-      label: "Recovery week",
+      label: "Recover — half the volume, full sleep",
       detail:
-        "Half the sets, same weights. Lets the volume sink in and muscles catch up before next block.",
+        "Half the sets, same weights. Lets the volume sink in and muscles catch up before the next block.",
     },
   ];
   if (hypStrengthDays === 0) return base;
@@ -81,7 +83,7 @@ function hypertrophyWaves(hypStrengthDays: number): Wave[] {
         ...w,
         detail:
           w.detail +
-          ` Plus ${hypStrengthDays} strength day${hypStrengthDays === 1 ? "" : "s"} keeping a heavy top set (≥85% TM) so you don’t lose absolute strength.`,
+          ` Plus ${hypStrengthDays} strength day${hypStrengthDays === 1 ? "" : "s"} keeping a heavy top set (≥85% TM) so you don't lose absolute strength.`,
       };
     return {
       ...w,
@@ -95,24 +97,24 @@ function hypertrophyWaves(hypStrengthDays: number): Wave[] {
 function enduranceWaves(strength: number, secondary: WizardState["secondary"]): Wave[] {
   const base: Wave[] = [
     {
-      label: "Build the base",
+      label: "Build — easy aerobic base",
       detail:
         "Most sessions are easy Z2 — a pace where you can hold a conversation. Builds your aerobic engine and recovery capacity.",
     },
     {
-      label: "Add minutes",
+      label: "Stretch — longer Z2 sessions",
       detail:
-        "Same shape as week 1, but each easy session is a bit longer. More time at conversational pace.",
+        "Same shape as week 1, but each easy session runs longer. More time at conversational pace adds aerobic depth.",
     },
     {
-      label: "Add the hard day",
+      label: "Push — add the hard interval day",
       detail:
-        "Z2 sessions stay anchored. One harder VO2 session (e.g. 4×4 min near max effort) gets added for top-end fitness.",
+        "Easy Z2 sessions stay anchored. One harder VO2 day gets added (e.g. 4×4 min near max effort) for top-end fitness.",
     },
     {
-      label: "Recovery week",
+      label: "Recover — easy minutes only",
       detail:
-        "Half the minutes, same easy pace. Lets the volume sink in before the next block.",
+        "Half the minutes, same easy pace, no hard intervals. Lets the volume sink in before the next block.",
     },
   ];
   if (strength === 0) return base;
@@ -140,21 +142,21 @@ function enduranceWaves(strength: number, secondary: WizardState["secondary"]): 
 
 const HYBRID_WAVES: Wave[] = [
   {
-    label: "Build",
+    label: "Ramp in — both engines at low load",
     detail:
-      "Sets of 5 at moderate weight. Cardio is steady Z2 — easy aerobic dose that won’t tax the lifts.",
+      "Sets of 5 at moderate weight. Cardio is steady Z2 — easy aerobic dose that won't tax the lifts.",
   },
   {
-    label: "Add weight",
-    detail: "Same sets of 5, a bit more weight on the bar. Cardio unchanged.",
+    label: "Build — add weight + minutes",
+    detail: "Same sets of 5, a bit more weight on the bar. Cardio sessions also run longer.",
   },
   {
-    label: "Add the hard day",
+    label: "Push — your hardest week",
     detail:
       "Top set rises but stays ≤85% of your training max (cardio-safe). One harder VO2 cardio session gets added.",
   },
   {
-    label: "Recovery week",
+    label: "Recover — lighter on both",
     detail:
       "Half the sets, half the cardio minutes. Same weights and pace — reset before next block.",
   },
@@ -162,21 +164,21 @@ const HYBRID_WAVES: Wave[] = [
 
 const HYBRID_MUSCLE_WAVES: Wave[] = [
   {
-    label: "Volume base",
+    label: "Ramp in — both engines at low load",
     detail:
       "6–10 reps per set at moderate weight, leaving 1–2 reps in the tank. Cardio is steady Z2 — easy on the legs.",
   },
   {
-    label: "Add a set",
-    detail: "Same exercises and weights, one more working set per lift. Aerobic dose unchanged.",
+    label: "Build — add weight + minutes",
+    detail: "Same exercises and weights, one more working set per lift. Cardio sessions also run longer.",
   },
   {
-    label: "Add the hard day",
+    label: "Push — your hardest week",
     detail:
       "Top set rises but stays ≤85% of your training max (cardio-safe). One harder VO2 cardio session gets added.",
   },
   {
-    label: "Recovery week",
+    label: "Recover — lighter on both",
     detail:
       "Half the sets, half the cardio minutes. Same weights and pace — your body catches up.",
   },
@@ -184,34 +186,34 @@ const HYBRID_MUSCLE_WAVES: Wave[] = [
 
 const REBUILD_WAVES: Wave[] = [
   {
-    label: "Ease in",
+    label: "Ease in — pain-free range only",
     detail:
       "Top set capped at ~60% of your training max. Light reintroduction — the goal is smooth movement, not heavy lifts.",
   },
   {
-    label: "Step up",
+    label: "Step up — modest load progression",
     detail:
       "Bump top set to ~70%. Tendons start adapting; heavy slow resistance and isometric holds on the dedicated tendon days.",
   },
   {
-    label: "Consolidate",
+    label: "Consolidate — hold the new range",
     detail:
       "Top set caps at 80% — the upper limit for this block. Stay here to let tendons catch up to your strength.",
   },
   {
-    label: "Recovery week",
+    label: "Recover — back off to feel-good loads",
     detail: "Half the sets, same weights. Lets tendons catch up before the next block.",
   },
 ];
 
 const MAINTENANCE_WAVES: Wave[] = [
   {
-    label: "Steady week",
+    label: "Steady — keep what you have",
     detail:
       "Submaximal lifts and short Z2 sessions. Goal is to keep what you have, not add anything.",
   },
   {
-    label: "Steady week",
+    label: "Steady — keep what you have",
     detail: "Same shape as week 1. Two weeks total, then return to a full block.",
   },
 ];
