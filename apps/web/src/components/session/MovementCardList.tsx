@@ -21,6 +21,7 @@ import {
 } from "@/lib/sessions/movement-grouping";
 import { MovementCard } from "./MovementCard";
 import { FreestyleMovementCard } from "./FreestyleMovementCard";
+import type { PlateInventoryItem } from "./plate-math";
 import { MovementPicker, type MovementSearchResult } from "@/components/movement-picker";
 import type { LoggedSet } from "./SessionLogClient";
 import type {
@@ -42,6 +43,10 @@ export type MovementCardListProps = {
   fillFromPlan: typeof fillSessionFromPlanAction;
   hapticsEnabled: boolean;
   timerSoundEnabled: boolean;
+  /** User equipment props forwarded to each prescribed card. */
+  barbellKg?: number;
+  trapBarKg?: number;
+  plateInventory?: PlateInventoryItem[];
 };
 
 export function MovementCardList({
@@ -58,6 +63,9 @@ export function MovementCardList({
   fillFromPlan,
   hapticsEnabled,
   timerSoundEnabled,
+  barbellKg,
+  trapBarKg,
+  plateInventory,
 }: MovementCardListProps) {
   const groups = useMemo(
     () => groupPrescriptionByMovement(prescription),
@@ -151,6 +159,9 @@ export function MovementCardList({
           showFillFromPlan={i === 0 && showFillOnFirst}
           hapticsEnabled={hapticsEnabled}
           timerSoundEnabled={timerSoundEnabled}
+          barbellKg={barbellKg}
+          trapBarKg={trapBarKg}
+          plateInventory={plateInventory}
         />
       ))}
 
@@ -339,6 +350,9 @@ function PrescribedCard(props: {
   showFillFromPlan: boolean;
   hapticsEnabled: boolean;
   timerSoundEnabled: boolean;
+  barbellKg?: number;
+  trapBarKg?: number;
+  plateInventory?: PlateInventoryItem[];
 }) {
   const tmKg = props.group.movementSlug
     ? props.tmBySlug[props.group.movementSlug]
@@ -374,6 +388,9 @@ function PrescribedCard(props: {
       showFillFromPlan={props.showFillFromPlan}
       hapticsEnabled={props.hapticsEnabled}
       timerSoundEnabled={props.timerSoundEnabled}
+      barbellKg={props.barbellKg}
+      trapBarKg={props.trapBarKg}
+      plateInventory={props.plateInventory}
       persistKeyPrefix={`mc:${props.sessionId}`}
     />
   );

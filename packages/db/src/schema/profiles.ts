@@ -81,6 +81,42 @@ export const profiles = pgTable("profiles", {
    * Default NULL; no length cap at DB level (server actions trim/limit).
    */
   aiNotes: text("ai_notes"),
+  /**
+   * Mass of the user's primary Olympic barbell, in kg. Drives the
+   * plate-per-side breakdown rendered by the session logger. Default
+   * 20.00 kg (standard men's bar).
+   */
+  barbellKg: numeric("barbell_kg", { precision: 5, scale: 2 })
+    .default("20.00")
+    .notNull(),
+  /**
+   * Mass of the user's trap/hex bar, in kg. Movements whose slug
+   * contains `trap_bar` / `hex_bar` resolve to this value at the
+   * render boundary. Default 25.00 kg.
+   */
+  trapBarKg: numeric("trap_bar_kg", { precision: 5, scale: 2 })
+    .default("25.00")
+    .notNull(),
+  /**
+   * Plate inventory: an array of `{ weight_kg, pair_count }` rows.
+   * Always stored in kg — the UI converts at the render boundary
+   * when `units = 'imperial'`. Default mirrors a sensible Olympic
+   * plate set.
+   */
+  plateInventoryKg: jsonb("plate_inventory_kg")
+    .$type<Array<{ weight_kg: number; pair_count: number }>>()
+    .default(
+      sql`'[
+        {"weight_kg": 25,   "pair_count": 2},
+        {"weight_kg": 20,   "pair_count": 2},
+        {"weight_kg": 15,   "pair_count": 1},
+        {"weight_kg": 10,   "pair_count": 2},
+        {"weight_kg": 5,    "pair_count": 2},
+        {"weight_kg": 2.5,  "pair_count": 2},
+        {"weight_kg": 1.25, "pair_count": 2}
+      ]'::jsonb`,
+    )
+    .notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),

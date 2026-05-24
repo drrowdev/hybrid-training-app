@@ -343,6 +343,22 @@ export default async function SettingsPage() {
       </section>
 
       <section className="space-y-3">
+        <h2 className="text-lg font-medium">Equipment</h2>
+        <p className="text-xs text-foreground/60">
+          Bar weights + plate inventory. The session logger uses these to
+          show a plate-per-side breakdown next to your target weight.
+        </p>
+        <Link
+          href="/app/settings/equipment"
+          data-testid="settings-equipment-link"
+          className="inline-flex items-center justify-between gap-3 rounded-lg border border-foreground/10 p-4 w-full hover:bg-foreground/5"
+        >
+          <span className="text-sm">Manage equipment</span>
+          <span className="text-xs text-foreground/60">→</span>
+        </Link>
+      </section>
+
+      <section className="space-y-3">
         <h2 className="text-lg font-medium">Training maxes</h2>
         <p className="text-xs text-foreground/60">
           Reference numbers for percentage-based prescription. Set one per main lift —
