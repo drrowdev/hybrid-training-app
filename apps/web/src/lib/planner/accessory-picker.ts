@@ -132,7 +132,9 @@ export function pickAccessoriesForSession({
       usedThisSession,
     });
     if (!candidate) continue;
-    picks.push(buildPick(candidate, profile, weekDeloadScale, "durability", `Weekly tissue floor: ${roleLabel(role)}`));
+    // No user-facing rationale string — the movement's display name (e.g.
+    // "Farmer carry") is enough; the internal bucket name must not leak.
+    picks.push(buildPick(candidate, profile, weekDeloadScale, "durability", ""));
     usedThisSession.add(candidate.id);
     bumpBulletproof(durabilityProgress, candidate.bulletproofRoles);
     bumpFunctional(functionalProgress, candidate.functionalRoles);
@@ -154,7 +156,8 @@ export function pickAccessoriesForSession({
       usedThisSession,
     });
     if (!candidate) continue;
-    picks.push(buildPick(candidate, profile, weekDeloadScale, "functional", `Functional minimum: ${roleLabel(role)}`));
+    // No user-facing rationale string — see note above.
+    picks.push(buildPick(candidate, profile, weekDeloadScale, "functional", ""));
     usedThisSession.add(candidate.id);
     bumpBulletproof(durabilityProgress, candidate.bulletproofRoles);
     bumpFunctional(functionalProgress, candidate.functionalRoles);
@@ -224,7 +227,8 @@ export function pickAccessoriesForSession({
         profile,
         weekDeloadScale,
         "aesthetic",
-        `Per-muscle volume: ${gapMuscle.replace(/_/g, " ")}`,
+        // No user-facing rationale string — see note above.
+        "",
       ),
     );
     usedThisSession.add(candidate.id);
@@ -436,10 +440,6 @@ function buildPick(
     reason,
     rationale,
   };
-}
-
-function roleLabel(role: BulletproofRole | FunctionalRole): string {
-  return role.replace(/_/g, " ");
 }
 
 export { DC_O4_FLOOR };

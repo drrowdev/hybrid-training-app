@@ -181,7 +181,7 @@ function assemblePrescriptionItems(
         sets: p.sets,
         reps: p.reps,
         intensityLabel: p.reason,
-        notes: p.rationale,
+        notes: p.rationale ? p.rationale : undefined,
       });
       const catalogEntry = catalog.find((c) => c.id === p.movementId);
       if (catalogEntry) {
