@@ -41,15 +41,16 @@ function plateStyle(weightKg: number): { bg: string; fg: string } {
 }
 
 function plateSize(weightKg: number): { width: number; height: number } {
-  // Visual ramp: heavier plates render slightly wider AND taller so
-  // the stack looks like a real bar from a distance.
-  if (weightKg >= 25) return { width: 14, height: 60 };
-  if (weightKg >= 20) return { width: 13, height: 54 };
-  if (weightKg >= 15) return { width: 12, height: 48 };
-  if (weightKg >= 10) return { width: 11, height: 42 };
-  if (weightKg >= 5) return { width: 10, height: 34 };
-  if (weightKg >= 2.5) return { width: 8, height: 26 };
-  return { width: 7, height: 20 };
+  // Visual ramp: heavier plates render wider AND taller so the stack
+  // reads like a real bar from a distance. Minimum width is 16 px so
+  // even the smallest plate ("2.5", "1.25") can fit its label legibly.
+  if (weightKg >= 25) return { width: 22, height: 64 };
+  if (weightKg >= 20) return { width: 20, height: 58 };
+  if (weightKg >= 15) return { width: 18, height: 50 };
+  if (weightKg >= 10) return { width: 17, height: 42 };
+  if (weightKg >= 5) return { width: 16, height: 34 };
+  if (weightKg >= 2.5) return { width: 16, height: 26 };
+  return { width: 16, height: 20 };
 }
 
 function formatPlateLabel(weightKg: number): string {
@@ -100,6 +101,9 @@ export function PlateView({ targetWeightKg, barWeightKg, inventory }: PlateViewP
         {leftStack.map((p, i) => {
           const { bg, fg } = plateStyle(p);
           const { width, height } = plateSize(p);
+          // Tiny labels (2.5, 1.25) need smaller text to fit; bigger
+          // plates take a bolder readable size.
+          const fontSize = p < 5 ? 8 : 10;
           return (
             <span
               key={`l-${i}-${p}`}
@@ -114,7 +118,7 @@ export function PlateView({ targetWeightKg, barWeightKg, inventory }: PlateViewP
                 borderRadius: 3,
                 background: bg,
                 color: fg,
-                fontSize: 9,
+                fontSize,
                 fontWeight: 700,
                 fontFamily: "var(--cp-font-mono)",
                 lineHeight: 1,
@@ -140,6 +144,7 @@ export function PlateView({ targetWeightKg, barWeightKg, inventory }: PlateViewP
         {rightStack.map((p, i) => {
           const { bg, fg } = plateStyle(p);
           const { width, height } = plateSize(p);
+          const fontSize = p < 5 ? 8 : 10;
           return (
             <span
               key={`r-${i}-${p}`}
@@ -154,7 +159,7 @@ export function PlateView({ targetWeightKg, barWeightKg, inventory }: PlateViewP
                 borderRadius: 3,
                 background: bg,
                 color: fg,
-                fontSize: 9,
+                fontSize,
                 fontWeight: 700,
                 fontFamily: "var(--cp-font-mono)",
                 lineHeight: 1,
