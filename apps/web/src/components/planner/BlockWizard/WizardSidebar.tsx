@@ -645,14 +645,19 @@ const noteStyle: React.CSSProperties = {
 };
 
 function weekCellStyle(filled: boolean, isDeload: boolean): React.CSSProperties {
+  // Deload cells signal "different" with a dashed muted border and a
+  // 60% opacity treatment — never a filled background, which the
+  // previous warning-tinted fill made look like the highlighted /
+  // starting week. The accent stays neutral so the user reads the cell
+  // as "lighter" rather than "active".
   return {
     textAlign: "center",
     padding: "8px 4px",
-    background: isDeload
-      ? "color-mix(in oklab, var(--cp-warning, #d97706) 14%, var(--cp-surface-soft))"
-      : "var(--cp-surface-soft)",
+    background: "var(--cp-surface-soft)",
     borderRadius: 6,
-    border: "1px solid var(--cp-border)",
-    opacity: filled ? 1 : 0.35,
+    border: isDeload
+      ? "1px dashed var(--cp-border-strong, var(--cp-border))"
+      : "1px solid var(--cp-border)",
+    opacity: !filled ? 0.35 : isDeload ? 0.7 : 1,
   };
 }
