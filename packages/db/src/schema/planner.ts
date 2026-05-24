@@ -200,6 +200,31 @@ export type PrescriptionItem = {
    * engine — kept off the typed top level on purpose.
    */
   meta?: Record<string, unknown>;
+  /**
+   * Bodyweight main-lift prescription. Set on items where the user has
+   * no loadable kit and the engine prescribes by node × archetype ×
+   * week instead of %TM. See `lib/planner/bw-prescription.ts` for the
+   * full shape; mirrored loosely here to avoid a circular type import
+   * from the web package into @hta/db. Always paired with the absence
+   * of `percentTm` so MovementFocusView hides the weight column.
+   */
+  bw?: {
+    prescriptionType: "reps" | "isometric_hold" | "tempo_reps";
+    sets: number;
+    reps?: number;
+    repRange?: { min: number; max: number };
+    holdSeconds?: number;
+    tempoEccentricSec: number;
+    targetRir: number;
+    restSeconds: number;
+    intensityCue: string;
+    notes?: string;
+    /** Underlying movement_nodes.id this prescription was sourced from. */
+    nodeId?: string;
+    nodeKey?: string;
+    nodeDisplayName?: string;
+    family?: string;
+  };
 };
 
 export type Prescription = {
