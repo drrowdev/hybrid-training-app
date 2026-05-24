@@ -45,14 +45,18 @@ export function PlanNewSwitch({
   allowsTwoADays,
   todayYmd,
   action,
+  initialMode = "home",
+  hideBuildCta = false,
 }: {
   recentBlocks: RecentBlockCard[];
   tmReadinessByArchetype: TmReadinessByArchetype;
   allowsTwoADays: boolean;
   todayYmd: string;
   action: (fd: FormData) => Promise<CreateBlockResult>;
+  initialMode?: "home" | "wizard";
+  hideBuildCta?: boolean;
 }): React.ReactElement {
-  const [mode, setMode] = useState<"home" | "wizard">("home");
+  const [mode, setMode] = useState<"home" | "wizard">(initialMode);
   const [wizardPrefill, setWizardPrefill] = useState<BlockWizardPrefill | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const router = useRouter();
@@ -108,27 +112,30 @@ export function PlanNewSwitch({
   };
 
   if (mode === "wizard") {
+    const showBackButton = recentBlocks.length > 0;
     return (
       <div style={{ display: "grid", gap: 16 }}>
-        <button
-          type="button"
-          onClick={() => {
-            setMode("home");
-            setWizardPrefill(null);
-          }}
-          className="pn-switch-back"
-          style={{
-            justifySelf: "start",
-            background: "transparent",
-            border: "none",
-            color: "var(--cp-text-muted)",
-            fontSize: 12,
-            cursor: "pointer",
-            padding: 0,
-          }}
-        >
-          ← back to recent blocks
-        </button>
+        {showBackButton && (
+          <button
+            type="button"
+            onClick={() => {
+              setMode("home");
+              setWizardPrefill(null);
+            }}
+            className="pn-switch-back"
+            style={{
+              justifySelf: "start",
+              background: "transparent",
+              border: "none",
+              color: "var(--cp-text-muted)",
+              fontSize: 12,
+              cursor: "pointer",
+              padding: 0,
+            }}
+          >
+            ← back to recent blocks
+          </button>
+        )}
         <BlockWizard
           onComplete={completeFromWizard}
           tmReadinessByArchetype={tmReadinessByArchetype}
@@ -231,32 +238,34 @@ export function PlanNewSwitch({
 
       {error && <div style={errorBoxStyle}>{error}</div>}
 
-      <section style={{ display: "grid", gap: 8 }}>
-        <button
-          type="button"
-          onClick={() => {
-            setError(null);
-            setWizardPrefill(null);
-            setMode("wizard");
-          }}
-          className="pn-cta"
-          style={bigCtaStyle}
-        >
-          Build a new block →
-        </button>
-        <Link
-          href="/app/plan/new/custom"
-          style={{
-            fontSize: 12,
-            color: "var(--cp-text-muted)",
-            textDecoration: "none",
-            justifySelf: "start",
-            paddingLeft: 4,
-          }}
-        >
-          More options · build a custom block →
-        </Link>
-      </section>
+      {!hideBuildCta && (
+        <section style={{ display: "grid", gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => {
+              setError(null);
+              setWizardPrefill(null);
+              setMode("wizard");
+            }}
+            className="pn-cta"
+            style={bigCtaStyle}
+          >
+            Build a new block →
+          </button>
+          <Link
+            href="/app/plan/new/custom"
+            style={{
+              fontSize: 12,
+              color: "var(--cp-text-muted)",
+              textDecoration: "none",
+              justifySelf: "start",
+              paddingLeft: 4,
+            }}
+          >
+            More options · build a custom block →
+          </Link>
+        </section>
+      )}
     </div>
   );
 }
