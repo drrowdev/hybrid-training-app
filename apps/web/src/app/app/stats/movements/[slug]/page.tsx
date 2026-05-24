@@ -58,6 +58,9 @@ import { getHrZones } from "@/lib/stats/hr-zones";
 import { getPacePrs } from "@/lib/stats/pace-prs";
 import { getUserTimezone } from "@/lib/planner/queries";
 import type { TmChangeReason } from "@hta/db";
+import { formatDate as fmtDate } from "@/lib/format/datetime";
+
+type FmtProfile = Parameters<typeof fmtDate>[1];
 
 export const dynamic = "force-dynamic";
 
@@ -83,7 +86,7 @@ export default async function MovementDeepDivePage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("units")
+    .select("units, timezone, time_format, date_format")
     .eq("id", user.id)
     .maybeSingle();
   const units: WeightUnit = profile?.units === "imperial" ? "imperial" : "metric";
@@ -198,7 +201,7 @@ export default async function MovementDeepDivePage({
           data-testid="stats-movement-best-ever"
         >
           {bestEver
-            ? `Best ever: ${w(bestEver.e1rm)} ${uLabel} on ${formatDate(bestEver.performedAt)}`
+            ? `Best ever: ${w(bestEver.e1rm)} ${uLabel} on ${formatDate(bestEver.performedAt, profile)}`
             : "No working sets yet"}
           {tmKg != null && (
             <>
@@ -222,25 +225,27 @@ export default async function MovementDeepDivePage({
         series={topSetsInRange}
         units={units}
         rangeLabel={RANGE_LABEL[range]}
+        formatProfile={profile}
       />
 
       {/* ── C · Top sets table ───────────────────────────────────── */}
       <TopSetsCard
         rows={topSetsInRange.slice(-20).reverse()}
         units={units}
+        formatProfile={profile}
       />
 
       {/* ── D · Volume trend ─────────────────────────────────────── */}
-      <VolumeTrendCard series={volumeInRange} units={units} />
+      <VolumeTrendCard series={volumeInRange} units={units} formatProfile={profile} />
 
       {/* ── E · RPE + creep banner ───────────────────────────────── */}
       <RpeTrendCard series={rpeInRange} creep={creep} />
 
       {/* ── F · Swap history ─────────────────────────────────────── */}
-      <SwapHistoryCard events={swapEvents} />
+      <SwapHistoryCard events={swapEvents} formatProfile={profile} />
 
       {/* ── G · Recent 5 sessions ────────────────────────────────── */}
-      <RecentSessionsCard rows={topSetsInRange.slice(-5).reverse()} units={units} />
+      <RecentSessionsCard rows={topSetsInRange.slice(-5).reverse()} units={units} formatProfile={profile} />
 
       {/* ── H · Sister movements ─────────────────────────────────── */}
       <SisterMovementsCard sisters={sisters} units={units} />
@@ -257,6 +262,7 @@ export default async function MovementDeepDivePage({
             changedAt: r.changed_at as string,
           }))}
           units={units}
+          formatProfile={profile}
         />
       )}
     </div>
@@ -315,10 +321,12 @@ function E1rmTrendCard({
   series,
   units,
   rangeLabel,
+  formatProfile,
 }: {
   series: TopSetPoint[];
   units: WeightUnit;
   rangeLabel: string;
+  formatProfile: FmtProfile;
 }) {
   const uLabel = weightUnitLabel(units);
   const values = series.map((p) => displayWeight(p.e1rm, units));
@@ -351,9 +359,7 @@ function E1rmTrendCard({
         ? {
             index: i,
             color: "var(--cp-danger)",
-            label: `PR ${Math.round(displayWeight(p.e1rm, units))} ${uLabel} on ${formatDate(
-              p.performedAt,
-            )}`,
+            label: `PR ${Math.round(displayWeight(p.e1rm, units))} ${uLabel} on ${formatDate(p.performedAt, formatProfile)}`,
           }
         : null,
     )
@@ -406,7 +412,7 @@ function E1rmTrendCard({
 
 // ── C · Top sets table ─────────────────────────────────────────────
 
-function TopSetsCard({ rows, units }: { rows: TopSetPoint[]; units: WeightUnit }) {
+function TopSetsCard({ rows, units, formatProfile }: { rows: TopSetPoint[]; units: WeightUnit; formatProfile: FmtProfile }) {
   const uLabel = weightUnitLabel(units);
   return (
     <section
@@ -445,7 +451,7 @@ function TopSetsCard({ rows, units }: { rows: TopSetPoint[]; units: WeightUnit }
                 }}
               >
                 <span style={{ color: "var(--cp-text-muted)", minWidth: 84 }}>
-                  {formatDate(r.performedAt)}
+                  {formatDate(r.performedAt, formatProfile)}
                 </span>
                 <span className="mono">
                   {Math.round(displayWeight(r.weight, units) * 10) / 10} {uLabel} × {r.reps}
@@ -486,7 +492,7 @@ function TopSetsCard({ rows, units }: { rows: TopSetPoint[]; units: WeightUnit }
 
 // ── D · Volume trend ───────────────────────────────────────────────
 
-function VolumeTrendCard({ series, units }: { series: VolumePoint[]; units: WeightUnit }) {
+function VolumeTrendCard({ series, units, formatProfile }: { series: VolumePoint[]; units: WeightUnit; formatProfile: FmtProfile }) {
   const uLabel = weightUnitLabel(units);
   const values = series.map((p) => Math.round(displayWeight(p.tonnage, units)));
   return (
@@ -516,11 +522,11 @@ function VolumeTrendCard({ series, units }: { series: VolumePoint[]; units: Weig
               justifyContent: "space-between",
             }}
           >
-            <span>{formatDate(series[0]!.performedAt)}</span>
+            <span>{formatDate(series[0]!.performedAt, formatProfile)}</span>
             <span className="mono">
               max {values.reduce((a, b) => Math.max(a, b), 0).toLocaleString()} {uLabel}
             </span>
-            <span>{formatDate(series[series.length - 1]!.performedAt)}</span>
+            <span>{formatDate(series[series.length - 1]!.performedAt, formatProfile)}</span>
           </div>
         </>
       )}
@@ -588,7 +594,7 @@ function RpeTrendCard({
 
 // ── F · Swap history ───────────────────────────────────────────────
 
-function SwapHistoryCard({ events }: { events: SwapEvent[] }) {
+function SwapHistoryCard({ events, formatProfile }: { events: SwapEvent[]; formatProfile: FmtProfile }) {
   return (
     <section
       className="cp-card"
@@ -622,7 +628,7 @@ function SwapHistoryCard({ events }: { events: SwapEvent[] }) {
                 }}
               >
                 <span style={{ color: "var(--cp-text-muted)", minWidth: 84 }}>
-                  {formatDate(ev.swappedAt)}
+                  {formatDate(ev.swappedAt, formatProfile)}
                 </span>
                 <span>
                   {verb} <strong>{ev.otherMovementName}</strong>
@@ -655,9 +661,11 @@ function SwapHistoryCard({ events }: { events: SwapEvent[] }) {
 function RecentSessionsCard({
   rows,
   units,
+  formatProfile,
 }: {
   rows: TopSetPoint[];
   units: WeightUnit;
+  formatProfile: FmtProfile;
 }) {
   const uLabel = weightUnitLabel(units);
   const avgWeight =
@@ -701,7 +709,7 @@ function RecentSessionsCard({
                 >
                   <div>
                     <div style={{ fontSize: 12 }}>
-                      {formatLongDate(r.performedAt)}
+                      {formatLongDate(r.performedAt, formatProfile)}
                     </div>
                     <div className="mono" style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
                       {Math.round(displayWeight(r.weight, units) * 10) / 10} {uLabel} ×{" "}
@@ -828,7 +836,7 @@ function tmReasonColor(reason: string): string {
   }
 }
 
-function TmHistoryCard({ rows, units }: { rows: TmHistoryRow[]; units: WeightUnit }) {
+function TmHistoryCard({ rows, units, formatProfile }: { rows: TmHistoryRow[]; units: WeightUnit; formatProfile: FmtProfile }) {
   const uLabel = weightUnitLabel(units);
   const w = (kg: number) => Math.round(displayWeight(kg, units) * 10) / 10;
   return (
@@ -868,7 +876,7 @@ function TmHistoryCard({ rows, units }: { rows: TmHistoryRow[]; units: WeightUni
               {w(row.newTm)} {uLabel}
             </span>
             <span className="mono" style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-              {formatDate(row.changedAt)}
+              {formatDate(row.changedAt, formatProfile)}
             </span>
           </li>
         ))}
@@ -879,12 +887,10 @@ function TmHistoryCard({ rows, units }: { rows: TmHistoryRow[]; units: WeightUni
 
 // ── helpers ────────────────────────────────────────────────────────
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString();
+function formatDate(iso: string, profile: FmtProfile): string {
+  return fmtDate(iso, profile);
 }
 
-function formatLongDate(iso: string): string {
-  const d = new Date(iso);
-  const dow = d.toLocaleDateString(undefined, { weekday: "short" });
-  return `${dow} · ${d.toLocaleDateString()}`;
+function formatLongDate(iso: string, profile: FmtProfile): string {
+  return fmtDate(iso, profile, "weekday_short");
 }

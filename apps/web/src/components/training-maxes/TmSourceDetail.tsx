@@ -12,24 +12,13 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import type { TmFormula } from "@hta/db";
 import type { TmRow, TmSourceSet } from "@/lib/training-maxes/queries";
+import { formatDate, type ProfileForFormat } from "@/lib/format/datetime";
 
 const FORMULA_LABEL: Record<TmFormula, string> = {
   epley: "Epley (1985)",
   brzycki: "Brzycki (1993)",
   rpe_zourdos: "RPE (Zourdos 2016)",
 };
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  } catch {
-    return iso.slice(0, 10);
-  }
-}
 
 function fmtNum(n: number | null): string {
   if (n == null) return "—";
@@ -40,10 +29,12 @@ export function TmSourceDetail({
   row,
   sourceSet,
   lockAction,
+  formatProfile,
 }: {
   row: TmRow;
   sourceSet: TmSourceSet | null;
   lockAction: (fd: FormData) => Promise<unknown>;
+  formatProfile?: ProfileForFormat;
 }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -116,7 +107,7 @@ export function TmSourceDetail({
                   {sourceSet.rpe != null ? ` @ RPE ${fmtNum(sourceSet.rpe)}` : ""}
                 </span>{" "}
                 <span style={{ color: "var(--cp-text-muted)" }}>
-                  · {formatDate(sourceSet.performedAt)}
+                  · {formatDate(sourceSet.performedAt, formatProfile ?? null)}
                 </span>
               </Link>
             </div>

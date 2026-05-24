@@ -17,15 +17,17 @@
  */
 import Link from "next/link";
 import type { CalendarItem } from "@/lib/plan/calendar-data";
+import { formatDate, type ProfileForFormat } from "@/lib/format/datetime";
 import { chipPaint } from "./calendar-paint";
 
 export type PlanListProps = {
   items: CalendarItem[];
   today: string;
   onMatchUnfulfilled?: (plannedId: string) => void;
+  formatProfile?: ProfileForFormat;
 };
 
-export function PlanList({ items, today, onMatchUnfulfilled }: PlanListProps) {
+export function PlanList({ items, today, onMatchUnfulfilled, formatProfile }: PlanListProps) {
   if (items.length === 0) {
     return (
       <div
@@ -57,6 +59,7 @@ export function PlanList({ items, today, onMatchUnfulfilled }: PlanListProps) {
           isToday={g.date === today}
           isPast={g.date < today}
           onMatchUnfulfilled={onMatchUnfulfilled}
+          formatProfile={formatProfile}
         />
       ))}
     </section>
@@ -69,20 +72,21 @@ function DayGroup({
   isToday,
   isPast,
   onMatchUnfulfilled,
+  formatProfile,
 }: {
   date: string;
   items: CalendarItem[];
   isToday: boolean;
   isPast: boolean;
   onMatchUnfulfilled?: (plannedId: string) => void;
+  formatProfile?: ProfileForFormat;
 }) {
-  const d = new Date(date + "T00:00:00Z");
-  const label = d.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
+  // YYYY-MM-DD is a calendar date — anchor it at UTC midnight so
+  // server rendering doesn't drift across timezones.
+  const utcProfile: ProfileForFormat = formatProfile
+    ? { ...formatProfile, timezone: "UTC" }
+    : { timezone: "UTC" };
+  const label = formatDate(date + "T00:00:00Z", utcProfile, "weekday_short");
   return (
     <div
       className="cp-card"
