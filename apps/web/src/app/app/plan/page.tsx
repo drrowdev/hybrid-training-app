@@ -27,6 +27,7 @@ import type { Prescription } from "@hta/db";
 import { SkipSessionForm } from "@/components/plan/SkipSessionForm";
 import { EndBlockForm } from "@/components/plan/EndBlockForm";
 import { PlanViews, type ViewMode } from "@/components/plan/PlanViews";
+import { GlossaryBadge } from "@/components/ui/GlossaryBadge";
 import type { StravaCandidate } from "@/components/plan/MatchUnfulfilledModal";
 import {
   PlanNewSwitch,
@@ -723,11 +724,12 @@ function DaySessionCard({
           )}
           <div style={{ fontSize: 16, fontWeight: 600, marginTop: showHeader ? 2 : 0 }}>
             {slotLabel && (
-              <span
-                className="mono"
-                data-testid="day-card-slot-label"
-                data-slot={planned.slot}
-                style={{
+              <GlossaryBadge
+                term="two_a_day"
+                testId="day-card-slot-label"
+                dataSlot={planned.slot}
+                ariaLabel={`${slotLabel} session — explain two-a-day`}
+                buttonStyle={{
                   fontSize: 10,
                   color: "var(--cp-accent)",
                   fontWeight: 700,
@@ -735,8 +737,8 @@ function DaySessionCard({
                   letterSpacing: "0.08em",
                 }}
               >
-                {slotLabel}
-              </span>
+                <span className="mono">{slotLabel}</span>
+              </GlossaryBadge>
             )}
             {planned.title}
             {timeOfDay && (

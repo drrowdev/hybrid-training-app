@@ -89,4 +89,14 @@ describe("getGlossaryEntry", () => {
     expect(getGlossaryEntry("__proto__")).toBeNull();
     expect(getGlossaryEntry("constructor")).toBeNull();
   });
+
+  it("has a populated two_a_day entry (DC-Q6: cites Robineau, no program names)", () => {
+    const e = getGlossaryEntry("two_a_day");
+    expect(e).not.toBeNull();
+    expect(e?.title).toBeTruthy();
+    expect(e?.title.length).toBeGreaterThan(0);
+    expect(e?.body).toBeTruthy();
+    expect(e?.body.length).toBeGreaterThan(0);
+    expect(e?.citation).toMatch(/Robineau/i);
+  });
 });

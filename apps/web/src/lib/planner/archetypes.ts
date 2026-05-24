@@ -49,7 +49,14 @@ export type DaySlot = "am" | "pm" | "single";
 export type StrengthDay = {
   kind: "strength";
   dayIndex: number;
-  /** Optional two-a-day slot. Default "single". */
+  /**
+   * Time-of-day slot for this session. Defaults to "single" (the only
+   * session of the day) when omitted.
+   *
+   * IMPORTANT: Only set "am" / "pm" in the `twoADayDays` array — never
+   * in the main `days` array. Setting it in `days` produces ghost slot
+   * badges on single-mode plans (PR #67 regression risk).
+   */
   slot?: DaySlot;
   role: StrengthRole;
   title: string;
@@ -70,6 +77,14 @@ export type StrengthDay = {
 export type CardioDay = {
   kind: "cardio";
   dayIndex: number;
+  /**
+   * Time-of-day slot for this session. Defaults to "single" (the only
+   * session of the day) when omitted.
+   *
+   * IMPORTANT: Only set "am" / "pm" in the `twoADayDays` array — never
+   * in the main `days` array. Setting it in `days` produces ghost slot
+   * badges on single-mode plans (PR #67 regression risk).
+   */
   slot?: DaySlot;
   role: string;
   title: string;
@@ -99,6 +114,14 @@ export type CardioDay = {
 export type TendonDay = {
   kind: "tendon";
   dayIndex: number;
+  /**
+   * Time-of-day slot for this session. Defaults to "single" (the only
+   * session of the day) when omitted.
+   *
+   * IMPORTANT: Only set "am" / "pm" in the `twoADayDays` array — never
+   * in the main `days` array. Setting it in `days` produces ghost slot
+   * badges on single-mode plans (PR #67 regression risk).
+   */
   slot?: DaySlot;
   role: string;
   title: string;
