@@ -65,13 +65,27 @@ export default async function SessionDetailPage({
 
   // Phase 3 C1/C2 — load feedback preferences so we can thread them
   // into the log client (haptic tick on set save + tone at rest=0).
+  // Bar weights + plate inventory ride along so the focus view can
+  // render the plate-per-side breakdown next to the target weight.
   const { data: feedbackPrefs } = await supabase
     .from("profiles")
-    .select("haptics_enabled, timer_sound_enabled")
+    .select(
+      "haptics_enabled, timer_sound_enabled, barbell_kg, trap_bar_kg, plate_inventory_kg",
+    )
     .eq("id", user.id)
     .maybeSingle();
   const hapticsEnabled = feedbackPrefs?.haptics_enabled ?? true;
   const timerSoundEnabled = feedbackPrefs?.timer_sound_enabled ?? true;
+  const barbellKg = Number(feedbackPrefs?.barbell_kg ?? 20);
+  const trapBarKg = Number(feedbackPrefs?.trap_bar_kg ?? 25);
+  const plateInventory = Array.isArray(feedbackPrefs?.plate_inventory_kg)
+    ? (feedbackPrefs?.plate_inventory_kg as Array<{ weight_kg: number; pair_count: number }>)
+        .map((p) => ({
+          weightKg: Number(p.weight_kg),
+          pairCount: Number(p.pair_count),
+        }))
+        .filter((p) => Number.isFinite(p.weightKg) && p.weightKg > 0 && p.pairCount > 0)
+    : [];
 
   const { data: setsRaw } = await supabase
     .from("set_logs")
@@ -780,6 +794,9 @@ export default async function SessionDetailPage({
         loggedItemIndices={loggedItemIndices}
         skippedItemIndices={skippedItemIndices}
         loggedSetIdByItemIndex={loggedSetIdByItemIndex}
+        barbellKg={barbellKg}
+        trapBarKg={trapBarKg}
+        plateInventory={plateInventory}
       />
 
       {(cardio && cardio.length > 0) || !isComplete ? (

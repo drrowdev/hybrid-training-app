@@ -2,10 +2,12 @@ import { describe, it, expect } from "vitest";
 import { restSecondsForKind } from "../rest";
 import { summariseSessionSets } from "../queries";
 
-describe("restSecondsForKind — auto rest defaults (Phase 1 B4)", () => {
-  it("strength main / back_off → 180s", () => {
+describe("restSecondsForKind — kind-specific rest defaults", () => {
+  it("main → 180s (working sets get the full strength rest)", () => {
     expect(restSecondsForKind("main")).toBe(180);
-    expect(restSecondsForKind("back_off")).toBe(180);
+  });
+  it("back_off → 120s (supplemental volume — kept tighter)", () => {
+    expect(restSecondsForKind("back_off")).toBe(120);
   });
   it("accessory → 90s", () => {
     expect(restSecondsForKind("accessory")).toBe(90);

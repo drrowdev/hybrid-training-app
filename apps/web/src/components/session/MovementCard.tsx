@@ -22,8 +22,10 @@ import {
   isMovementComplete,
   type MovementGroup,
 } from "@/lib/sessions/movement-grouping";
+import { buildMovementRecap } from "@/lib/sessions/movement-recap";
 import { MovementFocusView, type FocusLoggedSet } from "./MovementFocusView";
 import { SwapMovementModal } from "./SwapMovementModal";
+import type { PlateInventoryItem } from "./plate-math";
 import type { fillSessionFromPlan } from "@/lib/sessions/actions";
 
 export type MovementCardProps = {
@@ -41,6 +43,10 @@ export type MovementCardProps = {
   showFillFromPlan: boolean;
   hapticsEnabled: boolean;
   timerSoundEnabled: boolean;
+  /** User equipment — forwarded to `<MovementFocusView>` for the plate breakdown. */
+  barbellKg?: number;
+  trapBarKg?: number;
+  plateInventory?: PlateInventoryItem[];
   /** Persistence key prefix — combined with movementId for localStorage. */
   persistKeyPrefix: string;
 };
@@ -61,6 +67,9 @@ export function MovementCard({
   showFillFromPlan,
   hapticsEnabled,
   timerSoundEnabled,
+  barbellKg,
+  trapBarKg,
+  plateInventory,
   persistKeyPrefix,
 }: MovementCardProps) {
   const cardState = deriveCardState(group, loggedItemIndices);
@@ -111,6 +120,11 @@ export function MovementCard({
     return () => window.clearTimeout(id);
   }, [complete]);
 
+  // Latch the cursor where "Edit sets" tapped on the recap — the
+  // focus view picks this up via its `initialCursor` prop. Reset
+  // back to null on the next save so the auto cursor takes over.
+  const [pinnedCursor, setPinnedCursor] = useState<number | null>(null);
+
   const toggleCollapsed = () => {
     userOverrodeRef.current = true;
     setCollapsed((v) => {
@@ -122,6 +136,29 @@ export function MovementCard({
       }
       return next;
     });
+  };
+
+  /**
+   * Re-expand the card AND pin the focus view to the slot that was
+   * last logged. Used by the recap-row "Edit sets" button so the
+   * user lands on the most-recent set rather than the auto cursor's
+   * "next open slot" pick (which would land outside the prescribed
+   * range when every slot is covered).
+   */
+  const expandAtLastLogged = () => {
+    const slots = group.itemIndices;
+    let lastSlot = 0;
+    for (let i = 0; i < slots.length; i++) {
+      if (loggedItemIndices.has(slots[i]!)) lastSlot = i;
+    }
+    setPinnedCursor(lastSlot);
+    userOverrodeRef.current = true;
+    setCollapsed(false);
+    try {
+      window.localStorage.setItem(storageKey, "open");
+    } catch {
+      /* ignore */
+    }
   };
 
   const total = group.itemIndices.length;
@@ -140,36 +177,11 @@ export function MovementCard({
         ? `${done}/${total}`
         : "·";
 
-  // Summary line for the recap row. Calls out skips inline so the
-  // collapsed card surface still tells the user what happened
-  // ("5 sets · 3 logged · 2 skipped (pain)"). When every set was
-  // skipped we keep the wording legible by dropping the "0 logged"
-  // tail.
-  const summaryLine = (() => {
-    if (loggedSets.length === 0) return null;
-    const loggedOnly = loggedSets.filter((s) => !s.skipped);
-    const skipped = loggedSets.filter((s) => s.skipped);
-    const repList = loggedOnly
-      .filter((s) => s.reps != null && s.reps > 0)
-      .map((s) => s.reps)
-      .join("/");
-    const topWeight = loggedOnly.reduce(
-      (max, s) => (s.weightKg != null && s.weightKg > max ? s.weightKg : max),
-      0,
-    );
-    if (skipped.length > 0) {
-      const reasons = Array.from(
-        new Set(skipped.map((s) => s.skipReason).filter(Boolean) as string[]),
-      );
-      const reasonTail = reasons.length > 0 ? ` (${reasons.join(", ")})` : "";
-      const parts: string[] = [`${loggedSets.length} sets`];
-      if (loggedOnly.length > 0) parts.push(`${loggedOnly.length} logged`);
-      parts.push(`${skipped.length} skipped${reasonTail}`);
-      if (topWeight > 0) parts.push(`top set ${topWeight} kg`);
-      return parts.join(" · ");
-    }
-    return `${loggedSets.length} sets · ${repList} reps${topWeight > 0 ? ` · top set ${topWeight} kg` : ""}`;
-  })();
+  // Kind-bucketed recap lines for the collapsed view. The legacy one-
+  // liner summaryLine is dropped in favour of one row per bucket
+  // (warm-ups / working / volume / accessory / tendon) plus a final
+  // `N skipped (reason)` row when any skips were recorded.
+  const recapLines = buildMovementRecap(group.items, loggedSets);
 
   return (
     <section
@@ -243,30 +255,66 @@ export function MovementCard({
         </span>
       </button>
 
-      {collapsed && cardState === "completed" && summaryLine && (
+      {collapsed && cardState === "completed" && recapLines.length > 0 && (
         <div
           data-testid={`movement-card-recap-${group.movementId}`}
           style={{
             padding: "0 14px 14px",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            flexWrap: "wrap",
-            fontSize: 12,
-            color: "var(--cp-text-muted)",
+            display: "grid",
+            gap: 6,
           }}
         >
-          <span style={{ color: "var(--cp-success)", fontWeight: 700 }}>✓</span>
-          <span style={{ flex: "1 1 auto" }}>{summaryLine}</span>
-          <button
-            type="button"
-            onClick={toggleCollapsed}
-            className="cp-btn"
-            style={{ padding: "4px 10px", fontSize: 11 }}
-            data-testid={`movement-card-edit-${group.movementId}`}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+              fontSize: 12,
+              color: "var(--cp-text-muted)",
+            }}
           >
-            Edit sets
-          </button>
+            <span style={{ color: "var(--cp-success)", fontWeight: 700 }}>✓</span>
+            <span style={{ flex: "1 1 auto", fontWeight: 600, color: "var(--cp-text)" }}>
+              {group.movementName} complete
+            </span>
+            <button
+              type="button"
+              onClick={expandAtLastLogged}
+              className="cp-btn"
+              style={{ padding: "4px 10px", fontSize: 11 }}
+              data-testid={`movement-card-edit-${group.movementId}`}
+            >
+              Edit sets
+            </button>
+          </div>
+          <ul
+            data-testid={`movement-card-recap-lines-${group.movementId}`}
+            style={{
+              listStyle: "none",
+              margin: 0,
+              padding: 0,
+              display: "grid",
+              gap: 2,
+              fontSize: 12,
+              color: "var(--cp-text-muted)",
+            }}
+          >
+            {recapLines.map((line) => (
+              <li
+                key={line.kind}
+                data-recap-kind={line.kind}
+                style={{
+                  color:
+                    line.kind === "skipped"
+                      ? "var(--cp-warning)"
+                      : "var(--cp-text-muted)",
+                }}
+              >
+                {line.text}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -301,6 +349,11 @@ export function MovementCard({
             addStrengthSet={addStrengthSet}
             hapticsEnabled={hapticsEnabled}
             timerSoundEnabled={timerSoundEnabled}
+            barbellKg={barbellKg}
+            trapBarKg={trapBarKg}
+            plateInventory={plateInventory}
+            initialCursor={pinnedCursor}
+            onSaved={() => setPinnedCursor(null)}
           />
         </div>
       )}
