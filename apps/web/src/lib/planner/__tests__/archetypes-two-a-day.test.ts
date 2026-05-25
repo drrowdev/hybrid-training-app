@@ -171,6 +171,48 @@ describe("minDaysForArchetype / maxDaysForArchetype count distinct calendar days
     const maxB = maxDaysForArchetype(REBUILD, true);
     expect(maxA).toBe(maxB);
   });
+
+  // ── isBodyweightOnly override (PR: fix/bw-wizard-copy-and-min-days) ──
+  // BW users don't follow the anchor-day floor because the prescription
+  // engine packs ~3 main families per session via bw-family-rotation.ts
+  // (PR #93). The min-days gate collapses to a flat floor of 2 so 3-day
+  // BW blocks are viable for any archetype while a 1-day block still
+  // can't be selected.
+  describe("isBodyweightOnly override", () => {
+    it("Strength Anchor: BW override returns ≤ 3 (was 4)", () => {
+      const min = minDaysForArchetype(STRENGTH_ANCHOR, false, true);
+      expect(min).toBeLessThanOrEqual(3);
+      expect(min).toBe(2);
+    });
+
+    it("Hypertrophy Anchor: BW override returns ≤ 3", () => {
+      const min = minDaysForArchetype(HYPERTROPHY_ANCHOR, false, true);
+      expect(min).toBeLessThanOrEqual(3);
+      expect(min).toBe(2);
+    });
+
+    it("Endurance Anchor: BW override returns ≤ 3", () => {
+      const min = minDaysForArchetype(ENDURANCE_ANCHOR, false, true);
+      expect(min).toBeLessThanOrEqual(3);
+      expect(min).toBe(2);
+    });
+
+    it("Rebuild: BW override returns ≤ 3", () => {
+      const min = minDaysForArchetype(REBUILD, false, true);
+      expect(min).toBeLessThanOrEqual(3);
+      expect(min).toBe(2);
+    });
+
+    it("Non-BW path is unchanged when isBodyweightOnly=false", () => {
+      expect(minDaysForArchetype(STRENGTH_ANCHOR, false, false)).toBe(4);
+      expect(minDaysForArchetype(STRENGTH_ANCHOR, false)).toBe(4);
+    });
+
+    it("BW override ignores allowsTwoADays (BW users don't run AM/PM splits)", () => {
+      expect(minDaysForArchetype(STRENGTH_ANCHOR, true, true)).toBe(2);
+      expect(minDaysForArchetype(STRENGTH_ANCHOR, false, true)).toBe(2);
+    });
+  });
 });
 
 describe("daysForFrequency: distinct-day budgeting under two-a-day", () => {

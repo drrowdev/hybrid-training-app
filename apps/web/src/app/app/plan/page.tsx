@@ -94,13 +94,16 @@ export default async function PlanPage({
       getTrainingMaxContext(),
       supabase
         .from("profiles")
-        .select("allows_two_a_days, timezone")
+        .select(
+          "allows_two_a_days, timezone, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bodyweight_kg",
+        )
         .eq("id", user.id)
         .maybeSingle(),
       getRecentBlocks(3),
     ]);
     const allowsTwoADays = Boolean(prof?.allows_two_a_days ?? false);
     const tz = prof?.timezone ?? "UTC";
+    const planEquipment = resolveEquipment(prof ?? null);
 
     const tmReadinessByArchetype = Object.fromEntries(
       WIZARD_ARCHETYPE_IDS.map((id) => {
@@ -155,6 +158,7 @@ export default async function PlanPage({
           action={createBlock}
           initialMode={firstTime ? "wizard" : "home"}
           hideBuildCta={firstTime}
+          equipmentPreset={planEquipment.preset}
         />
         {recentBlocks.length > 0 && (
           <Link
