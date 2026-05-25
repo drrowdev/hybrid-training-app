@@ -971,7 +971,11 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
         parsed.data.powerEmphasis,
         warmupScheme,
         equipment,
-        !hasAnyTm,
+        // Omit the barbell strength path when the user has no loadable
+        // kit. This makes equipment the source of truth — TMs persist
+        // across blocks, but the BW preset gives a bodyweight-only block
+        // even if barbell TMs are saved from a previous block.
+        bwActive || !hasAnyTm,
       );
 
       // ─── Bodyweight Phase 3 — prepend BW main + back_off items ───
@@ -1075,8 +1079,24 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       const isDeload = weekProfile?.intensityLabel === "Deload";
 
       let title = day.title;
-      if (day.kind === "strength" && hasAnyTm) {
-        title = `${movement.displayName}${isDeload ? " (deload)" : ""}`;
+      if (day.kind === "strength") {
+        // When the BW path is the source of truth for this session,
+        // derive the title from the first BW main movement so the day
+        // card header reads "Wall handstand hold" / "Push-up" — not the
+        // barbell day-template label that no longer applies. Falls
+        // through to the barbell title only when the barbell path
+        // actually generated items.
+        const firstBwMain = bwActive
+          ? items.find((it) => it.kind === "main")
+          : undefined;
+        if (firstBwMain) {
+          const name = firstBwMain.movementName ?? movement.displayName;
+          title = `${name}${isDeload ? " (deload)" : ""}`;
+        } else if (hasAnyTm && !bwActive) {
+          title = `${movement.displayName}${isDeload ? " (deload)" : ""}`;
+        } else if (isDeload) {
+          title = `${day.title} (deload)`;
+        }
       } else if (isDeload) {
         title = `${day.title} (deload)`;
       }

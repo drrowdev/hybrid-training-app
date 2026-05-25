@@ -62,8 +62,8 @@ describe("DateTimeFormatCard — auto preview wiring", () => {
     expect(resolveDateFormat({ timezone: "America/New_York" })).toBe("mdy_short");
   });
 
-  it("auto preview helpers fall back to ISO for an unrecognised region", () => {
+  it("auto preview helpers fall back to 24h + dmy_short for an unrecognised region", () => {
     expect(resolveTimeFormat({ timezone: null })).toBe("24h");
-    expect(resolveDateFormat({ timezone: null })).toBe("iso");
+    expect(resolveDateFormat({ timezone: null })).toBe("dmy_short");
   });
 });
