@@ -35,7 +35,10 @@ export type PlanViewsProps = {
   filter: CalendarFilter;
   anchor: string;
   today: string;
-  /** Initial legend-open state — server passes false on mobile, true on desktop. */
+  /** Initial legend-open state — caller passes false on mobile, true on desktop.
+   *  After the UI-compression PR, legend defaults to collapsed everywhere
+   *  (the chips are self-explanatory and reachable via the ? button); the
+   *  prop is preserved so existing callers don't break. */
   defaultLegendOpen: boolean;
   /** When `match=<plannedId>` is set in the URL, open the modal on mount. */
   initialMatchPlannedId?: string;
@@ -81,7 +84,8 @@ export function PlanViews({
   formatProfile,
 }: PlanViewsProps) {
   const [filter, setFilter] = useState<CalendarFilter>(initialFilter);
-  const [legendOpen, setLegendOpen] = useState(defaultLegendOpen);
+  const [legendOpen, setLegendOpen] = useState(false);
+  void defaultLegendOpen;
   const [matchPlannedId, setMatchPlannedId] = useState<string | null>(
     initialMatchPlannedId ?? null,
   );
@@ -140,76 +144,96 @@ export function PlanViews({
           })}
         </nav>
 
-        {/* Filter chips */}
+        {/* Filter chips + legend help */}
         <div
-          role="group"
-          aria-label="Filter items"
-          data-testid="plan-filter-chips"
-          style={{ display: "flex", gap: 4, marginLeft: "auto" }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            marginLeft: "auto",
+          }}
         >
-          {FILTERS.map((f) => {
-            const active = f.id === filter;
-            return (
-              <button
-                key={f.id}
-                type="button"
-                role="checkbox"
-                aria-checked={active}
-                onClick={() => setFilter(f.id)}
-                data-testid={`plan-filter-${f.id}`}
-                data-active={active ? "true" : "false"}
-                style={{
-                  padding: "5px 12px",
-                  borderRadius: 999,
-                  fontSize: 12,
-                  fontWeight: active ? 600 : 500,
-                  background: active ? "var(--cp-accent)" : "transparent",
-                  color: active ? "var(--cp-on-accent, #000)" : "var(--cp-text-muted)",
-                  border: `1px solid ${active ? "var(--cp-accent)" : "var(--cp-border)"}`,
-                  cursor: "pointer",
-                }}
-              >
-                {f.label}
-              </button>
-            );
-          })}
+          <div
+            role="group"
+            aria-label="Filter items"
+            data-testid="plan-filter-chips"
+            style={{ display: "flex", gap: 4 }}
+          >
+            {FILTERS.map((f) => {
+              const active = f.id === filter;
+              return (
+                <button
+                  key={f.id}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={active}
+                  onClick={() => setFilter(f.id)}
+                  data-testid={`plan-filter-${f.id}`}
+                  data-active={active ? "true" : "false"}
+                  style={{
+                    padding: "5px 12px",
+                    borderRadius: 999,
+                    fontSize: 12,
+                    fontWeight: active ? 600 : 500,
+                    background: active ? "var(--cp-accent)" : "transparent",
+                    color: active ? "var(--cp-on-accent, #000)" : "var(--cp-text-muted)",
+                    border: `1px solid ${active ? "var(--cp-accent)" : "var(--cp-border)"}`,
+                    cursor: "pointer",
+                  }}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            onClick={() => setLegendOpen((v) => !v)}
+            aria-expanded={legendOpen}
+            aria-controls="plan-legend-body"
+            aria-label={legendOpen ? "Hide legend" : "Show legend"}
+            data-testid="plan-legend-toggle"
+            title="Legend"
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: 999,
+              border: `1px solid ${legendOpen ? "var(--cp-accent)" : "var(--cp-border)"}`,
+              background: legendOpen ? "var(--cp-accent-soft)" : "transparent",
+              color: legendOpen ? "var(--cp-accent)" : "var(--cp-text-muted)",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+              padding: 0,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            ?
+          </button>
         </div>
       </div>
 
-      {/* Legend */}
-      <div data-testid="plan-legend-row">
-        <button
-          type="button"
-          onClick={() => setLegendOpen(!legendOpen)}
-          aria-expanded={legendOpen}
-          aria-controls="plan-legend-body"
-          data-testid="plan-legend-toggle"
-          style={{
-            background: "transparent",
-            border: 0,
-            color: "var(--cp-text-muted)",
-            fontSize: 11,
-            cursor: "pointer",
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            padding: 0,
-          }}
-        >
-          {legendOpen ? "▾ Legend" : "▸ Legend"}
-        </button>
-        {legendOpen && (
+      {/* Legend — toggled by the ? button above. Collapsed by default; the
+          chips are self-explanatory enough for return visitors. */}
+      {legendOpen && (
+        <div data-testid="plan-legend-row">
           <ul
             id="plan-legend-body"
             data-testid="plan-legend"
             style={{
               listStyle: "none",
-              padding: 0,
-              margin: "6px 0 0",
+              padding: "8px 12px",
+              margin: 0,
               display: "flex",
               flexWrap: "wrap",
               gap: 10,
               fontSize: 11,
               color: "var(--cp-text-muted)",
+              borderRadius: 6,
+              border: "1px solid var(--cp-border)",
+              background: "var(--cp-surface-soft)",
             }}
           >
             {LEGEND_ITEMS.map((it) => {
@@ -236,8 +260,8 @@ export function PlanViews({
               );
             })}
           </ul>
-        )}
-      </div>
+        </div>
+      )}
 
       {view === "month" && (
         <MonthGrid
