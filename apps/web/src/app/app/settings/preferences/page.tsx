@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+
 import { createClient } from "@/lib/supabase/server";
 import { DateTimeFormatCard } from "@/components/settings/DateTimeFormatCard";
 import {
@@ -31,12 +32,6 @@ export default async function PreferencesSettingsPage() {
   return (
     <main className="min-h-screen px-6 py-8 max-w-2xl mx-auto space-y-8">
       <header className="space-y-1">
-        <Link
-          href="/app/settings"
-          style={{ fontSize: 12, color: "var(--cp-text-muted)" }}
-        >
-          ← Settings
-        </Link>
         <h1 className="text-2xl font-semibold tracking-tight">Preferences</h1>
         <p className="text-xs text-foreground/60">
           How the app behaves during sessions and how it stays in sync.
@@ -100,7 +95,7 @@ export default async function PreferencesSettingsPage() {
             data-testid="settings-warmups-link"
             className="inline-flex items-center justify-between gap-3 rounded-lg border border-foreground/10 p-4 w-full hover:bg-foreground/5"
           >
-            <span className="text-sm">Configure warmups</span>
+            <span className="text-sm">Warmups</span>
             <span className="text-xs text-foreground/60">→</span>
           </Link>
         </div>

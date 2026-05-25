@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -61,9 +60,6 @@ export default async function LimitationsPage() {
   return (
     <main className="min-h-screen px-6 py-8 max-w-2xl mx-auto space-y-8">
       <header className="space-y-1">
-        <Link href="/app/settings" className="text-xs text-foreground/50 hover:text-foreground">
-          ← settings
-        </Link>
         <h1 className="text-2xl font-semibold tracking-tight">Active limitations</h1>
         <p className="text-xs text-foreground/60">
           Add a row when you&apos;re hurt; mark resolved when better. The app uses these to avoid

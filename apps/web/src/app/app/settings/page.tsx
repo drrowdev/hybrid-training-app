@@ -6,6 +6,7 @@ import {
   resolveEquipment,
 } from "@/lib/settings/equipment-presets";
 import { todayYmd } from "@/lib/dates";
+import { formatRelativeEventDate } from "@/lib/events/format";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -41,6 +42,18 @@ export default async function SettingsPage() {
   const showBwProgression = isBodyweightOnly || hasBwProgress;
 
   const today = todayYmd(profile?.timezone ?? "UTC");
+
+  // Latest bodyweight log — drives the Bodyweight hub card badge.
+  const { data: latestWeight } = await supabase
+    .from("wellness")
+    .select("date, bodyweight_kg")
+    .not("bodyweight_kg", "is", null)
+    .order("date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const bwBadge = latestWeight?.bodyweight_kg
+    ? `${Number(latestWeight.bodyweight_kg).toFixed(1)} kg · ${formatRelativeEventDate(latestWeight.date, today)}`
+    : "Not logged yet";
 
   const [
     { count: activeLim },
@@ -90,8 +103,16 @@ export default async function SettingsPage() {
           href="/app/settings/profile"
           icon="🧭"
           title="Training profile"
-          description="Name, experience, phase, frequency, weight."
+          description="Name, experience, phase, training frequency."
           testId="settings-hub-profile"
+        />
+        <SettingsHubCard
+          href="/app/settings/bodyweight"
+          icon="⚖️"
+          title="Bodyweight"
+          description="Log weight and review history."
+          badge={bwBadge}
+          testId="settings-hub-bodyweight"
         />
         <SettingsHubCard
           href="/app/settings/equipment"
@@ -114,7 +135,7 @@ export default async function SettingsPage() {
             href="/app/settings/bodyweight-progression"
             icon="🌳"
             title="Bodyweight progression"
-            description="Skill-tree nodes."
+            description="Per-family progression nodes."
             testId="settings-hub-bw-progression"
           />
         )}

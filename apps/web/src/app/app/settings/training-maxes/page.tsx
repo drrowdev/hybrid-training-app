@@ -19,7 +19,6 @@ import {
 } from "@/lib/settings/equipment-presets";
 import { TmSection, type PickerGroup, type RoleGroupInput } from "@/components/training-maxes/TmSection";
 import Link from "next/link";
-
 export default async function TrainingMaxesPage() {
   const supabase = await createClient();
   const ctx = await getTrainingMaxContext();
@@ -120,13 +119,7 @@ export default async function TrainingMaxesPage() {
   return (
     <div style={{ display: "grid", gap: 20 }}>
       <header>
-        <Link
-          href="/app/settings"
-          style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
-        >
-          ← back to settings
-        </Link>
-        <h1 style={{ fontSize: 26, margin: "8px 0 0", letterSpacing: "-0.01em" }}>
+        <h1 style={{ fontSize: 26, margin: 0, letterSpacing: "-0.01em" }}>
           Training maxes
         </h1>
         {bodyweightOnly ? (

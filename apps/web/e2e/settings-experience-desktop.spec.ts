@@ -39,6 +39,13 @@ test.describe("@desktop /app/settings/profile · training experience", () => {
     await page.goto("/app/settings/profile");
     await page.waitForLoadState("networkidle");
 
+    // Training experience now lives inside a collapsed SettingsGroup —
+    // expand it before asserting on the inner form.
+    await page
+      .getByTestId("settings-group-experience")
+      .locator("summary")
+      .click();
+
     // Section renders with the five years-anchor radios.
     await expect(page.getByTestId("settings-training-experience-form")).toBeVisible();
     await expect(

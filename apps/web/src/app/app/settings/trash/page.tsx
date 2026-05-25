@@ -12,7 +12,6 @@
  * The page surfaces that policy in the info card at the top so users
  * understand the soft-delete is not forever.
  */
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getTrashedItems } from "@/lib/planner/queries";
@@ -34,13 +33,7 @@ export default async function TrashPage() {
       style={{ display: "grid", gap: 20, maxWidth: 720 }}
     >
       <header>
-        <Link
-          href="/app/settings"
-          style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
-        >
-          ← settings
-        </Link>
-        <h1 style={{ fontSize: 26, margin: "8px 0 0", letterSpacing: "-0.01em" }}>
+        <h1 style={{ fontSize: 26, margin: 0, letterSpacing: "-0.01em" }}>
           Trash
           <span style={{ fontSize: 14, color: "var(--cp-text-muted)", fontWeight: 400, marginLeft: 8 }}>
             ({totalCount})

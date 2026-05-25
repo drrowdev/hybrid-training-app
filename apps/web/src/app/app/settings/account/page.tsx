@@ -31,19 +31,13 @@ export default async function AccountSettingsPage() {
   return (
     <main className="min-h-screen px-6 py-8 max-w-2xl mx-auto space-y-8">
       <header className="space-y-1">
-        <Link
-          href="/app/settings"
-          style={{ fontSize: 12, color: "var(--cp-text-muted)" }}
-        >
-          ← Settings
-        </Link>
         <h1 className="text-2xl font-semibold tracking-tight">
           Account &amp; data
         </h1>
+        <p className="text-xs text-foreground/50 font-mono">{user.email}</p>
         <p className="text-xs text-foreground/60">
           Trash, exports, and account deletion.
         </p>
-        <p className="text-xs text-foreground/50 font-mono">{user.email}</p>
       </header>
 
       <div className="space-y-6">
