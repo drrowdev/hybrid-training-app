@@ -13,7 +13,9 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx seeds/run.ts",
-    "db:seed:bw": "tsx seeds/run-bw-seed.ts"
+    "db:seed:bw": "tsx seeds/run-bw-seed.ts",
+    "db:check": "tsx scripts/check-migration-drift.ts",
+    "db:check:ci": "tsx scripts/check-migration-drift.ts"
   },
   "dependencies": {
     "@hta/domain": "workspace:*",
