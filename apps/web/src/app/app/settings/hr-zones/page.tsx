@@ -6,21 +6,13 @@
  * toggle) ships in a follow-up; for now this surface explains what's
  * coming and points back to settings.
  */
-import Link from "next/link";
-
 export const dynamic = "force-dynamic";
 
 export default function HrZonesSettingsPage() {
   return (
     <div style={{ display: "grid", gap: 12, maxWidth: 560 }}>
       <header>
-        <Link
-          href="/app/settings"
-          style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
-        >
-          ← settings
-        </Link>
-        <h1 style={{ fontSize: 24, margin: "8px 0 0", letterSpacing: "-0.01em" }}>HR zones</h1>
+        <h1 style={{ fontSize: 24, margin: 0, letterSpacing: "-0.01em" }}>HR zones</h1>
       </header>
       <p style={{ margin: 0, fontSize: 14, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
         HR zones configuration coming soon. Once available, you&apos;ll be able to

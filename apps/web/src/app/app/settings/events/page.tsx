@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createPriorityEvent, deletePriorityEvent } from "@/lib/planner/events-actions";
@@ -51,11 +50,8 @@ export default async function EventsSettingsPage() {
   return (
     <main className="min-h-screen px-6 py-12 max-w-2xl mx-auto space-y-6">
       <header>
-        <Link href="/app/settings" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
-          ← back to settings
-        </Link>
-        <h1 style={{ fontSize: 28, margin: "4px 0 0", letterSpacing: "-0.01em" }}>
-          Priority events
+        <h1 style={{ fontSize: 28, margin: 0, letterSpacing: "-0.01em" }}>
+          Events
         </h1>
         <p style={{ color: "var(--cp-text-muted)", fontSize: 14, margin: "4px 0 0" }}>
           Races, comps, tests. A-priority events trigger a 14-day taper. B

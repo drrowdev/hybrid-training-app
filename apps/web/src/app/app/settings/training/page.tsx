@@ -1,10 +1,10 @@
 /**
  * /app/settings/training — training-flow preferences. Currently hosts
- * the warmup-ladder editor; future training-related settings (rest-time
- * defaults, RPE prompts, etc.) will land alongside it here so the main
- * settings page doesn't sprawl.
+ * the warmup-ladder editor (H1: "Warmups"); future training-related
+ * settings (rest-time defaults, RPE prompts, etc.) will land alongside
+ * it here so the main settings page doesn't sprawl. The route stays at
+ * /app/settings/training for stable deep-links.
  */
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { WarmupSettings } from "@/components/settings/WarmupSettings";
@@ -38,14 +38,8 @@ export default async function TrainingSettingsPage() {
       }}
     >
       <header>
-        <Link
-          href="/app/settings"
-          style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
-        >
-          ← settings
-        </Link>
-        <h1 style={{ fontSize: 24, margin: "8px 0 0", letterSpacing: "-0.01em" }}>
-          Training
+        <h1 style={{ fontSize: 24, margin: 0, letterSpacing: "-0.01em" }}>
+          Warmups
         </h1>
       </header>
 

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -46,9 +45,6 @@ export default async function StravaSettingsPage({
   return (
     <main className="min-h-screen px-6 py-12 max-w-2xl mx-auto space-y-6">
       <header className="space-y-1">
-        <Link href="/app/settings" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
-          ← back to settings
-        </Link>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <h1 style={{ fontSize: 28, margin: 0 }}>Strava</h1>
           <StravaPoweredBadge />
@@ -90,27 +86,26 @@ export default async function StravaSettingsPage({
 
       {!isConfigured && (
         <div
-          role="alert"
+          role="note"
           className="cp-card"
+          data-testid="strava-not-configured"
           style={{
             padding: "12px 16px",
-            background: "color-mix(in oklab, var(--cp-warning) 12%, transparent)",
-            borderColor: "var(--cp-warning)",
+            background: "var(--cp-surface-soft, rgba(0,0,0,0.03))",
+            borderColor: "var(--cp-border)",
             fontSize: 13,
+            color: "var(--cp-text-muted)",
           }}
         >
-          <strong>Strava credentials not configured.</strong> Set
-          STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, and STRAVA_REDIRECT_URI in
-          the environment. Create an app at{" "}
-          <a
-            href="https://www.strava.com/settings/api"
-            target="_blank"
-            rel="noreferrer noopener"
-            style={{ color: "var(--cp-link)" }}
-          >
-            strava.com/settings/api
-          </a>{" "}
-          and add the redirect URI <code className="mono">/api/strava/callback</code>.
+          {/*
+            Developer note (kept out of user copy): to enable Strava sync,
+            set the STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, and
+            STRAVA_REDIRECT_URI environment variables. Create an app at
+            https://www.strava.com/settings/api and register the callback
+            /api/strava/callback.
+          */}
+          Strava sync isn&apos;t available in this environment. Cardio
+          activities can still be logged manually from the Plan page.
         </div>
       )}
 
