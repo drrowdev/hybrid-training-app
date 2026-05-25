@@ -249,3 +249,5 @@ row that was applied from a LF (Linux/CI) checkout.
   inline Reset link. Removed the standalone Reset button (one
   affordance, not two).
 ## [2026-05-25] fix | date format propagation — getFormatProfile helper + sweep of stats / bodyweight-progression / limitations surfaces
+
+## [2026-05-25] fix | strip internal DC-* codes from user copy (plan TissueStackCard, stats/engine page, planner conflict tooltips, engine derivations) + gate tissue-stack-deficit banner on (block age >= 7d) AND (>=1 completed session in last 7d). Added regression-guard test + 4 gating cases.
