@@ -113,7 +113,7 @@ export function WizardSidebar({
           {resolved && (
             <>
               <div style={{ height: 1, background: "var(--cp-border)", margin: "6px 2px 2px" }} />
-              <SessionBreakdown state={state} resolved={resolved} />
+              <SessionBreakdown state={state} resolved={resolved} isBw={isBw} />
               <Row
                 icon="🛡️"
                 label="Tendons & joints"
@@ -273,9 +273,11 @@ function PowerBadgeRow(): ReactElement {
 function SessionBreakdown({
   state,
   resolved,
+  isBw,
 }: {
   state: WizardState;
   resolved: ResolvedArchetype;
+  isBw: boolean;
 }): ReactElement {
   // One row per session — no grouping, no consolidation. The previous
   // "× N" collapse and Strength/Cardio headers created inconsistent
@@ -289,13 +291,13 @@ function SessionBreakdown({
         Your week ({total} session{total === 1 ? "" : "s"})
       </div>
       {sessions.map((s, i) => (
-        <SessionRow key={i} session={s} />
+        <SessionRow key={i} session={s} isBw={isBw} />
       ))}
     </>
   );
 }
 
-function SessionRow({ session }: { session: SessionShape }): ReactElement {
+function SessionRow({ session, isBw }: { session: SessionShape; isBw: boolean }): ReactElement {
   // Title + meta only. No duration on the right — durations change
   // week-to-week (especially in endurance / hypertrophy blocks where
   // minutes or set counts grow over the wave), so a static "75 min"
@@ -305,7 +307,7 @@ function SessionRow({ session }: { session: SessionShape }): ReactElement {
       <span style={iconBoxStyle}>{session.icon}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={sessionTitleStyle}>{generalizeTitle(session.title)}</div>
-        <div style={sessionMetaStyle}>{generalizeMeta(session.meta)}</div>
+        <div style={sessionMetaStyle}>{generalizeMetaForEquipment(session.meta, isBw)}</div>
       </div>
     </div>
   );
@@ -357,6 +359,34 @@ function generalizeMeta(meta: string): string {
   if (meta.includes("65–70% TM")) return "submaximal lifts";
   if (meta.includes("60–75% TM")) return "moderate weight · multiple sets";
   return meta;
+}
+
+/**
+ * Equipment-aware wrapper around {@link generalizeMeta}. For
+ * bodyweight-only users the standard %TM / "weight" / "top set"
+ * language is wrong — there's no external load, just reps × RIR ×
+ * tempo × holds. We intercept the strength descriptors and route
+ * everything else (aerobic / Z2 / intervals) through the default
+ * mapping unchanged.
+ *
+ * Exported for unit tests; rendered indirectly via {@link SessionRow}.
+ */
+export function generalizeMetaForEquipment(meta: string, isBw: boolean): string {
+  if (!isBw) return generalizeMeta(meta);
+  // BW overrides for strength descriptors. Order mirrors the strength
+  // branches in `generalizeMeta` so the two stay easy to diff.
+  if (meta.includes("≥ 95% TM") || meta.includes("≥ 90% TM"))
+    return "low-RIR top sets · slow eccentrics";
+  if (meta.includes("≥ 85% TM")) return "moderate-RIR top sets";
+  if (meta.includes("≤ 95% TM")) return "low-RIR top sets";
+  if (meta.includes("≤ 85% TM")) return "moderate-RIR sets · cardio-safe";
+  if (meta.includes("≤ 80% TM")) return "capped intensity · RIR 2+";
+  if (meta.includes("accessory")) return "variant pool · moderate RIR";
+  if (meta.includes("HSR")) return "isometric holds + slow eccentrics";
+  if (meta.includes("65–70% TM")) return "sub-maximal sets · long holds";
+  if (meta.includes("60–75% TM")) return "moderate intensity · longer TUT";
+  // Fall back to non-BW mapping for cardio/aerobic descriptors etc.
+  return generalizeMeta(meta);
 }
 
 function totalSessions(a: ResolvedArchetype): number {
