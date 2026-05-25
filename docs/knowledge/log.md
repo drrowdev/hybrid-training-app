@@ -225,3 +225,17 @@ load math; DAG node + clean rep history remain the source of truth.
 
 The /app/sessions/start/[plannedId] interstitial is gone. Tapping `Start workout` now goes straight to the session log. Daily recovery logging lives on the Today page (HowRecoveredCard); a new profiles column show_today_recovery_card + settings toggle lets users hide it. Migration 0049.
 
+
+## [2026-05-25] tooling | Migration drift guard (feat/migration-drift-guard)
+
+Script `pnpm --filter @hta/db db:check` cross-checks `_journal.json`
+against `drizzle.__drizzle_migrations` by SHA-256 and fails if any
+expected migration is missing. Wired into the pre-push hook (full mode
+against the configured `DATABASE_URL`) and CI (offline file-shape mode,
+since the repo currently has no shared dev-DB secret in Actions).
+Catches the migrator silent-skip bug that lost migrations 0043, 0045,
+0046, 0048, 0049 from this project's dev DB earlier in the BW
+progression work. Hashes the raw file bytes (matches the algorithm
+the migrator actually writes to the tracking table) with an
+LF-normalized fallback so a CRLF Windows checkout still matches a
+row that was applied from a LF (Linux/CI) checkout.
