@@ -1114,7 +1114,6 @@ function TissueStackCard({ gaps }: { gaps: TissueStackGap[] }) {
     <section
       className="cp-card"
       role="alert"
-      data-cite="DC-O4"
       style={{
         padding: "14px 18px",
         display: "grid",

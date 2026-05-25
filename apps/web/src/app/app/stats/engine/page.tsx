@@ -165,7 +165,7 @@ function DecisionTraceCard({ trace }: { trace: DecisionTrace }) {
                 background: "var(--cp-accent)",
               }}
             />
-            <span data-cite={r.cite ?? undefined}>{r.text}</span>
+            <span>{r.text}</span>
           </li>
         ))}
       </ul>
