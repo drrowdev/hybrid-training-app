@@ -1359,6 +1359,9 @@ export function formatPrescriptionItem(item: PrescriptionItem, tmKg?: number): s
     // shown alongside this row is enough.
     return `${sets} × ${reps}`;
   }
+  // Bodyweight + isometric paths: format hold seconds when no reps/percent are set.
+  const holdMin = item.holdSec?.min ?? item.bw?.holdSeconds;
+  const holdMax = item.holdSec?.max ?? item.bw?.holdSeconds;
   const weight =
     item.percentTm != null && tmKg
       ? `${roundToPlate(tmKg * (item.percentTm / 100))} kg`
@@ -1368,7 +1371,20 @@ export function formatPrescriptionItem(item: PrescriptionItem, tmKg?: number): s
   if (weight && intensity) return `${weight} (${intensity}) ${reps}`.trim();
   if (weight) return `${weight} ${reps}`.trim();
   if (intensity) return `${intensity} ${reps}`.trim();
-  return reps;
+  if (reps) return reps;
+  if (holdMin != null && holdMax != null) {
+    return holdMin === holdMax ? `${holdMin}s hold` : `${holdMin}–${holdMax}s hold`;
+  }
+  // Bodyweight reps from the `bw` payload — surfaces a value for items
+  // where the top-level `reps` wasn't filled (e.g. tempo_reps variants
+  // that only carry `bw.reps` or `bw.repRange`).
+  const bwReps = item.bw?.reps;
+  if (bwReps != null) return `× ${bwReps}`;
+  const range = item.bw?.repRange;
+  if (range && range.min != null && range.max != null) {
+    return range.min === range.max ? `× ${range.min}` : `× ${range.min}–${range.max}`;
+  }
+  return "";
 }
 
 /**
@@ -1391,42 +1407,67 @@ export function summarisePrescription(items: PrescriptionItem[]): string {
       new Set(cardio.map((i) => i.intensityLabel ?? null).filter((l): l is string => !!l)),
     );
     const leadLabel = labels.length > 0 ? labels.join(" + ") : (cardio[0]?.movementName ?? "Cardio");
-    return totalMin > 0 ? `${leadLabel} — ${totalMin} min` : leadLabel;
+    return totalMin > 0 ? `${leadLabel} · ${totalMin} min` : leadLabel;
   }
 
   const tendon = items.filter((i) => i.kind === "tendon");
   if (tendon.length > 0 && tendon.length === items.length) {
+    const sets = tendon.length;
+    const reps = tendon[0]?.reps;
+    const sameReps =
+      reps != null && tendon.every((i) => i.reps === reps);
+    if (sameReps) return `${sets} × ${reps} · Tendon`;
     const uniqueMovements = new Set(
       tendon.map((i) => i.movementId ?? i.movementSlug ?? i.movementName ?? "tendon"),
     );
     const count = uniqueMovements.size;
-    return `Tendon work — ${count} movement${count === 1 ? "" : "s"}`;
+    return `Tendon work · ${count} movement${count === 1 ? "" : "s"}`;
   }
 
-  const mainWorking = items.filter(
-    (i) => i.kind === "main" || i.kind === "back_off" || i.kind === "power_potentiation",
-  );
+  const workingKinds = new Set(["main", "back_off", "power_potentiation"]);
+  const working = items.filter((i) => workingKinds.has(i.kind));
   const accessories = items.filter((i) => i.kind === "accessory");
-  const uniqueAccessoryMovements = new Set(
-    accessories.map(
-      (i, idx) => i.movementId ?? i.movementSlug ?? i.movementName ?? `acc-${idx}`,
-    ),
-  );
-  const accessoryCount = uniqueAccessoryMovements.size;
-  const accessoryTail =
-    accessoryCount > 0
-      ? ` + ${accessoryCount} accessor${accessoryCount === 1 ? "y" : "ies"}`
-      : "";
 
-  if (mainWorking.length > 0) {
-    const lead = mainWorking.find((i) => i.kind === "main") ?? mainWorking[0]!;
-    const name = lead.movementName ?? humaniseSlug(lead.movementSlug) ?? "Main lift";
-    const sets = mainWorking.length;
-    return `${name} — ${sets} working set${sets === 1 ? "" : "s"}${accessoryTail}`;
+  // Group working sets by movement so multi-movement sessions
+  // (bodyweight blocks emit push + pull + squat in one session) get
+  // a session-level summary instead of singling out one movement.
+  const movementOrder: string[] = [];
+  const nameByKey = new Map<string, string>();
+  const setsByKey = new Map<string, number>();
+  for (const it of working) {
+    const key = it.movementId ?? it.movementSlug ?? it.movementName ?? "main";
+    if (!setsByKey.has(key)) {
+      movementOrder.push(key);
+      nameByKey.set(
+        key,
+        it.movementName ?? humaniseSlug(it.movementSlug) ?? "Main lift",
+      );
+    }
+    setsByKey.set(key, (setsByKey.get(key) ?? 0) + 1);
+  }
+  const totalWorkingSets = working.length;
+  const movementCount = movementOrder.length;
+
+  if (movementCount > 0) {
+    if (movementCount === 1) {
+      const name = nameByKey.get(movementOrder[0]!)!;
+      return `${name} · ${totalWorkingSets} working set${totalWorkingSets === 1 ? "" : "s"}`;
+    }
+    if (movementCount === 2) {
+      const names = movementOrder.map((k) => nameByKey.get(k)!).join(" + ");
+      return `${names} · ${totalWorkingSets} working set${totalWorkingSets === 1 ? "" : "s"}`;
+    }
+    return `${movementCount} strength movements · ${totalWorkingSets} working set${totalWorkingSets === 1 ? "" : "s"}`;
   }
 
   if (accessories.length > 0 && accessories.length === items.length) {
-    return `Accessory circuit — ${accessoryCount} movement${accessoryCount === 1 ? "" : "s"}`;
+    const uniqueAccessoryMovements = new Set(
+      accessories.map(
+        (i, idx) => i.movementId ?? i.movementSlug ?? i.movementName ?? `acc-${idx}`,
+      ),
+    );
+    const count = uniqueAccessoryMovements.size;
+    return `${count} accessor${count === 1 ? "y" : "ies"}`;
   }
 
   return `${items.length} items`;

@@ -131,7 +131,7 @@ describe("groupPrescriptionSections", () => {
   });
 });
 
-import { describeRowExternalLoad } from "../prescription-grouping";
+import { describeRowExternalLoad, groupByMovementThenKind } from "../prescription-grouping";
 
 describe("describeRowExternalLoad", () => {
   function row(items: PrescriptionItem[]) {
@@ -175,3 +175,152 @@ describe("describeRowExternalLoad", () => {
     expect(describeRowExternalLoad(row([it]))).toBe("belt");
   });
 });
+
+describe("groupByMovementThenKind", () => {
+  it("splits a single-movement session into warmups → main → back-off, ordered by appearance", () => {
+    const items: PrescriptionItem[] = [
+      item({ kind: "warmup", percentTm: 36 }),
+      item({ kind: "warmup", percentTm: 45 }),
+      item({ kind: "main", percentTm: 75 }),
+      item({ kind: "main", percentTm: 85 }),
+      item({ kind: "main", percentTm: 90 }),
+      item({ kind: "back_off", percentTm: 70, reps: 8 }),
+      item({ kind: "back_off", percentTm: 70, reps: 8 }),
+    ];
+    const out = groupByMovementThenKind(items);
+    expect(out.movements).toHaveLength(1);
+    const sec = out.movements[0]!;
+    expect(sec.movementName).toBe("Front squat");
+    expect(sec.warmups).toHaveLength(2);
+    expect(sec.main).toHaveLength(3);
+    expect(sec.backOff).toHaveLength(2);
+    expect(sec.main.find((r) => r.isTopSet)?.item.percentTm).toBe(90);
+    // Back-off rows are NOT eligible for the top-set chip even when
+    // their setNumber sequence restarts inside their own bucket.
+    expect(sec.backOff.every((r) => !r.isTopSet)).toBe(true);
+  });
+
+  it("groups multi-movement sessions (bodyweight push + pull + squat) by movementId", () => {
+    const items: PrescriptionItem[] = [
+      // Squat family: warmup + main + back-off
+      item({ kind: "warmup", percentTm: 36, movementId: "fs", movementName: "Front squat" }),
+      item({ kind: "main", percentTm: 75, movementId: "fs", movementName: "Front squat" }),
+      item({ kind: "main", percentTm: 85, movementId: "fs", movementName: "Front squat" }),
+      item({ kind: "main", percentTm: 90, movementId: "fs", movementName: "Front squat" }),
+      // Pull family: BW main + back-off, no warmup, no %TM
+      item({
+        kind: "main",
+        percentTm: undefined,
+        reps: 15,
+        movementId: "wpu",
+        movementSlug: "wide_grip_pull_up",
+        movementName: "Wide-grip pull-up",
+      }),
+      item({
+        kind: "back_off",
+        percentTm: undefined,
+        reps: 15,
+        movementId: "wpu",
+        movementSlug: "wide_grip_pull_up",
+        movementName: "Wide-grip pull-up",
+      }),
+      // Accessory targeting the squat movement
+      item({
+        kind: "accessory",
+        movementId: "fs",
+        movementSlug: "front_squat",
+        movementName: "Front squat",
+        reps: 12,
+      }),
+    ];
+    const out = groupByMovementThenKind(items);
+    expect(out.movements).toHaveLength(2);
+    expect(out.movements.map((m) => m.movementName)).toEqual([
+      "Front squat",
+      "Wide-grip pull-up",
+    ]);
+    const squat = out.movements[0]!;
+    expect(squat.warmups).toHaveLength(1);
+    expect(squat.main).toHaveLength(3);
+    expect(squat.backOff).toHaveLength(0);
+    expect(squat.accessories).toHaveLength(1);
+    const pull = out.movements[1]!;
+    expect(pull.warmups).toHaveLength(0);
+    expect(pull.main).toHaveLength(1);
+    expect(pull.backOff).toHaveLength(1);
+    expect(pull.accessories).toHaveLength(0);
+  });
+
+  it("drops contentless items (no reps, percentTm, hold, intensity, notes) instead of rendering blank rows", () => {
+    const items: PrescriptionItem[] = [
+      item({ kind: "main", percentTm: 75, reps: 5 }),
+      // Generator-side malformed item — would have rendered as "Set 2: (empty)"
+      {
+        movementId: "m",
+        movementSlug: "front_squat",
+        movementName: "Front squat",
+        kind: "back_off",
+      } as PrescriptionItem,
+    ];
+    const out = groupByMovementThenKind(items);
+    expect(out.movements[0]!.main).toHaveLength(1);
+    expect(out.movements[0]!.backOff).toHaveLength(0);
+  });
+
+  it("keeps items whose only renderable content is on the bw payload (isometric holds, rep ranges)", () => {
+    const items: PrescriptionItem[] = [
+      {
+        movementId: "p",
+        movementSlug: "plank",
+        movementName: "Plank",
+        kind: "main",
+        bw: {
+          prescriptionType: "isometric_hold",
+          sets: 1,
+          holdSeconds: 30,
+          tempoEccentricSec: 0,
+          targetRir: 2,
+          restSeconds: 90,
+          intensityCue: "Brace hard.",
+        },
+        holdSec: { min: 30, max: 30 },
+      } as PrescriptionItem,
+    ];
+    const out = groupByMovementThenKind(items);
+    expect(out.movements).toHaveLength(1);
+    expect(out.movements[0]!.main).toHaveLength(1);
+  });
+
+  it("routes cardio items into the session-level cardio bucket, not per movement", () => {
+    const items: PrescriptionItem[] = [
+      item({
+        kind: "cardio_z2",
+        movementId: "run",
+        movementSlug: "run",
+        movementName: "Run",
+        durationMin: 45,
+      }),
+    ];
+    const out = groupByMovementThenKind(items);
+    expect(out.movements).toHaveLength(0);
+    expect(out.cardio).toHaveLength(1);
+  });
+
+  it("hinge-compensation accessory items are routed into their movement's hingeCompensations bucket", () => {
+    const items: PrescriptionItem[] = [
+      item({
+        kind: "accessory",
+        movementId: "rdl",
+        movementSlug: "romanian_deadlift",
+        movementName: "Romanian deadlift",
+        reps: 10,
+        meta: { hinge_compensation: true },
+      }),
+    ];
+    const out = groupByMovementThenKind(items);
+    expect(out.movements).toHaveLength(1);
+    expect(out.movements[0]!.hingeCompensations).toHaveLength(1);
+    expect(out.movements[0]!.accessories).toHaveLength(0);
+  });
+});
+
