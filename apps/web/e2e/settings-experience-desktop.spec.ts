@@ -16,7 +16,7 @@ import { markOnboarded } from "./fixtures/seed-blocks";
  *    internal code leaks.
  */
 
-test.describe("@desktop /app/settings · training experience", () => {
+test.describe("@desktop /app/settings/profile · training experience", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "Chromium-only");
 
   test("user can change declared experience and the change is audited (DC-K4)", async ({
@@ -36,9 +36,7 @@ test.describe("@desktop /app/settings · training experience", () => {
       .eq("id", freshUser.userId);
 
     await signInAs(context, freshUser, seedConfig, baseURL ?? "http://localhost:3000");
-    // The settings page now uses collapsible groups; navigating with a hash
-    // auto-expands the relevant group so the form is interactable.
-    await page.goto("/app/settings#training-preferences");
+    await page.goto("/app/settings/profile");
     await page.waitForLoadState("networkidle");
 
     // Section renders with the five years-anchor radios.
