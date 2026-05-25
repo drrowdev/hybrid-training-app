@@ -26,6 +26,8 @@ import { loadAndRunBwDiagnostics } from "@/lib/planner/bw-diagnostics-loader";
 import { BwDiagnosticsSection } from "@/components/settings/BwDiagnosticsSection";
 import { bwMultiplier } from "@/lib/planner/bw-multiplier";
 import { suggestLoadOrVariant } from "@/lib/planner/bw-loaded-suggestion";
+import { formatDate } from "@/lib/format/datetime";
+import { getFormatProfile } from "@/lib/format/profile";
 import {
   BwProgressionCategories,
   type BwCategoryGroup,
@@ -134,6 +136,7 @@ export default async function BodyweightProgressionPage() {
     { data: catalogRows },
     { data: eventRows },
     { data: profileRow },
+    formatProfile,
   ] = await Promise.all([
     supabase
       .from("bw_progress")
@@ -157,6 +160,7 @@ export default async function BodyweightProgressionPage() {
       .select("bodyweight_kg, bw_assessment_completed_at")
       .eq("id", user.id)
       .maybeSingle(),
+    getFormatProfile(supabase, user.id),
   ]);
 
   const catalog: CatalogNode[] = (catalogRows ?? []) as CatalogNode[];
@@ -403,7 +407,7 @@ export default async function BodyweightProgressionPage() {
             data-testid="bw-progression-assessment-date"
             style={{ fontSize: 11, color: "var(--cp-text-muted)" }}
           >
-            Last assessment: {new Date(assessmentCompletedAt).toISOString().slice(0, 10)}
+            Last assessment: {formatDate(assessmentCompletedAt, formatProfile)}
           </span>
         )}
       </header>
@@ -453,7 +457,7 @@ export default async function BodyweightProgressionPage() {
                     <strong>{to?.display_name ?? "—"}</strong>
                   </span>
                   <span style={{ color: "var(--cp-text-muted)" }}>
-                    {new Date(ev.occurred_at).toISOString().slice(0, 10)}
+                    {formatDate(ev.occurred_at, formatProfile)}
                   </span>
                 </li>
               );

@@ -41,6 +41,7 @@ import { getBodyweightTrend, type BodyweightTrend } from "@/lib/stats/bodyweight
 import { getTrainingHeatmap } from "@/lib/stats/training-heatmap-data";
 import { TrainingHeatmap } from "@/components/stats/TrainingHeatmap";
 import { displayWeight, weightUnitLabel, type WeightUnit } from "@/lib/stats/units";
+import { formatDate, type ProfileForFormat } from "@/lib/format/datetime";
 import {
   DEFAULT_RANGE,
   RANGE_LABEL,
@@ -72,11 +73,18 @@ export default async function StatsOverviewPage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("units, timezone")
+    .select("units, timezone, time_format, date_format")
     .eq("id", user.id)
     .maybeSingle();
   const units: WeightUnit = profile?.units === "imperial" ? "imperial" : "metric";
   const tz = profile?.timezone ?? (await getUserTimezone(user.id));
+  const formatProfile: ProfileForFormat = profile
+    ? {
+        timezone: profile.timezone ?? null,
+        time_format: profile.time_format ?? null,
+        date_format: profile.date_format ?? null,
+      }
+    : null;
 
   // All-parallel reads. The three time-bounded cards (adherence / PRs /
   // volume) take the same `windowDays` so the toggle drives them in
@@ -120,7 +128,7 @@ export default async function StatsOverviewPage({
         }}
       >
         <AdherenceCard data={adherence} range={range} />
-        <PrsCard data={prs} units={units} range={range} />
+        <PrsCard data={prs} units={units} range={range} formatProfile={formatProfile} />
         <FreshnessCard rows={freshness} />
         <VolumeCard data={volume} units={units} range={range} />
         <BodyweightCard data={bodyweight} units={units} />
@@ -318,7 +326,17 @@ function AdherenceCard({ data, range }: { data: AdherenceResult; range: Range })
 // C — PRs this month
 // ──────────────────────────────────────────────────────────────────────
 
-function PrsCard({ data, units, range }: { data: PrsRangeResult; units: WeightUnit; range: Range }) {
+function PrsCard({
+  data,
+  units,
+  range,
+  formatProfile,
+}: {
+  data: PrsRangeResult;
+  units: WeightUnit;
+  range: Range;
+  formatProfile: ProfileForFormat;
+}) {
   const unit = weightUnitLabel(units);
   const title =
     range === "all" ? "PRs (all-time)" : range === "90d" ? "PRs (last 90 days)" : "PRs (last 30 days)";
@@ -368,7 +386,7 @@ function PrsCard({ data, units, range }: { data: PrsRangeResult; units: WeightUn
               <span className="mono" style={{ flexShrink: 0, color: "var(--cp-text-muted)" }}>
                 {round1(displayWeight(p.weight, units))} {unit} × {p.reps}
                 {" · "}
-                {formatDay(p.date)}
+                {formatDate(p.date + "T00:00:00Z", { ...(formatProfile ?? {}), timezone: "UTC" }, "short_date")}
               </span>
             </li>
           ))}
@@ -668,22 +686,4 @@ function formatTonnage(n: number): string {
   return Math.round(n).toLocaleString();
 }
 
-function formatDay(ymd: string): string {
-  const m = Number(ymd.slice(5, 7));
-  const d = Number(ymd.slice(8, 10));
-  const monthShort = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-  ][m - 1];
-  return `${monthShort} ${d}`;
-}
+
