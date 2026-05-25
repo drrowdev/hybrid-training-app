@@ -12,6 +12,8 @@ import {
   resolveDateFormat,
   resolveTimeFormat,
 } from "@/lib/format/datetime";
+import { resolveEquipment } from "@/lib/settings/equipment-presets";
+import { TrainingProgressionCards } from "@/components/settings/TrainingProgressionCards";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -23,7 +25,7 @@ export default async function SettingsPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "display_name, units, bodyweight_kg, body_comp_phase, phase_started_at, phase_target_weeks, training_days_per_week, training_experience, allows_two_a_days, am_window_start, pm_window_start, timezone, haptics_enabled, timer_sound_enabled, time_format, date_format",
+      "display_name, units, bodyweight_kg, body_comp_phase, phase_started_at, phase_target_weeks, training_days_per_week, training_experience, allows_two_a_days, am_window_start, pm_window_start, timezone, haptics_enabled, timer_sound_enabled, time_format, date_format, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -56,6 +58,25 @@ export default async function SettingsPage() {
       .not("deleted_at", "is", null),
   ]);
   const trashCount = (trashedBlockCount ?? 0) + (trashedSessionCount ?? 0);
+
+  // Equipment-preset-aware discoverability for Training maxes vs.
+  // Bodyweight progression. BW-only users have no %TM concept; mixed
+  // users (non-BW preset but prior BW assessment rows) get both cards.
+  const equipment = resolveEquipment(profile ?? null);
+  const isBodyweightOnly = equipment.preset === "bodyweight_only";
+
+  let hasBwProgress = false;
+  // Skip the existence check when we already know we'll render the card
+  // (BW-only always shows it).
+  if (!isBodyweightOnly) {
+    const { data: bwRow } = await supabase
+      .from("bw_progress")
+      .select("user_id")
+      .eq("user_id", user.id)
+      .limit(1)
+      .maybeSingle();
+    hasBwProgress = !!bwRow;
+  }
 
   return (
     <main className="min-h-screen px-6 py-8 max-w-2xl mx-auto space-y-8">
@@ -395,20 +416,10 @@ export default async function SettingsPage() {
         </Link>
       </section>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-medium">Training maxes</h2>
-        <p className="text-xs text-foreground/60">
-          Reference numbers for percentage-based prescription. Set one per main lift —
-          the Log shows &quot;% of TM&quot; next to the weight.
-        </p>
-        <Link
-          href="/app/settings/training-maxes"
-          className="inline-flex items-center justify-between gap-3 rounded-lg border border-foreground/10 p-4 w-full hover:bg-foreground/5"
-        >
-          <span className="text-sm">Manage training maxes</span>
-          <span className="text-xs text-foreground/60">→</span>
-        </Link>
-      </section>
+      <TrainingProgressionCards
+        isBodyweightOnly={isBodyweightOnly}
+        hasBwProgress={hasBwProgress}
+      />
 
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Active limitations</h2>
