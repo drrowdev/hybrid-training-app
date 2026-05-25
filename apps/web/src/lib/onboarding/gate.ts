@@ -46,14 +46,24 @@ export function needsOnboarding(input: GateInput): boolean {
 export type OnboardingProfileInput = {
   displayName?: string | null;
   units?: "metric" | "imperial";
-  trainingExperience?: "lt_1y" | "1_3y" | "gte_3y";
+  trainingExperience?:
+    | "beginner_lt_6m"
+    | "novice_6m_2y"
+    | "intermediate_2y_5y"
+    | "advanced_5y_10y"
+    | "highly_advanced_10y_plus";
   bodyweightKg?: number;
 };
 
 export type ProfileUpdate = {
   display_name?: string | null;
   units?: "metric" | "imperial";
-  training_experience?: "lt_1y" | "1_3y" | "gte_3y";
+  training_experience?:
+    | "beginner_lt_6m"
+    | "novice_6m_2y"
+    | "intermediate_2y_5y"
+    | "advanced_5y_10y"
+    | "highly_advanced_10y_plus";
   bodyweight_kg?: number;
 };
 

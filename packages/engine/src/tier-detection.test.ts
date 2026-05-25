@@ -73,9 +73,9 @@ describe("computeTier — DC-G1..G6 + DC-K4", () => {
     expect(out.contributors).toHaveLength(0);
   });
 
-  it("declared 1_3y with no observed data → intermediate (declared wins)", () => {
+  it("declared intermediate_2y_5y with no observed data → intermediate (declared wins)", () => {
     const out = computeTier({
-      declaredExperience: "1_3y",
+      declaredExperience: "intermediate_2y_5y",
       bodyweightKg: null,
       e1rmKgByRole: {},
       ...NO_BEHAVIOR_SIGNAL,
@@ -89,7 +89,7 @@ describe("computeTier — DC-G1..G6 + DC-K4", () => {
 
   it("perfect consumer-level numbers → consumer + moderate/high confidence", () => {
     const out = computeTier({
-      declaredExperience: "lt_1y",
+      declaredExperience: "beginner_lt_6m",
       bodyweightKg: 80,
       e1rmKgByRole: {
         squat: 60,
@@ -109,7 +109,7 @@ describe("computeTier — DC-G1..G6 + DC-K4", () => {
 
   it("perfect intermediate profile → intermediate", () => {
     const out = computeTier({
-      declaredExperience: "1_3y",
+      declaredExperience: "intermediate_2y_5y",
       bodyweightKg: 80,
       e1rmKgByRole: {
         // exactly on the intermediate gates
@@ -129,7 +129,7 @@ describe("computeTier — DC-G1..G6 + DC-K4", () => {
 
   it("perfect advanced (high_performance) profile → high_performance + high confidence", () => {
     const out = computeTier({
-      declaredExperience: "gte_3y",
+      declaredExperience: "advanced_5y_10y",
       bodyweightKg: 80,
       e1rmKgByRole: {
         squat: 1.5 * 80,
@@ -149,7 +149,7 @@ describe("computeTier — DC-G1..G6 + DC-K4", () => {
 
   it("declared advanced but observed beginner → declared wins, mismatch flagged (DC-K4)", () => {
     const out = computeTier({
-      declaredExperience: "gte_3y",
+      declaredExperience: "advanced_5y_10y",
       bodyweightKg: 80,
       e1rmKgByRole: {
         squat: 50,
@@ -229,9 +229,36 @@ describe("computeTier — DC-G1..G6 + DC-K4", () => {
     expect(out.nextTierGateNote).toMatch(/bench/i);
   });
 
-  it("DECLARED_TO_TIER mapping matches DB enum (lt_1y / 1_3y / gte_3y)", () => {
-    expect(DECLARED_TO_TIER.lt_1y).toBe("consumer");
-    expect(DECLARED_TO_TIER["1_3y"]).toBe("intermediate");
-    expect(DECLARED_TO_TIER.gte_3y).toBe("high_performance");
+  it("DECLARED_TO_TIER mapping covers all 5 declared tiers", () => {
+    expect(DECLARED_TO_TIER.beginner_lt_6m).toBe("consumer");
+    expect(DECLARED_TO_TIER.novice_6m_2y).toBe("consumer");
+    expect(DECLARED_TO_TIER.intermediate_2y_5y).toBe("intermediate");
+    expect(DECLARED_TO_TIER.advanced_5y_10y).toBe("high_performance");
+    expect(DECLARED_TO_TIER.highly_advanced_10y_plus).toBe("high_performance");
+  });
+
+  it("each declared tier projects through computeTier to its engine tier (no signal)", () => {
+    const expectations: Array<
+      [
+        Parameters<typeof computeTier>[0]["declaredExperience"],
+        "consumer" | "intermediate" | "high_performance",
+      ]
+    > = [
+      ["beginner_lt_6m", "consumer"],
+      ["novice_6m_2y", "consumer"],
+      ["intermediate_2y_5y", "intermediate"],
+      ["advanced_5y_10y", "high_performance"],
+      ["highly_advanced_10y_plus", "high_performance"],
+    ];
+    for (const [declared, expectedTier] of expectations) {
+      const out = computeTier({
+        declaredExperience: declared,
+        bodyweightKg: null,
+        e1rmKgByRole: {},
+        ...NO_BEHAVIOR_SIGNAL,
+      });
+      expect(out.declared).toBe(expectedTier);
+      expect(out.tier).toBe(expectedTier);
+    }
   });
 });

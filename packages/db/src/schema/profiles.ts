@@ -57,8 +57,15 @@ export const profiles = pgTable("profiles", {
   }),
   /**
    * Self-reported training age, captured at onboarding. Drives DC-G5
-   * (cold-start tier): `lt_1y` → consumer load tier on the first block.
-   * Constrained at DB level to {lt_1y, 1_3y, gte_3y}; null = unknown.
+   * (cold-start tier): the lowest two declared buckets (beginner_lt_6m,
+   * novice_6m_2y) map to the consumer load tier on the first block; the
+   * mid bucket maps to intermediate; the two top buckets map to
+   * high_performance. See `packages/engine/src/tier-detection.ts` for
+   * the declared → engine-tier projection.
+   *
+   * Constrained at DB level to {beginner_lt_6m, novice_6m_2y,
+   * intermediate_2y_5y, advanced_5y_10y, highly_advanced_10y_plus};
+   * null = unknown. See migration 0052.
    */
   trainingExperience: text("training_experience"),
   /**
