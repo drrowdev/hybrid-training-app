@@ -34,7 +34,9 @@ test.describe("@desktop /app/settings · training experience", () => {
       .eq("id", freshUser.userId);
 
     await signInAs(context, freshUser, seedConfig, baseURL ?? "http://localhost:3000");
-    await page.goto("/app/settings");
+    // The settings page now uses collapsible groups; navigating with a hash
+    // auto-expands the relevant group so the form is interactable.
+    await page.goto("/app/settings#training-preferences");
     await page.waitForLoadState("networkidle");
 
     // Section renders with the three years-anchor radios.
