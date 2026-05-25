@@ -279,22 +279,57 @@ function SessionBreakdown({
   resolved: ResolvedArchetype;
   isBw: boolean;
 }): ReactElement {
-  // One row per session — no grouping, no consolidation. The previous
-  // "× N" collapse and Strength/Cardio headers created inconsistent
-  // layouts (two strength rows merged into one, four cardio rows shown
-  // separately) which made the week shape harder to read at a glance.
+  // One row per session — no consolidation. Headers group by category
+  // (Strength · Cardio · Tendons) so the week shape is scannable, but
+  // every session still gets its own row so the count is accurate.
   const sessions = buildWeekShape(resolved, { goal: state.goal, secondary: state.secondary });
   const total = sessions.length;
+
+  const groups: Array<{ label: string; items: { session: SessionShape; idx: number }[] }> = [
+    { label: "Strength", items: [] },
+    { label: "Cardio", items: [] },
+    { label: "Tendons", items: [] },
+  ];
+  for (let i = 0; i < sessions.length; i++) {
+    const s = sessions[i];
+    const cat = sessionCategory(s);
+    const bucket = cat === "strength" ? 0 : cat === "cardio" ? 1 : 2;
+    groups[bucket].items.push({ session: s, idx: i });
+  }
+
   return (
     <>
       <div style={breakdownHeadingStyle}>
         Your week ({total} session{total === 1 ? "" : "s"})
       </div>
-      {sessions.map((s, i) => (
-        <SessionRow key={i} session={s} isBw={isBw} />
-      ))}
+      {groups.map((g) =>
+        g.items.length === 0 ? null : (
+          <div key={g.label} style={{ display: "grid", gap: 4 }}>
+            <div style={groupHeadingStyle}>
+              {g.label} · {g.items.length}
+            </div>
+            {g.items.map(({ session, idx }) => (
+              <SessionRow key={idx} session={session} isBw={isBw} />
+            ))}
+          </div>
+        ),
+      )}
     </>
   );
+}
+
+function sessionCategory(s: SessionShape): "strength" | "cardio" | "tendon" {
+  const k = s.weightKey;
+  if (k === "Tendon day") return "tendon";
+  if (
+    k === "Easy Z2 (recovery)" ||
+    k === "Polarized Z2" ||
+    k === "VO2 intervals" ||
+    k === "Long Z2 + alactic finisher" ||
+    k === "Maintenance Z2"
+  )
+    return "cardio";
+  return "strength";
 }
 
 function SessionRow({ session, isBw }: { session: SessionShape; isBw: boolean }): ReactElement {
@@ -691,6 +726,16 @@ const breakdownHeadingStyle: React.CSSProperties = {
   letterSpacing: "0.06em",
   fontWeight: 600,
   padding: "4px 2px 2px",
+};
+
+const groupHeadingStyle: React.CSSProperties = {
+  fontSize: 10,
+  color: "var(--cp-text-muted)",
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+  fontWeight: 600,
+  padding: "8px 2px 2px",
+  opacity: 0.7,
 };
 
 const noteStyle: React.CSSProperties = {
