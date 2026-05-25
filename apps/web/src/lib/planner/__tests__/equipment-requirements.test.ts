@@ -58,6 +58,24 @@ describe("inferRequiredEquipment — slug pattern mapping", () => {
     expect(req("kettlebell-snatch")).toEqual({ kind: "kettlebells" });
   });
 
+  it("detects barbell in slugs using the catalog's `-bb` / `bb-` convention", () => {
+    // Catalog uses kebab-case slugs like `rdl-bb`, `bb-row-overhand`,
+    // `split-squat-bb`, `bulgarian-split-squat-bb`. The canonical-lift
+    // token check (back_squat / deadlift / ...) catches the textbook
+    // names; this case covers the abbreviated suffix/prefix shape.
+    expect(req("rdl-bb")).toEqual({ kind: "barbell" });
+    expect(req("split-squat-bb")).toEqual({ kind: "barbell" });
+    expect(req("bulgarian-split-squat-bb")).toEqual({ kind: "barbell" });
+    expect(req("bb-row-overhand")).toEqual({ kind: "barbell" });
+    expect(req("bb-curl")).toEqual({ kind: "barbell" });
+    expect(req("seal-row-bb")).toEqual({ kind: "barbell" });
+    expect(req("shrug-bb")).toEqual({ kind: "barbell" });
+    expect(req("upright-row-bb")).toEqual({ kind: "barbell" });
+    expect(req("wrist-curl-bb")).toEqual({ kind: "barbell" });
+    expect(req("hip-thrust-bb")).toEqual({ kind: "barbell" });
+    expect(req("glute-bridge-bb")).toEqual({ kind: "barbell" });
+  });
+
   it("detects bands", () => {
     expect(req("band-pull-apart")).toEqual({ kind: "bands" });
     expect(req("pallof-press-band")).toEqual({ kind: "bands" });

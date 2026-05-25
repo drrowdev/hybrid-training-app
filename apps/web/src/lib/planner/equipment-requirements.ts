@@ -123,6 +123,18 @@ export function inferRequiredEquipment(movement: {
   ) {
     return { kind: "kettlebells" };
   }
+  // Mirror the dumbbell heuristic for explicit barbell suffix/prefix
+  // (catalog uses kebab-case slugs like `rdl-bb`, `bb-row-overhand`).
+  // The downstream BARBELL_LIFT_TOKENS check catches `back_squat` /
+  // `deadlift` etc. but misses non-canonical-lift barbell movements
+  // such as Romanian-deadlift-bb or BB shrug.
+  if (
+    slug.includes("_bb_") ||
+    slug.endsWith("_bb") ||
+    slug.startsWith("bb_")
+  ) {
+    return { kind: "barbell" };
+  }
 
   // 13. Bands.
   if (slug.includes("band_") || slug.includes("_band")) return { kind: "bands" };

@@ -60,13 +60,13 @@ describe("resolveDateFormat", () => {
   it("infers mdy_short for America/*", () => {
     expect(resolveDateFormat({ timezone: "America/New_York" })).toBe("mdy_short");
   });
-  it("defaults to iso for Asia/UTC/unknown/null", () => {
-    expect(resolveDateFormat({ timezone: "Asia/Tokyo" })).toBe("iso");
-    expect(resolveDateFormat({ timezone: "UTC" })).toBe("iso");
-    expect(resolveDateFormat({ timezone: "Etc/Unknown" })).toBe("iso");
-    expect(resolveDateFormat(null)).toBe("iso");
-    expect(resolveDateFormat(undefined)).toBe("iso");
-    expect(resolveDateFormat({})).toBe("iso");
+  it("defaults to dmy_short for Asia/UTC/unknown/null (universal majority-locale fallback)", () => {
+    expect(resolveDateFormat({ timezone: "Asia/Tokyo" })).toBe("dmy_short");
+    expect(resolveDateFormat({ timezone: "UTC" })).toBe("dmy_short");
+    expect(resolveDateFormat({ timezone: "Etc/Unknown" })).toBe("dmy_short");
+    expect(resolveDateFormat(null)).toBe("dmy_short");
+    expect(resolveDateFormat(undefined)).toBe("dmy_short");
+    expect(resolveDateFormat({})).toBe("dmy_short");
   });
 });
 
@@ -136,9 +136,9 @@ describe("formatDate — every format × every mode", () => {
     );
   });
 
-  it("uses ISO fallback when profile is null", () => {
-    expect(formatDate(SAMPLE, null)).toBe("2026-05-24");
-    expect(formatDate(SAMPLE, undefined)).toBe("2026-05-24");
+  it("uses dmy_short fallback when profile is null (universal default)", () => {
+    expect(formatDate(SAMPLE, null)).toBe("24/05/2026");
+    expect(formatDate(SAMPLE, undefined)).toBe("24/05/2026");
   });
 
   it("accepts ISO string input", () => {

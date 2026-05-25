@@ -91,7 +91,12 @@ function inferDateFormat(tz: string | null | undefined): DateFormat {
   if (region === "Europe") return "dmy_short";
   if (region === "America") return "mdy_short";
   if (region === "Africa" || region === "Australia") return "dmy_short";
-  return "iso";
+  // Asia/* + UTC + unknown / null all default to dmy_short rather than
+  // ISO. Pure-numeric ISO (`05-26`) is jarring to most users in
+  // calendar contexts; dmy is the world's majority-locale format and a
+  // safer "we don't know yet" default. Users with date_format saved
+  // are unaffected — this only runs when the column is NULL.
+  return "dmy_short";
 }
 
 export function resolveTimeFormat(profile: ProfileForFormat): TimeFormat {
