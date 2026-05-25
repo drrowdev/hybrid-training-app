@@ -2,13 +2,10 @@
  * /app/recovery/injuries — self-serve limitations management.
  *
  * Replaces the older settings-page form (which is still wired at
- * /app/settings/limitations for back compat). Three sections:
+ * /app/settings/limitations for back compat). Two sections:
  *
  *   1. Active limitations  — one card per row, inline resolve / edit.
  *   2. History             — collapsed accordion of resolved rows.
- *   3. Recent adjustments  — engine override events in the last 14
- *                            days that the engine made because of
- *                            limitations.
  *
  * Server component: pulls the rows in parallel, hands plain
  * serialisable shapes to the client components.
@@ -27,11 +24,9 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ALL_MUSCLE_GROUPS, type MuscleGroup } from "@/lib/muscle/muscle-groups";
 import { ActiveLimitationCard } from "@/components/limitations/ActiveLimitationCard";
 import { AddLimitationButton } from "@/components/limitations/AddLimitationButton";
-import { EngineResponseSection } from "@/components/limitations/EngineResponseSection";
 import { HistorySection } from "@/components/limitations/HistorySection";
 import { getFormatProfile } from "@/lib/format/profile";
 import type {
-  EngineEventRow,
   LimitationRow,
   MovementRef,
 } from "@/components/limitations/types";
@@ -79,29 +74,13 @@ export default async function InjuriesPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const fourteenDaysAgoIso = new Date(
-    // Server Component: rendered per request, not subject to the React
-    // purity rule for hooks/components. Same exception applied in
-    // /app/settings/limitations/page.tsx for the 90-day check.
-    // eslint-disable-next-line react-hooks/purity
-    Date.now() - 14 * 86_400_000,
-  ).toISOString();
-
-  const [limRes, eventsRes, formatProfile] = await Promise.all([
+  const [limRes, formatProfile] = await Promise.all([
     supabase
       .from("limitations")
       .select(
         "id, kind, severity, region, affected_muscles, affected_movement_ids, notes, expected_duration_days, started_at, resolved_at, engine_action",
       )
       .order("started_at", { ascending: false }),
-    supabase
-      .from("engine_override_events")
-      .select(
-        "id, occurred_at, event_type, original_movement_slug, new_movement_slug, reason",
-      )
-      .gte("occurred_at", fourteenDaysAgoIso)
-      .order("occurred_at", { ascending: false })
-      .limit(20),
     getFormatProfile(supabase, user.id),
   ]);
 
@@ -131,15 +110,6 @@ export default async function InjuriesPage() {
     }
   }
 
-  const events: EngineEventRow[] = (eventsRes.data ?? []).map((e) => ({
-    id: e.id as string,
-    occurredAt: e.occurred_at as string,
-    eventType: e.event_type as EngineEventRow["eventType"],
-    originalMovementSlug: (e.original_movement_slug as string | null) ?? null,
-    newMovementSlug: (e.new_movement_slug as string | null) ?? null,
-    reason: (e.reason as string | null) ?? null,
-  }));
-
   const hasAny = rows.length > 0;
 
   return (
@@ -148,9 +118,7 @@ export default async function InjuriesPage() {
       style={{ display: "grid", gap: 24, maxWidth: 880, margin: "0 auto" }}
     >
       <header style={{ display: "grid", gap: 6 }}>
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>
-          Limitations
-        </h1>
+        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>Injuries</h1>
         <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
           Flag an injury or restriction; the engine will cap or rotate around
           the affected muscles and movements so you can keep training around
@@ -205,12 +173,6 @@ export default async function InjuriesPage() {
       )}
 
       <HistorySection rows={resolved} />
-
-      <EngineResponseSection
-        events={events}
-        hasActiveLimitation={active.length > 0}
-        formatProfile={formatProfile}
-      />
     </main>
   );
 }

@@ -275,7 +275,16 @@ export default async function BodyweightProgressionPage() {
           userBodyweightKg,
           cleanOverCompletionWeeks: overWeeks,
         });
-        if (suggestion.kind === "hold" || suggestion.kind === "increase_load") {
+        // Only surface the loaded-BW suggestion when there's an
+        // actionable signal: the user has already loaded the variant
+        // (currentLoadKg > 0), or they've banked at least 2 clean
+        // over-completed weeks. Otherwise the strip just shows a
+        // disabled "+0 kg · need 2+ weeks" line that wastes vertical
+        // space on a brand-new family.
+        const suggestionIsMeaningful = currentLoadKg > 0 || overWeeks >= 2;
+        if (!suggestionIsMeaningful) {
+          loadedSuggestion = null;
+        } else if (suggestion.kind === "hold" || suggestion.kind === "increase_load") {
           loadedSuggestion = suggestion;
         } else {
           const target = candidates.find(
@@ -314,9 +323,16 @@ export default async function BodyweightProgressionPage() {
       .filter((r): r is BwCategoryRow => r != null);
     const hasProgress = rows.some((r) => {
       if (!r.currentNodeId) return false;
-      const entryAnchor = r.nodes[0]?.difficultyAnchor ?? 0;
+      // Entry node = lowest difficulty_anchor with no prerequisites.
+      // Fall back to the lowest-anchor node if none flag prereqs=[]
+      // (defensive; the catalog should always seed at least one root).
+      const rootNodes = r.nodes.filter((n) => n.prerequisites.length === 0);
+      const entry = (rootNodes.length > 0 ? rootNodes : r.nodes).reduce(
+        (lo, n) => (n.difficultyAnchor < lo.difficultyAnchor ? n : lo),
+        (rootNodes[0] ?? r.nodes[0])!,
+      );
       const cur = r.nodes.find((n) => n.id === r.currentNodeId);
-      return cur != null && cur.difficultyAnchor > entryAnchor;
+      return cur != null && cur.difficultyAnchor > entry.difficultyAnchor;
     });
     return { key: cat.key, label: cat.label, rows, hasProgress };
   });
@@ -331,13 +347,7 @@ export default async function BodyweightProgressionPage() {
   return (
     <div data-testid="bw-progression-page" style={{ display: "grid", gap: 20 }}>
       <header style={{ display: "grid", gap: 8 }}>
-        <Link
-          href="/app/settings"
-          style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
-        >
-          ← back to settings
-        </Link>
-        <h1 style={{ fontSize: 26, margin: "8px 0 0", letterSpacing: "-0.01em" }}>
+        <h1 style={{ fontSize: 26, margin: 0, letterSpacing: "-0.01em" }}>
           Bodyweight progression
         </h1>
         <p
