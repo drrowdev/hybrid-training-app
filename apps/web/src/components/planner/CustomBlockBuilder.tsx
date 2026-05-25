@@ -646,7 +646,7 @@ function sameDayConflict(rows: DayState[]): { short: string; tooltip: string } |
     return {
       short: "Two strength sessions on the same day. Research-recommended pattern is 1 lift + 1 cardio.",
       tooltip:
-        "DC-D2 (Coffey & Hawley 2017): hybrid days typically separate strength and conditioning by AM/PM. Two strength sessions on one day load the CNS twice and can compound recovery cost.",
+        "Hybrid days typically separate strength and conditioning by AM/PM (Coffey & Hawley 2017). Two strength sessions on one day load the CNS twice and can compound recovery cost.",
     };
   }
 
@@ -655,7 +655,7 @@ function sameDayConflict(rows: DayState[]): { short: string; tooltip: string } |
     return {
       short: "Two hard interval sessions on the same day stack interference.",
       tooltip:
-        "DC-L1 / DC-L3 (Wilson 2012 meta): high-intensity intervals carry the largest interference cost. Pair one hard modality with one easy modality, or move one to a different day.",
+        "High-intensity intervals carry the largest interference cost (Wilson 2012 meta). Pair one hard modality with one easy modality, or move one to a different day.",
     };
   }
 
@@ -666,7 +666,7 @@ function sameDayConflict(rows: DayState[]): { short: string; tooltip: string } |
     return {
       short: "Knee tendon work + squat on the same day double-loads the patellar tendon.",
       tooltip:
-        "DC-J/Baar framework (Kongsgaard 2009): heavy slow resistance and heavy compound squatting load the same tissue. Consider spacing across separate days for fuller recovery.",
+        "Heavy slow resistance and heavy compound squatting load the same tissue (Kongsgaard 2009). Consider spacing across separate days for fuller recovery.",
     };
   }
   if (
