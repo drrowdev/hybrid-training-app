@@ -75,6 +75,13 @@ const setSchema = z.object({
     .enum(["pain", "fatigue", "time", "equipment", "other"])
     .optional()
     .nullable(),
+  // Phase 7 — actual external load (kg) applied on a loaded BW set.
+  // Optional; missing/zero means bodyweight only. Negative = band assist.
+  externalLoadKg: z.coerce.number().min(-100).max(200).optional().nullable(),
+  loadSource: z
+    .enum(["weighted_vest", "dip_belt", "ankle_weights", "band_assist"])
+    .optional()
+    .nullable(),
 });
 
 export async function addStrengthSet(
@@ -93,6 +100,8 @@ export async function addStrengthSet(
     prescriptionItemIndex: formData.get("prescriptionItemIndex") ?? undefined,
     skipped: formData.get("skipped") ?? undefined,
     skipReason: formData.get("skipReason") || undefined,
+    externalLoadKg: formData.get("externalLoadKg") ?? undefined,
+    loadSource: formData.get("loadSource") || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
 
@@ -171,6 +180,7 @@ export async function addStrengthSet(
           cleanForm: rir >= 1,
           setDateIso: new Date().toISOString(),
           skipped: false,
+          externalLoadKg: parsed.data.externalLoadKg ?? null,
         });
       }
     }

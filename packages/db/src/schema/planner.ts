@@ -227,6 +227,14 @@ export type PrescriptionItem = {
     nodeDisplayName?: string;
     family?: string;
     /**
+     * Phase 7 — suggested external load (vest / belt / ankle weights /
+     * band assist). Negative for band assist. Undefined ⇒ no load
+     * surface; renderers fall back to the plain "× N reps" headline.
+     */
+    externalLoadKg?: number;
+    loadSource?: "weighted_vest" | "dip_belt" | "ankle_weights" | "band_assist";
+    effectiveTrainingMaxKg?: number;
+    /**
      * Phase 4 hint — what the engine would advance to once the gate
      * (weeks + TUT + 2 over-completed sessions) opens. Stamped at
      * planner-generation time. UI renders it as a small "Next:" chip

@@ -22,10 +22,13 @@ import {
   type EquipmentPreset,
   type MachineType,
   type CardioMachineType,
+  type BandStrength,
   ALL_MACHINES,
   ALL_CARDIO,
+  ALL_BAND_STRENGTHS,
   MACHINE_LABEL,
   CARDIO_LABEL,
+  BAND_STRENGTH_LABEL,
 } from "@/lib/settings/equipment-schema";
 import {
   PRESET_BY_KEY,
@@ -675,6 +678,13 @@ function AccessoriesSection({
       onChange({ ...accessories, sandbag: { kg: 20 } });
     }
   };
+  const toggleAnkle = () => {
+    if (accessories.ankleWeights) {
+      onChange({ ...accessories, ankleWeights: false });
+    } else {
+      onChange({ ...accessories, ankleWeights: { kg: 2.5 } });
+    }
+  };
   return (
     <fieldset style={fieldsetStyle} data-testid="equipment-accessories">
       <Legend>Accessories</Legend>
@@ -699,17 +709,43 @@ function AccessoriesSection({
           onToggle={toggleSandbag}
           onChangeKg={(v) => onChange({ ...accessories, sandbag: { kg: v } })}
         />
-        <BoolRow
-          label="Dip belt"
-          value={accessories.dipBelt}
-          testId="equipment-accessory-dipBelt"
-          onChange={(v) => onChange({ ...accessories, dipBelt: v })}
+        <DipBeltRow
+          present={accessories.dipBelt}
+          maxKg={accessories.dipBeltMaxKg ?? null}
+          suffix={suffix}
+          onTogglePresent={(v) =>
+            onChange({
+              ...accessories,
+              dipBelt: v,
+              dipBeltMaxKg: v ? accessories.dipBeltMaxKg ?? null : null,
+            })
+          }
+          onChangeMaxKg={(v) => onChange({ ...accessories, dipBeltMaxKg: v })}
         />
-        <BoolRow
-          label="Bands"
-          value={accessories.bands}
-          testId="equipment-accessory-bands"
-          onChange={(v) => onChange({ ...accessories, bands: v })}
+        <BandsRow
+          present={accessories.bands}
+          strength={accessories.bandStrength ?? null}
+          onTogglePresent={(v) =>
+            onChange({
+              ...accessories,
+              bands: v,
+              bandStrength: v ? accessories.bandStrength ?? "medium" : null,
+            })
+          }
+          onChangeStrength={(s) =>
+            onChange({ ...accessories, bandStrength: s })
+          }
+        />
+        <WeightedAccessoryRow
+          label="Ankle weights (per pair)"
+          present={Boolean(accessories.ankleWeights)}
+          kg={accessories.ankleWeights ? accessories.ankleWeights.kg : 2.5}
+          suffix={suffix}
+          testIdRoot="equipment-accessory-ankle"
+          onToggle={toggleAnkle}
+          onChangeKg={(v) =>
+            onChange({ ...accessories, ankleWeights: { kg: v } })
+          }
         />
         <BoolRow
           label="Pull-up bar"
@@ -725,6 +761,112 @@ function AccessoriesSection({
         />
       </div>
     </fieldset>
+  );
+}
+
+function DipBeltRow({
+  present,
+  maxKg,
+  suffix,
+  onTogglePresent,
+  onChangeMaxKg,
+}: {
+  present: boolean;
+  maxKg: number | null;
+  suffix: string;
+  onTogglePresent: (v: boolean) => void;
+  onChangeMaxKg: (v: number | null) => void;
+}) {
+  return (
+    <div
+      data-testid="equipment-accessory-dipBelt"
+      data-present={present ? "true" : "false"}
+      style={{ display: "flex", alignItems: "center", gap: 10 }}
+    >
+      <button
+        type="button"
+        onClick={() => onTogglePresent(!present)}
+        data-testid="equipment-accessory-dipBelt-toggle"
+        aria-pressed={present}
+        style={checkboxButtonStyle(present)}
+      >
+        {present ? "✓" : ""}
+      </button>
+      <span style={{ fontSize: 13, minWidth: 110 }}>Dip belt</span>
+      {present && (
+        <>
+          <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
+            max load
+          </span>
+          <input
+            type="number"
+            step="2.5"
+            min="0"
+            max="200"
+            inputMode="decimal"
+            placeholder="—"
+            value={maxKg ?? ""}
+            data-testid="equipment-accessory-dipBelt-maxKg"
+            onChange={(e) => {
+              const raw = e.target.value;
+              if (raw === "") {
+                onChangeMaxKg(null);
+                return;
+              }
+              const n = Number(raw);
+              onChangeMaxKg(Number.isFinite(n) && n > 0 ? n : null);
+            }}
+            style={{ ...inputStyle, width: 80 }}
+          />
+          <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>{suffix}</span>
+        </>
+      )}
+    </div>
+  );
+}
+
+function BandsRow({
+  present,
+  strength,
+  onTogglePresent,
+  onChangeStrength,
+}: {
+  present: boolean;
+  strength: BandStrength | null;
+  onTogglePresent: (v: boolean) => void;
+  onChangeStrength: (s: BandStrength) => void;
+}) {
+  return (
+    <div
+      data-testid="equipment-accessory-bands"
+      data-present={present ? "true" : "false"}
+      style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
+    >
+      <button
+        type="button"
+        onClick={() => onTogglePresent(!present)}
+        data-testid="equipment-accessory-bands-toggle"
+        aria-pressed={present}
+        style={checkboxButtonStyle(present)}
+      >
+        {present ? "✓" : ""}
+      </button>
+      <span style={{ fontSize: 13, minWidth: 110 }}>Bands</span>
+      {present && (
+        <select
+          data-testid="equipment-accessory-bands-strength"
+          value={strength ?? "medium"}
+          onChange={(e) => onChangeStrength(e.target.value as BandStrength)}
+          style={{ ...inputStyle, padding: "4px 6px" }}
+        >
+          {ALL_BAND_STRENGTHS.map((s) => (
+            <option key={s} value={s}>
+              {BAND_STRENGTH_LABEL[s]}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
   );
 }
 

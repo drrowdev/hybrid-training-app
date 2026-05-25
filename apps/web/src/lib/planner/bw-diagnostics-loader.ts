@@ -145,6 +145,7 @@ export async function loadAndRunBwDiagnostics(args: {
       accumulatedTutSeconds: (r.accumulated_tut_seconds as number) ?? 0,
       weeksAtNode: (r.weeks_at_node as number) ?? 0,
       cleanRepHistory: (r.clean_rep_history as BwProgress["cleanRepHistory"]) ?? [],
+      targetExternalLoadKg: null,
       updatedAt: new Date(r.updated_at as string),
     };
   }
