@@ -18,10 +18,13 @@ import {
 import { AddLimitationModal } from "./AddLimitationModal";
 import type { LimitationRow, MovementRef } from "./types";
 import { relativeFromNow, severityBadgeStyle } from "./utils";
+import { formatDateTime, type ProfileForFormat } from "@/lib/format/datetime";
 
 export type ActiveLimitationCardProps = {
   row: LimitationRow;
   movements: MovementRef[];
+  /** User's date/time preferences for the absolute-time tooltip. */
+  formatProfile?: ProfileForFormat;
 };
 
 function engineActionSummary(action: Record<string, unknown>): string | null {
@@ -45,6 +48,7 @@ function engineActionSummary(action: Record<string, unknown>): string | null {
 export function ActiveLimitationCard({
   row,
   movements,
+  formatProfile = null,
 }: ActiveLimitationCardProps): ReactElement {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -90,7 +94,7 @@ export function ActiveLimitationCard({
             <strong style={{ fontSize: 15 }}>{row.kind ?? "Limitation"}</strong>
           </div>
           <span
-            title={new Date(row.startedAt).toLocaleString()}
+            title={formatDateTime(row.startedAt, formatProfile)}
             style={{ fontSize: 12, color: "var(--cp-text-muted)" }}
           >
             Started {relativeFromNow(row.startedAt)}

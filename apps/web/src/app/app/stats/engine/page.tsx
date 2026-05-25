@@ -19,6 +19,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserTimezone } from "@/lib/planner/queries";
+import { formatDate, type ProfileForFormat } from "@/lib/format/datetime";
 import {
   getDecisionTrace,
   getRegionFreshnessDetail,
@@ -52,10 +53,17 @@ export default async function EnginePage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("timezone")
+    .select("timezone, time_format, date_format")
     .eq("id", user.id)
     .maybeSingle();
   const tz = profile?.timezone ?? (await getUserTimezone(user.id));
+  const formatProfile: ProfileForFormat = profile
+    ? {
+        timezone: profile.timezone ?? null,
+        time_format: profile.time_format ?? null,
+        date_format: profile.date_format ?? null,
+      }
+    : null;
 
   const [trace, regions, buckets, ceiling, tier, overrides, internals] = await Promise.all([
     getDecisionTrace(supabase, user.id, tz),
@@ -90,7 +98,7 @@ export default async function EnginePage() {
       <BucketPressureCard buckets={buckets} />
       <CeilingExplainerCard ceiling={ceiling} />
       <UserTierCard tier={tier} />
-      <RecentOverridesCard overrides={overrides.events} notTracked={overrides.notTracked} />
+      <RecentOverridesCard overrides={overrides.events} notTracked={overrides.notTracked} formatProfile={formatProfile} />
       <EngineInternalsCard internals={internals} />
     </div>
   );
@@ -871,9 +879,11 @@ function formatContributorValue(v: number): string {
 function RecentOverridesCard({
   overrides,
   notTracked,
+  formatProfile,
 }: {
   overrides: OverrideEvent[];
   notTracked: boolean;
+  formatProfile: ProfileForFormat;
 }) {
   return (
     <section
@@ -930,7 +940,7 @@ function RecentOverridesCard({
                   className="mono"
                   style={{ fontSize: 11, color: "var(--cp-text-muted)" }}
                 >
-                  {formatRelativeDate(o.occurredAt)}
+                  {formatRelativeDate(o.occurredAt, formatProfile)}
                 </span>
               </div>
               <div style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
@@ -961,7 +971,7 @@ function RecentOverridesCard({
   );
 }
 
-function formatRelativeDate(iso: string): string {
+function formatRelativeDate(iso: string, profile: ProfileForFormat): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
   const days = Math.floor((Date.now() - d.getTime()) / 86_400_000);
@@ -969,7 +979,7 @@ function formatRelativeDate(iso: string): string {
   if (days === 1) return "yesterday";
   if (days < 7) return `${days}d ago`;
   if (days < 30) return `${Math.floor(days / 7)}w ago`;
-  return d.toISOString().slice(0, 10);
+  return formatDate(d, profile);
 }
 
 function overrideIcon(kind: OverrideEvent["kind"]): string {
