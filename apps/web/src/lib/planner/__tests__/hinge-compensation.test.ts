@@ -29,6 +29,7 @@ const makeProgress = (currentNodeId: string): BwProgress => ({
   accumulatedTutSeconds: 0,
   weeksAtNode: 0,
   cleanRepHistory: [],
+  targetExternalLoadKg: null,
   updatedAt: new Date(),
 });
 

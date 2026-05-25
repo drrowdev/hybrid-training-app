@@ -657,7 +657,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   // Look up the user's two-a-day preference + warmup-ladder config + equipment so we pick the right day pool, prepend warmups, and only prescribe movements they can actually do.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("allows_two_a_days, warmup_scheme, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_assessment_completed_at")
+    .select("allows_two_a_days, warmup_scheme, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_assessment_completed_at, bodyweight_kg")
     .eq("id", user.id)
     .maybeSingle();
   const allowsTwoADays = Boolean(profile?.allows_two_a_days ?? false);
@@ -980,11 +980,18 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       if (day.kind === "strength" && bwActive && bwHasAnyFamily) {
         const wIdx = (Math.max(0, Math.min(3, week)) as 0 | 1 | 2 | 3);
         const seed = `${block.id}:${day.dayIndex}:${day.slot ?? "single"}`;
+        const userBodyweightKg = profile?.bodyweight_kg != null
+          ? Number(profile.bodyweight_kg)
+          : undefined;
         const bwItems = buildBwMainItemsForSession({
           byFamily: bwByFamily,
           archetype: archetype.id,
           weekIndex: wIdx,
           seed,
+          equipment,
+          userBodyweightKg: Number.isFinite(userBodyweightKg as number)
+            ? (userBodyweightKg as number)
+            : undefined,
         });
         // Prepend so BW mains come before accessories (mirrors the
         // legacy main → accessory ordering on the barbell path).
@@ -1035,6 +1042,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
                 accumulatedTutSeconds: 0,
                 weeksAtNode: 0,
                 cleanRepHistory: [],
+                targetExternalLoadKg: null,
                 updatedAt: new Date(),
               } as BwProgress)
             : null;

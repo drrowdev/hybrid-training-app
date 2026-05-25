@@ -10,7 +10,7 @@
  * RLS self-only — policies live in drizzle/0045_bw_progression_events.sql.
  */
 import { sql } from "drizzle-orm";
-import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { index, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { movementNodes, type MovementFamily } from "./movement-nodes";
 
@@ -28,6 +28,14 @@ export const bwProgressionEvents = pgTable(
       .references(() => movementNodes.id, { onDelete: "restrict" }),
     /** Matches one of the `evaluateProgression` success reason strings. */
     reason: text("reason").notNull(),
+    /**
+     * Phase 7 — external load (kg) the user was carrying at the moment
+     * the advance fired. Nullable; null = bodyweight-only advance.
+     */
+    loadKgAtAdvance: numeric("load_kg_at_advance", {
+      precision: 5,
+      scale: 2,
+    }),
     occurredAt: timestamp("occurred_at", { withTimezone: true })
       .default(sql`now()`)
       .notNull(),
