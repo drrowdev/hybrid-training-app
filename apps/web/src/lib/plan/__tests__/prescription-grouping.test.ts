@@ -130,3 +130,48 @@ describe("groupPrescriptionSections", () => {
     expect(out.accessories[0]!.movementName).toBe("Face pull");
   });
 });
+
+import { describeRowExternalLoad } from "../prescription-grouping";
+
+describe("describeRowExternalLoad", () => {
+  function row(items: PrescriptionItem[]) {
+    return {
+      rowKey: "k",
+      movementId: "m",
+      movementName: "Pull-up",
+      movementSlug: "pull_up",
+      items,
+    };
+  }
+
+  it("returns null when no item carries bw load metadata", () => {
+    expect(describeRowExternalLoad(row([item({ kind: "accessory" })]))).toBeNull();
+  });
+
+  it("renders a positive load as `+10 kg vest`", () => {
+    const it = item({ kind: "accessory" });
+    (it as unknown as { bw: { externalLoadKg: number; loadSource: string } }).bw = {
+      externalLoadKg: 10,
+      loadSource: "weighted_vest",
+    };
+    expect(describeRowExternalLoad(row([it]))).toBe("+10 kg vest");
+  });
+
+  it("renders a band assist as `−15 kg band`", () => {
+    const it = item({ kind: "accessory" });
+    (it as unknown as { bw: { externalLoadKg: number; loadSource: string } }).bw = {
+      externalLoadKg: -15,
+      loadSource: "band_assist",
+    };
+    expect(describeRowExternalLoad(row([it]))).toBe("−15 kg band");
+  });
+
+  it("renders the bare label when readiness state (zero kg)", () => {
+    const it = item({ kind: "accessory" });
+    (it as unknown as { bw: { externalLoadKg: number; loadSource: string } }).bw = {
+      externalLoadKg: 0,
+      loadSource: "dip_belt",
+    };
+    expect(describeRowExternalLoad(row([it]))).toBe("belt");
+  });
+});

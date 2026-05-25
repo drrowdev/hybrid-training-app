@@ -148,19 +148,19 @@ function StripCell({
     : cell.hasPlan
       ? "1px solid var(--cp-border)"
       : "1px solid transparent";
+  const stateLabel = cell.completed
+    ? "done"
+    : cell.skipped
+      ? "skipped"
+      : cell.hasPlan
+        ? "planned"
+        : "rest";
+  const a11yLabel = `${cell.date}${cell.isToday ? " (today)" : ""} — ${stateLabel}`;
   const inner = (
     <div
-      title={`${cell.date}${cell.completed ? " — done" : cell.skipped ? " — skipped" : cell.hasPlan ? " — planned" : " — rest"}`}
+      title={a11yLabel}
       data-testid={`plan-strip-cell-${cell.date}`}
-      data-state={
-        cell.completed
-          ? "done"
-          : cell.skipped
-            ? "skipped"
-            : cell.hasPlan
-              ? "planned"
-              : "rest"
-      }
+      data-state={stateLabel}
       style={{
         height: 18,
         borderRadius: 3,
@@ -170,9 +170,19 @@ function StripCell({
       }}
     />
   );
-  if (!cell.hasPlan) return inner;
+  if (!cell.hasPlan) {
+    return (
+      <div role="presentation" aria-hidden="true">
+        {inner}
+      </div>
+    );
+  }
   return (
-    <Link href={`/app/plan?date=${cell.date}`} style={{ display: "block" }}>
+    <Link
+      href={`/app/plan?date=${cell.date}`}
+      aria-label={a11yLabel}
+      style={{ display: "block" }}
+    >
       {inner}
     </Link>
   );
