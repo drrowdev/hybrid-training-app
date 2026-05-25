@@ -148,19 +148,16 @@ export function BwProgressionFamilyRow(props: BwProgressionFamilyRowProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const targetNode = nodeById.get(selected) ?? null;
-  const isDirty = selected !== (currentNodeId ?? "");
-  const isDowngrade =
-    targetNode != null &&
-    currentNode != null &&
-    targetNode.difficultyAnchor < currentNode.difficultyAnchor;
+  void targetNode;
 
   function doSave(args: { allowDowngrade: boolean }) {
-    if (!targetNode) return;
+    const node = nodeById.get(selected) ?? null;
+    if (!node) return;
     setFeedback({ kind: "saving" });
     startTransition(async () => {
       const result = await setBwNodeManual({
         family,
-        nodeId: targetNode.id,
+        nodeId: node.id,
         allowDowngrade: args.allowDowngrade,
         allowSkipPrereqs: allowAnyNode,
       });
@@ -173,14 +170,30 @@ export function BwProgressionFamilyRow(props: BwProgressionFamilyRowProps) {
     });
   }
 
-  function onSaveClick() {
-    if (!targetNode || !isDirty) return;
-    if (isDowngrade && !pendingDowngradeConfirm) {
+  function onSelectChange(nextId: string) {
+    setSelected(nextId);
+    const nextNode = nodeById.get(nextId) ?? null;
+    const willDowngrade =
+      nextNode != null &&
+      currentNode != null &&
+      nextNode.difficultyAnchor < currentNode.difficultyAnchor;
+    if (nextId === (currentNodeId ?? "")) {
+      // Snap-back to current — clear any pending downgrade prompt.
+      setPendingDowngradeConfirm(false);
+      setFeedback({ kind: "idle" });
+      return;
+    }
+    if (willDowngrade) {
+      // Defer the save until the user confirms the downgrade — the
+      // confirm/cancel pill replaces the implicit auto-save here so we
+      // don't silently knock the lifter down a level on a stray click.
       setPendingDowngradeConfirm(true);
       setFeedback({ kind: "idle" });
       return;
     }
-    doSave({ allowDowngrade: isDowngrade });
+    // Non-downgrade change: save right away.
+    setPendingDowngradeConfirm(false);
+    doSave({ allowDowngrade: false });
   }
 
   function onCancelDowngrade() {
@@ -252,11 +265,7 @@ export function BwProgressionFamilyRow(props: BwProgressionFamilyRowProps) {
           data-testid={`bw-family-row-select-${family}`}
           value={selected}
           disabled={isPending}
-          onChange={(e) => {
-            setSelected(e.target.value);
-            setPendingDowngradeConfirm(false);
-            setFeedback({ kind: "idle" });
-          }}
+          onChange={(e) => onSelectChange(e.target.value)}
           style={selectStyle}
         >
           {nodes.map((n) => {
@@ -269,17 +278,13 @@ export function BwProgressionFamilyRow(props: BwProgressionFamilyRowProps) {
             );
           })}
         </select>
-        {!pendingDowngradeConfirm && (
-          <button
-            type="button"
-            data-testid={`bw-family-row-save-${family}`}
-            onClick={onSaveClick}
-            disabled={!isDirty || isPending || !targetNode}
-            className="cp-btn primary"
-            style={{ fontSize: 12, padding: "5px 10px" }}
+        {feedback.kind === "saving" && (
+          <span
+            data-testid={`bw-family-row-saving-${family}`}
+            style={{ fontSize: 11, color: "var(--cp-text-muted)" }}
           >
-            {feedback.kind === "saving" ? "Saving…" : "Save"}
-          </button>
+            Saving…
+          </span>
         )}
         {pendingDowngradeConfirm && (
           <>

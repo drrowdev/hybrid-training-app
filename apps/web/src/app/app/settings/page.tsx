@@ -2,10 +2,18 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { deleteAccount } from "@/lib/auth/delete-account";
-import { logBodyweight, updateProfile } from "@/lib/settings/actions";
+import { logBodyweight } from "@/lib/settings/actions";
 import { TrainingDaysControl } from "@/components/settings/TrainingDaysControl";
 import { DateTimeFormatCard } from "@/components/settings/DateTimeFormatCard";
 import { SettingsGroup } from "@/components/settings/SettingsGroup";
+import {
+  BodyCompPhaseAutoSave,
+  FeedbackAutoSave,
+  ProfileBasicsAutoSave,
+  RecoveryCheckinAutoSave,
+  TrainingExperienceAutoSave,
+  TwoADayAutoSave,
+} from "@/components/settings/SettingsAutoSaveSections";
 import { todayYmd } from "@/lib/dates";
 import {
   isDateFormat,
@@ -15,6 +23,22 @@ import {
 } from "@/lib/format/datetime";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import { TrainingProgressionCards } from "@/components/settings/TrainingProgressionCards";
+
+type TrainingExperience = "lt_1y" | "1_3y" | "gte_3y";
+type BodyCompPhase = "gain" | "maintain" | "lean_out";
+
+function asTrainingExperience(v: unknown): TrainingExperience | "" {
+  return v === "lt_1y" || v === "1_3y" || v === "gte_3y" ? v : "";
+}
+
+function asBodyCompPhase(v: unknown): BodyCompPhase {
+  return v === "gain" || v === "lean_out" ? v : "maintain";
+}
+
+function toHHMM(value: string | null | undefined, fallback: string): string {
+  if (typeof value !== "string" || value === "") return fallback;
+  return value.slice(0, 5);
+}
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -98,39 +122,10 @@ export default async function SettingsPage() {
           testId="settings-group-profile"
         >
           {/* Display name + units */}
-          <form
-            action={updateProfile}
-            className="space-y-3 rounded-lg border border-foreground/10 p-4"
-          >
-            <Field
-              name="displayName"
-              label="Display name"
-              type="text"
-              defaultValue={profile?.display_name ?? ""}
-              placeholder="What should we call you?"
-              maxLength={60}
-            />
-            <div className="space-y-1">
-              <label className="text-xs text-foreground/60" htmlFor="units">
-                Units
-              </label>
-              <select
-                id="units"
-                name="units"
-                defaultValue={profile?.units ?? "metric"}
-                className="w-full rounded-md border border-foreground/15 bg-transparent px-2 py-2 text-sm"
-              >
-                <option value="metric">kg / km</option>
-                <option value="imperial">lb / mi</option>
-              </select>
-            </div>
-            <button
-              type="submit"
-              className="rounded-md bg-foreground text-background px-3 py-1.5 text-sm font-medium hover:opacity-90"
-            >
-              Save profile
-            </button>
-          </form>
+          <ProfileBasicsAutoSave
+            initialDisplayName={profile?.display_name ?? ""}
+            initialUnits={profile?.units === "imperial" ? "imperial" : "metric"}
+          />
 
           {/* Body composition phase */}
           <div className="space-y-3">
@@ -138,52 +133,18 @@ export default async function SettingsPage() {
               Tell the app whether you&apos;re building, holding, or cutting. During a cut the app
               pulls back top-end intensity slightly and protects strength via heavy, low-volume work.
             </p>
-            <form
-              action={updateProfile}
-              className="space-y-3 rounded-lg border border-foreground/10 p-4"
-            >
-              <div className="space-y-1">
-                <label className="text-xs text-foreground/60" htmlFor="bodyCompPhase">
-                  Current phase
-                </label>
-                <select
-                  id="bodyCompPhase"
-                  name="bodyCompPhase"
-                  defaultValue={profile?.body_comp_phase ?? "maintain"}
-                  className="w-full rounded-md border border-foreground/15 bg-transparent px-2 py-2 text-sm"
-                >
-                  <option value="maintain">Maintain</option>
-                  <option value="gain">Gain (lean bulk)</option>
-                  <option value="lean_out">Lean out (cut)</option>
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Field
-                  name="phaseStartedAt"
-                  label="Started on"
-                  type="date"
-                  defaultValue={profile?.phase_started_at ?? ""}
-                />
-                <Field
-                  name="phaseTargetWeeks"
-                  label="Target length (weeks)"
-                  type="number"
-                  min="1"
-                  max="52"
-                  defaultValue={profile?.phase_target_weeks ?? ""}
-                  placeholder="e.g. 10"
-                />
-              </div>
-              <button
-                type="submit"
-                className="rounded-md bg-foreground text-background px-3 py-1.5 text-sm font-medium hover:opacity-90"
-              >
-                Save phase
-              </button>
-            </form>
+            <BodyCompPhaseAutoSave
+              initialPhase={asBodyCompPhase(profile?.body_comp_phase)}
+              initialStartedAt={profile?.phase_started_at ?? ""}
+              initialTargetWeeks={
+                profile?.phase_target_weeks != null
+                  ? String(profile.phase_target_weeks)
+                  : ""
+              }
+            />
           </div>
 
-          {/* Bodyweight log */}
+          {/* Bodyweight log — discrete action, keep the Log weight button. */}
           <div className="space-y-3">
             <p className="text-xs text-foreground/60">
               Log when you weigh — weekly is plenty. Helps the app spot weight drift over time.
@@ -251,66 +212,23 @@ export default async function SettingsPage() {
               training tier — your tier adjusts automatically as the app observes
               your training.
             </p>
-            <form
-              action={updateProfile}
-              className="space-y-3 rounded-lg border border-foreground/10 p-4"
-              data-testid="settings-training-experience-form"
-            >
-              <div className="space-y-2">
-                {(
-                  [
-                    { id: "lt_1y", label: "≤ 1 year", hint: "Beginner · still building habits." },
-                    { id: "1_3y", label: "1–3 years", hint: "Intermediate · regular training, clear progress." },
-                    { id: "gte_3y", label: "3+ years", hint: "Advanced · structured programming, plateau-aware." },
-                  ] as const
-                ).map((opt) => {
-                  const sel = (profile?.training_experience ?? null) === opt.id;
-                  return (
-                    <label
-                      key={opt.id}
-                      className="flex items-start gap-3 rounded-md border border-foreground/10 p-3 cursor-pointer hover:bg-foreground/5"
-                      data-testid={`settings-experience-${opt.id}`}
-                      data-selected={sel ? "true" : "false"}
-                    >
-                      <input
-                        type="radio"
-                        name="trainingExperience"
-                        value={opt.id}
-                        defaultChecked={sel}
-                        className="mt-1"
-                      />
-                      <span className="text-sm">
-                        {opt.label}
-                        <span className="block text-xs text-foreground/60 mt-1">
-                          {opt.hint}
-                        </span>
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-              <button
-                type="submit"
-                className="rounded-md bg-foreground text-background px-3 py-1.5 text-sm font-medium hover:opacity-90"
-                data-testid="settings-experience-save"
-              >
-                Save experience
-              </button>
-              <details className="text-xs text-foreground/60" data-testid="settings-experience-how">
-                <summary className="cursor-pointer select-none hover:text-foreground">
-                  How does this work?
-                </summary>
-                <p className="mt-2 leading-relaxed">
-                  Your declared experience anchors your starting tier. From there,
-                  the engine refines it based on four observed signals: per-lift
-                  strength relative to bodyweight, 12-week training adherence,
-                  schedule regularity, and recovery check-in fill rate. When your
-                  declared tier and the engine&apos;s observations disagree, the
-                  app keeps your choice and shows a soft note — never silently
-                  overrules you.
-                </p>
-              </details>
-            </form>
+            <TrainingExperienceAutoSave
+              initial={asTrainingExperience(profile?.training_experience)}
+            />
+            <details className="text-xs text-foreground/60" data-testid="settings-experience-how">
+              <summary className="cursor-pointer select-none hover:text-foreground">
+                How does this work?
+              </summary>
+              <p className="mt-2 leading-relaxed">
+                Your declared experience anchors your starting tier (DC-G1..G6).
+                From there, the engine refines it based on four observed signals:
+                per-lift strength relative to bodyweight, 12-week training
+                adherence, schedule regularity, and recovery check-in fill rate.
+                When your declared tier and the engine&apos;s observations
+                disagree, the app keeps your choice and shows a soft note —
+                never silently overrules you.
+              </p>
+            </details>
           </div>
 
           {/* Training days per week */}
@@ -329,52 +247,11 @@ export default async function SettingsPage() {
               When this is on, curated focuses get a two-a-day variant and the custom builder lets you
               add a PM session per day. New blocks only — existing blocks aren&apos;t re-compiled.
             </p>
-            <form
-              action={updateProfile}
-              className="rounded-lg border border-foreground/10 p-4 space-y-4"
-            >
-              <input type="hidden" name="allowsTwoADaysPresent" value="1" />
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  name="allowsTwoADays"
-                  defaultChecked={!!profile?.allows_two_a_days}
-                  className="mt-1"
-                />
-                <span className="text-sm">
-                  Enable two-a-day sessions
-                  <span className="block text-xs text-foreground/60 mt-1">
-                    Currently {profile?.allows_two_a_days ? "on" : "off"}.
-                  </span>
-                </span>
-              </label>
-              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-foreground/10">
-                <Field
-                  name="amWindowStart"
-                  label="AM session start"
-                  type="time"
-                  defaultValue={(profile?.am_window_start ?? "07:00:00").slice(0, 5)}
-                  step="300"
-                />
-                <Field
-                  name="pmWindowStart"
-                  label="PM session start"
-                  type="time"
-                  defaultValue={(profile?.pm_window_start ?? "17:00:00").slice(0, 5)}
-                  step="300"
-                />
-              </div>
-              <p className="text-xs text-foreground/60 -mt-2">
-                Used as the default time-of-day shown on Today and Plan when you haven&apos;t set
-                an explicit time on a session. Override per-session from the Plan page.
-              </p>
-              <button
-                type="submit"
-                className="rounded-md bg-foreground text-background px-3 py-1.5 text-sm font-medium hover:opacity-90"
-              >
-                Save preference
-              </button>
-            </form>
+            <TwoADayAutoSave
+              initialAllowsTwoADays={!!profile?.allows_two_a_days}
+              initialAmStart={toHHMM(profile?.am_window_start, "07:00")}
+              initialPmStart={toHHMM(profile?.pm_window_start, "17:00")}
+            />
           </div>
 
           {/* Equipment link */}
@@ -430,50 +307,10 @@ export default async function SettingsPage() {
               and a short tone when the rest timer reaches zero. Browser support varies; both are
               best-effort and silently no-op on devices that don&apos;t expose the underlying APIs.
             </p>
-            <form
-              action={updateProfile}
-              className="rounded-lg border border-foreground/10 p-4 space-y-3"
-            >
-              <input type="hidden" name="hapticsEnabledPresent" value="1" />
-              <input type="hidden" name="timerSoundEnabledPresent" value="1" />
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  name="hapticsEnabled"
-                  data-testid="settings-haptics-toggle"
-                  defaultChecked={profile?.haptics_enabled !== false}
-                  className="mt-1"
-                />
-                <span className="text-sm">
-                  Haptic tick on set save
-                  <span className="block text-xs text-foreground/60 mt-1">
-                    A ~10ms vibration when a logged set commits. Web Vibration API.
-                  </span>
-                </span>
-              </label>
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  name="timerSoundEnabled"
-                  data-testid="settings-timer-sound-toggle"
-                  defaultChecked={profile?.timer_sound_enabled !== false}
-                  className="mt-1"
-                />
-                <span className="text-sm">
-                  Rest-timer tone at zero
-                  <span className="block text-xs text-foreground/60 mt-1">
-                    A short 200ms beep when the auto rest timer hits zero. Web Audio API
-                    (gated by browser autoplay rules — needs a first user gesture).
-                  </span>
-                </span>
-              </label>
-              <button
-                type="submit"
-                className="rounded-md bg-foreground text-background px-3 py-1.5 text-sm font-medium hover:opacity-90"
-              >
-                Save feedback preferences
-              </button>
-            </form>
+            <FeedbackAutoSave
+              initialHaptics={profile?.haptics_enabled !== false}
+              initialTimerSound={profile?.timer_sound_enabled !== false}
+            />
           </div>
 
           {/* Daily recovery check-in */}
@@ -484,34 +321,9 @@ export default async function SettingsPage() {
               — your existing logs stay put, and you can turn it back on at
               any time.
             </p>
-            <form
-              action={updateProfile}
-              className="rounded-lg border border-foreground/10 p-4 space-y-3"
-            >
-              <input type="hidden" name="showTodayRecoveryCardPresent" value="1" />
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  name="showTodayRecoveryCard"
-                  data-testid="settings-show-today-recovery-card-toggle"
-                  defaultChecked={profile?.show_today_recovery_card !== false}
-                  className="mt-1"
-                />
-                <span className="text-sm">
-                  Show on Today
-                  <span className="block text-xs text-foreground/60 mt-1">
-                    Inline fatigue + soreness scale (1 fresh · 9 wrecked).
-                    Writes to your daily wellness log.
-                  </span>
-                </span>
-              </label>
-              <button
-                type="submit"
-                className="rounded-md bg-foreground text-background px-3 py-1.5 text-sm font-medium hover:opacity-90"
-              >
-                Save check-in preference
-              </button>
-            </form>
+            <RecoveryCheckinAutoSave
+              initialShow={profile?.show_today_recovery_card !== false}
+            />
           </div>
 
           {/* Time & date format */}
