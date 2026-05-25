@@ -248,3 +248,4 @@ row that was applied from a LF (Linux/CI) checkout.
 - Replaced prominent saved-pattern banner with a muted footer line +
   inline Reset link. Removed the standalone Reset button (one
   affordance, not two).
+## [2026-05-25] fix | date format propagation — getFormatProfile helper + sweep of stats / bodyweight-progression / limitations surfaces
