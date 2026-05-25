@@ -8,7 +8,6 @@
  * `@/lib/settings/equipment-presets`. All weights stored canonically
  * in kg; lb display flips at the render boundary.
  */
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { EquipmentEditor } from "@/components/settings/EquipmentEditor";
@@ -45,13 +44,7 @@ export default async function EquipmentSettingsPage() {
       }}
     >
       <header>
-        <Link
-          href="/app/settings"
-          style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
-        >
-          ← settings
-        </Link>
-        <h1 style={{ fontSize: 24, margin: "8px 0 0", letterSpacing: "-0.01em" }}>
+        <h1 style={{ fontSize: 24, margin: 0, letterSpacing: "-0.01em" }}>
           Equipment
         </h1>
         <p

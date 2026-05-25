@@ -17,7 +17,7 @@
  * The "Log weight" form on the same page stays explicit — logging a
  * bodyweight reading is a discrete action, not a config save.
  */
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { updateProfile } from "@/lib/settings/actions";
 import {
   AutoSaveCheckbox,
@@ -229,8 +229,12 @@ export function TwoADayAutoSave({
   initialAmStart: string;
   initialPmStart: string;
 }) {
+  const [enabled, setEnabled] = useState(initialAllowsTwoADays);
   const saveEnabled = useCallback(
-    (v: boolean) => saveCheckbox("allowsTwoADays", v),
+    async (v: boolean) => {
+      setEnabled(v);
+      await saveCheckbox("allowsTwoADays", v);
+    },
     [],
   );
   const saveAm = useCallback(
@@ -251,7 +255,7 @@ export function TwoADayAutoSave({
           <>
             Enable two-a-day sessions
             <span className="block text-xs text-foreground/60 mt-1">
-              Currently {initialAllowsTwoADays ? "on" : "off"}.
+              Currently {enabled ? "on" : "off"}.
             </span>
           </>
         }
@@ -259,27 +263,34 @@ export function TwoADayAutoSave({
         save={saveEnabled}
         testId="settings-two-a-day-toggle"
       />
-      <div className="grid grid-cols-2 gap-3 pt-2 border-t border-foreground/10">
-        <AutoSaveTimeField
-          label="AM session start"
-          initial={initialAmStart}
-          save={saveAm}
-          testId="settings-am-window-start"
-          inputProps={{ step: 300 }}
-        />
-        <AutoSaveTimeField
-          label="PM session start"
-          initial={initialPmStart}
-          save={savePm}
-          testId="settings-pm-window-start"
-          inputProps={{ step: 300 }}
-        />
-      </div>
-      <p className="text-xs text-foreground/60">
-        Used as the default time-of-day shown on Today and Plan when you
-        haven&apos;t set an explicit time on a session. Override per-session
-        from the Plan page.
-      </p>
+      {enabled && (
+        <>
+          <div
+            className="grid grid-cols-2 gap-3 pt-2 border-t border-foreground/10"
+            data-testid="settings-two-a-day-windows"
+          >
+            <AutoSaveTimeField
+              label="AM session start"
+              initial={initialAmStart}
+              save={saveAm}
+              testId="settings-am-window-start"
+              inputProps={{ step: 300 }}
+            />
+            <AutoSaveTimeField
+              label="PM session start"
+              initial={initialPmStart}
+              save={savePm}
+              testId="settings-pm-window-start"
+              inputProps={{ step: 300 }}
+            />
+          </div>
+          <p className="text-xs text-foreground/60">
+            Used as the default time-of-day shown on Today and Plan when you
+            haven&apos;t set an explicit time on a session. Override per-session
+            from the Plan page.
+          </p>
+        </>
+      )}
     </div>
   );
 }
