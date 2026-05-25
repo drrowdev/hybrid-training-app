@@ -679,7 +679,7 @@ function pickLoadSource(
   equipment: Equipment,
 ): BwLoadSource | null {
   const acc = equipment.accessories;
-  const hasVest = Boolean(acc.weightedVest);
+  const hasVest = acc.weightedVest.length > 0;
   const hasBelt = acc.dipBelt === true;
   const hasAnkle = Boolean(acc.ankleWeights);
 
@@ -711,8 +711,8 @@ function capLoadForSource(
 ): number {
   if (loadKg < 0) return loadKg;
   const acc = equipment.accessories;
-  if (source === "weighted_vest" && acc.weightedVest) {
-    return Math.min(loadKg, acc.weightedVest.kg);
+  if (source === "weighted_vest" && acc.weightedVest.length > 0) {
+    return Math.min(loadKg, Math.max(...acc.weightedVest));
   }
   if (source === "dip_belt") {
     if (typeof acc.dipBeltMaxKg === "number" && acc.dipBeltMaxKg > 0) {

@@ -33,6 +33,7 @@ import type {
 
 const PRESET_ORDER: EquipmentPreset[] = [
   "commercial_gym",
+  "functional_gym",
   "home_gym",
   "bodyweight_only",
   "travel_hotel",
@@ -48,6 +49,8 @@ const PRESET_ORDER: EquipmentPreset[] = [
 const PRESET_HINT: Record<EquipmentPreset, string> = {
   commercial_gym:
     "Full plate range, dumbbells, kettlebells, machines, cables, cardio gear.",
+  functional_gym:
+    "Barbells, bumper plates, kettlebells, rower / ski-erg / curved treadmill. No isolation machines.",
   home_gym:
     "Barbell + plates, optional dumbbells / kettlebells, no machines.",
   bodyweight_only:
@@ -61,6 +64,7 @@ const PRESET_HINT: Record<EquipmentPreset, string> = {
  *  the existing ProfileStep cards (no SVG assets, just a glyph). */
 const PRESET_GLYPH: Record<EquipmentPreset, string> = {
   commercial_gym: "🏋️",
+  functional_gym: "🤾",
   home_gym: "🏠",
   bodyweight_only: "🤸",
   travel_hotel: "🧳",

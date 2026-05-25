@@ -191,17 +191,28 @@ describe("isEquipmentAvailable — every requirement kind", () => {
     expect(isEquipmentAvailable(r, empty)).toBe(false);
   });
 
-  it("weighted_vest — only home preset has one by default", () => {
+  it("weighted_vest — true when array length > 0, false when empty", () => {
     const r: EquipmentRequirement = { kind: "weighted_vest" };
     expect(isEquipmentAvailable(r, home)).toBe(true);
     expect(isEquipmentAvailable(r, commercial)).toBe(false);
     expect(isEquipmentAvailable(r, travel)).toBe(false);
+    expect(isEquipmentAvailable(r, empty)).toBe(false);
+    const withVest: Equipment = {
+      ...empty,
+      accessories: { ...empty.accessories, weightedVest: [9] },
+    };
+    expect(isEquipmentAvailable(r, withVest)).toBe(true);
   });
 
-  it("sandbag — only home preset", () => {
+  it("sandbag — true when array length > 0, false when empty", () => {
     const r: EquipmentRequirement = { kind: "sandbag" };
     expect(isEquipmentAvailable(r, home)).toBe(true);
     expect(isEquipmentAvailable(r, commercial)).toBe(false);
+    const withBag: Equipment = {
+      ...empty,
+      accessories: { ...empty.accessories, sandbag: [25] },
+    };
+    expect(isEquipmentAvailable(r, withBag)).toBe(true);
   });
 
   it("dip_belt — commercial + home, not travel/empty", () => {

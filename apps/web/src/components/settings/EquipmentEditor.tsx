@@ -22,20 +22,19 @@ import {
   type EquipmentPreset,
   type MachineType,
   type CardioMachineType,
-  type BandStrength,
   ALL_MACHINES,
   ALL_CARDIO,
-  ALL_BAND_STRENGTHS,
   MACHINE_LABEL,
   CARDIO_LABEL,
-  BAND_STRENGTH_LABEL,
 } from "@/lib/settings/equipment-schema";
 import {
   PRESET_BY_KEY,
   PRESET_LABEL,
+  PRESET_HINT,
 } from "@/lib/settings/equipment-presets";
 import { useAutoSave } from "@/lib/settings/use-auto-save";
 import { AutoSaveStatus } from "./AutoSaveStatus";
+import { EditableKgChips } from "./EditableKgChips";
 
 type Props = {
   initial: Equipment;
@@ -44,9 +43,10 @@ type Props = {
 
 const PRESET_ORDER: EquipmentPreset[] = [
   "commercial_gym",
+  "functional_gym",
   "home_gym",
-  "bodyweight_only",
   "travel_hotel",
+  "bodyweight_only",
   "custom",
 ];
 
@@ -224,6 +224,12 @@ function PresetRow({
             {PRESET_LABEL[key]}
           </button>
         ))}
+      </div>
+      <div
+        data-testid="equipment-preset-hint"
+        style={{ fontSize: 12, color: "var(--cp-text-muted)", marginTop: 6 }}
+      >
+        {PRESET_HINT[active]}
       </div>
     </fieldset>
   );
@@ -668,20 +674,6 @@ function AccessoriesSection({
   suffix: string;
   onChange: (next: Equipment["accessories"]) => void;
 }) {
-  const toggleVest = () => {
-    if (accessories.weightedVest) {
-      onChange({ ...accessories, weightedVest: false });
-    } else {
-      onChange({ ...accessories, weightedVest: { kg: 10 } });
-    }
-  };
-  const toggleSandbag = () => {
-    if (accessories.sandbag) {
-      onChange({ ...accessories, sandbag: false });
-    } else {
-      onChange({ ...accessories, sandbag: { kg: 20 } });
-    }
-  };
   const toggleAnkle = () => {
     if (accessories.ankleWeights) {
       onChange({ ...accessories, ankleWeights: false });
@@ -689,46 +681,43 @@ function AccessoriesSection({
       onChange({ ...accessories, ankleWeights: { kg: 2.5 } });
     }
   };
+  void suffix;
   return (
     <fieldset style={fieldsetStyle} data-testid="equipment-accessories">
       <Legend>Accessories</Legend>
-      <div style={{ display: "grid", gap: 6 }}>
-        <WeightedAccessoryRow
+      <div style={{ display: "grid", gap: 10 }}>
+        <ChipAccessoryRow
           label="Weighted vest"
-          present={Boolean(accessories.weightedVest)}
-          kg={accessories.weightedVest ? accessories.weightedVest.kg : 10}
-          suffix={suffix}
+          values={accessories.weightedVest}
           testIdRoot="equipment-accessory-vest"
-          onToggle={toggleVest}
-          onChangeKg={(v) =>
-            onChange({ ...accessories, weightedVest: { kg: v } })
+          onChange={(next) =>
+            onChange({ ...accessories, weightedVest: next })
           }
+          defaultKg={9}
         />
-        <WeightedAccessoryRow
+        <ChipAccessoryRow
           label="Sandbag"
-          present={Boolean(accessories.sandbag)}
-          kg={accessories.sandbag ? accessories.sandbag.kg : 20}
-          suffix={suffix}
+          values={accessories.sandbag}
           testIdRoot="equipment-accessory-sandbag"
-          onToggle={toggleSandbag}
-          onChangeKg={(v) => onChange({ ...accessories, sandbag: { kg: v } })}
+          onChange={(next) => onChange({ ...accessories, sandbag: next })}
+          defaultKg={25}
         />
-        <DipBeltRow
+        <SimpleToggleRow
+          label="Dip belt"
           present={accessories.dipBelt}
-          maxKg={accessories.dipBeltMaxKg ?? null}
-          suffix={suffix}
+          testIdRoot="equipment-accessory-dipBelt"
           onTogglePresent={(v) =>
             onChange({
               ...accessories,
               dipBelt: v,
-              dipBeltMaxKg: v ? accessories.dipBeltMaxKg ?? null : null,
+              dipBeltMaxKg: v ? accessories.dipBeltMaxKg ?? 40 : null,
             })
           }
-          onChangeMaxKg={(v) => onChange({ ...accessories, dipBeltMaxKg: v })}
         />
-        <BandsRow
+        <SimpleToggleRow
+          label="Resistance bands"
           present={accessories.bands}
-          strength={accessories.bandStrength ?? null}
+          testIdRoot="equipment-accessory-bands"
           onTogglePresent={(v) =>
             onChange({
               ...accessories,
@@ -736,16 +725,10 @@ function AccessoriesSection({
               bandStrength: v ? accessories.bandStrength ?? "medium" : null,
             })
           }
-          onChangeStrength={(s) =>
-            onChange({ ...accessories, bandStrength: s })
-          }
         />
-        <WeightedAccessoryRow
-          label="Ankle weights (per pair)"
+        <AnkleWeightRow
           present={Boolean(accessories.ankleWeights)}
           kg={accessories.ankleWeights ? accessories.ankleWeights.kg : 2.5}
-          suffix={suffix}
-          testIdRoot="equipment-accessory-ankle"
           onToggle={toggleAnkle}
           onChangeKg={(v) =>
             onChange({ ...accessories, ankleWeights: { kg: v } })
@@ -768,128 +751,21 @@ function AccessoriesSection({
   );
 }
 
-function DipBeltRow({
-  present,
-  maxKg,
-  suffix,
-  onTogglePresent,
-  onChangeMaxKg,
-}: {
-  present: boolean;
-  maxKg: number | null;
-  suffix: string;
-  onTogglePresent: (v: boolean) => void;
-  onChangeMaxKg: (v: number | null) => void;
-}) {
-  return (
-    <div
-      data-testid="equipment-accessory-dipBelt"
-      data-present={present ? "true" : "false"}
-      style={{ display: "flex", alignItems: "center", gap: 10 }}
-    >
-      <button
-        type="button"
-        onClick={() => onTogglePresent(!present)}
-        data-testid="equipment-accessory-dipBelt-toggle"
-        aria-pressed={present}
-        style={checkboxButtonStyle(present)}
-      >
-        {present ? "✓" : ""}
-      </button>
-      <span style={{ fontSize: 13, minWidth: 110 }}>Dip belt</span>
-      {present && (
-        <>
-          <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-            max load
-          </span>
-          <input
-            type="number"
-            step="2.5"
-            min="0"
-            max="200"
-            inputMode="decimal"
-            placeholder="—"
-            value={maxKg ?? ""}
-            data-testid="equipment-accessory-dipBelt-maxKg"
-            onChange={(e) => {
-              const raw = e.target.value;
-              if (raw === "") {
-                onChangeMaxKg(null);
-                return;
-              }
-              const n = Number(raw);
-              onChangeMaxKg(Number.isFinite(n) && n > 0 ? n : null);
-            }}
-            style={{ ...inputStyle, width: 80 }}
-          />
-          <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>{suffix}</span>
-        </>
-      )}
-    </div>
-  );
-}
-
-function BandsRow({
-  present,
-  strength,
-  onTogglePresent,
-  onChangeStrength,
-}: {
-  present: boolean;
-  strength: BandStrength | null;
-  onTogglePresent: (v: boolean) => void;
-  onChangeStrength: (s: BandStrength) => void;
-}) {
-  return (
-    <div
-      data-testid="equipment-accessory-bands"
-      data-present={present ? "true" : "false"}
-      style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
-    >
-      <button
-        type="button"
-        onClick={() => onTogglePresent(!present)}
-        data-testid="equipment-accessory-bands-toggle"
-        aria-pressed={present}
-        style={checkboxButtonStyle(present)}
-      >
-        {present ? "✓" : ""}
-      </button>
-      <span style={{ fontSize: 13, minWidth: 110 }}>Bands</span>
-      {present && (
-        <select
-          data-testid="equipment-accessory-bands-strength"
-          value={strength ?? "medium"}
-          onChange={(e) => onChangeStrength(e.target.value as BandStrength)}
-          style={{ ...inputStyle, padding: "4px 6px" }}
-        >
-          {ALL_BAND_STRENGTHS.map((s) => (
-            <option key={s} value={s}>
-              {BAND_STRENGTH_LABEL[s]}
-            </option>
-          ))}
-        </select>
-      )}
-    </div>
-  );
-}
-
-function WeightedAccessoryRow({
+/**
+ * On/off chip toggle for an accessory whose advanced parameter is
+ * hidden from the UI but still persisted with a sensible default
+ * (dip belt → maxKg 40, bands → strength "medium").
+ */
+function SimpleToggleRow({
   label,
   present,
-  kg,
-  suffix,
   testIdRoot,
-  onToggle,
-  onChangeKg,
+  onTogglePresent,
 }: {
   label: string;
   present: boolean;
-  kg: number;
-  suffix: string;
   testIdRoot: string;
-  onToggle: () => void;
-  onChangeKg: (v: number) => void;
+  onTogglePresent: (v: boolean) => void;
 }) {
   return (
     <div
@@ -899,7 +775,51 @@ function WeightedAccessoryRow({
     >
       <button
         type="button"
-        onClick={onToggle}
+        onClick={() => onTogglePresent(!present)}
+        data-testid={`${testIdRoot}-toggle`}
+        aria-pressed={present}
+        style={checkboxButtonStyle(present)}
+      >
+        {present ? "✓" : ""}
+      </button>
+      <span style={{ fontSize: 13, minWidth: 110 }}>{label}</span>
+    </div>
+  );
+}
+
+/**
+ * Editable kg-chip row for a multi-weight accessory (vest / sandbag).
+ * Empty array = absent; non-empty = present. The first time the user
+ * adds a weight via the inline input it appears as a chip.
+ */
+function ChipAccessoryRow({
+  label,
+  values,
+  testIdRoot,
+  onChange,
+  defaultKg,
+}: {
+  label: string;
+  values: number[];
+  testIdRoot: string;
+  onChange: (next: number[]) => void;
+  defaultKg: number;
+}) {
+  const present = values.length > 0;
+  return (
+    <div
+      data-testid={testIdRoot}
+      data-present={present ? "true" : "false"}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        flexWrap: "wrap",
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => onChange(present ? [] : [defaultKg])}
         data-testid={`${testIdRoot}-toggle`}
         aria-pressed={present}
         style={checkboxButtonStyle(present)}
@@ -908,19 +828,62 @@ function WeightedAccessoryRow({
       </button>
       <span style={{ fontSize: 13, minWidth: 110 }}>{label}</span>
       {present && (
+        <EditableKgChips
+          values={values}
+          onChange={onChange}
+          min={1}
+          max={200}
+          step={0.5}
+          testIdPrefix={testIdRoot}
+        />
+      )}
+    </div>
+  );
+}
+
+function AnkleWeightRow({
+  present,
+  kg,
+  onToggle,
+  onChangeKg,
+}: {
+  present: boolean;
+  kg: number;
+  onToggle: () => void;
+  onChangeKg: (v: number) => void;
+}) {
+  return (
+    <div
+      data-testid="equipment-accessory-ankle"
+      data-present={present ? "true" : "false"}
+      style={{ display: "flex", alignItems: "center", gap: 10 }}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        data-testid="equipment-accessory-ankle-toggle"
+        aria-pressed={present}
+        style={checkboxButtonStyle(present)}
+      >
+        {present ? "✓" : ""}
+      </button>
+      <span style={{ fontSize: 13, minWidth: 110 }}>
+        Ankle weights (per pair)
+      </span>
+      {present && (
         <>
           <input
             type="number"
             step="0.5"
             min="0"
-            max="200"
+            max="30"
             inputMode="decimal"
             value={kg}
-            data-testid={`${testIdRoot}-kg`}
+            data-testid="equipment-accessory-ankle-kg"
             onChange={(e) => onChangeKg(Number(e.target.value))}
             style={{ ...inputStyle, width: 80 }}
           />
-          <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>{suffix}</span>
+          <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>kg</span>
         </>
       )}
     </div>

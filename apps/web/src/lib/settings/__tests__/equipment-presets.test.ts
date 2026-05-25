@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import {
   COMMERCIAL_GYM_PRESET,
+  FUNCTIONAL_GYM_PRESET,
   HOME_GYM_PRESET,
   TRAVEL_HOTEL_PRESET,
   BODYWEIGHT_ONLY_PRESET,
@@ -14,6 +15,7 @@ import {
   presetKeyForScheme,
   resolveEquipment,
 } from "../equipment-presets";
+import { parseEquipment } from "../equipment-schema";
 
 describe("equipment presets — shape sanity", () => {
   it("Commercial gym preset has a full kit", () => {
@@ -38,8 +40,8 @@ describe("equipment presets — shape sanity", () => {
     expect(HOME_GYM_PRESET.machines).toEqual([]);
     expect(HOME_GYM_PRESET.cardio).toEqual([]);
     expect(HOME_GYM_PRESET.kettlebells).toEqual([16, 24, 32]);
-    expect(HOME_GYM_PRESET.accessories.weightedVest).toEqual({ kg: 10 });
-    expect(HOME_GYM_PRESET.accessories.sandbag).toEqual({ kg: 20 });
+    expect(HOME_GYM_PRESET.accessories.weightedVest).toEqual([10]);
+    expect(HOME_GYM_PRESET.accessories.sandbag).toEqual([20]);
   });
 
   it("Travel / hotel preset has no bar, dumbbell range only, one cable", () => {
@@ -73,7 +75,84 @@ describe("equipment presets — shape sanity", () => {
     // Pull-up bar is the realistic floor for bodyweight programmes.
     expect(BODYWEIGHT_ONLY_PRESET.accessories.pullUpBar).toBe(true);
     expect(BODYWEIGHT_ONLY_PRESET.accessories.dipBelt).toBe(false);
-    expect(BODYWEIGHT_ONLY_PRESET.accessories.weightedVest).toBe(false);
+    expect(BODYWEIGHT_ONLY_PRESET.accessories.weightedVest).toEqual([]);
+  });
+});
+
+describe("Functional gym preset", () => {
+  it("has the expected shape — barbells, bumper plates, full KB range, conditioning ergs, no machines", () => {
+    expect(FUNCTIONAL_GYM_PRESET).toEqual({
+      preset: "functional_gym",
+      bars: { barbellKg: 20, trapBarKg: null, safetyBarKg: null },
+      plates: [25, 20, 15, 10, 5, 2.5, 1.25],
+      dumbbells: { minKg: 5, maxKg: 50, stepKg: 2.5 },
+      kettlebells: [8, 12, 16, 20, 24, 28, 32],
+      machines: [],
+      cardio: ["rower", "ski_erg", "bike_air", "treadmill_curved", "treadmill"],
+      accessories: {
+        weightedVest: [9],
+        sandbag: [25],
+        dipBelt: false,
+        dipBeltMaxKg: null,
+        bands: true,
+        bandStrength: "medium",
+        ankleWeights: false,
+        pullUpBar: true,
+        rings: true,
+      },
+    });
+  });
+});
+
+describe("parseEquipment — legacy weighted-vest / sandbag coercion", () => {
+  const blob = (overrides: Record<string, unknown>) => ({
+    preset: "custom",
+    bars: { barbellKg: 20 },
+    plates: [],
+    kettlebells: [],
+    machines: [],
+    cardio: [],
+    accessories: overrides,
+  });
+
+  it("`false` → []", () => {
+    const out = parseEquipment(blob({ weightedVest: false, sandbag: false }));
+    expect(out.accessories.weightedVest).toEqual([]);
+    expect(out.accessories.sandbag).toEqual([]);
+  });
+
+  it("missing → []", () => {
+    const out = parseEquipment(blob({}));
+    expect(out.accessories.weightedVest).toEqual([]);
+    expect(out.accessories.sandbag).toEqual([]);
+  });
+
+  it("`true` → typical-default chip (vest=[9], sandbag=[25])", () => {
+    const out = parseEquipment(blob({ weightedVest: true, sandbag: true }));
+    expect(out.accessories.weightedVest).toEqual([9]);
+    expect(out.accessories.sandbag).toEqual([25]);
+  });
+
+  it("`<number>` → [<number>]", () => {
+    const out = parseEquipment(blob({ weightedVest: 14, sandbag: 30 }));
+    expect(out.accessories.weightedVest).toEqual([14]);
+    expect(out.accessories.sandbag).toEqual([30]);
+  });
+
+  it("`{ kg: <n> }` pre-PR shape → [<n>]", () => {
+    const out = parseEquipment(
+      blob({ weightedVest: { kg: 9 }, sandbag: { kg: 25 } }),
+    );
+    expect(out.accessories.weightedVest).toEqual([9]);
+    expect(out.accessories.sandbag).toEqual([25]);
+  });
+
+  it("`number[]` round-trips, dedup + sorted asc", () => {
+    const out = parseEquipment(
+      blob({ weightedVest: [20, 9, 9], sandbag: [50, 25] }),
+    );
+    expect(out.accessories.weightedVest).toEqual([9, 20]);
+    expect(out.accessories.sandbag).toEqual([25, 50]);
   });
 });
 

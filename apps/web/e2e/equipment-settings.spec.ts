@@ -119,4 +119,76 @@ test.describe("@desktop /app/settings/equipment · inventory presets", () => {
       "true",
     );
   });
+
+  test("user can select the Functional gym preset and the saved shape matches", async ({
+    page,
+    context,
+    freshUser,
+    seedConfig,
+    admin,
+    baseURL,
+  }) => {
+    const url = baseURL ?? "http://localhost:3000";
+
+    await markOnboarded(admin, freshUser.userId);
+    await signInAs(context, freshUser, seedConfig, url);
+    await page.goto("/app/settings/equipment");
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("equipment-preset-functional_gym")).toBeVisible();
+    await page.getByTestId("equipment-preset-functional_gym").click();
+
+    // No isolation machines.
+    for (const machine of [
+      "cable_stack",
+      "leg_press",
+      "smith_machine",
+      "lat_pulldown",
+    ]) {
+      await expect(page.getByTestId(`equipment-machine-${machine}`)).toHaveAttribute(
+        "data-active",
+        "false",
+      );
+    }
+    // Conditioning ergs are on; recumbent bike + elliptical are off.
+    for (const cardio of ["rower", "ski_erg", "bike_air", "treadmill_curved", "treadmill"]) {
+      await expect(page.getByTestId(`equipment-cardio-${cardio}`)).toHaveAttribute(
+        "data-active",
+        "true",
+      );
+    }
+    for (const cardio of ["bike_recumbent", "elliptical"]) {
+      await expect(page.getByTestId(`equipment-cardio-${cardio}`)).toHaveAttribute(
+        "data-active",
+        "false",
+      );
+    }
+    // Vest + sandbag rendered as kg chips with the typical defaults.
+    await expect(page.getByTestId("equipment-accessory-vest-chip-9")).toBeVisible();
+    await expect(page.getByTestId("equipment-accessory-sandbag-chip-25")).toBeVisible();
+
+    await expect(page.getByTestId("equipment-editor-saved")).toBeVisible({
+      timeout: 5_000,
+    });
+
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("equipment")
+      .eq("id", freshUser.userId)
+      .maybeSingle();
+    const persisted = profile?.equipment as {
+      preset?: string;
+      cardio?: string[];
+      machines?: string[];
+      accessories?: { weightedVest?: number[]; sandbag?: number[]; rings?: boolean };
+    } | null;
+    expect(persisted?.preset).toBe("functional_gym");
+    expect(persisted?.machines).toEqual([]);
+    expect(persisted?.cardio).toEqual(
+      expect.arrayContaining(["rower", "ski_erg", "bike_air", "treadmill_curved", "treadmill"]),
+    );
+    expect(persisted?.accessories?.weightedVest).toEqual([9]);
+    expect(persisted?.accessories?.sandbag).toEqual([25]);
+    expect(persisted?.accessories?.rings).toBe(true);
+  });
 });

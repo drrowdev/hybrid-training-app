@@ -47,8 +47,8 @@ export const COMMERCIAL_GYM_PRESET: Equipment = {
   ],
   cardio: ["treadmill", "rower", "bike_air", "bike_recumbent", "ski_erg", "elliptical"],
   accessories: {
-    weightedVest: false,
-    sandbag: false,
+    weightedVest: [],
+    sandbag: [],
     dipBelt: true,
     dipBeltMaxKg: null,
     bands: true,
@@ -56,6 +56,33 @@ export const COMMERCIAL_GYM_PRESET: Equipment = {
     ankleWeights: false,
     pullUpBar: true,
     rings: false,
+  },
+};
+
+/**
+ * Functional / cross-training-style gym: full barbell + bumper plate
+ * setup, full dumbbell + kettlebell range, no isolation machines,
+ * conditioning ergs (rower / ski-erg / air bike / curved treadmill),
+ * pull-up bar + rings, a vest and a sandbag.
+ */
+export const FUNCTIONAL_GYM_PRESET: Equipment = {
+  preset: "functional_gym",
+  bars: { barbellKg: 20, trapBarKg: null, safetyBarKg: null },
+  plates: [25, 20, 15, 10, 5, 2.5, 1.25],
+  dumbbells: { minKg: 5, maxKg: 50, stepKg: 2.5 },
+  kettlebells: [8, 12, 16, 20, 24, 28, 32],
+  machines: [],
+  cardio: ["rower", "ski_erg", "bike_air", "treadmill_curved", "treadmill"],
+  accessories: {
+    weightedVest: [9],
+    sandbag: [25],
+    dipBelt: false,
+    dipBeltMaxKg: null,
+    bands: true,
+    bandStrength: "medium",
+    ankleWeights: false,
+    pullUpBar: true,
+    rings: true,
   },
 };
 
@@ -68,8 +95,8 @@ export const HOME_GYM_PRESET: Equipment = {
   machines: [],
   cardio: [],
   accessories: {
-    weightedVest: { kg: 10 },
-    sandbag: { kg: 20 },
+    weightedVest: [10],
+    sandbag: [20],
     dipBelt: true,
     dipBeltMaxKg: 40,
     bands: true,
@@ -97,8 +124,8 @@ export const BODYWEIGHT_ONLY_PRESET: Equipment = {
   machines: [],
   cardio: [],
   accessories: {
-    weightedVest: false,
-    sandbag: false,
+    weightedVest: [],
+    sandbag: [],
     dipBelt: false,
     dipBeltMaxKg: null,
     bands: false,
@@ -120,8 +147,8 @@ export const TRAVEL_HOTEL_PRESET: Equipment = {
   machines: ["cable_stack"],
   cardio: ["treadmill", "elliptical", "bike_recumbent"],
   accessories: {
-    weightedVest: false,
-    sandbag: false,
+    weightedVest: [],
+    sandbag: [],
     dipBelt: false,
     dipBeltMaxKg: null,
     bands: true,
@@ -141,8 +168,8 @@ export const CUSTOM_EMPTY_PRESET: Equipment = {
   machines: [],
   cardio: [],
   accessories: {
-    weightedVest: false,
-    sandbag: false,
+    weightedVest: [],
+    sandbag: [],
     dipBelt: false,
     dipBeltMaxKg: null,
     bands: false,
@@ -155,6 +182,7 @@ export const CUSTOM_EMPTY_PRESET: Equipment = {
 
 export const PRESET_BY_KEY: Record<EquipmentPreset, Equipment> = {
   commercial_gym: COMMERCIAL_GYM_PRESET,
+  functional_gym: FUNCTIONAL_GYM_PRESET,
   home_gym: HOME_GYM_PRESET,
   bodyweight_only: BODYWEIGHT_ONLY_PRESET,
   travel_hotel: TRAVEL_HOTEL_PRESET,
@@ -163,10 +191,21 @@ export const PRESET_BY_KEY: Record<EquipmentPreset, Equipment> = {
 
 export const PRESET_LABEL: Record<EquipmentPreset, string> = {
   commercial_gym: "Commercial gym",
+  functional_gym: "Functional gym",
   home_gym: "Home gym",
   bodyweight_only: "Bodyweight only",
   travel_hotel: "Travel / hotel",
   custom: "Custom",
+};
+
+export const PRESET_HINT: Record<EquipmentPreset, string> = {
+  commercial_gym: "Full barbell + machines + cardio. The 80% gym member case.",
+  functional_gym:
+    "Barbells, bumper plates, kettlebells, rower / ski-erg / curved treadmill. No isolation machines.",
+  home_gym: "Barbell, plates, kettlebells, pull-up bar. No machines.",
+  bodyweight_only: "Pull-up bar only. No loadable kit.",
+  travel_hotel: "Hotel-gym dumbbells + treadmill. No barbell.",
+  custom: "Start from an empty inventory and add only what you have.",
 };
 
 /**
