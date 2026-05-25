@@ -251,3 +251,8 @@ row that was applied from a LF (Linux/CI) checkout.
 ## [2026-05-25] fix | date format propagation — getFormatProfile helper + sweep of stats / bodyweight-progression / limitations surfaces
 
 ## [2026-05-25] fix | strip internal DC-* codes from user copy (plan TissueStackCard, stats/engine page, planner conflict tooltips, engine derivations) + gate tissue-stack-deficit banner on (block age >= 7d) AND (>=1 completed session in last 7d). Added regression-guard test + 4 gating cases.
+
+## [2026-05-25] refactor | bucket warm-ups separately from working sets (PR #113)
+- `MovementGroup` gains `slotBuckets { warmup, working, accessory }` (back-compat with existing `itemIndices`).
+- Focus-view caption + dot strip scope `Set X of Y` to the active bucket so warm-ups no longer inflate the working-set count.
+- Defensive `humanizeSlug` fallback in `groupPrescriptionByMovement` — hinge-comp injection now reads `Hip hinge` even when only the slug is set.
