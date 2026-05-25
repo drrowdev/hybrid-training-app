@@ -72,3 +72,11 @@ Per-feature design notes that capture rationale, data model, UX, engine deltas, 
 | [`docs/design/hypertrophy-accessories.md`](../design/hypertrophy-accessories.md) | **Hypertrophy accessories (planned).** Per-strength-pattern curated pools (squat/bench/deadlift/OHP), default-on for Hypertrophy Focus only. Per-muscle volume rollup on stats using DC-T1 22-muscle taxonomy + DC-M2 concurrent volume modifier. No new schema. Build queued after mobile polish. |
 
 | [`docs/design/prs-and-tm-progression.md`](../design/prs-and-tm-progression.md) | **PRs + auto TM progression (planned).** Three PR kinds (weight, reps-at-weight, e1RM); AMRAP-driven confidence-gate TM bump suggestion with 28-day cooldown, hard gates (cooldown, no-duplicate proposal, active limitations), and soft-signal scoring (heavy-week top-set outperformance + GRM<0.93 fatigue mask). Block-complete secondary trigger. Auto-deload after 2 GRM-real misses. New tm_history table + tm_change_reason enum. Per-lift TM trend chart. Build queued. |
+
+## Tooling artifacts
+
+Scripts and CI guards that protect the data layer / schema.
+
+| File | One-line summary |
+|---|---|
+| [`packages/db/scripts/check-migration-drift.ts`](../../packages/db/scripts/check-migration-drift.ts) | **Migration drift guard.** Cross-checks `packages/db/drizzle/meta/_journal.json` against `drizzle.__drizzle_migrations` by SHA-256 of each .sql file and fails if any expected migration is missing from the DB. Wired into the pre-push hook (full mode) and CI (offline file-shape mode). Catches the migrator silent-skip bug. Run via `pnpm --filter @hta/db db:check`. |
