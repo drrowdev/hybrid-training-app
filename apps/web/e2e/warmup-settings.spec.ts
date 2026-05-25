@@ -53,8 +53,8 @@ test.describe("@desktop /app/settings/training · warmup ladder", () => {
       /Warmup 2: 55(\.\d+)?% TM × 3/i,
     );
 
-    // Save and verify the DB write.
-    await page.getByTestId("warmup-settings-save").click();
+    // Preset switch auto-saves — wait for the inline "Saved" badge
+    // before navigating.
     await expect(page.getByTestId("warmup-settings-saved")).toBeVisible({
       timeout: 5_000,
     });

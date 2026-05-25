@@ -81,19 +81,16 @@ export function BwFamilyNodePicker({
   const [isPending, startTransition] = useTransition();
 
   const targetNode = nodeById.get(selected) ?? null;
-  const isDirty = selected !== (currentNodeId ?? "");
-  const isDowngrade =
-    targetNode != null &&
-    currentNode != null &&
-    targetNode.difficultyAnchor < currentNode.difficultyAnchor;
+  void targetNode;
 
   function doSave(args: { allowDowngrade: boolean }) {
-    if (!targetNode) return;
+    const node = nodeById.get(selected) ?? null;
+    if (!node) return;
     setFeedback({ kind: "saving" });
     startTransition(async () => {
       const result = await setBwNodeManual({
         family,
-        nodeId: targetNode.id,
+        nodeId: node.id,
         allowDowngrade: args.allowDowngrade,
         allowSkipPrereqs: allowAnyNode,
       });
@@ -106,14 +103,26 @@ export function BwFamilyNodePicker({
     });
   }
 
-  function onSaveClick() {
-    if (!targetNode || !isDirty) return;
-    if (isDowngrade && !pendingDowngradeConfirm) {
+  function onSelectChange(nextId: string) {
+    setSelected(nextId);
+    const nextNode = nodeById.get(nextId) ?? null;
+    const willDowngrade =
+      nextNode != null &&
+      currentNode != null &&
+      nextNode.difficultyAnchor < currentNode.difficultyAnchor;
+    if (nextId === (currentNodeId ?? "")) {
+      setPendingDowngradeConfirm(false);
+      setFeedback({ kind: "idle" });
+      return;
+    }
+    if (willDowngrade) {
+      // Don't auto-save a downgrade — surface a confirm pill instead.
       setPendingDowngradeConfirm(true);
       setFeedback({ kind: "idle" });
       return;
     }
-    doSave({ allowDowngrade: isDowngrade });
+    setPendingDowngradeConfirm(false);
+    doSave({ allowDowngrade: false });
   }
 
   function onCancelDowngrade() {
@@ -156,11 +165,7 @@ export function BwFamilyNodePicker({
           data-testid={`bw-family-picker-select-${family}`}
           value={selected}
           disabled={isPending}
-          onChange={(e) => {
-            setSelected(e.target.value);
-            setPendingDowngradeConfirm(false);
-            setFeedback({ kind: "idle" });
-          }}
+          onChange={(e) => onSelectChange(e.target.value)}
           style={{
             flex: "1 1 240px",
             padding: "6px 8px",
@@ -181,17 +186,13 @@ export function BwFamilyNodePicker({
             );
           })}
         </select>
-        {!pendingDowngradeConfirm && (
-          <button
-            type="button"
-            data-testid={`bw-family-picker-save-${family}`}
-            onClick={onSaveClick}
-            disabled={!isDirty || isPending || !targetNode}
-            className="cp-btn primary"
-            style={{ fontSize: 12, padding: "5px 10px" }}
+        {feedback.kind === "saving" && (
+          <span
+            data-testid={`bw-family-picker-saving-${family}`}
+            style={{ fontSize: 11, color: "var(--cp-text-muted)" }}
           >
-            {feedback.kind === "saving" ? "Saving…" : "Save"}
-          </button>
+            Saving…
+          </span>
         )}
         {pendingDowngradeConfirm && (
           <>
