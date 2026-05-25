@@ -12,6 +12,18 @@ const dateTimeFormatSchema = z.object({
     .nullable(),
 });
 
+// Minimal IANA-zone shape check. Real validation is the user's runtime
+// — `Intl.DateTimeFormat({timeZone})` would throw on bogus input — but
+// for an opportunistic backfill on the server we just gate on the
+// region/locality pattern. Examples accepted: "Europe/Helsinki",
+// "America/New_York", "Asia/Hong_Kong". Rejected: "UTC", "GMT+2",
+// "America" (no slash), random user-supplied strings.
+const IANA_TIMEZONE_PATTERN = /^[A-Za-z_]+\/[A-Za-z0-9_+\-/]+$/;
+
+function looksLikeIanaTimezone(v: unknown): v is string {
+  return typeof v === "string" && v.length <= 64 && IANA_TIMEZONE_PATTERN.test(v);
+}
+
 /**
  * Server action for the "Time & date format" card on /app/settings.
  *
@@ -39,12 +51,37 @@ export async function updateDateTimeFormat(formData: FormData): Promise<void> {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  // Opportunistically backfill `profiles.timezone` from the browser-
+  // detected zone when the user has none on file. This makes the
+  // auto-format resolver pick the right locale defaults across every
+  // surface (not just the preview on this card). We never overwrite
+  // a value the user already has — pick an explicit timezone in the
+  // separate timezone control to change a live one.
+  const rawDetectedTz = formData.get("detectedTimezone");
+  const detectedTimezone = looksLikeIanaTimezone(rawDetectedTz) ? rawDetectedTz : null;
+
+  let timezoneUpdate: string | null = null;
+  if (detectedTimezone) {
+    const { data: existingProfile } = await supabase
+      .from("profiles")
+      .select("timezone")
+      .eq("id", user.id)
+      .maybeSingle();
+    const existing = existingProfile?.timezone;
+    if (existing == null || (typeof existing === "string" && existing.trim() === "")) {
+      timezoneUpdate = detectedTimezone;
+    }
+  }
+
+  const update: Record<string, string | null> = {
+    time_format: parsed.data.timeFormat,
+    date_format: parsed.data.dateFormat,
+  };
+  if (timezoneUpdate != null) update.timezone = timezoneUpdate;
+
   const { error } = await supabase
     .from("profiles")
-    .update({
-      time_format: parsed.data.timeFormat,
-      date_format: parsed.data.dateFormat,
-    })
+    .update(update)
     .eq("id", user.id);
   if (error) throw new Error(error.message);
 
