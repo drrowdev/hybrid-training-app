@@ -92,12 +92,10 @@ test.describe("@desktop program run", () => {
     const startHref = await startCta.getAttribute("href");
     expect(startHref).toBe(`/app/sessions/start/${seed.todayPlannedId}`);
 
-    // 2) Drive through the start → check-in skip → log-two-sets → finish flow.
+    // 2) Drive through the start → log-two-sets → finish flow. The
+    //    pre-session check-in interstitial was removed; tapping Start
+    //    auto-creates the session and redirects to the log surface.
     await startCta.click();
-    await page.waitForURL(`**/app/sessions/start/${seed.todayPlannedId}`, { timeout: 30_000 });
-    await expect(page.getByRole("heading", { name: /how are you feeling/i })).toBeVisible();
-    await page.getByRole("button", { name: /skip check-in/i }).click();
-
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 30_000 });
     const sessionId = new URL(page.url()).pathname.split("/").pop()!;
     expect(sessionId).toMatch(/^[0-9a-f-]{36}$/);
@@ -378,8 +376,7 @@ test.describe("@desktop program run", () => {
     const todayCard = page.getByTestId(`today-card-${seed.todayPlannedId}`);
     await expect(todayCard).toBeVisible();
     await todayCard.getByRole("link", { name: /start session/i }).click();
-    await page.waitForURL(`**/app/sessions/start/${seed.todayPlannedId}`, { timeout: 30_000 });
-    await page.getByRole("button", { name: /skip check-in/i }).click();
+    // Pre-session interstitial removed — auto-redirects to the session log.
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 30_000 });
     const sessionId = new URL(page.url()).pathname.split("/").pop()!;
     expect(sessionId).toMatch(/^[0-9a-f-]{36}$/);

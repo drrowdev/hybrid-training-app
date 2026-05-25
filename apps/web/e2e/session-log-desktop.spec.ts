@@ -16,13 +16,18 @@ import {
  * Scenarios:
  *   A — End-to-end strength session log:
  *       seed a 4-day × 4-week strength block so today's CTA renders →
- *       Start session (check-in skipped) → log two strength sets →
- *       finish → service-role verify sessions.completed_at + set_logs +
+ *       Start session (interstitial is gone — direct redirect) → log
+ *       two strength sets → finish → service-role verify
+ *       sessions.completed_at + set_logs +
  *       planned_sessions.completed_session_id linkage.
  *
- *   B — Pre-session check-in (DC-P1):
- *       Start session → submit fatigue + soreness via the CheckInForm →
- *       service-role verify both values landed on the sessions row.
+ *   B — Daily recovery check-in on Today (DC-P1):
+ *       The pre-session interstitial was removed; recovery is now
+ *       logged on the Today page (`HowRecoveredCard`). Tap one fatigue
+ *       and one soreness chip → service-role verify both landed on
+ *       the `wellness` row keyed by (user_id, today). Confirms the
+ *       data path the engine relies on still works after the
+ *       interstitial deletion.
  *
  *   C — Skip a planned session:
  *       On /app/plan click Skip on today's row → service-role verify
@@ -81,14 +86,10 @@ test.describe("@desktop session log", () => {
     expect(plannedCheck?.block_id).toBe(seed.blockId);
     await startCta.click();
 
-    // 2) Pre-session check-in screen. Skip it for this scenario — we
-    //    cover the check-in persistence in Scenario B.
-    await page.waitForURL(`**/app/sessions/start/${plannedId}`, { timeout: 15_000 });
-    await expect(page.getByRole("heading", { name: /how are you feeling/i })).toBeVisible();
-    await page.getByRole("button", { name: /skip check-in/i }).click();
-
-    // 3) Lands on the session detail page. Pull the new session id out
-    //    of the URL so we can assert the canonical state later.
+    // 2) The pre-session check-in interstitial was removed. Tapping
+    //    Start now redirects straight to the session detail page —
+    //    `/app/sessions/start/[plannedId]` is a server-side auto-start
+    //    that creates the session row and redirects.
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 15_000 });
     const sessionId = new URL(page.url()).pathname.split("/").pop()!;
     expect(sessionId).toMatch(/^[0-9a-f-]{36}$/);
@@ -169,7 +170,7 @@ test.describe("@desktop session log", () => {
     expect(Number(sets![1]!.rpe)).toBeCloseTo(8, 5);
   });
 
-  test("B: pre-session check-in persists fatigue + soreness (DC-P1)", async ({
+  test("B: daily recovery check-in on Today writes to wellness (DC-P1)", async ({
     page,
     context,
     freshUser,
@@ -181,58 +182,57 @@ test.describe("@desktop session log", () => {
 
     await markOnboarded(admin, freshUser.userId);
     await seedStrengthTms(admin, freshUser.userId);
-    const seed = await seedActiveBlock(admin, freshUser.userId);
+    await seedActiveBlock(admin, freshUser.userId);
     await signInAs(context, freshUser, seedConfig, url);
 
-    // Navigate straight to the check-in for today's planned session.
-    await page.goto(`/app/sessions/start/${seed.todayPlannedId}`);
+    // The HowRecoveredCard renders on the Today page when the
+    // `profiles.show_today_recovery_card` setting is true (default).
+    await page.goto("/app");
     await page.waitForLoadState("networkidle");
-    await expect(page.getByRole("heading", { name: /how are you feeling/i })).toBeVisible();
 
-    // DC-P1: the two-slider check-in. Pick fatigue=2 ("Good") and
-    // soreness=3 ("Moderate"). The chips are radios within named groups.
-    await page
-      .getByRole("radiogroup", { name: /fatigue level/i })
-      .getByRole("radio", { name: /good/i })
-      .click();
-    await page
-      .getByRole("radiogroup", { name: /soreness level/i })
-      .getByRole("radio", { name: /moderate/i })
-      .click();
+    const card = page.getByTestId("how-recovered");
+    await expect(card).toBeVisible();
 
-    // Submit — the start button label includes the planned-session title.
-    await page.getByRole("button", { name: /^⚡ start /i }).click();
+    // Tap fatigue=3 and soreness=5 on the 1/3/5/7/9 scale. Each tap
+    // fires the recordDailyCheckIn server action immediately; once
+    // both rows are answered the card collapses to the "✓ logged"
+    // confirmation.
+    await page.getByTestId("fatigue-3").click();
+    await page.getByTestId("soreness-5").click();
+    await expect(page.getByTestId("how-recovered-saved")).toBeVisible({
+      timeout: 10_000,
+    });
 
-    // Lands on the session detail page; grab the new session id.
-    await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 15_000 });
-    const sessionId = new URL(page.url()).pathname.split("/").pop()!;
-    expect(sessionId).toMatch(/^[0-9a-f-]{36}$/);
-
-    // The DC-P1 sliders should be reflected in the session header stats.
-    await expect(page.getByText(/fatigue/i).first()).toBeVisible();
-    await expect(page.getByText("2/5").first()).toBeVisible();
-    await expect(page.getByText("3/5").first()).toBeVisible();
-
-    // Service-role: the values are on the sessions row, and the
-    // planned_session is now linked to the new session.
-    const { data: session, error: sErr } = await admin
-      .from("sessions")
-      .select("id, fatigue, soreness, user_id")
-      .eq("id", sessionId)
+    // Service-role: the row landed on `wellness` keyed by
+    // (user_id, today). The Today page resolves "today" using the
+    // profile timezone (defaults UTC), so we let the row's date be
+    // whatever the server wrote and assert the values.
+    await expect
+      .poll(
+        async () => {
+          const { data } = await admin
+            .from("wellness")
+            .select("fatigue, soreness")
+            .eq("user_id", freshUser.userId)
+            .not("fatigue", "is", null)
+            .order("date", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          return data;
+        },
+        { timeout: 10_000 },
+      )
+      .not.toBeNull();
+    const { data: wellness } = await admin
+      .from("wellness")
+      .select("fatigue, soreness")
+      .eq("user_id", freshUser.userId)
+      .not("fatigue", "is", null)
+      .order("date", { ascending: false })
+      .limit(1)
       .maybeSingle();
-    expect(sErr).toBeNull();
-    expect(session).not.toBeNull();
-    expect(session!.user_id).toBe(freshUser.userId);
-    expect(session!.fatigue).toBe(2);
-    expect(session!.soreness).toBe(3);
-
-    const { data: planned, error: pErr } = await admin
-      .from("planned_sessions")
-      .select("id, completed_session_id")
-      .eq("id", seed.todayPlannedId)
-      .maybeSingle();
-    expect(pErr).toBeNull();
-    expect(planned?.completed_session_id).toBe(sessionId);
+    expect(wellness?.fatigue).toBe(3);
+    expect(wellness?.soreness).toBe(5);
   });
 
   test("C: skip a planned session marks it skipped and hides the Start CTA", async ({
@@ -323,9 +323,7 @@ test.describe("@desktop session log", () => {
     await expect(heroCta).toHaveText(/start session/i);
     await heroCta.click();
 
-    // 2) Skip the check-in to land on the log surface fast.
-    await page.waitForURL(`**/app/sessions/start/${seed.todayPlannedId}`, { timeout: 15_000 });
-    await page.getByRole("button", { name: /skip check-in/i }).click();
+    // 2) Pre-session interstitial removed — Start redirects straight to the session log.
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 15_000 });
     const sessionId = new URL(page.url()).pathname.split("/").pop()!;
 
@@ -431,8 +429,7 @@ test.describe("@desktop session log", () => {
 
     // Land on the in-progress session for today.
     await page.goto(`/app/sessions/start/${seed.todayPlannedId}`);
-    await page.waitForLoadState("networkidle");
-    await page.getByRole("button", { name: /skip check-in/i }).click();
+    // Pre-session interstitial removed — auto-redirects to the session log.
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 15_000 });
     const sessionId = new URL(page.url()).pathname.split("/").pop()!;
 
@@ -535,8 +532,7 @@ test.describe("@desktop session log", () => {
 
     // Open today's planned session.
     await page.goto(`/app/sessions/start/${seed.todayPlannedId}`);
-    await page.waitForLoadState("networkidle");
-    await page.getByRole("button", { name: /skip check-in/i }).click();
+    // Pre-session interstitial removed — auto-redirects to the session log.
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 15_000 });
     const sessionId = new URL(page.url()).pathname.split("/").pop()!;
 
@@ -592,8 +588,7 @@ test.describe("@desktop session log", () => {
     await signInAs(context, freshUser, seedConfig, url);
 
     await page.goto(`/app/sessions/start/${seed.todayPlannedId}`);
-    await page.waitForLoadState("networkidle");
-    await page.getByRole("button", { name: /skip check-in/i }).click();
+    // Pre-session interstitial removed — auto-redirects to the session log.
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 15_000 });
     const sessionId = new URL(page.url()).pathname.split("/").pop()!;
 
@@ -674,8 +669,7 @@ test.describe("@desktop session log", () => {
 
     // Open today's session.
     await page.goto(`/app/sessions/start/${seed.todayPlannedId}`);
-    await page.waitForLoadState("networkidle");
-    await page.getByRole("button", { name: /skip check-in/i }).click();
+    // Pre-session interstitial removed — auto-redirects to the session log.
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 15_000 });
     const sessionId = new URL(page.url()).pathname.split("/").pop()!;
 
