@@ -153,20 +153,6 @@ export function GlossaryBadge({
         <span style={{ display: "block", marginTop: 4, color: "var(--cp-text-muted)" }}>
           {entry.body}
         </span>
-        {entry.citation != null && (
-          <span
-            className="mono"
-            style={{
-              display: "block",
-              marginTop: 6,
-              fontSize: 10,
-              color: "var(--cp-text-muted)",
-              fontStyle: "italic",
-            }}
-          >
-            {entry.citation}
-          </span>
-        )}
       </span>
     </span>
   );

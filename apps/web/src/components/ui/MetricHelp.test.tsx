@@ -36,10 +36,10 @@ describe("MetricHelp", () => {
     expect(html).toMatch(/maximum weekly tonnage/i);
   });
 
-  it("renders the citation when the entry carries one", () => {
+  it("omits the citation block (research refs are not surfaced to end users)", () => {
     const html = renderToStaticMarkup(<MetricHelp term="tsb" />);
-    expect(html).toContain('data-testid="metric-help-citation"');
-    expect(html).toContain("Banister 1976");
+    expect(html).not.toContain('data-testid="metric-help-citation"');
+    expect(html).not.toContain("Banister 1976");
   });
 
   it("omits the citation block when the entry has none", () => {

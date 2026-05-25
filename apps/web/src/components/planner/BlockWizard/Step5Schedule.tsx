@@ -408,16 +408,14 @@ const chipTitleStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "flex-start",
   gap: 4,
-  wordBreak: "break-word",
-  overflowWrap: "anywhere",
+  overflowWrap: "break-word",
   minWidth: 0,
 };
 
 const chipMetaStyle: React.CSSProperties = {
   fontSize: 10,
   color: "var(--cp-text-muted)",
-  wordBreak: "break-word",
-  overflowWrap: "anywhere",
+  overflowWrap: "break-word",
 };
 
 const chipTagStyle: React.CSSProperties = {
