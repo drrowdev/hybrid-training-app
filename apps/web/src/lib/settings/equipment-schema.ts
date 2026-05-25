@@ -9,12 +9,14 @@
  *  - `plates` sorted desc; `kettlebells` sorted asc; arrays are
  *    deduplicated by the server action before persisting.
  *  - Empty arrays (rather than null) for "no items" except where the
- *    field is "off vs. on with a value" — dumbbells and accessories'
- *    weighted vest / sandbag use `null` / `false` to mark absence.
+ *    dumbbell range uses `null` to mark absence (it's a {min,max,step}
+ *    triple, not a list). Weighted vest + sandbag are `number[]` (one
+ *    chip per vest/bag the user owns; empty array = none).
  */
 
 export type EquipmentPreset =
   | "commercial_gym"
+  | "functional_gym"
   | "home_gym"
   | "bodyweight_only"
   | "travel_hotel"
@@ -32,8 +34,11 @@ export type MachineType =
   | "hack_squat"
   | "hip_thrust";
 
+// Cardio modality is stored but not currently consumed by the planner;
+// the value persists for future modality-aware cardio prescriptions.
 export type CardioMachineType =
   | "treadmill"
+  | "treadmill_curved"
   | "rower"
   | "bike_air"
   | "bike_recumbent"
@@ -55,6 +60,7 @@ export const ALL_MACHINES: readonly MachineType[] = [
 
 export const ALL_CARDIO: readonly CardioMachineType[] = [
   "treadmill",
+  "treadmill_curved",
   "rower",
   "bike_air",
   "bike_recumbent",
@@ -77,6 +83,7 @@ export const MACHINE_LABEL: Record<MachineType, string> = {
 
 export const CARDIO_LABEL: Record<CardioMachineType, string> = {
   treadmill: "Treadmill",
+  treadmill_curved: "Curved / manual treadmill",
   rower: "Rower",
   bike_air: "Air bike",
   bike_recumbent: "Recumbent bike",
@@ -123,8 +130,17 @@ export type Equipment = {
   machines: MachineType[];
   cardio: CardioMachineType[];
   accessories: {
-    weightedVest: { kg: number } | false;
-    sandbag: { kg: number } | false;
+    /**
+     * One chip per vest the user owns, in kg, sorted asc. Empty array
+     * = no vest. Legacy `false` / `true` / `<number>` shapes are
+     * coerced by `parseEquipment` to `[]` / `[9]` / `[<number>]`.
+     */
+    weightedVest: number[];
+    /**
+     * One chip per sandbag, in kg, sorted asc. Empty array = none.
+     * Same legacy-coercion rules as `weightedVest`.
+     */
+    sandbag: number[];
     dipBelt: boolean;
     /**
      * Phase 7 — optional max load the user's dip belt can carry. When
@@ -154,6 +170,7 @@ export type Equipment = {
 
 const PRESETS: ReadonlySet<EquipmentPreset> = new Set<EquipmentPreset>([
   "commercial_gym",
+  "functional_gym",
   "home_gym",
   "bodyweight_only",
   "travel_hotel",
@@ -176,6 +193,42 @@ function dedupSorted(values: number[], direction: "asc" | "desc"): number[] {
   );
   cleaned.sort((a, b) => (direction === "asc" ? a - b : b - a));
   return cleaned;
+}
+
+/**
+ * Coerce a legacy weighted-vest / sandbag value into the new
+ * `number[]` shape. Accepts:
+ *   - `undefined` / `null` / `false`             → `[]`
+ *   - `true`                                     → `[trueDefault]`
+ *   - `<number>`                                 → `[<number>]`
+ *   - `{ kg: <number> }` (pre-PR shape)          → `[<number>]`
+ *   - `number[]`                                 → sorted/deduped
+ * Throws on out-of-range values so bad blobs fail loudly.
+ */
+function coerceKgChips(
+  raw: unknown,
+  trueDefault: number,
+  min: number,
+  max: number,
+  fieldLabel: string,
+): number[] {
+  if (raw == null || raw === false) return [];
+  if (raw === true) return [trueDefault];
+  let values: number[] = [];
+  if (typeof raw === "number") {
+    values = [raw];
+  } else if (Array.isArray(raw)) {
+    values = raw.map((v) => Number(v)).filter((n) => Number.isFinite(n));
+  } else if (typeof raw === "object") {
+    const kg = Number((raw as Record<string, unknown>).kg);
+    if (Number.isFinite(kg)) values = [kg];
+  }
+  for (const v of values) {
+    if (!isPositive(v) || v < min || v > max) {
+      throw new Error(`${fieldLabel} weight must be ${min}–${max} kg`);
+    }
+  }
+  return dedupSorted(values, "asc");
 }
 
 /**
@@ -252,18 +305,16 @@ export function parseEquipment(input: unknown): Equipment {
   );
 
   const accRaw = (raw.accessories ?? {}) as Record<string, unknown>;
-  const vestKg = accRaw.weightedVest && typeof accRaw.weightedVest === "object"
-    ? Number((accRaw.weightedVest as Record<string, unknown>).kg)
-    : null;
-  const sandbagKg = accRaw.sandbag && typeof accRaw.sandbag === "object"
-    ? Number((accRaw.sandbag as Record<string, unknown>).kg)
-    : null;
-  if (vestKg !== null && (!isPositive(vestKg) || vestKg > 100)) {
-    throw new Error("Weighted vest weight must be 0–100 kg");
-  }
-  if (sandbagKg !== null && (!isPositive(sandbagKg) || sandbagKg > 200)) {
-    throw new Error("Sandbag weight must be 0–200 kg");
-  }
+  // Weighted vest + sandbag accept legacy shapes silently:
+  //   `false` / missing → []
+  //   `true`            → [9] (vest) / [25] (sandbag) typical defaults
+  //   `<number>`        → [<number>]
+  //   `{ kg: <number> }`→ [<number>]            (pre-PR-…shape)
+  //   `number[]`        → sorted/deduped
+  // The equipment column is jsonb, so the shape change is parse-time;
+  // no SQL migration needed.
+  const weightedVest = coerceKgChips(accRaw.weightedVest, 9, 0, 100, "Weighted vest");
+  const sandbag = coerceKgChips(accRaw.sandbag, 25, 0, 200, "Sandbag");
 
   // Phase 7 — dipBeltMaxKg / ankleWeights / bandStrength. All optional;
   // parser is permissive — bad values fall back to null/false so legacy
@@ -292,8 +343,8 @@ export function parseEquipment(input: unknown): Equipment {
       : null;
 
   const accessories: Equipment["accessories"] = {
-    weightedVest: vestKg !== null ? { kg: vestKg } : false,
-    sandbag: sandbagKg !== null ? { kg: sandbagKg } : false,
+    weightedVest,
+    sandbag,
     dipBelt: Boolean(accRaw.dipBelt),
     dipBeltMaxKg,
     bands: Boolean(accRaw.bands),

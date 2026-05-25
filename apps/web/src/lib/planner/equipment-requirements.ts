@@ -203,9 +203,9 @@ export function isEquipmentAvailable(
     case "bands":
       return equipment.accessories.bands === true;
     case "weighted_vest":
-      return equipment.accessories.weightedVest !== false;
+      return equipment.accessories.weightedVest.length > 0;
     case "sandbag":
-      return equipment.accessories.sandbag !== false;
+      return equipment.accessories.sandbag.length > 0;
     case "dip_belt":
       return equipment.accessories.dipBelt === true;
     case "pull_up_bar":
