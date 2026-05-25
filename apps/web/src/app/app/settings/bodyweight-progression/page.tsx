@@ -13,10 +13,16 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { MOVEMENT_FAMILIES, type MovementFamily } from "@hta/db";
+import { MOVEMENT_FAMILIES, type MovementFamily, type MovementNode } from "@hta/db";
 import { tutThreshold } from "@/lib/planner/bw-progression";
 import { loadAndRunBwDiagnostics } from "@/lib/planner/bw-diagnostics-loader";
 import { BwDiagnosticsSection } from "@/components/settings/BwDiagnosticsSection";
+import { bwMultiplier } from "@/lib/planner/bw-multiplier";
+import { suggestLoadOrVariant } from "@/lib/planner/bw-loaded-suggestion";
+import {
+  BwLoadedFamiliesSection,
+  type LoadedFamilyRow,
+} from "@/components/settings/BwLoadedFamiliesSection";
 
 /** Human-readable family labels — kept local because the catalog
  *  table doesn't carry one. Brand-purity: pure descriptors. */
@@ -53,6 +59,7 @@ type ProgressRow = {
   current_node_id: string;
   weeks_at_node: number;
   accumulated_tut_seconds: number;
+  target_external_load_kg?: number | string | null;
 };
 
 type ProgressionEventRow = {
@@ -79,7 +86,7 @@ export default async function BodyweightProgressionPage() {
       supabase
         .from("bw_progress")
         .select(
-          "family, current_node_id, weeks_at_node, accumulated_tut_seconds",
+          "family, current_node_id, weeks_at_node, accumulated_tut_seconds, target_external_load_kg",
         )
         .eq("user_id", user.id),
       supabase
@@ -161,6 +168,88 @@ export default async function BodyweightProgressionPage() {
 
   const seeded = rows.some((r) => r.current != null);
   const events: ProgressionEventRow[] = (eventRows ?? []) as ProgressionEventRow[];
+
+  // Phase 7 — build loaded-BW suggestion rows for each loadable family.
+  // We synthesise a MovementNode-like value off the catalog row to feed
+  // bwMultiplier / suggestLoadOrVariant — the engine reads only nodeKey
+  // + difficultyAnchor + family.
+  const { data: profileBw } = await supabase
+    .from("profiles")
+    .select("bodyweight_kg")
+    .eq("id", user.id)
+    .maybeSingle();
+  const userBodyweightKg =
+    profileBw?.bodyweight_kg != null && Number.isFinite(Number(profileBw.bodyweight_kg))
+      ? Number(profileBw.bodyweight_kg)
+      : 75;
+
+  const loadedRows: LoadedFamilyRow[] = [];
+  for (const r of rows) {
+    if (!r.current) continue;
+    const synthNode = {
+      id: r.current.id,
+      family: r.current.family,
+      nodeKey: r.current.node_key,
+      displayName: r.current.display_name,
+      prerequisites: r.current.prerequisites,
+      difficultyAnchor: r.current.difficulty_anchor,
+      isometricCapable: r.current.isometric_capable,
+    } as unknown as MovementNode;
+    const mult = bwMultiplier(synthNode);
+    if (mult <= 0) continue; // not a loadable family
+
+    const progressRow = progressByFamily.get(r.family);
+    const currentLoadKg = Number(progressRow?.target_external_load_kg ?? 0) || 0;
+    const candidates = (nodesByFamily.get(r.family) ?? [])
+      .filter((n) => n.prerequisites.includes(r.current!.id))
+      .map(
+        (n) =>
+          ({
+            id: n.id,
+            family: n.family,
+            nodeKey: n.node_key,
+            displayName: n.display_name,
+            difficultyAnchor: n.difficulty_anchor,
+          }) as unknown as MovementNode,
+      );
+
+    // Over-completion weeks proxy — Phase 4's progression engine tracks
+    // weeks_at_node which advances only on a clean over-completed week.
+    // Use it as the suggestion-gate signal here.
+    const overWeeks = progressRow?.weeks_at_node ?? 0;
+    const suggestion = suggestLoadOrVariant({
+      currentNode: synthNode,
+      candidateNextNodes: candidates,
+      currentLoadKg,
+      userBodyweightKg,
+      cleanOverCompletionWeeks: overWeeks,
+    });
+
+    let mapped: LoadedFamilyRow["suggestion"];
+    if (suggestion.kind === "hold") {
+      mapped = suggestion;
+    } else if (suggestion.kind === "increase_load") {
+      mapped = suggestion;
+    } else {
+      const target = candidates.find((n) => n.nodeKey === suggestion.toNodeKey);
+      mapped = {
+        kind: "advance_variant",
+        toNodeKey: suggestion.toNodeKey,
+        toNodeId: target?.id ?? "",
+        toNodeDisplayName: target?.displayName ?? suggestion.toNodeKey,
+        reason: suggestion.reason,
+      };
+    }
+
+    loadedRows.push({
+      family: r.family,
+      familyLabel: FAMILY_LABEL[r.family],
+      currentNodeKey: r.current.node_key,
+      currentNodeDisplayName: r.current.display_name,
+      currentLoadKg,
+      suggestion: mapped,
+    });
+  }
 
   // Phase 6 — surface the live diagnostics signal stack above the
   // family table. Loader does its own per-table reads (no shared
@@ -264,6 +353,8 @@ export default async function BodyweightProgressionPage() {
       {seeded && (
         <BwDiagnosticsSection results={diagnostics} />
       )}
+
+      {seeded && <BwLoadedFamiliesSection rows={loadedRows} />}
 
       {seeded && (
         <div data-testid="bw-progression-table" style={{ display: "grid", gap: 8 }}>

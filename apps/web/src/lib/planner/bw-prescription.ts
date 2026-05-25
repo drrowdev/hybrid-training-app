@@ -49,6 +49,18 @@
  */
 import type { MovementFamily, MovementNode } from "@hta/db";
 import type { ArchetypeId } from "./archetypes";
+import type { Equipment } from "@/lib/settings/equipment-schema";
+import { effectiveTrainingMaxKg } from "./bw-multiplier";
+
+/**
+ * Source the engine resolved the external load from. `band_assist`
+ * carries a negative `externalLoadKg` (assistance, not load).
+ */
+export type BwLoadSource =
+  | "weighted_vest"
+  | "dip_belt"
+  | "ankle_weights"
+  | "band_assist";
 
 /**
  * One BW main-lift prescription line. Embedded in the planned-session
@@ -80,6 +92,23 @@ export type BwPrescription = {
   intensityCue: string;
   /** Longer copy (skill cues, tendon-loading reminders). */
   notes?: string;
+  /**
+   * Phase 7 — suggested external load (vest / belt / ankle weights).
+   * Undefined ⇒ bodyweight only. May be 0 with a defined `loadSource`
+   * when the user is "ready for load" but the engine hasn't yet bumped
+   * the starting weight (see `bwPrescription` Stage D rules).
+   * Negative values are emitted for band-assist on sub-pull-up nodes.
+   */
+  externalLoadKg?: number;
+  /** Phase 7 — what kit the engine chose to deliver `externalLoadKg`. */
+  loadSource?: BwLoadSource;
+  /**
+   * Phase 7 — `bodyweight × bwMultiplier(node) + externalLoadKg`.
+   * Bridges loaded BW into the existing TM-based stress engine.
+   * Always emitted (even when externalLoadKg is undefined) for
+   * loadable nodes; 0 for skill / unmapped nodes.
+   */
+  effectiveTrainingMaxKg?: number;
 };
 
 /**
@@ -459,7 +488,29 @@ export function bwPrescription(args: {
    * decision 6 to cap prescribed reps when the user is on an early
    * node and can't yet hit the matrix default.
    */
-  cleanRepHistory?: ReadonlyArray<{ reps?: number; seconds?: number }>;
+  cleanRepHistory?: ReadonlyArray<{
+    reps?: number;
+    seconds?: number;
+    rir?: number;
+    clean_form?: boolean;
+    prescribed_reps?: number;
+    prescribed_hold?: number;
+    external_load_kg?: number;
+  }>;
+  /**
+   * Phase 7 — user's resolved equipment inventory. When present and the
+   * node is `external_load_capable`, the engine picks a `loadSource` +
+   * `externalLoadKg` per the Stage D rules. Omit to get pure
+   * bodyweight behaviour (back-compat with Phase 1–6 callers).
+   */
+  equipment?: Equipment;
+  /**
+   * Phase 7 — user's body mass in kg. Drives `effectiveTrainingMaxKg`
+   * and the starting-load heuristic (5% BW). Falls back to 75 kg when
+   * unknown so the multiplier table still produces a usable bridge
+   * value.
+   */
+  userBodyweightKg?: number;
 }): BwPrescription {
   const archetype = normaliseArchetype(args.archetype);
   const type = decidePrescriptionType(args.node, args.family, archetype);
@@ -484,7 +535,8 @@ export function bwPrescription(args: {
       intensityCue: cueFor("isometric_hold", archetype, args.weekIndex, "main"),
       notes: notesFor(args.node, "isometric_hold"),
     };
-    return args.bucket === "back_off" ? shapeBackOff(main, archetype) : main;
+    const shaped = args.bucket === "back_off" ? shapeBackOff(main, archetype) : main;
+    return applyLoadedExtension(shaped, args);
   }
 
   const row = rowFor(archetype, type);
@@ -517,5 +569,304 @@ export function bwPrescription(args: {
     main.repRange = { min: Math.max(1, capped - 2), max: capped + 2 };
   }
 
-  return args.bucket === "back_off" ? shapeBackOff(main, archetype) : main;
+  const shaped = args.bucket === "back_off" ? shapeBackOff(main, archetype) : main;
+  return applyLoadedExtension(shaped, args);
+}
+
+// ─── Stage D — loaded BW extension ────────────────────────────────────
+
+const BAND_ASSIST_KG: Record<NonNullable<Equipment["accessories"]["bandStrength"]>, number> = {
+  light: -5,
+  medium: -10,
+  heavy: -18,
+  extra_heavy: -28,
+};
+
+const PUSH_FAMILIES: ReadonlySet<MovementFamily> = new Set<MovementFamily>([
+  "push_h",
+  "push_v",
+  "planche",
+  "muscle_up",
+]);
+const PULL_FAMILIES: ReadonlySet<MovementFamily> = new Set<MovementFamily>([
+  "pull_h",
+  "pull_v",
+  "lever_front",
+  "lever_back",
+  "human_flag",
+]);
+const SQUAT_HINGE_FAMILIES: ReadonlySet<MovementFamily> = new Set<MovementFamily>([
+  "squat_bilateral",
+  "squat_unilateral",
+  "hinge",
+]);
+const SINGLE_LEG_NODES: ReadonlySet<string> = new Set<string>([
+  "split_squat",
+  "bulgarian_split_squat",
+  "shrimp_squat",
+  "assisted_pistol",
+  "strict_pistol",
+  "shrimp_pistol",
+  "single_leg_rdl_bw",
+]);
+const SUB_PULL_UP_NODES: ReadonlySet<string> = new Set<string>([
+  "negative_pull_up",
+  "scapular_pull",
+]);
+
+/**
+ * Round a kilogram value to the nearest 2.5 kg, never returning a
+ * negative number. Used for vest / belt / ankle starting loads.
+ */
+function roundToHalfPlate(kg: number): number {
+  if (kg <= 0) return 0;
+  return Math.round(kg / 2.5) * 2.5;
+}
+
+/**
+ * Did the user over-complete the last 2+ entries in clean_rep_history?
+ * Mirror of the gate logic from Phase 4 (`bw-progression.ts`):
+ * +2 reps OR +3 sec hold, RIR ≥ 1, clean form.
+ */
+function recentlyOverCompleted(
+  history: ReadonlyArray<{
+    reps?: number;
+    seconds?: number;
+    rir?: number;
+    clean_form?: boolean;
+    prescribed_reps?: number;
+    prescribed_hold?: number;
+  }>,
+): boolean {
+  if (history.length < 2) return false;
+  const last2 = history.slice(-2);
+  let hits = 0;
+  for (const e of last2) {
+    if (e.clean_form === false) continue;
+    if ((e.rir ?? 0) < 1) continue;
+    if (
+      e.prescribed_reps != null &&
+      e.reps != null &&
+      e.reps >= e.prescribed_reps + 2
+    ) {
+      hits++;
+      continue;
+    }
+    if (
+      e.prescribed_hold != null &&
+      e.seconds != null &&
+      e.seconds >= e.prescribed_hold + 3
+    ) {
+      hits++;
+    }
+  }
+  return hits >= 2;
+}
+
+/**
+ * Pick the load source for a loadable node × equipment combination.
+ * Returns null when no loadable kit is available.
+ *
+ * Selection rules (Stage D.2):
+ *   - Push/pull family + dip belt → dip_belt (more secure on hangs)
+ *   - Push/pull family + vest only → weighted_vest
+ *   - Squat/hinge family + vest → weighted_vest
+ *   - Single-leg work + ankle weights + no vest → ankle_weights
+ */
+function pickLoadSource(
+  family: MovementFamily,
+  node: MovementNode,
+  equipment: Equipment,
+): BwLoadSource | null {
+  const acc = equipment.accessories;
+  const hasVest = Boolean(acc.weightedVest);
+  const hasBelt = acc.dipBelt === true;
+  const hasAnkle = Boolean(acc.ankleWeights);
+
+  if (PUSH_FAMILIES.has(family) || PULL_FAMILIES.has(family)) {
+    if (hasBelt) return "dip_belt";
+    if (hasVest) return "weighted_vest";
+    return null;
+  }
+  if (SQUAT_HINGE_FAMILIES.has(family)) {
+    if (SINGLE_LEG_NODES.has(node.nodeKey) && hasAnkle && !hasVest) {
+      return "ankle_weights";
+    }
+    if (hasVest) return "weighted_vest";
+    if (SINGLE_LEG_NODES.has(node.nodeKey) && hasAnkle) return "ankle_weights";
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Cap a candidate external-load kg against the equipment ceiling for
+ * the chosen source. Returns the (possibly lower) load to actually
+ * emit. Negative values pass through unchanged (band assist).
+ */
+function capLoadForSource(
+  source: BwLoadSource,
+  loadKg: number,
+  equipment: Equipment,
+): number {
+  if (loadKg < 0) return loadKg;
+  const acc = equipment.accessories;
+  if (source === "weighted_vest" && acc.weightedVest) {
+    return Math.min(loadKg, acc.weightedVest.kg);
+  }
+  if (source === "dip_belt") {
+    if (typeof acc.dipBeltMaxKg === "number" && acc.dipBeltMaxKg > 0) {
+      return Math.min(loadKg, acc.dipBeltMaxKg);
+    }
+    return loadKg;
+  }
+  if (source === "ankle_weights" && acc.ankleWeights) {
+    return Math.min(loadKg, acc.ankleWeights.kg);
+  }
+  return loadKg;
+}
+
+/**
+ * Suggest an external-load kg given the user's recent over-completion
+ * pattern and prior loaded entries. Returns 0 when the user is in the
+ * "readiness" state (loadable kit present, but they haven't yet
+ * over-completed enough to earn a load bump).
+ *
+ * Heuristic:
+ *   - Not over-completing for 2+ weeks → 0 kg (readiness chip).
+ *   - First loaded session → 5% BW, rounded to nearest 2.5 kg.
+ *   - Subsequent → last load + (1.25 kg if weekIndex is deload OR
+ *     average RIR < 1, else 2.5 kg).
+ */
+function suggestExternalLoadKg(args: {
+  node: MovementNode;
+  weekIndex: 0 | 1 | 2 | 3;
+  userBodyweightKg: number;
+  cleanRepHistory?: ReadonlyArray<{
+    reps?: number;
+    seconds?: number;
+    rir?: number;
+    clean_form?: boolean;
+    prescribed_reps?: number;
+    prescribed_hold?: number;
+    external_load_kg?: number;
+  }>;
+}): number {
+  const history = args.cleanRepHistory ?? [];
+  if (!recentlyOverCompleted(history)) return 0;
+
+  // Find the most recent entry with a recorded external_load_kg.
+  const lastLoaded = [...history].reverse().find(
+    (e) => typeof e.external_load_kg === "number" && (e.external_load_kg ?? 0) > 0,
+  );
+  if (!lastLoaded) {
+    const start = roundToHalfPlate(args.userBodyweightKg * 0.05);
+    return Math.max(2.5, start);
+  }
+
+  const lastRirs = history
+    .slice(-3)
+    .map((e) => e.rir ?? 0)
+    .filter((n) => Number.isFinite(n));
+  const avgRir =
+    lastRirs.length > 0
+      ? lastRirs.reduce((a, b) => a + b, 0) / lastRirs.length
+      : 0;
+  const step = args.weekIndex === 3 || avgRir < 1 ? 1.25 : 2.5;
+  const next = (lastLoaded.external_load_kg ?? 0) + step;
+  return roundToHalfPlate(next);
+}
+
+/**
+ * Apply the Stage D / Stage E loaded-BW extension to a base prescription.
+ * Pure: does not mutate the input.
+ */
+function applyLoadedExtension(
+  base: BwPrescription,
+  args: {
+    node: MovementNode;
+    family: MovementFamily;
+    weekIndex: 0 | 1 | 2 | 3;
+    equipment?: Equipment;
+    userBodyweightKg?: number;
+    cleanRepHistory?: ReadonlyArray<{
+      reps?: number;
+      seconds?: number;
+      rir?: number;
+      clean_form?: boolean;
+      prescribed_reps?: number;
+      prescribed_hold?: number;
+      external_load_kg?: number;
+    }>;
+  },
+): BwPrescription {
+  const bodyweight = args.userBodyweightKg ?? 75;
+
+  // Always emit effectiveTrainingMaxKg for loadable nodes — even when
+  // no external load is applied, so the stress engine has something to
+  // bridge against.
+  const baseEffectiveTm = effectiveTrainingMaxKg({
+    node: args.node,
+    userBodyweightKg: bodyweight,
+    externalLoadKg: 0,
+  });
+
+  // Stage E — band-assist on sub-pull-up nodes.
+  if (
+    args.equipment &&
+    SUB_PULL_UP_NODES.has(args.node.nodeKey) &&
+    args.equipment.accessories.bands === true
+  ) {
+    const strength: NonNullable<Equipment["accessories"]["bandStrength"]> =
+      args.equipment.accessories.bandStrength ?? "medium";
+    const assist = BAND_ASSIST_KG[strength];
+    const next: BwPrescription = {
+      ...base,
+      externalLoadKg: assist,
+      loadSource: "band_assist",
+      effectiveTrainingMaxKg: effectiveTrainingMaxKg({
+        node: args.node,
+        userBodyweightKg: bodyweight,
+        externalLoadKg: assist,
+      }),
+    };
+    // Append band-assist cue (preserve any existing notes).
+    const assistCue = `Band-assisted: choose tension that leaves you at RIR ${base.targetRir}.`;
+    next.notes = base.notes ? `${base.notes} ${assistCue}` : assistCue;
+    return next;
+  }
+
+  if (!args.equipment || args.node.externalLoadCapable !== true) {
+    if (baseEffectiveTm > 0) {
+      return { ...base, effectiveTrainingMaxKg: baseEffectiveTm };
+    }
+    return base;
+  }
+
+  const source = pickLoadSource(args.family, args.node, args.equipment);
+  if (!source) {
+    if (baseEffectiveTm > 0) {
+      return { ...base, effectiveTrainingMaxKg: baseEffectiveTm };
+    }
+    return base;
+  }
+
+  const suggested = suggestExternalLoadKg({
+    node: args.node,
+    weekIndex: args.weekIndex,
+    userBodyweightKg: bodyweight,
+    cleanRepHistory: args.cleanRepHistory,
+  });
+  const capped = capLoadForSource(source, suggested, args.equipment);
+
+  return {
+    ...base,
+    externalLoadKg: capped,
+    loadSource: source,
+    effectiveTrainingMaxKg: effectiveTrainingMaxKg({
+      node: args.node,
+      userBodyweightKg: bodyweight,
+      externalLoadKg: capped,
+    }),
+  };
 }

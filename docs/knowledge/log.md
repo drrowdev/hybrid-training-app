@@ -206,3 +206,18 @@ read-only module -- never writes back to bw_progress. Dashboard surface
 empty; session recap surfaces up to 2 family-relevant signals. Migration
 0047 adds bw_diagnostics_snapshots (jsonb, capped at 100/user, RLS
 self-only). Snapshots captured at session completion + block creation.
+
+## [2026-05-25] refine | BW progression Phase 7 -- loaded bodyweight (feat/bw-phase7-loaded-bw)
+bwMultiplier table assigns leverage-equivalent ratios to ~30 loadable nodes
+(pull-up = 1.0, archer = 1.4, one-arm = 2.0). effectiveTrainingMaxKg
+bridges BW to the existing TM model. bwPrescription extended with
+externalLoadKg + loadSource (dip_belt / weighted_vest / ankle_weights /
+band_assist with negative kg). suggestLoadOrVariant heuristic biases
+toward variant advance when load >= 30% bodyweight (addendum 1).
+Migration 0048 adds bw_progress.target_external_load_kg and
+bw_progression_events.load_kg_at_advance. Session UI shows load badge +
+stepper; settings page shows Apply-suggestion button per family.
+Equipment editor gains dipBeltMaxKg, ankleWeights, and bandStrength
+fields (additive to existing accessory shape). Multipliers are
+intentionally rough -- they exist for stress budgeting, not precise
+load math; DAG node + clean rep history remain the source of truth.

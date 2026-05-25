@@ -11,6 +11,7 @@
  */
 import type { PrescriptionItem } from "@hta/db";
 import type { MovementFamily, MovementNode } from "@hta/db";
+import type { Equipment } from "@/lib/settings/equipment-schema";
 import type { ArchetypeId } from "./archetypes";
 import { bwPrescription, type BwPrescription } from "./bw-prescription";
 import { pickFamiliesForBwSession } from "./bw-family-rotation";
@@ -77,6 +78,9 @@ export function buildBwPrescriptionItem(args: {
       nodeKey: args.ctx.node.nodeKey,
       nodeDisplayName: args.ctx.node.displayName,
       family: args.ctx.family,
+      externalLoadKg: args.bw.externalLoadKg,
+      loadSource: args.bw.loadSource,
+      effectiveTrainingMaxKg: args.bw.effectiveTrainingMaxKg,
       nextNodePreview: previewFromCandidates(
         args.ctx.candidateNextNodes,
         args.ctx.family,
@@ -118,6 +122,14 @@ export function buildBwMainItemsForSession(args: {
   weekIndex: 0 | 1 | 2 | 3;
   seed: string;
   includeBackOff?: boolean;
+  /**
+   * Phase 7 — user's resolved equipment + body mass. When supplied,
+   * loadable nodes (`external_load_capable=true`) get a vest / belt /
+   * ankle / band-assist suggestion via `bwPrescription`. Omit on
+   * bodyweight-only setups to preserve the Phase 3 behaviour.
+   */
+  equipment?: Equipment;
+  userBodyweightKg?: number;
 }): PrescriptionItem[] {
   const available = new Set(args.byFamily.keys());
   const families = pickFamiliesForBwSession({
@@ -137,6 +149,8 @@ export function buildBwMainItemsForSession(args: {
       bucket: "main",
       weekIndex: args.weekIndex,
       cleanRepHistory: ctx.cleanRepHistory,
+      equipment: args.equipment,
+      userBodyweightKg: args.userBodyweightKg,
     });
     items.push(buildBwPrescriptionItem({ ctx, kind: "main", bw: main }));
 
@@ -148,6 +162,8 @@ export function buildBwMainItemsForSession(args: {
         bucket: "back_off",
         weekIndex: args.weekIndex,
         cleanRepHistory: ctx.cleanRepHistory,
+        equipment: args.equipment,
+        userBodyweightKg: args.userBodyweightKg,
       });
       items.push(buildBwPrescriptionItem({ ctx, kind: "back_off", bw: backOff }));
     }

@@ -209,6 +209,12 @@ export function MovementFocusView({
   const [reps, setReps] = useState<number>(targetReps);
   const [distanceM, setDistanceM] = useState<number>(targetDistance);
   const [durationSec, setDurationSec] = useState<number>(targetDuration);
+  // Phase 7 — actual external load applied (vest / belt / ankle / band
+  // assist). Mirrors the planner's suggested `bw.externalLoadKg` by
+  // default; user can override via the ±2.5 kg stepper. Negative for
+  // band-assist.
+  const targetExternalLoad = activeItem?.bw?.externalLoadKg ?? 0;
+  const [externalLoadKg, setExternalLoadKg] = useState<number>(targetExternalLoad);
   const [rpe, setRpe] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -239,6 +245,7 @@ export function MovementFocusView({
     setReps(targetReps);
     setDistanceM(targetDistance);
     setDurationSec(targetDuration);
+    setExternalLoadKg(targetExternalLoad);
     // Pre-select RPE from an already-logged set when re-opening it,
     // otherwise clear so the picker is the empty "no zone" state.
     const existing = isActiveLogged
@@ -248,7 +255,7 @@ export function MovementFocusView({
     setError(null);
     setSkipMenuOpen(false);
     setSkipError(null);
-  }, [cursorKey, targetWeight, targetReps, targetDistance, targetDuration, isActiveLogged, loggedSetId, loggedSets]);
+  }, [cursorKey, targetWeight, targetReps, targetDistance, targetDuration, targetExternalLoad, isActiveLogged, loggedSetId, loggedSets]);
 
   // Auto-clear PR flash after 4.5s.
   useEffect(() => {
@@ -310,6 +317,12 @@ export function MovementFocusView({
     fd.set("prescriptionItemIndex", String(activeItemIndex));
     if (rpe != null && !isWarmup) {
       fd.set("rpe", String(rpe));
+    }
+    // Phase 7 — propagate the actual external load the user applied so
+    // the per-set side effect can mirror it into clean_rep_history.
+    if (itemKind === "bw_reps" && activeItem.bw?.loadSource != null) {
+      fd.set("externalLoadKg", String(externalLoadKg));
+      fd.set("loadSource", String(activeItem.bw.loadSource));
     }
 
     // TM-anchored PR detection. The flash fires only when the new set
@@ -543,6 +556,13 @@ export function MovementFocusView({
                 ? bwGateStateByFamily?.[activeItem.bw.family]
                 : undefined
             }
+          />
+        )}
+        {isBwItem && activeItem.bw?.loadSource && (
+          <BwLoadControl
+            bw={activeItem.bw}
+            value={externalLoadKg}
+            onChange={setExternalLoadKg}
           />
         )}
         {!isBwItem && (
@@ -876,16 +896,47 @@ function renderBwHeadline(item: PrescriptionItem): string {
   const bw = item.bw;
   if (!bw) return "";
   const rir = `RIR ${bw.targetRir}`;
+  const loadSuffix = renderBwLoadSuffix(bw);
   if (bw.prescriptionType === "isometric_hold" && bw.holdSeconds != null) {
-    return `${bw.sets} sets × ${bw.holdSeconds}s hold · ${rir}`;
+    return `${bw.sets} sets × ${bw.holdSeconds}s hold · ${rir}${loadSuffix}`;
   }
   if (bw.prescriptionType === "tempo_reps" && bw.reps != null) {
-    return `${bw.sets} sets × ${bw.reps} reps · ${bw.tempoEccentricSec}s eccentric · ${rir}`;
+    return `${bw.sets} sets × ${bw.reps} reps · ${bw.tempoEccentricSec}s eccentric · ${rir}${loadSuffix}`;
   }
   if (bw.reps != null) {
-    return `${bw.sets} sets × ${bw.reps} reps · ${bw.tempoEccentricSec}s lower · ${rir}`;
+    return `${bw.sets} sets × ${bw.reps} reps · ${bw.tempoEccentricSec}s lower · ${rir}${loadSuffix}`;
   }
-  return `${bw.sets} sets · ${rir}`;
+  return `${bw.sets} sets · ${rir}${loadSuffix}`;
+}
+
+/**
+ * Phase 7 — render the "· +10 kg vest" / "· −10 kg band" suffix when
+ * a load source is applied. Returns empty string when no load (the
+ * readiness state — zero externalLoadKg with a defined loadSource —
+ * is surfaced via the soft info chip below the headline, not here).
+ */
+function renderBwLoadSuffix(bw: NonNullable<PrescriptionItem["bw"]>): string {
+  if (bw.externalLoadKg == null || bw.externalLoadKg === 0) return "";
+  const label = loadSourceLabel(bw.loadSource);
+  if (bw.externalLoadKg < 0) {
+    return ` · −${Math.abs(bw.externalLoadKg)} kg ${label}`;
+  }
+  return ` · +${bw.externalLoadKg} kg ${label}`;
+}
+
+function loadSourceLabel(src: NonNullable<PrescriptionItem["bw"]>["loadSource"]): string {
+  switch (src) {
+    case "weighted_vest":
+      return "vest";
+    case "dip_belt":
+      return "belt";
+    case "ankle_weights":
+      return "ankle";
+    case "band_assist":
+      return "band";
+    default:
+      return "load";
+  }
 }
 
 /**
@@ -993,6 +1044,128 @@ function BwNextHint({
     </div>
   );
 }
+
+/**
+ * Phase 7 — load badge + override stepper for loaded BW prescriptions.
+ *
+ * Three visual states keyed off `bw.externalLoadKg`:
+ *   - undefined          → control hidden (caller checks loadSource)
+ *   - 0 with loadSource  → soft "Ready for external load" info chip
+ *   - non-zero (incl. <0) → badge with the suggested kg + ±2.5 kg stepper
+ *
+ * The actual kg the user logs flows back via the parent's `value` /
+ * `onChange` so `handleSubmit` can stamp it onto the FormData.
+ */
+function BwLoadControl({
+  bw,
+  value,
+  onChange,
+}: {
+  bw: NonNullable<PrescriptionItem["bw"]>;
+  value: number;
+  onChange: (next: number) => void;
+}) {
+  const source = bw.loadSource;
+  if (!source) return null;
+  const suggested = bw.externalLoadKg ?? 0;
+  const isReadiness = suggested === 0;
+  const isAssist = value < 0 || suggested < 0;
+  const label = (() => {
+    switch (source) {
+      case "weighted_vest":
+        return "vest";
+      case "dip_belt":
+        return "belt";
+      case "ankle_weights":
+        return "ankle";
+      case "band_assist":
+        return "band";
+    }
+  })();
+  if (isReadiness) {
+    return (
+      <div
+        data-testid="bw-load-readiness"
+        style={{
+          marginTop: 2,
+          display: "inline-block",
+          padding: "2px 8px",
+          borderRadius: 999,
+          border: "1px dashed var(--cp-border)",
+          color: "var(--cp-text-muted)",
+          fontSize: 11,
+          lineHeight: 1.2,
+        }}
+      >
+        Ready for external load — try +2.5 kg next session
+      </div>
+    );
+  }
+  const display = isAssist
+    ? `−${Math.abs(value)} kg ${label}`
+    : `+${value} kg ${label}`;
+  return (
+    <div
+      data-testid="bw-load-control"
+      data-source={source}
+      style={{
+        marginTop: 4,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+      }}
+    >
+      <button
+        type="button"
+        aria-label="decrease external load"
+        data-testid="bw-load-down"
+        onClick={() => onChange(roundHalfPlate(value - 2.5))}
+        style={loadStepperBtn}
+      >
+        −
+      </button>
+      <span
+        data-testid="bw-load-badge"
+        style={{
+          padding: "2px 8px",
+          borderRadius: 999,
+          background: "var(--cp-accent-soft, var(--cp-surface))",
+          color: "var(--cp-accent, var(--cp-text))",
+          fontSize: 11,
+          fontWeight: 600,
+          minWidth: 90,
+          textAlign: "center",
+        }}
+      >
+        {display}
+      </span>
+      <button
+        type="button"
+        aria-label="increase external load"
+        data-testid="bw-load-up"
+        onClick={() => onChange(roundHalfPlate(value + 2.5))}
+        style={loadStepperBtn}
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
+function roundHalfPlate(kg: number): number {
+  return Math.round(kg / 2.5) * 2.5;
+}
+
+const loadStepperBtn: React.CSSProperties = {
+  width: 28,
+  height: 28,
+  borderRadius: 8,
+  border: "1px solid var(--cp-border)",
+  background: "var(--cp-surface)",
+  color: "var(--cp-text)",
+  fontSize: 14,
+  cursor: "pointer",
+};
 
 /**
  * Format a RIR / RPE / hold range as a single label. Returns null when

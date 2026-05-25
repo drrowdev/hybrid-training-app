@@ -119,6 +119,13 @@ export async function applyBwSetSideEffects(args: {
   cleanForm: boolean;
   setDateIso: string;
   skipped: boolean;
+  /**
+   * Phase 7 — actual external load applied (vest / belt / ankle /
+   * band assist). Null/undefined ⇒ bodyweight only. Mirrored into
+   * `clean_rep_history[i].external_load_kg` so future prescriptions
+   * can read the user's progression and bump load accordingly.
+   */
+  externalLoadKg?: number | null;
 }): Promise<void> {
   if (args.skipped) return;
   const family = args.bw.family as MovementFamily | undefined;
@@ -161,6 +168,10 @@ export async function applyBwSetSideEffects(args: {
   if (args.actualSeconds != null) entry.seconds = args.actualSeconds;
   if (args.bw.reps != null) entry.prescribed_reps = args.bw.reps;
   if (args.bw.holdSeconds != null) entry.prescribed_hold = args.bw.holdSeconds;
+  if (args.externalLoadKg != null && Number.isFinite(args.externalLoadKg)) {
+    entry.external_load_kg = args.externalLoadKg;
+  }
+  if (args.bw.loadSource) entry.load_source = args.bw.loadSource;
 
   const next = [...existing, entry].slice(-CLEAN_REP_HISTORY_CAP);
 
@@ -364,6 +375,7 @@ export async function applyBwSessionCompletionSideEffects(args: {
       accumulatedTutSeconds: r.accumulated_tut_seconds as number,
       weeksAtNode: r.weeks_at_node as number,
       cleanRepHistory: (r.clean_rep_history as BwProgress["cleanRepHistory"]) ?? [],
+      targetExternalLoadKg: null,
       updatedAt: new Date(r.updated_at as string),
     });
   }

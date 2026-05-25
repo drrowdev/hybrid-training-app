@@ -84,6 +84,28 @@ export const CARDIO_LABEL: Record<CardioMachineType, string> = {
   elliptical: "Elliptical",
 };
 
+/**
+ * Band-strength bucket. Phase 7 maps these to an approximate kg of
+ * assistance for band-assisted negative-rep prescriptions on the BW
+ * sub-pull-up nodes. Kept loose — the user picks "what colour band"
+ * and the engine reads the assistance ballpark off the bucket.
+ */
+export type BandStrength = "light" | "medium" | "heavy" | "extra_heavy";
+
+export const ALL_BAND_STRENGTHS: readonly BandStrength[] = [
+  "light",
+  "medium",
+  "heavy",
+  "extra_heavy",
+];
+
+export const BAND_STRENGTH_LABEL: Record<BandStrength, string> = {
+  light: "Light",
+  medium: "Medium",
+  heavy: "Heavy",
+  extra_heavy: "Extra-heavy",
+};
+
 export type Equipment = {
   preset: EquipmentPreset;
   bars: {
@@ -104,7 +126,27 @@ export type Equipment = {
     weightedVest: { kg: number } | false;
     sandbag: { kg: number } | false;
     dipBelt: boolean;
+    /**
+     * Phase 7 — optional max load the user's dip belt can carry. When
+     * present, the loaded-BW suggestion engine caps `externalLoadKg`
+     * at this value so it never recommends more weight than the kit
+     * can actually hold. `null` = belt present but no cap configured.
+     */
+    dipBeltMaxKg?: number | null;
     bands: boolean;
+    /**
+     * Phase 7 — band-strength bucket for the band-assist path (negative
+     * pull-up / scapular pull). Maps to an approximate assistance kg
+     * in `bw-prescription.ts`. `null` = bands present but strength not
+     * configured (engine falls back to "medium" for prescriptions).
+     */
+    bandStrength?: BandStrength | null;
+    /**
+     * Phase 7 — ankle-weight pair the user owns, used by the loaded-BW
+     * path for single-leg work (split squat / pistol / single-leg RDL)
+     * when no vest is present. `kg` = per-pair weight in kg.
+     */
+    ankleWeights?: { kg: number } | false;
     pullUpBar: boolean;
     rings: boolean;
   };
@@ -222,11 +264,41 @@ export function parseEquipment(input: unknown): Equipment {
   if (sandbagKg !== null && (!isPositive(sandbagKg) || sandbagKg > 200)) {
     throw new Error("Sandbag weight must be 0–200 kg");
   }
+
+  // Phase 7 — dipBeltMaxKg / ankleWeights / bandStrength. All optional;
+  // parser is permissive — bad values fall back to null/false so legacy
+  // blobs without these keys keep working unchanged.
+  const dipBeltMaxKgRaw = accRaw.dipBeltMaxKg;
+  let dipBeltMaxKg: number | null = null;
+  if (dipBeltMaxKgRaw != null) {
+    const n = Number(dipBeltMaxKgRaw);
+    if (!isPositive(n) || n > 200) {
+      throw new Error("Dip-belt max load must be 0–200 kg");
+    }
+    dipBeltMaxKg = n;
+  }
+  const ankleWeightsKg =
+    accRaw.ankleWeights && typeof accRaw.ankleWeights === "object"
+      ? Number((accRaw.ankleWeights as Record<string, unknown>).kg)
+      : null;
+  if (ankleWeightsKg !== null && (!isPositive(ankleWeightsKg) || ankleWeightsKg > 30)) {
+    throw new Error("Ankle-weight (per pair) must be 0–30 kg");
+  }
+  const bandStrengthRaw = accRaw.bandStrength;
+  const bandStrength: BandStrength | null =
+    typeof bandStrengthRaw === "string" &&
+    (ALL_BAND_STRENGTHS as readonly string[]).includes(bandStrengthRaw)
+      ? (bandStrengthRaw as BandStrength)
+      : null;
+
   const accessories: Equipment["accessories"] = {
     weightedVest: vestKg !== null ? { kg: vestKg } : false,
     sandbag: sandbagKg !== null ? { kg: sandbagKg } : false,
     dipBelt: Boolean(accRaw.dipBelt),
+    dipBeltMaxKg,
     bands: Boolean(accRaw.bands),
+    bandStrength,
+    ankleWeights: ankleWeightsKg !== null ? { kg: ankleWeightsKg } : false,
     pullUpBar: Boolean(accRaw.pullUpBar),
     rings: Boolean(accRaw.rings),
   };
