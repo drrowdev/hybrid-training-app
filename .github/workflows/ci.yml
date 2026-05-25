@@ -50,6 +50,14 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_test_for_ci_build_only
 
+      - name: Migration drift guard (offline)
+        # No shared dev-DB secret in CI, so the script runs in offline
+        # mode and validates only that every _journal.json entry has a
+        # matching .sql file on disk and hashes cleanly. The full
+        # journal-vs-__drizzle_migrations check fires from the
+        # pre-push hook on developer machines where DATABASE_URL is set.
+        run: pnpm --filter @hta/db db:check:ci
+
   e2e:
     name: e2e (playwright)
     runs-on: ubuntu-latest
