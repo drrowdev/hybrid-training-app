@@ -547,6 +547,7 @@ export function OnboardingWizard({
               onComplete={onWizardComplete}
               tmReadinessByArchetype={tmReadinessByArchetype}
               allowsTwoADays={false}
+              equipmentPreset={equipmentPreset}
             />
           </div>
         )}

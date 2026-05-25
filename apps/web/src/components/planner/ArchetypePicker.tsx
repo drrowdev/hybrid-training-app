@@ -26,6 +26,15 @@ export type ArchetypeOption = {
 
 const FREQ_OPTIONS = [3, 4, 5, 6, 7];
 
+/**
+ * Floor for bodyweight-only users when computing the per-archetype min-days
+ * gate. The BW prescription engine packs ~3 main families per session via
+ * `bw-family-rotation.ts` regardless of which archetype is picked, so the
+ * anchor-day count doesn't constrain frequency; we just keep a non-zero
+ * floor so a 1-day block isn't selectable.
+ */
+const BW_MIN_DAYS_FLOOR = 2;
+
 export function ArchetypePicker({
   options,
   defaultStartedOn,
@@ -34,6 +43,7 @@ export function ArchetypePicker({
   amWindowStart,
   pmWindowStart,
   action,
+  isBodyweightOnly = false,
 }: {
   options: ArchetypeOption[];
   defaultStartedOn: string;
@@ -42,10 +52,18 @@ export function ArchetypePicker({
   amWindowStart: string;
   pmWindowStart: string;
   action: (fd: FormData) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /**
+   * When true, override `option.minDays` with `BW_MIN_DAYS_FLOOR` for the
+   * fit check + card pill, and swap the per-selected hint to BW-aware copy.
+   */
+  isBodyweightOnly?: boolean;
 }) {
+  const effectiveMinDays = (opt: ArchetypeOption) =>
+    isBodyweightOnly ? BW_MIN_DAYS_FLOOR : opt.minDays;
+
   const [daysPerWeek, setDaysPerWeek] = useState<number>(defaultDaysPerWeek);
 
-  const archetypesFit = (opt: ArchetypeOption) => daysPerWeek >= opt.minDays;
+  const archetypesFit = (opt: ArchetypeOption) => daysPerWeek >= effectiveMinDays(opt);
   const initialFitting = options.find((o) => o.tmReady && archetypesFit(o)) ?? options.find(archetypesFit) ?? options[0];
   const [selectedId, setSelectedId] = useState<ArchetypeId>(initialFitting?.id ?? "strength_anchor");
   const [startedOn, setStartedOn] = useState<string>(defaultStartedOn);
@@ -149,7 +167,7 @@ export function ArchetypePicker({
                     </span>
                   ) : (
                     <span className="cp-pill" style={{ color: "var(--cp-danger)", borderColor: "var(--cp-danger)" }}>
-                      needs {opt.minDays}+ d/wk
+                      needs {effectiveMinDays(opt)}+ d/wk
                     </span>
                   )}
                 </div>
@@ -267,8 +285,17 @@ export function ArchetypePicker({
               background: "color-mix(in oklab, var(--cp-danger) 8%, transparent)",
             }}
           >
-            <strong>{selected.name}</strong> needs at least {selected.minDays} training days/week.
-            Pick a higher day-count or a different focus.
+            {isBodyweightOnly ? (
+              <>
+                Bodyweight blocks run at any frequency — the engine rotates families per session.
+                Pick at least {effectiveMinDays(selected)} day{effectiveMinDays(selected) === 1 ? "" : "s"}/week to continue.
+              </>
+            ) : (
+              <>
+                <strong>{selected.name}</strong> needs at least {selected.minDays} training days/week.
+                Pick a higher day-count or a different focus.
+              </>
+            )}
           </div>
         )}
         {selected && selectedFits && !selected.tmReady && (

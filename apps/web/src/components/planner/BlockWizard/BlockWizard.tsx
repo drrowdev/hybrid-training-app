@@ -51,6 +51,7 @@ import { Step3Secondary } from "./Step3Secondary";
 import { Step4Review } from "./Step4Review";
 import { Step5Schedule } from "./Step5Schedule";
 import { WizardSidebar } from "./WizardSidebar";
+import type { EquipmentPreset } from "@/lib/settings/equipment-schema";
 
 export type WizardSubmit = {
   archetypeId: ResolvedArchetype["id"];
@@ -92,6 +93,13 @@ export type BlockWizardProps = {
   allowsTwoADays: boolean;
   /** Optional pre-fill from a recent block ("Customize first" flow). */
   prefill?: BlockWizardPrefill | null;
+  /**
+   * Equipment preset from the user's profile. When `"bodyweight_only"`, the
+   * review step + sidebar swap barbell-flavoured copy for bodyweight-native
+   * progression copy. Defaults to `null` (which renders the loaded-strength
+   * copy used historically by the wizard).
+   */
+  equipmentPreset?: EquipmentPreset | null;
 };
 
 export function BlockWizard({
@@ -99,6 +107,7 @@ export function BlockWizard({
   tmReadinessByArchetype,
   allowsTwoADays,
   prefill,
+  equipmentPreset = null,
 }: BlockWizardProps): React.ReactElement {
   const [state, dispatch] = useReducer(
     wizardReducer,
@@ -230,7 +239,7 @@ export function BlockWizard({
         {state.step === 2 && <Step2Focus state={state} dispatch={dispatch} resolved={resolved} />}
         {state.step === 3 && <Step3Secondary state={state} dispatch={dispatch} />}
         {state.step === 4 && resolved && (
-          <Step4Review state={state} resolved={resolved} />
+          <Step4Review state={state} resolved={resolved} equipmentPreset={equipmentPreset} />
         )}
         {state.step === 5 && resolved && (
           <Step5Schedule
@@ -274,7 +283,7 @@ export function BlockWizard({
       </div>
 
       <aside className="wiz-sidebar-col" style={sidebarColStyle}>
-        <WizardSidebar state={state} resolved={resolved} />
+        <WizardSidebar state={state} resolved={resolved} equipmentPreset={equipmentPreset} />
       </aside>
     </div>
   );

@@ -11,39 +11,120 @@
 
 import type { WizardState } from "@/lib/planner/wizard/wizard-state";
 import type { ResolvedArchetype } from "@/lib/planner/wizard/wizard-mapping";
+import type { EquipmentPreset } from "@/lib/settings/equipment-schema";
 
 type Wave = { label: string; detail: string };
 
-function strengthWaves(strengthHypDays: number): Wave[] {
-  const base: Wave[] = [
-    {
-      label: "Ramp in — get your bar speed back",
-      detail:
-        "Sets of 5 at moderate weight. Foundation week — rehearse the lifts and find your groove before adding load.",
-    },
-    {
-      label: "Build — heavier top sets each session",
-      detail:
-        "Sets of 3 at heavier weight. Same lifts, fewer reps, more weight on the bar each time you train.",
-    },
-    {
-      label: "Push — your hardest week",
-      detail:
-        "Top single up to ~95% of your training max — the heaviest work of the block. This is where the gains from the earlier weeks show up.",
-    },
-    {
-      label: "Recover — lighter loads, sleep more",
-      detail: "Half the sets at the same weights. Fatigue clears so the heavy work locks in.",
-    },
-  ];
+// ── Bodyweight-only wave copy ─────────────────────────────────────────────
+// BW users don't use a barbell or training maxes — progression rides on
+// RIR, eccentric tempo, and family rotation (see bw-family-rotation.ts).
+// These wave templates mirror the loaded-strength shape (ramp → build →
+// push → recover) but swap barbell-flavoured copy for BW-native cues.
+
+const BW_STRENGTH_WAVES: Wave[] = [
+  {
+    label: "Ramp in — find your tempo and clean reps",
+    detail:
+      "Foundation week. Find your sweet spot at the prescribed RIR, get clean reps with controlled eccentrics.",
+  },
+  {
+    label: "Build — add reps or holds each session",
+    detail:
+      "Same movements, more reps or longer holds — same RIR, more accumulated TUT.",
+  },
+  {
+    label: "Push — your hardest week",
+    detail:
+      "Top sets approach RIR 1 with the longest holds and slowest tempos of the block. This is where progression unlocks.",
+  },
+  {
+    label: "Recover — pull back, sleep more",
+    detail:
+      "Half the sets at higher RIR. Fatigue clears so the harder work locks in.",
+  },
+];
+
+const BW_HYPERTROPHY_WAVES: Wave[] = [
+  {
+    label: "Ramp in — find your tempo and clean reps",
+    detail:
+      "Moderate-RIR sets with longer eccentrics and accessory variants. Leave 1–2 reps in the tank — this is your foundation.",
+  },
+  {
+    label: "Build — add a working set per movement",
+    detail:
+      "One more working set per movement at the same tempo and RIR. More total work this week without changing the lifts.",
+  },
+  {
+    label: "Push — most sets of the block",
+    detail: "Highest weekly set count of the block — the top of your recoverable volume.",
+  },
+  {
+    label: "Recover — half the volume, full sleep",
+    detail:
+      "Half the sets at the same RIR. Lets the volume sink in and muscles catch up before the next block.",
+  },
+];
+
+const BW_HYBRID_WAVES: Wave[] = [
+  {
+    label: "Ramp in — both engines at low load",
+    detail:
+      "Moderate-RIR sets with clean tempos. Cardio is steady Z2 — easy aerobic dose that won't tax the lifts.",
+  },
+  {
+    label: "Build — add reps + minutes",
+    detail:
+      "Same movements, more reps or longer holds. Cardio sessions also run longer.",
+  },
+  {
+    label: "Push — your hardest week",
+    detail:
+      "Reps and holds bumped, but RIR stays 2 to keep cardio fresh. One harder VO2 cardio session gets added.",
+  },
+  {
+    label: "Recover — lighter on both",
+    detail:
+      "Half the sets, half the cardio minutes. Same tempo and pace — reset before next block.",
+  },
+];
+
+function strengthWaves(strengthHypDays: number, isBw: boolean): Wave[] {
+  const base: Wave[] = isBw
+    ? BW_STRENGTH_WAVES.map((w) => ({ ...w }))
+    : [
+        {
+          label: "Ramp in — get your bar speed back",
+          detail:
+            "Sets of 5 at moderate weight. Foundation week — rehearse the lifts and find your groove before adding load.",
+        },
+        {
+          label: "Build — heavier top sets each session",
+          detail:
+            "Sets of 3 at heavier weight. Same lifts, fewer reps, more weight on the bar each time you train.",
+        },
+        {
+          label: "Push — your hardest week",
+          detail:
+            "Top single up to ~95% of your training max — the heaviest work of the block. This is where the gains from the earlier weeks show up.",
+        },
+        {
+          label: "Recover — lighter loads, sleep more",
+          detail:
+            "Half the sets at the same weights. Fatigue clears so the heavy work locks in.",
+        },
+      ];
   if (strengthHypDays === 0) return base;
+  const hypBlurb = isBw
+    ? `moderate-RIR set${strengthHypDays === 1 ? "" : "s"} with longer eccentrics and accessory variants`
+    : `hypertrophy day${strengthHypDays === 1 ? "" : "s"} at moderate weights with extra accessory work`;
   return base.map((w, i) => {
     if (i < 3)
       return {
         ...w,
         detail:
           w.detail +
-          ` Plus ${strengthHypDays} hypertrophy day${strengthHypDays === 1 ? "" : "s"} at moderate weights with extra accessory work — same dose every week.`,
+          ` Plus ${strengthHypDays} ${hypBlurb} — same dose every week.`,
       };
     return {
       ...w,
@@ -54,36 +135,39 @@ function strengthWaves(strengthHypDays: number): Wave[] {
   });
 }
 
-function hypertrophyWaves(hypStrengthDays: number): Wave[] {
-  const base: Wave[] = [
-    {
-      label: "Ramp in — find your working weights",
-      detail:
-        "4 working sets per lift at 6–10 reps. Moderate weights, leave 1–2 reps in the tank — this is your foundation.",
-    },
-    {
-      label: "Build — add a working set per lift",
-      detail:
-        "5 working sets per lift at the same reps and weights. More total work this week without changing the lifts.",
-    },
-    {
-      label: "Push — most sets of the block",
-      detail: "Highest weekly set count of the block — the top of your recoverable volume.",
-    },
-    {
-      label: "Recover — half the volume, full sleep",
-      detail:
-        "Half the sets, same weights. Lets the volume sink in and muscles catch up before the next block.",
-    },
-  ];
+function hypertrophyWaves(hypStrengthDays: number, isBw: boolean): Wave[] {
+  const base: Wave[] = isBw
+    ? BW_HYPERTROPHY_WAVES.map((w) => ({ ...w }))
+    : [
+        {
+          label: "Ramp in — find your working weights",
+          detail:
+            "4 working sets per lift at 6–10 reps. Moderate weights, leave 1–2 reps in the tank — this is your foundation.",
+        },
+        {
+          label: "Build — add a working set per lift",
+          detail:
+            "5 working sets per lift at the same reps and weights. More total work this week without changing the lifts.",
+        },
+        {
+          label: "Push — most sets of the block",
+          detail: "Highest weekly set count of the block — the top of your recoverable volume.",
+        },
+        {
+          label: "Recover — half the volume, full sleep",
+          detail:
+            "Half the sets, same weights. Lets the volume sink in and muscles catch up before the next block.",
+        },
+      ];
   if (hypStrengthDays === 0) return base;
+  const strengthBlurb = isBw
+    ? `low-RIR strength day${hypStrengthDays === 1 ? "" : "s"} with the hardest progressions so you don't lose absolute strength`
+    : `strength day${hypStrengthDays === 1 ? "" : "s"} keeping a heavy top set (≥85% TM) so you don't lose absolute strength`;
   return base.map((w, i) => {
     if (i < 3)
       return {
         ...w,
-        detail:
-          w.detail +
-          ` Plus ${hypStrengthDays} strength day${hypStrengthDays === 1 ? "" : "s"} keeping a heavy top set (≥85% TM) so you don't lose absolute strength.`,
+        detail: w.detail + ` Plus ${hypStrengthDays} ${strengthBlurb}.`,
       };
     return {
       ...w,
@@ -94,7 +178,11 @@ function hypertrophyWaves(hypStrengthDays: number): Wave[] {
   });
 }
 
-function enduranceWaves(strength: number, secondary: WizardState["secondary"]): Wave[] {
+function enduranceWaves(
+  strength: number,
+  secondary: WizardState["secondary"],
+  isBw: boolean,
+): Wave[] {
   const base: Wave[] = [
     {
       label: "Build — easy aerobic base",
@@ -118,8 +206,13 @@ function enduranceWaves(strength: number, secondary: WizardState["secondary"]): 
     },
   ];
   if (strength === 0) return base;
-  const liftType =
-    secondary === "strength"
+  const liftType = isBw
+    ? secondary === "strength"
+      ? `low-RIR bodyweight session${strength === 1 ? "" : "s"} with the hardest progressions`
+      : secondary === "muscle"
+        ? `moderate-RIR bodyweight session${strength === 1 ? "" : "s"} with extra accessory work`
+        : `bodyweight maintenance session${strength === 1 ? "" : "s"} at low RIR`
+    : secondary === "strength"
       ? `heavy strength session${strength === 1 ? "" : "s"} (singles/triples ≥ 90% TM)`
       : secondary === "muscle"
         ? `maintenance lift${strength === 1 ? "" : "s"} with extra accessory work`
@@ -206,6 +299,28 @@ const REBUILD_WAVES: Wave[] = [
   },
 ];
 
+const BW_REBUILD_WAVES: Wave[] = [
+  {
+    label: "Ease in — pain-free range only",
+    detail:
+      "Easiest regression that still hits the pattern. The goal is smooth, pain-free movement — not progression.",
+  },
+  {
+    label: "Step up — modest progression",
+    detail:
+      "Step up one node where it feels clean. Tendons start adapting; heavy slow resistance and isometric hold sessions on the dedicated tendon days.",
+  },
+  {
+    label: "Consolidate — hold the new range",
+    detail:
+      "Stay at the same node — this is the upper limit for this block. Lets tendons catch up to your strength.",
+  },
+  {
+    label: "Recover — back off to feel-good progressions",
+    detail: "Half the sets at the easier regression. Lets tendons catch up before the next block.",
+  },
+];
+
 const MAINTENANCE_WAVES: Wave[] = [
   {
     label: "Steady — keep what you have",
@@ -218,45 +333,77 @@ const MAINTENANCE_WAVES: Wave[] = [
   },
 ];
 
-function wavesFor(state: WizardState, a: ResolvedArchetype): Wave[] {
-  if (a.id === "strength_anchor") return strengthWaves(a.sessions.hypertrophy);
-  if (a.id === "hypertrophy_anchor") return hypertrophyWaves(a.sessions.strength);
-  if (a.id === "endurance_anchor") return enduranceWaves(a.sessions.strength, state.secondary);
-  if (a.id === "concurrent_hybrid")
+const BW_MAINTENANCE_WAVES: Wave[] = [
+  {
+    label: "Steady — keep what you have",
+    detail:
+      "Moderate-RIR bodyweight sets and short Z2 sessions. Goal is to keep what you have, not add anything.",
+  },
+  {
+    label: "Steady — keep what you have",
+    detail: "Same shape as week 1. Two weeks total, then return to a full block.",
+  },
+];
+
+function wavesFor(state: WizardState, a: ResolvedArchetype, isBw: boolean): Wave[] {
+  if (a.id === "strength_anchor") return strengthWaves(a.sessions.hypertrophy, isBw);
+  if (a.id === "hypertrophy_anchor") return hypertrophyWaves(a.sessions.strength, isBw);
+  if (a.id === "endurance_anchor") return enduranceWaves(a.sessions.strength, state.secondary, isBw);
+  if (a.id === "concurrent_hybrid") {
+    if (isBw) return BW_HYBRID_WAVES;
     return state.goal === "muscle" || state.secondary === "muscle" ? HYBRID_MUSCLE_WAVES : HYBRID_WAVES;
-  if (a.id === "rebuild") return REBUILD_WAVES;
-  if (a.id === "maintenance") return MAINTENANCE_WAVES;
+  }
+  if (a.id === "rebuild") return isBw ? BW_REBUILD_WAVES : REBUILD_WAVES;
+  if (a.id === "maintenance") return isBw ? BW_MAINTENANCE_WAVES : MAINTENANCE_WAVES;
   return [];
 }
 
-function whyMatchText(state: WizardState, a: ResolvedArchetype): string {
+function whyMatchText(state: WizardState, a: ResolvedArchetype, isBw: boolean): string {
   const h = a.sessions.hypertrophy;
   const c = a.sessions.cardio;
   const s = a.sessions.strength;
   if (a.id === "concurrent_hybrid") {
-    return "Hybrid Focus caps the top set so heavy lifting doesn’t sap your cardio sessions. The aerobic side runs one easy Z2 and one harder VO2 / threshold day — protects both qualities without competing.";
+    return isBw
+      ? "Hybrid Focus keeps bodyweight strength at RIR 2 so heavy training doesn't sap your cardio sessions. The aerobic side runs one easy Z2 and one harder VO2 / threshold day — protects both qualities without competing."
+      : "Hybrid Focus caps the top set so heavy lifting doesn’t sap your cardio sessions. The aerobic side runs one easy Z2 and one harder VO2 / threshold day — protects both qualities without competing.";
   }
   if (a.id === "strength_anchor") {
     if (h > 0 && c === 0)
-      return "Strength Focus runs a 4-week intensity wave on the main lifts — top sets get heavier each week, peaking in week 3. The extra hypertrophy days add muscle without competing for the strength signal — moderate weights and accessory work on different days from your heavy lifts.";
+      return isBw
+        ? "Strength Focus runs a 4-week progression on the main bodyweight families — tempos slow and holds lengthen each week, peaking in week 3. The extra hypertrophy days add muscle without competing for the strength signal — moderate-RIR work and accessory variants on different days from your hardest sessions."
+        : "Strength Focus runs a 4-week intensity wave on the main lifts — top sets get heavier each week, peaking in week 3. The extra hypertrophy days add muscle without competing for the strength signal — moderate weights and accessory work on different days from your heavy lifts.";
     if (c > 0)
-      return "Strength Focus runs a 4-week intensity wave on the main lifts. Easy cardio fills the remaining days for recovery and aerobic base — kept light so it doesn’t compete with the strength signal.";
-    return "Strength Focus runs a 4-week intensity wave on the main lifts — top sets get heavier each week, peaking in week 3. Single-focus block: full rest on the other days so recovery goes entirely into the lifts.";
+      return isBw
+        ? "Strength Focus runs a 4-week progression on the main bodyweight families. Easy cardio fills the remaining days for recovery and aerobic base — kept light so it doesn't compete with the strength signal."
+        : "Strength Focus runs a 4-week intensity wave on the main lifts. Easy cardio fills the remaining days for recovery and aerobic base — kept light so it doesn’t compete with the strength signal.";
+    return isBw
+      ? "Strength Focus runs a 4-week progression on the main bodyweight families — tempos slow and holds lengthen each week, peaking in week 3. Single-focus block: full rest on the other days so recovery goes entirely into the work."
+      : "Strength Focus runs a 4-week intensity wave on the main lifts — top sets get heavier each week, peaking in week 3. Single-focus block: full rest on the other days so recovery goes entirely into the lifts.";
   }
   if (a.id === "hypertrophy_anchor") {
     if (s > 0 && c === 0)
-      return "Hypertrophy Focus drives per-muscle volume across the block — same exercises and weights, more sets each week. The extra strength days keep heavy lifting in the picture so you don’t lose absolute strength while volume drives growth.";
+      return isBw
+        ? "Hypertrophy Focus drives per-muscle volume across the block — same movements and tempos, more sets each week. The extra strength days keep the hardest progressions in the picture so you don't lose absolute strength while volume drives growth."
+        : "Hypertrophy Focus drives per-muscle volume across the block — same exercises and weights, more sets each week. The extra strength days keep heavy lifting in the picture so you don’t lose absolute strength while volume drives growth.";
     if (c > 0)
-      return "Hypertrophy Focus drives per-muscle volume using compound + machine isolation work, with accessory pools that fill the gaps compounds miss. Easy cardio fills the remaining days at a recovery dose.";
-    return "Hypertrophy Focus drives per-muscle volume using compound + machine isolation work, with accessory pools that fill the gaps compounds miss. Single-focus block: full rest on the other days so muscles have time to grow.";
+      return isBw
+        ? "Hypertrophy Focus drives per-muscle volume using compound bodyweight movements + accessory variants that fill the gaps compounds miss. Easy cardio fills the remaining days at a recovery dose."
+        : "Hypertrophy Focus drives per-muscle volume using compound + machine isolation work, with accessory pools that fill the gaps compounds miss. Easy cardio fills the remaining days at a recovery dose.";
+    return isBw
+      ? "Hypertrophy Focus drives per-muscle volume using compound bodyweight movements + accessory variants that fill the gaps compounds miss. Single-focus block: full rest on the other days so muscles have time to grow."
+      : "Hypertrophy Focus drives per-muscle volume using compound + machine isolation work, with accessory pools that fill the gaps compounds miss. Single-focus block: full rest on the other days so muscles have time to grow.";
   }
   if (a.id === "endurance_anchor") {
     if (s > 0)
-      return "Endurance Focus runs a polarized week (long Z2 + VO2 intervals) and holds strength with two heavy sessions — heavy work at low frequency preserves strength while cardio leads.";
+      return isBw
+        ? "Endurance Focus runs a polarized week (long Z2 + VO2 intervals) and holds strength with two low-RIR bodyweight sessions — hard work at low frequency preserves strength while cardio leads."
+        : "Endurance Focus runs a polarized week (long Z2 + VO2 intervals) and holds strength with two heavy sessions — heavy work at low frequency preserves strength while cardio leads.";
     return "Endurance Focus runs a polarized week — easier Z2 sessions for aerobic base, with one harder VO2 / threshold day for top-end fitness. Single-focus block: pure cardio, no strength work.";
   }
   if (a.id === "rebuild")
-    return "Rebuild caps top set at 80% of your training max and adds dedicated heavy slow resistance and isometric hold sessions. Designed to load tendons and joints safely, not to chase progression.";
+    return isBw
+      ? "Rebuild keeps progressions at sub-maximal nodes and adds dedicated heavy slow resistance and isometric hold sessions. Designed to load tendons and joints safely, not to chase progression."
+      : "Rebuild caps top set at 80% of your training max and adds dedicated heavy slow resistance and isometric hold sessions. Designed to load tendons and joints safely, not to chase progression.";
   if (a.id === "maintenance")
     return "Two-week maintenance block. Strength and aerobic base are held at sub-adaptation volume — protects what you have without spending recovery on adaptation.";
   return "";
@@ -265,11 +412,15 @@ function whyMatchText(state: WizardState, a: ResolvedArchetype): string {
 export function Step4Review({
   state,
   resolved,
+  equipmentPreset,
 }: {
   state: WizardState;
   resolved: ResolvedArchetype;
+  /** Equipment preset from the user's profile. Drives bodyweight-aware copy. */
+  equipmentPreset?: EquipmentPreset | null;
 }): React.ReactElement {
-  const waves = wavesFor(state, resolved);
+  const isBw = equipmentPreset === "bodyweight_only";
+  const waves = wavesFor(state, resolved, isBw);
   return (
     <section>
       <div style={pillStyle}>Step 4 of 5 · Review</div>
@@ -278,7 +429,7 @@ export function Step4Review({
 
       <section style={reviewCardStyle}>
         <h3 style={cardHeadStyle}>Why this match?</h3>
-        <div style={cardBodyStyle}>{whyMatchText(state, resolved)}</div>
+        <div style={cardBodyStyle}>{whyMatchText(state, resolved, isBw)}</div>
       </section>
 
       {state.power && (
@@ -331,8 +482,9 @@ export function Step4Review({
             ))}
           </ul>
           <p style={{ marginTop: 10, fontSize: 12, color: "var(--cp-text-muted)" }}>
-            Main lifts come from your training maxes; the picker swaps in the specific variants
-            you&apos;ve configured.
+            {isBw
+              ? "Main movements come from your bodyweight progression — the picker rotates through 3 families per session based on your current nodes."
+              : "Main lifts come from your training maxes; the picker swaps in the specific variants you've configured."}
           </p>
         </div>
       </section>
