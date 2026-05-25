@@ -266,3 +266,11 @@ row that was applied from a LF (Linux/CI) checkout.
 - Replaced flat `Set 1..N` list (which mis-numbered accessories as main-lift sets) with structured sections: warm-up (collapsible) / main work (top-set chip) / accessories / posterior-chain support (hinge-comp) / tendon / cardio.
 - New helper `lib/plan/prescription-grouping.ts` groups items by kind + movement, dedupes per movement_id, splits hinge-compensation accessories via `meta.hinge_compensation`.
 - Rewrote `summarisePrescription` header line to `<MainLift> -- N working sets + M accessories` variants (TM/percentages moved into the card body).
+
+## [2026-05-26] feat | /plan layout shift — hero up-next, two-column, denser calendar (PR-B)
+- New `UpNextHero` at the top of /plan: large primary Start CTA for today's session (AM card primary on two-a-days), low-contrast Skip; rest-day variant peeks the next planned session.
+- Right-rail `UpNextRail` shows the next 3 upcoming sessions with secondary Start buttons — only the hero owns the page's single primary CTA.
+- Two-column layout at ≥1024px (PlanViews + block strip left, rail right), single-column stack below; uses inline `<style>` block (matches profile-page pattern).
+- `BlockHeatmapStrip` replaces the old multi-row `BlockCalendar`: 4-week × 1-row horizontal heatmap, one cell per day, colored by status.
+- Past completed sessions in the week list render at 0.55 opacity; today stays full strength. Future-day Start buttons inside the week list are secondary (one primary per page).
+- New pure helper `lib/plan/up-next.ts` (`selectUpNext`) + 6 unit tests covering today/upcoming/two-a-day ordering/shape counts.

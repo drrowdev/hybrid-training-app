@@ -27,6 +27,10 @@ import type { Prescription, PrescriptionItem } from "@hta/db";
 import { SkipSessionForm } from "@/components/plan/SkipSessionForm";
 import { EndBlockForm } from "@/components/plan/EndBlockForm";
 import { PlanViews, type ViewMode } from "@/components/plan/PlanViews";
+import { UpNextHero } from "@/components/plan/UpNextHero";
+import { UpNextRail } from "@/components/plan/UpNextRail";
+import { BlockHeatmapStrip } from "@/components/plan/BlockHeatmapStrip";
+import { selectUpNext } from "@/lib/plan/up-next";
 import { GlossaryBadge } from "@/components/ui/GlossaryBadge";
 import { formatDate, type ProfileForFormat } from "@/lib/format/datetime";
 import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner";
@@ -223,6 +227,19 @@ export default async function PlanPage({
   const totalPlanned = all.length;
   const completed = all.filter((d) => d.completedSessionId).length;
   const skipped = all.filter((d) => d.skippedAt).length;
+
+  const upNext = selectUpNext({
+    today,
+    all: all.map((p) => ({
+      id: p.id,
+      date: p.date,
+      slot: p.slot,
+      title: p.title,
+      prescription: p.prescription,
+      completedSessionId: p.completedSessionId,
+      skippedAt: p.skippedAt,
+    })),
+  });
 
   const tissueGaps = await getCurrentWeekTissueStackGaps(supabase, user.id);
 
@@ -453,27 +470,46 @@ export default async function PlanPage({
 
       {showBodyweightBanner && <BodyweightOnlyBanner />}
 
-      <PlanViews
-        items={calendarItems}
-        view={viewMode}
-        filter={filter}
-        anchor={anchor}
-        today={today}
-        defaultLegendOpen={true}
-        initialMatchPlannedId={matchPlannedId}
-        candidatesByPlannedId={candidatesByPlannedId}
-        plannedById={plannedById}
-        linkAction={linkPlannedToSession}
+      <UpNextHero
+        selection={upNext}
         skipAction={skipPlannedSession}
         formatProfile={planFmtProfile}
       />
 
-      <BlockCalendar
-        all={all}
-        weeks={block.weeks}
-        currentWeek={initialWeek}
-        today={today}
-      />
+      <div className="cp-plan-two-col">
+        <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
+          <PlanViews
+            items={calendarItems}
+            view={viewMode}
+            filter={filter}
+            anchor={anchor}
+            today={today}
+            defaultLegendOpen={true}
+            initialMatchPlannedId={matchPlannedId}
+            candidatesByPlannedId={candidatesByPlannedId}
+            plannedById={plannedById}
+            linkAction={linkPlannedToSession}
+            skipAction={skipPlannedSession}
+            formatProfile={planFmtProfile}
+          />
+          <BlockHeatmapStrip all={all} today={today} />
+        </div>
+        <UpNextRail sessions={upNext.upcoming} formatProfile={planFmtProfile} />
+      </div>
+
+      <style>{`
+        .cp-plan-two-col {
+          display: grid;
+          gap: 16px;
+          grid-template-columns: minmax(0, 1fr);
+          align-items: start;
+        }
+        @media (min-width: 1024px) {
+          .cp-plan-two-col {
+            grid-template-columns: minmax(0, 1.85fr) minmax(260px, 1fr);
+          }
+        }
+      `}</style>
 
       <nav style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }} aria-label="Block weeks">
         <Link
@@ -739,6 +775,10 @@ function DaySessionCard({
 }) {
   const done = !!planned.completedSessionId;
   const skipped = !!planned.skippedAt;
+  // Past completed sessions are de-emphasised in the full week list —
+  // the user's eye should land on what's still actionable. Today's
+  // session stays at full strength even when completed.
+  const mutedPast = done && isPast && !isToday;
   // Stage C: slot badges only render when the day genuinely pairs two
   // sessions. A `slot` of "am" or "pm" without a partner is treated as
   // a single-session day for display purposes.
@@ -753,10 +793,13 @@ function DaySessionCard({
   return (
     <div
       className="cp-card"
+      data-testid={`plan-day-card-${planned.id}`}
+      data-muted={mutedPast ? "true" : undefined}
       style={{
         padding: 16,
         borderColor: isToday && !isTwoADay ? "var(--cp-accent)" : undefined,
         background: isToday && !isTwoADay ? "var(--cp-accent-soft)" : undefined,
+        opacity: mutedPast ? 0.55 : 1,
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
@@ -866,7 +909,7 @@ function DaySessionCard({
         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
           <Link
             href={`/app/sessions/start/${planned.id}`}
-            className="cp-btn primary"
+            className={isToday ? "cp-btn primary" : "cp-btn"}
             style={{ flex: 1, textAlign: "center" }}
             data-testid={`start-${planned.id}`}
           >
@@ -987,130 +1030,6 @@ function BlockCompleteCard({
   );
 }
 
-function BlockCalendar({
-  all,
-  weeks,
-  currentWeek,
-  today,
-}: {
-  all: { weekIndex: number; dayIndex: number; date: string; completedSessionId: string | null; skippedAt: string | null }[];
-  weeks: number;
-  currentWeek: number;
-  today: string;
-}) {
-  // Index by (week, day) for O(1) lookup.
-  const byCell = new Map<string, { hasPlan: boolean; completed: boolean; skipped: boolean; date: string }>();
-  for (const d of all) {
-    const k = `${d.weekIndex}:${d.dayIndex}`;
-    const prev = byCell.get(k) ?? { hasPlan: false, completed: false, skipped: false, date: d.date };
-    byCell.set(k, {
-      hasPlan: true,
-      completed: prev.completed || !!d.completedSessionId,
-      skipped: prev.skipped || !!d.skippedAt,
-      date: d.date,
-    });
-  }
-  return (
-    <section className="cp-card" style={{ padding: 12 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8, gap: 8 }}>
-        <h2 style={{ margin: 0, fontSize: 14 }}>Block overview</h2>
-        <div style={{ display: "flex", gap: 10, fontSize: 10, color: "var(--cp-text-muted)", flexWrap: "wrap" }}>
-          <Legend color="var(--cp-success)" label="Done" />
-          <Legend color="var(--cp-text-muted)" label="Skipped" />
-          <Legend color="var(--cp-accent)" label="Planned" />
-          <Legend color="var(--cp-surface-soft)" label="Rest" />
-        </div>
-      </div>
-      <div
-        role="grid"
-        aria-label="Block calendar"
-        style={{
-          display: "grid",
-          gridTemplateColumns: `40px repeat(7, 1fr)`,
-          gap: 4,
-        }}
-      >
-        <div />
-        {DOW.map((d) => (
-          <div key={d} style={{ fontSize: 10, color: "var(--cp-text-muted)", textAlign: "center", fontWeight: 600 }}>
-            {d[0]}
-          </div>
-        ))}
-        {Array.from({ length: weeks }, (_, w) => (
-          <CalendarWeekRow
-            key={w}
-            weekIndex={w}
-            isCurrent={w === currentWeek}
-            byCell={byCell}
-            today={today}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function CalendarWeekRow({
-  weekIndex,
-  isCurrent,
-  byCell,
-  today,
-}: {
-  weekIndex: number;
-  isCurrent: boolean;
-  byCell: Map<string, { hasPlan: boolean; completed: boolean; skipped: boolean; date: string }>;
-  today: string;
-}) {
-  return (
-    <>
-      <Link
-        href={`/app/plan?week=${weekIndex}`}
-        style={{
-          fontSize: 10,
-          color: isCurrent ? "var(--cp-accent)" : "var(--cp-text-muted)",
-          fontWeight: isCurrent ? 700 : 500,
-          textDecoration: "none",
-          alignSelf: "center",
-        }}
-      >
-        Wk{weekIndex + 1}
-      </Link>
-      {Array.from({ length: 7 }, (_, dayIndex) => {
-        const cell = byCell.get(`${weekIndex}:${dayIndex}`);
-        const isToday = cell?.date === today;
-        const bg = !cell
-          ? "var(--cp-surface-soft)"
-          : cell.completed
-            ? "var(--cp-success)"
-            : cell.skipped
-              ? "var(--cp-text-muted)"
-              : "var(--cp-accent-soft)";
-        return (
-          <div
-            key={dayIndex}
-            title={cell ? `Wk${weekIndex + 1} ${DOW[dayIndex]} (${cell.date})` : `Wk${weekIndex + 1} ${DOW[dayIndex]} — rest`}
-            style={{
-              height: 12,
-              borderRadius: 3,
-              background: bg,
-              border: isToday ? "1.5px solid var(--cp-accent)" : "1px solid transparent",
-              opacity: cell?.completed ? 1 : cell?.skipped ? 0.5 : 1,
-            }}
-          />
-        );
-      })}
-    </>
-  );
-}
-
-function Legend({ color, label }: { color: string; label: string }) {
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-      <span aria-hidden style={{ width: 10, height: 10, borderRadius: 3, background: color }} />
-      <span>{label}</span>
-    </span>
-  );
-}
 
 function TissueStackCard({ gaps }: { gaps: TissueStackGap[] }) {
   return (
