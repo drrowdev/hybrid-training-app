@@ -46,14 +46,13 @@ export type PrescriptionSections = {
  * One movement's worth of prescription rows. Strength sessions can
  * legitimately carry multiple movements per session (e.g. the
  * bodyweight planner emits one main + back-off per family, so a single
- * session contains push + pull + squat). The plan card groups by
- * movement first so each movement gets its own warm-up ramp, working
- * sets, and back-off rows under a labelled subsection.
+ * session contains push + pull + squat). The plan card groups MAIN
+ * work by movement so each movement gets its own warm-up ramp and
+ * sets list under a labelled subsection.
  *
- * `kind === "accessory"` items naturally belong to the movement they
- * target (each accessory item carries its own movementId / movementName)
- * so they're rendered inside the movement subsection they relate to,
- * NOT pooled at the bottom of the card.
+ * Accessories, hinge compensation, tendon, and cardio do NOT split into
+ * per-movement subsections — pooling them at the session level keeps
+ * the card scannable when an accessory pool has 5 distinct movements.
  */
 export type MovementPrescriptionSection = {
   rowKey: string;
@@ -61,17 +60,30 @@ export type MovementPrescriptionSection = {
   movementName: string;
   movementSlug: string | null;
   warmups: PrescriptionItem[];
-  main: PrescriptionMainRow[];
-  backOff: PrescriptionMainRow[];
-  accessories: PrescriptionItem[];
-  hingeCompensations: PrescriptionItem[];
-  tendon: PrescriptionItem[];
+  /** Combined main + back-off + power_potentiation rows in source order. */
+  sets: PlanSetRow[];
 };
 
-export type MovementGroupedSections = {
+export type PlanSetRow = {
+  item: PrescriptionItem;
+  /** 1-indexed display position within the movement's set list. */
+  setNumber: number;
+  /** True for the heaviest %TM main set. */
+  isTopSet: boolean;
+  /** True for back-off rows so the renderer can tag them inline. */
+  isBackOff: boolean;
+};
+
+export type PlanCardSections = {
   movements: MovementPrescriptionSection[];
+  accessories: PrescriptionMovementRow[];
+  hingeCompensations: PrescriptionMovementRow[];
+  tendon: PrescriptionMovementRow[];
   cardio: PrescriptionItem[];
 };
+
+/** Legacy alias — kept so existing imports compile. */
+export type MovementGroupedSections = PlanCardSections;
 
 const MAIN_KINDS: ReadonlySet<PrescriptionItem["kind"]> = new Set([
   "main",
@@ -190,26 +202,39 @@ export function groupPrescriptionSections(
 }
 
 /**
- * Group prescription items by movement first, then by kind within each
- * movement. Cardio items are not movement-anchored in the same way
- * (they're a session-level shape), so they're returned separately.
+ * Group prescription items for the plan-card layout.
+ *
+ * Strength / skill movements (kinds: main, back_off, warmup,
+ * power_potentiation) group by `movement_id` into their own subsections.
+ * Within a movement, warm-ups separate (they collapse to a tiny pill),
+ * and main + back-off + power_potentiation merge into ONE flat numbered
+ * "Sets" list with back-off rows tagged inline. This avoids the
+ * "MAIN WORK / BACK-OFF" double-header pattern that doubled section
+ * chrome when a movement had as few as one back-off set.
+ *
+ * Accessories, hinge-compensation, tendon, and cardio pool at the
+ * session level — they're rendered as a single grouped section each at
+ * the bottom of the card, NOT exploded into per-movement subsections.
+ * The latter blew up the card vertically when 5 accessories each got
+ * their own header.
  *
  * Movements appear in the order they first occur in the input array,
- * which preserves the planner's intentional ordering (primary lift
- * first, secondaries after — and warm-up items inserted by
- * `prependWarmupsForMainLifts` correctly land in front of their parent
- * movement's first main set, so iterating items in order gives the
- * right movement order).
+ * which preserves the planner's intentional ordering.
  *
  * Empty / contentless items (no reps, no holdSec, no percentTm, no
- * durationMin, no notes, no intensityLabel) are dropped — they
- * represent generator-side data loss and would render as blank rows.
+ * durationMin, no notes, no intensityLabel, no bw payload) are dropped.
  */
 export function groupByMovementThenKind(
   items: PrescriptionItem[],
-): MovementGroupedSections {
+): PlanCardSections {
   const movements: MovementPrescriptionSection[] = [];
   const byKey = new Map<string, MovementPrescriptionSection>();
+  const accessories: PrescriptionMovementRow[] = [];
+  const accessoriesByKey = new Map<string, PrescriptionMovementRow>();
+  const hinge: PrescriptionMovementRow[] = [];
+  const hingeByKey = new Map<string, PrescriptionMovementRow>();
+  const tendon: PrescriptionMovementRow[] = [];
+  const tendonByKey = new Map<string, PrescriptionMovementRow>();
   const cardio: PrescriptionItem[] = [];
 
   function sectionFor(item: PrescriptionItem): MovementPrescriptionSection {
@@ -224,11 +249,7 @@ export function groupByMovementThenKind(
       movementName: displayName(item),
       movementSlug: item.movementSlug ?? null,
       warmups: [],
-      main: [],
-      backOff: [],
-      accessories: [],
-      hingeCompensations: [],
-      tendon: [],
+      sets: [],
     };
     byKey.set(key, section);
     movements.push(section);
@@ -241,49 +262,49 @@ export function groupByMovementThenKind(
       continue;
     }
     if (isContentlessItem(item)) continue;
-    const section = sectionFor(item);
-    if (item.kind === "warmup") {
-      section.warmups.push(item);
-    } else if (item.kind === "back_off") {
-      section.backOff.push({
-        item,
-        setNumber: section.backOff.length + 1,
-        isTopSet: false,
-      });
-    } else if (MAIN_KINDS.has(item.kind)) {
-      section.main.push({
-        item,
-        setNumber: section.main.length + 1,
-        isTopSet: false,
-      });
-    } else if (item.kind === "tendon") {
-      section.tendon.push(item);
-    } else if (item.kind === "accessory") {
-      if (isHingeCompensation(item)) {
-        section.hingeCompensations.push(item);
-      } else {
-        section.accessories.push(item);
-      }
-    } else {
-      // Defensive: unknown kinds fall through as accessories so they
-      // still surface rather than being silently dropped.
-      section.accessories.push(item);
+    if (item.kind === "tendon") {
+      pushIntoRow(tendon, tendonByKey, item);
+      continue;
     }
+    if (item.kind === "accessory") {
+      if (isHingeCompensation(item)) {
+        pushIntoRow(hinge, hingeByKey, item);
+      } else {
+        pushIntoRow(accessories, accessoriesByKey, item);
+      }
+      continue;
+    }
+    if (item.kind === "warmup") {
+      sectionFor(item).warmups.push(item);
+      continue;
+    }
+    if (MAIN_KINDS.has(item.kind)) {
+      const section = sectionFor(item);
+      section.sets.push({
+        item,
+        setNumber: section.sets.length + 1,
+        isTopSet: false,
+        isBackOff: item.kind === "back_off",
+      });
+      continue;
+    }
+    // Defensive: unknown kinds fall through as accessories so they
+    // still surface rather than being silently dropped.
+    pushIntoRow(accessories, accessoriesByKey, item);
   }
 
-  // Mark top set within each movement subsection — the heaviest %TM
-  // among kind === "main" items wins; back-off / power-potentiation
-  // items are explicitly excluded.
+  // Mark top set within each movement — the heaviest %TM among kind ===
+  // "main" rows wins; back-off / power_potentiation rows are excluded.
   for (const section of movements) {
     let topPct = -Infinity;
-    for (const row of section.main) {
+    for (const row of section.sets) {
       if (row.item.kind !== "main") continue;
       if (row.item.percentTm != null && row.item.percentTm > topPct) {
         topPct = row.item.percentTm;
       }
     }
     let marked = false;
-    for (const row of section.main) {
+    for (const row of section.sets) {
       if (
         !marked &&
         row.item.kind === "main" &&
@@ -296,7 +317,7 @@ export function groupByMovementThenKind(
     }
   }
 
-  return { movements, cardio };
+  return { movements, accessories, hingeCompensations: hinge, tendon, cardio };
 }
 
 /**
