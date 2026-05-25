@@ -23,7 +23,7 @@ import { cleanPrescriptionNotes } from "@/lib/planner/clean-prescription-notes";
 import { getTrainingMaxContext } from "@/lib/training-maxes/queries";
 import { effectiveTimeOfDay, gapHoursBetween } from "@/lib/planner/time-of-day";
 import { getCurrentWeekTissueStackGaps, type TissueStackGap } from "@/lib/stats/tissue-stack-queries";
-import type { Prescription } from "@hta/db";
+import type { Prescription, PrescriptionItem } from "@hta/db";
 import { SkipSessionForm } from "@/components/plan/SkipSessionForm";
 import { EndBlockForm } from "@/components/plan/EndBlockForm";
 import { PlanViews, type ViewMode } from "@/components/plan/PlanViews";
@@ -48,6 +48,11 @@ import {
   type RawPlannedRow,
   type RawSessionRow,
 } from "@/lib/plan/calendar-data";
+import {
+  groupPrescriptionSections,
+  type PrescriptionMainRow,
+  type PrescriptionMovementRow,
+} from "@/lib/plan/prescription-grouping";
 import { addDaysToYmd, ymdInTimezone } from "@/lib/dates";
 
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -808,34 +813,7 @@ function DaySessionCard({
       </div>
 
       {planned.prescription.items.length > 0 && (
-        <ul style={{ listStyle: "none", padding: 0, margin: "10px 0 0", display: "grid", gap: 4 }}>
-          {planned.prescription.items.map((item, i) => (
-            <li
-              key={i}
-              style={{
-                fontSize: 13,
-                display: "flex",
-                justifyContent: "space-between",
-                padding: "6px 10px",
-                background: "var(--cp-surface-soft)",
-                borderRadius: 6,
-              }}
-            >
-              <span>
-                Set {i + 1}
-                {(() => {
-                  const cleanedNote = cleanPrescriptionNotes(item.notes);
-                  return cleanedNote ? (
-                    <span style={{ color: "var(--cp-accent)", fontWeight: 600, marginLeft: 4 }}>· {cleanedNote}</span>
-                  ) : null;
-                })()}
-              </span>
-              <span className="mono" style={{ fontWeight: 600 }}>
-                {formatPrescriptionItem(item)}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <PlannedPrescriptionSections items={planned.prescription.items} />
       )}
 
       {!done && !skipped && isTwoADay && planned.slot !== "single" && (
@@ -1166,3 +1144,277 @@ function TissueStackCard({ gaps }: { gaps: TissueStackGap[] }) {
     </section>
   );
 }
+
+/**
+ * Structured renderer for a planned session's prescription. Replaces
+ * the legacy flat "Set 1..N" list, which incorrectly numbered every
+ * prescription item — including accessories and warm-ups — as if they
+ * were sets of the main lift.
+ *
+ * Sections render in fixed order; empty sections are dropped. Visual
+ * vocabulary matches `MovementCardList` (uppercase muted section
+ * labels, soft-surface rows) so the planned card and the in-session
+ * card feel related.
+ */
+function PlannedPrescriptionSections({ items }: { items: PrescriptionItem[] }) {
+  const sections = groupPrescriptionSections(items);
+  const blocks: React.ReactNode[] = [];
+
+  if (sections.warmups.length > 0) {
+    blocks.push(<WarmupSection key="warmup" items={sections.warmups} />);
+  }
+  if (sections.main.length > 0) {
+    blocks.push(<MainWorkSection key="main" rows={sections.main} />);
+  }
+  if (sections.accessories.length > 0) {
+    blocks.push(
+      <MovementRowSection
+        key="accessory"
+        label="Accessories"
+        rows={sections.accessories}
+        testId="plan-section-accessories"
+      />,
+    );
+  }
+  if (sections.hingeCompensations.length > 0) {
+    blocks.push(
+      <MovementRowSection
+        key="hinge"
+        label="Posterior-chain support"
+        rows={sections.hingeCompensations}
+        testId="plan-section-hinge-comp"
+      />,
+    );
+  }
+  if (sections.tendon.length > 0) {
+    blocks.push(
+      <MovementRowSection
+        key="tendon"
+        label="Tendon work"
+        rows={sections.tendon}
+        testId="plan-section-tendon"
+      />,
+    );
+  }
+  if (sections.cardio.length > 0) {
+    blocks.push(<CardioSection key="cardio" items={sections.cardio} />);
+  }
+
+  if (blocks.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 10, display: "grid", gap: 10 }} data-testid="plan-prescription-sections">
+      {blocks}
+    </div>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        fontSize: 10,
+        textTransform: "uppercase",
+        letterSpacing: "0.08em",
+        color: "var(--cp-text-muted)",
+        fontWeight: 600,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function WarmupSection({ items }: { items: PrescriptionItem[] }) {
+  return (
+    <details data-testid="plan-section-warmup">
+      <summary
+        style={{
+          cursor: "pointer",
+          fontSize: 10,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          color: "var(--cp-text-muted)",
+          fontWeight: 600,
+          listStyle: "revert",
+        }}
+      >
+        Warm-up · {items.length} set{items.length === 1 ? "" : "s"}
+      </summary>
+      <div
+        className="mono"
+        style={{
+          marginTop: 6,
+          fontSize: 12,
+          color: "var(--cp-text-muted)",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "4px 14px",
+        }}
+      >
+        {items.map((it, i) => (
+          <span key={i}>
+            {i + 1} · {formatPrescriptionItem(it)}
+          </span>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function MainWorkSection({ rows }: { rows: PrescriptionMainRow[] }) {
+  return (
+    <div data-testid="plan-section-main" style={{ display: "grid", gap: 4 }}>
+      <SectionLabel>Main work</SectionLabel>
+      <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 4 }}>
+        {rows.map((row, i) => {
+          const cleanedNote = cleanPrescriptionNotes(row.item.notes);
+          return (
+            <li
+              key={i}
+              style={{
+                fontSize: 13,
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "6px 10px",
+                background: "var(--cp-surface-soft)",
+                borderRadius: 6,
+              }}
+            >
+              <span>
+                Set {row.setNumber}
+                {row.isTopSet && (
+                  <span
+                    className="cp-pill"
+                    style={{
+                      marginLeft: 6,
+                      fontSize: 10,
+                      padding: "0 6px",
+                      color: "var(--cp-accent)",
+                      borderColor: "var(--cp-accent)",
+                    }}
+                  >
+                    top set
+                  </span>
+                )}
+                {cleanedNote && (
+                  <span style={{ color: "var(--cp-accent)", fontWeight: 600, marginLeft: 4 }}>
+                    · {cleanedNote}
+                  </span>
+                )}
+              </span>
+              <span className="mono" style={{ fontWeight: 600 }}>
+                {formatPrescriptionItem(row.item)}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Compact "one row per movement" renderer used by accessories,
+ * hinge-compensation, and tendon sections. Aggregates repeated items
+ * for the same movement into a single `N × R` summary so a Bulgarian
+ * split squat prescribed as two items shows once as `2 × 14`.
+ */
+function MovementRowSection({
+  label,
+  rows,
+  testId,
+}: {
+  label: string;
+  rows: PrescriptionMovementRow[];
+  testId: string;
+}) {
+  return (
+    <div data-testid={testId} style={{ display: "grid", gap: 4 }}>
+      <SectionLabel>{label}</SectionLabel>
+      <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 4 }}>
+        {rows.map((row) => (
+          <li
+            key={row.rowKey}
+            style={{
+              fontSize: 13,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "baseline",
+              gap: 8,
+              padding: "6px 10px",
+              background: "var(--cp-surface-soft)",
+              borderRadius: 6,
+            }}
+          >
+            <span style={{ fontWeight: 500 }}>{row.movementName}</span>
+            <span className="mono" style={{ fontWeight: 600, color: "var(--cp-text-muted)" }}>
+              {formatMovementRowPrescription(row)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function CardioSection({ items }: { items: PrescriptionItem[] }) {
+  return (
+    <div data-testid="plan-section-cardio" style={{ display: "grid", gap: 4 }}>
+      <SectionLabel>Cardio</SectionLabel>
+      <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 4 }}>
+        {items.map((it, i) => (
+          <li
+            key={i}
+            style={{
+              fontSize: 13,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "baseline",
+              gap: 8,
+              padding: "6px 10px",
+              background: "var(--cp-surface-soft)",
+              borderRadius: 6,
+            }}
+          >
+            <span style={{ fontWeight: 500 }}>
+              {it.movementName ?? it.intensityLabel ?? "Cardio"}
+            </span>
+            <span className="mono" style={{ fontWeight: 600, color: "var(--cp-text-muted)" }}>
+              {formatPrescriptionItem(it)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Compact "N × R" / "N × R/side" prescription summary for one
+ * accessory movement row. Falls back to the canonical
+ * `formatPrescriptionItem` when the items disagree about reps or carry
+ * extra detail (RIR, hold time) that the single-line formatter handles.
+ */
+function formatMovementRowPrescription(row: PrescriptionMovementRow): string {
+  const first = row.items[0];
+  if (!first) return "";
+  // If every item agrees on the rep target, render as `N × R` where N
+  // is the count of prescription items (= sets) for this movement.
+  const reps = row.items.map((i) => i.reps).filter((r): r is number => r != null);
+  const allSameReps = reps.length === row.items.length && reps.every((r) => r === reps[0]);
+  if (allSameReps && reps.length > 0) {
+    const perSideHint = /per[\s_-]?side|each[\s_-]?side|\/side/i;
+    const noteHasSide = (first.notes ?? "").match(perSideHint);
+    const cueHasSide = (first.intensityCue ?? "").match(perSideHint);
+    const suffix = noteHasSide || cueHasSide ? "/side" : "";
+    return `${row.items.length} × ${reps[0]}${suffix}`;
+  }
+  // Heterogeneous items — fall back to the canonical per-item formatter
+  // on the first row. The user can expand the session card to see the
+  // full breakdown via the in-session log.
+  return formatPrescriptionItem(first);
+}
+
+
+
