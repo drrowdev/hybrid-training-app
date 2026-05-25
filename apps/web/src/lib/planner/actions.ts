@@ -664,7 +664,11 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   const warmupScheme = resolveWarmupScheme(profile?.warmup_scheme);
   const equipment = resolveEquipment(profile);
 
-  const minDays = minDaysForArchetype(archetype, allowsTwoADays);
+  const minDays = minDaysForArchetype(
+    archetype,
+    allowsTwoADays,
+    equipment.preset === "bodyweight_only",
+  );
   if (parsed.data.daysPerWeek < minDays) {
     return {
       ok: false,
