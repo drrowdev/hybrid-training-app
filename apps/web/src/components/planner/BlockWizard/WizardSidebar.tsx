@@ -505,6 +505,12 @@ function WeekLadder({
         const filled = !!resolved && i < resolved.weeks;
         const label = filled ? labelForWave(resolved!, i, isBw) : "—";
         const isDeload = filled && /^Recover\b/i.test(label);
+        // Split "Heading — detail" into bold heading + muted detail so the
+        // 4 weeks read at a glance (Build / Stretch / Push / Recover) and
+        // the supporting copy doesn't compete with it visually.
+        const dashIdx = label.indexOf("—");
+        const heading = dashIdx > 0 ? label.slice(0, dashIdx).trim() : label;
+        const detail = dashIdx > 0 ? label.slice(dashIdx + 1).trim() : "";
         return (
           <div key={i} style={weekCellStyle(filled, isDeload)}>
             <div
@@ -518,9 +524,14 @@ function WeekLadder({
             >
               {filled ? `Wk ${i + 1}` : "—"}
             </div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--cp-text)", marginTop: 2 }}>
-              {label}
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--cp-text)", marginTop: 4, lineHeight: 1.2 }}>
+              {heading}
             </div>
+            {detail && (
+              <div style={{ fontSize: 10, fontWeight: 400, color: "var(--cp-text-muted)", marginTop: 4, lineHeight: 1.3 }}>
+                {detail}
+              </div>
+            )}
           </div>
         );
       })}
