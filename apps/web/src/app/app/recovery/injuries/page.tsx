@@ -29,6 +29,7 @@ import { ActiveLimitationCard } from "@/components/limitations/ActiveLimitationC
 import { AddLimitationButton } from "@/components/limitations/AddLimitationButton";
 import { EngineResponseSection } from "@/components/limitations/EngineResponseSection";
 import { HistorySection } from "@/components/limitations/HistorySection";
+import { getFormatProfile } from "@/lib/format/profile";
 import type {
   EngineEventRow,
   LimitationRow,
@@ -86,7 +87,7 @@ export default async function InjuriesPage() {
     Date.now() - 14 * 86_400_000,
   ).toISOString();
 
-  const [limRes, eventsRes] = await Promise.all([
+  const [limRes, eventsRes, formatProfile] = await Promise.all([
     supabase
       .from("limitations")
       .select(
@@ -101,6 +102,7 @@ export default async function InjuriesPage() {
       .gte("occurred_at", fourteenDaysAgoIso)
       .order("occurred_at", { ascending: false })
       .limit(20),
+    getFormatProfile(supabase, user.id),
   ]);
 
   const rows: LimitationRow[] = (limRes.data ?? []).map((r) =>
@@ -195,6 +197,7 @@ export default async function InjuriesPage() {
                 movements={row.affectedMovementIds
                   .map((id) => movementRefs.get(id))
                   .filter((m): m is MovementRef => Boolean(m))}
+                formatProfile={formatProfile}
               />
             ))}
           </div>
@@ -206,6 +209,7 @@ export default async function InjuriesPage() {
       <EngineResponseSection
         events={events}
         hasActiveLimitation={active.length > 0}
+        formatProfile={formatProfile}
       />
     </main>
   );

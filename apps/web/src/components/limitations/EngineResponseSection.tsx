@@ -13,16 +13,20 @@ import { MetricHelp } from "@/components/ui/MetricHelp";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { describeEngineEvent, relativeFromNow } from "./utils";
 import type { EngineEventRow } from "./types";
+import { formatDateTime, type ProfileForFormat } from "@/lib/format/datetime";
 
 export type EngineResponseSectionProps = {
   events: EngineEventRow[];
   /** True if at least one limitation is active. Used in the empty copy. */
   hasActiveLimitation: boolean;
+  /** User's date/time preferences for the absolute-time tooltip. */
+  formatProfile?: ProfileForFormat;
 };
 
 export function EngineResponseSection({
   events,
   hasActiveLimitation,
+  formatProfile = null,
 }: EngineResponseSectionProps): ReactElement {
   return (
     <section
@@ -77,7 +81,7 @@ export function EngineResponseSection({
             >
               <span
                 className="mono"
-                title={new Date(ev.occurredAt).toLocaleString()}
+                title={formatDateTime(ev.occurredAt, formatProfile)}
                 style={{ color: "var(--cp-text-muted)" }}
               >
                 {relativeFromNow(ev.occurredAt)}
