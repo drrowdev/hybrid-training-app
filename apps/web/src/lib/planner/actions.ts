@@ -1746,76 +1746,39 @@ const startPlannedSchema = z.object({ id: z.string().uuid() });
 export async function startSessionFromPlan(formData: FormData): Promise<void> {
   const parsed = startPlannedSchema.safeParse({ id: formData.get("id") });
   if (!parsed.success) throw new Error("Invalid planned session id");
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: planned } = await supabase
-    .from("planned_sessions")
-    .select("id, title, slot, planned_at, prescription, completed_session_id")
-    .eq("id", parsed.data.id)
-    .maybeSingle();
-
-  if (!planned) throw new Error("Planned session not found");
-
-  // Reuse the existing linked session if any.
-  if (planned.completed_session_id) {
-    redirect(`/app/sessions/${planned.completed_session_id}`);
-  }
-
-  const { data: session, error: sessErr } = await supabase
-    .from("sessions")
-    .insert({
-      user_id: user.id,
-      title: planned.title,
-      slot: planned.slot ?? "single",
-      planned_at: planned.planned_at,
-    })
-    .select("id")
-    .single();
-
-  if (sessErr || !session) throw new Error(sessErr?.message ?? "Failed to start session");
-
-  await supabase
-    .from("planned_sessions")
-    .update({ completed_session_id: session.id })
-    .eq("id", planned.id);
-
-  revalidatePath("/app");
-  revalidatePath("/app/plan");
-  redirect(`/app/sessions/${session.id}`);
+  await startSessionDirect(parsed.data.id);
 }
 
-const startCheckInSchema = z.object({
-  id: z.string().uuid(),
-  fatigue: z.coerce.number().int().min(1).max(5).optional(),
-  soreness: z.coerce.number().int().min(1).max(5).optional(),
-  notes: z.string().trim().max(280).optional().nullable(),
-});
-
 /**
- * Start a planned session WITH a pre-session check-in.
+ * Start a planned session WITHOUT a pre-session check-in.
  *
- * Same flow as startSessionFromPlan but additionally writes the DC-P1
- * sliders onto the new sessions row. When fatigue / soreness are absent
- * (user clicked Skip), persists null so the GRM falls back to 1.00 and
- * downstream analytics knows the check-in was skipped.
+ * This is the single source of truth for materialising a planned
+ * session into a real `sessions` row. The legacy
+ * `startCheckInSession` path that also wrote `fatigue` / `soreness`
+ * onto the new sessions row was removed when the pre-workout
+ * interstitial was deleted — daily recovery is now logged
+ * independently on the Today page via `HowRecoveredCard`
+ * (`wellness` table). Callers that need the URL-driven version use
+ * the `/app/sessions/start/[plannedId]` page which auto-invokes this
+ * helper and redirects.
  *
- * Sleep is NOT collected here. The pre-session widget is the DC-P1
- * 2-slider surface ("No mood, no energy, no sleep" — see DC-P1).
- * Sleep tracking is deferred to the health-integration backlog.
+ * Side effects (must stay in lockstep with the planner's expectations):
+ *   1. INSERT a new `sessions` row carrying the planned title, slot,
+ *      and planned_at (so the planner can correlate it back).
+ *   2. UPDATE the matching `planned_sessions` row's
+ *      `completed_session_id` so the plan calendar knows the row is
+ *      now linked-and-in-progress.
+ *   3. Revalidate `/app` + `/app/plan` so the CTAs flip on the next
+ *      paint.
+ *   4. Redirect to `/app/sessions/<new-id>` — the session log surface.
+ *
+ * Idempotent re-entry: if the planned row already has a
+ * `completed_session_id`, we skip the insert and redirect to that
+ * session (matches the behaviour the deleted interstitial had).
  */
-export async function startCheckInSession(formData: FormData): Promise<void> {
-  const parsed = startCheckInSchema.safeParse({
-    id: formData.get("id"),
-    fatigue: formData.get("fatigue") || undefined,
-    soreness: formData.get("soreness") || undefined,
-    notes: formData.get("notes") || undefined,
-  });
-  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid check-in");
+export async function startSessionDirect(plannedId: string): Promise<never> {
+  const parsed = startPlannedSchema.safeParse({ id: plannedId });
+  if (!parsed.success) throw new Error("Invalid planned session id");
 
   const supabase = await createClient();
   const {
@@ -1825,14 +1788,14 @@ export async function startCheckInSession(formData: FormData): Promise<void> {
 
   const { data: planned } = await supabase
     .from("planned_sessions")
-    .select("id, title, slot, planned_at, completed_session_id")
+    .select("id, title, slot, planned_at, prescription, completed_session_id, user_id")
     .eq("id", parsed.data.id)
-    .eq("user_id", user.id)
     .maybeSingle();
 
   if (!planned) throw new Error("Planned session not found");
+  if (planned.user_id !== user.id) throw new Error("Planned session not found");
 
-  // Reuse the existing linked session if any (idempotent re-entry).
+  // Idempotent re-entry: reuse the existing linked session if any.
   if (planned.completed_session_id) {
     redirect(`/app/sessions/${planned.completed_session_id}`);
   }
@@ -1844,9 +1807,6 @@ export async function startCheckInSession(formData: FormData): Promise<void> {
       title: planned.title,
       slot: planned.slot ?? "single",
       planned_at: planned.planned_at,
-      fatigue: parsed.data.fatigue ?? null,
-      soreness: parsed.data.soreness ?? null,
-      notes: parsed.data.notes ?? null,
     })
     .select("id")
     .single();

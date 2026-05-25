@@ -8,7 +8,7 @@ import { seedActiveBlock } from "./fixtures/session-log";
  *
  * Scenario:
  *   1. Seed an active block, sign in, start today's planned session.
- *   2. Skip the check-in to land on the session detail page.
+ *   2. Direct redirect lands on the session detail page (interstitial removed).
  *   3. Expand the prescribed movement card → focus view.
  *   4. Set weight + reps, tap the "Hard" zone, log the first set.
  *      Verify service-role: set_logs row exists with rpe = 8.75.
@@ -45,11 +45,7 @@ test.describe("@desktop session log — zone RPE + skip", () => {
     await expect(startCta).toBeVisible();
     await startCta.click();
 
-    // Skip the check-in.
-    await page.waitForURL(/\/app\/sessions\/start\/[0-9a-f-]{36}/, {
-      timeout: 15_000,
-    });
-    await page.getByRole("button", { name: /skip check-in/i }).click();
+    // Pre-session interstitial removed — auto-redirect to the session log.
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, {
       timeout: 15_000,
     });

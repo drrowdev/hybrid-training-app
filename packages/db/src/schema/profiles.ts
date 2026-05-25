@@ -86,6 +86,18 @@ export const profiles = pgTable("profiles", {
    */
   timerSoundEnabled: boolean("timer_sound_enabled").default(true).notNull(),
   /**
+   * Phase 3 today-redesign — controls whether the Today page renders
+   * the inline 1/3/5/7/9 fatigue + soreness `HowRecoveredCard`. The
+   * card is the only manual check-in surface (the pre-session
+   * interstitial was removed). Default TRUE; setting it to FALSE
+   * hides the card entirely without affecting the `wellness` table
+   * or the underlying `recordDailyCheckIn` server action.
+   * See migration 0049.
+   */
+  showTodayRecoveryCard: boolean("show_today_recovery_card")
+    .default(true)
+    .notNull(),
+  /**
    * Free-text training profile notes. Writable by both the user (from
    * the /app/profile page) and — once the AI surface lands — the
    * engine, which will append pattern observations the user can prune.

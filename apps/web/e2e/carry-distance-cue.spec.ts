@@ -81,10 +81,6 @@ test.describe("@desktop session log — loaded carry distance cue", () => {
     const startCta = page.getByRole("link", { name: /start session/i }).first();
     await expect(startCta).toBeVisible({ timeout: 15_000 });
     await startCta.click();
-    await page.waitForURL(/\/app\/sessions\/start\/[0-9a-f-]{36}/, {
-      timeout: 15_000,
-    });
-    await page.getByRole("button", { name: /skip check-in/i }).click();
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, {
       timeout: 15_000,
     });

@@ -25,7 +25,7 @@ export default async function SettingsPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "display_name, units, bodyweight_kg, body_comp_phase, phase_started_at, phase_target_weeks, training_days_per_week, training_experience, allows_two_a_days, am_window_start, pm_window_start, timezone, haptics_enabled, timer_sound_enabled, time_format, date_format, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg",
+      "display_name, units, bodyweight_kg, body_comp_phase, phase_started_at, phase_target_weeks, training_days_per_week, training_experience, allows_two_a_days, am_window_start, pm_window_start, timezone, haptics_enabled, timer_sound_enabled, show_today_recovery_card, time_format, date_format, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -246,6 +246,41 @@ export default async function SettingsPage() {
             className="rounded-md bg-foreground text-background px-3 py-1.5 text-sm font-medium hover:opacity-90"
           >
             Save feedback preferences
+          </button>
+        </form>
+      </section>
+
+      <section className="space-y-3" data-testid="settings-recovery-card">
+        <h2 className="text-lg font-medium">Daily recovery check-in</h2>
+        <p className="text-xs text-foreground/60">
+          A 2-tap fatigue + soreness logger on the Today page. Bias the
+          engine&apos;s recovery model. Toggle off to hide the card entirely
+          — your existing logs stay put, and you can turn it back on at
+          any time.
+        </p>
+        <form action={updateProfile} className="rounded-lg border border-foreground/10 p-4 space-y-3">
+          <input type="hidden" name="showTodayRecoveryCardPresent" value="1" />
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              name="showTodayRecoveryCard"
+              data-testid="settings-show-today-recovery-card-toggle"
+              defaultChecked={profile?.show_today_recovery_card !== false}
+              className="mt-1"
+            />
+            <span className="text-sm">
+              Show on Today
+              <span className="block text-xs text-foreground/60 mt-1">
+                Inline fatigue + soreness scale (1 fresh · 9 wrecked).
+                Writes to your daily wellness log.
+              </span>
+            </span>
+          </label>
+          <button
+            type="submit"
+            className="rounded-md bg-foreground text-background px-3 py-1.5 text-sm font-medium hover:opacity-90"
+          >
+            Save check-in preference
           </button>
         </form>
       </section>

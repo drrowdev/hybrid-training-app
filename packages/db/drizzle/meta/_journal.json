@@ -309,6 +309,20 @@
       "tag": "0047_bw_diagnostics_snapshots",
       "when": 1780124400000,
       "breakpoints": false
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "tag": "0048_bw_loaded",
+      "when": 1780210800000,
+      "breakpoints": false
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "tag": "0049_today_recovery_card_setting",
+      "when": 1780297200000,
+      "breakpoints": false
     }
   ]
 }
