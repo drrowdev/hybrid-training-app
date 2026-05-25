@@ -108,10 +108,10 @@ export function TopNav({
       <div
         style={{
           // Constrain nav contents to the same max-width as the page
-          // content (880px on .cp-main) so the brand on the left and
+          // content (1120px on .cp-main) so the brand on the left and
           // the right cluster visually align with the column edges
           // instead of sticking to the screen edges.
-          maxWidth: 880,
+          maxWidth: 1120,
           margin: "0 auto",
           height: "100%",
           display: "grid",
