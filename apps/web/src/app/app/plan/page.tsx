@@ -1033,8 +1033,8 @@ function BlockCalendar({
     });
   }
   return (
-    <section className="cp-card" style={{ padding: 16 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10, gap: 8 }}>
+    <section className="cp-card" style={{ padding: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8, gap: 8 }}>
         <h2 style={{ margin: 0, fontSize: 14 }}>Block overview</h2>
         <div style={{ display: "flex", gap: 10, fontSize: 10, color: "var(--cp-text-muted)", flexWrap: "wrap" }}>
           <Legend color="var(--cp-success)" label="Done" />
@@ -1112,8 +1112,8 @@ function CalendarWeekRow({
             key={dayIndex}
             title={cell ? `Wk${weekIndex + 1} ${DOW[dayIndex]} (${cell.date})` : `Wk${weekIndex + 1} ${DOW[dayIndex]} — rest`}
             style={{
-              height: 18,
-              borderRadius: 4,
+              height: 12,
+              borderRadius: 3,
               background: bg,
               border: isToday ? "1.5px solid var(--cp-accent)" : "1px solid transparent",
               opacity: cell?.completed ? 1 : cell?.skipped ? 0.5 : 1,
