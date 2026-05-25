@@ -94,8 +94,7 @@ test.describe("@desktop /app/settings/equipment · inventory presets", () => {
       );
     }
 
-    // Save + verify the DB row carries the preset.
-    await page.getByTestId("equipment-editor-save").click();
+    // Preset selection auto-saves — wait for the inline "Saved" badge.
     await expect(page.getByTestId("equipment-editor-saved")).toBeVisible({
       timeout: 5_000,
     });

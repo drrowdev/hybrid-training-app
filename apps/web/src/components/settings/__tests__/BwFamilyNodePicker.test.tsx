@@ -132,7 +132,7 @@ describe("BwFamiliesManualPicker render", () => {
     expect(html).toMatch(/<option value="n-far"[^>]*>One-arm push-up · anchor 80<\/option>/);
   });
 
-  it("renders the Save button per family and disables it when nothing has changed", () => {
+  it("renders only the select per family — Save button removed by auto-save", () => {
     const html = render({
       families: [
         {
@@ -144,8 +144,7 @@ describe("BwFamiliesManualPicker render", () => {
         },
       ],
     });
-    expect(html).toMatch(
-      /data-testid="bw-family-picker-save-push_h"[^>]*disabled/,
-    );
+    expect(html).toContain('data-testid="bw-family-picker-select-push_h"');
+    expect(html).not.toContain('data-testid="bw-family-picker-save-push_h"');
   });
 });

@@ -62,8 +62,10 @@ test.describe("@desktop /app/settings · time + date format", () => {
       "5:30 PM",
     );
 
-    // Save + verify the DB write.
-    await page.getByTestId("settings-datetime-format-save").click();
+    // Auto-saves on select change — wait for the inline status chip.
+    await expect(
+      page.getByTestId("autosave-status-settings-time-format"),
+    ).toHaveAttribute("data-status", "saved");
     await page.waitForLoadState("networkidle");
 
     const { data: row1 } = await admin
@@ -95,7 +97,9 @@ test.describe("@desktop /app/settings · time + date format", () => {
     await page.goto("/app/settings#session-experience");
     await page.waitForLoadState("networkidle");
     await page.getByTestId("settings-date-format-select").selectOption("mdy_short");
-    await page.getByTestId("settings-datetime-format-save").click();
+    await expect(
+      page.getByTestId("autosave-status-settings-date-format"),
+    ).toHaveAttribute("data-status", "saved");
     await page.waitForLoadState("networkidle");
 
     const { data: row2 } = await admin

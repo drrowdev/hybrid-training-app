@@ -67,7 +67,8 @@ describe("BwProgressionFamilyRow", () => {
     expect(html).toContain("Push-up");
     expect(html).toContain("Archer push-up");
     expect(html).toContain('data-testid="bw-family-row-select-push_h"');
-    expect(html).toContain('data-testid="bw-family-row-save-push_h"');
+    // Save button removed — picker auto-saves on selection change.
+    expect(html).not.toContain('data-testid="bw-family-row-save-push_h"');
   });
 
   it("renders the TUT bar + weeks badge when there is progress", () => {

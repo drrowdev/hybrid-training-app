@@ -14,7 +14,7 @@
  * which the engine treats as "no auto-warmups for this user" — useful
  * for users who manage their own ramp.
  */
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { updateWarmupScheme } from "@/lib/settings/warmup-actions";
 import {
   WARMUP_PRESETS,
@@ -27,6 +27,8 @@ import {
   isWellFormedScheme,
   type WarmupScheme,
 } from "@/lib/planner/warmups";
+import { useAutoSave } from "@/lib/settings/use-auto-save";
+import { AutoSaveStatus } from "./AutoSaveStatus";
 
 export type WarmupSettingsProps = {
   initial: WarmupScheme;
@@ -50,19 +52,41 @@ function normaliseLadders(scheme: WarmupScheme, nextSetCount: number): WarmupSch
 export function WarmupSettings({ initial }: WarmupSettingsProps) {
   const initialPreset = presetKeyForScheme(initial);
   const [preset, setPreset] = useState<WarmupPresetKey>(initialPreset);
-  const [scheme, setScheme] = useState<WarmupScheme>(initial);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+
+  // Auto-save closure: validate well-formedness here so a malformed
+  // intermediate state (e.g. percent field cleared mid-edit) never
+  // hits the server action's stricter schema parser.
+  const save = useCallback(async (next: WarmupScheme) => {
+    if (!isWellFormedScheme(next)) {
+      // Surface the malformed state as a save error so the user sees
+      // the inline status chip — keeps parity with the previous
+      // submit-time validation message.
+      throw new Error("Warmup ladder is malformed — check the percent + rep counts.");
+    }
+    const fd = new FormData();
+    fd.set("warmupSchemeJson", JSON.stringify(next));
+    await updateWarmupScheme(fd);
+  }, []);
+
+  const {
+    value: scheme,
+    setValue: setSchemeAndSave,
+    status,
+    retry,
+    lastError,
+  } = useAutoSave<WarmupScheme>({
+    initial,
+    save,
+    debounceMs: 500,
+  });
 
   const onPresetChange = (next: WarmupPresetKey) => {
     setPreset(next);
-    setSaved(false);
     if (next !== "custom") {
       // Cloning the arrays so subsequent edits in Custom mode don't
       // mutate the canonical preset.
       const p = presetByKey(next).scheme;
-      setScheme({
+      setSchemeAndSave({
         setCount: p.setCount,
         percentLadder: [...p.percentLadder],
         repLadder: [...p.repLadder],
@@ -71,26 +95,21 @@ export function WarmupSettings({ initial }: WarmupSettingsProps) {
   };
 
   const setSetCount = (n: number) => {
-    setSaved(false);
-    setScheme((prev) => normaliseLadders(prev, Math.max(1, Math.min(MAX_SET_COUNT, n))));
+    setSchemeAndSave(
+      normaliseLadders(scheme, Math.max(1, Math.min(MAX_SET_COUNT, n))),
+    );
   };
 
   const setPct = (i: number, v: string) => {
-    setSaved(false);
-    setScheme((prev) => {
-      const next = [...prev.percentLadder];
-      next[i] = Number(v);
-      return { ...prev, percentLadder: next };
-    });
+    const next = [...scheme.percentLadder];
+    next[i] = Number(v);
+    setSchemeAndSave({ ...scheme, percentLadder: next });
   };
 
   const setReps = (i: number, v: string) => {
-    setSaved(false);
-    setScheme((prev) => {
-      const next = [...prev.repLadder];
-      next[i] = Number(v);
-      return { ...prev, repLadder: next };
-    });
+    const next = [...scheme.repLadder];
+    next[i] = Number(v);
+    setSchemeAndSave({ ...scheme, repLadder: next });
   };
 
   // Live preview of the resolved ladder against an 85% TM top set.
@@ -101,35 +120,10 @@ export function WarmupSettings({ initial }: WarmupSettingsProps) {
     [scheme],
   );
 
-  const formValid = isWellFormedScheme(scheme);
-
-  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (pending) return;
-    if (!formValid) {
-      setError("Warmup ladder is malformed — check the percent + rep counts.");
-      return;
-    }
-    setPending(true);
-    setError(null);
-    setSaved(false);
-    try {
-      const fd = new FormData();
-      fd.set("warmupSchemeJson", JSON.stringify(scheme));
-      await updateWarmupScheme(fd);
-      setSaved(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save warmup scheme");
-    } finally {
-      setPending(false);
-    }
-  };
-
   const customEditable = preset === "custom";
 
   return (
-    <form
-      onSubmit={onSubmit}
+    <div
       data-testid="warmup-settings-form"
       style={{ display: "grid", gap: 16 }}
     >
@@ -300,16 +294,18 @@ export function WarmupSettings({ initial }: WarmupSettingsProps) {
         )}
       </div>
 
-      {error && (
+      {lastError && (
         <div
           role="alert"
           data-testid="warmup-settings-error"
           style={{ fontSize: 12, color: "var(--cp-danger)" }}
         >
-          {error}
+          {lastError}
         </div>
       )}
-      {saved && !error && (
+      {/* "Saved" wrapper preserved for back-compat with the e2e spec
+          that asserts on `warmup-settings-saved`. */}
+      {status === "saved" && (
         <div
           role="status"
           data-testid="warmup-settings-saved"
@@ -318,17 +314,12 @@ export function WarmupSettings({ initial }: WarmupSettingsProps) {
           Saved.
         </div>
       )}
-
-      <button
-        type="submit"
-        disabled={pending || !formValid}
-        className="cp-btn primary"
-        data-testid="warmup-settings-save"
-        style={{ padding: "8px 14px", fontSize: 13, justifySelf: "start" }}
-      >
-        {pending ? "Saving…" : "Save warmup scheme"}
-      </button>
-    </form>
+      <AutoSaveStatus
+        status={status}
+        onRetry={retry}
+        testIdSuffix="warmup-settings"
+      />
+    </div>
   );
 }
 
