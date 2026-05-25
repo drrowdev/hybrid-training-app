@@ -15,7 +15,15 @@ const profileSchema = z.object({
   phaseStartedAt: z.string().date().optional().nullable(),
   phaseTargetWeeks: z.coerce.number().int().min(1).max(52).optional().nullable(),
   trainingDaysPerWeek: z.coerce.number().int().min(2).max(7).optional(),
-  trainingExperience: z.enum(["lt_1y", "1_3y", "gte_3y"]).optional(),
+  trainingExperience: z
+    .enum([
+      "beginner_lt_6m",
+      "novice_6m_2y",
+      "intermediate_2y_5y",
+      "advanced_5y_10y",
+      "highly_advanced_10y_plus",
+    ])
+    .optional(),
   allowsTwoADays: z.coerce.boolean().optional(),
   hapticsEnabled: z.coerce.boolean().optional(),
   timerSoundEnabled: z.coerce.boolean().optional(),

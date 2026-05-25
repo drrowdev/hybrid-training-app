@@ -12,7 +12,15 @@ import { buildProfileUpdate } from "@/lib/onboarding/gate";
 const profileSchema = z.object({
   displayName: z.string().trim().max(60).optional().nullable(),
   units: z.enum(["metric", "imperial"]).optional(),
-  trainingExperience: z.enum(["lt_1y", "1_3y", "gte_3y"]).optional(),
+  trainingExperience: z
+    .enum([
+      "beginner_lt_6m",
+      "novice_6m_2y",
+      "intermediate_2y_5y",
+      "advanced_5y_10y",
+      "highly_advanced_10y_plus",
+    ])
+    .optional(),
   bodyweightKg: z.coerce.number().positive().lte(400).optional(),
 });
 

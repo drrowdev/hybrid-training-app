@@ -754,7 +754,7 @@ export type UserTierState = {
   /** The tier the user declared during onboarding, if any. */
   declared: UserTier | null;
   declaredLabel: string | null;
-  /** Raw declared training-experience enum (lt_1y / 1_3y / gte_3y). */
+  /** Raw declared training-experience enum (5-tier scale). */
   declaredExperience: DeclaredExperience | null;
   /** Human-friendly years description, e.g. "1–3 years of consistent training". */
   declaredYearsLabel: string | null;
@@ -793,9 +793,11 @@ const TIER_LABELS: Record<UserTier, string> = {
  * sync with the onboarding wizard copy and the settings page.
  */
 const DECLARED_YEARS_LABEL: Record<DeclaredExperience, string> = {
-  lt_1y: "≤ 1 year of consistent training",
-  "1_3y": "1–3 years of consistent training",
-  gte_3y: "3+ years of consistent training",
+  beginner_lt_6m: "Less than 6 months of consistent training",
+  novice_6m_2y: "6 months – 2 years of consistent training",
+  intermediate_2y_5y: "2 – 5 years of consistent training",
+  advanced_5y_10y: "5 – 10 years of consistent training",
+  highly_advanced_10y_plus: "10+ years of consistent training",
 };
 
 /**

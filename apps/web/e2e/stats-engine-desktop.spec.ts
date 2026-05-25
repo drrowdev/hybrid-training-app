@@ -218,12 +218,12 @@ test.describe("@desktop /app/stats/engine", () => {
     baseURL,
   }) => {
     await markOnboarded(admin, freshUser.userId);
-    // Seed an intermediate-level profile: declared 1-3y, bodyweight 80kg,
+    // Seed an intermediate-level profile: declared 2-5y, bodyweight 80kg,
     // four main-lift TMs exactly on the intermediate bodyweight-ratio
     // gates (1.0× / 0.75× / 1.5× / 0.5× BW).
     await admin
       .from("profiles")
-      .update({ training_experience: "1_3y", bodyweight_kg: 80 })
+      .update({ training_experience: "intermediate_2y_5y", bodyweight_kg: 80 })
       .eq("id", freshUser.userId);
 
     const slugs = [

@@ -43,9 +43,11 @@ import {
 export const dynamic = "force-dynamic";
 
 const EXPERIENCE_LABEL: Record<string, string> = {
-  lt_1y: "Beginner",
-  "1_3y": "Intermediate",
-  gte_3y: "Advanced",
+  beginner_lt_6m: "Beginner",
+  novice_6m_2y: "Novice",
+  intermediate_2y_5y: "Intermediate",
+  advanced_5y_10y: "Advanced",
+  highly_advanced_10y_plus: "Highly advanced",
 };
 
 const SEVERITY_LABEL: Record<LimitationSummaryRow["severity"], string> = {
