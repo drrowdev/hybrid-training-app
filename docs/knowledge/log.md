@@ -261,3 +261,8 @@ row that was applied from a LF (Linux/CI) checkout.
 - Block-overview heatmap cell height 18->12, card padding 16->12.
 - Month calendar empty cells minHeight 84->44.
 - Legend moved into a '?' button next to filter chips; defaults to collapsed everywhere.
+
+## [2026-05-26] feat | restructure /plan session card by prescription kind (PR-A)
+- Replaced flat `Set 1..N` list (which mis-numbered accessories as main-lift sets) with structured sections: warm-up (collapsible) / main work (top-set chip) / accessories / posterior-chain support (hinge-comp) / tendon / cardio.
+- New helper `lib/plan/prescription-grouping.ts` groups items by kind + movement, dedupes per movement_id, splits hinge-compensation accessories via `meta.hinge_compensation`.
+- Rewrote `summarisePrescription` header line to `<MainLift> -- N working sets + M accessories` variants (TM/percentages moved into the card body).

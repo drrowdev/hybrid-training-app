@@ -1371,28 +1371,70 @@ export function formatPrescriptionItem(item: PrescriptionItem, tmKg?: number): s
   return reps;
 }
 
+/**
+ * Short one-line subtitle that sits under the planned session's title
+ * in the /app/plan card header and the /app today panel.
+ *
+ * Optimised for "what's this session about, in five words": leads with
+ * the main lift and a working-set count, then a `+ N accessories`
+ * suffix. TM percentages, warm-ups and set-by-set detail live inside
+ * the expanded card body — re-stating them in the header is noise and
+ * leaks engine vocabulary ("%TM") into the page chrome.
+ */
 export function summarisePrescription(items: PrescriptionItem[]): string {
   if (items.length === 0) return "";
+
   const cardio = items.filter((i) => i.kind.startsWith("cardio_"));
   if (cardio.length > 0 && cardio.length === items.length) {
     const totalMin = cardio.reduce((a, i) => a + (i.durationMin ?? 0), 0);
-    const labels = Array.from(new Set(cardio.map((i) => i.intensityLabel ?? "cardio")));
-    return `${totalMin} min · ${labels.join(" + ")}`;
+    const labels = Array.from(
+      new Set(cardio.map((i) => i.intensityLabel ?? null).filter((l): l is string => !!l)),
+    );
+    const leadLabel = labels.length > 0 ? labels.join(" + ") : (cardio[0]?.movementName ?? "Cardio");
+    return totalMin > 0 ? `${leadLabel} — ${totalMin} min` : leadLabel;
   }
+
   const tendon = items.filter((i) => i.kind === "tendon");
   if (tendon.length > 0 && tendon.length === items.length) {
-    const label = tendon[0]?.intensityLabel ?? "Tendon";
-    return `${tendon.length} × ${tendon[0]?.reps ?? "?"} · ${label}`;
+    const uniqueMovements = new Set(
+      tendon.map((i) => i.movementId ?? i.movementSlug ?? i.movementName ?? "tendon"),
+    );
+    const count = uniqueMovements.size;
+    return `Tendon work — ${count} movement${count === 1 ? "" : "s"}`;
   }
+
+  const mainWorking = items.filter(
+    (i) => i.kind === "main" || i.kind === "back_off" || i.kind === "power_potentiation",
+  );
   const accessories = items.filter((i) => i.kind === "accessory");
-  const mainItems = items.filter((i) => i.kind === "main" || i.kind === "back_off" || i.kind === "warmup");
-  const pcts = mainItems.filter((i) => i.percentTm != null).map((i) => i.percentTm!);
-  if (pcts.length > 0) {
-    const accessorySuffix = accessories.length > 0 ? ` + ${accessories.length} accessor${accessories.length === 1 ? "y" : "ies"}` : "";
-    return `${pcts.length} set${pcts.length === 1 ? "" : "s"} · ${pcts.join("/")}% TM${accessorySuffix}`;
+  const uniqueAccessoryMovements = new Set(
+    accessories.map(
+      (i, idx) => i.movementId ?? i.movementSlug ?? i.movementName ?? `acc-${idx}`,
+    ),
+  );
+  const accessoryCount = uniqueAccessoryMovements.size;
+  const accessoryTail =
+    accessoryCount > 0
+      ? ` + ${accessoryCount} accessor${accessoryCount === 1 ? "y" : "ies"}`
+      : "";
+
+  if (mainWorking.length > 0) {
+    const lead = mainWorking.find((i) => i.kind === "main") ?? mainWorking[0]!;
+    const name = lead.movementName ?? humaniseSlug(lead.movementSlug) ?? "Main lift";
+    const sets = mainWorking.length;
+    return `${name} — ${sets} working set${sets === 1 ? "" : "s"}${accessoryTail}`;
   }
+
   if (accessories.length > 0 && accessories.length === items.length) {
-    return `${accessories.length} accessor${accessories.length === 1 ? "y" : "ies"}`;
+    return `Accessory circuit — ${accessoryCount} movement${accessoryCount === 1 ? "" : "s"}`;
   }
+
   return `${items.length} items`;
+}
+
+function humaniseSlug(slug: string | null | undefined): string | null {
+  if (!slug) return null;
+  const cleaned = slug.replaceAll("_", " ").trim();
+  if (!cleaned) return null;
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
