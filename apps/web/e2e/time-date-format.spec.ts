@@ -35,7 +35,9 @@ test.describe("@desktop /app/settings · time + date format", () => {
       .eq("id", freshUser.userId);
 
     await signInAs(context, freshUser, seedConfig, url);
-    await page.goto("/app/settings");
+    // Collapsible groups: navigate with hash to auto-expand the
+    // Session experience group containing the date/time format card.
+    await page.goto("/app/settings#session-experience");
     await page.waitForLoadState("networkidle");
 
     // Card renders.
@@ -90,7 +92,7 @@ test.describe("@desktop /app/settings · time + date format", () => {
     );
 
     // Flip to MDY and reload — eyebrow swaps to MONTH-DAY order.
-    await page.goto("/app/settings");
+    await page.goto("/app/settings#session-experience");
     await page.waitForLoadState("networkidle");
     await page.getByTestId("settings-date-format-select").selectOption("mdy_short");
     await page.getByTestId("settings-datetime-format-save").click();
