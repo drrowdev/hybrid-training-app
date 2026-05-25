@@ -54,10 +54,11 @@ import {
   type RawSessionRow,
 } from "@/lib/plan/calendar-data";
 import {
-  groupPrescriptionSections,
+  groupByMovementThenKind,
   describeRowExternalLoad,
   type PrescriptionMainRow,
   type PrescriptionMovementRow,
+  type MovementPrescriptionSection,
 } from "@/lib/plan/prescription-grouping";
 import { addDaysToYmd, ymdInTimezone } from "@/lib/dates";
 
@@ -617,6 +618,7 @@ export default async function PlanPage({
             amWindowStart={amWindowStart}
             pmWindowStart={pmWindowStart}
             formatProfile={planFmtProfile}
+            tmByMovementId={planTmCtx.byMovementId}
           />
         ))}
       </section>
@@ -681,6 +683,7 @@ function DayCard({
   amWindowStart,
   pmWindowStart,
   formatProfile,
+  tmByMovementId,
 }: {
   dayName: string;
   plans: PlannedCell[];
@@ -690,6 +693,7 @@ function DayCard({
   amWindowStart: string;
   pmWindowStart: string;
   formatProfile: ProfileForFormat;
+  tmByMovementId: ReadonlyMap<string, number>;
 }) {
   if (plans.length === 0) {
     return (
@@ -804,6 +808,7 @@ function DayCard({
           isTwoADay={isTwoADay}
           timeOfDay={slotTimes.get(planned.slot) ?? null}
           isCustomTime={!!planned.plannedAt}
+          tmByMovementId={tmByMovementId}
         />
       ))}
     </div>
@@ -817,6 +822,7 @@ function DaySessionCard({
   isTwoADay,
   timeOfDay,
   isCustomTime,
+  tmByMovementId,
 }: {
   planned: PlannedCell;
   isToday: boolean;
@@ -824,6 +830,7 @@ function DaySessionCard({
   isTwoADay: boolean;
   timeOfDay: string | null;
   isCustomTime: boolean;
+  tmByMovementId: ReadonlyMap<string, number>;
 }) {
   const done = !!planned.completedSessionId;
   const skipped = !!planned.skippedAt;
@@ -915,7 +922,10 @@ function DaySessionCard({
       </div>
 
       {planned.prescription.items.length > 0 && (
-        <PlannedPrescriptionSections items={planned.prescription.items} />
+        <PlannedPrescriptionSections
+          items={planned.prescription.items}
+          tmByMovementId={tmByMovementId}
+        />
       )}
 
       {!done && !skipped && isTwoADay && planned.slot !== "single" && (
@@ -1124,67 +1134,211 @@ function TissueStackCard({ gaps }: { gaps: TissueStackGap[] }) {
 }
 
 /**
- * Structured renderer for a planned session's prescription. Replaces
- * the legacy flat "Set 1..N" list, which incorrectly numbered every
- * prescription item — including accessories and warm-ups — as if they
- * were sets of the main lift.
+ * Structured renderer for a planned session's prescription. Sessions
+ * can carry MULTIPLE movements (bodyweight blocks emit one main +
+ * back-off per family — push + pull + squat in the same session), so
+ * we group by movement first and then bucket each movement's items by
+ * kind (warm-up → main → back-off → accessory → tendon → hinge
+ * compensation). Cardio is session-level and renders once at the
+ * bottom.
  *
- * Sections render in fixed order; empty sections are dropped. Visual
- * vocabulary matches `MovementCardList` (uppercase muted section
- * labels, soft-surface rows) so the planned card and the in-session
- * card feel related.
+ * This replaces an earlier "group by kind only" pass which flattened
+ * Front Squat 75% TM ×5 next to Wide-grip pull-up ×15 in the same
+ * "Main work" column with no movement name attached, producing rows
+ * the user couldn't parse.
  */
-function PlannedPrescriptionSections({ items }: { items: PrescriptionItem[] }) {
-  const sections = groupPrescriptionSections(items);
+function PlannedPrescriptionSections({
+  items,
+  tmByMovementId,
+}: {
+  items: PrescriptionItem[];
+  tmByMovementId?: ReadonlyMap<string, number>;
+}) {
+  const grouped = groupByMovementThenKind(items);
   const blocks: React.ReactNode[] = [];
 
-  if (sections.warmups.length > 0) {
-    blocks.push(<WarmupSection key="warmup" items={sections.warmups} />);
-  }
-  if (sections.main.length > 0) {
-    blocks.push(<MainWorkSection key="main" rows={sections.main} />);
-  }
-  if (sections.accessories.length > 0) {
+  for (const section of grouped.movements) {
     blocks.push(
-      <MovementRowSection
-        key="accessory"
-        label="Accessories"
-        rows={sections.accessories}
-        testId="plan-section-accessories"
+      <MovementSubsection
+        key={`mov-${section.rowKey}`}
+        section={section}
+        tmKg={
+          section.movementId && tmByMovementId
+            ? tmByMovementId.get(section.movementId)
+            : undefined
+        }
       />,
     );
   }
-  if (sections.hingeCompensations.length > 0) {
-    blocks.push(
-      <MovementRowSection
-        key="hinge"
-        label="Posterior-chain support"
-        rows={sections.hingeCompensations}
-        testId="plan-section-hinge-comp"
-      />,
-    );
-  }
-  if (sections.tendon.length > 0) {
-    blocks.push(
-      <MovementRowSection
-        key="tendon"
-        label="Tendon work"
-        rows={sections.tendon}
-        testId="plan-section-tendon"
-      />,
-    );
-  }
-  if (sections.cardio.length > 0) {
-    blocks.push(<CardioSection key="cardio" items={sections.cardio} />);
+
+  if (grouped.cardio.length > 0) {
+    blocks.push(<CardioSection key="cardio" items={grouped.cardio} />);
   }
 
   if (blocks.length === 0) return null;
 
   return (
-    <div style={{ marginTop: 10, display: "grid", gap: 10 }} data-testid="plan-prescription-sections">
+    <div style={{ marginTop: 10, display: "grid", gap: 14 }} data-testid="plan-prescription-sections">
       {blocks}
     </div>
   );
+}
+
+/**
+ * Render one movement's worth of buckets — warm-up → main → back-off
+ * → accessory → tendon → hinge compensation — under a labelled
+ * movement header. Empty buckets are skipped, so a movement with only
+ * accessories (e.g. an injected hinge-compensation pick) just shows
+ * its accessory rows under the header.
+ */
+function MovementSubsection({
+  section,
+  tmKg,
+}: {
+  section: MovementPrescriptionSection;
+  tmKg?: number;
+}) {
+  const headerBadge = buildMovementHeaderBadge(section, tmKg);
+  const buckets: React.ReactNode[] = [];
+  if (section.warmups.length > 0) {
+    buckets.push(
+      <WarmupSection key="warmup" items={section.warmups} />,
+    );
+  }
+  if (section.main.length > 0) {
+    buckets.push(
+      <MainWorkSection
+        key="main"
+        rows={section.main}
+        tmKg={tmKg}
+        testId={`plan-section-main-${section.rowKey}`}
+      />,
+    );
+  }
+  if (section.backOff.length > 0) {
+    buckets.push(
+      <MainWorkSection
+        key="backoff"
+        rows={section.backOff}
+        label="Back-off"
+        tmKg={tmKg}
+        testId={`plan-section-backoff-${section.rowKey}`}
+      />,
+    );
+  }
+  if (section.accessories.length > 0) {
+    buckets.push(
+      <MovementRowSection
+        key="accessory"
+        label="Accessories"
+        rows={[{
+          rowKey: `${section.rowKey}-acc`,
+          movementId: section.movementId,
+          movementName: section.movementName,
+          movementSlug: section.movementSlug,
+          items: section.accessories,
+        }]}
+        testId={`plan-section-accessories-${section.rowKey}`}
+      />,
+    );
+  }
+  if (section.hingeCompensations.length > 0) {
+    buckets.push(
+      <MovementRowSection
+        key="hinge"
+        label="Posterior-chain support"
+        rows={[{
+          rowKey: `${section.rowKey}-hinge`,
+          movementId: section.movementId,
+          movementName: section.movementName,
+          movementSlug: section.movementSlug,
+          items: section.hingeCompensations,
+        }]}
+        testId={`plan-section-hinge-comp-${section.rowKey}`}
+      />,
+    );
+  }
+  if (section.tendon.length > 0) {
+    buckets.push(
+      <MovementRowSection
+        key="tendon"
+        label="Tendon work"
+        rows={[{
+          rowKey: `${section.rowKey}-tendon`,
+          movementId: section.movementId,
+          movementName: section.movementName,
+          movementSlug: section.movementSlug,
+          items: section.tendon,
+        }]}
+        testId={`plan-section-tendon-${section.rowKey}`}
+      />,
+    );
+  }
+
+  if (buckets.length === 0) return null;
+
+  return (
+    <div
+      data-testid={`plan-movement-section-${section.rowKey}`}
+      style={{ display: "grid", gap: 6 }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          gap: 8,
+          fontSize: 13,
+          fontWeight: 700,
+          color: "var(--cp-text)",
+        }}
+      >
+        <span>{section.movementName}</span>
+        {headerBadge && (
+          <span
+            className="cp-pill"
+            data-testid={`plan-movement-badge-${section.rowKey}`}
+            style={{
+              fontSize: 10,
+              padding: "0 6px",
+              color: "var(--cp-text-muted)",
+              borderColor: "var(--cp-border)",
+              fontWeight: 500,
+            }}
+          >
+            {headerBadge}
+          </span>
+        )}
+      </div>
+      <div style={{ display: "grid", gap: 8 }}>{buckets}</div>
+    </div>
+  );
+}
+
+/**
+ * Short tag rendered next to the movement name. For loaded lifts: the
+ * TM in kg ("100 kg TM") when one is known. For bodyweight items: the
+ * current progression node display name from the `bw` payload ("at
+ * Decline push-up") — that's the actual movement variant the user
+ * will perform, distinct from the family name shown in the header.
+ */
+function buildMovementHeaderBadge(
+  section: MovementPrescriptionSection,
+  tmKg?: number,
+): string | null {
+  if (tmKg != null && tmKg > 0) return `${tmKg} kg TM`;
+  for (const row of section.main) {
+    const bw = row.item.bw as { nodeDisplayName?: string } | undefined;
+    if (bw?.nodeDisplayName && bw.nodeDisplayName !== section.movementName) {
+      return `at ${bw.nodeDisplayName}`;
+    }
+  }
+  for (const item of section.accessories) {
+    const bw = item.bw as { nodeDisplayName?: string } | undefined;
+    if (bw?.nodeDisplayName && bw.nodeDisplayName !== section.movementName) {
+      return `at ${bw.nodeDisplayName}`;
+    }
+  }
+  return null;
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -1240,10 +1394,20 @@ function WarmupSection({ items }: { items: PrescriptionItem[] }) {
   );
 }
 
-function MainWorkSection({ rows }: { rows: PrescriptionMainRow[] }) {
+function MainWorkSection({
+  rows,
+  label = "Main work",
+  testId = "plan-section-main",
+  tmKg,
+}: {
+  rows: PrescriptionMainRow[];
+  label?: string;
+  testId?: string;
+  tmKg?: number;
+}) {
   return (
-    <div data-testid="plan-section-main" style={{ display: "grid", gap: 4 }}>
-      <SectionLabel>Main work</SectionLabel>
+    <div data-testid={testId} style={{ display: "grid", gap: 4 }}>
+      <SectionLabel>{label}</SectionLabel>
       <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 4 }}>
         {rows.map((row, i) => {
           const cleanedNote = cleanPrescriptionNotes(row.item.notes);
@@ -1282,7 +1446,7 @@ function MainWorkSection({ rows }: { rows: PrescriptionMainRow[] }) {
                 )}
               </span>
               <span className="mono" style={{ fontWeight: 600 }}>
-                {formatPrescriptionItem(row.item)}
+                {formatPrescriptionItem(row.item, tmKg)}
               </span>
             </li>
           );

@@ -42,6 +42,37 @@ export type PrescriptionSections = {
   cardio: PrescriptionItem[];
 };
 
+/**
+ * One movement's worth of prescription rows. Strength sessions can
+ * legitimately carry multiple movements per session (e.g. the
+ * bodyweight planner emits one main + back-off per family, so a single
+ * session contains push + pull + squat). The plan card groups by
+ * movement first so each movement gets its own warm-up ramp, working
+ * sets, and back-off rows under a labelled subsection.
+ *
+ * `kind === "accessory"` items naturally belong to the movement they
+ * target (each accessory item carries its own movementId / movementName)
+ * so they're rendered inside the movement subsection they relate to,
+ * NOT pooled at the bottom of the card.
+ */
+export type MovementPrescriptionSection = {
+  rowKey: string;
+  movementId: string | null;
+  movementName: string;
+  movementSlug: string | null;
+  warmups: PrescriptionItem[];
+  main: PrescriptionMainRow[];
+  backOff: PrescriptionMainRow[];
+  accessories: PrescriptionItem[];
+  hingeCompensations: PrescriptionItem[];
+  tendon: PrescriptionItem[];
+};
+
+export type MovementGroupedSections = {
+  movements: MovementPrescriptionSection[];
+  cardio: PrescriptionItem[];
+};
+
 const MAIN_KINDS: ReadonlySet<PrescriptionItem["kind"]> = new Set([
   "main",
   "back_off",
@@ -156,6 +187,138 @@ export function groupPrescriptionSections(
   });
 
   return { warmups, main, accessories, hingeCompensations: hinge, tendon, cardio };
+}
+
+/**
+ * Group prescription items by movement first, then by kind within each
+ * movement. Cardio items are not movement-anchored in the same way
+ * (they're a session-level shape), so they're returned separately.
+ *
+ * Movements appear in the order they first occur in the input array,
+ * which preserves the planner's intentional ordering (primary lift
+ * first, secondaries after — and warm-up items inserted by
+ * `prependWarmupsForMainLifts` correctly land in front of their parent
+ * movement's first main set, so iterating items in order gives the
+ * right movement order).
+ *
+ * Empty / contentless items (no reps, no holdSec, no percentTm, no
+ * durationMin, no notes, no intensityLabel) are dropped — they
+ * represent generator-side data loss and would render as blank rows.
+ */
+export function groupByMovementThenKind(
+  items: PrescriptionItem[],
+): MovementGroupedSections {
+  const movements: MovementPrescriptionSection[] = [];
+  const byKey = new Map<string, MovementPrescriptionSection>();
+  const cardio: PrescriptionItem[] = [];
+
+  function sectionFor(item: PrescriptionItem): MovementPrescriptionSection {
+    const key =
+      item.movementId ??
+      `slug:${item.movementSlug ?? displayName(item)}`;
+    const existing = byKey.get(key);
+    if (existing) return existing;
+    const section: MovementPrescriptionSection = {
+      rowKey: key,
+      movementId: item.movementId ?? null,
+      movementName: displayName(item),
+      movementSlug: item.movementSlug ?? null,
+      warmups: [],
+      main: [],
+      backOff: [],
+      accessories: [],
+      hingeCompensations: [],
+      tendon: [],
+    };
+    byKey.set(key, section);
+    movements.push(section);
+    return section;
+  }
+
+  for (const item of items) {
+    if (item.kind.startsWith("cardio_")) {
+      cardio.push(item);
+      continue;
+    }
+    if (isContentlessItem(item)) continue;
+    const section = sectionFor(item);
+    if (item.kind === "warmup") {
+      section.warmups.push(item);
+    } else if (item.kind === "back_off") {
+      section.backOff.push({
+        item,
+        setNumber: section.backOff.length + 1,
+        isTopSet: false,
+      });
+    } else if (MAIN_KINDS.has(item.kind)) {
+      section.main.push({
+        item,
+        setNumber: section.main.length + 1,
+        isTopSet: false,
+      });
+    } else if (item.kind === "tendon") {
+      section.tendon.push(item);
+    } else if (item.kind === "accessory") {
+      if (isHingeCompensation(item)) {
+        section.hingeCompensations.push(item);
+      } else {
+        section.accessories.push(item);
+      }
+    } else {
+      // Defensive: unknown kinds fall through as accessories so they
+      // still surface rather than being silently dropped.
+      section.accessories.push(item);
+    }
+  }
+
+  // Mark top set within each movement subsection — the heaviest %TM
+  // among kind === "main" items wins; back-off / power-potentiation
+  // items are explicitly excluded.
+  for (const section of movements) {
+    let topPct = -Infinity;
+    for (const row of section.main) {
+      if (row.item.kind !== "main") continue;
+      if (row.item.percentTm != null && row.item.percentTm > topPct) {
+        topPct = row.item.percentTm;
+      }
+    }
+    let marked = false;
+    for (const row of section.main) {
+      if (
+        !marked &&
+        row.item.kind === "main" &&
+        row.item.percentTm != null &&
+        row.item.percentTm === topPct
+      ) {
+        row.isTopSet = true;
+        marked = true;
+      }
+    }
+  }
+
+  return { movements, cardio };
+}
+
+/**
+ * True when a prescription item carries no renderable content — no
+ * reps, no hold, no percentTm, no duration, no intensity label, no
+ * notes. Used to filter the rare malformed items that some generator
+ * paths can produce (e.g. an isometric back-off that lost its
+ * holdSeconds during a refactor). Rendering them produces blank rows
+ * that confuse the user; dropping them is the conservative move.
+ */
+function isContentlessItem(item: PrescriptionItem): boolean {
+  if (item.reps != null) return false;
+  if (item.percentTm != null) return false;
+  if (item.durationMin != null) return false;
+  if (item.holdSec != null) return false;
+  if (item.distanceM != null) return false;
+  if (item.intensityLabel) return false;
+  if (item.intensityCue) return false;
+  if (item.notes) return false;
+  const bw = item.bw as { reps?: number; holdSeconds?: number; repRange?: unknown } | undefined;
+  if (bw && (bw.reps != null || bw.holdSeconds != null || bw.repRange)) return false;
+  return true;
 }
 
 /**
