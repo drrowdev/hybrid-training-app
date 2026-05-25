@@ -13,29 +13,8 @@ import {
   resolveDateFormat,
   resolveTimeFormat,
 } from "@/lib/format/datetime";
-import { PRESET_LABEL, resolveEquipment } from "@/lib/settings/equipment-presets";
+import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import { TrainingProgressionCards } from "@/components/settings/TrainingProgressionCards";
-
-// --- summary-chip helpers ---------------------------------------------------
-//
-// These derive a small at-a-glance string for each collapsed group so the
-// user can scan the page without expanding every card.
-
-const PHASE_LABEL: Record<string, string> = {
-  maintain: "maintain",
-  gain: "lean bulk",
-  lean_out: "cut",
-};
-
-const EXPERIENCE_LABEL: Record<string, string> = {
-  lt_1y: "beginner",
-  "1_3y": "intermediate",
-  gte_3y: "advanced",
-};
-
-function joinChip(parts: Array<string | null | undefined>): string {
-  return parts.filter((p): p is string => !!p && p.length > 0).join(" · ");
-}
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -100,44 +79,6 @@ export default async function SettingsPage() {
     hasBwProgress = !!bwRow;
   }
 
-  // --- summary chips (derived after data load) ---
-  const resolvedTime = resolveTimeFormat(profile ?? null);
-  const resolvedDate = resolveDateFormat(profile ?? null);
-
-  const profileChip = joinChip([
-    profile?.display_name ?? null,
-    profile?.units ? (profile.units === "metric" ? "kg / km" : "lb / mi") : null,
-    profile?.body_comp_phase ? PHASE_LABEL[profile.body_comp_phase] ?? null : null,
-  ]);
-
-  const trainingPrefChip = joinChip([
-    profile?.training_days_per_week
-      ? `${profile.training_days_per_week} days/wk`
-      : null,
-    profile?.training_experience
-      ? EXPERIENCE_LABEL[profile.training_experience] ?? null
-      : null,
-    PRESET_LABEL[equipment.preset] ?? null,
-  ]);
-
-  const dateChipLabel =
-    resolvedDate === "iso"
-      ? "ISO"
-      : resolvedDate === "dmy_short" || resolvedDate === "dmy_long"
-        ? "DMY"
-        : "MDY";
-  const sessionExperienceChip = joinChip([
-    resolvedTime === "24h" ? "24h" : "12h",
-    dateChipLabel,
-    profile?.haptics_enabled !== false ? "haptics on" : "haptics off",
-  ]);
-
-  const eventsChip = joinChip([
-    `${activeLim ?? 0} limitation${(activeLim ?? 0) === 1 ? "" : "s"}`,
-  ]);
-
-  const accountChip = trashCount > 0 ? `${trashCount} in trash` : "no trash";
-
   return (
     <main className="min-h-screen px-6 py-8 max-w-2xl mx-auto space-y-8">
       <header className="space-y-1">
@@ -153,7 +94,7 @@ export default async function SettingsPage() {
         <SettingsGroup
           id="profile"
           title="Profile"
-          summary={profileChip || undefined}
+          summary="Name, units, body composition, weight log"
           testId="settings-group-profile"
         >
           {/* Display name + units */}
@@ -300,7 +241,7 @@ export default async function SettingsPage() {
         <SettingsGroup
           id="training-preferences"
           title="Training preferences"
-          summary={trainingPrefChip || undefined}
+          summary="Frequency, equipment, training maxes, warmups"
           testId="settings-group-training-preferences"
         >
           {/* Training experience */}
@@ -308,7 +249,7 @@ export default async function SettingsPage() {
             <p className="text-xs text-foreground/60">
               How long you&apos;ve been training consistently. Used to seed your
               training tier — your tier adjusts automatically as the app observes
-              your training (DC-G1).
+              your training.
             </p>
             <form
               action={updateProfile}
@@ -361,15 +302,12 @@ export default async function SettingsPage() {
                 </summary>
                 <p className="mt-2 leading-relaxed">
                   Your declared experience anchors your starting tier. From there,
-                  the engine refines it from four observed signals: per-lift e1RM
-                  relative to bodyweight, 12-week anchor adherence, schedule
-                  regularity, and recovery check-in fill rate. When your declared
-                  tier and observed signals disagree, the app keeps your
-                  declaration and surfaces a soft note (DC-K4 — override and warn,
-                  never silent overrule). See <code>/app/stats/engine</code>{" "}
-                  section E for the live contributor breakdown, and{" "}
-                  <code>docs/knowledge/hybrid-training-design-constraints.md</code>{" "}
-                  §G (DC-G1..G6) for the constraint contract.
+                  the engine refines it based on four observed signals: per-lift
+                  strength relative to bodyweight, 12-week training adherence,
+                  schedule regularity, and recovery check-in fill rate. When your
+                  declared tier and the engine&apos;s observations disagree, the
+                  app keeps your choice and shows a soft note — never silently
+                  overrules you.
                 </p>
               </details>
             </form>
@@ -482,7 +420,7 @@ export default async function SettingsPage() {
         <SettingsGroup
           id="session-experience"
           title="Session experience"
-          summary={sessionExperienceChip || undefined}
+          summary="Time format, in-session feedback, recovery card"
           testId="settings-group-session-experience"
         >
           {/* Feedback */}
@@ -595,7 +533,7 @@ export default async function SettingsPage() {
         <SettingsGroup
           id="race-events"
           title="Race & event planning"
-          summary={eventsChip || undefined}
+          summary="Limitations, races, Strava connection"
           testId="settings-group-race-events"
         >
           {/* Active limitations */}
@@ -645,7 +583,7 @@ export default async function SettingsPage() {
         <SettingsGroup
           id="account"
           title="Account & data"
-          summary={accountChip}
+          summary="Trash, export, delete account"
           testId="settings-group-account"
         >
           {/* Trash */}

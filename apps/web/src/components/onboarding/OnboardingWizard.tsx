@@ -707,8 +707,8 @@ function ProfileStep({
         <div>
           <Label>How long have you been training consistently?</Label>
           <p style={{ margin: "4px 0 8px", fontSize: 12, color: "var(--cp-text-muted)" }}>
-            Seeds your starting tier — DC-G1 keeps it behavioural, so the
-            app refines it as it observes your training.
+            Seeds your starting tier — the app keeps it behavioural, so it
+            refines as it observes your training.
           </p>
           <div style={{ display: "grid", gap: 8 }}>
             {EXPERIENCE_OPTIONS.map((opt) => {
