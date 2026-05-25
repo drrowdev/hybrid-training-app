@@ -510,3 +510,19 @@ select option {
 @media (max-width: 419px) {
   .cp-mc-summary { display: none !important; }
 }
+
+/* ── Settings hub: tile grid + hover affordance ── */
+.settings-hub-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.settings-hub-card:hover {
+  background: var(--cp-bg-elevated);
+  border-color: var(--cp-border-strong);
+}
+@media (max-width: 640px) {
+  .settings-hub-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -6,14 +6,14 @@ import { markOnboarded } from "./fixtures/seed-blocks";
  * Time + date format preference desktop spec.
  *
  * Verifies:
- *  - The /app/settings page renders the "Time & date format" card with
+ *  - The /app/settings/preferences page renders the "Time & date format" card with
  *    two selects (Time, Date) and live examples.
  *  - Switching Time to 12-hour + saving writes `profiles.time_format`
  *    = '12h' and the value persists across reload.
  *  - The Today eyebrow on /app re-renders in the user-selected format
  *    (DMY profile → "SUN 24 MAY" / MDY profile → "SUN MAY 24").
  */
-test.describe("@desktop /app/settings · time + date format", () => {
+test.describe("@desktop /app/settings/preferences · time + date format", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "Chromium-only");
 
   test("user can pick a time + date format, it persists, and the Today eyebrow respects it", async ({
@@ -35,9 +35,8 @@ test.describe("@desktop /app/settings · time + date format", () => {
       .eq("id", freshUser.userId);
 
     await signInAs(context, freshUser, seedConfig, url);
-    // Collapsible groups: navigate with hash to auto-expand the
-    // Session experience group containing the date/time format card.
-    await page.goto("/app/settings#session-experience");
+    // Time + date format card now lives on the Preferences sub-page.
+    await page.goto("/app/settings/preferences");
     await page.waitForLoadState("networkidle");
 
     // Card renders.
@@ -94,7 +93,7 @@ test.describe("@desktop /app/settings · time + date format", () => {
     );
 
     // Flip to MDY and reload — eyebrow swaps to MONTH-DAY order.
-    await page.goto("/app/settings#session-experience");
+    await page.goto("/app/settings/preferences");
     await page.waitForLoadState("networkidle");
     await page.getByTestId("settings-date-format-select").selectOption("mdy_short");
     await expect(
