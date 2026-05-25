@@ -38,6 +38,7 @@ function progress(overrides: Partial<BwProgress>): BwProgress {
     accumulatedTutSeconds: overrides.accumulatedTutSeconds ?? 0,
     weeksAtNode: overrides.weeksAtNode ?? 0,
     cleanRepHistory: overrides.cleanRepHistory ?? [],
+    targetExternalLoadKg: null,
     updatedAt: overrides.updatedAt ?? new Date(0),
   };
 }

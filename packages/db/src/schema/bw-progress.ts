@@ -13,6 +13,7 @@ import { sql } from "drizzle-orm";
 import {
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
   smallint,
@@ -34,6 +35,12 @@ export type CleanRepHistoryEntry = {
   tempoSec: number;
   /** Reps in reserve at the end of the set. */
   rir: number;
+  /**
+   * Phase 7 — actual external load carried on this set. Negative for
+   * band assist. Omitted on bodyweight-only entries.
+   */
+  external_load_kg?: number;
+  load_source?: "weighted_vest" | "dip_belt" | "ankle_weights" | "band_assist";
 };
 
 export const bwProgress = pgTable(
@@ -53,6 +60,17 @@ export const bwProgress = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`)
       .$type<CleanRepHistoryEntry[]>(),
+    /**
+     * Phase 7 — load (kg) the user should target on the next loaded
+     * BW prescription for this family. Written by the
+     * `suggestLoadOrVariant` "Apply suggestion" surface on the
+     * bodyweight-progression settings page. Nullable; null = no
+     * pending target, planner falls back to its own heuristic.
+     */
+    targetExternalLoadKg: numeric("target_external_load_kg", {
+      precision: 5,
+      scale: 2,
+    }),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .default(sql`now()`)
       .notNull(),
