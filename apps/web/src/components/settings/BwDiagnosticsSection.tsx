@@ -58,32 +58,10 @@ export function BwDiagnosticsSection({
   const [expanded, setExpanded] = useState(false);
 
   if (results.length === 0) {
-    return (
-      <section
-        data-testid="bw-diagnostics"
-        style={{ display: "grid", gap: 8 }}
-      >
-        <h2 style={{ fontSize: 14, margin: 0 }}>Diagnostics</h2>
-        <div
-          data-testid="bw-diagnostics-all-clear"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "6px 12px",
-            border: "1px solid var(--cp-success)",
-            color: "var(--cp-success)",
-            borderRadius: 999,
-            fontSize: 12,
-            fontWeight: 600,
-            background: "color-mix(in oklab, var(--cp-success) 8%, transparent)",
-            alignSelf: "start",
-          }}
-        >
-          ✓ All clear
-        </div>
-      </section>
-    );
+    // Spec: render nothing on an empty diagnostics list. A standing
+    // "All clear" chip is noise — especially on a brand-new user's
+    // first visit after the assessment.
+    return null;
   }
 
   const shown = expanded ? results : results.slice(0, MAX_VISIBLE);
