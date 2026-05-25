@@ -27,10 +27,11 @@ import type { Prescription, PrescriptionItem } from "@hta/db";
 import { SkipSessionForm } from "@/components/plan/SkipSessionForm";
 import { EndBlockForm } from "@/components/plan/EndBlockForm";
 import { PlanViews, type ViewMode } from "@/components/plan/PlanViews";
-import { UpNextHero } from "@/components/plan/UpNextHero";
+import { UpNextHero, type WeekOnePreviewItem } from "@/components/plan/UpNextHero";
 import { UpNextRail } from "@/components/plan/UpNextRail";
 import { BlockHeatmapStrip } from "@/components/plan/BlockHeatmapStrip";
 import { selectUpNext } from "@/lib/plan/up-next";
+import { selectBlockState } from "@/lib/plan/block-state";
 import { GlossaryBadge } from "@/components/ui/GlossaryBadge";
 import { formatDate, type ProfileForFormat } from "@/lib/format/datetime";
 import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner";
@@ -240,6 +241,38 @@ export default async function PlanPage({
       skippedAt: p.skippedAt,
     })),
   });
+
+  const blockState = selectBlockState({
+    block: { startedOn: block.startedOn },
+    today,
+    planned: all.map((p) => ({
+      date: p.date,
+      completedSessionId: p.completedSessionId,
+      skippedAt: p.skippedAt,
+    })),
+    upNext,
+  });
+
+  // Future-block hero preview: first week's planned sessions in display
+  // order. Empty unless the block hasn't started yet.
+  const weekOnePreview: WeekOnePreviewItem[] =
+    blockState.kind === "future"
+      ? all
+          .filter((p) => p.weekIndex === 0)
+          .sort((a, b) =>
+            a.date === b.date
+              ? slotOrder(a.slot) - slotOrder(b.slot)
+              : a.date < b.date
+                ? -1
+                : 1,
+          )
+          .map((p) => ({
+            id: p.id,
+            date: p.date,
+            title: p.title,
+            summary: summarisePrescription(p.prescription.items),
+          }))
+      : [];
 
   const tissueGaps = await getCurrentWeekTissueStackGaps(supabase, user.id);
 
@@ -471,12 +504,30 @@ export default async function PlanPage({
       {showBodyweightBanner && <BodyweightOnlyBanner />}
 
       <UpNextHero
+        state={blockState}
         selection={upNext}
         skipAction={skipPlannedSession}
         formatProfile={planFmtProfile}
+        weekOnePreview={weekOnePreview}
+        blockName={archetypeName}
+        blockSessionCount={totalPlanned}
+        blockWeeks={block.weeks}
+        completedActions={
+          blockState.kind === "completed" ? (
+            <EndBlockForm blockId={block.id} action={endBlock} />
+          ) : undefined
+        }
       />
 
-      <div className="cp-plan-two-col">
+      <div
+        className="cp-plan-two-col"
+        data-future={blockState.kind === "future" ? "true" : undefined}
+        style={
+          blockState.kind === "future"
+            ? { opacity: 0.7, filter: "saturate(0.8)" }
+            : undefined
+        }
+      >
         <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
           <PlanViews
             items={calendarItems}
@@ -569,7 +620,7 @@ export default async function PlanPage({
         ))}
       </section>
 
-      <section className="cp-card" style={{ padding: 16 }}>
+      <section className="cp-card" style={{ padding: 16, display: blockState.kind === "completed" ? "none" : undefined }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 500 }}>Done with this block?</div>
