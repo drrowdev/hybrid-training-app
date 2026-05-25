@@ -1548,8 +1548,30 @@ function CardioSection({ items }: { items: PrescriptionItem[] }) {
 function formatMovementRowPrescription(row: PrescriptionMovementRow): string {
   const first = row.items[0];
   if (!first) return "";
-  // If every item agrees on the rep target, render as `N × R` where N
-  // is the count of prescription items (= sets) for this movement.
+  // Total sets = sum of the `sets` field across this movement's
+  // PrescriptionItems. The dynamic picker emits ONE PrescriptionItem
+  // per accessory movement with `sets: N`, so naively using
+  // `row.items.length` produced `1 × 14` everywhere even when the
+  // archetype prescribed 2 or 3 sets.
+  const totalSets = row.items.reduce((acc, it) => acc + (it.sets ?? 1), 0);
+
+  // Carries: distance per trip × N trips. Pooled from `distanceM` so
+  // the accessory-intensity matrix's per-week distance ramp surfaces.
+  if (first.distanceM) {
+    const { min, max } = first.distanceM;
+    const dist = min === max ? `${min} m` : `${min}–${max} m`;
+    return `${totalSets} × ${dist}`;
+  }
+
+  // Isometric accessories: hold duration, not reps.
+  if (first.holdSec) {
+    const { min, max } = first.holdSec;
+    const hold = min === max ? `${min}s hold` : `${min}–${max}s hold`;
+    return `${totalSets} × ${hold}`;
+  }
+
+  // Standard reps path. If every item agrees on the rep target, render
+  // as `N × R` (with `/side` suffix when the movement is unilateral).
   const reps = row.items.map((i) => i.reps).filter((r): r is number => r != null);
   const allSameReps = reps.length === row.items.length && reps.every((r) => r === reps[0]);
   if (allSameReps && reps.length > 0) {
@@ -1557,7 +1579,7 @@ function formatMovementRowPrescription(row: PrescriptionMovementRow): string {
     const noteHasSide = (first.notes ?? "").match(perSideHint);
     const cueHasSide = (first.intensityCue ?? "").match(perSideHint);
     const suffix = noteHasSide || cueHasSide ? "/side" : "";
-    return `${row.items.length} × ${reps[0]}${suffix}`;
+    return `${totalSets} × ${reps[0]}${suffix}`;
   }
   // Heterogeneous items — fall back to the canonical per-item formatter
   // on the first row. The user can expand the session card to see the
