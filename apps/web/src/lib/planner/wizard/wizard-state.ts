@@ -32,6 +32,10 @@ export type WizardState = {
   scheduleSig: string | null;
   /** Index of the currently selected swap source (step 5), or null. */
   swapSourceIdx: number | null;
+  /** Index of the cell currently being dragged (step 5), or null. */
+  dragSourceIdx: number | null;
+  /** Index of the cell the drag is currently hovering over, or null. */
+  dragOverIdx: number | null;
   /** True when the user's saved day pref was applied to the schedule. */
   usingSavedPref: boolean;
 };
@@ -47,6 +51,8 @@ export const initialWizardState: WizardState = {
   schedule: [],
   scheduleSig: null,
   swapSourceIdx: null,
+  dragSourceIdx: null,
+  dragOverIdx: null,
   usingSavedPref: false,
 };
 
@@ -62,7 +68,10 @@ export type WizardAction =
   | { type: "back" }
   | { type: "set-schedule"; schedule: ScheduleCell[]; sig: string; usingSavedPref: boolean }
   | { type: "swap-source"; idx: number | null }
-  | { type: "apply-swap"; sourceIdx: number; targetIdx: number };
+  | { type: "apply-swap"; sourceIdx: number; targetIdx: number }
+  | { type: "drag-start"; idx: number }
+  | { type: "drag-over"; idx: number | null }
+  | { type: "drag-end" };
 
 export function wizardReducer(state: WizardState, action: WizardAction): WizardState {
   switch (action.type) {
@@ -120,6 +129,8 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
         scheduleSig: action.sig,
         usingSavedPref: action.usingSavedPref,
         swapSourceIdx: null,
+        dragSourceIdx: null,
+        dragOverIdx: null,
       };
     case "swap-source":
       return { ...state, swapSourceIdx: action.idx };
@@ -130,8 +141,21 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
       if (!a || !b) return state;
       [a.am, b.am] = [b.am, a.am];
       [a.pm, b.pm] = [b.pm, a.pm];
-      return { ...state, schedule: next, swapSourceIdx: null, usingSavedPref: false };
+      return {
+        ...state,
+        schedule: next,
+        swapSourceIdx: null,
+        dragSourceIdx: null,
+        dragOverIdx: null,
+        usingSavedPref: false,
+      };
     }
+    case "drag-start":
+      return { ...state, dragSourceIdx: action.idx, dragOverIdx: null };
+    case "drag-over":
+      return { ...state, dragOverIdx: action.idx };
+    case "drag-end":
+      return { ...state, dragSourceIdx: null, dragOverIdx: null };
     default:
       return state;
   }

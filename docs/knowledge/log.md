@@ -239,3 +239,12 @@ progression work. Hashes the raw file bytes (matches the algorithm
 the migrator actually writes to the tracking table) with an
 LF-normalized fallback so a CRLF Windows checkout still matches a
 row that was applied from a LF (Linux/CI) checkout.
+
+## [2026-05-25] refine | Step 5 schedule: layout fit + drag-drop + banner copy (fix/step5-layout-dnd-and-banner)
+
+- 7-day grid uses minmax(0, 1fr); cells no longer overflow the column.
+- Drag-and-drop alongside tap-swap. Reducer state gains dragSourceIdx +
+  dragOverIdx; same swap/move semantics as the click path.
+- Replaced prominent saved-pattern banner with a muted footer line +
+  inline Reset link. Removed the standalone Reset button (one
+  affordance, not two).

@@ -1,6 +1,6 @@
 /**
  * Step 5 — Lay out your week. Renders the 7-cell Mon..Sun grid with
- * click-to-swap interaction and a "Reset to defaults" button.
+ * click-to-swap and HTML5 drag-and-drop interactions.
  *
  * Click semantics (verbatim from the mockup):
  *   • First click on an occupied cell → marks it as the swap source.
@@ -8,13 +8,18 @@
  *     Empty target = effectively moves the session to the rest day.
  *   • Click the source again → cancels the pending swap.
  *
+ * Drag semantics (desktop / mouse augmentation):
+ *   • Drag a non-rest cell onto any other cell → swap/move (same semantics
+ *     as the click path; rest target = move).
+ *   • Drag cancelled (drop outside) → no change.
+ *
  * DC-D4 / DC-K4: when a swap creates a high-CNS adjacency, we surface the
  * warning but do not block. The post-placement spacer runs only on the
  * default schedule — user swaps are intentional.
  */
 "use client";
 
-import type { Dispatch } from "react";
+import type { Dispatch, DragEvent } from "react";
 import type { WizardAction, WizardState } from "@/lib/planner/wizard/wizard-state";
 import type { ResolvedArchetype } from "@/lib/planner/wizard/wizard-mapping";
 import {
@@ -74,6 +79,49 @@ export function Step5Schedule({
     dispatch({ type: "set-schedule", schedule: cells, sig, usingSavedPref: false });
   };
 
+  const handleDragStart = (idx: number) => (e: DragEvent<HTMLDivElement>): void => {
+    const cell = state.schedule[idx];
+    if (!cell || (!cell.am && !cell.pm)) {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.effectAllowed = "move";
+    // Some browsers (Firefox) require setData to actually initiate a drag.
+    try {
+      e.dataTransfer.setData("text/plain", String(idx));
+    } catch {
+      // ignore — Safari occasionally throws under restricted contexts
+    }
+    dispatch({ type: "drag-start", idx });
+  };
+
+  const handleDragOver = (idx: number) => (e: DragEvent<HTMLDivElement>): void => {
+    if (state.dragSourceIdx === null) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (state.dragOverIdx !== idx) dispatch({ type: "drag-over", idx });
+  };
+
+  const handleDragEnter = (idx: number) => (e: DragEvent<HTMLDivElement>): void => {
+    if (state.dragSourceIdx === null) return;
+    e.preventDefault();
+    if (state.dragOverIdx !== idx) dispatch({ type: "drag-over", idx });
+  };
+
+  const handleDrop = (idx: number) => (e: DragEvent<HTMLDivElement>): void => {
+    e.preventDefault();
+    const src = state.dragSourceIdx;
+    if (src === null || src === idx) {
+      dispatch({ type: "drag-end" });
+      return;
+    }
+    dispatch({ type: "apply-swap", sourceIdx: src, targetIdx: idx });
+  };
+
+  const handleDragEnd = (): void => {
+    dispatch({ type: "drag-end" });
+  };
+
   return (
     <section>
       <div style={pillStyle}>Step 5 of 5 · Schedule</div>
@@ -82,24 +130,6 @@ export function Step5Schedule({
         Pick the days you&apos;ll train. Tap two sessions to swap them — we&apos;ll flag spacing
         issues.
       </p>
-
-      {state.usingSavedPref && (
-        <div style={prefNoteStyle}>
-          <span>
-            Using your saved {resolved.name} {state.days}-day pattern.
-          </span>
-          <a
-            href="#"
-            onClick={(e) => {
-              e.preventDefault();
-              handleResetDefaults();
-            }}
-            style={{ color: "var(--cp-link)", textDecoration: "none", whiteSpace: "nowrap" }}
-          >
-            Reset to defaults →
-          </a>
-        </div>
-      )}
 
       <div className="wiz-week-grid" style={weekGridStyle}>
         {state.schedule.map((cell, idx) => (
@@ -111,10 +141,37 @@ export function Step5Schedule({
             isConflict={conflictDays.has(cell.day)}
             isSwapSource={state.swapSourceIdx === idx}
             otherSwap={state.swapSourceIdx !== null && state.swapSourceIdx !== idx}
+            isDragSource={state.dragSourceIdx === idx}
+            isDragOver={
+              state.dragSourceIdx !== null &&
+              state.dragOverIdx === idx &&
+              state.dragSourceIdx !== idx
+            }
             onClick={() => handleCellClick(idx)}
+            onDragStart={handleDragStart(idx)}
+            onDragEnter={handleDragEnter(idx)}
+            onDragOver={handleDragOver(idx)}
+            onDrop={handleDrop(idx)}
+            onDragEnd={handleDragEnd}
           />
         ))}
       </div>
+
+      {state.usingSavedPref && (
+        <p style={prefNoteStyle}>
+          Layout loaded from your last block.{" "}
+          <a
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              handleResetDefaults();
+            }}
+            style={prefNoteLinkStyle}
+          >
+            Reset to defaults
+          </a>
+        </p>
+      )}
 
       {warnings.length > 0 && (
         <div style={warningsStyle}>
@@ -129,9 +186,20 @@ export function Step5Schedule({
         </div>
       )}
 
-      <button type="button" onClick={handleResetDefaults} style={resetBtnStyle}>
-        Reset to defaults
-      </button>
+      {!state.usingSavedPref && (
+        <p style={prefNoteStyle}>
+          <a
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              handleResetDefaults();
+            }}
+            style={prefNoteLinkStyle}
+          >
+            Reset to defaults
+          </a>
+        </p>
+      )}
     </section>
   );
 }
@@ -142,7 +210,14 @@ function DayCell({
   isConflict,
   isSwapSource,
   otherSwap,
+  isDragSource,
+  isDragOver,
   onClick,
+  onDragStart,
+  onDragEnter,
+  onDragOver,
+  onDrop,
+  onDragEnd,
 }: {
   cell: ScheduleCell;
   idx: number;
@@ -150,11 +225,28 @@ function DayCell({
   isConflict: boolean;
   isSwapSource: boolean;
   otherSwap: boolean;
+  isDragSource: boolean;
+  isDragOver: boolean;
   onClick: () => void;
+  onDragStart: (e: DragEvent<HTMLDivElement>) => void;
+  onDragEnter: (e: DragEvent<HTMLDivElement>) => void;
+  onDragOver: (e: DragEvent<HTMLDivElement>) => void;
+  onDrop: (e: DragEvent<HTMLDivElement>) => void;
+  onDragEnd: (e: DragEvent<HTMLDivElement>) => void;
 }): React.ReactElement {
   const isRest = !cell.am && !cell.pm;
   return (
-    <div onClick={onClick} className="wiz-day-cell" style={dayCellStyle({ isRest, isConflict, isSwapSource, otherSwap })}>
+    <div
+      onClick={onClick}
+      className="wiz-day-cell"
+      draggable={!isRest}
+      onDragStart={onDragStart}
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      style={dayCellStyle({ isRest, isConflict, isSwapSource, otherSwap, isDragSource, isDragOver })}
+    >
       <div style={dayLabelStyle}>
         <span>{DAY_LABELS[cell.day]}</span>
         {isConflict && <span style={{ color: "var(--cp-warning, #d97706)", fontSize: 12 }}>⚠</span>}
@@ -162,7 +254,7 @@ function DayCell({
       {isRest ? (
         <div style={restPlaceholderStyle}>Rest</div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
           {cell.am && <Chip session={cell.am} label={twoADay ? "AM" : null} />}
           {cell.pm && <Chip session={cell.pm} label={twoADay ? "PM" : null} />}
         </div>
@@ -214,7 +306,7 @@ const subStyle: React.CSSProperties = {
 };
 const weekGridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(7, 1fr)",
+  gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
   gap: 8,
   marginTop: 16,
 };
@@ -224,15 +316,19 @@ function dayCellStyle({
   isConflict,
   isSwapSource,
   otherSwap,
+  isDragSource,
+  isDragOver,
 }: {
   isRest: boolean;
   isConflict: boolean;
   isSwapSource: boolean;
   otherSwap: boolean;
+  isDragSource: boolean;
+  isDragOver: boolean;
 }): React.CSSProperties {
   let borderColor = "var(--cp-border)";
   let borderWidth = 1;
-  let borderStyle = "solid";
+  let borderStyle: React.CSSProperties["borderStyle"] = "solid";
   let background = isRest ? "var(--cp-bg)" : "var(--cp-surface)";
   if (isRest) borderStyle = "dashed";
   if (isConflict) {
@@ -247,17 +343,25 @@ function dayCellStyle({
     borderColor = "var(--cp-link)";
     borderStyle = "dashed";
   }
+  if (isDragOver) {
+    borderColor = "var(--cp-accent)";
+    borderWidth = 2;
+    borderStyle = "dashed";
+  }
+  const padding = borderWidth === 2 ? "7px 5px 9px" : "8px 6px 10px";
   return {
     borderRadius: 10,
     background,
     border: `${borderWidth}px ${borderStyle} ${borderColor}`,
-    padding: borderWidth === 2 ? "7px 5px 9px" : "8px 6px 10px",
+    padding,
     minHeight: 110,
+    minWidth: 0,
     display: "flex",
     flexDirection: "column",
     gap: 6,
     cursor: "pointer",
     userSelect: "none",
+    opacity: isDragSource ? 0.5 : 1,
   };
 }
 
@@ -294,19 +398,26 @@ function chipStyle(highCNS: boolean): React.CSSProperties {
     display: "flex",
     flexDirection: "column",
     gap: 2,
+    overflow: "hidden",
+    minWidth: 0,
   };
 }
 
 const chipTitleStyle: React.CSSProperties = {
   fontWeight: 600,
   display: "flex",
-  alignItems: "center",
+  alignItems: "flex-start",
   gap: 4,
+  wordBreak: "break-word",
+  overflowWrap: "anywhere",
+  minWidth: 0,
 };
 
 const chipMetaStyle: React.CSSProperties = {
   fontSize: 10,
   color: "var(--cp-text-muted)",
+  wordBreak: "break-word",
+  overflowWrap: "anywhere",
 };
 
 const chipTagStyle: React.CSSProperties = {
@@ -328,27 +439,14 @@ const warningsStyle: React.CSSProperties = {
   lineHeight: 1.5,
 };
 
-const resetBtnStyle: React.CSSProperties = {
-  marginTop: 14,
-  background: "transparent",
-  border: "1px solid var(--cp-border)",
-  color: "var(--cp-text-muted)",
-  borderRadius: 8,
-  padding: "6px 12px",
-  fontSize: 12,
-  cursor: "pointer",
-};
-
 const prefNoteStyle: React.CSSProperties = {
   marginTop: 12,
-  padding: "8px 12px",
-  borderRadius: 8,
-  background: "var(--cp-accent-soft)",
-  border: "1px solid var(--cp-accent)",
-  fontSize: 12,
-  color: "var(--cp-text)",
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: 12,
+  marginBottom: 0,
+  fontSize: 11,
+  color: "var(--cp-text-muted)",
+};
+
+const prefNoteLinkStyle: React.CSSProperties = {
+  color: "var(--cp-link)",
+  textDecoration: "none",
 };
