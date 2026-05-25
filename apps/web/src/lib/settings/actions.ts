@@ -19,6 +19,7 @@ const profileSchema = z.object({
   allowsTwoADays: z.coerce.boolean().optional(),
   hapticsEnabled: z.coerce.boolean().optional(),
   timerSoundEnabled: z.coerce.boolean().optional(),
+  showTodayRecoveryCard: z.coerce.boolean().optional(),
   amWindowStart: z
     .string()
     .regex(/^\d{2}:\d{2}(?::\d{2})?$/)
@@ -50,6 +51,10 @@ export async function updateProfile(formData: FormData): Promise<void> {
     timerSoundEnabled:
       formData.get("timerSoundEnabledPresent") === "1"
         ? formData.get("timerSoundEnabled") === "on"
+        : undefined,
+    showTodayRecoveryCard:
+      formData.get("showTodayRecoveryCardPresent") === "1"
+        ? formData.get("showTodayRecoveryCard") === "on"
         : undefined,
     amWindowStart: formData.get("amWindowStart") || undefined,
     pmWindowStart: formData.get("pmWindowStart") || undefined,
@@ -87,6 +92,8 @@ export async function updateProfile(formData: FormData): Promise<void> {
   if (parsed.data.allowsTwoADays !== undefined) updates.allows_two_a_days = parsed.data.allowsTwoADays;
   if (parsed.data.hapticsEnabled !== undefined) updates.haptics_enabled = parsed.data.hapticsEnabled;
   if (parsed.data.timerSoundEnabled !== undefined) updates.timer_sound_enabled = parsed.data.timerSoundEnabled;
+  if (parsed.data.showTodayRecoveryCard !== undefined)
+    updates.show_today_recovery_card = parsed.data.showTodayRecoveryCard;
   if (parsed.data.amWindowStart !== undefined) {
     const hhmm = parsed.data.amWindowStart.slice(0, 5);
     updates.am_window_start = hhmm;

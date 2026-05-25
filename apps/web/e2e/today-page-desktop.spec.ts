@@ -51,7 +51,7 @@ test.describe("@desktop today page (Phase 1)", () => {
     await expect(topline).toContainText(/Top set/);
     await expect(topline).toContainText(/× 5/);
 
-    // Primary CTA → check-in for the seeded planned session.
+    // Primary CTA → start session route (server-side auto-create + redirect).
     const cta = page.getByTestId("today-cta").first();
     await expect(cta).toBeVisible();
     await expect(cta).toHaveText(/start session/i);
@@ -63,10 +63,11 @@ test.describe("@desktop today page (Phase 1)", () => {
     await expect(preview).toBeVisible();
     await expect(preview).toHaveAttribute("href", "/app/plan");
 
-    // Clicking Start lands on the check-in page.
+    // Clicking Start auto-creates the session and lands on the log surface.
+    // (The pre-session check-in interstitial was removed; daily fatigue +
+    // soreness now live on the Today page via HowRecoveredCard.)
     await cta.click();
-    await page.waitForURL(`**/app/sessions/start/${seed.todayPlannedId}`, { timeout: 15_000 });
-    await expect(page.getByRole("heading", { name: /how are you feeling/i })).toBeVisible();
+    await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 15_000 });
   });
 
   test("rest day shows compact banner with Log freestyle + View plan links", async ({

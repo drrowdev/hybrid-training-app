@@ -221,3 +221,7 @@ Equipment editor gains dipBeltMaxKg, ankleWeights, and bandStrength
 fields (additive to existing accessory shape). Multipliers are
 intentionally rough -- they exist for stress budgeting, not precise
 load math; DAG node + clean rep history remain the source of truth.
+## [2026-05-25] refine | Pre-workout check-in removed (fix/remove-prework-checkin)
+
+The /app/sessions/start/[plannedId] interstitial is gone. Tapping `Start workout` now goes straight to the session log. Daily recovery logging lives on the Today page (HowRecoveredCard); a new profiles column show_today_recovery_card + settings toggle lets users hide it. Migration 0049.
+
