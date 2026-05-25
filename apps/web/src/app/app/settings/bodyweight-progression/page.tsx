@@ -1,14 +1,12 @@
 /**
- * Settings → Bodyweight progression (read-only preview).
+ * Settings → Bodyweight progression.
  *
- * Phase 2 stub for the bodyweight progression UI. Shows the user's
- * current node per family alongside a "Next:" preview derived from
- * the catalog's prerequisite DAG. Read-only for now — Phase 4 will
- * add manual node-pinning + level adjustments.
- *
- * Empty state copy points the user at the onboarding assessment when
- * `bw_progress` is empty (i.e. they reached this page without
- * completing the assessment, e.g. by skipping onboarding).
+ * Shows the user's current node per family alongside a "Next:" preview
+ * derived from the catalog's prerequisite DAG. Users can edit nodes
+ * directly via the per-family pickers below the read-only table —
+ * useful when the engine's progression doesn't match real-world
+ * capability. The standalone assessment route is linked from the
+ * empty state for users who skipped onboarding.
  */
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -23,6 +21,10 @@ import {
   BwLoadedFamiliesSection,
   type LoadedFamilyRow,
 } from "@/components/settings/BwLoadedFamiliesSection";
+import {
+  BwFamiliesManualPicker,
+  type BwFamilyPickerNode,
+} from "@/components/settings/BwFamilyNodePicker";
 
 /** Human-readable family labels — kept local because the catalog
  *  table doesn't carry one. Brand-purity: pure descriptors. */
@@ -168,6 +170,40 @@ export default async function BodyweightProgressionPage() {
 
   const seeded = rows.some((r) => r.current != null);
   const events: ProgressionEventRow[] = (eventRows ?? []) as ProgressionEventRow[];
+
+  // Build the per-family picker payloads. Nodes are sorted by
+  // `difficulty_anchor` asc so the dropdown order tracks the DAG.
+  // We include every family — even ones the user has no row for yet —
+  // so manual seeding works without first running the assessment.
+  const manualFamilies = MOVEMENT_FAMILIES.map((family) => {
+    const familyNodes = (nodesByFamily.get(family) ?? [])
+      .slice()
+      .sort((a, b) => a.difficulty_anchor - b.difficulty_anchor)
+      .map<BwFamilyPickerNode>((n) => ({
+        id: n.id,
+        nodeKey: n.node_key,
+        displayName: n.display_name,
+        difficultyAnchor: n.difficulty_anchor,
+        prerequisites: n.prerequisites ?? [],
+      }));
+    const progress = progressByFamily.get(family);
+    const current = progress
+      ? nodeById.get(progress.current_node_id) ?? null
+      : null;
+    const stateBadge = current
+      ? `${current.display_name} · TUT ${progress?.accumulated_tut_seconds ?? 0}s · Week ${Math.min(
+          progress?.weeks_at_node ?? 0,
+          2,
+        )} at node`
+      : "Not seeded yet";
+    return {
+      family,
+      familyLabel: FAMILY_LABEL[family],
+      nodes: familyNodes,
+      currentNodeId: progress?.current_node_id ?? null,
+      stateBadge,
+    };
+  }).filter((f) => f.nodes.length > 0);
 
   // Phase 7 — build loaded-BW suggestion rows for each loadable family.
   // We synthesise a MovementNode-like value off the catalog row to feed
@@ -334,19 +370,47 @@ export default async function BodyweightProgressionPage() {
             lineHeight: 1.55,
           }}
         >
-          Your current node per movement family and a preview of what comes
-          next. Manual adjustments arrive in a later phase — for now this is a
-          read-only view of what the assessment seeded.
+          Your current node per movement family, what comes next, and recent
+          progressions. Edit nodes directly below — useful if the engine&apos;s
+          progression doesn&apos;t match your real-world capability.
         </p>
       </header>
 
       {!seeded && (
         <div data-testid="bw-progression-empty" style={emptyStyle}>
           <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55 }}>
-            No bodyweight progression on file yet. Complete the bodyweight
-            assessment during onboarding (or re-run it later) to seed your
-            starting nodes.
+            You haven&apos;t completed the bodyweight assessment yet. Run it
+            now to seed your starting nodes per movement family — takes
+            about a minute.
           </p>
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              alignItems: "center",
+              flexWrap: "wrap",
+              marginTop: 10,
+            }}
+          >
+            <Link
+              href="/app/onboarding/bw-assessment"
+              data-testid="bw-progression-empty-cta"
+              className="cp-btn primary"
+              style={{
+                fontSize: 13,
+                padding: "6px 12px",
+                textDecoration: "none",
+              }}
+            >
+              Run assessment
+            </Link>
+            <span
+              style={{ fontSize: 12, color: "var(--cp-text-muted)" }}
+              data-testid="bw-progression-empty-manual-hint"
+            >
+              Or pick nodes manually below.
+            </span>
+          </div>
         </div>
       )}
 
@@ -499,6 +563,8 @@ export default async function BodyweightProgressionPage() {
           </div>
         </section>
       )}
+
+      <BwFamiliesManualPicker families={manualFamilies} />
 
       {seeded && (
         <section
