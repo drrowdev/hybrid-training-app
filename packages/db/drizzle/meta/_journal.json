@@ -323,6 +323,13 @@
       "tag": "0049_today_recovery_card_setting",
       "when": 1780297200000,
       "breakpoints": false
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "tag": "0050_bw_catalog_grants",
+      "when": 1780383600000,
+      "breakpoints": false
     }
   ]
 }
