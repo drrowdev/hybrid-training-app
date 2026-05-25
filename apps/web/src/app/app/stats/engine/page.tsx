@@ -126,7 +126,7 @@ function DecisionTraceCard({ trace }: { trace: DecisionTrace }) {
           fontWeight: 600,
         }}
       >
-        Decision trace · DC-K4
+        Decision trace
         <MetricHelp term="decision_trace" />
       </div>
       <h2
@@ -165,15 +165,7 @@ function DecisionTraceCard({ trace }: { trace: DecisionTrace }) {
                 background: "var(--cp-accent)",
               }}
             />
-            {r.text}
-            {r.cite && (
-              <span
-                className="mono"
-                style={{ marginLeft: 6, fontSize: 11, color: "var(--cp-text-muted)" }}
-              >
-                ({r.cite})
-              </span>
-            )}
+            <span data-cite={r.cite ?? undefined}>{r.text}</span>
           </li>
         ))}
       </ul>
@@ -205,7 +197,7 @@ function RegionFreshnessCard({ regions }: { regions: RegionFreshnessDetail[] }) 
             <strong>MAV</strong> = maximum adaptive volume ·{" "}
             <strong>MRV</strong> = maximum recoverable volume (Israetel /
             Schoenfeld). Bands shown on a freshness axis: above MEV =
-            productive, below MRV = overstrained. DC-C14 / DC-M1.
+            productive, below MRV = overstrained.
           </span>
         </span>
       </h2>
@@ -344,9 +336,9 @@ function BucketPressureCard({ buckets }: { buckets: BucketPressureRow[] }) {
         <span className="cp-info" tabIndex={0} aria-label="How bucket pressure is computed">
           i
           <span className="pop" style={{ width: 280 }}>
-            Six global stress buckets per DC-A3. Each bucket&apos;s current
-            7-day EWMA is compared to its 28-day chronic norm — the closer
-            to 100% of ceiling, the less headroom you have. DC-C2.
+            Six global stress buckets. Each bucket&apos;s current 7-day
+            EWMA is compared to its 28-day chronic norm — the closer to
+            100% of ceiling, the less headroom you have.
           </span>
         </span>
       </h2>
@@ -463,13 +455,13 @@ function CeilingExplainerCard({ ceiling }: { ceiling: CeilingExplain }) {
             data-testid="stats-engine-ceiling-why-pop"
             style={{ width: 320 }}
           >
-            Final ceiling = base × GRM × confidence (DC-C11 simplified).
-            Base = median weekly tonnage across your last 3 recovered
-            weeks (DC-C9 · DC-K1). A week qualifies as recovered when
-            every planned session was logged, no session sRPE exceeded
-            9, and pre-session fatigue + soreness both averaged below 4.
-            When fewer than 3 qualify we walk down a cold-start ladder
-            (DC-C13) so the engine projects conservatively.
+            Final ceiling = base × GRM × confidence. Base = median
+            weekly tonnage across your last 3 recovered weeks. A week
+            qualifies as recovered when every planned session was
+            logged, no session sRPE exceeded 9, and pre-session fatigue
+            + soreness both averaged below 4. When fewer than 3 qualify
+            we walk down a cold-start ladder so the engine projects
+            conservatively.
           </span>
         </span>
       </h2>
@@ -536,7 +528,7 @@ function CeilingExplainerCard({ ceiling }: { ceiling: CeilingExplain }) {
             >
               ?
               <span className="pop" style={{ width: 260 }}>
-                A week is &quot;recovered&quot; (DC-K1) when every planned
+                A week is &quot;recovered&quot; when every planned
                 session was logged, no session sRPE exceeded 9, and avg
                 pre-session fatigue + soreness both stayed below 4
                 (1–5 scale). Cold-start weeks shown for context only.
@@ -585,7 +577,7 @@ function CeilingExplainerCard({ ceiling }: { ceiling: CeilingExplain }) {
           label="Base ceiling"
           value={Math.round(ceiling.baseCeiling).toLocaleString()}
           unit="kg/wk"
-          cite="DC-C9 · DC-K1"
+          cite="ceiling-base"
           help={formulaCopy[ceiling.formula]}
           helpTerm="ceiling"
         />
@@ -593,19 +585,19 @@ function CeilingExplainerCard({ ceiling }: { ceiling: CeilingExplain }) {
           label="Recovery multiplier (GRM)"
           value={ceiling.recoveryMultiplier.toFixed(2)}
           unit="×"
-          cite="DC-C5"
-          help="Compresses the ceiling when wellness signals dip. MVP = 1.0 until DC-P2/DC-P3 inputs land."
+          cite="ceiling-grm"
+          help="Compresses the ceiling when wellness signals dip. MVP = 1.0 until full wellness inputs land."
           helpTerm="grm"
         />
         <CeilingInputRow
           label="Confidence bias"
           value={ceiling.confidenceBias.toFixed(2)}
           unit="×"
-          cite="DC-C13"
+          cite="ceiling-confidence"
           help={
             ceiling.formula === "median_of_recovered"
-              ? "Full data — 3+ recovered weeks (DC-C13)."
-              : "Sparse data — confidence collapses to 0.80× until 3 recovered weeks land (DC-C13)."
+              ? "Full data — 3+ recovered weeks."
+              : "Sparse data — confidence collapses to 0.80× until 3 recovered weeks land."
           }
           helpTerm="confidence_bias"
         />
@@ -645,8 +637,9 @@ function CeilingExplainerCard({ ceiling }: { ceiling: CeilingExplain }) {
           <li key={i}>· {n}</li>
         ))}
         <li style={{ marginTop: 4, fontStyle: "italic" }}>
-          See DC-K1 in <span className="mono">docs/knowledge/hybrid-training-design-constraints.md</span> for the
-          recovered-week qualification rule.
+          A week qualifies as recovered when every planned session was
+          logged, no session sRPE exceeded 9, and pre-session fatigue
+          + soreness both averaged below 4.
         </li>
       </ul>
     </section>
@@ -670,13 +663,10 @@ function CeilingInputRow({
 }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
-      <div>
+      <div data-cite={cite}>
         <div style={{ fontSize: 13, fontWeight: 600 }}>
           {label}
-          {helpTerm != null && <MetricHelp term={helpTerm} />}{" "}
-          <span className="mono" style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-            ({cite})
-          </span>
+          {helpTerm != null && <MetricHelp term={helpTerm} />}
         </div>
         <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>{help}</div>
       </div>
@@ -713,11 +703,12 @@ function UserTierCard({ tier }: { tier: UserTierState }) {
         <span className="cp-info" tabIndex={0} aria-label="How tier is computed">
           i
           <span className="pop" style={{ width: 300 }}>
-            DC-G1: tier stays behavioural. Inferred from per-lift e1RM relative
-            to bodyweight, 12-week anchor adherence, schedule regularity, and
-            recovery check-in fill rate — combined with your declared
-            experience from onboarding. DC-K4 surfaces any declared-vs-observed
-            mismatch as a soft warning, never a silent overrule.
+            Tier stays behavioural — inferred from per-lift e1RM
+            relative to bodyweight, 12-week anchor adherence, schedule
+            regularity, and recovery check-in fill rate, combined with
+            your declared experience from onboarding. Any
+            declared-vs-observed mismatch surfaces as a soft warning,
+            never a silent overrule.
           </span>
         </span>
       </h2>
@@ -767,7 +758,7 @@ function UserTierCard({ tier }: { tier: UserTierState }) {
           {confidenceLabel[tier.confidence]} ·{" "}
           {tier.contributorCount} observed contributor
           {tier.contributorCount === 1 ? "" : "s"}
-          {tier.isColdStart && " · cold-start (DC-G5)"}
+          {tier.isColdStart && " · cold-start"}
         </div>
       </div>
 
@@ -793,7 +784,7 @@ function UserTierCard({ tier }: { tier: UserTierState }) {
         >
           You declared <strong>{tier.declaredLabel}</strong>, observed signals
           lean toward <strong>{tier.inferredLabel}</strong>. The app keeps your
-          declaration; this is a soft note, not a block (DC-K4).
+          declaration; this is a soft note, not a block.
         </div>
       )}
 
@@ -852,16 +843,6 @@ function UserTierCard({ tier }: { tier: UserTierState }) {
             ))}
           </ul>
           <p style={{ margin: "10px 0 0", lineHeight: 1.5 }}>{tier.explanation}</p>
-          <p
-            style={{
-              margin: "8px 0 0",
-              fontSize: 11,
-              color: "var(--cp-text-muted)",
-            }}
-          >
-            Refs: DC-G1..G6 (tier definition + thresholds + cold start +
-            tier-gated planning params), DC-K4 (override-and-warn).
-          </p>
         </details>
       )}
     </section>
@@ -897,9 +878,9 @@ function RecentOverridesCard({
         <span className="cp-info" tabIndex={0} aria-label="What counts as an override">
           i
           <span className="pop" style={{ width: 280 }}>
-            DC-K4 — every time you skip a planned session, swap a
-            movement, or end a block early, the engine writes a row to
-            the override audit log. Last 10 surfaced here, newest first.
+            Every time you skip a planned session, swap a movement, or
+            end a block early, the engine writes a row to the override
+            audit log. Last 10 surfaced here, newest first.
           </span>
         </span>
       </h2>

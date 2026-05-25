@@ -452,32 +452,32 @@ const BUCKET_DISPLAY: Record<Bucket, { label: string; description: string; why: 
   neural: {
     label: "Nervous system",
     description: "Heavy lifts and max efforts — recovery is slow but adaptation is big.",
-    why: "Neural pressure = 7-day EWMA of heavy-load contributions / 28-day chronic norm. Drives the GRM via DC-C5.",
+    why: "Neural pressure = 7-day EWMA of heavy-load contributions / 28-day chronic norm. Drives the recovery multiplier.",
   },
   mechanical: {
     label: "Muscle work",
     description: "Total tonnage — how much pure volume you've moved.",
-    why: "Mechanical pressure = sets × reps × weight × RPE summed daily, EWMA'd. Anchors the DC-M1 MEV/MAV landmarks.",
+    why: "Mechanical pressure = sets × reps × weight × RPE summed daily, EWMA'd. Anchors the MEV/MAV landmarks.",
   },
   metabolic: {
     label: "Conditioning",
     description: "Lactate / breathing — hard cardio and high-rep work.",
-    why: "Metabolic pressure rises with high-rep sets and hard cardio. Pushes interference modifier per DC-C7.",
+    why: "Metabolic pressure rises with high-rep sets and hard cardio. Pushes the interference modifier.",
   },
   impact: {
     label: "Pounding",
     description: "Running, plyo, heavy eccentrics — joints and connective tissue.",
-    why: "Impact pressure tracks running + high-strain-tendon work. Caps explosive doses per DC-C8 / DC-D5.",
+    why: "Impact pressure tracks running + high-strain-tendon work. Caps explosive doses.",
   },
   axial: {
     label: "Spinal load",
     description: "Squats, deadlifts, OHP, loaded carries — back can only take so much.",
-    why: "Axial pressure is the lumbar/trunk compression accumulator. Pinned at moderate weight in DC-A3.",
+    why: "Axial pressure is the lumbar/trunk compression accumulator. Pinned at moderate weight.",
   },
   tissue: {
     label: "Tendons",
     description: "Tendons remodel slowly — very-heavy lifts and running add up.",
-    why: "Tendon pressure tracks high-strain-tendon exposures. Used for DC-D5 plyo gating + DC-V2 soft block.",
+    why: "Tendon pressure tracks high-strain-tendon exposures. Used for plyo gating + soft block.",
   },
 };
 
@@ -668,19 +668,19 @@ export async function getCeilingExplain(
   const notes: string[] = [];
   if (base.formula === "median_of_recovered") {
     notes.push(
-      `Base = median weekly tonnage across your last 3 recovered weeks (DC-C9 · DC-K1). ${recoveredCount} of last 12 weeks qualified.`,
+      `Base = median weekly tonnage across your last 3 recovered weeks. ${recoveredCount} of last 12 weeks qualified.`,
     );
   } else if (base.formula === "cold_start_partial") {
     notes.push(
-      `Cold start — only ${recoveredCount} recovered week${recoveredCount === 1 ? "" : "s"} in the last 12. Base = median of those, with a 0.80× confidence collapse (DC-C13).`,
+      `Cold start — only ${recoveredCount} recovered week${recoveredCount === 1 ? "" : "s"} in the last 12. Base = median of those, with a 0.80× confidence collapse.`,
     );
   } else {
     notes.push(
-      "Cold start — no fully recovered weeks in the last 12. Base = lowest of the last 4 weeks × 0.9, with a 0.80× confidence collapse (DC-K1 · DC-C13).",
+      "Cold start — no fully recovered weeks in the last 12. Base = lowest of the last 4 weeks × 0.9, with a 0.80× confidence collapse.",
     );
   }
   notes.push(
-    "Recovery multiplier = 1.0 — daily wellness inputs (DC-P2/DC-P3) are deferred to a later phase.",
+    "Recovery multiplier = 1.0 — daily wellness inputs are deferred to a later phase.",
   );
 
   return {
@@ -838,10 +838,9 @@ export async function getUserTier(
     "per-lift e1RM relative to bodyweight (or absolute kg as a fallback), 12-week " +
     "anchor adherence, schedule regularity, and recovery check-in fill rate. Each " +
     "input contributes weighted evidence toward one of three tiers; the highest " +
-    "weighted sum wins. Declared experience anchors the verdict — DC-G1 keeps tier " +
-    "behavioural, but DC-K4 surfaces any declared-vs-observed mismatch as a soft note " +
-    "rather than silently overruling. See `docs/knowledge/hybrid-training-design-constraints.md` " +
-    "§G for the full DC-G1..G6 contract.";
+    "weighted sum wins. Declared experience anchors the verdict — tier stays " +
+    "behavioural, but any declared-vs-observed mismatch surfaces as a soft note " +
+    "rather than silently overruling.";
 
   return {
     tier: result.tier,
@@ -871,7 +870,7 @@ function buildDescription(
   isColdStart: boolean,
 ): string {
   if (isColdStart) {
-    return "Cold start — log a few sessions so the engine can read your training signals (DC-G5).";
+    return "Cold start — log a few sessions so the engine can read your training signals.";
   }
   if (declaredYearsLabel) return declaredYearsLabel;
   const cContrib = result.contributors.length;

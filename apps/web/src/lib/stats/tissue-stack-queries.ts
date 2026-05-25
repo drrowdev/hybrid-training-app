@@ -46,6 +46,24 @@ export async function getCurrentWeekTissueStackGaps(
 
   const startedOn = new Date(block.started_on + "T00:00:00");
   const daysSinceStart = Math.floor((Date.now() - startedOn.getTime()) / 86_400_000);
+
+  // Gate: don't surface deficits until the block has been running long
+  // enough for the user to actually have logged anything against it.
+  // - Need at least one completed week at this node (no week-0 alarms).
+  // - Need at least one completed session in the last 7 days so the
+  //   warning describes lived training, not a brand-new plan.
+  if (daysSinceStart < 7) return [];
+
+  const sevenDaysAgoIso = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const { count: recentSessions } = await supabase
+    .from("sessions")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .not("completed_at", "is", null)
+    .is("deleted_at", null)
+    .gte("completed_at", sevenDaysAgoIso);
+  if ((recentSessions ?? 0) < 1) return [];
+
   const weekIndex = Math.max(0, Math.min(block.weeks - 1, Math.floor(daysSinceStart / 7)));
 
   const { data: sessions } = await supabase
