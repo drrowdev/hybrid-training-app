@@ -256,3 +256,8 @@ row that was applied from a LF (Linux/CI) checkout.
 - `MovementGroup` gains `slotBuckets { warmup, working, accessory }` (back-compat with existing `itemIndices`).
 - Focus-view caption + dot strip scope `Set X of Y` to the active bucket so warm-ups no longer inflate the working-set count.
 - Defensive `humanizeSlug` fallback in `groupPrescriptionByMovement` — hinge-comp injection now reads `Hip hinge` even when only the slug is set.
+
+## [2026-05-25] chore | compress plan-page vertical chrome (PR #114)
+- Block-overview heatmap cell height 18->12, card padding 16->12.
+- Month calendar empty cells minHeight 84->44.
+- Legend moved into a '?' button next to filter chips; defaults to collapsed everywhere.
