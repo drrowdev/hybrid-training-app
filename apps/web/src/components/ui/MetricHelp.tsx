@@ -176,20 +176,6 @@ export function MetricHelp({
         >
           {entry.body}
         </span>
-        {entry.citation != null && (
-          <span
-            data-testid="metric-help-citation"
-            className="mono"
-            style={{
-              display: "block",
-              marginTop: 6,
-              fontSize: 10,
-              color: "var(--cp-text-muted)",
-            }}
-          >
-            {entry.citation}
-          </span>
-        )}
       </span>
     </span>
   );
