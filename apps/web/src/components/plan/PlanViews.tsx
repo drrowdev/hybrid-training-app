@@ -91,6 +91,8 @@ export function PlanViews({
   );
 
   const filtered = useMemo(() => filterCalendarItems(items, filter), [items, filter]);
+  const hasFilteredResults = filtered.length > 0;
+  const filterIsActive = filter !== "all";
 
   const matchPlanned = matchPlannedId ? plannedById[matchPlannedId] ?? null : null;
   const matchCandidates = matchPlannedId
@@ -286,6 +288,46 @@ export function PlanViews({
           onMatchUnfulfilled={setMatchPlannedId}
           formatProfile={formatProfile}
         />
+      )}
+
+      {filterIsActive && !hasFilteredResults && (
+        <div
+          data-testid="plan-filter-empty"
+          style={{
+            padding: "10px 14px",
+            border: "1px dashed var(--cp-border)",
+            borderRadius: 10,
+            background: "var(--cp-surface-soft)",
+            color: "var(--cp-text-muted)",
+            fontSize: 13,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <span>
+            No <strong style={{ color: "var(--cp-text)" }}>{filter}</strong>{" "}
+            sessions in this view
+          </span>
+          <button
+            type="button"
+            onClick={() => setFilter("all")}
+            data-testid="plan-filter-empty-clear"
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "var(--cp-accent)",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+              padding: 0,
+            }}
+          >
+            Clear filter
+          </button>
+        </div>
       )}
 
       <MatchUnfulfilledModal
