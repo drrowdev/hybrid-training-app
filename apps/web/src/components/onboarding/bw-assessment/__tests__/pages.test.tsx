@@ -91,26 +91,19 @@ describe("SkillChipsPage", () => {
 });
 
 describe("HingeAcknowledgementPage", () => {
-  it("renders the required acknowledgement checkbox", () => {
-    const html = renderToStaticMarkup(
-      <HingeAcknowledgementPage acknowledged={false} onChange={() => {}} />,
-    );
+  it("renders informational copy", () => {
+    const html = renderToStaticMarkup(<HingeAcknowledgementPage />);
     expect(html).toContain('data-testid="bw-assessment-hinge-ack"');
-    expect(html).toContain('data-testid="bw-assessment-hinge-ack-checkbox"');
-    expect(html).toMatch(/posterior chain/i);
+    expect(html).toMatch(/posterior[- ]chain/i);
   });
 
-  it("reflects the acknowledged state on the checkbox", () => {
-    const onHtml = renderToStaticMarkup(
-      <HingeAcknowledgementPage acknowledged={true} onChange={() => {}} />,
-    );
-    expect(onHtml).toContain('checked=""');
+  it("does not render a consent checkbox", () => {
+    const html = renderToStaticMarkup(<HingeAcknowledgementPage />);
+    expect(html).not.toContain('type="checkbox"');
   });
 
   it("contains no external-program names (brand purity)", () => {
-    const html = renderToStaticMarkup(
-      <HingeAcknowledgementPage acknowledged={false} onChange={() => {}} />,
-    );
+    const html = renderToStaticMarkup(<HingeAcknowledgementPage />);
     expect(html.toLowerCase()).not.toMatch(/wendler|smolov|531|stronglifts|gzcl/);
   });
 });

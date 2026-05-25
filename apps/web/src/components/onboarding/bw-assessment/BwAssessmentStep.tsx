@@ -62,7 +62,6 @@ export function BwAssessmentStep({
     plankHoldSeconds: null,
   });
   const [chips, setChips] = useState<BwSkillChip[]>([]);
-  const [acknowledged, setAcknowledged] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -92,17 +91,13 @@ export function BwAssessmentStep({
       setPage((p) => p + 1);
       return;
     }
-    // Final submit.
-    if (!acknowledged) {
-      setError("Confirm the acknowledgement to continue.");
-      return;
-    }
+    // Final submit. Page 3 is informational — no acknowledgement required.
     setSubmitting(true);
     void (async () => {
       const r = await submitAction({
         ...reps,
         skillChips: chips,
-        hingeGapAcknowledged: acknowledged,
+        hingeGapAcknowledged: true,
       });
       setSubmitting(false);
       if (!r.ok) {
@@ -159,12 +154,7 @@ export function BwAssessmentStep({
 
       {page === 0 && <RepTestsPage values={reps} onChange={setReps} />}
       {page === 1 && <SkillChipsPage selected={chips} onChange={setChips} />}
-      {page === 2 && (
-        <HingeAcknowledgementPage
-          acknowledged={acknowledged}
-          onChange={setAcknowledged}
-        />
-      )}
+      {page === 2 && <HingeAcknowledgementPage />}
 
       {error && (
         <div role="alert" style={errorBoxStyle}>
@@ -212,7 +202,7 @@ export function BwAssessmentStep({
           <button
             type="button"
             onClick={onNext}
-            disabled={submitting || (page === 2 && !acknowledged)}
+            disabled={submitting}
             className="cp-btn primary"
             data-testid="bw-assessment-next"
           >
