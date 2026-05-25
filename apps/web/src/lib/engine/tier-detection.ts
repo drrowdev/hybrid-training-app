@@ -4,7 +4,9 @@
  * `gatherTierInputs(supabase, userId)` fetches the live observed
  * signals the pure `computeTier` helper needs:
  *
- *  - declaredExperience  ← profiles.training_experience (lt_1y / 1_3y / gte_3y)
+ *  - declaredExperience  ← profiles.training_experience (5-tier scale —
+ *                          see `packages/engine/src/tier-detection.ts`
+ *                          for the declared → engine-tier projection)
  *  - bodyweightKg        ← profiles.bodyweight_kg
  *  - e1rmKgByRole        ← training_maxes.one_rm_kg per main-lift role,
  *                          mapped from the movement slug catalog in
@@ -33,9 +35,11 @@ import type { DeclaredExperience, MainLift, TierInputs } from "@hta/engine";
 import { STRENGTH_ROLE_CANDIDATES } from "@/lib/planner/archetypes";
 
 const DECLARED_VALUES: ReadonlySet<DeclaredExperience> = new Set([
-  "lt_1y",
-  "1_3y",
-  "gte_3y",
+  "beginner_lt_6m",
+  "novice_6m_2y",
+  "intermediate_2y_5y",
+  "advanced_5y_10y",
+  "highly_advanced_10y_plus",
 ]);
 
 /** Reverse the planner's STRENGTH_ROLE_CANDIDATES into slug → role. */

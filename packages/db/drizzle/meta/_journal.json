@@ -337,6 +337,13 @@
       "tag": "0051_bw_table_grants",
       "when": 1780470000000,
       "breakpoints": false
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "tag": "0052_training_experience_5_tiers",
+      "when": 1780556400000,
+      "breakpoints": false
     }
   ]
 }
