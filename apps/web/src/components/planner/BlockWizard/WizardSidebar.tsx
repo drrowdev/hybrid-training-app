@@ -14,15 +14,20 @@ import type { WizardState } from "@/lib/planner/wizard/wizard-state";
 import type { ResolvedArchetype, Goal } from "@/lib/planner/wizard/wizard-mapping";
 import { buildWeekShape, type SessionShape } from "@/lib/planner/wizard/schedule";
 import { MetricHelp } from "@/components/ui/MetricHelp";
+import type { EquipmentPreset } from "@/lib/settings/equipment-schema";
 import { GOALS } from "./shared";
 
 export function WizardSidebar({
   state,
   resolved,
+  equipmentPreset,
 }: {
   state: WizardState;
   resolved: ResolvedArchetype | null;
+  /** Equipment preset from the user's profile. Drives bodyweight-aware copy. */
+  equipmentPreset?: EquipmentPreset | null;
 }): ReactElement {
+  const isBw = equipmentPreset === "bodyweight_only";
   const fullyResolved = !!resolved;
   const name = !fullyResolved ? "Pick a few options →" : resolved.name;
   const summary = summarySentence(state, resolved);
@@ -133,11 +138,12 @@ export function WizardSidebar({
           {state.twoADay && <Row icon="🌗" label="Two-a-day" value="AM + PM split" />}
         </div>
 
-        <WeekLadder resolved={resolved} />
+        <WeekLadder resolved={resolved} isBw={isBw} />
 
         <p style={noteStyle}>
-          The block-creation engine picks the actual movements from your training maxes and the
-          tagged catalog — no two blocks are identical.
+          {isBw
+            ? "The block-creation engine rotates through your bodyweight families — the picker chooses ~3 main families per session based on your current progression nodes."
+            : "The block-creation engine picks the actual movements from your training maxes and the tagged catalog — no two blocks are identical."}
         </p>
       </div>
     </div>
@@ -413,7 +419,13 @@ function formatSessions(a: ResolvedArchetype): string {
   return parts.join(" + ");
 }
 
-function WeekLadder({ resolved }: { resolved: ResolvedArchetype | null }): ReactElement {
+function WeekLadder({
+  resolved,
+  isBw,
+}: {
+  resolved: ResolvedArchetype | null;
+  isBw: boolean;
+}): ReactElement {
   // Always render 4 cells; pending cells when unresolved.
   return (
     <div
@@ -426,7 +438,7 @@ function WeekLadder({ resolved }: { resolved: ResolvedArchetype | null }): React
     >
       {Array.from({ length: 4 }, (_, i) => {
         const filled = !!resolved && i < resolved.weeks;
-        const label = filled ? labelForWave(resolved!, i) : "—";
+        const label = filled ? labelForWave(resolved!, i, isBw) : "—";
         const isDeload = filled && /^Recover\b/i.test(label);
         return (
           <div key={i} style={weekCellStyle(filled, isDeload)}>
@@ -451,25 +463,43 @@ function WeekLadder({ resolved }: { resolved: ResolvedArchetype | null }): React
   );
 }
 
-function labelForWave(a: ResolvedArchetype, i: number): string {
+function labelForWave(a: ResolvedArchetype, i: number, isBw: boolean): string {
   // Plain-language week labels. Each archetype reads as a 4-week story
   // the user can mentally rehearse: ramp-in -> build -> hardest week ->
   // recovery. Avoids jargon ("heavy week", "volume peak") in favour of
   // what the user will actually do.
   if (a.id === "strength_anchor")
-    return [
-      "Ramp in — get your bar speed back",
-      "Build — heavier top sets each session",
-      "Push — your hardest week",
-      "Recover — lighter loads, sleep more",
-    ][i] ?? "—";
+    return (
+      isBw
+        ? [
+            "Ramp in — find your tempo",
+            "Build — more reps or longer holds",
+            "Push — your hardest week",
+            "Recover — pull back, sleep more",
+          ]
+        : [
+            "Ramp in — get your bar speed back",
+            "Build — heavier top sets each session",
+            "Push — your hardest week",
+            "Recover — lighter loads, sleep more",
+          ]
+    )[i] ?? "—";
   if (a.id === "hypertrophy_anchor")
-    return [
-      "Ramp in — find your working weights",
-      "Build — add a working set per lift",
-      "Push — most sets of the block",
-      "Recover — half the volume, full sleep",
-    ][i] ?? "—";
+    return (
+      isBw
+        ? [
+            "Ramp in — find your tempo",
+            "Build — add a working set",
+            "Push — most sets of the block",
+            "Recover — half the volume, full sleep",
+          ]
+        : [
+            "Ramp in — find your working weights",
+            "Build — add a working set per lift",
+            "Push — most sets of the block",
+            "Recover — half the volume, full sleep",
+          ]
+    )[i] ?? "—";
   if (a.id === "endurance_anchor")
     return [
       "Build — easy aerobic base",
@@ -478,19 +508,37 @@ function labelForWave(a: ResolvedArchetype, i: number): string {
       "Recover — easy minutes only",
     ][i] ?? "—";
   if (a.id === "concurrent_hybrid")
-    return [
-      "Ramp in — both engines at low load",
-      "Build — add weight + minutes",
-      "Push — your hardest week",
-      "Recover — lighter on both",
-    ][i] ?? "—";
+    return (
+      isBw
+        ? [
+            "Ramp in — both engines at low load",
+            "Build — add reps + minutes",
+            "Push — your hardest week",
+            "Recover — lighter on both",
+          ]
+        : [
+            "Ramp in — both engines at low load",
+            "Build — add weight + minutes",
+            "Push — your hardest week",
+            "Recover — lighter on both",
+          ]
+    )[i] ?? "—";
   if (a.id === "rebuild")
-    return [
-      "Ease in — pain-free range only",
-      "Step up — modest load progression",
-      "Consolidate — hold the new range",
-      "Recover — back off to feel-good loads",
-    ][i] ?? "—";
+    return (
+      isBw
+        ? [
+            "Ease in — pain-free range only",
+            "Step up — modest progression",
+            "Consolidate — hold the new range",
+            "Recover — back off to feel-good progressions",
+          ]
+        : [
+            "Ease in — pain-free range only",
+            "Step up — modest load progression",
+            "Consolidate — hold the new range",
+            "Recover — back off to feel-good loads",
+          ]
+    )[i] ?? "—";
   if (a.id === "maintenance")
     return ["Steady — keep what you have", "Steady — keep what you have"][i] ?? "—";
   return "—";

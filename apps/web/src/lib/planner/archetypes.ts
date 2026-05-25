@@ -1110,8 +1110,22 @@ export function effectiveDays(archetype: Archetype, allowsTwoADays: boolean): Da
   return archetype.days;
 }
 
-/** Anchor day count = the minimum frequency at which the archetype is viable. */
-export function minDaysForArchetype(archetype: Archetype, allowsTwoADays = false): number {
+/**
+ * Anchor day count = the minimum frequency at which the archetype is viable.
+ *
+ * `isBodyweightOnly` short-circuits the anchor-day count to a flat floor of 2.
+ * For bodyweight-only users the prescription engine packs ~3 main families per
+ * session via `bw-family-rotation.ts` (PR #93) regardless of which archetype
+ * the user picks, so the "needs N anchor days" gate doesn't apply — three
+ * sessions/week covers all 15 families over a typical cycle. We keep a floor
+ * of 2 so users still can't accidentally pick a 1-day block.
+ */
+export function minDaysForArchetype(
+  archetype: Archetype,
+  allowsTwoADays = false,
+  isBodyweightOnly = false,
+): number {
+  if (isBodyweightOnly) return 2;
   const days = effectiveDays(archetype, allowsTwoADays);
   // Count distinct calendar days touched by anchors (so a Mon AM + Mon PM
   // anchor pair counts as 1 required day).

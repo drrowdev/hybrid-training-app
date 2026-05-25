@@ -26,6 +26,7 @@ import {
   type TmReadinessByArchetype,
   type WizardSubmit,
 } from "./BlockWizard";
+import type { EquipmentPreset } from "@/lib/settings/equipment-schema";
 
 export type RecentBlockCard = {
   id: string;
@@ -47,6 +48,7 @@ export function PlanNewSwitch({
   action,
   initialMode = "home",
   hideBuildCta = false,
+  equipmentPreset = null,
 }: {
   recentBlocks: RecentBlockCard[];
   tmReadinessByArchetype: TmReadinessByArchetype;
@@ -55,6 +57,8 @@ export function PlanNewSwitch({
   action: (fd: FormData) => Promise<CreateBlockResult>;
   initialMode?: "home" | "wizard";
   hideBuildCta?: boolean;
+  /** Equipment preset from the user's profile — forwarded to BlockWizard for bodyweight-aware copy. */
+  equipmentPreset?: EquipmentPreset | null;
 }): React.ReactElement {
   const [mode, setMode] = useState<"home" | "wizard">(initialMode);
   const [wizardPrefill, setWizardPrefill] = useState<BlockWizardPrefill | null>(null);
@@ -141,6 +145,7 @@ export function PlanNewSwitch({
           tmReadinessByArchetype={tmReadinessByArchetype}
           allowsTwoADays={allowsTwoADays}
           prefill={wizardPrefill}
+          equipmentPreset={equipmentPreset}
         />
       </div>
     );
