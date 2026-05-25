@@ -57,7 +57,7 @@ export function AppShell({
         .cp-main {
           flex: 1;
           width: 100%;
-          max-width: 880px;
+          max-width: 1120px;
           margin: 0 auto;
           padding: 32px 28px 64px;
           padding-left: max(28px, env(safe-area-inset-left));
