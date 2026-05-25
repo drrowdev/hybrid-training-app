@@ -330,6 +330,13 @@
       "tag": "0050_bw_catalog_grants",
       "when": 1780383600000,
       "breakpoints": false
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "tag": "0051_bw_table_grants",
+      "when": 1780470000000,
+      "breakpoints": false
     }
   ]
 }
