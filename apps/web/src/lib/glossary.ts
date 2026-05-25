@@ -260,8 +260,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   tendons_joints_integrated: {
     title: "Tendons & joints — integrated",
     body:
-      "Tendon work lives inside every block, not as a separate day. Heavy-slow-resistance tempo on main lifts and short isometric holds (30–45 s) for vulnerable areas. Tendons adapt to load + time-under-tension, not extra sessions.",
-    citation: "Baar 2017; Kongsgaard 2009",
+      "Tendon work lives inside every block, not as a separate day. Heavy-slow-resistance tempo work surfaces on selected sessions, and short isometric holds (30–45 s) are prescribed for vulnerable areas. Tendons adapt to load + time-under-tension, not extra sessions.",
   },
   two_a_day: {
     title: "Two-a-day",
