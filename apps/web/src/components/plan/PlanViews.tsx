@@ -14,7 +14,8 @@
  *     planned rows.
  */
 import Link from "next/link";
-import { useState, useMemo } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useMemo, useTransition } from "react";
 import type { CalendarItem, CalendarFilter } from "@/lib/plan/calendar-data";
 import { filterCalendarItems } from "@/lib/plan/calendar-data";
 import { MonthGrid } from "./MonthGrid";
@@ -89,6 +90,25 @@ export function PlanViews({
   const [matchPlannedId, setMatchPlannedId] = useState<string | null>(
     initialMatchPlannedId ?? null,
   );
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [, startTransition] = useTransition();
+
+  // Persist filter selection across reloads + back/forward navigation by
+  // mirroring the chip state into the `filter` URL search param. The
+  // server already reads `?filter=` (PlanPage) so a refresh re-hydrates
+  // the same filter. `router.replace` keeps the History stack clean —
+  // chip toggling shouldn't add stack entries.
+  const updateFilter = (next: CalendarFilter) => {
+    setFilter(next);
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    if (next === "all") params.delete("filter");
+    else params.set("filter", next);
+    const qs = params.toString();
+    startTransition(() => {
+      router.replace(qs ? `/app/plan?${qs}` : "/app/plan", { scroll: false });
+    });
+  };
 
   const filtered = useMemo(() => filterCalendarItems(items, filter), [items, filter]);
   const hasFilteredResults = filtered.length > 0;
@@ -169,7 +189,7 @@ export function PlanViews({
                   type="button"
                   role="checkbox"
                   aria-checked={active}
-                  onClick={() => setFilter(f.id)}
+                  onClick={() => updateFilter(f.id)}
                   data-testid={`plan-filter-${f.id}`}
                   data-active={active ? "true" : "false"}
                   style={{
@@ -313,7 +333,7 @@ export function PlanViews({
           </span>
           <button
             type="button"
-            onClick={() => setFilter("all")}
+            onClick={() => updateFilter("all")}
             data-testid="plan-filter-empty-clear"
             style={{
               background: "transparent",
