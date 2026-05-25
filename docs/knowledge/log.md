@@ -274,3 +274,10 @@ row that was applied from a LF (Linux/CI) checkout.
 - `BlockHeatmapStrip` replaces the old multi-row `BlockCalendar`: 4-week × 1-row horizontal heatmap, one cell per day, colored by status.
 - Past completed sessions in the week list render at 0.55 opacity; today stays full strength. Future-day Start buttons inside the week list are secondary (one primary per page).
 - New pure helper `lib/plan/up-next.ts` (`selectUpNext`) + 6 unit tests covering today/upcoming/two-a-day ordering/shape counts.
+
+## [2026-05-26] feat | /plan empty-state + edge-case polish (PR-C)
+- New pure helper `lib/plan/block-state.ts` (selectBlockState) classifies the hero into 'no-block' | 'future' | 'completed' | 'no-session-today' | 'active'; 7 unit tests cover the matrix.
+- UpNextHero gains future-block countdown (with 'Preview week 1' disclosure), reworded rest-day card, and a celebratory 'Block complete' variant that hosts the existing EndBlockForm as primary CTA.
+- Future-block state mutes the calendar + rail so the shape is visible without competing with the countdown.
+- PlanViews filter chips: zero-result state now renders an inline 'No <strength|cardio> sessions in this view' block with a single 'Clear filter' text button.
+- Tissue-stack banner audit: gating verified (>=7 days since block start AND >=1 completed session in last 7 days). No change needed.
