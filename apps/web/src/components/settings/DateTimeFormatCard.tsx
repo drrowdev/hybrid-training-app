@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import {
   DATE_FORMAT_OPTIONS,
   TIME_FORMAT_OPTIONS,
@@ -10,6 +10,8 @@ import {
   type TimeFormat,
 } from "@/lib/format/datetime";
 import { updateDateTimeFormat } from "@/lib/settings/format-actions";
+import { useAutoSave } from "@/lib/settings/use-auto-save";
+import { AutoSaveStatus } from "./AutoSaveStatus";
 
 type Props = {
   initialTimeFormat: TimeFormat | null;
@@ -51,13 +53,6 @@ export function DateTimeFormatCard({
   resolvedTimeFormat,
   resolvedDateFormat,
 }: Props) {
-  const [timeFormat, setTimeFormat] = useState<TimeFormat | "auto">(
-    initialTimeFormat ?? "auto",
-  );
-  const [dateFormat, setDateFormat] = useState<DateFormat | "auto">(
-    initialDateFormat ?? "auto",
-  );
-
   // Detect the browser's IANA timezone once on mount. SSR-safe — the
   // initial render emits an empty string (matching server output), and
   // the post-hydration store value comes from `Intl.DateTimeFormat` so
@@ -68,6 +63,47 @@ export function DateTimeFormatCard({
     getClientTimezoneSnapshot,
     getServerTimezoneSnapshot,
   );
+
+  // Auto-save closures need to read the latest detected timezone on
+  // every commit — refs keep them stable across renders.
+  const tzRef = useRef(clientTimezone);
+  useEffect(() => {
+    tzRef.current = clientTimezone;
+  }, [clientTimezone]);
+
+  const saveTime = useCallback(async (next: TimeFormat | "auto") => {
+    const fd = new FormData();
+    fd.set("timeFormat", next);
+    fd.set("detectedTimezone", tzRef.current);
+    await updateDateTimeFormat(fd);
+  }, []);
+  const saveDate = useCallback(async (next: DateFormat | "auto") => {
+    const fd = new FormData();
+    fd.set("dateFormat", next);
+    fd.set("detectedTimezone", tzRef.current);
+    await updateDateTimeFormat(fd);
+  }, []);
+
+  const {
+    value: timeFormat,
+    setValue: setTimeFormat,
+    status: timeStatus,
+    retry: retryTime,
+  } = useAutoSave<TimeFormat | "auto">({
+    initial: initialTimeFormat ?? "auto",
+    save: saveTime,
+    debounceMs: 0,
+  });
+  const {
+    value: dateFormat,
+    setValue: setDateFormat,
+    status: dateStatus,
+    retry: retryDate,
+  } = useAutoSave<DateFormat | "auto">({
+    initial: initialDateFormat ?? "auto",
+    save: saveDate,
+    debounceMs: 0,
+  });
 
   const timeExample = useMemo(() => {
     let id: TimeFormat;
@@ -97,8 +133,7 @@ export function DateTimeFormatCard({
   }, [dateFormat, resolvedDateFormat, clientTimezone]);
 
   return (
-    <form
-      action={updateDateTimeFormat}
+    <div
       className="space-y-4 rounded-lg border border-foreground/10 p-4"
       data-testid="settings-datetime-format-form"
     >
@@ -129,6 +164,11 @@ export function DateTimeFormatCard({
             {timeExample}
           </span>
         </div>
+        <AutoSaveStatus
+          status={timeStatus}
+          onRetry={retryTime}
+          testIdSuffix="settings-time-format"
+        />
       </div>
 
       <div className="space-y-1">
@@ -158,21 +198,19 @@ export function DateTimeFormatCard({
             {dateExample}
           </span>
         </div>
+        <AutoSaveStatus
+          status={dateStatus}
+          onRetry={retryDate}
+          testIdSuffix="settings-date-format"
+        />
       </div>
-
-      <button
-        type="submit"
-        data-testid="settings-datetime-format-save"
-        className="rounded-md bg-foreground text-background px-3 py-1.5 text-sm font-medium hover:opacity-90"
-      >
-        Save formats
-      </button>
 
       <input
         type="hidden"
         name="detectedTimezone"
         data-testid="settings-datetime-detected-timezone"
         value={clientTimezone}
+        readOnly
       />
 
       <p className="text-xs text-foreground/50">
@@ -181,6 +219,6 @@ export function DateTimeFormatCard({
         If your timezone isn&apos;t set, we use your browser&apos;s detected
         timezone instead. Pick an explicit option to override.
       </p>
-    </form>
+    </div>
   );
 }

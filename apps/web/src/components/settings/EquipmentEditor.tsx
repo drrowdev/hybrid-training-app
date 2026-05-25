@@ -15,7 +15,7 @@
  * payload via `parseEquipment` and writes the JSONB blob to
  * `profiles.equipment`.
  */
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { updateEquipmentV2 } from "@/lib/settings/equipment-actions";
 import {
   type Equipment,
@@ -34,6 +34,8 @@ import {
   PRESET_BY_KEY,
   PRESET_LABEL,
 } from "@/lib/settings/equipment-presets";
+import { useAutoSave } from "@/lib/settings/use-auto-save";
+import { AutoSaveStatus } from "./AutoSaveStatus";
 
 type Props = {
   initial: Equipment;
@@ -53,12 +55,33 @@ function clonePreset(preset: EquipmentPreset): Equipment {
 }
 
 export function EquipmentEditor({ initial, units }: Props) {
-  const [equipment, setEquipment] = useState<Equipment>(initial);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-
   const suffix = units === "imperial" ? "lb" : "kg";
+
+  // Auto-save closure: serialise the entire Equipment blob and call
+  // the existing server action (which validates via `parseEquipment`
+  // and writes to `profiles.equipment`).
+  const save = useCallback(async (next: Equipment) => {
+    const fd = new FormData();
+    fd.set("equipmentJson", JSON.stringify(next));
+    await updateEquipmentV2(fd);
+  }, []);
+
+  const {
+    value: equipment,
+    setValue: setEquipmentAndSave,
+    reset: resetEquipment,
+    status,
+    retry,
+    lastError,
+  } = useAutoSave<Equipment>({
+    initial,
+    save,
+    debounceMs: 500,
+  });
+
+  // Track the last-rendered preset purely for the `data-preset`
+  // attribute on the form (used by e2e specs + diagnostics).
+  const [renderedPreset] = useState<EquipmentPreset>(initial.preset);
 
   /**
    * Apply a mutation and mark the preset "custom" if it isn't
@@ -66,41 +89,24 @@ export function EquipmentEditor({ initial, units }: Props) {
    * "custom" preset doesn't flip.
    */
   const mutate = (fn: (draft: Equipment) => Equipment) => {
-    setEquipment((prev) => {
-      const next = fn(structuredClone(prev));
-      if (next.preset !== "custom") next.preset = "custom";
-      return next;
-    });
-    setSaved(false);
+    const next = fn(structuredClone(equipment));
+    if (next.preset !== "custom") next.preset = "custom";
+    setEquipmentAndSave(next);
   };
 
   const applyPreset = (key: EquipmentPreset) => {
-    setEquipment(clonePreset(key));
-    setSaved(false);
-    setError(null);
+    // Picking a preset is the user explicitly switching baselines —
+    // commit immediately, don't wait for the debounce.
+    setEquipmentAndSave(clonePreset(key));
   };
 
-  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (pending) return;
-    setPending(true);
-    setError(null);
-    setSaved(false);
-    try {
-      const fd = new FormData();
-      fd.set("equipmentJson", JSON.stringify(equipment));
-      await updateEquipmentV2(fd);
-      setSaved(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save equipment");
-    } finally {
-      setPending(false);
-    }
-  };
+  // Allow the form to render the literal "custom" badge once the user
+  // mutates a preset.
+  void resetEquipment;
+  void renderedPreset;
 
   return (
-    <form
-      onSubmit={onSubmit}
+    <div
       data-testid="equipment-editor-form"
       data-preset={equipment.preset}
       style={{ display: "grid", gap: 20 }}
@@ -147,16 +153,19 @@ export function EquipmentEditor({ initial, units }: Props) {
         onChange={(accessories) => mutate((d) => ({ ...d, accessories }))}
       />
 
-      {error && (
+      {lastError && (
         <div
           role="alert"
           data-testid="equipment-editor-error"
           style={{ fontSize: 12, color: "var(--cp-danger)" }}
         >
-          {error}
+          {lastError}
         </div>
       )}
-      {saved && !error && (
+      {/* "Saved" wrapper preserved for back-compat with e2e specs that
+          assert on `equipment-editor-saved`. Only renders while the
+          auto-save chip is in the saved state. */}
+      {status === "saved" && (
         <div
           role="status"
           data-testid="equipment-editor-saved"
@@ -165,17 +174,12 @@ export function EquipmentEditor({ initial, units }: Props) {
           Saved.
         </div>
       )}
-
-      <button
-        type="submit"
-        disabled={pending}
-        className="cp-btn primary"
-        data-testid="equipment-editor-save"
-        style={{ padding: "8px 14px", fontSize: 13, justifySelf: "start" }}
-      >
-        {pending ? "Saving…" : "Save"}
-      </button>
-    </form>
+      <AutoSaveStatus
+        status={status}
+        onRetry={retry}
+        testIdSuffix="equipment-editor"
+      />
+    </div>
   );
 }
 

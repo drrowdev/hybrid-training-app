@@ -7,7 +7,7 @@ import { markOnboarded } from "./fixtures/seed-blocks";
  *
  * Verifies:
  *  - The Training-experience section renders three years-anchor radios.
- *  - Selecting "3+ years" + Save writes profiles.training_experience = 'gte_3y'.
+ *  - Selecting "3+ years" auto-saves profiles.training_experience = 'gte_3y'.
  *  - A DC-K4 override-audit row is inserted (event_type='custom',
  *    reason mentions 'Training experience updated', context.kind =
  *    'training_experience_change' with from/to values).
@@ -52,9 +52,12 @@ test.describe("@desktop /app/settings · training experience", () => {
     await how.click();
     await expect(how).toContainText(/DC-G1/i);
 
-    // Pick the 3+ years option and save.
+    // Pick the 3+ years option — auto-save fires on selection change.
     await page.getByTestId("settings-experience-gte_3y").click();
-    await page.getByTestId("settings-experience-save").click();
+    await expect(page.getByTestId("autosave-status-settings-experience")).toHaveAttribute(
+      "data-status",
+      "saved",
+    );
     await page.waitForLoadState("networkidle");
 
     // After reload the selection sticks.
