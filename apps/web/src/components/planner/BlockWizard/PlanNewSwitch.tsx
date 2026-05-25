@@ -27,6 +27,7 @@ import {
   type WizardSubmit,
 } from "./BlockWizard";
 import type { EquipmentPreset } from "@/lib/settings/equipment-schema";
+import { BlockCreatingOverlay } from "./BlockCreatingOverlay";
 
 export type RecentBlockCard = {
   id: string;
@@ -271,6 +272,8 @@ export function PlanNewSwitch({
           </Link>
         </section>
       )}
+
+      {pending && !error && <BlockCreatingOverlay />}
     </div>
   );
 }

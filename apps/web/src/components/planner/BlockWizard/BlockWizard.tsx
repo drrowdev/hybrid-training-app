@@ -51,6 +51,7 @@ import { Step3Secondary } from "./Step3Secondary";
 import { Step4Review } from "./Step4Review";
 import { Step5Schedule } from "./Step5Schedule";
 import { WizardSidebar } from "./WizardSidebar";
+import { BlockCreatingOverlay } from "./BlockCreatingOverlay";
 import type { EquipmentPreset } from "@/lib/settings/equipment-schema";
 
 export type WizardSubmit = {
@@ -285,6 +286,8 @@ export function BlockWizard({
       <aside className="wiz-sidebar-col" style={sidebarColStyle}>
         <WizardSidebar state={state} resolved={resolved} equipmentPreset={equipmentPreset} />
       </aside>
+
+      {pending && state.step === 5 && !submitError && <BlockCreatingOverlay />}
     </div>
   );
 }
