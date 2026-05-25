@@ -1139,6 +1139,7 @@ function TissueStackCard({ gaps }: { gaps: TissueStackGap[] }) {
     <section
       className="cp-card"
       role="alert"
+      data-cite="DC-O4"
       style={{
         padding: "14px 18px",
         display: "grid",
@@ -1147,13 +1148,8 @@ function TissueStackCard({ gaps }: { gaps: TissueStackGap[] }) {
         background: "color-mix(in oklab, var(--cp-warning) 6%, transparent)",
       }}
     >
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-        <div style={{ fontSize: 11, color: "var(--cp-warning)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-          Tissue-stack deficit
-        </div>
-        <span style={{ fontSize: 10, color: "var(--cp-text-muted)" }} title="Baar 2017 HIGH; Magnusson & Kjaer 2019 HIGH">
-          DC-O4
-        </span>
+      <div style={{ fontSize: 11, color: "var(--cp-warning)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+        Tissue-stack deficit
       </div>
       <div style={{ fontSize: 13, color: "var(--cp-text)" }}>
         This week is missing tendon / connective-tissue work the research
@@ -1163,7 +1159,7 @@ function TissueStackCard({ gaps }: { gaps: TissueStackGap[] }) {
         {gaps.map((g) => (
           <li key={g.role}>
             <strong style={{ color: "var(--cp-text)" }}>{g.label}</strong>
-            {" "}— logged {g.actual}/{g.required} this week
+            {" "}— {g.actual}/{g.required} planned this week
           </li>
         ))}
       </ul>
