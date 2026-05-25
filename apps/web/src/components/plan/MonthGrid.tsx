@@ -171,7 +171,7 @@ function DayCell({
       onKeyDown={onKey}
       aria-label={`${date}${items.length > 0 ? ` — ${items.length} item${items.length === 1 ? "" : "s"}` : ""}`}
       style={{
-        minHeight: 84,
+        minHeight: items.length === 0 ? 44 : 84,
         padding: 6,
         borderRadius: 6,
         background: isOpen
