@@ -57,7 +57,13 @@ export function SettingsHubCard({
           className="mono"
           style={{
             fontSize: 11,
-            color: "var(--cp-text-muted)",
+            fontWeight: 600,
+            letterSpacing: "0.02em",
+            color: "var(--cp-text)",
+            background: "var(--cp-highlight)",
+            border: "1px solid var(--cp-border-strong)",
+            borderRadius: 999,
+            padding: "3px 10px",
             whiteSpace: "nowrap",
           }}
         >
