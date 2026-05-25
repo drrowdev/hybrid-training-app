@@ -177,7 +177,7 @@ describe("describeRowExternalLoad", () => {
 });
 
 describe("groupByMovementThenKind", () => {
-  it("splits a single-movement session into warmups → main → back-off, ordered by appearance", () => {
+  it("merges main + back-off into one ordered sets list, with warmups separate", () => {
     const items: PrescriptionItem[] = [
       item({ kind: "warmup", percentTm: 36 }),
       item({ kind: "warmup", percentTm: 45 }),
@@ -192,12 +192,15 @@ describe("groupByMovementThenKind", () => {
     const sec = out.movements[0]!;
     expect(sec.movementName).toBe("Front squat");
     expect(sec.warmups).toHaveLength(2);
-    expect(sec.main).toHaveLength(3);
-    expect(sec.backOff).toHaveLength(2);
-    expect(sec.main.find((r) => r.isTopSet)?.item.percentTm).toBe(90);
+    // Combined list: 3 main + 2 back-off = 5 sets, in source order.
+    expect(sec.sets).toHaveLength(5);
+    expect(sec.sets.map((r) => r.isBackOff)).toEqual([false, false, false, true, true]);
+    // Top set marker only fires on the heaviest %TM main row.
+    expect(sec.sets.find((r) => r.isTopSet)?.item.percentTm).toBe(90);
+    expect(sec.sets.filter((r) => r.isTopSet).length).toBe(1);
     // Back-off rows are NOT eligible for the top-set chip even when
     // their setNumber sequence restarts inside their own bucket.
-    expect(sec.backOff.every((r) => !r.isTopSet)).toBe(true);
+    expect(sec.sets.filter((r) => r.isBackOff).every((r) => !r.isTopSet)).toBe(true);
   });
 
   it("groups multi-movement sessions (bodyweight push + pull + squat) by movementId", () => {
@@ -224,7 +227,8 @@ describe("groupByMovementThenKind", () => {
         movementSlug: "wide_grip_pull_up",
         movementName: "Wide-grip pull-up",
       }),
-      // Accessory targeting the squat movement
+      // Accessory targeting the squat movement — pools session-level, NOT
+      // back into the squat subsection.
       item({
         kind: "accessory",
         movementId: "fs",
@@ -241,14 +245,33 @@ describe("groupByMovementThenKind", () => {
     ]);
     const squat = out.movements[0]!;
     expect(squat.warmups).toHaveLength(1);
-    expect(squat.main).toHaveLength(3);
-    expect(squat.backOff).toHaveLength(0);
-    expect(squat.accessories).toHaveLength(1);
+    expect(squat.sets).toHaveLength(3);
+    expect(squat.sets.every((r) => !r.isBackOff)).toBe(true);
     const pull = out.movements[1]!;
     expect(pull.warmups).toHaveLength(0);
-    expect(pull.main).toHaveLength(1);
-    expect(pull.backOff).toHaveLength(1);
-    expect(pull.accessories).toHaveLength(0);
+    expect(pull.sets).toHaveLength(2);
+    expect(pull.sets.map((r) => r.isBackOff)).toEqual([false, true]);
+    // Accessories pool at the session level.
+    expect(out.accessories).toHaveLength(1);
+    expect(out.accessories[0]!.movementName).toBe("Front squat");
+  });
+
+  it("pools all accessories into a single session-level section regardless of movement", () => {
+    const items: PrescriptionItem[] = [
+      item({ kind: "accessory", movementId: "rdl", movementName: "Romanian deadlift", reps: 12 }),
+      item({ kind: "accessory", movementId: "carry", movementName: "Overhead carry", reps: 10 }),
+      item({ kind: "accessory", movementId: "wall_sit", movementName: "Wall sit", reps: 14 }),
+    ];
+    const out = groupByMovementThenKind(items);
+    // Accessories must NOT create movement subsections — otherwise the
+    // card explodes with 5+ headers, one per accessory.
+    expect(out.movements).toHaveLength(0);
+    expect(out.accessories).toHaveLength(3);
+    expect(out.accessories.map((r) => r.movementName)).toEqual([
+      "Romanian deadlift",
+      "Overhead carry",
+      "Wall sit",
+    ]);
   });
 
   it("drops contentless items (no reps, percentTm, hold, intensity, notes) instead of rendering blank rows", () => {
@@ -263,8 +286,8 @@ describe("groupByMovementThenKind", () => {
       } as PrescriptionItem,
     ];
     const out = groupByMovementThenKind(items);
-    expect(out.movements[0]!.main).toHaveLength(1);
-    expect(out.movements[0]!.backOff).toHaveLength(0);
+    expect(out.movements[0]!.sets).toHaveLength(1);
+    expect(out.movements[0]!.sets[0]!.isBackOff).toBe(false);
   });
 
   it("keeps items whose only renderable content is on the bw payload (isometric holds, rep ranges)", () => {
@@ -288,7 +311,7 @@ describe("groupByMovementThenKind", () => {
     ];
     const out = groupByMovementThenKind(items);
     expect(out.movements).toHaveLength(1);
-    expect(out.movements[0]!.main).toHaveLength(1);
+    expect(out.movements[0]!.sets).toHaveLength(1);
   });
 
   it("routes cardio items into the session-level cardio bucket, not per movement", () => {
@@ -306,7 +329,7 @@ describe("groupByMovementThenKind", () => {
     expect(out.cardio).toHaveLength(1);
   });
 
-  it("hinge-compensation accessory items are routed into their movement's hingeCompensations bucket", () => {
+  it("hinge-compensation accessory items pool into the session-level hingeCompensations bucket", () => {
     const items: PrescriptionItem[] = [
       item({
         kind: "accessory",
@@ -318,9 +341,24 @@ describe("groupByMovementThenKind", () => {
       }),
     ];
     const out = groupByMovementThenKind(items);
-    expect(out.movements).toHaveLength(1);
-    expect(out.movements[0]!.hingeCompensations).toHaveLength(1);
-    expect(out.movements[0]!.accessories).toHaveLength(0);
+    expect(out.movements).toHaveLength(0);
+    expect(out.hingeCompensations).toHaveLength(1);
+    expect(out.accessories).toHaveLength(0);
+  });
+
+  it("tendon items pool into the session-level tendon bucket, not per movement", () => {
+    const items: PrescriptionItem[] = [
+      item({
+        kind: "tendon",
+        movementId: "calf",
+        movementSlug: "heavy_slow_calf_raise",
+        movementName: "Heavy slow calf raise",
+        reps: 6,
+      }),
+    ];
+    const out = groupByMovementThenKind(items);
+    expect(out.movements).toHaveLength(0);
+    expect(out.tendon).toHaveLength(1);
   });
 });
 
