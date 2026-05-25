@@ -1352,6 +1352,23 @@ export function formatPrescriptionItem(item: PrescriptionItem, tmKg?: number): s
   }
   if (item.kind === "accessory") {
     const sets = item.sets ?? 3;
+    // Carries are programmed by distance (or time), never reps. The
+    // accessory-intensity matrix strips `reps` for the "carry" bucket
+    // and writes `distanceM` instead. Render that here — the catch-all
+    // `reps ?? 10` fallback below would silently invent a rep target
+    // and lose the distance prescription.
+    if (item.distanceM) {
+      const { min, max } = item.distanceM;
+      const dist = min === max ? `${min} m` : `${min}–${max} m`;
+      return `${sets} × ${dist}`;
+    }
+    // Isometric accessories (planks, wall sits, dead-bug holds) have a
+    // hold duration on `holdSec` instead of a rep count. Same shape.
+    if (item.holdSec) {
+      const { min, max } = item.holdSec;
+      const hold = min === max ? `${min}s hold` : `${min}–${max}s hold`;
+      return `${sets} × ${hold}`;
+    }
     const reps = item.reps ?? 10;
     // Internal category tags ("durability" / "functional" / "aesthetic" /
     // "power") live on intensityLabel for engine bookkeeping but must not
