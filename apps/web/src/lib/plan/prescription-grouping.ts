@@ -157,3 +157,47 @@ export function groupPrescriptionSections(
 
   return { warmups, main, accessories, hingeCompensations: hinge, tendon, cardio };
 }
+
+/**
+ * Render a compact "+10 kg vest" / "−10 kg band" / "vest" badge for a
+ * movement row when the planner attached a `bw.loadSource` (and
+ * optionally a suggested `bw.externalLoadKg`) to its prescription
+ * items.
+ *
+ * Returns null when no row item carries load metadata so callers can
+ * conditionally render the chip without extra branches.
+ *
+ * Mirrors the suffix vocabulary used by MovementFocusView so the
+ * planned card and the session log read consistently.
+ */
+export function describeRowExternalLoad(
+  row: PrescriptionMovementRow,
+): string | null {
+  for (const it of row.items) {
+    const bw = (it as PrescriptionItem & {
+      bw?: { externalLoadKg?: number; loadSource?: string };
+    }).bw;
+    if (!bw || !bw.loadSource) continue;
+    const label = loadSourceLabel(bw.loadSource);
+    const kg = bw.externalLoadKg;
+    if (kg == null || kg === 0) return label;
+    if (kg < 0) return `−${Math.abs(kg)} kg ${label}`;
+    return `+${kg} kg ${label}`;
+  }
+  return null;
+}
+
+function loadSourceLabel(source: string): string {
+  switch (source) {
+    case "weighted_vest":
+      return "vest";
+    case "dip_belt":
+      return "belt";
+    case "ankle_weights":
+      return "ankle";
+    case "band_assist":
+      return "band";
+    default:
+      return source;
+  }
+}
