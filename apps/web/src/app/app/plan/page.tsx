@@ -55,6 +55,7 @@ import {
 } from "@/lib/plan/calendar-data";
 import {
   groupPrescriptionSections,
+  describeRowExternalLoad,
   type PrescriptionMainRow,
   type PrescriptionMovementRow,
 } from "@/lib/plan/prescription-grouping";
@@ -744,17 +745,26 @@ function DayCard({
         border: isToday ? "1px solid var(--cp-accent)" : undefined,
       }}
     >
-      {isTwoADay && (
-        <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 14px 0", alignItems: "baseline", gap: 8 }}>
-          <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-            {dayName} · {formatDate(dateStr + "T00:00:00Z", { ...(formatProfile ?? {}), timezone: "UTC" }, "short_date")}
-            {isToday && <span style={{ color: "var(--cp-accent)", marginLeft: 6 }}>· today</span>}
-          </div>
+      <div
+        data-testid={`plan-day-header-${dateStr}`}
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          padding: "6px 14px 0",
+          alignItems: "baseline",
+          gap: 8,
+        }}
+      >
+        <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+          {dayName} · {formatDate(dateStr + "T00:00:00Z", { ...(formatProfile ?? {}), timezone: "UTC" }, "short_date")}
+          {isToday && <span style={{ color: "var(--cp-accent)", marginLeft: 6 }}>· today</span>}
+        </div>
+        {isTwoADay && (
           <span className="cp-pill" style={{ color: "var(--cp-accent)", borderColor: "var(--cp-accent)" }}>
             two-a-day{gapH != null ? ` · ${gapH.toFixed(0)}h gap` : ""}
           </span>
-        </div>
-      )}
+        )}
+      </div>
       {isTwoADay && (
         <div
           role="note"
@@ -788,15 +798,12 @@ function DayCard({
       {plans.map((planned) => (
         <DaySessionCard
           key={planned.id}
-          dayName={dayName}
           planned={planned}
           isToday={isToday}
           isPast={isPast}
-          showHeader={!isTwoADay}
           isTwoADay={isTwoADay}
           timeOfDay={slotTimes.get(planned.slot) ?? null}
           isCustomTime={!!planned.plannedAt}
-          formatProfile={formatProfile}
         />
       ))}
     </div>
@@ -804,25 +811,19 @@ function DayCard({
 }
 
 function DaySessionCard({
-  dayName,
   planned,
   isToday,
   isPast,
-  showHeader,
   isTwoADay,
   timeOfDay,
   isCustomTime,
-  formatProfile,
 }: {
-  dayName: string;
   planned: PlannedCell;
   isToday: boolean;
   isPast: boolean;
-  showHeader: boolean;
   isTwoADay: boolean;
   timeOfDay: string | null;
   isCustomTime: boolean;
-  formatProfile: ProfileForFormat;
 }) {
   const done = !!planned.completedSessionId;
   const skipped = !!planned.skippedAt;
@@ -830,6 +831,9 @@ function DaySessionCard({
   // the user's eye should land on what's still actionable. Today's
   // session stays at full strength even when completed.
   const mutedPast = done && isPast && !isToday;
+  // Skipped sessions get a one-glance distinction: warning-token left
+  // border accent + reduced opacity so they read as "intentionally
+  // bypassed", not the same vocabulary as completed.
   // Stage C: slot badges only render when the day genuinely pairs two
   // sessions. A `slot` of "am" or "pm" without a partner is treated as
   // a single-session day for display purposes.
@@ -846,22 +850,26 @@ function DaySessionCard({
       className="cp-card"
       data-testid={`plan-day-card-${planned.id}`}
       data-muted={mutedPast ? "true" : undefined}
+      data-skipped={skipped ? "true" : undefined}
       style={{
         padding: 16,
-        borderColor: isToday && !isTwoADay ? "var(--cp-accent)" : undefined,
-        background: isToday && !isTwoADay ? "var(--cp-accent-soft)" : undefined,
-        opacity: mutedPast ? 0.55 : 1,
+        borderColor: skipped
+          ? "var(--cp-warning)"
+          : isToday && !isTwoADay
+            ? "var(--cp-accent)"
+            : undefined,
+        borderLeft: skipped ? "3px solid var(--cp-warning)" : undefined,
+        background: skipped
+          ? "color-mix(in oklab, var(--cp-warning) 4%, transparent)"
+          : isToday && !isTwoADay
+            ? "var(--cp-accent-soft)"
+            : undefined,
+        opacity: mutedPast ? 0.55 : skipped ? 0.75 : 1,
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
         <div>
-          {showHeader && (
-            <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-              {dayName} · {formatDate(planned.date + "T00:00:00Z", { ...(formatProfile ?? {}), timezone: "UTC" }, "short_date")}
-              {isToday && <span style={{ color: "var(--cp-accent)", marginLeft: 6 }}>· today</span>}
-            </div>
-          )}
-          <div style={{ fontSize: 16, fontWeight: 600, marginTop: showHeader ? 2 : 0 }}>
+          <div style={{ fontSize: 16, fontWeight: 600 }}>
             {slotLabel && (
               <GlossaryBadge
                 term="two_a_day"
@@ -1303,26 +1311,46 @@ function MovementRowSection({
     <div data-testid={testId} style={{ display: "grid", gap: 4 }}>
       <SectionLabel>{label}</SectionLabel>
       <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 4 }}>
-        {rows.map((row) => (
-          <li
-            key={row.rowKey}
-            style={{
-              fontSize: 13,
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "baseline",
-              gap: 8,
-              padding: "6px 10px",
-              background: "var(--cp-surface-soft)",
-              borderRadius: 6,
-            }}
-          >
-            <span style={{ fontWeight: 500 }}>{row.movementName}</span>
-            <span className="mono" style={{ fontWeight: 600, color: "var(--cp-text-muted)" }}>
-              {formatMovementRowPrescription(row)}
-            </span>
-          </li>
-        ))}
+        {rows.map((row) => {
+          const loadBadge = describeRowExternalLoad(row);
+          return (
+            <li
+              key={row.rowKey}
+              style={{
+                fontSize: 13,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "baseline",
+                gap: 8,
+                padding: "6px 10px",
+                background: "var(--cp-surface-soft)",
+                borderRadius: 6,
+              }}
+            >
+              <span style={{ fontWeight: 500 }}>
+                {row.movementName}
+                {loadBadge && (
+                  <span
+                    className="cp-pill"
+                    data-testid={`plan-row-load-${row.rowKey}`}
+                    style={{
+                      marginLeft: 6,
+                      fontSize: 10,
+                      padding: "0 6px",
+                      color: "var(--cp-text-muted)",
+                      borderColor: "var(--cp-border)",
+                    }}
+                  >
+                    {loadBadge}
+                  </span>
+                )}
+              </span>
+              <span className="mono" style={{ fontWeight: 600, color: "var(--cp-text-muted)" }}>
+                {formatMovementRowPrescription(row)}
+              </span>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

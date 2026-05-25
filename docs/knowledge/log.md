@@ -281,3 +281,10 @@ row that was applied from a LF (Linux/CI) checkout.
 - Future-block state mutes the calendar + rail so the shape is visible without competing with the countdown.
 - PlanViews filter chips: zero-result state now renders an inline 'No <strength|cardio> sessions in this view' block with a single 'Clear filter' text button.
 - Tissue-stack banner audit: gating verified (>=7 days since block start AND >=1 completed session in last 7 days). No change needed.
+## [2026-05-26] feat | /plan UX excellence sweep (PR-D)
+- Day-group date header now always renders (TUE · 05-26) so the dense full week list has a clear visual anchor; dropped the per-card date suffix (Problem 2 from the original /plan brief, deferred by PR-A).
+- Skipped sessions get a one-glance distinction: warning-token left-border accent + 0.75 opacity + warning-tinted background, so they read as 'intentionally bypassed' instead of blending with completed.
+- `describeRowExternalLoad` helper + plan-card chip surface the planner's bw.externalLoadKg / loadSource (e.g. `+10 kg vest`, `-15 kg band`) on accessory / hinge-comp / tendon rows.
+- Filter chips persist across reloads + browser back/forward via `?filter=` URL sync (router.replace, no history spam).
+- A11y: BlockHeatmapStrip cells expose a real aria-label on the clickable Link (date + state) and mark rest-day cells aria-hidden; UpNextHero ShapeStrip swapped from aria-hidden=true to role=img with an aria-label summarising the warm-up / main / accessory / cardio counts.
+- Skipped (A) row overflow menu: existing Un-skip button is already full-width + prominent — verified, no menu chrome added. (F) top-set chip already correctly tags the heaviest main-kind set (back-off excluded). (H) hinge-comp already detected via meta.hinge_compensation. (I) cardio sections already render via CardioSection. (C) heatmap + calendar already use status-token vocabulary consistently. (K) no dead code surfaced after the layout shift.

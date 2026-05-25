@@ -491,15 +491,20 @@ function ShapeStrip({ session }: { session: UpNextSession }) {
   if (session.cardioCount > 0)
     segments.push({ label: "cardio", count: session.cardioCount, color: "var(--cp-success)" });
   if (segments.length === 0) return null;
+  const a11ySummary = segments
+    .map((seg) => `${seg.count} ${seg.label}${seg.count === 1 ? "" : "s"}`)
+    .join(", ");
   return (
     <div
       data-testid="plan-up-next-shape"
-      aria-hidden
+      role="img"
+      aria-label={`Session shape: ${a11ySummary}`}
       style={{ display: "flex", gap: 4, flexWrap: "wrap" }}
     >
       {segments.map((seg) => (
         <span
           key={seg.label}
+          aria-hidden="true"
           title={`${seg.count} ${seg.label}${seg.count === 1 ? "" : "s"}`}
           style={{
             display: "inline-flex",
