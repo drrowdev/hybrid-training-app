@@ -226,7 +226,48 @@ export type RunDiagnosticsInput = {
   }>;
   recentSessionsLast30Days: RecentSessionRecord[];
   now: Date;
+  /**
+   * Days since the user completed the bodyweight assessment.
+   * Used to gate aesthetics + hinge-gap signals so they don't
+   * fire on a fresh assessment. `Infinity` means "treat as a
+   * long-standing user" (no gating impact); a brand-new user
+   * passes a small number (or 0) and gates suppress signals.
+   */
+  daysSinceAssessment: number;
+  /**
+   * Count of training sessions logged in the last 30 days.
+   * Used to gate session-history-driven signals so they don't
+   * fire before the user has any real training history.
+   */
+  sessionsLast30Days: number;
 };
+
+// ── Minimum-history gates ─────────────────────────────────────────────
+//
+// Brand-new users have no useful signal yet. These thresholds keep the
+// dashboard quiet until the user has actually been training; otherwise
+// we'd ship a wall of "drift / hinge gap" chips moments after the
+// assessment, which is noise.
+
+/** Aesthetics drift (upper-strong + pull-dominant) requires both an
+ *  assessment cooldown and ≥ 1 progression event so the anchor sums
+ *  reflect real adaptation rather than seeded entry values. */
+const AESTHETICS_MIN_DAYS_SINCE_ASSESSMENT = 28;
+const AESTHETICS_MIN_PROGRESSION_EVENTS = 1;
+
+/** CNS overreach already gates on 5 skill sessions internally; the
+ *  outer gate ensures the user has logged at least 5 sessions of any
+ *  kind so a synthetic / imported history doesn't trigger it. */
+const CNS_MIN_SESSIONS_LAST_30_DAYS = 5;
+
+/** Hinge gap is meaningless on a non-trainer. Require both a baseline
+ *  assessment cooldown and minimum recent volume. */
+const HINGE_GAP_MIN_DAYS_SINCE_ASSESSMENT = 21;
+const HINGE_GAP_MIN_SESSIONS_LAST_30_DAYS = 4;
+
+/** Regression risk equally only makes sense when the user has been
+ *  training; otherwise every brand-new family scores as "missed". */
+const REGRESSION_MIN_SESSIONS_LAST_30_DAYS = 4;
 
 // ── Date helpers ──────────────────────────────────────────────────────
 
@@ -298,6 +339,12 @@ function anchorSum(
 function detectAestheticsUpperStrong(
   input: RunDiagnosticsInput,
 ): DiagnosticResult[] {
+  // Minimum-history gate — see AESTHETICS_MIN_* constants.
+  if (input.daysSinceAssessment < AESTHETICS_MIN_DAYS_SINCE_ASSESSMENT) return [];
+  if (
+    input.progressionEventsLast90Days.length < AESTHETICS_MIN_PROGRESSION_EVENTS
+  )
+    return [];
   const upper = anchorSum(input, UPPER_FAMILIES);
   const lower = anchorSum(input, LOWER_FAMILIES);
   // Require some lower-body baseline so we don't fire on a brand-new
@@ -339,6 +386,12 @@ function detectAestheticsUpperStrong(
 }
 
 function detectPullDominant(input: RunDiagnosticsInput): DiagnosticResult[] {
+  // Minimum-history gate — mirrors the upper-strong drift signal.
+  if (input.daysSinceAssessment < AESTHETICS_MIN_DAYS_SINCE_ASSESSMENT) return [];
+  if (
+    input.progressionEventsLast90Days.length < AESTHETICS_MIN_PROGRESSION_EVENTS
+  )
+    return [];
   const pull = anchorSum(input, PULL_FAMILIES);
   const push = anchorSum(input, PUSH_FAMILIES);
   if (pull <= 0 || push <= 0) return [];
@@ -396,6 +449,10 @@ function detectTendonUndercooked(
 }
 
 function detectCnsOverreach(input: RunDiagnosticsInput): DiagnosticResult[] {
+  // Minimum-history gate — require at least 5 sessions of any kind
+  // before considering CNS load. Prevents the signal from firing on a
+  // brand-new user whose only "history" is the assessment row.
+  if (input.sessionsLast30Days < CNS_MIN_SESSIONS_LAST_30_DAYS) return [];
   const cutoffMs =
     input.now.getTime() - CNS_OVERREACH_WINDOW_DAYS * MS_PER_DAY;
   let skillSessions = 0;
@@ -422,6 +479,11 @@ function detectCnsOverreach(input: RunDiagnosticsInput): DiagnosticResult[] {
 }
 
 function detectHingeGap(input: RunDiagnosticsInput): DiagnosticResult[] {
+  // Minimum-history gates — only flag hinge gap once the user has
+  // both completed the assessment cooldown window and logged enough
+  // sessions for "no hinge work in 14 d" to mean something.
+  if (input.daysSinceAssessment < HINGE_GAP_MIN_DAYS_SINCE_ASSESSMENT) return [];
+  if (input.sessionsLast30Days < HINGE_GAP_MIN_SESSIONS_LAST_30_DAYS) return [];
   const cutoffMs =
     input.now.getTime() - HINGE_GAP_WINDOW_DAYS * MS_PER_DAY;
   let mostRecentHinge: number | null = null;
@@ -458,6 +520,9 @@ function detectHingeGap(input: RunDiagnosticsInput): DiagnosticResult[] {
 function detectRegressionRisk(
   input: RunDiagnosticsInput,
 ): DiagnosticResult[] {
+  // Minimum-history gate — "missed sessions" is only meaningful once
+  // the user is actually training.
+  if (input.sessionsLast30Days < REGRESSION_MIN_SESSIONS_LAST_30_DAYS) return [];
   const cutoffMs =
     input.now.getTime() - REGRESSION_WINDOW_DAYS * MS_PER_DAY;
   // Count missed (incomplete) movements per family within the window.
@@ -555,4 +620,10 @@ export const DIAGNOSTIC_THRESHOLDS = {
   HINGE_GAP_WINDOW_DAYS,
   REGRESSION_MIN_MISSED,
   REGRESSION_WINDOW_DAYS,
+  AESTHETICS_MIN_DAYS_SINCE_ASSESSMENT,
+  AESTHETICS_MIN_PROGRESSION_EVENTS,
+  CNS_MIN_SESSIONS_LAST_30_DAYS,
+  HINGE_GAP_MIN_DAYS_SINCE_ASSESSMENT,
+  HINGE_GAP_MIN_SESSIONS_LAST_30_DAYS,
+  REGRESSION_MIN_SESSIONS_LAST_30_DAYS,
 } as const;

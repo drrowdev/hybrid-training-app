@@ -22,6 +22,7 @@ interface FakeQuery {
   neq: (col: string, val: unknown) => FakeQuery;
   order: (col: string, opts?: unknown) => FakeQuery;
   limit: (n: number) => FakeQuery;
+  maybeSingle: () => Promise<{ data: Row | null; error: null }>;
   then: <T>(fn: (v: { data: Row[]; error: null }) => T) => Promise<T>;
 }
 
@@ -37,6 +38,8 @@ function fakeSupabase(tables: Record<string, Row[]>) {
       neq: () => q,
       order: () => q,
       limit: () => q,
+      maybeSingle: () =>
+        Promise.resolve({ data: rows[0] ?? null, error: null }),
       then: <T,>(fn: (v: { data: Row[]; error: null }) => T) =>
         Promise.resolve(fn({ data: rows, error: null })),
     };
@@ -50,21 +53,24 @@ function fakeSupabase(tables: Record<string, Row[]>) {
 const NOW = new Date("2026-06-15T12:00:00Z");
 
 describe("loadAndRunBwDiagnostics (integration-flavoured)", () => {
-  it("returns only the hinge_gap signal for a brand-new user (no bw_progress, no sessions)", async () => {
+  it("returns no signals for a brand-new user (no bw_progress, no sessions, no profile)", async () => {
     const out = await loadAndRunBwDiagnostics({
       supabase: fakeSupabase({}),
       userId: "u",
       now: NOW,
     });
-    // The loader runs the engine even on an empty profile; the only
-    // signal that fires without any history is the hinge gap (no
-    // hinge work in 14 d). Dashboard gates on `seeded` so this never
-    // reaches a brand-new user in practice.
-    expect(out.map((r) => r.signal.kind)).toEqual(["hinge_gap_active"]);
+    // With minimum-history gating, a brand-new user surfaces nothing.
+    // Hinge gap is gated on ≥ 4 sessions in last 30 days; aesthetics
+    // drift requires ≥ 1 progression event. Both suppress here.
+    expect(out).toEqual([]);
   });
 
   it("fires aesthetics_drift_upper_strong for upper-heavy seeded user", async () => {
     const supabase = fakeSupabase({
+      profiles: [{ bw_assessment_completed_at: new Date(NOW.getTime() - 60 * 86_400_000).toISOString() }],
+      bw_progression_events: [
+        { family: "push_h", occurred_at: new Date(NOW.getTime() - 10 * 86_400_000).toISOString(), reason: "over_completed_2_weeks" },
+      ],
       bw_progress: [
         { user_id: "u", family: "push_h", current_node_id: "ph", accumulated_tut_seconds: 0, weeks_at_node: 1, clean_rep_history: [], updated_at: NOW.toISOString() },
         { user_id: "u", family: "push_v", current_node_id: "pv", accumulated_tut_seconds: 0, weeks_at_node: 1, clean_rep_history: [], updated_at: NOW.toISOString() },
@@ -77,7 +83,6 @@ describe("loadAndRunBwDiagnostics (integration-flavoured)", () => {
         { id: "puh", family: "pull_h", node_key: "puh_n", display_name: "Pull H", prerequisites: [], external_load_capable: false, isometric_capable: false, unilateral: false, default_tempo_seconds: 4, tut_per_rep_seconds: 4, difficulty_anchor: 60, created_at: NOW.toISOString() },
         { id: "puv", family: "pull_v", node_key: "puv_n", display_name: "Pull V", prerequisites: [], external_load_capable: false, isometric_capable: false, unilateral: false, default_tempo_seconds: 4, tut_per_rep_seconds: 4, difficulty_anchor: 60, created_at: NOW.toISOString() },
       ],
-      bw_progression_events: [],
       planned_sessions: [],
     });
     const out = await loadAndRunBwDiagnostics({

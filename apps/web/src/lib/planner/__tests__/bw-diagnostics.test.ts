@@ -80,9 +80,25 @@ function baseInput(
   return {
     bwProgressByFamily: overrides.bwProgressByFamily ?? emptyProgressMap(),
     nodeById: overrides.nodeById ?? {},
-    progressionEventsLast90Days: overrides.progressionEventsLast90Days ?? [],
+    // Default to a single old progression event so the aesthetics
+    // minimum-history gate doesn't suppress unrelated detection
+    // tests. Gate-specific tests override this with `[]` explicitly.
+    progressionEventsLast90Days:
+      overrides.progressionEventsLast90Days ?? [
+        {
+          family: "push_h" as MovementFamily,
+          occurredAt: daysAgo(45),
+          reason: "seed",
+        },
+      ],
     recentSessionsLast30Days: overrides.recentSessionsLast30Days ?? [],
     now: overrides.now ?? NOW,
+    // Defaults bypass the minimum-history gates so legacy detection
+    // tests keep exercising the actual rule logic. Gate-specific tests
+    // override these explicitly. See bw-diagnostics.ts.
+    daysSinceAssessment:
+      overrides.daysSinceAssessment ?? Number.POSITIVE_INFINITY,
+    sessionsLast30Days: overrides.sessionsLast30Days ?? Number.POSITIVE_INFINITY,
   };
 }
 
@@ -738,5 +754,171 @@ describe("runDiagnostics — ranking + composition", () => {
       out.some((r) => r.signal.kind === "aesthetics_drift_upper_strong"),
     ).toBe(true);
     expect(out.some((r) => r.signal.kind === "hinge_gap_active")).toBe(true);
+  });
+});
+
+// (gating tests appended below)
+
+
+// ── Minimum-history gates ─────────────────────────────────────────────
+
+describe("minimum-history gating", () => {
+  function upperHeavyMapForGate() {
+    const map = emptyProgressMap();
+    const nodes: Record<string, MovementNode> = {};
+    const pairs: Array<[MovementFamily, number]> = [
+      ["push_h", 60], ["push_v", 60], ["pull_h", 60], ["pull_v", 60],
+    ];
+    for (const [fam, anchor] of pairs) {
+      const id = `${fam}_n`;
+      nodes[id] = node(id, fam, { difficultyAnchor: anchor });
+      map[fam] = progress(fam, id);
+    }
+    return { map, nodes };
+  }
+
+  const oneEvent = [
+    { family: "push_h" as MovementFamily, occurredAt: daysAgo(10), reason: "over_completed_2_weeks" },
+  ];
+
+  describe("aesthetics_drift_upper_strong gate", () => {
+    it("suppresses one day below the 28-day threshold", () => {
+      const { map, nodes } = upperHeavyMapForGate();
+      const out = runDiagnostics(baseInput({ bwProgressByFamily: map, nodeById: nodes, daysSinceAssessment: 27, progressionEventsLast90Days: oneEvent }));
+      expect(out.some((r) => r.signal.kind === "aesthetics_drift_upper_strong")).toBe(false);
+    });
+    it("fires exactly at 28 days with >= 1 event", () => {
+      const { map, nodes } = upperHeavyMapForGate();
+      const out = runDiagnostics(baseInput({ bwProgressByFamily: map, nodeById: nodes, daysSinceAssessment: 28, progressionEventsLast90Days: oneEvent }));
+      expect(out.some((r) => r.signal.kind === "aesthetics_drift_upper_strong")).toBe(true);
+    });
+    it("fires at 29 days with >= 1 event", () => {
+      const { map, nodes } = upperHeavyMapForGate();
+      const out = runDiagnostics(baseInput({ bwProgressByFamily: map, nodeById: nodes, daysSinceAssessment: 29, progressionEventsLast90Days: oneEvent }));
+      expect(out.some((r) => r.signal.kind === "aesthetics_drift_upper_strong")).toBe(true);
+    });
+    it("suppresses past 28 days with no progression events", () => {
+      const { map, nodes } = upperHeavyMapForGate();
+      const out = runDiagnostics(baseInput({ bwProgressByFamily: map, nodeById: nodes, daysSinceAssessment: 90, progressionEventsLast90Days: [] }));
+      expect(out.some((r) => r.signal.kind === "aesthetics_drift_upper_strong")).toBe(false);
+    });
+  });
+
+  describe("aesthetics_drift_pull_dominant gate", () => {
+    function pullDominantMap() {
+      const map = emptyProgressMap();
+      const nodes: Record<string, MovementNode> = {};
+      nodes.ph = node("ph", "pull_h", { difficultyAnchor: 50 });
+      nodes.pv = node("pv", "pull_v", { difficultyAnchor: 50 });
+      nodes.psh = node("psh", "push_h", { difficultyAnchor: 25 });
+      nodes.psv = node("psv", "push_v", { difficultyAnchor: 25 });
+      map.pull_h = progress("pull_h", "ph");
+      map.pull_v = progress("pull_v", "pv");
+      map.push_h = progress("push_h", "psh");
+      map.push_v = progress("push_v", "psv");
+      return { map, nodes };
+    }
+    it("suppresses one below 28-day threshold", () => {
+      const { map, nodes } = pullDominantMap();
+      const out = runDiagnostics(baseInput({ bwProgressByFamily: map, nodeById: nodes, daysSinceAssessment: 27, progressionEventsLast90Days: oneEvent }));
+      expect(out.some((r) => r.signal.kind === "aesthetics_drift_pull_dominant")).toBe(false);
+    });
+    it("fires at exactly 28 days with >= 1 event", () => {
+      const { map, nodes } = pullDominantMap();
+      const out = runDiagnostics(baseInput({ bwProgressByFamily: map, nodeById: nodes, daysSinceAssessment: 28, progressionEventsLast90Days: oneEvent }));
+      expect(out.some((r) => r.signal.kind === "aesthetics_drift_pull_dominant")).toBe(true);
+    });
+    it("suppresses past 28 days with no progression events", () => {
+      const { map, nodes } = pullDominantMap();
+      const out = runDiagnostics(baseInput({ bwProgressByFamily: map, nodeById: nodes, daysSinceAssessment: 90, progressionEventsLast90Days: [] }));
+      expect(out.some((r) => r.signal.kind === "aesthetics_drift_pull_dominant")).toBe(false);
+    });
+  });
+
+  describe("cns_overreach_risk gate", () => {
+    function fiveSkillSessions() {
+      return Array.from({ length: 5 }).map((_, i) => ({
+        sessionDate: daysAgo(i),
+        movements: [{ family: "planche" as MovementFamily, isSkillFocused: true, completed: true }],
+      }));
+    }
+    it("suppresses at 4 sessions (below the gate)", () => {
+      const out = runDiagnostics(baseInput({ recentSessionsLast30Days: fiveSkillSessions(), sessionsLast30Days: 4 }));
+      expect(out.some((r) => r.signal.kind === "cns_overreach_risk")).toBe(false);
+    });
+    it("fires at exactly 5 sessions", () => {
+      const out = runDiagnostics(baseInput({ recentSessionsLast30Days: fiveSkillSessions(), sessionsLast30Days: 5 }));
+      expect(out.some((r) => r.signal.kind === "cns_overreach_risk")).toBe(true);
+    });
+    it("fires at 6 sessions", () => {
+      const out = runDiagnostics(baseInput({ recentSessionsLast30Days: fiveSkillSessions(), sessionsLast30Days: 6 }));
+      expect(out.some((r) => r.signal.kind === "cns_overreach_risk")).toBe(true);
+    });
+  });
+
+  describe("hinge_gap_active gate", () => {
+    it("suppresses at 20 days since assessment (one below) with enough sessions", () => {
+      const out = runDiagnostics(baseInput({ daysSinceAssessment: 20, sessionsLast30Days: 10 }));
+      expect(out.some((r) => r.signal.kind === "hinge_gap_active")).toBe(false);
+    });
+    it("fires at exactly 21 days + 4 sessions", () => {
+      const out = runDiagnostics(baseInput({ daysSinceAssessment: 21, sessionsLast30Days: 4 }));
+      expect(out.some((r) => r.signal.kind === "hinge_gap_active")).toBe(true);
+    });
+    it("suppresses at 21 days with only 3 sessions", () => {
+      const out = runDiagnostics(baseInput({ daysSinceAssessment: 21, sessionsLast30Days: 3 }));
+      expect(out.some((r) => r.signal.kind === "hinge_gap_active")).toBe(false);
+    });
+    it("fires at 22 days + 5 sessions", () => {
+      const out = runDiagnostics(baseInput({ daysSinceAssessment: 22, sessionsLast30Days: 5 }));
+      expect(out.some((r) => r.signal.kind === "hinge_gap_active")).toBe(true);
+    });
+  });
+
+  describe("regression_risk gate", () => {
+    function fourMissed() {
+      return Array.from({ length: 4 }).map((_, i) => ({
+        sessionDate: daysAgo(i),
+        movements: [{ family: "pull_v" as MovementFamily, isSkillFocused: false, completed: false }],
+      }));
+    }
+    const fixtureMap = () => {
+      const map = emptyProgressMap();
+      map.pull_v = progress("pull_v", "n", { accumulatedTutSeconds: 200 });
+      return map;
+    };
+    const fixtureNodes = () => ({ n: node("n", "pull_v") });
+    it("suppresses at 3 sessions (one below the 4 gate)", () => {
+      const out = runDiagnostics(baseInput({ bwProgressByFamily: fixtureMap(), nodeById: fixtureNodes(), recentSessionsLast30Days: fourMissed(), sessionsLast30Days: 3 }));
+      expect(out.some((r) => r.signal.kind === "regression_risk")).toBe(false);
+    });
+    it("fires at exactly 4 sessions (>3 missed inside the count)", () => {
+      const out = runDiagnostics(baseInput({ bwProgressByFamily: fixtureMap(), nodeById: fixtureNodes(), recentSessionsLast30Days: fourMissed(), sessionsLast30Days: 4 }));
+      expect(out.some((r) => r.signal.kind === "regression_risk")).toBe(true);
+    });
+    it("fires at 5 sessions", () => {
+      const out = runDiagnostics(baseInput({ bwProgressByFamily: fixtureMap(), nodeById: fixtureNodes(), recentSessionsLast30Days: fourMissed(), sessionsLast30Days: 5 }));
+      expect(out.some((r) => r.signal.kind === "regression_risk")).toBe(true);
+    });
+  });
+
+  it("brand-new fresh assessment surfaces no signals at all", () => {
+    const map = emptyProgressMap();
+    const nodes: Record<string, MovementNode> = {};
+    const families: MovementFamily[] = ["push_h","push_v","pull_h","pull_v","squat_unilateral","squat_bilateral","hinge"];
+    for (const fam of families) {
+      const id = `${fam}_entry`;
+      nodes[id] = node(id, fam, { difficultyAnchor: 10 });
+      map[fam] = progress(fam, id, { weeksAtNode: 0 });
+    }
+    const out = runDiagnostics(baseInput({
+      bwProgressByFamily: map,
+      nodeById: nodes,
+      progressionEventsLast90Days: [],
+      recentSessionsLast30Days: [],
+      daysSinceAssessment: 0,
+      sessionsLast30Days: 0,
+    }));
+    expect(out).toEqual([]);
   });
 });
