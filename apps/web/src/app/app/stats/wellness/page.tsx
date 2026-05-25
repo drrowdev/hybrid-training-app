@@ -631,11 +631,8 @@ function RecoveredWeeksCard({ rollup }: { rollup: WeeklyRecoveryRow[] }) {
         <span className="cp-info" tabIndex={0} aria-label="What counts as recovered?">
           i
           <span className="pop" style={{ width: 280 }}>
-            DC-K1 — a week is &quot;recovered&quot; when every planned session
-            was logged (no skips / no missed past-due), no session sRPE
-            exceeded 9, and average pre-session fatigue + soreness both
-            stayed below 4 on the 1–5 scale. Drives the ceiling base
-            (DC-C9).
+            A week is recovered when every planned session is either logged
+            or intentionally skipped. Recovered weeks build the ceiling.
           </span>
         </span>
       </h3>
@@ -677,7 +674,7 @@ function RecoveredWeeksCard({ rollup }: { rollup: WeeklyRecoveryRow[] }) {
         </ul>
       </details>
       <p style={{ margin: 0, fontSize: 11, color: "var(--cp-text-muted)", fontStyle: "italic" }}>
-        DC-K1 · feeds the ceiling base (DC-C9)
+        Feeds the ceiling base.
       </p>
     </section>
   );
