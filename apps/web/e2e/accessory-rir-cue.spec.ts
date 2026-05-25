@@ -76,16 +76,12 @@ test.describe("@desktop session log — accessory RIR cue", () => {
 
     await signInAs(context, freshUser, seedConfig, url);
 
-    // Drive into the session via the start link → skip check-in.
+    // Drive into the session via the start link — interstitial removed, auto-redirects.
     await page.goto("/app");
     await page.waitForLoadState("networkidle");
     const startCta = page.getByRole("link", { name: /start session/i }).first();
     await expect(startCta).toBeVisible({ timeout: 15_000 });
     await startCta.click();
-    await page.waitForURL(/\/app\/sessions\/start\/[0-9a-f-]{36}/, {
-      timeout: 15_000,
-    });
-    await page.getByRole("button", { name: /skip check-in/i }).click();
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, {
       timeout: 15_000,
     });

@@ -19,6 +19,8 @@ import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
 import { findHeavyOnRecoveringConflictWithMuscles } from "@/lib/muscle/muscle-conflict";
 import { StravaStaleSyncTrigger } from "@/components/StravaStaleSyncTrigger";
 import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner";
+import { HowRecoveredCard } from "@/components/today/HowRecoveredCard";
+import { recordDailyCheckIn } from "@/lib/wellness/actions";
 import {
   hasLoadableMainLift,
   resolveEquipment,
@@ -74,12 +76,26 @@ export default async function TodayPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "display_name, timezone, am_window_start, pm_window_start, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, time_format, date_format",
+      "display_name, timezone, am_window_start, pm_window_start, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, time_format, date_format, show_today_recovery_card",
     )
     .eq("id", userId)
     .maybeSingle();
 
   const todayIso = todayYmd(profile?.timezone ?? "UTC");
+
+  // Daily recovery check-in card visibility (migration 0049). Default
+  // TRUE — preserves the existing behaviour for users who haven't
+  // explicitly hidden it. When the card is hidden we skip the wellness
+  // fetch to keep Today small.
+  const showTodayRecoveryCard = profile?.show_today_recovery_card !== false;
+  const { data: todayWellness } = showTodayRecoveryCard
+    ? await supabase
+        .from("wellness")
+        .select("fatigue, soreness")
+        .eq("user_id", userId)
+        .eq("date", todayIso)
+        .maybeSingle()
+    : { data: null as { fatigue: number | null; soreness: number | null } | null };
 
   const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness, activeBlock, tmDict, tmRows] = await Promise.all([
     supabase
@@ -451,6 +467,15 @@ export default async function TodayPage() {
           acceptAction={acceptTmSuggestion}
           dismissAction={dismissTmSuggestion}
         />
+
+        {showTodayRecoveryCard && (
+          <HowRecoveredCard
+            todayYmd={todayIso}
+            initialFatigue={todayWellness?.fatigue ?? null}
+            initialSoreness={todayWellness?.soreness ?? null}
+            recordDailyCheckIn={recordDailyCheckIn}
+          />
+        )}
 
         <TodaySessionCard
           openSession={openSession}

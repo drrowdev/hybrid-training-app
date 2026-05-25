@@ -1,38 +1,26 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { startCheckInSession } from "@/lib/planner/actions";
-import { CheckInForm } from "@/components/sessions/CheckInForm";
+import { startSessionDirect } from "@/lib/planner/actions";
 
-export default async function CheckInPage({
+/**
+ * Auto-start a planned session and redirect to the session log.
+ *
+ * The pre-workout fatigue + soreness interstitial was removed — daily
+ * recovery is now logged from the Today page's `HowRecoveredCard`
+ * (gated by the `profiles.show_today_recovery_card` setting). This
+ * page exists so every existing `Link` href of the form
+ * `/app/sessions/start/[plannedId]` keeps working without a code-wide
+ * rewrite: a GET hits this Server Component, which materialises the
+ * planned session via `startSessionDirect` and `redirect()`s straight
+ * to `/app/sessions/[newSessionId]`. No UI is ever rendered.
+ */
+export default async function StartSessionPage({
   params,
 }: {
   params: Promise<{ plannedId: string }>;
 }) {
   const { plannedId } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(plannedId)) redirect("/app");
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: planned } = await supabase
-    .from("planned_sessions")
-    .select("id, title, completed_session_id")
-    .eq("id", plannedId)
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (!planned) redirect("/app");
-  if (planned.completed_session_id) redirect(`/app/sessions/${planned.completed_session_id}`);
-
-  return (
-    <div style={{ display: "grid", gap: 20, maxWidth: 640, margin: "0 auto" }}>
-      <CheckInForm
-        plannedId={planned.id}
-        sessionTitle={planned.title}
-        startAction={startCheckInSession}
-      />
-    </div>
-  );
+  // `startSessionDirect` always redirects — either to the linked
+  // session (idempotent re-entry) or to the newly created one.
+  await startSessionDirect(plannedId);
 }

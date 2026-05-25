@@ -12,17 +12,21 @@ import type { Prescription, PrescriptionItem } from "@hta/db";
 import { applyPrescriptionSwap } from "./prescription-mutations";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
 
-const checkInSchema = z.object({
-  fatigue: z.coerce.number().int().min(1).max(5).nullable().optional(),
-  soreness: z.coerce.number().int().min(1).max(5).nullable().optional(),
+const startAdHocSchema = z.object({
   title: z.string().trim().max(120).optional(),
 });
 
-/** Create a new session and redirect to its detail page. */
+/**
+ * Create a new ad-hoc session and redirect to its detail page.
+ *
+ * The pre-session fatigue + soreness interstitial was removed — those
+ * sliders now live on the Today page via `HowRecoveredCard` (writes
+ * to `wellness`, gated by `profiles.show_today_recovery_card`). This
+ * action only collects an optional title; everything else is logged
+ * on the session detail surface.
+ */
 export async function startSession(formData: FormData): Promise<void> {
-  const parsed = checkInSchema.safeParse({
-    fatigue: formData.get("fatigue") || undefined,
-    soreness: formData.get("soreness") || undefined,
+  const parsed = startAdHocSchema.safeParse({
     title: formData.get("title") || undefined,
   });
   if (!parsed.success) {
@@ -39,8 +43,6 @@ export async function startSession(formData: FormData): Promise<void> {
     .from("sessions")
     .insert({
       user_id: user.id,
-      fatigue: parsed.data.fatigue ?? null,
-      soreness: parsed.data.soreness ?? null,
       title: parsed.data.title ?? null,
     })
     .select("id")
@@ -461,7 +463,7 @@ export async function completeSession(formData: FormData): Promise<void> {
   // Auto-complete the block if this completion fills the last
   // un-touched planned_session. Resolve the block via the
   // planned_session linked to THIS session (link is established at
-  // start time by startSessionFromPlan / startCheckInSession).
+  // start time by startSessionFromPlan / startSessionDirect).
   // Failures here must never block the completion itself.
   try {
     const { data: linked } = await supabase
