@@ -46,23 +46,38 @@ type ProfilePayload = {
   bodyweightKg?: number;
 };
 
-type TrainingExperience = "lt_1y" | "1_3y" | "gte_3y";
+type TrainingExperience =
+  | "beginner_lt_6m"
+  | "novice_6m_2y"
+  | "intermediate_2y_5y"
+  | "advanced_5y_10y"
+  | "highly_advanced_10y_plus";
 
 const EXPERIENCE_OPTIONS: { id: TrainingExperience; label: string; hint: string }[] = [
   {
-    id: "lt_1y",
-    label: "≤ 1 year",
-    hint: "Beginner · still building habits.",
+    id: "beginner_lt_6m",
+    label: "Beginner",
+    hint: "New to training. <6 months. Still building the habit.",
   },
   {
-    id: "1_3y",
-    label: "1–3 years",
-    hint: "Intermediate · regular training, clear progress.",
+    id: "novice_6m_2y",
+    label: "Novice",
+    hint: "6 months – 2 years. Consistent, learning the lifts.",
   },
   {
-    id: "gte_3y",
-    label: "3+ years",
-    hint: "Advanced · structured programming, plateau-aware.",
+    id: "intermediate_2y_5y",
+    label: "Intermediate",
+    hint: "2 – 5 years. Programmed work, plateaus emerging.",
+  },
+  {
+    id: "advanced_5y_10y",
+    label: "Advanced",
+    hint: "5 – 10 years. Needs structured waves and periodisation.",
+  },
+  {
+    id: "highly_advanced_10y_plus",
+    label: "Highly advanced",
+    hint: "10+ years. Long-term context, minimal noob gains.",
   },
 ];
 

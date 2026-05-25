@@ -151,11 +151,11 @@ describe("getUserTier — DC-G1..G6 inference", () => {
     expect(out.mismatch).toBe(false);
   });
 
-  it("declared 1_3y with no observed data → intermediate, declared wins", async () => {
+  it("declared intermediate_2y_5y with no observed data → intermediate, declared wins", async () => {
     const supabase = makeStub(
       {
         profiles: [
-          { id: "u1", training_experience: "1_3y", bodyweight_kg: null },
+          { id: "u1", training_experience: "intermediate_2y_5y", bodyweight_kg: null },
         ],
         training_maxes: [],
         planned_sessions: [],
@@ -166,17 +166,17 @@ describe("getUserTier — DC-G1..G6 inference", () => {
     const out = await getUserTier(supabase, "u1");
     expect(out.tier).toBe("intermediate");
     expect(out.declared).toBe("intermediate");
-    expect(out.declaredYearsLabel).toMatch(/1.{0,2}3 years/i);
+    expect(out.declaredYearsLabel).toMatch(/2\s*\S\s*5 years/i);
     // Inferred falls back to declared when no signal → no mismatch.
     expect(out.mismatch).toBe(false);
     expect(out.isColdStart).toBe(false);
   });
 
-  it("declared gte_3y but no observed strength data still falls back to declared tier", async () => {
+  it("declared advanced_5y_10y but no observed strength data still falls back to declared tier", async () => {
     const supabase = makeStub(
       {
         profiles: [
-          { id: "u1", training_experience: "gte_3y", bodyweight_kg: 80 },
+          { id: "u1", training_experience: "advanced_5y_10y", bodyweight_kg: 80 },
         ],
         training_maxes: [],
         planned_sessions: [],
@@ -187,6 +187,45 @@ describe("getUserTier — DC-G1..G6 inference", () => {
     const out = await getUserTier(supabase, "u1");
     expect(out.tier).toBe("high_performance");
     expect(out.declared).toBe("high_performance");
+  });
+
+  it("declared highly_advanced_10y_plus maps to high_performance", async () => {
+    const supabase = makeStub(
+      {
+        profiles: [
+          {
+            id: "u1",
+            training_experience: "highly_advanced_10y_plus",
+            bodyweight_kg: 80,
+          },
+        ],
+        training_maxes: [],
+        planned_sessions: [],
+        sessions: [],
+      },
+      { sessions: 0 },
+    );
+    const out = await getUserTier(supabase, "u1");
+    expect(out.tier).toBe("high_performance");
+    expect(out.declared).toBe("high_performance");
+    expect(out.declaredYearsLabel).toMatch(/10\+ years/);
+  });
+
+  it("declared beginner_lt_6m maps to consumer", async () => {
+    const supabase = makeStub(
+      {
+        profiles: [
+          { id: "u1", training_experience: "beginner_lt_6m", bodyweight_kg: null },
+        ],
+        training_maxes: [],
+        planned_sessions: [],
+        sessions: [],
+      },
+      { sessions: 0 },
+    );
+    const out = await getUserTier(supabase, "u1");
+    expect(out.tier).toBe("consumer");
+    expect(out.declared).toBe("consumer");
   });
 });
 

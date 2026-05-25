@@ -34,13 +34,13 @@ describe("buildProfileUpdate (onboarding step 2 persistence)", () => {
     const out = buildProfileUpdate({
       displayName: "Mira",
       units: "metric",
-      trainingExperience: "1_3y",
+      trainingExperience: "intermediate_2y_5y",
       bodyweightKg: 72.5,
     });
     expect(out).toEqual({
       display_name: "Mira",
       units: "metric",
-      training_experience: "1_3y",
+      training_experience: "intermediate_2y_5y",
       bodyweight_kg: 72.5,
     });
   });
@@ -66,8 +66,14 @@ describe("buildProfileUpdate (onboarding step 2 persistence)", () => {
     expect(buildProfileUpdate({})).toEqual({});
   });
 
-  it("accepts each training_experience tier (DC-G5)", () => {
-    for (const tier of ["lt_1y", "1_3y", "gte_3y"] as const) {
+  it("accepts each declared training_experience tier (DC-G5)", () => {
+    for (const tier of [
+      "beginner_lt_6m",
+      "novice_6m_2y",
+      "intermediate_2y_5y",
+      "advanced_5y_10y",
+      "highly_advanced_10y_plus",
+    ] as const) {
       expect(buildProfileUpdate({ trainingExperience: tier }).training_experience).toBe(tier);
     }
   });

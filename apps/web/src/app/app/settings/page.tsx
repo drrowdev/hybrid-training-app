@@ -24,11 +24,27 @@ import {
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import { TrainingProgressionCards } from "@/components/settings/TrainingProgressionCards";
 
-type TrainingExperience = "lt_1y" | "1_3y" | "gte_3y";
+type TrainingExperience =
+  | "beginner_lt_6m"
+  | "novice_6m_2y"
+  | "intermediate_2y_5y"
+  | "advanced_5y_10y"
+  | "highly_advanced_10y_plus";
 type BodyCompPhase = "gain" | "maintain" | "lean_out";
 
+const TRAINING_EXPERIENCE_VALUES: ReadonlySet<TrainingExperience> = new Set([
+  "beginner_lt_6m",
+  "novice_6m_2y",
+  "intermediate_2y_5y",
+  "advanced_5y_10y",
+  "highly_advanced_10y_plus",
+]);
+
 function asTrainingExperience(v: unknown): TrainingExperience | "" {
-  return v === "lt_1y" || v === "1_3y" || v === "gte_3y" ? v : "";
+  return typeof v === "string" &&
+    TRAINING_EXPERIENCE_VALUES.has(v as TrainingExperience)
+    ? (v as TrainingExperience)
+    : "";
 }
 
 function asBodyCompPhase(v: unknown): BodyCompPhase {
@@ -220,13 +236,13 @@ export default async function SettingsPage() {
                 How does this work?
               </summary>
               <p className="mt-2 leading-relaxed">
-                Your declared experience anchors your starting tier (DC-G1..G6).
-                From there, the engine refines it based on four observed signals:
+                Your declared experience anchors your starting tier. From
+                there, the engine refines it based on four observed signals:
                 per-lift strength relative to bodyweight, 12-week training
-                adherence, schedule regularity, and recovery check-in fill rate.
-                When your declared tier and the engine&apos;s observations
-                disagree, the app keeps your choice and shows a soft note —
-                never silently overrules you.
+                adherence, schedule regularity, and recovery check-in fill
+                rate. When your declared tier and the engine&apos;s
+                observations disagree, the app keeps your choice and shows a
+                soft note — never silently overrules you.
               </p>
             </details>
           </div>

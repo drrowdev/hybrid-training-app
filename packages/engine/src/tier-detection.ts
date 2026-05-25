@@ -32,14 +32,18 @@
 export type TierLevel = "consumer" | "intermediate" | "high_performance";
 
 export type DeclaredExperience =
-  | "lt_1y" // ≤ 1 year consistent training
-  | "1_3y" // 1–3 years
-  | "gte_3y"; // 3+ years
+  | "beginner_lt_6m" // < 6 months
+  | "novice_6m_2y" // 6 months – 2 years
+  | "intermediate_2y_5y" // 2 – 5 years
+  | "advanced_5y_10y" // 5 – 10 years
+  | "highly_advanced_10y_plus"; // 10+ years
 
 export const DECLARED_TO_TIER: Record<DeclaredExperience, TierLevel> = {
-  lt_1y: "consumer",
-  "1_3y": "intermediate",
-  gte_3y: "high_performance",
+  beginner_lt_6m: "consumer",
+  novice_6m_2y: "consumer",
+  intermediate_2y_5y: "intermediate",
+  advanced_5y_10y: "high_performance",
+  highly_advanced_10y_plus: "high_performance",
 };
 
 export type MainLift =

@@ -29,7 +29,12 @@ import {
   AutoSaveTimeField,
 } from "./auto-save";
 
-type TrainingExperience = "lt_1y" | "1_3y" | "gte_3y";
+type TrainingExperience =
+  | "beginner_lt_6m"
+  | "novice_6m_2y"
+  | "intermediate_2y_5y"
+  | "advanced_5y_10y"
+  | "highly_advanced_10y_plus";
 type BodyCompPhase = "gain" | "maintain" | "lean_out";
 
 async function saveField(name: string, value: string): Promise<void> {
@@ -154,22 +159,34 @@ export function BodyCompPhaseAutoSave({
 
 const EXPERIENCE_OPTIONS = [
   {
-    value: "lt_1y" as const,
-    label: "≤ 1 year",
-    hint: "Beginner · still building habits.",
-    testId: "settings-experience-lt_1y",
+    value: "beginner_lt_6m" as const,
+    label: "Beginner",
+    hint: "New to training. <6 months. Still building the habit.",
+    testId: "settings-experience-beginner_lt_6m",
   },
   {
-    value: "1_3y" as const,
-    label: "1–3 years",
-    hint: "Intermediate · regular training, clear progress.",
-    testId: "settings-experience-1_3y",
+    value: "novice_6m_2y" as const,
+    label: "Novice",
+    hint: "6 months – 2 years. Consistent, learning the lifts.",
+    testId: "settings-experience-novice_6m_2y",
   },
   {
-    value: "gte_3y" as const,
-    label: "3+ years",
-    hint: "Advanced · structured programming, plateau-aware.",
-    testId: "settings-experience-gte_3y",
+    value: "intermediate_2y_5y" as const,
+    label: "Intermediate",
+    hint: "2 – 5 years. Programmed work, plateaus emerging.",
+    testId: "settings-experience-intermediate_2y_5y",
+  },
+  {
+    value: "advanced_5y_10y" as const,
+    label: "Advanced",
+    hint: "5 – 10 years. Needs structured waves and periodisation.",
+    testId: "settings-experience-advanced_5y_10y",
+  },
+  {
+    value: "highly_advanced_10y_plus" as const,
+    label: "Highly advanced",
+    hint: "10+ years. Long-term context, minimal noob gains.",
+    testId: "settings-experience-highly_advanced_10y_plus",
   },
 ];
 
@@ -182,9 +199,9 @@ export function TrainingExperienceAutoSave({
     (v: TrainingExperience) => saveField("trainingExperience", v),
     [],
   );
-  // Default the radio to "lt_1y" visually when the user has nothing
-  // declared yet — but mark nothing selected via data-selected.
-  const seed: TrainingExperience = initial || "lt_1y";
+  // Default the radio to "beginner_lt_6m" visually when the user has
+  // nothing declared yet — but mark nothing selected via data-selected.
+  const seed: TrainingExperience = initial || "beginner_lt_6m";
   return (
     <div
       className="space-y-3 rounded-lg border border-foreground/10 p-4"
