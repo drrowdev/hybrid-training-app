@@ -30,8 +30,8 @@ const BASE_EQUIPMENT: Equipment = {
   machines: [],
   cardio: [],
   accessories: {
-    weightedVest: false,
-    sandbag: false,
+    weightedVest: [],
+    sandbag: [],
     dipBelt: false,
     dipBeltMaxKg: null,
     bands: false,
@@ -89,7 +89,7 @@ describe("bwPrescription · Phase 7 loaded extension", () => {
       ...BASE_EQUIPMENT,
       accessories: {
         ...BASE_EQUIPMENT.accessories,
-        weightedVest: { kg: 20 },
+        weightedVest: [20],
       },
     };
     const out = bwPrescription({
@@ -137,7 +137,7 @@ describe("bwPrescription · Phase 7 loaded extension", () => {
       ...BASE_EQUIPMENT,
       accessories: {
         ...BASE_EQUIPMENT.accessories,
-        weightedVest: { kg: 20 },
+        weightedVest: [20],
         dipBelt: true,
       },
     };
@@ -192,7 +192,7 @@ describe("bwPrescription · Phase 7 loaded extension", () => {
       ...BASE_EQUIPMENT,
       accessories: {
         ...BASE_EQUIPMENT.accessories,
-        weightedVest: { kg: 20 },
+        weightedVest: [20],
       },
     };
     const out = bwPrescription({
