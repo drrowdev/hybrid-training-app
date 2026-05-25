@@ -12,6 +12,8 @@ import type { PrescriptionItem } from "@hta/db";
 import type { SkipReason } from "@/lib/sessions/skip-reasons";
 import {
   autoCursorForGroup,
+  bucketForKind,
+  bucketPositionForSlot,
   effectiveCursor,
   lastMainSlot,
   bucketLabelForKind,
@@ -159,6 +161,13 @@ export function MovementFocusView({
   const isActiveLogged = loggedItemIndices.has(activeItemIndex);
   const loggedSetId = loggedSetIdByItemIndex[activeItemIndex];
   const isWarmup = activeItem?.kind === "warmup";
+  // Position of the active slot within its own kind-bucket
+  // (warmup / working / accessory). Drives the "Set X of Y" caption
+  // so warm-ups don't inflate the working-set count.
+  const bucketSlot = useMemo(
+    () => bucketPositionForSlot(group, cursor),
+    [group, cursor],
+  );
 
   const lastMain = lastMainSlot(group);
   const isAmrap =
@@ -464,7 +473,7 @@ export function MovementFocusView({
           textAlign: "center",
         }}
       >
-        Set {cursor + 1} of {totalSlots}
+        Set {bucketSlot.position + 1} of {bucketSlot.total}
       </div>
 
       <div
@@ -497,7 +506,7 @@ export function MovementFocusView({
             fontWeight: 600,
           }}
         >
-          <span>{bucketLabelForKind(activeItem.kind, cursor, totalSlots)}</span>
+          <span>{bucketLabelForKind(activeItem.kind, bucketSlot.position, bucketSlot.total)}</span>
           {activeItem.percentTm != null && (
             <span
               className="mono"
@@ -1261,6 +1270,16 @@ function DotStrip({
         const isLogged = loggedItemIndices.has(idx);
         const isSkipped = !!skippedItemIndices?.has(idx);
         const isActive = slot === cursor;
+        // Insert a small visual gap whenever the kind-bucket changes
+        // (warm-up → working set → accessory). Keeps the warmups
+        // visually grouped as a distinct cluster from the working
+        // sets without changing the underlying cursor model.
+        const prevKind = slot > 0 ? group.items[slot - 1]?.kind : null;
+        const thisKind = group.items[slot]?.kind ?? null;
+        const bucketChanged =
+          prevKind != null &&
+          thisKind != null &&
+          bucketForKind(prevKind) !== bucketForKind(thisKind);
         const base: React.CSSProperties = {
           height: 10,
           borderRadius: 999,
@@ -1268,6 +1287,7 @@ function DotStrip({
           padding: 0,
           cursor: "pointer",
           transition: "all 140ms ease-out",
+          marginLeft: bucketChanged ? 12 : 0,
         };
         let style: React.CSSProperties;
         if (isSkipped) {

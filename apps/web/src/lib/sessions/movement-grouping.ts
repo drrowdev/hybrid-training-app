@@ -11,6 +11,8 @@
 import type { Prescription, PrescriptionItem } from "@hta/db";
 import { PRESCRIPTION_STRENGTH_KINDS } from "./prescription-progress";
 
+export type MovementSlotBucket = "warmup" | "working" | "accessory";
+
 export type MovementGroup = {
   movementId: string;
   movementName: string;
@@ -19,7 +21,36 @@ export type MovementGroup = {
   itemIndices: number[];
   /** The raw prescription items, same order as `itemIndices`. */
   items: PrescriptionItem[];
+  /**
+   * Per-bucket grouping of positions WITHIN this movement group.
+   * Each array contains positions into `items[]` / `itemIndices[]`
+   * (0-indexed). Used to render warm-ups as a distinct section above
+   * working sets, and to scope the "Set X of Y" caption to the bucket
+   * the user is actually inside.
+   *
+   * - `warmup`     → kind === "warmup"
+   * - `working`    → kind in { "main", "back_off", "power_potentiation" }
+   * - `accessory`  → kind in { "accessory", "tendon" }
+   *
+   * Items with no matching bucket (defensive) fall into `working`.
+   */
+  slotBuckets: Record<MovementSlotBucket, number[]>;
 };
+
+/** Humanise an underscored slug ("hip_hinge" → "Hip hinge") when no display name is available. */
+function humanizeSlug(slug: string | null | undefined): string | null {
+  if (!slug) return null;
+  const cleaned = slug.replaceAll("_", " ").trim();
+  if (!cleaned) return null;
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+/** Bucket assignment for a single prescription item kind. */
+export function bucketForKind(kind: PrescriptionItem["kind"]): MovementSlotBucket {
+  if (kind === "warmup") return "warmup";
+  if (kind === "accessory" || kind === "tendon") return "accessory";
+  return "working";
+}
 
 /**
  * Group strength prescription items by movementId, preserving the
@@ -36,19 +67,49 @@ export function groupPrescriptionByMovement(
     if (!item.movementId) return;
     const existing = byId.get(item.movementId);
     if (existing) {
+      const slot = existing.itemIndices.length;
       existing.itemIndices.push(idx);
       existing.items.push(item);
+      existing.slotBuckets[bucketForKind(item.kind)].push(slot);
       return;
     }
+    const name =
+      item.movementName ?? humanizeSlug(item.movementSlug) ?? "Movement";
     byId.set(item.movementId, {
       movementId: item.movementId,
-      movementName: item.movementName ?? item.movementSlug ?? "Movement",
+      movementName: name,
       movementSlug: item.movementSlug ?? null,
       itemIndices: [idx],
       items: [item],
+      slotBuckets: {
+        warmup: bucketForKind(item.kind) === "warmup" ? [0] : [],
+        working: bucketForKind(item.kind) === "working" ? [0] : [],
+        accessory: bucketForKind(item.kind) === "accessory" ? [0] : [],
+      },
     });
   });
   return Array.from(byId.values());
+}
+
+/**
+ * Position of a slot within its own bucket. e.g. a warm-up that is
+ * slot 1 globally but the 2nd warm-up returns
+ * { bucket: "warmup", position: 1, total: 2 }. Used by the focus view
+ * caption so "Set X of Y" only counts the bucket the user is in.
+ */
+export function bucketPositionForSlot(
+  group: MovementGroup,
+  slot: number,
+): { bucket: MovementSlotBucket; position: number; total: number } {
+  const kind = group.items[slot]?.kind ?? "main";
+  const bucket = bucketForKind(kind);
+  const positions = group.slotBuckets[bucket];
+  const position = positions.indexOf(slot);
+  return {
+    bucket,
+    position: position < 0 ? 0 : position,
+    total: positions.length,
+  };
 }
 
 /**
@@ -146,7 +207,8 @@ export function bucketLabelForKind(
             : kind === "tendon"
               ? "Tendon"
               : "Set";
-  return `${tag} · Set ${position + 1} of ${total}`;
+  if (total <= 0) return tag;
+  return `${tag} · ${position + 1} of ${total}`;
 }
 
 /** Round to nearest 2.5 kg plate (pure copy of the canonical helper). */
