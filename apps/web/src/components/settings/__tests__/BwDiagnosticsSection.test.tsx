@@ -66,11 +66,10 @@ const hingeGap: DiagnosticResult = {
 };
 
 describe("BwDiagnosticsSection", () => {
-  it("renders the All clear chip when no signals", () => {
+  it("renders nothing when no signals", () => {
     const html = renderToStaticMarkup(<BwDiagnosticsSection results={[]} />);
-    expect(html).toContain('data-testid="bw-diagnostics-all-clear"');
-    expect(html).toContain("All clear");
-    expect(html).toContain("var(--cp-success)");
+    expect(html).toBe("");
+    expect(html).not.toContain("All clear");
   });
 
   it("renders a single signal with severity color and action link", () => {

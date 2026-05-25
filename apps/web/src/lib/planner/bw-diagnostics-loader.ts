@@ -105,7 +105,7 @@ export async function loadAndRunBwDiagnostics(args: {
   const sinceIso = new Date(now.getTime() - 30 * MS_PER_DAY).toISOString();
   const since90 = new Date(now.getTime() - 90 * MS_PER_DAY).toISOString();
 
-  const [progressRes, catalogRes, eventsRes, sessionsRes] = await Promise.all([
+  const [progressRes, catalogRes, eventsRes, sessionsRes, profileRes] = await Promise.all([
     args.supabase
       .from("bw_progress")
       .select(
@@ -129,6 +129,11 @@ export async function loadAndRunBwDiagnostics(args: {
       )
       .eq("user_id", args.userId)
       .gte("planned_for", sinceIso.slice(0, 10)),
+    args.supabase
+      .from("profiles")
+      .select("bw_assessment_completed_at")
+      .eq("id", args.userId)
+      .maybeSingle(),
   ]);
 
   if (progressRes.error || catalogRes.error) return [];
@@ -176,11 +181,28 @@ export async function loadAndRunBwDiagnostics(args: {
     }>,
   );
 
+  // Minimum-history inputs — see bw-diagnostics.ts gate constants. We
+  // treat a missing assessment timestamp as `Infinity` (no gating)
+  // because users who pre-date the assessment column shouldn't be
+  // re-silenced; the page itself short-circuits diagnostics when the
+  // user is unseeded.
+  const profileRow = (profileRes as { data?: { bw_assessment_completed_at?: string | null } | null }).data ?? null;
+  const assessmentTs = profileRow?.bw_assessment_completed_at
+    ? new Date(profileRow.bw_assessment_completed_at).getTime()
+    : null;
+  const daysSinceAssessment =
+    assessmentTs == null
+      ? Number.POSITIVE_INFINITY
+      : Math.max(0, (now.getTime() - assessmentTs) / MS_PER_DAY);
+  const sessionsLast30Days = sessions.length;
+
   return runDiagnostics({
     bwProgressByFamily: progressByFamily,
     nodeById,
     progressionEventsLast90Days: events,
     recentSessionsLast30Days: sessions,
     now,
+    daysSinceAssessment,
+    sessionsLast30Days,
   });
 }

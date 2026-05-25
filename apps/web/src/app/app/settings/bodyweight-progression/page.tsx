@@ -1,12 +1,21 @@
 /**
  * Settings → Bodyweight progression.
  *
- * Shows the user's current node per family alongside a "Next:" preview
- * derived from the catalog's prerequisite DAG. Users can edit nodes
- * directly via the per-family pickers below the read-only table —
- * useful when the engine's progression doesn't match real-world
- * capability. The standalone assessment route is linked from the
- * empty state for users who skipped onboarding.
+ * Redesigned UX (DC-Q6 brand-pure):
+ *   1. Header summary — counts of families at starter / intermediate /
+ *      advanced anchor bands plus a "Run assessment" entry point.
+ *   2. Diagnostics — rendered only when ≥ 1 signal fires (the engine
+ *      is gated against firing on a brand-new user — see
+ *      `bw-diagnostics.ts`).
+ *   3. Families grouped into 6 collapsible categories. Each row
+ *      collapses the previous overview row + manual picker + loaded
+ *      suggestion into a single compact card with an inline `<select>`,
+ *      TUT/weeks meta, and an optional loaded-BW suggestion strip.
+ *   4. Recent progressions — last 5, rendered only when ≥ 1 event.
+ *   5. Footer — single "Run assessment again" link.
+ *
+ * The category groupings and anchor thresholds below are deliberately
+ * named constants so tweaks live in one place.
  */
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -18,16 +27,58 @@ import { BwDiagnosticsSection } from "@/components/settings/BwDiagnosticsSection
 import { bwMultiplier } from "@/lib/planner/bw-multiplier";
 import { suggestLoadOrVariant } from "@/lib/planner/bw-loaded-suggestion";
 import {
-  BwLoadedFamiliesSection,
-  type LoadedFamilyRow,
-} from "@/components/settings/BwLoadedFamiliesSection";
-import {
-  BwFamiliesManualPicker,
-  type BwFamilyPickerNode,
-} from "@/components/settings/BwFamilyNodePicker";
+  BwProgressionCategories,
+  type BwCategoryGroup,
+  type BwCategoryRow,
+} from "@/components/settings/BwProgressionCategories";
+import type {
+  BwRowLoadedSuggestion,
+  BwRowNode,
+} from "@/components/settings/BwProgressionFamilyRow";
 
-/** Human-readable family labels — kept local because the catalog
- *  table doesn't carry one. Brand-purity: pure descriptors. */
+// ── Tuneables ────────────────────────────────────────────────────────
+//
+// All thresholds + groupings used by this page live here so they're
+// easy to tweak without hunting through render code.
+
+/** Anchor bands for the header summary chips. Values track the catalog
+ *  `difficulty_anchor` scale (1–100). */
+const STARTER_MAX_ANCHOR = 30;
+const INTERMEDIATE_MAX_ANCHOR = 60;
+
+/** Recent-progressions block cap — matches the spec's "last 5". */
+const RECENT_PROGRESSIONS_LIMIT = 5;
+
+/** Six categories the 15 movement families collapse into. Defined as
+ *  a single source of truth so the category list, default-expanded
+ *  gate, and testids all share the same order. */
+const CATEGORIES: ReadonlyArray<{
+  key: string;
+  label: string;
+  families: ReadonlyArray<MovementFamily>;
+}> = [
+  { key: "push", label: "Push", families: ["push_h", "push_v"] },
+  { key: "pull", label: "Pull", families: ["pull_h", "pull_v"] },
+  {
+    key: "lower",
+    label: "Lower body",
+    families: ["squat_unilateral", "squat_bilateral", "hinge"],
+  },
+  {
+    key: "core",
+    label: "Core",
+    families: ["core_anti_flexion", "core_anti_rotation"],
+  },
+  {
+    key: "skills",
+    label: "Skills",
+    families: ["planche", "lever_front", "lever_back", "human_flag", "handstand"],
+  },
+  { key: "bridges", label: "Bridges", families: ["muscle_up"] },
+];
+
+/** Plain-English family labels — kept local because the catalog table
+ *  doesn't carry one. */
 const FAMILY_LABEL: Record<MovementFamily, string> = {
   push_h: "Horizontal push",
   push_v: "Vertical push",
@@ -78,37 +129,35 @@ export default async function BodyweightProgressionPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // Phase 5 — look up the current week's hinge-compensation status.
-  // We surface "injected this week?" + which node was used by joining
-  // through the user's active block to the most recent planned-session
-  // row that carries a `meta.hinge_compensation` flagged item. Pure
-  // read; no write, no UI override (deferred to Phase 7).
-  const [{ data: progressRows }, { data: catalogRows }, { data: eventRows }, { data: activeBlock }] =
-    await Promise.all([
-      supabase
-        .from("bw_progress")
-        .select(
-          "family, current_node_id, weeks_at_node, accumulated_tut_seconds, target_external_load_kg",
-        )
-        .eq("user_id", user.id),
-      supabase
-        .from("movement_nodes")
-        .select(
-          "id, family, node_key, display_name, prerequisites, difficulty_anchor, isometric_capable",
-        ),
-      supabase
-        .from("bw_progression_events")
-        .select("occurred_at, family, from_node_id, to_node_id")
-        .eq("user_id", user.id)
-        .order("occurred_at", { ascending: false })
-        .limit(10),
-      supabase
-        .from("training_blocks")
-        .select("id, started_on, weeks")
-        .eq("user_id", user.id)
-        .eq("status", "active")
-        .maybeSingle(),
-    ]);
+  const [
+    { data: progressRows },
+    { data: catalogRows },
+    { data: eventRows },
+    { data: profileRow },
+  ] = await Promise.all([
+    supabase
+      .from("bw_progress")
+      .select(
+        "family, current_node_id, weeks_at_node, accumulated_tut_seconds, target_external_load_kg",
+      )
+      .eq("user_id", user.id),
+    supabase
+      .from("movement_nodes")
+      .select(
+        "id, family, node_key, display_name, prerequisites, difficulty_anchor, isometric_capable",
+      ),
+    supabase
+      .from("bw_progression_events")
+      .select("occurred_at, family, from_node_id, to_node_id")
+      .eq("user_id", user.id)
+      .order("occurred_at", { ascending: false })
+      .limit(RECENT_PROGRESSIONS_LIMIT),
+    supabase
+      .from("profiles")
+      .select("bodyweight_kg, bw_assessment_completed_at")
+      .eq("id", user.id)
+      .maybeSingle(),
+  ]);
 
   const catalog: CatalogNode[] = (catalogRows ?? []) as CatalogNode[];
   const nodeById = new Map(catalog.map((n) => [n.id, n]));
@@ -118,35 +167,55 @@ export default async function BodyweightProgressionPage() {
     arr.push(n);
     nodesByFamily.set(n.family, arr);
   }
+  for (const arr of nodesByFamily.values()) {
+    arr.sort((a, b) => a.difficulty_anchor - b.difficulty_anchor);
+  }
 
   const progressByFamily = new Map<MovementFamily, ProgressRow>(
     ((progressRows ?? []) as ProgressRow[]).map((r) => [r.family, r]),
   );
 
-  // For each family, surface (a) the user's current node and (b) the
-  // lowest-anchor child that lists the current node as a prerequisite.
-  // Falls back to "—" when the family is at a terminal node.
-  const rows = MOVEMENT_FAMILIES.map((family) => {
+  const userBodyweightKg =
+    profileRow?.bodyweight_kg != null && Number.isFinite(Number(profileRow.bodyweight_kg))
+      ? Number(profileRow.bodyweight_kg)
+      : 75;
+
+  const assessmentCompletedAt = (
+    profileRow as { bw_assessment_completed_at?: string | null } | null
+  )?.bw_assessment_completed_at ?? null;
+
+  // ── Anchor-band counts for the header chip line ──────────────────────
+  let starterCount = 0;
+  let intermediateCount = 0;
+  let advancedCount = 0;
+  for (const [, p] of progressByFamily) {
+    const n = nodeById.get(p.current_node_id);
+    if (!n) continue;
+    if (n.difficulty_anchor < STARTER_MAX_ANCHOR) starterCount += 1;
+    else if (n.difficulty_anchor < INTERMEDIATE_MAX_ANCHOR) intermediateCount += 1;
+    else advancedCount += 1;
+  }
+  const totalSeeded = starterCount + intermediateCount + advancedCount;
+  const seeded = totalSeeded > 0;
+
+  // ── Per-family row payloads ──────────────────────────────────────────
+  const rowsByFamily = new Map<MovementFamily, BwCategoryRow>();
+  for (const family of MOVEMENT_FAMILIES) {
+    const familyCatalog = nodesByFamily.get(family) ?? [];
+    if (familyCatalog.length === 0) continue;
+
     const progress = progressByFamily.get(family);
-    const familyNodes = nodesByFamily.get(family) ?? [];
-    if (!progress) {
-      return {
-        family,
-        current: null,
-        next: null,
-        weeksAtNode: 0,
-        tutAccumulated: 0,
-        tutRequired: 0,
-      };
-    }
-    const current = nodeById.get(progress.current_node_id) ?? null;
+    const current = progress
+      ? nodeById.get(progress.current_node_id) ?? null
+      : null;
+
     const next =
       current == null
         ? null
-        : familyNodes
+        : familyCatalog
             .filter((n) => n.prerequisites.includes(current.id))
-            .sort((a, b) => a.difficulty_anchor - b.difficulty_anchor)[0] ??
-          null;
+            .sort((a, b) => a.difficulty_anchor - b.difficulty_anchor)[0] ?? null;
+
     const tutRequired = current
       ? tutThreshold({
           id: current.id,
@@ -158,201 +227,106 @@ export default async function BodyweightProgressionPage() {
           prerequisites: current.prerequisites,
         } as never)
       : 0;
-    return {
-      family,
-      current,
-      next,
-      weeksAtNode: progress.weeks_at_node,
-      tutAccumulated: progress.accumulated_tut_seconds,
-      tutRequired,
-    };
-  });
 
-  const seeded = rows.some((r) => r.current != null);
-  const events: ProgressionEventRow[] = (eventRows ?? []) as ProgressionEventRow[];
+    const nodes: BwRowNode[] = familyCatalog.map((n) => ({
+      id: n.id,
+      nodeKey: n.node_key,
+      displayName: n.display_name,
+      difficultyAnchor: n.difficulty_anchor,
+      prerequisites: n.prerequisites ?? [],
+    }));
 
-  // Build the per-family picker payloads. Nodes are sorted by
-  // `difficulty_anchor` asc so the dropdown order tracks the DAG.
-  // We include every family — even ones the user has no row for yet —
-  // so manual seeding works without first running the assessment.
-  const manualFamilies = MOVEMENT_FAMILIES.map((family) => {
-    const familyNodes = (nodesByFamily.get(family) ?? [])
-      .slice()
-      .sort((a, b) => a.difficulty_anchor - b.difficulty_anchor)
-      .map<BwFamilyPickerNode>((n) => ({
-        id: n.id,
-        nodeKey: n.node_key,
-        displayName: n.display_name,
-        difficultyAnchor: n.difficulty_anchor,
-        prerequisites: n.prerequisites ?? [],
-      }));
-    const progress = progressByFamily.get(family);
-    const current = progress
-      ? nodeById.get(progress.current_node_id) ?? null
-      : null;
-    const stateBadge = current
-      ? `${current.display_name} · TUT ${progress?.accumulated_tut_seconds ?? 0}s · Week ${Math.min(
-          progress?.weeks_at_node ?? 0,
-          2,
-        )} at node`
-      : "Not seeded yet";
-    return {
-      family,
-      familyLabel: FAMILY_LABEL[family],
-      nodes: familyNodes,
-      currentNodeId: progress?.current_node_id ?? null,
-      stateBadge,
-    };
-  }).filter((f) => f.nodes.length > 0);
-
-  // Phase 7 — build loaded-BW suggestion rows for each loadable family.
-  // We synthesise a MovementNode-like value off the catalog row to feed
-  // bwMultiplier / suggestLoadOrVariant — the engine reads only nodeKey
-  // + difficultyAnchor + family.
-  const { data: profileBw } = await supabase
-    .from("profiles")
-    .select("bodyweight_kg")
-    .eq("id", user.id)
-    .maybeSingle();
-  const userBodyweightKg =
-    profileBw?.bodyweight_kg != null && Number.isFinite(Number(profileBw.bodyweight_kg))
-      ? Number(profileBw.bodyweight_kg)
-      : 75;
-
-  const loadedRows: LoadedFamilyRow[] = [];
-  for (const r of rows) {
-    if (!r.current) continue;
-    const synthNode = {
-      id: r.current.id,
-      family: r.current.family,
-      nodeKey: r.current.node_key,
-      displayName: r.current.display_name,
-      prerequisites: r.current.prerequisites,
-      difficultyAnchor: r.current.difficulty_anchor,
-      isometricCapable: r.current.isometric_capable,
-    } as unknown as MovementNode;
-    const mult = bwMultiplier(synthNode);
-    if (mult <= 0) continue; // not a loadable family
-
-    const progressRow = progressByFamily.get(r.family);
-    const currentLoadKg = Number(progressRow?.target_external_load_kg ?? 0) || 0;
-    const candidates = (nodesByFamily.get(r.family) ?? [])
-      .filter((n) => n.prerequisites.includes(r.current!.id))
-      .map(
-        (n) =>
-          ({
-            id: n.id,
-            family: n.family,
-            nodeKey: n.node_key,
-            displayName: n.display_name,
-            difficultyAnchor: n.difficulty_anchor,
-          }) as unknown as MovementNode,
-      );
-
-    // Over-completion weeks proxy — Phase 4's progression engine tracks
-    // weeks_at_node which advances only on a clean over-completed week.
-    // Use it as the suggestion-gate signal here.
-    const overWeeks = progressRow?.weeks_at_node ?? 0;
-    const suggestion = suggestLoadOrVariant({
-      currentNode: synthNode,
-      candidateNextNodes: candidates,
-      currentLoadKg,
-      userBodyweightKg,
-      cleanOverCompletionWeeks: overWeeks,
-    });
-
-    let mapped: LoadedFamilyRow["suggestion"];
-    if (suggestion.kind === "hold") {
-      mapped = suggestion;
-    } else if (suggestion.kind === "increase_load") {
-      mapped = suggestion;
-    } else {
-      const target = candidates.find((n) => n.nodeKey === suggestion.toNodeKey);
-      mapped = {
-        kind: "advance_variant",
-        toNodeKey: suggestion.toNodeKey,
-        toNodeId: target?.id ?? "",
-        toNodeDisplayName: target?.displayName ?? suggestion.toNodeKey,
-        reason: suggestion.reason,
-      };
+    let loadedSuggestion: BwRowLoadedSuggestion | null = null;
+    let currentLoadKg = 0;
+    if (current) {
+      const synthNode = {
+        id: current.id,
+        family: current.family,
+        nodeKey: current.node_key,
+        displayName: current.display_name,
+        prerequisites: current.prerequisites,
+        difficultyAnchor: current.difficulty_anchor,
+        isometricCapable: current.isometric_capable,
+      } as unknown as MovementNode;
+      const mult = bwMultiplier(synthNode);
+      if (mult > 0) {
+        currentLoadKg = Number(progress?.target_external_load_kg ?? 0) || 0;
+        const candidates = familyCatalog
+          .filter((n) => n.prerequisites.includes(current.id))
+          .map(
+            (n) =>
+              ({
+                id: n.id,
+                family: n.family,
+                nodeKey: n.node_key,
+                displayName: n.display_name,
+                difficultyAnchor: n.difficulty_anchor,
+              }) as unknown as MovementNode,
+          );
+        const overWeeks = progress?.weeks_at_node ?? 0;
+        const suggestion = suggestLoadOrVariant({
+          currentNode: synthNode,
+          candidateNextNodes: candidates,
+          currentLoadKg,
+          userBodyweightKg,
+          cleanOverCompletionWeeks: overWeeks,
+        });
+        if (suggestion.kind === "hold" || suggestion.kind === "increase_load") {
+          loadedSuggestion = suggestion;
+        } else {
+          const target = candidates.find(
+            (n) => n.nodeKey === suggestion.toNodeKey,
+          );
+          loadedSuggestion = {
+            kind: "advance_variant",
+            toNodeKey: suggestion.toNodeKey,
+            toNodeId: target?.id ?? "",
+            toNodeDisplayName: target?.displayName ?? suggestion.toNodeKey,
+            reason: suggestion.reason,
+          };
+        }
+      }
     }
 
-    loadedRows.push({
-      family: r.family,
-      familyLabel: FAMILY_LABEL[r.family],
-      currentNodeKey: r.current.node_key,
-      currentNodeDisplayName: r.current.display_name,
+    rowsByFamily.set(family, {
+      family,
+      familyLabel: FAMILY_LABEL[family],
+      nodes,
+      currentNodeId: current?.id ?? null,
+      currentDisplayName: current?.display_name ?? null,
+      nextDisplayName: next?.display_name ?? null,
+      weeksAtNode: progress?.weeks_at_node ?? 0,
+      tutAccumulated: progress?.accumulated_tut_seconds ?? 0,
+      tutRequired,
+      loadedSuggestion,
       currentLoadKg,
-      suggestion: mapped,
     });
   }
 
-  // Phase 6 — surface the live diagnostics signal stack above the
-  // family table. Loader does its own per-table reads (no shared
-  // shape with the rest of this page yet) and runs the pure engine.
+  // ── Category groups ──────────────────────────────────────────────────
+  const categories: BwCategoryGroup[] = CATEGORIES.map((cat) => {
+    const rows = cat.families
+      .map((f) => rowsByFamily.get(f))
+      .filter((r): r is BwCategoryRow => r != null);
+    const hasProgress = rows.some((r) => {
+      if (!r.currentNodeId) return false;
+      const entryAnchor = r.nodes[0]?.difficultyAnchor ?? 0;
+      const cur = r.nodes.find((n) => n.id === r.currentNodeId);
+      return cur != null && cur.difficultyAnchor > entryAnchor;
+    });
+    return { key: cat.key, label: cat.label, rows, hasProgress };
+  });
+
+  // ── Diagnostics ──────────────────────────────────────────────────────
   const diagnostics = seeded
     ? await loadAndRunBwDiagnostics({ supabase, userId: user.id })
     : [];
 
-  // Phase 5 — find the most recent hinge-compensation injection in
-  // the current week of the active block. The injected accessory
-  // carries `meta.hinge_compensation = true` and a
-  // `meta.hinge_compensation_node` slug, so we filter the user's
-  // planned-session rows for this-week + scan the prescription items.
-  // Read-only; UI is purely informational ("here's what we injected
-  // and why"). Phase 7 will add manual override controls.
-  let hingeCompensationState: {
-    injectedThisWeek: boolean;
-    nodeKey: string | null;
-    nodeDisplayName: string | null;
-  } = { injectedThisWeek: false, nodeKey: null, nodeDisplayName: null };
-  if (activeBlock?.id) {
-    const startedOn = new Date(activeBlock.started_on as string);
-    const today = new Date();
-    const weekIndex = Math.max(
-      0,
-      Math.min(
-        (activeBlock.weeks as number) - 1,
-        Math.floor(
-          (today.getTime() - startedOn.getTime()) /
-            (7 * 24 * 60 * 60 * 1000),
-        ),
-      ),
-    );
-    const { data: weekSessions } = await supabase
-      .from("planned_sessions")
-      .select("prescription")
-      .eq("block_id", activeBlock.id)
-      .eq("week_index", weekIndex);
-    for (const row of (weekSessions ?? []) as Array<{
-      prescription: { items?: Array<Record<string, unknown>> } | null;
-    }>) {
-      const items = row.prescription?.items ?? [];
-      for (const it of items) {
-        const meta = (it as { meta?: Record<string, unknown> }).meta;
-        if (meta && meta.hinge_compensation === true) {
-          const nodeKey =
-            typeof meta.hinge_compensation_node === "string"
-              ? (meta.hinge_compensation_node as string)
-              : null;
-          const node = nodeKey
-            ? catalog.find((c) => c.node_key === nodeKey)
-            : null;
-          hingeCompensationState = {
-            injectedThisWeek: true,
-            nodeKey,
-            nodeDisplayName: node?.display_name ?? null,
-          };
-          break;
-        }
-      }
-      if (hingeCompensationState.injectedThisWeek) break;
-    }
-  }
+  const events: ProgressionEventRow[] = (eventRows ?? []) as ProgressionEventRow[];
 
   return (
-    <div style={{ display: "grid", gap: 20 }}>
-      <header>
+    <div data-testid="bw-progression-page" style={{ display: "grid", gap: 20 }}>
+      <header style={{ display: "grid", gap: 8 }}>
         <Link
           href="/app/settings"
           style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
@@ -364,293 +338,182 @@ export default async function BodyweightProgressionPage() {
         </h1>
         <p
           style={{
-            margin: "6px 0 0",
+            margin: "2px 0 0",
             color: "var(--cp-text-muted)",
             fontSize: 14,
             lineHeight: 1.55,
           }}
         >
-          Your current node per movement family, what comes next, and recent
-          progressions. Edit nodes directly below — useful if the engine&apos;s
-          progression doesn&apos;t match your real-world capability.
+          {seeded
+            ? "You have completed your assessment. Here is your current node per family."
+            : "You haven’t completed the bodyweight assessment yet. Run it to seed your starting nodes per movement family."}
         </p>
+        <div
+          data-testid="bw-progression-summary"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+            marginTop: 4,
+          }}
+        >
+          <div
+            data-testid="bw-progression-chips"
+            style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}
+          >
+            <SummaryChip
+              testid="bw-chip-total"
+              label={`${totalSeeded} families`}
+              tone="default"
+            />
+            <SummaryChip
+              testid="bw-chip-starter"
+              label={`${starterCount} starter`}
+              tone="muted"
+            />
+            <SummaryChip
+              testid="bw-chip-intermediate"
+              label={`${intermediateCount} intermediate`}
+              tone="muted"
+            />
+            <SummaryChip
+              testid="bw-chip-advanced"
+              label={`${advancedCount} advanced`}
+              tone={advancedCount > 0 ? "accent" : "muted"}
+            />
+          </div>
+          <Link
+            href="/app/onboarding/bw-assessment"
+            data-testid="bw-progression-run-assessment"
+            className="cp-btn ghost"
+            style={{
+              fontSize: 12,
+              padding: "4px 10px",
+              textDecoration: "none",
+              minHeight: 28,
+            }}
+          >
+            {seeded ? "Run assessment →" : "Run assessment"}
+          </Link>
+        </div>
+        {assessmentCompletedAt && (
+          <span
+            data-testid="bw-progression-assessment-date"
+            style={{ fontSize: 11, color: "var(--cp-text-muted)" }}
+          >
+            Last assessment: {new Date(assessmentCompletedAt).toISOString().slice(0, 10)}
+          </span>
+        )}
       </header>
 
-      {!seeded && (
-        <div data-testid="bw-progression-empty" style={emptyStyle}>
-          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55 }}>
-            You haven&apos;t completed the bodyweight assessment yet. Run it
-            now to seed your starting nodes per movement family — takes
-            about a minute.
-          </p>
-          <div
-            style={{
-              display: "flex",
-              gap: 12,
-              alignItems: "center",
-              flexWrap: "wrap",
-              marginTop: 10,
-            }}
-          >
-            <Link
-              href="/app/onboarding/bw-assessment"
-              data-testid="bw-progression-empty-cta"
-              className="cp-btn primary"
-              style={{
-                fontSize: 13,
-                padding: "6px 12px",
-                textDecoration: "none",
-              }}
-            >
-              Run assessment
-            </Link>
-            <span
-              style={{ fontSize: 12, color: "var(--cp-text-muted)" }}
-              data-testid="bw-progression-empty-manual-hint"
-            >
-              Or pick nodes manually below.
-            </span>
-          </div>
-        </div>
-      )}
+      <BwDiagnosticsSection results={diagnostics} />
 
-      {seeded && (
-        <BwDiagnosticsSection results={diagnostics} />
-      )}
+      <BwProgressionCategories categories={categories} />
 
-      {seeded && <BwLoadedFamiliesSection rows={loadedRows} />}
-
-      {seeded && (
-        <div data-testid="bw-progression-table" style={{ display: "grid", gap: 8 }}>
-          {rows.map(
-            ({ family, current, next, weeksAtNode, tutAccumulated, tutRequired }) => {
-              if (current == null) return null;
-              const tutPct =
-                tutRequired > 0
-                  ? Math.min(100, Math.round((tutAccumulated / tutRequired) * 100))
-                  : 0;
-              return (
-                <div
-                  key={family}
-                  data-testid={`bw-progression-row-${family}`}
-                  style={rowStyle}
-                >
-                  <div style={{ display: "grid", gap: 4 }}>
-                    <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-                      {FAMILY_LABEL[family]}
-                    </span>
-                    <span style={{ fontSize: 15, fontWeight: 600 }}>
-                      {current.display_name}
-                    </span>
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 8,
-                        alignItems: "center",
-                        marginTop: 2,
-                      }}
-                    >
-                      <span
-                        data-testid={`bw-weeks-badge-${family}`}
-                        style={badgeStyle}
-                      >
-                        weeks {Math.min(weeksAtNode, 2)}/2
-                      </span>
-                      <div
-                        data-testid={`bw-tut-bar-${family}`}
-                        style={{ flex: 1, minWidth: 90 }}
-                      >
-                        <div
-                          style={{
-                            fontSize: 10,
-                            color: "var(--cp-text-muted)",
-                            marginBottom: 2,
-                          }}
-                        >
-                          TUT {tutAccumulated}/{tutRequired} sec
-                        </div>
-                        <div
-                          style={{
-                            height: 6,
-                            borderRadius: 3,
-                            background: "var(--cp-border)",
-                            overflow: "hidden",
-                          }}
-                        >
-                          <div
-                            style={{
-                              width: `${tutPct}%`,
-                              height: "100%",
-                              background: "var(--cp-accent, var(--cp-text))",
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: "var(--cp-text-muted)",
-                      textAlign: "right",
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    Next:{" "}
-                    <strong style={{ color: "var(--cp-text)" }}>
-                      {next ? next.display_name : "—"}
-                    </strong>
-                  </div>
-                </div>
-              );
-            },
-          )}
-        </div>
-      )}
-
-      {seeded && (
-        <section
-          data-testid="bw-hinge-compensation"
-          style={{ display: "grid", gap: 8 }}
-        >
-          <h2 style={{ fontSize: 14, margin: 0 }}>Hinge compensation</h2>
-          <p
-            style={{
-              margin: 0,
-              fontSize: 12,
-              color: "var(--cp-text-muted)",
-              lineHeight: 1.5,
-            }}
-          >
-            Bodyweight programming can&apos;t load the hinge like a deadlift.
-            When your session rotation skips the hinge family, the planner
-            injects a slow-tempo or eccentric hinge movement to keep the
-            posterior chain covered.
-          </p>
-          <div
-            data-testid={
-              hingeCompensationState.injectedThisWeek
-                ? "bw-hinge-injected"
-                : "bw-hinge-not-injected"
-            }
-            style={{
-              padding: "10px 14px",
-              border: "1px solid var(--cp-border)",
-              borderRadius: 8,
-              background: "var(--cp-surface)",
-              fontSize: 12,
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 12,
-              alignItems: "center",
-            }}
-          >
-            <span style={{ color: "var(--cp-text-muted)" }}>This week</span>
-            <span style={{ color: "var(--cp-text)", textAlign: "right" }}>
-              {hingeCompensationState.injectedThisWeek ? (
-                <>
-                  Injected ·{" "}
-                  <strong>
-                    {hingeCompensationState.nodeDisplayName ??
-                      hingeCompensationState.nodeKey ??
-                      "—"}
-                  </strong>
-                </>
-              ) : (
-                "Not injected — hinge already in your rotation, or recovery day"
-              )}
-            </span>
-          </div>
-        </section>
-      )}
-
-      <BwFamiliesManualPicker families={manualFamilies} />
-
-      {seeded && (
+      {events.length > 0 && (
         <section
           data-testid="bw-progression-recent"
           style={{ display: "grid", gap: 8 }}
         >
           <h2 style={{ fontSize: 14, margin: 0 }}>Recent progressions</h2>
-          {events.length === 0 ? (
-            <p
-              style={{
-                margin: 0,
-                fontSize: 12,
-                color: "var(--cp-text-muted)",
-                lineHeight: 1.5,
-              }}
-            >
-              No advancements yet. The engine logs an entry here every time you
-              earn the next node — keep banking time under tension and clean
-              over-completed sessions to open the gate.
-            </p>
-          ) : (
-            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 6 }}>
-              {events.map((ev, i) => {
-                const from = nodeById.get(ev.from_node_id);
-                const to = nodeById.get(ev.to_node_id);
-                return (
-                  <li
-                    key={`${ev.occurred_at}-${i}`}
-                    data-testid="bw-progression-event"
-                    style={{
-                      padding: "8px 12px",
-                      border: "1px solid var(--cp-border)",
-                      borderRadius: 8,
-                      background: "var(--cp-surface)",
-                      fontSize: 12,
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 12,
-                    }}
-                  >
-                    <span>
-                      <span style={{ color: "var(--cp-text-muted)" }}>
-                        {FAMILY_LABEL[ev.family]}:
-                      </span>{" "}
-                      {from?.display_name ?? "—"} →{" "}
-                      <strong>{to?.display_name ?? "—"}</strong>
-                    </span>
+          <ul
+            style={{
+              listStyle: "none",
+              margin: 0,
+              padding: 0,
+              display: "grid",
+              gap: 6,
+            }}
+          >
+            {events.slice(0, RECENT_PROGRESSIONS_LIMIT).map((ev, i) => {
+              const from = nodeById.get(ev.from_node_id);
+              const to = nodeById.get(ev.to_node_id);
+              return (
+                <li
+                  key={`${ev.occurred_at}-${i}`}
+                  data-testid="bw-progression-event"
+                  style={{
+                    padding: "8px 12px",
+                    border: "1px solid var(--cp-border)",
+                    borderRadius: 8,
+                    background: "var(--cp-surface)",
+                    fontSize: 12,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                  }}
+                >
+                  <span>
                     <span style={{ color: "var(--cp-text-muted)" }}>
-                      {new Date(ev.occurred_at).toISOString().slice(0, 10)}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+                      {FAMILY_LABEL[ev.family]}:
+                    </span>{" "}
+                    {from?.display_name ?? "—"} →{" "}
+                    <strong>{to?.display_name ?? "—"}</strong>
+                  </span>
+                  <span style={{ color: "var(--cp-text-muted)" }}>
+                    {new Date(ev.occurred_at).toISOString().slice(0, 10)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
         </section>
       )}
+
+      <footer
+        data-testid="bw-progression-footer"
+        style={{
+          paddingTop: 6,
+          borderTop: "1px dashed var(--cp-border)",
+          fontSize: 12,
+        }}
+      >
+        <Link
+          href="/app/onboarding/bw-assessment"
+          data-testid="bw-progression-rerun-assessment"
+          style={{ color: "var(--cp-link, var(--cp-text))" }}
+        >
+          Run assessment again →
+        </Link>
+      </footer>
     </div>
   );
 }
 
-const badgeStyle: React.CSSProperties = {
-  display: "inline-block",
-  padding: "1px 6px",
-  borderRadius: 999,
-  border: "1px solid var(--cp-border)",
-  fontSize: 10,
-  color: "var(--cp-text-muted)",
-  whiteSpace: "nowrap",
-};
+type ChipTone = "default" | "muted" | "accent";
 
-const emptyStyle: React.CSSProperties = {
-  padding: 14,
-  border: "1px dashed var(--cp-border)",
-  borderRadius: 10,
-  background: "var(--cp-surface-soft, var(--cp-surface))",
-  color: "var(--cp-text-muted)",
-};
-
-const rowStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1fr auto",
-  gap: 12,
-  alignItems: "center",
-  padding: "12px 14px",
-  border: "1px solid var(--cp-border)",
-  borderRadius: 10,
-  background: "var(--cp-surface)",
-};
+function SummaryChip({
+  label,
+  tone,
+  testid,
+}: {
+  label: string;
+  tone: ChipTone;
+  testid: string;
+}) {
+  const style: React.CSSProperties = {
+    display: "inline-block",
+    padding: "2px 8px",
+    borderRadius: 999,
+    border: "1px solid var(--cp-border)",
+    fontSize: 11,
+    color:
+      tone === "accent"
+        ? "var(--cp-accent, var(--cp-text))"
+        : tone === "muted"
+          ? "var(--cp-text-muted)"
+          : "var(--cp-text)",
+    background:
+      tone === "accent"
+        ? "color-mix(in oklab, var(--cp-accent, var(--cp-text)) 8%, transparent)"
+        : "transparent",
+    whiteSpace: "nowrap",
+  };
+  return (
+    <span data-testid={testid} style={style}>
+      {label}
+    </span>
+  );
+}
