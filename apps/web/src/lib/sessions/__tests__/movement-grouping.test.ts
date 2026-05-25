@@ -8,6 +8,7 @@ import {
   effectiveCursor,
   lastMainSlot,
   bucketLabelForKind,
+  bucketPositionForSlot,
 } from "../movement-grouping";
 
 function p(items: Prescription["items"]): Prescription {
@@ -31,7 +32,40 @@ describe("groupPrescriptionByMovement", () => {
     expect(groups.map((g) => g.movementId)).toEqual(["squat", "bench"]);
     expect(groups[0]!.itemIndices).toEqual([0, 1, 3]);
     expect(groups[0]!.items.map((it) => it.kind)).toEqual(["warmup", "main", "back_off"]);
+    // Warm-ups are bucketed separately from working sets even though
+    // they still live in itemIndices for back-compat.
+    expect(groups[0]!.slotBuckets.warmup).toEqual([0]);
+    expect(groups[0]!.slotBuckets.working).toEqual([1, 2]);
+    expect(groups[0]!.slotBuckets.accessory).toEqual([]);
     expect(groups[1]!.itemIndices).toEqual([2]);
+    expect(groups[1]!.slotBuckets.working).toEqual([0]);
+  });
+
+  it("falls back to a humanised slug when movementName is missing", () => {
+    const pres = p([
+      { movementId: "hh-1", movementSlug: "hip_hinge", kind: "main", sets: 1, reps: 5 },
+    ]);
+    const [g] = groupPrescriptionByMovement(pres);
+    expect(g!.movementName).toBe("Hip hinge");
+  });
+
+  it("uses 'Movement' when neither name nor slug is available", () => {
+    const pres = p([
+      { movementId: "mystery", kind: "main", sets: 1, reps: 5 },
+    ]);
+    const [g] = groupPrescriptionByMovement(pres);
+    expect(g!.movementName).toBe("Movement");
+  });
+
+  it("buckets accessory and tendon slots together", () => {
+    const pres = p([
+      { movementId: "lift", kind: "main", sets: 1, reps: 5 },
+      { movementId: "lift", kind: "accessory", sets: 1, reps: 10 },
+      { movementId: "lift", kind: "tendon", sets: 1, reps: 8 },
+    ]);
+    const [g] = groupPrescriptionByMovement(pres);
+    expect(g!.slotBuckets.working).toEqual([0]);
+    expect(g!.slotBuckets.accessory).toEqual([1, 2]);
   });
 
   it("skips cardio items", () => {
@@ -51,6 +85,7 @@ describe("deriveCardState / isMovementComplete", () => {
     movementSlug: "squat",
     itemIndices: [0, 1, 2],
     items: [],
+    slotBuckets: { warmup: [], working: [0, 1, 2], accessory: [] },
   } as ReturnType<typeof groupPrescriptionByMovement>[number];
 
   it("not_started with no logged items", () => {
@@ -82,6 +117,7 @@ describe("autoCursorForGroup + effectiveCursor", () => {
     movementSlug: "squat",
     itemIndices: [10, 11, 12, 13],
     items: [],
+    slotBuckets: { warmup: [], working: [0, 1, 2, 3], accessory: [] },
   } as ReturnType<typeof groupPrescriptionByMovement>[number];
 
   it("returns 0 when nothing logged", () => {
@@ -115,13 +151,33 @@ describe("lastMainSlot + bucketLabelForKind", () => {
         { movementId: "squat", kind: "main" },
         { movementId: "squat", kind: "back_off" },
       ],
+      slotBuckets: { warmup: [0], working: [1, 2, 3], accessory: [] },
     } as ReturnType<typeof groupPrescriptionByMovement>[number];
     expect(lastMainSlot(group)).toBe(2);
   });
 
   it("formats bucket labels", () => {
-    expect(bucketLabelForKind("warmup", 0, 3)).toBe("Warm-up · Set 1 of 3");
-    expect(bucketLabelForKind("main", 1, 5)).toBe("Working set · Set 2 of 5");
-    expect(bucketLabelForKind("back_off", 2, 3)).toBe("Back-off · Set 3 of 3");
+    expect(bucketLabelForKind("warmup", 0, 3)).toBe("Warm-up · 1 of 3");
+    expect(bucketLabelForKind("main", 1, 5)).toBe("Working set · 2 of 5");
+    expect(bucketLabelForKind("back_off", 2, 3)).toBe("Back-off · 3 of 3");
+  });
+});
+
+describe("bucketPositionForSlot", () => {
+  it("scopes Set X of Y to the active bucket (warm-ups don't inflate working count)", () => {
+    const pres = p([
+      { movementId: "squat", kind: "warmup", sets: 1, reps: 5 },
+      { movementId: "squat", kind: "warmup", sets: 1, reps: 5 },
+      { movementId: "squat", kind: "main", sets: 1, reps: 5 },
+      { movementId: "squat", kind: "main", sets: 1, reps: 5 },
+      { movementId: "squat", kind: "main", sets: 1, reps: 5 },
+    ]);
+    const [g] = groupPrescriptionByMovement(pres);
+    // slot 1 = 2nd warm-up → "Warm-up 2 of 2"
+    expect(bucketPositionForSlot(g!, 1)).toEqual({ bucket: "warmup", position: 1, total: 2 });
+    // slot 2 = 1st working set → "Working 1 of 3" (not "Set 3 of 5")
+    expect(bucketPositionForSlot(g!, 2)).toEqual({ bucket: "working", position: 0, total: 3 });
+    // slot 4 = 3rd working set
+    expect(bucketPositionForSlot(g!, 4)).toEqual({ bucket: "working", position: 2, total: 3 });
   });
 });

@@ -69,6 +69,7 @@ describe("bucketForGroup", () => {
       movementSlug: null,
       itemIndices: [],
       items: [],
+      slotBuckets: { warmup: [], working: [], accessory: [] },
     };
     expect(bucketForGroup(g)).toBe("other");
   });
@@ -178,6 +179,7 @@ describe("summariseGroupForHeader — edges", () => {
       movementSlug: null,
       itemIndices: [],
       items: [],
+      slotBuckets: { warmup: [], working: [], accessory: [] },
     };
     expect(summariseGroupForHeader(g, [])).toBe("");
   });
