@@ -33,7 +33,7 @@ import { BlockHeatmapStrip } from "@/components/plan/BlockHeatmapStrip";
 import { selectUpNext } from "@/lib/plan/up-next";
 import { selectBlockState } from "@/lib/plan/block-state";
 import { GlossaryBadge } from "@/components/ui/GlossaryBadge";
-import { formatDate, type ProfileForFormat } from "@/lib/format/datetime";
+import { formatDate, resolveDateFormat, type ProfileForFormat } from "@/lib/format/datetime";
 import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner";
 import {
   hasLoadableMainLift,
@@ -56,7 +56,7 @@ import {
 import {
   groupByMovementThenKind,
   describeRowExternalLoad,
-  type PrescriptionMainRow,
+  type PlanSetRow,
   type PrescriptionMovementRow,
   type MovementPrescriptionSection,
 } from "@/lib/plan/prescription-grouping";
@@ -760,7 +760,16 @@ function DayCard({
         }}
       >
         <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-          {dayName} · {formatDate(dateStr + "T00:00:00Z", { ...(formatProfile ?? {}), timezone: "UTC" }, "short_date")}
+          {dayName} ·{" "}
+          {formatDate(
+            dateStr + "T00:00:00Z",
+            // Resolve date_format using the user's actual timezone (so
+            // Helsinki → dmy_short), then render with timezone:UTC to
+            // avoid the calendar-date shift that would happen if we
+            // re-interpreted midnight-UTC in the user's local zone.
+            { date_format: resolveDateFormat(formatProfile), timezone: "UTC" },
+            "short_date",
+          )}
           {isToday && <span style={{ color: "var(--cp-accent)", marginLeft: 6 }}>· today</span>}
         </div>
         {isTwoADay && (
@@ -1171,6 +1180,36 @@ function PlannedPrescriptionSections({
     );
   }
 
+  if (grouped.accessories.length > 0) {
+    blocks.push(
+      <MovementRowSection
+        key="accessories"
+        label={`Accessories (${grouped.accessories.length})`}
+        rows={grouped.accessories}
+        testId="plan-section-accessories"
+      />,
+    );
+  }
+  if (grouped.hingeCompensations.length > 0) {
+    blocks.push(
+      <MovementRowSection
+        key="hinge"
+        label="Posterior-chain support"
+        rows={grouped.hingeCompensations}
+        testId="plan-section-hinge-comp"
+      />,
+    );
+  }
+  if (grouped.tendon.length > 0) {
+    blocks.push(
+      <MovementRowSection
+        key="tendon"
+        label="Tendon work"
+        rows={grouped.tendon}
+        testId="plan-section-tendon"
+      />,
+    );
+  }
   if (grouped.cardio.length > 0) {
     blocks.push(<CardioSection key="cardio" items={grouped.cardio} />);
   }
@@ -1185,11 +1224,10 @@ function PlannedPrescriptionSections({
 }
 
 /**
- * Render one movement's worth of buckets — warm-up → main → back-off
- * → accessory → tendon → hinge compensation — under a labelled
- * movement header. Empty buckets are skipped, so a movement with only
- * accessories (e.g. an injected hinge-compensation pick) just shows
- * its accessory rows under the header.
+ * One movement = one labelled header + optional collapsed warm-up + a
+ * single flat numbered "Sets" list (main + back-off merged, with a
+ * tiny `back-off` chip on back-off rows). No "MAIN WORK" /
+ * "BACK-OFF" sub-headers — the movement header IS the section.
  */
 function MovementSubsection({
   section,
@@ -1198,85 +1236,8 @@ function MovementSubsection({
   section: MovementPrescriptionSection;
   tmKg?: number;
 }) {
+  if (section.sets.length === 0 && section.warmups.length === 0) return null;
   const headerBadge = buildMovementHeaderBadge(section, tmKg);
-  const buckets: React.ReactNode[] = [];
-  if (section.warmups.length > 0) {
-    buckets.push(
-      <WarmupSection key="warmup" items={section.warmups} />,
-    );
-  }
-  if (section.main.length > 0) {
-    buckets.push(
-      <MainWorkSection
-        key="main"
-        rows={section.main}
-        tmKg={tmKg}
-        testId={`plan-section-main-${section.rowKey}`}
-      />,
-    );
-  }
-  if (section.backOff.length > 0) {
-    buckets.push(
-      <MainWorkSection
-        key="backoff"
-        rows={section.backOff}
-        label="Back-off"
-        tmKg={tmKg}
-        testId={`plan-section-backoff-${section.rowKey}`}
-      />,
-    );
-  }
-  if (section.accessories.length > 0) {
-    buckets.push(
-      <MovementRowSection
-        key="accessory"
-        label="Accessories"
-        rows={[{
-          rowKey: `${section.rowKey}-acc`,
-          movementId: section.movementId,
-          movementName: section.movementName,
-          movementSlug: section.movementSlug,
-          items: section.accessories,
-        }]}
-        testId={`plan-section-accessories-${section.rowKey}`}
-      />,
-    );
-  }
-  if (section.hingeCompensations.length > 0) {
-    buckets.push(
-      <MovementRowSection
-        key="hinge"
-        label="Posterior-chain support"
-        rows={[{
-          rowKey: `${section.rowKey}-hinge`,
-          movementId: section.movementId,
-          movementName: section.movementName,
-          movementSlug: section.movementSlug,
-          items: section.hingeCompensations,
-        }]}
-        testId={`plan-section-hinge-comp-${section.rowKey}`}
-      />,
-    );
-  }
-  if (section.tendon.length > 0) {
-    buckets.push(
-      <MovementRowSection
-        key="tendon"
-        label="Tendon work"
-        rows={[{
-          rowKey: `${section.rowKey}-tendon`,
-          movementId: section.movementId,
-          movementName: section.movementName,
-          movementSlug: section.movementSlug,
-          items: section.tendon,
-        }]}
-        testId={`plan-section-tendon-${section.rowKey}`}
-      />,
-    );
-  }
-
-  if (buckets.length === 0) return null;
-
   return (
     <div
       data-testid={`plan-movement-section-${section.rowKey}`}
@@ -1287,7 +1248,7 @@ function MovementSubsection({
           display: "flex",
           alignItems: "baseline",
           gap: 8,
-          fontSize: 13,
+          fontSize: 14,
           fontWeight: 700,
           color: "var(--cp-text)",
         }}
@@ -1309,7 +1270,14 @@ function MovementSubsection({
           </span>
         )}
       </div>
-      <div style={{ display: "grid", gap: 8 }}>{buckets}</div>
+      {section.warmups.length > 0 && <WarmupSection items={section.warmups} />}
+      {section.sets.length > 0 && (
+        <MainWorkSection
+          rows={section.sets}
+          tmKg={tmKg}
+          testId={`plan-section-sets-${section.rowKey}`}
+        />
+      )}
     </div>
   );
 }
@@ -1326,14 +1294,8 @@ function buildMovementHeaderBadge(
   tmKg?: number,
 ): string | null {
   if (tmKg != null && tmKg > 0) return `${tmKg} kg TM`;
-  for (const row of section.main) {
+  for (const row of section.sets) {
     const bw = row.item.bw as { nodeDisplayName?: string } | undefined;
-    if (bw?.nodeDisplayName && bw.nodeDisplayName !== section.movementName) {
-      return `at ${bw.nodeDisplayName}`;
-    }
-  }
-  for (const item of section.accessories) {
-    const bw = item.bw as { nodeDisplayName?: string } | undefined;
     if (bw?.nodeDisplayName && bw.nodeDisplayName !== section.movementName) {
       return `at ${bw.nodeDisplayName}`;
     }
@@ -1396,21 +1358,27 @@ function WarmupSection({ items }: { items: PrescriptionItem[] }) {
 
 function MainWorkSection({
   rows,
-  label = "Main work",
-  testId = "plan-section-main",
+  testId = "plan-section-sets",
   tmKg,
 }: {
-  rows: PrescriptionMainRow[];
-  label?: string;
+  rows: PlanSetRow[];
   testId?: string;
   tmKg?: number;
 }) {
   return (
     <div data-testid={testId} style={{ display: "grid", gap: 4 }}>
-      <SectionLabel>{label}</SectionLabel>
       <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 4 }}>
         {rows.map((row, i) => {
+          // Only surface *short* contextual notes inline. Long
+          // educational cues (e.g. "Advanced skill nodes load the
+          // tendon harder than the muscle...") belong in the session
+          // log focus view, not in the plan-page preview where they
+          // overwhelm the prescription. 24-char threshold catches
+          // markers like "top set" / "AMRAP" while filtering the
+          // multi-sentence cues.
           const cleanedNote = cleanPrescriptionNotes(row.item.notes);
+          const shortNote =
+            cleanedNote && cleanedNote.length <= 24 ? cleanedNote : null;
           return (
             <li
               key={i}
@@ -1439,9 +1407,28 @@ function MainWorkSection({
                     top set
                   </span>
                 )}
-                {cleanedNote && (
-                  <span style={{ color: "var(--cp-accent)", fontWeight: 600, marginLeft: 4 }}>
-                    · {cleanedNote}
+                {row.isBackOff && (
+                  <span
+                    style={{
+                      marginLeft: 6,
+                      fontSize: 10,
+                      color: "var(--cp-text-muted)",
+                      letterSpacing: "0.04em",
+                    }}
+                  >
+                    back-off
+                  </span>
+                )}
+                {shortNote && (
+                  <span
+                    style={{
+                      color: "var(--cp-text-muted)",
+                      fontWeight: 400,
+                      marginLeft: 6,
+                      fontSize: 12,
+                    }}
+                  >
+                    · {shortNote}
                   </span>
                 )}
               </span>
