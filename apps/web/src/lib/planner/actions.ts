@@ -1662,6 +1662,107 @@ export async function skipPlannedSession(formData: FormData): Promise<void> {
 
 const unskipSchema = z.object({ id: z.string().uuid() });
 
+const moveSchema = z.object({
+  id: z.string().uuid(),
+  weekIndex: z.number().int().min(0),
+  dayIndex: z.number().int().min(0).max(6),
+});
+
+/**
+ * Move a planned session to a new (week_index, day_index) slot. If the
+ * target slot already holds a planned_sessions row (and neither row is
+ * completed), the two rows swap. Out-of-block target weeks are rejected
+ * silently. Completed/skipped sessions can be moved but the partner
+ * (if any) is left in place.
+ *
+ * UI-only operation: the engine's stress budget / recovery math is
+ * unchanged — the user can already reorder days via the wizard.
+ */
+export async function movePlannedSession(formData: FormData): Promise<void> {
+  const parsed = moveSchema.safeParse({
+    id: formData.get("id"),
+    weekIndex: Number(formData.get("weekIndex")),
+    dayIndex: Number(formData.get("dayIndex")),
+  });
+  if (!parsed.success) return;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: planned } = await supabase
+    .from("planned_sessions")
+    .select("id, block_id, week_index, day_index, slot")
+    .eq("id", parsed.data.id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!planned) return;
+
+  const { data: block } = await supabase
+    .from("training_blocks")
+    .select("weeks")
+    .eq("id", planned.block_id)
+    .maybeSingle();
+  if (!block) return;
+  if (parsed.data.weekIndex >= (block.weeks as number)) return;
+
+  // No-op if already on the target slot.
+  if (
+    planned.week_index === parsed.data.weekIndex &&
+    planned.day_index === parsed.data.dayIndex
+  ) {
+    return;
+  }
+
+  // Find what (if anything) currently sits on the target slot. Limit to
+  // the same block + same slot label so a 2-a-day doesn't get clobbered
+  // by a 1-a-day swap (we only swap matching slots).
+  const { data: existing } = await supabase
+    .from("planned_sessions")
+    .select("id, week_index, day_index, slot")
+    .eq("block_id", planned.block_id)
+    .eq("user_id", user.id)
+    .eq("week_index", parsed.data.weekIndex)
+    .eq("day_index", parsed.data.dayIndex);
+
+  const target = (existing ?? []).find((r) => r.slot === planned.slot);
+
+  if (target && target.id !== planned.id) {
+    // Two-step swap to avoid the unique (block, week, day, slot)
+    // constraint conflict. Park the moving row on a guard slot first.
+    const parkWeek = (block.weeks as number) + 100;
+    await supabase
+      .from("planned_sessions")
+      .update({ week_index: parkWeek, day_index: 0 })
+      .eq("id", planned.id);
+    await supabase
+      .from("planned_sessions")
+      .update({ week_index: planned.week_index, day_index: planned.day_index })
+      .eq("id", target.id);
+    await supabase
+      .from("planned_sessions")
+      .update({ week_index: parsed.data.weekIndex, day_index: parsed.data.dayIndex })
+      .eq("id", planned.id);
+  } else {
+    await supabase
+      .from("planned_sessions")
+      .update({ week_index: parsed.data.weekIndex, day_index: parsed.data.dayIndex })
+      .eq("id", planned.id);
+  }
+
+  // Moving a day clears any explicit planned_at (the absolute timestamp
+  // referred to the OLD calendar date — keeping it would put the
+  // session on the wrong wall-clock day).
+  await supabase
+    .from("planned_sessions")
+    .update({ planned_at: null })
+    .in("id", target ? [planned.id, target.id] : [planned.id]);
+
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
+}
+
 export async function unskipPlannedSession(formData: FormData): Promise<void> {
   const parsed = unskipSchema.safeParse({ id: formData.get("id") });
   if (!parsed.success) return;
