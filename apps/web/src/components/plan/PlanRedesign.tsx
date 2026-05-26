@@ -32,6 +32,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import type { DragEvent } from "react";
 import { formatPrescriptionItem } from "@/lib/planner/archetypes";
 import {
+  getAdaptationGuidanceForArchetype,
+  type AdaptationGuidance,
+} from "@/lib/planner/adaptation-guidance";
+import {
   groupByMovementThenKind,
   type PlanSetRow,
   type MovementPrescriptionSection,
@@ -63,6 +67,8 @@ export type PlanSessionInput = {
 
 export type PlanRedesignProps = {
   archetypeName: string;
+  /** Wizard archetype id; used to derive adaptation-horizon guidance. */
+  archetypeId?: string;
   blockNumber: number; // 1-indexed
   blockTotal: number;
   startedOn: string; // YYYY-MM-DD
@@ -119,6 +125,54 @@ function longDate(ymd: string): string {
   return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
 }
 
+/**
+ * Render `Block N of M` with a tooltip surfacing the research-backed
+ * adaptation horizon for the active archetype, when we can derive one.
+ *
+ * Falls back to plain text when the archetype doesn't map to a single
+ * guidance row (e.g. `maintenance`, `custom`) — no empty tooltip.
+ */
+function renderBlockOfTotal(
+  archetypeId: string | undefined,
+  blockNumber: number,
+  blockTotal: number,
+): React.ReactNode {
+  const guidance = archetypeId ? getAdaptationGuidanceForArchetype(archetypeId) : null;
+  const label = `Block ${blockNumber} of ${blockTotal}`;
+  if (!guidance) return label;
+  const recommended = formatGuidanceForTooltip(guidance);
+  const title = `${recommended}\n\n${guidance.summary}\n${guidance.citation}`;
+  return (
+    <span
+      className="plan-eyebrow-blocks"
+      title={title}
+      aria-label={`${label}. ${recommended}. ${guidance.summary}`}
+      data-testid="plan-eyebrow-blocks"
+    >
+      {label}
+      <span aria-hidden="true" className="plan-eyebrow-info">ⓘ</span>
+    </span>
+  );
+}
+
+function formatGuidanceForTooltip(g: AdaptationGuidance): string {
+  if (g.rotates) {
+    if (Number.isFinite(g.blocks.min) && !Number.isFinite(g.blocks.max)) {
+      return `Recommended: ${g.blocks.min}+ blocks (${g.weeks.min}+ weeks)`;
+    }
+    return "Recommended: rotate emphasis every 4–6 weeks";
+  }
+  const blocks =
+    g.blocks.min === g.blocks.max
+      ? `${g.blocks.min} block${g.blocks.min === 1 ? "" : "s"}`
+      : `${g.blocks.min}–${g.blocks.max} blocks`;
+  const weeks =
+    g.weeks.min === g.weeks.max
+      ? `${g.weeks.min} weeks`
+      : `${g.weeks.min}–${g.weeks.max} weeks`;
+  return `Recommended: ${blocks} (~${weeks})`;
+}
+
 function pillTitle(s: PlanSessionInput): string {
   // The timeline pill is narrow — keep titles under ~14 chars.
   if (s.title.length <= 14) return s.title;
@@ -134,6 +188,7 @@ function passesFilter(s: PlanSessionInput, f: PlanFilter): boolean {
 export function PlanRedesign(props: PlanRedesignProps) {
   const {
     archetypeName,
+    archetypeId,
     blockNumber,
     blockTotal,
     startedOn,
@@ -331,7 +386,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
     <div data-testid="plan-redesign" style={{ display: "grid", gap: 24 }}>
       <header className="plan-head">
         <div className="plan-eyebrow mono">
-          {archetypeName} · Block {blockNumber} of {blockTotal}
+          {archetypeName} · {renderBlockOfTotal(archetypeId, blockNumber, blockTotal)}
         </div>
         <div className="plan-head-row">
           <h1 className="plan-h1">Plan</h1>
@@ -580,6 +635,15 @@ export function PlanRedesign(props: PlanRedesignProps) {
           letter-spacing: 0.12em;
           text-transform: uppercase;
           color: var(--cp-text-muted);
+        }
+        .plan-eyebrow-blocks {
+          cursor: help;
+          border-bottom: 1px dotted var(--cp-border);
+        }
+        .plan-eyebrow-info {
+          margin-left: 4px;
+          color: var(--cp-text-soft);
+          font-size: 11px;
         }
         .plan-head-row {
           display: flex;
