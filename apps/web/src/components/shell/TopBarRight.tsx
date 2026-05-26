@@ -349,6 +349,7 @@ export function TopBarRight({
   lastSyncedAt,
   recentAudit,
   auditCount,
+  markAuditReadAction,
   // `buildSha` is still accepted for backwards-compat with AppShell and
   // the /app layout's env wiring, but the SHA chip itself is no longer
   // rendered. The prop is intentionally not destructured.
@@ -360,6 +361,8 @@ export function TopBarRight({
   lastSyncedAt: string | null;
   recentAudit: TopBarAuditEntry[];
   auditCount: number;
+  /** PR Z1 — persists the "mark all read" gesture cross-device. */
+  markAuditReadAction?: () => Promise<{ ok: true } | { ok: false; error: string }>;
   buildSha?: string;
 }) {
   const palette = useCommandPalette();
@@ -390,12 +393,24 @@ export function TopBarRight({
   const syncDotColor =
     syncState === "fresh" ? "var(--cp-accent)" : "var(--cp-text-muted)";
 
-  // Local "mark all read" — optimistic only, persistence is a follow-up.
+  // PR Z1 — "mark all read" persists to `profiles.audit_last_read_at`
+  // via `markAuditReadAction`. Local state is updated optimistically;
+  // on server failure we restore the previous count so the badge
+  // doesn't lie to the user.
   const [unread, setUnread] = useState<number>(auditCount);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resync local optimistic count when the server prop changes (e.g. route revalidation)
     setUnread(auditCount);
   }, [auditCount]);
+
+  const onMarkRead = () => {
+    const prev = unread;
+    setUnread(0);
+    if (!markAuditReadAction) return;
+    void markAuditReadAction().then((res) => {
+      if (!res?.ok) setUnread(prev);
+    });
+  };
 
   const initials = initialsFrom(displayName, email);
 
@@ -533,7 +548,7 @@ export function TopBarRight({
           <button
             type="button"
             data-testid="topbar-bell-mark-read"
-            onClick={() => setUnread(0)}
+            onClick={onMarkRead}
             style={{
               ...styles.popMark,
               background: markHover ? "var(--cp-surface-soft)" : "transparent",
