@@ -33,26 +33,18 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getUserTimezone } from "@/lib/planner/queries";
 import { getActiveBlockProgress } from "@/lib/stats/active-block-progress";
-import { getAdherenceForWindow, type AdherenceResult } from "@/lib/stats/adherence";
-import { getPrsForRange, type PrsRangeResult } from "@/lib/stats/prs-range";
-import { getFreshnessMini, type FreshnessMiniRow } from "@/lib/stats/freshness-mini";
-import { getVolumeForRange, type VolumeRangeResult } from "@/lib/stats/volume";
-import { getBodyweightTrend, type BodyweightTrend } from "@/lib/stats/bodyweight-trend";
+import { getAdherenceForWindow } from "@/lib/stats/adherence";
+import { getPrsForRange } from "@/lib/stats/prs-range";
+import { getFreshnessMini } from "@/lib/stats/freshness-mini";
+import { getVolumeForRange } from "@/lib/stats/volume";
+import { getBodyweightTrend } from "@/lib/stats/bodyweight-trend";
 import { getTrainingHeatmap } from "@/lib/stats/training-heatmap-data";
 import { TrainingHeatmap } from "@/components/stats/TrainingHeatmap";
-import { displayWeight, weightUnitLabel, type WeightUnit } from "@/lib/stats/units";
-import { formatDate, type ProfileForFormat } from "@/lib/format/datetime";
-import {
-  DEFAULT_RANGE,
-  RANGE_LABEL,
-  parseRange,
-  rangeWindowDays,
-  type Range,
-} from "@/lib/stats/range";
-import { Sparkline } from "@/components/stats/charts/Sparkline";
-import { MiniBars } from "@/components/stats/charts/MiniBars";
+import { type WeightUnit } from "@/lib/stats/units";
+import { type ProfileForFormat } from "@/lib/format/datetime";
+import { parseRange, rangeWindowDays } from "@/lib/stats/range";
+import { StatsOverviewView, type StatsOverviewByRange } from "@/components/stats/StatsOverviewView";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { MetricHelp } from "@/components/ui/MetricHelp";
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +55,6 @@ export default async function StatsOverviewPage({
 }) {
   const params = await searchParams;
   const range = parseRange(params.range);
-  const windowDays = rangeWindowDays(range);
 
   const supabase = await createClient();
   const {
@@ -86,19 +77,46 @@ export default async function StatsOverviewPage({
       }
     : null;
 
-  // All-parallel reads. The three time-bounded cards (adherence / PRs /
-  // volume) take the same `windowDays` so the toggle drives them in
-  // lockstep; bodyweight + freshness stay on their existing bounded
-  // reads (30-day trend / right-now snapshot).
-  const [block, adherence, prs, freshness, volume, bodyweight, heatmapCells] = await Promise.all([
+  // Pre-fetch all three range windows in one Promise.all so the
+  // client-side toggle (StatsOverviewView) flips between buckets
+  // without a server round-trip. Audit F1 measured 0.9–1.3s per click
+  // under the old `<Link href="?range=…">` pattern. Block/freshness/
+  // bodyweight/heatmap are range-invariant and read once.
+  const [
+    block,
+    freshness,
+    bodyweight,
+    heatmapCells,
+    adherence30d,
+    adherence90d,
+    adherenceAll,
+    prs30d,
+    prs90d,
+    prsAll,
+    volume30d,
+    volume90d,
+    volumeAll,
+  ] = await Promise.all([
     getActiveBlockProgress(supabase, user.id, tz),
-    getAdherenceForWindow(supabase, user.id, tz, windowDays),
-    getPrsForRange(supabase, user.id, tz, windowDays),
     getFreshnessMini(supabase, user.id),
-    getVolumeForRange(supabase, user.id, tz, windowDays),
     getBodyweightTrend(supabase, user.id, tz),
     getTrainingHeatmap(supabase, user.id, tz, 20),
+    getAdherenceForWindow(supabase, user.id, tz, rangeWindowDays("30d")),
+    getAdherenceForWindow(supabase, user.id, tz, rangeWindowDays("90d")),
+    getAdherenceForWindow(supabase, user.id, tz, rangeWindowDays("all")),
+    getPrsForRange(supabase, user.id, tz, rangeWindowDays("30d")),
+    getPrsForRange(supabase, user.id, tz, rangeWindowDays("90d")),
+    getPrsForRange(supabase, user.id, tz, rangeWindowDays("all")),
+    getVolumeForRange(supabase, user.id, tz, rangeWindowDays("30d")),
+    getVolumeForRange(supabase, user.id, tz, rangeWindowDays("90d")),
+    getVolumeForRange(supabase, user.id, tz, rangeWindowDays("all")),
   ]);
+
+  const byRange: StatsOverviewByRange = {
+    "30d": { adherence: adherence30d, prs: prs30d, volume: volume30d },
+    "90d": { adherence: adherence90d, prs: prs90d, volume: volume90d },
+    all: { adherence: adherenceAll, prs: prsAll, volume: volumeAll },
+  };
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
@@ -115,24 +133,16 @@ export default async function StatsOverviewPage({
       {/* Training calendar heatmap — last 20 weeks at a glance. */}
       <TrainingHeatmap cells={heatmapCells} weeks={20} />
 
-      {/* Range toggle — drives adherence / PRs / volume queries */}
-      <RangeToggle current={range} />
-
-      {/* B–G — responsive card grid */}
-      <div
-        data-testid="stats-overview-grid"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-          gap: 12,
-        }}
-      >
-        <AdherenceCard data={adherence} range={range} />
-        <PrsCard data={prs} units={units} range={range} formatProfile={formatProfile} />
-        <FreshnessCard rows={freshness} />
-        <VolumeCard data={volume} units={units} range={range} />
-        <BodyweightCard data={bodyweight} units={units} />
-      </div>
+      {/* Range toggle + B–G card grid — owned by a client component so
+          flipping ranges is a state swap (audit F1). */}
+      <StatsOverviewView
+        initialRange={range}
+        byRange={byRange}
+        freshness={freshness}
+        bodyweight={bodyweight}
+        units={units}
+        formatProfile={formatProfile}
+      />
 
       {/* Bottom — deep-dive links */}
       <DeepDiveLinks />
@@ -141,57 +151,6 @@ export default async function StatsOverviewPage({
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Range toggle (Phase 2)
-// ──────────────────────────────────────────────────────────────────────
-
-function RangeToggle({ current }: { current: Range }) {
-  const opts: Range[] = ["30d", "90d", "all"];
-  return (
-    <nav
-      data-testid="stats-range-toggle"
-      aria-label="Range"
-      style={{
-        display: "inline-flex",
-        gap: 4,
-        padding: 3,
-        borderRadius: 999,
-        border: "1px solid var(--cp-border)",
-        background: "var(--cp-surface)",
-        width: "fit-content",
-      }}
-    >
-      {opts.map((opt) => {
-        const active = opt === current;
-        // Default range = 30d, so omit the query param when picking it
-        // (keeps the canonical URL clean on initial load).
-        const href = opt === DEFAULT_RANGE ? "/app/stats" : `/app/stats?range=${opt}`;
-        return (
-          <Link
-            key={opt}
-            href={href}
-            data-testid="stats-range-option"
-            data-range={opt}
-            data-active={active ? "true" : "false"}
-            scroll={false}
-            style={{
-              fontSize: 12,
-              padding: "5px 12px",
-              borderRadius: 999,
-              textDecoration: "none",
-              fontWeight: 600,
-              letterSpacing: "0.02em",
-              color: active ? "var(--cp-accent)" : "var(--cp-text-muted)",
-              background: active ? "var(--cp-accent-soft)" : "transparent",
-            }}
-          >
-            {RANGE_LABEL[opt]}
-          </Link>
-        );
-      })}
-    </nav>
-  );
-}
-
 // ──────────────────────────────────────────────────────────────────────
 // A — Current block strip
 // ──────────────────────────────────────────────────────────────────────
@@ -284,303 +243,6 @@ function CurrentBlockStrip({
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// B — Adherence (30 days)
-// ──────────────────────────────────────────────────────────────────────
-
-function AdherenceCard({ data, range }: { data: AdherenceResult; range: Range }) {
-  const pct = Math.round(data.ratio * 100);
-  const accent = data.ratio >= 0.8 ? "success" : data.ratio >= 0.5 ? "warning" : "danger";
-  const accentVar = `var(--cp-${accent})`;
-  const subtitle =
-    range === "all" ? "all-time" : range === "90d" ? "last 90 days" : "last 30 days";
-  return (
-    <section
-      className="cp-card"
-      data-testid="stats-card-adherence"
-      data-empty={data.scheduled === 0 ? "true" : "false"}
-      style={{ padding: 16, display: "grid", gap: 6 }}
-    >
-      <CardTitle title="Adherence" subtitle={subtitle} helpTerm="adherence" />
-      {data.scheduled === 0 ? (
-        <EmptyState
-          variant="inline"
-          title="Nothing scheduled"
-          body="Once a block is live, this card tracks how many planned sessions you actually log in the window."
-        />
-      ) : (
-        <>
-          <div style={{ fontSize: 28, fontWeight: 700, color: accentVar, letterSpacing: "-0.01em" }}>
-            {pct}%
-          </div>
-          <div style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
-            {data.completed} of {data.scheduled} sessions
-            {data.skipped > 0 && <> · {data.skipped} counted as missed (skipped)</>}
-          </div>
-        </>
-      )}
-    </section>
-  );
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// C — PRs this month
-// ──────────────────────────────────────────────────────────────────────
-
-function PrsCard({
-  data,
-  units,
-  range,
-  formatProfile,
-}: {
-  data: PrsRangeResult;
-  units: WeightUnit;
-  range: Range;
-  formatProfile: ProfileForFormat;
-}) {
-  const unit = weightUnitLabel(units);
-  const title =
-    range === "all" ? "PRs (all-time)" : range === "90d" ? "PRs (last 90 days)" : "PRs (last 30 days)";
-  return (
-    <section
-      className="cp-card"
-      data-testid="stats-card-prs"
-      data-empty={data.uniqueMovementCount === 0 ? "true" : "false"}
-      style={{ padding: 16, display: "grid", gap: 8 }}
-    >
-      <CardTitle
-        title={title}
-        subtitle={`${data.uniqueMovementCount} ${data.uniqueMovementCount === 1 ? "lift" : "lifts"}`}
-      />
-      {data.uniqueMovementCount === 0 ? (
-        <EmptyState
-          variant="inline"
-          title="No PRs in window"
-          body="Log a top set or AMRAP heavier than your previous best on a tracked lift and it lands here."
-        />
-      ) : (
-        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
-          {data.topThree.map((p) => (
-            <li
-              key={`${p.movementId}-${p.date}`}
-              data-testid="stats-pr-row"
-              style={{
-                display: "flex",
-                alignItems: "baseline",
-                justifyContent: "space-between",
-                gap: 8,
-                fontSize: 13,
-              }}
-            >
-              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {p.movementSlug ? (
-                  <Link
-                    href={`/app/stats/movements/${p.movementSlug}`}
-                    style={{ color: "inherit", textDecoration: "none" }}
-                  >
-                    {p.movementDisplayName}
-                  </Link>
-                ) : (
-                  p.movementDisplayName
-                )}
-              </span>
-              <span className="mono" style={{ flexShrink: 0, color: "var(--cp-text-muted)" }}>
-                {round1(displayWeight(p.weight, units))} {unit} × {p.reps}
-                {" · "}
-                {formatDate(p.date + "T00:00:00Z", { ...(formatProfile ?? {}), timezone: "UTC" }, "short_date")}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// D — Region freshness mini
-// ──────────────────────────────────────────────────────────────────────
-
-function FreshnessCard({ rows }: { rows: FreshnessMiniRow[] }) {
-  const colorByAccent: Record<FreshnessMiniRow["accent"], string> = {
-    success: "var(--cp-success)",
-    warning: "var(--cp-warning)",
-    danger: "var(--cp-danger)",
-  };
-  return (
-    <section
-      className="cp-card"
-      data-testid="stats-card-freshness"
-      data-empty={rows.length === 0 ? "true" : "false"}
-      style={{ padding: 16, display: "grid", gap: 8 }}
-    >
-      <CardTitle
-        title="Region freshness"
-        subtitle="right now"
-        helpTerm="region_freshness"
-        right={
-          <Link
-            href="/app/stats/engine"
-            data-testid="stats-freshness-cta"
-            style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
-          >
-            Engine details →
-          </Link>
-        }
-      />
-      {rows.length === 0 ? (
-        <EmptyState
-          variant="inline"
-          title="No region load yet"
-          body="Log a session (strength or cardio) and freshness builds up region by region."
-        />
-      ) : (
-        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
-          {rows.map((r) => {
-            const pct = Math.round(r.freshness * 100);
-            const color = colorByAccent[r.accent];
-            return (
-              <li
-                key={r.region}
-                data-testid="stats-freshness-row"
-                title={`${r.regionLabel}: ${pct}% fresh`}
-                style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center", fontSize: 12 }}
-              >
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {r.regionLabel}
-                </span>
-                <div
-                  aria-hidden="true"
-                  style={{ width: 80, height: 6, background: "var(--cp-surface-soft)", borderRadius: 3, overflow: "hidden" }}
-                >
-                  <div style={{ width: `${pct}%`, height: "100%", background: color }} />
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// F — Volume (30 days, weekly buckets)
-// ──────────────────────────────────────────────────────────────────────
-
-function VolumeCard({ data, units, range }: { data: VolumeRangeResult; units: WeightUnit; range: Range }) {
-  const unit = weightUnitLabel(units);
-  const totalDisplay = displayWeight(data.totalKg, units);
-  const weeklyDisplay = data.weeklyKg.map((kg) => displayWeight(kg, units));
-  const subtitle =
-    range === "all"
-      ? `${unit} · all-time (${data.weeklyKg.length} wk)`
-      : range === "90d"
-      ? `${unit} · last 90 days`
-      : `${unit} · last 30 days`;
-  return (
-    <section
-      className="cp-card"
-      data-testid="stats-card-volume"
-      data-empty={data.totalKg === 0 ? "true" : "false"}
-      style={{ padding: 16, display: "grid", gap: 8 }}
-    >
-      <CardTitle
-        title="Volume"
-        subtitle={subtitle}
-        helpTerm="weekly_tonnage"
-        right={
-          <Link
-            href="/app/stats#movements"
-            data-testid="stats-volume-cta"
-            style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
-          >
-            By movement →
-          </Link>
-        }
-      />
-      {data.totalKg === 0 ? (
-        <EmptyState
-          variant="inline"
-          title="No strength sets"
-          body="Log a strength session in this window and weekly tonnage populates here."
-        />
-      ) : (
-        <>
-          <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em" }}>
-            {formatTonnage(totalDisplay)} {unit}
-          </div>
-          <MiniBars
-            values={weeklyDisplay}
-            accent="accent"
-            ariaLabel={`weekly tonnage for the last ${data.weeklyKg.length} weeks`}
-          />
-        </>
-      )}
-    </section>
-  );
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// G — Bodyweight trend
-// ──────────────────────────────────────────────────────────────────────
-
-function BodyweightCard({ data, units }: { data: BodyweightTrend; units: WeightUnit }) {
-  const unit = weightUnitLabel(units);
-  if (!data.latest) {
-    return (
-      <section
-        className="cp-card"
-        data-testid="stats-card-bodyweight"
-        data-empty="true"
-        style={{ padding: 16, display: "grid", gap: 8 }}
-      >
-        <CardTitle title="Bodyweight" subtitle={`${unit} · 30 d trend`} helpTerm="bodyweight_trend" />
-        <EmptyState
-          variant="inline"
-          title="No bodyweight logged"
-          body="Log your bodyweight on Today (How recovered? check-in) or in Settings and your 30-day trend populates here."
-        />
-      </section>
-    );
-  }
-  const latest = displayWeight(data.latest.kg, units);
-  const delta = data.delta30dKg == null ? null : displayWeight(data.delta30dKg, units);
-  const accent: "success" | "warning" | "danger" | "accent" =
-    delta == null
-      ? "accent"
-      : delta > 0
-      ? "warning"
-      : delta < 0
-      ? "success"
-      : "accent";
-  return (
-    <section
-      className="cp-card"
-      data-testid="stats-card-bodyweight"
-      style={{ padding: 16, display: "grid", gap: 8 }}
-    >
-      <CardTitle title="Bodyweight" subtitle={`${unit} · 30 d trend`} helpTerm="bodyweight_trend" />
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-        <span style={{ fontSize: 22, fontWeight: 600 }}>
-          {round1(latest)} {unit}
-        </span>
-        {delta != null && (
-          <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
-            {delta > 0 ? "+" : ""}
-            {round1(delta)} {unit} (30 d)
-          </span>
-        )}
-      </div>
-      <Sparkline
-        values={data.series.map((p) => displayWeight(p.kg, units))}
-        accent={accent}
-        ariaLabel="bodyweight over the last 30 days"
-      />
-    </section>
-  );
-}
-
-// ──────────────────────────────────────────────────────────────────────
 // Bottom — deep-dive link grid
 // ──────────────────────────────────────────────────────────────────────
 
@@ -638,52 +300,6 @@ function DeepDive({ title, body, href }: { title: string; body: string; href: st
       <div style={{ fontSize: 12, color: "var(--cp-text-muted)", marginTop: 2 }}>{body}</div>
     </Link>
   );
-}
-
-// Note: a `DeepDivePlaceholder` lived here through Phase 3 to advertise
-// the Phase 4 adherence dashboard. With that dashboard now live, every
-// deep-dive card on the overview links to a live page.
-
-
-
-// ──────────────────────────────────────────────────────────────────────
-// Shared bits
-// ──────────────────────────────────────────────────────────────────────
-
-function CardTitle({
-  title,
-  subtitle,
-  right,
-  helpTerm,
-}: {
-  title: string;
-  subtitle?: string;
-  right?: React.ReactNode;
-  helpTerm?: string;
-}) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-      <div>
-        <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-          {title}
-          {helpTerm != null && <MetricHelp term={helpTerm} />}
-        </div>
-        {subtitle && (
-          <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 2 }}>{subtitle}</div>
-        )}
-      </div>
-      {right}
-    </div>
-  );
-}
-
-function round1(n: number): number {
-  return Math.round(n * 10) / 10;
-}
-
-function formatTonnage(n: number): string {
-  if (n >= 10000) return `${(n / 1000).toFixed(1)}k`;
-  return Math.round(n).toLocaleString();
 }
 
 
