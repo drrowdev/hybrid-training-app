@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
@@ -31,6 +32,27 @@ export async function createClient() {
     },
   );
 }
+
+/**
+ * Per-request cached `supabase.auth.getUser()` for server components,
+ * server actions, route handlers, and any helper that runs inside a
+ * React Server Components render. Audit F9 measured `getUser()` being
+ * called 2–3× per page load (middleware + layout + page), each a
+ * 100–300ms POST to Supabase GoTrue (not a cached `fetch`, so Next
+ * won't dedupe). `React.cache` memoises within the same request scope,
+ * so layout + page + library helpers share one call.
+ *
+ * Middleware stays on its own client — it runs before request scope is
+ * established (different runtime context, can't use `React.cache`) and
+ * is required separately for token refresh.
+ *
+ * Returns the same `{ data: { user }, error }` shape Supabase does so
+ * existing call sites can destructure unchanged.
+ */
+export const getAuthUser = cache(async () => {
+  const supabase = await createClient();
+  return supabase.auth.getUser();
+});
 
 /**
  * Service-role client. **Never** import this into a Client Component.

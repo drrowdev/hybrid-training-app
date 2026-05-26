@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   saveOnboardingProfile,
   saveOnboardingTms,
@@ -23,7 +23,7 @@ export default async function OnboardingPage() {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const [{ data: profile }, { count: tmCount }] = await Promise.all([

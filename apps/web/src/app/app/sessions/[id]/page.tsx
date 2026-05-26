@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import { AddCardioBlockForm } from "@/components/add-log-forms";
 import {
@@ -53,7 +53,7 @@ export default async function SessionDetailPage({
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const { data: session } = await supabase

@@ -19,7 +19,7 @@
  */
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { MOVEMENT_FAMILIES, type MovementFamily, type MovementNode } from "@hta/db";
 import { tutThreshold } from "@/lib/planner/bw-progression";
 import { loadAndRunBwDiagnostics } from "@/lib/planner/bw-diagnostics-loader";
@@ -128,7 +128,7 @@ export default async function BodyweightProgressionPage() {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const [

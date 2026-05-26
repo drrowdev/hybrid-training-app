@@ -54,6 +54,7 @@ vi.mock("@/lib/supabase/server", () => ({
       }),
     }),
   }),
+  getAuthUser: async () => ({ data: { user: { id: "user-1" } }, error: null }),
 }));
 
 // Import AFTER mocks.

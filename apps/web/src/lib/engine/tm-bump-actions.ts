@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import type { TmChangeReason } from "@hta/db";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 
 const acceptBumpSchema = z.object({
   movementId: z.string().uuid(),
@@ -41,7 +41,7 @@ export async function acceptTmBumpResult(formData: FormData): Promise<AcceptBump
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   // Look up the user's current TM row for this movement so we can keep
@@ -123,7 +123,7 @@ export async function declineTmBumpResult(formData: FormData): Promise<AcceptBum
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const { data: existingTm } = await supabase

@@ -22,7 +22,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { MovementFamily } from "@hta/db";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 
 const familyEnum = z.enum([
   "push_h",
@@ -66,7 +66,7 @@ export async function applyLoadIncrement(
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return { error: "Not signed in." };
 
   const { data: row } = await supabase
@@ -106,7 +106,7 @@ export async function applyVariantAdvance(
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return { error: "Not signed in." };
 
   // Read the current node id first so we can write a clean audit row.

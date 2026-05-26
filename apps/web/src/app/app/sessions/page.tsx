@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { DeleteSessionButton } from "@/components/trash/DeleteSessionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatDate } from "@/lib/format/datetime";
@@ -9,7 +9,7 @@ export default async function SessionsListPage() {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const [{ data: profile }, { data: sessions }] = await Promise.all([

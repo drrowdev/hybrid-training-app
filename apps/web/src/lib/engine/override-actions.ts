@@ -13,7 +13,7 @@
  */
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   OVERRIDE_REASON_MAX,
   normaliseReason,
@@ -46,7 +46,7 @@ export async function recordCustomOverride(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return;
 
   let context: RecordOverrideInput["context"] = null;
