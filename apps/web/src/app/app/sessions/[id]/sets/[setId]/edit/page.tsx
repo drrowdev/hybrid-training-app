@@ -2,6 +2,9 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { editSet } from "@/lib/sessions/actions";
+import { SET_KIND_LABELS } from "@/lib/sessions/set-kind-labels";
+
+const SET_KINDS = ["warmup", "main", "back_off", "accessory", "tendon"] as const;
 
 export default async function EditSetPage({
   params,
@@ -50,11 +53,9 @@ export default async function EditSetPage({
         <div className="space-y-1">
           <label className="text-xs text-foreground/60" htmlFor="setKind">Set kind</label>
           <select id="setKind" name="setKind" defaultValue={set.set_kind} className="w-full rounded-md border border-foreground/15 bg-transparent px-2 py-2 text-sm">
-            <option value="warmup">warmup</option>
-            <option value="main">main</option>
-            <option value="back_off">Volume set</option>
-            <option value="accessory">accessory</option>
-            <option value="tendon">tendon</option>
+            {SET_KINDS.map((k) => (
+              <option key={k} value={k}>{SET_KIND_LABELS[k].label}</option>
+            ))}
           </select>
         </div>
 
