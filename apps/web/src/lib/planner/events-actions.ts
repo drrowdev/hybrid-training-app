@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 
 const eventSchema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -28,7 +28,7 @@ export async function createPriorityEvent(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const { error } = await supabase.from("priority_events").insert({
@@ -53,7 +53,7 @@ export async function deletePriorityEvent(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   await supabase.from("priority_events").delete().eq("id", id).eq("user_id", user.id);

@@ -94,6 +94,7 @@ vi.mock("@/lib/supabase/server", () => ({
       return q;
     },
   }),
+  getAuthUser: async () => ({ data: { user: { id: "11111111-2222-2222-2222-222222222222" } }, error: null }),
 }));
 
 describe("endBlock", () => {

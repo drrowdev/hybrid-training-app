@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   upsertTrainingMax,
   deleteTrainingMax,
@@ -26,7 +26,7 @@ export default async function TrainingMaxesPage() {
 
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   const { data: profile } = user
     ? await supabase
         .from("profiles")

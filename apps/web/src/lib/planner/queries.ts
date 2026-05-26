@@ -1,7 +1,7 @@
 /**
  * Queries for the planner UI.
  */
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import type { Prescription, SessionSlot } from "@hta/db";
 import {
   addDaysToYmd,
@@ -88,7 +88,7 @@ export async function getUserTimezone(userId?: string): Promise<string> {
   if (!id) {
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await getAuthUser();
     if (!user) return "UTC";
     id = user.id;
   }
@@ -246,7 +246,7 @@ export async function getBlockNumberAndTotal(
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return { index: 1, total: 1 };
   const { data } = await supabase
     .from("training_blocks")
@@ -267,7 +267,7 @@ export async function getRecentBlocks(limit = 3): Promise<RecentBlock[]> {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return [];
   const { data } = await supabase
     .from("training_blocks")
@@ -334,7 +334,7 @@ export async function getAllBlocksWithCompletionStats(
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return [];
   const { data } = await supabase
     .from("training_blocks")
@@ -443,7 +443,7 @@ export async function getTrashedItems(): Promise<TrashedItems> {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return { blocks: [], sessions: [] };
 
   const [{ data: blockRows }, { data: sessionRows }] = await Promise.all([

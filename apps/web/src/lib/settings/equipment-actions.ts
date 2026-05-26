@@ -20,7 +20,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { parseEquipment } from "./equipment-schema";
 
 const PLATE_ITEM = z.object({
@@ -71,7 +71,7 @@ export async function updateEquipment(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const dedup = new Map<number, number>();
@@ -125,7 +125,7 @@ export async function updateEquipmentV2(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const { error } = await supabase

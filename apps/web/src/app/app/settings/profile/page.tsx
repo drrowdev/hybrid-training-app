@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { TrainingDaysControl } from "@/components/settings/TrainingDaysControl";
 import {
   BodyCompPhaseAutoSave,
@@ -59,7 +59,7 @@ export default async function ProfileSettingsPage() {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const { data: profile } = await supabase

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   summarisePrescription,
   roundToPlate,
@@ -70,7 +70,7 @@ export default async function TodayPage() {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   const userId = user!.id;
 
   const { data: profile } = await supabase

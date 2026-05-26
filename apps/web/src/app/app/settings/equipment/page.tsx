@@ -9,7 +9,7 @@
  * in kg; lb display flips at the render boundary.
  */
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { EquipmentEditor } from "@/components/settings/EquipmentEditor";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
 
@@ -19,7 +19,7 @@ export default async function EquipmentSettingsPage() {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const { data: profile } = await supabase

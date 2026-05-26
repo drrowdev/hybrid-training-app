@@ -110,6 +110,7 @@ vi.mock("@/lib/supabase/server", () => ({
       }),
     };
   },
+  getAuthUser: async () => ({ data: { user: { id: "u1" } }, error: null }),
 }));
 
 beforeEach(() => {

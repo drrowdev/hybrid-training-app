@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { acceptTmBump, declineTmBump } from "@/lib/engine/tm-bump-actions";
 import { findBlockCompleteBump } from "@/lib/engine/block-complete";
 import {
@@ -60,7 +60,7 @@ export default async function PlanPage({
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const block = await getActiveBlock();

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 
 const dateTimeFormatSchema = z.object({
   timeFormat: z.enum(["12h", "24h"]).nullable(),
@@ -48,7 +48,7 @@ export async function updateDateTimeFormat(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   // Opportunistically backfill `profiles.timezone` from the browser-

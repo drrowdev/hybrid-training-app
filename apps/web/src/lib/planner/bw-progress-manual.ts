@@ -34,7 +34,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { MovementFamily } from "@hta/db";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 
 const familyEnum = z.enum([
   "push_h",
@@ -88,7 +88,7 @@ export async function setBwNodeManual(
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return { ok: false, error: "Not signed in." };
 
   // Fetch the full family catalog in one round-trip. We need it for

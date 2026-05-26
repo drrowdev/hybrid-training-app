@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { signOut } from "@/lib/auth/actions";
 import { AppShell, type TopBarAuditEntry } from "@/components/shell/AppShell";
 import { PullToRefresh } from "@/components/shell/PullToRefresh";
@@ -15,7 +15,7 @@ export default async function AppLayout({
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const [{ data: profile }, { count: tmCount }] = await Promise.all([

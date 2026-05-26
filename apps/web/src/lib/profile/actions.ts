@@ -13,7 +13,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 
 const displayNameSchema = z.object({
   displayName: z.string().trim().max(60).nullable(),
@@ -28,7 +28,7 @@ async function getUserOrRedirect(): Promise<{
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
   return { supabase, userId: user.id };
 }
