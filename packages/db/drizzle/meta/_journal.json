@@ -372,6 +372,20 @@
       "tag": "0056_tag_power_roles",
       "when": 1781247600000,
       "breakpoints": false
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "tag": "0057_movement_experience_bands",
+      "when": 1781334000000,
+      "breakpoints": false
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "tag": "0058_backfill_experience_bands",
+      "when": 1781334060000,
+      "breakpoints": false
     }
   ]
 }
