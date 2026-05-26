@@ -1270,11 +1270,12 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
   // equipment-aware accessory filter. NULL → defaults via resolvers.
   const { data: customProfile } = await supabase
     .from("profiles")
-    .select("warmup_scheme, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_assessment_completed_at")
+    .select("warmup_scheme, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_assessment_completed_at, training_experience")
     .eq("id", user.id)
     .maybeSingle();
   const customWarmupScheme = resolveWarmupScheme(customProfile?.warmup_scheme);
   const customEquipment = resolveEquipment(customProfile);
+  const customExperience = resolveDeclaredExperience(customProfile?.training_experience);
 
   // Resolve all required movements.
   const candidateSlugs = allCandidateLiftSlugs(archetype);
@@ -1391,6 +1392,8 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
         false,
         customWarmupScheme,
         customEquipment,
+        false,
+        customExperience,
       );
 
       // Phase 5 — stamp modality + effective_stress_load on every
