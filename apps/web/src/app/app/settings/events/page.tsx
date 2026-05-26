@@ -38,7 +38,8 @@ export default async function EventsSettingsPage() {
     .select("id, name, event_date, priority, modality, notes")
     .eq("user_id", user.id)
     .gte("event_date", today)
-    .order("event_date", { ascending: true });
+    .order("event_date", { ascending: true })
+    .limit(50);
   const { data: past } = await supabase
     .from("priority_events")
     .select("id, name, event_date, priority, modality, notes")
