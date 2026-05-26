@@ -365,6 +365,13 @@
       "tag": "0055_user_meaningful_state",
       "when": 1781161200000,
       "breakpoints": false
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "tag": "0056_tag_power_roles",
+      "when": 1781247600000,
+      "breakpoints": false
     }
   ]
 }

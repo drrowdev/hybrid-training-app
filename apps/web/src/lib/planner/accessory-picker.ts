@@ -38,11 +38,64 @@ import {
   POWER_FUNCTIONAL_ROLES,
   effectiveDurabilityFloor,
 } from "./accessory-roles";
+import type { DeclaredExperience } from "@hta/engine";
 import type { Equipment } from "@/lib/settings/equipment-schema";
 import {
   inferRequiredEquipment,
   isEquipmentAvailable,
 } from "./equipment-requirements";
+
+/**
+ * Experience tiers that should NOT see plyometric / ballistic / Olympic
+ * variants land in their prescription. The declared-tier (`profiles.training_experience`)
+ * is the only signal — actual barbell strength is gated separately
+ * via TM-resolved variants in `actions.ts`.
+ *
+ * See `experience-tier-scope.md` §4 ("Option A — light filter") for rationale.
+ */
+export const BEGINNER_TIERS: ReadonlySet<DeclaredExperience> = new Set([
+  "beginner_lt_6m",
+  "novice_6m_2y",
+]);
+
+/**
+ * Power-role tags blocked for beginner / novice tiers when the gate is
+ * active. Mirrors `POWER_FUNCTIONAL_ROLES` — kept as a separate constant
+ * so the filter intent stays explicit at the call site.
+ */
+const BLOCKED_POWER_ROLES: ReadonlySet<FunctionalRole> = new Set<FunctionalRole>([
+  "power_plyometric",
+  "power_ballistic",
+  "power_olympic",
+]);
+
+/**
+ * True when the declared experience tier should suppress power-tagged
+ * movements from the prescription. Returns false for `null` so users
+ * who haven't declared a tier yet keep the current (unfiltered)
+ * behaviour — conservative default per the scope doc.
+ */
+export function blocksPowerMovements(
+  experience: DeclaredExperience | null,
+): boolean {
+  if (!experience) return false;
+  return BEGINNER_TIERS.has(experience);
+}
+
+/**
+ * Drop power-tagged candidates from a catalog when the declared tier
+ * is a beginner one. Exported so `power-emphasis-transform.ts` can
+ * apply the same gate before its own potentiation search.
+ */
+export function filterPowerForExperience(
+  catalog: CatalogMovement[],
+  experience: DeclaredExperience | null,
+): CatalogMovement[] {
+  if (!blocksPowerMovements(experience)) return catalog;
+  return catalog.filter(
+    (m) => !m.functionalRoles.some((r) => BLOCKED_POWER_ROLES.has(r)),
+  );
+}
 
 export type CatalogMovement = {
   id: string;
@@ -113,6 +166,7 @@ export function pickAccessoriesForSession({
   maxItems,
   powerEmphasis = false,
   equipment,
+  experience = null,
 }: {
   profile: AccessoryProfile;
   /** Deload scalar from the week profile (e.g. 0.5 on deload weeks). */
@@ -133,11 +187,21 @@ export function pickAccessoriesForSession({
    * don't care about equipment keep working unchanged.
    */
   equipment?: Equipment;
+  /**
+   * Declared training experience from `profiles.training_experience`.
+   * When set to a beginner tier (`beginner_lt_6m` / `novice_6m_2y`) the
+   * picker filters out plyometric / ballistic / Olympic candidates
+   * BEFORE any role/muscle dispatch — bulletproofing every selection
+   * path (durability, functional, muscle gap, power emphasis).
+   * `null` (user hasn't declared) leaves the catalog untouched.
+   * See `experience-tier-scope.md` §4.
+   */
+  experience?: DeclaredExperience | null;
 }): AccessoryPick[] {
-  const filteredCatalog = equipment
+  const equipmentFiltered = equipment
     ? catalog.filter((m) => isEquipmentAvailable(inferRequiredEquipment(m), equipment))
     : catalog;
-  if (equipment && filteredCatalog.length === 0) {
+  if (equipment && equipmentFiltered.length === 0) {
     // Pathological: every catalog entry was rejected. Surface so we
     // notice in logs rather than silently producing an empty
     // prescription.
@@ -145,7 +209,11 @@ export function pickAccessoriesForSession({
       "[accessory-picker] equipment filter rejected every catalog candidate",
     );
   }
-  const workingCatalog = filteredCatalog;
+  // Experience-tier gate (PR W1 / Option A): drop power-tagged
+  // candidates before any selection path runs so beginners can't pick
+  // a plyo / oly / ballistic movement via durability, functional,
+  // muscle-gap, OR power-emphasis dispatch.
+  const workingCatalog = filterPowerForExperience(equipmentFiltered, experience);
   const picks: AccessoryPick[] = [];
   const usedThisSession = new Set<string>();
 
