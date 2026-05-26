@@ -717,13 +717,17 @@ export async function getSisterMovements(
     .is("user_id", null);
   const peers = pickSisters(self, (data ?? []) as MovementRowForSisters[], limit);
 
-  const results: SisterMovement[] = [];
-  for (const p of peers) {
-    const sets = await getWorkingSetsForMovement(supabase, userId, p.id);
-    const series = rollupTopSetsPerSession(sets);
+  // Each peer's working-set fetch is an independent read; resolve them
+  // in parallel rather than awaiting six round-trips serially (was the
+  // dominant cost on `/app/stats/movements/[slug]` per perf audit F6).
+  const peerSets = await Promise.all(
+    peers.map((p) => getWorkingSetsForMovement(supabase, userId, p.id)),
+  );
+  const results: SisterMovement[] = peers.map((p, i) => {
+    const series = rollupTopSetsPerSession(peerSets[i] ?? []);
     const cur = getCurrentE1rmFromSeries(series);
-    results.push({ id: p.id, slug: p.slug, displayName: p.displayName, e1rm: cur });
-  }
+    return { id: p.id, slug: p.slug, displayName: p.displayName, e1rm: cur };
+  });
   return results;
 }
 
