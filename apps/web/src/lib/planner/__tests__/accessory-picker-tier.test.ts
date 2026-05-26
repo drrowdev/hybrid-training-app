@@ -33,6 +33,8 @@ function mv(over: Partial<CatalogMovement> & { id: string; slug: string }): Cata
     eccentricLoadScore: over.eccentricLoadScore ?? null,
     stimToFatigueScore: over.stimToFatigueScore ?? null,
     highStrainTendon: over.highStrainTendon ?? false,
+    experienceMin: over.experienceMin,
+    experienceMax: over.experienceMax,
   };
 }
 
@@ -50,9 +52,12 @@ const CATALOG: CatalogMovement[] = [
   mv({ id: "carry1", slug: "farmer-carry", bulletproofRoles: ["carry"], primaryRegion: "lumbar_trunk", primaryMuscles: ["forearms"] }),
   mv({ id: "carry2", slug: "suitcase-carry", bulletproofRoles: ["carry"], primaryRegion: "lumbar_trunk", primaryMuscles: ["obliques"] }),
   // Power-tagged candidates — these are what the gate must filter.
-  mv({ id: "oly1", slug: "power-clean", functionalRoles: ["power_olympic"], primaryRegion: "hamstring_posterior", primaryMuscles: ["hamstrings", "glutes"], highStrainTendon: true, stimToFatigueScore: 4 }),
-  mv({ id: "plyB", slug: "broad-jump", functionalRoles: ["power_plyometric"], primaryRegion: "knee", primaryMuscles: ["quads"], highStrainTendon: true, stimToFatigueScore: 3 }),
-  mv({ id: "bal1", slug: "kb-swing-russian", functionalRoles: ["power_ballistic"], primaryRegion: "hamstring_posterior", primaryMuscles: ["glutes"], stimToFatigueScore: 4 }),
+  // PR W2: power rows carry curated `experienceMin: 2`, so the new
+  // band-based filter drops them for beginner / novice the same way
+  // the PR W1 power-tag filter did.
+  mv({ id: "oly1", slug: "power-clean", functionalRoles: ["power_olympic"], experienceMin: 2, primaryRegion: "hamstring_posterior", primaryMuscles: ["hamstrings", "glutes"], highStrainTendon: true, stimToFatigueScore: 4 }),
+  mv({ id: "plyB", slug: "broad-jump", functionalRoles: ["power_plyometric"], experienceMin: 1, primaryRegion: "knee", primaryMuscles: ["quads"], highStrainTendon: true, stimToFatigueScore: 3 }),
+  mv({ id: "bal1", slug: "kb-swing-russian", functionalRoles: ["power_ballistic"], experienceMin: 2, primaryRegion: "hamstring_posterior", primaryMuscles: ["glutes"], stimToFatigueScore: 4 }),
   // Non-power aesthetic options so the picker has somewhere to land
   // when power candidates are filtered out.
   mv({ id: "lr1", slug: "db-lateral-raise", primaryMuscles: ["side_delts"], primaryRegion: "shoulder_scapular" }),

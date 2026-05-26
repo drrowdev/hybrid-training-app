@@ -89,7 +89,22 @@ export type CardioDay = {
   slot?: DaySlot;
   role: string;
   title: string;
+  /**
+   * Default cardio slug. Always present. When the user's declared tier
+   * doesn't match a `movementSlugByExperience` entry below, this is
+   * the resolved slug.
+   */
   movementSlug: string;
+  /**
+   * PR W2 — per-tier slug map (Option α from the W2 PR description).
+   * When set, the planner picks `movementSlugByExperience[userTier]`
+   * at materialization time, falling back to `movementSlug` for tiers
+   * absent from the map. Lets archetype templates prescribe VO2 4×4
+   * for advanced users while quietly swapping in a tempo run for
+   * declared beginners — same archetype, same calendar day, different
+   * intensity. Optional so legacy archetype rows stay unchanged.
+   */
+  movementSlugByExperience?: Partial<Record<0 | 1 | 2 | 3 | 4, string>>;
   cardioKind: Extract<PrescriptionItemKind, `cardio_${string}`>;
   durationMin: number;
   hrCap?: string;
@@ -429,6 +444,13 @@ export const ENDURANCE_ANCHOR: Archetype = {
       role: "vo2_intervals",
       title: "VO2 intervals",
       movementSlug: "run-vo2-4x4",
+      // PR W2 — beginner / novice land on easier modalities. Tier 2+
+      // gets the prescribed VO2 work; tier 0 gets easy aerobic; tier 1
+      // gets a tempo run as a stepping-stone.
+      movementSlugByExperience: {
+        0: "run-easy-z2",
+        1: "run-tempo",
+      },
       cardioKind: "cardio_vo2",
       durationMin: 35,
       hrCap: "90–95% HRmax during work",
@@ -530,6 +552,10 @@ export const ENDURANCE_ANCHOR: Archetype = {
       role: "vo2_intervals",
       title: "VO2 intervals",
       movementSlug: "run-vo2-4x4",
+      movementSlugByExperience: {
+        0: "run-easy-z2",
+        1: "run-tempo",
+      },
       cardioKind: "cardio_vo2",
       durationMin: 35,
       hrCap: "90–95% HRmax during work",
@@ -1204,10 +1230,40 @@ export function requiredCardioSlugs(archetype: Archetype): string[] {
   for (const d of pool) {
     if (d.kind === "cardio") {
       set.add(d.movementSlug);
+      // PR W2 — preload every per-tier alternate so the catalog
+      // lookup in `actions.ts` picks them up. The tier-aware
+      // resolution happens at materialization time, but the slug
+      // pool needs to know about every potential pick upfront.
+      if (d.movementSlugByExperience) {
+        for (const alt of Object.values(d.movementSlugByExperience)) {
+          if (alt) set.add(alt);
+        }
+      }
       if (d.finisher) set.add(d.finisher.movementSlug);
     }
   }
   return Array.from(set);
+}
+
+/**
+ * PR W2 — resolve the cardio slug for the user's declared tier. When
+ * the template carries a `movementSlugByExperience` map, returns the
+ * tier-specific slug if present; otherwise falls back to the default
+ * `movementSlug`. `null` tier → default slug (legacy behaviour).
+ *
+ * Pure function (no I/O). The catalog row for the resolved slug is
+ * looked up by the caller via `movementBySlug`.
+ */
+export function resolveCardioSlugForTier(
+  day: CardioDay,
+  tier: number | null,
+): string {
+  if (tier != null && day.movementSlugByExperience) {
+    const t = tier as 0 | 1 | 2 | 3 | 4;
+    const alt = day.movementSlugByExperience[t];
+    if (alt) return alt;
+  }
+  return day.movementSlug;
 }
 
 /** Tendon movement slugs used by the archetype (fixed; not user-pickable). */
