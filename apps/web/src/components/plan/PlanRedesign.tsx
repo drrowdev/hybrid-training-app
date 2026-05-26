@@ -28,7 +28,7 @@
  */
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { DragEvent } from "react";
 import { formatPrescriptionItem } from "@/lib/planner/archetypes";
 import {
@@ -57,6 +57,8 @@ export type PlanSessionInput = {
   // Estimated duration (minutes) for the drawer meta line. Derived
   // upstream from prescription so the client doesn't have to redo it.
   estDurationMin: number | null;
+  /** Drawer notes loaded from `planned_sessions.notes` (PR Z1). */
+  notes: string | null;
 };
 
 export type PlanRedesignProps = {
@@ -77,6 +79,15 @@ export type PlanRedesignProps = {
   moveAction: (formData: FormData) => Promise<void> | void;
   skipAction: (formData: FormData) => Promise<void> | void;
   unskipAction: (formData: FormData) => Promise<void> | void;
+  /**
+   * Persist drawer notes to `planned_sessions.notes`. Wired by the
+   * server page to `updatePlannedSessionNotes`. The drawer mirrors to
+   * localStorage as a fast-paint fallback (PR Z1).
+   */
+  updateNotesAction: (
+    id: string,
+    notes: string,
+  ) => Promise<{ ok?: true; error?: string }>;
 };
 
 const DOW_FULL = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
@@ -137,6 +148,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
     moveAction,
     skipAction,
     unskipAction,
+    updateNotesAction,
   } = props;
 
   // View + filter are pure client-side transforms over the same
@@ -557,6 +569,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
           moveAction={moveAction}
           skipAction={skipAction}
           unskipAction={unskipAction}
+          updateNotesAction={updateNotesAction}
         />
       )}
 
@@ -1030,6 +1043,7 @@ function SessionDrawer({
   moveAction,
   skipAction,
   unskipAction,
+  updateNotesAction,
 }: {
   session: PlanSessionInput;
   today: string;
@@ -1039,6 +1053,10 @@ function SessionDrawer({
   moveAction: (formData: FormData) => Promise<void> | void;
   skipAction: (formData: FormData) => Promise<void> | void;
   unskipAction: (formData: FormData) => Promise<void> | void;
+  updateNotesAction: (
+    id: string,
+    notes: string,
+  ) => Promise<{ ok?: true; error?: string }>;
 }) {
   const [editing, setEditing] = useState(false);
   const [showSwap, setShowSwap] = useState(false);
@@ -1049,6 +1067,70 @@ function SessionDrawer({
   const [swapError, setSwapError] = useState<string | null>(null);
   const [swapPending, setSwapPending] = useState(false);
   const isToday = session.date === today;
+
+  // ── Drawer notes (PR Z1) ─────────────────────────────────────────
+  // Source of truth: `planned_sessions.notes` (DB). localStorage is a
+  // fast-paint fallback so cold devices don't render an empty field
+  // for the ~150ms the page takes to hydrate. On every keystroke we
+  // mirror to localStorage immediately + debounce 500 ms before
+  // calling the server action. `notesStatus` drives the autosave
+  // indicator.
+  const notesStorageKey = `plan-notes:${session.id}`;
+  const initialNotes =
+    session.notes ??
+    (typeof window !== "undefined"
+      ? window.localStorage.getItem(notesStorageKey) ?? ""
+      : "");
+  const [notesValue, setNotesValue] = useState(initialNotes);
+  const [notesStatus, setNotesStatus] = useState<"idle" | "saving" | "saved" | "error">(
+    "idle",
+  );
+  const [, startNotesTransition] = useTransition();
+  const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedNotesRef = useRef(initialNotes);
+
+  // Clear the debounce timer on unmount so a closing drawer doesn't
+  // fire a stale save against an unmounted component.
+  useEffect(() => {
+    return () => {
+      if (notesTimerRef.current) clearTimeout(notesTimerRef.current);
+    };
+  }, []);
+
+  const flushNotes = useCallback(
+    (value: string) => {
+      if (value === lastSavedNotesRef.current) {
+        setNotesStatus("idle");
+        return;
+      }
+      setNotesStatus("saving");
+      startNotesTransition(async () => {
+        const result = await updateNotesAction(session.id, value);
+        if (result?.error) {
+          setNotesStatus("error");
+          return;
+        }
+        lastSavedNotesRef.current = value;
+        setNotesStatus("saved");
+      });
+    },
+    [session.id, updateNotesAction],
+  );
+
+  const onNotesChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setNotesValue(value);
+    // Fast-paint mirror — fire-and-forget; localStorage may be blocked
+    // (private mode / quota) and that must not interfere with the
+    // server save.
+    try {
+      window.localStorage.setItem(notesStorageKey, value);
+    } catch {
+      /* ignore */
+    }
+    if (notesTimerRef.current) clearTimeout(notesTimerRef.current);
+    notesTimerRef.current = setTimeout(() => flushNotes(value), 500);
+  };
 
   const sections = useMemo(() => groupByMovementThenKind(session.items), [session.items]);
   const movementCount = sections.movements.length;
@@ -1244,18 +1326,46 @@ function SessionDrawer({
             <DrawerCardio items={sections.cardio} />
           )}
 
-          <div className="section">Notes</div>
+          <div
+            className="section"
+            style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}
+          >
+            <span>Notes</span>
+            <span
+              data-testid="plan-drawer-notes-status"
+              style={{
+                fontSize: 11,
+                color:
+                  notesStatus === "error"
+                    ? "var(--cp-danger)"
+                    : "var(--cp-text-muted)",
+                fontWeight: 500,
+              }}
+              aria-live="polite"
+            >
+              {notesStatus === "saving"
+                ? "Saving…"
+                : notesStatus === "saved"
+                  ? "Saved"
+                  : notesStatus === "error"
+                    ? "Save failed — retry"
+                    : ""}
+            </span>
+          </div>
           <textarea
             className="notes"
-            placeholder="Anything to remember about this session (local to this device)…"
+            placeholder="Anything to remember about this session…"
             data-testid="plan-drawer-notes"
-            defaultValue={typeof window !== "undefined" ? localStorage.getItem(`plan-notes:${session.id}`) ?? "" : ""}
-            onChange={(e) => {
-              try {
-                localStorage.setItem(`plan-notes:${session.id}`, e.target.value);
-              } catch {
-                /* storage full / disabled — ignore, the field still works in-memory */
+            value={notesValue}
+            onChange={onNotesChange}
+            onBlur={() => {
+              // Force-flush on blur so we don't lose a pending edit if
+              // the drawer closes inside the 500ms debounce window.
+              if (notesTimerRef.current) {
+                clearTimeout(notesTimerRef.current);
+                notesTimerRef.current = null;
               }
+              flushNotes(notesValue);
             }}
           />
         </div>

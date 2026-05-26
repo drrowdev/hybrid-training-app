@@ -10,6 +10,9 @@ import {
   unskipPlannedSession,
   createBlock,
 } from "@/lib/planner/actions";
+import { updatePlannedSessionNotes } from "@/lib/sessions/actions";
+import { updateWizardDayPref } from "@/lib/profile/actions";
+import type { WizardDayPrefValue } from "@/lib/planner/wizard/day-pref";
 import {
   ARCHETYPES,
   STRENGTH_ROLE_LABELS,
@@ -27,6 +30,7 @@ import { getCurrentWeekTissueStackGaps, type TissueStackGap } from "@/lib/stats/
 import { EndBlockForm } from "@/components/plan/EndBlockForm";
 import { PlanRedesign, type PlanSessionInput, type PlanFilter, type PlanViewMode } from "@/components/plan/PlanRedesign";
 import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner";
+import { dismissBwBanner } from "@/lib/profile/actions";
 import {
   hasLoadableMainLift,
   resolveEquipment,
@@ -78,7 +82,7 @@ export default async function PlanPage({
       supabase
         .from("profiles")
         .select(
-          "allows_two_a_days, timezone, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bodyweight_kg",
+          "allows_two_a_days, timezone, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bodyweight_kg, wizard_day_pref",
         )
         .eq("id", user.id)
         .maybeSingle(),
@@ -142,6 +146,8 @@ export default async function PlanPage({
           initialMode={firstTime ? "wizard" : "home"}
           hideBuildCta={firstTime}
           equipmentPreset={planEquipment.preset}
+          serverDayPref={(prof?.wizard_day_pref ?? null) as WizardDayPrefValue | null}
+          saveDayPrefAction={updateWizardDayPref}
         />
         {recentBlocks.length > 0 && (
           <Link
@@ -170,7 +176,7 @@ export default async function PlanPage({
     getPlannedDays(block.id, block.startedOn),
     supabase
       .from("profiles")
-      .select("timezone, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg")
+      .select("timezone, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_banner_dismissed_at")
       .eq("id", user.id)
       .maybeSingle(),
     getBlockNumberAndTotal(block.id),
@@ -216,6 +222,7 @@ export default async function PlanPage({
       slot: p.slot,
       items,
       estDurationMin: dur,
+      notes: p.notes,
     };
   });
 
@@ -236,7 +243,12 @@ export default async function PlanPage({
   return (
     <div style={{ display: "grid", gap: 24 }}>
       {tissueGaps.length > 0 && <TissueStackCard gaps={tissueGaps} />}
-      {showBodyweightBanner && <BodyweightOnlyBanner />}
+      {showBodyweightBanner && (
+        <BodyweightOnlyBanner
+          dismissedAt={profile?.bw_banner_dismissed_at ?? null}
+          dismissBwBannerAction={dismissBwBanner}
+        />
+      )}
 
       <PlanRedesign
         archetypeName={archetypeName}
@@ -254,6 +266,7 @@ export default async function PlanPage({
         moveAction={movePlannedSession}
         skipAction={skipPlannedSession}
         unskipAction={unskipPlannedSession}
+        updateNotesAction={updatePlannedSessionNotes}
       />
 
       <section

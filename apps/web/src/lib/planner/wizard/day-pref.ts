@@ -123,6 +123,29 @@ export function migrateV1IfNeeded(
   }
 }
 
+/**
+ * Parsed view of a v2 day-pref payload, used by the DB-first read path
+ * (the `profiles.wizard_day_pref` JSONB column has the same shape).
+ */
+export type WizardDayPrefValue = V2Shape;
+
+/**
+ * Read a day-pref slot from a server-supplied JSONB payload — used in
+ * the wizard's hydration path. The profile column shares the same
+ * shape as the v2 localStorage payload, so we can defer to the same
+ * shape-checker.
+ */
+export function readDayPrefFromValue(
+  value: WizardDayPrefValue | null | undefined,
+  archetypeId: string,
+  sessionCount: number,
+): DayPref | null {
+  if (!value || typeof value !== "object" || !value.byArchetype) return null;
+  const slot = value.byArchetype[archetypeId]?.[String(sessionCount)];
+  if (!slot || !isV2Slot(slot)) return null;
+  return { days: [...slot.days], twoADay: slot.twoADay };
+}
+
 /** Look up a saved day-pref for the given archetype + session-count. */
 export function readDayPref(
   storage: StorageLike,
@@ -140,23 +163,42 @@ export function readDayPref(
 
 /**
  * Persist the current day-pref under archetype + session-count. Other
- * archetype/session-count entries are preserved.
+ * archetype/session-count entries are preserved. Returns the merged
+ * payload that was written so the caller can forward it to the server
+ * action (`updateWizardDayPref`) without re-parsing storage.
  */
 export function writeDayPref(
   storage: StorageLike,
   archetypeId: string,
   sessionCount: number,
   pref: DayPref,
-): void {
+  /**
+   * Pre-existing payload from `profiles.wizard_day_pref` — when
+   * provided, the merge starts from that snapshot so the DB value
+   * wins on first write from a previously-empty device. Falls back
+   * to whatever localStorage has when omitted.
+   */
+  seed?: WizardDayPrefValue | null,
+): WizardDayPrefValue {
+  const base: V2Shape = seed
+    ? {
+        byArchetype: Object.fromEntries(
+          Object.entries(seed.byArchetype ?? {}).map(([k, v]) => [
+            k,
+            { ...v },
+          ]),
+        ),
+      }
+    : parseV2(storage.getItem(DAY_PREF_KEY_V2));
+  const countKey = String(sessionCount);
+  base.byArchetype[archetypeId] = {
+    ...(base.byArchetype[archetypeId] ?? {}),
+    [countKey]: { days: [...pref.days], twoADay: pref.twoADay },
+  };
   try {
-    const v2 = parseV2(storage.getItem(DAY_PREF_KEY_V2));
-    const countKey = String(sessionCount);
-    v2.byArchetype[archetypeId] = {
-      ...(v2.byArchetype[archetypeId] ?? {}),
-      [countKey]: { days: [...pref.days], twoADay: pref.twoADay },
-    };
-    storage.setItem(DAY_PREF_KEY_V2, JSON.stringify(v2));
+    storage.setItem(DAY_PREF_KEY_V2, JSON.stringify(base));
   } catch {
     // localStorage blocked — fine, the DB column is canonical.
   }
+  return base;
 }

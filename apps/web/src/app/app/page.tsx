@@ -19,6 +19,7 @@ import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
 import { findHeavyOnRecoveringConflictWithMuscles } from "@/lib/muscle/muscle-conflict";
 import { StravaStaleSyncTrigger } from "@/components/StravaStaleSyncTrigger";
 import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner";
+import { dismissBwBanner } from "@/lib/profile/actions";
 import { HowRecoveredCard } from "@/components/today/HowRecoveredCard";
 import { recordDailyCheckIn } from "@/lib/wellness/actions";
 import {
@@ -76,7 +77,7 @@ export default async function TodayPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "display_name, timezone, am_window_start, pm_window_start, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, time_format, date_format, show_today_recovery_card",
+      "display_name, timezone, am_window_start, pm_window_start, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, time_format, date_format, show_today_recovery_card, bw_nudge_hidden_until, bw_banner_dismissed_at",
     )
     .eq("id", userId)
     .maybeSingle();
@@ -511,7 +512,10 @@ export default async function TodayPage() {
         {taper && <TaperCard taper={taper} />}
 
         {!hasLoadableMainLift(resolveEquipment(profile)) && tmRows.length === 0 && (
-          <BodyweightOnlyBanner />
+          <BodyweightOnlyBanner
+            dismissedAt={profile?.bw_banner_dismissed_at ?? null}
+            dismissBwBannerAction={dismissBwBanner}
+          />
         )}
 
         <TmSuggestionBanner

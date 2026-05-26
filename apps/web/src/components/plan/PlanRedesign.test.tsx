@@ -40,6 +40,7 @@ function session(over: Partial<PlanSessionInput> = {}): PlanSessionInput {
     slot: "single",
     items: strengthItems(),
     estDurationMin: 55,
+    notes: null,
     ...over,
   };
 }
@@ -80,6 +81,7 @@ function render(overrides: Partial<Parameters<typeof PlanRedesign>[0]> = {}) {
     moveAction: noop,
     skipAction: noop,
     unskipAction: noop,
+    updateNotesAction: async () => ({ ok: true as const }),
     ...overrides,
   };
   return renderToStaticMarkup(<PlanRedesign {...props} />);
