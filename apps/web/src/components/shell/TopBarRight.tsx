@@ -10,14 +10,19 @@
  *      no `strava_connections` row.
  *   3. Notifications bell with unread badge + popover listing the most
  *      recent engine-override audit entries.
- *   4. User-initials avatar with a Profile / Limitations / Settings /
- *      Sign out dropdown.
+ *   4. User-initials avatar with a Profile / Limitations / Events /
+ *      Settings / Sign out dropdown.
  *
- * All visuals lean on the existing `--cp-*` CSS variable tokens so the
- * cluster picks up theme changes for free. No new npm deps.
+ * Styling: inline `style={{}}` objects + `var(--cp-*)` tokens, matching
+ * the project convention (see PlanRedesign / SettingsHubCard). A handful
+ * of rules that can't be inlined — the native `<details>` marker hide,
+ * the < 640px responsive collapse of the search label, and an override
+ * for the global `a { color: var(--cp-link) }` rule — live in
+ * `globals.css` under the `.cp-tbr-*` namespace.
  */
 
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useCommandPalette } from "@/components/cmd-k/CommandPaletteProvider";
 
@@ -82,6 +87,259 @@ function eventLabel(t: string): string {
   }
 }
 
+// Shared shapes — pulled out so the avatar / bell / search buttons share
+// the same baseline geometry and the popover items match across the
+// notifications panel and the user menu.
+const styles = {
+  root: {
+    display: "flex",
+    alignItems: "center",
+    gap: 14,
+  },
+  searchBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    height: 30,
+    padding: "0 10px",
+    borderRadius: 8,
+    border: "1px solid var(--cp-border)",
+    background: "transparent",
+    color: "var(--cp-text-muted)",
+    fontSize: 13,
+    lineHeight: 1,
+    cursor: "pointer",
+    transition: "background 0.12s, color 0.12s, border-color 0.12s",
+    font: "inherit",
+  },
+  sync: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    height: 30,
+    padding: "0 10px",
+    borderRadius: 8,
+    border: "1px solid var(--cp-border)",
+    background: "transparent",
+    color: "var(--cp-text-muted)",
+    fontSize: 13,
+    lineHeight: 1,
+  },
+  kbd: {
+    fontFamily: "var(--font-mono, Consolas, monospace)",
+    fontSize: 10,
+    padding: "2px 5px",
+    background: "var(--cp-surface-soft)",
+    borderRadius: 4,
+    border: "1px solid var(--cp-border)",
+    color: "var(--cp-text-muted)",
+    letterSpacing: "0.02em",
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: "50%",
+    display: "inline-block",
+  },
+  syncLabel: { fontWeight: 500 },
+  popWrap: { position: "relative" },
+  summary: { listStyle: "none", cursor: "pointer" },
+  bell: {
+    position: "relative",
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 16,
+    color: "var(--cp-text)",
+    background: "transparent",
+    border: "1px solid transparent",
+    transition: "background 0.12s, border-color 0.12s",
+  },
+  badge: {
+    position: "absolute",
+    top: -2,
+    right: -2,
+    minWidth: 16,
+    height: 16,
+    padding: "0 4px",
+    borderRadius: 999,
+    background: "#d33",
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: 700,
+    lineHeight: "16px",
+    textAlign: "center",
+    boxShadow: "0 0 0 2px var(--cp-bg-elevated)",
+  },
+  avatar: {
+    width: 32,
+    height: 32,
+    borderRadius: "50%",
+    background: "var(--cp-accent-soft)",
+    color: "var(--cp-accent)",
+    fontSize: 12,
+    fontWeight: 700,
+    letterSpacing: "0.02em",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "1px solid var(--cp-border)",
+    listStyle: "none",
+    cursor: "pointer",
+  },
+  popPanel: {
+    position: "absolute",
+    top: "calc(100% + 8px)",
+    right: 0,
+    minWidth: 260,
+    maxWidth: 320,
+    background: "var(--cp-bg-elevated)",
+    border: "1px solid var(--cp-border)",
+    borderRadius: 12,
+    boxShadow: "var(--cp-shadow)",
+    padding: 8,
+    zIndex: 50,
+  },
+  popPanelUser: {
+    minWidth: 220,
+    maxWidth: 320,
+  },
+  popHead: {
+    fontSize: 11,
+    fontWeight: 600,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    color: "var(--cp-text-muted)",
+    padding: "6px 8px",
+  },
+  popEmpty: {
+    padding: "14px 8px",
+    fontSize: 13,
+    color: "var(--cp-text-muted)",
+    textAlign: "center",
+  },
+  popList: {
+    listStyle: "none",
+    padding: 0,
+    margin: 0,
+  },
+  popItem: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    padding: "8px 10px",
+    fontSize: 13,
+    color: "var(--cp-text)",
+    textDecoration: "none",
+    borderRadius: 8,
+    background: "transparent",
+    border: "none",
+    width: "100%",
+    textAlign: "left",
+    cursor: "pointer",
+    font: "inherit",
+  },
+  popItemTitle: { fontSize: 13 },
+  popItemWhen: { fontSize: 11, color: "var(--cp-text-muted)" },
+  popMark: {
+    marginTop: 4,
+    width: "100%",
+    background: "transparent",
+    border: "none",
+    padding: 8,
+    fontSize: 12,
+    color: "var(--cp-accent)",
+    cursor: "pointer",
+    borderTop: "1px solid var(--cp-border)",
+    borderRadius: "0 0 12px 12px",
+  },
+  userHead: {
+    padding: "6px 8px 8px",
+    borderBottom: "1px solid var(--cp-border)",
+    marginBottom: 4,
+  },
+  userName: { fontSize: 13, fontWeight: 600 },
+  userMail: {
+    fontSize: 10,
+    color: "var(--cp-text-muted)",
+    marginTop: 2,
+    wordBreak: "break-all",
+  },
+} satisfies Record<string, CSSProperties>;
+
+// Hover affordances — inline styles can't express :hover, so we
+// flip a tiny piece of local state on enter/leave and merge an
+// override style. Mirrors how PlanRedesign / SettingsHubCard do it.
+function useHover(): readonly [
+  boolean,
+  { onMouseEnter: () => void; onMouseLeave: () => void },
+] {
+  const [hover, setHover] = useState(false);
+  return [
+    hover,
+    {
+      onMouseEnter: () => setHover(true),
+      onMouseLeave: () => setHover(false),
+    },
+  ] as const;
+}
+
+function PopItemLink({
+  href,
+  testId,
+  children,
+}: {
+  href: string;
+  testId?: string;
+  children: React.ReactNode;
+}) {
+  const [hover, hoverProps] = useHover();
+  return (
+    <Link
+      href={href}
+      role="menuitem"
+      data-testid={testId}
+      className="cp-tbr-pop-item"
+      style={{
+        ...styles.popItem,
+        background: hover ? "var(--cp-surface-soft)" : "transparent",
+      }}
+      {...hoverProps}
+    >
+      {children}
+    </Link>
+  );
+}
+
+function AuditItemLink({
+  href,
+  body,
+  when,
+}: {
+  href: string;
+  body: string;
+  when: string;
+}) {
+  const [hover, hoverProps] = useHover();
+  return (
+    <Link
+      href={href}
+      className="cp-tbr-pop-item"
+      style={{
+        ...styles.popItem,
+        background: hover ? "var(--cp-surface-soft)" : "transparent",
+      }}
+      {...hoverProps}
+    >
+      <span style={styles.popItemTitle}>{body}</span>
+      <span style={styles.popItemWhen}>{when}</span>
+    </Link>
+  );
+}
+
 export function TopBarRight({
   signOutAction,
   displayName,
@@ -140,8 +398,15 @@ export function TopBarRight({
 
   const initials = initialsFrom(displayName, email);
 
+  // Local hover state for the discrete top-bar controls.
+  const [searchHover, searchHoverProps] = useHover();
+  const [bellHover, bellHoverProps] = useHover();
+  const [avatarHover, avatarHoverProps] = useHover();
+  const [markHover, markHoverProps] = useHover();
+  const [signOutHover, signOutHoverProps] = useHover();
+
   return (
-    <div className="cp-topbar-right">
+    <div className="cp-topbar-right" style={styles.root}>
       {/* 1. Search button — magnifier + label + kbd chip */}
       <button
         type="button"
@@ -150,6 +415,14 @@ export function TopBarRight({
         onClick={() => palette.open()}
         aria-label="Open quick-jump palette"
         title="Open quick-jump palette"
+        style={{
+          ...styles.searchBtn,
+          color: searchHover ? "var(--cp-text)" : "var(--cp-text-muted)",
+          borderColor: searchHover
+            ? "var(--cp-border-strong, var(--cp-text-muted))"
+            : "var(--cp-border)",
+        }}
+        {...searchHoverProps}
       >
         <svg
           aria-hidden
@@ -165,8 +438,12 @@ export function TopBarRight({
           <circle cx="11" cy="11" r="7" />
           <path d="m21 21-4.3-4.3" />
         </svg>
-        <span className="cp-tbr-search-label">Search</span>
-        <kbd className="cp-tbr-kbd">{isMac ? "⌘K" : "Ctrl K"}</kbd>
+        <span className="cp-tbr-search-label" style={{ fontSize: 13 }}>
+          Search
+        </span>
+        <kbd className="cp-tbr-kbd" style={styles.kbd}>
+          {isMac ? "⌘K" : "Ctrl K"}
+        </kbd>
       </button>
 
       {/* 2. Sync indicator */}
@@ -180,41 +457,52 @@ export function TopBarRight({
               ? `Last sync ${formatRelative(lastSyncedAt)}`
               : "Never synced"
           }
+          style={styles.sync}
         >
           <span
             aria-hidden
-            className="cp-tbr-dot"
-            style={{ background: syncDotColor }}
+            style={{ ...styles.dot, background: syncDotColor }}
           />
-          <span className="cp-tbr-sync-label">{syncLabel}</span>
+          <span style={styles.syncLabel}>{syncLabel}</span>
         </div>
       )}
 
       {/* 3. Notifications bell */}
-      <details className="cp-tbr-pop" data-testid="topbar-bell-wrap">
+      <details
+        className="cp-tbr-pop"
+        data-testid="topbar-bell-wrap"
+        style={styles.popWrap}
+      >
         <summary
           className="cp-tbr-bell"
           aria-label={`Notifications${unread > 0 ? ` (${unread} unread)` : ""}`}
           data-testid="topbar-bell"
+          style={{
+            ...styles.summary,
+            ...styles.bell,
+            background: bellHover ? "var(--cp-surface-soft)" : "transparent",
+            borderColor: bellHover ? "var(--cp-border)" : "transparent",
+          }}
+          {...bellHoverProps}
         >
           <span aria-hidden>🔔</span>
           {unread > 0 && (
-            <span className="cp-tbr-badge" data-testid="topbar-bell-badge">
+            <span data-testid="topbar-bell-badge" style={styles.badge}>
               {unread > 99 ? "99+" : unread}
             </span>
           )}
         </summary>
         <div
-          className="cp-tbr-pop-panel"
           role="dialog"
           aria-label="Recent notifications"
           data-testid="topbar-bell-panel"
+          style={styles.popPanel}
         >
-          <div className="cp-tbr-pop-head">Recent activity</div>
+          <div style={styles.popHead}>Recent activity</div>
           {recentAudit.length === 0 ? (
-            <div className="cp-tbr-pop-empty">No notifications</div>
+            <div style={styles.popEmpty}>No notifications</div>
           ) : (
-            <ul className="cp-tbr-pop-list">
+            <ul style={styles.popList}>
               {recentAudit.map((entry) => {
                 const label = eventLabel(entry.eventType);
                 const when = formatRelative(entry.occurredAt);
@@ -222,21 +510,19 @@ export function TopBarRight({
                 if (entry.plannedSessionId) {
                   return (
                     <li key={entry.id}>
-                      <Link
+                      <AuditItemLink
                         href={`/app/sessions/start/${entry.plannedSessionId}`}
-                        className="cp-tbr-pop-item"
-                      >
-                        <span className="cp-tbr-pop-item-title">{body}</span>
-                        <span className="cp-tbr-pop-item-when">{when}</span>
-                      </Link>
+                        body={body}
+                        when={when}
+                      />
                     </li>
                   );
                 }
                 return (
                   <li key={entry.id}>
-                    <div className="cp-tbr-pop-item">
-                      <span className="cp-tbr-pop-item-title">{body}</span>
-                      <span className="cp-tbr-pop-item-when">{when}</span>
+                    <div style={styles.popItem}>
+                      <span style={styles.popItemTitle}>{body}</span>
+                      <span style={styles.popItemWhen}>{when}</span>
                     </div>
                   </li>
                 );
@@ -245,9 +531,13 @@ export function TopBarRight({
           )}
           <button
             type="button"
-            className="cp-tbr-pop-mark"
             data-testid="topbar-bell-mark-read"
             onClick={() => setUnread(0)}
+            style={{
+              ...styles.popMark,
+              background: markHover ? "var(--cp-surface-soft)" : "transparent",
+            }}
+            {...markHoverProps}
           >
             Mark all read
           </button>
@@ -255,288 +545,85 @@ export function TopBarRight({
       </details>
 
       {/* 4. User-initials avatar + dropdown */}
-      <details className="cp-tbr-pop cp-tbr-user" data-testid="topbar-user-wrap">
+      <details
+        className="cp-tbr-pop cp-tbr-user"
+        data-testid="topbar-user-wrap"
+        style={styles.popWrap}
+      >
         <summary
           className="cp-tbr-avatar"
           aria-label="Account menu"
           data-testid="topbar-avatar"
+          style={{
+            ...styles.summary,
+            ...styles.avatar,
+            filter: avatarHover ? "brightness(1.05)" : undefined,
+          }}
+          {...avatarHoverProps}
         >
           {initials}
         </summary>
         <div
-          className="cp-tbr-pop-panel cp-tbr-pop-panel--user"
           role="menu"
           data-testid="topbar-user-menu"
+          style={{ ...styles.popPanel, ...styles.popPanelUser }}
         >
           {(displayName || email) && (
-            <div className="cp-tbr-user-head">
-              {displayName && <div className="cp-tbr-user-name">{displayName}</div>}
-              {email && <div className="cp-tbr-user-mail mono">{email}</div>}
+            <div style={styles.userHead}>
+              {displayName && (
+                <div style={styles.userName}>{displayName}</div>
+              )}
+              {email && (
+                <div className="mono" style={styles.userMail}>
+                  {email}
+                </div>
+              )}
             </div>
           )}
-          <Link
+          <PopItemLink
             href="/app/profile"
-            className="cp-tbr-pop-item"
-            role="menuitem"
-            data-testid="topbar-user-profile"
+            testId="topbar-user-profile"
           >
             Profile
-          </Link>
-          <Link
+          </PopItemLink>
+          <PopItemLink
             href="/app/recovery/injuries"
-            className="cp-tbr-pop-item"
-            role="menuitem"
-            data-testid="topbar-user-limitations"
+            testId="topbar-user-limitations"
           >
             Limitations
-          </Link>
-          <Link
+          </PopItemLink>
+          <PopItemLink
             href="/app/races"
-            className="cp-tbr-pop-item"
-            role="menuitem"
-            data-testid="topbar-user-events"
+            testId="topbar-user-events"
           >
             Events
-          </Link>
-          <Link
+          </PopItemLink>
+          <PopItemLink
             href="/app/settings"
-            className="cp-tbr-pop-item"
-            role="menuitem"
-            data-testid="topbar-user-settings"
+            testId="topbar-user-settings"
           >
             Settings
-          </Link>
+          </PopItemLink>
           <form action={signOutAction}>
             <button
               type="submit"
               data-testid="topbar-sign-out-button"
               role="menuitem"
-              className="cp-tbr-pop-item cp-tbr-pop-item--btn"
+              className="cp-tbr-pop-item"
+              style={{
+                ...styles.popItem,
+                color: "var(--cp-text)",
+                background: signOutHover
+                  ? "var(--cp-surface-soft)"
+                  : "transparent",
+              }}
+              {...signOutHoverProps}
             >
               Sign out
             </button>
           </form>
         </div>
       </details>
-
-      <style jsx>{`
-        .cp-topbar-right {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-        }
-        .cp-tbr-search,
-        .cp-tbr-sync {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          height: 30px;
-          padding: 0 10px;
-          border-radius: 8px;
-          border: 1px solid var(--cp-border);
-          background: transparent;
-          color: var(--cp-text-muted);
-          font-size: 13px;
-          line-height: 1;
-        }
-        .cp-tbr-search {
-          cursor: pointer;
-          transition: background 0.12s, color 0.12s, border-color 0.12s;
-          font: inherit;
-        }
-        .cp-tbr-search:hover {
-          color: var(--cp-text);
-          border-color: var(--cp-border-strong, var(--cp-text-muted));
-        }
-        .cp-tbr-search-label {
-          font-size: 13px;
-        }
-        .cp-tbr-kbd {
-          font-family: var(--font-mono, Consolas, monospace);
-          font-size: 10px;
-          padding: 2px 5px;
-          background: var(--cp-surface-soft);
-          border-radius: 4px;
-          border: 1px solid var(--cp-border);
-          color: var(--cp-text-muted);
-          letter-spacing: 0.02em;
-        }
-        .cp-tbr-dot {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          display: inline-block;
-        }
-        .cp-tbr-sync-label {
-          font-weight: 500;
-        }
-
-        /* Bell + avatar share the <details>/<summary> popover pattern. */
-        .cp-tbr-pop {
-          position: relative;
-        }
-        .cp-tbr-pop > summary {
-          list-style: none;
-          cursor: pointer;
-        }
-        .cp-tbr-pop > summary::-webkit-details-marker {
-          display: none;
-        }
-        .cp-tbr-bell {
-          position: relative;
-          width: 32px;
-          height: 32px;
-          border-radius: 8px;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 16px;
-          color: var(--cp-text);
-          background: transparent;
-          border: 1px solid transparent;
-          transition: background 0.12s, border-color 0.12s;
-        }
-        .cp-tbr-bell:hover {
-          background: var(--cp-surface-soft);
-          border-color: var(--cp-border);
-        }
-        .cp-tbr-badge {
-          position: absolute;
-          top: -2px;
-          right: -2px;
-          min-width: 16px;
-          height: 16px;
-          padding: 0 4px;
-          border-radius: 999px;
-          background: #d33;
-          color: #fff;
-          font-size: 10px;
-          font-weight: 700;
-          line-height: 16px;
-          text-align: center;
-          box-shadow: 0 0 0 2px var(--cp-bg-elevated);
-        }
-        .cp-tbr-avatar {
-          width: 32px;
-          height: 32px;
-          border-radius: 50%;
-          background: var(--cp-accent-soft);
-          color: var(--cp-accent);
-          font-size: 12px;
-          font-weight: 700;
-          letter-spacing: 0.02em;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          border: 1px solid var(--cp-border);
-        }
-        .cp-tbr-avatar:hover {
-          filter: brightness(1.05);
-        }
-
-        .cp-tbr-pop-panel {
-          position: absolute;
-          top: calc(100% + 8px);
-          right: 0;
-          min-width: 260px;
-          max-width: 320px;
-          background: var(--cp-bg-elevated);
-          border: 1px solid var(--cp-border);
-          border-radius: 12px;
-          box-shadow: var(--cp-shadow);
-          padding: 8px;
-          z-index: 50;
-        }
-        .cp-tbr-pop-panel--user {
-          min-width: 220px;
-        }
-        .cp-tbr-pop-head {
-          font-size: 11px;
-          font-weight: 600;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-          color: var(--cp-text-muted);
-          padding: 6px 8px;
-        }
-        .cp-tbr-pop-empty {
-          padding: 14px 8px;
-          font-size: 13px;
-          color: var(--cp-text-muted);
-          text-align: center;
-        }
-        .cp-tbr-pop-list {
-          list-style: none;
-          padding: 0;
-          margin: 0;
-        }
-        .cp-tbr-pop-item {
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-          padding: 8px 10px;
-          font-size: 13px;
-          color: var(--cp-text);
-          text-decoration: none;
-          border-radius: 8px;
-          background: transparent;
-          border: none;
-          width: 100%;
-          text-align: left;
-          cursor: pointer;
-          font: inherit;
-        }
-        .cp-tbr-pop-item:hover {
-          background: var(--cp-surface-soft);
-        }
-        .cp-tbr-pop-item--btn {
-          color: var(--cp-text);
-        }
-        .cp-tbr-pop-item-title {
-          font-size: 13px;
-        }
-        .cp-tbr-pop-item-when {
-          font-size: 11px;
-          color: var(--cp-text-muted);
-        }
-        .cp-tbr-pop-mark {
-          margin-top: 4px;
-          width: 100%;
-          background: transparent;
-          border: none;
-          padding: 8px;
-          font-size: 12px;
-          color: var(--cp-accent);
-          cursor: pointer;
-          border-top: 1px solid var(--cp-border);
-          border-radius: 0 0 12px 12px;
-        }
-        .cp-tbr-pop-mark:hover {
-          background: var(--cp-surface-soft);
-        }
-        .cp-tbr-user-head {
-          padding: 6px 8px 8px;
-          border-bottom: 1px solid var(--cp-border);
-          margin-bottom: 4px;
-        }
-        .cp-tbr-user-name {
-          font-size: 13px;
-          font-weight: 600;
-        }
-        .cp-tbr-user-mail {
-          font-size: 10px;
-          color: var(--cp-text-muted);
-          margin-top: 2px;
-          word-break: break-all;
-        }
-
-        /* Responsive: collapse the Search label < 640px, keep the icon. */
-        @media (max-width: 639px) {
-          .cp-tbr-search-label,
-          .cp-tbr-kbd {
-            display: none;
-          }
-        }
-      `}</style>
     </div>
   );
 }
