@@ -127,6 +127,18 @@ export const movements = pgTable(
     /** Pull-ups, dips, etc. can be loaded with a belt. */
     bodyWeightLoaded: boolean("body_weight_loaded").default(false).notNull(),
     /**
+     * PR W2 — experience-tier band. Ordinal 0..4 maps to the declared
+     * `training_experience` enum (see `experience-tier.ts`). Movements
+     * with `experience_min > user.tier` or `experience_max < user.tier`
+     * are filtered out of every selection surface (accessory picker,
+     * main-lift resolver, power potentiation, cardio).
+     *
+     * Defaults `(0, 4)` mean "universally applicable" — the value the
+     * seed reverts to when curation is silent.
+     */
+    experienceMin: smallint("experience_min").default(0).notNull(),
+    experienceMax: smallint("experience_max").default(4).notNull(),
+    /**
      * Engine-relevant tags that haven't (yet) earned a column:
      *   eccentric_cost, cns_cost, stim_fatigue_ratio, rom_profile,
      *   tempo_suggested, default_rep_range, default_rpe_cap, variants, notes.
