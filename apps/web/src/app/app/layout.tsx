@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { signOut } from "@/lib/auth/actions";
+import { markAuditRead } from "@/lib/profile/actions";
 import { AppShell, type TopBarAuditEntry } from "@/components/shell/AppShell";
 import { PullToRefresh } from "@/components/shell/PullToRefresh";
 import { CommandPaletteProvider } from "@/components/cmd-k/CommandPaletteProvider";
@@ -21,7 +22,7 @@ export default async function AppLayout({
   const [{ data: profile }, { count: tmCount }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("display_name, onboarded_at")
+      .select("display_name, onboarded_at, audit_last_read_at")
       .eq("id", user.id)
       .maybeSingle(),
     supabase
@@ -46,9 +47,23 @@ export default async function AppLayout({
   // the client filters in-memory without a per-keystroke round trip.
   const paletteIndices = await loadPaletteIndices(supabase, user.id);
 
+  // PR Z1 — `audit_last_read_at` is the high-water mark from the
+  // TopBar bell's "mark all read" click. The unread count only
+  // includes rows newer than that timestamp; NULL = count everything
+  // (matches pre-0055 behaviour).
+  const auditLastReadAt = profile?.audit_last_read_at ?? null;
+
   // Top-bar status cluster — read sync state + recent overrides in
   // parallel. Both are best-effort: any failure leaves the cluster in
   // its empty-state so a missing/borked row never blocks the layout.
+  const auditCountQuery = supabase
+    .from("engine_override_events")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id);
+  const auditCountQueryFiltered = auditLastReadAt
+    ? auditCountQuery.gt("occurred_at", auditLastReadAt)
+    : auditCountQuery;
+
   const [stravaRes, auditRes, auditCountRes] = await Promise.all([
     supabase
       .from("strava_connections")
@@ -61,10 +76,7 @@ export default async function AppLayout({
       .eq("user_id", user.id)
       .order("occurred_at", { ascending: false })
       .limit(5),
-    supabase
-      .from("engine_override_events")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", user.id),
+    auditCountQueryFiltered,
   ]);
 
   const hasStravaConnection = !!stravaRes.data;
@@ -90,6 +102,7 @@ export default async function AppLayout({
         lastSyncedAt={lastSyncedAt}
         recentAudit={recentAudit}
         auditCount={auditCount}
+        markAuditReadAction={markAuditRead}
         buildSha={process.env.NEXT_PUBLIC_BUILD_SHA ?? "dev"}
       >
         {children}

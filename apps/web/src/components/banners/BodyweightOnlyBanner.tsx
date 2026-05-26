@@ -6,9 +6,13 @@
  *
  * Surfaced on /app (Today) and /app/plan above the hero / block summary
  * so the user understands why they're seeing accessory-only sessions
- * with no %TM main lift. Dismissable per-user via localStorage — the
- * banner is transient UI state, not a DB-backed flag, so there's no
- * migration or server round-trip when the user hides it.
+ * with no %TM main lift.
+ *
+ * Cross-device sync (PR Z1): the dismiss timestamp lives on
+ * `profiles.bw_banner_dismissed_at` (migration 0055). The server
+ * passes `dismissedAt` as a prop; the client also mirrors to
+ * localStorage as a fast-paint fallback to keep the existing
+ * one-frame-after-hydrate dismissed behaviour.
  *
  * Brand purity: no external programme names, no methodology hooks —
  * the copy describes the gap in our own engine and what's on the
@@ -19,10 +23,28 @@ import Link from "next/link";
 
 const DISMISS_KEY = "cp-bw-banner-dismissed-v1";
 
-export function BodyweightOnlyBanner() {
-  const [dismissed, setDismissed] = useState<boolean | null>(null);
+export type DismissBwBannerAction = () => Promise<
+  { ok: true } | { ok: false; error: string }
+>;
+
+export function BodyweightOnlyBanner({
+  dismissedAt = null,
+  dismissBwBannerAction,
+}: {
+  /** ISO timestamp from `profiles.bw_banner_dismissed_at`. Non-null = hide. */
+  dismissedAt?: string | null;
+  /** Server action that persists the dismissal across devices. */
+  dismissBwBannerAction?: DismissBwBannerAction;
+} = {}) {
+  const [dismissed, setDismissed] = useState<boolean | null>(
+    dismissedAt != null ? true : null,
+  );
 
   useEffect(() => {
+    if (dismissedAt != null) {
+      // Server already says dismissed — skip the localStorage probe.
+      return;
+    }
     // Defer the read+setState into a microtask so we don't trigger a
     // cascading synchronous render from inside the effect body
     // (react-hooks/set-state-in-effect).
@@ -38,7 +60,7 @@ export function BodyweightOnlyBanner() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [dismissedAt]);
 
   if (dismissed !== false) return null;
 
@@ -50,6 +72,12 @@ export function BodyweightOnlyBanner() {
       // the banner; better than crashing the page.
     }
     setDismissed(true);
+    if (dismissBwBannerAction) {
+      // Fire-and-forget: the banner is already hidden, and the
+      // localStorage write covers the current device. Cross-device
+      // propagation is a soft guarantee.
+      void dismissBwBannerAction();
+    }
   };
 
   return (

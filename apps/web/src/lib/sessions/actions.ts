@@ -807,10 +807,48 @@ export async function updateSessionNotes(
   return { ok: true };
 }
 
-const stravaAutofillSchema = z.object({
-  sessionId: z.string().uuid(),
-  cardioLogId: z.string().uuid(),
+const updatePlannedNotesSchema = z.object({
+  id: z.string().uuid(),
+  notes: z.string().max(2000),
 });
+
+/**
+ * Cross-device sync (PR Z1) — persist the plan-drawer notes the user
+ * types about a *planned* (not yet completed) session. Previously
+ * stored only in `localStorage` under `plan-notes:<id>` and therefore
+ * invisible on every other device. See `hybrid-sync-audit.md` §3a +
+ * migration 0055.
+ *
+ * No `revalidatePath` — the drawer is a client component that already
+ * reflects the in-memory draft; revalidating would discard pending
+ * edits on neighbouring drawers. The next full page load reads the
+ * fresh DB value via `getPlannedDays`.
+ */
+export async function updatePlannedSessionNotes(
+  id: string,
+  notes: string,
+): Promise<{ ok?: true; error?: string }> {
+  const parsed = updatePlannedNotesSchema.safeParse({ id, notes });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) return { error: "Not signed in." };
+
+  const supabase = await createClient();
+  const trimmed = parsed.data.notes.trim();
+  const { error } = await supabase
+    .from("planned_sessions")
+    .update({ notes: trimmed === "" ? null : trimmed })
+    .eq("id", parsed.data.id)
+    .eq("user_id", user.id);
+  if (error) return { error: error.message };
+
+  return { ok: true };
+}
 
 /**
  * Phase 2 C2 — apply Strava autofill.
@@ -824,6 +862,11 @@ const stravaAutofillSchema = z.object({
  * still see the Strava attribution. The original Strava-imported session
  * remains untouched; deduping it is a Phase 3 follow-up.
  */
+const stravaAutofillSchema = z.object({
+  sessionId: z.string().uuid(),
+  cardioLogId: z.string().uuid(),
+});
+
 export async function applyStravaAutofill(
   formData: FormData,
 ): Promise<{ ok?: true; error?: string; cardioLogId?: string }> {

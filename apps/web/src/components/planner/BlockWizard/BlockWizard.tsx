@@ -47,7 +47,9 @@ import {
 import {
   migrateV1IfNeeded,
   readDayPref,
+  readDayPrefFromValue,
   writeDayPref,
+  type WizardDayPrefValue,
 } from "@/lib/planner/wizard/day-pref";
 import { Step1Days } from "./Step1Days";
 import { Step2Focus } from "./Step2Focus";
@@ -126,6 +128,20 @@ export type BlockWizardProps = {
    * copy used historically by the wizard).
    */
   equipmentPreset?: EquipmentPreset | null;
+  /**
+   * Cross-device day-pref payload from `profiles.wizard_day_pref` (PR Z1).
+   * Primary source on hydration; localStorage is consulted only when this
+   * is null (legacy / never-saved-from-this-account).
+   */
+  serverDayPref?: WizardDayPrefValue | null;
+  /**
+   * Server action that persists the merged day-pref payload after every
+   * wizard save. The component still mirrors to localStorage for fast
+   * paint on the next visit.
+   */
+  saveDayPrefAction?: (
+    pref: WizardDayPrefValue,
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
 };
 
 export function BlockWizard({
@@ -134,6 +150,8 @@ export function BlockWizard({
   allowsTwoADays,
   prefill,
   equipmentPreset = null,
+  serverDayPref = null,
+  saveDayPrefAction,
 }: BlockWizardProps): React.ReactElement {
   const [state, dispatch] = useReducer(
     wizardReducer,
@@ -159,8 +177,15 @@ export function BlockWizard({
     const sessionCount = prefill.dayIndexOverrides.twoADay
       ? prefill.daysPerWeek * 2
       : prefill.daysPerWeek;
-    writeDayPref(window.localStorage, archetypeId, sessionCount, prefill.dayIndexOverrides);
-  }, [prefill]);
+    const merged = writeDayPref(
+      window.localStorage,
+      archetypeId,
+      sessionCount,
+      prefill.dayIndexOverrides,
+      serverDayPref,
+    );
+    if (saveDayPrefAction) void saveDayPrefAction(merged);
+  }, [prefill, serverDayPref, saveDayPrefAction]);
 
   // ── Resolved archetype (memoised — single canonical reducer) ──
   const resolved = useMemo<ResolvedArchetype | null>(
@@ -198,10 +223,14 @@ export function BlockWizard({
     if (storage) {
       migrateV1IfNeeded(storage, resolved.id, sessionCount);
     }
-    const pref = storage ? readDayPref(storage, resolved.id, sessionCount) : null;
+    // PR Z1 — DB-first read: prefer the server payload when present;
+    // fall back to localStorage for legacy / never-saved accounts.
+    const pref =
+      readDayPrefFromValue(serverDayPref, resolved.id, sessionCount) ??
+      (storage ? readDayPref(storage, resolved.id, sessionCount) : null);
     const used = applySavedPrefIfPossible(cells, pref, state.twoADay);
     dispatch({ type: "set-schedule", schedule: cells, sig, usingSavedPref: used });
-  }, [state.step, state.scheduleSig, state.goal, state.secondary, state.twoADay, state.power, resolved]);
+  }, [state.step, state.scheduleSig, state.goal, state.secondary, state.twoADay, state.power, resolved, serverDayPref]);
 
   const tmGate: TmGate | null = resolved ? tmReadinessByArchetype[resolved.id] ?? null : null;
 
@@ -241,7 +270,14 @@ export function BlockWizard({
         (n, c) => n + (c.am ? 1 : 0) + (c.pm ? 1 : 0),
         0,
       );
-      writeDayPref(window.localStorage, resolved.id, sessionCount, dayIndexOverrides);
+      const merged = writeDayPref(
+        window.localStorage,
+        resolved.id,
+        sessionCount,
+        dayIndexOverrides,
+        serverDayPref,
+      );
+      if (saveDayPrefAction) void saveDayPrefAction(merged);
     }
     startTransition(async () => {
       const result = await onComplete({
