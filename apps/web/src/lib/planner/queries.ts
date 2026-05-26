@@ -294,7 +294,7 @@ export async function getRecentBlocks(limit = 3): Promise<RecentBlock[]> {
         daysPerWeek,
         status: d.status as "active" | "completed" | "archived",
         dayIndexOverrides:
-          (d.day_index_overrides as { days: number[]; twoADay: boolean } | null) ?? null,
+          (d.day_index_overrides as RecentBlock["dayIndexOverrides"]) ?? null,
       };
     }),
   );
@@ -387,7 +387,7 @@ export async function getAllBlocksWithCompletionStats(
         daysPerWeek,
         status: d.status as "active" | "completed" | "archived",
         dayIndexOverrides:
-          (d.day_index_overrides as { days: number[]; twoADay: boolean } | null) ?? null,
+          (d.day_index_overrides as RecentBlock["dayIndexOverrides"]) ?? null,
         totalSessions,
         loggedSessions,
         skippedSessions,
