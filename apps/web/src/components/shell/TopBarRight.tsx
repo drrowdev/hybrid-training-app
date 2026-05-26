@@ -10,8 +10,9 @@
  *      no `strava_connections` row.
  *   3. Notifications bell with unread badge + popover listing the most
  *      recent engine-override audit entries.
- *   4. User-initials avatar with a Profile / Limitations / Events /
- *      Settings / Sign out dropdown.
+ *   4. User-initials avatar with a Settings / Account & data / Sign out
+ *      dropdown. (Profile / Limitations / Events live under the
+ *      settings hub now — one click from Settings.)
  *
  * Styling: inline `style={{}}` objects + `var(--cp-*)` tokens, matching
  * the project convention (see PlanRedesign / SettingsHubCard). A handful
@@ -581,28 +582,16 @@ export function TopBarRight({
             </div>
           )}
           <PopItemLink
-            href="/app/profile"
-            testId="topbar-user-profile"
-          >
-            Profile
-          </PopItemLink>
-          <PopItemLink
-            href="/app/recovery/injuries"
-            testId="topbar-user-limitations"
-          >
-            Limitations
-          </PopItemLink>
-          <PopItemLink
-            href="/app/races"
-            testId="topbar-user-events"
-          >
-            Events
-          </PopItemLink>
-          <PopItemLink
             href="/app/settings"
             testId="topbar-user-settings"
           >
             Settings
+          </PopItemLink>
+          <PopItemLink
+            href="/app/settings/account"
+            testId="topbar-user-account"
+          >
+            Account &amp; data
           </PopItemLink>
           <form action={signOutAction}>
             <button
