@@ -145,16 +145,220 @@ export default async function TodayPage() {
         .map((r) => r.derivedFromSessionId!),
     ),
   );
-  const sessionPerformedAt = new Map<string, string>();
-  if (derivedSessionIds.length > 0) {
-    const { data: derivedSessions } = await supabase
-      .from("sessions")
-      .select("id, performed_at")
-      .in("id", derivedSessionIds);
-    for (const s of derivedSessions ?? []) {
-      sessionPerformedAt.set(s.id, s.performed_at);
-    }
-  }
+
+  // Audit F16 fix — the seven blocks that follow used to await one
+  // after another (~6 stages, dominating the 2s TTFB). They are
+  // mutually independent given the inputs already resolved by the
+  // first Promise.all above, so resolve them in one outer Promise.all
+  // of async IIFEs. The post-fetch in-memory work (tm-meta assembly,
+  // conflict computation, week-strip bucketing) still runs serially
+  // after the Promise.all since it consumes results from multiple
+  // groups.
+  const plannedMovementIds = Array.from(
+    new Set(plannedToday.flatMap((p) => p.prescription.items.map((i) => i.movementId))),
+  );
+  const monday = mondayOfYmd(todayIso);
+  const sunday = addDaysToYmd(monday, 6);
+  const todayDow = isoWeekdayYmd(todayIso); // 0=Mon..6=Sun
+
+  const [
+    sessionPerformedAt,
+    pendingSuggestions,
+    stravaConn,
+    nextEvent,
+    { movementRegionById, movementSlugById },
+    muscleFreshnessRows,
+    { weekSessions, weekCardioRows, weekPlannedRows },
+  ] = await Promise.all([
+    // Group A — derived-session timestamps used by the TM hero topline
+    // annotation. Depends on tmRows (already resolved).
+    (async (): Promise<Map<string, string>> => {
+      const map = new Map<string, string>();
+      if (derivedSessionIds.length === 0) return map;
+      const { data: derivedSessions } = await supabase
+        .from("sessions")
+        .select("id, performed_at")
+        .in("id", derivedSessionIds);
+      for (const s of derivedSessions ?? []) {
+        map.set(s.id, s.performed_at);
+      }
+      return map;
+    })(),
+
+    // Group B — pending TM suggestions + their joined source set /
+    // session / movement rows. The inner Promise.all stays inside
+    // the IIFE because it depends on the suggestion list.
+    (async (): Promise<TmSuggestionView[]> => {
+      const { data: pendingSuggestionsRaw } = await supabase
+        .from("tm_suggestions")
+        .select(
+          "id, movement_id, current_tm_kg, suggested_tm_kg, derived_formula, derived_from_set_log_id, derived_from_session_id, created_at",
+        )
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+      if (!pendingSuggestionsRaw || pendingSuggestionsRaw.length === 0) return [];
+      const movIds = Array.from(new Set(pendingSuggestionsRaw.map((s) => s.movement_id)));
+      const setIds = Array.from(
+        new Set(
+          pendingSuggestionsRaw
+            .map((s) => s.derived_from_set_log_id)
+            .filter((id): id is string => !!id),
+        ),
+      );
+      const sessIds = Array.from(
+        new Set(
+          pendingSuggestionsRaw
+            .map((s) => s.derived_from_session_id)
+            .filter((id): id is string => !!id),
+        ),
+      );
+      const [{ data: movRows }, { data: setRows }, { data: sessRows }] = await Promise.all([
+        supabase.from("movements").select("id, display_name").in("id", movIds),
+        setIds.length > 0
+          ? supabase.from("set_logs").select("id, weight_kg, reps").in("id", setIds)
+          : Promise.resolve({ data: [] as { id: string; weight_kg: unknown; reps: unknown }[] }),
+        sessIds.length > 0
+          ? supabase.from("sessions").select("id, performed_at").in("id", sessIds)
+          : Promise.resolve({ data: [] as { id: string; performed_at: string }[] }),
+      ]);
+      const movName = new Map((movRows ?? []).map((m) => [m.id, m.display_name as string]));
+      const setMap = new Map(
+        (setRows ?? []).map((s) => [
+          s.id as string,
+          {
+            weightKg: s.weight_kg == null ? null : Number(s.weight_kg),
+            reps: s.reps == null ? null : Number(s.reps),
+          },
+        ]),
+      );
+      const sessMap = new Map((sessRows ?? []).map((s) => [s.id as string, s.performed_at as string]));
+      return pendingSuggestionsRaw.map((s) => {
+        const set = s.derived_from_set_log_id ? setMap.get(s.derived_from_set_log_id) : undefined;
+        const formulaRaw = s.derived_formula as string | null;
+        const formula: TmFormula | null =
+          formulaRaw === "epley" || formulaRaw === "brzycki" || formulaRaw === "rpe_zourdos"
+            ? formulaRaw
+            : null;
+        return {
+          id: s.id,
+          movementName: movName.get(s.movement_id) ?? "Lift",
+          currentTmKg: s.current_tm_kg == null ? null : Number(s.current_tm_kg),
+          suggestedTmKg: Number(s.suggested_tm_kg),
+          formula,
+          setWeightKg: set?.weightKg ?? null,
+          setReps: set?.reps ?? null,
+          sessionPerformedAt: s.derived_from_session_id
+            ? sessMap.get(s.derived_from_session_id) ?? null
+            : null,
+        };
+      });
+    })(),
+
+    // Group C — Strava connection presence flag.
+    supabase
+      .from("strava_connections")
+      .select("user_id")
+      .eq("user_id", userId)
+      .maybeSingle()
+      .then((r) => r.data),
+
+    // Group D — next priority event (drives the taper recommendation).
+    supabase
+      .from("priority_events")
+      .select("name, event_date, priority")
+      .eq("user_id", userId)
+      .gte("event_date", todayIso)
+      .order("event_date", { ascending: true })
+      .limit(1)
+      .maybeSingle()
+      .then((r) => r.data),
+
+    // Group E — region / slug maps for the planned movements today
+    // (DC-V2 heavy-on-recovering soft warning).
+    (async (): Promise<{
+      movementRegionById: Map<string, { primaryRegion: string; name: string }>;
+      movementSlugById: Map<string, string | null>;
+    }> => {
+      const regionMap = new Map<string, { primaryRegion: string; name: string }>();
+      const slugMap = new Map<string, string | null>();
+      if (plannedMovementIds.length === 0) {
+        return { movementRegionById: regionMap, movementSlugById: slugMap };
+      }
+      const { data: movs } = await supabase
+        .from("movements")
+        .select("id, name, slug, primary_region")
+        .in("id", plannedMovementIds);
+      for (const m of movs ?? []) {
+        regionMap.set(m.id, {
+          primaryRegion: m.primary_region as string,
+          name: m.name as string,
+        });
+        slugMap.set(m.id, (m.slug as string | null) ?? null);
+      }
+      return { movementRegionById: regionMap, movementSlugById: slugMap };
+    })(),
+
+    // Group F — muscle-level freshness (PR feat/muscle-grid-16).
+    getMuscleFreshness(supabase, userId, { tz: profile?.timezone ?? "UTC" }),
+
+    // Group G — current-ISO-week sessions + cardio + planned rows for
+    // the right-rail WeekDotsCard.
+    (async (): Promise<{
+      weekSessions: Array<{ id: string; performed_at: string }> | null;
+      weekCardioRows: Array<{ session_id: string }> | null;
+      weekPlannedRows: Array<{
+        week_index: number;
+        day_index: number;
+        completed_session_id: string | null;
+      }>;
+    }> => {
+      const [{ data: ws }, { data: wc }, { data: wp }] = await Promise.all([
+        supabase
+          .from("sessions")
+          .select("id, performed_at")
+          .is("deleted_at", null)
+          .not("completed_at", "is", null)
+          .gte("performed_at", `${monday}T00:00:00`)
+          .lt("performed_at", `${addDaysToYmd(sunday, 1)}T00:00:00`),
+        supabase
+          .from("cardio_logs")
+          .select("session_id, sessions!inner(performed_at, deleted_at, completed_at)")
+          .gte("sessions.performed_at", `${monday}T00:00:00`)
+          .lt("sessions.performed_at", `${addDaysToYmd(sunday, 1)}T00:00:00`)
+          .is("sessions.deleted_at", null)
+          .not("sessions.completed_at", "is", null),
+        activeBlock
+          ? supabase
+              .from("planned_sessions")
+              .select("week_index, day_index, completed_session_id")
+              .eq("block_id", activeBlock.id)
+          : Promise.resolve({
+              data: [] as Array<{
+                week_index: number;
+                day_index: number;
+                completed_session_id: string | null;
+              }>,
+            }),
+      ]);
+      return {
+        weekSessions: ws as Array<{ id: string; performed_at: string }> | null,
+        weekCardioRows: wc as Array<{ session_id: string }> | null,
+        weekPlannedRows: (wp ?? []) as Array<{
+          week_index: number;
+          day_index: number;
+          completed_session_id: string | null;
+        }>,
+      };
+    })(),
+  ]);
+
+  const hasStravaConnection = Boolean(stravaConn);
+  const taper = computeTaperRecommendation(
+    nextEvent
+      ? { name: nextEvent.name, date: nextEvent.event_date, priority: nextEvent.priority }
+      : null,
+  );
+
   for (const r of tmRows) {
     tmMetaByMovementId[r.movementId] = {
       source: r.source,
@@ -167,130 +371,9 @@ export default async function TodayPage() {
     };
   }
 
-  // Pending TM suggestions — surfaced as a banner above the hero. Joined
-  // with movements + the source set/session so the banner can show "from
-  // your AMRAP X kg × N on Mar 14".
-  const { data: pendingSuggestionsRaw } = await supabase
-    .from("tm_suggestions")
-    .select(
-      "id, movement_id, current_tm_kg, suggested_tm_kg, derived_formula, derived_from_set_log_id, derived_from_session_id, created_at",
-    )
-    .eq("status", "pending")
-    .order("created_at", { ascending: false });
-  let pendingSuggestions: TmSuggestionView[] = [];
-  if (pendingSuggestionsRaw && pendingSuggestionsRaw.length > 0) {
-    const movIds = Array.from(new Set(pendingSuggestionsRaw.map((s) => s.movement_id)));
-    const setIds = Array.from(
-      new Set(
-        pendingSuggestionsRaw
-          .map((s) => s.derived_from_set_log_id)
-          .filter((id): id is string => !!id),
-      ),
-    );
-    const sessIds = Array.from(
-      new Set(
-        pendingSuggestionsRaw
-          .map((s) => s.derived_from_session_id)
-          .filter((id): id is string => !!id),
-      ),
-    );
-    const [{ data: movRows }, { data: setRows }, { data: sessRows }] = await Promise.all([
-      supabase.from("movements").select("id, display_name").in("id", movIds),
-      setIds.length > 0
-        ? supabase.from("set_logs").select("id, weight_kg, reps").in("id", setIds)
-        : Promise.resolve({ data: [] as { id: string; weight_kg: unknown; reps: unknown }[] }),
-      sessIds.length > 0
-        ? supabase.from("sessions").select("id, performed_at").in("id", sessIds)
-        : Promise.resolve({ data: [] as { id: string; performed_at: string }[] }),
-    ]);
-    const movName = new Map((movRows ?? []).map((m) => [m.id, m.display_name as string]));
-    const setMap = new Map(
-      (setRows ?? []).map((s) => [
-        s.id as string,
-        {
-          weightKg: s.weight_kg == null ? null : Number(s.weight_kg),
-          reps: s.reps == null ? null : Number(s.reps),
-        },
-      ]),
-    );
-    const sessMap = new Map((sessRows ?? []).map((s) => [s.id as string, s.performed_at as string]));
-    pendingSuggestions = pendingSuggestionsRaw.map((s) => {
-      const set = s.derived_from_set_log_id ? setMap.get(s.derived_from_set_log_id) : undefined;
-      const formulaRaw = s.derived_formula as string | null;
-      const formula: TmFormula | null =
-        formulaRaw === "epley" || formulaRaw === "brzycki" || formulaRaw === "rpe_zourdos"
-          ? formulaRaw
-          : null;
-      return {
-        id: s.id,
-        movementName: movName.get(s.movement_id) ?? "Lift",
-        currentTmKg: s.current_tm_kg == null ? null : Number(s.current_tm_kg),
-        suggestedTmKg: Number(s.suggested_tm_kg),
-        formula,
-        setWeightKg: set?.weightKg ?? null,
-        setReps: set?.reps ?? null,
-        sessionPerformedAt: s.derived_from_session_id
-          ? sessMap.get(s.derived_from_session_id) ?? null
-          : null,
-      };
-    });
-  }
-
-  // Strava integration state: do we have a connection (drives the
-  // background stale-sync trigger).
-  const { data: stravaConn } = await supabase
-    .from("strava_connections")
-    .select("user_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  const hasStravaConnection = Boolean(stravaConn);
-
-  // Phase 2: next priority event + taper recommendation.
-  const { data: nextEvent } = await supabase
-    .from("priority_events")
-    .select("name, event_date, priority")
-    .eq("user_id", userId)
-    .gte("event_date", todayIso)
-    .order("event_date", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  const taper = computeTaperRecommendation(
-    nextEvent
-      ? { name: nextEvent.name, date: nextEvent.event_date, priority: nextEvent.priority }
-      : null,
-  );
-
-  // DC-V2 soft warning: fetch the regions of the movements planned today
-  // so we can flag heavy work on a clearly recovering region. The PR
-  // feat/muscle-grid-16 also adds muscle-level resolution when the
-  // movement has a known slug fanout.
-  const plannedMovementIds = Array.from(
-    new Set(plannedToday.flatMap((p) => p.prescription.items.map((i) => i.movementId))),
-  );
-  const movementRegionById = new Map<string, { primaryRegion: string; name: string }>();
-  const movementSlugById = new Map<string, string | null>();
-  if (plannedMovementIds.length > 0) {
-    const { data: movs } = await supabase
-      .from("movements")
-      .select("id, name, slug, primary_region")
-      .in("id", plannedMovementIds);
-    for (const m of movs ?? []) {
-      movementRegionById.set(m.id, {
-        primaryRegion: m.primary_region as string,
-        name: m.name as string,
-      });
-      movementSlugById.set(m.id, (m.slug as string | null) ?? null);
-    }
-  }
   const freshnessByRegion = new Map(
     freshness.map((r) => [r.region, { freshness: r.freshness, regionLabel: r.regionLabel }]),
   );
-  // Muscle-level freshness (PR feat/muscle-grid-16). Cheap when cached
-  // by the 03:00 UTC cron; otherwise computed live in parallel above
-  // is not yet wired — fetch here.
-  const muscleFreshnessRows = await getMuscleFreshness(supabase, userId, {
-    tz: profile?.timezone ?? "UTC",
-  });
   const conflictsBySlot = new Map<string, FreshnessConflict>();
   for (const p of plannedToday) {
     const itemsWithSlug = p.prescription.items.map((i) => ({
@@ -312,37 +395,6 @@ export default async function TodayPage() {
   const timezone = profile?.timezone ?? "UTC";
   const amWindowStart = profile?.am_window_start ?? "07:00:00";
   const pmWindowStart = profile?.pm_window_start ?? "17:00:00";
-
-  // Compute the current ISO week's day cells for the right-rail
-  // WeekDotsCard. Mon=0..Sun=6. We bucket completed sessions into
-  // strength vs cardio by checking cardio_logs membership, and overlay
-  // planned days from the active block.
-  const monday = mondayOfYmd(todayIso);
-  const sunday = addDaysToYmd(monday, 6);
-  const todayDow = isoWeekdayYmd(todayIso); // 0=Mon..6=Sun
-
-  const [{ data: weekSessions }, { data: weekCardioRows }, { data: weekPlannedRows }] = await Promise.all([
-    supabase
-      .from("sessions")
-      .select("id, performed_at")
-      .is("deleted_at", null)
-      .not("completed_at", "is", null)
-      .gte("performed_at", `${monday}T00:00:00`)
-      .lt("performed_at", `${addDaysToYmd(sunday, 1)}T00:00:00`),
-    supabase
-      .from("cardio_logs")
-      .select("session_id, sessions!inner(performed_at, deleted_at, completed_at)")
-      .gte("sessions.performed_at", `${monday}T00:00:00`)
-      .lt("sessions.performed_at", `${addDaysToYmd(sunday, 1)}T00:00:00`)
-      .is("sessions.deleted_at", null)
-      .not("sessions.completed_at", "is", null),
-    activeBlock
-      ? supabase
-          .from("planned_sessions")
-          .select("week_index, day_index, completed_session_id")
-          .eq("block_id", activeBlock.id)
-      : Promise.resolve({ data: [] as Array<{ week_index: number; day_index: number; completed_session_id: string | null }> }),
-  ]);
 
   const cardioSessionIds = new Set<string>(
     ((weekCardioRows ?? []) as Array<{ session_id: string }>).map((r) => r.session_id),
