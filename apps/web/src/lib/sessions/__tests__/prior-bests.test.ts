@@ -114,9 +114,9 @@ function simulateRpc(rows: Fixture[]) {
 }
 
 function makeRpcClient(rows: Fixture[]) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return {
     rpc: vi.fn().mockResolvedValue({ data: simulateRpc(rows), error: null }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any;
 }
 
@@ -168,9 +168,9 @@ describe("getPriorBestsForMovements (perf audit F11 — aggregation in Postgres)
   });
 
   it("returns an empty object when the RPC errors", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const client = {
       rpc: vi.fn().mockResolvedValue({ data: null, error: { message: "fail" } }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any;
     const r = await getPriorBestsForMovements(
       client,
@@ -182,7 +182,6 @@ describe("getPriorBestsForMovements (perf audit F11 — aggregation in Postgres)
   });
 
   it("coerces numeric string columns from PostgREST into numbers", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const client = {
       rpc: vi.fn().mockResolvedValue({
         data: [
@@ -190,6 +189,7 @@ describe("getPriorBestsForMovements (perf audit F11 — aggregation in Postgres)
         ],
         error: null,
       }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any;
     const r = await getPriorBestsForMovements(
       client,
