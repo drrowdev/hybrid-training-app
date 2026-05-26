@@ -10,10 +10,9 @@
  * N–M blocks" at the moment they're picking a focus, and to surface
  * the same hint on the Plan page header for an active block.
  *
- * Confidence label is `MODERATE-HIGH` per the research file convention:
- * Issurin's residual numbers are HIGH, but the per-combination
- * translation into blocks/weeks layers in the standard 4-week emphasis
- * window and the interference effect, both of which are MODERATE-HIGH.
+ * Confidence label is `HIGH` per the research file (`research-new.md` §5.1):
+ * Issurin's residual training effect numbers (25–35 days for strength
+ * and aerobic, 5–15 days for speed/power) are labelled HIGH.
  */
 import type { ArchetypeId } from "./archetypes";
 import type { Goal, Secondary } from "./wizard/wizard-mapping";
@@ -34,7 +33,7 @@ export type AdaptationGuidance = {
 };
 
 /** Canonical citation string. Kept short on purpose — no full bibliography. */
-const CITATION = "Issurin 2010 · research §5.1 · MODERATE-HIGH";
+const CITATION = "Issurin 2010 · research §5.1 · HIGH";
 
 type Row = {
   blocks: { min: number; max: number };
