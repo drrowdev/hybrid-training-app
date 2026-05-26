@@ -131,13 +131,44 @@ export function PlanRedesign(props: PlanRedesignProps) {
     today,
     currentWeekIndex,
     sessions,
-    view,
-    filter,
+    view: initialView,
+    filter: initialFilter,
     logHrefBase,
     moveAction,
     skipAction,
     unskipAction,
   } = props;
+
+  // View + filter are pure client-side transforms over the same
+  // session set. Server navigation here is wasteful — it refetches the
+  // whole block from the DB just to flip a CSS class. Keep them as
+  // local state and sync to the URL with history.replaceState so deep
+  // links + reloads still land on the right tab.
+  const [view, setView] = useState<PlanViewMode>(initialView);
+  const [filter, setFilter] = useState<PlanFilter>(initialFilter);
+  const syncUrl = useCallback((nextView: PlanViewMode, nextFilter: PlanFilter) => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams();
+    if (nextView !== "timeline") params.set("view", nextView);
+    if (nextFilter !== "all") params.set("filter", nextFilter);
+    const q = params.toString();
+    const url = q ? `${window.location.pathname}?${q}` : window.location.pathname;
+    window.history.replaceState(null, "", url + window.location.hash);
+  }, []);
+  const onViewChange = useCallback(
+    (v: PlanViewMode) => {
+      setView(v);
+      syncUrl(v, filter);
+    },
+    [filter, syncUrl],
+  );
+  const onFilterChange = useCallback(
+    (f: PlanFilter) => {
+      setFilter(f);
+      syncUrl(view, f);
+    },
+    [view, syncUrl],
+  );
 
   // Drawer state — synced to the URL hash so back-button works.
   const [openId, setOpenId] = useState<string | null>(null);
@@ -325,39 +356,42 @@ export function PlanRedesign(props: PlanRedesignProps) {
 
       <div className="plan-controls">
         <div className="plan-view-toggle" role="tablist" aria-label="View mode">
-          <Link
-            href="/app/plan?view=timeline"
+          <button
+            type="button"
             className="plan-view-btn"
             role="tab"
             data-active={view === "timeline" ? "true" : "false"}
             data-testid="plan-view-tab-timeline"
             aria-selected={view === "timeline"}
+            onClick={() => onViewChange("timeline")}
           >
             Timeline
-          </Link>
-          <Link
-            href="/app/plan?view=month"
+          </button>
+          <button
+            type="button"
             className="plan-view-btn"
             role="tab"
             data-active={view === "month" ? "true" : "false"}
             data-testid="plan-view-tab-month"
             aria-selected={view === "month"}
+            onClick={() => onViewChange("month")}
           >
             Month
-          </Link>
+          </button>
         </div>
         <div className="plan-filter" aria-label="Filter by kind">
           <span className="plan-filter-label">Show:</span>
           {(["all", "strength", "cardio"] as PlanFilter[]).map((k) => (
-            <Link
+            <button
               key={k}
-              href={`/app/plan?view=${view}${k === "all" ? "" : `&filter=${k}`}`}
+              type="button"
               className="plan-filter-btn"
               data-active={filter === k ? "true" : "false"}
               data-testid={`plan-filter-${k}`}
+              onClick={() => onFilterChange(k)}
             >
               {k === "all" ? "All" : k === "strength" ? "Strength" : "Cardio"}
-            </Link>
+            </button>
           ))}
         </div>
       </div>
@@ -598,6 +632,10 @@ export function PlanRedesign(props: PlanRedesignProps) {
           border-radius: 6px;
           color: var(--cp-text-muted);
           text-decoration: none;
+          background: transparent;
+          border: 0;
+          font: inherit;
+          cursor: pointer;
         }
         .plan-view-btn[data-active="true"] {
           background: var(--cp-surface-soft);
@@ -612,6 +650,10 @@ export function PlanRedesign(props: PlanRedesignProps) {
           border-radius: 4px;
           color: var(--cp-text-muted);
           text-decoration: none;
+          background: transparent;
+          border: 0;
+          font: inherit;
+          cursor: pointer;
         }
         .plan-filter-btn[data-active="true"] { color: var(--cp-text); font-weight: 600; }
         .plan-filter-btn:hover { color: var(--cp-text); }
@@ -624,20 +666,30 @@ export function PlanRedesign(props: PlanRedesignProps) {
         @media (min-width: 1024px) {
           .plan-layout {
             grid-template-columns: minmax(0, 1fr) 320px;
+            align-items: stretch;
           }
         }
-        .plan-main { display: grid; gap: 12px; min-width: 0; }
+        .plan-main {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          min-width: 0;
+        }
 
         .plan-timeline {
           background: var(--cp-surface);
           border: 1px solid var(--cp-border);
           border-radius: 16px;
           overflow: hidden;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
         }
         .plan-week-row {
           display: grid;
           grid-template-columns: 80px repeat(7, minmax(0, 1fr));
           border-bottom: 1px solid var(--cp-border);
+          flex: 1;
           min-height: 64px;
         }
         .plan-week-row:last-child { border-bottom: 0; }
