@@ -32,7 +32,7 @@ import type { PrescriptionItem } from "@hta/db";
 import type { DeclaredExperience } from "@hta/engine";
 import type { ArchetypeId, StrengthRole } from "./archetypes";
 import type { CatalogMovement } from "./accessory-picker";
-import { filterPowerForExperience } from "./accessory-picker";
+import { filterForExperienceTier } from "./accessory-picker";
 import { POWER_FUNCTIONAL_ROLES, type FunctionalRole } from "./accessory-roles";
 
 /**
@@ -183,10 +183,10 @@ export function pickPotentiationMovement({
   const hint = PATTERN_HINTS[strengthRole];
   const allowedRoles = new Set<FunctionalRole>(POWER_FUNCTIONAL_ROLES as readonly FunctionalRole[]);
 
-  // Experience-tier gate (PR W1 / Option A). Applied here too because
+  // Experience-tier gate (PR W2 / Option B). Applied here too because
   // this picker doesn't go through `pickAccessoriesForSession` — the
   // primer is prepended directly by `assemblePrescriptionItems`.
-  const tierFiltered = filterPowerForExperience(catalog, experience);
+  const tierFiltered = filterForExperienceTier(catalog, experience);
 
   const safe = tierFiltered.filter((m) => {
     const hasPowerRole = m.functionalRoles.some((r) => allowedRoles.has(r));
