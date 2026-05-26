@@ -10,6 +10,7 @@
 
 import type { Prescription, PrescriptionItem } from "@hta/db";
 import { PRESCRIPTION_STRENGTH_KINDS } from "./prescription-progress";
+import { SET_KIND_LABELS } from "./set-kind-labels";
 
 export type MovementSlotBucket = "warmup" | "working" | "accessory";
 
@@ -201,7 +202,7 @@ export function bucketLabelForKind(
       : kind === "main" || kind === "power_potentiation"
         ? "Working set"
         : kind === "back_off"
-          ? "Back-off"
+          ? SET_KIND_LABELS.back_off.label
           : kind === "accessory"
             ? "Accessory"
             : kind === "tendon"
