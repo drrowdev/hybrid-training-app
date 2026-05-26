@@ -7,9 +7,13 @@
  * (below the hero, alongside the "Up next" / "Recent" strips) when
  * the user hasn't logged a bodyweight in the past 7 days. The card
  * is intentionally low-stakes: a single number input, a Save button,
- * and a small "×" dismiss that hides the card for another 7 days via
- * localStorage. The hero session card is never blocked or pushed
- * around — this is a polite ask, not a modal.
+ * and a small "×" dismiss that hides the card for another 7 days.
+ *
+ * Cross-device sync (PR Z1): the dismiss timestamp lives on
+ * `profiles.bw_nudge_hidden_until` (migration 0055). The server
+ * passes `dismissedUntilIso` as a prop; the client also mirrors to
+ * localStorage as a fast-paint fallback so cold devices don't flash
+ * the nudge for one frame while the server payload hydrates.
  */
 
 import { useEffect, useState, useTransition } from "react";
@@ -21,13 +25,27 @@ export type RecordCheckInAction = (
   fd: FormData,
 ) => Promise<{ ok?: true; error?: string }>;
 
+export type DismissBwNudgeAction = (
+  snoozeUntil: string,
+) => Promise<{ ok: true } | { ok: false; error: string }>;
+
 export function BodyweightNudge({
   todayYmd,
   recordDailyCheckIn,
+  dismissedUntilIso = null,
+  dismissBwNudgeAction,
 }: {
   todayYmd: string;
   recordDailyCheckIn: RecordCheckInAction;
+  /** ISO timestamp from `profiles.bw_nudge_hidden_until`. Null = never dismissed. */
+  dismissedUntilIso?: string | null;
+  /** Server action that persists the snooze across devices. */
+  dismissBwNudgeAction?: DismissBwNudgeAction;
 }) {
+  // Server is the source of truth — if it says hidden (snooze still
+  // in the future), start hidden. Otherwise we still consult
+  // localStorage so a cold device doesn't flash the nudge for the ms
+  // between hydration and the server value arriving.
   const [hidden, setHidden] = useState(true); // SSR-safe — reveal after the localStorage check.
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +53,14 @@ export function BodyweightNudge({
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect -- sync visible state with localStorage on mount */
+    /* eslint-disable react-hooks/set-state-in-effect -- sync visible state with the server pref + localStorage on mount */
+    if (
+      dismissedUntilIso != null &&
+      Date.now() < Date.parse(dismissedUntilIso)
+    ) {
+      setHidden(true);
+      return;
+    }
     try {
       const until = window.localStorage.getItem(DISMISS_KEY);
       if (until && Date.now() < Number.parseInt(until, 10)) {
@@ -47,7 +72,7 @@ export function BodyweightNudge({
     }
     setHidden(false);
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, []);
+  }, [dismissedUntilIso]);
 
   if (hidden) return null;
   if (saved) {
@@ -71,13 +96,20 @@ export function BodyweightNudge({
   }
 
   const dismiss = () => {
+    const untilMs = Date.now() + DISMISS_DAYS * 86_400_000;
+    const untilIso = new Date(untilMs).toISOString();
     try {
-      const until = Date.now() + DISMISS_DAYS * 86_400_000;
-      window.localStorage.setItem(DISMISS_KEY, String(until));
+      window.localStorage.setItem(DISMISS_KEY, String(untilMs));
     } catch {
       // No-op: best effort.
     }
     setHidden(true);
+    if (dismissBwNudgeAction) {
+      // Fire-and-forget — UI already hidden. We don't surface errors
+      // here because the localStorage fallback covers the device the
+      // user just clicked on; cross-device sync is a soft guarantee.
+      void dismissBwNudgeAction(untilIso);
+    }
   };
 
   const submit = (e: React.FormEvent<HTMLFormElement>) => {

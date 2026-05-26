@@ -194,6 +194,52 @@ export const profiles = pgTable("profiles", {
    * {'iso', 'dmy_long', 'mdy_long', 'dmy_short', 'mdy_short'}.
    */
   dateFormat: text("date_format"),
+  /**
+   * Block-wizard per-archetype × per-session-count day-of-week pattern.
+   * Shape mirrors the legacy `hta-day-pref-v2` localStorage payload
+   * exactly:
+   *
+   *   { byArchetype: { [archetypeId]: { [sessionCount]:
+   *     { days: number[]; twoADay: boolean } } } }
+   *
+   * NULL on accounts that have never opened the wizard, or pre-0055
+   * accounts whose pref still lives in localStorage; the wizard
+   * falls back to localStorage in that case and writes to both on
+   * the next save. See migration 0055 + `hybrid-sync-audit.md` §3b.
+   */
+  wizardDayPref: jsonb("wizard_day_pref").$type<{
+    byArchetype: Record<
+      string,
+      Record<string, { days: number[]; twoADay: boolean }>
+    >;
+  }>(),
+  /**
+   * 7-day snooze timestamp for the Today-page bodyweight nudge.
+   * NULL = never dismissed; visible while now() ≥ value. See
+   * migration 0055 + `hybrid-sync-audit.md` §3c.
+   */
+  bwNudgeHiddenUntil: timestamp("bw_nudge_hidden_until", {
+    withTimezone: true,
+  }),
+  /**
+   * Permanent dismissal timestamp for the bodyweight-only early-support
+   * banner. NULL = still visible (current behaviour). See migration
+   * 0055 + `hybrid-sync-audit.md` §3c.
+   */
+  bwBannerDismissedAt: timestamp("bw_banner_dismissed_at", {
+    withTimezone: true,
+  }),
+  /**
+   * High-water mark for the TopBar bell's "mark all read" gesture.
+   * The audit-count query filters
+   * `engine_override_events.occurred_at > audit_last_read_at`. NULL
+   * means "every audit row counts as unread" — matches the pre-0055
+   * behaviour where the badge always showed the full count. See
+   * migration 0055 + `hybrid-sync-audit.md` §3d.
+   */
+  auditLastReadAt: timestamp("audit_last_read_at", {
+    withTimezone: true,
+  }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),

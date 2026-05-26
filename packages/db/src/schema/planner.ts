@@ -290,6 +290,14 @@ export const plannedSessions = pgTable(
       precision: 6,
       scale: 2,
     }),
+    /**
+     * Free-text drawer notes the user types about a planned session.
+     * Replaces the per-device `plan-notes:<id>` localStorage key — see
+     * migration 0055 and `hybrid-sync-audit.md` §3a. Mirrored on the
+     * client to localStorage as a fast-paint fallback, but Postgres
+     * is the source of truth on hydration.
+     */
+    notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .default(sql`now()`)
       .notNull(),

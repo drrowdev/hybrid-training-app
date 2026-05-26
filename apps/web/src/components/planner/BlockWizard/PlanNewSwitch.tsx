@@ -27,6 +27,7 @@ import {
   type WizardSubmit,
 } from "./BlockWizard";
 import type { EquipmentPreset } from "@/lib/settings/equipment-schema";
+import type { WizardDayPrefValue } from "@/lib/planner/wizard/day-pref";
 import { BlockCreatingOverlay } from "./BlockCreatingOverlay";
 
 import type { Placement } from "@/lib/planner/wizard/placements";
@@ -57,6 +58,8 @@ export function PlanNewSwitch({
   initialMode = "home",
   hideBuildCta = false,
   equipmentPreset = null,
+  serverDayPref = null,
+  saveDayPrefAction,
 }: {
   recentBlocks: RecentBlockCard[];
   tmReadinessByArchetype: TmReadinessByArchetype;
@@ -67,6 +70,12 @@ export function PlanNewSwitch({
   hideBuildCta?: boolean;
   /** Equipment preset from the user's profile — forwarded to BlockWizard for bodyweight-aware copy. */
   equipmentPreset?: EquipmentPreset | null;
+  /** PR Z1 — server-loaded `profiles.wizard_day_pref`. */
+  serverDayPref?: WizardDayPrefValue | null;
+  /** PR Z1 — server action that persists the wizard day-pref. */
+  saveDayPrefAction?: (
+    pref: WizardDayPrefValue,
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
 }): React.ReactElement {
   const [mode, setMode] = useState<"home" | "wizard">(initialMode);
   const [wizardPrefill, setWizardPrefill] = useState<BlockWizardPrefill | null>(null);
@@ -154,6 +163,8 @@ export function PlanNewSwitch({
           allowsTwoADays={allowsTwoADays}
           prefill={wizardPrefill}
           equipmentPreset={equipmentPreset}
+          serverDayPref={serverDayPref}
+          saveDayPrefAction={saveDayPrefAction}
         />
       </div>
     );

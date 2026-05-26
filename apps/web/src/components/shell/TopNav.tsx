@@ -69,6 +69,7 @@ export function TopNav({
   lastSyncedAt,
   recentAudit,
   auditCount,
+  markAuditReadAction,
 }: {
   signOutAction: () => Promise<void>;
   displayName: string | null;
@@ -77,6 +78,7 @@ export function TopNav({
   lastSyncedAt: string | null;
   recentAudit: TopBarAuditEntry[];
   auditCount: number;
+  markAuditReadAction?: () => Promise<{ ok: true } | { ok: false; error: string }>;
 }) {
   const pathname = usePathname() ?? "/app";
   const [isMobile, setIsMobile] = useState(false);
@@ -206,6 +208,7 @@ export function TopNav({
             lastSyncedAt={lastSyncedAt}
             recentAudit={recentAudit}
             auditCount={auditCount}
+            markAuditReadAction={markAuditReadAction}
           />
         </div>
       </div>

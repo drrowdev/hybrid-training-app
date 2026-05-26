@@ -58,6 +58,8 @@ export type PlannedDay = {
   prescription: Prescription;
   completedSessionId: string | null;
   skippedAt: string | null;
+  /** Drawer notes — see migration 0055 / `hybrid-sync-audit.md` §3a. */
+  notes: string | null;
   /** Absolute calendar date this day falls on (derived from block start + week + day). */
   date: string;
 };
@@ -133,7 +135,7 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
   const { data } = await supabase
     .from("planned_sessions")
     .select(
-      "id, block_id, week_index, day_index, slot, planned_at, title, role, prescription, completed_session_id, skipped_at",
+      "id, block_id, week_index, day_index, slot, planned_at, title, role, prescription, completed_session_id, skipped_at, notes",
     )
     .eq("block_id", blockId)
     .order("week_index", { ascending: true })
@@ -152,6 +154,7 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
     prescription: (d.prescription as Prescription) ?? { items: [] },
     completedSessionId: d.completed_session_id,
     skippedAt: d.skipped_at,
+    notes: (d.notes as string | null) ?? null,
     date: dayDate(startedOn, d.week_index, d.day_index),
   }));
 }

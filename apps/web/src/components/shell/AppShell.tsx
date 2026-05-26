@@ -17,6 +17,7 @@ export function AppShell({
   lastSyncedAt = null,
   recentAudit = [],
   auditCount = 0,
+  markAuditReadAction,
   // `buildSha` is still accepted for backwards-compat with the layout
   // wiring but is no longer rendered (the SHA chip was retired earlier).
 }: {
@@ -28,6 +29,8 @@ export function AppShell({
   lastSyncedAt?: string | null;
   recentAudit?: TopBarAuditEntry[];
   auditCount?: number;
+  /** PR Z1 — server action that persists the "mark all read" gesture. */
+  markAuditReadAction?: () => Promise<{ ok: true } | { ok: false; error: string }>;
   buildSha?: string;
 }) {
   return (
@@ -40,6 +43,7 @@ export function AppShell({
         lastSyncedAt={lastSyncedAt}
         recentAudit={recentAudit}
         auditCount={auditCount}
+        markAuditReadAction={markAuditReadAction}
       />
 
       <main className="cp-main">{children}</main>
