@@ -15,7 +15,7 @@
  * payload via `parseEquipment` and writes the JSONB blob to
  * `profiles.equipment`.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { updateEquipmentV2 } from "@/lib/settings/equipment-actions";
 import {
   type Equipment,
@@ -84,6 +84,17 @@ export function EquipmentEditor({ initial, units }: Props) {
   const [renderedPreset] = useState<EquipmentPreset>(initial.preset);
 
   /**
+   * Sticky snapshot of the user's custom configuration. Captured the
+   * moment they switch AWAY from the custom preset so that picking
+   * the Custom chip again later restores their previous selections
+   * instead of giving them an empty form. Seeded with the incoming
+   * `initial` value if it's already custom.
+   */
+  const customSnapshotRef = useRef<Equipment | null>(
+    initial.preset === "custom" ? structuredClone(initial) : null,
+  );
+
+  /**
    * Apply a mutation and mark the preset "custom" if it isn't
    * already (the user took ownership of the data). The literal
    * "custom" preset doesn't flip.
@@ -91,12 +102,23 @@ export function EquipmentEditor({ initial, units }: Props) {
   const mutate = (fn: (draft: Equipment) => Equipment) => {
     const next = fn(structuredClone(equipment));
     if (next.preset !== "custom") next.preset = "custom";
+    customSnapshotRef.current = structuredClone(next);
     setEquipmentAndSave(next);
   };
 
   const applyPreset = (key: EquipmentPreset) => {
-    // Picking a preset is the user explicitly switching baselines —
-    // commit immediately, don't wait for the debounce.
+    // If the user is leaving the custom preset, snapshot the current
+    // state so we can restore it if they pick Custom again later.
+    if (equipment.preset === "custom" && key !== "custom") {
+      customSnapshotRef.current = structuredClone(equipment);
+    }
+    // Picking Custom: restore from snapshot if we have one, otherwise
+    // start from the empty Custom shape.
+    if (key === "custom" && customSnapshotRef.current) {
+      setEquipmentAndSave(structuredClone(customSnapshotRef.current));
+      return;
+    }
+    // Otherwise: switch baselines — commit immediately.
     setEquipmentAndSave(clonePreset(key));
   };
 
@@ -452,23 +474,14 @@ function DumbbellsSection({
   return (
     <fieldset style={fieldsetStyle} data-testid="equipment-dumbbells">
       <Legend>Dumbbells</Legend>
-      <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-        <span style={{ fontSize: 13 }}>Available?</span>
-        <RadioPill
-          label="No"
-          active={!available}
-          onClick={() => onChange(null)}
-          testId="equipment-dumbbells-no"
-        />
-        <RadioPill
-          label="Yes"
-          active={available}
-          onClick={() =>
-            onChange(dumbbells ?? { minKg: 5, maxKg: 50, stepKg: 2.5 })
-          }
-          testId="equipment-dumbbells-yes"
-        />
-      </div>
+      <SimpleToggleRow
+        label="Available"
+        present={available}
+        testIdRoot="equipment-dumbbells"
+        onTogglePresent={(v) =>
+          onChange(v ? dumbbells ?? { minKg: 5, maxKg: 50, stepKg: 2.5 } : null)
+        }
+      />
       {available && (
         <div
           data-testid="equipment-dumbbells-range"
