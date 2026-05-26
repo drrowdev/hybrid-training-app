@@ -944,6 +944,30 @@ function MonthAlternate({
    button all dismiss. URL hash drives open state so back-button works.
    ──────────────────────────────────────────────────────────────── */
 
+/**
+ * Wraps a `moveAction` server-action call so the drawer can keep itself
+ * open on failure instead of swallowing the error. Exported for unit
+ * tests — the drawer is rendered via a server-only `renderToStaticMarkup`
+ * in PlanRedesign.test.tsx so we can't drive the form submit there.
+ */
+export async function runSwapMove(
+  moveAction: (formData: FormData) => Promise<void> | void,
+  formData: FormData,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await moveAction(formData);
+    return { ok: true };
+  } catch (err) {
+    // eslint-disable-next-line no-console -- diagnostics for the user
+    console.error("[plan] swap-day move failed", err);
+    const message =
+      err instanceof Error && err.message
+        ? err.message
+        : "Couldn't move that session. Please try again.";
+    return { ok: false, error: message };
+  }
+}
+
 function SessionDrawer({
   session,
   today,
@@ -965,6 +989,12 @@ function SessionDrawer({
 }) {
   const [editing, setEditing] = useState(false);
   const [showSwap, setShowSwap] = useState(false);
+  // Inline error surfaced from a failed swap-day submit. The project
+  // has no toast helper today (no `useToast`, no `toast(` callsites),
+  // so we render the message inside the drawer and keep the drawer
+  // open so the user can retry without losing context.
+  const [swapError, setSwapError] = useState<string | null>(null);
+  const [swapPending, setSwapPending] = useState(false);
   const isToday = session.date === today;
 
   const sections = useMemo(() => groupByMovementThenKind(session.items), [session.items]);
@@ -983,13 +1013,25 @@ function SessionDrawer({
     const newDayIndex = session.dayIndex + diffDays;
     const newWeek = session.weekIndex + Math.floor(newDayIndex / 7);
     const newDay = ((newDayIndex % 7) + 7) % 7;
-    if (newWeek < 0 || newWeek >= weeks) return;
+    if (newWeek < 0 || newWeek >= weeks) {
+      setSwapError("That date is outside the current block.");
+      return;
+    }
     const fd = new FormData();
     fd.set("id", session.id);
     fd.set("weekIndex", String(newWeek));
     fd.set("dayIndex", String(newDay));
-    await moveAction(fd);
-    onClose();
+    setSwapPending(true);
+    setSwapError(null);
+    const result = await runSwapMove(moveAction, fd);
+    setSwapPending(false);
+    if (result.ok) {
+      onClose();
+      return;
+    }
+    // Keep the drawer open so the user can retry. Surface the message
+    // inline next to the submit button.
+    setSwapError(result.error);
   };
 
   return (
@@ -1100,9 +1142,20 @@ function SessionDrawer({
                 type="submit"
                 className="cp-btn primary"
                 data-testid="plan-drawer-swap-submit"
+                disabled={swapPending}
+                aria-busy={swapPending}
               >
-                Move
+                {swapPending ? "Moving…" : "Move"}
               </button>
+              {swapError && (
+                <p
+                  className="swap-form-error"
+                  role="alert"
+                  data-testid="plan-drawer-swap-error"
+                >
+                  {swapError}
+                </p>
+              )}
             </form>
           )}
 

@@ -58,6 +58,7 @@ import {
 } from "./archetypes";
 import { ACCESSORY_POOLS, allAccessorySlugs } from "./accessories";
 import { sanitiseSlotForMode } from "./slot";
+import { swapPlannedSessions } from "./swap";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
 import {
   pickAccessoriesForSession,
@@ -1729,35 +1730,47 @@ export async function movePlannedSession(formData: FormData): Promise<void> {
   const target = (existing ?? []).find((r) => r.slot === planned.slot);
 
   if (target && target.id !== planned.id) {
-    // Two-step swap to avoid the unique (block, week, day, slot)
-    // constraint conflict. Park the moving row on a guard slot first.
-    const parkWeek = (block.weeks as number) + 100;
-    await supabase
-      .from("planned_sessions")
-      .update({ week_index: parkWeek, day_index: 0 })
-      .eq("id", planned.id);
-    await supabase
-      .from("planned_sessions")
-      .update({ week_index: planned.week_index, day_index: planned.day_index })
-      .eq("id", target.id);
-    await supabase
-      .from("planned_sessions")
-      .update({ week_index: parsed.data.weekIndex, day_index: parsed.data.dayIndex })
-      .eq("id", planned.id);
+    // Atomic-ish swap with rollback on partial failure. See
+    // ./swap.ts for the parking-slot strategy + rationale. The helper
+    // throws on any DB error so we surface failures to the caller
+    // instead of silently leaving a row stranded at the guard slot.
+    await swapPlannedSessions({
+      client: supabase as unknown as Parameters<typeof swapPlannedSessions>[0]["client"],
+      userId: user.id,
+      sourceId: planned.id,
+      sourceWeek: planned.week_index,
+      sourceDay: planned.day_index,
+      targetId: target.id,
+      targetWeek: parsed.data.weekIndex,
+      targetDay: parsed.data.dayIndex,
+      blockWeeks: block.weeks as number,
+    });
   } else {
-    await supabase
+    const { error: moveErr } = await supabase
       .from("planned_sessions")
       .update({ week_index: parsed.data.weekIndex, day_index: parsed.data.dayIndex })
-      .eq("id", planned.id);
+      .eq("id", planned.id)
+      .eq("user_id", user.id);
+    if (moveErr) {
+      throw new Error(
+        `movePlannedSession: failed to move ${planned.id}: ${moveErr.message}`,
+      );
+    }
   }
 
   // Moving a day clears any explicit planned_at (the absolute timestamp
   // referred to the OLD calendar date — keeping it would put the
   // session on the wrong wall-clock day).
-  await supabase
+  const { error: clearErr } = await supabase
     .from("planned_sessions")
     .update({ planned_at: null })
-    .in("id", target ? [planned.id, target.id] : [planned.id]);
+    .in("id", target ? [planned.id, target.id] : [planned.id])
+    .eq("user_id", user.id);
+  if (clearErr) {
+    throw new Error(
+      `movePlannedSession: failed to clear planned_at after move: ${clearErr.message}`,
+    );
+  }
 
   revalidatePath("/app");
   revalidatePath("/app/plan");
