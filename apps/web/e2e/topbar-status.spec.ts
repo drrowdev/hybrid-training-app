@@ -68,8 +68,14 @@ test.describe("@desktop top-bar status cluster", () => {
     const userMenu = page.getByTestId("topbar-user-menu");
     await expect(userMenu).toBeVisible();
     await expect(userMenu.getByTestId("topbar-sign-out-button")).toBeVisible();
-    // The avatar dropdown is the single sign-out path now, and exposes
-    // a "Limitations" entry routing to /app/recovery/injuries.
-    await expect(userMenu.getByTestId("topbar-user-limitations")).toBeVisible();
+    // The avatar dropdown is the single sign-out path now. After the
+    // dropdown was pruned to an identity-+-leave menu (Settings,
+    // Account & data, Sign out), Limitations / Profile / Events live
+    // one click away under the settings hub instead.
+    await expect(userMenu.getByTestId("topbar-user-settings")).toBeVisible();
+    await expect(userMenu.getByTestId("topbar-user-account")).toBeVisible();
+    await expect(userMenu.getByTestId("topbar-user-limitations")).toHaveCount(0);
+    await expect(userMenu.getByTestId("topbar-user-profile")).toHaveCount(0);
+    await expect(userMenu.getByTestId("topbar-user-events")).toHaveCount(0);
   });
 });
