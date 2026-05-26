@@ -302,6 +302,14 @@ export const plannedSessions = pgTable(
       t.slot,
     ),
     modalityIdx: index("planned_sessions_modality_idx").on(t.sessionModality),
+    // Migration 0053 — backs `/app/sessions/[id]` (the page hits
+    // `.eq('completed_session_id', id)` on every detail render) and
+    // the deload flow which scans recent planned sessions joined back
+    // to their completed counterpart. Partial — null rows (uncompleted
+    // planned sessions) are excluded to keep the index lean.
+    completedSessionIdx: index("planned_sessions_completed_session_idx").on(
+      t.completedSessionId,
+    ),
   }),
 );
 
