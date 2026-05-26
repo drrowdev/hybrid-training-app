@@ -9,6 +9,12 @@ import { restSecondsForKind } from "@/lib/sessions/rest";
 import { hapticTick } from "@/lib/feedback";
 import { RestTimer } from "./RestTimer";
 import { SwapMovementModal } from "./SwapMovementModal";
+import {
+  SET_KINDS,
+  SET_KIND_LABELS,
+  setKindLabel,
+  type SetKind,
+} from "@/lib/sessions/set-kind-labels";
 
 export type LoggedSet = {
   id: string;
@@ -69,7 +75,7 @@ export type PrescriptionPrefillRequest = {
   movement: ActiveMovement;
   weightKg: number;
   reps: number;
-  setKind: "warmup" | "main" | "back_off" | "accessory" | "tendon";
+  setKind: SetKind;
   prescriptionItemIndex: number;
 };
 
@@ -77,8 +83,6 @@ type SetAction = (fd: FormData) => Promise<{ error?: string; ok?: true }>;
 type FillAction = (
   fd: FormData,
 ) => Promise<{ ok?: true; error?: string; inserted?: number }>;
-
-const SET_KINDS = ["warmup", "main", "back_off", "accessory", "tendon"] as const;
 
 /**
  * Calculator-grade session log.
@@ -180,7 +184,7 @@ export function SessionLogClient({
   const [weight, setWeight] = useState<number>(initialWeight);
   const [reps, setReps] = useState<number>(initialReps);
   const [rpe, setRpe] = useState<number | null>(null);
-  const [setKind, setSetKind] = useState<(typeof SET_KINDS)[number]>("main");
+  const [setKind, setSetKind] = useState<SetKind>("main");
   const [error, setError] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(movementsInSession.length === 0);
 
@@ -497,15 +501,25 @@ export function SessionLogClient({
                   background: setKind === k ? "var(--cp-accent-soft)" : "transparent",
                   color: setKind === k ? "var(--cp-accent)" : "var(--cp-text-muted)",
                   fontSize: 11,
-                  textTransform: "uppercase",
                   letterSpacing: "0.04em",
                   cursor: "pointer",
                 }}
               >
-                {k.replace("_", " ")}
+                {SET_KIND_LABELS[k].label}
               </button>
             ))}
           </div>
+          <p
+            style={{
+              fontSize: 12,
+              color: "var(--cp-text-muted)",
+              margin: 0,
+              marginTop: -2,
+              minHeight: 16,
+            }}
+          >
+            {SET_KIND_LABELS[setKind].caption}
+          </p>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <EntryBlock
@@ -629,7 +643,7 @@ export function SessionLogClient({
                             {s.reps ? ` × ${s.reps}` : ""}
                           </td>
                           <td style={{ padding: "6px 8px", color: "var(--cp-text-muted)" }}>
-                            {s.set_kind.replace("_", " ")}
+                            {setKindLabel(s.set_kind)}
                           </td>
                           <td className="mono" style={{ padding: "6px 8px", textAlign: "right", color: "var(--cp-text-muted)" }}>
                             {s.rpe ? `@ ${s.rpe}` : ""}
