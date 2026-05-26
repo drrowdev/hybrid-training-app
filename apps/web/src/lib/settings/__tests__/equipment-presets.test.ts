@@ -88,7 +88,7 @@ describe("Functional gym preset", () => {
       dumbbells: { minKg: 5, maxKg: 50, stepKg: 2.5 },
       kettlebells: [8, 12, 16, 20, 24, 28, 32],
       machines: [],
-      cardio: ["rower", "ski_erg", "bike_air", "treadmill_curved", "treadmill"],
+      cardio: ["rower", "ski_erg", "bike_air", "treadmill"],
       accessories: {
         weightedVest: [9],
         sandbag: [25],
