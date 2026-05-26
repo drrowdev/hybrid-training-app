@@ -176,7 +176,6 @@ export default async function PlanPage({
     getBlockNumberAndTotal(block.id),
   ]);
   const timezone = profile?.timezone ?? "UTC";
-
   const sp = await searchParams;
   const today = todayYmd(timezone);
   const todayWeek = all.find((d) => d.date === today)?.weekIndex ?? -1;
@@ -227,14 +226,11 @@ export default async function PlanPage({
   // is engine output and stays out of the visual rework.
   const tissueGaps = await getCurrentWeekTissueStackGaps(supabase, user.id);
 
-  const { data: planEquipProfile } = await supabase
-    .from("profiles")
-    .select("equipment, barbell_kg, trap_bar_kg, plate_inventory_kg")
-    .eq("id", user.id)
-    .maybeSingle();
+  // Reuse the `profile` row fetched above (audit F8 — was a duplicate
+  // fetch of the same columns).
   const planTmCtx = await getTrainingMaxContext();
   const showBodyweightBanner =
-    !hasLoadableMainLift(resolveEquipment(planEquipProfile)) &&
+    !hasLoadableMainLift(resolveEquipment(profile)) &&
     planTmCtx.rows.length === 0;
 
   return (

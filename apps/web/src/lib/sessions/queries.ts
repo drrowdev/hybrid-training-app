@@ -177,3 +177,67 @@ export function summariseSessionSets(
     prCount,
   };
 }
+
+/**
+ * Prior-bests snapshot per movement (B3 PR-badge — perf audit F11).
+ *
+ * Pushes the aggregation server-side via the
+ * `prior_bests_for_movements(uuid[], uuid, timestamptz)` RPC (see
+ * migration 0054_prior_bests_rpc.sql). The function applies the same
+ * filters the old in-page code did — non-warmup sets, non-deleted
+ * sessions, weight/reps present, sessions.performed_at strictly before
+ * the cutoff — and returns one row per movement with the heaviest
+ * weight and the strongest conservative e1RM.
+ *
+ * The SQL `conservative_e1rm(weight, reps, rpe)` mirrors
+ * `lib/engine/one-rm.ts::bestEstimateOneRm` cell-for-cell; the unit
+ * test in `__tests__/prior-bests.test.ts` proves the algorithm match
+ * on a fixture of 3 movements × ~30 sets.
+ *
+ * Returns an empty object when no movements are requested or when the
+ * user has no qualifying history. Movements with zero prior history
+ * are simply absent from the map (same null-handling as the legacy
+ * code, which only set keys when at least one row matched).
+ */
+export type PriorBestSnapshot = {
+  heaviestWeight: number | null;
+  bestE1rm: number | null;
+};
+
+export async function getPriorBestsForMovements(
+  supabase: SupabaseClient,
+  userId: string,
+  movementIds: string[],
+  cutoff: string,
+): Promise<Record<string, PriorBestSnapshot>> {
+  if (!userId || !cutoff || movementIds.length === 0) return {};
+
+  const { data, error } = await supabase.rpc("prior_bests_for_movements", {
+    p_movement_ids: movementIds,
+    p_user_id: userId,
+    p_cutoff: cutoff,
+  });
+  if (error || !data) return {};
+
+  type Row = {
+    movement_id: string;
+    max_weight: number | string | null;
+    max_e1rm: number | string | null;
+  };
+
+  const out: Record<string, PriorBestSnapshot> = {};
+  for (const r of data as Row[]) {
+    const heaviestWeight =
+      r.max_weight == null ? null : Number(r.max_weight);
+    const bestE1rm = r.max_e1rm == null ? null : Number(r.max_e1rm);
+    out[r.movement_id] = {
+      heaviestWeight:
+        heaviestWeight != null && Number.isFinite(heaviestWeight)
+          ? heaviestWeight
+          : null,
+      bestE1rm:
+        bestE1rm != null && Number.isFinite(bestE1rm) ? bestE1rm : null,
+    };
+  }
+  return out;
+}

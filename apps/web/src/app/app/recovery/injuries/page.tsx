@@ -74,23 +74,33 @@ export default async function InjuriesPage() {
   } = await getAuthUser();
   if (!user) redirect("/login");
 
-  const [limRes, formatProfile] = await Promise.all([
+  const [activeRes, resolvedRes, formatProfile] = await Promise.all([
     supabase
       .from("limitations")
       .select(
         "id, kind, severity, region, affected_muscles, affected_movement_ids, notes, expected_duration_days, started_at, resolved_at, engine_action",
       )
-      .order("started_at", { ascending: false }),
+      .is("resolved_at", null)
+      .order("started_at", { ascending: false })
+      .limit(100),
+    supabase
+      .from("limitations")
+      .select(
+        "id, kind, severity, region, affected_muscles, affected_movement_ids, notes, expected_duration_days, started_at, resolved_at, engine_action",
+      )
+      .not("resolved_at", "is", null)
+      .order("resolved_at", { ascending: false })
+      .limit(100),
     getFormatProfile(supabase, user.id),
   ]);
 
-  const rows: LimitationRow[] = (limRes.data ?? []).map((r) =>
+  const active: LimitationRow[] = (activeRes.data ?? []).map((r) =>
     normaliseRow(r as RawRow),
   );
-  const active = rows.filter((r) => r.resolvedAt == null);
-  const resolved = rows
-    .filter((r) => r.resolvedAt != null)
-    .sort((a, b) => (b.resolvedAt ?? "").localeCompare(a.resolvedAt ?? ""));
+  const resolved: LimitationRow[] = (resolvedRes.data ?? []).map((r) =>
+    normaliseRow(r as RawRow),
+  );
+  const rows: LimitationRow[] = [...active, ...resolved];
 
   // Resolve referenced movement IDs to display refs in a single query.
   const movementIdSet = new Set<string>();
