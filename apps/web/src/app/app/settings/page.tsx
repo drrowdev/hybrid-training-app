@@ -26,20 +26,10 @@ export default async function SettingsPage() {
   const equipment = resolveEquipment(profile ?? null);
   const isBodyweightOnly = equipment.preset === "bodyweight_only";
 
-  // Conditional BW progression card: BW-only preset always shows it,
-  // mixed users (non-BW preset but prior BW assessment rows) also get
-  // the card so they can re-enter the skill-tree flow.
-  let hasBwProgress = false;
-  if (!isBodyweightOnly) {
-    const { data: bwRow } = await supabase
-      .from("bw_progress")
-      .select("user_id")
-      .eq("user_id", user.id)
-      .limit(1)
-      .maybeSingle();
-    hasBwProgress = !!bwRow;
-  }
-  const showBwProgression = isBodyweightOnly || hasBwProgress;
+  // BW progression card follows the active equipment preset only.
+  // Latent bw_progress rows from a past BW phase stay in the DB, but
+  // the card hides when the user is back on loaded kit — they're
+  // currently training the loaded path, not the skill tree.
 
   const today = todayYmd(profile?.timezone ?? "UTC");
 
@@ -130,7 +120,7 @@ export default async function SettingsPage() {
           badge={`${trainingMaxesSet} lift${trainingMaxesSet === 1 ? "" : "s"} set`}
           testId="settings-hub-training-maxes"
         />
-        {showBwProgression && (
+        {isBodyweightOnly && (
           <SettingsHubCard
             href="/app/settings/bodyweight-progression"
             icon="🌳"
