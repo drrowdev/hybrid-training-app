@@ -57,6 +57,11 @@ import {
   STRENGTH_ROLE_LABELS,
 } from "./archetypes";
 import { ACCESSORY_POOLS, allAccessorySlugs } from "./accessories";
+import {
+  applyPlacementsToActiveDays,
+  dayIndexOverridesSchema,
+  type DayIndexOverrides,
+} from "./wizard/placements";
 import { sanitiseSlotForMode } from "./slot";
 import { swapPlannedSessions } from "./swap";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
@@ -589,9 +594,13 @@ const createBlockSchema = z.object({
   startedOn: z.string().date(),
   daysPerWeek: z.coerce.number().int().min(1).max(7),
   /**
-   * Optional JSON-stringified ``{ days: number[], twoADay: boolean }`` from
-   * the block wizard's "Lay out your week" step. Persisted on the block row
-   * so re-runs honour the user's calendar layout.
+   * Optional JSON-stringified ``DayIndexOverrides`` from the block wizard's
+   * "Lay out your week" step. Persisted on the block row so re-runs honour
+   * the user's calendar layout. Shape: ``{ days, twoADay, placements? }``
+   * — see ``wizard/placements.ts`` for the canonical schema. The
+   * `placements` field is optional during the rollout transition; absent
+   * payloads (legacy / mid-flight submissions) fall back to canonical
+   * day-template ordering.
    */
   dayIndexOverrides: z.string().optional(),
   /**
@@ -627,19 +636,16 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   }
 
   // Parse + validate the dayIndexOverrides JSON payload (wizard step 5).
-  let dayIndexOverrides: { days: number[]; twoADay: boolean } | null = null;
+  // Accepts both the legacy `{ days, twoADay }` shape and the post-fix
+  // `{ days, twoADay, placements }` shape — Zod's optional `placements`
+  // makes the transition safe for any submission that races the deploy.
+  let dayIndexOverrides: DayIndexOverrides | null = null;
   if (parsed.data.dayIndexOverrides) {
     try {
-      const raw = JSON.parse(parsed.data.dayIndexOverrides) as {
-        days?: unknown;
-        twoADay?: unknown;
-      };
-      if (
-        Array.isArray(raw.days) &&
-        raw.days.every((d): d is number => typeof d === "number" && d >= 0 && d <= 6) &&
-        typeof raw.twoADay === "boolean"
-      ) {
-        dayIndexOverrides = { days: raw.days as number[], twoADay: raw.twoADay };
+      const raw: unknown = JSON.parse(parsed.data.dayIndexOverrides);
+      const result = dayIndexOverridesSchema.safeParse(raw);
+      if (result.success) {
+        dayIndexOverrides = result.data;
       }
     } catch {
       // Bad JSON — silently drop; the block can still be created without overrides.
@@ -676,7 +682,15 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       error: `${archetype.name} needs at least ${minDays} training days/week.`,
     };
   }
-  const activeDays = daysForFrequency(archetype, parsed.data.daysPerWeek, allowsTwoADays);
+  const canonicalActiveDays = daysForFrequency(archetype, parsed.data.daysPerWeek, allowsTwoADays);
+  // Honour the user's Step-5 arrangement (Mon/Tue/Thu/Sat etc.) when the
+  // wizard supplied placements. Without this remap the canonical archetype
+  // template order leaks through and overrides whatever the user picked.
+  // See `wizard/placements.ts` for the matching strategy + fallbacks.
+  const activeDays = applyPlacementsToActiveDays(
+    canonicalActiveDays,
+    dayIndexOverrides?.placements ?? null,
+  );
 
   const candidateSlugs = allCandidateLiftSlugs(archetype);
   const fixedSlugs = requiredFixedSlugs(archetype);
