@@ -7,6 +7,7 @@
 import type { Dispatch } from "react";
 import type { WizardAction, WizardState } from "@/lib/planner/wizard/wizard-state";
 import type { Goal, ResolvedArchetype } from "@/lib/planner/wizard/wizard-mapping";
+import { getAdaptationGuidance } from "@/lib/planner/adaptation-guidance";
 import {
   GOALS,
   cardGridStyle,
@@ -27,6 +28,7 @@ export function Step2Focus({
   resolved: ResolvedArchetype | null;
 }): React.ReactElement {
   const powerEligible = !!resolved?.powerEligible;
+  const guidance = getAdaptationGuidance(state.goal, state.secondary);
   return (
     <section>
       <div style={pillStyle}>Step 2 of 5</div>
@@ -54,6 +56,18 @@ export function Step2Focus({
           );
         })}
       </div>
+
+      {guidance && (
+        <p
+          className="wiz-adaptation-hint"
+          style={adaptationHintStyle}
+          data-testid="wiz-adaptation-hint"
+        >
+          <span aria-hidden="true" style={{ marginRight: 6 }}>ⓘ</span>
+          {guidance.summary}
+          <span style={citationStyle}> · {guidance.citation}</span>
+        </p>
+      )}
 
       {powerEligible && (
         <div className="wiz-power-row" style={powerToggleRowStyle}>
@@ -105,6 +119,21 @@ const cardOutcomeStyle: React.CSSProperties = {
   color: "var(--cp-text-muted)",
   lineHeight: 1.45,
   margin: 0,
+};
+
+const adaptationHintStyle: React.CSSProperties = {
+  marginTop: 14,
+  marginBottom: 0,
+  color: "var(--cp-text-muted)",
+  fontSize: 13,
+  lineHeight: 1.5,
+  maxWidth: 720,
+};
+
+const citationStyle: React.CSSProperties = {
+  color: "var(--cp-text-soft)",
+  fontSize: 11.5,
+  marginLeft: 2,
 };
 
 const powerToggleRowStyle: React.CSSProperties = {
