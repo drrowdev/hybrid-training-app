@@ -44,6 +44,7 @@ import {
   inferRequiredEquipment,
   isEquipmentAvailable,
 } from "./equipment-requirements";
+import { declaredExperienceToTier, tierInBand } from "./experience-tier";
 
 /**
  * Experience tiers that should NOT see plyometric / ballistic / Olympic
@@ -51,7 +52,11 @@ import {
  * is the only signal — actual barbell strength is gated separately
  * via TM-resolved variants in `actions.ts`.
  *
- * See `experience-tier-scope.md` §4 ("Option A — light filter") for rationale.
+ * @deprecated PR W2 replaces this set-based "beginner gate" with the
+ * proper experience-band columns on every movement (see
+ * `experience-tier-scope.md` §3 Option B). Kept exported so the legacy
+ * PR W1 tests keep passing — the value still has the same membership
+ * the predicate uses today.
  */
 export const BEGINNER_TIERS: ReadonlySet<DeclaredExperience> = new Set([
   "beginner_lt_6m",
@@ -59,9 +64,12 @@ export const BEGINNER_TIERS: ReadonlySet<DeclaredExperience> = new Set([
 ]);
 
 /**
- * Power-role tags blocked for beginner / novice tiers when the gate is
- * active. Mirrors `POWER_FUNCTIONAL_ROLES` — kept as a separate constant
- * so the filter intent stays explicit at the call site.
+ * Power-role tags blocked for beginner / novice tiers when the legacy
+ * gate is active.
+ *
+ * @deprecated Retained for the PR W1 backwards-compat surface. The PR W2
+ * filter (`filterForExperienceTier`) uses the per-movement
+ * `experienceMin` / `experienceMax` band instead.
  */
 const BLOCKED_POWER_ROLES: ReadonlySet<FunctionalRole> = new Set<FunctionalRole>([
   "power_plyometric",
@@ -74,6 +82,11 @@ const BLOCKED_POWER_ROLES: ReadonlySet<FunctionalRole> = new Set<FunctionalRole>
  * movements from the prescription. Returns false for `null` so users
  * who haven't declared a tier yet keep the current (unfiltered)
  * behaviour — conservative default per the scope doc.
+ *
+ * @deprecated Use `declaredExperienceToTier` + `tierInBand` instead.
+ * Kept for the PR W1 power-filter unit tests (which now pass through to
+ * the same outcome: beginner / novice tiers don't see plyometric / oly /
+ * ballistic rows because those rows are curated `experienceMin >= 2`).
  */
 export function blocksPowerMovements(
   experience: DeclaredExperience | null,
@@ -84,8 +97,13 @@ export function blocksPowerMovements(
 
 /**
  * Drop power-tagged candidates from a catalog when the declared tier
- * is a beginner one. Exported so `power-emphasis-transform.ts` can
- * apply the same gate before its own potentiation search.
+ * is a beginner one.
+ *
+ * @deprecated PR W2 replaces this with `filterForExperienceTier`, which
+ * checks the per-movement band on every candidate. Kept as a backwards-
+ * compatible alias so the PR W1 unit tests still pass — the new filter
+ * is a strict superset (every power-tagged row is curated
+ * `experienceMin >= 2` so the legacy behaviour falls out for free).
  */
 export function filterPowerForExperience(
   catalog: CatalogMovement[],
@@ -94,6 +112,26 @@ export function filterPowerForExperience(
   if (!blocksPowerMovements(experience)) return catalog;
   return catalog.filter(
     (m) => !m.functionalRoles.some((r) => BLOCKED_POWER_ROLES.has(r)),
+  );
+}
+
+/**
+ * PR W2 — drop catalog rows whose curated band excludes the user's
+ * declared tier. `null` experience leaves the catalog untouched
+ * (conservative default — matches PR #143).
+ *
+ * Applied BEFORE every dispatch path in `pickAccessoriesForSession`
+ * (durability, functional, muscle-gap, power emphasis) and re-used by
+ * `pickPotentiationMovement` so the power primer honours the same gate.
+ */
+export function filterForExperienceTier(
+  catalog: CatalogMovement[],
+  experience: DeclaredExperience | null,
+): CatalogMovement[] {
+  const tier = declaredExperienceToTier(experience);
+  if (tier == null) return catalog;
+  return catalog.filter((m) =>
+    tierInBand(tier, m.experienceMin ?? 0, m.experienceMax ?? 4),
   );
 }
 
@@ -112,6 +150,14 @@ export type CatalogMovement = {
   eccentricLoadScore: number | null; // 1..5; null = unknown
   stimToFatigueScore: number | null; // 1..5; null = unknown
   highStrainTendon: boolean;
+  /**
+   * PR W2 experience band — see `experience-tier.ts`. Optional on the
+   * type so legacy fixture catalogs (built before the column shipped)
+   * stay compileable. Resolvers always read with `?? 0` / `?? 4` so an
+   * absent value means "universally applicable".
+   */
+  experienceMin?: number;
+  experienceMax?: number;
 };
 
 export type WeekContextItem = {
@@ -209,11 +255,15 @@ export function pickAccessoriesForSession({
       "[accessory-picker] equipment filter rejected every catalog candidate",
     );
   }
-  // Experience-tier gate (PR W1 / Option A): drop power-tagged
-  // candidates before any selection path runs so beginners can't pick
-  // a plyo / oly / ballistic movement via durability, functional,
-  // muscle-gap, OR power-emphasis dispatch.
-  const workingCatalog = filterPowerForExperience(equipmentFiltered, experience);
+  // PR W2 — experience-tier band gate (Option B). Replaces the
+  // PR #143 power-tag filter with a per-movement band check applied
+  // BEFORE every dispatch path (durability, functional, muscle gap,
+  // power emphasis). The legacy `filterPowerForExperience` is still
+  // exported and its tests still pass, but the proper-band filter is
+  // a strict superset — every power-tagged row was curated
+  // `experienceMin >= 2`, so beginner / novice runs land on the same
+  // exclusions plus the new variations-of-variations gates.
+  const workingCatalog = filterForExperienceTier(equipmentFiltered, experience);
   const picks: AccessoryPick[] = [];
   const usedThisSession = new Set<string>();
 

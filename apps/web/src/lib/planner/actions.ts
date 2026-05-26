@@ -53,6 +53,7 @@ import {
   daySlotKey,
   minDaysForArchetype,
   requiredFixedSlugs,
+  resolveCardioSlugForTier,
   shouldIncludeAccessories,
   STRENGTH_ROLE_LABELS,
 } from "./archetypes";
@@ -83,6 +84,7 @@ import {
   pickPotentiationMovement,
 } from "./power-emphasis-transform";
 import type { DeclaredExperience } from "@hta/engine";
+import { declaredExperienceToTier, tierInBand } from "./experience-tier";
 import {
   DEFAULT_WARMUP_SCHEME,
   generateWarmupItems,
@@ -124,6 +126,8 @@ type DbMovement = {
   eccentric_load_score: number | null;
   stim_to_fatigue_score: number | null;
   high_strain_tendon: boolean;
+  experience_min: number | null;
+  experience_max: number | null;
 };
 
 function toCatalogMovement(m: DbMovement): CatalogMovement {
@@ -142,7 +146,55 @@ function toCatalogMovement(m: DbMovement): CatalogMovement {
     eccentricLoadScore: m.eccentric_load_score,
     stimToFatigueScore: m.stim_to_fatigue_score,
     highStrainTendon: m.high_strain_tendon,
+    experienceMin: m.experience_min ?? 0,
+    experienceMax: m.experience_max ?? 4,
   };
+}
+
+/**
+ * Movement-row shape used by the main-lift resolver. Only the columns
+ * actually read at the call site — the resolver doesn't need the full
+ * `DbMovement` projection (no muscles / roles / scores).
+ */
+type StrengthMovementRow = {
+  id: string;
+  slug: string;
+  display_name: string;
+  experience_min: number | null;
+  experience_max: number | null;
+};
+
+/**
+ * PR W2 — pick the first candidate slug whose movement falls within
+ * the user's experience band AND has a TM logged. Encodes Surface B
+ * (main-lift resolver) so a user with TMs for `[back-squat-high-bar,
+ * pause-back-squat]` picks the high-bar at tier 0 and the pause variant
+ * only when the band allows it. Tier `null` (no declaration) preserves
+ * the legacy "first candidate with a TM" behaviour.
+ *
+ * Returns `null` if no in-band candidate has a TM — caller handles the
+ * out-of-band fallback (use the TM anyway, log a dev warning) so the
+ * filter doesn't block training.
+ */
+function pickStrengthMovementForBand({
+  candidateSlugs,
+  movementBySlug,
+  tmMovementIds,
+  tier,
+}: {
+  candidateSlugs: readonly string[];
+  movementBySlug: Map<string, StrengthMovementRow>;
+  tmMovementIds: Set<string>;
+  tier: number | null;
+}): { movementId: string; slug: string; displayName: string } | null {
+  for (const slug of candidateSlugs) {
+    const mv = movementBySlug.get(slug);
+    if (!mv) continue;
+    if (!tmMovementIds.has(mv.id)) continue;
+    if (!tierInBand(tier, mv.experience_min ?? 0, mv.experience_max ?? 4)) continue;
+    return { movementId: mv.id, slug: mv.slug, displayName: mv.display_name };
+  }
+  return null;
 }
 
 /**
@@ -733,7 +785,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
 
   const { data: movements, error: mvErr } = await supabase
     .from("movements")
-    .select("id, slug, display_name")
+    .select("id, slug, display_name, experience_min, experience_max")
     .in("slug", allSlugs)
     .is("user_id", null);
   if (mvErr) return { ok: false, error: `Movement lookup failed: ${mvErr.message}` };
@@ -747,7 +799,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
     const { data: full, error: catErr } = await supabase
       .from("movements")
       .select(
-        "id, slug, display_name, primary_region, secondary_regions, primary_muscles, secondary_muscles, is_compound, bulletproof_roles, functional_roles, is_supported, eccentric_load_score, stim_to_fatigue_score, high_strain_tendon",
+        "id, slug, display_name, primary_region, secondary_regions, primary_muscles, secondary_muscles, is_compound, bulletproof_roles, functional_roles, is_supported, eccentric_load_score, stim_to_fatigue_score, high_strain_tendon, experience_min, experience_max",
       )
       .is("user_id", null);
     if (catErr) return { ok: false, error: `Catalog load failed: ${catErr.message}` };
@@ -910,17 +962,33 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   }
   const bwHasAnyFamily = bwByFamily.size > 0;
 
+  const userTier = declaredExperienceToTier(experience);
   const resolved = new Map<string, { movementId: string; slug: string; displayName: string }>();
   const missingRoles: string[] = [];
 
   for (const day of activeDays) {
     if (day.kind !== "strength") continue;
-    let chosen: { movementId: string; slug: string; displayName: string } | null = null;
-    for (const slug of day.candidateSlugs) {
-      const mv = movementBySlug.get(slug);
-      if (mv && tmByMovementId.has(mv.id)) {
-        chosen = { movementId: mv.id, slug: mv.slug, displayName: mv.display_name };
-        break;
+    let chosen = pickStrengthMovementForBand({
+      candidateSlugs: day.candidateSlugs,
+      movementBySlug,
+      tmMovementIds: new Set(tmByMovementId.keys()),
+      tier: userTier,
+    });
+    // Out-of-band fallback: if the user has TMs but ONLY for movements
+    // outside their declared band, honour the TM rather than blocking
+    // them from training. They explicitly entered it.
+    if (!chosen) {
+      for (const slug of day.candidateSlugs) {
+        const mv = movementBySlug.get(slug);
+        if (mv && tmByMovementId.has(mv.id)) {
+          if (process.env.NODE_ENV !== "production") {
+            console.warn(
+              `[planner] using out-of-band TM ${slug} for tier ${userTier ?? "null"} (band ${mv.experience_min}..${mv.experience_max})`,
+            );
+          }
+          chosen = { movementId: mv.id, slug: mv.slug, displayName: mv.display_name };
+          break;
+        }
       }
     }
     // Fallback for the no-TM path: use the first available candidate
@@ -928,11 +996,25 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
     // accessory-only below (no %TM items), so this is only used so the
     // row has a valid movement_id to attach the prescription to.
     if (!chosen && !hasAnyTm) {
+      // Honour the tier here too — first in-band candidate, fall back
+      // to first candidate of any tier.
       for (const slug of day.candidateSlugs) {
         const mv = movementBySlug.get(slug);
-        if (mv) {
+        if (
+          mv &&
+          tierInBand(userTier, mv.experience_min ?? 0, mv.experience_max ?? 4)
+        ) {
           chosen = { movementId: mv.id, slug: mv.slug, displayName: mv.display_name };
           break;
+        }
+      }
+      if (!chosen) {
+        for (const slug of day.candidateSlugs) {
+          const mv = movementBySlug.get(slug);
+          if (mv) {
+            chosen = { movementId: mv.id, slug: mv.slug, displayName: mv.display_name };
+            break;
+          }
         }
       }
     }
@@ -993,7 +1075,12 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
         if (!resolvedMv) continue;
         movement = { id: resolvedMv.movementId, slug: resolvedMv.slug, displayName: resolvedMv.displayName };
       } else if (day.kind === "cardio") {
-        const mv = movementBySlug.get(day.movementSlug);
+        // PR W2 — surface D. When the cardio day declares per-tier
+        // alternates, resolve to the user-tier-appropriate slug before
+        // looking the movement up in the catalog. Falls back to the
+        // default slug for tiers absent from the map.
+        const cardioSlug = resolveCardioSlugForTier(day, userTier);
+        const mv = movementBySlug.get(cardioSlug);
         if (!mv) continue;
         movement = { id: mv.id, slug: mv.slug, displayName: mv.display_name };
         if (day.finisher) {
@@ -1285,7 +1372,7 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
 
   const { data: movements, error: mvErr } = await supabase
     .from("movements")
-    .select("id, slug, display_name")
+    .select("id, slug, display_name, experience_min, experience_max")
     .in("slug", allSlugs)
     .is("user_id", null);
   if (mvErr) return { ok: false, error: `Movement lookup failed: ${mvErr.message}` };
@@ -1311,18 +1398,17 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
   if (tmErr) return { ok: false, error: `TM lookup failed: ${tmErr.message}` };
   const tmMovementIds = new Set((tms ?? []).map((r) => r.movement_id));
 
+  const customTier = declaredExperienceToTier(customExperience);
   const resolved = new Map<string, { movementId: string; slug: string; displayName: string }>();
   const missingRoles: string[] = [];
   for (const day of archetype.days) {
     if (day.kind !== "strength") continue;
-    let chosen: { movementId: string; slug: string; displayName: string } | null = null;
-    for (const slug of day.candidateSlugs) {
-      const mv = movementBySlug.get(slug);
-      if (mv && tmMovementIds.has(mv.id)) {
-        chosen = { movementId: mv.id, slug: mv.slug, displayName: mv.display_name };
-        break;
-      }
-    }
+    const chosen = pickStrengthMovementForBand({
+      candidateSlugs: day.candidateSlugs,
+      movementBySlug,
+      tmMovementIds,
+      tier: customTier,
+    });
     if (chosen) resolved.set(daySlotKey(day), chosen);
     else missingRoles.push(STRENGTH_ROLE_LABELS[day.role]);
   }
@@ -1366,7 +1452,9 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
         if (!resolvedMv) continue;
         movement = { id: resolvedMv.movementId, slug: resolvedMv.slug, displayName: resolvedMv.displayName };
       } else if (day.kind === "cardio") {
-        const mv = movementBySlug.get(day.movementSlug);
+        // PR W2 — surface D. Per-tier cardio resolution (custom block path).
+        const cardioSlug = resolveCardioSlugForTier(day, customTier);
+        const mv = movementBySlug.get(cardioSlug);
         if (!mv) continue;
         movement = { id: mv.id, slug: mv.slug, displayName: mv.display_name };
         if (day.finisher) {
