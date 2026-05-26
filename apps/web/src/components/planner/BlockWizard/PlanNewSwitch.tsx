@@ -29,6 +29,8 @@ import {
 import type { EquipmentPreset } from "@/lib/settings/equipment-schema";
 import { BlockCreatingOverlay } from "./BlockCreatingOverlay";
 
+import type { Placement } from "@/lib/planner/wizard/placements";
+
 export type RecentBlockCard = {
   id: string;
   archetype: string;
@@ -36,7 +38,12 @@ export type RecentBlockCard = {
   startedOn: string;
   daysPerWeek: number | null;
   status: "active" | "completed" | "archived";
-  dayIndexOverrides: { days: number[]; twoADay: boolean } | null;
+  /** Optional `placements` flows from blocks created after the day-order fix. */
+  dayIndexOverrides: {
+    days: number[];
+    twoADay: boolean;
+    placements?: Placement[];
+  } | null;
 };
 
 export type CreateBlockResult = { ok: true } | { ok: false; error: string };

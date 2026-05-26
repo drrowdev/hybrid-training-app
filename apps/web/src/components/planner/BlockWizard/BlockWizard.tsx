@@ -41,6 +41,10 @@ import {
   type ScheduleCell,
 } from "@/lib/planner/wizard/schedule";
 import {
+  buildPlacementsFromSchedule,
+  type Placement,
+} from "@/lib/planner/wizard/placements";
+import {
   migrateV1IfNeeded,
   readDayPref,
   writeDayPref,
@@ -57,7 +61,19 @@ import type { EquipmentPreset } from "@/lib/settings/equipment-schema";
 export type WizardSubmit = {
   archetypeId: ResolvedArchetype["id"];
   daysPerWeek: number;
-  dayIndexOverrides: { days: number[]; twoADay: boolean };
+  /**
+   * Step-5 day arrangement. `days` + `twoADay` retain the pre-fix wire
+   * shape (which days were picked); `placements` carries the user's
+   * exact session-to-day mapping so the server materialiser can rebind
+   * the archetype's canonical templates to the days the user chose.
+   * Without `placements` the server falls back to the canonical archetype
+   * day order — see ``lib/planner/wizard/placements.ts``.
+   */
+  dayIndexOverrides: {
+    days: number[];
+    twoADay: boolean;
+    placements: Placement[];
+  };
   power: boolean;
 };
 
@@ -83,7 +99,16 @@ export type TmReadinessByArchetype = Record<ResolvedArchetype["id"], TmGate>;
 export type BlockWizardPrefill = {
   archetype: string;
   daysPerWeek: number;
-  dayIndexOverrides: { days: number[]; twoADay: boolean } | null;
+  /**
+   * Persisted overrides from the source block. `placements` is optional
+   * for backward compatibility with blocks created before the fix —
+   * those only carry `{ days, twoADay }`.
+   */
+  dayIndexOverrides: {
+    days: number[];
+    twoADay: boolean;
+    placements?: Placement[];
+  } | null;
 };
 
 export type BlockWizardProps = {
@@ -205,7 +230,12 @@ export function BlockWizard({
     });
     if (!out) return;
     const usedDays = state.schedule.filter((c) => c.am || c.pm).map((c) => c.day);
-    const dayIndexOverrides = { days: usedDays, twoADay: state.twoADay };
+    // `placements` carries the user's per-day session arrangement so the
+    // server materialiser can land each canonical template on the day the
+    // user actually picked. `days` + `twoADay` are kept for the day-pref
+    // localStorage hint + UI consumers that don't need session identity.
+    const placements = buildPlacementsFromSchedule(state.schedule);
+    const dayIndexOverrides = { days: usedDays, twoADay: state.twoADay, placements };
     if (typeof window !== "undefined") {
       const sessionCount = state.schedule.reduce(
         (n, c) => n + (c.am ? 1 : 0) + (c.pm ? 1 : 0),
