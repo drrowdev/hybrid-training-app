@@ -360,8 +360,10 @@ export type RecentPr = {
  * Walk recent completed sessions newest-first and collect PR hits across
  * all movements. Returns up to `limit` PRs from the most-recent sessions.
  *
- * Implementation is O(sessions × movements-touched); fine for a stats page
- * tile that surfaces the latest dozen PRs.
+ * Implementation: bulk-loads everything in a fixed number of round trips
+ * (audit F5 fix). Was 30 sequential calls to `getSessionPrs` plus an
+ * extra movement-slug lookup per PR hit; now 4 queries total regardless
+ * of how many recent sessions are scanned.
  */
 export async function getRecentPrs(
   supabase: SupabaseClient,
@@ -377,30 +379,213 @@ export async function getRecentPrs(
     .order("performed_at", { ascending: false })
     .limit(30); // scan the last 30 completed sessions
 
-  const result: RecentPr[] = [];
-  for (const s of completed ?? []) {
-    if (result.length >= limit) break;
-    const summaries = await getSessionPrs(supabase, userId, s.id, s.performed_at);
-    for (const sm of summaries) {
-      for (const hit of sm.hits) {
-        // Need movement_slug for the link; one more cheap lookup.
-        const { data: mv } = await supabase
-          .from("movements")
-          .select("slug")
-          .eq("id", sm.movementId)
-          .maybeSingle();
-        result.push({
-          sessionId: s.id,
-          sessionPerformedAt: s.performed_at,
-          movementId: sm.movementId,
-          movementSlug: mv?.slug ?? "",
-          movementDisplayName: sm.movementDisplayName,
-          hit,
-        });
-        if (result.length >= limit) break;
-      }
-      if (result.length >= limit) break;
+  const recentSessions = (completed ?? []) as Array<{ id: string; performed_at: string }>;
+  if (recentSessions.length === 0) return [];
+  const recentIds = recentSessions.map((s) => s.id);
+  // Earliest performed_at across the scanned window — the upper bound
+  // we need for the "prior history" pull. Newer rows than this are
+  // either inside the window or later (and irrelevant for PR detection
+  // against the window's sessions).
+  const oldestPerformedAt = recentSessions[recentSessions.length - 1]!.performed_at;
+
+  // Pull every working set logged in the scanned window in one query,
+  // joining the movement so we can render the "Bench Press: 102.5 kg"
+  // PR label without an extra round trip per hit.
+  const { data: windowSetsRaw } = await supabase
+    .from("set_logs")
+    .select(
+      "session_id, weight_kg, reps, rpe, movement:movements(id, display_name, slug)",
+    )
+    .in("session_id", recentIds)
+    .eq("skipped", false)
+    .neq("set_kind", "warmup")
+    .not("weight_kg", "is", null)
+    .not("reps", "is", null)
+    .gt("reps", 0);
+
+  type WindowRow = {
+    session_id: string;
+    weight_kg: number | string;
+    reps: number | string;
+    rpe: number | string | null;
+    movement:
+      | { id: string; display_name: string; slug: string }
+      | { id: string; display_name: string; slug: string }[]
+      | null;
+  };
+  const windowRows = (windowSetsRaw ?? []) as WindowRow[];
+  if (windowRows.length === 0) return [];
+
+  // Collect the movement_ids actually touched in the window. The
+  // history query and slug map both key off this set.
+  const movementIds = new Set<string>();
+  const movementMeta = new Map<string, { displayName: string; slug: string }>();
+  for (const r of windowRows) {
+    const m = Array.isArray(r.movement) ? r.movement[0] : r.movement;
+    if (!m) continue;
+    movementIds.add(m.id);
+    if (!movementMeta.has(m.id)) {
+      movementMeta.set(m.id, { displayName: m.display_name, slug: m.slug });
     }
   }
-  return result;
+  if (movementIds.size === 0) return [];
+
+  // Pull all *prior* history rows for the touched movements in one
+  // shot — every working set strictly before the oldest session in
+  // the window, scoped to the user via the sessions join. Each row
+  // carries its own performed_at so we can rebuild per-session
+  // history slices in memory.
+  const { data: historyRaw } = await supabase
+    .from("set_logs")
+    .select(
+      "movement_id, weight_kg, reps, rpe, sessions!inner(user_id, performed_at, deleted_at)",
+    )
+    .in("movement_id", Array.from(movementIds))
+    .eq("sessions.user_id", userId)
+    .is("sessions.deleted_at", null)
+    .lt("sessions.performed_at", oldestPerformedAt)
+    .eq("skipped", false)
+    .neq("set_kind", "warmup")
+    .not("weight_kg", "is", null)
+    .not("reps", "is", null)
+    .gt("reps", 0);
+
+  type HistoryRow = {
+    movement_id: string;
+    weight_kg: number | string;
+    reps: number | string;
+    rpe: number | string | null;
+    sessions:
+      | { performed_at: string }
+      | { performed_at: string }[]
+      | null;
+  };
+  // Bucket history rows by movement_id once; per-session detection
+  // below uses the full bucket since every history row is strictly
+  // older than the oldest session in the window.
+  const historyByMovement = new Map<string, HistoricalSet[]>();
+  for (const r of (historyRaw ?? []) as HistoryRow[]) {
+    const s = Array.isArray(r.sessions) ? r.sessions[0] : r.sessions;
+    if (!s) continue;
+    const bucket = historyByMovement.get(r.movement_id) ?? [];
+    bucket.push({
+      weight: Number(r.weight_kg),
+      reps: Number(r.reps),
+      rpe: r.rpe == null ? null : Number(r.rpe),
+      performed_at: s.performed_at,
+    });
+    historyByMovement.set(r.movement_id, bucket);
+  }
+
+  // Also bucket window rows by session_id so we can iterate sessions
+  // newest-first (matching the legacy ordering of `for (const s of
+  // completed)`).
+  type WindowSet = {
+    movementId: string;
+    movementDisplayName: string;
+    movementSlug: string;
+    weight: number;
+    reps: number;
+    rpe: number | null;
+  };
+  const setsBySession = new Map<string, WindowSet[]>();
+  for (const r of windowRows) {
+    const m = Array.isArray(r.movement) ? r.movement[0] : r.movement;
+    if (!m) continue;
+    const arr = setsBySession.get(r.session_id) ?? [];
+    arr.push({
+      movementId: m.id,
+      movementDisplayName: m.display_name,
+      movementSlug: m.slug,
+      weight: Number(r.weight_kg),
+      reps: Number(r.reps),
+      rpe: r.rpe == null ? null : Number(r.rpe),
+    });
+    setsBySession.set(r.session_id, arr);
+  }
+
+  // Walk sessions newest-first and emit PR hits until we hit `limit`.
+  // Per-session: pick the heaviest (tie: most reps) set per movement,
+  // then run the pure detector against that movement's history bucket.
+  // Each iteration also folds the previous sessions' best sets into
+  // the history bucket so a PR set in session N appears as history
+  // for any older session N+1 (matches the per-session semantics of
+  // the previous implementation, where `getSessionPrs` queried
+  // `lt('performed_at', sessionPerformedAt)` and so naturally
+  // included earlier sessions inside the 30-deep window).
+  //
+  // We iterate oldest→newest to keep the rolling history coherent,
+  // collect all (sessionId, hit) tuples, then re-sort newest-first at
+  // the end so the cap-at-`limit` slice mirrors the old behaviour.
+  type Collected = RecentPr & { sessionPerformedAtMs: number };
+  const collected: Collected[] = [];
+  const oldestFirst = recentSessions.slice().sort(
+    (a, b) => Date.parse(a.performed_at) - Date.parse(b.performed_at),
+  );
+  for (const s of oldestFirst) {
+    const sets = setsBySession.get(s.id);
+    if (!sets || sets.length === 0) continue;
+    // bestPerMovement: heaviest then most reps wins.
+    const bestPerMovement = new Map<string, WindowSet>();
+    for (const set of sets) {
+      const cur = bestPerMovement.get(set.movementId);
+      if (
+        !cur ||
+        set.weight > cur.weight ||
+        (set.weight === cur.weight && set.reps > cur.reps)
+      ) {
+        bestPerMovement.set(set.movementId, set);
+      }
+    }
+    const t = Date.parse(s.performed_at);
+    for (const best of bestPerMovement.values()) {
+      const history = historyByMovement.get(best.movementId) ?? [];
+      const result = detectPrs(
+        { weight: best.weight, reps: best.reps, rpe: best.rpe },
+        history,
+      );
+      for (const hit of result.hits) {
+        collected.push({
+          sessionId: s.id,
+          sessionPerformedAt: s.performed_at,
+          movementId: best.movementId,
+          movementSlug: best.movementSlug,
+          movementDisplayName: best.movementDisplayName,
+          hit,
+          sessionPerformedAtMs: t,
+        });
+      }
+      // Fold this session's best set into history for any later
+      // (newer) iteration in this loop. Newer sessions see today's
+      // PR as part of their history bucket.
+      history.push({
+        weight: best.weight,
+        reps: best.reps,
+        rpe: best.rpe,
+        performed_at: s.performed_at,
+      });
+      historyByMovement.set(best.movementId, history);
+    }
+  }
+
+  // Re-sort newest-first then cap at `limit` to match the legacy
+  // outer loop that walked the completed list newest-first.
+  collected.sort((a, b) => b.sessionPerformedAtMs - a.sessionPerformedAtMs);
+  const out: RecentPr[] = [];
+  for (const c of collected) {
+    if (out.length >= limit) break;
+    // Strip the helper field before returning.
+    const { sessionPerformedAtMs: _t, ...rest } = c;
+    out.push(rest);
+  }
+  // Also enforce the `movementSlug` field via the catalog map — the
+  // window join already gave us slugs, but if the catalog rendered an
+  // empty slug somewhere we patch from `movementMeta` (which dedups
+  // by movement_id).
+  for (const r of out) {
+    if (!r.movementSlug) {
+      r.movementSlug = movementMeta.get(r.movementId)?.slug ?? "";
+    }
+  }
+  return out;
 }
