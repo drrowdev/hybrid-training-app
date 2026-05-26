@@ -142,3 +142,102 @@ export async function updatePreferences(
   revalidatePath("/app/settings");
   return { ok: true };
 }
+
+// ─── Cross-device sync (PR Z1) ────────────────────────────────────
+// User-meaningful state that previously lived only in localStorage.
+// See `hybrid-sync-audit.md` §2a + §3 and migration 0055.
+
+const daySlotSchema = z.object({
+  days: z.array(z.number().int().min(0).max(6)).max(7),
+  twoADay: z.boolean(),
+});
+
+const wizardDayPrefSchema = z.object({
+  byArchetype: z.record(z.string(), z.record(z.string(), daySlotSchema)),
+});
+
+export type WizardDayPref = z.infer<typeof wizardDayPrefSchema>;
+
+/**
+ * Persist the block-wizard's per-archetype × per-session-count day
+ * pattern. The wizard mirrors this to localStorage for fast-paint;
+ * Postgres is the cross-device source of truth on hydration.
+ */
+export async function updateWizardDayPref(
+  pref: WizardDayPref,
+): Promise<ActionResult> {
+  const parsed = wizardDayPrefSchema.safeParse(pref);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid day pref" };
+  }
+
+  const { supabase, userId } = await getUserOrRedirect();
+  const { error } = await supabase
+    .from("profiles")
+    .update({ wizard_day_pref: parsed.data })
+    .eq("id", userId);
+  if (error) return { ok: false, error: error.message };
+
+  return { ok: true };
+}
+
+const isoTimestampSchema = z
+  .string()
+  .refine((v) => !Number.isNaN(Date.parse(v)), { message: "Invalid timestamp" });
+
+/**
+ * Snooze the Today-page bodyweight nudge until the given ISO timestamp.
+ * Persists across devices via `profiles.bw_nudge_hidden_until`.
+ */
+export async function dismissBwNudge(
+  snoozeUntil: string,
+): Promise<ActionResult> {
+  const parsed = isoTimestampSchema.safeParse(snoozeUntil);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid timestamp" };
+  }
+
+  const { supabase, userId } = await getUserOrRedirect();
+  const iso = new Date(parsed.data).toISOString();
+  const { error } = await supabase
+    .from("profiles")
+    .update({ bw_nudge_hidden_until: iso })
+    .eq("id", userId);
+  if (error) return { ok: false, error: error.message };
+
+  return { ok: true };
+}
+
+/**
+ * Permanently dismiss the bodyweight-only early-support banner.
+ * Persists across devices via `profiles.bw_banner_dismissed_at`.
+ */
+export async function dismissBwBanner(): Promise<ActionResult> {
+  const { supabase, userId } = await getUserOrRedirect();
+  const { error } = await supabase
+    .from("profiles")
+    .update({ bw_banner_dismissed_at: new Date().toISOString() })
+    .eq("id", userId);
+  if (error) return { ok: false, error: error.message };
+
+  return { ok: true };
+}
+
+/**
+ * Mark all engine-override audit entries as read up to `now()`. Used by
+ * the TopBar bell's "mark all read" button. The audit-count query in
+ * the app layout filters `engine_override_events.occurred_at >
+ * profiles.audit_last_read_at`, so the badge clears immediately on
+ * the next render.
+ */
+export async function markAuditRead(): Promise<ActionResult> {
+  const { supabase, userId } = await getUserOrRedirect();
+  const { error } = await supabase
+    .from("profiles")
+    .update({ audit_last_read_at: new Date().toISOString() })
+    .eq("id", userId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/app");
+  return { ok: true };
+}
