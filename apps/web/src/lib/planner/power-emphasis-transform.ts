@@ -29,8 +29,10 @@
  * archetype list below.
  */
 import type { PrescriptionItem } from "@hta/db";
+import type { DeclaredExperience } from "@hta/engine";
 import type { ArchetypeId, StrengthRole } from "./archetypes";
 import type { CatalogMovement } from "./accessory-picker";
+import { filterPowerForExperience } from "./accessory-picker";
 import { POWER_FUNCTIONAL_ROLES, type FunctionalRole } from "./accessory-roles";
 
 /**
@@ -163,17 +165,30 @@ export function pickPotentiationMovement({
   blockedRegions,
   tendinopathyActive,
   recentlyUsedMovementIds,
+  experience = null,
 }: {
   strengthRole: StrengthRole;
   catalog: CatalogMovement[];
   blockedRegions: Set<string>;
   tendinopathyActive: boolean;
   recentlyUsedMovementIds: Set<string>;
+  /**
+   * Declared training experience. Beginner / novice tiers suppress
+   * plyometric / ballistic / Olympic potentiation primers — same gate
+   * as the accessory picker. `null` leaves selection unfiltered.
+   * See `experience-tier-scope.md` §4.
+   */
+  experience?: DeclaredExperience | null;
 }): PotentiationPick | null {
   const hint = PATTERN_HINTS[strengthRole];
   const allowedRoles = new Set<FunctionalRole>(POWER_FUNCTIONAL_ROLES as readonly FunctionalRole[]);
 
-  const safe = catalog.filter((m) => {
+  // Experience-tier gate (PR W1 / Option A). Applied here too because
+  // this picker doesn't go through `pickAccessoriesForSession` — the
+  // primer is prepended directly by `assemblePrescriptionItems`.
+  const tierFiltered = filterPowerForExperience(catalog, experience);
+
+  const safe = tierFiltered.filter((m) => {
     const hasPowerRole = m.functionalRoles.some((r) => allowedRoles.has(r));
     if (!hasPowerRole) return false;
     if (loadsBlockedRegion(m, blockedRegions)) return false;

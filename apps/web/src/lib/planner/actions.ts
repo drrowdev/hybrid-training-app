@@ -82,6 +82,7 @@ import {
   buildPotentiationItem,
   pickPotentiationMovement,
 } from "./power-emphasis-transform";
+import type { DeclaredExperience } from "@hta/engine";
 import {
   DEFAULT_WARMUP_SCHEME,
   generateWarmupItems,
@@ -142,6 +143,29 @@ function toCatalogMovement(m: DbMovement): CatalogMovement {
     stimToFatigueScore: m.stim_to_fatigue_score,
     highStrainTendon: m.high_strain_tendon,
   };
+}
+
+/**
+ * Whitelist the 5 declared experience tiers shipped in migration 0052.
+ * Anything else (null, legacy values, undeclared) collapses to null so
+ * the accessory picker treats the user as "not declared" and keeps the
+ * pre-PR-W1 behaviour (no filtering).
+ */
+const DECLARED_EXPERIENCE_VALUES: ReadonlySet<DeclaredExperience> = new Set([
+  "beginner_lt_6m",
+  "novice_6m_2y",
+  "intermediate_2y_5y",
+  "advanced_5y_10y",
+  "highly_advanced_10y_plus",
+]);
+
+function resolveDeclaredExperience(
+  raw: string | null | undefined,
+): DeclaredExperience | null {
+  if (!raw) return null;
+  return DECLARED_EXPERIENCE_VALUES.has(raw as DeclaredExperience)
+    ? (raw as DeclaredExperience)
+    : null;
 }
 
 /** Default per-muscle weekly target (MV-floor for trained lifter, Schoenfeld 2017). */
@@ -443,6 +467,13 @@ function assemblePrescriptionItems(
    * is no %TM number to multiply against.
    */
   omitMainStrength: boolean = false,
+  /**
+   * Declared training experience (`profiles.training_experience`). When
+   * a beginner tier, the accessory picker and potentiation picker both
+   * drop plyometric / ballistic / Olympic candidates. `null` keeps the
+   * legacy unfiltered behaviour. See `experience-tier-scope.md` §4.
+   */
+  experience: DeclaredExperience | null = null,
 ): PrescriptionItem[] {
   const items =
     day.kind === "strength" && omitMainStrength
@@ -485,6 +516,7 @@ function assemblePrescriptionItems(
       maxItems: archetype.accessoryProfile.aesthetic.itemsPerSession + 4, // small budget for durability + functional fills
       powerEmphasis,
       equipment,
+      experience,
     });
     for (const p of picks) {
       const catalogEntry = catalog.find((c) => c.id === p.movementId);
@@ -539,6 +571,7 @@ function assemblePrescriptionItems(
         blockedRegions: new Set(),
         tendinopathyActive: false,
         recentlyUsedMovementIds: new Set(),
+        experience,
       });
       if (pick) {
         items.unshift(buildPotentiationItem(pick.movement));
@@ -664,12 +697,13 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   // Look up the user's two-a-day preference + warmup-ladder config + equipment so we pick the right day pool, prepend warmups, and only prescribe movements they can actually do.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("allows_two_a_days, warmup_scheme, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_assessment_completed_at, bodyweight_kg")
+    .select("allows_two_a_days, warmup_scheme, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_assessment_completed_at, bodyweight_kg, training_experience")
     .eq("id", user.id)
     .maybeSingle();
   const allowsTwoADays = Boolean(profile?.allows_two_a_days ?? false);
   const warmupScheme = resolveWarmupScheme(profile?.warmup_scheme);
   const equipment = resolveEquipment(profile);
+  const experience = resolveDeclaredExperience(profile?.training_experience);
 
   const minDays = minDaysForArchetype(
     archetype,
@@ -991,6 +1025,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
         // across blocks, but the BW preset gives a bodyweight-only block
         // even if barbell TMs are saved from a previous block.
         bwActive || !hasAnyTm,
+        experience,
       );
 
       // ─── Bodyweight Phase 3 — prepend BW main + back_off items ───
