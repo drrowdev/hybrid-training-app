@@ -233,6 +233,36 @@ export async function deriveDaysPerWeek(blockId: string): Promise<number | null>
   return distinct.size > 0 ? distinct.size : null;
 }
 
+/**
+ * Resolve "Block N of N" for the active block — chronological 1-indexed
+ * position of `blockId` across the user's non-deleted blocks, alongside
+ * the total count. Used by the /app/plan page header so the user can
+ * see where the current block sits in their training timeline without
+ * leaking external program names.
+ */
+export async function getBlockNumberAndTotal(
+  blockId: string,
+): Promise<{ index: number; total: number }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { index: 1, total: 1 };
+  const { data } = await supabase
+    .from("training_blocks")
+    .select("id, started_on, created_at")
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
+    .order("started_on", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (!data || data.length === 0) return { index: 1, total: 1 };
+  const idx = data.findIndex((b) => b.id === blockId);
+  return {
+    index: idx >= 0 ? idx + 1 : data.length,
+    total: data.length,
+  };
+}
+
 export async function getRecentBlocks(limit = 3): Promise<RecentBlock[]> {
   const supabase = await createClient();
   const {

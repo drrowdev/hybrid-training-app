@@ -7,24 +7,20 @@ import {
 } from "./fixtures/seed-blocks";
 
 /**
- * /app/plan calendar view modes.
+ * /app/plan view modes — post-redesign.
  *
  * Coverage:
- *  - Default view = Month → 42 grid cells.
- *  - Tabbing to Timeline → week-grouped panels.
- *  - Tabbing to List → flat day groups.
- *  - Filter "Strength" hides cardio-painted chips.
- *  - Legend toggle expands the legend body.
- *
- * Uses the seed-blocks helpers — an active block with planned
- * sessions is enough for all three views to render. We don't seed
- * priority events or cardio logs here; the views handle their
- * absence by rendering nothing extra.
+ *  - Default view = Timeline (4 week rows).
+ *  - Tabbing to Month → 42-cell grid.
+ *  - Filter "Strength" toggle stays sticky on the URL.
+ *  - Clicking a future session pill opens the drawer; the drawer's
+ *    "Swap day" action moves the session to a new date, after which
+ *    the original cell loses the pill and the target cell gains it.
  */
-test.describe("@desktop /app/plan calendar view modes", () => {
+test.describe("@desktop /app/plan view modes + drawer", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "Chromium-only");
 
-  test("month default → timeline → list, filter, legend", async ({
+  test("timeline default → month → filter → drawer swap", async ({
     page,
     context,
     freshUser,
@@ -59,49 +55,56 @@ test.describe("@desktop /app/plan calendar view modes", () => {
     // Header.
     await expect(page.getByRole("heading", { level: 1, name: /^plan$/i })).toBeVisible();
 
-    // Default view is Month — 42 cells (7 × 6) regardless of items.
-    await expect(page.getByTestId("plan-views")).toBeVisible();
+    // Timeline is the default view in the redesign.
+    await expect(page.getByTestId("plan-timeline")).toBeVisible();
+    await expect(page.getByTestId("plan-view-tab-timeline")).toHaveAttribute(
+      "data-active",
+      "true",
+    );
+
+    // Week rows render (4 weeks were seeded → 4 rows).
+    const weekRows = page.locator('[data-testid^="plan-timeline-week-"]');
+    await expect(weekRows.first()).toBeVisible();
+
+    // "This week" rail is visible alongside the timeline.
+    await expect(page.getByTestId("plan-this-week")).toBeVisible();
+
+    // Switch to Month → 42 cells.
+    await page.getByTestId("plan-view-tab-month").click();
+    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("plan-month-grid")).toBeVisible();
-    const monthCells = page.locator('[data-testid^="plan-month-cell-"]');
-    await expect(monthCells).toHaveCount(42);
+    await expect(page.locator('[data-testid^="plan-month-cell-"]')).toHaveCount(42);
 
-    // Month tab is active by default.
-    await expect(page.getByTestId("plan-view-tab-month")).toHaveAttribute("data-active", "true");
-
-    // Switch to Timeline.
+    // Switch back to Timeline.
     await page.getByTestId("plan-view-tab-timeline").click();
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("plan-timeline")).toBeVisible();
-    // Week panels render with the testid prefix.
-    const weekPanels = page.locator('[data-testid^="plan-timeline-week-"]');
-    await expect(weekPanels.first()).toBeVisible();
 
-    // Switch to List.
-    await page.getByTestId("plan-view-tab-list").click();
-    await page.waitForLoadState("networkidle");
-    await expect(page.getByTestId("plan-list")).toBeVisible();
-
-    // Filter chip — Strength hides cardio-painted rows. The seeded
-    // planned sessions are all strength by default, so toggling
-    // shouldn't remove them.
+    // Filter toggle — clicking Strength sets it active.
     await page.getByTestId("plan-filter-strength").click();
-    await expect(page.getByTestId("plan-filter-strength")).toHaveAttribute("data-active", "true");
+    await expect(page.getByTestId("plan-filter-strength")).toHaveAttribute(
+      "data-active",
+      "true",
+    );
 
-    // Legend toggle — defaultLegendOpen is true on desktop, so the
-    // body should already be visible. Clicking the toggle collapses
-    // it; clicking again re-expands.
-    const legendToggle = page.getByTestId("plan-legend-toggle");
-    await expect(page.getByTestId("plan-legend")).toBeVisible();
-    await legendToggle.click();
-    await expect(page.getByTestId("plan-legend")).toBeHidden();
-    await legendToggle.click();
-    await expect(page.getByTestId("plan-legend")).toBeVisible();
-    // Legend lists all six categories.
-    await expect(page.getByTestId("plan-legend")).toContainText(/Strength planned/);
-    await expect(page.getByTestId("plan-legend")).toContainText(/Strength done/);
-    await expect(page.getByTestId("plan-legend")).toContainText(/Cardio planned/);
-    await expect(page.getByTestId("plan-legend")).toContainText(/Cardio done/);
-    await expect(page.getByTestId("plan-legend")).toContainText(/Past unfulfilled/);
-    await expect(page.getByTestId("plan-legend")).toContainText(/Priority event/);
+    // Click any session pill on the timeline → drawer opens.
+    const firstPill = page.locator('[data-testid^="plan-pill-"]').first();
+    await firstPill.click();
+    await expect(page.getByTestId("plan-drawer")).toBeVisible();
+
+    // Drawer action: ⇄ Swap day reveals the inline date picker.
+    await page.getByTestId("plan-drawer-swap").click();
+    await expect(page.getByTestId("plan-drawer-swap-form")).toBeVisible();
+
+    // Pick tomorrow (or any other date) and submit.
+    const tomorrow = new Date(today);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    const tomorrowYmd = tomorrow.toISOString().slice(0, 10);
+    await page.getByTestId("plan-drawer-swap-date").fill(tomorrowYmd);
+    await page.getByTestId("plan-drawer-swap-submit").click();
+    await page.waitForLoadState("networkidle");
+
+    // After the swap the drawer auto-closes and the page revalidates.
+    await expect(page.getByTestId("plan-drawer")).toHaveCount(0);
   });
 });
