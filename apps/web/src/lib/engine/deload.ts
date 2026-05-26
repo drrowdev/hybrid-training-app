@@ -83,7 +83,18 @@ export async function findDeloadProposalForSession(
     .order("week_index", { ascending: false })
     .limit(20);
 
-  let priorMiss: typeof thisMiss | null = null;
+  // Audit F7 fix — pre-filter to the planned sessions whose AMRAP
+  // matches `movementId`, then bulk-load the data wasRealMiss needs
+  // (sessions row + set_logs) for the whole candidate set in two
+  // parallel queries. Was up to 20 × 2 = 40 serial round trips inside
+  // a for-of loop.
+  type Candidate = {
+    plannedId: string;
+    sessionId: string;
+    target: number;
+    weekIndex: number;
+  };
+  const candidates: Candidate[] = [];
   for (const p of priorPlanned ?? []) {
     const pPresc = p.prescription as Prescription | null;
     if (!pPresc) continue;
@@ -91,13 +102,69 @@ export async function findDeloadProposalForSession(
     if (!pAmrap?.item.movementId) continue;
     if (pAmrap.item.movementId !== movementId) continue;
     if (!p.completed_session_id) continue;
-    const candidate = await wasRealMiss(supabase, userId, p.completed_session_id, movementId, pAmrap.target);
-    if (candidate) {
-      priorMiss = candidate;
-      break;
+    candidates.push({
+      plannedId: p.id,
+      sessionId: p.completed_session_id,
+      target: pAmrap.target,
+      weekIndex: p.week_index,
+    });
+  }
+
+  let priorMiss: MissRow | null = null;
+  if (candidates.length > 0) {
+    const candidateSessionIds = candidates.map((c) => c.sessionId);
+    const [{ data: sessionRows }, { data: setRows }] = await Promise.all([
+      supabase
+        .from("sessions")
+        .select("id, performed_at, fatigue, soreness")
+        .in("id", candidateSessionIds)
+        .eq("user_id", userId)
+        .is("deleted_at", null),
+      supabase
+        .from("set_logs")
+        .select("session_id, weight_kg, reps, set_kind")
+        .in("session_id", candidateSessionIds)
+        .eq("movement_id", movementId)
+        .eq("skipped", false)
+        .neq("set_kind", "warmup")
+        .not("weight_kg", "is", null)
+        .not("reps", "is", null),
+    ]);
+    const sessionById = new Map(
+      ((sessionRows ?? []) as Array<{
+        id: string;
+        performed_at: string;
+        fatigue: number | null;
+        soreness: number | null;
+      }>).map((s) => [s.id, s]),
+    );
+    const setsBySession = new Map<string, Array<{ weight_kg: number | string; reps: number | string }>>();
+    for (const r of (setRows ?? []) as Array<{
+      session_id: string;
+      weight_kg: number | string;
+      reps: number | string;
+    }>) {
+      const arr = setsBySession.get(r.session_id) ?? [];
+      arr.push({ weight_kg: r.weight_kg, reps: r.reps });
+      setsBySession.set(r.session_id, arr);
     }
-    // First non-miss = streak broken; no deload.
-    return null;
+
+    // Walk candidates in the same order priorPlanned arrived in (the
+    // outer `.order('week_index', { ascending: false })` already
+    // sorted newest-first). The first non-miss breaks the streak and
+    // returns null — same semantics as the legacy for-of.
+    for (const c of candidates) {
+      const session = sessionById.get(c.sessionId);
+      const candidate = session
+        ? evaluateRealMissFromRows(session, setsBySession.get(c.sessionId) ?? [], c.target)
+        : null;
+      if (candidate) {
+        priorMiss = candidate;
+        break;
+      }
+      // First non-miss = streak broken; no deload.
+      return null;
+    }
   }
   if (!priorMiss) return null;
 
@@ -158,6 +225,11 @@ type MissRow = {
  *
  * Returns null when no real miss is detected (either it was hit or the
  * session was cooked).
+ *
+ * Used for the *current* session check (single row → two queries is
+ * fine). The prior-session loop in `findDeloadProposalForSession`
+ * bypasses this wrapper and bulk-loads the same data once via
+ * `evaluateRealMissFromRows` to avoid the audit-F7 N+1.
  */
 async function wasRealMiss(
   supabase: SupabaseClient,
@@ -175,10 +247,6 @@ async function wasRealMiss(
     .is("deleted_at", null)
     .maybeSingle();
   if (!session) return null;
-  const grm = computeGrm({ fatigue: session.fatigue, soreness: session.soreness });
-  if (grm.hasCheckIn && grm.value < GRM_FATIGUE_THRESHOLD) {
-    return null;
-  }
 
   // Find the heaviest AMRAP-eligible set in the session for this movement.
   const { data: sets } = await supabase
@@ -191,10 +259,33 @@ async function wasRealMiss(
     .not("weight_kg", "is", null)
     .not("reps", "is", null);
 
+  return evaluateRealMissFromRows(
+    session as { id: string; performed_at: string; fatigue: number | null; soreness: number | null },
+    (sets ?? []) as Array<{ weight_kg: number | string; reps: number | string }>,
+    amrapTarget,
+  );
+}
+
+/**
+ * Pure variant of `wasRealMiss` — takes the already-fetched session
+ * row and its set_logs and returns the miss record (or null). Lets the
+ * deload flow bulk-load the candidate window once instead of issuing
+ * two queries per candidate.
+ */
+function evaluateRealMissFromRows(
+  session: { id: string; performed_at: string; fatigue: number | null; soreness: number | null },
+  sets: ReadonlyArray<{ weight_kg: number | string; reps: number | string }>,
+  amrapTarget: number,
+): MissRow | null {
+  const grm = computeGrm({ fatigue: session.fatigue, soreness: session.soreness });
+  if (grm.hasCheckIn && grm.value < GRM_FATIGUE_THRESHOLD) {
+    return null;
+  }
   let best: { weight: number; reps: number } | null = null;
-  for (const s of sets ?? []) {
+  for (const s of sets) {
     const w = Number(s.weight_kg);
     const r = Number(s.reps);
+    if (!Number.isFinite(w) || !Number.isFinite(r)) continue;
     if (!best || w > best.weight || (w === best.weight && r > best.reps)) {
       best = { weight: w, reps: r };
     }
@@ -205,8 +296,8 @@ async function wasRealMiss(
   if (best.reps >= amrapTarget) return null;
 
   return {
-    sessionId,
-    performedAt: session.performed_at as string,
+    sessionId: session.id,
+    performedAt: session.performed_at,
     targetReps: amrapTarget,
     performedReps: best.reps,
     weight: best.weight,
