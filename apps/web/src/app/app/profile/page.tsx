@@ -12,7 +12,7 @@
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { getActiveBlock, archetypeDisplayName, getUserTimezone } from "@/lib/planner/queries";
 import { listTrainingMaxes } from "@/lib/training-maxes/queries";
 import { todayYmd } from "@/lib/dates";
@@ -94,7 +94,7 @@ export default async function TrainingProfilePage() {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const userId = user.id;

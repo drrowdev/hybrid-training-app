@@ -19,7 +19,7 @@
  *     was triggered from
  */
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
 
 const swapActiveSchema = z.object({
@@ -55,7 +55,7 @@ export async function swapActiveMovement(
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return { error: "Not signed in." };
 
   // Resolve both movements (slugs feed the audit row's

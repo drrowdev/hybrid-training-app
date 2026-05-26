@@ -20,7 +20,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { getUserTimezone } from "@/lib/planner/queries";
 import { todayYmd } from "@/lib/dates";
 import {
@@ -69,7 +69,7 @@ export async function persistDailyCheckIn(
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const cols = dailyCheckInUpsertColumns(input);

@@ -12,7 +12,7 @@
  * here.
  */
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { getUserTimezone } from "@/lib/planner/queries";
 import { todayYmd } from "@/lib/dates";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -55,7 +55,7 @@ export default async function RacesPage() {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const today = todayYmd(await getUserTimezone(user.id));

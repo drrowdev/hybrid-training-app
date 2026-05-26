@@ -78,6 +78,7 @@ vi.mock("@/lib/supabase/server", () => ({
       from: vi.fn(() => query),
     };
   },
+  getAuthUser: async () => ({ data: { user: { id: "u1" } }, error: null }),
 }));
 
 describe("getAllBlocksWithCompletionStats", () => {

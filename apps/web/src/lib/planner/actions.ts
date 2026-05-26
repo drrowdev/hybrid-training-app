@@ -40,7 +40,7 @@ type PlannedSessionInsertRow = {
    */
   effective_stress_load?: number | null;
 };
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   ARCHETYPES,
   type Archetype,
@@ -649,7 +649,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const archetype = ARCHETYPES[parsed.data.archetype];
@@ -1213,7 +1213,7 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   // Pull the user's warmup-ladder config + equipment so custom blocks
@@ -1432,7 +1432,7 @@ export async function endBlock(formData: FormData): Promise<void> {
 
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (user) {
     const totalPlanned = completionRow?.length ?? 0;
     const totalDone = (completionRow ?? []).filter(
@@ -1493,7 +1493,7 @@ export async function deleteBlock(
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return { ok: false, error: "Not signed in." };
 
   const { error } = await supabase
@@ -1519,7 +1519,7 @@ export async function restoreBlock(
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return { ok: false, error: "Not signed in." };
 
   const { error } = await supabase
@@ -1550,7 +1550,7 @@ export async function permanentlyDeleteBlock(
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return { ok: false, error: "Not signed in." };
 
   const { error } = await supabase
@@ -1689,7 +1689,7 @@ export async function movePlannedSession(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const { data: planned } = await supabase
@@ -1808,7 +1808,7 @@ export async function setPlannedTime(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const idValid = typeof raw.id === "string" && /^[0-9a-f-]{36}$/i.test(raw.id);
@@ -1917,7 +1917,7 @@ export async function startSessionDirect(plannedId: string): Promise<never> {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const { data: planned } = await supabase

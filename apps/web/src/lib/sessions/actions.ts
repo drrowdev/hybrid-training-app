@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
 import { maybeCompleteBlock } from "@/lib/planner/completion";
 import { getUserTimezone } from "@/lib/planner/queries";
@@ -36,7 +36,7 @@ export async function startSession(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const { data, error } = await supabase
@@ -120,7 +120,7 @@ export async function addStrengthSet(
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return { error: "Not signed in." };
 
   const { count } = await supabase
@@ -225,7 +225,7 @@ export async function addCardioBlock(
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return { error: "Not signed in." };
 
   const { count } = await supabase
@@ -417,7 +417,7 @@ export async function completeSession(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   // Auto-derive session RPE from per-set RPEs (volume-weighted).
@@ -532,7 +532,7 @@ export async function recomputeRegionStateAction(): Promise<void> {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   await recomputeRegionState(supabase, user.id, await getUserTimezone(user.id));
@@ -549,7 +549,7 @@ export async function deleteSession(
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return { ok: false, error: "Not signed in." };
 
   // Soft-delete: SET deleted_at = NOW() instead of removing the row.
@@ -583,7 +583,7 @@ export async function restoreSession(id: string): Promise<{ ok: true } | { ok: f
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return { ok: false, error: "Not signed in." };
 
   const { error } = await supabase
@@ -614,7 +614,7 @@ export async function permanentlyDeleteSession(
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return { ok: false, error: "Not signed in." };
 
   const { error } = await supabase
@@ -678,7 +678,7 @@ export async function fillSessionFromPlan(
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return { error: "Not signed in." };
 
   // Resolve the linked plan + TM dict in parallel so the cost is one
@@ -793,7 +793,7 @@ export async function updateSessionNotes(
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return { error: "Not signed in." };
 
   const { error } = await supabase
@@ -836,7 +836,7 @@ export async function applyStravaAutofill(
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return { error: "Not signed in." };
 
   // Fetch the source row through a user-id join so RLS rules out
@@ -949,7 +949,7 @@ export async function swapPrescriptionItem(
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return { error: "Not signed in." };
 
   const [{ data: plannedRow, error: pErr }, { data: newMov, error: mErr }] = await Promise.all([

@@ -19,7 +19,7 @@
  * applies a ceiling).
  */
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ALL_MUSCLE_GROUPS, type MuscleGroup } from "@/lib/muscle/muscle-groups";
 import { ActiveLimitationCard } from "@/components/limitations/ActiveLimitationCard";
@@ -71,7 +71,7 @@ export default async function InjuriesPage() {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const [limRes, formatProfile] = await Promise.all([

@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { createAdmin, createClient } from "@/lib/supabase/server";
+import { createAdmin, createClient, getAuthUser } from "@/lib/supabase/server";
 
 /**
  * Hard-delete the signed-in user. GDPR Article 17 implementation.
@@ -16,7 +16,7 @@ export async function deleteAccount(): Promise<void> {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) {
     redirect("/login");
   }

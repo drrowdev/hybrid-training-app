@@ -20,7 +20,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactElement } from "react";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { getUserTimezone } from "@/lib/planner/queries";
 import { todayYmd } from "@/lib/dates";
 import { getBlockIndex, type BlockIndexRow } from "@/lib/stats/blocks";
@@ -33,7 +33,7 @@ export default async function StatsBlocksIndexPage() {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const { data: profile } = await supabase

@@ -94,6 +94,7 @@ vi.mock("@/lib/supabase/server", () => {
         return builder;
       },
     }),
+    getAuthUser: async () => ({ data: { user: { id: SELF_USER } }, error: null }),
   };
 });
 

@@ -13,7 +13,7 @@
  * understand the soft-delete is not forever.
  */
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { getTrashedItems } from "@/lib/planner/queries";
 import { TrashItemRow } from "@/components/trash/TrashItemRow";
 
@@ -21,7 +21,7 @@ export default async function TrashPage() {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const { blocks, sessions } = await getTrashedItems();

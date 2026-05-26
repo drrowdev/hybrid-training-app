@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { roundToPlate } from "./queries";
 import { evaluateTmSuggestion } from "./suggestions";
 
@@ -32,7 +32,7 @@ export async function upsertTrainingMax(formData: FormData): Promise<UpsertResul
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   // Manual upsert is always 'entered' — typing a value into the form is an
@@ -83,7 +83,7 @@ export async function setDefaultTmPercent(formData: FormData): Promise<UpsertRes
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const { error } = await supabase
@@ -111,7 +111,7 @@ export async function lockTrainingMaxAsEntered(formData: FormData): Promise<Upse
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
   const { error } = await supabase
     .from("training_maxes")
@@ -145,7 +145,7 @@ export async function acceptTmSuggestion(formData: FormData): Promise<UpsertResu
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const { data: suggestion, error: readErr } = await supabase
@@ -228,7 +228,7 @@ export async function dismissTmSuggestion(formData: FormData): Promise<UpsertRes
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const { error } = await supabase
@@ -256,7 +256,7 @@ export async function generateTmSuggestionsForSession(
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return [];
 
   const { data: session } = await supabase

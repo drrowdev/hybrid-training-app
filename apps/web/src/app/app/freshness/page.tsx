@@ -8,7 +8,7 @@
  */
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
 import { MuscleGrid16 } from "@/components/muscle-grid/MuscleGrid16";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -20,7 +20,7 @@ export default async function FreshnessPage() {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const { data: profile } = await supabase
