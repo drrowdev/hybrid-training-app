@@ -49,8 +49,6 @@ export default async function SettingsPage() {
     { count: activeLim },
     { count: upcomingEvents },
     { count: tmCount },
-    { count: trashedBlockCount },
-    { count: trashedSessionCount },
   ] = await Promise.all([
     supabase
       .from("limitations")
@@ -65,18 +63,7 @@ export default async function SettingsPage() {
       .from("training_maxes")
       .select("id", { count: "exact", head: true })
       .eq("user_id", user.id),
-    supabase
-      .from("training_blocks")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .not("deleted_at", "is", null),
-    supabase
-      .from("sessions")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .not("deleted_at", "is", null),
   ]);
-  const trashCount = (trashedBlockCount ?? 0) + (trashedSessionCount ?? 0);
 
   const activeLimCount = activeLim ?? 0;
   const upcomingEventsCount = upcomingEvents ?? 0;
@@ -151,14 +138,6 @@ export default async function SettingsPage() {
           title="Preferences"
           description="Time, feedback, warmups, connections."
           testId="settings-hub-preferences"
-        />
-        <SettingsHubCard
-          href="/app/settings/account"
-          icon="🗄️"
-          title="Account & data"
-          description="Trash, export, delete."
-          badge={`${trashCount} in trash`}
-          testId="settings-hub-account"
         />
       </div>
     </main>

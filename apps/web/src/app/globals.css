@@ -553,3 +553,17 @@ select option {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ── TopBarRight — rules that can't be inlined ────────────────────
+   1. Hide the native <details> disclosure triangle on the bell + avatar.
+   2. Hide the search button label + kbd chip < 640px (icon stays).
+   3. Force link color back to the dropdown text token; the global
+      `a { color: var(--cp-link) }` rule above otherwise overrides
+      inline `color` on <Link> elements in the user / bell menus. */
+.cp-tbr-pop > summary::-webkit-details-marker { display: none; }
+.cp-tbr-pop > summary::marker { display: none; }
+@media (max-width: 639px) {
+  .cp-tbr-search-label,
+  .cp-tbr-kbd { display: none; }
+}
+a.cp-tbr-pop-item { color: var(--cp-text); }
