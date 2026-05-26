@@ -14,10 +14,13 @@ import { detectTmAnchoredPr } from "@/lib/engine/tm-anchored-pr";
 import { restSecondsForKind } from "@/lib/sessions/rest";
 import { hapticTick } from "@/lib/feedback";
 import { RestTimer } from "./RestTimer";
+import {
+  SET_KINDS,
+  SET_KIND_LABELS,
+  type SetKind,
+} from "@/lib/sessions/set-kind-labels";
 
-type SetKind = "warmup" | "main" | "back_off" | "accessory" | "tendon";
-
-const SET_KINDS: SetKind[] = ["warmup", "main", "back_off", "accessory", "tendon"];
+export type { SetKind };
 
 export function FreestyleMovementCard({
   sessionId,
@@ -172,15 +175,25 @@ export function FreestyleMovementCard({
                   background: setKind === k ? "var(--cp-accent-soft)" : "transparent",
                   color: setKind === k ? "var(--cp-accent)" : "var(--cp-text-muted)",
                   fontSize: 11,
-                  textTransform: "uppercase",
                   letterSpacing: "0.04em",
                   cursor: "pointer",
                 }}
               >
-                {k.replace("_", " ")}
+                {SET_KIND_LABELS[k].label}
               </button>
             ))}
           </div>
+          <p
+            style={{
+              fontSize: 12,
+              color: "var(--cp-text-muted)",
+              margin: 0,
+              marginTop: 6,
+              minHeight: 16,
+            }}
+          >
+            {SET_KIND_LABELS[setKind].caption}
+          </p>
 
           <form
             onSubmit={submit}

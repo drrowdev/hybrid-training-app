@@ -51,6 +51,9 @@ import type { MovementFamily, MovementNode } from "@hta/db";
 import type { ArchetypeId } from "./archetypes";
 import type { Equipment } from "@/lib/settings/equipment-schema";
 import { effectiveTrainingMaxKg } from "./bw-multiplier";
+import { SET_KIND_LABELS } from "@/lib/sessions/set-kind-labels";
+
+const BACK_OFF_LABEL = SET_KIND_LABELS.back_off.label;
 
 /**
  * Source the engine resolved the external load from. `band_assist`
@@ -351,7 +354,7 @@ function cueFor(
   }
   if (bucket === "back_off") {
     if (type === "isometric_hold") return "Lighter hold. Stop when bracing breaks.";
-    return "Back-off set — clean reps only. Stop 3 from form breakdown.";
+    return `${BACK_OFF_LABEL} set — clean reps only. Stop 3 from form breakdown.`;
   }
   if (type === "isometric_hold") {
     return "Hold to ~8/10 effort, not failure. Maintain hollow body throughout.";
@@ -453,7 +456,7 @@ function shapeBackOff(
       ...main,
       sets: 2,
       targetRir: 1,
-      intensityCue: "Back-off — last rep should be the last clean rep.",
+      intensityCue: `${BACK_OFF_LABEL} — last rep should be the last clean rep.`,
     };
   }
   // strength_anchor + everything else: 2 sets, looser RIR, slightly
@@ -463,7 +466,7 @@ function shapeBackOff(
     ...main,
     sets: 2,
     targetRir: 3,
-    intensityCue: "Back-off — looser proximity. 3 in the tank.",
+    intensityCue: `${BACK_OFF_LABEL} — looser proximity. 3 in the tank.`,
   };
   if (main.prescriptionType === "isometric_hold") {
     next.holdSeconds = Math.max(3, (main.holdSeconds ?? 0) - 2);
