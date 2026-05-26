@@ -36,9 +36,9 @@ test.describe("@desktop /app/settings/equipment · inventory presets", () => {
     // ─── Home gym: no dumbbells, no trap bar, no machines, no cardio.
     await page.getByTestId("equipment-preset-home_gym").click();
 
-    await expect(page.getByTestId("equipment-dumbbells-no")).toHaveAttribute(
-      "data-active",
-      "true",
+    await expect(page.getByTestId("equipment-dumbbells")).toHaveAttribute(
+      "data-present",
+      "false",
     );
     await expect(page.getByTestId("equipment-bar-trap")).toHaveAttribute(
       "data-present",
@@ -69,8 +69,8 @@ test.describe("@desktop /app/settings/equipment · inventory presets", () => {
     // ─── Commercial gym: full kit populates again.
     await page.getByTestId("equipment-preset-commercial_gym").click();
 
-    await expect(page.getByTestId("equipment-dumbbells-yes")).toHaveAttribute(
-      "data-active",
+    await expect(page.getByTestId("equipment-dumbbells")).toHaveAttribute(
+      "data-present",
       "true",
     );
     await expect(page.getByTestId("equipment-bar-trap")).toHaveAttribute(
@@ -151,7 +151,7 @@ test.describe("@desktop /app/settings/equipment · inventory presets", () => {
       );
     }
     // Conditioning ergs are on; recumbent bike + elliptical are off.
-    for (const cardio of ["rower", "ski_erg", "bike_air", "treadmill_curved", "treadmill"]) {
+    for (const cardio of ["rower", "ski_erg", "bike_air", "treadmill"]) {
       await expect(page.getByTestId(`equipment-cardio-${cardio}`)).toHaveAttribute(
         "data-active",
         "true",
@@ -185,7 +185,7 @@ test.describe("@desktop /app/settings/equipment · inventory presets", () => {
     expect(persisted?.preset).toBe("functional_gym");
     expect(persisted?.machines).toEqual([]);
     expect(persisted?.cardio).toEqual(
-      expect.arrayContaining(["rower", "ski_erg", "bike_air", "treadmill_curved", "treadmill"]),
+      expect.arrayContaining(["rower", "ski_erg", "bike_air", "treadmill"]),
     );
     expect(persisted?.accessories?.weightedVest).toEqual([9]);
     expect(persisted?.accessories?.sandbag).toEqual([25]);

@@ -38,7 +38,6 @@ export type MachineType =
 // the value persists for future modality-aware cardio prescriptions.
 export type CardioMachineType =
   | "treadmill"
-  | "treadmill_curved"
   | "rower"
   | "bike_air"
   | "bike_recumbent"
@@ -60,7 +59,6 @@ export const ALL_MACHINES: readonly MachineType[] = [
 
 export const ALL_CARDIO: readonly CardioMachineType[] = [
   "treadmill",
-  "treadmill_curved",
   "rower",
   "bike_air",
   "bike_recumbent",
@@ -83,7 +81,6 @@ export const MACHINE_LABEL: Record<MachineType, string> = {
 
 export const CARDIO_LABEL: Record<CardioMachineType, string> = {
   treadmill: "Treadmill",
-  treadmill_curved: "Curved / manual treadmill",
   rower: "Rower",
   bike_air: "Air bike",
   bike_recumbent: "Recumbent bike",
