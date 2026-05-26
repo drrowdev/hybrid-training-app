@@ -141,27 +141,19 @@ test.describe("@desktop /app/plan — no AM/PM badges on single-session blocks",
       expect(text, `${label}: no (AM)/(PM) title suffix`).not.toMatch(/\((?:AM|PM)\)/);
     };
 
-    // ── Month view (default) ────────────────────────────────────────
+    // ── Month view ─────────────────────────────────────────────────
     await page.goto("/app/plan?view=month");
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("plan-month-grid")).toBeVisible();
     await assertNoAmPm("month view");
 
-    // ── Timeline view ───────────────────────────────────────────────
+    // ── Timeline view (default) ────────────────────────────────────
     await page.goto("/app/plan?view=timeline");
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("plan-timeline")).toBeVisible();
     await assertNoAmPm("timeline view");
 
-    // ── List view ───────────────────────────────────────────────────
-    await page.goto("/app/plan?view=list");
-    await page.waitForLoadState("networkidle");
-    await expect(page.getByTestId("plan-list")).toBeVisible();
-    await assertNoAmPm("list view");
-
-    // ── Per-day cards on the same page ──────────────────────────────
-    // The DayCard render path lives below the view switcher and is
-    // the most common source of stray slot badges.
-    await assertNoAmPm("per-day cards");
+    // The List view was removed in the /plan redesign — its coverage
+    // is folded into the Timeline view assertion above.
   });
 });

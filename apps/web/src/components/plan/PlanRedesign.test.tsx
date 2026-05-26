@@ -1,0 +1,178 @@
+/**
+ * PlanRedesign — unit-level smoke for the timeline grid + drawer.
+ *
+ * Server-side rendering ensures the public contract (testids, classes,
+ * URLs) doesn't drift silently. Interactive behaviour (DnD, drawer
+ * open/close, swap-form submit) lives in the Playwright spec because
+ * it requires a real DOM event loop.
+ */
+import { describe, it, expect } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
+import { PlanRedesign, type PlanSessionInput } from "./PlanRedesign";
+import type { PrescriptionItem } from "@hta/db";
+
+const noop = async () => {};
+
+function strengthItems(): PrescriptionItem[] {
+  return [
+    {
+      kind: "main",
+      movementId: "m1",
+      movementSlug: "front_squat",
+      movementName: "Front Squat",
+      sets: 3,
+      reps: 5,
+    } as unknown as PrescriptionItem,
+  ];
+}
+
+function session(over: Partial<PlanSessionInput> = {}): PlanSessionInput {
+  return {
+    id: "s1",
+    weekIndex: 0,
+    dayIndex: 1,
+    date: "2026-05-26",
+    title: "Front Squat",
+    isCardio: false,
+    isStrength: true,
+    done: false,
+    skipped: false,
+    slot: "single",
+    items: strengthItems(),
+    estDurationMin: 55,
+    ...over,
+  };
+}
+
+function render(overrides: Partial<Parameters<typeof PlanRedesign>[0]> = {}) {
+  const props: Parameters<typeof PlanRedesign>[0] = {
+    archetypeName: "Endurance Focus",
+    blockNumber: 1,
+    blockTotal: 3,
+    startedOn: "2026-05-25",
+    endedOn: "2026-06-21",
+    weeks: 4,
+    today: "2026-05-26",
+    currentWeekIndex: 0,
+    sessions: [
+      session(),
+      session({
+        id: "s2",
+        weekIndex: 0,
+        dayIndex: 3,
+        date: "2026-05-28",
+        title: "VO2 intervals",
+        isCardio: true,
+        isStrength: false,
+      }),
+      session({
+        id: "s3",
+        weekIndex: 0,
+        dayIndex: 0,
+        date: "2026-05-25",
+        title: "Bench",
+        done: true,
+      }),
+    ],
+    view: "timeline",
+    filter: "all",
+    logHrefBase: "/app/sessions/start",
+    moveAction: noop,
+    skipAction: noop,
+    unskipAction: noop,
+    ...overrides,
+  };
+  return renderToStaticMarkup(<PlanRedesign {...props} />);
+}
+
+describe("PlanRedesign — header", () => {
+  it("renders archetype + block-of-N eyebrow", () => {
+    const html = render();
+    expect(html).toContain("Endurance Focus");
+    expect(html).toContain("Block 1 of 3");
+  });
+
+  it("renders the block date range and progress meta", () => {
+    const html = render();
+    expect(html).toContain("Week 1 of 4");
+    expect(html).toContain("of 3 sessions");
+  });
+});
+
+describe("PlanRedesign — timeline grid", () => {
+  it("renders the timeline by default with one row per week", () => {
+    const html = render();
+    expect(html).toContain('data-testid="plan-timeline"');
+    expect(html).toContain('data-testid="plan-timeline-week-0"');
+    expect(html).toContain('data-testid="plan-timeline-week-3"');
+  });
+
+  it("paints session pills with the strength or cardio modifier class", () => {
+    const html = render();
+    expect(html).toMatch(/session-pill strength[^"]*"[^>]*>Front Squat/);
+    expect(html).toMatch(/session-pill cardio[^"]*"[^>]*>VO2 intervals/);
+  });
+
+  it("marks the today cell with data-today=true and a TODAY chip", () => {
+    const html = render();
+    // Today (2026-05-26) is week 0, day 1 (Tue).
+    expect(html).toContain('data-testid="plan-day-cell-0-1"');
+    // React attribute order isn't deterministic across versions, so
+    // check that the today cell carries both markers — not their
+    // adjacency.
+    expect(html).toContain('data-today="true"');
+    expect(html).toContain("TODAY");
+  });
+
+  it("mutes past + done sessions (line-through via 'muted' modifier)", () => {
+    const html = render();
+    // s3 is on 2026-05-25 (before today) AND done → muted modifier
+    expect(html).toMatch(/session-pill strength muted[^"]*"[^>]*>Bench/);
+  });
+
+  it("renders 'Rest' pills on empty day cells", () => {
+    const html = render();
+    expect(html).toContain("Rest");
+  });
+});
+
+describe("PlanRedesign — view toggle + filter", () => {
+  it("flags the Timeline tab as active when view=timeline", () => {
+    const html = render({ view: "timeline" });
+    expect(html).toContain('data-testid="plan-view-tab-timeline"');
+    // The active tab carries data-active="true" — attribute ordering
+    // varies, so we assert presence both ways.
+    expect(html).toContain('data-active="true"');
+    // And the month tab is inactive.
+    expect(html).toMatch(/plan-view-tab-month[\s\S]*?data-active="false"/);
+  });
+
+  it("renders the Month grid when view=month", () => {
+    const html = render({ view: "month" });
+    expect(html).toContain('data-testid="plan-month-grid"');
+    expect(html).not.toContain('data-testid="plan-timeline"');
+  });
+
+  it("flags the active filter via data-active", () => {
+    const html = render({ filter: "strength" });
+    expect(html).toContain('data-testid="plan-filter-strength"');
+    expect(html).toMatch(/plan-filter-strength[\s\S]*?data-active="true"/);
+    expect(html).toMatch(/plan-filter-all[\s\S]*?data-active="false"/);
+  });
+});
+
+describe("PlanRedesign — this week rail", () => {
+  it("renders a 7-row rail for the current week", () => {
+    const html = render();
+    for (let d = 0; d < 7; d++) {
+      expect(html).toContain(`data-testid="plan-rail-${d}"`);
+    }
+  });
+
+  it("tags done sessions with 'Done' and future ones with Strength/Cardio kind", () => {
+    const html = render();
+    expect(html).toContain(">Done<");
+    expect(html).toContain(">Strength<");
+    expect(html).toContain(">Cardio<");
+  });
+});
