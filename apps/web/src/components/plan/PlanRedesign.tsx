@@ -483,21 +483,6 @@ export function PlanRedesign(props: PlanRedesignProps) {
               onOpen={openDrawer}
             />
           )}
-
-          <div className="plan-legend" data-testid="plan-legend">
-            <div className="item">
-              <span className="swatch strength" /> Strength
-            </div>
-            <div className="item">
-              <span className="swatch cardio" /> Cardio
-            </div>
-            <div className="item">
-              <span className="swatch today-sw" /> Today
-            </div>
-            <div className="item">
-              <span className="swatch rest-sw" /> Rest
-            </div>
-          </div>
         </div>
 
         <aside className="plan-rail" aria-label="This week" data-testid="plan-this-week">
@@ -545,6 +530,21 @@ export function PlanRedesign(props: PlanRedesignProps) {
             })}
           </div>
         </aside>
+      </div>
+
+      <div className="plan-legend" data-testid="plan-legend">
+        <div className="item">
+          <span className="swatch strength" /> Strength
+        </div>
+        <div className="item">
+          <span className="swatch cardio" /> Cardio
+        </div>
+        <div className="item">
+          <span className="swatch today-sw" /> Today
+        </div>
+        <div className="item">
+          <span className="swatch rest-sw" /> Rest
+        </div>
       </div>
 
       {openSession && (
@@ -784,6 +784,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
         }
 
         .plan-legend {
+          margin-top: 16px;
           display: flex;
           gap: 14px;
           flex-wrap: wrap;
