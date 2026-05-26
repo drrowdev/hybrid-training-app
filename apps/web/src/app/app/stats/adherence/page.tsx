@@ -23,7 +23,7 @@
  */
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { getUserTimezone } from "@/lib/planner/queries";
 import {
   getAdherenceDashboard,
@@ -56,7 +56,7 @@ export default async function StatsAdherencePage({
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const { data: profile } = await supabase

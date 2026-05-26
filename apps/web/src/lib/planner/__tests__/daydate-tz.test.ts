@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // but we still need the module to evaluate without a Next.js runtime.
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({}),
+  getAuthUser: async () => ({ data: { user: { id: "u1" } }, error: null }),
 }));
 
 import { dayDate, todayYmd } from "../queries";

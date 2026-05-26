@@ -58,6 +58,7 @@ vi.mock("@/lib/supabase/server", () => ({
       return q;
     },
   }),
+  getAuthUser: async () => ({ data: { user: { id: USER_ID } }, error: null }),
 }));
 
 describe("swapActiveMovement", () => {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { exchangeCode } from "@/lib/integrations/strava/client";
 import { syncStrava } from "@/lib/integrations/strava/sync";
 
@@ -29,7 +29,7 @@ export async function GET(request: Request): Promise<Response> {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) {
     settingsUrl.searchParams.set("strava_error", "not_signed_in");
     return NextResponse.redirect(settingsUrl);

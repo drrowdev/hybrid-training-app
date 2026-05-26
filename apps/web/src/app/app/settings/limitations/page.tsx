@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   addLimitation,
   deleteLimitation,
@@ -31,7 +31,7 @@ export default async function LimitationsPage() {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const [{ data: profile }, { data: all }] = await Promise.all([

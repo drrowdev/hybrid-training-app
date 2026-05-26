@@ -107,6 +107,7 @@ vi.mock("@/lib/supabase/server", () => ({
       throw new Error(`unexpected table ${table}`);
     },
   }),
+  getAuthUser: async () => ({ data: { user: { id: "user-1" } }, error: null }),
 }));
 
 // Import AFTER mocks so the action picks up the stubbed supabase.

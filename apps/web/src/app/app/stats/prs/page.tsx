@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { formatHitValue, getRecentPrs } from "@/lib/stats/pr-queries";
 import { PR_KIND_LABEL } from "@/lib/engine/pr";
 import { formatDate } from "@/lib/format/datetime";
@@ -9,7 +9,7 @@ export default async function AllPrsPage() {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const [{ data: profile }, prs] = await Promise.all([

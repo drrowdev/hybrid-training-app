@@ -20,7 +20,7 @@
  */
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   detectRpeCreep,
   filterSeriesToRange,
@@ -77,7 +77,7 @@ export default async function MovementDeepDivePage({
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const { data: profile } = await supabase

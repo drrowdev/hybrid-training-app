@@ -8,7 +8,7 @@
  * preferences only.
  */
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { logBodyweight } from "@/lib/settings/actions";
 import { todayYmd } from "@/lib/dates";
 
@@ -18,7 +18,7 @@ export default async function BodyweightSettingsPage() {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const { data: profile } = await supabase

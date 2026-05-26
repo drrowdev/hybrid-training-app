@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { randomBytes } from "crypto";
 import { cookies } from "next/headers";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { authorizeUrl } from "@/lib/integrations/strava/client";
 import { syncStrava } from "@/lib/integrations/strava/sync";
 
@@ -15,7 +15,7 @@ export async function connectStrava(): Promise<void> {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   const state = randomBytes(16).toString("hex");
@@ -34,7 +34,7 @@ export async function disconnectStrava(): Promise<void> {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   await supabase.from("strava_connections").delete().eq("user_id", user.id);
@@ -46,7 +46,7 @@ export async function syncStravaNow(): Promise<void> {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   try {
@@ -73,7 +73,7 @@ export async function triggerStaleStravaSync(): Promise<void> {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) return;
 
   const { data: conn } = await supabase

@@ -9,14 +9,14 @@
  */
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { BwAssessmentRunner } from "@/components/onboarding/bw-assessment/BwAssessmentRunner";
 
 export default async function BwAssessmentStandalonePage() {
   const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await getAuthUser();
   if (!user) redirect("/login");
 
   return (
