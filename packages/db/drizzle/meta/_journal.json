@@ -344,6 +344,13 @@
       "tag": "0052_training_experience_5_tiers",
       "when": 1780556400000,
       "breakpoints": false
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "tag": "0053_perf_indexes",
+      "when": 1780815600000,
+      "breakpoints": false
     }
   ]
 }

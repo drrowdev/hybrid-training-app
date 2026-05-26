@@ -302,6 +302,21 @@ export const plannedSessions = pgTable(
       t.slot,
     ),
     modalityIdx: index("planned_sessions_modality_idx").on(t.sessionModality),
+    // Migration 0053 — backs `/app/sessions/[id]` (the page hits
+    // `.eq('completed_session_id', id)` on every detail render) and
+    // the deload flow which scans recent planned sessions joined back
+    // to their completed counterpart. Partial — null rows (uncompleted
+    // planned sessions) are excluded to keep the index lean.
+    //
+    // NOTE: the WHERE completed_session_id IS NOT NULL predicate lives
+    // only in the hand-authored migration (drizzle/0053_perf_indexes.sql).
+    // drizzle-kit cannot yet express partial indexes in schema metadata,
+    // so do NOT regenerate this index from the schema — it would drop
+    // the WHERE clause. If schema is the source of truth in a future
+    // drizzle version, update both places together.
+    completedSessionIdx: index("planned_sessions_completed_session_idx").on(
+      t.completedSessionId,
+    ),
   }),
 );
 
