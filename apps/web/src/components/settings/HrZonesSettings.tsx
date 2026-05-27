@@ -17,21 +17,32 @@
 import { useCallback, useMemo, useState } from "react";
 import {
   computeZoneBandsSafe,
+  DEFAULT_ZONE_PCTS,
   HR_LTHR_RANGE,
   HR_MAX_RANGE,
   HR_RESTING_RANGE,
+  validateZonePercents,
   type HrMethod,
   type ZoneBands,
+  type ZonePercents,
 } from "@/lib/stats/hr-zones";
 import { useAutoSave } from "@/lib/settings/use-auto-save";
 import { updateHrZones } from "@/lib/settings/hr-zones-actions";
 import { AutoSaveStatus } from "./AutoSaveStatus";
+
+export type HrPercentsByMethod = {
+  max?: ZonePercents;
+  hrr?: ZonePercents;
+  lthr?: ZonePercents;
+};
 
 export type HrZonesSettingsValue = {
   hrMethod: HrMethod;
   hrMax: number | null;
   hrResting: number | null;
   hrLthr: number | null;
+  /** Per-method breakpoint overrides; missing entries fall back to defaults. */
+  hrPercents: HrPercentsByMethod;
 };
 
 export type HrZonesSettingsProps = {
@@ -98,6 +109,65 @@ function parseNumber(s: string): number | null {
 }
 
 /**
+ * Parse a single zone-percent input. Accepts either an integer
+ * percentage (`81`) or a decimal fraction (`0.81`); both land at 0.81.
+ * Anything > 1.5 is treated as a percentage and divided by 100.
+ */
+function parseZonePct(s: string): number | null {
+  if (s.trim() === "") return null;
+  const n = Number(s);
+  if (!Number.isFinite(n)) return null;
+  return n > 1.5 ? n / 100 : n;
+}
+
+/** Display a fractional zone-pct as a 0–150 integer when sensible. */
+function pctToDisplay(p: number | null | undefined): string {
+  if (p == null || !Number.isFinite(p)) return "";
+  return String(Math.round(p * 100));
+}
+
+function pctsEqual(
+  a: ZonePercents | undefined,
+  b: ZonePercents | undefined,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.z1 === b.z1 && a.z2 === b.z2 && a.z3 === b.z3 && a.z4 === b.z4;
+}
+
+type PctErrors = { z1: string | null; z2: string | null; z3: string | null; z4: string | null };
+
+/**
+ * Per-field error copy for the four breakpoint inputs. Empty fields
+ * are treated as "use the default" and never error. Range errors mark
+ * the offending field; ascending-order errors mark the later one.
+ */
+function pctFieldErrors(p: Partial<ZonePercents>): PctErrors {
+  const errs: PctErrors = { z1: null, z2: null, z3: null, z4: null };
+  const keys: Array<keyof ZonePercents> = ["z1", "z2", "z3", "z4"];
+  for (const k of keys) {
+    const v = p[k];
+    if (v == null) continue;
+    if (!Number.isFinite(v) || v <= 0 || v > 1.5) {
+      errs[k] = "Must be between 0% and 150%.";
+    }
+  }
+  const pairs: Array<[keyof ZonePercents, keyof ZonePercents]> = [
+    ["z1", "z2"],
+    ["z2", "z3"],
+    ["z3", "z4"],
+  ];
+  for (const [a, b] of pairs) {
+    const va = p[a];
+    const vb = p[b];
+    if (va == null || vb == null) continue;
+    if (errs[a] || errs[b]) continue;
+    if (!(va < vb)) errs[b] = `Must be greater than ${a.toUpperCase()}.`;
+  }
+  return errs;
+}
+
+/**
  * Per-method input validation copy. Returns null when the value is
  * usable, otherwise a muted-error message rendered below the field.
  */
@@ -160,6 +230,7 @@ export function HrZonesSettings({ initial, age }: HrZonesSettingsProps) {
       hrMax: next.hrMax,
       hrResting: next.hrResting,
       hrLthr: next.hrLthr,
+      pcts: next.hrPercents[next.hrMethod] ?? null,
     });
   }, []);
 
@@ -172,13 +243,19 @@ export function HrZonesSettings({ initial, age }: HrZonesSettingsProps) {
         a.hrMethod === b.hrMethod &&
         a.hrMax === b.hrMax &&
         a.hrResting === b.hrResting &&
-        a.hrLthr === b.hrLthr,
+        a.hrLthr === b.hrLthr &&
+        pctsEqual(a.hrPercents[a.hrMethod], b.hrPercents[b.hrMethod]) &&
+        pctsEqual(a.hrPercents.max, b.hrPercents.max) &&
+        pctsEqual(a.hrPercents.hrr, b.hrPercents.hrr) &&
+        pctsEqual(a.hrPercents.lthr, b.hrPercents.lthr),
     });
 
   const ageEstimate = useMemo(() => {
     if (age == null || age <= 0 || age > 120) return null;
     return 220 - age;
   }, [age]);
+
+  const activePcts = value.hrPercents[value.hrMethod];
 
   const bands = useMemo(
     () =>
@@ -187,8 +264,9 @@ export function HrZonesSettings({ initial, age }: HrZonesSettingsProps) {
         hrMax: value.hrMax ?? undefined,
         hrResting: value.hrResting ?? undefined,
         hrLthr: value.hrLthr ?? undefined,
+        pcts: activePcts,
       }),
-    [value],
+    [value, activePcts],
   );
   const rows = useMemo(() => previewZoneRows(bands), [bands]);
 
@@ -198,6 +276,7 @@ export function HrZonesSettings({ initial, age }: HrZonesSettingsProps) {
       hrMax: ageEstimate ?? null,
       hrResting: null,
       hrLthr: null,
+      hrPercents: {},
     };
     setValue(next);
   }, [ageEstimate, setValue]);
@@ -209,11 +288,87 @@ export function HrZonesSettings({ initial, age }: HrZonesSettingsProps) {
   );
   const [hrLthrStr, setHrLthrStr] = useState(value.hrLthr?.toString() ?? "");
 
+  // Per-method string mirrors for the four breakpoint inputs.
+  // Initialised from any persisted override; otherwise the empty
+  // string so the default leaks through as a `placeholder`.
+  const initialActivePcts = initial.hrPercents[initial.hrMethod];
+  const [pctZ1Str, setPctZ1Str] = useState(pctToDisplay(initialActivePcts?.z1));
+  const [pctZ2Str, setPctZ2Str] = useState(pctToDisplay(initialActivePcts?.z2));
+  const [pctZ3Str, setPctZ3Str] = useState(pctToDisplay(initialActivePcts?.z3));
+  const [pctZ4Str, setPctZ4Str] = useState(pctToDisplay(initialActivePcts?.z4));
+
   const commit = useCallback(
     (patch: Partial<HrZonesSettingsValue>) => {
       setValue({ ...value, ...patch });
     },
     [value, setValue],
+  );
+
+  /**
+   * Apply a single breakpoint-pct change. Folds the new value into the
+   * active method's override; once all four fields are valid we
+   * persist the validated `ZonePercents`. While any field is partial /
+   * invalid we KEEP the partial draft so the user can correct it, but
+   * we don't send junk to the server (save handler reads `pcts`, and
+   * the equality check skips unchanged values).
+   */
+  const commitPct = useCallback(
+    (zone: keyof ZonePercents, raw: number | null) => {
+      // Build a working partial from the four current string mirrors
+      // with the just-edited field overridden by `raw`.
+      const draft: Partial<ZonePercents> = {
+        z1: zone === "z1" ? raw ?? undefined : parseZonePct(pctZ1Str) ?? undefined,
+        z2: zone === "z2" ? raw ?? undefined : parseZonePct(pctZ2Str) ?? undefined,
+        z3: zone === "z3" ? raw ?? undefined : parseZonePct(pctZ3Str) ?? undefined,
+        z4: zone === "z4" ? raw ?? undefined : parseZonePct(pctZ4Str) ?? undefined,
+      };
+      const validated = validateZonePercents(draft);
+      const nextPercents: HrPercentsByMethod = { ...value.hrPercents };
+      if (validated) {
+        nextPercents[value.hrMethod] = validated;
+      } else {
+        // Partial / invalid → clear this method's slot so save sees no
+        // override (the preview falls back to defaults until valid).
+        delete nextPercents[value.hrMethod];
+      }
+      commit({ hrPercents: nextPercents });
+    },
+    [pctZ1Str, pctZ2Str, pctZ3Str, pctZ4Str, value.hrPercents, value.hrMethod, commit],
+  );
+
+  const pctDraft: Partial<ZonePercents> = useMemo(
+    () => ({
+      z1: parseZonePct(pctZ1Str) ?? undefined,
+      z2: parseZonePct(pctZ2Str) ?? undefined,
+      z3: parseZonePct(pctZ3Str) ?? undefined,
+      z4: parseZonePct(pctZ4Str) ?? undefined,
+    }),
+    [pctZ1Str, pctZ2Str, pctZ3Str, pctZ4Str],
+  );
+  const pctErrors = useMemo(() => pctFieldErrors(pctDraft), [pctDraft]);
+
+  const onResetPcts = useCallback(() => {
+    const nextPercents: HrPercentsByMethod = { ...value.hrPercents };
+    delete nextPercents[value.hrMethod];
+    setPctZ1Str("");
+    setPctZ2Str("");
+    setPctZ3Str("");
+    setPctZ4Str("");
+    commit({ hrPercents: nextPercents });
+  }, [value.hrPercents, value.hrMethod, commit]);
+
+  // Keep pct string mirrors aligned with persisted overrides when the
+  // method picker flips — otherwise switching methods could show stale
+  // numbers from the previously-active method.
+  const syncPctStringsForMethod = useCallback(
+    (method: HrMethod) => {
+      const p = value.hrPercents[method];
+      setPctZ1Str(pctToDisplay(p?.z1));
+      setPctZ2Str(pctToDisplay(p?.z2));
+      setPctZ3Str(pctToDisplay(p?.z3));
+      setPctZ4Str(pctToDisplay(p?.z4));
+    },
+    [value.hrPercents],
   );
 
   // Keep local string state in sync when reset() runs (programmatic value swap).
@@ -226,6 +381,8 @@ export function HrZonesSettings({ initial, age }: HrZonesSettingsProps) {
   // updates the string mirrors. The reset path does it explicitly.
   void reset;
   void sync;
+
+  const activeDefaults = DEFAULT_ZONE_PCTS[value.hrMethod];
 
   return (
     <section
@@ -263,7 +420,11 @@ export function HrZonesSettings({ initial, age }: HrZonesSettingsProps) {
             <select
               data-testid="hr-method"
               value={value.hrMethod}
-              onChange={(e) => commit({ hrMethod: e.target.value as HrMethod })}
+              onChange={(e) => {
+                const next = e.target.value as HrMethod;
+                commit({ hrMethod: next });
+                syncPctStringsForMethod(next);
+              }}
               style={selectStyle}
             >
               <option value="max">%Max HR</option>
@@ -361,6 +522,88 @@ export function HrZonesSettings({ initial, age }: HrZonesSettingsProps) {
           )}
 
           <div
+            data-testid="hr-pcts-section"
+            style={{ display: "grid", gap: 8 }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Zone breakpoints (%)</div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                gap: 8,
+              }}
+            >
+              {(["z1", "z2", "z3", "z4"] as const).map((zone, idx) => {
+                const strSetters = [setPctZ1Str, setPctZ2Str, setPctZ3Str, setPctZ4Str];
+                const strs = [pctZ1Str, pctZ2Str, pctZ3Str, pctZ4Str];
+                const labelMap = { z1: "Z1 ≤", z2: "Z2 ≤", z3: "Z3 ≤", z4: "Z4 ≤" } as const;
+                const err = pctErrors[zone];
+                return (
+                  <label key={zone} style={labelStyle}>
+                    {labelMap[zone]}
+                    <span
+                      style={{
+                        position: "relative",
+                        display: "inline-flex",
+                        alignItems: "center",
+                      }}
+                    >
+                      <input
+                        data-testid={`hr-pct-input-${zone}`}
+                        type="number"
+                        inputMode="decimal"
+                        step="0.1"
+                        value={strs[idx]}
+                        placeholder={String(Math.round(activeDefaults[zone] * 100))}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          strSetters[idx](raw);
+                          commitPct(zone, parseZonePct(raw));
+                        }}
+                        style={{ ...inputStyle, width: "100%", paddingRight: 22 }}
+                      />
+                      <span
+                        aria-hidden
+                        style={{
+                          position: "absolute",
+                          right: 8,
+                          fontSize: 12,
+                          color: "var(--cp-text-muted)",
+                          pointerEvents: "none",
+                        }}
+                      >
+                        %
+                      </span>
+                    </span>
+                    {err && (
+                      <span style={errorStyle} data-testid={`hr-pct-error-${zone}`}>
+                        {err}
+                      </span>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              data-testid="hr-pcts-reset"
+              onClick={onResetPcts}
+              style={{
+                justifySelf: "start",
+                padding: "4px 10px",
+                borderRadius: 8,
+                border: "1px solid var(--cp-border)",
+                background: "var(--cp-surface)",
+                color: "var(--cp-text)",
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              Reset percentages to default
+            </button>
+          </div>
+
+          <div
             data-testid="hr-zone-preview"
             style={{
               display: "grid",
@@ -400,6 +643,10 @@ export function HrZonesSettings({ initial, age }: HrZonesSettingsProps) {
                 setHrMaxStr(ageEstimate != null ? String(ageEstimate) : "");
                 setHrRestingStr("");
                 setHrLthrStr("");
+                setPctZ1Str("");
+                setPctZ2Str("");
+                setPctZ3Str("");
+                setPctZ4Str("");
               }}
               style={{
                 padding: "6px 12px",

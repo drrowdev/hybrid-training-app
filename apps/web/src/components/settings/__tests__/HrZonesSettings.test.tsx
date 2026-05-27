@@ -71,7 +71,7 @@ function render(props: React.ComponentProps<typeof HrZonesSettings>): string {
 describe("HrZonesSettings — static render", () => {
   it("method=max renders the Max-HR input, no resting / LTHR fields", () => {
     const html = render({
-      initial: { hrMethod: "max", hrMax: 190, hrResting: null, hrLthr: null },
+      initial: { hrMethod: "max", hrMax: 190, hrResting: null, hrLthr: null, hrPercents: {} },
       age: 30,
     });
     expect(html).toContain('data-testid="hr-max-input"');
@@ -82,7 +82,7 @@ describe("HrZonesSettings — static render", () => {
 
   it("method=hrr renders BOTH Max-HR and Resting-HR inputs", () => {
     const html = render({
-      initial: { hrMethod: "hrr", hrMax: 195, hrResting: 55, hrLthr: null },
+      initial: { hrMethod: "hrr", hrMax: 195, hrResting: 55, hrLthr: null, hrPercents: {} },
       age: null,
     });
     expect(html).toContain('data-testid="hr-max-input"');
@@ -92,7 +92,7 @@ describe("HrZonesSettings — static render", () => {
 
   it("method=lthr renders only the LTHR input + the external help link", () => {
     const html = render({
-      initial: { hrMethod: "lthr", hrMax: null, hrResting: null, hrLthr: 170 },
+      initial: { hrMethod: "lthr", hrMax: null, hrResting: null, hrLthr: 170, hrPercents: {} },
       age: null,
     });
     expect(html).not.toContain('data-testid="hr-max-input"');
@@ -105,7 +105,7 @@ describe("HrZonesSettings — static render", () => {
 
   it("renders the live zone preview reflecting current inputs", () => {
     const html = render({
-      initial: { hrMethod: "max", hrMax: 200, hrResting: null, hrLthr: null },
+      initial: { hrMethod: "max", hrMax: 200, hrResting: null, hrLthr: null, hrPercents: {} },
       age: null,
     });
     // Z1 upper-bound display for hrMax=200 → 120*0.6=120 → "≤ 119 bpm".
@@ -115,10 +115,56 @@ describe("HrZonesSettings — static render", () => {
 
   it("renders the reset button with the age estimate when age is provided", () => {
     const html = render({
-      initial: { hrMethod: "max", hrMax: null, hrResting: null, hrLthr: null },
+      initial: { hrMethod: "max", hrMax: null, hrResting: null, hrLthr: null, hrPercents: {} },
       age: 28,
     });
     expect(html).toContain('data-testid="hr-zones-reset"');
     expect(html).toContain("Reset to estimate (192 bpm)");
+  });
+
+  it("renders the four breakpoint inputs with default percentages as placeholders when no override", () => {
+    const html = render({
+      initial: { hrMethod: "max", hrMax: 200, hrResting: null, hrLthr: null, hrPercents: {} },
+      age: null,
+    });
+    expect(html).toContain('data-testid="hr-pct-input-z1"');
+    expect(html).toContain('data-testid="hr-pct-input-z2"');
+    expect(html).toContain('data-testid="hr-pct-input-z3"');
+    expect(html).toContain('data-testid="hr-pct-input-z4"');
+    expect(html).toContain('data-testid="hr-pcts-reset"');
+    // %Max defaults → placeholder="60" "70" "80" "90".
+    expect(html).toContain('placeholder="60"');
+    expect(html).toContain('placeholder="70"');
+    expect(html).toContain('placeholder="80"');
+    expect(html).toContain('placeholder="90"');
+  });
+
+  it("renders %LTHR defaults as placeholders when method=lthr", () => {
+    const html = render({
+      initial: { hrMethod: "lthr", hrMax: null, hrResting: null, hrLthr: 170, hrPercents: {} },
+      age: null,
+    });
+    expect(html).toContain('placeholder="81"');
+    expect(html).toContain('placeholder="89"');
+    expect(html).toContain('placeholder="93"');
+    expect(html).toContain('placeholder="99"');
+  });
+
+  it("renders persisted overrides as integer percent values (not placeholders)", () => {
+    const html = render({
+      initial: {
+        hrMethod: "max",
+        hrMax: 200,
+        hrResting: null,
+        hrLthr: null,
+        hrPercents: { max: { z1: 0.55, z2: 0.65, z3: 0.75, z4: 0.88 } },
+      },
+      age: null,
+    });
+    // Live preview reflects the override: 200 * 0.55 = 110 → Z1 "≤ 109 bpm".
+    expect(html).toContain("≤ 109 bpm");
+    // And the inputs carry the overridden integer values.
+    expect(html).toMatch(/data-testid="hr-pct-input-z1"[^>]*value="55"/);
+    expect(html).toMatch(/data-testid="hr-pct-input-z4"[^>]*value="88"/);
   });
 });
