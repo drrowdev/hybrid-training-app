@@ -46,6 +46,10 @@ import type { Bucket } from "@hta/domain";
 import { todayYmd as todayYmdFn, addDaysToYmd, isoWeekdayYmd } from "@/lib/dates";
 import { getWeeklyRecoveryRollup } from "@/lib/engine/recovered-weeks";
 import { deriveRegionFreshnessLive } from "@/lib/stats/region-state-snapshot";
+import {
+  computeRecoveryMultiplier,
+  type WellnessSnapshot,
+} from "@/lib/engine/wellness-recovery";
 
 const REGION_LABELS: Record<Region, string> = {
   foot_ankle_calf: "Calves & feet",
@@ -525,7 +529,7 @@ export async function getBucketPressure(
       .gt("reps", 0),
     supabase
       .from("cardio_logs")
-      .select("session_id, duration_sec, rpe, modality")
+      .select("session_id, duration_sec, rpe, modality, hr_zones")
       .in("session_id", sessionIds),
   ]);
 
@@ -614,7 +618,12 @@ function accumulateBuckets(
 export type CeilingExplain = {
   /** Median weekly tonnage (kg) across the last 3 recovered weeks per DC-C9 / DC-K1. */
   baseCeiling: number;
-  /** Global recovery multiplier — DC-C5. MVP proxy: 1.0 (no daily wellness inputs). */
+  /**
+   * Global recovery multiplier — DC-C5. Derived from the user's daily
+   * `wellness.fatigue` + `wellness.soreness` check-ins via
+   * `computeRecoveryMultiplier`; falls back to 1.0 when there's no
+   * check-in today or fewer than 3 historical points.
+   */
   recoveryMultiplier: number;
   /** Confidence bias — DC-C13. */
   confidenceBias: number;
@@ -636,6 +645,7 @@ export type CeilingExplain = {
 export async function getCeilingExplain(
   supabase: SupabaseClient,
   userId: string,
+  tz?: string,
 ): Promise<CeilingExplain> {
   // DC-K1: 12-week lookback rolls up to per-week recovery rows.
   const rollup = await getWeeklyRecoveryRollup(supabase, userId, { weeks: 12 });
@@ -647,23 +657,61 @@ export async function getCeilingExplain(
   const volumeByWeek = new Map(rollup.map((w) => [w.weekStart, w.weeklyTonnageKg]));
   const base = pickCeilingBase(rollup, (ws) => volumeByWeek.get(ws) ?? 0);
 
-  // GRM placeholder — DC-C5 wellness inputs deferred (out of scope
-  // for this PR; tied to sleep which is in walkback).
-  const recoveryMultiplier = 1.0;
-  const finalCeiling = base.baseCeiling * recoveryMultiplier * base.confidenceBias;
-
-  // Headcount of completed sessions in the last 28 days — kept for
-  // backwards-compat with surfaces that still display it.
+  // Fan out the remaining derived inputs in parallel — completed-sessions
+  // count, the wellness window for the GRM, and the data-completeness
+  // signal don't depend on each other.
   const since28d = new Date(Date.now() - 28 * 86_400_000).toISOString();
-  const { count: completed28d } = await supabase
-    .from("sessions")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .not("completed_at", "is", null)
-    .is("deleted_at", null)
-    .gte("performed_at", since28d);
-  const completed = completed28d ?? 0;
-  const dataCompleteness = await computeDataCompleteness(supabase, userId);
+  const wellnessSince = since28d.slice(0, 10); // YYYY-MM-DD
+  // Wellness rows are written with the user's local-tz date (see
+  // recordDailyCheckIn). Match that date when looking up "today" so a
+  // user in PST who checks in at 23:00 local doesn't fall through to
+  // tomorrow's UTC date and get a null multiplier.
+  const todayLocalYmd = todayYmdFn(tz);
+
+  const [completedCountRes, wellnessRes, dataCompleteness] = await Promise.all([
+    supabase
+      .from("sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .not("completed_at", "is", null)
+      .is("deleted_at", null)
+      .gte("performed_at", since28d),
+    supabase
+      .from("wellness")
+      .select("date, fatigue, soreness")
+      .eq("user_id", userId)
+      .gte("date", wellnessSince)
+      .order("date", { ascending: false })
+      .limit(8),
+    computeDataCompleteness(supabase, userId),
+  ]);
+
+  const completed = completedCountRes.count ?? 0;
+
+  // Wire daily wellness sliders into the recovery multiplier (audit
+  // J3 / B4). The query above pulls today + the last 7 days; the pure
+  // helper picks today out of the bag and uses the remainder as a
+  // rolling baseline. When the helper returns null (no check-in today
+  // or < 3 historical points) we fall back to 1.0 so the contract for
+  // data-poor users is unchanged from before this PR.
+  const wellnessRows = (wellnessRes.data ?? []) as Array<{
+    date: string;
+    fatigue: number | null;
+    soreness: number | null;
+  }>;
+  const snapshots: WellnessSnapshot[] = wellnessRows.map((w) => ({
+    date: w.date,
+    fatigue: w.fatigue,
+    soreness: w.soreness,
+  }));
+  const todaySnapshot = snapshots.find((s) => s.date === todayLocalYmd) ?? null;
+  const recentSnapshots = snapshots.filter((s) => s.date !== todayLocalYmd);
+  const recoveryMultiplierComputed = computeRecoveryMultiplier({
+    today: todaySnapshot,
+    recent: recentSnapshots,
+  });
+  const recoveryMultiplier = recoveryMultiplierComputed ?? 1.0;
+  const finalCeiling = base.baseCeiling * recoveryMultiplier * base.confidenceBias;
 
   const notes: string[] = [];
   if (base.formula === "median_of_recovered") {
@@ -679,9 +727,28 @@ export async function getCeilingExplain(
       "Cold start — no fully recovered weeks in the last 12. Base = lowest of the last 4 weeks × 0.9, with a 0.80× confidence collapse.",
     );
   }
-  notes.push(
-    "Recovery multiplier = 1.0 — daily wellness inputs are deferred to a later phase.",
-  );
+  if (recoveryMultiplierComputed == null) {
+    notes.push(
+      todaySnapshot == null
+        ? "Recovery multiplier = 1.0 — no daily check-in logged today."
+        : "Recovery multiplier = 1.0 — not enough recent check-ins (need 3+ in the last week) to build a baseline.",
+    );
+  } else {
+    const fmt = recoveryMultiplier.toFixed(2);
+    if (recoveryMultiplier > 1.0) {
+      notes.push(
+        `Recovery multiplier = ${fmt} — today's wellness check-in is fresher than your 7-day average.`,
+      );
+    } else if (recoveryMultiplier < 1.0) {
+      notes.push(
+        `Recovery multiplier = ${fmt} — today's wellness check-in is more fatigued than your 7-day average.`,
+      );
+    } else {
+      notes.push(
+        `Recovery multiplier = ${fmt} — today's wellness check-in is in line with your 7-day average.`,
+      );
+    }
+  }
 
   return {
     baseCeiling: base.baseCeiling,

@@ -134,6 +134,110 @@ describe("getCeilingExplain — DC-K1 / DC-C9 / DC-C11 / DC-C13", () => {
     expect(typeof out.formula).toBe("string");
     expect(out.inputs.notes.length).toBeGreaterThan(0);
   });
+
+  // ───────────────────────────────────────────────────────────────────
+  // Audit J3 / B4 — daily wellness sliders wire into recoveryMultiplier.
+  // These cover the integration plumbing (Promise.all batch, today vs
+  // recent split, finalCeiling propagation, null fallback). The pure
+  // band math is exercised in lib/engine/__tests__/wellness-recovery.test.ts.
+  // ───────────────────────────────────────────────────────────────────
+  const ymdOffset = (days: number): string => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  };
+
+  it("falls back to 1.0 when no wellness rows exist (preserves pre-PR behaviour)", async () => {
+    const supabase = makeStub(
+      { sessions: [], wellness: [], planned_sessions: [], set_logs: [], training_blocks: [] },
+      { sessions: 0 },
+    );
+    const out = await getCeilingExplain(supabase, "user-1");
+    expect(out.recoveryMultiplier).toBe(1.0);
+    expect(
+      out.inputs.notes.some((n) => /no daily check-in logged today/i.test(n)),
+    ).toBe(true);
+  });
+
+  it("falls back to 1.0 when today is logged but baseline is too short (<3 points)", async () => {
+    const supabase = makeStub(
+      {
+        sessions: [],
+        wellness: [
+          { user_id: "user-1", date: ymdOffset(0), fatigue: 5, soreness: 5 },
+          { user_id: "user-1", date: ymdOffset(-1), fatigue: 5, soreness: 5 },
+          { user_id: "user-1", date: ymdOffset(-2), fatigue: 5, soreness: 5 },
+        ],
+        planned_sessions: [],
+        set_logs: [],
+        training_blocks: [],
+      },
+      { sessions: 0 },
+    );
+    const out = await getCeilingExplain(supabase, "user-1");
+    expect(out.recoveryMultiplier).toBe(1.0);
+    expect(
+      out.inputs.notes.some((n) => /not enough recent check-ins/i.test(n)),
+    ).toBe(true);
+  });
+
+  it("applies a sub-1.0 multiplier when today is more fatigued than the 7-day average", async () => {
+    // Baseline averages to score ~3 (fresh). Today is 7 (cooked) →
+    // delta ≈ +4 → floor 0.70.
+    const supabase = makeStub(
+      {
+        sessions: [],
+        wellness: [
+          { user_id: "user-1", date: ymdOffset(0), fatigue: 7, soreness: 7 },
+          { user_id: "user-1", date: ymdOffset(-1), fatigue: 3, soreness: 3 },
+          { user_id: "user-1", date: ymdOffset(-2), fatigue: 3, soreness: 3 },
+          { user_id: "user-1", date: ymdOffset(-3), fatigue: 3, soreness: 3 },
+          { user_id: "user-1", date: ymdOffset(-4), fatigue: 3, soreness: 3 },
+        ],
+        planned_sessions: [],
+        set_logs: [],
+        training_blocks: [],
+      },
+      { sessions: 0 },
+    );
+    const out = await getCeilingExplain(supabase, "user-1");
+    expect(out.recoveryMultiplier).toBe(0.7);
+    // baseCeiling is 0 for this cold-start scenario, so finalCeiling
+    // still computes — but the relationship must hold regardless.
+    expect(out.finalCeiling).toBeCloseTo(
+      out.baseCeiling * 0.7 * out.confidenceBias,
+      10,
+    );
+    expect(
+      out.inputs.notes.some((n) => /more fatigued than your 7-day average/i.test(n)),
+    ).toBe(true);
+  });
+
+  it("applies a >1.0 multiplier when today is fresher than the 7-day average", async () => {
+    // Baseline averages to score ~7 (chronically cooked). Today is 3 →
+    // delta = -4 → ceiling 1.10.
+    const supabase = makeStub(
+      {
+        sessions: [],
+        wellness: [
+          { user_id: "user-1", date: ymdOffset(0), fatigue: 3, soreness: 3 },
+          { user_id: "user-1", date: ymdOffset(-1), fatigue: 7, soreness: 7 },
+          { user_id: "user-1", date: ymdOffset(-2), fatigue: 7, soreness: 7 },
+          { user_id: "user-1", date: ymdOffset(-3), fatigue: 7, soreness: 7 },
+          { user_id: "user-1", date: ymdOffset(-4), fatigue: 7, soreness: 7 },
+        ],
+        planned_sessions: [],
+        set_logs: [],
+        training_blocks: [],
+      },
+      { sessions: 0 },
+    );
+    const out = await getCeilingExplain(supabase, "user-1");
+    expect(out.recoveryMultiplier).toBe(1.1);
+    expect(
+      out.inputs.notes.some((n) => /fresher than your 7-day average/i.test(n)),
+    ).toBe(true);
+  });
 });
 
 describe("getUserTier — DC-G1..G6 inference", () => {
