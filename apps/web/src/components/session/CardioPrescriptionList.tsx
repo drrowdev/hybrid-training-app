@@ -47,6 +47,7 @@ export function CardioPrescriptionList({
   ownedCardio,
   swapAction,
   isReadOnly,
+  markExternalCompleteAction,
 }: {
   plannedSessionId: string | null;
   items: CardioListItem[];
@@ -54,6 +55,13 @@ export function CardioPrescriptionList({
   swapAction: SwapAction;
   /** Hides the Swap button when the parent session has been completed. */
   isReadOnly?: boolean;
+  /**
+   * Phase 1 "external cardio". Server action invoked when the user
+   * presses "Mark complete" on a `cardio_external` placeholder card.
+   * Optional — if omitted, the button still renders but is disabled so
+   * the parent (e.g. session-detail page) can wire it incrementally.
+   */
+  markExternalCompleteAction?: (fd: FormData) => Promise<{ ok?: true; error?: string }>;
 }) {
   const [overrides, setOverrides] = useState<Record<number, PrescriptionItem>>(
     {},
@@ -78,6 +86,18 @@ export function CardioPrescriptionList({
     >
       {items.map(({ item, itemIndex }) => {
         const live = overrides[itemIndex] ?? item;
+        if (live.kind === "cardio_external") {
+          return (
+            <ExternalCardioRow
+              key={`cardio-rx-${itemIndex}`}
+              itemIndex={itemIndex}
+              item={live}
+              plannedSessionId={plannedSessionId}
+              isReadOnly={isReadOnly ?? false}
+              markCompleteAction={markExternalCompleteAction}
+            />
+          );
+        }
         return (
           <CardioPrescriptionRow
             key={`cardio-rx-${itemIndex}`}
@@ -92,6 +112,113 @@ export function CardioPrescriptionList({
         );
       })}
     </ul>
+  );
+}
+
+/**
+ * Phase 1 "external cardio" row. Muted card with no intensity chip /
+ * no Swap button — the user logs the actual run via their external
+ * program (Runna / Garmin Coach / Hal Higdon / etc.). The single CTA
+ * fires `markExternalCompleteAction` which inserts a placeholder
+ * `cardio_logs` row so the session can be marked done.
+ */
+function ExternalCardioRow({
+  itemIndex,
+  item,
+  plannedSessionId,
+  isReadOnly,
+  markCompleteAction,
+}: {
+  itemIndex: number;
+  item: PrescriptionItem;
+  plannedSessionId: string | null;
+  isReadOnly: boolean;
+  markCompleteAction?: (fd: FormData) => Promise<{ ok?: true; error?: string }>;
+}) {
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const programName = (item.intensityLabel ?? "").trim();
+  const title = programName.length > 0 && programName !== "External program"
+    ? programName
+    : "External cardio";
+  // Body line: prefer the canonical protocolNote that the planner stamps
+  // (carries the "your external program" fallback baked in). Only
+  // fall back to a synthesised string when an upstream caller hands us
+  // a bare item without protocolNote.
+  const body = (item.protocolNote && item.protocolNote.trim().length > 0)
+    ? `${item.protocolNote.trim()} Mark complete when done.`
+    : `Logged via ${programName.length > 0 && programName !== "External program" ? programName : "your external program"}. Mark complete when done.`;
+
+  const onClick = () => {
+    if (!markCompleteAction || !plannedSessionId) return;
+    setError(null);
+    startTransition(async () => {
+      const fd = new FormData();
+      fd.set("plannedSessionId", plannedSessionId);
+      fd.set("itemIndex", String(itemIndex));
+      if (programName) fd.set("programName", programName);
+      const res = await markCompleteAction(fd);
+      if (res?.error) {
+        setError(res.error);
+        return;
+      }
+      setDone(true);
+    });
+  };
+
+  const canMark = !isReadOnly && !done && !!markCompleteAction && !!plannedSessionId;
+
+  return (
+    <li
+      data-testid={`cardio-prescription-item-${itemIndex}`}
+      data-external="true"
+      style={{
+        padding: "12px 14px",
+        border: `1px dashed ${error ? "var(--cp-danger)" : "var(--cp-border)"}`,
+        borderRadius: 8,
+        background: "var(--cp-surface-soft)",
+        fontSize: 13,
+        display: "grid",
+        gap: 6,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+        <span style={{ fontWeight: 600 }}>{title}</span>
+      </div>
+      <div style={{ fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
+        {body}
+      </div>
+      {error && (
+        <div role="alert" style={{ fontSize: 12, color: "var(--cp-danger)" }}>
+          {error}
+        </div>
+      )}
+      {!isReadOnly && (
+        <div>
+          <button
+            type="button"
+            onClick={onClick}
+            disabled={!canMark || pending}
+            data-testid={`cardio-external-mark-complete-${itemIndex}`}
+            style={{
+              fontSize: 12,
+              padding: "8px 14px",
+              borderRadius: 8,
+              border: "1px solid var(--cp-accent)",
+              background: done ? "var(--cp-surface)" : "var(--cp-accent)",
+              color: done ? "var(--cp-text-muted)" : "var(--cp-accent-fg)",
+              cursor: canMark && !pending ? "pointer" : "not-allowed",
+              opacity: !canMark || pending ? 0.7 : 1,
+              fontWeight: 600,
+              minHeight: 32,
+            }}
+          >
+            {done ? "Marked complete" : pending ? "Saving…" : "Mark complete"}
+          </button>
+        </div>
+      )}
+    </li>
   );
 }
 
