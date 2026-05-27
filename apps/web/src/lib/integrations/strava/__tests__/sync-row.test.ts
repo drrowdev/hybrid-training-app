@@ -14,6 +14,7 @@ function activity(overrides: Partial<StravaActivity> = {}): StravaActivity {
     moving_time: 1800,
     distance: 6500,
     average_heartrate: 152,
+    max_heartrate: 168,
     perceived_exertion: null,
     suffer_score: null,
     description: null,

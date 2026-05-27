@@ -11,6 +11,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { listActivitiesSince, refreshAccessToken } from "./client";
 import { buildSyncRow } from "./sync-row";
+import { classifyAndLinkExternalCardio } from "./link-external-cardio";
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
 import { getUserTimezone } from "@/lib/planner/queries";
 
@@ -94,23 +95,51 @@ export async function syncStrava(
       skipped++;
       continue;
     }
-    const { error: cardioErr } = await supabase.from("cardio_logs").insert({
-      session_id: inserted.id,
-      modality: row.cardio.modality,
-      duration_sec: row.cardio.duration_sec,
-      distance_km: row.cardio.distance_km,
-      avg_hr_bpm: row.cardio.avg_hr_bpm,
-      rpe: row.cardio.rpe,
-      strava_activity_id: row.cardio.strava_activity_id,
-      external_source: row.cardio.external_source,
-      notes: row.cardio.notes,
-    });
+    const { data: cardioInserted, error: cardioErr } = await supabase
+      .from("cardio_logs")
+      .insert({
+        session_id: inserted.id,
+        modality: row.cardio.modality,
+        duration_sec: row.cardio.duration_sec,
+        distance_km: row.cardio.distance_km,
+        avg_hr_bpm: row.cardio.avg_hr_bpm,
+        max_hr_bpm: row.cardio.max_hr_bpm,
+        rpe: row.cardio.rpe,
+        strava_activity_id: row.cardio.strava_activity_id,
+        external_source: row.cardio.external_source,
+        notes: row.cardio.notes,
+      })
+      .select("id")
+      .maybeSingle();
     if (cardioErr) {
       // Try to roll back the orphan session row so re-sync can retry.
       await supabase.from("sessions").delete().eq("id", inserted.id);
       throw new Error(cardioErr.message);
     }
     imported++;
+
+    // Phase 2 — best-effort: classify HR + duration into a kind/ESL
+    // and link to a matching cardio_external planned session.
+    if (cardioInserted?.id) {
+      try {
+        await classifyAndLinkExternalCardio({
+          supabase,
+          userId,
+          sessionId: inserted.id,
+          cardioLog: {
+            id: cardioInserted.id,
+            avg_hr_bpm: row.cardio.avg_hr_bpm,
+            max_hr_bpm: row.cardio.max_hr_bpm,
+            duration_sec: row.cardio.duration_sec,
+          },
+          performedAt: row.session.performed_at,
+          userTimezone: await getUserTimezone(userId),
+        });
+      } catch (e) {
+        // Non-fatal: the cardio row is already persisted.
+        console.error("classifyAndLinkExternalCardio failed:", e);
+      }
+    }
   }
 
   // Update sync state — successful run, clear last_sync_error.
