@@ -64,8 +64,8 @@ test.describe("@desktop today page (Phase 1)", () => {
     await expect(preview).toHaveAttribute("href", "/app/plan");
 
     // Clicking Start auto-creates the session and lands on the log surface.
-    // (The pre-session check-in interstitial was removed; daily fatigue +
-    // soreness now live on the Today page via HowRecoveredCard.)
+    // (The pre-session check-in interstitial was removed; the Today-page
+    // wellness check-in card was retired in a later chore.)
     await cta.click();
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 15_000 });
   });
@@ -153,8 +153,8 @@ test.describe("@desktop today page (Phase 1)", () => {
     await expect(page.getByTestId("bw-nudge")).toHaveCount(0);
     // 2) "Up next this week" section is gone — handled by /app/plan.
     await expect(page.getByRole("heading", { name: /up next this week/i })).toHaveCount(0);
-    // 3) The HowRecoveredCard / RegionFreshnessCard heading was "How
-    //    recovered you are" — gone from Today.
+    // 3) The legacy "How recovered you are" heading (RegionFreshnessCard
+    //    / retired HowRecoveredCard) — gone from Today.
     await expect(page.getByRole("heading", { name: /how recovered you are/i })).toHaveCount(0);
     // 4) The floating injury FAB is gone everywhere on /app.
     await expect(page.locator(".cp-fab")).toHaveCount(0);

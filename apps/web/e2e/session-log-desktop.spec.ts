@@ -21,14 +21,6 @@ import {
  *       sessions.completed_at + set_logs +
  *       planned_sessions.completed_session_id linkage.
  *
- *   B — Daily recovery check-in on Today (DC-P1):
- *       The pre-session interstitial was removed; recovery is now
- *       logged on the Today page (`HowRecoveredCard`). Tap one fatigue
- *       and one soreness chip → service-role verify both landed on
- *       the `wellness` row keyed by (user_id, today). Confirms the
- *       data path the engine relies on still works after the
- *       interstitial deletion.
- *
  *   C — Skip a planned session:
  *       On /app/plan click Skip on today's row → service-role verify
  *       planned_sessions.skipped_at is populated → reload and assert
@@ -168,71 +160,6 @@ test.describe("@desktop session log", () => {
     // RPE: 7 then 8.
     expect(Number(sets![0]!.rpe)).toBeCloseTo(7, 5); // DC-A2: per-set RPE
     expect(Number(sets![1]!.rpe)).toBeCloseTo(8, 5);
-  });
-
-  test("B: daily recovery check-in on Today writes to wellness (DC-P1)", async ({
-    page,
-    context,
-    freshUser,
-    seedConfig,
-    admin,
-    baseURL,
-  }) => {
-    const url = baseURL ?? "http://localhost:3000";
-
-    await markOnboarded(admin, freshUser.userId);
-    await seedStrengthTms(admin, freshUser.userId);
-    await seedActiveBlock(admin, freshUser.userId);
-    await signInAs(context, freshUser, seedConfig, url);
-
-    // The HowRecoveredCard renders on the Today page when the
-    // `profiles.show_today_recovery_card` setting is true (default).
-    await page.goto("/app");
-    await page.waitForLoadState("networkidle");
-
-    const card = page.getByTestId("how-recovered");
-    await expect(card).toBeVisible();
-
-    // Tap fatigue=3 and soreness=5 on the 1/3/5/7/9 scale. Each tap
-    // fires the recordDailyCheckIn server action immediately; once
-    // both rows are answered the card collapses to the "✓ logged"
-    // confirmation.
-    await page.getByTestId("fatigue-3").click();
-    await page.getByTestId("soreness-5").click();
-    await expect(page.getByTestId("how-recovered-saved")).toBeVisible({
-      timeout: 10_000,
-    });
-
-    // Service-role: the row landed on `wellness` keyed by
-    // (user_id, today). The Today page resolves "today" using the
-    // profile timezone (defaults UTC), so we let the row's date be
-    // whatever the server wrote and assert the values.
-    await expect
-      .poll(
-        async () => {
-          const { data } = await admin
-            .from("wellness")
-            .select("fatigue, soreness")
-            .eq("user_id", freshUser.userId)
-            .not("fatigue", "is", null)
-            .order("date", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          return data;
-        },
-        { timeout: 10_000 },
-      )
-      .not.toBeNull();
-    const { data: wellness } = await admin
-      .from("wellness")
-      .select("fatigue, soreness")
-      .eq("user_id", freshUser.userId)
-      .not("fatigue", "is", null)
-      .order("date", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    expect(wellness?.fatigue).toBe(3);
-    expect(wellness?.soreness).toBe(5);
   });
 
   test("C: skip a planned session marks it skipped and hides the Start CTA", async ({

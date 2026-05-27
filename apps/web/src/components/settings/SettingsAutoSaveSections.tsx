@@ -350,35 +350,7 @@ export function FeedbackAutoSave({
 }
 
 // ─── Daily recovery check-in ─────────────────────────────────────────
-
-export function RecoveryCheckinAutoSave({
-  initialShow,
-}: {
-  initialShow: boolean;
-}) {
-  const save = useCallback(
-    (v: boolean) => saveCheckbox("showTodayRecoveryCard", v),
-    [],
-  );
-  return (
-    <div
-      className="rounded-lg border border-foreground/10 p-4 space-y-3"
-      data-testid="settings-recovery-form"
-    >
-      <AutoSaveCheckbox
-        label={
-          <>
-            Show on Today
-            <span className="block text-xs text-foreground/60 mt-1">
-              Inline fatigue + soreness scale (1 fresh · 9 wrecked). Writes to
-              your daily wellness log.
-            </span>
-          </>
-        }
-        initial={initialShow}
-        save={save}
-        testId="settings-show-today-recovery-card-toggle"
-      />
-    </div>
-  );
-}
+// Removed — the Today wellness check-in card was retired (see
+// chore/retire-wellness-checkin). The `show_today_recovery_card`
+// profile column stays in the DB for historic optionality, but the
+// UI toggle has no surface to gate any more.

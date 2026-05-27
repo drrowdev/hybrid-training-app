@@ -7,8 +7,8 @@ import { startSession } from "@/lib/sessions/actions";
  * The pre-session fatigue + soreness interstitial was removed; this
  * surface used to host it. What remains is a single optional title
  * field plus a Start button — everything else is logged on the
- * session detail page. Daily recovery sliders live on the Today page
- * (`HowRecoveredCard`).
+ * session detail page. The daily wellness check-in card was retired
+ * from the Today page (see chore/retire-wellness-checkin).
  */
 export default function NewSessionPage() {
   return (

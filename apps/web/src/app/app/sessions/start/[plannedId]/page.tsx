@@ -4,10 +4,10 @@ import { startSessionDirect } from "@/lib/planner/actions";
 /**
  * Auto-start a planned session and redirect to the session log.
  *
- * The pre-workout fatigue + soreness interstitial was removed — daily
- * recovery is now logged from the Today page's `HowRecoveredCard`
- * (gated by the `profiles.show_today_recovery_card` setting). This
- * page exists so every existing `Link` href of the form
+ * The pre-workout fatigue + soreness interstitial was removed; the
+ * follow-up Today-page wellness check-in card has since also been
+ * retired (see chore/retire-wellness-checkin). This page exists so
+ * every existing `Link` href of the form
  * `/app/sessions/start/[plannedId]` keeps working without a code-wide
  * rewrite: a GET hits this Server Component, which materialises the
  * planned session via `startSessionDirect` and `redirect()`s straight
