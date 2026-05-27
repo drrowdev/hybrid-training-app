@@ -17,6 +17,7 @@
 import { finalEwma } from "@hta/domain";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeSetLoad, PRIMARY_REGION_WEIGHT, SECONDARY_REGION_WEIGHT } from "./set-load";
+import { cardioIntensityScalar, normaliseHrZones } from "./cardio-intensity";
 import { MODALITY_REGION } from "@/lib/integrations/strava/mapping";
 import { todayYmd } from "@/lib/dates";
 
@@ -52,6 +53,7 @@ type CardioRow = {
   duration_sec: number;
   rpe: number | string | null;
   modality: string | null;
+  hr_zones: unknown;
   movement: RegionRefs;
 };
 
@@ -92,10 +94,12 @@ export async function recomputeRegionState(
     .gt("reps", 0);
   if (setError) throw new Error(setError.message);
 
-  // Cardio falls back to duration × rpe-derived load.
+  // Cardio falls back to duration × rpe-derived load. Pulls `hr_zones` so
+  // we can use a time-in-zone weighted intensity when Strava sync has
+  // populated it (PR #162 + audit I3).
   const { data: cardioRaw, error: cardioError } = await supabase
     .from("cardio_logs")
-    .select("session_id, duration_sec, rpe, modality, movement:movements(primary_region, secondary_regions)")
+    .select("session_id, duration_sec, rpe, modality, hr_zones, movement:movements(primary_region, secondary_regions)")
     .in("session_id", sessionIds);
   if (cardioError) throw new Error(cardioError.message);
 
@@ -114,6 +118,7 @@ export async function recomputeRegionState(
     duration_sec: c.duration_sec,
     rpe: c.rpe,
     modality: c.modality,
+    hr_zones: c.hr_zones,
     movement: normaliseMovement(c.movement),
   }));
 
@@ -139,14 +144,21 @@ export async function recomputeRegionState(
 
   // Cardio falls back to duration_min × rpe-derived load. When the row
   // has no movement (e.g. Strava import) we use the modality string to
-  // recover the region attribution.
+  // recover the region attribution. Intensity is HR-zone weighted via
+  // `cardioIntensityScalar` when hr_zones is populated, else falls back
+  // to the legacy clamp(rpe/10) heuristic — preserving prior behaviour
+  // for rows without HR data (audit I3 / B1).
   for (const c of cardio) {
     const movement = c.movement ?? modalityFallback(c.modality);
     if (!movement) continue;
     const durMin = c.duration_sec / 60;
     if (durMin <= 0) continue;
-    const rpeFactor = c.rpe == null ? 0.5 : Math.min(1.0, Number(c.rpe) / 10);
-    const cardioLoad = durMin * rpeFactor * 8;
+    const intensity = cardioIntensityScalar({
+      hrZones: normaliseHrZones(c.hr_zones),
+      durationSec: c.duration_sec,
+      rpe: c.rpe == null ? null : Number(c.rpe),
+    });
+    const cardioLoad = durMin * intensity * 8;
     // The ×8 scalar puts cardio on roughly the same kg-load magnitude as
     // strength tonnage so the EWMA ratios stay comparable across modalities.
     const dateIso = c.performed_at.slice(0, 10);
