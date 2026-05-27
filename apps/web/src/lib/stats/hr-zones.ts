@@ -46,25 +46,76 @@ const ZONES: Zone[] = ["Z1", "Z2", "Z3", "Z4", "Z5"];
 /**
  * Build default zone bands from a max-HR value. Uses the % HRmax
  * bands common in entry-level coaching templates (Z1 < 60%,
- * Z2 60–70%, Z3 70–80%, Z4 80–90%, Z5 ≥ 90%).
+ * Z2 60–70%, Z3 70–80%, Z4 80–90%, Z5 ≥ 90%) unless an explicit
+ * `pcts` override is supplied.
  */
-export function zoneBandsFromMaxHr(hrMax: number): ZoneBands {
+export function zoneBandsFromMaxHr(hrMax: number, pcts?: ZonePercents): ZoneBands {
+  const p = pcts ?? DEFAULT_ZONE_PCTS.max;
   return {
-    z1Max: hrMax * 0.6,
-    z2Max: hrMax * 0.7,
-    z3Max: hrMax * 0.8,
-    z4Max: hrMax * 0.9,
+    z1Max: hrMax * p.z1,
+    z2Max: hrMax * p.z2,
+    z3Max: hrMax * p.z3,
+    z4Max: hrMax * p.z4,
   };
 }
 
 /** Method the user picked for defining their zones. */
 export type HrMethod = "max" | "hrr" | "lthr";
 
+/**
+ * Zone breakpoint percentages — each value is the upper bound of the
+ * named zone, expressed as a fraction of the method's anchor (HRmax,
+ * HRR, or LTHR). Z5 is the implicit `> z4` bucket. Values must be
+ * strictly ascending: z1 < z2 < z3 < z4.
+ */
+export type ZonePercents = {
+  z1: number;
+  z2: number;
+  z3: number;
+  z4: number;
+};
+
+/** Default breakpoint percentages per method (the previous hard-coded constants). */
+export const DEFAULT_ZONE_PCTS: Record<HrMethod, ZonePercents> = {
+  max: { z1: 0.6, z2: 0.7, z3: 0.8, z4: 0.9 },
+  hrr: { z1: 0.5, z2: 0.6, z3: 0.7, z4: 0.85 },
+  lthr: { z1: 0.81, z2: 0.89, z3: 0.93, z4: 0.99 },
+};
+
+/** Allowed range for a single breakpoint percentage. */
+const PCT_LOW_EXCLUSIVE = 0;
+const PCT_HIGH_INCLUSIVE = 1.5;
+
+/**
+ * Validate a partial `ZonePercents` payload. Returns the typed
+ * `ZonePercents` when every field is finite, in `(0, 1.5]`, and the
+ * four values are strictly ascending. Returns null otherwise.
+ *
+ * The upper bound is 1.5 to allow methods (notably %LTHR) where Z4's
+ * anchor sits at the LTHR itself — users can set Z4 just under 1.0 and
+ * we don't want to reject sane edge values, while still rejecting
+ * obvious garbage like 200%.
+ */
+export function validateZonePercents(p: Partial<ZonePercents>): ZonePercents | null {
+  const keys: Array<keyof ZonePercents> = ["z1", "z2", "z3", "z4"];
+  for (const k of keys) {
+    const v = p[k];
+    if (typeof v !== "number" || !Number.isFinite(v)) return null;
+    if (v <= PCT_LOW_EXCLUSIVE || v > PCT_HIGH_INCLUSIVE) return null;
+  }
+  const z1 = p.z1 as number;
+  const z2 = p.z2 as number;
+  const z3 = p.z3 as number;
+  const z4 = p.z4 as number;
+  if (!(z1 < z2 && z2 < z3 && z3 < z4)) return null;
+  return { z1, z2, z3, z4 };
+}
+
 /** Discriminated inputs for `computeZoneBands`. */
 export type HrZoneInputs =
-  | { method: "max"; hrMax: number }
-  | { method: "hrr"; hrMax: number; hrResting: number }
-  | { method: "lthr"; hrLthr: number };
+  | { method: "max"; hrMax: number; pcts?: ZonePercents }
+  | { method: "hrr"; hrMax: number; hrResting: number; pcts?: ZonePercents }
+  | { method: "lthr"; hrLthr: number; pcts?: ZonePercents };
 
 /** Plausibility ranges for self-reported HR values. */
 export const HR_MAX_RANGE = { min: 100, max: 220 } as const;
@@ -83,20 +134,25 @@ function inRange(n: unknown, lo: number, hi: number): n is number {
 export function validateHrZoneInputs(inputs: Partial<HrZoneInputs> & { method: HrMethod }):
   | HrZoneInputs
   | null {
+  // Pcts are optional — but if provided, they must validate. An invalid
+  // pcts payload falls back to the method's defaults rather than failing
+  // the whole input.
+  const pcts =
+    inputs.pcts !== undefined ? validateZonePercents(inputs.pcts) ?? undefined : undefined;
   if (inputs.method === "max") {
     if (!inRange(inputs.hrMax, HR_MAX_RANGE.min, HR_MAX_RANGE.max)) return null;
-    return { method: "max", hrMax: inputs.hrMax };
+    return { method: "max", hrMax: inputs.hrMax, pcts };
   }
   if (inputs.method === "hrr") {
     if (!inRange(inputs.hrMax, HR_MAX_RANGE.min, HR_MAX_RANGE.max)) return null;
     if (!inRange(inputs.hrResting, HR_RESTING_RANGE.min, HR_RESTING_RANGE.max)) return null;
     // Karvonen is only meaningful when max > resting.
     if (inputs.hrResting >= inputs.hrMax) return null;
-    return { method: "hrr", hrMax: inputs.hrMax, hrResting: inputs.hrResting };
+    return { method: "hrr", hrMax: inputs.hrMax, hrResting: inputs.hrResting, pcts };
   }
   if (inputs.method === "lthr") {
     if (!inRange(inputs.hrLthr, HR_LTHR_RANGE.min, HR_LTHR_RANGE.max)) return null;
-    return { method: "lthr", hrLthr: inputs.hrLthr };
+    return { method: "lthr", hrLthr: inputs.hrLthr, pcts };
   }
   return null;
 }
@@ -120,25 +176,27 @@ export function computeZoneBands(inputs: HrZoneInputs): ZoneBands {
   const validated = validateHrZoneInputs(inputs);
   if (!validated) throw new Error("Invalid heart-rate zone inputs");
   if (validated.method === "max") {
-    return zoneBandsFromMaxHr(validated.hrMax);
+    return zoneBandsFromMaxHr(validated.hrMax, validated.pcts);
   }
   if (validated.method === "hrr") {
-    const { hrMax, hrResting } = validated;
+    const { hrMax, hrResting, pcts } = validated;
+    const p = pcts ?? DEFAULT_ZONE_PCTS.hrr;
     const r = hrResting;
     const span = hrMax - hrResting;
     return {
-      z1Max: r + 0.5 * span,
-      z2Max: r + 0.6 * span,
-      z3Max: r + 0.7 * span,
-      z4Max: r + 0.85 * span,
+      z1Max: r + p.z1 * span,
+      z2Max: r + p.z2 * span,
+      z3Max: r + p.z3 * span,
+      z4Max: r + p.z4 * span,
     };
   }
-  const { hrLthr } = validated;
+  const { hrLthr, pcts } = validated;
+  const p = pcts ?? DEFAULT_ZONE_PCTS.lthr;
   return {
-    z1Max: hrLthr * 0.81,
-    z2Max: hrLthr * 0.89,
-    z3Max: hrLthr * 0.93,
-    z4Max: hrLthr * 0.99,
+    z1Max: hrLthr * p.z1,
+    z2Max: hrLthr * p.z2,
+    z3Max: hrLthr * p.z3,
+    z4Max: hrLthr * p.z4,
   };
 }
 

@@ -41,6 +41,7 @@ export default async function HrZonesSettingsPage() {
     hrMax: intake.hrMax ?? null,
     hrResting: intake.hrResting ?? null,
     hrLthr: intake.hrLthr ?? null,
+    hrPercents: intake.hrPercents ?? {},
   };
 
   return (

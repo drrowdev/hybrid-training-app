@@ -152,3 +152,110 @@ describe("performUpdateHrZones", () => {
 // Silence unused-import linting for `vi` if added later — kept for parity
 // with other action tests that mock revalidatePath.
 void vi;
+
+describe("performUpdateHrZones — pcts overrides", () => {
+  it("persists pcts under intake.hrPercents[method] and uses them for cached bands", async () => {
+    const { stub, writes } = makeStub({});
+    const res = await performUpdateHrZones(
+      {
+        hrMethod: "max",
+        hrMax: 200,
+        pcts: { z1: 0.55, z2: 0.65, z3: 0.75, z4: 0.88 },
+      },
+      { supabase: stub, userId: "u1" },
+    );
+    expect(res.hrZones?.z1Max).toBeCloseTo(110, 6); // 200 * 0.55
+    const intake = writes[0].intake as Record<string, unknown>;
+    const hrPercents = intake.hrPercents as Record<string, unknown>;
+    expect(hrPercents.max).toEqual({ z1: 0.55, z2: 0.65, z3: 0.75, z4: 0.88 });
+  });
+
+  it("rejects invalid pcts (non-ascending) without writing", async () => {
+    const { stub, writes } = makeStub({});
+    await expect(
+      performUpdateHrZones(
+        {
+          hrMethod: "max",
+          hrMax: 200,
+          pcts: { z1: 0.9, z2: 0.6, z3: 0.7, z4: 0.85 },
+        },
+        { supabase: stub, userId: "u1" },
+      ),
+    ).rejects.toThrow(/Invalid HR zone percentages/);
+    expect(writes).toHaveLength(0);
+  });
+
+  it("rejects out-of-range pcts (above 150%)", async () => {
+    const { stub } = makeStub({});
+    await expect(
+      performUpdateHrZones(
+        {
+          hrMethod: "lthr",
+          hrLthr: 170,
+          pcts: { z1: 0.81, z2: 0.89, z3: 0.93, z4: 1.6 },
+        },
+        { supabase: stub, userId: "u1" },
+      ),
+    ).rejects.toThrow(/Invalid HR zone percentages/);
+  });
+
+  it("clears just the active method's pcts when pcts is omitted / null, preserving siblings", async () => {
+    // Existing intake has overrides for BOTH max AND lthr.
+    const initial = {
+      hrPercents: {
+        max: { z1: 0.55, z2: 0.65, z3: 0.75, z4: 0.88 },
+        lthr: { z1: 0.8, z2: 0.88, z3: 0.94, z4: 1.0 },
+      },
+    };
+    // User saves the max method WITHOUT a pcts override → max override
+    // is cleared, but lthr override survives.
+    const { stub, writes } = makeStub(initial);
+    await performUpdateHrZones(
+      { hrMethod: "max", hrMax: 200, pcts: null },
+      { supabase: stub, userId: "u1" },
+    );
+    const intake = writes[0].intake as Record<string, unknown>;
+    const hrPercents = intake.hrPercents as Record<string, unknown>;
+    expect(hrPercents.max).toBeUndefined();
+    expect(hrPercents.lthr).toEqual({ z1: 0.8, z2: 0.88, z3: 0.94, z4: 1.0 });
+    // Cached bands fall back to defaults (200 * 0.6 = 120).
+    const bands = intake.hrZones as Record<string, number>;
+    expect(bands.z1Max).toBeCloseTo(120, 6);
+  });
+
+  it("preserves sibling-method pcts when saving a new method override", async () => {
+    const initial = {
+      hrPercents: {
+        lthr: { z1: 0.8, z2: 0.88, z3: 0.94, z4: 1.0 },
+      },
+    };
+    const { stub, writes } = makeStub(initial);
+    await performUpdateHrZones(
+      {
+        hrMethod: "max",
+        hrMax: 200,
+        pcts: { z1: 0.55, z2: 0.65, z3: 0.75, z4: 0.88 },
+      },
+      { supabase: stub, userId: "u1" },
+    );
+    const intake = writes[0].intake as Record<string, unknown>;
+    const hrPercents = intake.hrPercents as Record<string, unknown>;
+    expect(hrPercents.max).toEqual({ z1: 0.55, z2: 0.65, z3: 0.75, z4: 0.88 });
+    expect(hrPercents.lthr).toEqual({ z1: 0.8, z2: 0.88, z3: 0.94, z4: 1.0 });
+  });
+
+  it("drops the hrPercents key entirely once the last override is cleared", async () => {
+    const initial = {
+      hrPercents: {
+        max: { z1: 0.55, z2: 0.65, z3: 0.75, z4: 0.88 },
+      },
+    };
+    const { stub, writes } = makeStub(initial);
+    await performUpdateHrZones(
+      { hrMethod: "max", hrMax: 200 },
+      { supabase: stub, userId: "u1" },
+    );
+    const intake = writes[0].intake as Record<string, unknown>;
+    expect(intake.hrPercents).toBeUndefined();
+  });
+});

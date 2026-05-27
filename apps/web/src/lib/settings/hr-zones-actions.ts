@@ -22,10 +22,19 @@ import {
   HR_MAX_RANGE,
   HR_RESTING_RANGE,
   HR_LTHR_RANGE,
+  validateZonePercents,
   type HrMethod,
   type ZoneBands,
+  type ZonePercents,
 } from "@/lib/stats/hr-zones";
-import { mergeIntake, type HrZoneIntake } from "@/lib/profile/intake";
+import { mergeIntake, type HrPercents, type HrZoneIntake } from "@/lib/profile/intake";
+
+const ZONE_PCTS_SCHEMA = z.object({
+  z1: z.number(),
+  z2: z.number(),
+  z3: z.number(),
+  z4: z.number(),
+});
 
 const HR_ZONES_SCHEMA = z.object({
   hrMethod: z.enum(["max", "hrr", "lthr"]),
@@ -47,6 +56,10 @@ const HR_ZONES_SCHEMA = z.object({
     .max(HR_LTHR_RANGE.max)
     .nullable()
     .optional(),
+  // Optional per-method breakpoint percentages for the currently
+  // selected method. `null` (or omitted) explicitly clears the override
+  // so the user can "reset to defaults" by submitting nothing.
+  pcts: ZONE_PCTS_SCHEMA.nullable().optional(),
 });
 
 export type UpdateHrZonesInput = z.infer<typeof HR_ZONES_SCHEMA>;
@@ -89,6 +102,19 @@ export async function performUpdateHrZones(
   }
   const data = parsed.data;
 
+  // If the client supplied `pcts`, validate it semantically (strict
+  // ascent + range). An invalid payload is a hard error — we don't
+  // want to silently persist garbage. `null`/undefined means "clear the
+  // override for this method".
+  let pctsForMethod: ZonePercents | undefined;
+  if (data.pcts != null) {
+    const validated = validateZonePercents(data.pcts);
+    if (!validated) {
+      throw new Error("Invalid HR zone percentages");
+    }
+    pctsForMethod = validated;
+  }
+
   // Recompute bands server-side so the persisted cache always agrees
   // with the canonical formulas — never trust a client-supplied bands
   // payload.
@@ -97,6 +123,7 @@ export async function performUpdateHrZones(
     hrMax: data.hrMax ?? undefined,
     hrResting: data.hrResting ?? undefined,
     hrLthr: data.hrLthr ?? undefined,
+    pcts: pctsForMethod,
   });
 
   const { data: profile, error: readError } = await deps.supabase
@@ -106,12 +133,32 @@ export async function performUpdateHrZones(
     .maybeSingle();
   if (readError) throw new Error(readError.message);
 
+  // Merge per-method pcts onto any existing overrides so saving one
+  // method's overrides doesn't wipe out another's.
+  const existingIntake = (profile?.intake ?? null) as
+    | (Record<string, unknown> & { hrPercents?: HrPercents })
+    | null;
+  const existingPercents: HrPercents = { ...(existingIntake?.hrPercents ?? {}) };
+  if (pctsForMethod) {
+    existingPercents[data.hrMethod as HrMethod] = pctsForMethod;
+  } else {
+    // `pcts` was explicitly null OR omitted on this save → reset this
+    // method's overrides to defaults by deleting the slot. Other
+    // methods' overrides remain untouched.
+    delete existingPercents[data.hrMethod as HrMethod];
+  }
+  const nextHrPercents: HrPercents | undefined =
+    existingPercents.max || existingPercents.hrr || existingPercents.lthr
+      ? existingPercents
+      : undefined;
+
   const patch: HrZoneIntake = {
     hrMethod: data.hrMethod as HrMethod,
     hrMax: data.hrMax ?? null,
     hrResting: data.hrResting ?? null,
     hrLthr: data.hrLthr ?? null,
     hrZones: bands,
+    hrPercents: nextHrPercents,
   };
   const nextIntake = mergeIntake(profile?.intake ?? null, patch);
 
