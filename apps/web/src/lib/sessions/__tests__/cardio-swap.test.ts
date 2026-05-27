@@ -76,6 +76,7 @@ describe("classifyCardioKind", () => {
   it("maps zone + protocol metadata to the right kind", () => {
     expect(classifyCardioKind({ zone: "Z2" })).toBe("cardio_z2");
     expect(classifyCardioKind({ zone: "Z1-Z2" })).toBe("cardio_z2");
+    expect(classifyCardioKind({ zone: "Z1" })).toBe("cardio_z2");
     expect(classifyCardioKind({ zone: "Z4" })).toBe("cardio_threshold");
     expect(classifyCardioKind({ zone: "Z5", protocol: "4x4min" })).toBe(
       "cardio_vo2",
@@ -86,7 +87,47 @@ describe("classifyCardioKind", () => {
     expect(classifyCardioKind({ protocol: "alactic-30s-on-90s-off" })).toBe(
       "cardio_alactic",
     );
-    expect(classifyCardioKind({ modality: "swimming" })).toBe("cardio_z2");
+    // Z2-equivalent and conversational tags map to cardio_z2.
+    expect(classifyCardioKind({ emphasis: "Z2-equivalent" })).toBe("cardio_z2");
+    expect(
+      classifyCardioKind({ emphasis: "long-easy conversational" }),
+    ).toBe("cardio_z2");
+  });
+
+  it("explicit metadata.kind wins over inferred markers", () => {
+    expect(classifyCardioKind({ kind: "cardio_alactic", zone: "Z2" })).toBe(
+      "cardio_alactic",
+    );
+    expect(classifyCardioKind({ kind: "cardio_other", zone: "Z2" })).toBe(
+      "cardio_other",
+    );
+  });
+
+  it("classifies max-effort and 500m intervals as VO2", () => {
+    // Erg Row — 500m Intervals seed (protocol "6-10x500m") should be VO2.
+    expect(classifyCardioKind({ protocol: "6-10x500m" })).toBe("cardio_vo2");
+    // Erg Row — 2k Time Trial seed (emphasis "max-effort-test") should be VO2.
+    expect(classifyCardioKind({ emphasis: "max-effort-test" })).toBe(
+      "cardio_vo2",
+    );
+  });
+
+  it("unmarked movements fall into cardio_other, not cardio_z2", () => {
+    // The bug: pre-fix, every cardio movement without explicit zone /
+    // protocol markers defaulted to cardio_z2 and polluted the Z2 swap
+    // picker (sled drags, rucking, MTB, spin class, ...). Now they
+    // land in cardio_other and are excluded from swap.
+    expect(classifyCardioKind({})).toBe("cardio_other");
+    expect(classifyCardioKind({ modality: "swimming" })).toBe("cardio_other");
+    expect(
+      classifyCardioKind({ modality: "sled", emphasis: "VMO-knee-rehab" }),
+    ).toBe("cardio_other");
+    expect(
+      classifyCardioKind({ modality: "rucking", terrain: "hill" }),
+    ).toBe("cardio_other");
+    expect(classifyCardioKind({ modality: "cycling", terrain: "trail" })).toBe(
+      "cardio_other",
+    );
   });
 });
 
@@ -113,6 +154,50 @@ describe("filterCardioCandidates — kind filter", () => {
     expect(slugs).toContain("bike-outdoor-easy");
     expect(slugs).not.toContain("bike-indoor-vo2-4x4");
     expect(slugs).not.toContain("run-vo2-4x4");
+  });
+
+  it("Z2 picker excludes unclassified ('cardio_other') movements", () => {
+    // Regression for the bug where Backwards Sled Drag and Hill Rucking
+    // showed up under the Z2 swap picker because the classifier
+    // defaulted unmarked movements to cardio_z2.
+    const polluted: CardioCandidate[] = [
+      ...candidates,
+      {
+        id: "mov-sled-drag-back",
+        slug: "sled-drag-backwards",
+        display_name: "Backwards Sled Drag",
+        pattern: "cardio",
+        equipment: "sled",
+        metadata: { modality: "sled", emphasis: "VMO-knee-rehab" },
+      },
+      {
+        id: "mov-ruck-hill",
+        slug: "ruck-hill",
+        display_name: "Hill Rucking",
+        pattern: "cardio",
+        equipment: "rucksack-outdoor",
+        metadata: { modality: "rucking", terrain: "hill" },
+      },
+      {
+        id: "mov-bike-mtb",
+        slug: "bike-mtb",
+        display_name: "Mountain Bike",
+        pattern: "cardio",
+        equipment: "mountain-bike",
+        metadata: { modality: "cycling", terrain: "trail" },
+      },
+    ];
+    const groups = filterCardioCandidates(polluted, {
+      targetKind: "cardio_z2",
+      ownedCardio: [],
+    });
+    const slugs = groups.flatMap((g) => g.movements.map((m) => m.slug));
+    expect(slugs).not.toContain("sled-drag-backwards");
+    expect(slugs).not.toContain("ruck-hill");
+    expect(slugs).not.toContain("bike-mtb");
+    // Real Z2 options still survive.
+    expect(slugs).toContain("bike-indoor-z2");
+    expect(slugs).toContain("run-easy-z2");
   });
 
   it("VO2 → only VO2 movements appear (no Z2 leakage)", () => {

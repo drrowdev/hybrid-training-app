@@ -111,9 +111,9 @@ const row = (slug: string, name: string, opts: MoveOpts = {}): NewMovement =>
 const ROWING: NewMovement[] = [
   row("erg-z2", "Erg Row — Z2", { equipment: "erg", metadata: { modality: "rowing", zone: "Z2" } }),
   row("erg-threshold", "Erg Row — Threshold", { equipment: "erg", interferenceCost: "moderate", metadata: { modality: "rowing", zone: "Z4" }, experienceMin: 1 }),
-  row("erg-intervals-500", "Erg Row — 500m Intervals", { equipment: "erg", interferenceCost: "moderate", metadata: { modality: "rowing", protocol: "6-10x500m" }, experienceMin: 2 }),
+  row("erg-intervals-500", "Erg Row — 500m Intervals", { equipment: "erg", interferenceCost: "moderate", metadata: { modality: "rowing", protocol: "6-10x500m", kind: "cardio_vo2" }, experienceMin: 2 }),
   row("erg-sprints-30-30", "Erg Row — 30/30 Sprints", { equipment: "erg", interferenceCost: "moderate", metadata: { modality: "rowing", protocol: "tabata-style" }, experienceMin: 2 }),
-  row("erg-2k-tt", "Erg Row — 2k Time Trial", { equipment: "erg", interferenceCost: "high", metadata: { modality: "rowing", emphasis: "max-effort-test" }, experienceMin: 2 }),
+  row("erg-2k-tt", "Erg Row — 2k Time Trial", { equipment: "erg", interferenceCost: "high", metadata: { modality: "rowing", emphasis: "max-effort-test", kind: "cardio_vo2" }, experienceMin: 2 }),
 ];
 
 // ─── cardio: other modalities (15) ───
@@ -159,14 +159,14 @@ const OTHER_CARDIO: NewMovement[] = [
   sled("sled-drag-light", "Sled Drag — Light", { equipment: "sled" }),
   sled("sled-drag-heavy", "Sled Drag — Heavy", { equipment: "sled" }),
   sled("sled-drag-backwards", "Backwards Sled Drag", { equipment: "sled", primaryMuscles: ["quads", "calves"], metadata: { modality: "sled", emphasis: "VMO-knee-rehab" } }),
-  ruck("ruck-light", "Rucking — Light Load", { equipment: "rucksack", metadata: { modality: "rucking", load_kg: 10 } }),
+  ruck("ruck-light", "Rucking — Light Load", { equipment: "rucksack", metadata: { modality: "rucking", load_kg: 10, zone: "Z2" } }),
   ruck("ruck-heavy", "Rucking — Heavy Load", { equipment: "rucksack", metadata: { modality: "rucking", load_kg: 20 } }),
   ruck("ruck-hill", "Hill Rucking", { equipment: "rucksack-outdoor", interferenceCost: "moderate", metadata: { modality: "rucking", terrain: "hill" } }),
   swim("swim-easy", "Swim — Easy Lap", { equipment: "pool", metadata: { modality: "swimming", zone: "Z2" } }),
   swim("swim-intervals", "Swim — Intervals", { equipment: "pool", interferenceCost: "low_moderate", metadata: { modality: "swimming" }, experienceMin: 2 }),
   swim("swim-open-water", "Open Water Swim", { equipment: "open-water", metadata: { modality: "swimming" } }),
   m("stair-climber-z2", "Stair Climber — Z2", { pattern: "cardio", primaryRegion: "knee", secondaryRegions: ["hamstring_posterior", "foot_ankle_calf"], primaryMuscles: ["quads", "glutes", "calves"], interferenceCost: "low_moderate", equipment: "stair-machine", metadata: { modality: "stair", zone: "Z2" } }),
-  m("elliptical-z2", "Elliptical — Z2", { pattern: "cardio", primaryRegion: "knee", primaryMuscles: ["quads", "glutes", "hamstrings", "calves"], interferenceCost: "low", equipment: "elliptical", metadata: { modality: "elliptical", impact: "none" } }),
+  m("elliptical-z2", "Elliptical — Z2", { pattern: "cardio", primaryRegion: "knee", primaryMuscles: ["quads", "glutes", "hamstrings", "calves"], interferenceCost: "low", equipment: "elliptical", metadata: { modality: "elliptical", zone: "Z2", impact: "none" } }),
   m("jump-rope-singles", "Jump Rope — Singles", { pattern: "cardio", primaryRegion: "foot_ankle_calf", primaryMuscles: ["calves", "tibialis"], secondaryMuscles: ["forearms"], interferenceCost: "low_moderate", equipment: "jump-rope", metadata: { modality: "jump-rope", impact: "moderate" } }),
   m("ski-erg", "Ski Erg", { pattern: "cardio", primaryRegion: "lumbar_trunk", secondaryRegions: ["shoulder_scapular"], primaryMuscles: ["lats", "abs", "triceps"], secondaryMuscles: ["chest", "mid_back"], interferenceCost: "low_moderate", equipment: "ski-erg", metadata: { modality: "ski-erg", impact: "none" } }),
 ];
