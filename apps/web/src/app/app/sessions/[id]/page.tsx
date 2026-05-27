@@ -9,6 +9,7 @@ import {
   applyStravaAutofill,
   deleteCardio,
   fillSessionFromPlan,
+  markExternalCardioComplete,
   swapPrescriptionItem,
 } from "@/lib/sessions/actions";
 import { DeleteSessionButton } from "@/components/trash/DeleteSessionButton";
@@ -1006,6 +1007,7 @@ export default async function SessionDetailPage({
               ownedCardio={equipment.cardio}
               swapAction={swapPrescriptionItem}
               isReadOnly={isComplete}
+              markExternalCompleteAction={markExternalCardioComplete}
             />
           )}
           {hasLoggedCardio && (

@@ -421,6 +421,13 @@
       "tag": "0063_session_movements_grant_update",
       "when": 1781610000000,
       "breakpoints": false
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "tag": "0064_external_cardio_source",
+      "when": 1781700000000,
+      "breakpoints": false
     }
   ]
 }

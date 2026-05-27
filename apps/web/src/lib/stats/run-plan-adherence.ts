@@ -118,6 +118,10 @@ const CARDIO_KINDS = new Set([
   "cardio_alactic",
   "cardio_vo2",
   "cardio_threshold",
+  // Phase 1 "external cardio" — placeholder kind. Counted as a planned
+  // cardio session for adherence so the calendar + bucketing match
+  // what the user sees, even though `durationMin` is null.
+  "cardio_external",
 ]);
 
 function plannedCardioMinutes(prescription: Prescription | null): number {
@@ -134,6 +138,28 @@ function plannedCardioMinutes(prescription: Prescription | null): number {
 function hasCardio(prescription: Prescription | null): boolean {
   if (!prescription || !Array.isArray(prescription.items)) return false;
   return prescription.items.some((i) => CARDIO_KINDS.has(i.kind));
+}
+
+/**
+ * Phase 1 "external cardio" — true when the session reserves a cardio
+ * day via the placeholder `cardio_external` kind. Internal cardio
+ * adherence requires a logged cardio session on the same date with a
+ * specific modality match (the existing `actual` bucketing path);
+ * external cardio adherence is looser — the user is logging via Runna /
+ * Garmin Coach / etc. and we can't classify the intensity, so *any*
+ * cardio_log row on the same date counts as adherent.
+ *
+ * Currently unused in the bucketing path itself (the existing
+ * `computeAdherence` already collapses distinct same-date logs into
+ * sessions, so adding `cardio_external` to `CARDIO_KINDS` is enough
+ * to make the bucket count adherent). Exported as a named helper so
+ * downstream consumers — and the unit test — can branch on
+ * "external day vs internal day" without re-deriving from the items
+ * array.
+ */
+export function hasExternalCardio(prescription: Prescription | null): boolean {
+  if (!prescription || !Array.isArray(prescription.items)) return false;
+  return prescription.items.some((i) => i.kind === "cardio_external");
 }
 
 export type AdherenceData = {

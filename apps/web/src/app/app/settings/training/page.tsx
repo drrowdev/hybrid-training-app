@@ -8,6 +8,7 @@
 import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { WarmupSettings } from "@/components/settings/WarmupSettings";
+import { CardioSourceSettings } from "@/components/settings/CardioSourceSettings";
 import { resolveWarmupScheme } from "@/lib/planner/warmups";
 
 export const dynamic = "force-dynamic";
@@ -21,11 +22,15 @@ export default async function TrainingSettingsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("warmup_scheme")
+    .select("warmup_scheme, preferred_cardio_source, preferred_cardio_source_name")
     .eq("id", user.id)
     .maybeSingle();
 
   const scheme = resolveWarmupScheme(profile?.warmup_scheme);
+  const cardioSource =
+    (profile?.preferred_cardio_source as "internal" | "external" | undefined) ??
+    "internal";
+  const cardioSourceName = profile?.preferred_cardio_source_name ?? "";
 
   return (
     <main
@@ -39,13 +44,20 @@ export default async function TrainingSettingsPage() {
     >
       <header>
         <h1 style={{ fontSize: 24, margin: 0, letterSpacing: "-0.01em" }}>
-          Warmups
+          Training
         </h1>
       </header>
 
       <section style={{ display: "grid", gap: 12 }}>
         <h2 style={{ fontSize: 18, margin: 0 }}>Warmup ladder</h2>
         <WarmupSettings initial={scheme} />
+      </section>
+
+      <section style={{ display: "grid", gap: 12 }}>
+        <h2 style={{ fontSize: 18, margin: 0 }}>Cardio source</h2>
+        <CardioSourceSettings
+          initial={{ source: cardioSource, name: cardioSourceName }}
+        />
       </section>
     </main>
   );
