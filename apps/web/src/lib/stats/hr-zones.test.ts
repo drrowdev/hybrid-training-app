@@ -3,12 +3,15 @@ import {
   bucketByZone,
   computeZoneBands,
   computeZoneBandsSafe,
+  DEFAULT_ZONE_PCTS,
   polarisedSplit,
   readZoneConfig,
   validateHrZoneInputs,
+  validateZonePercents,
   zoneBandsFromMaxHr,
   zoneForBpm,
   type ZoneBands,
+  type ZonePercents,
 } from "./hr-zones";
 
 const BANDS: ZoneBands = zoneBandsFromMaxHr(200); // 120 / 140 / 160 / 180
@@ -176,5 +179,114 @@ describe("validateHrZoneInputs / computeZoneBandsSafe", () => {
     expect(validateHrZoneInputs({ method: "lthr", hrLthr: 9999 })).toBeNull();
     expect(computeZoneBandsSafe({ method: "max" })).toBeNull();
     expect(computeZoneBandsSafe({ method: "max", hrMax: 190 })).not.toBeNull();
+  });
+});
+
+describe("DEFAULT_ZONE_PCTS", () => {
+  it("matches the historic hard-coded breakpoints for each method", () => {
+    expect(DEFAULT_ZONE_PCTS.max).toEqual({ z1: 0.6, z2: 0.7, z3: 0.8, z4: 0.9 });
+    expect(DEFAULT_ZONE_PCTS.hrr).toEqual({ z1: 0.5, z2: 0.6, z3: 0.7, z4: 0.85 });
+    expect(DEFAULT_ZONE_PCTS.lthr).toEqual({ z1: 0.81, z2: 0.89, z3: 0.93, z4: 0.99 });
+  });
+});
+
+describe("validateZonePercents", () => {
+  it("accepts strictly-ascending values inside (0, 1.5]", () => {
+    expect(validateZonePercents({ z1: 0.5, z2: 0.6, z3: 0.7, z4: 0.85 })).toEqual({
+      z1: 0.5,
+      z2: 0.6,
+      z3: 0.7,
+      z4: 0.85,
+    });
+    // Upper edge: 1.5 is allowed.
+    expect(validateZonePercents({ z1: 0.6, z2: 0.7, z3: 0.8, z4: 1.5 })).not.toBeNull();
+  });
+
+  it("rejects a missing field", () => {
+    expect(validateZonePercents({ z1: 0.5, z2: 0.6, z3: 0.7 })).toBeNull();
+    expect(validateZonePercents({})).toBeNull();
+  });
+
+  it("rejects non-finite or wrong-typed values", () => {
+    expect(
+      validateZonePercents({ z1: Number.NaN, z2: 0.6, z3: 0.7, z4: 0.85 }),
+    ).toBeNull();
+    expect(
+      validateZonePercents({
+        z1: Number.POSITIVE_INFINITY,
+        z2: 0.6,
+        z3: 0.7,
+        z4: 0.85,
+      }),
+    ).toBeNull();
+    expect(
+      validateZonePercents({
+        z1: "0.5" as unknown as number,
+        z2: 0.6,
+        z3: 0.7,
+        z4: 0.85,
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects zero (lower bound is exclusive)", () => {
+    expect(validateZonePercents({ z1: 0, z2: 0.6, z3: 0.7, z4: 0.85 })).toBeNull();
+  });
+
+  it("rejects out-of-range values", () => {
+    // Negative.
+    expect(validateZonePercents({ z1: -0.1, z2: 0.6, z3: 0.7, z4: 0.85 })).toBeNull();
+    // Above 1.5.
+    expect(validateZonePercents({ z1: 0.6, z2: 0.7, z3: 0.8, z4: 1.6 })).toBeNull();
+  });
+
+  it("rejects non-ascending sequences", () => {
+    expect(validateZonePercents({ z1: 0.6, z2: 0.6, z3: 0.7, z4: 0.85 })).toBeNull();
+    expect(validateZonePercents({ z1: 0.7, z2: 0.6, z3: 0.8, z4: 0.9 })).toBeNull();
+  });
+});
+
+describe("computeZoneBands — custom pcts per method", () => {
+  it("overrides %Max defaults when pcts is supplied", () => {
+    const pcts: ZonePercents = { z1: 0.55, z2: 0.65, z3: 0.75, z4: 0.88 };
+    const bands = computeZoneBands({ method: "max", hrMax: 200, pcts });
+    expect(bands.z1Max).toBeCloseTo(110, 6);
+    expect(bands.z2Max).toBeCloseTo(130, 6);
+    expect(bands.z3Max).toBeCloseTo(150, 6);
+    expect(bands.z4Max).toBeCloseTo(176, 6);
+  });
+
+  it("overrides %HRR defaults when pcts is supplied (anchored at resting)", () => {
+    const pcts: ZonePercents = { z1: 0.55, z2: 0.65, z3: 0.75, z4: 0.9 };
+    // span = 200 - 60 = 140
+    const bands = computeZoneBands({
+      method: "hrr",
+      hrMax: 200,
+      hrResting: 60,
+      pcts,
+    });
+    expect(bands.z1Max).toBeCloseTo(60 + 0.55 * 140, 6);
+    expect(bands.z2Max).toBeCloseTo(60 + 0.65 * 140, 6);
+    expect(bands.z3Max).toBeCloseTo(60 + 0.75 * 140, 6);
+    expect(bands.z4Max).toBeCloseTo(60 + 0.9 * 140, 6);
+  });
+
+  it("overrides %LTHR defaults when pcts is supplied", () => {
+    const pcts: ZonePercents = { z1: 0.8, z2: 0.88, z3: 0.94, z4: 1.0 };
+    const bands = computeZoneBands({ method: "lthr", hrLthr: 170, pcts });
+    expect(bands.z1Max).toBeCloseTo(170 * 0.8, 6);
+    expect(bands.z2Max).toBeCloseTo(170 * 0.88, 6);
+    expect(bands.z3Max).toBeCloseTo(170 * 0.94, 6);
+    expect(bands.z4Max).toBeCloseTo(170 * 1.0, 6);
+  });
+
+  it("falls through to defaults when pcts is absent", () => {
+    const withOverride = computeZoneBands({
+      method: "max",
+      hrMax: 200,
+      pcts: DEFAULT_ZONE_PCTS.max,
+    });
+    const withoutOverride = computeZoneBands({ method: "max", hrMax: 200 });
+    expect(withOverride).toEqual(withoutOverride);
   });
 });

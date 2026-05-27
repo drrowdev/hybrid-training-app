@@ -15,13 +15,38 @@
  * keys owned by sibling features.
  */
 import { z } from "zod";
-import type { ZoneBands, HrMethod } from "@/lib/stats/hr-zones";
+import type { ZoneBands, ZonePercents, HrMethod } from "@/lib/stats/hr-zones";
 
 const ZONE_BANDS_SCHEMA = z.object({
   z1Max: z.number(),
   z2Max: z.number(),
   z3Max: z.number(),
   z4Max: z.number(),
+});
+
+/**
+ * Schema for a single method's per-zone breakpoint percentages. Values
+ * are validated more strictly (range + strict ascent) by
+ * `validateZonePercents` at compute time — here we only check shape so
+ * a partial / round-tripping JSONB blob doesn't get dropped wholesale.
+ */
+const ZONE_PERCENTS_SCHEMA = z.object({
+  z1: z.number(),
+  z2: z.number(),
+  z3: z.number(),
+  z4: z.number(),
+});
+
+/**
+ * Optional per-method overrides for the Z1–Z4 breakpoint percentages.
+ * Each method's pcts is independently optional — a user can override
+ * just one method without affecting the others. Absent methods fall
+ * through to `DEFAULT_ZONE_PCTS[method]`.
+ */
+export const HR_PERCENTS_SCHEMA = z.object({
+  max: ZONE_PERCENTS_SCHEMA.optional(),
+  hrr: ZONE_PERCENTS_SCHEMA.optional(),
+  lthr: ZONE_PERCENTS_SCHEMA.optional(),
 });
 
 /**
@@ -35,7 +60,14 @@ export const HR_ZONE_INTAKE_SCHEMA = z.object({
   hrResting: z.number().nullable().optional(),
   hrLthr: z.number().nullable().optional(),
   hrZones: ZONE_BANDS_SCHEMA.nullable().optional(),
+  hrPercents: HR_PERCENTS_SCHEMA.optional(),
 });
+
+export type HrPercents = {
+  max?: ZonePercents;
+  hrr?: ZonePercents;
+  lthr?: ZonePercents;
+};
 
 export type HrZoneIntake = {
   hrMethod?: HrMethod;
@@ -43,6 +75,7 @@ export type HrZoneIntake = {
   hrResting?: number | null;
   hrLthr?: number | null;
   hrZones?: ZoneBands | null;
+  hrPercents?: HrPercents;
 };
 
 /**
