@@ -1,0 +1,19 @@
+# Force LF line endings on files where hashes matter.
+#
+# drizzle-kit migrate computes the SHA-256 of each migration file's
+# raw bytes (line endings included) and stores it in
+# drizzle.__drizzle_migrations. The CI drift check normalizes CRLF→LF
+# before hashing, so without this rule a Windows checkout produces a
+# CRLF file → drizzle hashes the CRLF bytes → CI hashes the LF version
+# → mismatch → "MISSING from drizzle.__drizzle_migrations".
+
+# SQL migrations: hash-sensitive, force LF everywhere.
+packages/db/drizzle/*.sql text eol=lf
+packages/db/sync-migrations-tracking.sql text eol=lf
+
+# JSON manifest files we read/write programmatically — pin LF to avoid
+# spurious diffs when someone re-saves on Windows.
+packages/db/drizzle/meta/*.json text eol=lf
+
+# Lockfiles — many tools assume LF.
+pnpm-lock.yaml text eol=lf
