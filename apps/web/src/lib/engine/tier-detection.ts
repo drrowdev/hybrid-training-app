@@ -17,7 +17,14 @@
  *                          of strength for that role.
  *  - anchorAdherenceLast12w
  *                        ← completed planned sessions of role=primary /
- *                          total planned over the last 84 days.
+ *                          total planned over the last 84 days. "Completed"
+ *                          requires a linked session that has at least one
+ *                          non-warmup `set_logs` row whose `movement_id`
+ *                          belongs to the anchor's main-lift candidate set
+ *                          (`STRENGTH_ROLE_CANDIDATES`). Linking a session
+ *                          row that contains zero anchor-lift work does not
+ *                          count — the user can't get adherence credit for
+ *                          a Squat anchor by logging only triceps.
  *  - scheduleRegularity  ← 1 − coefficient-of-variation of weekly
  *                          completed-session counts over the last 12
  *                          full weeks (clamped to 0..1).
@@ -32,6 +39,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DeclaredExperience, MainLift, TierInputs } from "@hta/engine";
+import { MAIN_LIFTS } from "@hta/engine";
 import { STRENGTH_ROLE_CANDIDATES } from "@/lib/planner/archetypes";
 
 const DECLARED_VALUES: ReadonlySet<DeclaredExperience> = new Set([
@@ -98,29 +106,43 @@ export async function gatherTierInputs(
 ): Promise<TierInputs> {
   const since = isoDaysAgo(WINDOW_DAYS);
 
-  const [profileRes, tmsRes, plannedRes, sessionsRes] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("training_experience, bodyweight_kg")
-      .eq("id", userId)
-      .maybeSingle(),
-    supabase
-      .from("training_maxes")
-      .select("one_rm_kg, movements(slug)")
-      .eq("user_id", userId),
-    supabase
-      .from("planned_sessions")
-      .select("role, completed_session_id, skipped_at, created_at")
-      .eq("user_id", userId)
-      .gte("created_at", since),
-    supabase
-      .from("sessions")
-      .select("id, performed_at, completed_at, fatigue, soreness")
-      .eq("user_id", userId)
-      .gte("performed_at", since)
-      .not("completed_at", "is", null)
-      .is("deleted_at", null),
-  ]);
+  // Flatten main-lift candidate slugs once for the movement-id lookup.
+  const allCandidateSlugs = Array.from(
+    new Set(
+      (Object.values(STRENGTH_ROLE_CANDIDATES) as string[][]).flat(),
+    ),
+  );
+
+  const [profileRes, tmsRes, plannedRes, sessionsRes, candidateMovementsRes] =
+    await Promise.all([
+      supabase
+        .from("profiles")
+        .select("training_experience, bodyweight_kg")
+        .eq("id", userId)
+        .maybeSingle(),
+      supabase
+        .from("training_maxes")
+        .select("one_rm_kg, movements(slug)")
+        .eq("user_id", userId),
+      supabase
+        .from("planned_sessions")
+        .select(
+          "id, role, completed_session_id, skipped_at, created_at, prescription",
+        )
+        .eq("user_id", userId)
+        .gte("created_at", since),
+      supabase
+        .from("sessions")
+        .select("id, performed_at, completed_at, fatigue, soreness")
+        .eq("user_id", userId)
+        .gte("performed_at", since)
+        .not("completed_at", "is", null)
+        .is("deleted_at", null),
+      supabase
+        .from("movements")
+        .select("id, slug")
+        .in("slug", allCandidateSlugs),
+    ]);
 
   // ── declared experience + bodyweight ────────────────────────────
   const profile = profileRes.data ?? null;
@@ -152,12 +174,97 @@ export async function gatherTierInputs(
   }
 
   // ── anchor adherence (primary-role planned sessions, last 12 w) ─
+  //
+  // A planned anchor session only counts as adherent when the linked
+  // `sessions` row carries at least one non-warmup `set_logs` entry
+  // whose `movement_id` is in the candidate set for the anchor's role.
+  // Linking a real session that contains zero anchor-lift work (e.g.
+  // a Squat anchor where the user only logged a triceps extension)
+  // does **not** earn credit — fix for `engine-actual-vs-prescribed-
+  // audit.md` finding H1.
   const planned = plannedRes.data ?? [];
   const anchors = planned.filter((p) => p.role === "primary");
   const totalAnchors = anchors.length;
-  const completedAnchors = anchors.filter(
-    (p) => p.completed_session_id != null,
-  ).length;
+
+  // Map main-lift candidate movement_id → role, and role → set of ids.
+  const movementIdToRole = new Map<string, MainLift>();
+  const roleToMovementIds = new Map<MainLift, Set<string>>();
+  for (const role of MAIN_LIFTS) roleToMovementIds.set(role, new Set());
+  for (const row of candidateMovementsRes.data ?? []) {
+    const id = (row as { id?: string }).id;
+    const slug = (row as { slug?: string }).slug;
+    if (!id || !slug) continue;
+    const role = SLUG_TO_ROLE.get(slug);
+    if (!role) continue;
+    movementIdToRole.set(id, role);
+    roleToMovementIds.get(role)!.add(id);
+  }
+
+  // Inspect each linked anchor session's prescription to determine its
+  // main-lift role (first prescription item whose movementId resolves
+  // to a main-lift candidate).
+  type LinkedAnchor = { sessionId: string; role: MainLift };
+  const linkedAnchors: LinkedAnchor[] = [];
+  for (const p of anchors) {
+    const sessionId = (p as { completed_session_id?: string | null })
+      .completed_session_id;
+    if (!sessionId) continue;
+    const presc = (p as { prescription?: unknown }).prescription;
+    const items =
+      (presc as { items?: Array<{ movementId?: string }> } | null)?.items ?? [];
+    let role: MainLift | null = null;
+    for (const it of items) {
+      const mid = it?.movementId;
+      if (mid && movementIdToRole.has(mid)) {
+        role = movementIdToRole.get(mid)!;
+        break;
+      }
+    }
+    if (!role) continue; // No main-lift prescription item → can't validate.
+    linkedAnchors.push({ sessionId, role });
+  }
+
+  // Batch-fetch the non-warmup set_logs for those linked sessions,
+  // restricted to candidate main-lift movement ids.
+  const linkedSessionIds = Array.from(
+    new Set(linkedAnchors.map((a) => a.sessionId)),
+  );
+  const allCandidateMovementIds = Array.from(movementIdToRole.keys());
+  const loggedMovementIdsBySession = new Map<string, Set<string>>();
+  if (linkedSessionIds.length > 0 && allCandidateMovementIds.length > 0) {
+    const setLogsRes = await supabase
+      .from("set_logs")
+      .select("session_id, movement_id, set_kind")
+      .in("session_id", linkedSessionIds)
+      .in("movement_id", allCandidateMovementIds)
+      .neq("set_kind", "warmup");
+    for (const row of setLogsRes.data ?? []) {
+      const sid = (row as { session_id?: string }).session_id;
+      const mid = (row as { movement_id?: string }).movement_id;
+      if (!sid || !mid) continue;
+      let s = loggedMovementIdsBySession.get(sid);
+      if (!s) {
+        s = new Set();
+        loggedMovementIdsBySession.set(sid, s);
+      }
+      s.add(mid);
+    }
+  }
+
+  let completedAnchors = 0;
+  for (const a of linkedAnchors) {
+    const logged = loggedMovementIdsBySession.get(a.sessionId);
+    if (!logged || logged.size === 0) continue;
+    const required = roleToMovementIds.get(a.role);
+    if (!required || required.size === 0) continue;
+    for (const id of logged) {
+      if (required.has(id)) {
+        completedAnchors++;
+        break;
+      }
+    }
+  }
+
   const anchorAdherenceLast12w: number | null =
     totalAnchors > 0 ? completedAnchors / totalAnchors : null;
 
