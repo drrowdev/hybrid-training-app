@@ -37,6 +37,16 @@ type State = {
   sessionInsertCalls: SessionInsert[];
   sessionInsertResult: { id: string };
   plannedUpdateCalls: Array<{ payload: Record<string, unknown>; id: string }>;
+  /**
+   * Controls the outcome of the conditional link UPDATE. When `winner`
+   * is null the link succeeded (this caller is the winner); when set
+   * to a string, the UPDATE affected 0 rows (race lost) and the
+   * follow-up SELECT returns that completed_session_id.
+   */
+  linkRaceWinner: string | null;
+  /** How many times the planned_sessions SELECT has been called. */
+  plannedSelectCalls: number;
+  sessionDeleteCalls: string[];
   redirected: string | null;
   revalidated: string[];
 };
@@ -46,6 +56,9 @@ const state: State = {
   sessionInsertCalls: [],
   sessionInsertResult: { id: "new-session-uuid" },
   plannedUpdateCalls: [],
+  linkRaceWinner: null,
+  plannedSelectCalls: 0,
+  sessionDeleteCalls: [],
   redirected: null,
   revalidated: [],
 };
@@ -77,16 +90,45 @@ vi.mock("@/lib/supabase/server", () => ({
     from: (table: string) => {
       if (table === "planned_sessions") {
         return {
-          select: () => ({
+          select: (_cols?: string) => ({
             eq: (_col: string, _val: string) => ({
-              maybeSingle: () =>
-                Promise.resolve({ data: state.planned, error: null }),
+              maybeSingle: () => {
+                state.plannedSelectCalls += 1;
+                // First select = the initial fetch in startSessionDirect.
+                // Always returns the row as the user sees it (still
+                // unlinked). Subsequent selects happen only after a
+                // lost race, and should report the winner.
+                if (state.plannedSelectCalls > 1 && state.linkRaceWinner) {
+                  return Promise.resolve({
+                    data: { completed_session_id: state.linkRaceWinner },
+                    error: null,
+                  });
+                }
+                return Promise.resolve({ data: state.planned, error: null });
+              },
             }),
           }),
           update: (payload: Record<string, unknown>) => ({
             eq: (_col: string, val: string) => {
               state.plannedUpdateCalls.push({ payload, id: val });
-              return Promise.resolve({ error: null });
+              // The action now chains `.is("completed_session_id", null)`
+              // followed by `.select(...).maybeSingle()`. When the race
+              // is lost, the chained select resolves to `data: null`
+              // (UPDATE affected 0 rows).
+              const builder = {
+                is: (_col: string, _v: null) => ({
+                  select: (_cols?: string) => ({
+                    maybeSingle: () =>
+                      Promise.resolve({
+                        data: state.linkRaceWinner
+                          ? null
+                          : { id: val, completed_session_id: state.sessionInsertResult.id },
+                        error: null,
+                      }),
+                  }),
+                }),
+              };
+              return builder;
             },
           }),
         };
@@ -102,6 +144,12 @@ vi.mock("@/lib/supabase/server", () => ({
               }),
             };
           },
+          delete: () => ({
+            eq: (_col: string, val: string) => {
+              state.sessionDeleteCalls.push(val);
+              return Promise.resolve({ error: null });
+            },
+          }),
         };
       }
       throw new Error(`unexpected table ${table}`);
@@ -120,6 +168,9 @@ beforeEach(() => {
   state.sessionInsertCalls = [];
   state.sessionInsertResult = { id: "new-session-uuid" };
   state.plannedUpdateCalls = [];
+  state.linkRaceWinner = null;
+  state.plannedSelectCalls = 0;
+  state.sessionDeleteCalls = [];
   state.redirected = null;
   state.revalidated = [];
 });
@@ -210,5 +261,38 @@ describe("startSessionDirect — no pre-workout check-in", () => {
       /invalid planned session id/i,
     );
     expect(state.sessionInsertCalls).toHaveLength(0);
+  });
+
+  it("concurrent-tap race: loser deletes its orphan and redirects to the winner", async () => {
+    // Regression for PR #173 review: middle-click or rapid double-tap
+    // on ``Log now'' bypasses the client-side one-tap lock. With the old
+    // unconditional UPDATE both calls would silently insert a session
+    // and the second would overwrite the planned_sessions link, leaving
+    // the first session orphaned. The conditional UPDATE + cleanup path
+    // catches this.
+    state.planned = {
+      id: VALID_UUID,
+      title: "Upper push",
+      slot: "single",
+      planned_at: null,
+      prescription: null,
+      completed_session_id: null,
+      user_id: "user-1",
+    };
+    state.linkRaceWinner = "winner-session-id";
+
+    await expect(startSessionDirect(VALID_UUID)).rejects.toBeInstanceOf(
+      RedirectError,
+    );
+
+    // The orphaned session was created then deleted.
+    expect(state.sessionInsertCalls).toHaveLength(1);
+    expect(state.sessionDeleteCalls).toEqual(["new-session-uuid"]);
+
+    // We tried to link but the conditional UPDATE was a no-op.
+    expect(state.plannedUpdateCalls).toHaveLength(1);
+
+    // Redirect target is the winner's session, not ours.
+    expect(state.redirected).toBe("/app/sessions/winner-session-id");
   });
 });

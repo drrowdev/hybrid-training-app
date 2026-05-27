@@ -163,6 +163,69 @@ describe("PlanRedesign — view toggle + filter", () => {
   });
 });
 
+describe("PlanRedesign — overdue badge", () => {
+  // A row dated 2026-05-25 (yesterday) with neither completion nor skip
+  // is overdue relative to today=2026-05-26. The existing fixture's `s3`
+  // is on that date but is `done: true`, so we override its done flag.
+  const overdueRow = session({
+    id: "s-overdue",
+    weekIndex: 0,
+    dayIndex: 0,
+    date: "2026-05-25",
+    title: "Missed Bench",
+    done: false,
+    skipped: false,
+  });
+
+  it("renders the Overdue pill on a past-incomplete row", () => {
+    const html = render({ sessions: [overdueRow, session()] });
+    expect(html).toContain('data-testid="overdue-pill-s-overdue"');
+    expect(html).toMatch(/Overdue · 1d/);
+    // And the host pill carries the overdue modifier class.
+    expect(html).toMatch(/session-pill strength[^"]*overdue/);
+  });
+
+  it("does NOT render the Overdue pill on completed past rows", () => {
+    const completed = session({
+      id: "s-completed",
+      weekIndex: 0,
+      dayIndex: 0,
+      date: "2026-05-25",
+      title: "Bench",
+      done: true,
+    });
+    const html = render({ sessions: [completed] });
+    expect(html).not.toContain('data-testid="overdue-pill-s-completed"');
+  });
+
+  it("does NOT render the Overdue pill on skipped past rows", () => {
+    const skipped = session({
+      id: "s-skipped",
+      weekIndex: 0,
+      dayIndex: 0,
+      date: "2026-05-25",
+      title: "Skipped Bench",
+      skipped: true,
+    });
+    const html = render({ sessions: [skipped] });
+    expect(html).not.toContain('data-testid="overdue-pill-s-skipped"');
+  });
+
+  it("does NOT render the Overdue pill on today's or future rows", () => {
+    const todayRow = session({ id: "s-today", date: "2026-05-26" });
+    const futureRow = session({
+      id: "s-future",
+      weekIndex: 0,
+      dayIndex: 3,
+      date: "2026-05-28",
+    });
+    const html = render({ sessions: [todayRow, futureRow] });
+    expect(html).not.toContain('data-testid="overdue-pill-s-today"');
+    expect(html).not.toContain('data-testid="overdue-pill-s-future"');
+  });
+});
+
+
 describe("PlanRedesign — this week rail", () => {
   it("renders a 7-row rail for the current week", () => {
     const html = render();
