@@ -35,6 +35,10 @@ import {
   muscleFanoutFromMovementRow,
   type MuscleWeight,
 } from "./movement-muscle-map";
+import {
+  cardioIntensityScalar,
+  normaliseHrZones,
+} from "@/lib/engine/cardio-intensity";
 
 const LOOKBACK_DAYS = 35;
 const RECENCY_GREEN = 4;
@@ -250,7 +254,7 @@ export async function deriveMuscleLoadEvents(
     supabase
       .from("cardio_logs")
       .select(
-        "session_id, modality, duration_sec, rpe, movement:movements(slug, display_name, primary_muscles, secondary_muscles)",
+        "session_id, modality, duration_sec, rpe, hr_zones, movement:movements(slug, display_name, primary_muscles, secondary_muscles)",
       )
       .in("session_id", sessionIds),
   ]);
@@ -293,11 +297,23 @@ export async function deriveMuscleLoadEvents(
     if (fanout.length === 0) continue;
     const duration = Number(row.duration_sec ?? 0);
     if (duration <= 0) continue;
-    const rpe = row.rpe == null ? 6 : Number(row.rpe);
+    // HR-zone weighted intensity when Strava sync populated `hr_zones`
+    // (audit B2); legacy fall-back is clamp(rpe/10) so rows without HR
+    // data keep their historical load values.
+    const rpeRaw = row.rpe == null ? null : Number(row.rpe);
+    const hrZones = normaliseHrZones((row as { hr_zones?: unknown }).hr_zones);
+    const intensity = cardioIntensityScalar({
+      hrZones,
+      durationSec: duration,
+      // Preserve the previous `rpe ?? 6` defaulting so the fall-back
+      // path produces identical results to today's math for rows
+      // without HR data.
+      rpe: hrZones == null && rpeRaw == null ? 6 : rpeRaw,
+    });
     // duration in minutes × intensity. Keeps units in the same ball
     // park as reps × weight (a 30-min Z2 ride at RPE6 ≈ 18 load
     // units, similar to one mid-weight set).
-    const load = (duration / 60) * Math.max(0.3, Math.min(1.0, rpe / 10));
+    const load = (duration / 60) * intensity;
     events.push({
       date,
       load,
