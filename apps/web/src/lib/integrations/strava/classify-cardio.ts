@@ -63,7 +63,17 @@ const LABELS: Record<ClassifiedCardioKind, string> = {
   cardio_mixed: "Mixed intensity",
 };
 
-function eslFor(kind: ClassifiedCardioKind, durationMin: number): number {
+/**
+ * ESL per cardio kind, in engine units (minutes × intensity modifier).
+ * Exported for reuse by the post-completion recompute path
+ * (`lib/engine/actual-session-load.ts`) so internal + external cardio
+ * land on the same ESL scale. See classify-cardio.ts class doc for the
+ * ESL-scale unification follow-up.
+ */
+export function cardioEslFromKind(
+  kind: ClassifiedCardioKind,
+  durationMin: number,
+): number {
   switch (kind) {
     case "cardio_z2":
       return 0.5 * durationMin;
@@ -76,6 +86,10 @@ function eslFor(kind: ClassifiedCardioKind, durationMin: number): number {
     case "cardio_mixed":
       return 1.0 * durationMin;
   }
+}
+
+function eslFor(kind: ClassifiedCardioKind, durationMin: number): number {
+  return cardioEslFromKind(kind, durationMin);
 }
 
 /**
