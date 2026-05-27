@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildSyncRow, deriveRpe } from "../sync-row";
+import { zoneBandsFromMaxHr } from "@/lib/stats/hr-zones";
 import type { StravaActivity } from "../client";
 
 function activity(overrides: Partial<StravaActivity> = {}): StravaActivity {
@@ -95,5 +96,29 @@ describe("buildSyncRow", () => {
     const row = buildSyncRow(activity({ sport_type: "Ride", type: "Ride" }), "u");
     expect(row?.cardio.modality).toBe("bike");
     expect(row?.mapping.primaryRegion).toBe("knee");
+  });
+
+  it("populates hr_zones when bands are supplied and avg HR is set", () => {
+    const bands = zoneBandsFromMaxHr(200);
+    const row = buildSyncRow(activity(), "u", { bands });
+    expect(row?.cardio.hr_zones).not.toBeNull();
+    const z = row!.cardio.hr_zones!;
+    const total = z.z1 + z.z2 + z.z3 + z.z4 + z.z5;
+    expect(total).toBe(row!.cardio.duration_sec);
+  });
+
+  it("hr_zones is null when bands are not supplied (no zone config)", () => {
+    const row = buildSyncRow(activity(), "u");
+    expect(row?.cardio.hr_zones).toBeNull();
+  });
+
+  it("hr_zones is null when avg HR is missing even with bands", () => {
+    const bands = zoneBandsFromMaxHr(200);
+    const row = buildSyncRow(
+      activity({ average_heartrate: null, max_heartrate: null }),
+      "u",
+      { bands },
+    );
+    expect(row?.cardio.hr_zones).toBeNull();
   });
 });
