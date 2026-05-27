@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
+import { recomputeActualSessionLoad } from "@/lib/engine/recompute-actual-session-load";
 import { maybeCompleteBlock } from "@/lib/planner/completion";
 import { getUserTimezone } from "@/lib/planner/queries";
 import { roundToPlate } from "@/lib/planner/archetypes";
@@ -370,6 +371,14 @@ export async function deleteSet(formData: FormData): Promise<void> {
 
   const supabase = await createClient();
   await supabase.from("set_logs").delete().eq("id", id);
+  // Re-stamp planned_sessions.effective_stress_load when this session
+  // is already completed. requireCompleted gates the no-op for
+  // in-flight sessions.
+  try {
+    await recomputeActualSessionLoad({ supabase, sessionId });
+  } catch (e) {
+    console.error("recomputeActualSessionLoad (deleteSet) failed:", e);
+  }
   revalidatePath(`/app/sessions/${sessionId}`);
 }
 
@@ -418,6 +427,11 @@ export async function editSet(formData: FormData): Promise<void> {
     .eq("id", parsed.data.id);
 
   if (error) throw new Error(error.message);
+  try {
+    if (sessionId) await recomputeActualSessionLoad({ supabase, sessionId });
+  } catch (e) {
+    console.error("recomputeActualSessionLoad (editSet) failed:", e);
+  }
   if (sessionId) revalidatePath(`/app/sessions/${sessionId}`);
   redirect(`/app/sessions/${sessionId}`);
 }
@@ -459,6 +473,11 @@ export async function editCardio(formData: FormData): Promise<void> {
     .eq("id", parsed.data.id);
 
   if (error) throw new Error(error.message);
+  try {
+    if (sessionId) await recomputeActualSessionLoad({ supabase, sessionId });
+  } catch (e) {
+    console.error("recomputeActualSessionLoad (editCardio) failed:", e);
+  }
   if (sessionId) revalidatePath(`/app/sessions/${sessionId}`);
   redirect(`/app/sessions/${sessionId}`);
 }
@@ -470,6 +489,11 @@ export async function deleteCardio(formData: FormData): Promise<void> {
 
   const supabase = await createClient();
   await supabase.from("cardio_logs").delete().eq("id", id);
+  try {
+    await recomputeActualSessionLoad({ supabase, sessionId });
+  } catch (e) {
+    console.error("recomputeActualSessionLoad (deleteCardio) failed:", e);
+  }
   revalidatePath(`/app/sessions/${sessionId}`);
 }
 
@@ -561,6 +585,21 @@ export async function completeSession(formData: FormData): Promise<void> {
     .eq("id", parsed.data.sessionId);
 
   if (error) throw new Error(error.message);
+
+  // Finding 1 fix — recompute planned_sessions.effective_stress_load
+  // from the logged set_logs + cardio_logs now that the session has
+  // been stamped completed_at. Best-effort: any failure here must
+  // never block the user from marking the session complete (the
+  // helper itself try/catches; this is belt-and-suspenders).
+  try {
+    await recomputeActualSessionLoad({
+      supabase,
+      sessionId: parsed.data.sessionId,
+      requireCompleted: false,
+    });
+  } catch (e) {
+    console.error("recomputeActualSessionLoad (completion) failed:", e);
+  }
 
   // DC-C14: rematerialise the per-region ledger now that this session is
   // counted. Idempotent; failures here shouldn't block the user from
