@@ -57,16 +57,29 @@ export async function recomputeActualSessionLoad(args: {
 }): Promise<void> {
   const { supabase, sessionId } = args;
   const requireCompleted = args.requireCompleted ?? true;
+  let sessionUserId: string | null = null;
 
   try {
     if (requireCompleted) {
       const { data: session } = await supabase
         .from("sessions")
-        .select("id, completed_at")
+        .select("id, user_id, completed_at")
         .eq("id", sessionId)
         .maybeSingle();
-      const s = session as SessionRow | null;
+      const s = session as (SessionRow & { user_id: string }) | null;
       if (!s || !s.completed_at) return;
+      // Stash for defense-in-depth on the UPDATE below.
+      sessionUserId = s.user_id;
+    } else {
+      // Even when the caller has already verified completion, read
+      // user_id so the UPDATE can filter by it.
+      const { data: session } = await supabase
+        .from("sessions")
+        .select("user_id")
+        .eq("id", sessionId)
+        .maybeSingle();
+      sessionUserId = (session as { user_id?: string } | null)?.user_id ?? null;
+      if (!sessionUserId) return;
     }
 
     // Find the linked planned_session.
@@ -124,7 +137,8 @@ export async function recomputeActualSessionLoad(args: {
         effective_stress_load: out.effectiveStressLoad,
         session_modality: out.sessionModality,
       })
-      .eq("id", p.id);
+      .eq("id", p.id)
+      .eq("user_id", sessionUserId);
   } catch (e) {
     console.error("recomputeActualSessionLoad failed:", e);
   }

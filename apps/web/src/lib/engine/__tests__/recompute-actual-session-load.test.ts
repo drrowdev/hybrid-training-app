@@ -14,7 +14,7 @@ type Capture = {
 };
 
 function makeSupa(opts: {
-  session: { id: string; completed_at: string | null } | null;
+  session: { id: string; completed_at: string | null; user_id?: string } | null;
   planned: { id: string; session_modality: string | null } | null;
   setLogs: Array<{
     movement_id: string;
@@ -32,13 +32,17 @@ function makeSupa(opts: {
   }>;
 }) {
   const capture: Capture = { plannedUpdates: [] };
+  // Default user_id so tests that omit it still authorise.
+  const sessionWithUser = opts.session
+    ? { user_id: "u1", ...opts.session }
+    : null;
   const supa = {
     from(table: string) {
       if (table === "sessions") {
         return {
           select: () => ({
             eq: () => ({
-              maybeSingle: async () => ({ data: opts.session, error: null }),
+              maybeSingle: async () => ({ data: sessionWithUser, error: null }),
             }),
           }),
         };
@@ -50,12 +54,22 @@ function makeSupa(opts: {
               maybeSingle: async () => ({ data: opts.planned, error: null }),
             }),
           }),
-          update: (patch: Record<string, unknown>) => ({
-            eq: async (_col: string, id: string) => {
-              capture.plannedUpdates.push({ id, patch });
-              return { data: null, error: null };
-            },
-          }),
+          update: (patch: Record<string, unknown>) => {
+            // Chainable .eq() returning the same object so the
+            // production code's `.eq("id", ...).eq("user_id", ...)` lands.
+            const chain = {
+              eq(_col: string, id: string) {
+                if (_col === "id") {
+                  capture.plannedUpdates.push({ id, patch });
+                }
+                return chain;
+              },
+              then(resolve: (v: unknown) => unknown) {
+                return resolve({ data: null, error: null });
+              },
+            };
+            return chain;
+          },
         };
       }
       if (table === "set_logs") {
