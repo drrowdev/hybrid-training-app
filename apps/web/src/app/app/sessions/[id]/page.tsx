@@ -33,7 +33,7 @@ import { PR_KIND_LABEL } from "@/lib/engine/pr";
 import { bestEstimateOneRm } from "@/lib/engine/one-rm";
 import { acceptTmBump, declineTmBump } from "@/lib/engine/tm-bump-actions";
 import { findDeloadProposalForSession } from "@/lib/engine/deload";
-import { formatDate, formatDateTime } from "@/lib/format/datetime";
+import { formatDate } from "@/lib/format/datetime";
 import { formatHitValue, countSessionTmAnchoredPrs, getSessionTmAnchoredPrSummaries } from "@/lib/stats/pr-queries";
 import { findBumpProposalForSession } from "@/lib/stats/bump-proposal";
 import { findPrRecalibrateProposals } from "@/lib/stats/pr-recalibrate";
@@ -543,7 +543,7 @@ export default async function SessionDetailPage({
       <header>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 12, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-            {formatDateTime(session.performed_at, feedbackPrefs)}
+            {formatDate(session.performed_at, feedbackPrefs)}
           </span>
           <SessionModalityChip modality={sessionModality} />
         </div>
