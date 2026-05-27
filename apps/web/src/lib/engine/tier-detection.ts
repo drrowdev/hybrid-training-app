@@ -173,7 +173,14 @@ export async function gatherTierInputs(
     }
   }
 
-  // ── anchor adherence (primary-role planned sessions, last 12 w) ─
+  // ── anchor adherence (main-lift planned sessions, last 12 w) ────
+  //
+  // "Anchor" sessions are the main-lift days: rows where
+  // `planned_sessions.role` is one of the four main-lift roles
+  // (squat / horizontal_press / deadlift / vertical_press). Cardio
+  // and accessory roles do NOT count. The persisted `role` column
+  // already carries the specific main-lift role per row, so we use
+  // it directly instead of re-inferring from prescription items.
   //
   // A planned anchor session only counts as adherent when the linked
   // `sessions` row carries at least one non-warmup `set_logs` entry
@@ -183,7 +190,8 @@ export async function gatherTierInputs(
   // does **not** earn credit — fix for `engine-actual-vs-prescribed-
   // audit.md` finding H1.
   const planned = plannedRes.data ?? [];
-  const anchors = planned.filter((p) => p.role === "primary");
+  const MAIN_LIFT_ROLES = new Set<string>(MAIN_LIFTS);
+  const anchors = planned.filter((p) => MAIN_LIFT_ROLES.has((p as { role?: string }).role ?? ""));
   const totalAnchors = anchors.length;
 
   // Map main-lift candidate movement_id → role, and role → set of ids.
@@ -200,27 +208,16 @@ export async function gatherTierInputs(
     roleToMovementIds.get(role)!.add(id);
   }
 
-  // Inspect each linked anchor session's prescription to determine its
-  // main-lift role (first prescription item whose movementId resolves
-  // to a main-lift candidate).
+  // Read the anchor's specific main-lift role directly from
+  // `planned_sessions.role` — it's already the role we need.
   type LinkedAnchor = { sessionId: string; role: MainLift };
   const linkedAnchors: LinkedAnchor[] = [];
   for (const p of anchors) {
     const sessionId = (p as { completed_session_id?: string | null })
       .completed_session_id;
     if (!sessionId) continue;
-    const presc = (p as { prescription?: unknown }).prescription;
-    const items =
-      (presc as { items?: Array<{ movementId?: string }> } | null)?.items ?? [];
-    let role: MainLift | null = null;
-    for (const it of items) {
-      const mid = it?.movementId;
-      if (mid && movementIdToRole.has(mid)) {
-        role = movementIdToRole.get(mid)!;
-        break;
-      }
-    }
-    if (!role) continue; // No main-lift prescription item → can't validate.
+    const role = (p as { role?: string }).role as MainLift | undefined;
+    if (!role || !MAIN_LIFT_ROLES.has(role)) continue;
     linkedAnchors.push({ sessionId, role });
   }
 
