@@ -24,7 +24,7 @@
  * client-side (block.startedOn + week*7 + day) keeps the SQL simple.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { addDaysToYmd, daysBetweenYmd, isoWeekdayYmd, todayYmd } from "@/lib/dates";
+import { addDaysToYmd, daysBetweenYmd, isoWeekdayYmd, todayYmd, ymdInTimezone } from "@/lib/dates";
 
 export type AdherenceInput = {
   /** Today as YYYY-MM-DD in the user's timezone. */
@@ -41,6 +41,13 @@ export type AdherenceInput = {
     completedSessionId: string | null;
     skippedAt: string | null;
     blockStartedOn: string;
+    /**
+     * YYYY-MM-DD (in user tz) of the linked session's `performed_at`,
+     * or null when not completed / unknown. Used purely to split
+     * `completed` into on-time vs late-logged for the breakdown
+     * card — does NOT affect the headline ratio.
+     */
+    performedYmd?: string | null;
   }>;
 };
 
@@ -55,6 +62,22 @@ export type AdherenceResult = {
   missed: number;
   /** completed / scheduled, in [0, 1]. NaN-safe: 0 when scheduled === 0. */
   ratio: number;
+  /**
+   * Completed AND performed on (or before) the planned date, OR
+   * completed with no planned date. Diagnostic breakdown — does NOT
+   * change `ratio`.
+   */
+  onTime: number;
+  /**
+   * Completed but the linked session's `performed_at` (in user tz)
+   * fell strictly after the planned date. Diagnostic only.
+   */
+  lateLogged: number;
+  /**
+   * Still in limbo: not completed, not skipped, date in the past.
+   * Equals `missed - skipped`. Diagnostic only.
+   */
+  accidentallyMissed: number;
 };
 
 /**
@@ -68,19 +91,41 @@ export function computeAdherence(input: AdherenceInput): AdherenceResult {
   let scheduled = 0;
   let completed = 0;
   let skipped = 0;
+  let onTime = 0;
+  let lateLogged = 0;
 
   for (const row of input.planned) {
     const date = dayDateFor(row.blockStartedOn, row.weekIndex, row.dayIndex);
     if (earliest != null && date < earliest) continue;
     if (date > input.today) continue;
     scheduled++;
-    if (row.completedSessionId) completed++;
-    else if (row.skippedAt) skipped++;
+    if (row.completedSessionId) {
+      completed++;
+      // Late-logged when we know `performed_at` and it lands strictly
+      // after the planned date in the user's tz. Falls back to
+      // on-time when we don't have a performed_at (legacy rows /
+      // joins that didn't fetch it).
+      if (row.performedYmd && row.performedYmd > date) {
+        lateLogged++;
+      } else {
+        onTime++;
+      }
+    } else if (row.skippedAt) skipped++;
   }
 
   const missed = scheduled - completed;
+  const accidentallyMissed = missed - skipped;
   const ratio = scheduled === 0 ? 0 : completed / scheduled;
-  return { completed, scheduled, skipped, missed, ratio };
+  return {
+    completed,
+    scheduled,
+    skipped,
+    missed,
+    ratio,
+    onTime,
+    lateLogged,
+    accidentallyMissed,
+  };
 }
 
 /** Date for week i, day j of a block starting on `startedOn` (snapped to the Monday of that ISO week). */
@@ -109,7 +154,7 @@ export async function getAdherence30d(
   const { data, error } = await supabase
     .from("planned_sessions")
     .select(
-      "week_index, day_index, completed_session_id, skipped_at, training_blocks!inner(started_on, deleted_at, user_id)",
+      "week_index, day_index, completed_session_id, skipped_at, training_blocks!inner(started_on, deleted_at, user_id), sessions(performed_at)",
     )
     .eq("training_blocks.user_id", userId)
     .is("training_blocks.deleted_at", null);
@@ -123,18 +168,26 @@ export async function getAdherence30d(
       | { started_on: string }
       | Array<{ started_on: string }>
       | null;
+    sessions:
+      | { performed_at: string | null }
+      | Array<{ performed_at: string | null }>
+      | null;
   };
   const rows = (data ?? []) as Row[];
   const planned = rows
     .map((r) => {
       const blk = Array.isArray(r.training_blocks) ? r.training_blocks[0] : r.training_blocks;
       if (!blk?.started_on) return null;
+      const sess = Array.isArray(r.sessions) ? r.sessions[0] : r.sessions;
+      const performedYmd =
+        sess?.performed_at != null ? ymdInTimezone(new Date(sess.performed_at), tz) : null;
       return {
         weekIndex: r.week_index,
         dayIndex: r.day_index,
         completedSessionId: r.completed_session_id,
         skippedAt: r.skipped_at,
         blockStartedOn: blk.started_on,
+        performedYmd,
       };
     })
     .filter((r): r is NonNullable<typeof r> => r != null);
@@ -155,7 +208,7 @@ export async function getAdherenceForWindow(
   const { data, error } = await supabase
     .from("planned_sessions")
     .select(
-      "week_index, day_index, completed_session_id, skipped_at, training_blocks!inner(started_on, deleted_at, user_id)",
+      "week_index, day_index, completed_session_id, skipped_at, training_blocks!inner(started_on, deleted_at, user_id), sessions(performed_at)",
     )
     .eq("training_blocks.user_id", userId)
     .is("training_blocks.deleted_at", null);
@@ -169,18 +222,26 @@ export async function getAdherenceForWindow(
       | { started_on: string }
       | Array<{ started_on: string }>
       | null;
+    sessions:
+      | { performed_at: string | null }
+      | Array<{ performed_at: string | null }>
+      | null;
   };
   const rows = (data ?? []) as Row[];
   const planned = rows
     .map((r) => {
       const blk = Array.isArray(r.training_blocks) ? r.training_blocks[0] : r.training_blocks;
       if (!blk?.started_on) return null;
+      const sess = Array.isArray(r.sessions) ? r.sessions[0] : r.sessions;
+      const performedYmd =
+        sess?.performed_at != null ? ymdInTimezone(new Date(sess.performed_at), tz) : null;
       return {
         weekIndex: r.week_index,
         dayIndex: r.day_index,
         completedSessionId: r.completed_session_id,
         skippedAt: r.skipped_at,
         blockStartedOn: blk.started_on,
+        performedYmd,
       };
     })
     .filter((r): r is NonNullable<typeof r> => r != null);

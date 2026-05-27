@@ -82,6 +82,7 @@ function render(overrides: Partial<Parameters<typeof PlanRedesign>[0]> = {}) {
     skipAction: noop,
     unskipAction: noop,
     updateNotesAction: async () => ({ ok: true as const }),
+    startSessionAction: noop,
     ...overrides,
   };
   return renderToStaticMarkup(<PlanRedesign {...props} />);

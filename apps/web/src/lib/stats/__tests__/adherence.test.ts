@@ -32,6 +32,9 @@ describe("computeAdherence (30-day window)", () => {
       skipped: 0,
       missed: 0,
       ratio: 0,
+      onTime: 0,
+      lateLogged: 0,
+      accidentallyMissed: 0,
     });
   });
 
@@ -140,5 +143,125 @@ describe("computeAdherence (30-day window)", () => {
     });
     expect(r.scheduled).toBe(1);
     expect(r.completed).toBe(1);
+  });
+});
+
+describe("computeAdherence — late-logged breakdown", () => {
+  it("splits completed into on-time vs late-logged using performedYmd", () => {
+    // Block started Monday 2026-05-18.
+    // Planned w0d0 = 2026-05-18, performed same day → on-time.
+    // Planned w0d1 = 2026-05-19, performed 2026-05-20 → late.
+    // Planned w0d2 = 2026-05-20, no performedYmd known → fallback on-time.
+    const r = computeAdherence({
+      today: TODAY,
+      planned: [
+        {
+          weekIndex: 0,
+          dayIndex: 0,
+          completedSessionId: "s-ontime",
+          skippedAt: null,
+          blockStartedOn: "2026-05-18",
+          performedYmd: "2026-05-18",
+        },
+        {
+          weekIndex: 0,
+          dayIndex: 1,
+          completedSessionId: "s-late",
+          skippedAt: null,
+          blockStartedOn: "2026-05-18",
+          performedYmd: "2026-05-20",
+        },
+        {
+          weekIndex: 0,
+          dayIndex: 2,
+          completedSessionId: "s-no-perf",
+          skippedAt: null,
+          blockStartedOn: "2026-05-18",
+          performedYmd: null,
+        },
+      ],
+    });
+    expect(r.completed).toBe(3);
+    expect(r.onTime).toBe(2);
+    expect(r.lateLogged).toBe(1);
+    expect(r.accidentallyMissed).toBe(0);
+  });
+
+  it("buckets sum to scheduled: onTime + lateLogged + skipped + accidentallyMissed", () => {
+    const r = computeAdherence({
+      today: TODAY,
+      planned: [
+        // On-time completion.
+        {
+          weekIndex: 0,
+          dayIndex: 0,
+          completedSessionId: "a",
+          skippedAt: null,
+          blockStartedOn: "2026-05-18",
+          performedYmd: "2026-05-18",
+        },
+        // Late-logged completion.
+        {
+          weekIndex: 0,
+          dayIndex: 1,
+          completedSessionId: "b",
+          skippedAt: null,
+          blockStartedOn: "2026-05-18",
+          performedYmd: "2026-05-21",
+        },
+        // Skipped.
+        {
+          weekIndex: 0,
+          dayIndex: 2,
+          completedSessionId: null,
+          skippedAt: "2026-05-20T09:00:00Z",
+          blockStartedOn: "2026-05-18",
+        },
+        // Limbo — not completed, not skipped, past date.
+        {
+          weekIndex: 0,
+          dayIndex: 3,
+          completedSessionId: null,
+          skippedAt: null,
+          blockStartedOn: "2026-05-18",
+        },
+      ],
+    });
+    expect(r.scheduled).toBe(4);
+    expect(r.onTime + r.lateLogged + r.skipped + r.accidentallyMissed).toBe(r.scheduled);
+    expect(r.onTime).toBe(1);
+    expect(r.lateLogged).toBe(1);
+    expect(r.skipped).toBe(1);
+    expect(r.accidentallyMissed).toBe(1);
+  });
+
+  it("does NOT shift the baseline ratio when late-logged sessions exist", () => {
+    // Same setup as the on-time test but the late one used to be
+    // missing. The ratio is still completed/scheduled.
+    const r = computeAdherence({
+      today: TODAY,
+      planned: [
+        {
+          weekIndex: 0,
+          dayIndex: 0,
+          completedSessionId: "a",
+          skippedAt: null,
+          blockStartedOn: "2026-05-18",
+          performedYmd: "2026-05-21", // late
+        },
+        {
+          weekIndex: 0,
+          dayIndex: 1,
+          completedSessionId: null,
+          skippedAt: null,
+          blockStartedOn: "2026-05-18",
+        },
+      ],
+    });
+    expect(r.completed).toBe(1);
+    expect(r.scheduled).toBe(2);
+    expect(r.ratio).toBe(0.5);
+    expect(r.lateLogged).toBe(1);
+    expect(r.onTime).toBe(0);
   });
 });
