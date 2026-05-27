@@ -33,7 +33,7 @@ vi.mock("@/lib/planner/queries", () => ({
 import { syncStrava } from "../sync";
 
 type SessionRow = { id: string; user_id: string; strava_activity_id: number };
-type CardioRow = { session_id: string; strava_activity_id: string; modality: string };
+type CardioRow = { id?: string; session_id: string; strava_activity_id: string; modality: string };
 
 function makeActivity(over: Partial<StravaActivity> = {}): StravaActivity {
   return {
@@ -47,6 +47,7 @@ function makeActivity(over: Partial<StravaActivity> = {}): StravaActivity {
     moving_time: 1800,
     distance: 5000,
     average_heartrate: 148,
+    max_heartrate: 165,
     perceived_exertion: 6,
     suffer_score: null,
     description: null,
@@ -79,6 +80,8 @@ function makeSupabase(initial: {
     if (table === "strava_connections") return connectionTable();
     if (table === "sessions") return sessionsTable();
     if (table === "cardio_logs") return cardioTable();
+    if (table === "planned_sessions") return plannedSessionsTable();
+    if (table === "profiles") return profilesTable();
     throw new Error("Unexpected table: " + table);
   };
 
@@ -121,10 +124,53 @@ function makeSupabase(initial: {
 
   function cardioTable() {
     return {
-      insert: async (row: CardioRow) => {
-        state.cardio.push(row);
-        return { data: null, error: null };
-      },
+      insert: (row: CardioRow) => ({
+        select: () => ({
+          maybeSingle: async () => {
+            const id = `cardio-${state.cardio.length + 1}`;
+            state.cardio.push({ ...row, id });
+            return { data: { id }, error: null };
+          },
+        }),
+      }),
+      // Phase 2 — best-effort update for `inferred_kind` /
+      // `inferred_confidence`. The mock just discards the payload
+      // since the sync tests don't assert on it (the link logic has
+      // its own dedicated test file).
+      update: () => ({
+        eq: async () => ({ data: null, error: null }),
+      }),
+    };
+  }
+
+  function plannedSessionsTable() {
+    // No external cardio blocks → the link query returns an empty array.
+    return {
+      select: () => ({
+        eq: () => ({
+          eq: () => ({
+            eq: () => ({
+              is: async () => ({ data: [], error: null }),
+            }),
+          }),
+        }),
+      }),
+      update: () => ({
+        eq: async () => ({ data: null, error: null }),
+      }),
+    };
+  }
+
+  function profilesTable() {
+    return {
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({
+            data: { intake: { hrMax: 190 } },
+            error: null,
+          }),
+        }),
+      }),
     };
   }
 

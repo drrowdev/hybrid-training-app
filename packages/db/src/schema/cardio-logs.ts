@@ -40,6 +40,16 @@ export const cardioLogs = pgTable("cardio_logs", {
   externalSource: text("external_source"),
   rpe: numeric("rpe", { precision: 3, scale: 1 }),
   notes: text("notes"),
+  /**
+   * Phase 2 "external cardio" — classifier output. Mirrors the
+   * `cardio_*` PrescriptionItemKind set (cardio_z2 / cardio_threshold /
+   * cardio_vo2 / cardio_alactic / cardio_mixed). Populated by the
+   * Strava sync on import; null on legacy rows. See migration 0065
+   * and `apps/web/src/lib/integrations/strava/classify-cardio.ts`.
+   */
+  inferredKind: text("inferred_kind"),
+  /** 0..1 confidence — UI dims the badge below 0.7. */
+  inferredConfidence: numeric("inferred_confidence", { precision: 3, scale: 2 }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),
