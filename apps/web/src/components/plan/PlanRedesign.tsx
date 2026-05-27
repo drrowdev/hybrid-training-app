@@ -33,6 +33,7 @@ import type { DragEvent } from "react";
 import { formatPrescriptionItem } from "@/lib/planner/archetypes";
 import { isOverdue, overdueDays } from "@/lib/planner/overdue";
 import { LogNowDateForm } from "@/components/plan/LogNowDateForm";
+import { addDaysToYmd } from "@/lib/dates";
 import {
   getAdaptationGuidanceForArchetype,
   type AdaptationGuidance,
@@ -1450,6 +1451,7 @@ function SessionDrawer({
                   title={session.title}
                   defaultDateYmd={session.date <= today ? session.date : today}
                   maxDateYmd={today}
+                  minDateYmd={addDaysToYmd(today, -14)}
                   action={startSessionAction}
                   onOpenChange={(o) => {
                     if (o) setOneTapFired(true);

@@ -449,6 +449,13 @@
       "tag": "0067_enable_rls_movement_nodes",
       "when": 1781892065569,
       "breakpoints": false
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "tag": "0068_planned_sessions_completed_or_skipped_check",
+      "when": 1781899200000,
+      "breakpoints": false
     }
   ]
 }
