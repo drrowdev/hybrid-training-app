@@ -396,7 +396,7 @@ function BodyweightCard({ data, units }: { data: BodyweightTrend; units: WeightU
         <EmptyState
           variant="inline"
           title="No bodyweight logged"
-          body="Log your bodyweight on Today (How recovered? check-in) or in Settings and your 30-day trend populates here."
+          body="Log bodyweight via the Today-page bodyweight prompt or in Settings → Preferences and your 30-day trend populates here."
         />
       </section>
     );

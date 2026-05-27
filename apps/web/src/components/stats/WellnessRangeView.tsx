@@ -162,7 +162,7 @@ function BodyweightCard({
         <EmptyState
           variant="inline"
           title="No bodyweight logged"
-          body="Log bodyweight on the Today page (How recovered? check-in) and your trend populates this card."
+          body="Log bodyweight via the Today-page bodyweight prompt or in Settings → Preferences and your trend populates this card."
         />
       </Card>
     );
@@ -307,7 +307,7 @@ function MotivationCard({ rows, range }: { rows: WellnessRow[]; range: Range }) 
         <EmptyState
           variant="inline"
           title="No motivation logged"
-          body="Log your daily motivation on Today (How recovered? check-in) and your patterns populate this card."
+          body="Daily motivation logging has been retired. Any historic entries still display here."
         />
       </Card>
     );
