@@ -7,10 +7,12 @@ import {
 import {
   archetypeDisplayName,
   getActiveBlock,
+  getPlannedDays,
   getTodayPlannedSessions,
   getUpcomingPlannedSessions,
   type PlannedDay,
 } from "@/lib/planner/queries";
+import { summariseOverdue } from "@/lib/planner/overdue";
 import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
 import { todayYmd } from "@/lib/dates";
 import { effectiveTimeOfDay, gapHoursBetween } from "@/lib/planner/time-of-day";
@@ -21,6 +23,7 @@ import { StravaStaleSyncTrigger } from "@/components/StravaStaleSyncTrigger";
 import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner";
 import { dismissBwBanner } from "@/lib/profile/actions";
 import { HowRecoveredCard } from "@/components/today/HowRecoveredCard";
+import { OverdueNotice } from "@/components/today/OverdueNotice";
 import { recordDailyCheckIn } from "@/lib/wellness/actions";
 import {
   hasLoadableMainLift,
@@ -453,6 +456,18 @@ export default async function TodayPage() {
   // /app/profile and /app/settings/training-maxes now.
   const isRestDay = plannedToday.length === 0 && !openSession;
   const todayDate = new Date();
+
+  // Overdue planned sessions across the active block (date < today,
+  // neither completed nor skipped). The today page surfaces a single
+  // "you have N overdue" link above the day's primary card so the user
+  // can review them on /app/plan — we never auto-open a past planned
+  // session in the today flow.
+  const overdueSummary = activeBlock
+    ? summariseOverdue(
+        await getPlannedDays(activeBlock.id, activeBlock.startedOn),
+        todayIso,
+      )
+    : { count: 0, oldestDate: null, items: [] };
   const formatProfile: ProfileForFormat = profile
     ? {
         timezone: profile.timezone,
@@ -548,6 +563,7 @@ export default async function TodayPage() {
           tmMetaByMovementId={tmMetaByMovementId}
           nextUpcoming={upcoming[0] ?? null}
           formatProfile={formatProfile}
+          overdueCount={overdueSummary.count}
         />
 
         <WeekStrip days={weekDays} doneCount={doneCount} isRestDay={isRestDay} />
@@ -803,6 +819,7 @@ function TodaySessionCard({
   tmMetaByMovementId,
   nextUpcoming,
   formatProfile,
+  overdueCount,
 }: {
   openSession: { id: string; title: string | null } | null;
   completedToday: { id: string; title: string | null }[];
@@ -824,51 +841,64 @@ function TodaySessionCard({
   }>;
   nextUpcoming: PlannedDay | null;
   formatProfile: ProfileForFormat;
+  overdueCount: number;
 }) {
+  // Secondary, non-blocking notice rendered above the day's primary
+  // card whenever the user has past-incomplete planned sessions sitting
+  // in limbo. We never auto-open these — the user reviews them on
+  // /app/plan, where the inline one-tap "Mark skipped" / "Log now"
+  // CTAs live.
+  const overdueNotice = <OverdueNotice count={overdueCount} />;
   if (openSession) {
     return (
-      <section className="cp-card" style={{ padding: 20, display: "grid", gap: 12 }}>
-        <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-          Resume today&apos;s session
-        </div>
-        <h2 style={{ fontSize: 22, margin: 0 }}>{openSession.title ?? "In-progress session"}</h2>
-        <p style={{ color: "var(--cp-text-muted)", margin: 0, fontSize: 14 }}>
-          You started this earlier today. Pick up where you left off.
-        </p>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Link href={`/app/sessions/${openSession.id}`} className="cp-btn primary big">
-            ⚡ Resume session
-          </Link>
-          <Link href={`/app/sessions/${openSession.id}/complete`} className="cp-btn">
-            Wrap up
-          </Link>
-        </div>
-      </section>
+      <>
+        {overdueNotice}
+        <section className="cp-card" style={{ padding: 20, display: "grid", gap: 12 }}>
+          <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+            Resume today&apos;s session
+          </div>
+          <h2 style={{ fontSize: 22, margin: 0 }}>{openSession.title ?? "In-progress session"}</h2>
+          <p style={{ color: "var(--cp-text-muted)", margin: 0, fontSize: 14 }}>
+            You started this earlier today. Pick up where you left off.
+          </p>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <Link href={`/app/sessions/${openSession.id}`} className="cp-btn primary big">
+              ⚡ Resume session
+            </Link>
+            <Link href={`/app/sessions/${openSession.id}/complete`} className="cp-btn">
+              Wrap up
+            </Link>
+          </div>
+        </section>
+      </>
     );
   }
 
   if (completedToday.length > 0 && plannedToday.length <= completedToday.length) {
     // All planned slots for today are logged.
     return (
-      <section
-        className="cp-card"
-        data-testid="today-logged"
-        style={{ padding: 20, display: "grid", gap: 12 }}
-      >
-        <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-          Today, so far
-        </div>
-        <h2 style={{ fontSize: 22, margin: 0 }}>
-          {completedToday.length === 1 ? "Session logged ✓" : `${completedToday.length} sessions logged ✓`}
-        </h2>
-        <p style={{ color: "var(--cp-text-muted)", margin: 0, fontSize: 14 }}>
-          {completedToday[0]?.title ?? "Untitled session"} — rest and recover. Tomorrow is in the plan.
-        </p>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Link href="/app/sessions/new" className="cp-btn">Add another session</Link>
-          <Link href="/app/plan" className="cp-btn">See tomorrow →</Link>
-        </div>
-      </section>
+      <>
+        {overdueNotice}
+        <section
+          className="cp-card"
+          data-testid="today-logged"
+          style={{ padding: 20, display: "grid", gap: 12 }}
+        >
+          <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+            Today, so far
+          </div>
+          <h2 style={{ fontSize: 22, margin: 0 }}>
+            {completedToday.length === 1 ? "Session logged ✓" : `${completedToday.length} sessions logged ✓`}
+          </h2>
+          <p style={{ color: "var(--cp-text-muted)", margin: 0, fontSize: 14 }}>
+            {completedToday[0]?.title ?? "Untitled session"} — rest and recover. Tomorrow is in the plan.
+          </p>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <Link href="/app/sessions/new" className="cp-btn">Add another session</Link>
+            <Link href="/app/plan" className="cp-btn">See tomorrow →</Link>
+          </div>
+        </section>
+      </>
     );
   }
 
@@ -878,20 +908,22 @@ function TodaySessionCard({
     // prescription + TM math the hero uses so the line reads identically.
     const nextTopLine = nextUpcoming ? topSetLine(nextUpcoming, tmById) : null;
     return (
-      <section
-        data-testid="today-rest"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 14,
-          padding: "14px 18px",
-          background: "var(--cp-surface)",
-          border: "1px solid var(--cp-border)",
-          borderRadius: 12,
-          flexWrap: "wrap",
-        }}
-      >
+      <>
+        {overdueNotice}
+        <section
+          data-testid="today-rest"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 14,
+            padding: "14px 18px",
+            background: "var(--cp-surface)",
+            border: "1px solid var(--cp-border)",
+            borderRadius: 12,
+            flexWrap: "wrap",
+          }}
+        >
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
           <span aria-hidden style={{ fontSize: 18 }}>☕</span>
           <div style={{ fontSize: 13, color: "var(--cp-text-muted)", minWidth: 0 }}>
@@ -928,6 +960,7 @@ function TodaySessionCard({
           </Link>
         </div>
       </section>
+      </>
     );
   }
 
@@ -991,6 +1024,7 @@ function TodaySessionCard({
 
   return (
     <div style={{ display: "grid", gap: 10 }}>
+      {overdueNotice}
       {isTwoADay && (
         <div
           role="note"
