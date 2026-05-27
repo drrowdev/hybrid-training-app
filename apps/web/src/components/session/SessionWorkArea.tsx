@@ -25,6 +25,7 @@ import type {
 import { FinishSessionBar } from "./FinishSessionBar";
 import { MovementCardList } from "./MovementCardList";
 import type { PlateInventoryItem } from "./plate-math";
+import type { ResolvedFreestyleMovement } from "@/lib/sessions/freestyle-resolver";
 
 type AddStrengthSetAction = typeof addStrengthSetAction;
 type FillSessionFromPlanAction = typeof fillSessionFromPlanAction;
@@ -59,6 +60,7 @@ export function SessionWorkArea({
   trapBarKg,
   plateInventory,
   bwGateStateByFamily,
+  resolvedFreestyle,
 }: {
   sessionId: string;
   isComplete: boolean;
@@ -95,6 +97,13 @@ export function SessionWorkArea({
       }
     >
   >;
+  /**
+   * Server-resolved freestyle list (union of session_movements ∪
+   * distinct set_logs.movement_id). When omitted the card list falls
+   * back to its legacy set_logs-only derivation, which is still
+   * correct but loses anything the user added without logging a set.
+   */
+  resolvedFreestyle?: ReadonlyArray<ResolvedFreestyleMovement>;
 }) {
   // The card-list layout doesn't currently surface `lastSetHints`,
   // `plannedSessionId`, or the page-level swap server action — they're
@@ -141,6 +150,7 @@ export function SessionWorkArea({
         trapBarKg={trapBarKg}
         plateInventory={plateInventory}
         bwGateStateByFamily={bwGateStateByFamily}
+        resolvedFreestyle={resolvedFreestyle}
       />
     </>
   );
