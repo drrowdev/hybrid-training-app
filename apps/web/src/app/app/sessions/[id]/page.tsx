@@ -969,8 +969,24 @@ export default async function SessionDetailPage({
         // card grid (see `movement-grouping.ts`). Surface them here so
         // cardio days actually render their planned Z2 / VO2 / alactic
         // blocks instead of looking like an empty session card.
-        const cardioItems =
+        //
+        // Dedup: when the user has already logged a cardio block matching
+        // a prescribed movement, render only the log (the prescription
+        // becomes redundant). Match on movement_id; fall back to showing
+        // both if either side is missing the id.
+        const allCardioItems =
           plannedPrescription?.items?.filter((it) => it.kind.startsWith("cardio_")) ?? [];
+        const loggedMovementIds = new Set(
+          (cardio ?? [])
+            .map((c) => {
+              const mov = Array.isArray(c.movement) ? c.movement[0] : c.movement;
+              return mov?.id ?? null;
+            })
+            .filter((id): id is string => !!id),
+        );
+        const cardioItems = allCardioItems.filter(
+          (it) => !it.movementId || !loggedMovementIds.has(it.movementId),
+        );
         const hasLoggedCardio = !!(cardio && cardio.length > 0);
         const showCardioSection = hasLoggedCardio || cardioItems.length > 0 || !isComplete;
         if (!showCardioSection) return null;
@@ -1071,7 +1087,7 @@ export default async function SessionDetailPage({
                 .cardio-disclosure > summary { list-style: none; }
                 .cardio-disclosure > summary::-webkit-details-marker { display: none; }
                 .cardio-disclosure > summary::marker { content: ""; }
-                .cardio-disclosure > summary .cardio-disclosure-arrow { transform: rotate(-90deg); transition: transform 120ms ease; }
+                .cardio-disclosure > summary .cardio-disclosure-arrow { transform: rotate(-90deg); transition: transform 120ms ease; display: inline-flex; }
                 .cardio-disclosure[open] > summary .cardio-disclosure-arrow { transform: rotate(0deg); }
               `}</style>
               <details className="cardio-disclosure" style={{ marginTop: 12 }}>
@@ -1086,8 +1102,8 @@ export default async function SessionDetailPage({
                     gap: 6,
                   }}
                 >
-                  <span className="cardio-disclosure-arrow" style={{ display: "inline-flex" }}>
-                    <DisclosureArrow open={true} />
+                  <span className="cardio-disclosure-arrow">
+                    <DisclosureArrow open externalRotation />
                   </span>
                   <span>+ add cardio block</span>
                 </summary>

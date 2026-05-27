@@ -24,9 +24,16 @@ export type DisclosureArrowProps = {
   size?: number;
   /** Optional inline style override (e.g. opacity, margin). */
   style?: CSSProperties;
+  /**
+   * When true, skip the internal rotation transform so the parent can
+   * control orientation via CSS (e.g. `details[open] > summary .arrow
+   * { transform: rotate(90deg) }`). Useful inside a `<details>`
+   * element where React doesn't own the open state.
+   */
+  externalRotation?: boolean;
 };
 
-export function DisclosureArrow({ open, size = 18, style }: DisclosureArrowProps) {
+export function DisclosureArrow({ open, size = 18, style, externalRotation = false }: DisclosureArrowProps) {
   return (
     <svg
       data-testid="disclosure-arrow"
@@ -40,7 +47,9 @@ export function DisclosureArrow({ open, size = 18, style }: DisclosureArrowProps
         display: "inline-block",
         flexShrink: 0,
         transition: "transform 120ms ease",
-        transform: open ? "rotate(0deg)" : "rotate(-90deg)",
+        // Default points down (▾) when externalRotation is true; the
+        // parent CSS rotates the wrapper by -90deg in the closed state.
+        transform: externalRotation ? undefined : (open ? "rotate(0deg)" : "rotate(-90deg)"),
         color: "currentColor",
         ...style,
       }}
