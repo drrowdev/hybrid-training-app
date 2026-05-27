@@ -13,6 +13,7 @@ import {
   mondayOfYmd,
   todayYmd,
   ymdInTimezone,
+  ymdToUtc,
 } from "@/lib/dates";
 
 describe("todayYmd(tz)", () => {
@@ -127,6 +128,87 @@ describe("isoWeekdayYmd", () => {
     expect(isoWeekdayYmd("2025-01-06")).toBe(0); // Mon
     expect(isoWeekdayYmd("2025-01-07")).toBe(1); // Tue
     expect(isoWeekdayYmd("2025-01-12")).toBe(6); // Sun
+  });
+});
+
+describe("ymdToUtc — DST and far-edge timezones", () => {
+  // ymdToUtc returns the UTC instant that, viewed in the target tz,
+  // is the start-of-day (00:00:00 local) on the given YMD. Locking
+  // these in protects PR #174's retroactive performed_at flow.
+
+  it("UTC: midnight maps to itself", () => {
+    expect(ymdToUtc("2026-05-19", "UTC").toISOString()).toBe(
+      "2026-05-19T00:00:00.000Z",
+    );
+  });
+
+  it("Europe/Helsinki standard time (EET, UTC+2): subtract 2h", () => {
+    // 2025-01-15 is winter → EET (+02:00). Local midnight = 22:00 prev day UTC.
+    expect(ymdToUtc("2025-01-15", "Europe/Helsinki").toISOString()).toBe(
+      "2025-01-14T22:00:00.000Z",
+    );
+  });
+
+  it("Europe/Helsinki summer time (EEST, UTC+3): subtract 3h", () => {
+    // 2025-07-15 is summer → EEST (+03:00). Local midnight = 21:00 prev day UTC.
+    expect(ymdToUtc("2025-07-15", "Europe/Helsinki").toISOString()).toBe(
+      "2025-07-14T21:00:00.000Z",
+    );
+  });
+
+  it("Europe/Helsinki spring-forward day (2025-03-30 EET→EEST)", () => {
+    // The DST jump happens at 03:00 local. Midnight is still EET (+02:00).
+    expect(ymdToUtc("2025-03-30", "Europe/Helsinki").toISOString()).toBe(
+      "2025-03-29T22:00:00.000Z",
+    );
+  });
+
+  it("Europe/Helsinki fall-back day (2025-10-26 EEST→EET)", () => {
+    // Clocks go back at 04:00→03:00 local. Midnight is still EEST (+03:00).
+    expect(ymdToUtc("2025-10-26", "Europe/Helsinki").toISOString()).toBe(
+      "2025-10-25T21:00:00.000Z",
+    );
+  });
+
+  it("Pacific/Kiritimati (UTC+14): subtract 14h, may push to previous UTC day", () => {
+    expect(ymdToUtc("2026-05-19", "Pacific/Kiritimati").toISOString()).toBe(
+      "2026-05-18T10:00:00.000Z",
+    );
+  });
+
+  it("Pacific/Niue (UTC-11): add 11h, lands on the same UTC day", () => {
+    expect(ymdToUtc("2026-05-19", "Pacific/Niue").toISOString()).toBe(
+      "2026-05-19T11:00:00.000Z",
+    );
+  });
+
+  it("America/Los_Angeles spring-forward (2025-03-09 PST→PDT)", () => {
+    // Clocks jump 02:00→03:00. Midnight is still PST (-08:00).
+    expect(ymdToUtc("2025-03-09", "America/Los_Angeles").toISOString()).toBe(
+      "2025-03-09T08:00:00.000Z",
+    );
+  });
+
+  it("America/Los_Angeles fall-back (2025-11-02 PDT→PST)", () => {
+    // Clocks roll back 02:00→01:00. Midnight is still PDT (-07:00).
+    expect(ymdToUtc("2025-11-02", "America/Los_Angeles").toISOString()).toBe(
+      "2025-11-02T07:00:00.000Z",
+    );
+  });
+
+  it("round-trip: ymdToUtc → ymdInTimezone returns the same YMD", () => {
+    for (const tz of [
+      "UTC",
+      "Europe/Helsinki",
+      "America/Los_Angeles",
+      "Pacific/Kiritimati",
+      "Pacific/Niue",
+      "Asia/Tokyo",
+    ]) {
+      for (const ymd of ["2025-01-15", "2025-03-30", "2025-07-15", "2025-10-26"]) {
+        expect(ymdInTimezone(ymdToUtc(ymd, tz), tz)).toBe(ymd);
+      }
+    }
   });
 });
 
