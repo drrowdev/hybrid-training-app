@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
   const { data, error } = await supabase
     .from("movements")
     .select(
-      "id, slug, display_name, pattern, primary_region, primary_muscles, equipment, is_compound, is_supported, stability",
+      "id, slug, display_name, pattern, primary_region, primary_muscles, equipment, is_compound, is_supported, stability, metadata",
     )
     .eq("pattern", orig.pattern as string)
     .neq("id", originalId)

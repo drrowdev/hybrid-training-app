@@ -312,14 +312,14 @@ export const STRENGTH_ANCHOR: Archetype = {
       finisher: {
         movementSlug: "run-hill-sprints",
         durationMin: 10,
-        protocolNote: "6–10 × 10–15s near-max, walk-down recovery",
+        protocolNote: "6–10 × 10–15s near-max hill sprints, walk back down for recovery (~90–120s)",
       },
       priority: "optional",
       rank: 6,
     },
   ],
   /**
-   * Two-a-day variant of Strength Anchor. Same four main lifts in AM slots
+   * Two-a-day variant of Strength Anchor.Same four main lifts in AM slots
    * so they hit fresh; cardio gets absorbed into the same calendar day as
    * PM Z2, separated by the AM/PM window default (≥8h) to respect DC-D1.
    * Net result: 4 strength + 2 cardio in 4 calendar days instead of 6,
@@ -355,7 +355,7 @@ export const STRENGTH_ANCHOR: Archetype = {
       finisher: {
         movementSlug: "run-hill-sprints",
         durationMin: 10,
-        protocolNote: "6–10 × 10–15s near-max, walk-down recovery",
+        protocolNote: "6–10 × 10–15s near-max hill sprints, walk back down for recovery (~90–120s)",
       },
       priority: "optional",
       rank: 6,
@@ -424,7 +424,7 @@ export const ENDURANCE_ANCHOR: Archetype = {
       finisher: {
         movementSlug: "bike-indoor-sprints",
         durationMin: 10,
-        protocolNote: "6–8 × 10–15s near-max, 1:10 rest",
+        protocolNote: "6–8 × 10–15s near-max efforts, ~100–150s easy spin between reps",
       },
       priority: "optional",
       rank: 5,
@@ -517,7 +517,7 @@ export const ENDURANCE_ANCHOR: Archetype = {
       finisher: {
         movementSlug: "bike-indoor-sprints",
         durationMin: 10,
-        protocolNote: "6–8 × 10–15s near-max, 1:10 rest",
+        protocolNote: "6–8 × 10–15s near-max efforts, ~100–150s easy spin between reps",
       },
       priority: "optional",
       rank: 5,
@@ -962,7 +962,7 @@ export const CONCURRENT_HYBRID: Archetype = {
       movementSlug: "run-intervals-vo2",
       cardioKind: "cardio_vo2",
       durationMin: 45,
-      protocolNote: "4×4 min @ 90–95% HRmax, 3 min easy between",
+      protocolNote: "4 × 4 min hard @ 90–95% HRmax, with 3 min easy recovery between intervals",
       priority: "anchor",
       rank: 6,
     },
@@ -993,7 +993,7 @@ export const CONCURRENT_HYBRID: Archetype = {
       movementSlug: "run-intervals-vo2",
       cardioKind: "cardio_vo2",
       durationMin: 45,
-      protocolNote: "4×4 min @ 90–95% HRmax, 3 min easy between",
+      protocolNote: "4 × 4 min hard @ 90–95% HRmax, with 3 min easy recovery between intervals",
       priority: "anchor",
       rank: 6,
     },

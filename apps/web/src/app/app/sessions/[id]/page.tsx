@@ -19,6 +19,7 @@ import {
   type PriorBest,
 } from "@/components/session/SessionLogClient";
 import { SessionWorkArea } from "@/components/session/SessionWorkArea";
+import { CardioPrescriptionList } from "@/components/session/CardioPrescriptionList";
 import { DisclosureArrow } from "@/components/session/DisclosureArrow";
 import {
   resolveFreestyleMovements,
@@ -974,8 +975,10 @@ export default async function SessionDetailPage({
         // a prescribed movement, render only the log (the prescription
         // becomes redundant). Match on movement_id; fall back to showing
         // both if either side is missing the id.
-        const allCardioItems =
-          plannedPrescription?.items?.filter((it) => it.kind.startsWith("cardio_")) ?? [];
+        const allCardioItemsIndexed =
+          plannedPrescription?.items
+            ?.map((it, itemIndex) => ({ it, itemIndex }))
+            .filter(({ it }) => it.kind.startsWith("cardio_")) ?? [];
         const loggedMovementIds = new Set(
           (cardio ?? [])
             .map((c) => {
@@ -984,11 +987,11 @@ export default async function SessionDetailPage({
             })
             .filter((id): id is string => !!id),
         );
-        const cardioItems = allCardioItems.filter(
-          (it) => !it.movementId || !loggedMovementIds.has(it.movementId),
+        const cardioItemsIndexed = allCardioItemsIndexed.filter(
+          ({ it }) => !it.movementId || !loggedMovementIds.has(it.movementId),
         );
         const hasLoggedCardio = !!(cardio && cardio.length > 0);
-        const showCardioSection = hasLoggedCardio || cardioItems.length > 0 || !isComplete;
+        const showCardioSection = hasLoggedCardio || cardioItemsIndexed.length > 0 || !isComplete;
         if (!showCardioSection) return null;
         const cardioCount = cardio?.length ?? 0;
         return (
@@ -996,46 +999,14 @@ export default async function SessionDetailPage({
           <h2 style={{ margin: 0, fontSize: 16 }}>
             Cardio <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>({cardioCount})</span>
           </h2>
-          {cardioItems.length > 0 && (
-            <ul
-              data-testid="cardio-prescription-items"
-              style={{
-                listStyle: "none",
-                padding: 0,
-                margin: "10px 0 0",
-                display: "grid",
-                gap: 8,
-              }}
-            >
-              {cardioItems.map((it, i) => (
-                <li
-                  key={`cardio-rx-${i}`}
-                  style={{
-                    padding: "10px 12px",
-                    border: "1px solid var(--cp-border)",
-                    borderRadius: 8,
-                    background: "color-mix(in oklab, var(--cp-accent) 6%, transparent)",
-                    fontSize: 13,
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
-                    <span style={{ fontWeight: 600 }}>
-                      {it.movementName ?? it.movementSlug ?? it.intensityLabel ?? "Cardio"}
-                    </span>
-                    {it.intensityLabel && (
-                      <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-                        {it.intensityLabel}
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 4 }}>
-                    {it.durationMin != null ? `${it.durationMin} min` : null}
-                    {it.hrCap ? ` · ${it.hrCap}` : ""}
-                    {it.protocolNote ? ` · ${it.protocolNote}` : ""}
-                  </div>
-                </li>
-              ))}
-            </ul>
+          {cardioItemsIndexed.length > 0 && (
+            <CardioPrescriptionList
+              plannedSessionId={(planned?.id as string | undefined) ?? null}
+              items={cardioItemsIndexed.map(({ it, itemIndex }) => ({ item: it, itemIndex }))}
+              ownedCardio={equipment.cardio}
+              swapAction={swapPrescriptionItem}
+              isReadOnly={isComplete}
+            />
           )}
           {hasLoggedCardio && (
             <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0" }}>
