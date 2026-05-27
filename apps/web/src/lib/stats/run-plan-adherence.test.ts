@@ -82,6 +82,32 @@ describe("computeAdherence", () => {
     const rows = computeAdherence(4, planned, [], TODAY);
     expect(rows.every((r) => r.plannedSessions === 0)).toBe(true);
   });
+
+  // ── Phase 1 "external cardio" — adherence semantics ──────────────
+  //
+  // External cardio days carry `durationMin: 0` because the user logs
+  // the actual run via Runna / Garmin Coach / etc. — we can't predict
+  // the duration. Adherence rules:
+  //   - The planned day still counts as `plannedSessions += 1` so the
+  //     calendar bucket matches what the user sees.
+  //   - ANY cardio_log on the same date flips the day to adherent
+  //     (sessionsPct = 1.0) — we don't try to match modality.
+  //   - `volumePct` is null because `plannedMin = 0`; the card hides
+  //     the volume bar via the existing null branch.
+  it("counts any-log-on-external-day as adherent (Phase 1 external cardio)", () => {
+    const planned: PlannedCardio[] = [
+      { date: "2026-05-19", durationMin: 0 }, // external cardio reservation
+    ];
+    const actual: ActualCardio[] = [
+      { date: "2026-05-19", durationMin: 42 },
+    ];
+    const rows = computeAdherence(1, planned, actual, TODAY);
+    expect(rows[0].plannedSessions).toBe(1);
+    expect(rows[0].actualSessions).toBe(1);
+    expect(rows[0].sessionsPct).toBe(1);
+    // Volume ratio is null (planned minutes is zero for external days).
+    expect(rows[0].volumePct).toBeNull();
+  });
 });
 
 describe("toneForPct", () => {

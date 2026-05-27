@@ -252,6 +252,117 @@ export async function addCardioBlock(
   return { ok: true };
 }
 
+/**
+ * Phase 1 "external cardio" — server action invoked when the user
+ * presses "Mark complete" on a placeholder `cardio_external` card.
+ *
+ * Inserts a minimal `cardio_logs` row so the session can register as
+ * having a cardio block (the freshness ledger, the
+ * `prescription-progress` engine, and the session-complete gate all
+ * key off this). We intentionally do NOT auto-create this row at
+ * planner-materialisation time — the user has to mark complete (see
+ * Phase 1 "Don't" list).
+ *
+ * The session may not exist yet (the planned-session row is the
+ * placeholder until the user logs against it). When `completed_session_id`
+ * is null we create the underlying session first so the foreign key
+ * resolves; this mirrors the lazy materialisation the regular
+ * `addCardioBlock` path relies on (caller passes `sessionId` only
+ * after the session row exists).
+ */
+const markExternalCardioSchema = z.object({
+  plannedSessionId: z.string().uuid(),
+  programName: z.string().trim().max(80).optional().nullable(),
+});
+
+export async function markExternalCardioComplete(
+  formData: FormData,
+): Promise<{ ok?: true; error?: string }> {
+  const parsed = markExternalCardioSchema.safeParse({
+    plannedSessionId: formData.get("plannedSessionId"),
+    programName: formData.get("programName") || undefined,
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) return { error: "Not signed in." };
+
+  const programName = parsed.data.programName?.trim() || null;
+  const notes = programName
+    ? `External program: ${programName}`
+    : "External program";
+
+  // Resolve / lazily create the underlying session for this planned slot.
+  const { data: planned, error: pErr } = await supabase
+    .from("planned_sessions")
+    .select("id, user_id, title, completed_session_id")
+    .eq("id", parsed.data.plannedSessionId)
+    .maybeSingle();
+  if (pErr || !planned) {
+    return { error: pErr?.message ?? "Planned session not found" };
+  }
+  if (planned.user_id !== user.id) return { error: "Not your session." };
+
+  let sessionId = planned.completed_session_id as string | null;
+  if (!sessionId) {
+    const { data: created, error: sErr } = await supabase
+      .from("sessions")
+      .insert({
+        user_id: user.id,
+        title: planned.title ?? "External cardio",
+        performed_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+    if (sErr || !created) {
+      return { error: sErr?.message ?? "Could not create session" };
+    }
+    sessionId = created.id;
+    await supabase
+      .from("planned_sessions")
+      .update({ completed_session_id: sessionId })
+      .eq("id", parsed.data.plannedSessionId);
+  }
+
+  // Idempotency guard: if any cardio_log already exists for this
+  // session, this is a re-click after refresh (the UI's `done` state
+  // is component-local and doesn't survive). Return success without
+  // inserting a second row.
+  const { count } = await supabase
+    .from("cardio_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("session_id", sessionId);
+
+  if ((count ?? 0) > 0) {
+    revalidatePath(`/app/sessions/${sessionId}`);
+    revalidatePath(`/app/plan`);
+    return { ok: true };
+  }
+
+  const { error: insErr } = await supabase.from("cardio_logs").insert({
+    session_id: sessionId,
+    movement_id: null,
+    block_index: 0,
+    modality: "other",
+    // 1-second sentinel keeps the row valid against the duration_sec
+    // NOT NULL / >0 constraint while signalling "duration unknown" to
+    // any consumer that filters on it. Stats counts the day as
+    // adherent via `run-plan-adherence` regardless.
+    duration_sec: 1,
+    notes,
+  });
+  if (insErr) return { error: insErr.message };
+
+  revalidatePath(`/app/sessions/${sessionId}`);
+  revalidatePath(`/app/plan`);
+  return { ok: true };
+}
+
 export async function deleteSet(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   const sessionId = String(formData.get("sessionId") ?? "");

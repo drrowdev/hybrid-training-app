@@ -88,6 +88,21 @@ export const trainingBlocks = pgTable("training_blocks", {
    * type-to-confirm) or via the 30-day cleanup cron.
    */
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  /**
+   * Phase 1 "external cardio" — when 'external', the planner reserves
+   * cardio days for stress-budget / calendar math but emits a single
+   * placeholder `cardio_external` item per cardio day instead of a
+   * prescribed run. The user logs the actual run via their chosen
+   * external program (Runna / Garmin Coach / Hal Higdon / etc.).
+   * Default 'internal' keeps every legacy + new internal block on the
+   * existing path. See migration 0064.
+   */
+  cardioSource: text("cardio_source").default("internal").notNull(),
+  /**
+   * Free-text label for the external program (e.g. "Runna"). Optional —
+   * rendered on the external-cardio session card when present.
+   */
+  cardioSourceName: text("cardio_source_name"),
 });
 
 export type TrainingBlock = typeof trainingBlocks.$inferSelect;
@@ -122,7 +137,15 @@ export type PrescriptionItemKind =
   | "cardio_z2"
   | "cardio_alactic"
   | "cardio_vo2"
-  | "cardio_threshold";
+  | "cardio_threshold"
+  /**
+   * Phase 1 "external cardio" placeholder. Emitted instead of any
+   * specific `cardio_*` item when the parent block's `cardio_source`
+   * is 'external'. Carries no movement / duration / intensity — the
+   * user logs the actual run via their external program. See
+   * migration 0064.
+   */
+  | "cardio_external";
 
 /**
  * One movement in a planned session.

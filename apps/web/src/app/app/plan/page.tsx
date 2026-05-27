@@ -82,7 +82,7 @@ export default async function PlanPage({
       supabase
         .from("profiles")
         .select(
-          "allows_two_a_days, timezone, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bodyweight_kg, wizard_day_pref",
+          "allows_two_a_days, timezone, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bodyweight_kg, wizard_day_pref, preferred_cardio_source, preferred_cardio_source_name",
         )
         .eq("id", user.id)
         .maybeSingle(),
@@ -148,6 +148,10 @@ export default async function PlanPage({
           equipmentPreset={planEquipment.preset}
           serverDayPref={(prof?.wizard_day_pref ?? null) as WizardDayPrefValue | null}
           saveDayPrefAction={updateWizardDayPref}
+          preferredCardioSource={
+            (prof?.preferred_cardio_source as "internal" | "external" | undefined) ?? null
+          }
+          preferredCardioSourceName={prof?.preferred_cardio_source_name ?? null}
         />
         {recentBlocks.length > 0 && (
           <Link

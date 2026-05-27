@@ -77,6 +77,16 @@ export type WizardSubmit = {
     placements: Placement[];
   };
   power: boolean;
+  /**
+   * Phase 1 "external cardio" — when 'external' the planner emits a
+   * placeholder cardio item per cardio day instead of a prescribed run.
+   * Default 'internal' keeps every existing path unchanged. See
+   * migration 0064 and `lib/planner/actions.ts` for the materialization
+   * branch.
+   */
+  cardioSource: "internal" | "external";
+  /** Free-text label for the external program, e.g. "Runna". Empty when not provided. */
+  cardioSourceName: string;
 };
 
 export type TmGate = {
@@ -142,6 +152,14 @@ export type BlockWizardProps = {
   saveDayPrefAction?: (
     pref: WizardDayPrefValue,
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /**
+   * Phase 1 "external cardio" — global default from
+   * `profiles.preferred_cardio_source`. Pre-fills the step-3 toggle so
+   * the user doesn't have to re-check it every block. Optional; absent
+   * = treated as 'internal'.
+   */
+  preferredCardioSource?: "internal" | "external" | null;
+  preferredCardioSourceName?: string | null;
 };
 
 export function BlockWizard({
@@ -152,11 +170,27 @@ export function BlockWizard({
   equipmentPreset = null,
   serverDayPref = null,
   saveDayPrefAction,
+  preferredCardioSource = null,
+  preferredCardioSourceName = null,
 }: BlockWizardProps): React.ReactElement {
   const [state, dispatch] = useReducer(
     wizardReducer,
     prefill ?? null,
-    (seed) => (seed ? wizardStateFromPrefill(seed) : initialWizardState),
+    (seed) => {
+      const base = seed ? wizardStateFromPrefill(seed) : initialWizardState;
+      // Phase 1 "external cardio" — apply the user's saved preference
+      // as a one-shot seed. The reducer is the source of truth from
+      // here; if the user un-toggles the panel mid-wizard we don't
+      // re-stomp it on every render.
+      if (preferredCardioSource === "external") {
+        return {
+          ...base,
+          externalCardio: true,
+          externalCardioName: preferredCardioSourceName ?? "",
+        };
+      }
+      return base;
+    },
   );
   const [pending, startTransition] = useTransition();
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -285,6 +319,8 @@ export function BlockWizard({
         daysPerWeek: out.daysPerWeek,
         dayIndexOverrides,
         power: state.power,
+        cardioSource: state.externalCardio ? "external" : "internal",
+        cardioSourceName: state.externalCardio ? state.externalCardioName.trim() : "",
       });
       if (!result.ok) setSubmitError(result.error);
     });
