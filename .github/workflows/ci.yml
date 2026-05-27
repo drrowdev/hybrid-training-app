@@ -58,6 +58,29 @@ jobs:
         # pre-push hook on developer machines where DATABASE_URL is set.
         run: pnpm --filter @hta/db db:check:ci
 
+      - name: Flag new migrations in PR description
+        # When a PR adds files under packages/db/drizzle/*.sql, surface a
+        # loud reminder in the job summary so the merger remembers to run
+        # `pnpm --filter @hta/db db:migrate` against Supabase prod. The
+        # repo doesn't auto-deploy migrations.
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          NEW_SQL=$(git diff --name-only --diff-filter=A "origin/${{ github.base_ref }}"...HEAD -- 'packages/db/drizzle/*.sql' || true)
+          if [ -n "$NEW_SQL" ]; then
+            {
+              echo "## ⚠️ This PR adds a new migration"
+              echo ""
+              echo "The repo does not auto-apply migrations. After merging, run:"
+              echo ""
+              echo "    pnpm --filter @hta/db db:migrate"
+              echo ""
+              echo "**New files:**"
+              echo "$NEW_SQL" | sed 's/^/- /'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::New migration files in this PR. Run 'pnpm --filter @hta/db db:migrate' after merge."
+          fi
+
   e2e:
     name: e2e (playwright)
     runs-on: ubuntu-latest
