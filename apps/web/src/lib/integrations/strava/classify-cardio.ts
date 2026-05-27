@@ -24,9 +24,17 @@ export type ClassifiedCardioKind =
 export type ClassifiedCardio = {
   kind: ClassifiedCardioKind;
   /**
-   * Effective stress load (engine units). The recovery aggregator
-   * multiplies these by archetype budget. Scale matches the strength
-   * `effective_stress_load` column on `planned_sessions`.
+   * Effective stress load for this cardio activity (engine units —
+   * minutes × intensity-modifier; e.g. Z2 = 0.5 × min, VO2 = 2.0 × min).
+   *
+   * Note on scale: this is independent of the strength `effective_stress_load`
+   * column. Internal cardio sessions today have ESL = 0 because the
+   * engine treats prescribed cardio as already accounted for in the
+   * archetype budget. External cardio (this path) needs an explicit
+   * number so the engine can see "moderate work happened today" — the
+   * value here gets written to `planned_sessions.effective_stress_load`
+   * for external days specifically. Unifying internal + external cardio
+   * onto a single ESL scale is a follow-up.
    */
   effectiveStressLoad: number;
   /** 0..1; lower when only avg HR is present or hrMax came from 220-age. */
