@@ -26,6 +26,7 @@ vi.mock("@/lib/settings/hr-zones-actions", () => ({
 import {
   HrZonesSettings,
   previewZoneRows,
+  parseZonePct,
 } from "../HrZonesSettings";
 import { computeZoneBands } from "@/lib/stats/hr-zones";
 
@@ -61,6 +62,41 @@ describe("previewZoneRows", () => {
     const rows = previewZoneRows(computeZoneBands({ method: "lthr", hrLthr: 170 }));
     // z4Max = 170 * 0.99 = 168.3 → round → 168 → Z5 = "≥ 168".
     expect(rows[4].range).toBe("≥ 168");
+  });
+});
+
+describe("parseZonePct — input ambiguity guard", () => {
+  // Regression for the PR #172 review finding: with the old `> 1.5`
+  // threshold, typing a typo like `1.6` would be divided by 100 → 0.016
+  // which then slipped through `validateZonePercents` (still in (0, 1.5])
+  // and produced a nonsensical 1.6%-of-anchor zone breakpoint.
+
+  it("treats decimal fractions in [0, 1.5] as-is (canonical input)", () => {
+    expect(parseZonePct("0.81")).toBeCloseTo(0.81, 10);
+    expect(parseZonePct("0.6")).toBeCloseTo(0.6, 10);
+    expect(parseZonePct("1.0")).toBeCloseTo(1.0, 10);
+    expect(parseZonePct("1.5")).toBeCloseTo(1.5, 10);
+  });
+
+  it("treats integers >= 2 as percentages and divides by 100", () => {
+    expect(parseZonePct("60")).toBeCloseTo(0.6, 10);
+    expect(parseZonePct("81")).toBeCloseTo(0.81, 10);
+    expect(parseZonePct("99")).toBeCloseTo(0.99, 10);
+    expect(parseZonePct("100")).toBeCloseTo(1.0, 10);
+  });
+
+  it("rejects ambiguous typos in the (1.5, 2) gap by keeping them as-is", () => {
+    // These return numbers that the validator must reject (> 1.5).
+    expect(parseZonePct("1.6")).toBe(1.6);
+    expect(parseZonePct("1.9")).toBe(1.9);
+    // Boundary: 2 flips to percentage mode.
+    expect(parseZonePct("2")).toBeCloseTo(0.02, 10);
+  });
+
+  it("returns null for empty / non-finite input", () => {
+    expect(parseZonePct("")).toBeNull();
+    expect(parseZonePct("   ")).toBeNull();
+    expect(parseZonePct("abc")).toBeNull();
   });
 });
 

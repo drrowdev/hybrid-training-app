@@ -111,13 +111,16 @@ function parseNumber(s: string): number | null {
 /**
  * Parse a single zone-percent input. Accepts either an integer
  * percentage (`81`) or a decimal fraction (`0.81`); both land at 0.81.
- * Anything > 1.5 is treated as a percentage and divided by 100.
+ * The threshold is `>= 2` (not `> 1.5`) so a typo like `1.6` is kept
+ * as 1.6 and rejected by the validator instead of silently being
+ * coerced to 0.016 — which would slip past `validateZonePercents`
+ * (still in range) and produce a nonsensical zone breakpoint.
  */
-function parseZonePct(s: string): number | null {
+export function parseZonePct(s: string): number | null {
   if (s.trim() === "") return null;
   const n = Number(s);
   if (!Number.isFinite(n)) return null;
-  return n > 1.5 ? n / 100 : n;
+  return n >= 2 ? n / 100 : n;
 }
 
 /** Display a fractional zone-pct as a 0–150 integer when sensible. */
