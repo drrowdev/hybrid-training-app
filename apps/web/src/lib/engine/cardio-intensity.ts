@@ -23,8 +23,13 @@
  * `×8` cardio scalar in bucket-load / region-ledger stays untouched so
  * overall magnitudes remain comparable across the engine).
  *
- * Fall-back: when `hrZones` is null we replicate the historical
- * `clamp(rpe/10)` math so users without HR data see no behaviour change.
+ * Fall-back: when `hrZones` is null we use `clamp(rpe/10, 0.3, 1.0)`.
+ * Note: this unifies on muscle-freshness's pre-#167 behaviour. Legacy
+ * bucket-load.ts and region-ledger.ts had NO 0.3 floor, so for RPE 1-2
+ * sessions the intensity now floors at 0.3 instead of 0.1-0.2. Counting
+ * an RPE-1 cardio session as 10% intensity was almost certainly wrong
+ * (it made a 60-min walk weigh less than a 5-min warm-up), so we keep
+ * the floor. See cardio-intensity.test.ts for the explicit pins.
  *
  * Citations: audit findings I3, B1, B2 (engine-actual-vs-prescribed-audit.md).
  */
@@ -116,8 +121,9 @@ export function cardioIntensityScalar(input: {
     }
   }
 
-  // Fall-back: legacy clamp(rpe/10) — preserves pre-PR behaviour exactly
-  // for rows without hr_zones.
+  // Fall-back: clamp(rpe/10, 0.3, 1.0) — unified across bucket-load /
+  // region-ledger / muscle-freshness on muscle-freshness's pre-#167
+  // floor. Intentional behaviour change for RPE 1-2 (see PR body).
   if (input.rpe == null || !Number.isFinite(input.rpe)) return DEFAULT_SCALAR;
   return clamp(input.rpe / 10, CARDIO_INTENSITY_MIN, 1.0);
 }

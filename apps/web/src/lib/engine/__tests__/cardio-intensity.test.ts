@@ -173,9 +173,16 @@ describe("normaliseHrZones", () => {
 });
 
 describe("cardioBucketLoad regression — fall-back path unchanged when hr_zones is null", () => {
-  // Legacy formula: minutes * clamp(rpe/10, 0.0, 1.0) * 8 (rpe!=null) or
-  // minutes * 0.5 * 8 (rpe==null). For all RPEs >= 3 the new helper
-  // produces the same scalar, so total loads must match.
+  // Legacy formula varied by site: bucket-load + region-ledger used
+  // `Math.min(1.0, rpe/10)` (no floor), while muscle-freshness used
+  // `clamp(rpe/10, 0.3, 1.0)` (with floor). PR #167 unifies all three on
+  // the 0.3 floor — the muscle-freshness behaviour wins because counting
+  // an RPE-1 cardio session as 10% intensity is almost certainly wrong
+  // (it makes a 60-min walk weigh less than the same person's warm-up).
+  //
+  // For RPE >= 3 the unified scalar equals the legacy bucket-load
+  // scalar bit-for-bit, so loads match. For RPE 1-2 the floor activates
+  // (covered in the explicit-floor block below).
   const legacyIntensity = (rpe: number | null): number =>
     rpe == null ? 0.5 : Math.min(1.0, rpe / 10);
 
@@ -204,6 +211,28 @@ describe("cardioBucketLoad regression — fall-back path unchanged when hr_zones
     // legacy: 30 * 0.7 * 8 = 168 → metabolic = 168
     expect(b.metabolic).toBeCloseTo(168, 6);
   });
+});
+
+describe("cardioBucketLoad — RPE 1-2 floor (intentional unification)", () => {
+  // Pre-#167 behaviour was inconsistent:
+  //   bucket-load.ts     → no floor → RPE 1 = 0.1 intensity
+  //   region-ledger.ts   → no floor → RPE 1 = 0.1 intensity
+  //   muscle-freshness.ts → floor 0.3 → RPE 1 = 0.3 intensity
+  // PR #167 unifies on 0.3 across all three. These tests pin the new
+  // contract so a future regression that drops the floor is caught.
+  for (const rpe of [1, 2] as const) {
+    it(`RPE=${rpe} fall-back floors at 0.3 (was ${rpe / 10} in bucket-load pre-#167)`, () => {
+      const minutes = 30;
+      const b = cardioBucketLoad({
+        durationSec: minutes * 60,
+        rpe,
+        modality: "run",
+        hrZones: null,
+      });
+      // Unified: minutes * 0.3 * 8 = 72  (was minutes * rpe/10 * 8)
+      expect(b.metabolic).toBeCloseTo(minutes * 0.3 * 8, 6);
+    });
+  }
 });
 
 describe("cardioBucketLoad — HR-aware path differs from RPE fall-back", () => {
