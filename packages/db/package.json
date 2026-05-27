@@ -10,7 +10,7 @@
     "test": "vitest run --passWithNoTests",
     "lint": "echo '(no lint config yet)'",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "tsx scripts/normalize-migrations-lf.ts && drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx seeds/run.ts",
     "db:seed:bw": "tsx seeds/run-bw-seed.ts",
