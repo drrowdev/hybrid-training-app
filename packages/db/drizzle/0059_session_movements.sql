@@ -42,9 +42,14 @@ CREATE INDEX IF NOT EXISTS session_movements_user_idx
 
 ALTER TABLE public.session_movements ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS session_movements_select_self ON public.session_movements;
 CREATE POLICY session_movements_select_self ON public.session_movements
   FOR SELECT USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS session_movements_insert_self ON public.session_movements;
 CREATE POLICY session_movements_insert_self ON public.session_movements
   FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS session_movements_delete_self ON public.session_movements;
 CREATE POLICY session_movements_delete_self ON public.session_movements
   FOR DELETE USING (auth.uid() = user_id);
