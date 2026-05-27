@@ -26,6 +26,7 @@ import { summariseGroupForHeader } from "@/lib/sessions/movement-summary";
 import { buildMovementRecap } from "@/lib/sessions/movement-recap";
 import { MovementFocusView, type FocusLoggedSet } from "./MovementFocusView";
 import { SwapMovementModal } from "./SwapMovementModal";
+import { DisclosureArrow } from "./DisclosureArrow";
 import type { PlateInventoryItem } from "./plate-math";
 import type { fillSessionFromPlan } from "@/lib/sessions/actions";
 
@@ -289,10 +290,13 @@ export function MovementCard({
           {chipLabel}
         </span>
         <span
-          aria-hidden="true"
-          style={{ fontSize: 14, color: "var(--cp-text-muted)" }}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            color: "var(--cp-text-muted)",
+          }}
         >
-          {collapsed ? "▸" : "▾"}
+          <DisclosureArrow open={!collapsed} />
         </span>
       </button>
 
