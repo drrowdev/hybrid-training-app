@@ -42,7 +42,6 @@ import {
   cardioBucketLoad,
   type BucketLoad,
 } from "@/lib/engine/bucket-load";
-import { normaliseHrZones } from "@/lib/engine/cardio-intensity";
 import type { Bucket } from "@hta/domain";
 import { todayYmd as todayYmdFn, addDaysToYmd, isoWeekdayYmd } from "@/lib/dates";
 import { getWeeklyRecoveryRollup } from "@/lib/engine/recovered-weeks";
@@ -562,7 +561,6 @@ export async function getBucketPressure(
       durationSec: row.duration_sec,
       rpe: row.rpe == null ? null : Number(row.rpe),
       modality: row.modality,
-      hrZones: normaliseHrZones(row.hr_zones),
     });
     accumulateBuckets(series, date, load);
   }
@@ -647,6 +645,7 @@ export type CeilingExplain = {
 export async function getCeilingExplain(
   supabase: SupabaseClient,
   userId: string,
+  tz?: string,
 ): Promise<CeilingExplain> {
   // DC-K1: 12-week lookback rolls up to per-week recovery rows.
   const rollup = await getWeeklyRecoveryRollup(supabase, userId, { weeks: 12 });
@@ -663,7 +662,11 @@ export async function getCeilingExplain(
   // signal don't depend on each other.
   const since28d = new Date(Date.now() - 28 * 86_400_000).toISOString();
   const wellnessSince = since28d.slice(0, 10); // YYYY-MM-DD
-  const todayUtcYmd = new Date().toISOString().slice(0, 10);
+  // Wellness rows are written with the user's local-tz date (see
+  // recordDailyCheckIn). Match that date when looking up "today" so a
+  // user in PST who checks in at 23:00 local doesn't fall through to
+  // tomorrow's UTC date and get a null multiplier.
+  const todayLocalYmd = todayYmdFn(tz);
 
   const [completedCountRes, wellnessRes, dataCompleteness] = await Promise.all([
     supabase
@@ -701,8 +704,8 @@ export async function getCeilingExplain(
     fatigue: w.fatigue,
     soreness: w.soreness,
   }));
-  const todaySnapshot = snapshots.find((s) => s.date === todayUtcYmd) ?? null;
-  const recentSnapshots = snapshots.filter((s) => s.date !== todayUtcYmd);
+  const todaySnapshot = snapshots.find((s) => s.date === todayLocalYmd) ?? null;
+  const recentSnapshots = snapshots.filter((s) => s.date !== todayLocalYmd);
   const recoveryMultiplierComputed = computeRecoveryMultiplier({
     today: todaySnapshot,
     recent: recentSnapshots,
