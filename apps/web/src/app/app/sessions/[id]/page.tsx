@@ -19,6 +19,7 @@ import {
   type PriorBest,
 } from "@/components/session/SessionLogClient";
 import { SessionWorkArea } from "@/components/session/SessionWorkArea";
+import { DisclosureArrow } from "@/components/session/DisclosureArrow";
 import {
   resolveFreestyleMovements,
   type PersistedFreestyle,
@@ -962,14 +963,67 @@ export default async function SessionDetailPage({
         })}
       />
 
-      {(cardio && cardio.length > 0) || !isComplete ? (
+      {(() => {
+        // Cardio prescription items live in the same `prescription.items`
+        // array as strength items but are filtered out of the per-movement
+        // card grid (see `movement-grouping.ts`). Surface them here so
+        // cardio days actually render their planned Z2 / VO2 / alactic
+        // blocks instead of looking like an empty session card.
+        const cardioItems =
+          plannedPrescription?.items?.filter((it) => it.kind.startsWith("cardio_")) ?? [];
+        const hasLoggedCardio = !!(cardio && cardio.length > 0);
+        const showCardioSection = hasLoggedCardio || cardioItems.length > 0 || !isComplete;
+        if (!showCardioSection) return null;
+        const cardioCount = cardio?.length ?? 0;
+        return (
         <section className="cp-card" style={{ padding: 20 }}>
           <h2 style={{ margin: 0, fontSize: 16 }}>
-            Cardio <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>({cardio?.length ?? 0})</span>
+            Cardio <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>({cardioCount})</span>
           </h2>
-          {cardio && cardio.length > 0 && (
+          {cardioItems.length > 0 && (
+            <ul
+              data-testid="cardio-prescription-items"
+              style={{
+                listStyle: "none",
+                padding: 0,
+                margin: "10px 0 0",
+                display: "grid",
+                gap: 8,
+              }}
+            >
+              {cardioItems.map((it, i) => (
+                <li
+                  key={`cardio-rx-${i}`}
+                  style={{
+                    padding: "10px 12px",
+                    border: "1px solid var(--cp-border)",
+                    borderRadius: 8,
+                    background: "color-mix(in oklab, var(--cp-accent) 6%, transparent)",
+                    fontSize: 13,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
+                    <span style={{ fontWeight: 600 }}>
+                      {it.movementName ?? it.movementSlug ?? it.intensityLabel ?? "Cardio"}
+                    </span>
+                    {it.intensityLabel && (
+                      <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
+                        {it.intensityLabel}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 4 }}>
+                    {it.durationMin != null ? `${it.durationMin} min` : null}
+                    {it.hrCap ? ` · ${it.hrCap}` : ""}
+                    {it.protocolNote ? ` · ${it.protocolNote}` : ""}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          {hasLoggedCardio && (
             <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0" }}>
-              {cardio.map((c) => {
+              {cardio!.map((c) => {
                 const mov = Array.isArray(c.movement) ? c.movement[0] : c.movement;
                 return (
                   <li
@@ -1012,17 +1066,41 @@ export default async function SessionDetailPage({
             </ul>
           )}
           {!isComplete && (
-            <details style={{ marginTop: 12 }}>
-              <summary style={{ cursor: "pointer", fontSize: 13, color: "var(--cp-text-muted)", userSelect: "none" }}>
-                + add cardio block
-              </summary>
-              <div style={{ marginTop: 10 }}>
-                <AddCardioBlockForm sessionId={id} action={addCardioBlock} />
-              </div>
-            </details>
+            <>
+              <style>{`
+                .cardio-disclosure > summary { list-style: none; }
+                .cardio-disclosure > summary::-webkit-details-marker { display: none; }
+                .cardio-disclosure > summary::marker { content: ""; }
+                .cardio-disclosure > summary .cardio-disclosure-arrow { transform: rotate(-90deg); transition: transform 120ms ease; }
+                .cardio-disclosure[open] > summary .cardio-disclosure-arrow { transform: rotate(0deg); }
+              `}</style>
+              <details className="cardio-disclosure" style={{ marginTop: 12 }}>
+                <summary
+                  style={{
+                    cursor: "pointer",
+                    fontSize: 13,
+                    color: "var(--cp-text-muted)",
+                    userSelect: "none",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <span className="cardio-disclosure-arrow" style={{ display: "inline-flex" }}>
+                    <DisclosureArrow open={true} />
+                  </span>
+                  <span>+ add cardio block</span>
+                </summary>
+                <div style={{ marginTop: 10 }}>
+                  <AddCardioBlockForm sessionId={id} action={addCardioBlock} />
+                </div>
+              </details>
+            </>
           )}
         </section>
-      ) : null}
+        );
+      })()}
+
 
       {!isComplete && (() => {
         // feat/logging-works — relaxed finish gate. The user can finish
