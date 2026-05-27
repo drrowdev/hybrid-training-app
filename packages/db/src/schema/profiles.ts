@@ -240,6 +240,19 @@ export const profiles = pgTable("profiles", {
   auditLastReadAt: timestamp("audit_last_read_at", {
     withTimezone: true,
   }),
+  /**
+   * Phase 1 "external cardio" — global default for new blocks. When
+   * 'external', the wizard pre-checks the "Follow an external run
+   * program" toggle so the user doesn't have to re-pick it every block.
+   * Changing this never touches existing blocks (they keep whatever
+   * `training_blocks.cardio_source` they were created with). Default
+   * 'internal' preserves legacy behaviour. See migration 0064.
+   */
+  preferredCardioSource: text("preferred_cardio_source")
+    .default("internal")
+    .notNull(),
+  /** Free-text label for the user's preferred external program (e.g. "Runna"). */
+  preferredCardioSourceName: text("preferred_cardio_source_name"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),

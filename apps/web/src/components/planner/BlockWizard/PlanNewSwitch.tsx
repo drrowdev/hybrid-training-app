@@ -60,6 +60,8 @@ export function PlanNewSwitch({
   equipmentPreset = null,
   serverDayPref = null,
   saveDayPrefAction,
+  preferredCardioSource = null,
+  preferredCardioSourceName = null,
 }: {
   recentBlocks: RecentBlockCard[];
   tmReadinessByArchetype: TmReadinessByArchetype;
@@ -76,6 +78,9 @@ export function PlanNewSwitch({
   saveDayPrefAction?: (
     pref: WizardDayPrefValue,
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Phase 1 "external cardio" — profile-level defaults forwarded to BlockWizard. */
+  preferredCardioSource?: "internal" | "external" | null;
+  preferredCardioSourceName?: string | null;
 }): React.ReactElement {
   const [mode, setMode] = useState<"home" | "wizard">(initialMode);
   const [wizardPrefill, setWizardPrefill] = useState<BlockWizardPrefill | null>(null);
@@ -91,6 +96,10 @@ export function PlanNewSwitch({
     fd.set("daysPerWeek", String(submit.daysPerWeek));
     fd.set("dayIndexOverrides", JSON.stringify(submit.dayIndexOverrides));
     fd.set("powerEmphasis", submit.power ? "true" : "false");
+    fd.set("cardioSource", submit.cardioSource);
+    if (submit.cardioSourceName) {
+      fd.set("cardioSourceName", submit.cardioSourceName);
+    }
     const result = await action(fd);
     if (result.ok) {
       router.push("/app/plan");
@@ -165,6 +174,8 @@ export function PlanNewSwitch({
           equipmentPreset={equipmentPreset}
           serverDayPref={serverDayPref}
           saveDayPrefAction={saveDayPrefAction}
+          preferredCardioSource={preferredCardioSource}
+          preferredCardioSourceName={preferredCardioSourceName}
         />
       </div>
     );

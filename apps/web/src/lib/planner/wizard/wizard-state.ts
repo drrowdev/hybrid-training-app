@@ -24,6 +24,12 @@ export type WizardState = {
   secondary: Secondary | null;
   power: boolean;
   twoADay: boolean;
+  /** Phase 1 "external cardio" — `true` means the user wants the planner
+   *  to reserve cardio days but skip the prescription so they can log via
+   *  their own run program. Pre-filled from `profile.preferred_cardio_source`. */
+  externalCardio: boolean;
+  /** Optional free-text program name shown on the session card. */
+  externalCardioName: string;
   /** Set when the user reached step 4 via "See lighter options" on step 1. */
   cameFromMaintenanceLink: boolean;
   /** Step-5 schedule; populated lazily when step 5 first renders. */
@@ -47,6 +53,8 @@ export const initialWizardState: WizardState = {
   secondary: null,
   power: false,
   twoADay: false,
+  externalCardio: false,
+  externalCardioName: "",
   cameFromMaintenanceLink: false,
   schedule: [],
   scheduleSig: null,
@@ -62,6 +70,8 @@ export type WizardAction =
   | { type: "set-secondary"; secondary: Secondary }
   | { type: "toggle-power" }
   | { type: "toggle-two-a-day" }
+  | { type: "toggle-external-cardio" }
+  | { type: "set-external-cardio-name"; name: string }
   | { type: "maintenance-link" }
   | { type: "goto"; step: StepIndex }
   | { type: "next" }
@@ -86,6 +96,10 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
       return { ...state, power: !state.power };
     case "toggle-two-a-day":
       return { ...state, twoADay: !state.twoADay };
+    case "toggle-external-cardio":
+      return { ...state, externalCardio: !state.externalCardio };
+    case "set-external-cardio-name":
+      return { ...state, externalCardioName: action.name };
     case "maintenance-link":
       // "See lighter options" — synthesize a maintenance block, clear goal.
       return {

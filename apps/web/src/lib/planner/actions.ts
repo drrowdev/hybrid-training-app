@@ -349,13 +349,22 @@ function itemsToClassifierMovements(
       it.kind === "cardio_z2" ||
       it.kind === "cardio_alactic" ||
       it.kind === "cardio_vo2" ||
-      it.kind === "cardio_threshold"
+      it.kind === "cardio_threshold" ||
+      it.kind === "cardio_external"
     ) {
       out.push({
         kind: "conditioning",
         archetype,
         cardioBlock: {
-          mode: cardioModeFor(it.kind),
+          // External cardio collapses to z2 for stress-budget purposes:
+          // the user is following an outside program so we can't know
+          // the actual intensity. Z2 is the safest default — the
+          // multiplier under-counts hard runs (acceptable) instead of
+          // over-counting easy ones (would suppress strength volume).
+          mode: it.kind === "cardio_external" ? "z2" : cardioModeFor(it.kind),
+          // Phase 1 — external blocks carry no `durationMin`. 0 lets the
+          // calendar / modality classifier still register a cardio day
+          // without inflating effective_stress_load against unknown work.
           durationMinutes: it.durationMin ?? 0,
         },
         estimatedHardSets: 0,
@@ -475,6 +484,15 @@ function buildHingeCompensationItem(args: {
   }
   return item;
 }
+
+/**
+ * Phase 1 "external cardio" — placeholder prescription for a reserved
+ * cardio day on a block whose `cardio_source = 'external'`. The pure
+ * helper lives in `./external-cardio.ts` so it can be imported from
+ * test files (this module is a "use server" boundary — every export
+ * must be async).
+ */
+import { buildExternalCardioItems } from "./external-cardio";
 
 /**
  * Helper: assemble the day's prescription items, optionally appending the
@@ -697,6 +715,27 @@ const createBlockSchema = z.object({
     .union([z.literal("true"), z.literal("false"), z.literal("on"), z.boolean()])
     .optional()
     .transform((v) => v === true || v === "true" || v === "on"),
+  /**
+   * Phase 1 "external cardio". 'external' tells the materialiser to
+   * emit a single placeholder `cardio_external` item per cardio day
+   * instead of the archetype's prescribed run. Default 'internal'
+   * keeps every legacy + new internal block on the existing path.
+   */
+  cardioSource: z
+    .enum(["internal", "external"])
+    .optional()
+    .transform((v) => v ?? "internal"),
+  /**
+   * Free-text label for the external program (e.g. "Runna"). Trimmed
+   * and capped at 80 chars; empty strings normalise to null at write
+   * time so the DB column stays distinguishable.
+   */
+  cardioSourceName: z
+    .string()
+    .trim()
+    .max(80)
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : null)),
 });
 
 export type CreateBlockResult =
@@ -715,6 +754,8 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
     daysPerWeek: formData.get("daysPerWeek"),
     dayIndexOverrides: formData.get("dayIndexOverrides") ?? undefined,
     powerEmphasis: formData.get("powerEmphasis") ?? undefined,
+    cardioSource: formData.get("cardioSource") ?? undefined,
+    cardioSourceName: formData.get("cardioSourceName") ?? undefined,
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -1048,6 +1089,8 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       days_per_week: parsed.data.daysPerWeek,
       day_index_overrides: dayIndexOverrides,
       power_emphasis: parsed.data.powerEmphasis,
+      cardio_source: parsed.data.cardioSource,
+      cardio_source_name: parsed.data.cardioSourceName,
       notes: hasAnyTm
         ? null
         : bwHasAnyFamily
@@ -1094,26 +1137,29 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
         movement = { id: mv.id, slug: mv.slug, displayName: mv.display_name };
       }
 
-      const items = assemblePrescriptionItems(
-        archetype,
-        week,
-        day,
-        movement,
-        finisherMovement,
-        movementBySlug,
-        pickerCatalog,
-        weekContext,
-        weekDeloadScale,
-        parsed.data.powerEmphasis,
-        warmupScheme,
-        equipment,
-        // Omit the barbell strength path when the user has no loadable
-        // kit. This makes equipment the source of truth — TMs persist
-        // across blocks, but the BW preset gives a bodyweight-only block
-        // even if barbell TMs are saved from a previous block.
-        bwActive || !hasAnyTm,
-        experience,
-      );
+      const items =
+        day.kind === "cardio" && parsed.data.cardioSource === "external"
+          ? buildExternalCardioItems(parsed.data.cardioSourceName)
+          : assemblePrescriptionItems(
+              archetype,
+              week,
+              day,
+              movement,
+              finisherMovement,
+              movementBySlug,
+              pickerCatalog,
+              weekContext,
+              weekDeloadScale,
+              parsed.data.powerEmphasis,
+              warmupScheme,
+              equipment,
+              // Omit the barbell strength path when the user has no loadable
+              // kit. This makes equipment the source of truth — TMs persist
+              // across blocks, but the BW preset gives a bodyweight-only block
+              // even if barbell TMs are saved from a previous block.
+              bwActive || !hasAnyTm,
+              experience,
+            );
 
       // ─── Bodyweight Phase 3 — prepend BW main + back_off items ───
       // Only on strength days, only when the user has bw_progress rows
