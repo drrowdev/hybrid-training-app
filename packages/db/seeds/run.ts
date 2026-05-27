@@ -9,6 +9,7 @@
 import { config } from "dotenv";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
+import { sql as drizzleSql } from "drizzle-orm";
 import { movements } from "../src/schema/movements";
 import { SEED_MOVEMENTS } from "./movements";
 
@@ -46,28 +47,33 @@ async function main() {
     process.exit(3);
   }
 
-  // Idempotent upsert.
+  // Idempotent upsert. NOTE: drizzle's `set: { col: table.col }`
+  // syntax compiles to `SET col = "movements"."col"`, which is a NO-OP
+  // (sets the column to its own existing value). To actually pick up
+  // changed values from the INSERT row we have to reference Postgres'
+  // pseudo-table `excluded.*`. Re-seeding before this fix silently
+  // updated nothing for existing slugs — only new INSERTs took effect.
   await db
     .insert(movements)
     .values(SEED_MOVEMENTS)
     .onConflictDoUpdate({
       target: [movements.userId, movements.slug],
       set: {
-        displayName: movements.displayName,
-        pattern: movements.pattern,
-        primaryRegion: movements.primaryRegion,
-        secondaryRegions: movements.secondaryRegions,
-        primaryMuscles: movements.primaryMuscles,
-        secondaryMuscles: movements.secondaryMuscles,
-        equipment: movements.equipment,
-        isCompound: movements.isCompound,
-        interferenceCost: movements.interferenceCost,
-        highStrainTendon: movements.highStrainTendon,
-        axialLoad: movements.axialLoad,
-        stability: movements.stability,
-        bilateral: movements.bilateral,
-        bodyWeightLoaded: movements.bodyWeightLoaded,
-        metadata: movements.metadata,
+        displayName: drizzleSql`excluded.display_name`,
+        pattern: drizzleSql`excluded.pattern`,
+        primaryRegion: drizzleSql`excluded.primary_region`,
+        secondaryRegions: drizzleSql`excluded.secondary_regions`,
+        primaryMuscles: drizzleSql`excluded.primary_muscles`,
+        secondaryMuscles: drizzleSql`excluded.secondary_muscles`,
+        equipment: drizzleSql`excluded.equipment`,
+        isCompound: drizzleSql`excluded.is_compound`,
+        interferenceCost: drizzleSql`excluded.interference_cost`,
+        highStrainTendon: drizzleSql`excluded.high_strain_tendon`,
+        axialLoad: drizzleSql`excluded.axial_load`,
+        stability: drizzleSql`excluded.stability`,
+        bilateral: drizzleSql`excluded.bilateral`,
+        bodyWeightLoaded: drizzleSql`excluded.body_weight_loaded`,
+        metadata: drizzleSql`excluded.metadata`,
       },
     });
 
