@@ -14,6 +14,7 @@ import { buildSyncRow } from "./sync-row";
 import { classifyAndLinkExternalCardio } from "./link-external-cardio";
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
 import { getUserTimezone } from "@/lib/planner/queries";
+import { readZoneConfig } from "@/lib/stats/hr-zones";
 
 const TOKEN_REFRESH_SAFETY_S = 60; // refresh if expiring within 60s
 const DEFAULT_LOOKBACK_DAYS = 30;
@@ -66,13 +67,25 @@ export async function syncStrava(
 
   const activities = await listActivitiesSince(accessToken, afterEpoch);
 
+  // Load the user's HR-zone config once for the whole sync — passed
+  // into buildSyncRow so each activity gets its hr_zones populated
+  // (audit I3). Null is fine: rows will have hr_zones = null.
+  const { data: profileRow } = await supabase
+    .from("profiles")
+    .select("intake")
+    .eq("id", userId)
+    .maybeSingle();
+  const bands = readZoneConfig(
+    (profileRow?.intake as Record<string, unknown> | null) ?? null,
+  );
+
   let imported = 0;
   let skipped = 0;
   let lastActivityAt: string | null = null;
 
   for (const a of activities) {
     if (lastActivityAt == null || a.start_date > lastActivityAt) lastActivityAt = a.start_date;
-    const row = buildSyncRow(a, userId);
+    const row = buildSyncRow(a, userId, { bands });
     if (!row) {
       skipped++;
       continue;
@@ -108,6 +121,7 @@ export async function syncStrava(
         strava_activity_id: row.cardio.strava_activity_id,
         external_source: row.cardio.external_source,
         notes: row.cardio.notes,
+        hr_zones: row.cardio.hr_zones,
       })
       .select("id")
       .maybeSingle();

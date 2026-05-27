@@ -14,6 +14,11 @@
  */
 import { mapStravaActivity, type CardioRegionMap } from "./mapping";
 import type { StravaActivity } from "./client";
+import type { ZoneBands } from "@/lib/stats/hr-zones";
+import {
+  estimateZonesFromSummary,
+  type HrZonesSeconds,
+} from "./zones-from-summary";
 
 export type StravaSyncRow = {
   session: {
@@ -36,6 +41,7 @@ export type StravaSyncRow = {
     strava_activity_id: string;
     external_source: "strava";
     notes: string | null;
+    hr_zones: HrZonesSeconds | null;
   };
   mapping: CardioRegionMap;
 };
@@ -59,6 +65,7 @@ function deriveRpe(activity: StravaActivity): number | null {
 export function buildSyncRow(
   activity: StravaActivity,
   userId: string,
+  options: { bands?: ZoneBands | null } = {},
 ): StravaSyncRow | null {
   const mapping = mapStravaActivity(activity.sport_type, activity.type);
   if (!mapping) return null;
@@ -67,6 +74,16 @@ export function buildSyncRow(
   const performedAt = activity.start_date;
   const rpe = deriveRpe(activity);
   const titleBase = activity.name?.trim() || `${mapping.modality} session`;
+  const avgHr =
+    activity.average_heartrate != null ? Math.round(activity.average_heartrate) : null;
+  const maxHr =
+    activity.max_heartrate != null ? Math.round(activity.max_heartrate) : null;
+  const hrZones = estimateZonesFromSummary({
+    avgHrBpm: avgHr,
+    maxHrBpm: maxHr,
+    durationSec: duration,
+    bands: options.bands ?? null,
+  });
   return {
     session: {
       user_id: userId,
@@ -82,12 +99,13 @@ export function buildSyncRow(
       modality: mapping.modality,
       duration_sec: duration,
       distance_km: activity.distance > 0 ? Number((activity.distance / 1000).toFixed(3)) : null,
-      avg_hr_bpm: activity.average_heartrate != null ? Math.round(activity.average_heartrate) : null,
-      max_hr_bpm: activity.max_heartrate != null ? Math.round(activity.max_heartrate) : null,
+      avg_hr_bpm: avgHr,
+      max_hr_bpm: maxHr,
       rpe,
       strava_activity_id: String(activity.id),
       external_source: "strava",
       notes: activity.description?.trim() || null,
+      hr_zones: hrZones,
     },
     mapping,
   };
