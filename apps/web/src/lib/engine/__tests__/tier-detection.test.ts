@@ -102,7 +102,7 @@ function squatAnchor(opts: {
   return {
     id: opts.id,
     user_id: USER_ID,
-    role: "primary",
+    role: "squat",
     completed_session_id: opts.completedSessionId,
     skipped_at: null,
     created_at: NOW_ISO,
