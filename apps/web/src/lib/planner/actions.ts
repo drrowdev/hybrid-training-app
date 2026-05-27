@@ -2133,10 +2133,35 @@ export async function startSessionDirect(plannedId: string): Promise<never> {
 
   if (sessErr || !session) throw new Error(sessErr?.message ?? "Failed to start session");
 
-  await supabase
+  // Conditional link so a concurrent caller (e.g. middle-click that
+  // bypasses the client-side one-tap lock) cannot overwrite an earlier
+  // winner. If the UPDATE affects zero rows, another request already
+  // linked first — delete our orphan insert and redirect to the winner.
+  const { data: linked, error: linkErr } = await supabase
     .from("planned_sessions")
     .update({ completed_session_id: session.id })
-    .eq("id", planned.id);
+    .eq("id", planned.id)
+    .is("completed_session_id", null)
+    .select("id, completed_session_id")
+    .maybeSingle();
+
+  if (linkErr) throw new Error(linkErr.message);
+
+  if (!linked) {
+    // Lost the race. Clean up the orphaned session and reuse the winner.
+    await supabase.from("sessions").delete().eq("id", session.id);
+    const { data: winner } = await supabase
+      .from("planned_sessions")
+      .select("completed_session_id")
+      .eq("id", planned.id)
+      .maybeSingle();
+    if (winner?.completed_session_id) {
+      revalidatePath("/app");
+      revalidatePath("/app/plan");
+      redirect(`/app/sessions/${winner.completed_session_id}`);
+    }
+    throw new Error("Failed to link planned session after race");
+  }
 
   revalidatePath("/app");
   revalidatePath("/app/plan");
