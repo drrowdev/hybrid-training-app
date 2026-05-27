@@ -167,3 +167,57 @@ jobs:
           name: playwright-report
           path: apps/web/playwright-report
           retention-days: 7
+
+  prod-drift:
+    name: prod migration drift guard
+    # Runs only after merge to main. Connects to the production
+    # Supabase database (read-only) and asserts that every migration in
+    # _journal.json has been applied to __drizzle_migrations. Surfaces
+    # the gap loudly if someone merges a migration without running
+    # `pnpm --filter @hta/db db:migrate`. Read-only — never writes.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: ci
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Check prod DB matches journal
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_PROD_DB_URL }}
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            {
+              echo "## ⚠️ prod-drift skipped"
+              echo ""
+              echo "Set the \`SUPABASE_PROD_DB_URL\` repository secret to enable this job."
+              echo "Use a connection string for a read-only role if possible."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if pnpm --filter @hta/db db:check; then
+            echo "::notice::Prod DB is in sync with _journal.json."
+          else
+            {
+              echo "## ❌ Prod database is behind"
+              echo ""
+              echo "Run from a machine with the prod \`DATABASE_URL\`:"
+              echo ""
+              echo "    pnpm --filter @hta/db db:migrate"
+              echo ""
+              echo "Then re-run this job (Re-run jobs button)."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
