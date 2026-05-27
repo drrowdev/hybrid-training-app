@@ -20,7 +20,15 @@ export type CardioKind =
   | "cardio_z2"
   | "cardio_threshold"
   | "cardio_vo2"
-  | "cardio_alactic";
+  | "cardio_alactic"
+  | "cardio_other";
+
+export const SWAP_TARGET_KINDS: ReadonlyArray<Exclude<CardioKind, "cardio_other">> = [
+  "cardio_z2",
+  "cardio_threshold",
+  "cardio_vo2",
+  "cardio_alactic",
+];
 
 export type CardioModality = "running" | "cycling" | "rowing" | "other";
 
@@ -37,14 +45,36 @@ export type CardioCandidate = {
 /**
  * Classify a cardio movement's intensity bucket from its seed metadata.
  *
- * Order matters: alactic and VO2 markers win over zone tags because the
- * VO2 movements still carry a "Z5" zone but we want them grouped under
- * VO2 in the picker, not as a generic high-zone option.
+ * Order matters:
+ *   1. Explicit `metadata.kind` override wins (lets a seed pin its bucket
+ *      without relying on regex inference).
+ *   2. Alactic markers (sprints, tabata) — these movements may also carry
+ *      a Z5 zone but we want them in the alactic bucket.
+ *   3. VO2 markers (4×4, 1k repeats, 400m intervals, Z5).
+ *   4. Threshold zones (Z3, Z4).
+ *   5. Z2 markers — explicit Z1/Z2 zone, or a Z2-equivalent emphasis tag.
+ *   6. Default: `cardio_other`. Movements with no recognised intensity
+ *      markers (sled drags, generic rucking, swim intervals without
+ *      zone tags, ...) intentionally land here so they don't pollute
+ *      the Z2 swap picker. The picker excludes `cardio_other` from all
+ *      target buckets.
  */
 export function classifyCardioKind(
   metadata: Record<string, unknown> | null | undefined,
 ): CardioKind {
   const m = metadata ?? {};
+
+  const explicitKind = String(m.kind ?? "").toLowerCase();
+  if (
+    explicitKind === "cardio_z2" ||
+    explicitKind === "cardio_threshold" ||
+    explicitKind === "cardio_vo2" ||
+    explicitKind === "cardio_alactic" ||
+    explicitKind === "cardio_other"
+  ) {
+    return explicitKind as CardioKind;
+  }
+
   const emphasis = String(m.emphasis ?? "").toLowerCase();
   const protocol = String(m.protocol ?? "").toLowerCase();
   const zone = String(m.zone ?? "").toUpperCase();
@@ -65,14 +95,30 @@ export function classifyCardioKind(
     protocol.includes("1km") ||
     protocol.includes("1k") ||
     protocol.includes("400m") ||
+    protocol.includes("500m") ||
+    emphasis.includes("max-effort") ||
+    emphasis.includes("time-trial") ||
     zone === "Z5"
   ) {
     return "cardio_vo2";
   }
-  if (zone === "Z3" || zone === "Z4") {
+  if (zone === "Z3" || zone === "Z4" || zone === "Z3-Z4") {
     return "cardio_threshold";
   }
-  return "cardio_z2";
+  // Z2 must be explicit. We accept the common compound ranges that
+  // seed authors use to denote "easy aerobic".
+  if (
+    zone === "Z1" ||
+    zone === "Z2" ||
+    zone === "Z1-Z2" ||
+    zone === "Z2-Z3" ||
+    emphasis.includes("z2-equivalent") ||
+    emphasis.includes("conversational") ||
+    emphasis.includes("long-easy")
+  ) {
+    return "cardio_z2";
+  }
+  return "cardio_other";
 }
 
 /** Pick a UI grouping bucket from a movement's modality metadata. */
