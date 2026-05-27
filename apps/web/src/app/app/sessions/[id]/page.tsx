@@ -106,7 +106,7 @@ export default async function SessionDetailPage({
   const { data: cardio } = await supabase
     .from("cardio_logs")
     .select(
-      "id, block_index, modality, duration_sec, distance_km, avg_hr_bpm, rpe, notes, movement:movements(id, display_name)",
+      "id, block_index, modality, duration_sec, distance_km, avg_hr_bpm, max_hr_bpm, rpe, notes, inferred_kind, inferred_confidence, external_source, movement:movements(id, display_name)",
     )
     .eq("session_id", id)
     .order("block_index", { ascending: true });
@@ -190,7 +190,7 @@ export default async function SessionDetailPage({
   // recommendation ("top set ~81% instead of 90%").
   const { data: planned } = await supabase
     .from("planned_sessions")
-    .select("id, prescription, session_modality")
+    .select("id, prescription, session_modality, effective_stress_load")
     .eq("completed_session_id", id)
     .maybeSingle();
   const plannedPrescription = (planned?.prescription as Prescription | null) ?? null;
@@ -1003,7 +1003,66 @@ export default async function SessionDetailPage({
           {cardioItemsIndexed.length > 0 && (
             <CardioPrescriptionList
               plannedSessionId={(planned?.id as string | undefined) ?? null}
-              items={cardioItemsIndexed.map(({ it, itemIndex }) => ({ item: it, itemIndex }))}
+              items={cardioItemsIndexed.map(({ it, itemIndex }) => {
+                // Phase 2 — surface the inferred classification on
+                // cardio_external rows. Match by external_source +
+                // inferred_kind on the cardio_logs we already loaded
+                // for this session.
+                let classification = null as
+                  | {
+                      label: string;
+                      reason: string;
+                      confidence: number;
+                      effectiveStressLoad?: number | null;
+                    }
+                  | null;
+                if (it.kind === "cardio_external") {
+                  const log = (cardio ?? []).find(
+                    (c) => (c as { inferred_kind?: string | null }).inferred_kind != null,
+                  ) as
+                    | {
+                        inferred_kind?: string | null;
+                        inferred_confidence?: string | number | null;
+                        avg_hr_bpm?: number | null;
+                        max_hr_bpm?: number | null;
+                        duration_sec?: number | null;
+                        external_source?: string | null;
+                      }
+                    | undefined;
+                  if (log?.inferred_kind) {
+                    const labelMap: Record<string, string> = {
+                      cardio_z2: "Easy Z2",
+                      cardio_threshold: "Threshold",
+                      cardio_vo2: "VO2 intervals",
+                      cardio_alactic: "Sprint / alactic",
+                      cardio_mixed: "Mixed intensity",
+                    };
+                    const durationMin = Math.round((log.duration_sec ?? 0) / 60);
+                    const reasonParts: string[] = [];
+                    if (log.avg_hr_bpm != null) reasonParts.push(`avg ${log.avg_hr_bpm} bpm`);
+                    if (log.max_hr_bpm != null) reasonParts.push(`max ${log.max_hr_bpm} bpm`);
+                    const reason = reasonParts.length > 0
+                      ? `${reasonParts.join(", ")} over ${durationMin} min`
+                      : `${durationMin} min`;
+                    const confNum = log.inferred_confidence == null
+                      ? 0
+                      : typeof log.inferred_confidence === "number"
+                        ? log.inferred_confidence
+                        : Number(log.inferred_confidence);
+                    classification = {
+                      label: labelMap[log.inferred_kind] ?? log.inferred_kind,
+                      reason,
+                      confidence: confNum,
+                      effectiveStressLoad:
+                        (planned as { effective_stress_load?: string | number | null } | null)
+                          ?.effective_stress_load == null
+                          ? null
+                          : Number((planned as { effective_stress_load?: string | number }).effective_stress_load),
+                    };
+                  }
+                }
+                return { item: it, itemIndex, classification };
+              })}
               ownedCardio={equipment.cardio}
               swapAction={swapPrescriptionItem}
               isReadOnly={isComplete}
