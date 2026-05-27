@@ -329,15 +329,25 @@ export async function markExternalCardioComplete(
       .eq("id", parsed.data.plannedSessionId);
   }
 
+  // Idempotency guard: if any cardio_log already exists for this
+  // session, this is a re-click after refresh (the UI's `done` state
+  // is component-local and doesn't survive). Return success without
+  // inserting a second row.
   const { count } = await supabase
     .from("cardio_logs")
     .select("id", { count: "exact", head: true })
     .eq("session_id", sessionId);
 
+  if ((count ?? 0) > 0) {
+    revalidatePath(`/app/sessions/${sessionId}`);
+    revalidatePath(`/app/plan`);
+    return { ok: true };
+  }
+
   const { error: insErr } = await supabase.from("cardio_logs").insert({
     session_id: sessionId,
     movement_id: null,
-    block_index: count ?? 0,
+    block_index: 0,
     modality: "other",
     // 1-second sentinel keeps the row valid against the duration_sec
     // NOT NULL / >0 constraint while signalling "duration unknown" to
