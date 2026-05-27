@@ -40,24 +40,15 @@ LANGUAGE plpgsql
 SECURITY INVOKER
 SET search_path = public, pg_temp
 AS $$
-DECLARE
-  v_existing public.session_movements;
 BEGIN
-  -- Idempotent: if it already exists, return the existing row.
-  SELECT * INTO v_existing
-  FROM public.session_movements sm
-  WHERE sm.session_id = p_session_id
-    AND sm.movement_id = p_movement_id;
-
-  IF FOUND THEN
-    RETURN QUERY
-      SELECT v_existing.session_id, v_existing.movement_id, v_existing.sort_order;
-    RETURN;
-  END IF;
-
-  -- Atomic insert with computed sort_order. MAX + INSERT in the same
-  -- statement → two concurrent callers cannot read the same max and
-  -- both write the same sort_order.
+  -- Single atomic statement: compute the next sort_order from MAX +
+  -- INSERT, with ON CONFLICT acting as the idempotency guarantee. A
+  -- no-op DO UPDATE is required (not DO NOTHING) so the existing row
+  -- is still returned via RETURNING for the already-present case.
+  -- Two concurrent callers cannot both read the same MAX and write
+  -- the same sort_order; the second loses the unique-PK race and
+  -- falls through to the no-op UPDATE path, returning the row that
+  -- actually persisted.
   RETURN QUERY
   INSERT INTO public.session_movements (session_id, movement_id, user_id, sort_order)
   VALUES (
@@ -71,6 +62,8 @@ BEGIN
       0
     )::smallint + 10
   )
+  ON CONFLICT (session_id, movement_id) DO UPDATE
+    SET sort_order = session_movements.sort_order
   RETURNING
     session_movements.session_id,
     session_movements.movement_id,
