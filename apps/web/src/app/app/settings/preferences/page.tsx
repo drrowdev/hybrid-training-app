@@ -3,10 +3,7 @@ import { redirect } from "next/navigation";
 
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { DateTimeFormatCard } from "@/components/settings/DateTimeFormatCard";
-import {
-  FeedbackAutoSave,
-  RecoveryCheckinAutoSave,
-} from "@/components/settings/SettingsAutoSaveSections";
+import { FeedbackAutoSave } from "@/components/settings/SettingsAutoSaveSections";
 import {
   isDateFormat,
   isTimeFormat,
@@ -24,7 +21,7 @@ export default async function PreferencesSettingsPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "haptics_enabled, timer_sound_enabled, show_today_recovery_card, time_format, date_format, timezone",
+      "haptics_enabled, timer_sound_enabled, time_format, date_format, timezone",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -68,19 +65,6 @@ export default async function PreferencesSettingsPage() {
           <FeedbackAutoSave
             initialHaptics={profile?.haptics_enabled !== false}
             initialTimerSound={profile?.timer_sound_enabled !== false}
-          />
-        </div>
-
-        {/* Daily recovery check-in */}
-        <div className="space-y-3" data-testid="settings-recovery-card">
-          <p className="text-xs text-foreground/60">
-            A 2-tap fatigue + soreness logger on the Today page. Bias the
-            engine&apos;s recovery model. Toggle off to hide the card entirely
-            — your existing logs stay put, and you can turn it back on at any
-            time.
-          </p>
-          <RecoveryCheckinAutoSave
-            initialShow={profile?.show_today_recovery_card !== false}
           />
         </div>
 

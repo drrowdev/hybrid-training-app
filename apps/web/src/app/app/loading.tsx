@@ -3,9 +3,9 @@ import { Skeleton, SkeletonCard } from "@/components/skeleton/Skeleton";
 /**
  * `/app` (Today) loading skeleton — mirrors the Today page chrome so
  * navigation paints instantly and only the live data sections pop in.
- * Shape: eyebrow date + H1 + week-strip + how-recovered card + main
- * "next session" hero + a secondary card row. Matches the audit's
- * worst-offender route (2053ms RSC warm).
+ * Shape: eyebrow date + H1 + week-strip + main "next session" hero +
+ * a secondary card row. Matches the audit's worst-offender route
+ * (2053ms RSC warm).
  */
 export default function TodayLoading() {
   return (
@@ -31,16 +31,6 @@ export default function TodayLoading() {
           </SkeletonCard>
         ))}
       </div>
-
-      {/* How-recovered prompt */}
-      <SkeletonCard h={120} padding={16}>
-        <Skeleton w={160} h={14} />
-        <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} w={48} h={36} r={10} />
-          ))}
-        </div>
-      </SkeletonCard>
 
       {/* Today hero — next session card */}
       <SkeletonCard h={220} padding={20}>

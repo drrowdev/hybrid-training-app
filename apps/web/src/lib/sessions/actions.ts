@@ -20,11 +20,13 @@ const startAdHocSchema = z.object({
 /**
  * Create a new ad-hoc session and redirect to its detail page.
  *
- * The pre-session fatigue + soreness interstitial was removed — those
- * sliders now live on the Today page via `HowRecoveredCard` (writes
- * to `wellness`, gated by `profiles.show_today_recovery_card`). This
- * action only collects an optional title; everything else is logged
- * on the session detail surface.
+ * The pre-session fatigue + soreness interstitial was removed — the
+ * follow-up Today-page wellness check-in card has since also been
+ * retired (see chore/retire-wellness-checkin). The `wellness` table
+ * and `recordDailyCheckIn` action still exist for the bodyweight
+ * nudge and any future re-introduction. This action only collects an
+ * optional title; everything else is logged on the session detail
+ * surface.
  */
 export async function startSession(formData: FormData): Promise<void> {
   const parsed = startAdHocSchema.safeParse({

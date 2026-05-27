@@ -9,8 +9,10 @@
  * These tests pin the contract:
  *   1. Inserts a `sessions` row carrying the planned title / slot /
  *      planned_at — and crucially does NOT write `fatigue` or
- *      `soreness` (those now live on `wellness` via the Today-page
- *      HowRecoveredCard).
+ *      `soreness` (the pre-session interstitial was retired, and the
+ *      follow-up Today-page wellness card has since also been retired
+ *      — see chore/retire-wellness-checkin; the `wellness` table
+ *      remains for future use).
  *   2. Updates the matching `planned_sessions.completed_session_id`
  *      so the plan calendar flips to "in progress".
  *   3. Redirects to `/app/sessions/<new-id>`.

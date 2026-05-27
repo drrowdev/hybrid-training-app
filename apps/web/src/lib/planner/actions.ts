@@ -2138,11 +2138,12 @@ export async function startSessionFromPlan(formData: FormData): Promise<void> {
  * session into a real `sessions` row. The legacy
  * `startCheckInSession` path that also wrote `fatigue` / `soreness`
  * onto the new sessions row was removed when the pre-workout
- * interstitial was deleted — daily recovery is now logged
- * independently on the Today page via `HowRecoveredCard`
- * (`wellness` table). Callers that need the URL-driven version use
- * the `/app/sessions/start/[plannedId]` page which auto-invokes this
- * helper and redirects.
+ * interstitial was deleted, and the follow-up Today-page wellness
+ * check-in card has since also been retired (see
+ * chore/retire-wellness-checkin). The `wellness` table and engine
+ * read path stay intact for optionality. Callers that need the
+ * URL-driven version use the `/app/sessions/start/[plannedId]` page
+ * which auto-invokes this helper and redirects.
  *
  * Side effects (must stay in lockstep with the planner's expectations):
  *   1. INSERT a new `sessions` row carrying the planned title, slot,
