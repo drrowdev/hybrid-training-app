@@ -49,6 +49,10 @@ type State = {
   sessionDeleteCalls: string[];
   redirected: string | null;
   revalidated: string[];
+  /** User's IANA timezone returned by the profiles select. */
+  tz: string;
+  /** Fake "now" used by the action to decide future / past bounds. */
+  fakeNow: Date | null;
 };
 
 const state: State = {
@@ -61,6 +65,8 @@ const state: State = {
   sessionDeleteCalls: [],
   redirected: null,
   revalidated: [],
+  tz: "UTC",
+  fakeNow: null,
 };
 
 class RedirectError extends Error {
@@ -88,6 +94,15 @@ vi.mock("@/lib/supabase/server", () => ({
       getUser: async () => ({ data: { user: { id: "user-1" } } }),
     },
     from: (table: string) => {
+      if (table === "profiles") {
+        return {
+          select: (_cols?: string) => ({
+            eq: (_col: string, _val: string) => ({
+              maybeSingle: () => Promise.resolve({ data: { timezone: state.tz }, error: null }),
+            }),
+          }),
+        };
+      }
       if (table === "planned_sessions") {
         return {
           select: (_cols?: string) => ({
@@ -173,6 +188,12 @@ beforeEach(() => {
   state.sessionDeleteCalls = [];
   state.redirected = null;
   state.revalidated = [];
+  state.tz = "UTC";
+  if (state.fakeNow) {
+    vi.setSystemTime(state.fakeNow);
+  } else {
+    vi.useRealTimers();
+  }
 });
 
 describe("startSessionDirect — no pre-workout check-in", () => {
@@ -293,6 +314,164 @@ describe("startSessionDirect — no pre-workout check-in", () => {
     expect(state.plannedUpdateCalls).toHaveLength(1);
 
     // Redirect target is the winner's session, not ours.
+    expect(state.redirected).toBe("/app/sessions/winner-session-id");
+  });
+});
+
+describe("startSessionDirect — retroactive performedAt", () => {
+  beforeEach(() => {
+    // Anchor "now" so future-date validation is deterministic.
+    // 2026-05-23 12:00 UTC = Saturday.
+    state.fakeNow = new Date("2026-05-23T12:00:00Z");
+    vi.useFakeTimers();
+    vi.setSystemTime(state.fakeNow);
+  });
+
+  it("stamps performed_at at start-of-day in user tz when a valid date is provided", async () => {
+    state.tz = "Europe/Helsinki"; // UTC+3 in May (EEST).
+    state.planned = {
+      id: VALID_UUID,
+      title: "Upper push",
+      slot: "single",
+      planned_at: null,
+      prescription: null,
+      completed_session_id: null,
+      user_id: "user-1",
+    };
+
+    await expect(
+      startSessionDirect(VALID_UUID, { performedAt: "2026-05-20" }),
+    ).rejects.toBeInstanceOf(RedirectError);
+
+    expect(state.sessionInsertCalls).toHaveLength(1);
+    const insert = state.sessionInsertCalls[0]! as { performed_at?: string };
+    // 2026-05-20 00:00 EEST (UTC+3) = 2026-05-19T21:00:00Z.
+    expect(insert.performed_at).toBe("2026-05-19T21:00:00.000Z");
+  });
+
+  it("falls back to NOW() (omits performed_at) when not provided", async () => {
+    state.planned = {
+      id: VALID_UUID,
+      title: "Upper push",
+      slot: "single",
+      planned_at: null,
+      prescription: null,
+      completed_session_id: null,
+      user_id: "user-1",
+    };
+
+    await expect(startSessionDirect(VALID_UUID)).rejects.toBeInstanceOf(
+      RedirectError,
+    );
+
+    const insert = state.sessionInsertCalls[0]!;
+    expect("performed_at" in insert).toBe(false);
+  });
+
+  it("rejects a future performed_at (user tz)", async () => {
+    state.tz = "UTC";
+    state.planned = {
+      id: VALID_UUID,
+      title: "Upper push",
+      slot: "single",
+      planned_at: null,
+      prescription: null,
+      completed_session_id: null,
+      user_id: "user-1",
+    };
+    // today (UTC) = 2026-05-23. Pick a future day.
+    await expect(
+      startSessionDirect(VALID_UUID, { performedAt: "2026-05-24" }),
+    ).rejects.toThrow(/cannot be in the future/i);
+    expect(state.sessionInsertCalls).toHaveLength(0);
+  });
+
+  it("rejects performed_at more than 14 days in the past", async () => {
+    state.tz = "UTC";
+    state.planned = {
+      id: VALID_UUID,
+      title: "Upper push",
+      slot: "single",
+      planned_at: null,
+      prescription: null,
+      completed_session_id: null,
+      user_id: "user-1",
+    };
+    // today (UTC) = 2026-05-23. 15 days back = 2026-05-08.
+    await expect(
+      startSessionDirect(VALID_UUID, { performedAt: "2026-05-08" }),
+    ).rejects.toThrow(/14 days/);
+    expect(state.sessionInsertCalls).toHaveLength(0);
+  });
+
+  it("accepts exactly 14 days in the past (boundary)", async () => {
+    state.tz = "UTC";
+    state.planned = {
+      id: VALID_UUID,
+      title: "Upper push",
+      slot: "single",
+      planned_at: null,
+      prescription: null,
+      completed_session_id: null,
+      user_id: "user-1",
+    };
+    await expect(
+      startSessionDirect(VALID_UUID, { performedAt: "2026-05-09" }),
+    ).rejects.toBeInstanceOf(RedirectError);
+    expect(state.sessionInsertCalls).toHaveLength(1);
+  });
+
+  it("rejects an invalid performed_at format", async () => {
+    state.planned = {
+      id: VALID_UUID,
+      title: "Upper push",
+      slot: "single",
+      planned_at: null,
+      prescription: null,
+      completed_session_id: null,
+      user_id: "user-1",
+    };
+    await expect(
+      startSessionDirect(VALID_UUID, { performedAt: "not-a-date" }),
+    ).rejects.toThrow(/invalid performed_at/i);
+    expect(state.sessionInsertCalls).toHaveLength(0);
+  });
+
+  it("rejects a structurally valid but non-existent date (Feb 30)", async () => {
+    state.planned = {
+      id: VALID_UUID,
+      title: "Upper push",
+      slot: "single",
+      planned_at: null,
+      prescription: null,
+      completed_session_id: null,
+      user_id: "user-1",
+    };
+    await expect(
+      startSessionDirect(VALID_UUID, { performedAt: "2026-02-30" }),
+    ).rejects.toThrow(/invalid performed_at/i);
+    expect(state.sessionInsertCalls).toHaveLength(0);
+  });
+
+  it("still races correctly when performedAt is provided", async () => {
+    state.tz = "UTC";
+    state.planned = {
+      id: VALID_UUID,
+      title: "Upper push",
+      slot: "single",
+      planned_at: null,
+      prescription: null,
+      completed_session_id: null,
+      user_id: "user-1",
+    };
+    state.linkRaceWinner = "winner-session-id";
+
+    await expect(
+      startSessionDirect(VALID_UUID, { performedAt: "2026-05-22" }),
+    ).rejects.toBeInstanceOf(RedirectError);
+
+    expect(state.sessionInsertCalls).toHaveLength(1);
+    expect(state.sessionDeleteCalls).toEqual(["new-session-uuid"]);
     expect(state.redirected).toBe("/app/sessions/winner-session-id");
   });
 });

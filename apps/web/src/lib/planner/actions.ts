@@ -41,6 +41,8 @@ type PlannedSessionInsertRow = {
   effective_stress_load?: number | null;
 };
 import { createClient, getAuthUser } from "@/lib/supabase/server";
+import { todayYmd, ymdToUtc, daysBetweenYmd } from "@/lib/dates";
+import { getUserTimezone } from "./queries";
 import {
   ARCHETYPES,
   type Archetype,
@@ -2057,16 +2059,76 @@ export async function setPlannedTime(formData: FormData): Promise<void> {
 const startPlannedSchema = z.object({ id: z.string().uuid() });
 
 /**
+ * Maximum allowed back-date for retroactive session logging, in days.
+ *
+ * Anything beyond two weeks is almost certainly user error (a typo
+ * in the date picker, or "I'll just back-fill the whole previous
+ * month"), which would silently scramble adherence + ESL attribution.
+ * The picker pre-fill defaults to the planned date so the legitimate
+ * "I logged yesterday's workout today" path never bumps against this.
+ */
+const MAX_RETRO_PERFORMED_AT_DAYS = 14;
+
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Validate a retroactive `performedAt` YYYY-MM-DD against the user
+ * timezone. Returns the start-of-day UTC instant for the picked date,
+ * or throws a user-facing Error.
+ */
+async function resolveRetroPerformedAt(
+  performedAt: string,
+  userId: string,
+): Promise<Date> {
+  // Cheap structural check first — we don't want to round-trip to
+  // profiles just to reject "lol nope".
+  if (!YMD_RE.test(performedAt)) {
+    throw new Error("Invalid performed_at: expected YYYY-MM-DD");
+  }
+  const [y, m, d] = performedAt.split("-").map((s) => Number.parseInt(s, 10));
+  const probe = new Date(Date.UTC(y, m - 1, d));
+  if (
+    Number.isNaN(probe.getTime()) ||
+    probe.getUTCFullYear() !== y ||
+    probe.getUTCMonth() !== m - 1 ||
+    probe.getUTCDate() !== d
+  ) {
+    throw new Error("Invalid performed_at: not a real calendar date");
+  }
+  const tz = await getUserTimezone(userId);
+  const today = todayYmd(tz);
+  const delta = daysBetweenYmd(performedAt, today); // today - picked
+  if (delta < 0) {
+    throw new Error("performed_at cannot be in the future");
+  }
+  if (delta > MAX_RETRO_PERFORMED_AT_DAYS) {
+    throw new Error(
+      `performed_at cannot be more than ${MAX_RETRO_PERFORMED_AT_DAYS} days in the past`,
+    );
+  }
+  return ymdToUtc(performedAt, tz);
+}
+
+/**
  * Start a real session from a planned slot.
  *
  * Creates a sessions row pre-populated with the planned title + a set_log
  * stub per prescription item (no weights yet — user logs them as actual sets),
  * and links it back to the planned_session.
+ *
+ * Honours an optional `performedAt` form field (YYYY-MM-DD) — when
+ * present, the new session is back-dated to start-of-day in the user's
+ * timezone. See `startSessionDirect` for the validation rules.
  */
 export async function startSessionFromPlan(formData: FormData): Promise<void> {
   const parsed = startPlannedSchema.safeParse({ id: formData.get("id") });
   if (!parsed.success) throw new Error("Invalid planned session id");
-  await startSessionDirect(parsed.data.id);
+  const rawPerformedAt = formData.get("performedAt");
+  const performedAt =
+    typeof rawPerformedAt === "string" && rawPerformedAt.length > 0
+      ? rawPerformedAt
+      : undefined;
+  await startSessionDirect(parsed.data.id, performedAt ? { performedAt } : undefined);
 }
 
 /**
@@ -2096,7 +2158,10 @@ export async function startSessionFromPlan(formData: FormData): Promise<void> {
  * `completed_session_id`, we skip the insert and redirect to that
  * session (matches the behaviour the deleted interstitial had).
  */
-export async function startSessionDirect(plannedId: string): Promise<never> {
+export async function startSessionDirect(
+  plannedId: string,
+  options?: { performedAt?: string },
+): Promise<never> {
   const parsed = startPlannedSchema.safeParse({ id: plannedId });
   if (!parsed.success) throw new Error("Invalid planned session id");
 
@@ -2105,6 +2170,15 @@ export async function startSessionDirect(plannedId: string): Promise<never> {
     data: { user },
   } = await getAuthUser();
   if (!user) redirect("/login");
+
+  // Resolve the back-date BEFORE the planned-session lookup so we
+  // surface the error path before any DB mutation. `resolveRetro…`
+  // throws a user-facing message that the form action surfaces via
+  // Next's error overlay.
+  const retroPerformedAt =
+    options?.performedAt != null
+      ? await resolveRetroPerformedAt(options.performedAt, user.id)
+      : null;
 
   const { data: planned } = await supabase
     .from("planned_sessions")
@@ -2120,14 +2194,25 @@ export async function startSessionDirect(plannedId: string): Promise<never> {
     redirect(`/app/sessions/${planned.completed_session_id}`);
   }
 
+  const sessionPayload: {
+    user_id: string;
+    title: string;
+    slot: string;
+    planned_at: string | null;
+    performed_at?: string;
+  } = {
+    user_id: user.id,
+    title: planned.title,
+    slot: planned.slot ?? "single",
+    planned_at: planned.planned_at,
+  };
+  if (retroPerformedAt) {
+    sessionPayload.performed_at = retroPerformedAt.toISOString();
+  }
+
   const { data: session, error: sessErr } = await supabase
     .from("sessions")
-    .insert({
-      user_id: user.id,
-      title: planned.title,
-      slot: planned.slot ?? "single",
-      planned_at: planned.planned_at,
-    })
+    .insert(sessionPayload)
     .select("id")
     .single();
 
