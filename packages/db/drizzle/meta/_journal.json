@@ -393,6 +393,13 @@
       "tag": "0059_session_movements",
       "when": 1781420400000,
       "breakpoints": false
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "tag": "0060_session_movements_rpcs",
+      "when": 1781506800000,
+      "breakpoints": false
     }
   ]
 }
