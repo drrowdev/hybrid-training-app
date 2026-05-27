@@ -33,6 +33,7 @@ export type StravaActivity = {
   moving_time: number; // seconds
   distance: number; // meters
   average_heartrate: number | null;
+  max_heartrate: number | null;
   perceived_exertion: number | null; // 0–10 if set by athlete
   suffer_score: number | null;
   description: string | null;

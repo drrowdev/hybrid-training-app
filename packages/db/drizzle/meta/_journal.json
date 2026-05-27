@@ -428,6 +428,20 @@
       "tag": "0064_external_cardio_source",
       "when": 1781700000000,
       "breakpoints": false
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "tag": "0065_cardio_inferred_kind",
+      "when": 1781800000000,
+      "breakpoints": false
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "tag": "0066_cardio_inferred_confidence_check",
+      "when": 1781803600000,
+      "breakpoints": false
     }
   ]
 }
