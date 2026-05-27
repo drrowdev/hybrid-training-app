@@ -23,6 +23,7 @@
  *   tissue     — Connective / tendon (heavy isometrics, very-heavy lifts, running)
  */
 import type { Bucket } from "@hta/domain";
+import { cardioIntensityScalar, type HrZones } from "./cardio-intensity";
 
 export const ALL_BUCKETS: readonly Bucket[] = [
   "neural",
@@ -137,6 +138,14 @@ export type CardioInput = {
   durationSec: number;
   rpe?: number | null;
   modality: string | null;
+  /**
+   * Optional time-in-zone (seconds per HR zone). When present, drives the
+   * intensity scalar via `cardioIntensityScalar`; otherwise we fall back
+   * to the legacy `clamp(rpe/10)` heuristic. Populated by Strava sync
+   * (`integrations/strava/zones-from-summary.ts`) — null on rows pre-PR
+   * #162 / non-Strava cardio. See audit I3.
+   */
+  hrZones?: HrZones | null;
 };
 
 const CARDIO_SCALAR = 8; // matches region-ledger so magnitudes line up
@@ -144,17 +153,26 @@ const CARDIO_SCALAR = 8; // matches region-ledger so magnitudes line up
 /**
  * Per-cardio-block bucket contribution. Running is the heavy hitter for
  * impact + tissue; cycling/rowing/swimming stay in metabolic primarily.
+ *
+ * Intensity is derived via `cardioIntensityScalar` so a Z2 ride and a Z5
+ * VO2 session at the same duration produce dramatically different loads
+ * when HR zone data is available. Falls back to the historical
+ * `clamp(rpe/10)` factor when `hrZones` is null.
  */
 export function cardioBucketLoad(cardio: CardioInput): BucketLoad {
   const minutes = cardio.durationSec / 60;
   if (minutes <= 0) return { ...ZERO_BUCKET_LOAD };
-  const rpeFactor = cardio.rpe == null ? 0.5 : Math.min(1.0, Number(cardio.rpe) / 10);
-  const baseLoad = minutes * rpeFactor * CARDIO_SCALAR;
+  const intensity = cardioIntensityScalar({
+    hrZones: cardio.hrZones ?? null,
+    durationSec: cardio.durationSec,
+    rpe: cardio.rpe == null ? null : Number(cardio.rpe),
+  });
+  const baseLoad = minutes * intensity * CARDIO_SCALAR;
 
   const modality = (cardio.modality ?? "").toLowerCase();
   const isRunning = modality === "run";
   const isImpactCardio = isRunning || modality === "walk";
-  const hardEffort = rpeFactor >= 0.8;
+  const hardEffort = intensity >= 0.8;
 
   return {
     neural: baseLoad * (hardEffort ? 0.4 : 0.1),

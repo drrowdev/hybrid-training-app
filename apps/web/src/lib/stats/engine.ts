@@ -42,6 +42,7 @@ import {
   cardioBucketLoad,
   type BucketLoad,
 } from "@/lib/engine/bucket-load";
+import { normaliseHrZones } from "@/lib/engine/cardio-intensity";
 import type { Bucket } from "@hta/domain";
 import { todayYmd as todayYmdFn, addDaysToYmd, isoWeekdayYmd } from "@/lib/dates";
 import { getWeeklyRecoveryRollup } from "@/lib/engine/recovered-weeks";
@@ -561,6 +562,7 @@ export async function getBucketPressure(
       durationSec: row.duration_sec,
       rpe: row.rpe == null ? null : Number(row.rpe),
       modality: row.modality,
+      hrZones: normaliseHrZones(row.hr_zones),
     });
     accumulateBuckets(series, date, load);
   }
