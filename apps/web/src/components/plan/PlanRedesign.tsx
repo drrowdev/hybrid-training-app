@@ -31,6 +31,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { DragEvent } from "react";
 import { formatPrescriptionItem } from "@/lib/planner/archetypes";
+import { isOverdue, overdueDays } from "@/lib/planner/overdue";
 import {
   getAdaptationGuidanceForArchetype,
   type AdaptationGuidance,
@@ -177,6 +178,21 @@ function pillTitle(s: PlanSessionInput): string {
   // The timeline pill is narrow — keep titles under ~14 chars.
   if (s.title.length <= 14) return s.title;
   return s.title.slice(0, 13) + "…";
+}
+
+/**
+ * Adapt the client-side `PlanSessionInput` (which uses `done`/`skipped`
+ * booleans) to the pure-helper shape so we can share the overdue rule
+ * with the server-side `PlannedDay` callers. `done` mirrors
+ * `completed_session_id IS NOT NULL`; `skipped` mirrors `skipped_at IS
+ * NOT NULL` — see `planner/queries.ts` and the plan page mapping.
+ */
+function sessionToOverdueCandidate(s: PlanSessionInput) {
+  return {
+    date: s.date,
+    completedSessionId: s.done ? "linked" : null,
+    skippedAt: s.skipped ? "skipped" : null,
+  };
 }
 
 function passesFilter(s: PlanSessionInput, f: PlanFilter): boolean {
@@ -513,10 +529,14 @@ export function PlanRedesign(props: PlanRedesignProps) {
                           shown.map((s) => {
                             const kind = s.isCardio ? "cardio" : "strength";
                             const muted = s.done || isPast;
+                            const overdue = isOverdue(
+                              sessionToOverdueCandidate(s),
+                              today,
+                            );
                             return (
                               <div
                                 key={s.id}
-                                className={`session-pill ${kind}${muted ? " muted" : ""}`}
+                                className={`session-pill ${kind}${muted ? " muted" : ""}${overdue ? " overdue" : ""}`}
                                 role="button"
                                 tabIndex={0}
                                 draggable={!s.done && !s.skipped}
@@ -533,6 +553,15 @@ export function PlanRedesign(props: PlanRedesignProps) {
                                 title={s.title}
                               >
                                 {pillTitle(s)}
+                                {overdue && (
+                                  <span
+                                    className="overdue-pill mono"
+                                    data-testid={`overdue-pill-${s.id}`}
+                                    title={`Overdue by ${overdueDays(sessionToOverdueCandidate(s), today)} day(s)`}
+                                  >
+                                    Overdue · {overdueDays(sessionToOverdueCandidate(s), today)}d
+                                  </span>
+                                )}
                               </div>
                             );
                           })
@@ -573,6 +602,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
                   </div>
                 );
               }
+              const overdue = isOverdue(sessionToOverdueCandidate(s), today);
               const tag = s.done ? "Done" : s.skipped ? "Skipped" : null;
               return (
                 <button
@@ -580,7 +610,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
                   key={row.dayIndex}
                   className={`rail-item ${isPast && !isToday ? "past" : ""} ${
                     isToday ? "today-item" : ""
-                  }`}
+                  }${overdue ? " overdue" : ""}`}
                   data-testid={`plan-rail-${row.dayIndex}`}
                   onClick={() => openDrawer(s.id)}
                 >
@@ -588,6 +618,14 @@ export function PlanRedesign(props: PlanRedesignProps) {
                   <span className="rail-name">
                     {s.title}
                     {isToday && <span className="today-chip mono">TODAY</span>}
+                    {overdue && (
+                      <span
+                        className="overdue-pill mono"
+                        data-testid={`overdue-pill-${s.id}`}
+                      >
+                        Overdue · {overdueDays(sessionToOverdueCandidate(s), today)}d
+                      </span>
+                    )}
                   </span>
                   <span className="rail-kind mono">
                     {tag ?? (s.isCardio ? "Cardio" : "Strength")}
@@ -859,6 +897,35 @@ export function PlanRedesign(props: PlanRedesignProps) {
           opacity: 0.7;
           cursor: default;
         }
+        .session-pill.overdue {
+          border-left-color: var(--cp-warning);
+          background: color-mix(in srgb, var(--cp-warning) 12%, transparent);
+          opacity: 1;
+          text-decoration: none;
+        }
+        .session-pill.overdue.muted {
+          opacity: 0.5;
+        }
+        .overdue-pill {
+          display: inline-block;
+          margin-left: 6px;
+          padding: 1px 5px;
+          font-size: 9px;
+          line-height: 1.2;
+          letter-spacing: 0.04em;
+          font-weight: 700;
+          color: var(--cp-warning);
+          border: 1px solid var(--cp-warning);
+          background: color-mix(in srgb, var(--cp-warning) 12%, transparent);
+          border-radius: 4px;
+          text-transform: uppercase;
+          vertical-align: middle;
+          white-space: nowrap;
+        }
+        .rail-item.overdue {
+          border-left: 2px solid var(--cp-warning);
+          background: color-mix(in srgb, var(--cp-warning) 6%, transparent);
+        }
 
         .plan-legend {
           margin-top: 16px;
@@ -1043,10 +1110,11 @@ function MonthAlternate({
               {items.map((s) => {
                 const kind = s.isCardio ? "cardio" : "strength";
                 const muted = s.done || isPast;
+                const overdue = isOverdue(sessionToOverdueCandidate(s), today);
                 return (
                   <div
                     key={s.id}
-                    className={`session-pill ${kind}${muted ? " muted" : ""}`}
+                    className={`session-pill ${kind}${muted ? " muted" : ""}${overdue ? " overdue" : ""}`}
                     role="button"
                     tabIndex={0}
                     onClick={() => onOpen(s.id)}
@@ -1058,6 +1126,14 @@ function MonthAlternate({
                     }}
                   >
                     {pillTitle(s)}
+                    {overdue && (
+                      <span
+                        className="overdue-pill mono"
+                        data-testid={`overdue-pill-${s.id}`}
+                      >
+                        Overdue · {overdueDays(sessionToOverdueCandidate(s), today)}d
+                      </span>
+                    )}
                   </div>
                 );
               })}
@@ -1131,6 +1207,16 @@ function SessionDrawer({
   const [swapError, setSwapError] = useState<string | null>(null);
   const [swapPending, setSwapPending] = useState(false);
   const isToday = session.date === today;
+  const overdue = isOverdue(sessionToOverdueCandidate(session), today);
+  const overdueDayCount = overdue
+    ? overdueDays(sessionToOverdueCandidate(session), today)
+    : 0;
+  // Idempotency-friendly: once a one-tap action has been fired, disable
+  // both CTAs locally so a fast double-tap can't post twice while the
+  // server action is still in flight. The server actions are also safe
+  // to call repeatedly (skip is upsert-like; start is idempotent on
+  // completed_session_id), but the client lock keeps the UX honest.
+  const [oneTapFired, setOneTapFired] = useState(false);
 
   // ── Drawer notes (PR Z1) ─────────────────────────────────────────
   // Source of truth: `planned_sessions.notes` (DB). localStorage is a
@@ -1254,6 +1340,15 @@ function SessionDrawer({
             <div className="meta mono">
               {shortDate(session.date)}
               {isToday && " · Today"}
+              {overdue && (
+                <span
+                  className="overdue-pill mono"
+                  data-testid={`overdue-pill-${session.id}`}
+                  style={{ marginLeft: 6 }}
+                >
+                  Overdue · {overdueDayCount}d
+                </span>
+              )}
               {movementCount > 0 && ` · ${movementCount} movement${movementCount === 1 ? "" : "s"}`}
               {dur != null && ` · ~${dur} min`}
             </div>
@@ -1318,6 +1413,37 @@ function SessionDrawer({
                   Skip
                 </button>
               </form>
+            )}
+            {overdue && !session.skipped && !session.done && (
+              <>
+                <form
+                  action={skipAction}
+                  onSubmit={() => setOneTapFired(true)}
+                  style={{ display: "contents" }}
+                >
+                  <input type="hidden" name="id" value={session.id} />
+                  <button
+                    type="submit"
+                    className="cp-btn"
+                    data-testid={`overdue-skip-${session.id}`}
+                    disabled={oneTapFired}
+                    aria-busy={oneTapFired}
+                    title="Mark this overdue session as skipped"
+                  >
+                    Mark skipped
+                  </button>
+                </form>
+                <Link
+                  href={`${logHrefBase}/${session.id}`}
+                  className="cp-btn primary"
+                  data-testid={`overdue-log-${session.id}`}
+                  onClick={() => setOneTapFired(true)}
+                  aria-disabled={oneTapFired || undefined}
+                  title="Start logging this session now"
+                >
+                  Log now
+                </Link>
+              </>
             )}
           </div>
 
