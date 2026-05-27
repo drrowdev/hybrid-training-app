@@ -25,6 +25,7 @@ export function LogNowDateForm({
   title,
   defaultDateYmd,
   maxDateYmd,
+  minDateYmd,
   action,
   onOpenChange,
 }: {
@@ -34,6 +35,14 @@ export function LogNowDateForm({
   defaultDateYmd: string;
   /** Today in user tz — picker's max. */
   maxDateYmd: string;
+  /**
+   * Earliest pickable date — usually today minus the retroactive-log
+   * window (14 days). When omitted the input still accepts any past
+   * date and the server returns an error if it's beyond the window;
+   * passing it lets the browser's native picker gray out invalid days
+   * before the user submits.
+   */
+  minDateYmd?: string;
   action: Action;
   /** Lets the parent disable other one-tap CTAs while the picker is open. */
   onOpenChange?: (open: boolean) => void;
@@ -86,6 +95,7 @@ export function LogNowDateForm({
           type="date"
           value={date}
           max={maxDateYmd}
+          {...(minDateYmd ? { min: minDateYmd } : {})}
           onChange={(e) => setDate(e.target.value)}
           data-testid={`log-now-date-input-${plannedId}`}
           style={{
