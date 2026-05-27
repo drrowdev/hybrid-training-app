@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   bucketByZone,
+  computeZoneBands,
+  computeZoneBandsSafe,
   polarisedSplit,
   readZoneConfig,
+  validateHrZoneInputs,
   zoneBandsFromMaxHr,
   zoneForBpm,
   type ZoneBands,
@@ -91,5 +94,87 @@ describe("readZoneConfig", () => {
     expect(readZoneConfig({})).toBeNull();
     expect(readZoneConfig(null)).toBeNull();
     expect(readZoneConfig({ hrMax: 0 })).toBeNull();
+  });
+});
+
+describe("computeZoneBands — %Max method", () => {
+  it("matches zoneBandsFromMaxHr for a typical max", () => {
+    const bands = computeZoneBands({ method: "max", hrMax: 200 });
+    expect(bands).toEqual({ z1Max: 120, z2Max: 140, z3Max: 160, z4Max: 180 });
+  });
+
+  it("throws on out-of-range max", () => {
+    expect(() => computeZoneBands({ method: "max", hrMax: 50 })).toThrow();
+    expect(() => computeZoneBands({ method: "max", hrMax: 250 })).toThrow();
+  });
+});
+
+describe("computeZoneBands — %HRR (Karvonen)", () => {
+  it("anchors at resting and spans to max with HRR breakpoints", () => {
+    // span = 200 - 60 = 140
+    // z1 = 60 + 0.50*140 = 130
+    // z2 = 60 + 0.60*140 = 144
+    // z3 = 60 + 0.70*140 = 158
+    // z4 = 60 + 0.85*140 = 179
+    const bands = computeZoneBands({ method: "hrr", hrMax: 200, hrResting: 60 });
+    expect(bands.z1Max).toBeCloseTo(130, 6);
+    expect(bands.z2Max).toBeCloseTo(144, 6);
+    expect(bands.z3Max).toBeCloseTo(158, 6);
+    expect(bands.z4Max).toBeCloseTo(179, 6);
+  });
+
+  it("places resting HR in Z1 and max HR in Z5", () => {
+    const bands = computeZoneBands({ method: "hrr", hrMax: 190, hrResting: 50 });
+    expect(zoneForBpm(50, bands)).toBe("Z1");
+    expect(zoneForBpm(190, bands)).toBe("Z5");
+  });
+
+  it("rejects resting >= max as physiologically impossible", () => {
+    expect(() => computeZoneBands({ method: "hrr", hrMax: 150, hrResting: 150 })).toThrow();
+    expect(() => computeZoneBands({ method: "hrr", hrMax: 150, hrResting: 160 })).toThrow();
+  });
+});
+
+describe("computeZoneBands — %LTHR (Friel)", () => {
+  it("uses Friel's 5-zone simplified %LTHR breakpoints", () => {
+    // LTHR = 170 → z1=137.7, z2=151.3, z3=158.1, z4=168.3
+    const bands = computeZoneBands({ method: "lthr", hrLthr: 170 });
+    expect(bands.z1Max).toBeCloseTo(170 * 0.81, 6);
+    expect(bands.z2Max).toBeCloseTo(170 * 0.89, 6);
+    expect(bands.z3Max).toBeCloseTo(170 * 0.93, 6);
+    expect(bands.z4Max).toBeCloseTo(170 * 0.99, 6);
+  });
+
+  it("puts LTHR itself in Z5 (≥ 100% LTHR)", () => {
+    const bands = computeZoneBands({ method: "lthr", hrLthr: 170 });
+    expect(zoneForBpm(170, bands)).toBe("Z5");
+  });
+
+  it("throws on out-of-range LTHR", () => {
+    expect(() => computeZoneBands({ method: "lthr", hrLthr: 80 })).toThrow();
+    expect(() => computeZoneBands({ method: "lthr", hrLthr: 220 })).toThrow();
+  });
+});
+
+describe("computeZoneBands — boundary cases", () => {
+  it("uses exclusive upper bounds across all methods (a bpm exactly at z2Max lands in Z3)", () => {
+    const maxBands = computeZoneBands({ method: "max", hrMax: 200 });
+    expect(zoneForBpm(maxBands.z2Max, maxBands)).toBe("Z3");
+
+    const hrrBands = computeZoneBands({ method: "hrr", hrMax: 200, hrResting: 60 });
+    expect(zoneForBpm(hrrBands.z2Max, hrrBands)).toBe("Z3");
+
+    const lthrBands = computeZoneBands({ method: "lthr", hrLthr: 170 });
+    expect(zoneForBpm(lthrBands.z2Max, lthrBands)).toBe("Z3");
+  });
+});
+
+describe("validateHrZoneInputs / computeZoneBandsSafe", () => {
+  it("returns null on missing or invalid fields instead of throwing", () => {
+    expect(validateHrZoneInputs({ method: "max" })).toBeNull();
+    expect(validateHrZoneInputs({ method: "hrr", hrMax: 190 })).toBeNull();
+    expect(validateHrZoneInputs({ method: "lthr", hrLthr: 9999 })).toBeNull();
+    expect(computeZoneBandsSafe({ method: "max" })).toBeNull();
+    expect(computeZoneBandsSafe({ method: "max", hrMax: 190 })).not.toBeNull();
   });
 });
