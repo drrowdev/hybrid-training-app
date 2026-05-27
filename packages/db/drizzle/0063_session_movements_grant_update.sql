@@ -1,0 +1,21 @@
+-- 0063_session_movements_grant_update.sql
+--
+-- Migration 0062 granted SELECT, INSERT, DELETE on session_movements
+-- to the `authenticated` role, but missed UPDATE. The
+-- `add_session_movement` RPC contains an `INSERT … ON CONFLICT … DO
+-- UPDATE SET sort_order = sm.sort_order` clause (the no-op update is
+-- the idempotency mechanism). Postgres checks UPDATE privilege at
+-- statement parse time even if the conflict branch never fires, so
+-- every call to the RPC raises `permission denied for table
+-- session_movements`.
+--
+-- Symptom: clicking "+ Add off-plan movement" on a freestyle session
+-- fails with the permission-denied error, even though the table
+-- exists, RLS is configured, and SELECT/INSERT/DELETE are granted.
+--
+-- Fix: add UPDATE to the authenticated GRANT. RLS already restricts
+-- which rows can be updated (it would block real updates because the
+-- INSERT policy is the only one with WITH CHECK), but the GRANT is
+-- required for the function to even parse.
+
+GRANT UPDATE ON public.session_movements TO authenticated;

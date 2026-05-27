@@ -414,6 +414,13 @@
       "tag": "0062_session_movements_grants",
       "when": 1781605200000,
       "breakpoints": false
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "tag": "0063_session_movements_grant_update",
+      "when": 1781610000000,
+      "breakpoints": false
     }
   ]
 }
