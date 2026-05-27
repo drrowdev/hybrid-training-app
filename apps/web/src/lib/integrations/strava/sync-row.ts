@@ -31,6 +31,7 @@ export type StravaSyncRow = {
     duration_sec: number;
     distance_km: number | null;
     avg_hr_bpm: number | null;
+    max_hr_bpm: number | null;
     rpe: number | null;
     strava_activity_id: string;
     external_source: "strava";
@@ -82,6 +83,7 @@ export function buildSyncRow(
       duration_sec: duration,
       distance_km: activity.distance > 0 ? Number((activity.distance / 1000).toFixed(3)) : null,
       avg_hr_bpm: activity.average_heartrate != null ? Math.round(activity.average_heartrate) : null,
+      max_hr_bpm: activity.max_heartrate != null ? Math.round(activity.max_heartrate) : null,
       rpe,
       strava_activity_id: String(activity.id),
       external_source: "strava",
