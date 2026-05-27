@@ -2,14 +2,18 @@
  * session_movements server-action tests.
  *
  * Asserts the add/remove contract that backs the freestyle persistence
- * flow:
- *   - add: success, repeat is no-op, unauthorised user blocked,
- *     completed session is blocked.
- *   - remove: success, blocked when any set_logs row exists for the
- *     pair, unauthorised user blocked.
+ * flow now that the two race-prone read+write sequences live behind
+ * Postgres RPCs (`add_session_movement`, `remove_session_movement`).
  *
- * Mirrors the in-memory-store mock pattern from `soft-delete.test.ts`
- * and `swap-actions.test.ts` so we don't pull in a real Postgres.
+ * The atomicity itself is a property of the SQL — we don't try to
+ * exercise true concurrency in a unit test. What we *do* assert here:
+ *   - add: the action calls the RPC exactly once with the right args
+ *     and does NOT do a separate SELECT max(sort_order) anymore.
+ *   - remove: the action calls the RPC exactly once and surfaces the
+ *     `has_set_logs` reason as the expected user-facing error;
+ *     `not_present` is treated as success.
+ *   - ownership / completed-session guards still live in the action
+ *     layer and short-circuit before the RPC fires.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -40,16 +44,22 @@ const COMPLETED_SESSION_ID = "10000000-0000-4000-8000-000000000012";
 const MOVEMENT_ID = "20000000-0000-4000-8000-0000000000a1";
 const MOVEMENT_ID_2 = "20000000-0000-4000-8000-0000000000a2";
 
+type RpcCall = { fn: string; args: Record<string, unknown> };
+
 const store: {
   sessions: SessionRow[];
   sessionMovements: SessionMovementRow[];
   setLogs: SetLogRow[];
   currentUserId: string;
+  rpcCalls: RpcCall[];
+  selectCalls: string[];
 } = {
   sessions: [],
   sessionMovements: [],
   setLogs: [],
   currentUserId: SELF_USER,
+  rpcCalls: [],
+  selectCalls: [],
 };
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -73,43 +83,88 @@ vi.mock("@/lib/supabase/server", () => {
     return [];
   };
 
+  const handleRpc = (fn: string, args: Record<string, unknown>) => {
+    store.rpcCalls.push({ fn, args });
+
+    if (fn === "add_session_movement") {
+      const sessionId = args.p_session_id as string;
+      const movementId = args.p_movement_id as string;
+      const userId = args.p_user_id as string;
+      const existing = store.sessionMovements.find(
+        (r) => r.session_id === sessionId && r.movement_id === movementId,
+      );
+      if (existing) {
+        return {
+          data: [
+            {
+              session_id: existing.session_id,
+              movement_id: existing.movement_id,
+              sort_order: existing.sort_order,
+            },
+          ],
+          error: null,
+        };
+      }
+      const maxSort = store.sessionMovements
+        .filter((r) => r.session_id === sessionId)
+        .reduce((acc, r) => Math.max(acc, r.sort_order), 0);
+      const sortOrder = maxSort + 10;
+      store.sessionMovements.push({
+        session_id: sessionId,
+        movement_id: movementId,
+        user_id: userId,
+        sort_order: sortOrder,
+        added_at: new Date().toISOString(),
+      });
+      return {
+        data: [{ session_id: sessionId, movement_id: movementId, sort_order: sortOrder }],
+        error: null,
+      };
+    }
+
+    if (fn === "remove_session_movement") {
+      const sessionId = args.p_session_id as string;
+      const movementId = args.p_movement_id as string;
+      const hasLogs = store.setLogs.some(
+        (sl) => sl.session_id === sessionId && sl.movement_id === movementId,
+      );
+      if (hasLogs) {
+        return { data: [{ deleted: false, reason: "has_set_logs" }], error: null };
+      }
+      const before = store.sessionMovements.length;
+      store.sessionMovements = store.sessionMovements.filter(
+        (r) => !(r.session_id === sessionId && r.movement_id === movementId),
+      );
+      if (store.sessionMovements.length === before) {
+        return { data: [{ deleted: true, reason: "not_present" }], error: null };
+      }
+      return { data: [{ deleted: true, reason: "removed" }], error: null };
+    }
+
+    return { data: null, error: { message: `unmocked rpc ${fn}` } };
+  };
+
   return {
     createClient: async () => ({
       auth: { getUser: async () => ({ data: { user: { id: store.currentUserId } } }) },
+      rpc: (fn: string, args: Record<string, unknown>) =>
+        Promise.resolve(handleRpc(fn, args)),
       from: (table: string) => {
         const state: {
-          op?: "select" | "upsert" | "delete";
-          upsertRow?: Record<string, unknown>;
-          upsertOpts?: { onConflict?: string; ignoreDuplicates?: boolean };
+          op?: "select";
           eqs: Array<[string, unknown]>;
           ises: Array<[string, unknown]>;
-          orderCol?: string;
-          orderAsc?: boolean;
-          limitN?: number;
-          headCount?: boolean;
-        } = { eqs: [], ises: [] };
+          selectedTable: string;
+        } = { eqs: [], ises: [], selectedTable: table };
 
         const filtered = () =>
           tableRows(table).filter((r) => matches(r, state.eqs, state.ises));
 
         const builder: Record<string, unknown> = {};
         const api = {
-          select: ((_cols?: string, opts?: { count?: string; head?: boolean }) => {
+          select: ((_cols?: string) => {
             state.op = "select";
-            if (opts?.head) state.headCount = true;
-            return builder;
-          }) as (...a: never[]) => unknown,
-          upsert: ((
-            row: Record<string, unknown>,
-            opts?: { onConflict?: string; ignoreDuplicates?: boolean },
-          ) => {
-            state.op = "upsert";
-            state.upsertRow = row;
-            state.upsertOpts = opts;
-            return builder;
-          }) as (...a: never[]) => unknown,
-          delete: (() => {
-            state.op = "delete";
+            store.selectCalls.push(table);
             return builder;
           }) as (...a: never[]) => unknown,
           eq: ((col: string, val: unknown) => {
@@ -120,72 +175,12 @@ vi.mock("@/lib/supabase/server", () => {
             state.ises.push([col, val]);
             return builder;
           }) as (...a: never[]) => unknown,
-          order: ((col: string, opts?: { ascending?: boolean }) => {
-            state.orderCol = col;
-            state.orderAsc = opts?.ascending ?? true;
-            return builder;
-          }) as (...a: never[]) => unknown,
-          limit: ((n: number) => {
-            state.limitN = n;
-            return builder;
-          }) as (...a: never[]) => unknown,
           maybeSingle: (() => {
             if (state.op === "select") {
-              let rows = filtered();
-              if (state.orderCol) {
-                const col = state.orderCol;
-                const asc = state.orderAsc ?? true;
-                rows = [...rows].sort((a, b) => {
-                  const av = (a[col] as number | string | null) ?? 0;
-                  const bv = (b[col] as number | string | null) ?? 0;
-                  return av < bv ? (asc ? -1 : 1) : av > bv ? (asc ? 1 : -1) : 0;
-                });
-              }
-              if (state.limitN != null) rows = rows.slice(0, state.limitN);
+              const rows = filtered();
               return Promise.resolve({ data: rows[0] ?? null, error: null });
             }
             return Promise.resolve({ data: null, error: null });
-          }) as (...a: never[]) => unknown,
-          then: ((resolve: (v: unknown) => unknown) => {
-            if (state.op === "upsert") {
-              const row = state.upsertRow!;
-              const pk = (state.upsertOpts?.onConflict ?? "").split(",");
-              const exists = (
-                store.sessionMovements as unknown as Record<string, unknown>[]
-              ).some((r) => pk.every((c) => r[c] === row[c]));
-              if (!exists) {
-                store.sessionMovements.push({
-                  session_id: row.session_id as string,
-                  movement_id: row.movement_id as string,
-                  user_id: row.user_id as string,
-                  sort_order: row.sort_order as number,
-                  added_at: new Date().toISOString(),
-                });
-              } else if (!state.upsertOpts?.ignoreDuplicates) {
-                // emulate update-on-conflict (unused today)
-                const idx = (
-                  store.sessionMovements as unknown as Record<string, unknown>[]
-                ).findIndex((r) => pk.every((c) => r[c] === row[c]));
-                Object.assign(store.sessionMovements[idx]!, row);
-              }
-              return Promise.resolve(resolve({ data: null, error: null, count: null }));
-            }
-            if (state.op === "delete") {
-              const before = tableRows(table).length;
-              const kept = tableRows(table).filter((r) => !matches(r, state.eqs, state.ises));
-              if (table === "session_movements") {
-                store.sessionMovements = kept as unknown as SessionMovementRow[];
-              }
-              return Promise.resolve(
-                resolve({ data: null, error: null, count: before - kept.length }),
-              );
-            }
-            if (state.op === "select" && state.headCount) {
-              return Promise.resolve(
-                resolve({ data: null, error: null, count: filtered().length }),
-              );
-            }
-            return Promise.resolve(resolve({ data: filtered(), error: null }));
           }) as (...a: never[]) => unknown,
         };
         Object.assign(builder, api);
@@ -223,6 +218,8 @@ beforeEach(() => {
   ];
   store.sessionMovements = [];
   store.setLogs = [];
+  store.rpcCalls = [];
+  store.selectCalls = [];
 });
 
 describe("addSessionMovementAction", () => {
@@ -247,6 +244,23 @@ describe("addSessionMovementAction", () => {
     expect(second.sort_order).toBe(20);
   });
 
+  it("only calls the add_session_movement RPC — no separate SELECT max(sort_order)", async () => {
+    const { addSessionMovementAction } = await import("../session-movement-actions");
+    await addSessionMovementAction(SESSION_ID, MOVEMENT_ID);
+    const adds = store.rpcCalls.filter((c) => c.fn === "add_session_movement");
+    expect(adds).toHaveLength(1);
+    expect(adds[0]!.args).toEqual({
+      p_session_id: SESSION_ID,
+      p_movement_id: MOVEMENT_ID,
+      p_user_id: SELF_USER,
+    });
+    // The only table SELECT the action should still do is the
+    // ownership read on `sessions`; it must NOT read `session_movements`
+    // anymore — that lookup is now atomic with the insert inside the RPC.
+    expect(store.selectCalls).not.toContain("session_movements");
+    expect(store.selectCalls).toContain("sessions");
+  });
+
   it("is idempotent — repeated add of the same movement is a no-op", async () => {
     const { addSessionMovementAction } = await import("../session-movement-actions");
     await addSessionMovementAction(SESSION_ID, MOVEMENT_ID);
@@ -261,6 +275,8 @@ describe("addSessionMovementAction", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/not found/i);
     expect(store.sessionMovements).toHaveLength(0);
+    // Ownership check must short-circuit before the RPC fires.
+    expect(store.rpcCalls).toHaveLength(0);
   });
 
   it("rejects once the session is completed", async () => {
@@ -269,6 +285,7 @@ describe("addSessionMovementAction", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/completed/i);
     expect(store.sessionMovements).toHaveLength(0);
+    expect(store.rpcCalls).toHaveLength(0);
   });
 });
 
@@ -281,6 +298,12 @@ describe("removeSessionMovementAction", () => {
     const result = await removeSessionMovementAction(SESSION_ID, MOVEMENT_ID);
     expect(result).toEqual({ ok: true });
     expect(store.sessionMovements).toHaveLength(0);
+    const removes = store.rpcCalls.filter((c) => c.fn === "remove_session_movement");
+    expect(removes).toHaveLength(1);
+    expect(removes[0]!.args).toEqual({
+      p_session_id: SESSION_ID,
+      p_movement_id: MOVEMENT_ID,
+    });
   });
 
   it("refuses removal once any set_logs row exists for the pair", async () => {
@@ -293,6 +316,20 @@ describe("removeSessionMovementAction", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/Done with this movement/i);
     expect(store.sessionMovements).toHaveLength(1);
+    // The RPC returned has_set_logs; the action must not retry or
+    // fall back to a delete path.
+    const removes = store.rpcCalls.filter((c) => c.fn === "remove_session_movement");
+    expect(removes).toHaveLength(1);
+  });
+
+  it("treats already-removed (not_present) as success without an error", async () => {
+    const { removeSessionMovementAction } = await import("../session-movement-actions");
+    // Nothing in session_movements for (SESSION_ID, MOVEMENT_ID), no
+    // set_logs either → RPC reports not_present.
+    const result = await removeSessionMovementAction(SESSION_ID, MOVEMENT_ID);
+    expect(result).toEqual({ ok: true });
+    const removes = store.rpcCalls.filter((c) => c.fn === "remove_session_movement");
+    expect(removes).toHaveLength(1);
   });
 
   it("rejects when the session is not owned by the caller", async () => {
@@ -310,5 +347,7 @@ describe("removeSessionMovementAction", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/not found/i);
     expect(store.sessionMovements).toHaveLength(1);
+    // Ownership check must short-circuit before the RPC fires.
+    expect(store.rpcCalls).toHaveLength(0);
   });
 });

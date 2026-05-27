@@ -4,14 +4,21 @@
  * Server actions for the `session_movements` persistence layer that
  * backs the freestyle "+ Add off-plan movement" surface.
  *
- * - `addSessionMovementAction`: idempotent insert. Verifies the
- *   session is owned by the caller and not yet completed; computes the
- *   next sort_order as max+10 to leave reorder gaps; ON CONFLICT DO
- *   NOTHING for repeat adds.
- * - `removeSessionMovementAction`: hard delete. Verifies ownership and
- *   refuses with a friendly error if any `set_logs` row already exists
- *   for the pair — once you've logged a set the right action is "Done
- *   with this movement", not "Remove".
+ * - `addSessionMovementAction`: idempotent insert via the
+ *   `add_session_movement` RPC. Verifies the session is owned by the
+ *   caller and not yet completed; the RPC computes the next
+ *   sort_order as max+10 atomically (MAX + INSERT inside a single
+ *   statement) so two concurrent adds can't collide on the same
+ *   sort_order. Repeat adds of the same (session, movement) return
+ *   the existing row — still `{ ok: true }` so the optimistic UI
+ *   settles.
+ * - `removeSessionMovementAction`: hard delete via the
+ *   `remove_session_movement` RPC. Verifies ownership; the RPC does
+ *   a single `DELETE ... WHERE NOT EXISTS (set_logs …)` so the
+ *   "no set logged yet" guard is evaluated atomically with the
+ *   delete. The RPC reports `has_set_logs` (blocked) vs
+ *   `not_present` / `removed` (success); already-removed counts as
+ *   success because the caller's intent is satisfied.
  *
  * Both follow the actions.ts pattern: `getAuthUser()` first, then a
  * `.eq('user_id', user.id)` defence-in-depth filter on top of RLS, and
@@ -46,7 +53,9 @@ export async function addSessionMovementAction(
   if (!user) return { ok: false, error: "Not signed in." };
 
   // Ownership + not-yet-completed guard. The defence-in-depth user_id
-  // filter belt-and-braces the RLS policy on `sessions`.
+  // filter belt-and-braces the RLS policy on `sessions`. This stays
+  // in the action layer because the "session already completed"
+  // policy is a UX concern that doesn't belong in the RPC.
   const { data: sessionRow, error: sessErr } = await supabase
     .from("sessions")
     .select("id, completed_at, deleted_at")
@@ -60,35 +69,16 @@ export async function addSessionMovementAction(
     return { ok: false, error: "Session is already completed." };
   }
 
-  // Compute next sort_order = max(existing) + 10. Leaves gaps so a
-  // future drag-to-reorder can slot a row between two existing ones
-  // without renumbering. First add lands at 10.
-  const { data: existing, error: existErr } = await supabase
-    .from("session_movements")
-    .select("sort_order")
-    .eq("session_id", parsed.data.sessionId)
-    .eq("user_id", user.id)
-    .order("sort_order", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (existErr) return { ok: false, error: existErr.message };
-  const nextSortOrder = ((existing?.sort_order as number | null) ?? 0) + 10;
-
-  // Idempotent insert. The PK is (session_id, movement_id) so a repeat
-  // add of the same movement is a no-op; we still return ok so the
-  // client UI can settle on the same optimistic state regardless.
-  const { error: insErr } = await supabase
-    .from("session_movements")
-    .upsert(
-      {
-        session_id: parsed.data.sessionId,
-        movement_id: parsed.data.movementId,
-        user_id: user.id,
-        sort_order: nextSortOrder,
-      },
-      { onConflict: "session_id,movement_id", ignoreDuplicates: true },
-    );
-  if (insErr) return { ok: false, error: insErr.message };
+  // Atomic add: MAX(sort_order) + INSERT live inside the same SQL
+  // statement, so two concurrent adds can't land on the same
+  // sort_order. Idempotent — re-add of the same (session, movement)
+  // returns the existing row.
+  const { error: rpcErr } = await supabase.rpc("add_session_movement", {
+    p_session_id: parsed.data.sessionId,
+    p_movement_id: parsed.data.movementId,
+    p_user_id: user.id,
+  });
+  if (rpcErr) return { ok: false, error: rpcErr.message };
 
   revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
   return { ok: true };
@@ -110,7 +100,9 @@ export async function removeSessionMovementAction(
   if (!user) return { ok: false, error: "Not signed in." };
 
   // Ownership guard — we read the session row via the user_id filter
-  // so RLS + the explicit filter agree on access.
+  // so RLS + the explicit filter agree on access. Stays in the action
+  // layer so the "session not found" error path is consistent with
+  // the rest of the action surface.
   const { data: sessionRow, error: sessErr } = await supabase
     .from("sessions")
     .select("id")
@@ -120,30 +112,28 @@ export async function removeSessionMovementAction(
   if (sessErr) return { ok: false, error: sessErr.message };
   if (!sessionRow) return { ok: false, error: "Session not found." };
 
-  // Refuse removal once any set is logged against this (session,
-  // movement). The user-facing message points to the "Done with this
-  // movement" alternative so the UI doesn't have to translate.
-  const { count, error: countErr } = await supabase
-    .from("set_logs")
-    .select("id", { count: "exact", head: true })
-    .eq("session_id", parsed.data.sessionId)
-    .eq("movement_id", parsed.data.movementId);
-  if (countErr) return { ok: false, error: countErr.message };
-  if ((count ?? 0) > 0) {
-    return {
-      ok: false,
-      error:
-        "Can't remove a movement once you've logged a set against it. Use 'Done with this movement' instead.",
-    };
-  }
+  // Atomic remove: the RPC does `DELETE … WHERE NOT EXISTS (set_logs)`
+  // in a single statement, so another tab logging a set in between
+  // can no longer race past the "no sets logged yet" guard. The RPC
+  // returns (deleted, reason) so we can surface the same friendly
+  // message the UI used to render.
+  const { data, error: rpcErr } = await supabase.rpc("remove_session_movement", {
+    p_session_id: parsed.data.sessionId,
+    p_movement_id: parsed.data.movementId,
+  });
+  if (rpcErr) return { ok: false, error: rpcErr.message };
 
-  const { error: delErr } = await supabase
-    .from("session_movements")
-    .delete()
-    .eq("session_id", parsed.data.sessionId)
-    .eq("movement_id", parsed.data.movementId)
-    .eq("user_id", user.id);
-  if (delErr) return { ok: false, error: delErr.message };
+  const row = Array.isArray(data) ? (data[0] as { deleted?: boolean; reason?: string } | undefined) : undefined;
+  if (!row?.deleted) {
+    if (row?.reason === "has_set_logs") {
+      return {
+        ok: false,
+        error:
+          "Can't remove a movement once you've logged a set against it. Use 'Done with this movement' instead.",
+      };
+    }
+    return { ok: false, error: "Couldn't remove movement." };
+  }
 
   revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
   return { ok: true };
