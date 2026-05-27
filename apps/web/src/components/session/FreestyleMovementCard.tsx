@@ -35,6 +35,7 @@ import {
   SET_KIND_LABELS,
   type SetKind,
 } from "@/lib/sessions/set-kind-labels";
+import { DisclosureArrow } from "./DisclosureArrow";
 
 export type { SetKind };
 
@@ -269,8 +270,8 @@ export function FreestyleMovementCard({
           <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
             {effectiveLoggedCount} logged
           </span>
-          <span aria-hidden="true" style={{ color: "var(--cp-text-muted)" }}>
-            {collapsed ? "▸" : "▾"}
+          <span style={{ display: "inline-flex", alignItems: "center", color: "var(--cp-text-muted)" }}>
+            <DisclosureArrow open={!collapsed} />
           </span>
         </button>
 
@@ -401,12 +402,16 @@ export function FreestyleMovementCard({
               style={{
                 all: "unset",
                 cursor: "pointer",
-                fontSize: 12,
+                fontSize: 13,
                 color: "var(--cp-text-muted)",
                 padding: "2px 0",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
               }}
             >
-              Set type: {SET_KIND_LABELS[setKind].label} ▾
+              <span>Set type: {SET_KIND_LABELS[setKind].label}</span>
+              <DisclosureArrow open={false} size={16} />
             </button>
           ) : (
             <div id={`freestyle-chips-${movement.id}`}>
