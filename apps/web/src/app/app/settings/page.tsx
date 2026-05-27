@@ -139,6 +139,13 @@ export default async function SettingsPage() {
           description="Time, feedback, warmups, connections."
           testId="settings-hub-preferences"
         />
+        <SettingsHubCard
+          href="/app/settings/hr-zones"
+          icon="💓"
+          title="Heart-rate zones"
+          description="%Max, %HRR, or %LTHR. Powers HR-aware stats."
+          testId="settings-hub-hr-zones"
+        />
       </div>
     </main>
   );

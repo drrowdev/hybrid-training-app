@@ -44,8 +44,8 @@ export type ZoneTotals = Record<Zone, number>;
 const ZONES: Zone[] = ["Z1", "Z2", "Z3", "Z4", "Z5"];
 
 /**
- * Build default zone bands from a max-HR value. Uses the Karvonen-style
- * % HRmax bands common in entry-level coaching templates (Z1 < 60%,
+ * Build default zone bands from a max-HR value. Uses the % HRmax
+ * bands common in entry-level coaching templates (Z1 < 60%,
  * Z2 60–70%, Z3 70–80%, Z4 80–90%, Z5 ≥ 90%).
  */
 export function zoneBandsFromMaxHr(hrMax: number): ZoneBands {
@@ -55,6 +55,103 @@ export function zoneBandsFromMaxHr(hrMax: number): ZoneBands {
     z3Max: hrMax * 0.8,
     z4Max: hrMax * 0.9,
   };
+}
+
+/** Method the user picked for defining their zones. */
+export type HrMethod = "max" | "hrr" | "lthr";
+
+/** Discriminated inputs for `computeZoneBands`. */
+export type HrZoneInputs =
+  | { method: "max"; hrMax: number }
+  | { method: "hrr"; hrMax: number; hrResting: number }
+  | { method: "lthr"; hrLthr: number };
+
+/** Plausibility ranges for self-reported HR values. */
+export const HR_MAX_RANGE = { min: 100, max: 220 } as const;
+export const HR_RESTING_RANGE = { min: 30, max: 100 } as const;
+export const HR_LTHR_RANGE = { min: 100, max: 200 } as const;
+
+function inRange(n: unknown, lo: number, hi: number): n is number {
+  return typeof n === "number" && Number.isFinite(n) && n >= lo && n <= hi;
+}
+
+/**
+ * Validate raw user inputs for a given method. Returns null when any
+ * required field is missing or out of range. Useful for previewing
+ * computed bands in the settings UI without throwing on every keystroke.
+ */
+export function validateHrZoneInputs(inputs: Partial<HrZoneInputs> & { method: HrMethod }):
+  | HrZoneInputs
+  | null {
+  if (inputs.method === "max") {
+    if (!inRange(inputs.hrMax, HR_MAX_RANGE.min, HR_MAX_RANGE.max)) return null;
+    return { method: "max", hrMax: inputs.hrMax };
+  }
+  if (inputs.method === "hrr") {
+    if (!inRange(inputs.hrMax, HR_MAX_RANGE.min, HR_MAX_RANGE.max)) return null;
+    if (!inRange(inputs.hrResting, HR_RESTING_RANGE.min, HR_RESTING_RANGE.max)) return null;
+    // Karvonen is only meaningful when max > resting.
+    if (inputs.hrResting >= inputs.hrMax) return null;
+    return { method: "hrr", hrMax: inputs.hrMax, hrResting: inputs.hrResting };
+  }
+  if (inputs.method === "lthr") {
+    if (!inRange(inputs.hrLthr, HR_LTHR_RANGE.min, HR_LTHR_RANGE.max)) return null;
+    return { method: "lthr", hrLthr: inputs.hrLthr };
+  }
+  return null;
+}
+
+/**
+ * Compute Z1–Z5 upper-edge boundaries from method inputs. Throws on
+ * invalid inputs — call `validateHrZoneInputs` first when you want
+ * silent failure (the settings UI does this on every keystroke).
+ *
+ * Formulas:
+ *  - `max`: Z1<60%, Z2 60–70, Z3 70–80, Z4 80–90, Z5 ≥ 90 of HRmax.
+ *  - `hrr` (Karvonen): bands expressed as %HRR, anchored at resting:
+ *      bpm = resting + pct × (max − resting). Z1<50%, Z2 50–60,
+ *      Z3 60–70, Z4 70–85, Z5 ≥ 85.
+ *  - `lthr` (Friel, 5-zone simplified): %LTHR breakpoints
+ *      Z1<81%, Z2 81–89, Z3 90–93, Z4 94–99, Z5 ≥ 100. Friel's full
+ *      system has Z5a/5b/5c — we collapse those to a single Z5 to
+ *      match the rest of the app's 5-zone model.
+ */
+export function computeZoneBands(inputs: HrZoneInputs): ZoneBands {
+  const validated = validateHrZoneInputs(inputs);
+  if (!validated) throw new Error("Invalid heart-rate zone inputs");
+  if (validated.method === "max") {
+    return zoneBandsFromMaxHr(validated.hrMax);
+  }
+  if (validated.method === "hrr") {
+    const { hrMax, hrResting } = validated;
+    const r = hrResting;
+    const span = hrMax - hrResting;
+    return {
+      z1Max: r + 0.5 * span,
+      z2Max: r + 0.6 * span,
+      z3Max: r + 0.7 * span,
+      z4Max: r + 0.85 * span,
+    };
+  }
+  const { hrLthr } = validated;
+  return {
+    z1Max: hrLthr * 0.81,
+    z2Max: hrLthr * 0.89,
+    z3Max: hrLthr * 0.93,
+    z4Max: hrLthr * 0.99,
+  };
+}
+
+/**
+ * Same as `computeZoneBands` but returns null instead of throwing.
+ * Handy for live previews where partially-filled forms shouldn't crash.
+ */
+export function computeZoneBandsSafe(
+  inputs: Partial<HrZoneInputs> & { method: HrMethod },
+): ZoneBands | null {
+  const validated = validateHrZoneInputs(inputs);
+  if (!validated) return null;
+  return computeZoneBands(validated);
 }
 
 /** Map a single avg-HR value to a zone using the configured bands. */
