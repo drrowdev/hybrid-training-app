@@ -168,6 +168,49 @@ jobs:
           path: apps/web/playwright-report
           retention-days: 7
 
+  rpc-smoke:
+    name: rpc smoke tests
+    # Post-merge only. Hits the e2e Supabase project — same secrets the
+    # Playwright e2e job uses. PRs don't run it (shared project + we
+    # want PR feedback to stay fast). Catches SQL bugs the mocked unit
+    # tests miss: signature mismatch, ambiguous column refs, missing
+    # GRANT, etc. See apps/web/e2e-rpc/README.md.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: ci
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Run RPC smoke tests
+        env:
+          SMOKE_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
+          SMOKE_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "${SMOKE_SUPABASE_URL}" ] || [ -z "${SMOKE_SUPABASE_SERVICE_ROLE_KEY}" ]; then
+            {
+              echo "## ⚠️ rpc-smoke skipped"
+              echo ""
+              echo "Set the \`E2E_SUPABASE_URL\` + \`E2E_SUPABASE_SERVICE_ROLE_KEY\`"
+              echo "repository secrets to enable this job. Same secrets the"
+              echo "Playwright e2e job uses."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          pnpm --filter @hta/web test:rpc-smoke
+
   prod-drift:
     name: prod migration drift guard
     # Runs only after merge to main. Connects to the production
