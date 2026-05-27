@@ -28,6 +28,7 @@ import { getUserTimezone } from "@/lib/planner/queries";
 import {
   getAdherenceDashboard,
 } from "@/lib/stats/adherence-detail";
+import { getAdherenceForWindow } from "@/lib/stats/adherence";
 import {
   parseAdherenceRange,
   type AdherenceRange,
@@ -42,6 +43,7 @@ import {
   AdherenceRangeView,
   type AdherenceByRange,
 } from "@/components/stats/AdherenceRangeView";
+import { AdherenceBreakdownCard } from "@/components/stats/AdherenceBreakdownCard";
 
 export const dynamic = "force-dynamic";
 
@@ -71,13 +73,14 @@ export default async function StatsAdherencePage({
   // under the old `<Link href="?range=…">` pattern. The cardio cards
   // (run plan / HR zones / pace PRs) are range-invariant.
   const RANGES: AdherenceRange[] = ["12w", "26w", "all"];
-  const [d12w, d26w, dAll, runPlan, hrZones, pacePrs] = await Promise.all([
+  const [d12w, d26w, dAll, runPlan, hrZones, pacePrs, breakdown] = await Promise.all([
     getAdherenceDashboard(supabase, user.id, tz, "12w"),
     getAdherenceDashboard(supabase, user.id, tz, "26w"),
     getAdherenceDashboard(supabase, user.id, tz, "all"),
     getRunPlanAdherence(supabase, user.id, tz),
     getHrZones(supabase, user.id, tz),
     getPacePrs(supabase, user.id, tz),
+    getAdherenceForWindow(supabase, user.id, tz, null),
   ]);
   void RANGES;
 
@@ -121,6 +124,8 @@ export default async function StatsAdherencePage({
           flipping range is a state swap instead of a 1.3–1.4s server
           round-trip (audit F3). */}
       <AdherenceRangeView initialRange={range} byRange={byRange} />
+
+      <AdherenceBreakdownCard result={breakdown} />
 
       <footer
         style={{

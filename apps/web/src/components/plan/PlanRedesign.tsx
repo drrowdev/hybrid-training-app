@@ -32,6 +32,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import type { DragEvent } from "react";
 import { formatPrescriptionItem } from "@/lib/planner/archetypes";
 import { isOverdue, overdueDays } from "@/lib/planner/overdue";
+import { LogNowDateForm } from "@/components/plan/LogNowDateForm";
 import {
   getAdaptationGuidanceForArchetype,
   type AdaptationGuidance,
@@ -95,6 +96,13 @@ export type PlanRedesignProps = {
     id: string,
     notes: string,
   ) => Promise<{ ok?: true; error?: string }>;
+  /**
+   * Server action that starts a session from a planned id, optionally
+   * with a retroactive `performedAt` (YYYY-MM-DD) form field. Wired by
+   * the server page to `startSessionFromPlan`. Used by the overdue
+   * "Log now" date picker.
+   */
+  startSessionAction: (formData: FormData) => Promise<void> | void;
 };
 
 const DOW_FULL = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
@@ -220,6 +228,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
     skipAction,
     unskipAction,
     updateNotesAction,
+    startSessionAction,
   } = props;
 
   // View + filter are pure client-side transforms over the same
@@ -663,6 +672,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
           skipAction={skipAction}
           unskipAction={unskipAction}
           updateNotesAction={updateNotesAction}
+          startSessionAction={startSessionAction}
         />
       )}
 
@@ -1184,6 +1194,7 @@ function SessionDrawer({
   skipAction,
   unskipAction,
   updateNotesAction,
+  startSessionAction,
 }: {
   session: PlanSessionInput;
   today: string;
@@ -1197,6 +1208,7 @@ function SessionDrawer({
     id: string,
     notes: string,
   ) => Promise<{ ok?: true; error?: string }>;
+  startSessionAction: (formData: FormData) => Promise<void> | void;
 }) {
   const [editing, setEditing] = useState(false);
   const [showSwap, setShowSwap] = useState(false);
@@ -1433,16 +1445,16 @@ function SessionDrawer({
                     Mark skipped
                   </button>
                 </form>
-                <Link
-                  href={`${logHrefBase}/${session.id}`}
-                  className="cp-btn primary"
-                  data-testid={`overdue-log-${session.id}`}
-                  onClick={() => setOneTapFired(true)}
-                  aria-disabled={oneTapFired || undefined}
-                  title="Start logging this session now"
-                >
-                  Log now
-                </Link>
+                <LogNowDateForm
+                  plannedId={session.id}
+                  title={session.title}
+                  defaultDateYmd={session.date <= today ? session.date : today}
+                  maxDateYmd={today}
+                  action={startSessionAction}
+                  onOpenChange={(o) => {
+                    if (o) setOneTapFired(true);
+                  }}
+                />
               </>
             )}
           </div>

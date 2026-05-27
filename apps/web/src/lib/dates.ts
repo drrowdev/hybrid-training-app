@@ -105,6 +105,49 @@ export function daysBetweenYmd(start: string, end: string): number {
 }
 
 /**
+ * Convert a YYYY-MM-DD calendar date to the absolute UTC instant that
+ * represents start-of-day (00:00:00.000) in the given IANA timezone.
+ *
+ * Used by surfaces that let the user retroactively log a workout for a
+ * specific calendar date: we need to write a `timestamptz` to the DB
+ * that, when read back through the user's tz, lands on the picked
+ * date — `ymdToUtc("2026-05-19", "Europe/Helsinki")` returns the UTC
+ * instant 2026-05-18T21:00:00Z (or 22:00Z depending on DST).
+ *
+ * Implementation: probe Intl with a candidate UTC midnight, read back
+ * the wall-clock time in the target tz, and shift by the offset. One
+ * pass is enough because IANA offsets don't change within a single
+ * day at midnight.
+ */
+export function ymdToUtc(ymd: string, tz: string): Date {
+  const candidate = parseYmdUtc(ymd);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(candidate);
+  const get = (t: string): number => {
+    const p = parts.find((x) => x.type === t);
+    return p ? Number.parseInt(p.value, 10) : 0;
+  };
+  const asUtcOfWall = Date.UTC(
+    get("year"),
+    get("month") - 1,
+    get("day"),
+    get("hour"),
+    get("minute"),
+    get("second"),
+  );
+  const offsetMs = asUtcOfWall - candidate.getTime();
+  return new Date(candidate.getTime() - offsetMs);
+}
+
+/**
  * ISO weekday for a YYYY-MM-DD string (Mon=0, Sun=6). Timezone-free.
  */
 export function isoWeekdayYmd(ymd: string): number {

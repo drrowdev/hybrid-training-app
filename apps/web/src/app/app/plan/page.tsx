@@ -7,6 +7,7 @@ import {
   endBlock,
   movePlannedSession,
   skipPlannedSession,
+  startSessionFromPlan,
   unskipPlannedSession,
   createBlock,
 } from "@/lib/planner/actions";
@@ -272,6 +273,7 @@ export default async function PlanPage({
         skipAction={skipPlannedSession}
         unskipAction={unskipPlannedSession}
         updateNotesAction={updatePlannedSessionNotes}
+        startSessionAction={startSessionFromPlan}
       />
 
       <section
