@@ -28,6 +28,11 @@ import type {
   addStrengthSet as addStrengthSetAction,
   fillSessionFromPlan as fillSessionFromPlanAction,
 } from "@/lib/sessions/actions";
+import {
+  addSessionMovementAction,
+  removeSessionMovementAction,
+} from "@/lib/sessions/session-movement-actions";
+import type { ResolvedFreestyleMovement } from "@/lib/sessions/freestyle-resolver";
 
 export type MovementCardListProps = {
   sessionId: string;
@@ -65,6 +70,13 @@ export type MovementCardListProps = {
       }
     >
   >;
+  /**
+   * Server-resolved freestyle movement list (persisted +
+   * set_logs-derived union). When supplied, replaces the legacy
+   * "movements derived from set_logs only" computation that used to
+   * live in this component.
+   */
+  resolvedFreestyle?: ReadonlyArray<ResolvedFreestyleMovement>;
 };
 
 export function MovementCardList({
@@ -86,6 +98,7 @@ export function MovementCardList({
   trapBarKg,
   plateInventory,
   bwGateStateByFamily,
+  resolvedFreestyle,
 }: MovementCardListProps) {
   const groups = useMemo(
     () => groupPrescriptionByMovement(prescription),
@@ -112,6 +125,7 @@ export function MovementCardList({
   }, [sets]);
 
   // Freestyle movement ids = logged movements that aren't in the prescription.
+  // Used as the fallback when the server didn't supply a resolved list.
   const freestyleMovements = useMemo(() => {
     const seen = new Map<string, LoggedSet["movement"]>();
     for (const s of sets) {
@@ -123,36 +137,113 @@ export function MovementCardList({
   }, [sets, prescribedIds]);
 
   // User-added (yet-unlogged) freestyle movements — stacked on top of
-  // anything they've already logged off-plan.
+  // anything the server already knows about. Also acts as the
+  // optimistic-remove ledger: we hide ids the user asked to remove
+  // before the next server fetch lands.
   const [pendingFreestyle, setPendingFreestyle] = useState<LoggedSet["movement"][]>([]);
+  const [removedIds, setRemovedIds] = useState<Set<string>>(() => new Set());
   const [showPicker, setShowPicker] = useState(false);
+  const [addBusy, setAddBusy] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
 
-  const freestyleMerged = useMemo(() => {
-    const out: LoggedSet["movement"][] = [...freestyleMovements];
+  // Final ordered list of (movement, loggedSetCount) tuples for the
+  // freestyle render block. When the server supplied a resolved union
+  // we honour it verbatim (modulo optimistic pending/removed). When it
+  // didn't, we fall back to the legacy "derived from sets" shape so
+  // older callers (and tests) keep working.
+  const freestyleMerged = useMemo<
+    Array<{ movement: LoggedSet["movement"]; loggedSetCount: number }>
+  >(() => {
+    const setsCount = new Map<string, number>();
+    for (const s of sets) {
+      if (!s.movement.id) continue;
+      setsCount.set(s.movement.id, (setsCount.get(s.movement.id) ?? 0) + 1);
+    }
+
+    const seen = new Set<string>();
+    const out: Array<{ movement: LoggedSet["movement"]; loggedSetCount: number }> = [];
+
+    if (resolvedFreestyle && resolvedFreestyle.length > 0) {
+      for (const r of resolvedFreestyle) {
+        if (prescribedIds.has(r.movement.id)) continue;
+        if (removedIds.has(r.movement.id)) continue;
+        seen.add(r.movement.id);
+        out.push({ movement: r.movement, loggedSetCount: r.loggedSetCount });
+      }
+    } else {
+      for (const m of freestyleMovements) {
+        if (removedIds.has(m.id)) continue;
+        seen.add(m.id);
+        out.push({ movement: m, loggedSetCount: setsCount.get(m.id) ?? 0 });
+      }
+    }
+
     for (const m of pendingFreestyle) {
-      if (out.find((x) => x.id === m.id)) continue;
+      if (seen.has(m.id)) continue;
       if (prescribedIds.has(m.id)) continue;
-      out.push(m);
+      if (removedIds.has(m.id)) continue;
+      out.push({ movement: m, loggedSetCount: setsCount.get(m.id) ?? 0 });
     }
     return out;
-  }, [freestyleMovements, pendingFreestyle, prescribedIds]);
+  }, [
+    resolvedFreestyle,
+    freestyleMovements,
+    pendingFreestyle,
+    prescribedIds,
+    removedIds,
+    sets,
+  ]);
 
-  const handlePick = (m: MovementSearchResult | null) => {
+  const handlePick = async (m: MovementSearchResult | null) => {
     if (!m) return;
+    setAddError(null);
+    setAddBusy(true);
+    // Optimistic insert into pending. If the server rejects we roll
+    // back so the card never appears.
+    const movement = {
+      id: m.id,
+      slug: m.slug,
+      display_name: m.display_name,
+      primary_region: m.primary_region,
+    };
+    // If the user previously removed this same id during the same
+    // session, drop the tombstone so the card reappears.
+    setRemovedIds((prev) => {
+      if (!prev.has(m.id)) return prev;
+      const next = new Set(prev);
+      next.delete(m.id);
+      return next;
+    });
     setPendingFreestyle((prev) =>
-      prev.find((x) => x.id === m.id)
-        ? prev
-        : [
-            ...prev,
-            {
-              id: m.id,
-              slug: m.slug,
-              display_name: m.display_name,
-              primary_region: m.primary_region,
-            },
-          ],
+      prev.find((x) => x.id === m.id) ? prev : [...prev, movement],
     );
     setShowPicker(false);
+    try {
+      const result = await addSessionMovementAction(sessionId, m.id);
+      if (!result.ok) {
+        // Roll back optimistic add.
+        setPendingFreestyle((prev) => prev.filter((x) => x.id !== m.id));
+        setAddError(result.error);
+      }
+    } catch (err) {
+      setPendingFreestyle((prev) => prev.filter((x) => x.id !== m.id));
+      setAddError(err instanceof Error ? err.message : "Could not add movement.");
+    } finally {
+      setAddBusy(false);
+    }
+  };
+
+  const handleRemove = (movementId: string) => {
+    // Strip from pending (covers the just-added-not-yet-refreshed
+    // case) AND drop into the tombstone set (covers persisted rows
+    // that already came down from the server).
+    setPendingFreestyle((prev) => prev.filter((x) => x.id !== movementId));
+    setRemovedIds((prev) => {
+      if (prev.has(movementId)) return prev;
+      const next = new Set(prev);
+      next.add(movementId);
+      return next;
+    });
   };
 
   // Partition prescribed groups into main vs accessory buckets for
@@ -233,28 +324,42 @@ export function MovementCardList({
       )}
       {otherGroups.map(renderCard)}
 
-      {freestyleMerged.map((m) => (
+      {freestyleMerged.map(({ movement: m, loggedSetCount }) => (
         <FreestyleMovementCard
           key={m.id}
           sessionId={sessionId}
           movement={m}
           loggedSets={setsByMovement.get(m.id) ?? []}
+          loggedSetCount={loggedSetCount}
           tmKg={tmBySlug[m.slug]}
           oneRmKg={oneRmBySlug[m.slug]}
           priorBest={priorBests[m.id]}
           addStrengthSet={addStrengthSet}
+          removeSessionMovement={removeSessionMovementAction}
+          onRemove={handleRemove}
           hapticsEnabled={hapticsEnabled}
           timerSoundEnabled={timerSoundEnabled}
         />
       ))}
 
       {!isComplete && (
-        <div style={{ display: "flex", justifyContent: "center", padding: "8px 0" }}>
+        <div
+          style={{
+            display: "grid",
+            justifyItems: "center",
+            gap: 6,
+            padding: "8px 0",
+          }}
+        >
           {!showPicker ? (
             <button
               type="button"
-              onClick={() => setShowPicker(true)}
+              onClick={() => {
+                setAddError(null);
+                setShowPicker(true);
+              }}
               data-testid="movement-card-add"
+              disabled={addBusy}
               style={{
                 // Small text-link-style button so it doesn't compete with the
                 // movement cards above. Reporting an off-plan movement is
@@ -265,10 +370,11 @@ export function MovementCardList({
                 padding: "4px 14px",
                 fontSize: 12,
                 color: "var(--cp-text-muted)",
-                cursor: "pointer",
+                cursor: addBusy ? "default" : "pointer",
+                opacity: addBusy ? 0.6 : 1,
               }}
             >
-              + Add off-plan movement
+              {addBusy ? "Adding…" : "+ Add off-plan movement"}
             </button>
           ) : (
             <div
@@ -288,6 +394,15 @@ export function MovementCardList({
               >
                 × cancel
               </button>
+            </div>
+          )}
+          {addError && (
+            <div
+              role="alert"
+              data-testid="movement-card-add-error"
+              style={{ fontSize: 12, color: "var(--cp-danger)" }}
+            >
+              {addError}
             </div>
           )}
         </div>

@@ -386,6 +386,13 @@
       "tag": "0058_backfill_experience_bands",
       "when": 1781334060000,
       "breakpoints": false
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "tag": "0059_session_movements",
+      "when": 1781420400000,
+      "breakpoints": false
     }
   ]
 }

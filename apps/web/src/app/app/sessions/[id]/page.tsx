@@ -19,6 +19,10 @@ import {
   type PriorBest,
 } from "@/components/session/SessionLogClient";
 import { SessionWorkArea } from "@/components/session/SessionWorkArea";
+import {
+  resolveFreestyleMovements,
+  type PersistedFreestyle,
+} from "@/lib/sessions/freestyle-resolver";
 import { FinishSessionBar } from "@/components/session/FinishSessionBar";
 import { PostSessionSummary } from "@/components/session/PostSessionSummary";
 import { StravaAutofillBanner, type StravaAutofillMatch } from "@/components/session/StravaAutofillBanner";
@@ -91,7 +95,7 @@ export default async function SessionDetailPage({
   const { data: setsRaw } = await supabase
     .from("set_logs")
     .select(
-      "id, set_index, set_kind, weight_kg, reps, duration_sec, distance_m, rpe, notes, prescription_item_index, skipped, skip_reason, movement:movements(id, slug, display_name, primary_region)",
+      "id, set_index, set_kind, weight_kg, reps, duration_sec, distance_m, rpe, notes, prescription_item_index, skipped, skip_reason, created_at, movement:movements(id, slug, display_name, primary_region)",
     )
     .eq("session_id", id)
     .order("set_index", { ascending: true });
@@ -123,6 +127,53 @@ export default async function SessionDetailPage({
         display_name: "Unknown movement",
         primary_region: "",
       },
+    };
+  });
+
+  // Persisted freestyle additions (migration 0059). The server union of
+  // (set_logs distinct ∪ session_movements) is computed below in
+  // `resolveFreestyleMovements`; the page passes the persisted block
+  // through to the client so a refresh keeps mistakenly-added but
+  // not-yet-logged cards on screen.
+  const { data: sessionMovementsRaw } = await supabase
+    .from("session_movements")
+    .select(
+      "sort_order, added_at, movement:movements(id, slug, display_name, primary_region)",
+    )
+    .eq("session_id", id)
+    .order("sort_order", { ascending: true });
+
+  const persistedFreestyle: PersistedFreestyle[] = (sessionMovementsRaw ?? [])
+    .map((row) => {
+      const m = Array.isArray(row.movement) ? row.movement[0] : row.movement;
+      if (!m?.id) return null;
+      return {
+        movement: {
+          id: m.id as string,
+          slug: (m.slug as string) ?? "",
+          display_name: (m.display_name as string) ?? "Unknown movement",
+          primary_region: (m.primary_region as string) ?? "",
+        },
+        sortOrder: (row.sort_order as number) ?? 0,
+        addedAt:
+          (row.added_at as string | null) ?? new Date(0).toISOString(),
+      };
+    })
+    .filter((x): x is PersistedFreestyle => x !== null);
+
+  // Slim set-log projection for the union resolver. Built here (rather
+  // than passing `sets` directly) so the resolver stays decoupled from
+  // the wider `LoggedSet` shape.
+  const setLogSlimForFreestyle = (setsRaw ?? []).map((s) => {
+    const m = Array.isArray(s.movement) ? s.movement[0] : s.movement;
+    return {
+      movement: {
+        id: (m?.id as string) ?? "",
+        slug: (m?.slug as string) ?? "",
+        display_name: (m?.display_name as string) ?? "Unknown movement",
+        primary_region: (m?.primary_region as string) ?? "",
+      },
+      created_at: (s.created_at as string | null) ?? null,
     };
   });
 
@@ -900,6 +951,15 @@ export default async function SessionDetailPage({
         trapBarKg={trapBarKg}
         plateInventory={plateInventory}
         bwGateStateByFamily={bwGateStateByFamily}
+        resolvedFreestyle={resolveFreestyleMovements({
+          persisted: persistedFreestyle,
+          sets: setLogSlimForFreestyle,
+          prescribedMovementIds: new Set(
+            (plannedPrescription?.items ?? [])
+              .map((item) => item.movementId)
+              .filter((m): m is string => !!m),
+          ),
+        })}
       />
 
       {(cardio && cardio.length > 0) || !isComplete ? (
