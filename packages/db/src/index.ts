@@ -11,6 +11,7 @@ export * from "./schema/profiles";
 export * from "./schema/limitations";
 export * from "./schema/movements";
 export * from "./schema/sessions";
+export * from "./schema/session-movements";
 export * from "./schema/set-logs";
 export * from "./schema/cardio-logs";
 export * from "./schema/wellness";
