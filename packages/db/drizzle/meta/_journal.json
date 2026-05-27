@@ -407,6 +407,13 @@
       "tag": "0061_session_movements_fix_ambiguous",
       "when": 1781600400000,
       "breakpoints": false
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "tag": "0062_session_movements_grants",
+      "when": 1781605200000,
+      "breakpoints": false
     }
   ]
 }
