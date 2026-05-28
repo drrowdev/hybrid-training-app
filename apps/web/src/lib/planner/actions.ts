@@ -92,6 +92,11 @@ import {
 import type { DeclaredExperience } from "@hta/engine";
 import { declaredExperienceToTier, tierInBand } from "./experience-tier";
 import {
+  applyScalarToMaxItems,
+  applyScalarToTargets,
+  onboardingRampScalar,
+} from "./onboarding-ramp";
+import {
   DEFAULT_WARMUP_SCHEME,
   generateWarmupItems,
   resolveWarmupScheme,
@@ -599,8 +604,20 @@ function assemblePrescriptionItems(
         recentlyUsedMovementIds: new Set(),
         tendinopathyActive: limitationsContext.tendinopathyActive,
       },
-      perMuscleTargets: defaultMuscleTargets(),
-      maxItems: archetype.accessoryProfile.aesthetic.itemsPerSession + 4, // small budget for durability + functional fills
+      // Beginner-onboarding ramp (CP-3 heuristic, CP-5 principle):
+      // compress accessory volume for declared beginner/novice users
+      // during their first three block weeks. No-op for everyone else
+      // and from week 4 onward. Main lifts, warmups, and cardio are
+      // not affected — the ramp is applied at the accessory picker
+      // boundary only.
+      perMuscleTargets: applyScalarToTargets(
+        defaultMuscleTargets(),
+        onboardingRampScalar(experience, weekIndex),
+      ),
+      maxItems: applyScalarToMaxItems(
+        archetype.accessoryProfile.aesthetic.itemsPerSession + 4, // small budget for durability + functional fills
+        onboardingRampScalar(experience, weekIndex),
+      ),
       powerEmphasis,
       equipment,
       experience,
