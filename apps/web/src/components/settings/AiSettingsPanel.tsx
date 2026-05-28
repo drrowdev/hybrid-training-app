@@ -331,51 +331,78 @@ function KeyStorageInfoPanel({
 }: {
   provider: Provider;
 }): React.ReactElement {
+  const [showDetails, setShowDetails] = useState(false);
   return (
     <div
       role="region"
       aria-label="Key storage details"
       data-testid="ai-key-storage-info-panel"
-      className="mt-2 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-3 text-xs text-foreground/75 leading-relaxed space-y-2"
+      className="mt-2 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-3 text-xs text-foreground/80 leading-relaxed space-y-3"
     >
-      <p>
-        <strong>Where it lives.</strong> The key is encrypted in this app&apos;s
-        database using a server-side master key that is never stored in the
-        database itself. Even a full database export contains only ciphertext
-        you can&apos;t read without that master key.
+      <p className="text-sm font-medium text-foreground">
+        Your key stays yours.
       </p>
-      <p>
-        <strong>Who can read it.</strong> Only the server can decrypt the key,
-        and only when actually calling {PROVIDER_LABEL[provider]} on your
-        behalf. The plaintext is held in memory for the duration of that one
-        outbound request, then discarded. The browser never receives the key
-        back after you save it — the input clears, and the page only shows a
-        &ldquo;Key configured&rdquo; status.
-      </p>
-      <p>
-        <strong>Defense in depth.</strong> The decrypt and clear database
-        functions require BOTH the vault reference AND your user ID to match.
-        A leaked vault reference alone cannot cross account boundaries.
-      </p>
-      <p>
-        <strong>What we log.</strong> Set / replace / clear events are
-        recorded with a timestamp and provider name — never the key value,
-        never any partial fragment. Per-chat logs record metadata only
-        (token counts, latency, error codes) and explicitly reject raw
-        message content at the type level.
-      </p>
-      <p>
-        <strong>What goes to {PROVIDER_LABEL[provider]}.</strong> Your
-        messages and a snapshot of your training data are sent to the
-        provider when you chat. By default they don&apos;t train on API
-        requests; their full policy is linked below.
-      </p>
-      <p>
-        <strong>How to remove it.</strong> The &ldquo;Clear&rdquo; button
-        deletes the encrypted blob from the database and nulls the provider
-        + vault reference on your profile. Re-entering a key is the only way
-        to restore AI features after clearing.
-      </p>
+      <ul className="space-y-2 pl-0 list-none">
+        <li>
+          <strong>No one but you can read it.</strong> The moment you save the
+          key it&apos;s scrambled with a password that lives outside the
+          database. Even with full database access — including the people
+          running this app — nobody can decrypt your key without that
+          password, and it&apos;s never stored alongside the data.
+        </li>
+        <li>
+          <strong>Your browser never receives it back.</strong> Once you
+          press Save the input clears and the page only shows &ldquo;Key
+          configured&rdquo;. There is no way to retrieve the original from
+          this app — not by you, not by anyone.
+        </li>
+        <li>
+          <strong>Used only when you chat.</strong> Each time you ask a
+          question, the server unscrambles your key in memory just long
+          enough to call {PROVIDER_LABEL[provider]}, then forgets it.
+          Nothing is written down — not in logs, not in caches, not
+          anywhere.
+        </li>
+        <li>
+          <strong>You can revoke at any time.</strong> Press &ldquo;Clear&rdquo;
+          and the encrypted key is deleted from this app immediately. You
+          can also rotate or revoke the key directly in your{" "}
+          {PROVIDER_LABEL[provider]} dashboard if you ever suspect anything.
+        </li>
+      </ul>
+      <button
+        type="button"
+        onClick={() => setShowDetails((v) => !v)}
+        aria-expanded={showDetails}
+        data-testid="ai-key-storage-technical-toggle"
+        className="text-xs text-foreground/60 underline hover:text-foreground/80"
+      >
+        {showDetails ? "Hide technical details" : "Technical details"}
+      </button>
+      {showDetails && (
+        <div
+          data-testid="ai-key-storage-technical-details"
+          className="space-y-2 border-t border-foreground/10 pt-3 text-foreground/65"
+        >
+          <p>
+            Keys are encrypted at rest using pgcrypto symmetric encryption.
+            The master key is sourced from a server-runtime environment
+            variable, never stored in the database. Decryption happens
+            exclusively in server-side code via a SECURITY DEFINER
+            Postgres function that requires both the vault reference AND
+            your user ID to match — a leaked vault reference alone cannot
+            cross account boundaries.
+          </p>
+          <p>
+            Audit events (set / replace / clear) are recorded with a
+            timestamp and the provider name. No key value, no partial
+            fragment, no derived hash is ever stored. Per-chat logs
+            capture only metadata (token counts, latency, error codes);
+            raw message content is rejected at the type level before it
+            can reach the log writer.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
