@@ -24,7 +24,7 @@
  */
 import type { Bucket } from "@hta/domain";
 import { cardioIntensityScalar, type HrZones } from "./cardio-intensity";
-import { rpeMultiplier } from "./set-load";
+import { rpeMultiplier, CARDIO_LOAD_SCALAR } from "./set-load";
 
 export const ALL_BUCKETS: readonly Bucket[] = [
   "neural",
@@ -139,8 +139,6 @@ export type CardioInput = {
   hrZones?: HrZones | null;
 };
 
-const CARDIO_SCALAR = 8; // matches region-ledger so magnitudes line up
-
 /**
  * Per-cardio-block bucket contribution. Running is the heavy hitter for
  * impact + tissue; cycling/rowing/swimming stay in metabolic primarily.
@@ -149,6 +147,11 @@ const CARDIO_SCALAR = 8; // matches region-ledger so magnitudes line up
  * VO2 session at the same duration produce dramatically different loads
  * when HR zone data is available. Falls back to the historical
  * `clamp(rpe/10)` factor when `hrZones` is null.
+ *
+ * The cardio-to-strength unit-matching scalar (`CARDIO_LOAD_SCALAR`)
+ * lives in `set-load.ts` so this file and `region-ledger.ts` cannot
+ * silently diverge — see the constant's doc-block for calibration
+ * status (CP-2/CP-3).
  */
 export function cardioBucketLoad(cardio: CardioInput): BucketLoad {
   const minutes = cardio.durationSec / 60;
@@ -158,7 +161,7 @@ export function cardioBucketLoad(cardio: CardioInput): BucketLoad {
     durationSec: cardio.durationSec,
     rpe: cardio.rpe == null ? null : Number(cardio.rpe),
   });
-  const baseLoad = minutes * intensity * CARDIO_SCALAR;
+  const baseLoad = minutes * intensity * CARDIO_LOAD_SCALAR;
 
   const modality = (cardio.modality ?? "").toLowerCase();
   const isRunning = modality === "run";

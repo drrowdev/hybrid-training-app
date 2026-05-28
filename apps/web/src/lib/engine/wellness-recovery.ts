@@ -46,6 +46,22 @@ export type RecoveryMultiplierInput = {
 /** Minimum historical check-ins required before we trust the baseline. */
 export const MIN_HISTORICAL_POINTS = 3;
 
+/**
+ * Output-range bounds for the recovery multiplier.
+ *
+ * Calibration status (CP-3): asymmetric on purpose. The floor (0.7)
+ * is tighter than the ceiling (1.1) because the engineering judgment
+ * was that under-recovery is harder to self-report than over-recovery
+ * — a slightly-too-tired user under-reports more often than a
+ * slightly-fresh user over-reports. Compressing the floor harder than
+ * the ceiling biases the engine toward conservative ceiling adjustments
+ * when in doubt.
+ *
+ * Calibration status: heuristic, no peer-reviewed source. Documented
+ * per CP-3 (every >1-sig-fig constant needs source-comment or
+ * heuristic tag). Replace with symmetric or data-driven bounds once
+ * prospective validation exists (CP-1).
+ */
 /** Hard floor on the returned multiplier — never collapse the ceiling more than 30%. */
 export const RECOVERY_MULTIPLIER_FLOOR = 0.7;
 /** Hard cap — never inflate the ceiling more than 10% on freshness alone. */
