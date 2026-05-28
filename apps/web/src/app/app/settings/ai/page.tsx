@@ -15,7 +15,7 @@ export default async function AiSettingsPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "ai_opt_in_at, byoai_provider, byoai_key_vault_id, byoai_unlocked_at",
+      "ai_opt_in_at, byoai_provider, byoai_key_vault_id, byoai_model, byoai_unlocked_at",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -24,6 +24,7 @@ export default async function AiSettingsPage() {
   const provider =
     (profile?.byoai_provider as "anthropic" | "openai" | "gemini" | null) ?? null;
   const keyConfigured = profile?.byoai_key_vault_id != null;
+  const savedModel = (profile?.byoai_model as string | null) ?? null;
 
   return (
     <main className="min-h-screen px-6 py-8 max-w-2xl mx-auto space-y-8">
@@ -39,6 +40,7 @@ export default async function AiSettingsPage() {
         initialOptedIn={optedIn}
         initialProvider={provider}
         initialKeyConfigured={keyConfigured}
+        initialModel={savedModel}
       />
     </main>
   );

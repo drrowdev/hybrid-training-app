@@ -57,6 +57,13 @@ export type LlmProviderName = "anthropic" | "openai" | "gemini";
 
 export interface LlmProvider {
   readonly name: LlmProviderName;
+  /**
+   * The resolved model ID this provider instance will invoke. Surfaced
+   * on the interface so callers (orchestrator hashing, observability
+   * rollups, eval cassette filenames) can attribute results to a
+   * specific model without re-reading the user's profile.
+   */
+  readonly model: string;
   chat(args: LlmRequestArgs): AsyncIterable<LlmEvent>;
 }
 

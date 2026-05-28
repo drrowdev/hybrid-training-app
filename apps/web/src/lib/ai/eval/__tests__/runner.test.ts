@@ -10,6 +10,7 @@ const PLACEHOLDER_HASH =
 const placeholderFixture: EvalFixture = {
   name: "placeholder",
   promptHash: PLACEHOLDER_HASH,
+  model: "synthetic-v1",
   matchers: {
     shape: { summary: "string", elements: "array" },
     elementRules: [{ path: "elements", mustContain: "ok" }],

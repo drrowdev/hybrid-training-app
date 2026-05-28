@@ -3,10 +3,13 @@
   "provider": "anthropic",
   "response": {
     "summary": "placeholder cassette — replay harness smoke test",
-    "elements": ["ok"]
+    "elements": [
+      "ok"
+    ]
   },
   "usage": {
     "input_tokens": 0,
     "output_tokens": 0
-  }
+  },
+  "model": "synthetic-v1"
 }

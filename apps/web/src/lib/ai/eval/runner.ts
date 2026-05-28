@@ -24,6 +24,13 @@ export type FixtureMatchers = {
 export type EvalFixture = {
   name: string;
   promptHash: string;
+  /**
+   * Model ID this fixture's cassette was recorded against. Required
+   * since the cassette filename includes a model suffix and the
+   * promptHash incorporates the model. Use "synthetic-v1" for hand-
+   * authored synthetic fixtures that aren't tied to any real model.
+   */
+  model: string;
   matchers: FixtureMatchers;
 };
 
@@ -91,12 +98,14 @@ export async function runFixture(
         "strict + refresh ship with the orchestrator in PR 2.",
     );
   }
-  const cassette = await loadCassette(fixture.promptHash);
+  const cassette = await loadCassette(fixture.promptHash, fixture.model);
   if (!cassette) {
     return {
       fixture: fixture.name,
       ok: false,
-      errors: [`no cassette for promptHash=${fixture.promptHash}`],
+      errors: [
+        `no cassette for promptHash=${fixture.promptHash} model=${fixture.model}`,
+      ],
     };
   }
   const result = applyMatchers(cassette.response, fixture.matchers);

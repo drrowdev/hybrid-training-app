@@ -1,26 +1,39 @@
 "use client";
 
 /**
- * Settings → AI panel. ADR 0002, PR 1.
+ * Settings → AI panel. ADR 0002.
  *
  * Renders:
  *   - master opt-in toggle (`ai-opt-in-toggle`)
  *   - provider picker (`ai-provider-select`)
+ *   - model picker grouped by tier (`ai-model-select`) +
+ *     custom-ID escape hatch (`ai-model-custom-toggle`,
+ *     `ai-model-custom-input`)
  *   - API-key entry + show/hide + save (`ai-key-input`, `ai-key-save`)
- *   - "Key configured · Replace" / "Clear" controls when a key is set
- *     (`ai-key-replace`, `ai-key-clear`)
+ *   - "Key configured · <model>" status + Replace/Clear controls when
+ *     a key is set (`ai-key-replace`, `ai-key-clear`)
  *   - privacy disclosure block with per-provider opt-out doc link
  *
  * The form NEVER displays a saved key back. Server actions encrypt
  * and store on submit; the input is cleared on success.
  */
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import {
   clearByoaiKey,
   setAiOptIn,
   setByoaiKey,
 } from "@/lib/ai/actions";
+import {
+  MODEL_OPTIONS,
+  MODEL_TIER_LABELS,
+  PROVIDER_PRICING_URL,
+  describeModel,
+  findCuratedOption,
+  getDefaultModel,
+  type ModelOption,
+  type ModelTier,
+} from "@/lib/ai/providers/model-catalogue";
 
 type Provider = "anthropic" | "openai" | "gemini";
 
@@ -43,14 +56,18 @@ const PROVIDER_LABEL: Record<Provider, string> = {
   gemini: "Gemini",
 };
 
+const TIER_ORDER: ModelTier[] = ["most_capable", "recommended", "fast_cheap"];
+
 export function AiSettingsPanel({
   initialOptedIn,
   initialProvider,
   initialKeyConfigured,
+  initialModel,
 }: {
   initialOptedIn: boolean;
   initialProvider: Provider | null;
   initialKeyConfigured: boolean;
+  initialModel: string | null;
 }) {
   const [optedIn, setOptedIn] = useState(initialOptedIn);
   const [provider, setProvider] = useState<Provider>(
@@ -64,6 +81,75 @@ export function AiSettingsPanel({
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  // Model picker state. We seed `customMode` from whether the saved
+  // model ID looks curated; if the user previously pasted a custom
+  // ID, the panel re-opens straight into custom mode.
+  const initialCurated =
+    initialModel && initialProvider
+      ? findCuratedOption(initialProvider, initialModel)
+      : null;
+  const [customMode, setCustomMode] = useState(
+    initialModel != null && initialProvider != null && !initialCurated,
+  );
+  const [selectedModel, setSelectedModel] = useState<string>(
+    initialCurated?.id ?? getDefaultModel(provider),
+  );
+  const [customModel, setCustomModel] = useState<string>(
+    initialModel && !initialCurated ? initialModel : "",
+  );
+  const [activeModel, setActiveModel] = useState<string | null>(initialModel);
+
+  // Keep the curated dropdown in sync with the provider — when the
+  // provider changes, default back to that provider's Recommended
+  // tier and reset custom mode unless the user explicitly re-enters
+  // a value.
+  const handleProviderChange = (next: Provider) => {
+    setProvider(next);
+    setSelectedModel(getDefaultModel(next));
+    setCustomModel("");
+    setCustomMode(false);
+  };
+
+  const groupedOptions = useMemo(() => {
+    const groups: Record<ModelTier, ModelOption[]> = {
+      most_capable: [],
+      recommended: [],
+      fast_cheap: [],
+    };
+    for (const opt of MODEL_OPTIONS[provider]) groups[opt.tier].push(opt);
+    return groups;
+  }, [provider]);
+
+  const effectiveModel: string | null = useMemo(() => {
+    if (customMode) {
+      const trimmed = customModel.trim();
+      return trimmed.length > 0 ? trimmed : null;
+    }
+    return selectedModel;
+  }, [customMode, customModel, selectedModel]);
+
+  const saveKey = () => {
+    setError(null);
+    setStatus(null);
+    startTransition(async () => {
+      const r = await setByoaiKey(provider, keyValue, effectiveModel);
+      if (r.ok) {
+        setKeyConfigured(true);
+        setReplaceMode(false);
+        setKeyValue("");
+        setShowKey(false);
+        setActiveModel(effectiveModel ?? getDefaultModel(provider));
+        const label = describeModel(
+          provider,
+          effectiveModel ?? getDefaultModel(provider),
+        );
+        setStatus(`${PROVIDER_LABEL[provider]} key saved · ${label}.`);
+      } else {
+        setError(r.errors.join("; "));
+      }
+    });
+  };
 
   const toggleOptIn = () => {
     const next = !optedIn;
@@ -79,23 +165,6 @@ export function AiSettingsPanel({
     });
   };
 
-  const saveKey = () => {
-    setError(null);
-    setStatus(null);
-    startTransition(async () => {
-      const r = await setByoaiKey(provider, keyValue);
-      if (r.ok) {
-        setKeyConfigured(true);
-        setReplaceMode(false);
-        setKeyValue("");
-        setShowKey(false);
-        setStatus(`${PROVIDER_LABEL[provider]} key saved.`);
-      } else {
-        setError(r.errors.join("; "));
-      }
-    });
-  };
-
   const clearKey = () => {
     setError(null);
     setStatus(null);
@@ -104,12 +173,18 @@ export function AiSettingsPanel({
       if (r.ok) {
         setKeyConfigured(false);
         setReplaceMode(true);
+        setActiveModel(null);
         setStatus("Key cleared.");
       } else {
         setError(r.errors.join("; "));
       }
     });
   };
+
+  const activeModelLabel =
+    activeModel != null
+      ? describeModel(provider, activeModel)
+      : describeModel(provider, getDefaultModel(provider));
 
   return (
     <div className="space-y-6">
@@ -145,7 +220,7 @@ export function AiSettingsPanel({
           Provider
           <select
             value={provider}
-            onChange={(e) => setProvider(e.target.value as Provider)}
+            onChange={(e) => handleProviderChange(e.target.value as Provider)}
             disabled={isPending}
             data-testid="ai-provider-select"
             className="mt-2 block w-full rounded border border-foreground/10 bg-transparent p-2 text-sm"
@@ -159,6 +234,93 @@ export function AiSettingsPanel({
         </label>
       </div>
 
+      {/* Model picker */}
+      <div
+        className="rounded-lg border border-foreground/10 p-4 space-y-3"
+        data-testid="ai-model-section"
+      >
+        <label className="block text-sm">
+          Model
+          <select
+            value={customMode ? "__custom__" : selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            disabled={isPending || customMode}
+            data-testid="ai-model-select"
+            className="mt-2 block w-full rounded border border-foreground/10 bg-transparent p-2 text-sm disabled:opacity-50"
+          >
+            {customMode && (
+              <option value="__custom__">
+                Custom: {customModel.trim() || "(enter ID below)"}
+              </option>
+            )}
+            {TIER_ORDER.map((tier) =>
+              groupedOptions[tier].length === 0 ? null : (
+                <optgroup key={tier} label={MODEL_TIER_LABELS[tier]}>
+                  {groupedOptions[tier].map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label} · {opt.costBand}
+                    </option>
+                  ))}
+                </optgroup>
+              ),
+            )}
+          </select>
+        </label>
+
+        <p className="text-xs text-foreground/60 leading-relaxed">
+          Different models have very different costs. The Recommended
+          tier is a good starting point; switch to Most capable for
+          hard questions or Fast &amp; cheap to minimize your bill.
+          The cost band ($–$$$$) is rough — see your provider&apos;s
+          pricing page for exact numbers.
+        </p>
+        <p className="text-xs">
+          <a
+            href={PROVIDER_PRICING_URL[provider]}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline text-foreground/70 hover:text-foreground"
+            data-testid="ai-model-pricing-link"
+          >
+            {PROVIDER_LABEL[provider]} pricing →
+          </a>
+        </p>
+
+        <details
+          open={customMode}
+          className="text-xs"
+          data-testid="ai-model-custom-section"
+        >
+          <summary
+            className="cursor-pointer text-foreground/70 hover:text-foreground"
+            onClick={(e) => {
+              e.preventDefault();
+              setCustomMode((v) => !v);
+            }}
+            data-testid="ai-model-custom-toggle"
+          >
+            {customMode ? "Hide custom model ID" : "Use a custom model ID"}
+          </summary>
+          <div className="mt-2 space-y-2">
+            <input
+              type="text"
+              value={customModel}
+              onChange={(e) => setCustomModel(e.target.value)}
+              disabled={isPending || !customMode}
+              data-testid="ai-model-custom-input"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="e.g. claude-opus-4-7 or gpt-5.4-thinking"
+              className="block w-full rounded border border-foreground/10 bg-transparent p-2 font-mono text-xs disabled:opacity-50"
+            />
+            <p className="text-foreground/60">
+              Custom model IDs work for any model your API key has
+              access to that isn&apos;t in the dropdown above.
+            </p>
+          </div>
+        </details>
+      </div>
+
       {/* Key entry */}
       <div
         className="rounded-lg border border-foreground/10 p-4 space-y-3"
@@ -166,8 +328,8 @@ export function AiSettingsPanel({
       >
         {keyConfigured && !replaceMode ? (
           <div className="space-y-2">
-            <p className="text-sm">
-              Key configured for {PROVIDER_LABEL[provider]}.
+            <p className="text-sm" data-testid="ai-key-configured-status">
+              Key configured · {activeModelLabel}
               <span className="block text-xs text-foreground/60 mt-1">
                 Stored encrypted at rest. The app never displays it back to
                 you.
@@ -231,7 +393,11 @@ export function AiSettingsPanel({
               <button
                 type="button"
                 onClick={saveKey}
-                disabled={isPending || keyValue.length < 8}
+                disabled={
+                  isPending ||
+                  keyValue.length < 8 ||
+                  (customMode && customModel.trim().length === 0)
+                }
                 data-testid="ai-key-save"
                 className="rounded border border-foreground/10 px-3 py-1 text-sm hover:bg-foreground/5 disabled:opacity-50"
               >

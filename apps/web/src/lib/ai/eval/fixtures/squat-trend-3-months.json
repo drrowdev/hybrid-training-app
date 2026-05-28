@@ -6,11 +6,24 @@
   "promptHash": "09ac3d1b10ad3d07e601d67d121cbbc035e44ac3f4ec0c334e2be1f19dd189db",
   "input": "How's my squat going over 3 months?",
   "matchers": {
-    "shape": { "text": "string", "tool_calls": "array" },
+    "shape": {
+      "text": "string",
+      "tool_calls": "array"
+    },
     "elementRules": [
-      { "path": "text", "mustContain": "squat" },
-      { "path": "text", "mustContain": "kg" },
-      { "path": "tool_calls", "mustContain": "getEngineSnapshot" }
+      {
+        "path": "text",
+        "mustContain": "squat"
+      },
+      {
+        "path": "text",
+        "mustContain": "kg"
+      },
+      {
+        "path": "tool_calls",
+        "mustContain": "getEngineSnapshot"
+      }
     ]
-  }
+  },
+  "model": "synthetic-v1"
 }

@@ -19,7 +19,12 @@ import {
   classifyProviderError,
 } from "./types";
 
-const DEFAULT_MODEL = "gpt-4o-mini";
+// Default lives in `./model-catalogue.ts` (getDefaultModel("openai")).
+// This DEFAULT_MODEL is a hard-coded safety net in case the catalogue
+// is somehow not consulted (e.g. unit tests instantiating the
+// provider directly without passing `model`). Keep it in sync with the
+// catalogue's Recommended-tier entry for openai.
+const DEFAULT_MODEL = "gpt-5.1";
 
 type OpenAiLike = {
   chat: {
@@ -33,7 +38,7 @@ export class OpenAiProvider implements LlmProvider {
   readonly name = "openai" as const;
 
   private readonly client: OpenAiLike;
-  private readonly model: string;
+  readonly model: string;
 
   constructor(opts: { apiKey: string; model?: string; client?: OpenAiLike }) {
     this.model = opts.model ?? DEFAULT_MODEL;

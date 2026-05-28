@@ -88,14 +88,21 @@ const TOOLS: LlmTool[] = [GET_ENGINE_SNAPSHOT_TOOL];
  * Compute the deterministic prompt hash used for cassette pinning and
  * observability rollups. Excludes the random `assistantMessageId` and
  * any timestamps — it's a function of the static system prompt, the
- * tool catalogue, and the materialised message history.
+ * tool catalogue, the materialised message history, AND the resolved
+ * model ID.
+ *
+ * Including the model in the hash means a model change invalidates
+ * any cached cassette automatically: a Sonnet response and a Haiku
+ * response for the same prompt are different artefacts and must not
+ * silently share a cassette file.
  */
 export function computePromptHash(
   system: string,
   messages: LlmMessage[],
   tools: LlmTool[],
+  model: string,
 ): string {
-  const payload = JSON.stringify({ system, messages, tools });
+  const payload = JSON.stringify({ system, messages, tools, model });
   return createHash("sha256").update(payload).digest("hex");
 }
 
@@ -177,12 +184,22 @@ export async function runChatTurn(
       validationResult: "failed",
       retryCount: 0,
       latencyMs: Date.now() - t0,
-      promptHash: computePromptHash(SYSTEM_PROMPT, messages, TOOLS),
+      promptHash: computePromptHash(
+        SYSTEM_PROMPT,
+        messages,
+        TOOLS,
+        opts.provider.model,
+      ),
       errorCode: "history-too-large",
     };
   }
 
-  const promptHash = computePromptHash(SYSTEM_PROMPT, messages, TOOLS);
+  const promptHash = computePromptHash(
+    SYSTEM_PROMPT,
+    messages,
+    TOOLS,
+    opts.provider.model,
+  );
   let assistantText = "";
   let usage: LlmUsage = { input_tokens: 0, output_tokens: 0 };
   const toolCalls: Array<{ id: string; name: string; result: unknown }> = [];

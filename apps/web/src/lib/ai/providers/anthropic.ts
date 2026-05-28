@@ -20,7 +20,12 @@ import {
   classifyProviderError,
 } from "./types";
 
-const DEFAULT_MODEL = "claude-3-5-sonnet-latest";
+// Default lives in `./model-catalogue.ts` (getDefaultModel("anthropic")).
+// This DEFAULT_MODEL is a hard-coded safety net in case the catalogue
+// is somehow not consulted (e.g. unit tests instantiating the
+// provider directly without passing `model`). Keep it in sync with the
+// catalogue's Recommended-tier entry for anthropic.
+const DEFAULT_MODEL = "claude-sonnet-4-6";
 const DEFAULT_MAX_TOKENS = 2048;
 
 type AnthropicLike = {
@@ -33,7 +38,7 @@ export class AnthropicProvider implements LlmProvider {
   readonly name = "anthropic" as const;
 
   private readonly client: AnthropicLike;
-  private readonly model: string;
+  readonly model: string;
   private readonly maxTokens: number;
 
   constructor(opts: {

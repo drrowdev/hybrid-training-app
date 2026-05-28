@@ -11,6 +11,7 @@ function stubProvider(streams: LlmEvent[][]): LlmProvider {
   let call = 0;
   return {
     name: "anthropic",
+    model: "stub-model",
     chat(_args: LlmRequestArgs): AsyncIterable<LlmEvent> {
       const events = streams[call++] ?? [];
       return (async function* () {
@@ -124,6 +125,7 @@ describe("orchestrator — runChatTurn", () => {
   it("surfaces provider errors verbatim", async () => {
     const provider: LlmProvider = {
       name: "anthropic",
+      model: "stub-model",
       chat(_args) {
         return (async function* () {
           const err = Object.assign(new Error("boom"), {
@@ -151,11 +153,18 @@ describe("orchestrator — runChatTurn", () => {
   });
 
   it("computePromptHash is stable and deterministic", () => {
-    const h1 = computePromptHash("sys", [{ role: "user", content: "x" }], []);
-    const h2 = computePromptHash("sys", [{ role: "user", content: "x" }], []);
-    const h3 = computePromptHash("sys", [{ role: "user", content: "y" }], []);
+    const h1 = computePromptHash("sys", [{ role: "user", content: "x" }], [], "m");
+    const h2 = computePromptHash("sys", [{ role: "user", content: "x" }], [], "m");
+    const h3 = computePromptHash("sys", [{ role: "user", content: "y" }], [], "m");
     expect(h1).toBe(h2);
     expect(h1).not.toBe(h3);
     expect(h1).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("computePromptHash includes the model — different model → different hash", () => {
+    const msgs = [{ role: "user" as const, content: "x" }];
+    const a = computePromptHash("sys", msgs, [], "claude-sonnet-4-6");
+    const b = computePromptHash("sys", msgs, [], "claude-opus-4-7");
+    expect(a).not.toBe(b);
   });
 });

@@ -16,7 +16,12 @@ import {
   classifyProviderError,
 } from "./types";
 
-const DEFAULT_MODEL = "gemini-1.5-flash-latest";
+// Default lives in `./model-catalogue.ts` (getDefaultModel("gemini")).
+// This DEFAULT_MODEL is a hard-coded safety net in case the catalogue
+// is somehow not consulted (e.g. unit tests instantiating the
+// provider directly without passing `model`). Keep it in sync with the
+// catalogue's Recommended-tier entry for gemini.
+const DEFAULT_MODEL = "gemini-3.5-flash";
 
 type GeminiModelLike = {
   generateContentStream: (args: unknown) => Promise<{
@@ -33,7 +38,7 @@ export class GeminiProvider implements LlmProvider {
   readonly name = "gemini" as const;
 
   private readonly client: GeminiClientLike;
-  private readonly model: string;
+  readonly model: string;
   private readonly system: string | undefined;
 
   constructor(opts: {

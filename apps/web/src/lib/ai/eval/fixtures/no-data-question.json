@@ -6,11 +6,24 @@
   "promptHash": "4723e16e333cdd2f3aa44f11325be32039f7c48e4dd99ae89fa51dc554e5e299",
   "input": "How's my marathon training going?",
   "matchers": {
-    "shape": { "text": "string", "tool_calls": "array" },
+    "shape": {
+      "text": "string",
+      "tool_calls": "array"
+    },
     "elementRules": [
-      { "path": "text", "mustContain": "don't see" },
-      { "path": "text", "mustNotContain": "pace" },
-      { "path": "tool_calls", "mustContain": "getEngineSnapshot" }
+      {
+        "path": "text",
+        "mustContain": "don't see"
+      },
+      {
+        "path": "text",
+        "mustNotContain": "pace"
+      },
+      {
+        "path": "tool_calls",
+        "mustContain": "getEngineSnapshot"
+      }
     ]
-  }
+  },
+  "model": "synthetic-v1"
 }
