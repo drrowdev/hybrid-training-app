@@ -143,7 +143,9 @@ export const limitations = pgTable(
     ).using("gin", t.affectedMovementIds),
     allowedMovementIdsGin: index(
       "limitations_allowed_movement_ids_gin_idx",
-    ).using("gin", t.allowedMovementIds),
+    )
+      .using("gin", t.allowedMovementIds)
+      .where(sql`${t.resolvedAt} IS NULL`),
   }),
 );
 

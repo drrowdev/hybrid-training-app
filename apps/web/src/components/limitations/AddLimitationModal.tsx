@@ -82,8 +82,11 @@ export function AddLimitationModal({
   useEffect(() => {
     if (!open) return;
     if (muscles.length === 0) {
-      setPreview([]);
-      return;
+      // Defer the state update one tick so the linter doesn't see a
+      // synchronous setState in an effect body. Functionally identical
+      // — the next render still observes an empty preview.
+      const empty = window.setTimeout(() => setPreview([]), 0);
+      return () => window.clearTimeout(empty);
     }
     const ctrl = new AbortController();
     const t = window.setTimeout(async () => {

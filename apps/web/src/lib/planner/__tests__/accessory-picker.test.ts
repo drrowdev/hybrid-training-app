@@ -251,6 +251,49 @@ describe("pickAccessoriesForSession — filters", () => {
     expect(picks.map((p) => p.slug)).toContain("back-squat-variant");
   });
 
+  it("region block still drops a movement even if it is in allowedMovementIds (safety priority)", () => {
+    // Critical invariant: the allow-list is a per-exercise muscle-block
+    // override. Region blocks are always a hard safety gate — explicitly
+    // allowing a movement does NOT override its region block. If a future
+    // refactor reorders the filter, this test catches it.
+    const minimalCatalog: CatalogMovement[] = [
+      ...CATALOG.filter((m) =>
+        ["iso1", "hsr1", "plyo1", "carry1", "carry2"].includes(m.id),
+      ),
+      mv({
+        id: "allowed-but-knee-blocked",
+        slug: "knee-loading-squat",
+        primaryRegion: "knee",
+        primaryMuscles: ["quads"],
+        secondaryMuscles: ["adductors"],
+        functionalRoles: ["single_leg"],
+      }),
+    ];
+    const picks = pickAccessoriesForSession({
+      profile: STRENGTH_PROFILE,
+      weekDeloadScale: 1.0,
+      catalog: minimalCatalog,
+      weekContext: [
+        { movementId: "iso1", bulletproofRoles: ["heavy_isometric"], functionalRoles: [], primaryMuscles: [] },
+        { movementId: "hsr1", bulletproofRoles: ["hsr"], functionalRoles: [], primaryMuscles: [] },
+        { movementId: "plyo1", bulletproofRoles: ["plyometric_low"], functionalRoles: [], primaryMuscles: [] },
+        { movementId: "carry1", bulletproofRoles: ["carry"], functionalRoles: ["anti_rotation"], primaryMuscles: [] },
+        { movementId: "carry2", bulletproofRoles: ["carry"], functionalRoles: ["anti_rotation"], primaryMuscles: [] },
+      ],
+      filters: {
+        ...EMPTY_FILTERS,
+        // Both region AND muscle blocked AND the movement is allow-listed.
+        blockedRegions: new Set(["knee"]),
+        blockedMuscles: new Set(["adductors"]),
+        allowedMovementIds: new Set(["allowed-but-knee-blocked"]),
+      },
+      perMuscleTargets: { side_delts: 6 },
+      maxItems: 10,
+    });
+    // Region block wins — the movement must NOT appear, allow-list notwithstanding.
+    expect(picks.map((p) => p.slug)).not.toContain("knee-loading-squat");
+  });
+
   it("prefers supported variants under concurrent stress when biasSupported = true", () => {
     const profile: AccessoryProfile = {
       ...STRENGTH_PROFILE,
