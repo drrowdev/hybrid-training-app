@@ -132,14 +132,13 @@ describe("/api/ai/chat — POST", () => {
     expect(json.errorCode).toBe("auth-failed");
   });
 
-  it("rejects users without AI access with 403", async () => {
+  it("rejects users without a configured BYOAI key with 403", async () => {
     getAuthUserMock.mockResolvedValueOnce({
       data: { user: { id: "u1" } },
     });
     profileMaybeSingle.mockResolvedValueOnce({
       data: {
         timezone: "UTC",
-        ai_opt_in_at: null,
         byoai_provider: null,
         byoai_key_vault_id: null,
         byoai_unlocked_at: null,
@@ -158,7 +157,6 @@ describe("/api/ai/chat — POST", () => {
     profileMaybeSingle.mockResolvedValueOnce({
       data: {
         timezone: "UTC",
-        ai_opt_in_at: "2026-05-01",
         byoai_provider: "anthropic",
         byoai_key_vault_id: "v1",
         byoai_unlocked_at: "2026-01-01",
@@ -260,7 +258,6 @@ describe("/api/ai/chat — POST", () => {
     profileMaybeSingle.mockResolvedValueOnce({
       data: {
         timezone: "UTC",
-        ai_opt_in_at: "2026-05-01",
         byoai_provider: "anthropic",
         byoai_key_vault_id: "v1",
         byoai_unlocked_at: "2026-01-01",

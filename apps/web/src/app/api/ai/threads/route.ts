@@ -23,14 +23,13 @@ export async function GET(): Promise<Response> {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "ai_opt_in_at, byoai_provider, byoai_key_vault_id, byoai_unlocked_at",
+      "byoai_provider, byoai_key_vault_id, byoai_unlocked_at",
     )
     .eq("id", user.id)
     .maybeSingle();
   if (
     !profile ||
     !hasAiAccess({
-      ai_opt_in_at: profile.ai_opt_in_at,
       byoai_provider: profile.byoai_provider,
       byoai_key_vault_id: profile.byoai_key_vault_id,
       byoai_unlocked_at: profile.byoai_unlocked_at,
