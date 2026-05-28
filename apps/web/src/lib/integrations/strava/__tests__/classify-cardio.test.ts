@@ -81,7 +81,7 @@ describe("classifyCardio — kind selection", () => {
   // Boundary pins for the tightened alactic gate (was `< 1200`, now `< 300`).
   // Per CP-5 / Gastin 2001: alactic dominance is a sub-10-s phenomenon;
   // 5 min is the upper-bound proxy for session-level classification.
-  it("alactic boundary: 300 s @ 96% max stays alactic (< is strict, so 300 just falls through to vo2)", () => {
+  it("alactic boundary: 300 s @ 96% max is NOT alactic (< is strict, so 300 falls through to vo2)", () => {
     // The rule is `durationSec < 300`; 300 exactly is NOT alactic.
     const r = classifyCardio({
       avgHrBpm: 140,
