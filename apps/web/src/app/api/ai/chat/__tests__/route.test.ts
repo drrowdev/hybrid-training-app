@@ -51,6 +51,15 @@ vi.mock("@/lib/supabase/server", () => ({
               eq: () => ({ order: () => historySelect() }),
             }),
           };
+        case "ai_call_logs":
+          return {
+            select: () => ({
+              eq: () => ({
+                gte: () =>
+                  Promise.resolve({ count: 0, data: null, error: null }),
+              }),
+            }),
+          };
         default:
           return {};
       }
@@ -239,5 +248,63 @@ describe("/api/ai/chat — POST", () => {
     ]) {
       expect(call[key]).toBeUndefined();
     }
+  });
+
+  it("rejects with 429 when the user is over the per-hour rate limit", async () => {
+    // Override the ai_call_logs mock for this test to return a count
+    // at the cap. The default mock returns 0; we need to inject a high
+    // count without rewriting the createClient mock.
+    getAuthUserMock.mockResolvedValueOnce({
+      data: { user: { id: "u1" } },
+    });
+    profileMaybeSingle.mockResolvedValueOnce({
+      data: {
+        timezone: "UTC",
+        ai_opt_in_at: "2026-05-01",
+        byoai_provider: "anthropic",
+        byoai_key_vault_id: "v1",
+        byoai_unlocked_at: "2026-01-01",
+      },
+    });
+    // Re-import the route with a fresh module cache so we can swap the
+    // supabase mock for one row of `ai_call_logs` that returns count=60.
+    vi.resetModules();
+    vi.doMock("@/lib/supabase/server", () => ({
+      getAuthUser: getAuthUserMock,
+      createClient: async () => ({
+        from(table: string) {
+          if (table === "profiles") {
+            return {
+              select: () => ({
+                eq: () => ({ maybeSingle: profileMaybeSingle }),
+              }),
+            };
+          }
+          if (table === "ai_call_logs") {
+            return {
+              select: () => ({
+                eq: () => ({
+                  gte: () =>
+                    Promise.resolve({ count: 60, data: null, error: null }),
+                }),
+              }),
+            };
+          }
+          return {};
+        },
+      }),
+    }));
+    const { POST } = await import("../route");
+    const r = await POST(
+      new Request("http://localhost/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "hi" }),
+      }),
+    );
+    expect(r.status).toBe(429);
+    const json = await r.json();
+    expect(json.errorCode).toBe("rate-limited");
+    vi.doUnmock("@/lib/supabase/server");
   });
 });

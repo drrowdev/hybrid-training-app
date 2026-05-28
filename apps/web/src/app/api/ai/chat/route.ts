@@ -91,6 +91,27 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
+  // Per-user soft rate limit: max 60 chat turns / hour. Protects the
+  // user's BYOAI budget against runaway loops + stolen sessions.
+  // Counts `ai_call_logs` rows for the user in the last hour. Race
+  // window under concurrent requests is acceptable for v1 — the cap
+  // catches abusive patterns, not 1-2 over the line. Real distributed
+  // rate-limiting (Redis sliding window) is deferred.
+  const hourAgoIso = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { count: recentCalls } = await supabase
+    .from("ai_call_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .gte("created_at", hourAgoIso);
+  const RATE_LIMIT_PER_HOUR = 60;
+  if ((recentCalls ?? 0) >= RATE_LIMIT_PER_HOUR) {
+    return jsonError(
+      429,
+      "rate-limited",
+      `Rate limit reached (${RATE_LIMIT_PER_HOUR} chat turns/hour). Wait a few minutes and try again.`,
+    );
+  }
+
   let body: ChatRequestBody;
   try {
     body = (await req.json()) as ChatRequestBody;
