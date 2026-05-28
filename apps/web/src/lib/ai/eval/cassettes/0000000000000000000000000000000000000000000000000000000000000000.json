@@ -1,0 +1,12 @@
+{
+  "promptHash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "provider": "anthropic",
+  "response": {
+    "summary": "placeholder cassette — replay harness smoke test",
+    "elements": ["ok"]
+  },
+  "usage": {
+    "input_tokens": 0,
+    "output_tokens": 0
+  }
+}
