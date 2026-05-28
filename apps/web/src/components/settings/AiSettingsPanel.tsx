@@ -21,6 +21,7 @@ import {
   setAiOptIn,
   setByoaiKey,
 } from "@/lib/ai/actions";
+import { McpConnectSection } from "./McpConnectSection";
 
 type Provider = "anthropic" | "openai" | "gemini";
 
@@ -113,6 +114,9 @@ export function AiSettingsPanel({
 
   return (
     <div className="space-y-6">
+      {/* MCP connect (ADR 0003) — recommended path for paid AI users. */}
+      <McpConnectSection />
+
       {/* Opt-in */}
       <div
         className="rounded-lg border border-foreground/10 p-4 space-y-2"
