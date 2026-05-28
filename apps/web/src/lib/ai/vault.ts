@@ -48,10 +48,12 @@ export async function storeByoaiKey(
 }
 
 export async function decryptByoaiKey(
+  userId: string,
   vaultId: string,
 ): Promise<string | null> {
   const admin = createAdmin();
   const { data, error } = await admin.rpc("byoai_decrypt_key", {
+    p_user_id: userId,
     p_vault_id: vaultId,
     p_master_key: getMasterKey(),
   });
@@ -61,9 +63,10 @@ export async function decryptByoaiKey(
   return typeof data === "string" ? data : null;
 }
 
-export async function clearByoaiKey(vaultId: string): Promise<void> {
+export async function clearByoaiKey(userId: string, vaultId: string): Promise<void> {
   const admin = createAdmin();
   const { error } = await admin.rpc("byoai_clear_key", {
+    p_user_id: userId,
     p_vault_id: vaultId,
   });
   if (error) {

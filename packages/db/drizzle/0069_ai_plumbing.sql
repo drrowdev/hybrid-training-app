@@ -319,6 +319,7 @@ END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.byoai_decrypt_key(
+  p_user_id uuid,
   p_vault_id uuid,
   p_master_key text
 ) RETURNS text
@@ -329,15 +330,21 @@ AS $$
 DECLARE
   v_text text;
 BEGIN
+  -- Defense-in-depth: even though only service_role can EXECUTE this
+  -- function, require the caller to assert which user_id they're
+  -- decrypting for. A leaked vault_id alone is not enough to cross
+  -- user boundaries; the caller must also know the matching user_id.
   SELECT pgp_sym_decrypt(encrypted_key, p_master_key)
     INTO v_text
     FROM public.byoai_key_secrets
-   WHERE id = p_vault_id;
+   WHERE id = p_vault_id
+     AND user_id = p_user_id;
   RETURN v_text;
 END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.byoai_clear_key(
+  p_user_id uuid,
   p_vault_id uuid
 ) RETURNS void
 LANGUAGE plpgsql
@@ -345,16 +352,19 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  DELETE FROM public.byoai_key_secrets WHERE id = p_vault_id;
+  -- Same defense-in-depth as byoai_decrypt_key.
+  DELETE FROM public.byoai_key_secrets
+    WHERE id = p_vault_id
+      AND user_id = p_user_id;
 END;
 $$;
 
 -- The RPCs are only callable by service_role. The client never sees
 -- the master key, never reads the bytea, never invokes the RPCs.
-REVOKE ALL ON FUNCTION public.byoai_store_key(uuid, text, text)   FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.byoai_decrypt_key(uuid, text)       FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.byoai_clear_key(uuid)               FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.byoai_store_key(uuid, text, text)         FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.byoai_decrypt_key(uuid, uuid, text)       FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.byoai_clear_key(uuid, uuid)               FROM PUBLIC;
 
-GRANT EXECUTE ON FUNCTION public.byoai_store_key(uuid, text, text)   TO service_role;
-GRANT EXECUTE ON FUNCTION public.byoai_decrypt_key(uuid, text)       TO service_role;
-GRANT EXECUTE ON FUNCTION public.byoai_clear_key(uuid)               TO service_role;
+GRANT EXECUTE ON FUNCTION public.byoai_store_key(uuid, text, text)         TO service_role;
+GRANT EXECUTE ON FUNCTION public.byoai_decrypt_key(uuid, uuid, text)       TO service_role;
+GRANT EXECUTE ON FUNCTION public.byoai_clear_key(uuid, uuid)               TO service_role;

@@ -36,7 +36,7 @@ export async function getProviderForUser(
   const vaultId = profile.byoai_key_vault_id;
   if (!isProviderName(provider) || !vaultId) return null;
 
-  const apiKey = await decryptByoaiKey(vaultId);
+  const apiKey = await decryptByoaiKey(userId, vaultId);
   if (!apiKey) return null;
 
   switch (provider) {

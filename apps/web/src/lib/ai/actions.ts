@@ -121,7 +121,7 @@ export async function setByoaiKey(
   // Best-effort: drop the old ciphertext after the new one is wired.
   if (priorVaultId) {
     try {
-      await clearVault(priorVaultId);
+      await clearVault(user.id, priorVaultId);
     } catch {
       /* leave stale row; audit still records the rotate */
     }
@@ -154,7 +154,7 @@ export async function clearByoaiKey(): Promise<AiActionResult> {
 
   if (vaultId) {
     try {
-      await clearVault(vaultId);
+      await clearVault(user.id, vaultId);
     } catch {
       /* ignore — proceed to null the columns regardless */
     }

@@ -58,22 +58,28 @@ describe("vault helpers", () => {
   it("decryptByoaiKey returns the recovered plaintext", async () => {
     const { decryptByoaiKey } = await import("../vault");
     rpcMock.mockResolvedValueOnce({ data: "sk-recovered", error: null });
-    const r = await decryptByoaiKey("vault-1");
+    const r = await decryptByoaiKey("user-1", "vault-1");
     expect(r).toBe("sk-recovered");
+    expect(rpcMock).toHaveBeenCalledWith("byoai_decrypt_key", {
+      p_user_id: "user-1",
+      p_vault_id: "vault-1",
+      p_master_key: expect.any(String),
+    });
   });
 
   it("decryptByoaiKey returns null when the RPC yields a non-string", async () => {
     const { decryptByoaiKey } = await import("../vault");
     rpcMock.mockResolvedValueOnce({ data: null, error: null });
-    const r = await decryptByoaiKey("vault-1");
+    const r = await decryptByoaiKey("user-1", "vault-1");
     expect(r).toBeNull();
   });
 
-  it("clearByoaiKey calls byoai_clear_key", async () => {
+  it("clearByoaiKey calls byoai_clear_key with user_id + vault_id (defense-in-depth)", async () => {
     const { clearByoaiKey } = await import("../vault");
     rpcMock.mockResolvedValueOnce({ data: null, error: null });
-    await clearByoaiKey("vault-1");
+    await clearByoaiKey("user-1", "vault-1");
     expect(rpcMock).toHaveBeenCalledWith("byoai_clear_key", {
+      p_user_id: "user-1",
       p_vault_id: "vault-1",
     });
   });
