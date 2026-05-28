@@ -1,0 +1,9 @@
+{
+  "promptHash": "8424c42a5af32f3b3a5270bca75ff3878a3ee069239a38040aec75cb2e012a17",
+  "provider": "anthropic",
+  "response": {
+    "text": "On the numbers in your snapshot, yes — this block edged out the previous one. Average weekly tonnage was about 18% higher in the current block vs the prior one, and you set two new PRs (bench 102.5 kg, deadlift 187.5 kg) during this block where the previous block produced none. Adherence was also a touch better: you completed 22 of 24 scheduled sessions this block vs 19 of 24 last time.",
+    "tool_calls": ["getEngineSnapshot"]
+  },
+  "usage": { "input_tokens": 2200, "output_tokens": 140 }
+}

@@ -1,0 +1,16 @@
+{
+  "id": "why-deload-this-week",
+  "name": "why-deload-this-week",
+  "synthetic": true,
+  "synthetic_note": "Synthetic — pending real recording. Regenerate by running the runner in `refresh` mode against a real provider key.",
+  "promptHash": "73bfbbcb56ef950a5ab11df7ca35b30ca45b20751a9a435f349f7b25ac62077f",
+  "input": "Why am I deloading this week?",
+  "matchers": {
+    "shape": { "text": "string", "tool_calls": "array" },
+    "elementRules": [
+      { "path": "text", "mustContain": "deload" },
+      { "path": "text", "mustContain": "ceiling" },
+      { "path": "tool_calls", "mustContain": "getEngineSnapshot", "minLength": 1 }
+    ]
+  }
+}
