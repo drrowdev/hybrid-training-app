@@ -1,27 +1,34 @@
 /**
- * Chat orchestrator — Explain v1.
+ * Chat orchestrator — Explain v2 (ADR 0003 PR B).
  *
  * Responsibilities:
  *   - Compute the deterministic `prompt_hash` keying the call to the
  *     eval cassette + observability row.
  *   - Drive the provider stream loop: forward text deltas, dispatch
- *     `getEngineSnapshot` server-side when the model emits a tool
- *     call, and continue the conversation with a `role:"tool"`
- *     message so the provider can fold the result into the response.
- *   - Enforce the ADR retry / tool-call caps:
- *       MAX_TOOL_CALLS_PER_TURN = 6
+ *     catalogue tool calls in-process against the user's RLS-scoped
+ *     Supabase client, and continue the conversation with a
+ *     `role:"tool"` message so the provider can fold the result into
+ *     the response.
+ *   - Enforce the ADR caps:
+ *       MAX_TOOL_CALLS_PER_TURN = 5  (ADR 0003 PR B brief)
  *       MAX_VALIDATION_RETRIES = 2
  *   - Emit the canonical SSE event shape to the caller's writer.
  *
  * The orchestrator does NOT log raw text; the observability hook is
  * called by the route handler after the turn finishes (it has access
  * to the materialised metadata).
+ *
+ * Tools resolve via direct in-process `tool.handler(input, ctx)`
+ * invocation — no HTTP, no MCP layer. The `ToolContext` carries the
+ * user's Supabase server-side client, so RLS applies identically to
+ * how it does in the rest of the app.
  */
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ZodType, ZodTypeDef } from "zod";
 
-import { buildEngineSnapshot, GET_ENGINE_SNAPSHOT_TOOL } from "./snapshot";
-import { SYSTEM_PROMPT } from "./system-prompt";
+import { catalogue, type AnyTool, type ToolContext } from "./tools";
+import { SYSTEM_PROMPT } from "./prompts/system.v2";
 import type {
   LlmEvent,
   LlmMessage,
@@ -30,7 +37,7 @@ import type {
   LlmUsage,
 } from "./providers/types";
 
-export const MAX_TOOL_CALLS_PER_TURN = 6;
+export const MAX_TOOL_CALLS_PER_TURN = 5;
 export const MAX_VALIDATION_RETRIES = 2;
 export const MAX_HISTORY_TOKENS = 32_000;
 
@@ -60,15 +67,11 @@ export type RunTurnOptions = {
   assistantMessageId: string;
   onEvent: (event: SseEvent) => void;
   /**
-   * Snapshot factory — injected so tests can stub the engine snapshot
-   * without standing up the full database. Defaults to the real
-   * builder.
+   * Catalogue override — tests inject a stub catalogue to avoid
+   * standing up the full database. Defaults to the real 8-tool
+   * catalogue from `./tools`.
    */
-  snapshotFactory?: (
-    supabase: SupabaseClient,
-    userId: string,
-    tz: string,
-  ) => Promise<unknown>;
+  catalogueOverride?: readonly AnyTool[];
 };
 
 export type RunTurnResult = {
@@ -82,7 +85,103 @@ export type RunTurnResult = {
   errorCode: string | null;
 };
 
-const TOOLS: LlmTool[] = [GET_ENGINE_SNAPSHOT_TOOL];
+/**
+ * Build the per-turn LlmTool array advertised to the provider. Each
+ * tool's Zod input schema is converted to JSON Schema so providers
+ * can validate / display it.
+ */
+export function buildLlmTools(cat: readonly AnyTool[]): LlmTool[] {
+  return cat.map((t) => ({
+    name: t.name,
+    description: t.description,
+    inputSchema: zodToJsonSchema(t.inputSchema),
+  }));
+}
+
+/**
+ * Minimal Zod → JSON Schema converter, scoped to the shapes used by
+ * the catalogue (z.object of z.number/z.string with optional + min/max
+ * + describe). We avoid pulling in `zod-to-json-schema` because the
+ * surface is tiny and the conversion is part of the type-checked
+ * contract.
+ */
+export function zodToJsonSchema(
+  schema: ZodType<unknown, ZodTypeDef, unknown>,
+): Record<string, unknown> {
+  return convertNode(schema as unknown as ZodNode);
+}
+
+type ZodNode = {
+  _def: {
+    typeName: string;
+    shape?: () => Record<string, ZodNode>;
+    innerType?: ZodNode;
+    checks?: Array<{ kind: string; value?: number; inclusive?: boolean }>;
+    description?: string;
+    values?: readonly string[];
+    type?: ZodNode;
+    unknownKeys?: "strict" | "passthrough" | "strip";
+  };
+  description?: string;
+};
+
+function convertNode(node: ZodNode): Record<string, unknown> {
+  const def = node._def;
+  switch (def.typeName) {
+    case "ZodObject": {
+      const shape = def.shape ? def.shape() : {};
+      const properties: Record<string, unknown> = {};
+      const required: string[] = [];
+      for (const [key, child] of Object.entries(shape)) {
+        properties[key] = convertNode(child);
+        if (child._def.typeName !== "ZodOptional") required.push(key);
+      }
+      const out: Record<string, unknown> = {
+        type: "object",
+        properties,
+        additionalProperties: def.unknownKeys === "passthrough",
+      };
+      if (required.length > 0) out.required = required;
+      return out;
+    }
+    case "ZodOptional": {
+      return def.innerType ? convertNode(def.innerType) : { type: "string" };
+    }
+    case "ZodNumber": {
+      const out: Record<string, unknown> = { type: "number" };
+      for (const c of def.checks ?? []) {
+        if (c.kind === "int") out.type = "integer";
+        else if (c.kind === "min" && typeof c.value === "number")
+          out.minimum = c.value;
+        else if (c.kind === "max" && typeof c.value === "number")
+          out.maximum = c.value;
+      }
+      if (def.description) out.description = def.description;
+      return out;
+    }
+    case "ZodString": {
+      const out: Record<string, unknown> = { type: "string" };
+      for (const c of def.checks ?? []) {
+        if (c.kind === "min" && typeof c.value === "number") out.minLength = c.value;
+        else if (c.kind === "max" && typeof c.value === "number")
+          out.maxLength = c.value;
+      }
+      if (def.description) out.description = def.description;
+      return out;
+    }
+    case "ZodBoolean":
+      return { type: "boolean" };
+    case "ZodEnum":
+      return { type: "string", enum: [...(def.values ?? [])] };
+    case "ZodArray":
+      return {
+        type: "array",
+        items: def.type ? convertNode(def.type) : {},
+      };
+    default:
+      return {};
+  }
+}
 
 /**
  * Compute the deterministic prompt hash used for cassette pinning and
@@ -120,12 +219,12 @@ function messagesTokenCount(messages: LlmMessage[]): number {
 
 function handleProviderEvent(ev: LlmEvent): {
   text?: string;
-  toolCall?: { id: string; name: string };
+  toolCall?: { id: string; name: string; args: unknown };
   usage?: LlmUsage;
 } {
   if (ev.type === "text_delta") return { text: ev.delta };
   if (ev.type === "tool_call")
-    return { toolCall: { id: ev.id, name: ev.name } };
+    return { toolCall: { id: ev.id, name: ev.name, args: ev.args } };
   if (ev.type === "done") return { usage: ev.usage };
   return {};
 }
@@ -149,14 +248,37 @@ function providerErrorMessage(code: string): string {
   }
 }
 
+async function dispatchTool(
+  tool: AnyTool,
+  rawArgs: unknown,
+  ctx: ToolContext,
+): Promise<unknown> {
+  try {
+    const parsed = tool.inputSchema.parse(rawArgs ?? {});
+    return await tool.handler(parsed, ctx);
+  } catch (err) {
+    return {
+      error: "tool-failed",
+      tool: tool.name,
+      message: (err as Error).message,
+    };
+  }
+}
+
 export async function runChatTurn(
   opts: RunTurnOptions,
 ): Promise<RunTurnResult> {
   const t0 = Date.now();
-  const factory =
-    opts.snapshotFactory ??
-    ((s: SupabaseClient, u: string, tz: string) =>
-      buildEngineSnapshot(s, u, tz));
+  const cat = opts.catalogueOverride ?? catalogue;
+  const toolsByName = new Map<string, AnyTool>();
+  for (const t of cat) toolsByName.set(t.name, t);
+  const llmTools = buildLlmTools(cat);
+
+  const ctx: ToolContext = {
+    userId: opts.userId,
+    supabase: opts.supabase,
+    tz: opts.tz,
+  };
 
   const messages: LlmMessage[] = [
     ...opts.priorMessages,
@@ -177,17 +299,18 @@ export async function runChatTurn(
       validationResult: "failed",
       retryCount: 0,
       latencyMs: Date.now() - t0,
-      promptHash: computePromptHash(SYSTEM_PROMPT, messages, TOOLS),
+      promptHash: computePromptHash(SYSTEM_PROMPT, messages, llmTools),
       errorCode: "history-too-large",
     };
   }
 
-  const promptHash = computePromptHash(SYSTEM_PROMPT, messages, TOOLS);
+  const promptHash = computePromptHash(SYSTEM_PROMPT, messages, llmTools);
   let assistantText = "";
   let usage: LlmUsage = { input_tokens: 0, output_tokens: 0 };
   const toolCalls: Array<{ id: string; name: string; result: unknown }> = [];
   let retryCount = 0;
   let toolCallsThisTurn = 0;
+  let capExhausted = false;
 
   for (let attempt = 0; attempt <= MAX_VALIDATION_RETRIES; attempt++) {
     let textInThisAttempt = 0;
@@ -196,12 +319,12 @@ export async function runChatTurn(
     let loopGuard = 0;
 
     while (loopGuard++ < MAX_TOOL_CALLS_PER_TURN + 2) {
-      const pending: Array<{ id: string; name: string }> = [];
+      const pending: Array<{ id: string; name: string; args: unknown }> = [];
       try {
         for await (const ev of opts.provider.chat({
           system: SYSTEM_PROMPT,
           messages,
-          tools: TOOLS,
+          tools: llmTools,
           stream: true,
         })) {
           const out = handleProviderEvent(ev);
@@ -211,7 +334,11 @@ export async function runChatTurn(
             opts.onEvent({ type: "text_delta", delta: out.text });
           }
           if (out.toolCall) {
-            pending.push({ id: out.toolCall.id, name: out.toolCall.name });
+            pending.push({
+              id: out.toolCall.id,
+              name: out.toolCall.name,
+              args: out.toolCall.args,
+            });
             opts.onEvent({
               type: "tool_call_start",
               id: out.toolCall.id,
@@ -232,23 +359,15 @@ export async function runChatTurn(
       for (const tc of pending) {
         if (toolCallsThisTurn >= MAX_TOOL_CALLS_PER_TURN) {
           stopForCap = true;
+          capExhausted = true;
           break;
         }
         toolCallsThisTurn++;
         toolCallsInThisAttempt++;
-        let result: unknown;
-        if (tc.name === "getEngineSnapshot") {
-          try {
-            result = await factory(opts.supabase, opts.userId, opts.tz);
-          } catch (err) {
-            result = {
-              error: "snapshot-failed",
-              message: (err as Error).message,
-            };
-          }
-        } else {
-          result = { error: "unknown-tool", name: tc.name };
-        }
+        const tool = toolsByName.get(tc.name);
+        const result: unknown = tool
+          ? await dispatchTool(tool, tc.args, ctx)
+          : { error: "unknown-tool", name: tc.name };
         messages.push({ role: "tool", toolCallId: tc.id, result });
         toolCalls.push({ id: tc.id, name: tc.name, result });
         opts.onEvent({ type: "tool_call_end", id: tc.id });
@@ -275,6 +394,12 @@ export async function runChatTurn(
     }
 
     if (textInThisAttempt > 0 || toolCallsInThisAttempt > 0) {
+      if (capExhausted) {
+        const note =
+          "\n\n(Tool budget exhausted for this turn — answered with what I had.)";
+        assistantText += note;
+        opts.onEvent({ type: "text_delta", delta: note });
+      }
       opts.onEvent({
         type: "done",
         usage,

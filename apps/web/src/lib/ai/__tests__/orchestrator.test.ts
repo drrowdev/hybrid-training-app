@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
-import { computePromptHash, runChatTurn } from "../orchestrator";
+import {
+  buildLlmTools,
+  computePromptHash,
+  MAX_TOOL_CALLS_PER_TURN,
+  runChatTurn,
+  zodToJsonSchema,
+} from "../orchestrator";
+import type { AnyTool } from "../tools";
 import type {
   LlmEvent,
   LlmProvider,
@@ -24,6 +32,21 @@ function fakeSupabase() {
   return {} as unknown as Parameters<typeof runChatTurn>[0]["supabase"];
 }
 
+function stubTool<T extends Record<string, unknown>>(
+  name: string,
+  handler: (input: T) => unknown,
+  inputSchema = z.object({}).strict() as unknown as AnyTool["inputSchema"],
+): AnyTool {
+  return {
+    name,
+    description: `stub ${name}`,
+    inputSchema,
+    outputSchema: z.unknown() as unknown as AnyTool["outputSchema"],
+    handler: async (input: unknown) =>
+      handler(input as T) as unknown as Promise<unknown>,
+  } as AnyTool;
+}
+
 describe("orchestrator — runChatTurn", () => {
   it("forwards text deltas and emits a done event", async () => {
     const events: Array<{ type: string }> = [];
@@ -44,6 +67,7 @@ describe("orchestrator — runChatTurn", () => {
       userMessage: "Hi",
       assistantMessageId: "a1",
       onEvent: (e) => events.push(e),
+      catalogueOverride: [],
     });
     expect(r.assistantText).toBe("Hello, world.");
     expect(r.validationResult).toBe("ok");
@@ -55,20 +79,16 @@ describe("orchestrator — runChatTurn", () => {
     ]);
   });
 
-  it("dispatches getEngineSnapshot server-side when the model requests it", async () => {
-    const snapshotFactory = vi.fn(async () => ({ stubbed: true }));
+  it("dispatches a catalogue tool in-process when the model requests it", async () => {
+    const profileSpy = vi.fn(() => ({ experience_tier: "intermediate" }));
+    const tools: AnyTool[] = [stubTool("getProfile", profileSpy)];
     const provider = stubProvider([
       [
-        {
-          type: "tool_call",
-          id: "tc-1",
-          name: "getEngineSnapshot",
-          args: {},
-        },
+        { type: "tool_call", id: "tc-1", name: "getProfile", args: {} },
         { type: "done", usage: { input_tokens: 0, output_tokens: 0 } },
       ],
       [
-        { type: "text_delta", delta: "Here's what I found." },
+        { type: "text_delta", delta: "You're an intermediate lifter." },
         { type: "done", usage: { input_tokens: 1000, output_tokens: 7 } },
       ],
     ]);
@@ -80,21 +100,136 @@ describe("orchestrator — runChatTurn", () => {
       tz: "UTC",
       threadId: "t1",
       priorMessages: [],
-      userMessage: "What's up?",
+      userMessage: "What kind of lifter am I?",
       assistantMessageId: "a1",
       onEvent: (e) => events.push(e),
-      snapshotFactory,
+      catalogueOverride: tools,
     });
-    expect(snapshotFactory).toHaveBeenCalledTimes(1);
+    expect(profileSpy).toHaveBeenCalledTimes(1);
     expect(r.toolCalls).toHaveLength(1);
-    expect(r.toolCalls[0]?.name).toBe("getEngineSnapshot");
-    expect(r.assistantText).toBe("Here's what I found.");
+    expect(r.toolCalls[0]?.name).toBe("getProfile");
+    expect(r.toolCalls[0]?.result).toEqual({
+      experience_tier: "intermediate",
+    });
+    expect(r.assistantText).toBe("You're an intermediate lifter.");
     expect(events.map((e) => e.type)).toEqual([
       "tool_call_start",
       "tool_call_end",
       "text_delta",
       "done",
     ]);
+  });
+
+  it("parses tool args through the Zod schema and forwards them", async () => {
+    const calls: unknown[] = [];
+    const schema = z
+      .object({ daysBack: z.number().int().min(1).max(90) })
+      .strict() as unknown as AnyTool["inputSchema"];
+    const tools: AnyTool[] = [
+      stubTool(
+        "getRecentSessions",
+        (input) => {
+          calls.push(input);
+          return { sessions: [] };
+        },
+        schema,
+      ),
+    ];
+    const provider = stubProvider([
+      [
+        {
+          type: "tool_call",
+          id: "tc-1",
+          name: "getRecentSessions",
+          args: { daysBack: 14 },
+        },
+        { type: "done", usage: { input_tokens: 0, output_tokens: 0 } },
+      ],
+      [
+        { type: "text_delta", delta: "ok" },
+        { type: "done", usage: { input_tokens: 1, output_tokens: 1 } },
+      ],
+    ]);
+    await runChatTurn({
+      provider,
+      supabase: fakeSupabase(),
+      userId: "u1",
+      tz: "UTC",
+      threadId: "t1",
+      priorMessages: [],
+      userMessage: "Show me the last 2 weeks.",
+      assistantMessageId: "a1",
+      onEvent: () => {},
+      catalogueOverride: tools,
+    });
+    expect(calls).toEqual([{ daysBack: 14 }]);
+  });
+
+  it("returns a structured error payload when a handler throws", async () => {
+    const tools: AnyTool[] = [
+      stubTool("getProfile", () => {
+        throw new Error("db down");
+      }),
+    ];
+    const provider = stubProvider([
+      [
+        { type: "tool_call", id: "tc-1", name: "getProfile", args: {} },
+        { type: "done", usage: { input_tokens: 0, output_tokens: 0 } },
+      ],
+      [
+        { type: "text_delta", delta: "couldn't fetch profile" },
+        { type: "done", usage: { input_tokens: 1, output_tokens: 1 } },
+      ],
+    ]);
+    const r = await runChatTurn({
+      provider,
+      supabase: fakeSupabase(),
+      userId: "u1",
+      tz: "UTC",
+      threadId: "t1",
+      priorMessages: [],
+      userMessage: "Hi",
+      assistantMessageId: "a1",
+      onEvent: () => {},
+      catalogueOverride: tools,
+    });
+    expect(r.toolCalls[0]?.result).toMatchObject({
+      error: "tool-failed",
+      tool: "getProfile",
+    });
+  });
+
+  it("stops dispatching at MAX_TOOL_CALLS_PER_TURN and appends a budget note", async () => {
+    const spy = vi.fn(() => ({ ok: true }));
+    const tools: AnyTool[] = [stubTool("getProfile", spy)];
+    // Emit MAX+2 tool calls in a single stream so the cap clamps mid-loop.
+    const overshoot = MAX_TOOL_CALLS_PER_TURN + 2;
+    const events: LlmEvent[] = [];
+    for (let i = 0; i < overshoot; i++) {
+      events.push({
+        type: "tool_call",
+        id: `tc-${i}`,
+        name: "getProfile",
+        args: {},
+      });
+    }
+    events.push({ type: "done", usage: { input_tokens: 0, output_tokens: 0 } });
+    const provider = stubProvider([events]);
+    const r = await runChatTurn({
+      provider,
+      supabase: fakeSupabase(),
+      userId: "u1",
+      tz: "UTC",
+      threadId: "t1",
+      priorMessages: [],
+      userMessage: "loop?",
+      assistantMessageId: "a1",
+      onEvent: () => {},
+      catalogueOverride: tools,
+    });
+    expect(spy).toHaveBeenCalledTimes(MAX_TOOL_CALLS_PER_TURN);
+    expect(r.toolCalls).toHaveLength(MAX_TOOL_CALLS_PER_TURN);
+    expect(r.assistantText).toMatch(/tool budget exhausted/i);
   });
 
   it("retries on empty turns and surfaces validation-failed after the cap", async () => {
@@ -114,6 +249,7 @@ describe("orchestrator — runChatTurn", () => {
       userMessage: "Hi",
       assistantMessageId: "a1",
       onEvent: (e) => events.push(e),
+      catalogueOverride: [],
     });
     expect(r.validationResult).toBe("failed");
     expect(r.errorCode).toBe("validation-failed");
@@ -130,7 +266,10 @@ describe("orchestrator — runChatTurn", () => {
             errorCode: "rate-limited",
           });
           throw err;
-          yield { type: "done", usage: { input_tokens: 0, output_tokens: 0 } } as LlmEvent;
+          yield {
+            type: "done",
+            usage: { input_tokens: 0, output_tokens: 0 },
+          } as LlmEvent;
         })();
       },
     };
@@ -145,6 +284,7 @@ describe("orchestrator — runChatTurn", () => {
       userMessage: "Hi",
       assistantMessageId: "a1",
       onEvent: (e) => events.push(e),
+      catalogueOverride: [],
     });
     expect(r.errorCode).toBe("rate-limited");
     expect(events.at(-1)?.type).toBe("error");
@@ -157,5 +297,66 @@ describe("orchestrator — runChatTurn", () => {
     expect(h1).toBe(h2);
     expect(h1).not.toBe(h3);
     expect(h1).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
+describe("orchestrator — buildLlmTools + zodToJsonSchema", () => {
+  it("advertises the catalogue's 8 tools when given the real catalogue", async () => {
+    const { catalogue } = await import("../tools");
+    const tools = buildLlmTools(catalogue);
+    expect(tools).toHaveLength(8);
+    const names = tools.map((t) => t.name).sort();
+    expect(names).toEqual(
+      [
+        "getActiveBlock",
+        "getEngineState",
+        "getKnowledge",
+        "getMemories",
+        "getPrTimeline",
+        "getProfile",
+        "getRecentSessions",
+        "getWeeklyAggregates",
+      ].sort(),
+    );
+    for (const t of tools) {
+      expect(t.inputSchema).toMatchObject({ type: "object" });
+    }
+  });
+
+  it("converts a daysBack-style schema to JSON Schema with min/max + integer", () => {
+    const s = z
+      .object({
+        daysBack: z
+          .number()
+          .int()
+          .min(1)
+          .max(90)
+          .describe("Number of past days to include (1-90)."),
+      })
+      .strict();
+    const json = zodToJsonSchema(s);
+    expect(json).toMatchObject({
+      type: "object",
+      properties: {
+        daysBack: {
+          type: "integer",
+          minimum: 1,
+          maximum: 90,
+        },
+      },
+      required: ["daysBack"],
+      additionalProperties: false,
+    });
+  });
+
+  it("marks optional strings as non-required", () => {
+    const s = z.object({ movement: z.string().min(1).max(120).optional() }).strict();
+    const json = zodToJsonSchema(s);
+    expect(json).toMatchObject({
+      type: "object",
+      properties: { movement: { type: "string", minLength: 1, maxLength: 120 } },
+      additionalProperties: false,
+    });
+    expect((json as { required?: string[] }).required).toBeUndefined();
   });
 });
