@@ -25,6 +25,10 @@ import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner"
 import { dismissBwBanner } from "@/lib/profile/actions";
 import { OverdueNotice } from "@/components/today/OverdueNotice";
 import { RegionSpikeBanner } from "@/components/today/RegionSpikeBanner";
+import {
+  ActiveLimitationsCard,
+  type ActiveLimitationSummary,
+} from "@/components/today/ActiveLimitationsCard";
 import type { RegionSpike } from "@/lib/engine/region-spike-detector";
 import {
   hasLoadableMainLift,
@@ -88,7 +92,7 @@ export default async function TodayPage() {
 
   const todayIso = todayYmd(profile?.timezone ?? "UTC");
 
-  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness, activeBlock, tmDict, tmRows, regionSpikes] = await Promise.all([
+  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness, activeBlock, tmDict, tmRows, regionSpikes, { data: activeLimitationsRaw }] = await Promise.all([
     supabase
       .from("sessions")
       .select("id, title, slot, completed_at, performed_at")
@@ -110,7 +114,23 @@ export default async function TodayPage() {
     getTrainingMaxDict(),
     listTrainingMaxes(),
     getRegionSpikes(supabase, userId, profile?.timezone ?? "UTC"),
+    supabase
+      .from("limitations")
+      .select("id, kind, severity, started_at")
+      .eq("user_id", userId)
+      .is("resolved_at", null)
+      .order("started_at", { ascending: false })
+      .limit(20),
   ]);
+
+  const activeLimitations: ActiveLimitationSummary[] = (
+    activeLimitationsRaw ?? []
+  ).map((r) => ({
+    id: r.id as string,
+    kind: (r.kind as string | null) ?? null,
+    severity: r.severity as "mild" | "moderate" | "severe",
+    startedAt: r.started_at as string,
+  }));
 
   const archetypeName = activeBlock
     ? archetypeDisplayName(activeBlock.archetype, activeBlock.notes)
@@ -526,6 +546,8 @@ export default async function TodayPage() {
           acceptAction={acceptTmSuggestion}
           dismissAction={dismissTmSuggestion}
         />
+
+        <ActiveLimitationsCard limitations={activeLimitations} />
 
 
         <TodaySessionCard

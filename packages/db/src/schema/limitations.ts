@@ -13,7 +13,6 @@ import { sql } from "drizzle-orm";
 import {
   check,
   index,
-  integer,
   jsonb,
   pgEnum,
   pgTable,
@@ -78,7 +77,29 @@ export const limitations = pgTable(
       .$type<string[]>()
       .default(sql`'{}'::uuid[]`)
       .notNull(),
-    expectedDurationDays: integer("expected_duration_days"),
+    /**
+     * Per-exercise allow-list — user-asserted "I can still do this one
+     * without pain." Movements in this set bypass the muscle-level
+     * filter introduced in PR #__ (this branch). Engine reads this
+     * set in accessory-picker / power-emphasis-transform.
+     */
+    allowedMovementIds: uuid("allowed_movement_ids")
+      .array()
+      .$type<string[]>()
+      .default(sql`'{}'::uuid[]`)
+      .notNull(),
+    /**
+     * Which side of the body the limitation affects. Informational
+     * + future-trend data: the engine still drops bilateral
+     * movements regardless of side (a barbell squat loads both
+     * adductors, so it filters when adductors are blocked, even if
+     * `affected_side = 'left'`). Per-limitation, not per-muscle —
+     * if the user wants "left adductor" + "right quad" as one issue,
+     * that's two limitation rows.
+     */
+    affectedSide: text("affected_side").$type<
+      "left" | "right" | "bilateral"
+    >(),
     startedAt: timestamp("started_at", { withTimezone: true })
       .default(sql`now()`)
       .notNull(),
@@ -109,9 +130,9 @@ export const limitations = pgTable(
       .notNull(),
   },
   (t) => ({
-    expectedDurationNonneg: check(
-      "limitations_expected_duration_days_nonneg",
-      sql`${t.expectedDurationDays} IS NULL OR ${t.expectedDurationDays} >= 0`,
+    affectedSideCheck: check(
+      "limitations_affected_side_check",
+      sql`${t.affectedSide} IS NULL OR ${t.affectedSide} IN ('left', 'right', 'bilateral')`,
     ),
     affectedMusclesGin: index("limitations_affected_muscles_gin_idx").using(
       "gin",
@@ -120,6 +141,9 @@ export const limitations = pgTable(
     affectedMovementIdsGin: index(
       "limitations_affected_movement_ids_gin_idx",
     ).using("gin", t.affectedMovementIds),
+    allowedMovementIdsGin: index(
+      "limitations_allowed_movement_ids_gin_idx",
+    ).using("gin", t.allowedMovementIds),
   }),
 );
 

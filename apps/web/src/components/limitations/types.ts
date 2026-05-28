@@ -8,6 +8,7 @@
  * be imported from both server and client modules.
  */
 import type { MuscleGroup } from "@/lib/muscle/muscle-groups";
+import type { AffectedSide } from "@/lib/limitations/schema";
 
 export type LimitationRow = {
   id: string;
@@ -16,8 +17,11 @@ export type LimitationRow = {
   region: string | null;
   affectedMuscles: MuscleGroup[];
   affectedMovementIds: string[];
+  /** PR `feat/limitations-v2-lifecycle` — per-exercise allow-list. */
+  allowedMovementIds: string[];
+  /** PR `feat/limitations-v2-lifecycle` — informational side flag. */
+  affectedSide: AffectedSide | null;
   notes: string | null;
-  expectedDurationDays: number | null;
   startedAt: string;
   resolvedAt: string | null;
   engineAction: Record<string, unknown>;

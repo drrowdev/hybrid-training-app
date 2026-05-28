@@ -181,6 +181,76 @@ describe("pickAccessoriesForSession — filters", () => {
     expect(slugs).not.toContain("bulgarian-split-squat");
   });
 
+  it("excludes movements where a blocked muscle appears as primary OR secondary", () => {
+    // A movement explicitly carrying `adductors` as a SECONDARY muscle
+    // is in the catalog. With `adductors` blocked, that movement
+    // should not be picked.
+    const catalogPlus: CatalogMovement[] = [
+      ...CATALOG,
+      mv({
+        id: "sec-adductor",
+        slug: "back-squat-variant",
+        primaryRegion: "knee",
+        primaryMuscles: ["quads", "glutes"],
+        secondaryMuscles: ["adductors"],
+        functionalRoles: ["single_leg"],
+      }),
+    ];
+    const picks = pickAccessoriesForSession({
+      profile: STRENGTH_PROFILE,
+      weekDeloadScale: 1.0,
+      catalog: catalogPlus,
+      weekContext: [],
+      filters: {
+        ...EMPTY_FILTERS,
+        blockedMuscles: new Set(["adductors"]),
+      },
+      perMuscleTargets: { side_delts: 6 },
+      maxItems: 10,
+    });
+    expect(picks.map((p) => p.slug)).not.toContain("back-squat-variant");
+  });
+
+  it("allows a movement through when its id is in allowedMovementIds", () => {
+    // Use a minimal catalog so the only single_leg candidate is the
+    // adductor-secondary movement we want to allow-list through —
+    // this isolates the filter behaviour from candidate ranking.
+    const minimalCatalog: CatalogMovement[] = [
+      ...CATALOG.filter((m) =>
+        ["iso1", "hsr1", "plyo1", "carry1", "carry2"].includes(m.id),
+      ),
+      mv({
+        id: "sec-adductor",
+        slug: "back-squat-variant",
+        primaryRegion: "knee",
+        primaryMuscles: ["quads", "glutes"],
+        secondaryMuscles: ["adductors"],
+        functionalRoles: ["single_leg"],
+      }),
+    ];
+    const picks = pickAccessoriesForSession({
+      profile: STRENGTH_PROFILE,
+      weekDeloadScale: 1.0,
+      catalog: minimalCatalog,
+      weekContext: [
+        // Floor met so the functional pass is eligible next.
+        { movementId: "iso1", bulletproofRoles: ["heavy_isometric"], functionalRoles: [], primaryMuscles: [] },
+        { movementId: "hsr1", bulletproofRoles: ["hsr"], functionalRoles: [], primaryMuscles: [] },
+        { movementId: "plyo1", bulletproofRoles: ["plyometric_low"], functionalRoles: [], primaryMuscles: [] },
+        { movementId: "carry1", bulletproofRoles: ["carry"], functionalRoles: ["anti_rotation"], primaryMuscles: [] },
+        { movementId: "carry2", bulletproofRoles: ["carry"], functionalRoles: ["anti_rotation"], primaryMuscles: [] },
+      ],
+      filters: {
+        ...EMPTY_FILTERS,
+        blockedMuscles: new Set(["adductors"]),
+        allowedMovementIds: new Set(["sec-adductor"]),
+      },
+      perMuscleTargets: { side_delts: 6 },
+      maxItems: 10,
+    });
+    expect(picks.map((p) => p.slug)).toContain("back-squat-variant");
+  });
+
   it("prefers supported variants under concurrent stress when biasSupported = true", () => {
     const profile: AccessoryProfile = {
       ...STRENGTH_PROFILE,
