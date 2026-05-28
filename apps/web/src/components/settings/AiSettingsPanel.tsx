@@ -344,30 +344,31 @@ function KeyStorageInfoPanel({
       </p>
       <ul className="space-y-2 pl-0 list-none">
         <li>
-          <strong>No one but you can read it.</strong> The moment you save the
-          key it&apos;s scrambled with a password that lives outside the
-          database. Even with full database access — including the people
-          running this app — nobody can decrypt your key without that
-          password, and it&apos;s never stored alongside the data.
+          <strong>Bank-level encryption.</strong> The moment you click Save,
+          your key is immediately encrypted. The password used to lock it
+          lives entirely outside our database. Even in the absolute worst-case
+          scenario of a database breach, your raw key remains unreadable to
+          outsiders and to our own team — the encryption password never
+          lives in the same place as the encrypted data.
         </li>
         <li>
-          <strong>Your browser never receives it back.</strong> Once you
-          press Save the input clears and the page only shows &ldquo;Key
-          configured&rdquo;. There is no way to retrieve the original from
-          this app — not by you, not by anyone.
+          <strong>Hidden permanently.</strong> This is a write-only input.
+          Once saved, the key is wiped from the screen and can never be
+          retrieved or displayed by this app again.
         </li>
         <li>
-          <strong>Used only when you chat.</strong> Each time you ask a
-          question, the server unscrambles your key in memory just long
-          enough to call {PROVIDER_LABEL[provider]}, then forgets it.
-          Nothing is written down — not in logs, not in caches, not
-          anywhere.
+          <strong>Memory-only processing.</strong> Your key is only
+          decrypted in temporary server memory for the brief moment
+          required to send your request to {PROVIDER_LABEL[provider]}. It
+          is never written to log files, cached, or saved anywhere
+          permanently.
         </li>
         <li>
-          <strong>You can revoke at any time.</strong> Press &ldquo;Clear&rdquo;
-          and the encrypted key is deleted from this app immediately. You
-          can also rotate or revoke the key directly in your{" "}
-          {PROVIDER_LABEL[provider]} dashboard if you ever suspect anything.
+          <strong>Instant revocation.</strong> Clicking Clear immediately
+          and permanently purges the encrypted key from our servers.
+          Because you own the key, you also maintain total control to
+          pause, limit, or delete it instantly from your{" "}
+          {PROVIDER_LABEL[provider]} dashboard.
         </li>
       </ul>
       <button
