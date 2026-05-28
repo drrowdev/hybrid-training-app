@@ -41,6 +41,30 @@ function rpeMultiplier(rpe: number | null | undefined): number {
   return 0.3;
 }
 
+/**
+ * Shared "does this logged set count as real work?" rule.
+ *
+ * Used by every consumer that reads `set_logs` and computes a load
+ * number (actual-session-load, region-ledger, bucket-state-queries).
+ * One source of truth for the skip / warmup filter so adding a future
+ * set-kind (e.g. "amrap_burnout") only needs to be classified in one
+ * place.
+ *
+ * Rule: a row counts when it is not marked skipped AND not a warmup.
+ * Empty rows (no weight / reps) are still "countable" by this rule —
+ * the downstream load helpers (`computeSetLoad`, `setBucketLoad`)
+ * already return 0 for missing magnitudes, so empty rows contribute
+ * nothing to load without needing to be filtered here.
+ */
+export function isCountableSet(set: {
+  setKind?: string | null;
+  isSkipped?: boolean | null;
+}): boolean {
+  if (set.isSkipped === true) return false;
+  if (set.setKind === "warmup") return false;
+  return true;
+}
+
 /** Returns the kg-load value for one set (before any muscle / region weighting). */
 export function computeSetLoad(input: SetLoadInput): number {
   const { sets, reps, weightKg, rpe } = input;

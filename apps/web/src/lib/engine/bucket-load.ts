@@ -24,6 +24,7 @@
  */
 import type { Bucket } from "@hta/domain";
 import { cardioIntensityScalar, type HrZones } from "./cardio-intensity";
+import { rpeMultiplier } from "./set-load";
 
 export const ALL_BUCKETS: readonly Bucket[] = [
   "neural",
@@ -44,16 +45,6 @@ export const ZERO_BUCKET_LOAD: BucketLoad = {
   axial: 0,
   tissue: 0,
 };
-
-function rpeMultiplier(rpe: number | null | undefined): number {
-  if (rpe == null) return 0.5;
-  if (rpe >= 10) return 1.0;
-  if (rpe >= 9) return 0.85;
-  if (rpe >= 8) return 0.7;
-  if (rpe >= 7) return 0.55;
-  if (rpe >= 6) return 0.4;
-  return 0.3;
-}
 
 /**
  * Rep-aware intensity proxy (%1RM-ish) when an explicit percentTm wasn't
