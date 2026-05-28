@@ -18,6 +18,7 @@ import {
   ZERO_BUCKET_LOAD,
   type BucketLoad,
 } from "@/lib/engine/bucket-load";
+import { isCountableSet } from "@/lib/engine/set-load";
 import { todayYmd } from "@/lib/dates";
 
 const LOOKBACK_DAYS = 35; // a hair more than CTL window for clean EWMA
@@ -142,7 +143,10 @@ export async function getBucketState(
   ) as Record<Bucket, Map<string, number>>;
 
   for (const row of setsRes.data ?? []) {
-    if (row.set_kind === "warmup") continue;
+    // Shared skip/warmup filter (`set-load.isCountableSet`). SQL
+    // already gates `skipped=false`; this is the in-process source of
+    // truth shared with actual-session-load + region-ledger.
+    if (!isCountableSet({ setKind: row.set_kind, isSkipped: false })) continue;
     const performedAt = performedAtById.get(row.session_id);
     if (!performedAt) continue;
     const date = performedAt.slice(0, 10);
