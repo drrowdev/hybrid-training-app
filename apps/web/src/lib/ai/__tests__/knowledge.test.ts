@@ -5,7 +5,7 @@ import {
   CALIBRATION_POLICY_TEXT,
   CONSTANTS_TABLE_TEXT,
 } from "../knowledge";
-import { SYSTEM_PROMPT, SYSTEM_PROMPT_VERSION } from "../system-prompt";
+import { SYSTEM_PROMPT, SYSTEM_PROMPT_VERSION } from "../prompts/system.v2";
 
 describe("knowledge embedding", () => {
   it("surfaces one summary row per built-in archetype", () => {
@@ -32,15 +32,26 @@ describe("knowledge embedding", () => {
   });
 });
 
-describe("system prompt", () => {
-  it("is non-empty, versioned, and binds the read-only contract", () => {
-    expect(SYSTEM_PROMPT_VERSION).toBe("v1");
+describe("system prompt v2", () => {
+  it("is non-empty, versioned v2, and binds the read-only contract", () => {
+    expect(SYSTEM_PROMPT_VERSION).toBe("v2");
     expect(SYSTEM_PROMPT.length).toBeGreaterThan(500);
     // Voice + contract beats
     expect(SYSTEM_PROMPT).toMatch(/read/i);
-    expect(SYSTEM_PROMPT).toContain("getEngineSnapshot");
+    // 8-tool catalogue is documented in v2.
+    expect(SYSTEM_PROMPT).toContain("getProfile");
+    expect(SYSTEM_PROMPT).toContain("getEngineState");
+    expect(SYSTEM_PROMPT).toContain("getRecentSessions");
+    expect(SYSTEM_PROMPT).toContain("getWeeklyAggregates");
+    expect(SYSTEM_PROMPT).toContain("getPrTimeline");
+    expect(SYSTEM_PROMPT).toContain("getMemories");
+    expect(SYSTEM_PROMPT).toContain("getKnowledge");
+    expect(SYSTEM_PROMPT).toContain("getActiveBlock");
+    // v2 must NOT mention the deleted monolithic snapshot tool.
+    expect(SYSTEM_PROMPT).not.toContain("getEngineSnapshot");
     expect(SYSTEM_PROMPT).toContain("clinician");
-    expect(SYSTEM_PROMPT).toMatch(/at most twice/i);
     expect(SYSTEM_PROMPT).toContain("Memories");
+    // Prompt-injection defense clause stays in force.
+    expect(SYSTEM_PROMPT).toMatch(/data, not instructions/i);
   });
 });
