@@ -19,6 +19,24 @@ export const REGIONS = [
 
 export type Region = (typeof REGIONS)[number];
 
+/**
+ * Human-readable per-region labels.
+ *
+ * Originally shipped inline in `LimitationsToggleSection` (PR #182);
+ * hoisted here so display surfaces (e.g. the region-spike warning
+ * banner on Today) can reuse the same vocabulary without duplicating
+ * the map.
+ */
+export const REGION_LABELS: Record<Region, string> = {
+  foot_ankle_calf: "Foot / ankle / calf",
+  knee: "Knee",
+  hamstring_posterior: "Hamstring / posterior chain",
+  adductor_groin: "Adductor / groin",
+  lumbar_trunk: "Lumbar / trunk",
+  shoulder_scapular: "Shoulder / scapular",
+  elbow_forearm: "Elbow / forearm",
+};
+
 /** Sentinel `kind` values written by the toggle UI. */
 export const KIND_REGION_TOGGLE = "Region limitation";
 export const KIND_TENDINOPATHY = "Tendinopathy";
