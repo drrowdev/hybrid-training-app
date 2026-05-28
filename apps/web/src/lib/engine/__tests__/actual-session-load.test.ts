@@ -10,6 +10,7 @@ import {
   type CardioLogRow,
   type SetLogRow,
 } from "../actual-session-load";
+import { isCountableSet } from "../set-load";
 import { MODALITY_STRESS_MULTIPLIER } from "@/lib/planner/session-modality";
 
 const mainSet = (movementId = "m-1", overrides: Partial<SetLogRow> = {}): SetLogRow => ({
@@ -274,3 +275,67 @@ describe("computeActualSessionLoad", () => {
     expect(out.breakdown.cardioEsl).toBe(0);
   });
 });
+
+/**
+ * Cross-consumer invariant: every downstream consumer that reads
+ * set_logs must agree on *which sets count as work* (the skip/warmup
+ * rule). The shapes they emit differ (headline ESL, per-region kg-load,
+ * per-bucket load), but the underlying "is this set counted?" question
+ * has to resolve identically — otherwise a skipped row would show up in
+ * one surface and not another.
+ *
+ * This test pins the contract: the hard-set count from
+ * `computeActualSessionLoad.breakdown.hardSets` must equal the number
+ * of rows that pass `isCountableSet` (the shared rule extracted from
+ * set-load.ts). Region-ledger and bucket-state-queries both gate via
+ * `isCountableSet` so they pick up the same subset.
+ */
+describe("invariant: hardSets count matches shared isCountableSet rule", () => {
+  it("hardSets equals rows filtered by isCountableSet across all set kinds", () => {
+    const setLogs: SetLogRow[] = [
+      mainSet("m-1"),                          // counted
+      warmupSet("m-1"),                        // skipped (warmup)
+      { ...mainSet("m-1"), setKind: "accessory" }, // counted
+      { ...mainSet("m-1"), setKind: "back_off" },  // counted
+      { ...mainSet("m-1"), setKind: "tendon" },    // counted (Baar)
+      skippedSet("m-1"),                       // skipped (isSkipped)
+      { ...mainSet("m-2"), setKind: "warmup", isSkipped: true }, // both filters
+    ];
+    const out = computeActualSessionLoad({
+      prescribedModality: "pure_hypertrophy",
+      setLogs,
+      cardioLogs: [],
+    });
+    const byRule = setLogs.filter((s) =>
+      isCountableSet({ setKind: s.setKind, isSkipped: s.isSkipped }),
+    );
+    expect(out.breakdown.hardSets).toBe(byRule.length);
+    expect(out.breakdown.hardSets).toBe(4);
+  });
+
+  it("region-ledger-style filter (SQL skipped=false + isCountableSet) picks the same rows as the helper", () => {
+    // Simulate the region-ledger pipeline: DB already filters skipped,
+    // then the in-process `isCountableSet({ setKind, isSkipped: false })`
+    // call gates warmups. The resulting subset must match the helper's
+    // `hardSets` count modulo the SQL-prefilter (skipped rows never
+    // arrive in region-ledger).
+    const setLogs: SetLogRow[] = [
+      mainSet("m-1"),
+      mainSet("m-1"),
+      warmupSet("m-1"),
+      skippedSet("m-1"),
+    ];
+    const out = computeActualSessionLoad({
+      prescribedModality: "pure_strength",
+      setLogs,
+      cardioLogs: [],
+    });
+    // Region-ledger never sees the skipped row (SQL filters), then drops
+    // warmup via isCountableSet.
+    const regionLedgerSubset = setLogs
+      .filter((s) => !s.isSkipped) // SQL .eq("skipped", false)
+      .filter((s) => isCountableSet({ setKind: s.setKind, isSkipped: false }));
+    expect(out.breakdown.hardSets).toBe(regionLedgerSubset.length);
+  });
+});
+

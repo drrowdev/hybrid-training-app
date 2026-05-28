@@ -6,6 +6,7 @@ import {
   addBucketLoads,
   ZERO_BUCKET_LOAD,
 } from "../bucket-load";
+import { rpeMultiplier } from "../set-load";
 
 const SQUAT = { axialLoad: "high", highStrainTendon: false };
 const DL = { axialLoad: "high", highStrainTendon: true };
@@ -95,5 +96,27 @@ describe("addBucketLoads", () => {
     for (const k of ALL_BUCKETS) {
       expect(out[k]).toBe(a[k] + b[k]);
     }
+  });
+});
+
+describe("invariant: bucket-load uses the same RPE scale as set-load", () => {
+  // Before the consolidation, bucket-load.ts redefined `rpeMultiplier`
+  // byte-identically to set-load.ts's. After consolidation it imports
+  // the canonical version. Pin the contract so a future tweak of the
+  // multiplier in set-load.ts propagates into bucket-load without
+  // silently drifting.
+  it("mechanical bucket at known RPEs equals reps × weight × shared rpeMultiplier", () => {
+    const SQUAT = { axialLoad: "high" as const, highStrainTendon: false };
+    for (const rpe of [6, 7, 8, 9, 10]) {
+      const b = setBucketLoad({ reps: 5, weightKg: 100, rpe }, SQUAT);
+      expect(b.mechanical).toBeCloseTo(5 * 100 * rpeMultiplier(rpe), 6);
+    }
+  });
+
+  it("missing RPE uses the same 0.5 default as set-load", () => {
+    const SQUAT = { axialLoad: "high" as const, highStrainTendon: false };
+    const b = setBucketLoad({ reps: 5, weightKg: 100 }, SQUAT);
+    expect(b.mechanical).toBeCloseTo(5 * 100 * rpeMultiplier(null), 6);
+    expect(b.mechanical).toBeCloseTo(250, 6);
   });
 });
