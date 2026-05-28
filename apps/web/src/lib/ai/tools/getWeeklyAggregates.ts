@@ -90,6 +90,7 @@ export const getWeeklyAggregates: Tool<Input, Output> = {
       duration_sec: number | null;
     }> = [];
     if (ids.length > 0) {
+      // RLS isolation via parent session.user_id — IDs guaranteed owned by ctx.userId via the preceding query
       const [setsRes, cardioRes] = await Promise.all([
         ctx.supabase
           .from("set_logs")

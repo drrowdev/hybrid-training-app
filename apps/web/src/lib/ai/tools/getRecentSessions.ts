@@ -108,6 +108,7 @@ export const getRecentSessions: Tool<Input, Output> = {
       return { days_back: daysBack, sessions: [] };
     }
 
+    // RLS isolation via parent session.user_id — IDs guaranteed owned by ctx.userId via the preceding query
     const [setsRes, cardioRes] = await Promise.all([
       ctx.supabase
         .from("set_logs")

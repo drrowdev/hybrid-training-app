@@ -1,9 +1,22 @@
 /**
  * POST /mcp/token — OAuth 2.1 token endpoint.
  *
- * Exchanges a one-time authorization code (issued by /mcp/authorize)
- * for a 1-hour bearer access token. ADR 0003 §"OAuth 2.1 + Supabase
- * Auth bridge".
+ * Exchanges a one-time authorization code (issued by
+ * /mcp/authorize/confirm) for a 1-hour bearer access token. ADR 0003
+ * §"OAuth 2.1 + Supabase Auth bridge".
+ *
+ * PR #194 code-review fixes:
+ *   - Fix #1: signing key is enforced via the shared
+ *     `verifyAuthCode()` helper (which uses `requireSigningKey()`).
+ *     No more silent `?? ""` fallback that could let an attacker forge
+ *     codes against an empty key.
+ *   - Fix #2: authorization codes are single-use. After signature
+ *     verification we atomically INSERT a SHA-256 of the code into
+ *     `mcp_consumed_codes`; a duplicate insert (= replay) returns
+ *     `invalid_grant`.
+ *   - Fix #4 (bonus): redeemed codes are validated against the
+ *     `ALLOWED_MCP_CLIENTS` allowlist and the client's redirect_uri
+ *     pattern, matching the /authorize gate.
  *
  * No refresh tokens in v1 — the user re-authorises when their access
  * token expires.
@@ -11,44 +24,22 @@
  * The endpoint accepts both standard form-encoded and JSON bodies
  * since MCP hosts differ in how they POST the exchange.
  */
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { mintMcpToken, MCP_TOKEN_LIFETIME_SECONDS } from "@/lib/ai/mcp/auth";
+import { verifyAuthCode } from "@/lib/ai/mcp/authCodes";
+import {
+  defaultConsumedCodeStore,
+  hashAuthCode,
+  type ConsumedCodeStore,
+} from "@/lib/ai/mcp/consumedCodes";
+import {
+  findAllowedClient,
+  isAllowedRedirectUri,
+} from "@/lib/ai/mcp/clients";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-type AuthCodePayload = {
-  userId: string;
-  clientId: string;
-  scope: string;
-  redirectUri: string;
-  iat: number;
-  exp: number;
-};
-
-function verifyCode(code: string): AuthCodePayload | null {
-  const key = process.env.MCP_TOKEN_SIGNING_KEY ?? "";
-  if (!key) return null;
-  const dot = code.indexOf(".");
-  if (dot <= 0) return null;
-  const body = code.slice(0, dot);
-  const sig = code.slice(dot + 1);
-  const expected = createHmac("sha256", key).update(body).digest("base64url");
-  const a = Buffer.from(sig);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) return null;
-  if (!timingSafeEqual(a, b)) return null;
-  let parsed: AuthCodePayload;
-  try {
-    parsed = JSON.parse(Buffer.from(body, "base64url").toString("utf-8")) as AuthCodePayload;
-  } catch {
-    return null;
-  }
-  if (Math.floor(Date.now() / 1000) >= parsed.exp) return null;
-  return parsed;
-}
 
 async function readBody(req: Request): Promise<Record<string, string>> {
   const contentType = req.headers.get("content-type") ?? "";
@@ -85,7 +76,21 @@ function tokenError(
   );
 }
 
-export async function POST(req: Request): Promise<Response> {
+export type TokenRouteDeps = {
+  consumedCodes?: ConsumedCodeStore;
+};
+
+/**
+ * Pure handler exported for unit tests so they can inject a fake
+ * `ConsumedCodeStore` without spinning up Supabase. The default `POST`
+ * export wraps this with the production dependencies.
+ */
+export async function handleTokenRequest(
+  req: Request,
+  deps: TokenRouteDeps = {},
+): Promise<Response> {
+  const consumedCodes = deps.consumedCodes ?? defaultConsumedCodeStore;
+
   const body = await readBody(req);
   const grantType = body.grant_type ?? "";
   if (grantType !== "authorization_code") {
@@ -106,7 +111,7 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  const payload = verifyCode(code);
+  const payload = verifyAuthCode(code);
   if (!payload) {
     return tokenError(400, "invalid_grant", "Authorization code invalid or expired.");
   }
@@ -115,6 +120,44 @@ export async function POST(req: Request): Promise<Response> {
       400,
       "invalid_grant",
       "client_id / redirect_uri mismatch.",
+    );
+  }
+
+  // Belt-and-braces: redeemed codes were issued under the allowlist
+  // gate at /authorize, but re-check here so a code minted before an
+  // allowlist tightening can never be redeemed afterwards.
+  const allowed = findAllowedClient(payload.clientId);
+  if (!allowed)
+    return tokenError(400, "invalid_client", "Unknown MCP client_id.");
+  if (!isAllowedRedirectUri(allowed, payload.redirectUri))
+    return tokenError(
+      400,
+      "invalid_redirect_uri",
+      "redirect_uri does not match a known callback for this client.",
+    );
+
+  // Fix #2 — single-use enforcement. INSERT the SHA-256 of the code
+  // into `mcp_consumed_codes`; a duplicate (= already redeemed) flips
+  // `inserted` to false and we reject the exchange.
+  const codeHash = hashAuthCode(code);
+  let inserted = false;
+  try {
+    inserted = await consumedCodes.markCodeConsumed(codeHash);
+  } catch (err) {
+    console.warn("mcp/token: consumed-codes insert failed", {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return tokenError(
+      500,
+      "server_error",
+      "Could not record code redemption. Please retry the authorization flow.",
+    );
+  }
+  if (!inserted) {
+    return tokenError(
+      400,
+      "invalid_grant",
+      "Authorization code already used.",
     );
   }
 
@@ -141,4 +184,8 @@ export async function POST(req: Request): Promise<Response> {
       },
     },
   );
+}
+
+export async function POST(req: Request): Promise<Response> {
+  return handleTokenRequest(req);
 }

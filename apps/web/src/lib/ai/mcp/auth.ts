@@ -69,7 +69,7 @@ function base64UrlDecode(input: string): Buffer {
   return Buffer.from(padded, "base64");
 }
 
-function requireSigningKey(): string {
+export function requireSigningKey(): string {
   const key = process.env.MCP_TOKEN_SIGNING_KEY;
   if (!key || key.length < 32) {
     throw new Error(
