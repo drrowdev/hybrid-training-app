@@ -17,12 +17,15 @@ import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
 import { todayYmd } from "@/lib/dates";
 import { effectiveTimeOfDay, gapHoursBetween } from "@/lib/planner/time-of-day";
 import { getRegionFreshness, type FreshnessConflict } from "@/lib/stats/region-freshness-queries";
+import { getRegionSpikes } from "@/lib/stats/region-spike-queries";
 import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
 import { findHeavyOnRecoveringConflictWithMuscles } from "@/lib/muscle/muscle-conflict";
 import { StravaStaleSyncTrigger } from "@/components/StravaStaleSyncTrigger";
 import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner";
 import { dismissBwBanner } from "@/lib/profile/actions";
 import { OverdueNotice } from "@/components/today/OverdueNotice";
+import { RegionSpikeBanner } from "@/components/today/RegionSpikeBanner";
+import type { RegionSpike } from "@/lib/engine/region-spike-detector";
 import {
   hasLoadableMainLift,
   resolveEquipment,
@@ -85,7 +88,7 @@ export default async function TodayPage() {
 
   const todayIso = todayYmd(profile?.timezone ?? "UTC");
 
-  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness, activeBlock, tmDict, tmRows] = await Promise.all([
+  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness, activeBlock, tmDict, tmRows, regionSpikes] = await Promise.all([
     supabase
       .from("sessions")
       .select("id, title, slot, completed_at, performed_at")
@@ -106,6 +109,7 @@ export default async function TodayPage() {
     getActiveBlock(),
     getTrainingMaxDict(),
     listTrainingMaxes(),
+    getRegionSpikes(supabase, userId, profile?.timezone ?? "UTC"),
   ]);
 
   const archetypeName = activeBlock
@@ -540,6 +544,7 @@ export default async function TodayPage() {
           nextUpcoming={upcoming[0] ?? null}
           formatProfile={formatProfile}
           overdueCount={overdueSummary.count}
+          regionSpikes={regionSpikes}
         />
 
         <WeekStrip days={weekDays} doneCount={doneCount} isRestDay={isRestDay} />
@@ -796,6 +801,7 @@ function TodaySessionCard({
   nextUpcoming,
   formatProfile,
   overdueCount,
+  regionSpikes,
 }: {
   openSession: { id: string; title: string | null } | null;
   completedToday: { id: string; title: string | null }[];
@@ -818,6 +824,7 @@ function TodaySessionCard({
   nextUpcoming: PlannedDay | null;
   formatProfile: ProfileForFormat;
   overdueCount: number;
+  regionSpikes: ReadonlyArray<RegionSpike>;
 }) {
   // Secondary, non-blocking notice rendered above the day's primary
   // card whenever the user has past-incomplete planned sessions sitting
@@ -825,10 +832,16 @@ function TodaySessionCard({
   // /app/plan, where the inline one-tap "Mark skipped" / "Log now"
   // CTAs live.
   const overdueNotice = <OverdueNotice count={overdueCount} />;
+  // Soft, read-only warning when one or more body regions are >25%
+  // above the user's own 4-week ATL baseline. Rendered below the
+  // overdue notice and above the day's primary card. Does not gate
+  // any prescription or planner action — purely informational.
+  const spikeBanner = <RegionSpikeBanner spikes={regionSpikes} />;
   if (openSession) {
     return (
       <>
         {overdueNotice}
+        {spikeBanner}
         <section className="cp-card" style={{ padding: 20, display: "grid", gap: 12 }}>
           <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
             Resume today&apos;s session
@@ -855,6 +868,7 @@ function TodaySessionCard({
     return (
       <>
         {overdueNotice}
+        {spikeBanner}
         <section
           className="cp-card"
           data-testid="today-logged"
@@ -886,6 +900,7 @@ function TodaySessionCard({
     return (
       <>
         {overdueNotice}
+        {spikeBanner}
         <section
           data-testid="today-rest"
           style={{
@@ -1001,6 +1016,7 @@ function TodaySessionCard({
   return (
     <div style={{ display: "grid", gap: 10 }}>
       {overdueNotice}
+      {spikeBanner}
       {isTwoADay && (
         <div
           role="note"
