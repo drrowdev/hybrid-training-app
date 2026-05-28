@@ -8,6 +8,12 @@ import {
   resolveLimitation,
 } from "@/lib/limitations/actions";
 import { formatDate } from "@/lib/format/datetime";
+import {
+  KIND_REGION_TOGGLE,
+  KIND_TENDINOPATHY,
+  type Region,
+} from "@/lib/settings/limitations-actions";
+import { LimitationsToggleSection } from "./LimitationsToggleSection";
 
 const REGIONS: { value: string; label: string }[] = [
   { value: "foot_ankle_calf", label: "Foot / ankle / calf" },
@@ -42,12 +48,21 @@ export default async function LimitationsPage() {
       .maybeSingle(),
     supabase
       .from("limitations")
-      .select("id, region, severity, started_at, resolved_at, notes")
+      .select("id, region, severity, started_at, resolved_at, notes, kind")
       .order("started_at", { ascending: false }),
   ]);
 
   const active = (all ?? []).filter((l) => !l.resolved_at);
   const resolved = (all ?? []).filter((l) => l.resolved_at);
+
+  // Derive the set-and-forget toggle state from the current sentinel
+  // rows so the UI reflects what the planner will actually see.
+  const initialBlockedRegions = active
+    .filter((l) => l.kind === KIND_REGION_TOGGLE && l.region)
+    .map((l) => l.region as Region);
+  const initialTendinopathyActive = active.some(
+    (l) => l.kind === KIND_TENDINOPATHY,
+  );
 
   // Server Component: rendered per request, not subject to the React
   // purity rule for hooks/components. The lint can't tell the difference.
@@ -66,6 +81,11 @@ export default async function LimitationsPage() {
           loading the affected region until you say it&apos;s fine. Not asked daily.
         </p>
       </header>
+
+      <LimitationsToggleSection
+        initialBlockedRegions={initialBlockedRegions}
+        initialTendinopathyActive={initialTendinopathyActive}
+      />
 
       {longOpen.length > 0 && (
         <section className="rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 p-4 space-y-2">
