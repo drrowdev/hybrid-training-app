@@ -1,0 +1,13 @@
+{
+  "name": "placeholder",
+  "promptHash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "matchers": {
+    "shape": {
+      "summary": "string",
+      "elements": "array"
+    },
+    "elementRules": [
+      { "path": "elements", "mustContain": "ok" }
+    ]
+  }
+}
