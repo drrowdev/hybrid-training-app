@@ -73,6 +73,27 @@ export type StrengthDay = {
    * accessory pool to its prescription regardless of the archetype default.
    */
   includeAccessories?: boolean;
+  /**
+   * ADR 0004 — optional dual-main-lift fields.
+   *
+   * When `secondaryRole` is set, the prescription assembler emits a
+   * second main lift on the same calendar day. The lower-body lift
+   * (declared by `role`) is sequenced first; the secondary upper lift
+   * runs after, capped at `secondaryMaxSets`. Only `ENDURANCE_ANCHOR`
+   * uses these fields in v1; every other archetype's day templates
+   * leave them undefined and behave exactly as before.
+   *
+   * `secondaryMaxSets` slices the front of the archetype's normal
+   * `setIntensities` wave so the user still hits a real top set.
+   * Per Androulakis-Korakakis 2020 / Spiering 2021, 2–3 sets at the
+   * archetype's maintenance band is sufficient to maintain 1RM in the
+   * secondary pattern without competing with the endurance recovery
+   * budget that justifies the archetype's existence.
+   */
+  secondaryRole?: StrengthRole;
+  secondaryTitle?: string;
+  secondaryCandidateSlugs?: string[];
+  secondaryMaxSets?: number;
 };
 
 export type CardioDay = {
@@ -381,7 +402,7 @@ export const ENDURANCE_ANCHOR: Archetype = {
   id: "endurance_anchor",
   name: "Endurance Focus",
   oneLiner:
-    "Cardio-led concurrent training. Polarized aerobic exposures (long Z2 + VO2 intervals) anchor the week. Two strength maintenance days (your choice of squat and deadlift variant) keep strength from drifting; extra easy-Z2 days are added when the budget allows.",
+    "Cardio-led concurrent training. Polarized aerobic exposures (long Z2 + VO2 intervals) anchor the week. Two dual-main-lift strength sessions (squat + overhead press, deadlift + bench press — paired for rack-height efficiency) keep all four movement patterns covered without breaking the cardio focus.",
   weeks: 4,
   accessoryProfile: {
     aesthetic: { itemsPerSession: 1, setsPerItem: 2, repRange: { min: 12, max: 15 }, biasSupported: true },
@@ -403,14 +424,23 @@ export const ENDURANCE_ANCHOR: Archetype = {
       priority: "optional",
       rank: 6,
     },
+    // ADR 0004 — dual-main-lift redesign per Huiberts 2024 Sports Med
+    // (upper-body strength not impaired by concurrent endurance) and
+    // Androulakis-Korakakis 2020 (1 set/wk at >=75% 1RM maintains 1RM).
+    // Pair chosen for rack ergonomics: same J-cup height supports both
+    // lifts in the superset, no rerack between movements.
     {
       kind: "strength",
       dayIndex: 1,
       role: "squat",
-      title: "Squat maintenance",
+      title: "Squat + Overhead Press",
       candidateSlugs: STRENGTH_ROLE_CANDIDATES.squat,
       priority: "anchor",
       rank: 3,
+      secondaryRole: "vertical_press",
+      secondaryTitle: "Overhead Press",
+      secondaryCandidateSlugs: STRENGTH_ROLE_CANDIDATES.vertical_press,
+      secondaryMaxSets: 3,
     },
     {
       kind: "cardio",
@@ -429,14 +459,19 @@ export const ENDURANCE_ANCHOR: Archetype = {
       priority: "optional",
       rank: 5,
     },
+    // ADR 0004 — dual-main-lift redesign (see note on the squat+OHP day).
     {
       kind: "strength",
       dayIndex: 3,
       role: "deadlift",
-      title: "Deadlift maintenance",
+      title: "Deadlift + Bench Press",
       candidateSlugs: STRENGTH_ROLE_CANDIDATES.deadlift,
       priority: "anchor",
       rank: 4,
+      secondaryRole: "horizontal_press",
+      secondaryTitle: "Bench Press",
+      secondaryCandidateSlugs: STRENGTH_ROLE_CANDIDATES.horizontal_press,
+      secondaryMaxSets: 3,
     },
     {
       kind: "cardio",
@@ -481,15 +516,22 @@ export const ENDURANCE_ANCHOR: Archetype = {
    * DC-L3.
    */
   twoADayDays: [
+    // ADR 0004 — dual-main-lift redesign. AM strength block on these days
+    // pairs the lower-body main lift with its same-J-cup-height upper
+    // counterpart (capped at secondaryMaxSets) for rack ergonomics.
     {
       kind: "strength",
       dayIndex: 1,
       slot: "am",
       role: "squat",
-      title: "Squat maintenance",
+      title: "Squat + Overhead Press",
       candidateSlugs: STRENGTH_ROLE_CANDIDATES.squat,
       priority: "anchor",
       rank: 3,
+      secondaryRole: "vertical_press",
+      secondaryTitle: "Overhead Press",
+      secondaryCandidateSlugs: STRENGTH_ROLE_CANDIDATES.vertical_press,
+      secondaryMaxSets: 3,
     },
     {
       kind: "cardio",
@@ -527,10 +569,14 @@ export const ENDURANCE_ANCHOR: Archetype = {
       dayIndex: 3,
       slot: "am",
       role: "deadlift",
-      title: "Deadlift maintenance",
+      title: "Deadlift + Bench Press",
       candidateSlugs: STRENGTH_ROLE_CANDIDATES.deadlift,
       priority: "anchor",
       rank: 4,
+      secondaryRole: "horizontal_press",
+      secondaryTitle: "Bench Press",
+      secondaryCandidateSlugs: STRENGTH_ROLE_CANDIDATES.horizontal_press,
+      secondaryMaxSets: 3,
     },
     {
       kind: "cardio",
@@ -941,7 +987,18 @@ export const CONCURRENT_HYBRID: Archetype = {
     durability: { extras: [] },
   },
   days: [
-    ...STRENGTH_DAYS,
+    // ADR 0004 — bench (dayIndex 1) and OHP (dayIndex 4) drop from
+    // anchor to optional so the freq=2 trim collapses to the two
+    // hardest-to-redistribute compounds (squat + deadlift). Cardio
+    // days are also demoted from anchor to optional with ranks
+    // ordered so cardio Z2 (5) comes back first, then VO2 (6), then
+    // upper-body mains (7/8). The archetype identity is preserved at
+    // freq>=4 (the four main lifts + two cardio sessions of the
+    // oneLiner all fit by freq=6).
+    STRENGTH_DAYS[0]!, // squat — anchor, rank 1
+    { ...STRENGTH_DAYS[1]!, priority: "optional", rank: 7 }, // bench
+    STRENGTH_DAYS[2]!, // deadlift — anchor, rank 3
+    { ...STRENGTH_DAYS[3]!, priority: "optional", rank: 8 }, // OHP
     {
       kind: "cardio",
       dayIndex: 2,
@@ -951,7 +1008,7 @@ export const CONCURRENT_HYBRID: Archetype = {
       cardioKind: "cardio_z2",
       durationMin: 60,
       hrCap: "≤ 70% HRR, conversational",
-      priority: "anchor",
+      priority: "optional",
       rank: 5,
     },
     {
@@ -963,7 +1020,7 @@ export const CONCURRENT_HYBRID: Archetype = {
       cardioKind: "cardio_vo2",
       durationMin: 45,
       protocolNote: "4 × 4 min hard @ 90–95% HRmax, with 3 min easy recovery between intervals",
-      priority: "anchor",
+      priority: "optional",
       rank: 6,
     },
   ],
@@ -979,10 +1036,12 @@ export const CONCURRENT_HYBRID: Archetype = {
       cardioKind: "cardio_z2",
       durationMin: 45,
       hrCap: "≤ 70% HRR, conversational",
-      priority: "anchor",
+      priority: "optional",
       rank: 5,
     },
-    { ...STRENGTH_DAYS[1]!, slot: "am" },
+    // ADR 0004 — bench + OHP optional in the two-a-day variant too, same
+    // rationale as the single-session days above.
+    { ...STRENGTH_DAYS[1]!, slot: "am", priority: "optional", rank: 7 },
     { ...STRENGTH_DAYS[2]!, slot: "am" },
     {
       kind: "cardio",
@@ -994,10 +1053,10 @@ export const CONCURRENT_HYBRID: Archetype = {
       cardioKind: "cardio_vo2",
       durationMin: 45,
       protocolNote: "4 × 4 min hard @ 90–95% HRmax, with 3 min easy recovery between intervals",
-      priority: "anchor",
+      priority: "optional",
       rank: 6,
     },
-    { ...STRENGTH_DAYS[3]!, slot: "am" },
+    { ...STRENGTH_DAYS[3]!, slot: "am", priority: "optional", rank: 8 },
   ],
   weekProfiles: [
     { weekIndex: 0, setIntensities: [0.65, 0.72, 0.78], setReps: 5, intensityLabel: "5s wave" },
@@ -1209,7 +1268,11 @@ export function daysForFrequency(
 export function requiredStrengthRoles(archetype: Archetype): StrengthRole[] {
   const set = new Set<StrengthRole>();
   for (const d of archetype.days) {
-    if (d.kind === "strength") set.add(d.role);
+    if (d.kind === "strength") {
+      set.add(d.role);
+      // ADR 0004 — dual-main-lift days contribute a second role too.
+      if (d.secondaryRole) set.add(d.secondaryRole);
+    }
   }
   return Array.from(set);
 }
@@ -1219,7 +1282,11 @@ export function allCandidateLiftSlugs(archetype: Archetype): string[] {
   const set = new Set<string>();
   const pool: DayTemplate[] = [...archetype.days, ...(archetype.twoADayDays ?? [])];
   for (const d of pool) {
-    if (d.kind === "strength") d.candidateSlugs.forEach((s) => set.add(s));
+    if (d.kind === "strength") {
+      d.candidateSlugs.forEach((s) => set.add(s));
+      // ADR 0004 — dual-main-lift days advertise a second pattern too.
+      d.secondaryCandidateSlugs?.forEach((s) => set.add(s));
+    }
   }
   return Array.from(set);
 }
@@ -1297,6 +1364,15 @@ export function buildPrescription(
   day: DayTemplate,
   movement: { id: string; slug: string; displayName: string },
   finisherMovement?: { id: string; slug: string; displayName: string },
+  /**
+   * ADR 0004 — when supplied alongside a strength `day` that declares
+   * `secondaryRole` + `secondaryMaxSets`, the assembler appends up to
+   * `secondaryMaxSets` additional `kind: "main"` items for this second
+   * movement, drawn from the front of the wave so the user still hits
+   * a real top set. Ignored for non-strength days and for strength days
+   * without dual-main-lift fields configured.
+   */
+  secondaryMovement?: { id: string; slug: string; displayName: string },
 ): PrescriptionItem[] {
   const profile = archetype.weekProfiles.find((w) => w.weekIndex === weekIndex);
   if (!profile) return [];
@@ -1316,11 +1392,46 @@ export function buildPrescription(
         notes: i === profile.setIntensities.length - 1 ? "top set" : undefined,
       };
     });
-    if (profile.strengthVolumeScale != null && profile.strengthVolumeScale < 1) {
-      const keep = Math.max(1, Math.round(items.length * profile.strengthVolumeScale));
-      return items.slice(0, keep);
+    const primaryItems =
+      profile.strengthVolumeScale != null && profile.strengthVolumeScale < 1
+        ? items.slice(0, Math.max(1, Math.round(items.length * profile.strengthVolumeScale)))
+        : items;
+
+    // ADR 0004 — dual-main-lift secondary slot.
+    // The secondary movement reuses the wave's intensity ladder but is
+    // capped at `secondaryMaxSets` items (typically 2–3). Per
+    // Androulakis-Korakakis 2020 / Spiering 2021, this is enough to
+    // maintain 1RM in the secondary pattern without competing with
+    // the archetype's recovery budget. The deload's volume scale also
+    // applies to the secondary so a deload week stays a deload week.
+    if (
+      day.secondaryRole &&
+      day.secondaryMaxSets != null &&
+      day.secondaryMaxSets > 0 &&
+      secondaryMovement
+    ) {
+      const secondaryAll: PrescriptionItem[] = profile.setIntensities.map((pct, i) => {
+        const reps = Array.isArray(profile.setReps) ? profile.setReps[i] ?? 5 : profile.setReps;
+        return {
+          movementId: secondaryMovement.id,
+          movementSlug: secondaryMovement.slug,
+          movementName: secondaryMovement.displayName,
+          kind: "main",
+          sets: 1,
+          reps,
+          percentTm: Math.round(pct * 100),
+          intensityLabel: `${Math.round(pct * 100)}% TM`,
+          notes: i === profile.setIntensities.length - 1 ? "top set" : undefined,
+        };
+      });
+      const cap =
+        profile.strengthVolumeScale != null && profile.strengthVolumeScale < 1
+          ? Math.max(1, Math.round(day.secondaryMaxSets * profile.strengthVolumeScale))
+          : day.secondaryMaxSets;
+      const secondaryCapped = secondaryAll.slice(0, Math.min(cap, secondaryAll.length));
+      return [...primaryItems, ...secondaryCapped];
     }
-    return items;
+    return primaryItems;
   }
 
   if (day.kind === "tendon") {
