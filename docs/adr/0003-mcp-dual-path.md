@@ -87,16 +87,16 @@ Handlers receive a Supabase client already bound to the caller's RLS context. To
 
 ### Initial 8 tools
 
-| Tool | Input | Output (typed) | Notes |
-|---|---|---|---|
-| `getProfile` | — | experience tier, archetype preferences, equipment, declared active limitations | Replaces the `Profile` slice of the old snapshot |
-| `getActiveBlock` | — | current archetype, week index, prescribed sessions for next 2 weeks | Replaces the `Active block` slice |
-| `getRecentSessions` | `{ daysBack: number }` | per-day strength + cardio sessions at daily detail | Bound at **90 days max** (hard cap in the handler); larger windows return the `WeeklyAggregates` shape instead |
-| `getWeeklyAggregates` | `{ weeksBack: number }` | weekly tonnage, weekly cardio minutes, weekly adherence | "How's the month going" type questions; cap at 104 weeks |
-| `getPrTimeline` | `{ movement?: string }` | full PR history, optionally filtered to a movement | Cheap, finite, valuable for "best ever" — full history regardless of age (matches ADR 0002) |
-| `getEngineState` | — | current bucket pressure, region freshness (ATL/CTL), ceiling-explain output, taper recommendation | Replaces the `Engine state` slice |
-| `getMemories` | — | current `memories` rows for this user (read-only) | Read-only; memory *writes* remain out of scope (still a future ADR) |
-| `getKnowledge` | — | embedded archetype descriptions + CP-1..CP-5 policy + 30-row CP-2 constants table | Same embedded knowledge as ADR 0002; compile-time-imported from the constraint files |
+| Tool | Input | Output (typed) | Data source | Hard caps |
+|---|---|---|---|---|
+| `getProfile` | — | experience tier, archetype preferences, equipment, declared active limitations | `profiles` + `limitations WHERE resolved_at IS NULL` | one row + ≤ 50 active limitations |
+| `getActiveBlock` | — | current archetype, week index, prescribed sessions for next 2 weeks | `training_blocks WHERE status='active'` + `planned_sessions` next 14 days; helpers from `apps/web/src/lib/planner/queries.ts` | ≤ 14 prescribed sessions |
+| `getRecentSessions` | `{ daysBack: number }` | per-day strength + cardio sessions at daily detail | `sessions` ⨝ `set_logs` ⨝ `cardio_logs` filtered by `performed_at >= now() - daysBack days`; reuse the existing `apps/web/src/lib/engine/actual-session-load.ts` aggregations | `daysBack` clamped to **[1, 90]**; ≤ 200 sessions |
+| `getWeeklyAggregates` | `{ weeksBack: number }` | weekly tonnage, weekly cardio minutes, weekly adherence | `sessions` grouped by `date_trunc('week', performed_at)`; helpers from `apps/web/src/lib/stats/blocks.ts` | `weeksBack` clamped to **[1, 104]** |
+| `getPrTimeline` | `{ movement?: string }` | full PR history, optionally filtered to a movement | `pr_events` table via `apps/web/src/lib/stats/pr-queries.ts` | ≤ 500 most recent PRs (or all if < 500) |
+| `getEngineState` | — | current bucket pressure, region freshness (ATL/CTL), ceiling-explain output, taper recommendation | `getBucketPressure` + `getRegionFreshness` + `getCeilingExplain` from `apps/web/src/lib/stats/engine.ts` | fixed shape: 5 buckets + 7 regions + 1 ceiling row |
+| `getMemories` | — | current `memories` rows for this user (read-only) | `memories WHERE user_id = auth.uid()` | ≤ 100 most recent |
+| `getKnowledge` | — | embedded archetype descriptions + CP-1..CP-5 policy + 30-row CP-2 constants table | static TypeScript constant in `apps/web/src/lib/ai/knowledge.ts` (compile-time) | bounded by source-file size (≤ 5k tokens) |
 
 The legacy `getEngineSnapshot` is **removed** in PR B (no deprecation window — it never shipped to users; ADR 0002's PR #187 was open at the time this ADR was accepted).
 
@@ -147,7 +147,7 @@ async function handle(req: Request, _ctx: { params: { mcp: string[] } }): Promis
 
 Notes:
 
-- **Package name** confirmed from the SDK README (`main` @ `5fc42e9`): `@modelcontextprotocol/server`. The v1 line (`@modelcontextprotocol/sdk`) is still supported and may be pinned instead if v2 stability slips — PR A picks one and locks it in `package.json`.
+- **Package name** confirmed from the SDK README (`main` @ `5fc42e9`): **`@modelcontextprotocol/sdk`** at v1.x (the production-recommended track). The v2 `@modelcontextprotocol/server` package is pre-alpha and explicitly not chosen for v1 of this work. PR A pins `@modelcontextprotocol/sdk@^1.x` (latest 1.x at PR-open time) in `apps/web/package.json`. If the v1 line is later deprecated, that is a follow-up ADR.
 - **Transport**: Streamable HTTP, per [spec 2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18). The deprecated HTTP+SSE transport is **not** implemented.
 - Each MCP request rebuilds an `McpServer` bound to the authenticated user's RLS context. This is stateless across requests (Vercel serverless friendly) and keeps per-user isolation explicit.
 
@@ -161,7 +161,7 @@ apps/web/src/app/mcp/token/route.ts      // OAuth token endpoint (exchanges code
 
 - The external client (Claude / ChatGPT / Cursor) follows OAuth 2.1 against `/mcp/authorize` and `/mcp/token`.
 - Authorization redirects to the user's Supabase Auth session (already-logged-in users see only a consent screen; logged-out users sign in first).
-- On consent we issue a **short-lived bearer token** (≤ 1 hour) signed with a server-only secret; the token payload binds `{ userId, clientId, scope }`. No refresh tokens in v1 (the user re-authorizes when the token expires; deferred refresh-token support is a follow-up).
+- On consent we issue a **bearer token with a 1-hour lifetime** signed with a server-only secret; the token payload binds `{ userId, clientId, scope }`. The 1-hour value is the v1 fixed default — long enough to span a normal chat session, short enough that a leaked token's blast radius is small. No refresh tokens in v1 (the user re-authorizes when the token expires; refresh-token support is deferred to a follow-up ADR if the re-authorize prompt becomes a real friction signal in usage data).
 - Each MCP request goes through `requireMcpBearerAuth`, which verifies the token and returns a `ToolContext` carrying a Supabase client signed in as that user via the standard server-side helper (matches the in-app chat's RLS posture).
 - Every `authorize` / `token` / `revoke` event writes to `mcp_authorizations` (see schema below).
 
