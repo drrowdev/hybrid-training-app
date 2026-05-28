@@ -1,9 +1,0 @@
-{
-  "promptHash": "4723e16e333cdd2f3aa44f11325be32039f7c48e4dd99ae89fa51dc554e5e299",
-  "provider": "anthropic",
-  "response": {
-    "text": "I don't see any running activity in your snapshot — no cardio sessions tagged as runs in the last 90 days, no running PRs in your timeline, and your active block is strength-anchored. From what's in front of me I can't say how marathon prep is going. If you've been logging runs elsewhere, you'd need to bring those into the app for me to talk about them.",
-    "tool_calls": ["getEngineSnapshot"]
-  },
-  "usage": { "input_tokens": 1700, "output_tokens": 100 }
-}

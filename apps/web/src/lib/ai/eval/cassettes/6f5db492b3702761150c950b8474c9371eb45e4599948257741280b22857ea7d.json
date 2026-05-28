@@ -1,0 +1,9 @@
+{
+  "promptHash": "6f5db492b3702761150c950b8474c9371eb45e4599948257741280b22857ea7d",
+  "provider": "anthropic",
+  "response": {
+    "text": "Your squat has trended up across the last 12 weeks. The first three weeks averaged around 11,200 kg/week of squat tonnage; the most recent three are sitting closer to 14,800 kg/week. The direction is clearly up — about 30% more weekly squat tonnage now vs the start of the window.",
+    "tool_calls": ["getWeeklyAggregates"]
+  },
+  "usage": { "input_tokens": 2100, "output_tokens": 140 }
+}
