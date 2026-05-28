@@ -70,7 +70,7 @@ export async function POST(req: Request): Promise<Response> {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "timezone, ai_opt_in_at, byoai_provider, byoai_key_vault_id, byoai_unlocked_at",
+      "timezone, byoai_provider, byoai_key_vault_id, byoai_unlocked_at",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -78,7 +78,6 @@ export async function POST(req: Request): Promise<Response> {
   if (!profile) return jsonError(403, "no-access", "Profile not found.");
   if (
     !hasAiAccess({
-      ai_opt_in_at: profile.ai_opt_in_at,
       byoai_provider: profile.byoai_provider,
       byoai_key_vault_id: profile.byoai_key_vault_id,
       byoai_unlocked_at: profile.byoai_unlocked_at,
@@ -87,7 +86,7 @@ export async function POST(req: Request): Promise<Response> {
     return jsonError(
       403,
       "no-access",
-      "AI is not configured. Enable it in Settings → AI.",
+      "AI is not configured. Add a provider key in Settings → AI.",
     );
   }
 

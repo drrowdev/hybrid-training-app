@@ -5,6 +5,30 @@ import { AiSettingsPanel } from "@/components/settings/AiSettingsPanel";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Compute whether the user has at least one active MCP authorization —
+ * i.e. an `authorize` event with no subsequent `revoke` for the same
+ * client_id. This drives the "Configured" badge on the MCP card.
+ *
+ * Lives in the page because it's a one-off projection; if/when MCP
+ * status is needed elsewhere it should move into `lib/ai/access.ts`.
+ */
+function hasActiveMcpAuthorization(
+  rows: Array<{ client_id: string; event: string; created_at: string }>,
+): boolean {
+  const latestByClient = new Map<string, string>();
+  // rows arrive newest-first; the first occurrence per client_id wins.
+  for (const r of rows) {
+    if (!latestByClient.has(r.client_id)) {
+      latestByClient.set(r.client_id, r.event);
+    }
+  }
+  for (const event of latestByClient.values()) {
+    if (event === "authorize") return true;
+  }
+  return false;
+}
+
 export default async function AiSettingsPage() {
   const supabase = await createClient();
   const {
@@ -14,31 +38,38 @@ export default async function AiSettingsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select(
-      "ai_opt_in_at, byoai_provider, byoai_key_vault_id, byoai_unlocked_at",
-    )
+    .select("byoai_provider, byoai_key_vault_id, byoai_unlocked_at")
     .eq("id", user.id)
     .maybeSingle();
 
-  const optedIn = profile?.ai_opt_in_at != null;
   const provider =
     (profile?.byoai_provider as "anthropic" | "openai" | "gemini" | null) ?? null;
   const keyConfigured = profile?.byoai_key_vault_id != null;
+
+  const { data: mcpRows } = await supabase
+    .from("mcp_authorizations")
+    .select("client_id, event, created_at")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  const mcpConfigured = hasActiveMcpAuthorization(
+    (mcpRows ?? []) as Array<{
+      client_id: string;
+      event: string;
+      created_at: string;
+    }>,
+  );
 
   return (
     <main className="min-h-screen px-6 py-8 max-w-2xl mx-auto space-y-8">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">AI</h1>
-        <p className="text-xs text-foreground/60">
-          Bring your own provider key. AI features are off until you opt in
-          and add a key.
-        </p>
       </header>
 
       <AiSettingsPanel
-        initialOptedIn={optedIn}
         initialProvider={provider}
         initialKeyConfigured={keyConfigured}
+        initialMcpConfigured={mcpConfigured}
       />
     </main>
   );
