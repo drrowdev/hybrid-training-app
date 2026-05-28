@@ -40,8 +40,9 @@ type RawRow = {
   region: string | null;
   affected_muscles: string[] | null;
   affected_movement_ids: string[] | null;
+  allowed_movement_ids: string[] | null;
+  affected_side: "left" | "right" | "bilateral" | null;
   notes: string | null;
-  expected_duration_days: number | null;
   started_at: string;
   resolved_at: string | null;
   engine_action: Record<string, unknown> | null;
@@ -57,8 +58,9 @@ function normaliseRow(r: RawRow): LimitationRow {
       MUSCLE_SET.has(m),
     ),
     affectedMovementIds: r.affected_movement_ids ?? [],
+    allowedMovementIds: r.allowed_movement_ids ?? [],
+    affectedSide: r.affected_side,
     notes: r.notes,
-    expectedDurationDays: r.expected_duration_days,
     startedAt: r.started_at,
     resolvedAt: r.resolved_at,
     engineAction: r.engine_action ?? {},
@@ -78,7 +80,7 @@ export default async function InjuriesPage() {
     supabase
       .from("limitations")
       .select(
-        "id, kind, severity, region, affected_muscles, affected_movement_ids, notes, expected_duration_days, started_at, resolved_at, engine_action",
+        "id, kind, severity, region, affected_muscles, affected_movement_ids, allowed_movement_ids, affected_side, notes, started_at, resolved_at, engine_action",
       )
       .is("resolved_at", null)
       .order("started_at", { ascending: false })
@@ -86,7 +88,7 @@ export default async function InjuriesPage() {
     supabase
       .from("limitations")
       .select(
-        "id, kind, severity, region, affected_muscles, affected_movement_ids, notes, expected_duration_days, started_at, resolved_at, engine_action",
+        "id, kind, severity, region, affected_muscles, affected_movement_ids, allowed_movement_ids, affected_side, notes, started_at, resolved_at, engine_action",
       )
       .not("resolved_at", "is", null)
       .order("resolved_at", { ascending: false })

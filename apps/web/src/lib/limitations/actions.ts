@@ -192,14 +192,30 @@ export async function createLimitation(
       region: inferred,
       affected_muscles: parsed.data.affectedMuscles,
       affected_movement_ids: parsed.data.affectedMovementIds,
+      allowed_movement_ids: parsed.data.allowedMovementIds,
+      affected_side: parsed.data.affectedSide,
       notes: parsed.data.notes ?? null,
-      expected_duration_days: parsed.data.expectedDurationDays ?? null,
     })
     .select("id")
     .single();
 
   if (error || !data) {
     return { ok: false, error: error?.message ?? "Insert failed" };
+  }
+
+  // Append-only audit row for the lifecycle timeline (migration 0070).
+  // Best-effort: if the events insert fails we still return ok so the
+  // limitation isn't orphaned UX-wise. Errors are logged for ops.
+  const eventInsert = await supabase.from("limitation_events").insert({
+    limitation_id: data.id,
+    user_id: user.id,
+    kind: "started",
+  });
+  if (eventInsert.error) {
+    console.warn(
+      "[limitations] started-event insert failed",
+      eventInsert.error.message,
+    );
   }
 
   revalidatePath("/app");
@@ -233,29 +249,153 @@ export async function updateLimitation(
       region: inferred,
       affected_muscles: parsed.data.affectedMuscles,
       affected_movement_ids: parsed.data.affectedMovementIds,
+      allowed_movement_ids: parsed.data.allowedMovementIds,
+      affected_side: parsed.data.affectedSide,
       notes: parsed.data.notes ?? null,
-      expected_duration_days: parsed.data.expectedDurationDays ?? null,
     })
     .eq("id", id);
 
   if (error) return { ok: false, error: error.message };
+  revalidatePath("/app");
   revalidatePath("/app/recovery/injuries");
   revalidatePath("/app/settings/limitations");
   return { ok: true, id };
 }
 
+/**
+ * Replace the per-exercise allow-list on an existing limitation. The
+ * "Engine will block" preview in AddLimitationModal writes through
+ * this after the limitation is created so each toggle is a single
+ * round-trip, no event row needed.
+ */
+export async function updateLimitationAllowedMovements(
+  id: string,
+  allowedIds: string[],
+): Promise<LimitationActionResult> {
+  if (!z.string().uuid().safeParse(id).success) {
+    return { ok: false, error: "Invalid id" };
+  }
+  const arr = z.array(z.string().uuid()).max(80).safeParse(allowedIds);
+  if (!arr.success) return { ok: false, error: "Invalid movement ids" };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("limitations")
+    .update({ allowed_movement_ids: arr.data })
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/app");
+  revalidatePath("/app/recovery/injuries");
+  return { ok: true, id };
+}
+
+/**
+ * Mark a limitation resolved. Idempotent — if `resolved_at` is
+ * already set we do not write a second event. Inserts a
+ * `limitation_events` row `kind='resolved'` with the optional note.
+ */
 export async function resolveLimitationById(
   id: string,
+  note?: string,
 ): Promise<LimitationActionResult> {
   if (!z.string().uuid().safeParse(id).success) {
     return { ok: false, error: "Invalid id" };
   }
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) redirect("/login");
+
+  const { data: existing, error: readErr } = await supabase
+    .from("limitations")
+    .select("id, resolved_at")
+    .eq("id", id)
+    .maybeSingle();
+  if (readErr) return { ok: false, error: readErr.message };
+  if (!existing) return { ok: false, error: "Not found" };
+  if (existing.resolved_at !== null) {
+    // Idempotent — already resolved, no-op.
+    return { ok: true, id };
+  }
+
+  const now = new Date().toISOString();
   const { error } = await supabase
     .from("limitations")
-    .update({ resolved_at: new Date().toISOString() })
+    .update({ resolved_at: now })
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
+
+  const eventInsert = await supabase.from("limitation_events").insert({
+    limitation_id: id,
+    user_id: user.id,
+    kind: "resolved",
+    occurred_at: now,
+    note: note ?? null,
+  });
+  if (eventInsert.error) {
+    console.warn(
+      "[limitations] resolved-event insert failed",
+      eventInsert.error.message,
+    );
+  }
+
+  revalidatePath("/app");
+  revalidatePath("/app/recovery/injuries");
+  revalidatePath("/app/settings/limitations");
+  return { ok: true, id };
+}
+
+/**
+ * Reopen a previously-resolved limitation. Idempotent — if
+ * `resolved_at` is already NULL we do not write a second event.
+ */
+export async function reopenLimitationById(
+  id: string,
+  note?: string,
+): Promise<LimitationActionResult> {
+  if (!z.string().uuid().safeParse(id).success) {
+    return { ok: false, error: "Invalid id" };
+  }
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) redirect("/login");
+
+  const { data: existing, error: readErr } = await supabase
+    .from("limitations")
+    .select("id, resolved_at")
+    .eq("id", id)
+    .maybeSingle();
+  if (readErr) return { ok: false, error: readErr.message };
+  if (!existing) return { ok: false, error: "Not found" };
+  if (existing.resolved_at === null) {
+    // Idempotent — already active, no-op.
+    return { ok: true, id };
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("limitations")
+    .update({ resolved_at: null })
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+
+  const eventInsert = await supabase.from("limitation_events").insert({
+    limitation_id: id,
+    user_id: user.id,
+    kind: "reopened",
+    occurred_at: now,
+    note: note ?? null,
+  });
+  if (eventInsert.error) {
+    console.warn(
+      "[limitations] reopened-event insert failed",
+      eventInsert.error.message,
+    );
+  }
+
   revalidatePath("/app");
   revalidatePath("/app/recovery/injuries");
   revalidatePath("/app/settings/limitations");

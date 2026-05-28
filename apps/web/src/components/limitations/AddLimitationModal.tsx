@@ -2,16 +2,21 @@
 /**
  * AddLimitationModal — self-serve form for creating a new limitation
  * or editing an existing one. Lives at the top of
- * /app/recovery/injuries; opens from the "Add a limitation" button
- * on the page and the per-card "Edit" affordance.
+ * /app/recovery/injuries.
  *
- * The modal is a thin wrapper around the typed `createLimitation` /
- * `updateLimitation` server actions in @/lib/limitations/actions —
- * we don't roll our own fetch. Validation is mirrored client-side so
- * the user sees an inline error before the server round-trip, but
- * the server is still the source of truth via the same Zod schema.
+ * v2 (PR `feat/limitations-v2-lifecycle`):
+ *   - Removed the "Expected duration (days)" field. User feedback was
+ *     unambiguous: duration estimates were noise, not signal.
+ *   - Added a "Affects: Left / Right / Both" toggle. Per-limitation,
+ *     not per-muscle (model-simplification noted in the PR body).
+ *   - Added an interactive "Engine will block" preview between the
+ *     muscle picker and the movement picker. The user sees the
+ *     concrete movements that will be filtered and can toggle each
+ *     row to add it to the allow-list ("I can still do this one
+ *     without pain"). On save, the allow-list is persisted on the
+ *     row's `allowed_movement_ids` array.
  */
-import { useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import type { FormEvent, ReactElement } from "react";
 import {
   ALL_MUSCLE_GROUPS,
@@ -22,11 +27,19 @@ import {
   updateLimitation,
 } from "@/lib/limitations/actions";
 import type { LimitationFormInput } from "@/lib/limitations/schema";
+import { AFFECTED_SIDES, type AffectedSide } from "@/lib/limitations/schema";
 import { MusclePicker } from "@/components/muscle-grid/MusclePicker";
 import { MovementPicker } from "./MovementPicker";
 import type { LimitationRow, MovementRef } from "./types";
 
 const MUSCLE_SET = new Set<string>(ALL_MUSCLE_GROUPS);
+
+type AffectedMovementPreview = {
+  id: string;
+  slug: string;
+  displayName: string;
+  affectedAs: "primary" | "secondary";
+};
 
 export type AddLimitationModalProps = {
   open: boolean;
@@ -54,15 +67,70 @@ export function AddLimitationModal({
   );
   const [movements, setMovements] = useState<MovementRef[]>(initialMovements);
   const [notes, setNotes] = useState(initial?.notes ?? "");
-  const [durationDays, setDurationDays] = useState<string>(
-    initial?.expectedDurationDays != null
-      ? String(initial.expectedDurationDays)
-      : "",
+  const [affectedSide, setAffectedSide] = useState<AffectedSide | null>(
+    initial?.affectedSide ?? "bilateral",
   );
+  const [allowedIds, setAllowedIds] = useState<Set<string>>(
+    new Set(initial?.allowedMovementIds ?? []),
+  );
+
+  const [preview, setPreview] = useState<AffectedMovementPreview[]>([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
+  useEffect(() => {
+    if (!open) return;
+    if (muscles.length === 0) {
+      // Defer the state update one tick so the linter doesn't see a
+      // synchronous setState in an effect body. Functionally identical
+      // — the next render still observes an empty preview.
+      const empty = window.setTimeout(() => setPreview([]), 0);
+      return () => window.clearTimeout(empty);
+    }
+    const ctrl = new AbortController();
+    const t = window.setTimeout(async () => {
+      setPreviewLoading(true);
+      try {
+        const res = await fetch("/api/limitations/affected-movements", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            affectedMuscles: muscles,
+            affectedRegion: initial?.region ?? null,
+          }),
+          signal: ctrl.signal,
+        });
+        if (!res.ok) {
+          setPreview([]);
+          return;
+        }
+        const json = (await res.json()) as {
+          movements?: AffectedMovementPreview[];
+        };
+        setPreview(json.movements ?? []);
+      } catch {
+        // swallow — abort or transient network
+      } finally {
+        setPreviewLoading(false);
+      }
+    }, 220);
+    return () => {
+      window.clearTimeout(t);
+      ctrl.abort();
+    };
+  }, [muscles, open, initial?.region]);
+
   if (!open) return null;
+
+  const toggleAllowed = (id: string) => {
+    setAllowedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -83,9 +151,9 @@ export function AddLimitationModal({
       severity,
       affectedMuscles: muscles,
       affectedMovementIds: movements.map((m) => m.id),
+      allowedMovementIds: Array.from(allowedIds),
+      affectedSide,
       notes: notes.trim() ? notes.trim() : null,
-      expectedDurationDays:
-        durationDays.trim() === "" ? null : Number(durationDays),
     };
 
     startTransition(async () => {
@@ -235,6 +303,69 @@ export function AddLimitationModal({
             <MusclePicker selected={muscles} onChange={setMuscles} />
           </div>
 
+          <fieldset style={{ border: "none", padding: 0, margin: 0 }}>
+            <legend style={labelStyle}>Affects</legend>
+            <p
+              style={{
+                margin: "0 0 6px",
+                fontSize: 11,
+                color: "var(--cp-text-muted)",
+              }}
+            >
+              Pick one side for the whole limitation. To capture &ldquo;left
+              adductor&rdquo; + &ldquo;right quad&rdquo; as one issue, create
+              two limitations.
+            </p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {AFFECTED_SIDES.map((s) => (
+                <label
+                  key={s}
+                  data-testid={`limitation-side-${s}`}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "6px 12px",
+                    border: "1px solid var(--cp-border)",
+                    borderRadius: 999,
+                    cursor: "pointer",
+                    background:
+                      affectedSide === s
+                        ? "var(--cp-accent-soft, rgba(0,0,0,0.06))"
+                        : "transparent",
+                    color:
+                      affectedSide === s
+                        ? "var(--cp-accent, var(--cp-text))"
+                        : "var(--cp-text-muted)",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    textTransform: "capitalize",
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="affected-side"
+                    value={s}
+                    checked={affectedSide === s}
+                    onChange={() => setAffectedSide(s)}
+                    style={{ accentColor: "var(--cp-accent)" }}
+                  />
+                  {s === "bilateral"
+                    ? "Both"
+                    : s.charAt(0).toUpperCase() + s.slice(1)}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          <AffectedPreviewSection
+            preview={preview}
+            loading={previewLoading}
+            allowedIds={allowedIds}
+            onToggleAllowed={toggleAllowed}
+            hasMuscles={muscles.length > 0}
+          />
+
           <div>
             <label style={labelStyle}>Affected movements</label>
             <MovementPicker selected={movements} onChange={setMovements} />
@@ -253,24 +384,6 @@ export function AddLimitationModal({
               maxLength={2000}
               placeholder="What's happening? When does it hurt? What helps?"
               style={{ ...fieldStyle, resize: "vertical" }}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="lim-duration" style={labelStyle}>
-              Expected duration (days, optional)
-            </label>
-            <input
-              id="lim-duration"
-              data-testid="lim-duration"
-              type="number"
-              inputMode="numeric"
-              min={0}
-              max={3650}
-              value={durationDays}
-              onChange={(e) => setDurationDays(e.target.value)}
-              placeholder="e.g. 14"
-              style={fieldStyle}
             />
           </div>
 
@@ -337,5 +450,164 @@ export function AddLimitationModal({
         </div>
       </form>
     </div>
+  );
+}
+
+function AffectedPreviewSection({
+  preview,
+  loading,
+  allowedIds,
+  onToggleAllowed,
+  hasMuscles,
+}: {
+  preview: AffectedMovementPreview[];
+  loading: boolean;
+  allowedIds: Set<string>;
+  onToggleAllowed: (id: string) => void;
+  hasMuscles: boolean;
+}): ReactElement {
+  const visible = useMemo(() => preview.slice(0, 50), [preview]);
+  return (
+    <section
+      data-testid="affected-movements-preview"
+      style={{
+        border: "1px solid var(--cp-border)",
+        borderRadius: 10,
+        padding: 12,
+        background: "var(--cp-surface-soft, transparent)",
+        display: "grid",
+        gap: 8,
+      }}
+    >
+      <header style={{ display: "grid", gap: 2 }}>
+        <strong style={{ fontSize: 13 }}>
+          These movements will be filtered from your prescriptions:
+        </strong>
+        <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
+          Toggle a row if you can still do that movement without pain.
+        </span>
+      </header>
+      {!hasMuscles && (
+        <p
+          style={{
+            margin: 0,
+            fontSize: 12,
+            color: "var(--cp-text-muted)",
+            fontStyle: "italic",
+          }}
+        >
+          Select muscles above to see which movements will be affected.
+        </p>
+      )}
+      {hasMuscles && loading && (
+        <p
+          style={{
+            margin: 0,
+            fontSize: 12,
+            color: "var(--cp-text-muted)",
+          }}
+        >
+          Computing…
+        </p>
+      )}
+      {hasMuscles && !loading && visible.length === 0 && (
+        <p
+          style={{
+            margin: 0,
+            fontSize: 12,
+            color: "var(--cp-text-muted)",
+            fontStyle: "italic",
+          }}
+        >
+          No movements in your catalog match this muscle selection.
+        </p>
+      )}
+      {hasMuscles && !loading && visible.length > 0 && (
+        <ul
+          style={{
+            listStyle: "none",
+            padding: 0,
+            margin: 0,
+            display: "grid",
+            gap: 4,
+          }}
+        >
+          {visible.map((m) => {
+            const allowed = allowedIds.has(m.id);
+            return (
+              <li
+                key={m.id}
+                data-testid={`affected-movement-${m.slug}`}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  padding: "4px 8px",
+                  borderRadius: 6,
+                  background: allowed
+                    ? "color-mix(in srgb, var(--cp-ok, #22c55e) 8%, transparent)"
+                    : "transparent",
+                }}
+              >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 12,
+                  }}
+                >
+                  <span>{m.displayName}</span>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      padding: "1px 6px",
+                      borderRadius: 999,
+                      border: "1px solid var(--cp-border)",
+                      color: "var(--cp-text-muted)",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.04em",
+                    }}
+                  >
+                    {m.affectedAs}
+                  </span>
+                </span>
+                <label
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    fontSize: 11,
+                    color: "var(--cp-text-muted)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    data-testid={`affected-movement-allow-${m.slug}`}
+                    checked={allowed}
+                    onChange={() => onToggleAllowed(m.id)}
+                    style={{ accentColor: "var(--cp-ok, #22c55e)" }}
+                  />
+                  I can still do this
+                </label>
+              </li>
+            );
+          })}
+          {preview.length > visible.length && (
+            <li
+              style={{
+                fontSize: 11,
+                color: "var(--cp-text-muted)",
+                paddingTop: 4,
+              }}
+            >
+              + {preview.length - visible.length} more not shown
+            </li>
+          )}
+        </ul>
+      )}
+    </section>
   );
 }

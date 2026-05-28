@@ -5,9 +5,20 @@
  * `"use server"` files to export only async functions — a Zod schema
  * object would break the build there. Both the client modal and the
  * server actions import from here so the rules can't drift.
+ *
+ * v2 changes (PR `feat/limitations-v2-lifecycle`):
+ *   - `expectedDurationDays` removed — the user explicitly rejected
+ *     duration estimates as a concept.
+ *   - `affectedSide` added — 'left' | 'right' | 'bilateral' | null
+ *     for future trend data; engine ignores at this stage.
+ *   - `allowedMovementIds` added — per-exercise allow-list, the
+ *     user-asserted "I can still do this one without pain."
  */
 import { z } from "zod";
 import { ALL_MUSCLE_GROUPS } from "@/lib/muscle/muscle-groups";
+
+export const AFFECTED_SIDES = ["left", "right", "bilateral"] as const;
+export type AffectedSide = (typeof AFFECTED_SIDES)[number];
 
 export const limitationFormSchema = z
   .object({
@@ -21,14 +32,9 @@ export const limitationFormSchema = z
       .array(z.enum(ALL_MUSCLE_GROUPS as unknown as [string, ...string[]]))
       .max(16),
     affectedMovementIds: z.array(z.string().uuid()).max(40),
+    allowedMovementIds: z.array(z.string().uuid()).max(80).default([]),
+    affectedSide: z.enum(AFFECTED_SIDES).nullable().default(null),
     notes: z.string().trim().max(2000).optional().nullable(),
-    expectedDurationDays: z
-      .number()
-      .int()
-      .min(0)
-      .max(3650)
-      .optional()
-      .nullable(),
   })
   .refine(
     (v) => v.affectedMuscles.length > 0 || v.affectedMovementIds.length > 0,

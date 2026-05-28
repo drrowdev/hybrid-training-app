@@ -9,6 +9,7 @@
 
 export * from "./schema/profiles";
 export * from "./schema/limitations";
+export * from "./schema/limitation-events";
 export * from "./schema/movements";
 export * from "./schema/sessions";
 export * from "./schema/session-movements";

@@ -564,6 +564,8 @@ function assemblePrescriptionItems(
    */
   limitationsContext: LimitationsContext = {
     blockedRegions: new Set(),
+    blockedMuscles: new Set(),
+    allowedMovementIds: new Set(),
     tendinopathyActive: false,
   },
 ): PrescriptionItem[] {
@@ -600,6 +602,8 @@ function assemblePrescriptionItems(
       weekContext,
       filters: {
         blockedRegions: limitationsContext.blockedRegions,
+        blockedMuscles: limitationsContext.blockedMuscles,
+        allowedMovementIds: limitationsContext.allowedMovementIds,
         concurrentStressActive: false, // wired in a follow-up pass
         recentlyUsedMovementIds: new Set(),
         tendinopathyActive: limitationsContext.tendinopathyActive,
@@ -673,6 +677,8 @@ function assemblePrescriptionItems(
         strengthRole: strengthDay.role,
         catalog,
         blockedRegions: limitationsContext.blockedRegions,
+        blockedMuscles: limitationsContext.blockedMuscles,
+        allowedMovementIds: limitationsContext.allowedMovementIds,
         tendinopathyActive: limitationsContext.tendinopathyActive,
         recentlyUsedMovementIds: new Set(),
         experience,

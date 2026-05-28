@@ -171,6 +171,19 @@ export type WeekContextItem = {
 export type PickFilters = {
   /** Regions with active limitations — movements loading these are filtered out. */
   blockedRegions: Set<string>;
+  /**
+   * Muscles flagged by any active limitation. A movement with any of
+   * these as a primary OR secondary muscle is dropped — UNLESS the
+   * movement's id is in `allowedMovementIds` (user-asserted exception).
+   * Optional for back-compat with legacy test fixtures.
+   */
+  blockedMuscles?: Set<string>;
+  /**
+   * Per-exercise allow-list across all active limitations. Movements
+   * here bypass the muscle-level drop. Region drops still apply.
+   * Optional for back-compat with legacy test fixtures.
+   */
+  allowedMovementIds?: Set<string>;
   /** True when the user is currently under concurrent stress (≥4h endurance OR ≥3 cardio/wk). */
   concurrentStressActive: boolean;
   /** Movements used in the immediately previous session of the same day-role; demoted. */
@@ -497,6 +510,14 @@ function findCandidate(query: CandidateQuery): CatalogMovement | null {
   for (const m of query.catalog) {
     if (query.usedThisSession.has(m.id)) continue;
     if (loadsBlockedRegion(m, query.filters.blockedRegions)) continue;
+    if (
+      loadsBlockedMuscle(
+        m,
+        query.filters.blockedMuscles,
+        query.filters.allowedMovementIds,
+      )
+    )
+      continue;
     if (query.requiredBulletproofRole && !m.bulletproofRoles.includes(query.requiredBulletproofRole)) continue;
     if (query.requiredFunctionalRole && !m.functionalRoles.includes(query.requiredFunctionalRole)) continue;
     if (query.requiredMuscle && !m.primaryMuscles.includes(query.requiredMuscle)) continue;
@@ -529,6 +550,14 @@ function findPowerCandidate(query: {
   for (const m of query.catalog) {
     if (query.usedThisSession.has(m.id)) continue;
     if (loadsBlockedRegion(m, query.filters.blockedRegions)) continue;
+    if (
+      loadsBlockedMuscle(
+        m,
+        query.filters.blockedMuscles,
+        query.filters.allowedMovementIds,
+      )
+    )
+      continue;
     const hasPowerRole = m.functionalRoles.some((r) =>
       (POWER_FUNCTIONAL_ROLES as readonly FunctionalRole[]).includes(r),
     );
@@ -568,6 +597,26 @@ function candidateScore(m: CatalogMovement, query: CandidateQuery): number {
 function loadsBlockedRegion(m: CatalogMovement, blocked: Set<string>): boolean {
   if (blocked.has(m.primaryRegion)) return true;
   for (const r of m.secondaryRegions) if (blocked.has(r)) return true;
+  return false;
+}
+
+/**
+ * Muscle-level drop introduced in PR `feat/limitations-v2-lifecycle`.
+ *
+ * A movement loading any blocked muscle as a primary OR secondary is
+ * dropped — EXCEPT when the user has explicitly allow-listed the
+ * movement ("I can still do this one without pain"). Region drops
+ * are unaffected and apply ahead of this gate.
+ */
+function loadsBlockedMuscle(
+  m: CatalogMovement,
+  blockedMuscles: Set<string> | undefined,
+  allowedMovementIds: Set<string> | undefined,
+): boolean {
+  if (!blockedMuscles || blockedMuscles.size === 0) return false;
+  if (allowedMovementIds?.has(m.id)) return false;
+  for (const mu of m.primaryMuscles) if (blockedMuscles.has(mu)) return true;
+  for (const mu of m.secondaryMuscles) if (blockedMuscles.has(mu)) return true;
   return false;
 }
 
