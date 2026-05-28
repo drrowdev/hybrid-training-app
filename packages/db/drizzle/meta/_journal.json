@@ -477,6 +477,20 @@
       "tag": "0071_mcp",
       "when": 1782158400000,
       "breakpoints": false
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "tag": "0072_mcp_consumed_codes",
+      "when": 1782244800000,
+      "breakpoints": false
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "tag": "0073_drop_ai_opted_in",
+      "when": 1782331200000,
+      "breakpoints": false
     }
   ]
 }

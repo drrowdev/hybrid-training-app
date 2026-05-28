@@ -30,13 +30,12 @@ describe("ChatMount", () => {
     expect(el).toBeNull();
   });
 
-  it("renders nothing when hasAiAccess is false (no opt-in)", async () => {
+  it("renders nothing when hasAiAccess is false (no BYOAI key configured)", async () => {
     getAuthUserMock.mockResolvedValueOnce({ data: { user: { id: "u1" } } });
     profileMaybeSingle.mockResolvedValueOnce({
       data: {
-        ai_opt_in_at: null,
         byoai_provider: "anthropic",
-        byoai_key_vault_id: "v1",
+        byoai_key_vault_id: null,
         byoai_unlocked_at: "2026-01-01",
       },
     });
@@ -49,7 +48,6 @@ describe("ChatMount", () => {
     getAuthUserMock.mockResolvedValueOnce({ data: { user: { id: "u1" } } });
     profileMaybeSingle.mockResolvedValueOnce({
       data: {
-        ai_opt_in_at: "2026-05-01",
         byoai_provider: "anthropic",
         byoai_key_vault_id: "v1",
         byoai_unlocked_at: "2026-01-01",

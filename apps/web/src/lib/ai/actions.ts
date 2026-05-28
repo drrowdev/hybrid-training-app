@@ -7,8 +7,11 @@
  *                   zero-cost provider probe before writing it.
  * `clearByoaiKey` — clears the vault entry, nulls profile cols,
  *                   audits.
- * `setAiOptIn`    — flips `profiles.ai_opt_in_at` between now() and
- *                   null.
+ *
+ * The legacy `setAiOptIn` action was removed alongside the
+ * `profiles.ai_opt_in_at` column in migration 0073 — having a
+ * configured BYOAI key (or a live MCP authorization) is now the
+ * opt-in signal.
  *
  * Auth pattern mirrors `apps/web/src/lib/limitations/actions.ts`.
  */
@@ -172,21 +175,6 @@ export async function clearByoaiKey(): Promise<AiActionResult> {
     provider: provider ?? null,
   });
 
-  revalidatePath("/app/settings/ai");
-  return { ok: true };
-}
-
-export async function setAiOptIn(enabled: boolean): Promise<AiActionResult> {
-  const {
-    data: { user },
-  } = await getAuthUser();
-  if (!user) redirect("/login");
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("profiles")
-    .update({ ai_opt_in_at: enabled ? new Date().toISOString() : null })
-    .eq("id", user.id);
-  if (error) return { ok: false, errors: [error.message] };
   revalidatePath("/app/settings/ai");
   return { ok: true };
 }

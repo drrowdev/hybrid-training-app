@@ -95,8 +95,8 @@ export function McpConnectSection({
   };
 
   return (
-    <section
-      className="rounded-lg border border-foreground/10 p-4 space-y-4"
+    <div
+      className="space-y-4"
       data-testid="ai-mcp-section"
       aria-labelledby="ai-mcp-heading"
     >
@@ -189,6 +189,6 @@ export function McpConnectSection({
         Tokens expire after 1 hour. Re-authorise from your AI tool&apos;s
         connector settings when prompted.
       </p>
-    </section>
+    </div>
   );
 }
