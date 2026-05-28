@@ -6,12 +6,17 @@
  * taxonomy but every label that ships to the user is plain English:
  * "Building" instead of "MEV–MAV", "Maintaining" instead of "MV–MEV".
  *
- * Concurrent training modifier: when the same 7-day window carries heavy
- * cardio (>=3 cardio sessions or >=4h endurance), volume ceilings move down
- * roughly 30% because cardio uses recovery budget. The chart reads this
- * automatically — no toggle needed.
+ * Concurrent training modifier: when the same 7-day window carries
+ * cardio, volume ceilings move down via a continuous modality-aware
+ * scalar (see `apps/web/src/lib/engine/concurrent-scalar.ts`). The
+ * chart reads this automatically — no toggle needed.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+
+import {
+  computeConcurrentScalar,
+  isConcurrentScaled,
+} from "@/lib/engine/concurrent-scalar";
 
 /** One row in the chart. */
 export type MuscleVolumeRow = {
@@ -95,9 +100,6 @@ const LANDMARKS: Record<string, { label: string; maintenance: number; building: 
   lower_back: { label: "Lower back", maintenance: 4, building: 6, productive: 12, limit: 18 },
 };
 
-/** Concurrent-training scalar applied when the week has heavy cardio. */
-const CONCURRENT_SCALAR = 0.7;
-
 /**
  * Decide which band a sets count lands in for a given muscle. Returns
  * "untouched" when sets is 0 to differentiate from real "below maintenance".
@@ -126,11 +128,23 @@ export function scaleThresholds(
   };
 }
 
-/** True when the rolling 7-day window has enough cardio to trigger the
- *  concurrent-stress scaling. Heuristic per the design-constraints
- *  practitioner threshold (3 cardio sessions OR 4h of endurance). */
-export function isConcurrentWeek(cardioSessions: number, cardioMinutes: number): boolean {
-  return cardioSessions >= 3 || cardioMinutes >= 240;
+/**
+ * Aggregate `cardio_logs` rows into the `Record<modality, minutes>`
+ * shape `computeConcurrentScalar` expects. Null/empty modality rows
+ * fall back to the `other` coefficient via the bucket key `"other"`
+ * so they still register against the scalar.
+ */
+export function minutesByModalityFromCardioLogs(
+  rows: ReadonlyArray<{ modality: string | null; duration_sec: number | null }>,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const row of rows) {
+    const minutes = (row.duration_sec ?? 0) / 60;
+    if (minutes <= 0) continue;
+    const key = (row.modality ?? "").trim().toLowerCase() || "other";
+    out[key] = (out[key] ?? 0) + minutes;
+  }
+  return out;
 }
 
 export type MuscleVolumeResult = {
@@ -188,14 +202,15 @@ export async function getWeeklyMuscleVolume(
       .neq("set_kind", "warmup"),
     supabase
       .from("cardio_logs")
-      .select("id, duration_sec")
+      .select("id, duration_sec, modality")
       .in("session_id", sessionIds),
   ]);
 
-  const cardioSessions = (cardio ?? []).length;
-  const cardioMinutes = (cardio ?? []).reduce((acc, c) => acc + (c.duration_sec ?? 0) / 60, 0);
-  const concurrentScaled = isConcurrentWeek(cardioSessions, cardioMinutes);
-  const scalar = concurrentScaled ? CONCURRENT_SCALAR : 1.0;
+  const minutesByModality = minutesByModalityFromCardioLogs(
+    (cardio ?? []) as Array<{ modality: string | null; duration_sec: number | null }>,
+  );
+  const scalar = computeConcurrentScalar(minutesByModality);
+  const concurrentScaled = isConcurrentScaled(scalar);
 
   // Step 3: aggregate per primary muscle. Fan out each set across all of
   // its primary_muscles entries (movements like rows hit lats + mid_back).
