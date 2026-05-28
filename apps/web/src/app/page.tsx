@@ -9,7 +9,7 @@ export default function Home() {
             Hybrid Training App
           </h1>
           <p className="text-sm text-foreground/60">
-            Science-informed hybrid programming with heuristic adaptive load management. Phase 0 — foundation only.
+            Science-informed hybrid training with adaptive load management. Phase 0 — foundation only.
           </p>
         </header>
         <nav className="flex justify-center gap-3">

@@ -1,6 +1,6 @@
 # Hybrid Training App
 
-Science-informed hybrid programming with heuristic adaptive load management — a public-ready, multi-user training app for serious recreational athletes who train across strength + endurance.
+Science-informed hybrid training with adaptive load management — a public-ready, multi-user training app for serious recreational athletes who train across strength + endurance.
 
 **Status:** Phase 0 — foundation scaffold. No user-visible features yet.
 
