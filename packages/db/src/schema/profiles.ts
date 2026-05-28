@@ -254,12 +254,6 @@ export const profiles = pgTable("profiles", {
   /** Free-text label for the user's preferred external program (e.g. "Runna"). */
   preferredCardioSourceName: text("preferred_cardio_source_name"),
   /**
-   * ADR 0002 (BYOAI) — when the user toggled the master AI opt-in.
-   * NULL = opted out (the default for every existing row, and the
-   * state `setAiOptIn(false)` returns to). See migration 0069.
-   */
-  aiOptInAt: timestamp("ai_opt_in_at", { withTimezone: true }),
-  /**
    * Which BYOAI provider the stored key targets. CHECK-constrained
    * at the DB level to {'anthropic','openai','gemini'} or null. See
    * migration 0069.
