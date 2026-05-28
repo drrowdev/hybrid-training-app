@@ -355,10 +355,12 @@ export async function runChatTurn(
 
       if (pending.length === 0) break;
 
-      let stopForCap = false;
+      if (capExhausted) {
+        break;
+      }
+
       for (const tc of pending) {
         if (toolCallsThisTurn >= MAX_TOOL_CALLS_PER_TURN) {
-          stopForCap = true;
           capExhausted = true;
           break;
         }
@@ -372,7 +374,6 @@ export async function runChatTurn(
         toolCalls.push({ id: tc.id, name: tc.name, result });
         opts.onEvent({ type: "tool_call_end", id: tc.id });
       }
-      if (stopForCap) break;
     }
 
     if (providerErrCode) {

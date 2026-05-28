@@ -214,7 +214,14 @@ describe("orchestrator — runChatTurn", () => {
       });
     }
     events.push({ type: "done", usage: { input_tokens: 0, output_tokens: 0 } });
-    const provider = stubProvider([events]);
+    // Second stream: model gets a synthesis chance after the cap. It tries
+    // one more tool call (which we MUST refuse) plus a final text reply.
+    const synthesis: LlmEvent[] = [
+      { type: "tool_call", id: "tc-late", name: "getProfile", args: {} },
+      { type: "text_delta", delta: "Based on what I gathered: ..." },
+      { type: "done", usage: { input_tokens: 0, output_tokens: 0 } },
+    ];
+    const provider = stubProvider([events, synthesis]);
     const r = await runChatTurn({
       provider,
       supabase: fakeSupabase(),
@@ -227,8 +234,11 @@ describe("orchestrator — runChatTurn", () => {
       onEvent: () => {},
       catalogueOverride: tools,
     });
+    // Cap is enforced — late tool call is refused, spy is not invoked again.
     expect(spy).toHaveBeenCalledTimes(MAX_TOOL_CALLS_PER_TURN);
     expect(r.toolCalls).toHaveLength(MAX_TOOL_CALLS_PER_TURN);
+    // The model got a synthesis turn — its text is preserved alongside the note.
+    expect(r.assistantText).toMatch(/Based on what I gathered/);
     expect(r.assistantText).toMatch(/tool budget exhausted/i);
   });
 
