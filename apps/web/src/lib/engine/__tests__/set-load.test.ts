@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeSetLoad, isCountableSet, rpeMultiplier, PRIMARY_REGION_WEIGHT, SECONDARY_REGION_WEIGHT } from "../set-load";
+import { computeSetLoad, isCountableSet, rpeMultiplier, PRIMARY_REGION_WEIGHT, SECONDARY_REGION_WEIGHT, CARDIO_LOAD_SCALAR } from "../set-load";
 
 describe("rpeMultiplier", () => {
   it("RPE 10 (0 RIR) = 1.0 — maximum damage stimulus", () => {
@@ -73,6 +73,17 @@ describe("Region weight constants", () => {
     expect(PRIMARY_REGION_WEIGHT).toBe(1.0);
     expect(SECONDARY_REGION_WEIGHT).toBe(0.5);
     expect(PRIMARY_REGION_WEIGHT / SECONDARY_REGION_WEIGHT).toBe(2);
+  });
+});
+
+describe("CARDIO_LOAD_SCALAR — pin", () => {
+  // Pinning test so any future change to the cardio↔strength unit-matching
+  // multiplier is an intentional, auditable edit rather than a silent drift.
+  // Both `cardioBucketLoad` (bucket-load.ts) and the region-ledger cardio
+  // fan-out (region-ledger.ts) read from this constant — see the doc-block
+  // on `CARDIO_LOAD_SCALAR` in set-load.ts for CP-2/CP-3 calibration status.
+  it("equals 8 (any change must be deliberate)", () => {
+    expect(CARDIO_LOAD_SCALAR).toBe(8);
   });
 });
 
