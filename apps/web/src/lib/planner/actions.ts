@@ -74,6 +74,10 @@ import {
   type WeekContextItem,
 } from "./accessory-picker";
 import {
+  type LimitationsContext,
+  readLimitationsContext,
+} from "./limitations-context";
+import {
   accessoryIntensity,
   accessoryItemPrescription,
   inferAccessoryBucket,
@@ -546,6 +550,17 @@ function assemblePrescriptionItems(
    * legacy unfiltered behaviour. See `experience-tier-scope.md` §4.
    */
   experience: DeclaredExperience | null = null,
+  /**
+   * Profile-level limitations read once per block-generation request.
+   * When supplied, the dynamic accessory picker and power-emphasis
+   * primer picker honour `blockedRegions` and `tendinopathyActive`.
+   * Default is the no-limitations context — preserves the previous
+   * hard-coded behaviour for callers that haven't been migrated.
+   */
+  limitationsContext: LimitationsContext = {
+    blockedRegions: new Set(),
+    tendinopathyActive: false,
+  },
 ): PrescriptionItem[] {
   const items =
     day.kind === "strength" && omitMainStrength
@@ -579,10 +594,10 @@ function assemblePrescriptionItems(
       catalog,
       weekContext,
       filters: {
-        blockedRegions: new Set(),
+        blockedRegions: limitationsContext.blockedRegions,
         concurrentStressActive: false, // wired in a follow-up pass
         recentlyUsedMovementIds: new Set(),
-        tendinopathyActive: false,
+        tendinopathyActive: limitationsContext.tendinopathyActive,
       },
       perMuscleTargets: defaultMuscleTargets(),
       maxItems: archetype.accessoryProfile.aesthetic.itemsPerSession + 4, // small budget for durability + functional fills
@@ -640,8 +655,8 @@ function assemblePrescriptionItems(
       const pick = pickPotentiationMovement({
         strengthRole: strengthDay.role,
         catalog,
-        blockedRegions: new Set(),
-        tendinopathyActive: false,
+        blockedRegions: limitationsContext.blockedRegions,
+        tendinopathyActive: limitationsContext.tendinopathyActive,
         recentlyUsedMovementIds: new Set(),
         experience,
       });
@@ -1072,6 +1087,10 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
     };
   }
 
+  // Read profile-level limitations once for the whole block — picker
+  // honours `blockedRegions` + `tendinopathyActive` on every day.
+  const limitationsContext = await readLimitationsContext(supabase, user.id);
+
   const archNow = new Date().toISOString();
   const { error: archErr } = await supabase
     .from("training_blocks")
@@ -1161,6 +1180,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
               // even if barbell TMs are saved from a previous block.
               bwActive || !hasAnyTm,
               experience,
+              limitationsContext,
             );
 
       // ─── Bodyweight Phase 3 — prepend BW main + back_off items ───
@@ -1467,6 +1487,12 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
     };
   }
 
+  // Read profile-level limitations once for the whole custom block.
+  const customLimitationsContext = await readLimitationsContext(
+    supabase,
+    user.id,
+  );
+
   const customArchNow = new Date().toISOString();
   await supabase
     .from("training_blocks")
@@ -1530,6 +1556,7 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
         customEquipment,
         false,
         customExperience,
+        customLimitationsContext,
       );
 
       // Phase 5 — stamp modality + effective_stress_load on every
