@@ -103,7 +103,26 @@ function pickKind(
   maxPct: number | null,
   durationSec: number,
 ): ClassifiedCardioKind {
-  if (maxPct != null && maxPct >= 0.95 && durationSec < 1200) {
+  // Alactic gate: maxPct ≥ 0.95 AND duration < 300 s (5 min).
+  //
+  // Calibration status (CP-5): physiology-informed threshold per Gastin
+  // 2001, Sports Medicine 31(10) — phosphagen (ATP-PCr) system depletion
+  // at ~10 s of all-out effort; glycolytic dominance from ~30 s; aerobic
+  // dominance crosses over from ~75 s and is dominant well before the
+  // 5-min mark. True alactic work is sub-10-s efforts with extended
+  // recovery, which whole-session HR-summary classification cannot
+  // resolve (we can't see per-rep recovery structure from avg+max HR
+  // alone). 5 min is therefore used as an upper-bound proxy: the longest
+  // session window in which alactic-dominant work is physiologically
+  // plausible. Sessions longer than 5 min that still peak ≥ 95% max HR
+  // are by elimination glycolytic/aerobic mix and fall through to the
+  // VO2 branch (maxPct ≥ 0.92).
+  //
+  // Previous threshold was `< 1200` (20 min), which mis-bucketed long
+  // hard intervals (e.g. a 19-min Z4 ride peaking at 95%) as alactic.
+  // Tightened to `< 300` 2026-Q4 per external scientific critique;
+  // see PR chore/engine-critique-1to4.
+  if (maxPct != null && maxPct >= 0.95 && durationSec < 300) {
     return "cardio_alactic";
   }
   if ((avgPct != null && avgPct >= 0.8) || (maxPct != null && maxPct >= 0.92)) {
