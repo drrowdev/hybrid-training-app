@@ -12,7 +12,7 @@ import {
   KIND_REGION_TOGGLE,
   KIND_TENDINOPATHY,
   type Region,
-} from "@/lib/settings/limitations-actions";
+} from "@/lib/settings/limitations-constants";
 import { LimitationsToggleSection } from "./LimitationsToggleSection";
 
 const REGIONS: { value: string; label: string }[] = [

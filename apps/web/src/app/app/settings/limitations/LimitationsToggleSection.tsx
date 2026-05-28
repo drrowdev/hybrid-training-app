@@ -11,12 +11,12 @@
  * for the storage model.
  */
 import { useCallback, useState, useTransition } from "react";
+import { updateLimitations } from "@/lib/settings/limitations-actions";
 import {
   REGIONS,
   type Region,
   type UpdateLimitationsInput,
-  updateLimitations,
-} from "@/lib/settings/limitations-actions";
+} from "@/lib/settings/limitations-constants";
 
 const REGION_LABELS: Record<Region, string> = {
   foot_ankle_calf: "Foot / ankle / calf",

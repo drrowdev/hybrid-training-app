@@ -34,33 +34,19 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
-
-export const REGIONS = [
-  "foot_ankle_calf",
-  "knee",
-  "hamstring_posterior",
-  "adductor_groin",
-  "lumbar_trunk",
-  "shoulder_scapular",
-  "elbow_forearm",
-] as const;
-
-export type Region = (typeof REGIONS)[number];
-
-/** Sentinel `kind` values written by the toggle UI. */
-export const KIND_REGION_TOGGLE = "Region limitation";
-export const KIND_TENDINOPATHY = "Tendinopathy";
+import {
+  KIND_REGION_TOGGLE,
+  KIND_TENDINOPATHY,
+  REGIONS,
+  type Region,
+  type UpdateLimitationsInput,
+  type UpdateLimitationsResult,
+} from "./limitations-constants";
 
 const updateSchema = z.object({
   blockedRegions: z.array(z.enum(REGIONS)),
   tendinopathyActive: z.boolean(),
 });
-
-export type UpdateLimitationsInput = z.infer<typeof updateSchema>;
-
-export type UpdateLimitationsResult =
-  | { ok: true }
-  | { ok: false; error: string };
 
 type ActiveSentinelRow = {
   id: string;

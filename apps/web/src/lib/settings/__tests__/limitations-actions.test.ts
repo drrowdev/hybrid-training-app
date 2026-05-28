@@ -129,11 +129,11 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 // Import after mocks.
+import { updateLimitations } from "@/lib/settings/limitations-actions";
 import {
-  updateLimitations,
   KIND_REGION_TOGGLE,
   KIND_TENDINOPATHY,
-} from "@/lib/settings/limitations-actions";
+} from "@/lib/settings/limitations-constants";
 
 beforeEach(() => {
   state.rows = [];
