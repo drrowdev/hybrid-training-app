@@ -214,8 +214,8 @@ const PLYO: NewMovement[] = [
   plyo("skater-jump", "Skater Jump", { equipment: "bodyweight", primaryMuscles: ["glutes", "quads"], secondaryMuscles: ["abs", "calves", "abductors"], bilateral: false, metadata: { emphasis: "frontal-plane-power", impact: "high" } }),
   plyo("split-squat-jump", "Split Squat Jump", { equipment: "bodyweight", primaryMuscles: ["quads", "glutes"], secondaryMuscles: ["calves", "abs", "hamstrings"], bilateral: false, metadata: { emphasis: "single-leg-power", impact: "high" }, experienceMin: 2 }),
   // power_ballistic additions — loaded / explosive-intent plyometrics. Tagged in 0024.
-  plyo("jump-squat", "Jump Squat", { equipment: "barbell-or-bodyweight", primaryMuscles: ["quads", "glutes"], secondaryMuscles: ["calves", "abs", "hamstrings"], isCompound: true, axialLoad: "high", functionalRoles: ["power_ballistic"], metadata: { emphasis: "loaded-vertical-power", impact: "high" } }),
-  plyo("banded-jump", "Banded Jump", { equipment: "band", primaryMuscles: ["quads", "glutes"], secondaryMuscles: ["calves", "abs", "hamstrings"], functionalRoles: ["power_ballistic"], metadata: { emphasis: "eccentric-overload", impact: "high" } }),
+  plyo("jump-squat", "Jump Squat", { equipment: "barbell-or-bodyweight", primaryMuscles: ["quads", "glutes"], secondaryMuscles: ["calves", "abs", "hamstrings"], isCompound: true, axialLoad: "high", functionalRoles: ["power_plyometric", "power_ballistic"], metadata: { emphasis: "loaded-vertical-power", impact: "high" } }),
+  plyo("banded-jump", "Banded Jump", { equipment: "band", primaryMuscles: ["quads", "glutes"], secondaryMuscles: ["calves", "abs", "hamstrings"], functionalRoles: ["power_plyometric", "power_ballistic"], metadata: { emphasis: "eccentric-overload", impact: "high" } }),
   plyo("medicine-ball-overhead-throw", "Med Ball Overhead Throw", { equipment: "med-ball", primaryMuscles: ["glutes", "hamstrings", "lats"], secondaryMuscles: ["abs", "front_delts", "lower_back"], primaryRegion: "hamstring_posterior", secondaryRegions: ["lumbar_trunk", "shoulder_scapular"], highStrainTendon: false, functionalRoles: ["power_ballistic"], metadata: { emphasis: "posterior-chain-throw", impact: "low" }, experienceMin: 2 }),
 ];
 
@@ -256,7 +256,7 @@ const OLYMPIC: NewMovement[] = [
   oly("dumbbell-snatch", "Dumbbell Snatch", { equipment: "dumbbell", primaryMuscles: ["hamstrings", "glutes", "front_delts", "traps"], secondaryMuscles: ["lower_back", "abs", "quads"], bilateral: false, axialLoad: "moderate" }),
   oly("kettlebell-snatch", "Kettlebell Snatch", { equipment: "kettlebell", primaryMuscles: ["hamstrings", "glutes", "front_delts"], secondaryMuscles: ["lower_back", "abs", "traps"], bilateral: false, axialLoad: "moderate" }),
   // power_ballistic + olympic-derivative — KB clean into jerk.
-  oly("kb-clean-and-jerk", "Kettlebell Clean & Jerk", { equipment: "kettlebell", primaryMuscles: ["hamstrings", "glutes", "front_delts", "triceps"], secondaryMuscles: ["lower_back", "abs", "traps", "quads"], axialLoad: "moderate", functionalRoles: ["power_ballistic"], metadata: { emphasis: "posterior-chain-into-overhead" } }),
+  oly("kb-clean-and-jerk", "Kettlebell Clean & Jerk", { equipment: "kettlebell", primaryMuscles: ["hamstrings", "glutes", "front_delts", "triceps"], secondaryMuscles: ["lower_back", "abs", "traps", "quads"], axialLoad: "moderate", functionalRoles: ["power_olympic", "power_ballistic"], metadata: { emphasis: "posterior-chain-into-overhead" } }),
 ];
 
 // ─── tendon / resilience (15) — Baar 2017 HIGH protocols ───
