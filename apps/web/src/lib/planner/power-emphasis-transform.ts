@@ -163,6 +163,8 @@ export function pickPotentiationMovement({
   strengthRole,
   catalog,
   blockedRegions,
+  blockedMuscles,
+  allowedMovementIds,
   tendinopathyActive,
   recentlyUsedMovementIds,
   experience = null,
@@ -170,6 +172,10 @@ export function pickPotentiationMovement({
   strengthRole: StrengthRole;
   catalog: CatalogMovement[];
   blockedRegions: Set<string>;
+  /** Optional — see PR `feat/limitations-v2-lifecycle`. */
+  blockedMuscles?: Set<string>;
+  /** Optional — see PR `feat/limitations-v2-lifecycle`. */
+  allowedMovementIds?: Set<string>;
   tendinopathyActive: boolean;
   recentlyUsedMovementIds: Set<string>;
   /**
@@ -192,6 +198,7 @@ export function pickPotentiationMovement({
     const hasPowerRole = m.functionalRoles.some((r) => allowedRoles.has(r));
     if (!hasPowerRole) return false;
     if (loadsBlockedRegion(m, blockedRegions)) return false;
+    if (loadsBlockedMuscleHere(m, blockedMuscles, allowedMovementIds)) return false;
     if (tendinopathyActive && m.highStrainTendon) return false;
     return true;
   });
@@ -270,6 +277,24 @@ export function buildPotentiationItem(
 function loadsBlockedRegion(m: CatalogMovement, blocked: Set<string>): boolean {
   if (blocked.has(m.primaryRegion)) return true;
   for (const r of m.secondaryRegions) if (blocked.has(r)) return true;
+  return false;
+}
+
+/**
+ * Muscle-level drop introduced in PR `feat/limitations-v2-lifecycle`.
+ * Local copy of the same predicate that lives in accessory-picker —
+ * both pickers share the rule but neither owns it as a public export.
+ * If/when a third site needs it, lift to `./limitations-filter.ts`.
+ */
+function loadsBlockedMuscleHere(
+  m: CatalogMovement,
+  blockedMuscles: Set<string> | undefined,
+  allowedMovementIds: Set<string> | undefined,
+): boolean {
+  if (!blockedMuscles || blockedMuscles.size === 0) return false;
+  if (allowedMovementIds?.has(m.id)) return false;
+  for (const mu of m.primaryMuscles) if (blockedMuscles.has(mu)) return true;
+  for (const mu of m.secondaryMuscles) if (blockedMuscles.has(mu)) return true;
   return false;
 }
 

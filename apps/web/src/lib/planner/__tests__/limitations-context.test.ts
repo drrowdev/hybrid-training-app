@@ -11,7 +11,13 @@ import {
   TENDINOPATHY_PATTERN,
 } from "../limitations-context";
 
-type Row = { region: string | null; kind: string | null; resolved_at: string | null };
+type Row = {
+  region: string | null;
+  kind: string | null;
+  resolved_at: string | null;
+  affected_muscles?: string[] | null;
+  allowed_movement_ids?: string[] | null;
+};
 
 function mockClient(rows: Row[] | null, error: Error | null = null): SupabaseClient {
   const builder = {
@@ -41,15 +47,25 @@ describe("deriveLimitationsContext", () => {
   it("returns empty context for no rows", () => {
     const ctx = deriveLimitationsContext([]);
     expect(ctx.blockedRegions.size).toBe(0);
+    expect(ctx.blockedMuscles.size).toBe(0);
+    expect(ctx.allowedMovementIds.size).toBe(0);
     expect(ctx.tendinopathyActive).toBe(false);
   });
 
   it("ignores resolved rows", () => {
     const ctx = deriveLimitationsContext([
-      { region: "knee", kind: "Region limitation", resolved_at: "2026-01-01T00:00:00Z" },
+      {
+        region: "knee",
+        kind: "Region limitation",
+        resolved_at: "2026-01-01T00:00:00Z",
+        affected_muscles: ["quads"],
+        allowed_movement_ids: ["00000000-0000-0000-0000-000000000001"],
+      },
       { region: null, kind: "Tendinopathy", resolved_at: "2026-01-01T00:00:00Z" },
     ]);
     expect(ctx.blockedRegions.size).toBe(0);
+    expect(ctx.blockedMuscles.size).toBe(0);
+    expect(ctx.allowedMovementIds.size).toBe(0);
     expect(ctx.tendinopathyActive).toBe(false);
   });
 
@@ -77,6 +93,59 @@ describe("deriveLimitationsContext", () => {
     expect(ctx.tendinopathyActive).toBe(false);
   });
 
+  it("aggregates affected_muscles into blockedMuscles across active rows", () => {
+    const ctx = deriveLimitationsContext([
+      {
+        region: null,
+        kind: "Adductor strain",
+        resolved_at: null,
+        affected_muscles: ["adductors", "glutes"],
+      },
+      {
+        region: null,
+        kind: "Calf",
+        resolved_at: null,
+        affected_muscles: ["calves"],
+      },
+      {
+        region: null,
+        kind: "Old",
+        resolved_at: "2026-01-01T00:00:00Z",
+        affected_muscles: ["quads"],
+      },
+    ]);
+    expect(ctx.blockedMuscles.has("adductors")).toBe(true);
+    expect(ctx.blockedMuscles.has("glutes")).toBe(true);
+    expect(ctx.blockedMuscles.has("calves")).toBe(true);
+    expect(ctx.blockedMuscles.has("quads")).toBe(false);
+  });
+
+  it("aggregates allowed_movement_ids across active rows", () => {
+    const a = "00000000-0000-0000-0000-00000000000a";
+    const b = "00000000-0000-0000-0000-00000000000b";
+    const c = "00000000-0000-0000-0000-00000000000c";
+    const ctx = deriveLimitationsContext([
+      {
+        region: null,
+        kind: "x",
+        resolved_at: null,
+        affected_muscles: ["quads"],
+        allowed_movement_ids: [a, b],
+      },
+      {
+        region: null,
+        kind: "y",
+        resolved_at: null,
+        affected_muscles: ["hamstrings"],
+        allowed_movement_ids: [b, c],
+      },
+    ]);
+    expect(ctx.allowedMovementIds.size).toBe(3);
+    expect(ctx.allowedMovementIds.has(a)).toBe(true);
+    expect(ctx.allowedMovementIds.has(b)).toBe(true);
+    expect(ctx.allowedMovementIds.has(c)).toBe(true);
+  });
+
   it("aggregates multiple active rows", () => {
     const ctx = deriveLimitationsContext([
       { region: "knee", kind: "Region limitation", resolved_at: null },
@@ -97,6 +166,8 @@ describe("readLimitationsContext", () => {
     const supabase = mockClient([]);
     const ctx = await readLimitationsContext(supabase, "user-1");
     expect(ctx.blockedRegions.size).toBe(0);
+    expect(ctx.blockedMuscles.size).toBe(0);
+    expect(ctx.allowedMovementIds.size).toBe(0);
     expect(ctx.tendinopathyActive).toBe(false);
   });
 

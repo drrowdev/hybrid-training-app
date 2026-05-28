@@ -3,11 +3,17 @@
  * HistorySection — collapsed accordion of resolved limitations,
  * sorted by `resolvedAt` desc. Each row is single-line until
  * expanded; expand shows notes if present.
+ *
+ * v2: each row exposes a "Reopen" affordance that calls
+ * `reopenLimitationById` so a previously-resolved limitation can be
+ * brought back into the engine's active set without re-entering the
+ * full form.
  */
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import type { ReactElement } from "react";
 import type { LimitationRow } from "./types";
 import { durationDays, relativeFromNow, severityBadgeStyle } from "./utils";
+import { reopenLimitationById } from "@/lib/limitations/actions";
 
 export type HistorySectionProps = {
   rows: LimitationRow[];
@@ -68,6 +74,8 @@ export function HistorySection({ rows }: HistorySectionProps): ReactElement | nu
 
 function HistoryRow({ row }: { row: LimitationRow }): ReactElement {
   const [expanded, setExpanded] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
   const days = durationDays(row.startedAt, row.resolvedAt);
   return (
     <li
@@ -108,18 +116,54 @@ function HistoryRow({ row }: { row: LimitationRow }): ReactElement {
           {expanded ? "▾" : "▸"}
         </span>
       </button>
-      {expanded && row.notes ? (
-        <div
-          style={{
-            marginTop: 8,
-            fontSize: 12,
-            color: "var(--cp-text-muted)",
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {row.notes}
+      {expanded && (
+        <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+          {row.notes ? (
+            <div
+              style={{
+                fontSize: 12,
+                color: "var(--cp-text-muted)",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {row.notes}
+            </div>
+          ) : null}
+          {error && (
+            <div
+              role="alert"
+              style={{ fontSize: 12, color: "var(--cp-danger, #ef4444)" }}
+            >
+              {error}
+            </div>
+          )}
+          <div>
+            <button
+              type="button"
+              data-testid="history-row-reopen"
+              disabled={pending}
+              onClick={() => {
+                setError(null);
+                startTransition(async () => {
+                  const r = await reopenLimitationById(row.id);
+                  if (!r.ok) setError(r.error);
+                });
+              }}
+              style={{
+                padding: "4px 10px",
+                borderRadius: 8,
+                border: "1px solid var(--cp-border)",
+                background: "transparent",
+                color: "var(--cp-text-muted)",
+                fontSize: 12,
+                cursor: pending ? "wait" : "pointer",
+              }}
+            >
+              {pending ? "Reopening…" : "Reopen"}
+            </button>
+          </div>
         </div>
-      ) : null}
+      )}
     </li>
   );
 }

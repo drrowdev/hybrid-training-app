@@ -13,8 +13,9 @@ describe("limitationFormSchema", () => {
     severity: "mild" as const,
     affectedMuscles: ["quads"],
     affectedMovementIds: [],
+    allowedMovementIds: [],
+    affectedSide: null,
     notes: null,
-    expectedDurationDays: null,
   };
 
   it("accepts a minimal valid input", () => {
@@ -70,12 +71,32 @@ describe("limitationFormSchema", () => {
     expect(r.success).toBe(false);
   });
 
-  it("rejects negative expected duration", () => {
+  it("accepts the three known affected-side values + null", () => {
+    for (const side of ["left", "right", "bilateral", null] as const) {
+      const r = limitationFormSchema.safeParse({ ...base, affectedSide: side });
+      expect(r.success).toBe(true);
+    }
+  });
+
+  it("rejects unknown affected-side values", () => {
     const r = limitationFormSchema.safeParse({
       ...base,
-      expectedDurationDays: -3,
+      affectedSide: "diagonal" as unknown as "left",
     });
     expect(r.success).toBe(false);
+  });
+
+  it("accepts uuids in allowedMovementIds and rejects malformed entries", () => {
+    const ok = limitationFormSchema.safeParse({
+      ...base,
+      allowedMovementIds: ["00000000-0000-4000-8000-000000000000"],
+    });
+    expect(ok.success).toBe(true);
+    const bad = limitationFormSchema.safeParse({
+      ...base,
+      allowedMovementIds: ["not-a-uuid"],
+    });
+    expect(bad.success).toBe(false);
   });
 
   it("accepts a 2000-char notes field but no longer", () => {
