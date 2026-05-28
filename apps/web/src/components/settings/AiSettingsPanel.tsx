@@ -60,6 +60,7 @@ export function AiSettingsPanel({
   const [replaceMode, setReplaceMode] = useState(!initialKeyConfigured);
   const [keyValue, setKeyValue] = useState("");
   const [showKey, setShowKey] = useState(false);
+  const [showKeyInfo, setShowKeyInfo] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -196,7 +197,13 @@ export function AiSettingsPanel({
         ) : (
           <div className="space-y-2">
             <label className="block text-sm">
-              API key
+              <span className="inline-flex items-center gap-1.5">
+                API key
+                <KeyStorageInfoButton
+                  open={showKeyInfo}
+                  onToggle={() => setShowKeyInfo((v) => !v)}
+                />
+              </span>
               <div className="mt-2 flex gap-2">
                 <input
                   type={showKey ? "text" : "password"}
@@ -219,6 +226,7 @@ export function AiSettingsPanel({
                 </button>
               </div>
             </label>
+            {showKeyInfo && <KeyStorageInfoPanel provider={provider} />}
             <div className="flex gap-2">
               <button
                 type="button"
@@ -292,6 +300,82 @@ export function AiSettingsPanel({
           ))}
         </ul>
       </div>
+    </div>
+  );
+}
+
+function KeyStorageInfoButton({
+  open,
+  onToggle,
+}: {
+  open: boolean;
+  onToggle: () => void;
+}): React.ReactElement {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      aria-label="How is my key stored?"
+      title="How is my key stored?"
+      data-testid="ai-key-storage-info-toggle"
+      className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-foreground/30 text-[10px] font-semibold leading-none text-foreground/70 hover:bg-foreground/10"
+    >
+      i
+    </button>
+  );
+}
+
+function KeyStorageInfoPanel({
+  provider,
+}: {
+  provider: Provider;
+}): React.ReactElement {
+  return (
+    <div
+      role="region"
+      aria-label="Key storage details"
+      data-testid="ai-key-storage-info-panel"
+      className="mt-2 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-3 text-xs text-foreground/75 leading-relaxed space-y-2"
+    >
+      <p>
+        <strong>Where it lives.</strong> The key is encrypted in this app&apos;s
+        database using a server-side master key that is never stored in the
+        database itself. Even a full database export contains only ciphertext
+        you can&apos;t read without that master key.
+      </p>
+      <p>
+        <strong>Who can read it.</strong> Only the server can decrypt the key,
+        and only when actually calling {PROVIDER_LABEL[provider]} on your
+        behalf. The plaintext is held in memory for the duration of that one
+        outbound request, then discarded. The browser never receives the key
+        back after you save it — the input clears, and the page only shows a
+        &ldquo;Key configured&rdquo; status.
+      </p>
+      <p>
+        <strong>Defense in depth.</strong> The decrypt and clear database
+        functions require BOTH the vault reference AND your user ID to match.
+        A leaked vault reference alone cannot cross account boundaries.
+      </p>
+      <p>
+        <strong>What we log.</strong> Set / replace / clear events are
+        recorded with a timestamp and provider name — never the key value,
+        never any partial fragment. Per-chat logs record metadata only
+        (token counts, latency, error codes) and explicitly reject raw
+        message content at the type level.
+      </p>
+      <p>
+        <strong>What goes to {PROVIDER_LABEL[provider]}.</strong> Your
+        messages and a snapshot of your training data are sent to the
+        provider when you chat. By default they don&apos;t train on API
+        requests; their full policy is linked below.
+      </p>
+      <p>
+        <strong>How to remove it.</strong> The &ldquo;Clear&rdquo; button
+        deletes the encrypted blob from the database and nulls the provider
+        + vault reference on your profile. Re-entering a key is the only way
+        to restore AI features after clearing.
+      </p>
     </div>
   );
 }
