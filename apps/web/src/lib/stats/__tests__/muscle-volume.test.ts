@@ -7,7 +7,7 @@ import {
   BAND_COLOR,
   classifyBand,
   scaleThresholds,
-  isConcurrentWeek,
+  minutesByModalityFromCardioLogs,
   type VolumeBand,
 } from "../muscle-volume";
 
@@ -90,18 +90,50 @@ describe("scaleThresholds", () => {
   });
 });
 
-describe("isConcurrentWeek", () => {
-  it("fires at 3+ cardio sessions regardless of duration", () => {
-    expect(isConcurrentWeek(3, 30)).toBe(true);
-    expect(isConcurrentWeek(2, 30)).toBe(false);
+describe("isConcurrentWeek (legacy binary trigger) — removed", () => {
+  // The legacy `isConcurrentWeek(sessions, minutes)` helper was removed
+  // in PR `feat(engine): modality-aware continuous concurrent-training
+  // scalar (Stage A)`. The binary 0.7× scalar is replaced by
+  // `computeConcurrentScalar(minutesByModality)` (see
+  // `lib/engine/__tests__/concurrent-scalar.test.ts`). Continuity is
+  // pinned there: a 300-min run-only week still resolves to 0.70×.
+  it("placeholder — see concurrent-scalar.test.ts for new contract", () => {
+    expect(true).toBe(true);
+  });
+});
+
+describe("minutesByModalityFromCardioLogs", () => {
+  it("buckets by modality and converts seconds → minutes", () => {
+    const out = minutesByModalityFromCardioLogs([
+      { modality: "run", duration_sec: 1800 },
+      { modality: "run", duration_sec: 600 },
+      { modality: "bike", duration_sec: 3600 },
+    ]);
+    expect(out).toEqual({ run: 40, bike: 60 });
   });
 
-  it("fires at 240+ minutes regardless of session count", () => {
-    expect(isConcurrentWeek(1, 240)).toBe(true);
-    expect(isConcurrentWeek(1, 239)).toBe(false);
+  it("treats null/empty modality as 'other'", () => {
+    const out = minutesByModalityFromCardioLogs([
+      { modality: null, duration_sec: 600 },
+      { modality: "", duration_sec: 600 },
+    ]);
+    expect(out).toEqual({ other: 20 });
   });
 
-  it("does not fire on a strength-dominant week (0 cardio)", () => {
-    expect(isConcurrentWeek(0, 0)).toBe(false);
+  it("normalises casing", () => {
+    const out = minutesByModalityFromCardioLogs([
+      { modality: "Run", duration_sec: 600 },
+      { modality: "RUN", duration_sec: 600 },
+    ]);
+    expect(out).toEqual({ run: 20 });
+  });
+
+  it("skips zero/negative durations", () => {
+    const out = minutesByModalityFromCardioLogs([
+      { modality: "run", duration_sec: 0 },
+      { modality: "bike", duration_sec: -60 },
+      { modality: "swim", duration_sec: null },
+    ]);
+    expect(out).toEqual({});
   });
 });
