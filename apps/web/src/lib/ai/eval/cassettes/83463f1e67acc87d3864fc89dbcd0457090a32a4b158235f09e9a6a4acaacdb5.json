@@ -1,9 +1,0 @@
-{
-  "promptHash": "83463f1e67acc87d3864fc89dbcd0457090a32a4b158235f09e9a6a4acaacdb5",
-  "provider": "anthropic",
-  "response": {
-    "text": "Sorry to hear the knee's been sore. I can describe what the engine is doing about it, but a soreness pattern that persists or worsens is worth taking to a qualified clinician. From your snapshot the knee is on your declared limitations list, so accessories that load it heavily (high-strain plyometrics, deep front-loaded variants) are filtered out of the picker, and the knees & quads region freshness is sitting in the recovering band — which means the engine is already softening high-impact work for the next few sessions.",
-    "tool_calls": ["getEngineSnapshot"]
-  },
-  "usage": { "input_tokens": 1950, "output_tokens": 160 }
-}

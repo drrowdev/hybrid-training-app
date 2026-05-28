@@ -194,7 +194,7 @@ describe("/api/ai/chat — POST", () => {
       });
       return {
         assistantText: "ok",
-        toolCalls: [{ id: "tc1", name: "getEngineSnapshot", result: {} }],
+        toolCalls: [{ id: "tc1", name: "getEngineState", result: {} }],
         usage: { input_tokens: 5, output_tokens: 2 },
         validationResult: "ok",
         retryCount: 0,
@@ -220,7 +220,7 @@ describe("/api/ai/chat — POST", () => {
     expect(assistantInsert.role).toBe("assistant");
     expect(assistantInsert.content).toBe("ok");
     expect((assistantInsert.tool_calls as Array<{ name: string }>)[0].name).toBe(
-      "getEngineSnapshot",
+      "getEngineState",
     );
 
     // logLlmCall is the privacy contract — exactly once, metadata only.
@@ -234,7 +234,7 @@ describe("/api/ai/chat — POST", () => {
       retryCount: 0,
     });
     expect((call.toolCalls as Array<{ name: string }>)[0]).toEqual({
-      name: "getEngineSnapshot",
+      name: "getEngineState",
     });
     // Verify forbidden raw-content fields are NOT present.
     for (const key of [

@@ -2,15 +2,15 @@
   "id": "squat-trend-3-months",
   "name": "squat-trend-3-months",
   "synthetic": true,
-  "synthetic_note": "Synthetic — pending real recording.",
-  "promptHash": "09ac3d1b10ad3d07e601d67d121cbbc035e44ac3f4ec0c334e2be1f19dd189db",
+  "synthetic_note": "Synthetic — pending real recording against system.v2. Expected tool-call sequence: `getWeeklyAggregates(weeksBack=12)` for the 3-month trend window; the system prompt steers the model away from `getRecentSessions` for windows longer than ~30 days.",
+  "promptHash": "6f5db492b3702761150c950b8474c9371eb45e4599948257741280b22857ea7d",
   "input": "How's my squat going over 3 months?",
   "matchers": {
     "shape": { "text": "string", "tool_calls": "array" },
     "elementRules": [
       { "path": "text", "mustContain": "squat" },
       { "path": "text", "mustContain": "kg" },
-      { "path": "tool_calls", "mustContain": "getEngineSnapshot" }
+      { "path": "tool_calls", "mustContain": "getWeeklyAggregates" }
     ]
   }
 }

@@ -35,7 +35,7 @@ async function loadFixture(id: string): Promise<EvalFixture & {
 }
 
 function expectedHash(id: string): string {
-  return createHash("sha256").update(`fixture:${id}:v1`).digest("hex");
+  return createHash("sha256").update(`fixture:${id}:v2`).digest("hex");
 }
 
 describe("eval fixtures — Explain v1", () => {
@@ -50,7 +50,7 @@ describe("eval fixtures — Explain v1", () => {
   );
 
   it.each(FIXTURE_IDS)(
-    "%s — promptHash is pinned to sha256(`fixture:<id>:v1`)",
+    "%s — promptHash is pinned to sha256(`fixture:<id>:v2`)",
     async (id) => {
       const fixture = await loadFixture(id);
       expect(fixture.promptHash).toBe(expectedHash(id));

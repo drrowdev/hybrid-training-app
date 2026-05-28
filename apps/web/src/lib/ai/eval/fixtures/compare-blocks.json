@@ -2,15 +2,15 @@
   "id": "compare-blocks",
   "name": "compare-blocks",
   "synthetic": true,
-  "synthetic_note": "Synthetic — pending real recording.",
-  "promptHash": "8424c42a5af32f3b3a5270bca75ff3878a3ee069239a38040aec75cb2e012a17",
+  "synthetic_note": "Synthetic — pending real recording against system.v2. Expected tool-call sequence: `getActiveBlock` to anchor the current block boundaries, then `getWeeklyAggregates(weeksBack≈24)` to span the current + prior block for a fair tonnage / adherence comparison. `getPrTimeline` is optional and only pulled if the answer needs PR-set deltas.",
+  "promptHash": "67f298c9a85e146457d9969a59a9a24acc157d4a72e376e413844231fe474c2d",
   "input": "Did this block go better than my last one?",
   "matchers": {
     "shape": { "text": "string", "tool_calls": "array" },
     "elementRules": [
       { "path": "text", "mustContain": "tonnage" },
       { "path": "text", "mustContain": "block" },
-      { "path": "tool_calls", "mustContain": "getEngineSnapshot" }
+      { "path": "tool_calls", "mustContain": "getWeeklyAggregates" }
     ]
   }
 }

@@ -1,9 +1,9 @@
 {
-  "promptHash": "73bfbbcb56ef950a5ab11df7ca35b30ca45b20751a9a435f349f7b25ac62077f",
+  "promptHash": "b4901cf8fcc728c9ad1c51ec1be8a9dea54a1fe831f15438dd9ce88f51dd2848",
   "provider": "anthropic",
   "response": {
     "text": "You're in a deload because the engine's ceiling chain came down this week. Base ceiling is from the median tonnage of your last three recovered weeks; the recovery multiplier pulled it lower because your fatigue ratings ran high mid-block. The result is a deliberately lighter prescription so you absorb the prior block and come back ready.",
-    "tool_calls": ["getEngineSnapshot"]
+    "tool_calls": ["getEngineState"]
   },
   "usage": { "input_tokens": 1800, "output_tokens": 110 }
 }
