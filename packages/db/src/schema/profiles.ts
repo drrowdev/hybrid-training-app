@@ -253,6 +253,32 @@ export const profiles = pgTable("profiles", {
     .notNull(),
   /** Free-text label for the user's preferred external program (e.g. "Runna"). */
   preferredCardioSourceName: text("preferred_cardio_source_name"),
+  /**
+   * ADR 0002 (BYOAI) — when the user toggled the master AI opt-in.
+   * NULL = opted out (the default for every existing row, and the
+   * state `setAiOptIn(false)` returns to). See migration 0069.
+   */
+  aiOptInAt: timestamp("ai_opt_in_at", { withTimezone: true }),
+  /**
+   * Which BYOAI provider the stored key targets. CHECK-constrained
+   * at the DB level to {'anthropic','openai','gemini'} or null. See
+   * migration 0069.
+   */
+  byoaiProvider: text("byoai_provider"),
+  /**
+   * Opaque reference into the secret store — the UUID of the row in
+   * `byoai_key_secrets` (pgcrypto fallback path) or, if/when Supabase
+   * Vault lands, the Vault entry ID. NEVER exposed to client code;
+   * `apps/web/src/lib/ai/vault.ts` is the only module that reads it.
+   */
+  byoaiKeyVaultId: text("byoai_key_vault_id"),
+  /**
+   * Reserved for a future one-time-payment unlock. Default `now()`
+   * means every free-tier user is treated as unlocked today (the
+   * gate is purely the opt-in + provider + key trio). See `hasAiAccess`.
+   */
+  byoaiUnlockedAt: timestamp("byoai_unlocked_at", { withTimezone: true })
+    .default(sql`now()`),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),
