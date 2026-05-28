@@ -43,6 +43,13 @@ pnpm dev          # runs apps/web on http://localhost:3000
 
 You'll need a `.env.local` in `apps/web/` (and one in `packages/db/` for migrations) — see `apps/web/.env.example`.
 
+### Required environment variables
+
+- `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` — Supabase project credentials.
+- `DATABASE_URL` — Drizzle migration target.
+- `AI_KEY_ENCRYPTION_KEY` — pgcrypto master key for BYOAI key vault (ADR 0002).
+- `MCP_TOKEN_SIGNING_KEY` — HMAC secret (≥ 32 chars) used to sign MCP bearer tokens and authorization codes (ADR 0003). **Required** at runtime when the `/mcp/*` routes are reachable.
+
 ## Stack
 
 | Layer | Choice |
