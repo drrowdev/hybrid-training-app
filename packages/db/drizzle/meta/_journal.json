@@ -470,6 +470,13 @@
       "tag": "0070_limitations_v2_lifecycle",
       "when": 1782072000000,
       "breakpoints": false
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "tag": "0071_mcp",
+      "when": 1782158400000,
+      "breakpoints": false
     }
   ]
 }
