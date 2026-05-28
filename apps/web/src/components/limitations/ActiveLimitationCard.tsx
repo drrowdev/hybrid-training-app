@@ -55,16 +55,6 @@ export function ActiveLimitationCard({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const expectedEnd =
-    row.expectedDurationDays != null
-      ? relativeFromNow(
-          new Date(
-            new Date(row.startedAt).getTime() +
-              row.expectedDurationDays * 86_400_000,
-          ).toISOString(),
-        )
-      : null;
-
   const engineSummary = engineActionSummary(row.engineAction);
 
   return (
@@ -98,7 +88,9 @@ export function ActiveLimitationCard({
             style={{ fontSize: 12, color: "var(--cp-text-muted)" }}
           >
             Started {relativeFromNow(row.startedAt)}
-            {expectedEnd ? ` · expected to clear ${expectedEnd}` : ""}
+            {row.affectedSide && row.affectedSide !== "bilateral"
+              ? ` · ${row.affectedSide} side`
+              : ""}
           </span>
         </div>
         <button

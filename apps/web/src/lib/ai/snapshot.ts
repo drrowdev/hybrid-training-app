@@ -479,7 +479,12 @@ async function readLimitationsContextSafe(
   try {
     return await readLimitationsContext(supabase, userId);
   } catch {
-    return { blockedRegions: new Set<string>(), tendinopathyActive: false };
+    return {
+      blockedRegions: new Set<string>(),
+      blockedMuscles: new Set<string>(),
+      allowedMovementIds: new Set<string>(),
+      tendinopathyActive: false,
+    };
   }
 }
 

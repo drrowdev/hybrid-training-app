@@ -67,6 +67,8 @@ vi.mock("@/lib/stats/active-block-progress", () => ({
 vi.mock("@/lib/planner/limitations-context", () => ({
   readLimitationsContext: vi.fn(async () => ({
     blockedRegions: new Set<string>(["knee"]),
+    blockedMuscles: new Set<string>(),
+    allowedMovementIds: new Set<string>(),
     tendinopathyActive: false,
   })),
 }));
