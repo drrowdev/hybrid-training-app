@@ -16,7 +16,7 @@
  */
 import { finalEwma } from "@hta/domain";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { computeSetLoad, isCountableSet, PRIMARY_REGION_WEIGHT, SECONDARY_REGION_WEIGHT } from "./set-load";
+import { computeSetLoad, isCountableSet, PRIMARY_REGION_WEIGHT, SECONDARY_REGION_WEIGHT, CARDIO_LOAD_SCALAR } from "./set-load";
 import { cardioIntensityScalar, normaliseHrZones } from "./cardio-intensity";
 import { MODALITY_REGION } from "@/lib/integrations/strava/mapping";
 import { todayYmd } from "@/lib/dates";
@@ -161,9 +161,11 @@ export async function recomputeRegionState(
       durationSec: c.duration_sec,
       rpe: c.rpe == null ? null : Number(c.rpe),
     });
-    const cardioLoad = durMin * intensity * 8;
-    // The ×8 scalar puts cardio on roughly the same kg-load magnitude as
-    // strength tonnage so the EWMA ratios stay comparable across modalities.
+    const cardioLoad = durMin * intensity * CARDIO_LOAD_SCALAR;
+    // `CARDIO_LOAD_SCALAR` (defined in set-load.ts) puts cardio on roughly
+    // the same kg-load magnitude as strength tonnage so the EWMA ratios
+    // stay comparable across modalities. Imported (not duplicated) to keep
+    // this consumer and `cardioBucketLoad` from silently diverging.
     const dateIso = c.performed_at.slice(0, 10);
     creditRegions(movement, cardioLoad, dailyLoad, dateIso);
   }

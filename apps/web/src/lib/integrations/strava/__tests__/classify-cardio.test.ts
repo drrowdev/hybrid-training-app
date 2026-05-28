@@ -57,13 +57,13 @@ describe("classifyCardio — kind selection", () => {
     const r = classifyCardio({
       avgHrBpm: 140,
       maxHrBpm: 185, // 97%
-      durationSec: 15 * 60,
+      durationSec: 3 * 60, // < 5 min — within tightened alactic window
       hrMax: HR_MAX,
       userAge: null,
     });
     expect(r?.kind).toBe("cardio_alactic");
     expect(r?.label).toBe("Sprint / alactic");
-    expect(r?.effectiveStressLoad).toBe(1.0 * 15);
+    expect(r?.effectiveStressLoad).toBe(1.0 * 3);
   });
 
   it("returns cardio_mixed when the data doesn't fit a clean bucket", () => {
@@ -76,6 +76,57 @@ describe("classifyCardio — kind selection", () => {
       userAge: null,
     });
     expect(r?.kind).toBe("cardio_mixed");
+  });
+
+  // Boundary pins for the tightened alactic gate (was `< 1200`, now `< 300`).
+  // Per CP-5 / Gastin 2001: alactic dominance is a sub-10-s phenomenon;
+  // 5 min is the upper-bound proxy for session-level classification.
+  it("alactic boundary: 300 s @ 96% max stays alactic (< is strict, so 300 just falls through to vo2)", () => {
+    // The rule is `durationSec < 300`; 300 exactly is NOT alactic.
+    const r = classifyCardio({
+      avgHrBpm: 140,
+      maxHrBpm: 182, // 96%
+      durationSec: 300,
+      hrMax: HR_MAX,
+      userAge: null,
+    });
+    expect(r?.kind).toBe("cardio_vo2");
+  });
+
+  it("alactic boundary: 299 s @ 96% max is alactic (just inside the window)", () => {
+    const r = classifyCardio({
+      avgHrBpm: 140,
+      maxHrBpm: 182, // 96%
+      durationSec: 299,
+      hrMax: HR_MAX,
+      userAge: null,
+    });
+    expect(r?.kind).toBe("cardio_alactic");
+  });
+
+  it("alactic boundary: 301 s @ 96% max falls through to cardio_vo2", () => {
+    const r = classifyCardio({
+      avgHrBpm: 140,
+      maxHrBpm: 182, // 96%
+      durationSec: 301,
+      hrMax: HR_MAX,
+      userAge: null,
+    });
+    expect(r?.kind).toBe("cardio_vo2");
+  });
+
+  it("alactic boundary: old rule (1199 s @ 96% max) now returns cardio_vo2 — intentional behaviour change", () => {
+    // Previously (`durationSec < 1200`) this would have been cardio_alactic.
+    // After tightening to `< 300`, a 19-min Z4-ish ride is correctly bucketed
+    // glycolytic/aerobic (cardio_vo2 via the maxPct ≥ 0.92 branch).
+    const r = classifyCardio({
+      avgHrBpm: 140,
+      maxHrBpm: 182, // 96%
+      durationSec: 1199,
+      hrMax: HR_MAX,
+      userAge: null,
+    });
+    expect(r?.kind).toBe("cardio_vo2");
   });
 });
 

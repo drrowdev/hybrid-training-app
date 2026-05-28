@@ -81,3 +81,21 @@ export const SECONDARY_REGION_WEIGHT = 0.5;
 
 /** Same multiplier table exposed for inspection / future calibration tests. */
 export { rpeMultiplier };
+
+/**
+ * Cardio-to-strength unit-matching scalar.
+ *
+ * Translates cardio "intensity × duration" output into points
+ * comparable in magnitude to strength-set load points. Used by
+ * `cardioBucketLoad` (bucket-load.ts) and the region-ledger cardio
+ * fan-out. Both consumers MUST import from here to prevent silent
+ * divergence.
+ *
+ * Calibration status (per CP-2/CP-3): heuristic, uncalibrated unit-
+ * matching multiplier. The value 8 was chosen so a 30-minute Z2
+ * easy bike read in the same order of magnitude as 10 hard sets at
+ * RPE 7 in early development. No prospective validation data backs
+ * the specific magnitude. Replace once user-outcome data exists to
+ * calibrate (CP-1).
+ */
+export const CARDIO_LOAD_SCALAR = 8;
