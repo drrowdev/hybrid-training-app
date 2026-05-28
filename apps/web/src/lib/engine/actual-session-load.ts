@@ -44,6 +44,7 @@ import {
   cardioEslFromKind,
   type ClassifiedCardioKind,
 } from "@/lib/integrations/strava/classify-cardio";
+import { isCountableSet } from "./set-load";
 
 /** Logged strength set, post-filter friendly (the helper double-checks). */
 export type SetLogRow = {
@@ -142,14 +143,14 @@ function cardioMode(
 
 /**
  * Treat a logged set as "hard" (counts toward strength ESL) when it's
- * neither a warmup nor a skipped row. Empty rows (no reps + no duration
- * + no distance) are still counted — the caller controls whether such
- * rows exist via the per-set logger's input validation.
+ * neither a warmup nor a skipped row. Delegates to the shared
+ * `isCountableSet` rule so every consumer of set_logs uses the same
+ * skip/warmup filter. Empty rows (no reps + no duration + no distance)
+ * are still counted — the caller controls whether such rows exist via
+ * the per-set logger's input validation.
  */
 function isHardSet(s: SetLogRow): boolean {
-  if (s.isSkipped) return false;
-  if (s.setKind === "warmup") return false;
-  return true;
+  return isCountableSet(s);
 }
 
 function strengthModalityMultiplier(modality: SessionModality): number {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeSetLoad, rpeMultiplier, PRIMARY_REGION_WEIGHT, SECONDARY_REGION_WEIGHT } from "../set-load";
+import { computeSetLoad, isCountableSet, rpeMultiplier, PRIMARY_REGION_WEIGHT, SECONDARY_REGION_WEIGHT } from "../set-load";
 
 describe("rpeMultiplier", () => {
   it("RPE 10 (0 RIR) = 1.0 — maximum damage stimulus", () => {
@@ -73,5 +73,35 @@ describe("Region weight constants", () => {
     expect(PRIMARY_REGION_WEIGHT).toBe(1.0);
     expect(SECONDARY_REGION_WEIGHT).toBe(0.5);
     expect(PRIMARY_REGION_WEIGHT / SECONDARY_REGION_WEIGHT).toBe(2);
+  });
+});
+
+describe("isCountableSet — shared skip/warmup rule", () => {
+  it("counts a normal main set", () => {
+    expect(isCountableSet({ setKind: "main", isSkipped: false })).toBe(true);
+  });
+
+  it("does not count warmup", () => {
+    expect(isCountableSet({ setKind: "warmup", isSkipped: false })).toBe(false);
+  });
+
+  it("does not count skipped sets even when not warmup", () => {
+    expect(isCountableSet({ setKind: "main", isSkipped: true })).toBe(false);
+  });
+
+  it("counts back_off / accessory / tendon as work", () => {
+    expect(isCountableSet({ setKind: "back_off", isSkipped: false })).toBe(true);
+    expect(isCountableSet({ setKind: "accessory", isSkipped: false })).toBe(true);
+    expect(isCountableSet({ setKind: "tendon", isSkipped: false })).toBe(true);
+  });
+
+  it("treats null/undefined isSkipped as not skipped", () => {
+    expect(isCountableSet({ setKind: "main", isSkipped: null })).toBe(true);
+    expect(isCountableSet({ setKind: "main" })).toBe(true);
+  });
+
+  it("treats null setKind as countable (legacy rows with no kind)", () => {
+    expect(isCountableSet({ setKind: null, isSkipped: false })).toBe(true);
+    expect(isCountableSet({ isSkipped: false })).toBe(true);
   });
 });

@@ -16,7 +16,7 @@
  */
 import { finalEwma } from "@hta/domain";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { computeSetLoad, PRIMARY_REGION_WEIGHT, SECONDARY_REGION_WEIGHT } from "./set-load";
+import { computeSetLoad, isCountableSet, PRIMARY_REGION_WEIGHT, SECONDARY_REGION_WEIGHT } from "./set-load";
 import { cardioIntensityScalar, normaliseHrZones } from "./cardio-intensity";
 import { MODALITY_REGION } from "@/lib/integrations/strava/mapping";
 import { todayYmd } from "@/lib/dates";
@@ -129,8 +129,11 @@ export async function recomputeRegionState(
   // Strength: per-set tonnage × rpe × muscle weight, credited to each region.
   for (const s of sets) {
     if (!s.movement) continue;
-    // Skip warmup sets — they don't accumulate meaningful load.
-    if (s.set_kind === "warmup") continue;
+    // Shared skip/warmup filter (`set-load.isCountableSet`). The SQL
+    // `skipped=false` clause above also gates skipped rows at the DB
+    // edge; this is the in-process source of truth shared with
+    // actual-session-load + bucket-state-queries.
+    if (!isCountableSet({ setKind: s.set_kind, isSkipped: false })) continue;
     const setLoad = computeSetLoad({
       sets: 1,
       reps: Number(s.reps),
