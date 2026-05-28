@@ -37,7 +37,7 @@ export type RegionSpike = {
  * Soft weekly spike threshold.
  *
  * heuristic, no calibration data — see CP-3 note above and constant
- * row #29 in `hybrid-training-design-constraints.md`.
+ * row #30 in `hybrid-training-design-constraints.md`.
  */
 export const REGION_SPIKE_THRESHOLD = 0.25;
 
