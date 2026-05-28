@@ -1,0 +1,16 @@
+{
+  "id": "no-data-question",
+  "name": "no-data-question",
+  "synthetic": true,
+  "synthetic_note": "Synthetic — pending real recording.",
+  "promptHash": "4723e16e333cdd2f3aa44f11325be32039f7c48e4dd99ae89fa51dc554e5e299",
+  "input": "How's my marathon training going?",
+  "matchers": {
+    "shape": { "text": "string", "tool_calls": "array" },
+    "elementRules": [
+      { "path": "text", "mustContain": "don't see" },
+      { "path": "text", "mustNotContain": "pace" },
+      { "path": "tool_calls", "mustContain": "getEngineSnapshot" }
+    ]
+  }
+}
