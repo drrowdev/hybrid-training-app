@@ -7,6 +7,7 @@ import { PullToRefresh } from "@/components/shell/PullToRefresh";
 import { CommandPaletteProvider } from "@/components/cmd-k/CommandPaletteProvider";
 import { needsOnboarding } from "@/lib/onboarding/gate";
 import { loadPaletteIndices } from "@/lib/cmd-k/indices";
+import { ChatMount } from "@/components/ai/ChatMount";
 
 export default async function AppLayout({
   children,
@@ -106,6 +107,7 @@ export default async function AppLayout({
         buildSha={process.env.NEXT_PUBLIC_BUILD_SHA ?? "dev"}
       >
         {children}
+        <ChatMount />
       </AppShell>
     </CommandPaletteProvider>
   );
