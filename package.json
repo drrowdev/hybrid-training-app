@@ -2,7 +2,7 @@
   "name": "hybrid-training-app",
   "version": "0.0.0",
   "private": true,
-  "description": "Adaptive hybrid programming engine — public-ready multi-user training app",
+  "description": "Science-informed hybrid training with adaptive load management — public-ready multi-user training app",
   "engines": {
     "node": ">=22.0.0",
     "pnpm": ">=10.0.0"
