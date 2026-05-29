@@ -1444,7 +1444,7 @@ function PlannedSessionCard({
           </Link>
         )}
         <Link
-          href="/app/plan"
+          href={`/app/plan/preview/${planned.id}`}
           style={{
             fontSize: 13,
             color: "var(--cp-text-muted)",
@@ -1452,7 +1452,7 @@ function PlannedSessionCard({
             padding: "10px 6px",
           }}
         >
-          Preview plan
+          Preview workout
         </Link>
       </div>
     </section>

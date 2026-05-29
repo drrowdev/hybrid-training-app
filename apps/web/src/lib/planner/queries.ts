@@ -159,6 +159,66 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
   }));
 }
 
+/**
+ * Regex matching a v4-style lowercase UUID. Shared between the
+ * `/app/sessions/start/[plannedId]` route and the
+ * `/app/plan/preview/[plannedId]` route so a hand-typed or fuzzed id
+ * is rejected at the route boundary before we ever hit the DB.
+ */
+export const PLANNED_ID_REGEX = /^[0-9a-f-]{36}$/i;
+
+/**
+ * Load a single planned session by id, scoped to the authenticated
+ * user via Supabase RLS. Returns null when the row doesn't exist or
+ * isn't visible to the caller — both cases should map to `notFound()`
+ * at the route level. Includes the parent block's archetype + start
+ * date so callers can render the eyebrow ("ARCHETYPE · WEEK N ·
+ * DATE") without a second round-trip.
+ */
+export type PlannedSessionWithBlock = PlannedDay & {
+  archetype: string;
+  archetypeName: string;
+  blockStartedOn: string;
+};
+
+export async function getPlannedSessionById(
+  plannedId: string,
+): Promise<PlannedSessionWithBlock | null> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("planned_sessions")
+    .select(
+      "id, block_id, week_index, day_index, slot, planned_at, title, role, prescription, completed_session_id, skipped_at, notes, training_blocks!inner(archetype, started_on, notes)",
+    )
+    .eq("id", plannedId)
+    .maybeSingle();
+  if (!data) return null;
+  const blockRel = data.training_blocks as
+    | { archetype: string; started_on: string; notes: string | null }
+    | { archetype: string; started_on: string; notes: string | null }[]
+    | null;
+  const block = Array.isArray(blockRel) ? blockRel[0] : blockRel;
+  if (!block) return null;
+  return {
+    id: data.id,
+    blockId: data.block_id,
+    weekIndex: data.week_index,
+    dayIndex: data.day_index,
+    slot: (data.slot as SessionSlot) ?? "single",
+    plannedAt: data.planned_at ?? null,
+    title: data.title,
+    role: data.role,
+    prescription: (data.prescription as Prescription) ?? { items: [] },
+    completedSessionId: data.completed_session_id,
+    skippedAt: data.skipped_at,
+    notes: (data.notes as string | null) ?? null,
+    date: dayDate(block.started_on, data.week_index, data.day_index),
+    archetype: block.archetype,
+    archetypeName: archetypeDisplayName(block.archetype, block.notes),
+    blockStartedOn: block.started_on,
+  };
+}
+
 /** Today's planned sessions (active block + matching date). Returns both AM and PM if present. */
 export async function getTodayPlannedSessions(): Promise<PlannedDay[]> {
   const block = await getActiveBlock();
