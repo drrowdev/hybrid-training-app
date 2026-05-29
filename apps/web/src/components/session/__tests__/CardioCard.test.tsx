@@ -53,7 +53,8 @@ describe("CardioCard", () => {
       <CardioCard item={vo2()} hideHeading testId="card" />,
     );
     expect(html).not.toMatch(/<h3[^>]*>/);
-    expect(html).toContain(">CARDIO<");
+    // Mockup B drops the "CARDIO" eyebrow — make sure it stayed gone.
+    expect(html).not.toContain(">CARDIO<");
   });
 
   it("hides the Duration row when hideDurationRow is true", () => {
@@ -70,9 +71,12 @@ describe("CardioCard", () => {
 
   it("renders the kind-specific educational description (Fix 5)", () => {
     const vo2Html = renderToStaticMarkup(
-      <CardioCard item={vo2()} testId="card" />,
+      <CardioCard item={vo2()} testId="card" rowTestIdPrefix="card" />,
     );
-    expect(vo2Html).toContain("How to do it");
+    expect(vo2Html).toContain('data-testid="card-description"');
+    // Mockup B drops the "How to do it" label — the 2 px accent border on
+    // the description block carries the affordance instead.
+    expect(vo2Html).not.toContain("How to do it");
     // VO2 description mentions HRmax target.
     expect(vo2Html).toMatch(/90.95%/);
 
@@ -114,16 +118,11 @@ describe("CardioCard", () => {
     const html = renderToStaticMarkup(
       <CardioCard item={vo2()} testId="card" rowTestIdPrefix="card" />,
     );
-    // No <details>/<summary> wrapper around the description — the
-    // description is now always-visible, distinct from the structured
-    // key/value rows below.
+    // The description block sits ABOVE the structured rows.
     expect(html).toContain('data-testid="card-description"');
-    expect(html).toContain("How to do it");
     expect(html).not.toMatch(
       /<details[^>]*data-testid="card-description"/,
     );
-    expect(html).not.toMatch(/<summary[^>]*>\s*How to do it\s*<\/summary>/);
-    // The description block sits ABOVE the structured rows.
     const descIdx = html.indexOf('data-testid="card-description"');
     const intervalsIdx = html.indexOf('data-testid="card-row-intervals"');
     expect(descIdx).toBeGreaterThan(-1);

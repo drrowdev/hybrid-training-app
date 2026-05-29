@@ -1329,6 +1329,152 @@ export async function applyStravaAutofill(
   return { ok: true, cardioLogId: inserted?.id };
 }
 
+const finishStravaAppliedSchema = z.object({
+  sessionId: z.string().uuid(),
+  avgRpe: z.coerce.number().min(0).max(10).optional(),
+  notes: z.string().max(2000).optional(),
+});
+
+/**
+ * Finish a session whose cardio row was previously populated by the
+ * Strava autofill banner.
+ *
+ * The user has already pressed "Use" on the banner, which copies the
+ * authoritative duration / HR / distance from `cardio_logs` (external
+ * source = "strava") into the (session_id, block_index=0) slot. Asking
+ * them to retype those numbers in the regular cardio log form would be
+ * worse than useless — it would invite drift. This action lets the
+ * stripped-down "RPE + notes + finish" surface (see CardioLogForm's
+ * `stravaApplied` branch) write only the two fields the user owns.
+ *
+ * Hybrid guard: same as `logCardioSession` / `applyStravaAutofill` — we
+ * DO NOT flip `completed_at` while strength work is prescribed but has
+ * zero set_logs. The strength bar will own the flip in that case.
+ */
+export async function finishStravaAppliedSession(
+  formData: FormData,
+): Promise<{ ok?: true; error?: string }> {
+  const parsed = finishStravaAppliedSchema.safeParse({
+    sessionId: formData.get("sessionId"),
+    avgRpe: formData.get("avgRpe") ?? undefined,
+    notes: formData.get("notes") ?? undefined,
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) return { error: "Not signed in." };
+
+  const { data: session, error: sErr } = await supabase
+    .from("sessions")
+    .select("id, user_id, deleted_at, completed_at")
+    .eq("id", parsed.data.sessionId)
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (sErr) return { error: sErr.message };
+  if (!session) return { error: "Session not found." };
+
+  const { data: cardio, error: cErr } = await supabase
+    .from("cardio_logs")
+    .select("id, duration_sec, rpe, external_source, notes")
+    .eq("session_id", parsed.data.sessionId)
+    .eq("block_index", 0)
+    .maybeSingle();
+  if (cErr) return { error: cErr.message };
+  if (!cardio || cardio.external_source !== "strava") {
+    return { error: "No Strava-applied cardio on this session." };
+  }
+
+  // Persist the user-owned fields onto the cardio row first.
+  const cardioUpdates: Record<string, unknown> = {};
+  if (parsed.data.avgRpe != null) cardioUpdates.rpe = parsed.data.avgRpe;
+  if (parsed.data.notes != null && parsed.data.notes.trim().length > 0) {
+    cardioUpdates.notes = parsed.data.notes.trim();
+  }
+  if (Object.keys(cardioUpdates).length > 0) {
+    const { error: cuErr } = await supabase
+      .from("cardio_logs")
+      .update(cardioUpdates)
+      .eq("id", cardio.id);
+    if (cuErr) return { error: cuErr.message };
+  }
+
+  // Hybrid guard — same shape as applyStravaAutofill above.
+  const [{ count: strengthPrescribedCount }, { count: setsLoggedCount }] =
+    await Promise.all([
+      supabase
+        .from("session_items")
+        .select("id", { count: "exact", head: true })
+        .eq("session_id", parsed.data.sessionId)
+        .eq("kind", "main"),
+      supabase
+        .from("set_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("session_id", parsed.data.sessionId),
+    ]);
+  const hasUnloggedStrength =
+    (strengthPrescribedCount ?? 0) > 0 && (setsLoggedCount ?? 0) === 0;
+
+  if (!session.completed_at && !hasUnloggedStrength) {
+    const durationMin = Math.max(1, Math.round((cardio.duration_sec ?? 60) / 60));
+    const finalRpe =
+      parsed.data.avgRpe != null
+        ? parsed.data.avgRpe
+        : cardio.rpe != null
+          ? Number(cardio.rpe)
+          : null;
+    const { error: uErr } = await supabase
+      .from("sessions")
+      .update({
+        completed_at: new Date().toISOString(),
+        duration_min: durationMin,
+        session_rpe:
+          finalRpe != null && Number.isFinite(finalRpe) ? finalRpe : null,
+      })
+      .eq("id", parsed.data.sessionId);
+    if (uErr) return { error: uErr.message };
+
+    try {
+      await recomputeActualSessionLoad({
+        supabase,
+        sessionId: parsed.data.sessionId,
+        requireCompleted: false,
+      });
+    } catch (e) {
+      console.error("recomputeActualSessionLoad after Strava finish failed:", e);
+    }
+    try {
+      const { data: linked } = await supabase
+        .from("planned_sessions")
+        .select("block_id")
+        .eq("completed_session_id", parsed.data.sessionId)
+        .maybeSingle();
+      if (linked?.block_id) {
+        await maybeCompleteBlock(supabase, linked.block_id as string);
+      }
+    } catch (e) {
+      console.error("maybeCompleteBlock after Strava finish failed:", e);
+    }
+    try {
+      await recomputeRegionState(
+        supabase,
+        user.id,
+        await getUserTimezone(user.id),
+      );
+    } catch (e) {
+      console.error("recomputeRegionState after Strava finish failed:", e);
+    }
+  }
+
+  revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
+  return { ok: true };
+}
+
 const swapItemSchema = z.object({
   plannedSessionId: z.string().uuid(),
   itemIndex: z.coerce.number().int().min(0).max(64),

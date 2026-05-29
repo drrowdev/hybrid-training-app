@@ -70,6 +70,16 @@ You'll need a `.env.local` in `apps/web/` (and one in `packages/db/` for migrati
 
 See [`docs/knowledge/design-constraints.md` § U](./docs/knowledge/design-constraints.md). Headline: pre-session 2-slider check-in (fatigue + soreness), Strava-pulled cardio, derived region freshness from logged training, structured `limitations` table for injuries. No HRV, no AI, no daily symptom self-report in v1.
 
+## Strava push-subscription (webhook)
+
+Cardio sessions auto-refresh via Strava's webhook API. One-time setup per environment, after the webhook route is deployed and reachable:
+
+1. Set the four env vars in `apps/web/.env.example`: `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`, `STRAVA_WEBHOOK_VERIFY_TOKEN` (any opaque string), and `STRAVA_WEBHOOK_CALLBACK_URL` (the public URL of `/api/integrations/strava/webhook`).
+2. Register the subscription: `pnpm --filter @hta/web run strava:subscribe`. Strava replies with a numeric subscription id — paste it into `STRAVA_WEBHOOK_SUBSCRIPTION_ID` and redeploy. The webhook handler rejects events whose `subscription_id` doesn't match.
+3. Inspect / clean up existing subscriptions with `pnpm --filter @hta/web run strava:list-subscriptions`.
+
+Idempotency is enforced by the `strava_event_log` table (UNIQUE on `(subscription_id, event_time, object_id, aspect_type)`) — duplicate redeliveries are silently dropped.
+
 ## Contributing / agent handoff
 
 See `AGENTS.md` for conventions and `HANDOFF.md` for the current-state snapshot.
