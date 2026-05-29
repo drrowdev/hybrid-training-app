@@ -9,7 +9,7 @@ import { seedActiveBlock } from "./fixtures/session-log";
  * Verifies the upgraded /app surface:
  *   - Hero session card renders with the archetype + week label and the
  *     resolved top-set numbers (weight × reps from prescription + TM).
- *   - "Start session →" CTA links into the check-in flow.
+ *   - "Start workout →" CTA links into the check-in flow.
  *   - The "Preview" secondary link goes to /app/plan.
  *
  * Auth + onboarding follow the same fixture pattern as the existing
@@ -54,7 +54,7 @@ test.describe("@desktop today page (Phase 1)", () => {
     // Primary CTA → start session route (server-side auto-create + redirect).
     const cta = page.getByTestId("today-cta").first();
     await expect(cta).toBeVisible();
-    await expect(cta).toHaveText(/start session/i);
+    await expect(cta).toHaveText(/start workout/i);
     const href = await cta.getAttribute("href");
     expect(href).toBe(`/app/sessions/start/${seed.todayPlannedId}`);
 
@@ -107,7 +107,7 @@ test.describe("@desktop today page (Phase 1)", () => {
     await expect(rest.locator(".cp-info")).toHaveCount(0);
   });
 
-  test("training-day hero exposes Start session CTA + Preview workout link", async ({
+  test("training-day hero exposes Start workout CTA + Preview workout link", async ({
     page,
     context,
     freshUser,
@@ -127,7 +127,7 @@ test.describe("@desktop today page (Phase 1)", () => {
 
     const cta = page.getByTestId("today-cta").first();
     await expect(cta).toBeVisible();
-    await expect(cta).toHaveText(/start session/i);
+    await expect(cta).toHaveText(/start workout/i);
     expect(await cta.getAttribute("href")).toBe(`/app/sessions/start/${seed.todayPlannedId}`);
 
     const preview = page.getByRole("link", { name: /^preview plan$/i }).first();

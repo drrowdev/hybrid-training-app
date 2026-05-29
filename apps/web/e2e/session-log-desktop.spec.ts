@@ -51,7 +51,7 @@ test.describe("@desktop session log", () => {
     // 1) /app — today's prescription card should render with the Start CTA.
     await page.goto("/app");
     await page.waitForLoadState("networkidle");
-    const startCta = page.getByRole("link", { name: /start session/i }).first();
+    const startCta = page.getByRole("link", { name: /start workout/i }).first();
     await expect(startCta).toBeVisible();
     // Capture the actual planned-session id from the link's href. The
     // /app page resolves "today's planned session" itself (via the same
@@ -247,7 +247,7 @@ test.describe("@desktop session log", () => {
     await page.waitForLoadState("networkidle");
     const heroCta = page.getByTestId("today-cta").first();
     await expect(heroCta).toBeVisible();
-    await expect(heroCta).toHaveText(/start session/i);
+    await expect(heroCta).toHaveText(/start workout/i);
     await heroCta.click();
 
     // 2) Pre-session interstitial removed — Start redirects straight to the session log.

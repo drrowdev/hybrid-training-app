@@ -68,7 +68,7 @@ describe("cardioPreviewRows", () => {
     expect(intensity?.value).toBe("≤ 70% HRR");
   });
 
-  it("renames the hrCap row to 'HR cap' when the protocolNote already produced an Intensity row", () => {
+  it("drops the hrCap row entirely when the protocolNote already produced an Intensity row", () => {
     const rows = cardioPreviewRows(
       cardio({
         durationMin: 35,
@@ -76,10 +76,17 @@ describe("cardioPreviewRows", () => {
         hrCap: "90–95% HRmax during work",
       }),
     );
-    expect(rows.find((r) => r.label === "Intensity")).toBeDefined();
-    expect(rows.find((r) => r.label === "HR cap")?.value).toContain(
+    // Intensity comes from the note, NOT from the hrCap field.
+    expect(rows.find((r) => r.label === "Intensity")?.value).toContain(
+      "HRmax",
+    );
+    expect(rows.find((r) => r.label === "Intensity")?.value).not.toContain(
       "during work",
     );
+    // The duplicate "HR cap" row is gone.
+    expect(rows.find((r) => r.label === "HR cap")).toBeUndefined();
+    // Defence in depth: the hrCap label literal must not appear in any row.
+    expect(rows.map((r) => r.label)).not.toContain("HR cap");
   });
 
   it("returns an empty list for a wholly empty cardio item (defensive)", () => {
