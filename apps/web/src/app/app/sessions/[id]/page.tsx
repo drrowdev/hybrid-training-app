@@ -23,6 +23,7 @@ import {
 import { SessionWorkArea } from "@/components/session/SessionWorkArea";
 import { CardioPrescriptionList } from "@/components/session/CardioPrescriptionList";
 import { CardioLogForm } from "@/components/session/CardioLogForm";
+import { AddOffPlanMovement } from "@/components/session/AddOffPlanMovement";
 import { DisclosureArrow } from "@/components/session/DisclosureArrow";
 import {
   resolveFreestyleMovements,
@@ -51,6 +52,7 @@ import {
 import type { ProgressionHint } from "@/components/session/PostSessionSummary";
 import type { Prescription } from "@hta/db";
 import { loadBwGateStatesForPrescription } from "@/lib/planner/bw-gate-state-loader";
+import { cardioModalityLabel } from "@/lib/session/cardio-modality-label";
 
 export default async function SessionDetailPage({
   params,
@@ -563,6 +565,38 @@ export default async function SessionDetailPage({
   const userUnits: "metric" | "imperial" =
     feedbackPrefs?.units === "imperial" ? "imperial" : "metric";
 
+  // Fix 4 — surface the planned cardio implementing modality (Run /
+  // Bike / Row / Ski erg / …) next to the movement title in the
+  // CardioCard header. Load the movement metadata + slug for every
+  // cardio prescription item in a single query so the chip can render
+  // server-side without an extra round-trip per row.
+  const cardioMovementIds = Array.from(
+    new Set(
+      (plannedPrescription?.items ?? [])
+        .filter(
+          (it) => it.kind.startsWith("cardio_") && it.kind !== "cardio_external",
+        )
+        .map((it) => it.movementId)
+        .filter((m): m is string => !!m),
+    ),
+  );
+  const cardioModalityByMovementId: Record<string, string | null> = {};
+  if (cardioMovementIds.length > 0) {
+    const { data: cardioMovements } = await supabase
+      .from("movements")
+      .select("id, slug, metadata")
+      .in("id", cardioMovementIds);
+    for (const row of cardioMovements ?? []) {
+      const meta = (row as { metadata?: Record<string, unknown> | null })
+        .metadata;
+      const slug = (row as { slug?: string | null }).slug ?? null;
+      cardioModalityByMovementId[row.id as string] = cardioModalityLabel(
+        meta,
+        slug,
+      );
+    }
+  }
+
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <header>
@@ -985,6 +1019,7 @@ export default async function SessionDetailPage({
               .filter((m): m is string => !!m),
           ),
         })}
+        hideAddOffPlan={isPureCardio}
       />
 
       {(() => {
@@ -1016,12 +1051,12 @@ export default async function SessionDetailPage({
         const hasLoggedCardio = !!(cardio && cardio.length > 0);
         const showCardioSection = hasLoggedCardio || cardioItemsIndexed.length > 0 || !isComplete;
         if (!showCardioSection) return null;
-        const cardioCount = cardio?.length ?? 0;
         return (
-        <section className="cp-card" style={{ padding: 20 }}>
-          <h2 style={{ margin: 0, fontSize: 16 }}>
-            Cardio <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>({cardioCount})</span>
-          </h2>
+        <section
+          data-testid="cardio-section"
+          className="cp-card"
+          style={{ padding: 20, display: "grid", gap: 14 }}
+        >
           {cardioItemsIndexed.length > 0 && (
             <CardioPrescriptionList
               plannedSessionId={(planned?.id as string | undefined) ?? null}
@@ -1084,7 +1119,10 @@ export default async function SessionDetailPage({
                     };
                   }
                 }
-                return { item: it, itemIndex, classification };
+                const modalityLabel = it.movementId
+                  ? cardioModalityByMovementId[it.movementId] ?? null
+                  : null;
+                return { item: it, itemIndex, classification, modalityLabel };
               })}
               ownedCardio={equipment.cardio}
               swapAction={swapPrescriptionItem}
@@ -1143,8 +1181,11 @@ export default async function SessionDetailPage({
                 prescribedDurationMin={firstCardioPrescription?.durationMin ?? null}
                 movementId={firstCardioPrescription?.movementId ?? null}
                 modality={
-                  (firstCardioPrescription?.intensityLabel as string | undefined) ??
-                  "other"
+                  (firstCardioPrescription?.movementId
+                    ? cardioModalityByMovementId[firstCardioPrescription.movementId] ?? null
+                    : null)
+                    ?.toLowerCase()
+                    ?.replace(/\s+/g, "_") ?? "other"
                 }
                 units={userUnits}
                 action={logCardioSession}
@@ -1186,6 +1227,16 @@ export default async function SessionDetailPage({
         </section>
         );
       })()}
+
+      {/* Fix 3 — pure-cardio sessions render the "+ Add off-plan movement"
+          link AFTER the cardio block (instead of before, where the
+          MovementCardList default placement would put it on what is
+          otherwise an empty strength surface). Strength + hybrid
+          sessions keep the in-list placement at the bottom of the
+          card list. */}
+      {isPureCardio && !isComplete && (
+        <AddOffPlanMovement sessionId={id} />
+      )}
 
 
       {!isComplete && !isPureCardio && (() => {

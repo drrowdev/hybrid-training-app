@@ -1247,7 +1247,7 @@ export async function applyStravaAutofill(
   // Verify the target session is owned by the user before inserting.
   const { data: target, error: tErr } = await supabase
     .from("sessions")
-    .select("id, user_id, deleted_at")
+    .select("id, user_id, deleted_at, completed_at")
     .eq("id", parsed.data.sessionId)
     .eq("user_id", user.id)
     .is("deleted_at", null)
@@ -1255,30 +1255,75 @@ export async function applyStravaAutofill(
   if (tErr) return { error: tErr.message };
   if (!target) return { error: "Session not found." };
 
-  const { count } = await supabase
-    .from("cardio_logs")
-    .select("id", { count: "exact", head: true })
-    .eq("session_id", parsed.data.sessionId);
+  // review-208 #2 alignment — share the same hybrid-completion guard
+  // as `logCardioSession`. We DON'T flip `sessions.completed_at` when
+  // there's strength work prescribed but no set_logs yet, because
+  // doing so would silently drop the prescribed strength block.
+  // Pure-cardio sessions always satisfy this guard.
+  const [{ count: strengthPrescribedCount }, { count: setsLoggedCount }] =
+    await Promise.all([
+      supabase
+        .from("session_items")
+        .select("id", { count: "exact", head: true })
+        .eq("session_id", parsed.data.sessionId)
+        .eq("kind", "main"),
+      supabase
+        .from("set_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("session_id", parsed.data.sessionId),
+    ]);
+  const hasUnloggedStrength =
+    (strengthPrescribedCount ?? 0) > 0 && (setsLoggedCount ?? 0) === 0;
 
+  // review-208 #1 alignment — upsert on (session_id, block_index=0)
+  // instead of inserting a new row. The cardio log form writes to the
+  // same (session_id, 0) slot, so the user pressing "Use" on the
+  // Strava banner AFTER having entered manual values in the form
+  // updates one row instead of producing a confusing duplicate. Ad-hoc
+  // extra cardio blocks (added via "+ add cardio block") use higher
+  // indices and a different code path, so they are untouched.
   const { data: inserted, error: insErr } = await supabase
     .from("cardio_logs")
-    .insert({
-      session_id: parsed.data.sessionId,
-      block_index: count ?? 0,
-      modality: src.modality,
-      duration_sec: src.duration_sec,
-      distance_km: src.distance_km,
-      avg_hr_bpm: src.avg_hr_bpm,
-      max_hr_bpm: src.max_hr_bpm,
-      avg_pace_sec_per_km: src.avg_pace_sec_per_km,
-      rpe: src.rpe,
-      strava_activity_id: src.strava_activity_id,
-      external_source: src.external_source,
-      notes: "Autofilled from Strava",
-    })
+    .upsert(
+      {
+        session_id: parsed.data.sessionId,
+        block_index: 0,
+        modality: src.modality,
+        duration_sec: src.duration_sec,
+        distance_km: src.distance_km,
+        avg_hr_bpm: src.avg_hr_bpm,
+        max_hr_bpm: src.max_hr_bpm,
+        avg_pace_sec_per_km: src.avg_pace_sec_per_km,
+        rpe: src.rpe,
+        strava_activity_id: src.strava_activity_id,
+        external_source: src.external_source,
+        notes: "Autofilled from Strava",
+      },
+      { onConflict: "session_id,block_index" },
+    )
     .select("id")
     .maybeSingle();
   if (insErr) return { error: insErr.message };
+
+  // Mirror `logCardioSession`: only flip the session to completed when
+  // the hybrid-completion guard allows it. For pure-cardio sessions
+  // the banner-driven autofill IS the user's "I finished this" signal;
+  // for hybrid sessions with unlogged strength we leave the session
+  // open so the strength bar can take over.
+  if (!target.completed_at && !hasUnloggedStrength) {
+    const durationMin = Math.max(1, Math.round(src.duration_sec / 60));
+    const rpeNumber = src.rpe == null ? null : Number(src.rpe);
+    const { error: updErr } = await supabase
+      .from("sessions")
+      .update({
+        completed_at: new Date().toISOString(),
+        duration_min: durationMin,
+        session_rpe:
+          rpeNumber != null && Number.isFinite(rpeNumber) ? rpeNumber : null,
+      })
+      .eq("id", parsed.data.sessionId);
+    if (updErr) return { error: updErr.message };
+  }
 
   revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
   return { ok: true, cardioLogId: inserted?.id };

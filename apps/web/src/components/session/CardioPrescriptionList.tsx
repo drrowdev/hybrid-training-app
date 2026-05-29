@@ -60,6 +60,14 @@ export type CardioListItem = {
   item: PrescriptionItem;
   /** Phase 2 — Strava classifier output for `cardio_external` rows. */
   classification?: CardioClassification | null;
+  /**
+   * Display label for the implementing modality (e.g. "Run", "Bike",
+   * "Row"). Surfaced as a pill in the cardio card header so the user
+   * can see at a glance what the planned movement is — and reach for
+   * Swap when they want to do the same protocol on a different machine.
+   * Derived server-side from the planned movement's `metadata.modality`.
+   */
+  modalityLabel?: string | null;
 };
 
 export function CardioPrescriptionList({
@@ -114,7 +122,7 @@ export function CardioPrescriptionList({
         gap: 8,
       }}
     >
-      {items.map(({ item, itemIndex, classification }) => {
+      {items.map(({ item, itemIndex, classification, modalityLabel }) => {
         const live = overrides[itemIndex] ?? item;
         if (live.kind === "cardio_external") {
           return (
@@ -135,6 +143,7 @@ export function CardioPrescriptionList({
             plannedSessionId={plannedSessionId}
             itemIndex={itemIndex}
             item={live}
+            modalityLabel={modalityLabel ?? null}
             ownedCardio={ownedCardio}
             swapAction={swapAction}
             isReadOnly={isReadOnly ?? false}
@@ -318,6 +327,7 @@ function CardioPrescriptionRow({
   plannedSessionId,
   itemIndex,
   item,
+  modalityLabel,
   ownedCardio,
   swapAction,
   isReadOnly,
@@ -327,6 +337,7 @@ function CardioPrescriptionRow({
   plannedSessionId: string | null;
   itemIndex: number;
   item: PrescriptionItem;
+  modalityLabel: string | null;
   ownedCardio: readonly CardioMachineType[];
   swapAction: SwapAction;
   isReadOnly: boolean;
@@ -382,6 +393,28 @@ function CardioPrescriptionRow({
     });
   };
 
+  const swapButton = canSwap ? (
+    <button
+      type="button"
+      onClick={() => setOpen((o) => !o)}
+      data-testid={`cardio-prescription-swap-button-${itemIndex}`}
+      aria-expanded={open}
+      style={{
+        fontSize: 12,
+        padding: "6px 12px",
+        borderRadius: 999,
+        border: "1px solid var(--cp-border)",
+        background: "var(--cp-surface)",
+        color: "var(--cp-text-muted)",
+        cursor: "pointer",
+        minHeight: 32,
+        fontWeight: 500,
+      }}
+    >
+      {open ? "× cancel" : "Swap"}
+    </button>
+  ) : null;
+
   return (
     <li
       data-testid={`cardio-prescription-item-${itemIndex}`}
@@ -397,48 +430,25 @@ function CardioPrescriptionRow({
       <CardioCard
         item={item}
         hideHeading={hideHeading}
+        modalityLabel={modalityLabel}
+        headerActions={swapButton}
         testId={`cardio-prescription-card-${itemIndex}`}
         rowTestIdPrefix={`cardio-prescription-card-${itemIndex}`}
       />
-      <div
-        style={{
-          display: "flex",
-          gap: 10,
-          alignItems: "center",
-          flexWrap: "wrap",
-          fontSize: 12,
-          color: "var(--cp-text-muted)",
-        }}
-      >
-        {swapped && origName && (
+      {swapped && origName && (
+        <div
+          style={{
+            fontSize: 12,
+            color: "var(--cp-text-muted)",
+          }}
+        >
           <span
             data-testid={`cardio-prescription-swapped-from-${itemIndex}`}
           >
             previously: {origName}
           </span>
-        )}
-        <span style={{ flex: "1 0 0" }} />
-        {canSwap && (
-          <button
-            type="button"
-            onClick={() => setOpen((o) => !o)}
-            data-testid={`cardio-prescription-swap-button-${itemIndex}`}
-            aria-expanded={open}
-            style={{
-              fontSize: 12,
-              padding: "8px 12px",
-              borderRadius: 999,
-              border: "1px solid var(--cp-border)",
-              background: "var(--cp-surface)",
-              color: "var(--cp-text-muted)",
-              cursor: "pointer",
-              minHeight: 36,
-            }}
-          >
-            {open ? "× cancel" : "Swap"}
-          </button>
-        )}
-      </div>
+        </div>
+      )}
       {error && (
         <div role="alert" style={{ fontSize: 12, color: "var(--cp-danger)" }}>
           {error}
