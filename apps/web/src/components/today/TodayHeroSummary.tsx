@@ -1,13 +1,21 @@
 /**
  * Compact "at-a-glance" workout preview rendered inside the Today
  * hero card, between the title/duration block and the Start / Preview
- * buttons. Replaces the older single-line "VO2 · 35 min" summary.
+ * buttons. Replaces the older single-line "VO2 · 35 min" summary and
+ * the buggy "+ N assistance" chip row.
  *
- * Goal: tell the user what they're actually about to do — main lifts
- * with their top-set protocol, then any cardio block, then a count of
- * accessories — without growing as dense as the read-only Preview
- * page. Maximum 5 rows; anything beyond truncates to "… and N more"
- * and relies on the Preview button to surface the rest.
+ * Layout (post Fix 2):
+ *   - Strength rows render the movement name on its own line followed
+ *     by an indented, muted protocol line (good for "Front Squat" + "3
+ *     × 5 @ 80%" where the protocol is short and dense).
+ *   - Cardio rows render as a single dot-separated sentence ("VO2
+ *     intervals · 4 × 4 min · 90–95% HRmax · 3 min easy recovery")
+ *     because cardio's parameters read naturally inline.
+ *   - When the session has exactly ONE renderable item AND that item
+ *     is cardio, the cardio name is dropped — the Today hero already
+ *     shows `planned.title` (the same string) directly above. This is
+ *     the same dedup heuristic the Preview page uses, kept in sync so
+ *     both surfaces hide the same redundant repeats.
  *
  * Reuses the same prescription helpers the preview page uses
  * (`groupByMovementThenKind` + `cardioPreviewRows` +
@@ -23,7 +31,12 @@ import { cardioPreviewRows } from "@/components/session/cardio-preview-rows";
 
 const MAX_ROWS = 5;
 
-type SummaryRow = { name: string; protocol: string };
+type SummaryRow = {
+  name: string;
+  protocol: string;
+  /** "strength" stacks name above protocol; "cardio" inlines them. */
+  variant: "strength" | "cardio";
+};
 
 function strengthProtocol(
   section: import("@/lib/plan/prescription-grouping").MovementPrescriptionSection,
@@ -79,13 +92,21 @@ export function buildTodayHeroSummary(items: PrescriptionItem[]): {
   // strength alone exceeds the cap, the overflow line communicates the
   // rest. Don't pre-slice here or the overflow count would lie.
   for (const sec of sections.movements) {
-    all.push({ name: sec.movementName, protocol: strengthProtocol(sec) });
+    all.push({
+      name: sec.movementName,
+      protocol: strengthProtocol(sec),
+      variant: "strength",
+    });
   }
 
   // Cardio after strength so hybrid (strength + cardio same day)
   // sessions read top-down "lift, lift, …, then cardio".
   for (const item of sections.cardio) {
-    all.push({ name: cardioName(item), protocol: cardioRowProtocol(item) });
+    all.push({
+      name: cardioName(item),
+      protocol: cardioRowProtocol(item),
+      variant: "cardio",
+    });
   }
 
   // Count distinct accessory movements rather than raw rows so a
@@ -112,51 +133,80 @@ export function TodayHeroSummary({
   const { rows, overflow, accessoryCount } = buildTodayHeroSummary(items);
   if (rows.length === 0 && accessoryCount === 0 && overflow === 0) return null;
 
+  // Single-row cardio dedup: the Today hero already renders
+  // `planned.title` directly above, which for a cardio-only session is
+  // the same string as the cardio movement name (e.g. "VO2
+  // intervals"). Repeating it inside the summary reads "amateurish".
+  // Strength is left alone — single-strength sessions often have a
+  // generic title ("Strength A") that doesn't repeat the lift name.
+  const dedupCardioName = rows.length === 1 && rows[0]!.variant === "cardio";
+
   return (
     <div
       data-testid={testId}
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: 7,
+        gap: 8,
         fontSize: 13,
       }}
     >
-      {rows.map((row, i) => (
-        <div
-          key={`${row.name}-${i}`}
-          data-testid={`${testId}-row`}
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "baseline",
-            gap: 12,
-          }}
-        >
-          <span
-            style={{
-              fontWeight: 500,
-              color: "var(--cp-text)",
-              minWidth: 0,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
+      {rows.map((row, i) => {
+        const hideName = dedupCardioName && i === 0;
+        if (row.variant === "cardio") {
+          // Single dot-separated sentence. Name acts as a bold prefix
+          // when not deduped against the hero title above.
+          return (
+            <div
+              key={`${row.name}-${i}`}
+              data-testid={`${testId}-row`}
+              data-variant="cardio"
+              style={{
+                color: "var(--cp-text-muted)",
+                lineHeight: 1.4,
+              }}
+            >
+              {!hideName && row.name && (
+                <span style={{ fontWeight: 600, color: "var(--cp-text)" }}>
+                  {row.name}
+                  {row.protocol ? " · " : ""}
+                </span>
+              )}
+              <span className="mono">{row.protocol || (hideName ? "—" : "")}</span>
+            </div>
+          );
+        }
+        // Strength: stacked. Movement name bold on its own line,
+        // protocol on the next line at 13px muted, indented 12px.
+        return (
+          <div
+            key={`${row.name}-${i}`}
+            data-testid={`${testId}-row`}
+            data-variant="strength"
+            style={{ display: "flex", flexDirection: "column", gap: 2 }}
           >
-            {row.name}
-          </span>
-          <span
-            className="mono"
-            style={{
-              color: "var(--cp-text-muted)",
-              textAlign: "right",
-              flex: "0 1 auto",
-            }}
-          >
-            {row.protocol || "—"}
-          </span>
-        </div>
-      ))}
+            <span
+              style={{
+                fontWeight: 600,
+                color: "var(--cp-text)",
+                lineHeight: 1.35,
+              }}
+            >
+              {row.name}
+            </span>
+            <span
+              className="mono"
+              style={{
+                color: "var(--cp-text-muted)",
+                paddingLeft: 12,
+                lineHeight: 1.35,
+              }}
+            >
+              {row.protocol || "—"}
+            </span>
+          </div>
+        );
+      })}
       {overflow > 0 && (
         <div
           data-testid={`${testId}-overflow`}

@@ -44,6 +44,18 @@ function durationLine(input: SessionPreviewInput, movementCount: number): string
   return parts.join(" · ");
 }
 
+/**
+ * Normalise a string for the heading-dedup comparison: lowercase, trim,
+ * and strip a trailing " — X×Y" / " - 4x4" protocol shorthand suffix
+ * so "VO2 Intervals — 4×4" matches "VO2 intervals". Returns "" for
+ * empty/whitespace input so callers can short-circuit cleanly.
+ */
+function normalizeTitleForDedup(s: string | null | undefined): string {
+  if (!s) return "";
+  const head = s.split(/\s+[—–-]\s+/)[0] ?? s;
+  return head.trim().toLowerCase();
+}
+
 export function SessionPreviewBody({ session }: { session: SessionPreviewInput }) {
   const sections = groupByMovementThenKind(session.items);
   const movementCount = sections.movements.length;
@@ -54,6 +66,24 @@ export function SessionPreviewBody({ session }: { session: SessionPreviewInput }
     sections.hingeCompensations.length > 0 ||
     sections.tendon.length > 0 ||
     sections.cardio.length > 0;
+
+  // Dedup heuristic: when the inner card heading would just repeat
+  // `session.title` (already shown above), drop it. The two real
+  // cases this fires on:
+  //   - cardio-only session: title "VO2 intervals" + movementName
+  //     "VO2 Intervals — 4×4" → heading would be redundant.
+  //   - single-movement strength session whose title is the movement
+  //     name (rare; most strength titles are generic like "Strength
+  //     A").
+  // Comparing on `normalizeTitleForDedup` makes the match
+  // case-insensitive and strips protocol-shorthand suffixes ("VO2
+  // Intervals — 4×4" vs "VO2 intervals") so cosmetic capitalisation
+  // doesn't keep a duplicate heading on screen.
+  const normalizedTitle = normalizeTitleForDedup(session.title);
+  const shouldHideHeading = (name: string): boolean => {
+    if (!normalizedTitle) return false;
+    return normalizeTitleForDedup(name) === normalizedTitle;
+  };
 
   return (
     <div
@@ -131,7 +161,11 @@ export function SessionPreviewBody({ session }: { session: SessionPreviewInput }
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {sections.movements.map((sec) => (
-          <MovementCard key={sec.rowKey} section={sec} />
+          <MovementCard
+            key={sec.rowKey}
+            section={sec}
+            hideHeading={shouldHideHeading(sec.movementName)}
+          />
         ))}
 
         {sections.accessories.length > 0 && (
@@ -156,7 +190,12 @@ export function SessionPreviewBody({ session }: { session: SessionPreviewInput }
           />
         )}
         {sections.cardio.map((item, i) => (
-          <CardioCard key={`cardio-${i}`} item={item} index={i} />
+          <CardioCard
+            key={`cardio-${i}`}
+            item={item}
+            index={i}
+            hideHeading={shouldHideHeading(item.movementName ?? "Cardio")}
+          />
         ))}
       </div>
 
@@ -202,8 +241,10 @@ const movementHeadingStyle: React.CSSProperties = {
 
 function MovementCard({
   section,
+  hideHeading,
 }: {
   section: import("@/lib/plan/prescription-grouping").MovementPrescriptionSection;
+  hideHeading: boolean;
 }) {
   return (
     <section
@@ -213,7 +254,9 @@ function MovementCard({
       <div className="mono" style={eyebrowStyle}>
         STRENGTH
       </div>
-      <h3 style={movementHeadingStyle}>{section.movementName}</h3>
+      {!hideHeading && (
+        <h3 style={movementHeadingStyle}>{section.movementName}</h3>
+      )}
 
       {section.warmups.length > 0 && (
         <SetGroup label="Warm-up">
@@ -348,9 +391,24 @@ function MovementListCard({
   );
 }
 
-function CardioCard({ item, index }: { item: PrescriptionItem; index: number }) {
-  const rows = cardioPreviewRows(item);
-  const name = item.movementName ?? "Cardio";
+function CardioCard({
+  item,
+  index,
+  hideHeading,
+}: {
+  item: PrescriptionItem;
+  index: number;
+  hideHeading: boolean;
+}) {
+  // Drop the Duration row — the page meta already shows "~35 min" so
+  // repeating it inside the card is pure noise (Fix 3).
+  const rows = cardioPreviewRows(item).filter((r) => r.label !== "Duration");
+  // Strip protocol-shorthand suffixes like " — 4×4" or " - 4x4" from
+  // the movement name so the card heading reads cleanly ("VO2
+  // Intervals" not "VO2 Intervals — 4×4"). The protocol rows below
+  // carry the same shorthand in structured form.
+  const rawName = item.movementName ?? "Cardio";
+  const name = rawName.split(/\s+[—–-]\s+/)[0]!.trim() || rawName;
   return (
     <section
       data-testid={`session-preview-cardio-${index}`}
@@ -359,12 +417,12 @@ function CardioCard({ item, index }: { item: PrescriptionItem; index: number }) 
       <div className="mono" style={eyebrowStyle}>
         CARDIO
       </div>
-      <h3 style={movementHeadingStyle}>{name}</h3>
-      {item.intensityLabel && (
-        <div style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>
-          {item.intensityLabel}
-        </div>
-      )}
+      {!hideHeading && <h3 style={movementHeadingStyle}>{name}</h3>}
+      {/* intensityLabel intentionally NOT rendered: it duplicates the
+          parsed "Intensity" row below for cardio_vo2-style sessions
+          (e.g. a bare "VO2" label between heading and rows reads as
+          useless engine vocab). The Intensity row from
+          cardioPreviewRows already conveys "this is VO2 work". */}
       {rows.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {rows.map((row, i) => (
