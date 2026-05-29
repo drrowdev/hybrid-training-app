@@ -89,7 +89,7 @@ function stubSupabase(opts: {
   };
 
   return {
-    supabase: { from: (table: string) => builder(table) } as unknown as Parameters<typeof handleStravaWebhookEvent>[0]["supabase"],
+    supabase: { from: (table: string) => builder(table) } as unknown as Parameters<typeof handleStravaWebhookEvent>[1]["supabase"],
     calls,
   };
 }
