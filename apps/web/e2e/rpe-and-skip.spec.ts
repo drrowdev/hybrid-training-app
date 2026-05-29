@@ -41,7 +41,7 @@ test.describe("@desktop session log — zone RPE + skip", () => {
     // Open today's planned session via the /app CTA.
     await page.goto("/app");
     await page.waitForLoadState("networkidle");
-    const startCta = page.getByRole("link", { name: /start session/i }).first();
+    const startCta = page.getByRole("link", { name: /start workout/i }).first();
     await expect(startCta).toBeVisible();
     await startCta.click();
 

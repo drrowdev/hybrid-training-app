@@ -3,7 +3,7 @@
  *
  * Reached from the Today hero's secondary CTA ("Preview workout") so
  * the user can see sets / reps / movements / accessories before they
- * commit to "Start session →". Loads the planned session via the
+ * commit to "Start workout →". Loads the planned session via the
  * shared `getPlannedSessionById` helper (RLS-scoped), then hands the
  * shaped data to the pure `SessionPreviewBody` component. Bad ids or
  * rows the caller can't see both fall through to `notFound()` so the
