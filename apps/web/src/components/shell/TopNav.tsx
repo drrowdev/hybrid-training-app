@@ -9,8 +9,10 @@
  *      highlight via usePathname().
  *   3. Status cluster (TopBarRight): Search / sync / bell / avatar.
  *
- * Mobile (≤768 px): primary tabs are hidden via inline display rule on the
- * <nav> wrapper, so the BottomTabBar takes over. Brand + right cluster stay.
+ * Mobile (≤768 px): primary tabs, brand glyph, and the right cluster
+ * are all hidden via CSS so the BottomTabBar + Today-page header take
+ * over. The header itself stays sticky for the safe-area inset and
+ * the brand link remains in the DOM for screen-readers.
  *
  * Inline styles only — global `a { color: var(--cp-link) }` would otherwise
  * paint every link blue and we don't want that here.
@@ -18,7 +20,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
 import {
   TopBarRight,
   type TopBarAuditEntry,
@@ -81,20 +82,12 @@ export function TopNav({
   markAuditReadAction?: () => Promise<{ ok: true } | { ok: false; error: string }>;
 }) {
   const pathname = usePathname() ?? "/app";
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 768px)");
-    const update = () => setIsMobile(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
 
   return (
     <header
       data-testid="app-topbar"
       aria-label="Primary navigation"
+      className="cp-topbar"
       style={{
         position: "sticky",
         top: 0,
@@ -102,12 +95,13 @@ export function TopNav({
         height: 56,
         background: "var(--cp-bg-elevated)",
         borderBottom: "1px solid var(--cp-border)",
-        paddingTop: isMobile ? "env(safe-area-inset-top)" : 0,
-        paddingLeft: `max(${isMobile ? 14 : 24}px, env(safe-area-inset-left))`,
-        paddingRight: `max(${isMobile ? 14 : 24}px, env(safe-area-inset-right))`,
+        paddingTop: "env(safe-area-inset-top)",
+        paddingLeft: "max(14px, env(safe-area-inset-left))",
+        paddingRight: "max(14px, env(safe-area-inset-right))",
       }}
     >
       <div
+        className="cp-topbar-inner"
         style={{
           // Constrain nav contents to the same max-width as the page
           // content (1120px on .cp-main) so the brand on the left and
@@ -119,13 +113,14 @@ export function TopNav({
           display: "grid",
           gridTemplateColumns: "auto 1fr auto",
           alignItems: "center",
-          gap: isMobile ? 12 : 24,
+          gap: 12,
         }}
       >
         <Link
           href="/app"
           data-testid="topnav-brand"
           aria-label="Hybrid — home"
+          className="cp-topnav-brand"
           style={{
             textDecoration: "none",
             display: "inline-flex",
@@ -145,8 +140,9 @@ export function TopNav({
 
       <nav
         aria-label="Primary"
+        className="cp-topnav-tabs"
         style={{
-          display: isMobile ? "none" : "flex",
+          display: "flex",
           alignItems: "center",
           justifyContent: "center",
           gap: 4,
@@ -194,6 +190,8 @@ export function TopNav({
       </nav>
 
         <div
+          data-testid="topbar-right-wrap"
+          className="cp-topbar-right-wrap"
           style={{
             display: "flex",
             alignItems: "center",

@@ -7,14 +7,14 @@
  * points at /app/profile, which surfaces the same destinations that the
  * desktop avatar dropdown does.
  *
- * Hidden ≥ 769 px via a matchMedia hook — the TopNav's centred tabs handle
- * desktop. Inline styles only; the global `a { color: var(--cp-link) }`
- * rule would otherwise paint every tab blue.
+ * Hidden ≥ 769 px via a CSS media query — the TopNav's centred tabs
+ * handle desktop. Rendering always happens (SSR-friendly) so the MORE
+ * notification dot is testable via renderToStaticMarkup.
  */
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 
 type Tab = {
   href: string;
@@ -135,24 +135,14 @@ const TABS: Tab[] = [
   },
 ];
 
-export function BottomTabBar() {
+export function BottomTabBar({ auditCount = 0 }: { auditCount?: number } = {}) {
   const pathname = usePathname() ?? "/app";
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 768px)");
-    const update = () => setIsMobile(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
-
-  if (!isMobile) return null;
 
   return (
     <nav
       aria-label="Primary navigation"
       data-testid="bottom-tabbar"
+      className="cp-bottom-tabbar"
       style={{
         position: "fixed",
         left: 0,
@@ -190,8 +180,24 @@ export function BottomTabBar() {
               WebkitTapHighlightColor: "transparent",
             }}
           >
-            <span style={{ display: "inline-flex", lineHeight: 0 }}>
+            <span style={{ display: "inline-flex", lineHeight: 0, position: "relative" }}>
               {t.icon}
+              {t.testid === "bottomtab-more" && auditCount > 0 && (
+                <span
+                  data-testid="bottomtab-more-dot"
+                  aria-label={`${auditCount} unread notifications`}
+                  style={{
+                    position: "absolute",
+                    top: -2,
+                    right: -4,
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: "#d33",
+                    boxShadow: "0 0 0 2px var(--cp-bg-elevated)",
+                  }}
+                />
+              )}
             </span>
             <span
               style={{
