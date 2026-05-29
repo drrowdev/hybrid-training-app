@@ -152,14 +152,17 @@ describe("daysForFrequency: AM ordered before PM within a calendar day", () => {
 });
 
 describe("minDaysForArchetype / maxDaysForArchetype count distinct calendar days", () => {
-  it("Strength Anchor single-session: 4 anchor days = 4 min, 6 total = 6 max", () => {
-    expect(minDaysForArchetype(STRENGTH_ANCHOR, false)).toBe(4);
+  it("Strength Anchor single-session: 2 anchor days = 2 min (ADR 0006), 6 total = 6 max", () => {
+    // ADR 0006 — bench + OHP demoted to optional; squat + deadlift remain
+    // the only anchors, so min calendar days = 2.
+    expect(minDaysForArchetype(STRENGTH_ANCHOR, false)).toBe(2);
     expect(maxDaysForArchetype(STRENGTH_ANCHOR, false)).toBe(6);
   });
 
-  it("Strength Anchor two-a-day: 4 anchor calendar days, max also 4 (cardio absorbed)", () => {
-    // The two-a-day variant packs 4 lifts + 2 cardio into 4 calendar days.
-    expect(minDaysForArchetype(STRENGTH_ANCHOR, true)).toBe(4);
+  it("Strength Anchor two-a-day: 2 anchor calendar days (ADR 0006), max 4 (cardio absorbed)", () => {
+    // ADR 0006 — squat AM (day 0) + deadlift AM (day 3) are the only AM
+    // anchors after the bench/OHP demotion, so min = 2 distinct days.
+    expect(minDaysForArchetype(STRENGTH_ANCHOR, true)).toBe(2);
     expect(maxDaysForArchetype(STRENGTH_ANCHOR, true)).toBe(4);
   });
 
@@ -204,8 +207,9 @@ describe("minDaysForArchetype / maxDaysForArchetype count distinct calendar days
     });
 
     it("Non-BW path is unchanged when isBodyweightOnly=false", () => {
-      expect(minDaysForArchetype(STRENGTH_ANCHOR, false, false)).toBe(4);
-      expect(minDaysForArchetype(STRENGTH_ANCHOR, false)).toBe(4);
+      // ADR 0006 — STRENGTH_ANCHOR non-BW min is now 2 (was 4 pre-demotion).
+      expect(minDaysForArchetype(STRENGTH_ANCHOR, false, false)).toBe(2);
+      expect(minDaysForArchetype(STRENGTH_ANCHOR, false)).toBe(2);
     });
 
     it("BW override ignores allowsTwoADays (BW users don't run AM/PM splits)", () => {
