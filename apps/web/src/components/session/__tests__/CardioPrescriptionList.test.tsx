@@ -97,7 +97,9 @@ describe("CardioPrescriptionList — render", () => {
       />,
     );
     expect(html).not.toMatch(/<h3[^>]*>\s*Indoor Bike\s*<\/h3>/);
-    expect(html).toContain(">CARDIO<");
+    // Mockup B dropped the "CARDIO" eyebrow — the page section heading
+    // disambiguates the card type now.
+    expect(html).not.toContain(">CARDIO<");
   });
 
   it("never renders the internal cardioKind code (VO2 / Z2 / alactic) as a standalone chip beside the Swap button (Fix 1)", () => {
