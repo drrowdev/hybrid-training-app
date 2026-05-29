@@ -491,6 +491,20 @@
       "tag": "0073_drop_ai_opted_in",
       "when": 1782331200000,
       "breakpoints": false
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "tag": "0074_cardio_logs_finish_unique",
+      "when": 1782417600000,
+      "breakpoints": false
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "tag": "0075_strava_event_log",
+      "when": 1782504000000,
+      "breakpoints": false
     }
   ]
 }
