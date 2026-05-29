@@ -209,6 +209,36 @@ function pickStrengthMovementForBand({
 }
 
 /**
+ * ADR 0004 — resolve the dual-main-lift secondary movement for a strength
+ * day that declares `secondaryCandidateSlugs`. Mirrors the in-band-with-TM
+ * → out-of-band-TM fallback used for the primary slot, BUT does **not**
+ * fall back to a no-TM catalog reference: if no TM is set anywhere in the
+ * secondary candidate list, this returns null and the prescription emits
+ * the primary lift only. The secondary slot is opt-in via TM.
+ */
+function pickSecondaryStrengthMovement({
+  candidateSlugs,
+  movementBySlug,
+  tmMovementIds,
+  tier,
+}: {
+  candidateSlugs: readonly string[];
+  movementBySlug: Map<string, StrengthMovementRow>;
+  tmMovementIds: Set<string>;
+  tier: number | null;
+}): { movementId: string; slug: string; displayName: string } | null {
+  const inBand = pickStrengthMovementForBand({ candidateSlugs, movementBySlug, tmMovementIds, tier });
+  if (inBand) return inBand;
+  for (const slug of candidateSlugs) {
+    const mv = movementBySlug.get(slug);
+    if (mv && tmMovementIds.has(mv.id)) {
+      return { movementId: mv.id, slug: mv.slug, displayName: mv.display_name };
+    }
+  }
+  return null;
+}
+
+/**
  * Whitelist the 5 declared experience tiers shipped in migration 0052.
  * Anything else (null, legacy values, undeclared) collapses to null so
  * the accessory picker treats the user as "not declared" and keeps the
@@ -568,11 +598,17 @@ function assemblePrescriptionItems(
     allowedMovementIds: new Set(),
     tendinopathyActive: false,
   },
+  /**
+   * ADR 0004 — dual-main-lift secondary movement for strength days that
+   * declare `secondaryRole` + `secondaryMaxSets`. Forwarded to
+   * `buildPrescription`. Undefined for every other day.
+   */
+  secondaryMovement?: { id: string; slug: string; displayName: string },
 ): PrescriptionItem[] {
   const items =
     day.kind === "strength" && omitMainStrength
       ? []
-      : buildPrescription(archetype, weekIndex, day, movement, finisherMovement);
+      : buildPrescription(archetype, weekIndex, day, movement, finisherMovement, secondaryMovement);
   if (day.kind !== "strength") return items;
 
   // ─── Power Emphasis Phase 3 — main-lift transforms ───
@@ -1045,6 +1081,8 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
 
   const userTier = declaredExperienceToTier(experience);
   const resolved = new Map<string, { movementId: string; slug: string; displayName: string }>();
+  // ADR 0004 — parallel map keyed by daySlotKey for dual-main-lift secondaries.
+  const resolvedSecondary = new Map<string, { movementId: string; slug: string; displayName: string }>();
   const missingRoles: string[] = [];
 
   for (const day of activeDays) {
@@ -1101,6 +1139,26 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
     }
     if (chosen) resolved.set(daySlotKey(day), chosen);
     else missingRoles.push(STRENGTH_ROLE_LABELS[day.role]);
+
+    // ADR 0004 — dual-main-lift secondary resolution. Secondary slot
+    // is required (not opt-in): if the day declares a secondaryRole,
+    // a TM-backed secondary movement MUST resolve or the user gets
+    // the same actionable error as a missing primary TM. Otherwise
+    // the user silently loses the entire upper-body maintenance dose
+    // that is the whole point of ADR 0004.
+    if (day.secondaryCandidateSlugs && day.secondaryCandidateSlugs.length > 0) {
+      const secondary = pickSecondaryStrengthMovement({
+        candidateSlugs: day.secondaryCandidateSlugs,
+        movementBySlug,
+        tmMovementIds: new Set(tmByMovementId.keys()),
+        tier: userTier,
+      });
+      if (secondary) {
+        resolvedSecondary.set(daySlotKey(day), secondary);
+      } else if (day.secondaryRole) {
+        missingRoles.push(STRENGTH_ROLE_LABELS[day.secondaryRole]);
+      }
+    }
   }
 
   if (missingRoles.length > 0 && hasAnyTm) {
@@ -1156,11 +1214,21 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
     for (const day of activeDays) {
       let movement: { id: string; slug: string; displayName: string };
       let finisherMovement: { id: string; slug: string; displayName: string } | undefined;
+      let secondaryMovement: { id: string; slug: string; displayName: string } | undefined;
 
       if (day.kind === "strength") {
         const resolvedMv = resolved.get(daySlotKey(day));
         if (!resolvedMv) continue;
         movement = { id: resolvedMv.movementId, slug: resolvedMv.slug, displayName: resolvedMv.displayName };
+        // ADR 0004 — dual-main-lift secondary movement, when resolved.
+        const resolvedSec = resolvedSecondary.get(daySlotKey(day));
+        if (resolvedSec) {
+          secondaryMovement = {
+            id: resolvedSec.movementId,
+            slug: resolvedSec.slug,
+            displayName: resolvedSec.displayName,
+          };
+        }
       } else if (day.kind === "cardio") {
         // PR W2 — surface D. When the cardio day declares per-tier
         // alternates, resolve to the user-tier-appropriate slug before
@@ -1204,6 +1272,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
               bwActive || !hasAnyTm,
               experience,
               limitationsContext,
+              secondaryMovement,
             );
 
       // ─── Bodyweight Phase 3 — prepend BW main + back_off items ───
@@ -1491,6 +1560,7 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
 
   const customTier = declaredExperienceToTier(customExperience);
   const resolved = new Map<string, { movementId: string; slug: string; displayName: string }>();
+  const resolvedSecondary = new Map<string, { movementId: string; slug: string; displayName: string }>();
   const missingRoles: string[] = [];
   for (const day of archetype.days) {
     if (day.kind !== "strength") continue;
@@ -1502,6 +1572,22 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
     });
     if (chosen) resolved.set(daySlotKey(day), chosen);
     else missingRoles.push(STRENGTH_ROLE_LABELS[day.role]);
+
+    // ADR 0004 — dual-main-lift secondary resolution (custom block path).
+    // See createBlock for rationale: secondary is required, not opt-in.
+    if (day.secondaryCandidateSlugs && day.secondaryCandidateSlugs.length > 0) {
+      const secondary = pickSecondaryStrengthMovement({
+        candidateSlugs: day.secondaryCandidateSlugs,
+        movementBySlug,
+        tmMovementIds,
+        tier: customTier,
+      });
+      if (secondary) {
+        resolvedSecondary.set(daySlotKey(day), secondary);
+      } else if (day.secondaryRole) {
+        missingRoles.push(STRENGTH_ROLE_LABELS[day.secondaryRole]);
+      }
+    }
   }
   if (missingRoles.length > 0) {
     return {
@@ -1543,11 +1629,21 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
     for (const day of archetype.days) {
       let movement: { id: string; slug: string; displayName: string };
       let finisherMovement: { id: string; slug: string; displayName: string } | undefined;
+      let secondaryMovement: { id: string; slug: string; displayName: string } | undefined;
 
       if (day.kind === "strength") {
         const resolvedMv = resolved.get(daySlotKey(day));
         if (!resolvedMv) continue;
         movement = { id: resolvedMv.movementId, slug: resolvedMv.slug, displayName: resolvedMv.displayName };
+        // ADR 0004 — dual-main-lift secondary movement, when resolved.
+        const resolvedSec = resolvedSecondary.get(daySlotKey(day));
+        if (resolvedSec) {
+          secondaryMovement = {
+            id: resolvedSec.movementId,
+            slug: resolvedSec.slug,
+            displayName: resolvedSec.displayName,
+          };
+        }
       } else if (day.kind === "cardio") {
         // PR W2 — surface D. Per-tier cardio resolution (custom block path).
         const cardioSlug = resolveCardioSlugForTier(day, customTier);
@@ -1580,6 +1676,7 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
         false,
         customExperience,
         customLimitationsContext,
+        secondaryMovement,
       );
 
       // Phase 5 — stamp modality + effective_stress_load on every
