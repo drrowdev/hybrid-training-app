@@ -204,6 +204,21 @@ export type Archetype = {
    */
   accessoryProfile?: AccessoryProfile;
   weekProfiles: WeekProfile[];
+  /**
+   * ADR 0005 — cap for the secondary-slot set count when
+   * `foldDualMainLifts` attaches a secondary at a sub-4-strength-day
+   * frequency. Defaults to 3 if absent. Tuned per archetype:
+   * ENDURANCE_ANCHOR = 3, CONCURRENT_HYBRID = 3, STRENGTH_ANCHOR = 5,
+   * HYPERTROPHY_ANCHOR = 4.
+   */
+  foldedSecondaryMaxSets?: number;
+  /**
+   * ADR 0005 — when true, `foldDualMainLifts` is a no-op for this
+   * archetype. REBUILD and MAINTENANCE opt out: both are intentionally
+   * minimal recovery / sub-maintenance archetypes and adding a folded
+   * secondary main lift would contradict their design intent.
+   */
+  disableFolding?: boolean;
 };
 
 // ─── Curated candidate lists per role ──────────────────────────────
@@ -302,6 +317,12 @@ export const STRENGTH_ANCHOR: Archetype = {
   oneLiner:
     "Strength-led concurrent training. Four main lifts (your choice of variant per role) hit a weekly intensity wave with a deload at week 4. Polarized cardio is added when the day budget allows.",
   weeks: 4,
+  // ADR 0005 — strength-led identity supports a larger secondary dose if a
+  // future trim ever folds a missing pattern in. Today all four strength
+  // days are anchors so folding is a structural no-op (see ADR 0005 open
+  // follow-ups for the audit finding) — cap is set so the moment that
+  // changes, the right dose is ready.
+  foldedSecondaryMaxSets: 5,
   accessoryProfile: {
     aesthetic: { itemsPerSession: 2, setsPerItem: 3, repRange: { min: 8, max: 12 }, biasSupported: false },
     functional: { weeklyRoleRequirements: { single_leg: 1 } },
@@ -404,6 +425,10 @@ export const ENDURANCE_ANCHOR: Archetype = {
   oneLiner:
     "Cardio-led concurrent training. Polarized aerobic exposures (long Z2 + VO2 intervals) anchor the week. Two dual-main-lift strength sessions (squat + overhead press, deadlift + bench press — paired for rack-height efficiency) keep all four movement patterns covered without breaking the cardio focus.",
   weeks: 4,
+  // ADR 0005 — static ADR 0004 secondaries already cover every strength
+  // day, so the skip-if-already-present guard makes folding a no-op here.
+  // Cap is set for consistency with the per-archetype calibration.
+  foldedSecondaryMaxSets: 3,
   accessoryProfile: {
     aesthetic: { itemsPerSession: 1, setsPerItem: 2, repRange: { min: 12, max: 15 }, biasSupported: true },
     functional: { weeklyRoleRequirements: { hip_stabilizer: 2, ankle_foot: 2 } },
@@ -662,6 +687,10 @@ export const REBUILD: Archetype = {
   oneLiner:
     "Return-to-training block for after an injury, layoff, or extended deload. Capped intensity (top set ≤80% TM), heavy slow resistance tendon work twice a week, easy Z2 for aerobic floor. Designed to load tissue safely, not to progress.",
   weeks: 4,
+  // ADR 0005 — Rebuild's whole point is a sub-strength-driving load with
+  // tendon-day anchors carrying the recovery budget; an extra folded main
+  // lift would contradict the archetype's design intent.
+  disableFolding: true,
   // The dedicated TendonDay primitive carries the DC-O4 floor for Rebuild.
   // Aesthetic + functional are intentionally minimal.
   accessoryProfile: {
@@ -787,6 +816,11 @@ export const HYPERTROPHY_ANCHOR: Archetype = {
     "Muscle-building block. Same four main patterns as Strength Focus but at hypertrophy intensity (60–75% TM, 6–10 reps, 4 working sets per pattern). One optional easy Z2 day preserves the aerobic floor. Curated accessory pool added per main lift — flies, lateral raises, biceps, calves — covering per-muscle volume gaps.",
   weeks: 4,
   accessoriesByDefault: true,
+  // ADR 0005 — hypertrophy stimulus identity is per-set volume in the
+  // 60-75% TM band. Today all four strength days are anchors so folding
+  // never triggers (see ADR 0005 open follow-ups). Cap is set to honour
+  // the per-set volume identity if the day shape ever changes.
+  foldedSecondaryMaxSets: 4,
   accessoryProfile: {
     aesthetic: { itemsPerSession: 4, setsPerItem: 3, repRange: { min: 8, max: 15 }, biasSupported: false },
     functional: { weeklyRoleRequirements: {} },
@@ -981,6 +1015,10 @@ export const CONCURRENT_HYBRID: Archetype = {
   oneLiner:
     "Balanced strength + cardio. Four main lifts at moderate intensity (top set ≤ 85% TM) protect cardio adaptation, and two substantive aerobic sessions — one polarized Z2, one VO2 / threshold — keep both engines running.",
   weeks: 4,
+  // ADR 0005 — at freq=2 the trim returns squat + deadlift anchors only,
+  // leaving horizontal_press + vertical_press uncovered. Folding closes
+  // that gap at the ADR 0004 maintenance-dose cap of 3 secondary sets.
+  foldedSecondaryMaxSets: 3,
   accessoryProfile: {
     aesthetic: { itemsPerSession: 2, setsPerItem: 3, repRange: { min: 10, max: 15 }, biasSupported: true },
     functional: { weeklyRoleRequirements: { single_leg: 1, anti_rotation: 1 } },
@@ -1088,6 +1126,10 @@ export const MAINTENANCE: Archetype = {
   oneLiner:
     "Two-week keep-the-lights-on block for travel, illness, or busy stretches. Two short strength days (65–70% TM, 3 working sets per lift) and two short Z2 sessions hold the line on strength and aerobic base without spending recovery on adaptation.",
   weeks: 2,
+  // ADR 0005 — Maintenance explicitly runs at sub-maintenance volume; a
+  // folded secondary main lift would convert it into a normal training
+  // block. Opt out.
+  disableFolding: true,
   accessoryProfile: {
     aesthetic: { itemsPerSession: 0, setsPerItem: 2, repRange: { min: 10, max: 15 }, biasSupported: true },
     functional: { weeklyRoleRequirements: {} },

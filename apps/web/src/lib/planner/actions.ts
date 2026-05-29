@@ -60,6 +60,7 @@ import {
   STRENGTH_ROLE_LABELS,
 } from "./archetypes";
 import { ACCESSORY_POOLS, allAccessorySlugs } from "./accessories";
+import { foldDualMainLifts } from "./main-lift-folding";
 import {
   applyPlacementsToActiveDays,
   dayIndexOverridesSchema,
@@ -885,7 +886,10 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       error: `${archetype.name} needs at least ${minDays} training days/week.`,
     };
   }
-  const canonicalActiveDays = daysForFrequency(archetype, parsed.data.daysPerWeek, allowsTwoADays);
+  const canonicalActiveDays = foldDualMainLifts(
+    archetype,
+    daysForFrequency(archetype, parsed.data.daysPerWeek, allowsTwoADays),
+  );
   // Honour the user's Step-5 arrangement (Mon/Tue/Thu/Sat etc.) when the
   // wizard supplied placements. Without this remap the canonical archetype
   // template order leaks through and overrides whatever the user picked.
@@ -1501,6 +1505,13 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
   const { compileCustomArchetype, customInputMinDays } = await import("./custom");
   const daysPerWeek = customInputMinDays({ ...parsed.data, daysPerWeek: 0 });
   const archetype = compileCustomArchetype({ ...parsed.data, daysPerWeek });
+
+  // ADR 0005 — fold missing main-lift patterns onto existing strength
+  // days when the compiled custom archetype lands below the 4-strength-
+  // day frequency. Pure post-compile transformation; downstream
+  // resolution + row emission consume the folded shape identically to
+  // the curated ENDURANCE_ANCHOR templates.
+  archetype.days = foldDualMainLifts(archetype, archetype.days);
 
   if (daysPerWeek < 1) {
     return { ok: false, error: "Pick at least one non-rest day." };
