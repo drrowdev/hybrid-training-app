@@ -71,11 +71,15 @@ export function cardioPreviewRows(item: PrescriptionItem): CardioRow[] {
     }
   }
 
-  if (item.hrCap) {
-    rows.push({
-      label: intensityFromNote ? "HR cap" : "Intensity",
-      value: item.hrCap,
-    });
+  // We deliberately do NOT emit a dedicated "HR cap" row anymore: when
+  // both an Intensity (parsed from protocolNote) and an hrCap exist they
+  // are nearly always restating the same target (e.g. "90–95% HRmax" vs
+  // "90–95% HRmax during work"), and the duplicate row was pure noise.
+  // Falling back to using hrCap AS the Intensity row when the note
+  // didn't produce one keeps Z2-style sessions (hrCap only, no
+  // protocolNote) from losing their only intensity signal.
+  if (item.hrCap && !intensityFromNote) {
+    rows.push({ label: "Intensity", value: item.hrCap });
   }
 
   return rows;
