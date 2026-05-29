@@ -290,7 +290,21 @@ export function PlanRedesign(props: PlanRedesignProps) {
       if (e.key === "Escape") closeDrawer();
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    // Body scroll lock while the drawer is open — full-screen mobile
+    // overlay must not let the page underneath scroll. Restore the
+    // user's original overflow value on close so we don't fight any
+    // other consumer that may have set it.
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+    // popstate listener removed (review-202 #5): we open the drawer via
+    // `window.location.hash =` which fires hashchange, not popstate.
+    // The hashchange listener at the top of this effect's parent already
+    // closes the drawer on browser back. The popstate listener would
+    // never fire for hash-only navigation.
   }, [openId, closeDrawer]);
 
   // Sessions grouped by (week, day) so the grid + rail can lookup by
@@ -793,6 +807,20 @@ export function PlanRedesign(props: PlanRedesignProps) {
           .plan-layout {
             grid-template-columns: minmax(0, 1fr) 320px;
             align-items: stretch;
+          }
+        }
+        /* Mobile (<768px): collapse the dense Timeline + Month surfaces
+           and show ONLY the "This week" rail card, full-width. The
+           Timeline/Month view toggle disappears too — mobile users get
+           the current week, full stop. Desktop layout is untouched. */
+        @media (max-width: 768px) {
+          .plan-view-toggle { display: none; }
+          .plan-main { display: none; }
+          .plan-rail {
+            padding: 16px;
+          }
+          .plan-rail h3 {
+            font-size: 12px;
           }
         }
         .plan-main {
@@ -1382,7 +1410,24 @@ export async function runSwapMove(
   }
 }
 
-function SessionDrawer({
+/**
+ * Pure helper: should a swipe-down release dismiss the drawer?
+ *
+ * Dismiss when EITHER the finger travelled strictly more than 100 px
+ * downward OR the fling velocity in the last 100 ms of movement is
+ * strictly greater than 0.5 px/ms. Exactly-100 / exactly-0.5 snap back
+ * — the threshold is exclusive so the rule reads cleanly as
+ * "needs to clearly exceed the line, not just touch it."
+ * Exported so the threshold can be unit-tested without a real DOM.
+ */
+export function shouldDismissSwipe(input: {
+  finalDy: number;
+  velocity: number;
+}): boolean {
+  return input.finalDy > 100 || input.velocity > 0.5;
+}
+
+export function SessionDrawer({
   session,
   today,
   weeks,
@@ -1427,6 +1472,84 @@ function SessionDrawer({
   // to call repeatedly (skip is upsert-like; start is idempotent on
   // completed_session_id), but the client lock keeps the UX honest.
   const [oneTapFired, setOneTapFired] = useState(false);
+
+  // ── Mobile swipe-down-to-dismiss ─────────────────────────────────
+  // On phones the drawer is a full-screen bottom sheet (see CSS below).
+  // We track a vertical drag on the header region only so the body's
+  // scroll isn't hijacked. Closing fires on either a >100px pull OR a
+  // fling >0.5 px/ms downward over the last 100ms of movement.
+  const [dragY, setDragY] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const dragStateRef = useRef<{
+    startY: number;
+    pointerId: number;
+    // Last 10 samples of (t, y) for fling-velocity estimation.
+    samples: Array<{ t: number; y: number }>;
+  } | null>(null);
+  const onDragPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    // Only react to primary (touch / left mouse / pen) inputs.
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    dragStateRef.current = {
+      startY: e.clientY,
+      pointerId: e.pointerId,
+      samples: [{ t: performance.now(), y: e.clientY }],
+    };
+    setDragging(true);
+    setDragY(0);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }, []);
+  const onDragPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const s = dragStateRef.current;
+    if (!s || s.pointerId !== e.pointerId) return;
+    const dy = Math.max(0, e.clientY - s.startY);
+    setDragY(dy);
+    s.samples.push({ t: performance.now(), y: e.clientY });
+    if (s.samples.length > 10) s.samples.shift();
+  }, []);
+  const finishDrag = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const s = dragStateRef.current;
+      if (!s || s.pointerId !== e.pointerId) return;
+      const finalDy = Math.max(0, e.clientY - s.startY);
+      // Fling velocity from last 100ms of samples (px/ms, positive = down).
+      const now = performance.now();
+      const recent = s.samples.filter((p) => now - p.t <= 100);
+      let velocity = 0;
+      if (recent.length >= 2) {
+        const first = recent[0]!;
+        const last = recent[recent.length - 1]!;
+        const dt = last.t - first.t;
+        if (dt > 0) velocity = (last.y - first.y) / dt;
+      }
+      dragStateRef.current = null;
+      setDragging(false);
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        /* capture may already be released */
+      }
+      if (shouldDismissSwipe({ finalDy, velocity })) {
+        // Animate out: jump to the bottom then close on next tick so the
+        // CSS transition can render before the drawer unmounts.
+        setDragY(window.innerHeight);
+        setTimeout(() => {
+          setDragY(0);
+          onClose();
+        }, 180);
+        return;
+      }
+      // Snap back.
+      setDragY(0);
+    },
+    [onClose],
+  );
+  // Safety: reset drag state on unmount (StrictMode-friendly).
+  useEffect(() => {
+    return () => {
+      dragStateRef.current = null;
+    };
+  }, []);
+
 
   // ── Drawer notes (PR Z1) ─────────────────────────────────────────
   // Source of truth: `planned_sessions.notes` (DB). localStorage is a
@@ -1538,13 +1661,38 @@ function SessionDrawer({
         aria-hidden="true"
       />
       <aside
-        className="plan-drawer"
+        className={`plan-drawer${dragging ? " dragging" : ""}`}
         role="dialog"
         aria-labelledby="plan-drawer-title"
         aria-modal="true"
         data-testid="plan-drawer"
+        style={dragY > 0 ? { transform: `translateY(${dragY}px)` } : undefined}
       >
-        <header className="drawer-head">
+        {/* Mobile drag handle — also serves as the swipe-down dismiss
+            grip. Hidden on desktop via CSS. Pointer handlers cover the
+            handle + header region so users can still scroll the body. */}
+        {/* Drag handle is a touch-only affordance. Keyboard users
+            close the drawer via Escape or the X button, so the handle
+            is hidden from assistive tech (aria-hidden) and removed
+            from the tab order rather than presented as a fake button. */}
+        <div
+          className="drawer-drag-handle"
+          data-testid="plan-drawer-drag-handle"
+          aria-hidden="true"
+          onPointerDown={onDragPointerDown}
+          onPointerMove={onDragPointerMove}
+          onPointerUp={finishDrag}
+          onPointerCancel={finishDrag}
+        >
+          <span className="grip" />
+        </div>
+        <header
+          className="drawer-head"
+          onPointerDown={onDragPointerDown}
+          onPointerMove={onDragPointerMove}
+          onPointerUp={finishDrag}
+          onPointerCancel={finishDrag}
+        >
           <div>
             <h2 id="plan-drawer-title">{session.title}</h2>
             <div className="meta mono">
@@ -1791,6 +1939,56 @@ function SessionDrawer({
             box-shadow: var(--cp-shadow);
             display: flex;
             flex-direction: column;
+            transition: transform 220ms ease-out;
+          }
+          .plan-drawer.dragging {
+            /* Follow the finger 1:1 during a swipe; snap-back transition
+               re-engages on pointerup when we clear the inline style. */
+            transition: none;
+          }
+          .drawer-drag-handle {
+            display: none;
+          }
+          /* Mobile (<=768px): full-screen bottom sheet with slide-up
+             entrance, visible grab handle, and pointer-driven swipe-
+             down dismiss. Desktop stays as the right-side panel. */
+          @media (max-width: 768px) {
+            .plan-drawer {
+              top: 0;
+              right: 0;
+              left: 0;
+              bottom: 0;
+              inset: 0;
+              width: 100%;
+              border-left: 0;
+              animation: plan-drawer-slide-up 240ms ease-out;
+            }
+            .drawer-drag-handle {
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              margin: 12px 0 8px;
+              touch-action: none;
+              cursor: grab;
+              user-select: none;
+            }
+            .drawer-drag-handle .grip {
+              display: block;
+              width: 36px;
+              height: 4px;
+              border-radius: 2px;
+              background: var(--cp-border-strong, var(--cp-border));
+            }
+            .plan-drawer .drawer-head {
+              touch-action: none;
+            }
+          }
+          @keyframes plan-drawer-slide-up {
+            from { transform: translateY(100%); }
+            to   { transform: translateY(0); }
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .plan-drawer { animation: none; }
           }
           .plan-drawer .drawer-head {
             position: sticky;

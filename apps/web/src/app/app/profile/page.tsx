@@ -30,10 +30,6 @@ import {
   updateDisplayName,
   updatePreferences,
 } from "@/lib/profile/actions";
-import { markAuditRead } from "@/lib/profile/actions";
-import { QuickSearchRow } from "@/components/profile/QuickSearchRow";
-import { ProfileNotifications } from "@/components/profile/ProfileNotifications";
-import type { TopBarAuditEntry } from "@/components/shell/TopBarRight";
 import {
   getActiveLimitations,
   getBodyweight90d,
@@ -115,13 +111,11 @@ export default async function TrainingProfilePage() {
     pendingTmCount,
     tmRows,
     tz,
-    auditRes,
-    auditCountRes,
   ] = await Promise.all([
     supabase
       .from("profiles")
       .select(
-        "display_name, timezone, units, am_window_start, pm_window_start, training_experience, ai_notes, updated_at, audit_last_read_at",
+        "display_name, timezone, units, am_window_start, pm_window_start, training_experience, ai_notes, updated_at",
       )
       .eq("id", userId)
       .maybeSingle(),
@@ -133,29 +127,7 @@ export default async function TrainingProfilePage() {
     getPendingTmSuggestionCount(supabase, userId),
     listTrainingMaxes(),
     getUserTimezone(userId),
-    supabase
-      .from("engine_override_events")
-      .select("id, event_type, occurred_at, planned_session_id, reason")
-      .eq("user_id", userId)
-      .order("occurred_at", { ascending: false })
-      .limit(5),
-    supabase
-      .from("engine_override_events")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", userId),
   ]);
-
-  const auditLastReadAt = (profile?.audit_last_read_at as string | null) ?? null;
-  const recentAudit: TopBarAuditEntry[] = (auditRes.data ?? []).map((row) => ({
-    id: row.id as string,
-    eventType: row.event_type as string,
-    occurredAt: row.occurred_at as string,
-    plannedSessionId: (row.planned_session_id as string | null) ?? null,
-    reason: (row.reason as string | null) ?? null,
-  }));
-  const unreadAuditCount = auditLastReadAt
-    ? recentAudit.filter((e) => e.occurredAt > auditLastReadAt).length
-    : auditCountRes.count ?? recentAudit.length;
 
   const displayName = (profile?.display_name as string | null) ?? "";
   const timezone = (profile?.timezone as string | null) ?? tz ?? "UTC";
@@ -186,19 +158,6 @@ export default async function TrainingProfilePage() {
       <div className="cp-profile-grid">
         {/* ────────── LEFT COLUMN ────────── */}
         <div style={{ display: "grid", gap: 20, minWidth: 0 }}>
-          {/* 0. Mobile-only: Notifications + Quick search.
-                Hidden on desktop where the top-bar already surfaces both. */}
-          <div className="cp-mobile-only">
-            <div style={{ display: "grid", gap: 12 }}>
-              <ProfileNotifications
-                recentAudit={recentAudit}
-                unreadCount={unreadAuditCount}
-                markAuditReadAction={markAuditRead}
-              />
-              <QuickSearchRow />
-            </div>
-          </div>
-
           {/* 1. Identity header */}
           <section
             data-testid="profile-identity"
