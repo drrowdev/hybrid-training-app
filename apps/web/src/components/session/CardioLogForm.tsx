@@ -23,9 +23,14 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { logCardioSession as logCardioSessionAction } from "@/lib/sessions/actions";
+import type {
+  logCardioSession as logCardioSessionAction,
+  finishStravaAppliedSession as finishStravaAppliedAction,
+} from "@/lib/sessions/actions";
+import { RpeInput } from "@/components/forms/RpeInput";
 
 type LogAction = typeof logCardioSessionAction;
+type StravaFinishAction = typeof finishStravaAppliedAction;
 
 export type CardioLogFormProps = {
   sessionId: string;
@@ -38,6 +43,17 @@ export type CardioLogFormProps = {
   /** "metric" | "imperial" — controls the distance unit label. */
   units: "metric" | "imperial";
   action: LogAction;
+  /**
+   * When true, the cardio row has already been filled from a matched
+   * Strava activity (PR #208's autofill flow). In that mode the form
+   * collapses to RPE + Notes + Finish — Duration / HR / Distance are
+   * hidden because we don't want to ask the user to retype data that's
+   * already authoritative. Submission goes through
+   * `finishStravaAppliedAction` instead of `logCardioSession`.
+   */
+  stravaApplied?: boolean;
+  /** Required when `stravaApplied` is true. */
+  stravaFinishAction?: StravaFinishAction;
 };
 
 const MI_TO_KM = 1.609344;
@@ -49,6 +65,8 @@ export function CardioLogForm({
   modality,
   units,
   action,
+  stravaApplied,
+  stravaFinishAction,
 }: CardioLogFormProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -69,6 +87,27 @@ export function CardioLogForm({
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (stravaApplied) {
+      if (!stravaFinishAction) {
+        setError("Missing finish handler for Strava-applied session.");
+        return;
+      }
+      const fd = new FormData();
+      fd.set("sessionId", sessionId);
+      if (rpe.trim()) fd.set("avgRpe", rpe.trim());
+      if (notes.trim()) fd.set("notes", notes.trim());
+      startTransition(async () => {
+        const res = await stravaFinishAction(fd);
+        if (res?.error) {
+          setError(res.error);
+          return;
+        }
+        router.refresh();
+      });
+      return;
+    }
+
     const fd = new FormData();
     fd.set("sessionId", sessionId);
     fd.set("completed", completed ? "true" : "false");
@@ -194,40 +233,93 @@ export function CardioLogForm({
           .cardio-log-duration-rpe-row { grid-template-columns: 1fr; }
         }
       `}</style>
-      <div
-        className="cardio-log-duration-rpe-row"
-        data-testid="cardio-log-duration-rpe-row"
-      >
-        <label style={fieldStackStyle}>
-          <span style={labelStyle}>Duration (min)</span>
-          <input
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={600}
-            required
-            value={duration}
-            onChange={(e) => setDuration(e.target.value)}
-            data-testid="cardio-log-duration"
-            style={inputStyle}
-          />
-        </label>
+      {!stravaApplied && (
+        <div
+          className="cardio-log-duration-rpe-row"
+          data-testid="cardio-log-duration-rpe-row"
+        >
+          <label style={fieldStackStyle}>
+            <span style={labelStyle}>Duration (min)</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={600}
+              required
+              value={duration}
+              onChange={(e) => setDuration(e.target.value)}
+              data-testid="cardio-log-duration"
+              style={inputStyle}
+            />
+          </label>
 
-        <label style={fieldStackStyle}>
-          <span style={labelStyle}>RPE (0–10)</span>
-          <input
-            type="number"
-            inputMode="decimal"
-            min={0}
-            max={10}
-            step={0.5}
-            value={rpe}
-            onChange={(e) => setRpe(e.target.value)}
-            data-testid="cardio-log-rpe"
-            style={inputStyle}
+          <div style={fieldStackStyle}>
+            <RpeInput
+              name="cardio-log-rpe-input"
+              context="cardio"
+              value={rpe === "" ? null : Number(rpe)}
+              onChange={(v) => setRpe(v == null ? "" : String(v))}
+            />
+            {/* Hidden mirror so tests querying `cardio-log-rpe` still work. */}
+            <input
+              type="hidden"
+              data-testid="cardio-log-rpe"
+              value={rpe}
+              readOnly
+            />
+          </div>
+        </div>
+      )}
+
+      {stravaApplied && (
+        <div
+          data-testid="cardio-log-strava-applied-banner"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "10px 12px",
+            borderRadius: 10,
+            border: "1px solid var(--cp-border)",
+            background:
+              "color-mix(in oklab, var(--cp-accent) 6%, transparent)",
+            fontSize: 13,
+            color: "var(--cp-text-muted)",
+          }}
+        >
+          <span
+            aria-hidden
+            style={{
+              display: "inline-block",
+              width: 8,
+              height: 8,
+              borderRadius: 999,
+              background: "var(--cp-accent)",
+            }}
           />
-        </label>
-      </div>
+          <span>
+            Duration, HR and distance are filled from Strava — just add RPE
+            and notes to finish.
+          </span>
+        </div>
+      )}
+
+      {stravaApplied && (
+        <div style={fieldStackStyle}>
+          <RpeInput
+            name="cardio-log-rpe-input"
+            context="cardio"
+            value={rpe === "" ? null : Number(rpe)}
+            onChange={(v) => setRpe(v == null ? "" : String(v))}
+          />
+          <input
+            type="hidden"
+            data-testid="cardio-log-rpe"
+            value={rpe}
+            readOnly
+          />
+        </div>
+      )}
 
       <label style={fieldStackStyle}>
         <span style={labelStyle}>Notes (optional)</span>
@@ -241,14 +333,15 @@ export function CardioLogForm({
         />
       </label>
 
-      <details
-        data-testid="cardio-log-more-details"
-        open={showMore}
-        onToggle={(e) =>
-          setShowMore((e.target as HTMLDetailsElement).open)
-        }
-        style={{ display: "grid", gap: 10 }}
-      >
+      {!stravaApplied && (
+        <details
+          data-testid="cardio-log-more-details"
+          open={showMore}
+          onToggle={(e) =>
+            setShowMore((e.target as HTMLDetailsElement).open)
+          }
+          style={{ display: "grid", gap: 10 }}
+        >
         <summary
           style={{
             cursor: "pointer",
@@ -288,6 +381,7 @@ export function CardioLogForm({
           />
         </label>
       </details>
+      )}
 
       {error && (
         <div

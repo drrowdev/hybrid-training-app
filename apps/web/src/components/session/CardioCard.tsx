@@ -1,23 +1,24 @@
 /**
- * Shared cardio card rendered on both the read-only Session Preview
- * page (`/app/plan/preview/[plannedId]`) and the live in-progress
- * Session detail page (`/app/sessions/[id]`).
+ * Shared cardio card — Mockup B design.
  *
- * Renders, in order:
- *   1. An eyebrow ("CARDIO").
- *   2. A header row: heading (hidden when redundant with the page
- *      title — see `lib/session/heading-dedup`), an optional modality
- *      chip (Run / Bike / Row / …), and a slot for header actions
- *      (e.g. the inline Swap button on the live session page).
- *   3. The educational "how to execute" description rendered as a
- *      static paragraph block above the protocol rows (Fix 2 of the
- *      active-session UX overhaul — was previously a collapsible
- *      `<details>` that visually competed with the structured rows).
- *   4. Structured key/value protocol rows from `cardioPreviewRows`.
+ * Used on both the read-only Session Preview page and the live in-progress
+ * Session detail page.
  *
- * Pure presentational. Both surfaces import this directly so visual
- * drift between the preview and the in-session cardio card stays
- * obvious in review.
+ * Mockup B layout (top-to-bottom):
+ *   1. Header row — movement heading (optional, suppressed when the page
+ *      title already carries it) + modality chip with an accent leading
+ *      dot + optional `headerActions` slot (the swap icon button).
+ *   2. Description paragraph — kind-specific educational copy, rendered
+ *      with a 2 px accent left-border. NO "How to do it" eyebrow label
+ *      (the visual border replaces the textual cue at small widths).
+ *   3. Stats — 2×2 grid of structured key/value cells from
+ *      `cardioPreviewRows`. Cells span the row when the count is odd.
+ *
+ * Pure presentational. The eyebrow "CARDIO" line and the "How to do it"
+ * label that used to sit above the description were removed for Mockup B
+ * — the section header on the page already disambiguates the card type,
+ * and the accent border on the description block carries the affordance
+ * that something is annotation, not data.
  */
 
 import type { ReactNode } from "react";
@@ -39,15 +40,13 @@ export type CardioCardOptions = {
   /** Optional test-id prefix for per-row data-testids. */
   rowTestIdPrefix?: string;
   /**
-   * Optional modality label (e.g. "Run", "Bike", "Row"). Rendered as a
-   * subtle pill in the card header next to the heading. The session
-   * page derives this from the planned movement's `metadata.modality`.
+   * Optional modality label (e.g. "Run", "Bike", "Row"). Rendered as
+   * a small chip with a leading accent dot in the card header.
    */
   modalityLabel?: string | null;
   /**
-   * Optional slot rendered on the same row as the heading + modality
-   * chip. The live session page uses this to inline the Swap button
-   * with the movement title instead of floating it at the card bottom.
+   * Optional slot rendered on the right side of the header row (used
+   * by the live session page for the inline Swap icon button).
    */
   headerActions?: ReactNode;
 };
@@ -76,9 +75,6 @@ export function CardioCard({
 
   return (
     <section data-testid={testId} style={cardStyle}>
-      <div className="mono" style={eyebrowStyle}>
-        CARDIO
-      </div>
       {hasHeader && (
         <div style={headerRowStyle}>
           {!hideHeading && <h3 style={movementHeadingStyle}>{name}</h3>}
@@ -92,6 +88,7 @@ export function CardioCard({
               data-modality={trimmedModality.toLowerCase()}
               style={modalityChipStyle}
             >
+              <span aria-hidden style={modalityDotStyle} />
               {trimmedModality}
             </span>
           )}
@@ -101,40 +98,36 @@ export function CardioCard({
         </div>
       )}
 
-      <div
+      <p
         data-testid={
           rowTestIdPrefix ? `${rowTestIdPrefix}-description` : undefined
         }
         style={descriptionBlockStyle}
       >
-        <div style={descriptionLabelStyle}>How to do it</div>
-        <p style={descriptionParagraphStyle}>{description}</p>
-      </div>
+        {description}
+      </p>
 
       {rows.length > 0 && (
-        <div style={rowsBlockStyle}>
+        <div style={statsGridStyle}>
           {rows.map((row, i) => (
             <div
               key={i}
               data-testid={
                 rowTestIdPrefix
-                  ? `${rowTestIdPrefix}-row-${row.label.toLowerCase().replace(/\s+/g, "-")}`
+                  ? `${rowTestIdPrefix}-row-${row.label
+                      .toLowerCase()
+                      .replace(/\s+/g, "-")}`
                   : undefined
               }
               style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(96px, max-content) 1fr",
-                gap: 12,
-                alignItems: "baseline",
-                padding: "4px 0",
+                ...statCellStyle,
+                ...(rows.length % 2 === 1 && i === rows.length - 1
+                  ? { gridColumn: "1 / -1" }
+                  : null),
               }}
             >
-              <span style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>
-                {row.label}
-              </span>
-              <span style={{ fontSize: 14, color: "var(--cp-text)" }}>
-                {row.value}
-              </span>
+              <span style={statLabelStyle}>{row.label}</span>
+              <span style={statValueStyle}>{row.value}</span>
             </div>
           ))}
         </div>
@@ -151,13 +144,6 @@ const cardStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: 12,
-};
-
-const eyebrowStyle: React.CSSProperties = {
-  fontSize: 11,
-  letterSpacing: "0.08em",
-  color: "var(--cp-text-muted)",
-  textTransform: "uppercase",
 };
 
 const movementHeadingStyle: React.CSSProperties = {
@@ -184,6 +170,7 @@ const headerActionsStyle: React.CSSProperties = {
 const modalityChipStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
+  gap: 6,
   fontSize: 11,
   padding: "2px 10px",
   borderRadius: 999,
@@ -195,30 +182,49 @@ const modalityChipStyle: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
+const modalityDotStyle: React.CSSProperties = {
+  display: "inline-block",
+  width: 6,
+  height: 6,
+  borderRadius: 999,
+  background: "var(--cp-accent)",
+};
+
 const descriptionBlockStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 4,
-  paddingBottom: 12,
-  borderBottom: "1px solid var(--cp-border)",
-};
-
-const descriptionLabelStyle: React.CSSProperties = {
-  fontSize: 11,
-  letterSpacing: "0.08em",
-  color: "var(--cp-text-muted)",
-  textTransform: "uppercase",
-  fontWeight: 600,
-};
-
-const descriptionParagraphStyle: React.CSSProperties = {
   margin: 0,
   fontSize: 14,
   lineHeight: 1.6,
   color: "var(--cp-text-muted)",
+  borderLeft: "2px solid var(--cp-accent)",
+  paddingLeft: 12,
 };
 
-const rowsBlockStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 6,
+const statsGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 10,
+};
+
+const statCellStyle: React.CSSProperties = {
+  background: "var(--cp-surface-soft, color-mix(in oklab, var(--cp-surface) 92%, transparent))",
+  borderRadius: 10,
+  padding: "10px 12px",
+  display: "grid",
+  gap: 2,
+  minWidth: 0,
+};
+
+const statLabelStyle: React.CSSProperties = {
+  fontSize: 11,
+  color: "var(--cp-text-muted)",
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+  fontWeight: 600,
+};
+
+const statValueStyle: React.CSSProperties = {
+  fontSize: 14,
+  color: "var(--cp-text)",
+  fontWeight: 500,
+  overflowWrap: "anywhere",
 };
