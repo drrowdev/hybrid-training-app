@@ -803,13 +803,55 @@ export function PlanRedesign(props: PlanRedesignProps) {
         }
 
         .plan-timeline {
+          position: relative;
           background: var(--cp-surface);
           border: 1px solid var(--cp-border);
           border-radius: 16px;
-          overflow: hidden;
+          overflow-y: auto;
+          max-height: calc(100vh - 280px);
           flex: 1;
           display: flex;
           flex-direction: column;
+          /* Scroll-shadow: gradients are fixed to the scroll viewport via
+             background-attachment: local. Top/bottom solid fills mask the
+             shadow when the user is at the edge; the cover gradient
+             reveals it when scrolled into the middle. */
+          background:
+            linear-gradient(var(--cp-surface) 30%, rgba(0, 0, 0, 0)),
+            linear-gradient(rgba(0, 0, 0, 0), var(--cp-surface) 70%) 0 100%,
+            radial-gradient(farthest-side at 50% 0, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0)),
+            radial-gradient(farthest-side at 50% 100%, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0)) 0 100%,
+            var(--cp-surface);
+          background-repeat: no-repeat;
+          background-size: 100% 28px, 100% 28px, 100% 10px, 100% 10px;
+          background-attachment: local, local, scroll, scroll;
+        }
+        @media (max-width: 768px) {
+          .plan-timeline {
+            max-height: calc(100vh - 220px);
+          }
+        }
+        .plan-month-grid {
+          position: relative;
+          background: var(--cp-surface);
+          border: 1px solid var(--cp-border);
+          border-radius: 16px;
+          overflow-y: auto;
+          max-height: calc(100vh - 280px);
+          background:
+            linear-gradient(var(--cp-surface) 30%, rgba(0, 0, 0, 0)),
+            linear-gradient(rgba(0, 0, 0, 0), var(--cp-surface) 70%) 0 100%,
+            radial-gradient(farthest-side at 50% 0, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0)),
+            radial-gradient(farthest-side at 50% 100%, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0)) 0 100%,
+            var(--cp-surface);
+          background-repeat: no-repeat;
+          background-size: 100% 28px, 100% 28px, 100% 10px, 100% 10px;
+          background-attachment: local, local, scroll, scroll;
+        }
+        @media (max-width: 768px) {
+          .plan-month-grid {
+            max-height: calc(100vh - 220px);
+          }
         }
         .plan-week-row {
           display: grid;
@@ -1060,12 +1102,6 @@ function MonthAlternate({
       className="plan-month-grid"
       data-testid="plan-month-grid"
       aria-label="Month view"
-      style={{
-        background: "var(--cp-surface)",
-        border: "1px solid var(--cp-border)",
-        borderRadius: 16,
-        overflow: "hidden",
-      }}
     >
       <div
         style={{
