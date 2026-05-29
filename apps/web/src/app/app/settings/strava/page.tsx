@@ -4,8 +4,10 @@ import {
   connectStrava,
   disconnectStrava,
   syncStravaNow,
+  importStravaHistoryAction,
 } from "@/lib/integrations/strava/actions";
 import { StravaPoweredBadge } from "@/components/StravaPoweredBadge";
+import { ImportHistorySection } from "@/components/settings/StravaImportHistory";
 
 function formatTimeAgo(iso: string | null): string {
   if (!iso) return "never";
@@ -170,6 +172,10 @@ export default async function StravaSettingsPage({
             </button>
           </form>
         </section>
+      )}
+
+      {connection && (
+        <ImportHistorySection action={importStravaHistoryAction} />
       )}
     </main>
   );

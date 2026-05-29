@@ -12,6 +12,7 @@ import { roundToPlate } from "@/lib/planner/archetypes";
 import type { Prescription, PrescriptionItem } from "@hta/db";
 import { applyPrescriptionSwap } from "./prescription-mutations";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
+import { sessionPrescribesStrength } from "./strength-prescribed";
 
 const startAdHocSchema = z.object({
   title: z.string().trim().max(120).optional(),
@@ -447,26 +448,20 @@ export async function logCardioSession(
   if (!session) return { error: "Session not found." };
   if (session.user_id !== user.id) return { error: "Not your session." };
 
-  // review-208 #2 — for hybrid sessions (strength + cardio prescribed),
-  // logging the cardio portion must NOT auto-flip the session to
-  // completed if no strength sets have been logged. Otherwise the user
-  // can mark a hybrid session done by clicking "Save cardio" without
-  // ever doing the prescribed strength work, and downstream load
-  // accounting silently treats the strength volume as 0.
-  const [{ count: strengthPrescribedCount }, { count: setsLoggedCount }] =
-    await Promise.all([
-      supabase
-        .from("session_items")
-        .select("id", { count: "exact", head: true })
-        .eq("session_id", parsed.data.sessionId)
-        .eq("kind", "main"),
-      supabase
-        .from("set_logs")
-        .select("id", { count: "exact", head: true })
-        .eq("session_id", parsed.data.sessionId),
-    ]);
+  // review-208 #2 + review-211 #2 — for hybrid sessions, logging the
+  // cardio portion must NOT auto-flip the session to completed if no
+  // strength sets have been logged. The "is strength prescribed?"
+  // predicate is shared with the import-history auto-link path via
+  // `sessionPrescribesStrength` so the two surfaces can't drift.
+  const [hasStrengthPrescribed, { count: setsLoggedCount }] = await Promise.all([
+    sessionPrescribesStrength(supabase, parsed.data.sessionId),
+    supabase
+      .from("set_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", parsed.data.sessionId),
+  ]);
   const hasUnloggedStrength =
-    (strengthPrescribedCount ?? 0) > 0 && (setsLoggedCount ?? 0) === 0;
+    hasStrengthPrescribed && (setsLoggedCount ?? 0) === 0;
 
   // review-208 #1 — idempotent upsert on (session_id, block_index). The
   // finish-workout form always writes block_index=0; ad-hoc cardio
@@ -1255,25 +1250,18 @@ export async function applyStravaAutofill(
   if (tErr) return { error: tErr.message };
   if (!target) return { error: "Session not found." };
 
-  // review-208 #2 alignment — share the same hybrid-completion guard
-  // as `logCardioSession`. We DON'T flip `sessions.completed_at` when
-  // there's strength work prescribed but no set_logs yet, because
-  // doing so would silently drop the prescribed strength block.
-  // Pure-cardio sessions always satisfy this guard.
-  const [{ count: strengthPrescribedCount }, { count: setsLoggedCount }] =
-    await Promise.all([
-      supabase
-        .from("session_items")
-        .select("id", { count: "exact", head: true })
-        .eq("session_id", parsed.data.sessionId)
-        .eq("kind", "main"),
-      supabase
-        .from("set_logs")
-        .select("id", { count: "exact", head: true })
-        .eq("session_id", parsed.data.sessionId),
-    ]);
+  // review-208 #2 + review-211 #2 — share the same hybrid-completion
+  // guard predicate as `logCardioSession` and `importStravaHistory`
+  // via the `sessionPrescribesStrength` helper.
+  const [hasStrengthPrescribed, { count: setsLoggedCount }] = await Promise.all([
+    sessionPrescribesStrength(supabase, parsed.data.sessionId),
+    supabase
+      .from("set_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", parsed.data.sessionId),
+  ]);
   const hasUnloggedStrength =
-    (strengthPrescribedCount ?? 0) > 0 && (setsLoggedCount ?? 0) === 0;
+    hasStrengthPrescribed && (setsLoggedCount ?? 0) === 0;
 
   // review-208 #1 alignment — upsert on (session_id, block_index=0)
   // instead of inserting a new row. The cardio log form writes to the

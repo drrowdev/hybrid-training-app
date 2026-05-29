@@ -7,6 +7,11 @@ import { cookies } from "next/headers";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { authorizeUrl } from "@/lib/integrations/strava/client";
 import { syncStrava } from "@/lib/integrations/strava/sync";
+import {
+  importStravaHistory as importStravaHistoryCore,
+  type ImportInput,
+  type ImportResult,
+} from "@/lib/integrations/strava/import-history";
 
 const STATE_COOKIE = "strava_oauth_state";
 
@@ -123,4 +128,27 @@ export async function triggerStaleStravaSync(): Promise<void> {
       .update({ last_sync_error: (e as Error).message.slice(0, 500) })
       .eq("user_id", user.id);
   }
+}
+
+/**
+ * User-triggered historical backfill — wraps `importStravaHistory`
+ * with auth + path revalidation. Returns the structured result so the
+ * Settings UI can render the imported/skipped/matched breakdown
+ * without a redirect.
+ */
+export async function importStravaHistoryAction(
+  input: ImportInput,
+): Promise<ImportResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const result = await importStravaHistoryCore(supabase, user.id, input);
+  if (result.ok) {
+    revalidatePath("/app");
+    revalidatePath("/app/settings/strava");
+  }
+  return result;
 }
