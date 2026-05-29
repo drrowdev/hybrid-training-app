@@ -21,7 +21,8 @@ import Link from "next/link";
 import type { PrescriptionItem } from "@hta/db";
 import { groupByMovementThenKind } from "@/lib/plan/prescription-grouping";
 import { formatPrescriptionItem } from "@/lib/planner/archetypes";
-import { cardioPreviewRows } from "./cardio-preview-rows";
+import { CardioCard } from "./CardioCard";
+import { makeShouldHideHeading } from "@/lib/session/heading-dedup";
 
 export type SessionPreviewInput = {
   id: string;
@@ -45,16 +46,11 @@ function durationLine(input: SessionPreviewInput, movementCount: number): string
 }
 
 /**
- * Normalise a string for the heading-dedup comparison: lowercase, trim,
- * and strip a trailing " — X×Y" / " - 4x4" protocol shorthand suffix
- * so "VO2 Intervals — 4×4" matches "VO2 intervals". Returns "" for
- * empty/whitespace input so callers can short-circuit cleanly.
+ * Heading dedup is delegated to the shared
+ * `lib/session/heading-dedup` helper so the live in-session page can
+ * use the same comparison without forking the logic. See that module
+ * for the case-insensitive + shorthand-stripping normalisation.
  */
-function normalizeTitleForDedup(s: string | null | undefined): string {
-  if (!s) return "";
-  const head = s.split(/\s+[—–-]\s+/)[0] ?? s;
-  return head.trim().toLowerCase();
-}
 
 export function SessionPreviewBody({ session }: { session: SessionPreviewInput }) {
   const sections = groupByMovementThenKind(session.items);
@@ -75,15 +71,7 @@ export function SessionPreviewBody({ session }: { session: SessionPreviewInput }
   //   - single-movement strength session whose title is the movement
   //     name (rare; most strength titles are generic like "Strength
   //     A").
-  // Comparing on `normalizeTitleForDedup` makes the match
-  // case-insensitive and strips protocol-shorthand suffixes ("VO2
-  // Intervals — 4×4" vs "VO2 intervals") so cosmetic capitalisation
-  // doesn't keep a duplicate heading on screen.
-  const normalizedTitle = normalizeTitleForDedup(session.title);
-  const shouldHideHeading = (name: string): boolean => {
-    if (!normalizedTitle) return false;
-    return normalizeTitleForDedup(name) === normalizedTitle;
-  };
+  const shouldHideHeading = makeShouldHideHeading(session.title);
 
   return (
     <div
@@ -193,8 +181,12 @@ export function SessionPreviewBody({ session }: { session: SessionPreviewInput }
           <CardioCard
             key={`cardio-${i}`}
             item={item}
-            index={i}
+            // Preview surface shows "~35 min" in the page meta; drop
+            // the Duration row from the card so it isn't repeated.
+            hideDurationRow
             hideHeading={shouldHideHeading(item.movementName ?? "Cardio")}
+            testId={`session-preview-cardio-${i}`}
+            rowTestIdPrefix={`session-preview-cardio-${i}`}
           />
         ))}
       </div>
@@ -391,72 +383,6 @@ function MovementListCard({
   );
 }
 
-function CardioCard({
-  item,
-  index,
-  hideHeading,
-}: {
-  item: PrescriptionItem;
-  index: number;
-  hideHeading: boolean;
-}) {
-  // Drop the Duration row — the page meta already shows "~35 min" so
-  // repeating it inside the card is pure noise (Fix 3).
-  const rows = cardioPreviewRows(item).filter((r) => r.label !== "Duration");
-  // Strip protocol-shorthand suffixes like " — 4×4" or " - 4x4" from
-  // the movement name so the card heading reads cleanly ("VO2
-  // Intervals" not "VO2 Intervals — 4×4"). The protocol rows below
-  // carry the same shorthand in structured form.
-  const rawName = item.movementName ?? "Cardio";
-  const name = rawName.split(/\s+[—–-]\s+/)[0]!.trim() || rawName;
-  return (
-    <section
-      data-testid={`session-preview-cardio-${index}`}
-      style={cardStyle}
-    >
-      <div className="mono" style={eyebrowStyle}>
-        CARDIO
-      </div>
-      {!hideHeading && <h3 style={movementHeadingStyle}>{name}</h3>}
-      {/* intensityLabel intentionally NOT rendered: it duplicates the
-          parsed "Intensity" row below for cardio_vo2-style sessions
-          (e.g. a bare "VO2" label between heading and rows reads as
-          useless engine vocab). The Intensity row from
-          cardioPreviewRows already conveys "this is VO2 work". */}
-      {rows.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {rows.map((row, i) => (
-            <div
-              key={i}
-              data-testid={`session-preview-cardio-${index}-row-${row.label.toLowerCase().replace(/\s+/g, "-")}`}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(96px, max-content) 1fr",
-                gap: 12,
-                alignItems: "baseline",
-                padding: "4px 0",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 13,
-                  color: "var(--cp-text-muted)",
-                }}
-              >
-                {row.label}
-              </span>
-              <span
-                style={{
-                  fontSize: 14,
-                  color: "var(--cp-text)",
-                }}
-              >
-                {row.value}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
+/* Local CardioCard removed — both surfaces now import the shared
+   `components/session/CardioCard` instead. See the file-header comment
+   for the rationale. */

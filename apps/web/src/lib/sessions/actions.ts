@@ -366,6 +366,187 @@ export async function markExternalCardioComplete(
   return { ok: true };
 }
 
+/**
+ * Log a cardio session result + mark the session done in one shot.
+ *
+ * Unlike `addCardioBlock` (a strength-session inline "+ add cardio
+ * block" affordance), this is the primary "Finish workout" CTA on
+ * pure-cardio sessions. It bypasses the `/complete` interstitial
+ * because cardio doesn't need the auto-derived sRPE / duration flow
+ * — duration is logged directly and RPE is part of the form.
+ *
+ * `completed = false` aligns with the existing "skip" semantics: we
+ * still write a `cardio_logs` row (so adherence + freshness account
+ * for the touch) but leave `sessions.completed_at` null. The caller
+ * UI surfaces this as "Skip cardio" rather than a new status.
+ *
+ * Schema reuse: writes to the existing `cardio_logs` table — see
+ * `packages/db/src/schema/cardio-logs.ts`. No migration needed.
+ */
+const logCardioSessionSchema = z.object({
+  sessionId: z.string().uuid(),
+  // FormData string → boolean. `z.coerce.boolean()` would treat the
+  // string "false" as truthy (`Boolean("false") === true`), so we
+  // parse the canonical string forms ourselves.
+  completed: z
+    .union([z.boolean(), z.string()])
+    .default(true)
+    .transform((v) => {
+      if (typeof v === "boolean") return v;
+      const s = v.trim().toLowerCase();
+      return !(s === "false" || s === "0" || s === "no" || s === "");
+    }),
+  actualDurationMin: z.coerce.number().int().min(1).max(600),
+  avgRpe: z.coerce.number().min(0).max(10).optional().nullable(),
+  notes: z.string().trim().max(400).optional().nullable(),
+  avgHrBpm: z.coerce.number().int().min(30).max(240).optional().nullable(),
+  // Distance is captured in km in the DB; the form converts from mi
+  // when the user's profile is `imperial` before submitting.
+  // Min 0.01 (not 0) — zero distance for a distance-tracked session
+  // is meaningless and the form's `n > 0` guard already filters zeros.
+  distanceKm: z.coerce.number().min(0.01).max(1000).optional().nullable(),
+  // Optional movement id from the prescription so the logged row
+  // points at the same catalog entry the user was prescribed.
+  movementId: z.string().uuid().optional().nullable(),
+  modality: z.string().trim().min(1).max(40).default("other"),
+}).strict();
+
+export async function logCardioSession(
+  formData: FormData,
+): Promise<{ ok?: true; error?: string }> {
+  const parsed = logCardioSessionSchema.safeParse({
+    sessionId: formData.get("sessionId"),
+    completed: formData.get("completed") ?? "true",
+    actualDurationMin: formData.get("actualDurationMin"),
+    avgRpe: formData.get("avgRpe") || undefined,
+    notes: formData.get("notes") || undefined,
+    avgHrBpm: formData.get("avgHrBpm") || undefined,
+    distanceKm: formData.get("distanceKm") || undefined,
+    movementId: formData.get("movementId") || undefined,
+    modality: formData.get("modality") || "other",
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) return { error: "Not signed in." };
+
+  // Ownership check via the session row — RLS would also block but
+  // surfacing a clean error message is friendlier than a generic 401.
+  const { data: session, error: sErr } = await supabase
+    .from("sessions")
+    .select("id, user_id, completed_at")
+    .eq("id", parsed.data.sessionId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (sErr) return { error: sErr.message };
+  if (!session) return { error: "Session not found." };
+  if (session.user_id !== user.id) return { error: "Not your session." };
+
+  // review-208 #2 — for hybrid sessions (strength + cardio prescribed),
+  // logging the cardio portion must NOT auto-flip the session to
+  // completed if no strength sets have been logged. Otherwise the user
+  // can mark a hybrid session done by clicking "Save cardio" without
+  // ever doing the prescribed strength work, and downstream load
+  // accounting silently treats the strength volume as 0.
+  const [{ count: strengthPrescribedCount }, { count: setsLoggedCount }] =
+    await Promise.all([
+      supabase
+        .from("session_items")
+        .select("id", { count: "exact", head: true })
+        .eq("session_id", parsed.data.sessionId)
+        .eq("kind", "main"),
+      supabase
+        .from("set_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("session_id", parsed.data.sessionId),
+    ]);
+  const hasUnloggedStrength =
+    (strengthPrescribedCount ?? 0) > 0 && (setsLoggedCount ?? 0) === 0;
+
+  // review-208 #1 — idempotent upsert on (session_id, block_index). The
+  // finish-workout form always writes block_index=0; ad-hoc cardio
+  // blocks added via the "+ add cardio block" flow use higher indices
+  // and a different code path. Double-tap / network retry now updates
+  // the same row instead of producing a duplicate.
+  const { error: upsertErr } = await supabase
+    .from("cardio_logs")
+    .upsert(
+      {
+        session_id: parsed.data.sessionId,
+        movement_id: parsed.data.movementId ?? null,
+        block_index: 0,
+        modality: parsed.data.modality,
+        duration_sec: parsed.data.actualDurationMin * 60,
+        distance_km: parsed.data.distanceKm ?? null,
+        avg_hr_bpm: parsed.data.avgHrBpm ?? null,
+        rpe: parsed.data.avgRpe ?? null,
+        notes: parsed.data.notes ?? null,
+      },
+      { onConflict: "session_id,block_index" },
+    );
+  if (upsertErr) return { error: upsertErr.message };
+
+  // Only flip the session to completed when (a) the user marked the
+  // cardio completed AND (b) there's no unlogged strength work that
+  // would otherwise be silently dropped. Hybrid sessions with strength
+  // pending stay in_progress — the strength finish bar takes over.
+  if (parsed.data.completed && !session.completed_at && !hasUnloggedStrength) {
+    const { error: updErr } = await supabase
+      .from("sessions")
+      .update({
+        completed_at: new Date().toISOString(),
+        duration_min: parsed.data.actualDurationMin,
+        session_rpe: parsed.data.avgRpe ?? null,
+      })
+      .eq("id", parsed.data.sessionId);
+    if (updErr) return { error: updErr.message };
+
+    // Recompute downstream load + region state, mirroring the
+    // strength-completion side effects in `completeSession`. Failures
+    // here must not block the user from finishing.
+    try {
+      await recomputeActualSessionLoad({
+        supabase,
+        sessionId: parsed.data.sessionId,
+        requireCompleted: false,
+      });
+    } catch (e) {
+      console.error("recomputeActualSessionLoad (cardio) failed:", e);
+    }
+    try {
+      await recomputeRegionState(
+        supabase,
+        user.id,
+        await getUserTimezone(user.id),
+      );
+    } catch (e) {
+      console.error("recomputeRegionState (cardio) failed:", e);
+    }
+    try {
+      const { data: linked } = await supabase
+        .from("planned_sessions")
+        .select("block_id")
+        .eq("completed_session_id", parsed.data.sessionId)
+        .maybeSingle();
+      if (linked?.block_id) {
+        await maybeCompleteBlock(supabase, linked.block_id as string);
+      }
+    } catch (e) {
+      console.error("maybeCompleteBlock (cardio) failed:", e);
+    }
+  }
+
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
+  revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
+  return { ok: true };
+}
+
 export async function deleteSet(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   const sessionId = String(formData.get("sessionId") ?? "");
