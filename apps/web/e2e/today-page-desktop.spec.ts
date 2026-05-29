@@ -58,10 +58,14 @@ test.describe("@desktop today page (Phase 1)", () => {
     const href = await cta.getAttribute("href");
     expect(href).toBe(`/app/sessions/start/${seed.todayPlannedId}`);
 
-    // Secondary "Preview plan" link points to /app/plan.
-    const preview = page.getByRole("link", { name: /^preview plan$/i }).first();
+    // Secondary "Preview workout" link points to the read-only
+    // preview route for this specific planned session.
+    const preview = page.getByRole("link", { name: /^preview workout$/i }).first();
     await expect(preview).toBeVisible();
-    await expect(preview).toHaveAttribute("href", "/app/plan");
+    await expect(preview).toHaveAttribute(
+      "href",
+      `/app/plan/preview/${seed.todayPlannedId}`,
+    );
 
     // Clicking Start auto-creates the session and lands on the log surface.
     // (The pre-session check-in interstitial was removed; the Today-page
@@ -103,7 +107,7 @@ test.describe("@desktop today page (Phase 1)", () => {
     await expect(rest.locator(".cp-info")).toHaveCount(0);
   });
 
-  test("training-day hero exposes Start session CTA + Preview plan link", async ({
+  test("training-day hero exposes Start session CTA + Preview workout link", async ({
     page,
     context,
     freshUser,
