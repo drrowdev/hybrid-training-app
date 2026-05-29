@@ -837,6 +837,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
           border: 1px solid var(--cp-border);
           border-radius: 16px;
           overflow-y: auto;
+          overflow-x: hidden;
           max-height: calc(100vh - 280px);
           background:
             linear-gradient(var(--cp-surface) 30%, rgba(0, 0, 0, 0)),
@@ -1065,6 +1066,61 @@ export function PlanRedesign(props: PlanRedesignProps) {
    Past sessions are muted; today is the only highlight.
    ──────────────────────────────────────────────────────────────── */
 
+/**
+ * Add `delta` months to a UTC date, preserving day-of-month when
+ * possible (clamps to last day if the target month is shorter, e.g.
+ * Jan 31 + 1 → Feb 28/29). Exported for unit tests.
+ */
+export function addMonthsUtc(d: Date, delta: number): Date {
+  const year = d.getUTCFullYear();
+  const month = d.getUTCMonth();
+  const day = d.getUTCDate();
+  // First-of-target-month then clamp day to its length.
+  const target = new Date(Date.UTC(year, month + delta, 1));
+  const lastDay = new Date(
+    Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  target.setUTCDate(Math.min(day, lastDay));
+  return target;
+}
+
+/**
+ * Build the 6-week × 7-day Monday-first cell grid (42 cells) anchored
+ * on the month containing `viewingMonth`. Exported for unit tests.
+ */
+export function buildMonthGridCells(
+  viewingMonth: Date,
+): { date: string; inMonth: boolean }[] {
+  const year = viewingMonth.getUTCFullYear();
+  const month = viewingMonth.getUTCMonth();
+  const first = new Date(Date.UTC(year, month, 1));
+  const firstDow = (first.getUTCDay() + 6) % 7; // Mon=0..Sun=6
+  const start = new Date(first);
+  start.setUTCDate(first.getUTCDate() - firstDow);
+  const cells: { date: string; inMonth: boolean }[] = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start);
+    d.setUTCDate(start.getUTCDate() + i);
+    cells.push({
+      date: d.toISOString().slice(0, 10),
+      inMonth: d.getUTCMonth() === month,
+    });
+  }
+  return cells;
+}
+
+/**
+ * Locale-aware "May 2026" label for the month header. Exported for
+ * unit tests; defaults to the user's runtime locale.
+ */
+export function formatMonthLabel(viewingMonth: Date, locale?: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(viewingMonth);
+}
+
 function MonthAlternate({
   sessions,
   today,
@@ -1074,21 +1130,35 @@ function MonthAlternate({
   today: string;
   onOpen: (id: string) => void;
 }) {
-  // Build 6-week Monday-first grid anchored on the month containing today.
-  const anchor = new Date(`${today}T12:00:00Z`);
-  const year = anchor.getUTCFullYear();
-  const month = anchor.getUTCMonth();
-  const first = new Date(Date.UTC(year, month, 1));
-  const firstDow = (first.getUTCDay() + 6) % 7; // Mon=0..Sun=6
-  const start = new Date(first);
-  start.setUTCDate(first.getUTCDate() - firstDow);
-  const cells: { date: string; inMonth: boolean }[] = [];
-  for (let i = 0; i < 42; i++) {
-    const d = new Date(start);
-    d.setUTCDate(start.getUTCDate() + i);
-    const ymd = d.toISOString().slice(0, 10);
-    cells.push({ date: ymd, inMonth: d.getUTCMonth() === month });
-  }
+  // First-of-current-month as the initial viewing window.
+  const [viewingMonth, setViewingMonth] = useState<Date>(() => {
+    const anchor = new Date(`${today}T12:00:00Z`);
+    return new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), 1));
+  });
+
+  const cells = useMemo(() => buildMonthGridCells(viewingMonth), [viewingMonth]);
+  const monthLabel = useMemo(() => formatMonthLabel(viewingMonth), [viewingMonth]);
+
+  // Bounds — disable arrows once the user paged past every session.
+  const { minMonthKey, maxMonthKey } = useMemo(() => {
+    if (sessions.length === 0) return { minMonthKey: null, maxMonthKey: null };
+    let min = sessions[0]!.date;
+    let max = sessions[0]!.date;
+    for (const s of sessions) {
+      if (s.date < min) min = s.date;
+      if (s.date > max) max = s.date;
+    }
+    return { minMonthKey: min.slice(0, 7), maxMonthKey: max.slice(0, 7) };
+  }, [sessions]);
+
+  const viewingKey = `${viewingMonth.getUTCFullYear()}-${String(
+    viewingMonth.getUTCMonth() + 1,
+  ).padStart(2, "0")}`;
+  const canGoPrev = minMonthKey === null ? true : viewingKey > minMonthKey;
+  const canGoNext = maxMonthKey === null ? true : viewingKey < maxMonthKey;
+
+  const todayMonthKey = today.slice(0, 7);
+  const showTodayHighlight = viewingKey === todayMonthKey;
 
   const byDate = new Map<string, PlanSessionInput[]>();
   for (const s of sessions) {
@@ -1097,6 +1167,8 @@ function MonthAlternate({
     byDate.set(s.date, bucket);
   }
 
+  const hasAnyInView = cells.some((c) => c.inMonth && byDate.has(c.date));
+
   return (
     <section
       className="plan-month-grid"
@@ -1104,9 +1176,83 @@ function MonthAlternate({
       aria-label="Month view"
     >
       <div
+        className="plan-month-header"
+        data-testid="plan-month-header"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 12,
+          padding: "8px 12px",
+          borderBottom: "1px solid var(--cp-border)",
+        }}
+      >
+        <button
+          type="button"
+          data-testid="plan-month-prev"
+          aria-label="Previous month"
+          disabled={!canGoPrev}
+          onClick={() => setViewingMonth((d) => addMonthsUtc(d, -1))}
+          style={{
+            minWidth: 44,
+            minHeight: 44,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "transparent",
+            border: 0,
+            color: "var(--cp-accent)",
+            fontSize: 22,
+            lineHeight: 1,
+            cursor: canGoPrev ? "pointer" : "not-allowed",
+            opacity: canGoPrev ? 1 : 0.5,
+            borderRadius: 8,
+          }}
+        >
+          <span aria-hidden>‹</span>
+        </button>
+        <div
+          data-testid="plan-month-label"
+          aria-live="polite"
+          style={{
+            minWidth: 160,
+            textAlign: "center",
+            color: "var(--cp-text)",
+            fontWeight: 600,
+            fontSize: 15,
+          }}
+        >
+          {monthLabel}
+        </div>
+        <button
+          type="button"
+          data-testid="plan-month-next"
+          aria-label="Next month"
+          disabled={!canGoNext}
+          onClick={() => setViewingMonth((d) => addMonthsUtc(d, 1))}
+          style={{
+            minWidth: 44,
+            minHeight: 44,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "transparent",
+            border: 0,
+            color: "var(--cp-accent)",
+            fontSize: 22,
+            lineHeight: 1,
+            cursor: canGoNext ? "pointer" : "not-allowed",
+            opacity: canGoNext ? 1 : 0.5,
+            borderRadius: 8,
+          }}
+        >
+          <span aria-hidden>›</span>
+        </button>
+      </div>
+      <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(7, 1fr)",
+          gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
           borderBottom: "1px solid var(--cp-border)",
           fontFamily: "var(--cp-font-mono)",
           fontSize: 11,
@@ -1116,15 +1262,15 @@ function MonthAlternate({
         }}
       >
         {DOW_FULL.map((d) => (
-          <div key={d} style={{ padding: "10px 12px" }}>
+          <div key={d} style={{ padding: "10px 12px", minWidth: 0 }}>
             {d}
           </div>
         ))}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}>
         {cells.map((c, i) => {
           const items = byDate.get(c.date) ?? [];
-          const isToday = c.date === today;
+          const isToday = showTodayHighlight && c.date === today;
           const isPast = c.date < today;
           return (
             <div
@@ -1133,6 +1279,8 @@ function MonthAlternate({
               data-today={isToday ? "true" : undefined}
               style={{
                 minHeight: 80,
+                minWidth: 0,
+                overflow: "hidden",
                 padding: 6,
                 borderRight: (i + 1) % 7 === 0 ? "0" : "1px solid var(--cp-border)",
                 borderBottom: i >= 35 ? "0" : "1px solid var(--cp-border)",
@@ -1188,6 +1336,19 @@ function MonthAlternate({
           );
         })}
       </div>
+      {!hasAnyInView && (
+        <div
+          data-testid="plan-month-empty"
+          style={{
+            padding: "16px 20px",
+            textAlign: "center",
+            color: "var(--cp-text-muted)",
+            fontSize: 13,
+          }}
+        >
+          No sessions planned for this month
+        </div>
+      )}
     </section>
   );
 }
