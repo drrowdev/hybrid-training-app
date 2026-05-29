@@ -290,19 +290,21 @@ export function PlanRedesign(props: PlanRedesignProps) {
       if (e.key === "Escape") closeDrawer();
     };
     window.addEventListener("keydown", onKey);
-    // Native back gesture (PWA / Android browser): a popstate while a
-    // session hash is no longer present should close the drawer. The
-    // hashchange listener above already syncs openId, but listening to
-    // popstate explicitly lets us close cleanly on platforms that
-    // dispatch popstate without a hashchange.
-    const onPop = () => {
-      if (!window.location.hash.startsWith("#session=")) closeDrawer();
-    };
-    window.addEventListener("popstate", onPop);
+    // Body scroll lock while the drawer is open — full-screen mobile
+    // overlay must not let the page underneath scroll. Restore the
+    // user's original overflow value on close so we don't fight any
+    // other consumer that may have set it.
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     return () => {
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener("popstate", onPop);
+      document.body.style.overflow = prevOverflow;
     };
+    // popstate listener removed (review-202 #5): we open the drawer via
+    // `window.location.hash =` which fires hashchange, not popstate.
+    // The hashchange listener at the top of this effect's parent already
+    // closes the drawer on browser back. The popstate listener would
+    // never fire for hash-only navigation.
   }, [openId, closeDrawer]);
 
   // Sessions grouped by (week, day) so the grid + rail can lookup by
@@ -1411,8 +1413,11 @@ export async function runSwapMove(
 /**
  * Pure helper: should a swipe-down release dismiss the drawer?
  *
- * Dismiss when EITHER the finger travelled > 100 px downward OR the
- * fling velocity in the last 100 ms of movement exceeds 0.5 px/ms.
+ * Dismiss when EITHER the finger travelled strictly more than 100 px
+ * downward OR the fling velocity in the last 100 ms of movement is
+ * strictly greater than 0.5 px/ms. Exactly-100 / exactly-0.5 snap back
+ * — the threshold is exclusive so the rule reads cleanly as
+ * "needs to clearly exceed the line, not just touch it."
  * Exported so the threshold can be unit-tested without a real DOM.
  */
 export function shouldDismissSwipe(input: {
@@ -1666,18 +1671,20 @@ export function SessionDrawer({
         {/* Mobile drag handle — also serves as the swipe-down dismiss
             grip. Hidden on desktop via CSS. Pointer handlers cover the
             handle + header region so users can still scroll the body. */}
+        {/* Drag handle is a touch-only affordance. Keyboard users
+            close the drawer via Escape or the X button, so the handle
+            is hidden from assistive tech (aria-hidden) and removed
+            from the tab order rather than presented as a fake button. */}
         <div
           className="drawer-drag-handle"
           data-testid="plan-drawer-drag-handle"
-          role="button"
-          tabIndex={-1}
-          aria-label="Close session details"
+          aria-hidden="true"
           onPointerDown={onDragPointerDown}
           onPointerMove={onDragPointerMove}
           onPointerUp={finishDrag}
           onPointerCancel={finishDrag}
         >
-          <span className="grip" aria-hidden="true" />
+          <span className="grip" />
         </div>
         <header
           className="drawer-head"
@@ -1979,6 +1986,9 @@ export function SessionDrawer({
           @keyframes plan-drawer-slide-up {
             from { transform: translateY(100%); }
             to   { transform: translateY(0); }
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .plan-drawer { animation: none; }
           }
           .plan-drawer .drawer-head {
             position: sticky;

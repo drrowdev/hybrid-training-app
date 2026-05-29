@@ -307,7 +307,11 @@ describe("SessionDrawer — drag handle + sheet markup", () => {
     expect(html).toContain('role="dialog"');
     expect(html).toContain('aria-modal="true"');
     expect(html).toContain('data-testid="plan-drawer-drag-handle"');
-    expect(html).toContain('aria-label="Close session details"');
+    // Drag handle is touch-only — review-202 #3 removed role="button" /
+    // tabIndex and marked it aria-hidden so assistive tech doesn't
+    // present a fake button without a keyboard handler. Keyboard close
+    // path is Escape + the X button.
+    expect(html).toContain('aria-hidden="true"');
   });
 });
 
