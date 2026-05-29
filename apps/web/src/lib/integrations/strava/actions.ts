@@ -62,6 +62,34 @@ export async function syncStravaNow(): Promise<void> {
   redirect("/app/settings/strava");
 }
 
+/**
+ * Callable variant of syncStravaNow used by in-session banners — does
+ * not redirect, returns a JSON result so the banner can show inline
+ * errors. Revalidates the current session path the caller passes in.
+ */
+export async function syncStravaForSession(
+  sessionId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  try {
+    await syncStrava(supabase, user.id);
+  } catch (e) {
+    const message = (e as Error).message.slice(0, 500);
+    await supabase
+      .from("strava_connections")
+      .update({ last_sync_error: message })
+      .eq("user_id", user.id);
+    return { ok: false, error: message };
+  }
+  revalidatePath(`/app/sessions/${sessionId}`);
+  return { ok: true };
+}
+
 const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
 /**
