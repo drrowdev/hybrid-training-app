@@ -14,10 +14,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   listActivitiesSince,
   refreshAccessToken,
-  type StravaActivity,
 } from "./client";
-import { buildSyncRow } from "./sync-row";
-import { classifyAndLinkExternalCardio } from "./link-external-cardio";
+import { writeStravaActivity } from "./write-activity";
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
 import { getUserTimezone } from "@/lib/planner/queries";
 import { readZoneConfig } from "@/lib/stats/hr-zones";
@@ -89,77 +87,19 @@ export async function syncStrava(
   let skipped = 0;
   let lastActivityAt: string | null = null;
 
+  const userTimezone = await getUserTimezone(userId);
+
   for (const a of activities) {
     if (lastActivityAt == null || a.start_date > lastActivityAt) lastActivityAt = a.start_date;
-    const row = buildSyncRow(a, userId, { bands });
-    if (!row) {
-      skipped++;
-      continue;
-    }
-    // Insert session, skipping if the unique partial index would conflict.
-    const { data: inserted, error: insertErr } = await supabase
-      .from("sessions")
-      .insert(row.session)
-      .select("id")
-      .maybeSingle();
-    if (insertErr) {
-      // 23505 = unique_violation → already imported.
-      if (insertErr.code === "23505" || /duplicate key/i.test(insertErr.message)) {
-        skipped++;
-        continue;
-      }
-      throw new Error(insertErr.message);
-    }
-    if (!inserted) {
-      skipped++;
-      continue;
-    }
-    const { data: cardioInserted, error: cardioErr } = await supabase
-      .from("cardio_logs")
-      .insert({
-        session_id: inserted.id,
-        modality: row.cardio.modality,
-        duration_sec: row.cardio.duration_sec,
-        distance_km: row.cardio.distance_km,
-        avg_hr_bpm: row.cardio.avg_hr_bpm,
-        max_hr_bpm: row.cardio.max_hr_bpm,
-        rpe: row.cardio.rpe,
-        strava_activity_id: row.cardio.strava_activity_id,
-        external_source: row.cardio.external_source,
-        notes: row.cardio.notes,
-        hr_zones: row.cardio.hr_zones,
-      })
-      .select("id")
-      .maybeSingle();
-    if (cardioErr) {
-      // Try to roll back the orphan session row so re-sync can retry.
-      await supabase.from("sessions").delete().eq("id", inserted.id);
-      throw new Error(cardioErr.message);
-    }
-    imported++;
-
-    // Phase 2 — best-effort: classify HR + duration into a kind/ESL
-    // and link to a matching cardio_external planned session.
-    if (cardioInserted?.id) {
-      try {
-        await classifyAndLinkExternalCardio({
-          supabase,
-          userId,
-          sessionId: inserted.id,
-          cardioLog: {
-            id: cardioInserted.id,
-            avg_hr_bpm: row.cardio.avg_hr_bpm,
-            max_hr_bpm: row.cardio.max_hr_bpm,
-            duration_sec: row.cardio.duration_sec,
-          },
-          performedAt: row.session.performed_at,
-          userTimezone: await getUserTimezone(userId),
-        });
-      } catch (e) {
-        // Non-fatal: the cardio row is already persisted.
-        console.error("classifyAndLinkExternalCardio failed:", e);
-      }
-    }
+    const result = await writeStravaActivity({
+      supabase,
+      userId,
+      activity: a,
+      bands,
+      userTimezone,
+    });
+    if (result.status === "imported") imported++;
+    else skipped++;
   }
 
   // Update sync state — successful run, clear last_sync_error.
@@ -245,7 +185,7 @@ export async function syncStravaSingle(
       `Strava single-activity fetch failed (${res.status}): ${body.slice(0, 200)}`,
     );
   }
-  const activity = (await res.json()) as StravaActivity;
+  const activity = (await res.json()) as import("./client").StravaActivity;
 
   const { data: profileRow } = await supabase
     .from("profiles")
@@ -256,63 +196,16 @@ export async function syncStravaSingle(
     (profileRow?.intake as Record<string, unknown> | null) ?? null,
   );
 
-  const row = buildSyncRow(activity, userId, { bands });
-  if (!row) return { status: "skipped", reason: "unmappable" };
-
-  const { data: inserted, error: insertErr } = await supabase
-    .from("sessions")
-    .insert(row.session)
-    .select("id")
-    .maybeSingle();
-  if (insertErr) {
-    if (insertErr.code === "23505" || /duplicate key/i.test(insertErr.message)) {
-      return { status: "skipped", reason: "duplicate" };
-    }
-    throw new Error(insertErr.message);
-  }
-  if (!inserted) return { status: "skipped", reason: "no_row" };
-
-  const { data: cardioInserted, error: cardioErr } = await supabase
-    .from("cardio_logs")
-    .insert({
-      session_id: inserted.id,
-      modality: row.cardio.modality,
-      duration_sec: row.cardio.duration_sec,
-      distance_km: row.cardio.distance_km,
-      avg_hr_bpm: row.cardio.avg_hr_bpm,
-      max_hr_bpm: row.cardio.max_hr_bpm,
-      rpe: row.cardio.rpe,
-      strava_activity_id: row.cardio.strava_activity_id,
-      external_source: row.cardio.external_source,
-      notes: row.cardio.notes,
-      hr_zones: row.cardio.hr_zones,
-    })
-    .select("id")
-    .maybeSingle();
-  if (cardioErr) {
-    await supabase.from("sessions").delete().eq("id", inserted.id);
-    throw new Error(cardioErr.message);
-  }
-
-  if (cardioInserted?.id) {
-    try {
-      await classifyAndLinkExternalCardio({
-        supabase,
-        userId,
-        sessionId: inserted.id,
-        cardioLog: {
-          id: cardioInserted.id,
-          avg_hr_bpm: row.cardio.avg_hr_bpm,
-          max_hr_bpm: row.cardio.max_hr_bpm,
-          duration_sec: row.cardio.duration_sec,
-        },
-        performedAt: row.session.performed_at,
-        userTimezone: await getUserTimezone(userId),
-      });
-    } catch (e) {
-      console.error("classifyAndLinkExternalCardio failed:", e);
-    }
-  }
+  const userTimezone = await getUserTimezone(userId);
+  const result = await writeStravaActivity({
+    supabase,
+    userId,
+    activity,
+    bands,
+    userTimezone,
+  });
+  if (result.status === "skipped") return { status: "skipped", reason: result.reason };
+  if (result.status === "duplicate") return { status: "skipped", reason: "duplicate" };
 
   await supabase
     .from("strava_connections")
@@ -323,10 +216,10 @@ export async function syncStravaSingle(
     .eq("user_id", userId);
 
   try {
-    await recomputeRegionState(supabase, userId, await getUserTimezone(userId));
+    await recomputeRegionState(supabase, userId, userTimezone);
   } catch (e) {
     console.error("recomputeRegionState after single-activity sync failed:", e);
   }
 
-  return { status: "imported", sessionId: inserted.id };
+  return { status: "imported", sessionId: result.sessionId };
 }

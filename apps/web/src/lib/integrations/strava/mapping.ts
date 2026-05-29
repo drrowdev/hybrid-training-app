@@ -63,21 +63,30 @@ const MAP: Record<string, CardioRegionMap> = {
  * logged in our own ledger; importing them would double-count load.
  * "Workout" / "Crossfit" are too ambiguous to attribute regions to.
  */
-const SKIPPED = new Set([
+/**
+ * Strength-style entries we log in our own ledger. Importing these would
+ * double-count load.
+ */
+export const SKIPPED_STRENGTH = new Set([
   "WeightTraining",
   "Workout",
   "Crossfit",
   "Yoga",
   "Pilates",
   "RockClimbing",
+]);
+
+/**
+ * Sports we don't yet have a sensible cardio mapping for (no region
+ * model, intermittent intensity, etc.).
+ */
+export const SKIPPED_SPORT = new Set([
   "IceSkate",
   "InlineSkate",
   "Skateboard",
   "Surfing",
   "Kitesurf",
   "Windsurf",
-  "Sail",
-  "Golf",
   "Soccer",
   "Tennis",
   "Badminton",
@@ -85,10 +94,46 @@ const SKIPPED = new Set([
   "Squash",
   "TableTennis",
   "Racquetball",
+]);
+
+/**
+ * Everything else we intentionally skip — adaptive cycling, snow sports,
+ * leisure, etc. Tracked separately so the import summary can be honest
+ * about what we dropped.
+ */
+export const SKIPPED_OTHER = new Set([
+  "Sail",
+  "Golf",
   "Handcycle",
   "Wheelchair",
   "Snowboard",
 ]);
+
+const SKIPPED = new Set([
+  ...SKIPPED_STRENGTH,
+  ...SKIPPED_SPORT,
+  ...SKIPPED_OTHER,
+]);
+
+export type SkipCategory = "strength" | "sport" | "other" | "unknown";
+
+/**
+ * Categorize a Strava sport_type/type that `mapStravaActivity` returned
+ * null for. Returns one of strength/sport/other/unknown — the last
+ * bucket is for sport types we don't recognize at all (newer Strava
+ * activity types not yet covered by our allow or deny lists).
+ */
+export function categorizeSkip(
+  sportType: string | null | undefined,
+  type: string | null | undefined,
+): SkipCategory {
+  const candidate = sportType || type;
+  if (!candidate) return "unknown";
+  if (SKIPPED_STRENGTH.has(candidate)) return "strength";
+  if (SKIPPED_SPORT.has(candidate)) return "sport";
+  if (SKIPPED_OTHER.has(candidate)) return "other";
+  return "unknown";
+}
 
 /**
  * Modality → region mapping, used when a cardio_logs row has no
