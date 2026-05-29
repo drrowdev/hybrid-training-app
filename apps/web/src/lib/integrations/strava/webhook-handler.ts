@@ -121,11 +121,14 @@ export async function handleStravaWebhookEvent(
       .eq("object_id", event.object_id)
       .eq("aspect_type", event.aspect_type);
 
-  // Athlete-level deauthorize.
+  // Athlete-level deauthorize. Per Strava docs, `updates.authorized`
+  // arrives as the STRING "false" (not boolean). Accept boolean false
+  // too in case Strava ever normalises — review-210 #2.
   if (event.object_type === "athlete") {
     if (
       event.aspect_type === "update" &&
-      event.updates?.authorized === "false"
+      (event.updates?.authorized === "false" ||
+        event.updates?.authorized === false)
     ) {
       const { error: ue } = await supabase
         .from("strava_connections")
