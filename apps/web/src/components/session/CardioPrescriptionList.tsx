@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useState, useTransition } from "react";
-import type { Prescription, PrescriptionItem } from "@hta/db";
+import type { PrescriptionItem } from "@hta/db";
 import {
   isSwapped,
   originalMovementName,
@@ -32,6 +32,8 @@ import {
 } from "@/lib/sessions/cardio-swap";
 import type { CardioMachineType } from "@/lib/settings/equipment-schema";
 import type { swapPrescriptionItem } from "@/lib/sessions/actions";
+import { CardioCard } from "./CardioCard";
+import { makeShouldHideHeading } from "@/lib/session/heading-dedup";
 
 type SwapAction = typeof swapPrescriptionItem;
 
@@ -67,6 +69,7 @@ export function CardioPrescriptionList({
   swapAction,
   isReadOnly,
   markExternalCompleteAction,
+  pageTitle,
 }: {
   plannedSessionId: string | null;
   items: CardioListItem[];
@@ -81,6 +84,12 @@ export function CardioPrescriptionList({
    * the parent (e.g. session-detail page) can wire it incrementally.
    */
   markExternalCompleteAction?: (fd: FormData) => Promise<{ ok?: true; error?: string }>;
+  /**
+   * Page title (e.g. `sessions.title`). When a row's heading
+   * (movementName) would just repeat this title, the structured cardio
+   * card hides its own heading via the shared `heading-dedup` helper.
+   */
+  pageTitle?: string | null;
 }) {
   const [overrides, setOverrides] = useState<Record<number, PrescriptionItem>>(
     {},
@@ -91,6 +100,8 @@ export function CardioPrescriptionList({
   const onSwap = (itemIndex: number, next: PrescriptionItem) => {
     setOverrides((prev) => ({ ...prev, [itemIndex]: next }));
   };
+
+  const shouldHideHeading = makeShouldHideHeading(pageTitle);
 
   return (
     <ul
@@ -127,6 +138,9 @@ export function CardioPrescriptionList({
             ownedCardio={ownedCardio}
             swapAction={swapAction}
             isReadOnly={isReadOnly ?? false}
+            hideHeading={shouldHideHeading(
+              live.movementName ?? live.movementSlug ?? "Cardio",
+            )}
             onSwap={(next) => onSwap(itemIndex, next)}
           />
         );
@@ -307,6 +321,7 @@ function CardioPrescriptionRow({
   ownedCardio,
   swapAction,
   isReadOnly,
+  hideHeading,
   onSwap,
 }: {
   plannedSessionId: string | null;
@@ -315,6 +330,7 @@ function CardioPrescriptionRow({
   ownedCardio: readonly CardioMachineType[];
   swapAction: SwapAction;
   isReadOnly: boolean;
+  hideHeading: boolean;
   onSwap: (next: PrescriptionItem) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -371,67 +387,58 @@ function CardioPrescriptionRow({
       data-testid={`cardio-prescription-item-${itemIndex}`}
       data-swapped={swapped ? "true" : "false"}
       style={{
-        padding: "10px 12px",
-        border: `1px solid ${error ? "var(--cp-danger)" : "var(--cp-border)"}`,
-        borderRadius: 8,
-        background: "color-mix(in oklab, var(--cp-accent) 6%, transparent)",
-        fontSize: 13,
+        listStyle: "none",
+        padding: 0,
+        margin: 0,
         display: "grid",
-        gap: 6,
+        gap: 8,
       }}
     >
+      <CardioCard
+        item={item}
+        hideHeading={hideHeading}
+        testId={`cardio-prescription-card-${itemIndex}`}
+        rowTestIdPrefix={`cardio-prescription-card-${itemIndex}`}
+      />
       <div
         style={{
           display: "flex",
-          justifyContent: "space-between",
-          gap: 12,
-          alignItems: "baseline",
+          gap: 10,
+          alignItems: "center",
+          flexWrap: "wrap",
+          fontSize: 12,
+          color: "var(--cp-text-muted)",
         }}
       >
-        <span style={{ fontWeight: 600 }}>
-          {item.movementName ?? item.movementSlug ?? item.intensityLabel ?? "Cardio"}
-        </span>
-        <span style={{ display: "inline-flex", gap: 8, alignItems: "baseline" }}>
-          {item.intensityLabel && (
-            <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-              {item.intensityLabel}
-            </span>
-          )}
-          {canSwap && (
-            <button
-              type="button"
-              onClick={() => setOpen((o) => !o)}
-              data-testid={`cardio-prescription-swap-button-${itemIndex}`}
-              aria-expanded={open}
-              style={{
-                fontSize: 11,
-                padding: "4px 8px",
-                borderRadius: 999,
-                border: "1px solid var(--cp-border)",
-                background: "var(--cp-surface)",
-                color: "var(--cp-text-muted)",
-                cursor: "pointer",
-                minHeight: 28,
-              }}
-            >
-              {open ? "× cancel" : "Swap"}
-            </button>
-          )}
-        </span>
+        {swapped && origName && (
+          <span
+            data-testid={`cardio-prescription-swapped-from-${itemIndex}`}
+          >
+            previously: {origName}
+          </span>
+        )}
+        <span style={{ flex: "1 0 0" }} />
+        {canSwap && (
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            data-testid={`cardio-prescription-swap-button-${itemIndex}`}
+            aria-expanded={open}
+            style={{
+              fontSize: 12,
+              padding: "8px 12px",
+              borderRadius: 999,
+              border: "1px solid var(--cp-border)",
+              background: "var(--cp-surface)",
+              color: "var(--cp-text-muted)",
+              cursor: "pointer",
+              minHeight: 36,
+            }}
+          >
+            {open ? "× cancel" : "Swap"}
+          </button>
+        )}
       </div>
-      <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-        {item.durationMin != null ? `${item.durationMin} min` : null}
-        {item.hrCap ? ` · ${item.hrCap}` : ""}
-        {item.protocolNote ? ` · ${item.protocolNote}` : ""}
-      </div>
-      {swapped && origName && (
-        <div
-          data-testid={`cardio-prescription-swapped-from-${itemIndex}`}
-          style={{ fontSize: 11, color: "var(--cp-text-muted)" }}
-        >
-          previously: {origName}
-        </div>
-      )}
       {error && (
         <div role="alert" style={{ fontSize: 12, color: "var(--cp-danger)" }}>
           {error}
