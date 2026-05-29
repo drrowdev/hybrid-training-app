@@ -989,12 +989,11 @@ export const CONCURRENT_HYBRID: Archetype = {
   days: [
     // ADR 0004 — bench (dayIndex 1) and OHP (dayIndex 4) drop from
     // anchor to optional so the freq=2 trim collapses to the two
-    // hardest-to-redistribute compounds (squat + deadlift). Cardio
-    // days are also demoted from anchor to optional with ranks
-    // ordered so cardio Z2 (5) comes back first, then VO2 (6), then
-    // upper-body mains (7/8). The archetype identity is preserved at
-    // freq>=4 (the four main lifts + two cardio sessions of the
-    // oneLiner all fit by freq=6).
+    // hardest-to-redistribute compounds (squat + deadlift). The Z2
+    // cardio day stays as an anchor — concurrent + balanced is the
+    // archetype's identity, so freq=2 must still ship at least one
+    // aerobic exposure. VO2 stays optional and folds in at freq>=4.
+    // At freq=6 the four main lifts + both cardio sessions all fit.
     STRENGTH_DAYS[0]!, // squat — anchor, rank 1
     { ...STRENGTH_DAYS[1]!, priority: "optional", rank: 7 }, // bench
     STRENGTH_DAYS[2]!, // deadlift — anchor, rank 3
@@ -1008,8 +1007,8 @@ export const CONCURRENT_HYBRID: Archetype = {
       cardioKind: "cardio_z2",
       durationMin: 60,
       hrCap: "≤ 70% HRR, conversational",
-      priority: "optional",
-      rank: 5,
+      priority: "anchor",
+      rank: 2,
     },
     {
       kind: "cardio",

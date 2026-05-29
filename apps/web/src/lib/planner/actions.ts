@@ -1140,9 +1140,12 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
     if (chosen) resolved.set(daySlotKey(day), chosen);
     else missingRoles.push(STRENGTH_ROLE_LABELS[day.role]);
 
-    // ADR 0004 — dual-main-lift secondary resolution. Opt-in via TM;
-    // if no TM is set on any secondary candidate, the day is emitted
-    // as a single-main-lift session rather than failing.
+    // ADR 0004 — dual-main-lift secondary resolution. Secondary slot
+    // is required (not opt-in): if the day declares a secondaryRole,
+    // a TM-backed secondary movement MUST resolve or the user gets
+    // the same actionable error as a missing primary TM. Otherwise
+    // the user silently loses the entire upper-body maintenance dose
+    // that is the whole point of ADR 0004.
     if (day.secondaryCandidateSlugs && day.secondaryCandidateSlugs.length > 0) {
       const secondary = pickSecondaryStrengthMovement({
         candidateSlugs: day.secondaryCandidateSlugs,
@@ -1150,7 +1153,11 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
         tmMovementIds: new Set(tmByMovementId.keys()),
         tier: userTier,
       });
-      if (secondary) resolvedSecondary.set(daySlotKey(day), secondary);
+      if (secondary) {
+        resolvedSecondary.set(daySlotKey(day), secondary);
+      } else if (day.secondaryRole) {
+        missingRoles.push(STRENGTH_ROLE_LABELS[day.secondaryRole]);
+      }
     }
   }
 
@@ -1567,6 +1574,7 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
     else missingRoles.push(STRENGTH_ROLE_LABELS[day.role]);
 
     // ADR 0004 — dual-main-lift secondary resolution (custom block path).
+    // See createBlock for rationale: secondary is required, not opt-in.
     if (day.secondaryCandidateSlugs && day.secondaryCandidateSlugs.length > 0) {
       const secondary = pickSecondaryStrengthMovement({
         candidateSlugs: day.secondaryCandidateSlugs,
@@ -1574,7 +1582,11 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
         tmMovementIds,
         tier: customTier,
       });
-      if (secondary) resolvedSecondary.set(daySlotKey(day), secondary);
+      if (secondary) {
+        resolvedSecondary.set(daySlotKey(day), secondary);
+      } else if (day.secondaryRole) {
+        missingRoles.push(STRENGTH_ROLE_LABELS[day.secondaryRole]);
+      }
     }
   }
   if (missingRoles.length > 0) {
