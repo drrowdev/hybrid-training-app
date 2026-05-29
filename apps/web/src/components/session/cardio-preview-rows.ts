@@ -1,0 +1,82 @@
+/**
+ * Pure helper that turns a cardio `PrescriptionItem` into an ordered
+ * list of labeled rows (Duration / Intervals / Intensity / Recovery /
+ * Protocol) for the read-only Session Preview card.
+ *
+ * Parsing limitation: `protocolNote` is free-text and varies by
+ * archetype (e.g. "4 × 4 min @ 90–95% HRmax, 3 min easy recovery" vs
+ * "6–10 × 10–15s near-max hill sprints, walk back down for recovery
+ * (~90–120s)"). We pattern-match common shapes (sets × duration, "@
+ * intensity", "recovery"/"easy spin"/"walk back") to produce labeled
+ * rows. Anything we can't recognise is grouped under a generic
+ * "Protocol" row rather than being dropped — the goal is "always more
+ * readable than the original single-line mash", not perfect parsing.
+ */
+import type { PrescriptionItem } from "@hta/db";
+
+export type CardioRow = { label: string; value: string };
+
+export function cardioPreviewRows(item: PrescriptionItem): CardioRow[] {
+  const rows: CardioRow[] = [];
+
+  if (item.durationMin != null) {
+    rows.push({ label: "Duration", value: `${item.durationMin} min` });
+  }
+
+  const note = item.protocolNote?.trim();
+  let intensityFromNote = false;
+
+  if (note) {
+    const segments = note.split(/,\s*/).map((s) => s.trim()).filter(Boolean);
+    const remaining: string[] = [];
+    let consumedIntervals = false;
+    let consumedRecovery = false;
+
+    for (const seg of segments) {
+      // Recovery / easy spin / walk-back patterns.
+      if (
+        !consumedRecovery &&
+        /\brecovery\b|easy spin|walk[- ]back/i.test(seg)
+      ) {
+        rows.push({
+          label: "Recovery",
+          value: seg.replace(/^with\s+/i, "").replace(/\s+between intervals$/i, ""),
+        });
+        consumedRecovery = true;
+        continue;
+      }
+
+      // First segment with "N × M unit @ intensity" → split into
+      // Intervals + Intensity rows.
+      const at = seg.match(/^(.+?)\s*@\s*(.+)$/);
+      if (!consumedIntervals && at && /[×x]/.test(at[1]!)) {
+        rows.push({ label: "Intervals", value: at[1]!.trim() });
+        rows.push({ label: "Intensity", value: at[2]!.trim() });
+        intensityFromNote = true;
+        consumedIntervals = true;
+        continue;
+      }
+
+      if (!consumedIntervals && /[×x]/.test(seg)) {
+        rows.push({ label: "Intervals", value: seg });
+        consumedIntervals = true;
+        continue;
+      }
+
+      remaining.push(seg);
+    }
+
+    if (remaining.length > 0) {
+      rows.push({ label: "Protocol", value: remaining.join(", ") });
+    }
+  }
+
+  if (item.hrCap) {
+    rows.push({
+      label: intensityFromNote ? "HR cap" : "Intensity",
+      value: item.hrCap,
+    });
+  }
+
+  return rows;
+}
