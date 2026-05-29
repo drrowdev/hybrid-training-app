@@ -242,3 +242,95 @@ describe("PlanRedesign — this week rail", () => {
     expect(html).toContain(">Cardio<");
   });
 });
+
+
+describe("PlanRedesign — mobile (<=768px) collapses to This-week rail only", () => {
+  it("emits @media (max-width: 768px) rules that hide .plan-view-toggle and .plan-main", () => {
+    const html = render();
+    // styled-jsx inlines the CSS into the SSR markup. Assert the mobile
+    // rules are present and target the toggle + main containers so the
+    // rail card is the only visible plan surface on a phone.
+    expect(html).toMatch(/@media\s*\(\s*max-width:\s*768px\s*\)[\s\S]*?\.plan-view-toggle\s*\{\s*display:\s*none/);
+    expect(html).toMatch(/@media\s*\(\s*max-width:\s*768px\s*\)[\s\S]*?\.plan-main\s*\{\s*display:\s*none/);
+  });
+
+  it("still renders the This-week rail (the only mobile surface) and its 7 day slots", () => {
+    const html = render();
+    expect(html).toContain('data-testid="plan-this-week"');
+    for (let d = 0; d < 7; d++) {
+      expect(html).toContain(`data-testid="plan-rail-${d}"`);
+    }
+  });
+});
+
+
+describe("PlanRedesign — mobile drawer (full-screen sheet, swipe-down dismiss)", () => {
+  it("ships the @media (max-width:768px) sheet rules + slide-up keyframe via SessionDrawer's style block", async () => {
+    const { SessionDrawer } = await import("./PlanRedesign");
+    const html = renderToStaticMarkup(
+      <SessionDrawer
+        session={session()}
+        today="2026-05-26"
+        weeks={4}
+        logHrefBase="/app/sessions/start"
+        onClose={() => {}}
+        moveAction={noop}
+        skipAction={noop}
+        unskipAction={noop}
+        updateNotesAction={async () => ({ ok: true as const })}
+        startSessionAction={noop}
+      />,
+    );
+    expect(html).toMatch(/@media\s*\(\s*max-width:\s*768px\s*\)[\s\S]*?\.plan-drawer\s*\{[\s\S]*?inset:\s*0/);
+    expect(html).toContain("@keyframes plan-drawer-slide-up");
+    expect(html).toMatch(/@media\s*\(\s*max-width:\s*768px\s*\)[\s\S]*?\.drawer-drag-handle\s*\{[\s\S]*?display:\s*flex/);
+  });
+});
+
+describe("SessionDrawer — drag handle + sheet markup", () => {
+  it("renders a drag handle with the close-affordance aria-label and dialog role", async () => {
+    const { SessionDrawer } = await import("./PlanRedesign");
+    const html = renderToStaticMarkup(
+      <SessionDrawer
+        session={session()}
+        today="2026-05-26"
+        weeks={4}
+        logHrefBase="/app/sessions/start"
+        onClose={() => {}}
+        moveAction={noop}
+        skipAction={noop}
+        unskipAction={noop}
+        updateNotesAction={async () => ({ ok: true as const })}
+        startSessionAction={noop}
+      />,
+    );
+    expect(html).toContain('role="dialog"');
+    expect(html).toContain('aria-modal="true"');
+    expect(html).toContain('data-testid="plan-drawer-drag-handle"');
+    // Drag handle is touch-only — review-202 #3 removed role="button" /
+    // tabIndex and marked it aria-hidden so assistive tech doesn't
+    // present a fake button without a keyboard handler. Keyboard close
+    // path is Escape + the X button.
+    expect(html).toContain('aria-hidden="true"');
+  });
+});
+
+describe("shouldDismissSwipe — pointer-release threshold", () => {
+  it("dismisses on a long downward pull (>100px)", async () => {
+    const { shouldDismissSwipe } = await import("./PlanRedesign");
+    expect(shouldDismissSwipe({ finalDy: 150, velocity: 0 })).toBe(true);
+    expect(shouldDismissSwipe({ finalDy: 101, velocity: 0 })).toBe(true);
+  });
+
+  it("dismisses on a fast fling (>0.5 px/ms) even with short distance", async () => {
+    const { shouldDismissSwipe } = await import("./PlanRedesign");
+    expect(shouldDismissSwipe({ finalDy: 40, velocity: 0.8 })).toBe(true);
+  });
+
+  it("snaps back when neither threshold is met", async () => {
+    const { shouldDismissSwipe } = await import("./PlanRedesign");
+    expect(shouldDismissSwipe({ finalDy: 50, velocity: 0.2 })).toBe(false);
+    expect(shouldDismissSwipe({ finalDy: 100, velocity: 0.5 })).toBe(false);
+    expect(shouldDismissSwipe({ finalDy: 0, velocity: 0 })).toBe(false);
+  });
+});
