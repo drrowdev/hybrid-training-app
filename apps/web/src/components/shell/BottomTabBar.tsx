@@ -4,8 +4,8 @@
  * BottomTabBar — mobile-only fixed bottom navigation.
  *
  * Four equal-width tabs (Today / Plan / Stats / More). The "More" tab
- * points at /app/profile, which surfaces the same destinations that the
- * desktop avatar dropdown does.
+ * points at /app/settings, the card-grid hub that mirrors the desktop
+ * avatar dropdown.
  *
  * Hidden ≥ 769 px via a CSS media query — the TopNav's centred tabs
  * handle desktop. Rendering always happens (SSR-friendly) so the MORE
@@ -123,13 +123,13 @@ const TABS: Tab[] = [
     match: (p) => p.startsWith("/app/stats") || p.startsWith("/app/freshness"),
   },
   {
-    href: "/app/profile",
+    href: "/app/settings",
     label: "More",
     testid: "bottomtab-more",
     icon: <IconMore />,
     match: (p) =>
-      p.startsWith("/app/profile") ||
       p.startsWith("/app/settings") ||
+      p.startsWith("/app/profile") ||
       p.startsWith("/app/recovery") ||
       p.startsWith("/app/races"),
   },
