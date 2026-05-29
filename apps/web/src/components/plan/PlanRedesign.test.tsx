@@ -95,10 +95,63 @@ describe("PlanRedesign — header", () => {
     expect(html).toContain("Block 1 of 3");
   });
 
+  it("does NOT render the research-citation info icon on the eyebrow", () => {
+    const html = render();
+    expect(html).not.toContain("ⓘ");
+    expect(html).not.toContain("plan-eyebrow-info");
+    expect(html).not.toContain("plan-eyebrow-blocks");
+  });
+
   it("renders the block date range and progress meta", () => {
     const html = render();
     expect(html).toContain("Week 1 of 4");
     expect(html).toContain("of 3 sessions");
+  });
+
+  it("renders an overdue segment in the meta line when there are overdue rows", () => {
+    // Default fixture today = 2026-05-26. Add a past-incomplete row so
+    // the count is non-zero.
+    const overdueRow = session({
+      id: "s-overdue-meta",
+      weekIndex: 0,
+      dayIndex: 0,
+      date: "2026-05-24",
+      title: "Missed",
+      done: false,
+      skipped: false,
+    });
+    const html = render({ sessions: [overdueRow] });
+    expect(html).toContain('data-testid="plan-meta-overdue"');
+    expect(html).toMatch(/>1<\/b>\s*overdue/);
+  });
+
+  it("does NOT render an overdue segment when overdueCount === 0", () => {
+    // Default fixture: s3 is done, s1 and s2 are today/future — nothing
+    // overdue.
+    const html = render();
+    expect(html).not.toContain('data-testid="plan-meta-overdue"');
+    // The meta segment text node is "<b>N</b> overdue" — make sure no
+    // such literal appears outside CSS / pill testids.
+    expect(html).not.toMatch(/<\/b>\s*overdue/);
+  });
+
+  it("excludes skipped past rows from the overdue count (skip wins)", () => {
+    const skippedPast = session({
+      id: "s-skipped-past",
+      weekIndex: 0,
+      dayIndex: 0,
+      date: "2026-05-24",
+      title: "Skipped",
+      skipped: true,
+    });
+    const html = render({ sessions: [skippedPast] });
+    expect(html).not.toContain('data-testid="plan-meta-overdue"');
+  });
+
+  it("uses plan-nav-link for the View history link", () => {
+    const html = render();
+    expect(html).toContain('class="plan-nav-link"');
+    expect(html).toContain("View history →");
   });
 });
 
