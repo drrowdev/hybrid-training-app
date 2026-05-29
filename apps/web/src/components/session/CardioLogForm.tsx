@@ -102,45 +102,61 @@ export function CardioLogForm({
       onSubmit={onSubmit}
       className="cp-card"
       style={{
-        padding: 18,
+        padding: 14,
         display: "grid",
-        gap: 16,
+        gap: 12,
         marginInline: -16,
       }}
     >
-      <div style={{ display: "grid", gap: 4 }}>
-        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+      >
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>
           Log your cardio
         </h3>
-        <p
+        {/* Fix 5 — completion defaults to "yes". The skip path is the
+            edge case (most cardio gets done), so the big yes/no radio
+            block becomes a tiny inline link. */}
+        <button
+          type="button"
+          onClick={() => setCompleted((c) => !c)}
+          data-testid="cardio-log-toggle-skip"
+          data-skipped={!completed ? "true" : "false"}
+          aria-pressed={!completed}
           style={{
-            margin: 0,
-            fontSize: 13,
-            color: "var(--cp-text-muted)",
-            lineHeight: 1.5,
-          }}
-        >
-          A few quick details and we&apos;ll wrap up the session.
-        </p>
-      </div>
-
-      <fieldset
-        data-testid="cardio-log-completed-fieldset"
-        style={{ border: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}
-      >
-        <legend
-          style={{
-            fontSize: 12,
-            color: "var(--cp-text-muted)",
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            fontWeight: 600,
+            background: "transparent",
+            border: "none",
             padding: 0,
+            fontSize: 12,
+            color: completed ? "var(--cp-text-muted)" : "var(--cp-danger)",
+            textDecoration: "underline",
+            cursor: "pointer",
           }}
         >
-          Did you complete it?
-        </legend>
-        <div style={{ display: "flex", gap: 8 }}>
+          {completed ? "Skip instead" : "Undo skip"}
+        </button>
+        {/* Keep the radio inputs for form-state introspection and
+            existing data-testids. They're visually hidden but still
+            in the DOM so tests + accessibility tools can read state. */}
+        <fieldset
+          data-testid="cardio-log-completed-fieldset"
+          style={{
+            position: "absolute",
+            width: 1,
+            height: 1,
+            overflow: "hidden",
+            clip: "rect(0 0 0 0)",
+            border: 0,
+            padding: 0,
+            margin: 0,
+          }}
+        >
+          <legend>Did you complete it?</legend>
           {(["yes", "no"] as const).map((choice) => {
             const isOn =
               (choice === "yes" && completed) ||
@@ -150,26 +166,6 @@ export function CardioLogForm({
                 key={choice}
                 data-testid={`cardio-log-completed-${choice}`}
                 data-on={isOn ? "true" : "false"}
-                style={{
-                  flex: 1,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  minHeight: 44,
-                  padding: "0 12px",
-                  borderRadius: 10,
-                  border: `1px solid ${
-                    isOn ? "var(--cp-accent)" : "var(--cp-border)"
-                  }`,
-                  background: isOn
-                    ? "color-mix(in oklab, var(--cp-accent) 10%, transparent)"
-                    : "var(--cp-surface)",
-                  color: isOn ? "var(--cp-text)" : "var(--cp-text-muted)",
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  userSelect: "none",
-                }}
               >
                 <input
                   type="radio"
@@ -177,63 +173,81 @@ export function CardioLogForm({
                   value={choice}
                   checked={isOn}
                   onChange={() => setCompleted(choice === "yes")}
-                  style={{ position: "absolute", opacity: 0, pointerEvents: "none" }}
                 />
                 {choice === "yes" ? "Yes, completed" : "No, skipped"}
               </label>
             );
           })}
-        </div>
-      </fieldset>
+        </fieldset>
+      </div>
 
-      <label style={fieldStackStyle}>
-        <span style={labelStyle}>Actual duration (min)</span>
-        <input
-          type="number"
-          inputMode="numeric"
-          min={1}
-          max={600}
-          required
-          value={duration}
-          onChange={(e) => setDuration(e.target.value)}
-          data-testid="cardio-log-duration"
-          style={inputStyle}
-        />
-      </label>
+      {/* Fix 5 — Duration + RPE on one row at desktop width, stacked
+          below 480px. Uses an inline media query via a tiny <style>
+          block so we don't need a new CSS module just for this form. */}
+      <style>{`
+        .cardio-log-duration-rpe-row {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+        @media (max-width: 479px) {
+          .cardio-log-duration-rpe-row { grid-template-columns: 1fr; }
+        }
+      `}</style>
+      <div
+        className="cardio-log-duration-rpe-row"
+        data-testid="cardio-log-duration-rpe-row"
+      >
+        <label style={fieldStackStyle}>
+          <span style={labelStyle}>Duration (min)</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={600}
+            required
+            value={duration}
+            onChange={(e) => setDuration(e.target.value)}
+            data-testid="cardio-log-duration"
+            style={inputStyle}
+          />
+        </label>
 
-      <label style={fieldStackStyle}>
-        <span style={labelStyle}>Average RPE (0–10, optional)</span>
-        <input
-          type="number"
-          inputMode="decimal"
-          min={0}
-          max={10}
-          step={0.5}
-          value={rpe}
-          onChange={(e) => setRpe(e.target.value)}
-          data-testid="cardio-log-rpe"
-          style={inputStyle}
-        />
-      </label>
+        <label style={fieldStackStyle}>
+          <span style={labelStyle}>RPE (0–10)</span>
+          <input
+            type="number"
+            inputMode="decimal"
+            min={0}
+            max={10}
+            step={0.5}
+            value={rpe}
+            onChange={(e) => setRpe(e.target.value)}
+            data-testid="cardio-log-rpe"
+            style={inputStyle}
+          />
+        </label>
+      </div>
 
       <label style={fieldStackStyle}>
         <span style={labelStyle}>Notes (optional)</span>
         <textarea
-          rows={2}
+          rows={3}
           maxLength={400}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           data-testid="cardio-log-notes"
-          style={{ ...inputStyle, resize: "vertical", minHeight: 60 }}
+          style={{ ...inputStyle, resize: "vertical", minHeight: 64, padding: "8px 12px" }}
         />
       </label>
 
       <details
+        data-testid="cardio-log-more-details"
         open={showMore}
         onToggle={(e) =>
           setShowMore((e.target as HTMLDetailsElement).open)
         }
-        style={{ display: "grid", gap: 12 }}
+        style={{ display: "grid", gap: 10 }}
       >
         <summary
           style={{
@@ -241,7 +255,7 @@ export function CardioLogForm({
             fontSize: 13,
             color: "var(--cp-text-muted)",
             userSelect: "none",
-            padding: "6px 0",
+            padding: "4px 0",
           }}
         >
           {showMore ? "Hide details" : "+ More details (HR, distance)"}
@@ -298,7 +312,7 @@ export function CardioLogForm({
         data-testid="cardio-log-submit"
         className="cp-btn primary big"
         style={{
-          minHeight: 56,
+          minHeight: 52,
           textAlign: "center",
           justifyContent: "center",
           opacity: pending ? 0.7 : 1,

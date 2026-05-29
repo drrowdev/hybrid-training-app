@@ -109,4 +109,77 @@ describe("CardioCard", () => {
     expect(html).not.toMatch(/<span[^>]*>\s*VO2\s*<\/span>/);
     expect(html).not.toMatch(/<div[^>]*>\s*VO2\s*<\/div>/);
   });
+
+  it("renders the educational description as a plain block (not a collapsible details) — Fix 2", () => {
+    const html = renderToStaticMarkup(
+      <CardioCard item={vo2()} testId="card" rowTestIdPrefix="card" />,
+    );
+    // No <details>/<summary> wrapper around the description — the
+    // description is now always-visible, distinct from the structured
+    // key/value rows below.
+    expect(html).toContain('data-testid="card-description"');
+    expect(html).toContain("How to do it");
+    expect(html).not.toMatch(
+      /<details[^>]*data-testid="card-description"/,
+    );
+    expect(html).not.toMatch(/<summary[^>]*>\s*How to do it\s*<\/summary>/);
+    // The description block sits ABOVE the structured rows.
+    const descIdx = html.indexOf('data-testid="card-description"');
+    const intervalsIdx = html.indexOf('data-testid="card-row-intervals"');
+    expect(descIdx).toBeGreaterThan(-1);
+    expect(intervalsIdx).toBeGreaterThan(-1);
+    expect(descIdx).toBeLessThan(intervalsIdx);
+  });
+
+  it("renders the modality chip in the header when modalityLabel is provided — Fix 4", () => {
+    const html = renderToStaticMarkup(
+      <CardioCard
+        item={vo2()}
+        modalityLabel="Run"
+        testId="card"
+        rowTestIdPrefix="card"
+      />,
+    );
+    expect(html).toContain('data-testid="card-modality"');
+    expect(html).toContain('data-modality="run"');
+    expect(html).toMatch(/>\s*Run\s*</);
+  });
+
+  it("renders headerActions inline with the heading + modality chip — Fix 4", () => {
+    const html = renderToStaticMarkup(
+      <CardioCard
+        item={vo2()}
+        modalityLabel="Bike"
+        headerActions={
+          <button type="button" data-testid="my-swap-button">
+            Swap
+          </button>
+        }
+        testId="card"
+        rowTestIdPrefix="card"
+      />,
+    );
+    expect(html).toContain('data-testid="my-swap-button"');
+    // Order: heading → modality chip → headerActions, all in the same
+    // header row that appears before the description block.
+    const headingIdx = html.indexOf("VO2 Intervals");
+    const modalityIdx = html.indexOf('data-testid="card-modality"');
+    const swapIdx = html.indexOf('data-testid="my-swap-button"');
+    const descIdx = html.indexOf('data-testid="card-description"');
+    expect(headingIdx).toBeLessThan(modalityIdx);
+    expect(modalityIdx).toBeLessThan(swapIdx);
+    expect(swapIdx).toBeLessThan(descIdx);
+  });
+
+  it("omits the modality chip when modalityLabel is null / empty — Fix 4", () => {
+    const html = renderToStaticMarkup(
+      <CardioCard
+        item={vo2()}
+        modalityLabel={null}
+        testId="card"
+        rowTestIdPrefix="card"
+      />,
+    );
+    expect(html).not.toContain('data-testid="card-modality"');
+  });
 });

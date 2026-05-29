@@ -61,6 +61,7 @@ export function SessionWorkArea({
   plateInventory,
   bwGateStateByFamily,
   resolvedFreestyle,
+  hideAddOffPlan,
 }: {
   sessionId: string;
   isComplete: boolean;
@@ -104,6 +105,14 @@ export function SessionWorkArea({
    * correct but loses anything the user added without logging a set.
    */
   resolvedFreestyle?: ReadonlyArray<ResolvedFreestyleMovement>;
+  /**
+   * Forwarded to `MovementCardList.hideAddOffPlan` — when true the
+   * inline "+ Add off-plan movement" button at the bottom of the card
+   * list is suppressed. The page sets this on pure-cardio sessions so
+   * the +Add button can be rendered AFTER the cardio block instead
+   * (Fix 3 of the active-session UX overhaul).
+   */
+  hideAddOffPlan?: boolean;
 }) {
   // The card-list layout doesn't currently surface `lastSetHints`,
   // `plannedSessionId`, or the page-level swap server action — they're
@@ -151,6 +160,7 @@ export function SessionWorkArea({
         plateInventory={plateInventory}
         bwGateStateByFamily={bwGateStateByFamily}
         resolvedFreestyle={resolvedFreestyle}
+        hideAddOffPlan={hideAddOffPlan}
       />
     </>
   );

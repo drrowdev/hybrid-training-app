@@ -77,6 +77,15 @@ export type MovementCardListProps = {
    * live in this component.
    */
   resolvedFreestyle?: ReadonlyArray<ResolvedFreestyleMovement>;
+  /**
+   * Suppress the inline "+ Add off-plan movement" button + picker at
+   * the bottom of the card list. The session page sets this on
+   * pure-cardio sessions so the +Add button can be rendered AFTER the
+   * cardio block instead of appearing as the first interactive thing
+   * on an otherwise-empty strength surface (Fix 3 of the
+   * active-session UX overhaul).
+   */
+  hideAddOffPlan?: boolean;
 };
 
 export function MovementCardList({
@@ -99,6 +108,7 @@ export function MovementCardList({
   plateInventory,
   bwGateStateByFamily,
   resolvedFreestyle,
+  hideAddOffPlan,
 }: MovementCardListProps) {
   const groups = useMemo(
     () => groupPrescriptionByMovement(prescription),
@@ -342,7 +352,7 @@ export function MovementCardList({
         />
       ))}
 
-      {!isComplete && (
+      {!isComplete && !hideAddOffPlan && (
         <div
           style={{
             display: "grid",
