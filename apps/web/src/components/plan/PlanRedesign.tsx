@@ -795,6 +795,20 @@ export function PlanRedesign(props: PlanRedesignProps) {
             align-items: stretch;
           }
         }
+        /* Mobile (<768px): collapse the dense Timeline + Month surfaces
+           and show ONLY the "This week" rail card, full-width. The
+           Timeline/Month view toggle disappears too — mobile users get
+           the current week, full stop. Desktop layout is untouched. */
+        @media (max-width: 768px) {
+          .plan-view-toggle { display: none; }
+          .plan-main { display: none; }
+          .plan-rail {
+            padding: 16px;
+          }
+          .plan-rail h3 {
+            font-size: 12px;
+          }
+        }
         .plan-main {
           display: flex;
           flex-direction: column;

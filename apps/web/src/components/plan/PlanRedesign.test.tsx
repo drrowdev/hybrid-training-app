@@ -242,3 +242,23 @@ describe("PlanRedesign — this week rail", () => {
     expect(html).toContain(">Cardio<");
   });
 });
+
+
+describe("PlanRedesign — mobile (<=768px) collapses to This-week rail only", () => {
+  it("emits @media (max-width: 768px) rules that hide .plan-view-toggle and .plan-main", () => {
+    const html = render();
+    // styled-jsx inlines the CSS into the SSR markup. Assert the mobile
+    // rules are present and target the toggle + main containers so the
+    // rail card is the only visible plan surface on a phone.
+    expect(html).toMatch(/@media\s*\(\s*max-width:\s*768px\s*\)[\s\S]*?\.plan-view-toggle\s*\{\s*display:\s*none/);
+    expect(html).toMatch(/@media\s*\(\s*max-width:\s*768px\s*\)[\s\S]*?\.plan-main\s*\{\s*display:\s*none/);
+  });
+
+  it("still renders the This-week rail (the only mobile surface) and its 7 day slots", () => {
+    const html = render();
+    expect(html).toContain('data-testid="plan-this-week"');
+    for (let d = 0; d < 7; d++) {
+      expect(html).toContain(`data-testid="plan-rail-${d}"`);
+    }
+  });
+});
