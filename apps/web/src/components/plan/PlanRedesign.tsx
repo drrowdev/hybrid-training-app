@@ -809,20 +809,6 @@ export function PlanRedesign(props: PlanRedesignProps) {
             align-items: stretch;
           }
         }
-        /* Mobile (<768px): collapse the dense Timeline + Month surfaces
-           and show ONLY the "This week" rail card, full-width. The
-           Timeline/Month view toggle disappears too — mobile users get
-           the current week, full stop. Desktop layout is untouched. */
-        @media (max-width: 768px) {
-          .plan-view-toggle { display: none; }
-          .plan-main { display: none; }
-          .plan-rail {
-            padding: 16px;
-          }
-          .plan-rail h3 {
-            font-size: 12px;
-          }
-        }
         .plan-main {
           display: flex;
           flex-direction: column;
@@ -1083,6 +1069,32 @@ export function PlanRedesign(props: PlanRedesignProps) {
           cursor: default;
         }
         .rail-item.rest-item:hover .rail-name { color: var(--cp-text-soft); }
+
+        /* Mobile (<=768px): collapse the dense Timeline + Month surfaces
+           and the view-toggle / filter tabs that only act on them — show
+           ONLY the "This week" rail card, full-width. The page header
+           (eyebrow / title / progress bar / meta) stays visible. Desktop
+           layout is untouched.
+
+           IMPORTANT: this block lives at the END of the style sheet on
+           purpose. Earlier instances of .plan-view-toggle / .plan-main
+           in the cascade win on equal specificity unless this override
+           appears LAST (or carries !important). PR #202 hid this rule
+           higher up and it was silently overridden — see PR description.
+           Both source-order AND !important are belt-and-braces here so a
+           later refactor that moves rules around can't reintroduce the
+           regression. */
+        @media (max-width: 768px) {
+          .plan-view-toggle { display: none !important; }
+          .plan-filter { display: none !important; }
+          .plan-main { display: none !important; }
+          .plan-rail {
+            padding: 16px;
+          }
+          .plan-rail h3 {
+            font-size: 12px;
+          }
+        }
       `}</style>
     </div>
   );

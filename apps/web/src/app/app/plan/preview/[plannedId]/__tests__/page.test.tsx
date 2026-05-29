@@ -132,4 +132,94 @@ describe("SessionPreviewBody (static markup)", () => {
     expect(html).toContain('data-testid="session-preview-empty"');
     expect(html).toContain("No prescription details");
   });
+
+  it("never renders internal slot codes (W1 / S1 / C1 / A1 / T1 / H1) as visible labels", () => {
+    // Engine vocabulary leak guard. The preview body MUST surface
+    // human-readable labels ("Set 1", "Warm-up", movement names) — never
+    // raw slot codes from the prescription pipeline.
+    const items: PrescriptionItem[] = [
+      ...strengthItems(),
+      {
+        kind: "tendon",
+        movementId: "m-tendon",
+        movementName: "Tibialis raise",
+        sets: 3,
+        reps: 15,
+      } as unknown as PrescriptionItem,
+      {
+        kind: "cardio_vo2",
+        movementId: "m-cardio",
+        movementName: "VO2 Intervals",
+        durationMin: 35,
+        protocolNote: "4 × 4 min @ 90–95% HRmax, 3 min easy recovery",
+        hrCap: "90–95% HRmax during work",
+      } as unknown as PrescriptionItem,
+    ];
+    const html = renderToStaticMarkup(
+      React.createElement(SessionPreviewBody, { session: fixture({ items }) }),
+    );
+    // The single most important assertion: no "C1" before VO2.
+    expect(html).not.toMatch(/>\s*C1\s*</);
+    expect(html).not.toMatch(/>\s*C2\s*</);
+    expect(html).not.toMatch(/>\s*A1\s*</);
+    expect(html).not.toMatch(/>\s*T1\s*</);
+    expect(html).not.toMatch(/>\s*H1\s*</);
+    // Warm-up rows in v1 also showed "W1" — must be gone.
+    expect(html).not.toMatch(/>\s*W1\s*</);
+    expect(html).not.toMatch(/>\s*S1\s*</);
+  });
+
+  it("renders cardio items as a structured card with Duration / Intervals / Intensity / Recovery rows (no single-line mash)", () => {
+    const items: PrescriptionItem[] = [
+      {
+        kind: "cardio_vo2",
+        movementId: "m-cardio",
+        movementName: "VO2 Intervals",
+        durationMin: 35,
+        protocolNote: "4 × 4 min @ 90–95% HRmax, 3 min easy recovery",
+        hrCap: "90–95% HRmax during work",
+      } as unknown as PrescriptionItem,
+    ];
+    const html = renderToStaticMarkup(
+      React.createElement(SessionPreviewBody, { session: fixture({ items }) }),
+    );
+    expect(html).toContain('data-testid="session-preview-cardio-0"');
+    // Movement name is the heading.
+    expect(html).toContain("VO2 Intervals");
+    // Labeled rows (the readability win) — assert each label appears.
+    expect(html).toContain("Duration");
+    expect(html).toContain("35 min");
+    expect(html).toContain("Intervals");
+    expect(html).toMatch(/4\s*[×x]\s*4\s*min/);
+    expect(html).toContain("Intensity");
+    expect(html).toContain("90–95% HRmax");
+    expect(html).toContain("Recovery");
+    expect(html).toMatch(/3\s*min\s*easy\s*recovery/);
+    // Per-row testids (regression guard: a future change that collapses
+    // the structured view back into a single line would drop these).
+    expect(html).toContain('session-preview-cardio-0-row-duration');
+    expect(html).toContain('session-preview-cardio-0-row-intervals');
+    expect(html).toContain('session-preview-cardio-0-row-intensity');
+    expect(html).toContain('session-preview-cardio-0-row-recovery');
+  });
+
+  it("falls back to a Protocol row when the cardio note doesn't match the intervals/intensity/recovery pattern", () => {
+    const items: PrescriptionItem[] = [
+      {
+        kind: "cardio_alactic",
+        movementId: "m-cardio",
+        movementName: "Hill sprints",
+        durationMin: 10,
+        protocolNote: "6–10 × 10–15s near-max hill sprints, walk back down for recovery (~90–120s)",
+      } as unknown as PrescriptionItem,
+    ];
+    const html = renderToStaticMarkup(
+      React.createElement(SessionPreviewBody, { session: fixture({ items }) }),
+    );
+    expect(html).toContain("Hill sprints");
+    expect(html).toContain("Duration");
+    expect(html).toContain("Intervals");
+    // "walk back down for recovery" is recognised as the Recovery row.
+    expect(html).toContain("Recovery");
+  });
 });
