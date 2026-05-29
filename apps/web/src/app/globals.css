@@ -193,6 +193,17 @@ select option {
 .cp-btn.big { padding: 14px 18px; min-height: 48px; font-size: 15px; font-weight: 600; }
 .cp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* Small, neutral-link styling used to navigate between sibling
+ * plan-area pages (e.g. /app/plan ↔ /app/plan/history). Kept here
+ * (not inside a component <style> block) so server and client pages
+ * can share one class and stay visually identical. */
+.plan-nav-link {
+  color: var(--cp-link);
+  text-decoration: none;
+  font-size: 13px;
+}
+.plan-nav-link:hover { text-decoration: underline; }
+
 /* Mobile: enforce minimum 44px tap targets on every interactive control
  * and grow the body font so inputs don't trigger the iOS zoom-to-zoom-in
  * behaviour (which fires when input font-size < 16px). */

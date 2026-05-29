@@ -257,7 +257,6 @@ export default async function PlanPage({
 
       <PlanRedesign
         archetypeName={archetypeName}
-        archetypeId={block.archetype}
         blockNumber={blockNumbering.index}
         blockTotal={blockNumbering.total}
         startedOn={block.startedOn}

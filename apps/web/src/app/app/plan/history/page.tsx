@@ -88,11 +88,8 @@ export default async function PlanHistoryPage({
   return (
     <div style={{ display: "grid", gap: 20 }}>
       <header>
-        <Link
-          href="/app/plan"
-          style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
-        >
-          ← plan
+        <Link href="/app/plan" className="plan-nav-link">
+          ← Plan
         </Link>
         <h1 style={{ fontSize: 28, margin: "8px 0 0", letterSpacing: "-0.01em" }}>
           Block history
