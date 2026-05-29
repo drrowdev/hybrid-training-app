@@ -262,3 +262,71 @@ describe("PlanRedesign — mobile (<=768px) collapses to This-week rail only", (
     }
   });
 });
+
+
+describe("PlanRedesign — mobile drawer (full-screen sheet, swipe-down dismiss)", () => {
+  it("ships the @media (max-width:768px) sheet rules + slide-up keyframe via SessionDrawer's style block", async () => {
+    const { SessionDrawer } = await import("./PlanRedesign");
+    const html = renderToStaticMarkup(
+      <SessionDrawer
+        session={session()}
+        today="2026-05-26"
+        weeks={4}
+        logHrefBase="/app/sessions/start"
+        onClose={() => {}}
+        moveAction={noop}
+        skipAction={noop}
+        unskipAction={noop}
+        updateNotesAction={async () => ({ ok: true as const })}
+        startSessionAction={noop}
+      />,
+    );
+    expect(html).toMatch(/@media\s*\(\s*max-width:\s*768px\s*\)[\s\S]*?\.plan-drawer\s*\{[\s\S]*?inset:\s*0/);
+    expect(html).toContain("@keyframes plan-drawer-slide-up");
+    expect(html).toMatch(/@media\s*\(\s*max-width:\s*768px\s*\)[\s\S]*?\.drawer-drag-handle\s*\{[\s\S]*?display:\s*flex/);
+  });
+});
+
+describe("SessionDrawer — drag handle + sheet markup", () => {
+  it("renders a drag handle with the close-affordance aria-label and dialog role", async () => {
+    const { SessionDrawer } = await import("./PlanRedesign");
+    const html = renderToStaticMarkup(
+      <SessionDrawer
+        session={session()}
+        today="2026-05-26"
+        weeks={4}
+        logHrefBase="/app/sessions/start"
+        onClose={() => {}}
+        moveAction={noop}
+        skipAction={noop}
+        unskipAction={noop}
+        updateNotesAction={async () => ({ ok: true as const })}
+        startSessionAction={noop}
+      />,
+    );
+    expect(html).toContain('role="dialog"');
+    expect(html).toContain('aria-modal="true"');
+    expect(html).toContain('data-testid="plan-drawer-drag-handle"');
+    expect(html).toContain('aria-label="Close session details"');
+  });
+});
+
+describe("shouldDismissSwipe — pointer-release threshold", () => {
+  it("dismisses on a long downward pull (>100px)", async () => {
+    const { shouldDismissSwipe } = await import("./PlanRedesign");
+    expect(shouldDismissSwipe({ finalDy: 150, velocity: 0 })).toBe(true);
+    expect(shouldDismissSwipe({ finalDy: 101, velocity: 0 })).toBe(true);
+  });
+
+  it("dismisses on a fast fling (>0.5 px/ms) even with short distance", async () => {
+    const { shouldDismissSwipe } = await import("./PlanRedesign");
+    expect(shouldDismissSwipe({ finalDy: 40, velocity: 0.8 })).toBe(true);
+  });
+
+  it("snaps back when neither threshold is met", async () => {
+    const { shouldDismissSwipe } = await import("./PlanRedesign");
+    expect(shouldDismissSwipe({ finalDy: 50, velocity: 0.2 })).toBe(false);
+    expect(shouldDismissSwipe({ finalDy: 100, velocity: 0.5 })).toBe(false);
+    expect(shouldDismissSwipe({ finalDy: 0, velocity: 0 })).toBe(false);
+  });
+});
