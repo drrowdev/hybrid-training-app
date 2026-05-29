@@ -25,6 +25,13 @@ const sessions: SessionRow[] = [
 
 const cardioInserts: Array<Record<string, unknown>> = [];
 const sessionUpdates: Array<{ id: string; patch: Record<string, unknown> }> = [];
+// review-208 #2 — per-table count returned to the hybrid guard. Tests
+// override these to simulate unlogged strength work.
+const tableCounts: Record<string, number> = {
+  cardio_logs: 0,
+  session_items: 0,
+  set_logs: 0,
+};
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
@@ -81,6 +88,17 @@ vi.mock("@/lib/supabase/server", () => ({
         };
       };
 
+      // review-208 #1 — action now uses upsert(...,{onConflict})
+      // instead of insert. Mock it to call into the same insert sink
+      // so existing assertions keep working.
+      const upsert = (
+        row: Record<string, unknown>,
+        _opts?: { onConflict?: string },
+      ) => {
+        if (table === "cardio_logs") cardioInserts.push(row);
+        return Promise.resolve({ error: null });
+      };
+
       const update = (patch: Record<string, unknown>) => {
         state.update = patch;
         return {
@@ -104,16 +122,18 @@ vi.mock("@/lib/supabase/server", () => ({
         order,
         maybeSingle,
         insert,
+        upsert,
         update,
       });
 
       // Count query (`.select("id", { count: "exact", head: true })`)
       // resolves via `await` on the builder itself when `.eq()` is
       // not chained further. Emulate that by returning a thenable
-      // when `countOnly` is true.
+      // when `countOnly` is true. Per-table count comes from the
+      // shared `tableCounts` map so tests can simulate hybrid state.
       (builder as { then?: unknown }).then = (
         resolve: (v: { count: number; error: null }) => unknown,
-      ) => resolve({ count: 0, error: null });
+      ) => resolve({ count: tableCounts[table] ?? 0, error: null });
 
       return builder;
     },
@@ -150,6 +170,9 @@ describe("logCardioSession", () => {
     sessionUpdates.length = 0;
     sessions[0]!.completed_at = null;
     sessions[0]!.user_id = USER_ID;
+    tableCounts.cardio_logs = 0;
+    tableCounts.session_items = 0;
+    tableCounts.set_logs = 0;
   });
 
   it("writes a cardio_logs row and marks the session completed on the happy path", async () => {
@@ -223,4 +246,55 @@ describe("logCardioSession", () => {
     expect(sessionUpdates).toHaveLength(0);
     expect(sessions[0]!.completed_at).toBeNull();
   });
+
+  // review-208 #2 — hybrid session with unlogged strength must NOT
+  // auto-complete the session via the cardio path. The cardio log
+  // still writes; only the completed_at flip is gated.
+  it("does NOT flip completed_at on hybrid sessions with zero strength sets", async () => {
+    tableCounts.session_items = 2; // squat + ohp prescribed
+    tableCounts.set_logs = 0; // user logged no strength sets
+
+    const { logCardioSession } = await import("../actions");
+
+    const fd = new FormData();
+    fd.set("sessionId", SESSION_ID);
+    fd.set("completed", "true");
+    fd.set("actualDurationMin", "35");
+    fd.set("avgRpe", "7");
+
+    const res = await logCardioSession(fd);
+    expect(res).toEqual({ ok: true });
+    expect(cardioInserts).toHaveLength(1);
+    // No session update — strength finish bar must take over.
+    expect(sessionUpdates).toHaveLength(0);
+    expect(sessions[0]!.completed_at).toBeNull();
+  });
+
+  // Regression guard: hybrid session WITH logged strength sets still
+  // completes via the cardio path.
+  it("DOES flip completed_at on hybrid sessions when strength sets are already logged", async () => {
+    tableCounts.session_items = 2;
+    tableCounts.set_logs = 6; // user already logged sets
+
+    const { logCardioSession } = await import("../actions");
+
+    const fd = new FormData();
+    fd.set("sessionId", SESSION_ID);
+    fd.set("completed", "true");
+    fd.set("actualDurationMin", "35");
+
+    const res = await logCardioSession(fd);
+    expect(res).toEqual({ ok: true });
+    expect(cardioInserts).toHaveLength(1);
+    expect(sessionUpdates).toHaveLength(1);
+    expect(sessions[0]!.completed_at).toBeTypeOf("string");
+  });
+
+  // review-208 #3 — Zod schema now uses `.strict()`. The action's
+  // explicit field-by-field FormData unpacking already acts as a
+  // whitelist, but `.strict()` is defense-in-depth for any future
+  // refactor that switches to `Object.fromEntries(formData)`.
+  // Not directly testable here because the spoofed field would never
+  // reach Zod under the current unpacking — verified by static
+  // inspection of `logCardioSession`.
 });

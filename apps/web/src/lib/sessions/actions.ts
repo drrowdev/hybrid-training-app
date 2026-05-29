@@ -402,12 +402,14 @@ const logCardioSessionSchema = z.object({
   avgHrBpm: z.coerce.number().int().min(30).max(240).optional().nullable(),
   // Distance is captured in km in the DB; the form converts from mi
   // when the user's profile is `imperial` before submitting.
-  distanceKm: z.coerce.number().min(0).max(1000).optional().nullable(),
+  // Min 0.01 (not 0) — zero distance for a distance-tracked session
+  // is meaningless and the form's `n > 0` guard already filters zeros.
+  distanceKm: z.coerce.number().min(0.01).max(1000).optional().nullable(),
   // Optional movement id from the prescription so the logged row
   // points at the same catalog entry the user was prescribed.
   movementId: z.string().uuid().optional().nullable(),
   modality: z.string().trim().min(1).max(40).default("other"),
-});
+}).strict();
 
 export async function logCardioSession(
   formData: FormData,
@@ -445,25 +447,55 @@ export async function logCardioSession(
   if (!session) return { error: "Session not found." };
   if (session.user_id !== user.id) return { error: "Not your session." };
 
-  const { count } = await supabase
+  // review-208 #2 — for hybrid sessions (strength + cardio prescribed),
+  // logging the cardio portion must NOT auto-flip the session to
+  // completed if no strength sets have been logged. Otherwise the user
+  // can mark a hybrid session done by clicking "Save cardio" without
+  // ever doing the prescribed strength work, and downstream load
+  // accounting silently treats the strength volume as 0.
+  const [{ count: strengthPrescribedCount }, { count: setsLoggedCount }] =
+    await Promise.all([
+      supabase
+        .from("session_items")
+        .select("id", { count: "exact", head: true })
+        .eq("session_id", parsed.data.sessionId)
+        .eq("kind", "main"),
+      supabase
+        .from("set_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("session_id", parsed.data.sessionId),
+    ]);
+  const hasUnloggedStrength =
+    (strengthPrescribedCount ?? 0) > 0 && (setsLoggedCount ?? 0) === 0;
+
+  // review-208 #1 — idempotent upsert on (session_id, block_index). The
+  // finish-workout form always writes block_index=0; ad-hoc cardio
+  // blocks added via the "+ add cardio block" flow use higher indices
+  // and a different code path. Double-tap / network retry now updates
+  // the same row instead of producing a duplicate.
+  const { error: upsertErr } = await supabase
     .from("cardio_logs")
-    .select("id", { count: "exact", head: true })
-    .eq("session_id", parsed.data.sessionId);
+    .upsert(
+      {
+        session_id: parsed.data.sessionId,
+        movement_id: parsed.data.movementId ?? null,
+        block_index: 0,
+        modality: parsed.data.modality,
+        duration_sec: parsed.data.actualDurationMin * 60,
+        distance_km: parsed.data.distanceKm ?? null,
+        avg_hr_bpm: parsed.data.avgHrBpm ?? null,
+        rpe: parsed.data.avgRpe ?? null,
+        notes: parsed.data.notes ?? null,
+      },
+      { onConflict: "session_id,block_index" },
+    );
+  if (upsertErr) return { error: upsertErr.message };
 
-  const { error: insErr } = await supabase.from("cardio_logs").insert({
-    session_id: parsed.data.sessionId,
-    movement_id: parsed.data.movementId ?? null,
-    block_index: count ?? 0,
-    modality: parsed.data.modality,
-    duration_sec: parsed.data.actualDurationMin * 60,
-    distance_km: parsed.data.distanceKm ?? null,
-    avg_hr_bpm: parsed.data.avgHrBpm ?? null,
-    rpe: parsed.data.avgRpe ?? null,
-    notes: parsed.data.notes ?? null,
-  });
-  if (insErr) return { error: insErr.message };
-
-  if (parsed.data.completed && !session.completed_at) {
+  // Only flip the session to completed when (a) the user marked the
+  // cardio completed AND (b) there's no unlogged strength work that
+  // would otherwise be silently dropped. Hybrid sessions with strength
+  // pending stay in_progress — the strength finish bar takes over.
+  if (parsed.data.completed && !session.completed_at && !hasUnloggedStrength) {
     const { error: updErr } = await supabase
       .from("sessions")
       .update({
