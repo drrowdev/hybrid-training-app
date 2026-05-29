@@ -1,7 +1,7 @@
 /**
  * Read-only preview of a planned session — title, eyebrow, prescription
  * sections (warm-ups + main work per movement, accessories, hinge
- * compensation, tendon, cardio), and a primary "Start session" CTA.
+ * compensation, tendon, cardio), and a primary "Start workout" CTA.
  *
  * Rendered by `/app/plan/preview/[plannedId]` so the user can see what
  * they're about to do before committing the secondary Today-page CTA.
@@ -166,7 +166,7 @@ export function SessionPreviewBody({ session }: { session: SessionPreviewInput }
         data-testid="session-preview-start-cta"
         style={{ minHeight: 56, justifyContent: "center" }}
       >
-        Start session →
+        Start workout →
       </Link>
     </div>
   );

@@ -99,7 +99,7 @@ describe("SessionPreviewBody (static markup)", () => {
     expect(html).toContain(
       'href="/app/sessions/start/11111111-2222-3333-4444-555555555555"',
     );
-    expect(html).toMatch(/Start session/);
+    expect(html).toMatch(/Start workout/);
   });
 
   it("renders the back link to /app", () => {

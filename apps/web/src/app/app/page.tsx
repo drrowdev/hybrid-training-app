@@ -26,6 +26,7 @@ import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner"
 import { dismissBwBanner } from "@/lib/profile/actions";
 import { OverdueNotice } from "@/components/today/OverdueNotice";
 import { RegionSpikeBanner } from "@/components/today/RegionSpikeBanner";
+import { TodayHeroSummary } from "@/components/today/TodayHeroSummary";
 import {
   ActiveLimitationsCard,
   type ActiveLimitationSummary,
@@ -904,7 +905,7 @@ function TodaySessionCard({
         {spikeBanner}
         <section className="cp-card" style={{ padding: 20, display: "grid", gap: 12 }}>
           <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-            Resume today&apos;s session
+            Resume today&apos;s workout
           </div>
           <h2 style={{ fontSize: 22, margin: 0 }}>{openSession.title ?? "In-progress session"}</h2>
           <p style={{ color: "var(--cp-text-muted)", margin: 0, fontSize: 14 }}>
@@ -912,7 +913,7 @@ function TodaySessionCard({
           </p>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <Link href={`/app/sessions/${openSession.id}`} className="cp-btn primary big">
-              ⚡ Resume session
+              ⚡ Resume workout
             </Link>
             <Link href={`/app/sessions/${openSession.id}/complete`} className="cp-btn">
               Wrap up
@@ -1421,7 +1422,7 @@ function PlannedSessionCard({
         </div>
       )}
       <div style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>
-        {summarisePrescription(planned.prescription.items)}
+        <TodayHeroSummary items={planned.prescription.items} />
       </div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: "auto" }}>
         {planned.completedSessionId ? (
@@ -1431,7 +1432,7 @@ function PlannedSessionCard({
             data-testid="today-cta"
             style={{ flex: "1 1 auto", minHeight: 56 }}
           >
-            Continue session →
+            Continue workout →
           </Link>
         ) : (
           <Link
@@ -1440,7 +1441,7 @@ function PlannedSessionCard({
             data-testid="today-cta"
             style={{ flex: "1 1 auto", minHeight: 56 }}
           >
-            Start session →
+            Start workout →
           </Link>
         )}
         <Link

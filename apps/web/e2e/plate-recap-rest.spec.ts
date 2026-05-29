@@ -78,7 +78,7 @@ test.describe("@desktop session log — plate calculator + recap + rest", () => 
     // (slug `back-squat-high-bar`) — a canonical barbell movement.
     await page.goto("/app");
     await page.waitForLoadState("networkidle");
-    const startCta = page.getByRole("link", { name: /start session/i }).first();
+    const startCta = page.getByRole("link", { name: /start workout/i }).first();
     await expect(startCta).toBeVisible();
     await startCta.click();
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, {

@@ -21,16 +21,16 @@ export default function NewSessionPage() {
           ← back
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">
-          Start session
+          Start workout
         </h1>
         <p className="text-sm text-foreground/60">
-          Off-plan session. Log what you actually did on the next screen.
+          Off-plan workout. Log what you actually did on the next screen.
         </p>
       </header>
       <form action={startSession} className="space-y-4">
         <div className="space-y-2">
           <label className="text-sm font-medium" htmlFor="title">
-            Session title (optional)
+            Workout title (optional)
           </label>
           <input
             id="title"
@@ -46,7 +46,7 @@ export default function NewSessionPage() {
           data-testid="adhoc-start-button"
           className="rounded-md bg-foreground text-background px-4 py-2 text-sm font-medium hover:opacity-90"
         >
-          Start session
+          Start workout
         </button>
       </form>
     </main>

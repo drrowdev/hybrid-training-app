@@ -87,7 +87,7 @@ test.describe("@desktop program run", () => {
     await page.waitForLoadState("networkidle");
     const todayCard = page.getByTestId(`today-card-${seed.todayPlannedId}`);
     await expect(todayCard).toBeVisible();
-    const startCta = todayCard.getByRole("link", { name: /start session/i });
+    const startCta = todayCard.getByRole("link", { name: /start workout/i });
     await expect(startCta).toBeVisible();
     const startHref = await startCta.getAttribute("href");
     expect(startHref).toBe(`/app/sessions/start/${seed.todayPlannedId}`);
@@ -375,7 +375,7 @@ test.describe("@desktop program run", () => {
     await page.waitForLoadState("networkidle");
     const todayCard = page.getByTestId(`today-card-${seed.todayPlannedId}`);
     await expect(todayCard).toBeVisible();
-    await todayCard.getByRole("link", { name: /start session/i }).click();
+    await todayCard.getByRole("link", { name: /start workout/i }).click();
     // Pre-session interstitial removed — auto-redirects to the session log.
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 30_000 });
     const sessionId = new URL(page.url()).pathname.split("/").pop()!;
