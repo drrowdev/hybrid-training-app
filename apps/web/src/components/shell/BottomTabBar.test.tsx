@@ -31,4 +31,13 @@ describe("BottomTabBar — MORE notification dot", () => {
     const html = renderToStaticMarkup(<BottomTabBar />);
     expect(html).not.toContain('data-testid="bottomtab-more-dot"');
   });
+
+  it("MORE tab links to /app/settings (card-grid hub, not /app/profile)", () => {
+    const html = renderToStaticMarkup(<BottomTabBar />);
+    // Locate the MORE tab's href attribute.
+    const moreMatch = html.match(
+      /href="([^"]+)"[^>]*data-testid="bottomtab-more"/,
+    );
+    expect(moreMatch?.[1]).toBe("/app/settings");
+  });
 });
