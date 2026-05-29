@@ -317,11 +317,11 @@ export const STRENGTH_ANCHOR: Archetype = {
   oneLiner:
     "Strength-led concurrent training. Four main lifts (your choice of variant per role) hit a weekly intensity wave with a deload at week 4. Polarized cardio is added when the day budget allows.",
   weeks: 4,
-  // ADR 0005 — strength-led identity supports a larger secondary dose if a
-  // future trim ever folds a missing pattern in. Today all four strength
-  // days are anchors so folding is a structural no-op (see ADR 0005 open
-  // follow-ups for the audit finding) — cap is set so the moment that
-  // changes, the right dose is ready.
+  // ADR 0006 — bench + OHP demoted to optional so dual-main-lift folding
+  // (ADR 0005) triggers at freq < 4. `foldedSecondaryMaxSets` here is now
+  // LIVE: at freq=2 the trim returns squat + deadlift anchors and fold
+  // attaches OHP onto squat (≤5 sets) + bench onto deadlift (≤5 sets).
+  // At freq=4+ all four strength days return and folding is a no-op.
   foldedSecondaryMaxSets: 5,
   accessoryProfile: {
     aesthetic: { itemsPerSession: 2, setsPerItem: 3, repRange: { min: 8, max: 12 }, biasSupported: false },
@@ -329,7 +329,14 @@ export const STRENGTH_ANCHOR: Archetype = {
     durability: { extras: [] },
   },
   days: [
-    ...STRENGTH_DAYS,
+    // ADR 0006 — bench (dayIndex 1) and OHP (dayIndex 4) drop from anchor
+    // to optional (rank 7/8) so the freq=2/3 trim collapses to squat +
+    // deadlift and dual-main-lift folding (ADR 0005) closes the coverage
+    // gap. Matches CONCURRENT_HYBRID's convention from ADR 0004.
+    STRENGTH_DAYS[0]!, // squat — anchor, rank 1
+    { ...STRENGTH_DAYS[1]!, priority: "optional", rank: 7 }, // bench
+    STRENGTH_DAYS[2]!, // deadlift — anchor, rank 3
+    { ...STRENGTH_DAYS[3]!, priority: "optional", rank: 8 }, // OHP
     {
       kind: "cardio",
       dayIndex: 2,
@@ -382,7 +389,9 @@ export const STRENGTH_ANCHOR: Archetype = {
       priority: "optional",
       rank: 5,
     },
-    { ...STRENGTH_DAYS[1]!, slot: "am" },
+    // ADR 0006 — bench + OHP optional in the two-a-day variant too, same
+    // rationale as the single-session days above.
+    { ...STRENGTH_DAYS[1]!, slot: "am", priority: "optional", rank: 7 },
     { ...STRENGTH_DAYS[2]!, slot: "am" },
     {
       kind: "cardio",
@@ -402,7 +411,7 @@ export const STRENGTH_ANCHOR: Archetype = {
       priority: "optional",
       rank: 6,
     },
-    { ...STRENGTH_DAYS[3]!, slot: "am" },
+    { ...STRENGTH_DAYS[3]!, slot: "am", priority: "optional", rank: 8 },
   ],
   weekProfiles: [
     { weekIndex: 0, setIntensities: [0.65, 0.75, 0.85], setReps: 5, intensityLabel: "5s wave" },
@@ -816,10 +825,12 @@ export const HYPERTROPHY_ANCHOR: Archetype = {
     "Muscle-building block. Same four main patterns as Strength Focus but at hypertrophy intensity (60–75% TM, 6–10 reps, 4 working sets per pattern). One optional easy Z2 day preserves the aerobic floor. Curated accessory pool added per main lift — flies, lateral raises, biceps, calves — covering per-muscle volume gaps.",
   weeks: 4,
   accessoriesByDefault: true,
-  // ADR 0005 — hypertrophy stimulus identity is per-set volume in the
-  // 60-75% TM band. Today all four strength days are anchors so folding
-  // never triggers (see ADR 0005 open follow-ups). Cap is set to honour
-  // the per-set volume identity if the day shape ever changes.
+  // ADR 0006 — bench + OHP demoted to optional so dual-main-lift folding
+  // (ADR 0005) triggers at freq < 4. `foldedSecondaryMaxSets` here is now
+  // LIVE: at freq=2 the trim returns squat + deadlift anchors and fold
+  // attaches OHP onto squat (≤4 sets) + bench onto deadlift (≤4 sets).
+  // Cap honours the archetype's per-set volume identity in the 60-75% TM
+  // band; at freq=4+ all four strength days return and folding is a no-op.
   foldedSecondaryMaxSets: 4,
   accessoryProfile: {
     aesthetic: { itemsPerSession: 4, setsPerItem: 3, repRange: { min: 8, max: 15 }, biasSupported: false },
@@ -842,8 +853,10 @@ export const HYPERTROPHY_ANCHOR: Archetype = {
       role: "horizontal_press",
       title: "Bench — hypertrophy",
       candidateSlugs: STRENGTH_ROLE_CANDIDATES.horizontal_press,
-      priority: "anchor",
-      rank: 2,
+      // ADR 0006 — optional so freq=2/3 trim collapses to squat + deadlift
+      // and folding (ADR 0005) attaches bench onto deadlift.
+      priority: "optional",
+      rank: 7,
     },
     {
       kind: "cardio",
@@ -872,8 +885,10 @@ export const HYPERTROPHY_ANCHOR: Archetype = {
       role: "vertical_press",
       title: "Overhead press — hypertrophy",
       candidateSlugs: STRENGTH_ROLE_CANDIDATES.vertical_press,
-      priority: "anchor",
-      rank: 4,
+      // ADR 0006 — optional so freq=2/3 trim collapses to squat + deadlift
+      // and folding (ADR 0005) attaches OHP onto squat.
+      priority: "optional",
+      rank: 8,
     },
   ],
   /**
@@ -915,8 +930,10 @@ export const HYPERTROPHY_ANCHOR: Archetype = {
       role: "horizontal_press",
       title: "Bench — hypertrophy",
       candidateSlugs: STRENGTH_ROLE_CANDIDATES.horizontal_press,
-      priority: "anchor",
-      rank: 2,
+      // ADR 0006 — optional in the two-a-day variant too, same rationale
+      // as the single-session days.
+      priority: "optional",
+      rank: 7,
     },
     {
       kind: "cardio",
@@ -961,8 +978,9 @@ export const HYPERTROPHY_ANCHOR: Archetype = {
       role: "vertical_press",
       title: "Overhead press — hypertrophy",
       candidateSlugs: STRENGTH_ROLE_CANDIDATES.vertical_press,
-      priority: "anchor",
-      rank: 4,
+      // ADR 0006 — optional in the two-a-day variant too.
+      priority: "optional",
+      rank: 8,
     },
   ],
   // Hypertrophy wave: 4 working sets each week, building reps then trading
