@@ -124,4 +124,34 @@ describe("CardioPrescriptionList — render", () => {
     expect(html).not.toMatch(/<span[^>]*>\s*VO2\s*<\/span>/);
     expect(html).not.toMatch(/<div[^>]*>\s*VO2\s*<\/div>/);
   });
+
+  it("renders the modality chip + Swap button inline in the card header — Fix 4", () => {
+    const html = renderToStaticMarkup(
+      <CardioPrescriptionList
+        plannedSessionId="00000000-0000-0000-0000-000000000001"
+        items={[{ item: baseItem, itemIndex: 0, modalityLabel: "Bike" }]}
+        ownedCardio={[]}
+        swapAction={noopAction}
+      />,
+    );
+    expect(html).toContain('data-testid="cardio-prescription-card-0-modality"');
+    expect(html).toContain('data-testid="cardio-prescription-swap-button-0"');
+    // Both modality chip and Swap button sit inside the card's header
+    // row, ABOVE the description block — not in a separate footer row
+    // below the card body.
+    const modalityIdx = html.indexOf(
+      'data-testid="cardio-prescription-card-0-modality"',
+    );
+    const swapIdx = html.indexOf(
+      'data-testid="cardio-prescription-swap-button-0"',
+    );
+    const descIdx = html.indexOf(
+      'data-testid="cardio-prescription-card-0-description"',
+    );
+    expect(modalityIdx).toBeGreaterThan(-1);
+    expect(swapIdx).toBeGreaterThan(-1);
+    expect(descIdx).toBeGreaterThan(-1);
+    expect(modalityIdx).toBeLessThan(descIdx);
+    expect(swapIdx).toBeLessThan(descIdx);
+  });
 });
