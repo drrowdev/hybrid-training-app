@@ -9,6 +9,7 @@ import {
   applyStravaAutofill,
   deleteCardio,
   fillSessionFromPlan,
+  logCardioSession,
   markExternalCardioComplete,
   swapPrescriptionItem,
 } from "@/lib/sessions/actions";
@@ -21,6 +22,7 @@ import {
 } from "@/components/session/SessionLogClient";
 import { SessionWorkArea } from "@/components/session/SessionWorkArea";
 import { CardioPrescriptionList } from "@/components/session/CardioPrescriptionList";
+import { CardioLogForm } from "@/components/session/CardioLogForm";
 import { DisclosureArrow } from "@/components/session/DisclosureArrow";
 import {
   resolveFreestyleMovements,
@@ -81,7 +83,7 @@ export default async function SessionDetailPage({
   const { data: feedbackPrefs } = await supabase
     .from("profiles")
     .select(
-      "haptics_enabled, timer_sound_enabled, barbell_kg, trap_bar_kg, plate_inventory_kg, equipment, timezone, time_format, date_format",
+      "haptics_enabled, timer_sound_enabled, barbell_kg, trap_bar_kg, plate_inventory_kg, equipment, timezone, time_format, date_format, units",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -540,6 +542,26 @@ export default async function SessionDetailPage({
   }
   const strengthItemCount = countStrengthPrescriptionItems(plannedPrescription);
   const unloggedStrengthCount = Math.max(0, strengthItemCount - loggedItemIndexSet.size);
+
+  // Cardio modality / log form wiring. A session is "cardio-aware"
+  // when any prescription item is a cardio kind; "pure cardio" when
+  // ALL prescription items are cardio. Pure-cardio sessions render
+  // the new CardioLogForm in place of the strength-only "Log at
+  // least 1 set" gate; hybrid sessions render BOTH the existing
+  // strength UI AND the cardio form below it so the user can finish
+  // either path.
+  const cardioPrescriptionItems = (plannedPrescription?.items ?? []).filter(
+    (it) => it.kind.startsWith("cardio_") && it.kind !== "cardio_external",
+  );
+  const firstCardioPrescription = cardioPrescriptionItems[0] ?? null;
+  const hasLoggedCardioRow = (cardio ?? []).length > 0;
+  const hasCardio = cardioPrescriptionItems.length > 0;
+  const hasStrengthPrescription = strengthItemCount > 0;
+  const isPureCardio = hasCardio && !hasStrengthPrescription;
+  const showCardioLogForm =
+    hasCardio && !isComplete && !hasLoggedCardioRow;
+  const userUnits: "metric" | "imperial" =
+    feedbackPrefs?.units === "imperial" ? "imperial" : "metric";
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
@@ -1003,6 +1025,7 @@ export default async function SessionDetailPage({
           {cardioItemsIndexed.length > 0 && (
             <CardioPrescriptionList
               plannedSessionId={(planned?.id as string | undefined) ?? null}
+              pageTitle={session.title ?? null}
               items={cardioItemsIndexed.map(({ it, itemIndex }) => {
                 // Phase 2 — surface the inferred classification on
                 // cardio_external rows. Match by external_source +
@@ -1113,6 +1136,21 @@ export default async function SessionDetailPage({
               })}
             </ul>
           )}
+          {showCardioLogForm && (
+            <div style={{ marginTop: 14 }}>
+              <CardioLogForm
+                sessionId={id}
+                prescribedDurationMin={firstCardioPrescription?.durationMin ?? null}
+                movementId={firstCardioPrescription?.movementId ?? null}
+                modality={
+                  (firstCardioPrescription?.intensityLabel as string | undefined) ??
+                  "other"
+                }
+                units={userUnits}
+                action={logCardioSession}
+              />
+            </div>
+          )}
           {!isComplete && (
             <>
               <style>{`
@@ -1150,13 +1188,17 @@ export default async function SessionDetailPage({
       })()}
 
 
-      {!isComplete && (() => {
+      {!isComplete && !isPureCardio && (() => {
         // feat/logging-works — relaxed finish gate. The user can finish
         // the session as soon as ≥1 set has been logged; partial
         // sessions are explicitly allowed (call-outs flagged the strict
         // gate as a P1 dead-end). If some prescribed items are still
         // unlogged we surface a count and a "Finish anyway" subtitle so
         // the choice is intentional, not accidental.
+        //
+        // For pure-cardio sessions the cardio log form above owns the
+        // "Finish workout →" CTA, so we skip the strength-flavoured
+        // bottom bar entirely.
         const canFinish = sets.length > 0;
         const partial = canFinish && unloggedStrengthCount > 0;
         const subtitle = !canFinish
