@@ -117,11 +117,16 @@ describe("ADR 0005 — foldDualMainLifts", () => {
   });
 
   describe("STRENGTH_ANCHOR — direct fold on synthesized 2-day trim", () => {
-    // STRENGTH_ANCHOR's four strength days are all anchors today, so
-    // `daysForFrequency` always returns the full 4-day strength block
-    // (folding is a structural no-op in production). ADR 0005's open
-    // follow-ups document this. We test the cap by feeding the function
-    // a synthesized 2-day trim so the cap path is exercised.
+    // Historical context: pre-ADR-0006, STRENGTH_ANCHOR's four strength
+    // days were all anchors, so the production path never produced a
+    // sub-4 trim and folding was a structural no-op there. ADR 0006
+    // demoted bench + OHP to optional, so fold is now LIVE in production
+    // at freq < 6 — covered end-to-end in adr-0006-balance-archetypes.test.ts.
+    // This block keeps the direct-fold cap assertion to lock the
+    // STRENGTH_ANCHOR.foldedSecondaryMaxSets = 5 contract independent of
+    // the trim path.
+    // a synthesized 2-day trim so the cap path is exercised independent
+    // of the production trim path.
     const synthetic: DayTemplate[] = [
       mkStrength(0, "squat"),
       mkStrength(3, "deadlift"),
@@ -143,10 +148,11 @@ describe("ADR 0005 — foldDualMainLifts", () => {
   });
 
   describe("HYPERTROPHY_ANCHOR — direct fold on synthesized 2-day trim", () => {
-    // Same audit finding as STRENGTH_ANCHOR — all four strength days are
-    // anchors so folding is a structural no-op in production today. ADR
-    // 0005 records this and sets the cap so the moment the day shape
-    // changes, fold has the right dose ready.
+    // ADR 0006 demoted HYPERTROPHY_ANCHOR's bench + OHP to optional so
+    // fold is now LIVE in production at freq < 5 — covered end-to-end in
+    // adr-0006-balance-archetypes.test.ts. This block keeps the
+    // direct-fold cap assertion to lock the cap = 4 contract independent
+    // of the trim path.
     const synthetic: DayTemplate[] = [
       mkStrength(0, "squat"),
       mkStrength(3, "deadlift"),
@@ -161,12 +167,14 @@ describe("ADR 0005 — foldDualMainLifts", () => {
       for (const d of sDays) expect(d.secondaryMaxSets).toBe(4);
     });
 
-    it("HYPERTROPHY_ANCHOR's real daysForFrequency output retains 4 strength days at every supported frequency (audit finding)", () => {
+    it("HYPERTROPHY_ANCHOR at max freq retains all 4 strength days and fold is a no-op (regression guard)", () => {
+      // ADR 0006 — at max freq (5) all four strength days return (2
+      // anchors + Z2 cardio + bench + OHP) and fold becomes a no-op.
+      // The full freq sweep (2..max) lives in the ADR 0006 test file.
       const trimmed = daysForFrequency(HYPERTROPHY_ANCHOR, 5, false);
       const out = foldDualMainLifts(HYPERTROPHY_ANCHOR, trimmed);
       const trimSDays = strengthOnly(trimmed);
       const outSDays = strengthOnly(out);
-      // 4 anchor strength days survive any trim → fold is a structural no-op.
       expect(trimSDays.length).toBe(4);
       expect(outSDays.length).toBe(4);
       for (const d of outSDays) expect(d.secondaryRole).toBeUndefined();

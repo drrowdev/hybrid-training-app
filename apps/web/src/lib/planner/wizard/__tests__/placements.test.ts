@@ -166,16 +166,31 @@ describe("applyPlacementsToActiveDays (Test B — materialiser remap)", () => {
               : "Easy Z2 (recovery)",
     }));
 
-    // The remap sorts placements by (dayIndex, slot) before assigning
-    // them to canonical templates in canonical order; so we expect the
-    // i-th canonical day to receive the i-th sorted placement.
-    const sortedUserDays = [...userDays].sort((a, b) => a - b);
-
     const remapped = applyPlacementsToActiveDays(canonical, placements);
-    expect(remapped.map((d) => d.dayIndex)).toEqual(sortedUserDays);
+
+    // ADR 0006 — STRENGTH_ANCHOR @ freq=4 is now a mix of 2 strength
+    // anchors + 2 cardio optionals (post-demotion of bench + OHP). The
+    // remap groups by (kind, subKind) and hands out sorted user days
+    // within each bucket. Assert per-kind that each canonical template
+    // receives a user-arranged dayIndex.
     expect(remapped.map((d) => d.kind)).toEqual(canonical.map((d) => d.kind));
     expect(remapped.map((d) => d.title)).toEqual(canonical.map((d) => d.title));
     expect(remapped.map((d) => d.dayIndex)).not.toEqual(canonicalDays);
+
+    const remappedByKind = (k: DayTemplate["kind"]) =>
+      remapped
+        .filter((d) => d.kind === k)
+        .map((d) => d.dayIndex)
+        .sort((a, b) => a - b);
+    const userByKind = (k: DayTemplate["kind"]) =>
+      canonical
+        .map((d, i) => ({ kind: d.kind, day: userDays[i]! }))
+        .filter((x) => x.kind === k)
+        .map((x) => x.day)
+        .sort((a, b) => a - b);
+    for (const k of ["strength", "cardio", "tendon"] as const) {
+      expect(remappedByKind(k)).toEqual(userByKind(k));
+    }
   });
 
   it("distinguishes VO2 from Z2 within cardio so the user's sub-type pick is honoured", () => {
@@ -338,21 +353,37 @@ describe("end-to-end — wizard serialiser → materialiser remap (the bug repro
   it("also covers the round-trip via buildPlacementsFromSchedule (schedule grid → server remap)", () => {
     const archetype = ARCHETYPES.strength_anchor;
     const canonical = daysForFrequency(archetype, 4, false);
-    // strength_anchor @ 4 d/wk returns 4 anchor strength days only — no
-    // cardio at this dose. We feed the wizard's grid serialiser a
-    // matching all-strength schedule and verify each canonical template
-    // lands on the user-chosen day.
+    // ADR 0006 — STRENGTH_ANCHOR @ 4 d/wk now returns 2 strength anchors
+    // (squat + deadlift) + 2 cardio optionals (Z2, long Z2). Feed the
+    // wizard's grid serialiser a schedule matching the canonical mix
+    // and verify per-kind round-trip: each canonical template lands on
+    // the user-chosen day for its kind.
     const strengthCount = canonical.filter((d) => d.kind === "strength").length;
-    expect(strengthCount).toBe(canonical.length);
+    const cardioCount = canonical.filter((d) => d.kind === "cardio").length;
 
-    const userDays = [6, 5, 3, 0].slice(0, strengthCount);
+    const userStrengthDays = [6, 3].slice(0, strengthCount);
+    const userCardioDays = [5, 0].slice(0, cardioCount);
+
     const cells = emptyCells();
-    userDays.forEach((d) => {
+    userStrengthDays.forEach((d) => {
       cells[d]!.am = shape("Strength day (heavy)");
+    });
+    userCardioDays.forEach((d) => {
+      cells[d]!.am = shape("Easy Z2 (recovery)");
     });
 
     const placements = buildPlacementsFromSchedule(cells);
     const remapped = applyPlacementsToActiveDays(canonical, placements);
-    expect(remapped.map((d) => d.dayIndex).sort()).toEqual([...userDays].sort());
+
+    const remappedStrength = remapped
+      .filter((d) => d.kind === "strength")
+      .map((d) => d.dayIndex)
+      .sort((a, b) => a - b);
+    const remappedCardio = remapped
+      .filter((d) => d.kind === "cardio")
+      .map((d) => d.dayIndex)
+      .sort((a, b) => a - b);
+    expect(remappedStrength).toEqual([...userStrengthDays].sort((a, b) => a - b));
+    expect(remappedCardio).toEqual([...userCardioDays].sort((a, b) => a - b));
   });
 });
