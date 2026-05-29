@@ -98,4 +98,63 @@ describe("CardioLogForm", () => {
     );
     expect(html).not.toMatch(/Log at least 1 set/);
   });
+
+  it("places Duration + RPE on the same row with a streamlined wrapper — Fix 5", () => {
+    const html = renderToStaticMarkup(
+      <CardioLogForm
+        sessionId="00000000-0000-0000-0000-000000000001"
+        prescribedDurationMin={35}
+        movementId={null}
+        modality="other"
+        units="metric"
+        action={noopAction}
+      />,
+    );
+    // Both inputs live inside the same row wrapper (a CSS-grid
+    // 2-column container that collapses to 1 column under 480px).
+    expect(html).toContain('data-testid="cardio-log-duration-rpe-row"');
+    const rowIdx = html.indexOf('data-testid="cardio-log-duration-rpe-row"');
+    const durIdx = html.indexOf('data-testid="cardio-log-duration"');
+    const rpeIdx = html.indexOf('data-testid="cardio-log-rpe"');
+    expect(rowIdx).toBeGreaterThan(-1);
+    expect(durIdx).toBeGreaterThan(rowIdx);
+    expect(rpeIdx).toBeGreaterThan(durIdx);
+    // Inline media query for mobile stacking is present in the form.
+    expect(html).toMatch(/@media\s*\(max-width:\s*479px\)/);
+  });
+
+  it("keeps HR + distance hidden behind the More details expander by default — Fix 5", () => {
+    const html = renderToStaticMarkup(
+      <CardioLogForm
+        sessionId="00000000-0000-0000-0000-000000000001"
+        prescribedDurationMin={30}
+        movementId={null}
+        modality="other"
+        units="metric"
+        action={noopAction}
+      />,
+    );
+    // HR + distance inputs are inside a <details> wrapper that does
+    // NOT have `open` set in initial SSR — they exist in markup but
+    // are collapsed.
+    expect(html).toContain('data-testid="cardio-log-more-details"');
+    expect(html).toMatch(/<details[^>]*data-testid="cardio-log-more-details"(?![^>]*\bopen\b)/);
+    expect(html).toMatch(/\+ More details \(HR, distance\)/);
+  });
+
+  it("drops the verbose subtitle and replaces the big yes/no toggle with a small skip link — Fix 5", () => {
+    const html = renderToStaticMarkup(
+      <CardioLogForm
+        sessionId="00000000-0000-0000-0000-000000000001"
+        prescribedDurationMin={30}
+        movementId={null}
+        modality="other"
+        units="metric"
+        action={noopAction}
+      />,
+    );
+    expect(html).not.toMatch(/wrap up the session/i);
+    expect(html).toContain('data-testid="cardio-log-toggle-skip"');
+    expect(html).toMatch(/>\s*Skip instead\s*</);
+  });
 });
