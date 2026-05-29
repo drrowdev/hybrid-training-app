@@ -2,6 +2,7 @@
 
 import { useState, useActionState } from "react";
 import { MovementPicker, type MovementSearchResult } from "@/components/movement-picker";
+import { RpeInput } from "@/components/forms/RpeInput";
 
 type Action = (fd: FormData) => Promise<{ error?: string; ok?: true }>;
 type State = { error?: string; ok?: true } | null;
@@ -29,7 +30,10 @@ export function AddStrengthSetForm({
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Field name="weightKg" label="Weight (kg)" type="number" step="0.5" inputMode="decimal" />
         <Field name="reps" label="Reps" type="number" inputMode="numeric" />
-        <Field name="rpe" label="RPE" type="number" step="0.5" min="0" max="10" inputMode="decimal" />
+        <div className="space-y-1 col-span-2 sm:col-span-2">
+          {/* RpeInput — shared chip grid (issue #210). */}
+          <RpeInput name="rpe" context="strength" />
+        </div>
         <div className="space-y-1">
           <label className="text-xs text-foreground/60" htmlFor="setKind">Set kind</label>
           <select
@@ -74,63 +78,9 @@ export function AddStrengthSetForm({
   );
 }
 
-export function AddCardioBlockForm({
-  sessionId,
-  action,
-}: {
-  sessionId: string;
-  action: Action;
-}) {
-  const [state, formAction, pending] = useActionState(wrap(action), null);
-  const [selected, setSelected] = useState<MovementSearchResult | null>(null);
-
-  return (
-    <form action={formAction} className="space-y-3 rounded-lg border border-foreground/10 p-4">
-      <input type="hidden" name="sessionId" value={sessionId} />
-      <h3 className="text-sm font-medium">Add cardio block</h3>
-
-      <MovementPicker
-        name="movementId"
-        patternFilter="cardio"
-        placeholder="Search cardio modalities…"
-        onChange={(m) => {
-          setSelected(m);
-        }}
-      />
-
-      <input
-        type="hidden"
-        name="modality"
-        value={
-          ((selected?.equipment ?? "") +
-            " " +
-            (selected?.display_name ?? "")).slice(0, 40) || "other"
-        }
-      />
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Field name="durationSec" label="Duration (s)" type="number" inputMode="numeric" required />
-        <Field name="distanceKm" label="Distance (km)" type="number" step="0.1" inputMode="decimal" />
-        <Field name="avgHrBpm" label="Avg HR (bpm)" type="number" inputMode="numeric" />
-        <Field name="rpe" label="RPE" type="number" step="0.5" min="0" max="10" inputMode="decimal" />
-      </div>
-
-      <Field name="notes" label="Notes (optional)" type="text" maxLength={400} />
-
-      <div className="flex items-center justify-between gap-3">
-        <button
-          type="submit"
-          disabled={pending || !selected}
-          className="rounded-md bg-foreground text-background px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-        >
-          {pending ? "Saving…" : "Log block"}
-        </button>
-        {state?.error && <p className="text-xs text-red-600">{state.error}</p>}
-        {state?.ok && <p className="text-xs text-emerald-600">Logged.</p>}
-      </div>
-    </form>
-  );
-}
+// AddCardioBlockForm was removed in the Mockup-B / AddToWorkout refactor.
+// The unified `AddToWorkout` component now owns this surface and calls
+// `addCardioBlock` directly.
 
 function Field({
   name,

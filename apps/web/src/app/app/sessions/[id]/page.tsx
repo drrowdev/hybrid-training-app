@@ -2,13 +2,13 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
-import { AddCardioBlockForm } from "@/components/add-log-forms";
 import {
   addCardioBlock,
   addStrengthSet,
   applyStravaAutofill,
   deleteCardio,
   fillSessionFromPlan,
+  finishStravaAppliedSession,
   logCardioSession,
   markExternalCardioComplete,
   swapPrescriptionItem,
@@ -23,8 +23,7 @@ import {
 import { SessionWorkArea } from "@/components/session/SessionWorkArea";
 import { CardioPrescriptionList } from "@/components/session/CardioPrescriptionList";
 import { CardioLogForm } from "@/components/session/CardioLogForm";
-import { AddOffPlanMovement } from "@/components/session/AddOffPlanMovement";
-import { DisclosureArrow } from "@/components/session/DisclosureArrow";
+import { AddToWorkout } from "@/components/session/AddToWorkout";
 import {
   resolveFreestyleMovements,
   type PersistedFreestyle,
@@ -32,8 +31,9 @@ import {
 import { FinishSessionBar } from "@/components/session/FinishSessionBar";
 import { PostSessionSummary } from "@/components/session/PostSessionSummary";
 import { StravaAutofillBanner, type StravaAutofillMatch } from "@/components/session/StravaAutofillBanner";
-import { SessionModalityChip } from "@/components/session/SessionModalityChip";
+import { MODALITY_LABEL } from "@/lib/planner/session-modality";
 import { findMatchingStravaActivity } from "@/lib/integrations/strava/match";
+import { syncStravaForSession } from "@/lib/integrations/strava/actions";
 import { GRM_RECOMMEND_THRESHOLD, applyGrmToPercent, computeGrm, grmLabel } from "@/lib/engine/grm";
 import { PR_KIND_LABEL } from "@/lib/engine/pr";
 import { bestEstimateOneRm } from "@/lib/engine/one-rm";
@@ -194,7 +194,7 @@ export default async function SessionDetailPage({
   // recommendation ("top set ~81% instead of 90%").
   const { data: planned } = await supabase
     .from("planned_sessions")
-    .select("id, prescription, session_modality, effective_stress_load")
+    .select("id, prescription, session_modality, effective_stress_load, week_index")
     .eq("completed_session_id", id)
     .maybeSingle();
   const plannedPrescription = (planned?.prescription as Prescription | null) ?? null;
@@ -456,7 +456,19 @@ export default async function SessionDetailPage({
   // logged). Silently no-op when the user has no Strava connection or
   // no in-window activity.
   let stravaMatch: StravaAutofillMatch | null = null;
-  if (!isComplete) {
+  let stravaConnected = false;
+  let stravaLastSyncedAt: string | null = null;
+  {
+    const { data: connRow } = await supabase
+      .from("strava_connections")
+      .select("user_id, last_synced_at")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    stravaConnected = !!connRow;
+    stravaLastSyncedAt =
+      (connRow?.last_synced_at as string | null | undefined) ?? null;
+  }
+  if (!isComplete && stravaConnected) {
     const candidate = await findMatchingStravaActivity(
       supabase,
       user.id,
@@ -600,31 +612,38 @@ export default async function SessionDetailPage({
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <header>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 12, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-            {formatDate(session.performed_at, feedbackPrefs)}
-          </span>
-          <SessionModalityChip modality={sessionModality} />
-        </div>
+        {/* Single crumb row — e.g. "29 MAY · ENDURANCE · WK 1". Replaces
+            the older 2-row header that duplicated the date as both a
+            chip eyebrow and a stand-alone metadata strip. */}
+        {(() => {
+          const datePart = formatDate(session.performed_at, feedbackPrefs);
+          const modalityPart = sessionModality
+            ? MODALITY_LABEL[sessionModality].toUpperCase()
+            : null;
+          const weekIdx = (planned?.week_index as number | null | undefined) ?? null;
+          const weekPart = weekIdx != null ? `WK ${weekIdx + 1}` : null;
+          const crumb = [datePart.toUpperCase(), modalityPart, weekPart]
+            .filter(Boolean)
+            .join(" · ");
+          return (
+            <div
+              data-testid="session-crumb"
+              style={{
+                fontSize: 12,
+                color: "var(--cp-text-muted)",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+              }}
+            >
+              {crumb}
+            </div>
+          );
+        })()}
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
           <h1 style={{ fontSize: 26, margin: "4px 0 0", letterSpacing: "-0.01em" }}>
             {session.title ?? "Session"}
           </h1>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {isComplete && (
-              <span
-                style={{
-                  fontSize: 11,
-                  padding: "2px 8px",
-                  borderRadius: 999,
-                  background: "color-mix(in oklab, var(--cp-success) 18%, transparent)",
-                  color: "var(--cp-success)",
-                  fontWeight: 600,
-                }}
-              >
-                completed
-              </span>
-            )}
             <details className="cp-menu" style={{ position: "relative" }}>
               <summary
                 aria-label="More actions"
@@ -673,11 +692,13 @@ export default async function SessionDetailPage({
         </div>
       </header>
 
-      {stravaMatch && (
+      {!isComplete && stravaConnected && (
         <StravaAutofillBanner
           sessionId={id}
           match={stravaMatch}
           applyAction={applyStravaAutofill}
+          syncAction={async () => syncStravaForSession(id)}
+          lastSyncedAt={stravaLastSyncedAt}
         />
       )}
 
@@ -1189,55 +1210,27 @@ export default async function SessionDetailPage({
                 }
                 units={userUnits}
                 action={logCardioSession}
+                stravaApplied={
+                  Array.isArray(cardio) &&
+                  cardio[0]?.external_source === "strava"
+                }
+                stravaFinishAction={finishStravaAppliedSession}
               />
             </div>
-          )}
-          {!isComplete && (
-            <>
-              <style>{`
-                .cardio-disclosure > summary { list-style: none; }
-                .cardio-disclosure > summary::-webkit-details-marker { display: none; }
-                .cardio-disclosure > summary::marker { content: ""; }
-                .cardio-disclosure > summary .cardio-disclosure-arrow { transform: rotate(-90deg); transition: transform 120ms ease; display: inline-flex; }
-                .cardio-disclosure[open] > summary .cardio-disclosure-arrow { transform: rotate(0deg); }
-              `}</style>
-              <details className="cardio-disclosure" style={{ marginTop: 12 }}>
-                <summary
-                  style={{
-                    cursor: "pointer",
-                    fontSize: 13,
-                    color: "var(--cp-text-muted)",
-                    userSelect: "none",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                >
-                  <span className="cardio-disclosure-arrow">
-                    <DisclosureArrow open externalRotation />
-                  </span>
-                  <span>+ add cardio block</span>
-                </summary>
-                <div style={{ marginTop: 10 }}>
-                  <AddCardioBlockForm sessionId={id} action={addCardioBlock} />
-                </div>
-              </details>
-            </>
           )}
         </section>
         );
       })()}
 
-      {/* Fix 3 — pure-cardio sessions render the "+ Add off-plan movement"
-          link AFTER the cardio block (instead of before, where the
-          MovementCardList default placement would put it on what is
-          otherwise an empty strength surface). Strength + hybrid
-          sessions keep the in-list placement at the bottom of the
-          card list. */}
-      {isPureCardio && !isComplete && (
-        <AddOffPlanMovement sessionId={id} />
+      {/* AddToWorkout (issue #210) replaces three historical surfaces:
+            - the per-section "+ add cardio block" disclosure that used
+              to live inside the cardio section (with AddCardioBlockForm)
+            - the pure-cardio-only "+ Add off-plan movement" pill
+            - implicit "no strength entry" gap on cardio-only sessions
+          One unified pill at the bottom of the page handles them all. */}
+      {!isComplete && (
+        <AddToWorkout sessionId={id} cardioAction={addCardioBlock} />
       )}
-
 
       {!isComplete && !isPureCardio && (() => {
         // feat/logging-works — relaxed finish gate. The user can finish

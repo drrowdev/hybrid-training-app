@@ -243,9 +243,10 @@ describe("SessionPreviewBody (static markup)", () => {
     expect(html).toContain('data-testid="session-preview-title"');
     // But the card body must NOT also render an <h3>VO2 Intervals</h3>.
     expect(html).not.toMatch(/<h3[^>]*>\s*VO2 Intervals[^<]*<\/h3>/);
-    // The CARDIO eyebrow inside the card is still there.
+    // The card section is still rendered (Mockup B dropped the "CARDIO"
+    // eyebrow text — the section heading carries the disambiguation now).
     expect(html).toContain('data-testid="session-preview-cardio-0"');
-    expect(html).toContain(">CARDIO<");
+    expect(html).not.toContain(">CARDIO<");
   });
 
   it("cardio card never renders a standalone 'VO2' (or other intensityLabel) sub-line between heading and rows", () => {
