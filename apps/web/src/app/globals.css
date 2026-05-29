@@ -567,3 +567,31 @@ select option {
   .cp-tbr-kbd { display: none; }
 }
 a.cp-tbr-pop-item { color: var(--cp-text); }
+
+/* ── Bottom tab bar — desktop hide ─────────────────────────────── */
+.cp-bottom-tabbar { display: grid; }
+@media (min-width: 769px) {
+  .cp-bottom-tabbar { display: none !important; }
+}
+
+/* ── Responsive visibility helpers ────────────────────────────────
+   Mobile breakpoint matches the shell's 768px matchMedia. Use these
+   on inline-rendered content (server components) that needs distinct
+   mobile vs. desktop variants without a client-side state hook. */
+.cp-mobile-only { display: none !important; }
+.cp-desktop-only { display: initial; }
+@media (max-width: 768px) {
+  .cp-mobile-only { display: initial !important; }
+  .cp-desktop-only { display: none !important; }
+}
+
+/* ── Top nav — mobile hides brand glyph, primary tabs, right cluster ─
+   On mobile the BottomTabBar handles primary navigation, the Today
+   header surfaces the Strava sync pill, and /app/profile surfaces
+   notifications + quick search, so the top-bar collapses to just the
+   sticky safe-area inset. */
+@media (max-width: 768px) {
+  .cp-topnav-brand,
+  .cp-topnav-tabs,
+  .cp-topbar-right-wrap { display: none !important; }
+}

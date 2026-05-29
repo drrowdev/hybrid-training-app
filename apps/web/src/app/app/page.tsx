@@ -21,6 +21,7 @@ import { getRegionSpikes } from "@/lib/stats/region-spike-queries";
 import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
 import { findHeavyOnRecoveringConflictWithMuscles } from "@/lib/muscle/muscle-conflict";
 import { StravaStaleSyncTrigger } from "@/components/StravaStaleSyncTrigger";
+import { StravaSyncPill } from "@/components/shell/StravaSyncPill";
 import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner";
 import { dismissBwBanner } from "@/lib/profile/actions";
 import { OverdueNotice } from "@/components/today/OverdueNotice";
@@ -266,10 +267,10 @@ export default async function TodayPage() {
       });
     })(),
 
-    // Group C — Strava connection presence flag.
+    // Group C — Strava connection presence + last sync timestamp.
     supabase
       .from("strava_connections")
-      .select("user_id")
+      .select("user_id, last_synced_at")
       .eq("user_id", userId)
       .maybeSingle()
       .then((r) => r.data),
@@ -365,6 +366,9 @@ export default async function TodayPage() {
   ]);
 
   const hasStravaConnection = Boolean(stravaConn);
+  const lastSyncedAt =
+    ((stravaConn as { last_synced_at: string | null } | null)
+      ?.last_synced_at ?? null) as string | null;
   const taper = computeTaperRecommendation(
     nextEvent
       ? { name: nextEvent.name, date: nextEvent.event_date, priority: nextEvent.priority }
@@ -489,6 +493,11 @@ export default async function TodayPage() {
     const week = (computedWeekIndex ?? 0) + 1;
     return `${archetypeName.toUpperCase()} · WEEK ${week} · ${eyebrowText}`;
   })();
+  const eyebrowLineMobile = (() => {
+    if (!activeBlock || !archetypeName) return eyebrowText;
+    const week = (computedWeekIndex ?? 0) + 1;
+    return `${archetypeName.toUpperCase()} · W${week} · ${eyebrowText}`;
+  })();
 
   return (
     <div
@@ -508,28 +517,57 @@ export default async function TodayPage() {
           >
             {activeBlock && archetypeName ? (
               <>
-                <span style={{ color: "var(--cp-accent)" }}>
-                  {archetypeName.toUpperCase()}
+                <span className="cp-desktop-only">
+                  <span style={{ color: "var(--cp-accent)" }}>
+                    {archetypeName.toUpperCase()}
+                  </span>
+                  <span style={{ margin: "0 8px", opacity: 0.5 }}>·</span>
+                  WEEK {(computedWeekIndex ?? 0) + 1}
+                  <span style={{ margin: "0 8px", opacity: 0.5 }}>·</span>
+                  {eyebrowText}
                 </span>
-                <span style={{ margin: "0 8px", opacity: 0.5 }}>·</span>
-                WEEK {(computedWeekIndex ?? 0) + 1}
-                <span style={{ margin: "0 8px", opacity: 0.5 }}>·</span>
-                {eyebrowText}
+                <span className="cp-mobile-only" data-testid="today-eyebrow-mobile">
+                  <span style={{ color: "var(--cp-accent)" }}>
+                    {archetypeName.toUpperCase()}
+                  </span>
+                  <span style={{ margin: "0 6px", opacity: 0.5 }}>·</span>
+                  W{(computedWeekIndex ?? 0) + 1}
+                  <span style={{ margin: "0 6px", opacity: 0.5 }}>·</span>
+                  {eyebrowText}
+                </span>
               </>
             ) : (
-              eyebrowLine
+              <>
+                <span className="cp-desktop-only">{eyebrowLine}</span>
+                <span className="cp-mobile-only">{eyebrowLineMobile}</span>
+              </>
             )}
           </div>
-          <h1
+          <div
             style={{
-              fontSize: 36,
-              margin: "4px 0 0",
-              letterSpacing: "-0.02em",
-              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              flexWrap: "wrap",
+              marginTop: 4,
             }}
           >
-            Today
-          </h1>
+            <h1
+              style={{
+                fontSize: 36,
+                margin: 0,
+                letterSpacing: "-0.02em",
+                fontWeight: 700,
+              }}
+            >
+              Today
+            </h1>
+            <StravaSyncPill
+              hasStravaConnection={hasStravaConnection}
+              lastSyncedAt={lastSyncedAt}
+              variant="inline"
+            />
+          </div>
         </header>
 
         {taper && <TaperCard taper={taper} />}
