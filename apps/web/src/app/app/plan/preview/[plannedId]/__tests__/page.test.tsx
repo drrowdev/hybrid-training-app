@@ -169,7 +169,7 @@ describe("SessionPreviewBody (static markup)", () => {
     expect(html).not.toMatch(/>\s*S1\s*</);
   });
 
-  it("renders cardio items as a structured card with Duration / Intervals / Intensity / Recovery rows (no single-line mash)", () => {
+  it("renders cardio items as a structured card with Intervals / Intensity / Recovery rows (no Duration row — page meta covers it)", () => {
     const items: PrescriptionItem[] = [
       {
         kind: "cardio_vo2",
@@ -184,11 +184,7 @@ describe("SessionPreviewBody (static markup)", () => {
       React.createElement(SessionPreviewBody, { session: fixture({ items }) }),
     );
     expect(html).toContain('data-testid="session-preview-cardio-0"');
-    // Movement name is the heading.
-    expect(html).toContain("VO2 Intervals");
     // Labeled rows (the readability win) — assert each label appears.
-    expect(html).toContain("Duration");
-    expect(html).toContain("35 min");
     expect(html).toContain("Intervals");
     expect(html).toMatch(/4\s*[×x]\s*4\s*min/);
     expect(html).toContain("Intensity");
@@ -197,10 +193,12 @@ describe("SessionPreviewBody (static markup)", () => {
     expect(html).toMatch(/3\s*min\s*easy\s*recovery/);
     // Per-row testids (regression guard: a future change that collapses
     // the structured view back into a single line would drop these).
-    expect(html).toContain('session-preview-cardio-0-row-duration');
     expect(html).toContain('session-preview-cardio-0-row-intervals');
     expect(html).toContain('session-preview-cardio-0-row-intensity');
     expect(html).toContain('session-preview-cardio-0-row-recovery');
+    // Fix 3: Duration row is removed (the page meta "~35 min" above
+    // already shows it) — guard against regression.
+    expect(html).not.toContain('session-preview-cardio-0-row-duration');
   });
 
   it("falls back to a Protocol row when the cardio note doesn't match the intervals/intensity/recovery pattern", () => {
@@ -217,9 +215,117 @@ describe("SessionPreviewBody (static markup)", () => {
       React.createElement(SessionPreviewBody, { session: fixture({ items }) }),
     );
     expect(html).toContain("Hill sprints");
-    expect(html).toContain("Duration");
     expect(html).toContain("Intervals");
     // "walk back down for recovery" is recognised as the Recovery row.
     expect(html).toContain("Recovery");
+  });
+
+  /* ------------------------------------------------------------------ */
+  /* Fix 3 — dedup heuristics (no duplicate name/duration/cardioKind)   */
+  /* ------------------------------------------------------------------ */
+
+  it("single-movement cardio session: drops the movement-name heading inside the card (page title already shows it)", () => {
+    const items: PrescriptionItem[] = [
+      {
+        kind: "cardio_vo2",
+        movementId: "m-cardio",
+        movementName: "VO2 Intervals",
+        durationMin: 35,
+        protocolNote: "4 × 4 min @ 90–95% HRmax, 3 min easy recovery",
+      } as unknown as PrescriptionItem,
+    ];
+    const html = renderToStaticMarkup(
+      React.createElement(SessionPreviewBody, {
+        session: fixture({ title: "VO2 intervals", items }),
+      }),
+    );
+    // The page <h1> stays.
+    expect(html).toContain('data-testid="session-preview-title"');
+    // But the card body must NOT also render an <h3>VO2 Intervals</h3>.
+    expect(html).not.toMatch(/<h3[^>]*>\s*VO2 Intervals[^<]*<\/h3>/);
+    // The CARDIO eyebrow inside the card is still there.
+    expect(html).toContain('data-testid="session-preview-cardio-0"');
+    expect(html).toContain(">CARDIO<");
+  });
+
+  it("cardio card never renders a standalone 'VO2' (or other intensityLabel) sub-line between heading and rows", () => {
+    const items: PrescriptionItem[] = [
+      {
+        kind: "cardio_vo2",
+        movementId: "m-cardio",
+        movementName: "VO2 Intervals",
+        durationMin: 35,
+        protocolNote: "4 × 4 min @ 90–95% HRmax, 3 min easy recovery",
+        intensityLabel: "VO2",
+      } as unknown as PrescriptionItem,
+    ];
+    const html = renderToStaticMarkup(
+      React.createElement(SessionPreviewBody, {
+        session: fixture({ title: "VO2 intervals", items }),
+      }),
+    );
+    // The bare "VO2" (cardioKind) label must not appear as its own
+    // sub-line. Other VO2 mentions inside the page title / protocol
+    // rows are fine; the regression guard is the standalone block.
+    expect(html).not.toMatch(/<div[^>]*>\s*VO2\s*<\/div>/);
+  });
+
+  it("strips ' — 4×4' style protocol shorthand from the cardio card heading", () => {
+    const items: PrescriptionItem[] = [
+      {
+        kind: "cardio_vo2",
+        movementId: "m-cardio-a",
+        movementName: "VO2 Intervals",
+        durationMin: 20,
+        protocolNote: "4 × 4 min @ 90–95% HRmax, 3 min easy recovery",
+      } as unknown as PrescriptionItem,
+      {
+        kind: "cardio_z2",
+        movementId: "m-cardio-b",
+        movementName: "Z2 base — 30 min",
+        durationMin: 30,
+        hrCap: "Z2",
+      } as unknown as PrescriptionItem,
+    ];
+    const html = renderToStaticMarkup(
+      React.createElement(SessionPreviewBody, {
+        session: fixture({ title: "Conditioning", items }),
+      }),
+    );
+    // Two cardio cards now → headings are kept (no single-headline
+    // dedup applies), but the shorthand suffix on the Z2 name must be
+    // stripped.
+    expect(html).toMatch(/<h3[^>]*>\s*Z2 base\s*<\/h3>/);
+    expect(html).not.toMatch(/Z2 base — 30 min/);
+  });
+
+  it("multi-movement strength session: per-movement headings ARE present (regression guard against over-aggressive dedup)", () => {
+    const items: PrescriptionItem[] = [
+      {
+        kind: "main",
+        movementId: "m-squat",
+        movementSlug: "front_squat",
+        movementName: "Front Squat",
+        sets: 3,
+        reps: 5,
+        percentTm: 80,
+      } as unknown as PrescriptionItem,
+      {
+        kind: "main",
+        movementId: "m-ohp",
+        movementSlug: "overhead_press",
+        movementName: "Overhead Press",
+        sets: 3,
+        reps: 5,
+        percentTm: 75,
+      } as unknown as PrescriptionItem,
+    ];
+    const html = renderToStaticMarkup(
+      React.createElement(SessionPreviewBody, {
+        session: fixture({ title: "Strength A", items }),
+      }),
+    );
+    expect(html).toMatch(/<h3[^>]*>\s*Front Squat\s*<\/h3>/);
+    expect(html).toMatch(/<h3[^>]*>\s*Overhead Press\s*<\/h3>/);
   });
 });

@@ -51,7 +51,7 @@ describe("buildTodayHeroSummary", () => {
       accessory({ movementId: "m-acc-2", movementName: "Curls" }),
     ]);
     expect(rows).toEqual([
-      { name: "Front Squat", protocol: "3 × 5 @ 80%" },
+      { name: "Front Squat", protocol: "3 × 5 @ 80%", variant: "strength" },
     ]);
     expect(accessoryCount).toBe(2);
     expect(overflow).toBe(0);
@@ -194,5 +194,59 @@ describe("TodayHeroSummary", () => {
       }),
     );
     expect(html).toContain("+ 1 accessory");
+  });
+
+  /* ------------------------------------------------------------------ */
+  /* Fix 2 — restructured layout (no awkward two-column split)          */
+  /* ------------------------------------------------------------------ */
+
+  it("strength rows render in the stacked variant (movement name on its own line, protocol indented below)", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(TodayHeroSummary, {
+        items: [main({ percentTm: 80, reps: 5 })],
+      }),
+    );
+    expect(html).toContain('data-variant="strength"');
+    // The old two-column layout used flex with
+    // justifyContent:space-between — the new stacked layout must not.
+    expect(html).not.toMatch(/space-between/);
+  });
+
+  it("cardio-only sessions render the cardio row WITHOUT the redundant movement name (dedup against the hero title)", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(TodayHeroSummary, {
+        items: [
+          cardio({
+            durationMin: 35,
+            protocolNote: "4 × 4 min @ 90–95% HRmax, 3 min easy recovery",
+          }),
+        ],
+      }),
+    );
+    expect(html).toContain('data-variant="cardio"');
+    // Name suppressed: the hero card already shows "VO2 intervals"
+    // directly above this summary, so repeating it reads "amateurish".
+    expect(html).not.toContain("VO2 intervals");
+    // The protocol detail is still rendered.
+    expect(html).toMatch(/4\s*×\s*4\s*min/);
+  });
+
+  it("hybrid sessions keep the cardio movement name (only suppressed when it's the single row)", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(TodayHeroSummary, {
+        items: [
+          main({ percentTm: 80, reps: 5 }),
+          cardio({
+            durationMin: 20,
+            protocolNote: "easy spin",
+          }),
+        ],
+      }),
+    );
+    // Strength row shows name + protocol stacked.
+    expect(html).toContain("Front Squat");
+    // Cardio row keeps its name because the row above is something
+    // else — the hero title can't be a synonym for both.
+    expect(html).toContain("VO2 intervals");
   });
 });

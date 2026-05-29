@@ -1254,23 +1254,15 @@ function PlannedSessionCard({
     return acc + sets * (i.kind === "main" ? 4 : i.kind === "back_off" ? 3 : 2);
   }, 0);
 
-  // Movement-name chips for the hero — only main + back-off items,
-  // deduped, capped at 3, with "+ N assistance" for the rest.
-  const mainNames: string[] = [];
-  const seenNames = new Set<string>();
-  let assistanceCount = 0;
-  for (const item of planned.prescription.items) {
-    const name = (item as { movementName?: string }).movementName?.trim();
-    if (item.kind === "main" || item.kind === "back_off") {
-      if (name && !seenNames.has(name)) {
-        seenNames.add(name);
-        mainNames.push(name);
-      }
-    } else {
-      assistanceCount += 1;
-    }
-  }
-  const chipNames = mainNames.slice(0, 3);
+  // Movement names + accessory tally are rendered by
+  // `<TodayHeroSummary>` below, which uses the same
+  // `groupByMovementThenKind` source as the Preview page so the two
+  // surfaces stay in sync. The older inline chip block lived here too
+  // and double-counted everything that wasn't `main`/`back_off` —
+  // including cardio + warm-ups + tendon — which produced a spurious
+  // "+ 1 assistance" pill on cardio-only sessions that have zero
+  // user-visible accessories. Removed; the hero summary is now the
+  // single source of truth for "what am I about to do".
 
   return (
     <section
@@ -1326,39 +1318,6 @@ function PlannedSessionCard({
         )}
       </div>
       <h2 style={{ fontSize: 24, margin: 0, letterSpacing: "-0.01em", fontWeight: 700 }}>{planned.title}</h2>
-      {(chipNames.length > 0 || assistanceCount > 0) && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {chipNames.map((n) => (
-            <span
-              key={n}
-              style={{
-                background: "var(--cp-surface-soft)",
-                border: "1px solid var(--cp-border)",
-                borderRadius: 8,
-                padding: "4px 10px",
-                fontSize: 12,
-                fontWeight: 600,
-              }}
-            >
-              {n}
-            </span>
-          ))}
-          {assistanceCount > 0 && (
-            <span
-              style={{
-                background: "transparent",
-                borderRadius: 8,
-                padding: "4px 8px",
-                fontSize: 12,
-                color: "var(--cp-text-muted)",
-                fontStyle: "italic",
-              }}
-            >
-              + {assistanceCount} assistance
-            </span>
-          )}
-        </div>
-      )}
       {(topLine || estMin > 0) && (
         <div
           data-testid="hero-topline"
