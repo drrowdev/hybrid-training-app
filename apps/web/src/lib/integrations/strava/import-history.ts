@@ -37,6 +37,7 @@ import { writeStravaActivity } from "./write-activity";
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
 import { getUserTimezone, dayDate } from "@/lib/planner/queries";
 import { readZoneConfig } from "@/lib/stats/hr-zones";
+import { prescriptionItemsHaveStrength } from "@/lib/sessions/strength-prescribed";
 
 const TOKEN_REFRESH_SAFETY_S = 60;
 const MAX_RANGE_DAYS = 365;
@@ -74,20 +75,11 @@ export type ImportResult =
   | { ok: true; summary: ImportSummary }
   | { ok: false; error: string };
 
-/**
- * Strength prescription kinds — must stay in sync with the PR #208
- * hybrid guard in `lib/sessions/actions.ts` (STRENGTH_KINDS).
- * Duplicated locally so this module doesn't pull in the server-action
- * module (which would create a circular import via classify-cardio).
- */
-const STRENGTH_PRESCRIPTION_KINDS: ReadonlySet<string> = new Set([
-  "warmup",
-  "main",
-  "back_off",
-  "accessory",
-  "tendon",
-  "power_potentiation",
-]);
+// Strength-prescription predicate is imported at the top from
+// `@/lib/sessions/strength-prescribed` so the import-history auto-link
+// path and the in-session logging path (logCardioSession +
+// applyStravaAutofill) cannot drift. See that module for the canonical
+// "main lift = strength session" definition (review-211 #2 fix).
 
 type ConnectionRow = {
   user_id: string;
@@ -395,8 +387,12 @@ async function autoLinkImported(
     const target = bucket.find((r) => !usedPlanned.has(r.id));
     if (!target) continue;
 
-    const hasStrength = (target.prescription?.items ?? []).some((it) =>
-      typeof it?.kind === "string" && STRENGTH_PRESCRIPTION_KINDS.has(it.kind),
+    // review-211 #2 — use the shared predicate so this can't drift
+    // from `logCardioSession` / `applyStravaAutofill`. Definition:
+    // a planned session "prescribes strength" iff it has at least one
+    // main-kind prescription item.
+    const hasStrength = prescriptionItemsHaveStrength(
+      target.prescription?.items,
     );
     if (hasStrength) {
       // Hybrid completion guard — see PR #208. Don't auto-complete
