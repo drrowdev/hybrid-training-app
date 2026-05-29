@@ -254,6 +254,13 @@ describe("PlanRedesign — mobile (<=768px) collapses to This-week rail only", (
     expect(html).toMatch(/@media\s*\(\s*max-width:\s*768px\s*\)[\s\S]*?\.plan-main\s*\{\s*display:\s*none/);
   });
 
+  it("uses !important on the mobile hide rules so the rule wins regardless of source order in the cascade (regression: PR #202's hide rule was silently overridden by a later base .plan-main { display: flex })", () => {
+    const html = render();
+    expect(html).toMatch(/\.plan-main\s*\{\s*display:\s*none\s*!important/);
+    expect(html).toMatch(/\.plan-view-toggle\s*\{\s*display:\s*none\s*!important/);
+    expect(html).toMatch(/\.plan-filter\s*\{\s*display:\s*none\s*!important/);
+  });
+
   it("still renders the This-week rail (the only mobile surface) and its 7 day slots", () => {
     const html = render();
     expect(html).toContain('data-testid="plan-this-week"');
