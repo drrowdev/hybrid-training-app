@@ -48,7 +48,7 @@ export function AppShell({
 
       <main className="cp-main">{children}</main>
 
-      <BottomTabBar />
+      <BottomTabBar auditCount={auditCount} />
 
       <UndoBanner />
 
