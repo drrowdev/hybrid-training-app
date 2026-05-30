@@ -223,6 +223,17 @@ export type Archetype = {
    * secondary main lift would contradict their design intent.
    */
   disableFolding?: boolean;
+  /**
+   * ADR 0007 — when true, the primary movement's final top set on
+   * non-deload weeks is emitted as a true AMRAP (open-rep) set: the user is
+   * cued to do as many clean reps as possible (RIR ~1, not failure) and the
+   * achieved reps feed e1RM → TM. Only archetypes whose primary goal
+   * includes maximal strength opt in (STRENGTH_ANCHOR, CONCURRENT_HYBRID,
+   * and custom strength waves). HYPERTROPHY_ANCHOR is governed instead by
+   * its RIR effort anchor (ADR 0011); endurance / rebuild / maintenance keep
+   * fixed top sets to protect the shared recovery budget.
+   */
+  solicitTopSetAmrap?: boolean;
 };
 
 // ─── Curated candidate lists per role ──────────────────────────────
@@ -321,6 +332,8 @@ export const STRENGTH_ANCHOR: Archetype = {
   oneLiner:
     "Strength-led concurrent training. Four main lifts (your choice of variant per role) hit a weekly intensity wave with a deload at week 4. Polarized cardio is added when the day budget allows.",
   weeks: 4,
+  // ADR 0007 — strength is the primary goal, so the top set is a true AMRAP.
+  solicitTopSetAmrap: true,
   // ADR 0006 — bench + OHP demoted to optional so dual-main-lift folding
   // (ADR 0005) triggers at freq < 4. `foldedSecondaryMaxSets` here is now
   // LIVE: at freq=2 the trim returns squat + deadlift anchors and fold
@@ -1038,6 +1051,9 @@ export const CONCURRENT_HYBRID: Archetype = {
   oneLiner:
     "Balanced strength + cardio. Four main lifts at moderate intensity (top set ≤ 85% TM) protect cardio adaptation, and two substantive aerobic sessions — one polarized Z2, one VO2 / threshold — keep both engines running.",
   weeks: 4,
+  // ADR 0007 — the hybrid block genuinely builds strength, so its top set is
+  // a true AMRAP (cued RIR ~1, not failure, to protect the cardio budget).
+  solicitTopSetAmrap: true,
   // ADR 0005 — at freq=2 the trim returns squat + deadlift anchors only,
   // leaving horizontal_press + vertical_press uncovered. Folding closes
   // that gap at the ADR 0004 maintenance-dose cap of 3 secondary sets.
@@ -1462,19 +1478,58 @@ function applyHypertrophyEffortAnchor(
   profile: WeekProfile,
 ): PrescriptionItem[] {
   if (archetype.id !== "hypertrophy_anchor") return items;
-  if (profile.intensityLabel === "Deload") return items;
   if (items.length === 0) return items;
-  const spec = HYPERTROPHY_FINAL_SET_BY_WEEK[profile.weekIndex];
-  if (!spec) return items;
   const lastIdx = items.length - 1;
   const last = items[lastIdx]!;
-  const anchored: PrescriptionItem = {
-    ...last,
-    reps: spec.reps,
-    targetRir: { ...spec.targetRir },
-    intensityCue: spec.cue,
-  };
+  // Hypertrophy never solicits an open-rep AMRAP (ADR 0007 Decision 6); the
+  // last compound set is effort-anchored by RIR instead. Stamp isAmrap:false
+  // on every hypertrophy week so the renderer shows the RIR target, not a
+  // "+", and the AMRAP detect/bump path leaves the high-rep set alone.
+  const spec =
+    profile.intensityLabel === "Deload"
+      ? undefined
+      : HYPERTROPHY_FINAL_SET_BY_WEEK[profile.weekIndex];
+  const anchored: PrescriptionItem = spec
+    ? {
+        ...last,
+        reps: spec.reps,
+        targetRir: { ...spec.targetRir },
+        intensityCue: spec.cue,
+        isAmrap: false,
+      }
+    : { ...last, isAmrap: false };
   return [...items.slice(0, lastIdx), anchored];
+}
+
+/**
+ * ADR 0007 — mark the primary movement's final top set as a true AMRAP
+ * (open-rep) set on the archetypes that solicit it (strength / hybrid +
+ * custom strength waves). HYPERTROPHY_ANCHOR is excluded here — its last set
+ * is RIR-anchored by applyHypertrophyEffortAnchor (ADR 0011). Non-soliciting
+ * strength archetypes (endurance / rebuild / maintenance) and deload weeks
+ * get an explicit isAmrap:false so the renderer shows a fixed top set, not a
+ * "+", and the bump / reactive-deload path does not key off them.
+ *
+ * Pure: returns a new array, never mutates inputs.
+ */
+const AMRAP_TOP_SET_CUE =
+  "As many clean reps as possible — stop ~1 in reserve, not to failure.";
+
+function applyTopSetAmrapMarker(
+  items: PrescriptionItem[],
+  archetype: Archetype,
+  profile: WeekProfile,
+): PrescriptionItem[] {
+  if (archetype.id === "hypertrophy_anchor") return items;
+  if (items.length === 0) return items;
+  const solicited =
+    archetype.solicitTopSetAmrap === true && profile.intensityLabel !== "Deload";
+  const lastIdx = items.length - 1;
+  const last = items[lastIdx]!;
+  const marked: PrescriptionItem = solicited
+    ? { ...last, isAmrap: true, intensityCue: AMRAP_TOP_SET_CUE }
+    : { ...last, isAmrap: false };
+  return [...items.slice(0, lastIdx), marked];
 }
 
 export function buildPrescription(
@@ -1532,7 +1587,10 @@ export function buildPrescription(
     // ADR 0011 — effort-anchor the last working set on HYPERTROPHY_ANCHOR
     // non-deload weeks. Applied BEFORE finalize() so taper/recovery
     // modifications still scale the anchored item normally.
-    const primaryItems = applyHypertrophyEffortAnchor(scaledPrimary, archetype, profile);
+    const anchoredPrimary = applyHypertrophyEffortAnchor(scaledPrimary, archetype, profile);
+    // ADR 0007 — solicit a true AMRAP on the primary top set for archetypes
+    // whose primary goal is strength (and a fixed-set marker otherwise).
+    const primaryItems = applyTopSetAmrapMarker(anchoredPrimary, archetype, profile);
 
     // ADR 0004 — dual-main-lift secondary slot.
     // The secondary movement reuses the wave's intensity ladder but is

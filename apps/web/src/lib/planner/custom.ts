@@ -50,6 +50,17 @@ export type CustomDayInput = {
 
 export type WaveTemplateId = "fives" | "threes" | "peaking_wave" | "hypertrophy" | "maintenance" | "rebuild_flat";
 
+/**
+ * ADR 0007 — wave templates whose primary goal is maximal strength, and which
+ * therefore solicit a true AMRAP top set. Hypertrophy / maintenance / rebuild
+ * waves keep fixed top sets.
+ */
+const STRENGTH_WAVE_TEMPLATES = new Set<WaveTemplateId>([
+  "fives",
+  "threes",
+  "peaking_wave",
+]);
+
 export type CustomArchetypeInput = {
   /** Optional user-supplied block name; falls back to "Custom block". */
   name?: string;
@@ -421,6 +432,9 @@ export function compileCustomArchetype(input: CustomArchetypeInput): Archetype {
     weeks: profiles.length,
     days,
     weekProfiles: profiles,
+    // ADR 0007 — strength-oriented waves solicit a true AMRAP top set; the
+    // hypertrophy / maintenance / rebuild waves keep fixed top sets.
+    solicitTopSetAmrap: STRENGTH_WAVE_TEMPLATES.has(input.waveTemplate),
   };
 }
 

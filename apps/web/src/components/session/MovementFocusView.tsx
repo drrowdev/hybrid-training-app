@@ -170,8 +170,17 @@ export function MovementFocusView({
   );
 
   const lastMain = lastMainSlot(group);
-  const isAmrap =
+  // ADR 0007 — honour the explicit AMRAP marker when present (new blocks).
+  // Legacy stored prescriptions (no flag) fall back to the positional
+  // last-main heuristic, but never treat an RIR-anchored set (targetRir) as
+  // an open AMRAP, so ADR 0011 hypertrophy sets don't show a misleading "+".
+  const isTopSetSlot =
     activeItem?.kind === "main" && lastMain != null && cursor === lastMain;
+  const isAmrap =
+    activeItem?.isAmrap === true ||
+    (activeItem?.isAmrap == null &&
+      isTopSetSlot &&
+      activeItem?.targetRir == null);
 
   // Target weight / reps derived from the prescription + TM.
   const targetWeight = useMemo(() => {
@@ -521,6 +530,23 @@ export function MovementFocusView({
               {activeItem.percentTm}% TM
             </span>
           )}
+          {activeItem.percentTm != null && activeItem.targetRir && (
+            <span
+              className="mono"
+              data-testid="main-intensity-chip"
+              style={{
+                padding: "1px 6px",
+                borderRadius: 999,
+                background: "var(--cp-accent-soft)",
+                color: "var(--cp-accent)",
+                fontSize: 10,
+              }}
+            >
+              {activeItem.targetRir.min === activeItem.targetRir.max
+                ? `RIR ${activeItem.targetRir.min}`
+                : `RIR ${activeItem.targetRir.min}–${activeItem.targetRir.max}`}
+            </span>
+          )}
           {activeItem.percentTm == null &&
             renderIntensityChip(activeItem) && (
               <span
@@ -582,6 +608,20 @@ export function MovementFocusView({
         {activeItem.percentTm == null && activeItem.intensityCue && (
           <div
             data-testid="accessory-intensity-cue"
+            style={{
+              fontSize: 12,
+              color: "var(--cp-text-muted)",
+              lineHeight: 1.35,
+              maxWidth: 320,
+              marginInline: "auto",
+            }}
+          >
+            {activeItem.intensityCue}
+          </div>
+        )}
+        {activeItem.percentTm != null && activeItem.intensityCue && (
+          <div
+            data-testid="main-intensity-cue"
             style={{
               fontSize: 12,
               color: "var(--cp-text-muted)",

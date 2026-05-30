@@ -233,6 +233,18 @@ export type PrescriptionItem = {
    */
   intensityCue?: string;
   /**
+   * ADR 0007 — true when this set is solicited as a real AMRAP (open-rep)
+   * top set: the user is cued to do as many clean reps as possible (stop
+   * ~RIR 1, not failure) and the achieved reps drive e1RM → TM. Set on the
+   * primary top set of archetypes that solicit it (strength / hybrid +
+   * custom strength waves). Explicit `false` marks a fixed-rep top set that
+   * deliberately does NOT solicit an AMRAP (endurance / rebuild / maintenance,
+   * and the RIR-anchored hypertrophy compound — ADR 0011). Absent on legacy
+   * stored prescriptions, where renderers fall back to the positional
+   * last-main heuristic.
+   */
+  isAmrap?: boolean;
+  /**
    * Open-ended per-item metadata blob. Power Emphasis Phase 3 uses this
    * to carry the compensatory-acceleration cue on capped top sets and the
    * rest-period guidance on `power_potentiation` items (PAPE window:

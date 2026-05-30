@@ -12,13 +12,14 @@ import type { Prescription, PrescriptionItem } from "@hta/db";
  * also accepts the open-rep string encoding ("5+", "3+", "1+"). The test
  * fixtures construct both shapes, so we widen at the boundary.
  */
-const mainItem = (overrides: Partial<{ reps: number | string; intensityLabel: string; notes: string; movementId: string }>): PrescriptionItem =>
+const mainItem = (overrides: Partial<{ reps: number | string; intensityLabel: string; notes: string; movementId: string; isAmrap: boolean }>): PrescriptionItem =>
   ({
     movementId: overrides.movementId ?? "mv-1",
     kind: "main",
     reps: overrides.reps,
     intensityLabel: overrides.intensityLabel,
     notes: overrides.notes,
+    isAmrap: overrides.isAmrap,
   } as unknown as PrescriptionItem);
 
 describe("detectAmrap", () => {
@@ -71,6 +72,31 @@ describe("detectAmrap", () => {
   it("returns null when no items qualify", () => {
     const presc: Prescription = { items: [mainItem({ reps: 8 })] };
     expect(detectAmrap(presc, 0)).toBeNull();
+  });
+
+  // ADR 0007 — explicit isAmrap marker overrides the heuristics.
+  it("detects an explicit isAmrap:true numeric top set (reps=5)", () => {
+    const presc: Prescription = { items: [mainItem({ reps: 5, isAmrap: true })] };
+    expect(detectAmrap(presc, 0)?.target).toBe(5);
+  });
+
+  it("opts out an explicit isAmrap:false top set even when reps=3 + 'top set'", () => {
+    const presc: Prescription = {
+      items: [mainItem({ reps: 3, notes: "top set", isAmrap: false })],
+    };
+    expect(detectAmrap(presc, 1)).toBeNull();
+  });
+
+  it("opts out an explicit isAmrap:false set even with a 'peak' label", () => {
+    const presc: Prescription = {
+      items: [mainItem({ reps: 1, intensityLabel: "Heavy peak", isAmrap: false })],
+    };
+    expect(detectAmrap(presc, 2)).toBeNull();
+  });
+
+  it("legacy top set (no isAmrap flag) is still detected via notes (backward compat)", () => {
+    const presc: Prescription = { items: [mainItem({ reps: 3, notes: "top set" })] };
+    expect(detectAmrap(presc, 0)?.target).toBe(3);
   });
 });
 

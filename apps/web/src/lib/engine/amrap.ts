@@ -33,9 +33,14 @@ export type AmrapInfo = {
  * exists. Returns null when the day is not an AMRAP day.
  *
  * Recognises:
+ *  - an explicit ADR 0007 marker (`isAmrap === true`)
  *  - reps as a string ending in "+" ("5+", "3+", "1+")
  *  - reps = 1 on a top set tagged as the heavy peak (intensityLabel match)
  *  - the curated peaking wave's top set specifically (reps array [5, 3, 1])
+ *
+ * An explicit `isAmrap === false` (ADR 0007) opts an item out entirely — a
+ * fixed-rep top set on a non-soliciting archetype is never treated as an
+ * AMRAP, even when its rep count happens to be 5 / 3 / 1.
  */
 export function detectAmrap(
   prescription: Prescription,
@@ -43,18 +48,26 @@ export function detectAmrap(
 ): AmrapInfo | null {
   if (!prescription?.items?.length) return null;
 
-  // Strategy 1: any main item whose reps is a string ending in "+".
+  // Strategy 1: any main item whose reps is a string ending in "+", or which
+  // carries the explicit ADR 0007 AMRAP marker.
   for (const item of prescription.items) {
     if (item.kind !== "main") continue;
+    if (item.isAmrap === false) continue;
     const target = parseAmrapReps(item.reps);
     if (target != null) {
       return { target, weekIndex, item };
+    }
+    if (item.isAmrap === true && typeof item.reps === "number") {
+      if (item.reps === 5 || item.reps === 3 || item.reps === 1) {
+        return { target: item.reps as AmrapTarget, weekIndex, item };
+      }
     }
   }
 
   // Strategy 2: a top set with reps = 1 and a "peak" / "peaking" label.
   for (const item of prescription.items) {
     if (item.kind !== "main") continue;
+    if (item.isAmrap === false) continue;
     const label = item.intensityLabel?.toLowerCase() ?? "";
     if (item.reps === 1 && (label.includes("peak") || label.includes("heavy single"))) {
       return { target: 1, weekIndex, item };
