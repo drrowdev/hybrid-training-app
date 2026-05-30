@@ -1,0 +1,150 @@
+/**
+ * ADR 0011 — effort-anchor hypertrophy compound final working set.
+ *
+ * Pins:
+ *   - HYPERTROPHY_ANCHOR weekIndex 0/1/2: final primary "main" item has
+ *     the expected reps (12/10/8) + targetRir ({2,2}/{2,2}/{1,1}) and a
+ *     non-empty intensityCue. Non-final sets have NO targetRir/cue and
+ *     their reps + percentTm are unchanged from the wave.
+ *   - HYPERTROPHY_ANCHOR weekIndex 3 (Deload): NO targetRir on any item.
+ *   - Regression: STRENGTH_ANCHOR a representative week's prescription
+ *     attaches NO targetRir/intensityCue to main sets (hypertrophy-only).
+ *   - Folded secondary: a hypertrophy day with a secondary slot leaves
+ *     the secondary "main" items untouched (only the primary final set
+ *     carries the RIR anchor).
+ */
+import { describe, it, expect } from "vitest";
+import {
+  HYPERTROPHY_ANCHOR,
+  STRENGTH_ANCHOR,
+  buildPrescription,
+  type StrengthDay,
+} from "../archetypes";
+
+const PRIMARY = { id: "p", slug: "p-slug", displayName: "Primary" };
+const SECONDARY = { id: "s", slug: "s-slug", displayName: "Secondary" };
+
+function firstHypertrophyStrengthDay(): StrengthDay {
+  return HYPERTROPHY_ANCHOR.days.find(
+    (d): d is StrengthDay => d.kind === "strength",
+  )!;
+}
+
+function firstStrengthAnchorDay(): StrengthDay {
+  return STRENGTH_ANCHOR.days.find(
+    (d): d is StrengthDay => d.kind === "strength",
+  )!;
+}
+
+describe("ADR 0011 — hypertrophy compound effort anchor (final set)", () => {
+  const expectations: Array<{
+    weekIndex: number;
+    reps: number;
+    rir: { min: number; max: number };
+  }> = [
+    { weekIndex: 0, reps: 12, rir: { min: 2, max: 2 } },
+    { weekIndex: 1, reps: 10, rir: { min: 2, max: 2 } },
+    { weekIndex: 2, reps: 8, rir: { min: 1, max: 1 } },
+  ];
+
+  for (const { weekIndex, reps, rir } of expectations) {
+    it(`week ${weekIndex}: final primary main set has reps=${reps}, targetRir=${rir.min}/${rir.max}, non-empty cue`, () => {
+      const day = firstHypertrophyStrengthDay();
+      const items = buildPrescription(HYPERTROPHY_ANCHOR, weekIndex, day, PRIMARY);
+      const mains = items.filter((i) => i.kind === "main");
+      expect(mains.length).toBeGreaterThan(1);
+      const last = mains[mains.length - 1]!;
+      expect(last.reps).toBe(reps);
+      expect(last.targetRir).toEqual(rir);
+      expect(last.intensityCue).toBeTruthy();
+      expect(last.intensityCue!.length).toBeLessThanOrEqual(80);
+      // Load unchanged on the anchored set — still %TM-driven.
+      expect(last.percentTm).toBeTypeOf("number");
+      expect(last.intensityLabel).toMatch(/% TM$/);
+      // Still tagged top set.
+      expect(last.notes).toBe("top set");
+    });
+
+    it(`week ${weekIndex}: NON-final primary main sets have NO targetRir and unchanged wave reps/percentTm`, () => {
+      const day = firstHypertrophyStrengthDay();
+      const items = buildPrescription(HYPERTROPHY_ANCHOR, weekIndex, day, PRIMARY);
+      const mains = items.filter((i) => i.kind === "main");
+      const profile = HYPERTROPHY_ANCHOR.weekProfiles.find(
+        (w) => w.weekIndex === weekIndex,
+      )!;
+      const waveReps = profile.setReps as number[];
+      const waveIntensities = profile.setIntensities;
+      for (let i = 0; i < mains.length - 1; i++) {
+        const item = mains[i]!;
+        expect(item.targetRir).toBeUndefined();
+        expect(item.targetRpe).toBeUndefined();
+        expect(item.intensityCue).toBeUndefined();
+        expect(item.reps).toBe(waveReps[i]);
+        expect(item.percentTm).toBe(Math.round(waveIntensities[i]! * 100));
+      }
+    });
+  }
+
+  it("week 3 (Deload): NO targetRir/intensityCue on any main item, reps unchanged", () => {
+    const day = firstHypertrophyStrengthDay();
+    const items = buildPrescription(HYPERTROPHY_ANCHOR, 3, day, PRIMARY);
+    const mains = items.filter((i) => i.kind === "main");
+    expect(mains.length).toBeGreaterThan(0);
+    for (const it of mains) {
+      expect(it.targetRir).toBeUndefined();
+      expect(it.targetRpe).toBeUndefined();
+      expect(it.intensityCue).toBeUndefined();
+      // Deload prescribes a flat 8 reps.
+      expect(it.reps).toBe(8);
+    }
+  });
+
+  it("regression: STRENGTH_ANCHOR main sets get NO targetRir/intensityCue (hypertrophy-only change)", () => {
+    const day = firstStrengthAnchorDay();
+    // Every non-deload week (and deload) of the strength archetype.
+    for (let w = 0; w < STRENGTH_ANCHOR.weekProfiles.length; w++) {
+      const items = buildPrescription(STRENGTH_ANCHOR, w, day, PRIMARY);
+      const mains = items.filter((i) => i.kind === "main");
+      expect(mains.length).toBeGreaterThan(0);
+      for (const it of mains) {
+        expect(it.targetRir).toBeUndefined();
+        expect(it.targetRpe).toBeUndefined();
+        expect(it.intensityCue).toBeUndefined();
+      }
+    }
+  });
+
+  it("folded secondary slot: secondary main items carry NO targetRir on a hypertrophy day", () => {
+    // Build a synthetic strength day that opts into the dual-main-lift
+    // fold so we can prove the anchor does NOT leak onto the secondary.
+    const base = firstHypertrophyStrengthDay();
+    const dayWithSecondary: StrengthDay = {
+      ...base,
+      secondaryRole: "vertical_press",
+      secondaryMaxSets: HYPERTROPHY_ANCHOR.foldedSecondaryMaxSets ?? 4,
+    };
+    const items = buildPrescription(
+      HYPERTROPHY_ANCHOR,
+      1, // non-deload week — anchor IS active for primary
+      dayWithSecondary,
+      PRIMARY,
+      undefined,
+      SECONDARY,
+    );
+    const mains = items.filter((i) => i.kind === "main");
+    const primaryMains = mains.filter((i) => i.movementId === PRIMARY.id);
+    const secondaryMains = mains.filter((i) => i.movementId === SECONDARY.id);
+    expect(primaryMains.length).toBeGreaterThan(0);
+    expect(secondaryMains.length).toBeGreaterThan(0);
+    // Primary final set IS anchored.
+    const primaryLast = primaryMains[primaryMains.length - 1]!;
+    expect(primaryLast.targetRir).toEqual({ min: 2, max: 2 });
+    // Secondary items: NONE carry an RIR anchor — folded secondaries
+    // stay fixed-rep volume per ADR 0011.
+    for (const it of secondaryMains) {
+      expect(it.targetRir).toBeUndefined();
+      expect(it.targetRpe).toBeUndefined();
+      expect(it.intensityCue).toBeUndefined();
+    }
+  });
+});
