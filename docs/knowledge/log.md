@@ -288,3 +288,51 @@ row that was applied from a LF (Linux/CI) checkout.
 - Filter chips persist across reloads + browser back/forward via `?filter=` URL sync (router.replace, no history spam).
 - A11y: BlockHeatmapStrip cells expose a real aria-label on the clickable Link (date + state) and mark rest-day cells aria-hidden; UpNextHero ShapeStrip swapped from aria-hidden=true to role=img with an aria-label summarising the warm-up / main / accessory / cardio counts.
 - Skipped (A) row overflow menu: existing Un-skip button is already full-width + prominent — verified, no menu chrome added. (F) top-set chip already correctly tags the heaviest main-kind set (back-off excluded). (H) hinge-comp already detected via meta.hinge_compensation. (I) cardio sections already render via CardioSection. (C) heatmap + calendar already use status-token vocabulary consistently. (K) no dead code surfaced after the layout shift.
+
+## [2026-05-26] refine | Today + plan perf wave (PRs #134-#139)
+Client-side range toggles + cached auth (#136), loading skeletons on slow routes (#137), parallel awaits + N+1 fixes + indexes (#138), aggregated prior-bests RPC + hygiene wins (#139). /plan calendar/timeline view + filters + drawer drill-down (#133). Cuts Today + /plan first-paint substantially.
+
+## [2026-05-26] refine | Cmd-K palette + Today redesign (#42, #43)
+Quick-jump command palette across /app/*; Today page redesigned to H1 + two-column shell + data rail + 'How recovered' card + activity grouping.
+
+## [2026-05-27] refine | External cardio source + HR zones (PRs #159-#168)
+Planner reserves cardio days and defers prescription when external source owns the truth (#159). Strava-fed cardio classified from HR + duration (#160). Three HR-zone methods shipped (%Max, %HRR, %LTHR) with editable percentages per method (#161, #172). Engine consumes HR-aware buckets + per-region load when zones are available (#167). Wellness sliders feed recoveryMultiplier (#166); effective_stress_load recomputed from logged sets + cardio (#165). Anchor adherence requires a logged anchor set + uses main-lift role names (#163, #164). Cardio-swap excludes unclassified movements (#168).
+
+## [2026-05-28] refine | Engine hygiene + modality-aware scalar (PRs #178-#184)
+Consolidated actual-session-load reads (#178); deduped CARDIO_SCALAR + tightened alactic classifier + documented recovery-scale split (#180). Stage-A continuous concurrent-training scalar replaces discrete buckets (#181). User limitations wired into accessory + power filters (#182). Beginner-only accessory volume ramp for first 3 weeks (#183). Per-region load-spike warning banner on Today (#184).
+
+## [2026-05-28] ingest | ADR 0002 — AI architecture (Explain v1 + BYOAI)
+Dual contract: in-app Explain v1 chat surface backed by pluggable LlmProvider (Anthropic / OpenAI / Gemini), keys held in a pgcrypto vault keyed by AI_KEY_ENCRYPTION_KEY. Filed at docs/adr/0002-ai-architecture.md (#185). Implementation landed in #186 (BYOAI plumbing, vault, Settings UI, observability scaffolding) and #187 (Explain v1 chat surface + getEngineSnapshot tool + eval fixtures). Migration 0069.
+
+## [2026-05-28] refine | Limitations v2 lifecycle (#189)
+Bilateral side + muscle-level filter + per-exercise allow + event lifecycle (active / paused / resolved) + Today banner. Migration 0070.
+
+## [2026-05-28] ingest | ADR 0003 — MCP server + in-app chat dual path
+Streamable HTTP MCP endpoint at /mcp/[...mcp]/route.ts with OAuth 2.1 bridge, PKCE, single-use authorization codes (mcp_consumed_codes), HMAC-signed bearer tokens via MCP_TOKEN_SIGNING_KEY. 8-tool catalogue shared by the in-app chat (orchestrator v2, #195) and external MCP clients. PR A (#194) shipped the server + catalogue; PR B (#195) rewired orchestrator v2. ADR at docs/adr/0003-mcp-dual-path.md (#193). Migrations 0071 + 0072.
+
+## [2026-05-28] refine | AI settings UX (#188, #190, #191, #196)
+Dropped the master ai_opted_in switch in favour of collapsible MCP + BYOAI cards (#196, migration 0073). Inline 'i' button explaining key storage + privacy (#188), rewritten end-user disclaimer (#190), 'Bank-level encryption' framing (#191).
+
+## [2026-05-29] ingest | ADR 0004 — Endurance Focus dual main lift
+Post-Huiberts 2024 the Endurance archetype now prescribes a dual main lift (squat + hinge); Concurrent Hybrid trim fix accompanies (#197). docs/adr/0004-endurance-anchor-dual-main-lift.md.
+
+## [2026-05-29] ingest | ADR 0005 — Frequency-aware dual-main-lift folding
+When weekly slot budget is tight, secondary main lifts fold into the primary day instead of being dropped (#198). docs/adr/0005-frequency-aware-dual-main-lift-folding.md.
+
+## [2026-05-29] ingest | ADR 0006 — Balance all archetypes at low frequency
+Demote bench-press / overhead-press anchors in Strength + Hypertrophy archetypes so ADR-0005 folding produces symmetric prescriptions at low weekly frequency (#199). docs/adr/0006-balance-all-archetypes-low-frequency.md.
+
+## [2026-05-29] refine | Mobile UX overhaul (PRs #200-#210)
+Scrollable /plan calendar + mobile nav cleanup (#200); month prev/next + title (#201); MORE -> settings + week-only plan view + full-screen swipe-dismiss drawer (#202). Preview-workout route as secondary CTA (#203, #204). Today hero at-a-glance summary, deduped HR cap, copy unified on 'workout' (#206, #207). /plan polish: remove block tooltip, add overdue count, unify history link styling (#205). Cardio in-session rebuild: log form + descriptions + clean layout (#208) -> full active-session UX overhaul + Strava autofill wiring (#209) -> Mockup B + Strava webhook + shared RPE button-grid picker + unified '+ Add to workout' (#210).
+
+## [2026-05-29] refine | Strava integration end-to-end (PRs #210-#212)
+Push-subscription webhook at /api/integrations/strava/webhook with idempotent strava_event_log dedup (migrations 0075 + 0076), single-activity sync, historical import via /app/settings/integrations + transparent skip summary (#211), onboarding step as second-to-last (#212), 3-state autofill banner on cardio sessions (suggested -> applied -> ready-to-finish) that locks the form after apply so the user only adds RPE + finishes. Manual pnpm run strava:subscribe registers the subscription per env.
+
+## [2026-05-30] refine | Quick workout entry on Today (#213)
+Inline dashed card + bottom-sheet picker + three server actions (startQuickCardioSession / startQuickStrengthSession / repeatRecentSession) for off-plan + rest-day logging without going through the planner.
+
+## [2026-05-30] refactor | Hybrid completion guard extraction (#214)
+Shared sessionPrescribesStrength helper now drives every 'did the session finish?' branch: logCardioSession, applyStravaAutofill, finishStravaAppliedSession, importStravaHistory auto-link. Prevents a cardio log from prematurely marking a hybrid session complete when the strength block is unlogged. Migration 0074 adds cardio_logs finish-uniqueness as a belt-and-braces backstop.
+
+## [2026-05-30] refine | Settings reorg + cancel workout (#215)
+/app/settings/integrations sub-hub consolidates Strava + AI cards. HR-zone method picker labels rewritten plain-language (%Max / %HRR / %LTHR). Cancel workout button on empty in-progress sessions stops abandoned starts piling up in history.
