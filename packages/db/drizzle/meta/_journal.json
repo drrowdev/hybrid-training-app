@@ -505,6 +505,13 @@
       "tag": "0075_strava_event_log",
       "when": 1782504000000,
       "breakpoints": false
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "tag": "0077_prescription_modifications",
+      "when": 1782590400000,
+      "breakpoints": false
     }
   ]
 }
