@@ -114,7 +114,10 @@ function buildTaperWindow(args: {
     window,
     startDate,
     endDate,
-    triggered: { daysOut: trig.daysOut, phase: trig.phase },
+    triggered: {
+      daysOut: trig.daysOut,
+      phase: trig.phase === "none" ? "approach" : trig.phase,
+    },
   };
 }
 

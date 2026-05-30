@@ -16,7 +16,7 @@ import { cleanPrescriptionNotes } from "./clean-prescription-notes";
 import {
   NO_ACTIVE_MODIFICATIONS,
   type ActiveModifications,
-} from "./modifications";
+} from "./modifications-types";
 
 export type ArchetypeId =
   | "strength_anchor"

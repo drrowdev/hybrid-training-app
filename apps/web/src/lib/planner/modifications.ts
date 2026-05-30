@@ -21,27 +21,15 @@ import type {
   TaperPayloadDay,
 } from "@hta/db";
 import { scaleForDateInWindow } from "./recovery";
+import {
+  NO_ACTIVE_MODIFICATIONS,
+  type ActiveModifications,
+} from "./modifications-types";
 
-export type ActiveModifications = {
-  /** Volume multiplier from a taper snapshot (1.0 = no taper). */
-  volumeScale: number;
-  /** Intensity action from a taper snapshot. */
-  intensityAction: "hold" | "minimal" | null;
-  /** Strength + tendon items multiplier. 0 = drop, 1 = unchanged. */
-  strengthLoadScale: number;
-  /** Cardio durationMin multiplier. */
-  cardioLoadScale: number;
-  /** Which kind of modification produced the scales. */
-  source: "taper" | "recovery" | null;
-};
-
-export const NO_ACTIVE_MODIFICATIONS: ActiveModifications = {
-  volumeScale: 1,
-  intensityAction: null,
-  strengthLoadScale: 1,
-  cardioLoadScale: 1,
-  source: null,
-};
+export {
+  NO_ACTIVE_MODIFICATIONS,
+  type ActiveModifications,
+} from "./modifications-types";
 
 function ymd(d: Date): string {
   const y = d.getUTCFullYear();

@@ -12,12 +12,10 @@ import {
   STRENGTH_ANCHOR,
   ENDURANCE_ANCHOR,
   buildPrescription,
-  type DayTemplate,
   type StrengthDay,
   type CardioDay,
-  type TendonDay,
 } from "../archetypes";
-import { NO_ACTIVE_MODIFICATIONS } from "../modifications";
+import { NO_ACTIVE_MODIFICATIONS } from "../modifications-types";
 
 const PRIMARY = { id: "p", slug: "p-slug", displayName: "Primary" };
 const SECONDARY = { id: "s", slug: "s-slug", displayName: "Secondary" };
