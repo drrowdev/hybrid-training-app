@@ -6,11 +6,16 @@ import { STEPS } from "../OnboardingWizard";
  *
  * The order matters because:
  *  - Profile (identity) → Equipment (environment) → Training maxes
- *    (skill-specific numbers) → Build your block (synthesis) → Confirm.
+ *    (skill-specific numbers) → Build your block (synthesis) →
+ *    Connect Strava (optional value-add) → Confirm.
  *  - The block builder downstream consumes both the equipment and the
  *    TMs collected here; reshuffling these steps would mean the picker
  *    runs without equipment context or the BlockWizard runs without
  *    TM readiness signals.
+ *  - Connect Strava sits second-to-last so the user has already
+ *    invested time before being asked to OAuth out to a third party;
+ *    earlier placement risks dropoff when the Strava credentials
+ *    aren't handy.
  */
 describe("OnboardingWizard step machine", () => {
   it("exposes the expected ordered step labels", () => {
@@ -20,6 +25,7 @@ describe("OnboardingWizard step machine", () => {
       "Equipment",
       "Training maxes",
       "Build your block",
+      "Connect Strava",
       "Confirm",
     ]);
   });
@@ -35,5 +41,13 @@ describe("OnboardingWizard step machine", () => {
 
   it("places Equipment before block creation", () => {
     expect(STEPS.indexOf("Equipment")).toBeLessThan(STEPS.indexOf("Build your block"));
+  });
+
+  it("places Connect Strava immediately before Confirm", () => {
+    const strava = STEPS.indexOf("Connect Strava");
+    const confirm = STEPS.indexOf("Confirm");
+    const build = STEPS.indexOf("Build your block");
+    expect(strava).toBe(build + 1);
+    expect(confirm).toBe(strava + 1);
   });
 });

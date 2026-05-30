@@ -8,7 +8,11 @@ import {
 } from "@/lib/onboarding/actions";
 import { submitBwAssessment } from "@/lib/onboarding/bw-assessment";
 import { updateEquipmentV2 } from "@/lib/settings/equipment-actions";
-import { OnboardingWizard, type RoleCandidates } from "@/components/onboarding/OnboardingWizard";
+import {
+  connectStrava,
+  importStravaHistoryAction,
+} from "@/lib/integrations/strava/actions";
+import { OnboardingWizard, STEPS, type RoleCandidates } from "@/components/onboarding/OnboardingWizard";
 import {
   STRENGTH_ROLE_CANDIDATES,
   STRENGTH_ROLE_LABELS,
@@ -19,14 +23,19 @@ import { resolveEquipment } from "@/lib/settings/equipment-presets";
 
 const MAIN_ROLES: StrengthRole[] = ["squat", "horizontal_press", "deadlift", "vertical_press"];
 
-export default async function OnboardingPage() {
+export default async function OnboardingPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | undefined>>;
+}) {
+  const params = (await searchParams) ?? {};
   const supabase = await createClient();
   const {
     data: { user },
   } = await getAuthUser();
   if (!user) redirect("/login");
 
-  const [{ data: profile }, { count: tmCount }] = await Promise.all([
+  const [{ data: profile }, { count: tmCount }, { data: stravaConnection }] = await Promise.all([
     supabase
       .from("profiles")
       .select(
@@ -38,6 +47,11 @@ export default async function OnboardingPage() {
       .from("training_maxes")
       .select("id", { count: "exact", head: true })
       .eq("user_id", user.id),
+    supabase
+      .from("strava_connections")
+      .select("athlete_id")
+      .eq("user_id", user.id)
+      .maybeSingle(),
   ]);
 
   // If the user is already done, don't trap them in onboarding.
@@ -73,6 +87,22 @@ export default async function OnboardingPage() {
   const hasEquipmentRow = profile?.equipment != null && typeof profile.equipment === "object";
   const initialEquipment = resolveEquipment(profile ?? null);
 
+  const stravaIsConfigured =
+    Boolean(process.env.STRAVA_CLIENT_ID) &&
+    Boolean(process.env.STRAVA_CLIENT_SECRET) &&
+    Boolean(process.env.STRAVA_REDIRECT_URI);
+
+  // When the OAuth callback bounces back here it appends
+  // `?strava_connected=1`. Jump the wizard straight to the Strava
+  // step so the import UI is the first thing the user sees on
+  // return — their block setup is preserved in the DB by prior
+  // steps, but the in-memory `wizardSubmit` is gone, so we still
+  // need to walk back through "Build your block" before Confirm.
+  // Landing on the Strava step keeps the UX continuous and avoids
+  // dumping the user back at Welcome.
+  const justConnectedStrava = params.strava_connected === "1";
+  const initialStep = justConnectedStrava ? STEPS.indexOf("Connect Strava") : undefined;
+
   return (
     <OnboardingWizard
       initialDisplayName={profile?.display_name ?? ""}
@@ -81,10 +111,15 @@ export default async function OnboardingPage() {
       initialEquipment={initialEquipment}
       hasEquipmentRow={hasEquipmentRow}
       roleCandidates={roleCandidates}
+      initialStravaConnected={Boolean(stravaConnection)}
+      stravaIsConfigured={stravaIsConfigured}
+      initialStep={initialStep}
       saveProfileAction={saveOnboardingProfile}
       saveEquipmentAction={updateEquipmentV2}
       saveTmsAction={saveOnboardingTms}
       submitBwAssessmentAction={submitBwAssessment}
+      connectStravaAction={connectStrava}
+      importStravaHistoryAction={importStravaHistoryAction}
       finishAction={finishOnboarding}
       skipAction={skipOnboarding}
     />
