@@ -147,6 +147,14 @@ export type CatalogMovement = {
   functionalRoles: FunctionalRole[];
   isSupported: boolean;
   isCompound: boolean;
+  /**
+   * ADR 0012 — true when the movement can carry external/added load (so
+   * progressive overload across a block is feasible): barbell/dumbbell/
+   * cable work and weighted-bodyweight staples (weighted pull-up, dip,
+   * chin-up). Surfaced from the DB `body_weight_loaded` column ∪ inherently
+   * loadable patterns. Optional for legacy fixture catalogs; absent ⇒ false.
+   */
+  isLoadable?: boolean;
   eccentricLoadScore: number | null; // 1..5; null = unknown
   stimToFatigueScore: number | null; // 1..5; null = unknown
   highStrainTendon: boolean;
@@ -186,7 +194,7 @@ export type PickFilters = {
   allowedMovementIds?: Set<string>;
   /** True when the user is currently under concurrent stress (≥4h endurance OR ≥3 cardio/wk). */
   concurrentStressActive: boolean;
-  /** Movements used in the immediately previous session of the same day-role; demoted. */
+  /** Movements used in the PREVIOUS block for the same day-role; value-weighted demotion (ADR 0012). */
   recentlyUsedMovementIds: Set<string>;
   /** True when any tendinopathy flag is active — suppresses plyometric_*. */
   tendinopathyActive: boolean;
@@ -569,8 +577,16 @@ function findPowerCandidate(query: {
   candidates.sort((a, b) => {
     let sa = 0;
     let sb = 0;
-    if (query.filters.recentlyUsedMovementIds.has(a.id)) sa += 100;
-    if (query.filters.recentlyUsedMovementIds.has(b.id)) sb += 100;
+    // ADR 0012 — value-weighted block rotation (mirrors candidateScore).
+    // Inert when there is no prior block (empty recency set).
+    if (query.filters.recentlyUsedMovementIds.size > 0) {
+      const va = movementValueNorm(a);
+      const vb = movementValueNorm(b);
+      if (query.filters.recentlyUsedMovementIds.has(a.id)) sa += ROTATION_BASE * (1 - va);
+      if (query.filters.recentlyUsedMovementIds.has(b.id)) sb += ROTATION_BASE * (1 - vb);
+      sa -= ACCESSORY_VALUE_BONUS * va;
+      sb -= ACCESSORY_VALUE_BONUS * vb;
+    }
     if (a.stimToFatigueScore != null) sa -= a.stimToFatigueScore;
     if (b.stimToFatigueScore != null) sb -= b.stimToFatigueScore;
     return sa - sb;
@@ -578,16 +594,62 @@ function findPowerCandidate(query: {
   return candidates[0] ?? null;
 }
 
+// ─── ADR 0012 — accessory value-weighted block rotation ─────────────
+// Value model = compound + loadable. Both signals are already populated
+// in the catalog and both carry MODERATE evidence (Gentil 2015 PMID
+// 26446291 — multi-joint ≈ isolation hypertrophy + more loadable;
+// Schoenfeld 2010 PMID 20847704 — mechanical tension). SFR is
+// deliberately excluded: it's a LOW-confidence practitioner heuristic
+// that over-values isolations (the movements that SHOULD rotate freely).
+const ACCESSORY_VALUE_WEIGHTS = { compound: 2, loadable: 1 } as const; // heuristic CP-1
+const ACCESSORY_VALUE_MAX =
+  ACCESSORY_VALUE_WEIGHTS.compound + ACCESSORY_VALUE_WEIGHTS.loadable; // 3
+// Penalty for a movement used in the previous block for this day-role,
+// scaled by (1 − value). Largest single term so low-value movements
+// reliably rotate, but small enough that value meaningfully modulates it
+// (the old flat +100 swamped every other term). Per Kassiano 2022 (PMID
+// 35438660) / Baz-Valle 2019 — systematic per-mesocycle variation.
+export const ROTATION_BASE = 40; // heuristic CP-1
+// Selection bias toward higher-value movements for a shared muscle gap.
+// Kept < ROTATION_BASE so it never overrides region/limitation filters
+// or the structural phase order.
+export const ACCESSORY_VALUE_BONUS = 8; // heuristic CP-1
+
+/**
+ * Movement staple-value, normalised to [0,1]. Compound + loadable = 1.0
+ * (a sticky staple — e.g. weighted chin-up / dip / row); a redundant
+ * isolation = 0 (free to rotate each block). ADR 0012.
+ */
+export function movementValueNorm(m: CatalogMovement): number {
+  const raw =
+    (m.isCompound ? ACCESSORY_VALUE_WEIGHTS.compound : 0) +
+    (m.isLoadable ? ACCESSORY_VALUE_WEIGHTS.loadable : 0);
+  return raw / ACCESSORY_VALUE_MAX;
+}
+
 /**
  * Candidate score (lower is better). Encodes the priority order:
- *   1. Variation rotation (don't repeat the previous session's pick)
+ *   1. Variation rotation (don't repeat the previous BLOCK's pick — ADR 0012)
  *   2. Concurrent-stress filter (prefer supported when active)
  *   3. Concurrent-stress filter (demote high eccentric_load_score)
- *   4. Stim-to-fatigue ratio (higher = better)
+ *   4. Stim-to-fatigue ratio (higher = better; legacy, currently unpopulated)
  */
 function candidateScore(m: CatalogMovement, query: CandidateQuery): number {
   let score = 0;
-  if (query.filters.recentlyUsedMovementIds.has(m.id)) score += 100; // big penalty
+  // ADR 0012 — value-weighted block rotation. The penalty for a movement
+  // used in the PREVIOUS block (same day-role) is scaled DOWN by the
+  // movement's staple value, so high-value compounds (chin-ups, dips,
+  // rows) persist across blocks while redundant isolations churn; a small
+  // value bonus also biases selection toward the higher-value movement for
+  // a shared muscle gap. The whole block is inert when there is no prior
+  // block (empty recency set) — first-ever blocks stay byte-identical.
+  if (query.filters.recentlyUsedMovementIds.size > 0) {
+    const value = movementValueNorm(m);
+    if (query.filters.recentlyUsedMovementIds.has(m.id)) {
+      score += ROTATION_BASE * (1 - value);
+    }
+    score -= ACCESSORY_VALUE_BONUS * value;
+  }
   if (query.preferSupported && !m.isSupported) score += 30;
   if (query.filters.concurrentStressActive && (m.eccentricLoadScore ?? 3) >= 4) score += 20;
   if (m.stimToFatigueScore != null) score -= m.stimToFatigueScore; // higher SFR is better

@@ -124,6 +124,7 @@ import {
 import type { BwProgress } from "@hta/db";
 import { focusMusclesSchema, type FocusMuscle } from "./focus-muscles";
 import { getElbowForearmAtlRatio } from "@/lib/stats/region-spike-queries";
+import { getPreviousBlockAccessoryIdsByRole } from "./accessory-history-queries";
 
 type DbMovement = {
   id: string;
@@ -134,6 +135,7 @@ type DbMovement = {
   primary_muscles: string[] | null;
   secondary_muscles: string[] | null;
   is_compound: boolean;
+  body_weight_loaded: boolean;
   bulletproof_roles: string[] | null;
   functional_roles: string[] | null;
   is_supported: boolean;
@@ -157,6 +159,7 @@ function toCatalogMovement(m: DbMovement): CatalogMovement {
     functionalRoles: (m.functional_roles ?? []) as FunctionalRole[],
     isSupported: m.is_supported,
     isCompound: m.is_compound,
+    isLoadable: m.body_weight_loaded,
     eccentricLoadScore: m.eccentric_load_score,
     stimToFatigueScore: m.stim_to_fatigue_score,
     highStrainTendon: m.high_strain_tendon,
@@ -606,6 +609,14 @@ function assemblePrescriptionItems(
    * short-circuit the gate cleanly.
    */
   elbowForearmAtlRatio: number = 1.0,
+  /**
+   * ADR 0012 — accessory + power-primer movement ids prescribed in the
+   * PREVIOUS block for THIS day's role. The dynamic picker and the
+   * potentiation primer demote these (scaled by movement value) so
+   * high-value compound staples recur while redundant work rotates each
+   * block. Empty for first-ever blocks → byte-identical to pre-ADR-0012.
+   */
+  recentlyUsedAccessoryIds: Set<string> = new Set(),
 ): PrescriptionItem[] {
   const items =
     day.kind === "strength" && omitMainStrength
@@ -643,7 +654,7 @@ function assemblePrescriptionItems(
         blockedMuscles: limitationsContext.blockedMuscles,
         allowedMovementIds: limitationsContext.allowedMovementIds,
         concurrentStressActive: false, // wired in a follow-up pass
-        recentlyUsedMovementIds: new Set(),
+        recentlyUsedMovementIds: recentlyUsedAccessoryIds,
         tendinopathyActive: limitationsContext.tendinopathyActive,
       },
       // Beginner-onboarding ramp (CP-3 heuristic, CP-5 principle):
@@ -729,7 +740,7 @@ function assemblePrescriptionItems(
         blockedMuscles: limitationsContext.blockedMuscles,
         allowedMovementIds: limitationsContext.allowedMovementIds,
         tendinopathyActive: limitationsContext.tendinopathyActive,
-        recentlyUsedMovementIds: new Set(),
+        recentlyUsedMovementIds: recentlyUsedAccessoryIds,
         experience,
       });
       if (pick) {
@@ -945,7 +956,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
     const { data: full, error: catErr } = await supabase
       .from("movements")
       .select(
-        "id, slug, display_name, primary_region, secondary_regions, primary_muscles, secondary_muscles, is_compound, bulletproof_roles, functional_roles, is_supported, eccentric_load_score, stim_to_fatigue_score, high_strain_tendon, experience_min, experience_max",
+        "id, slug, display_name, primary_region, secondary_regions, primary_muscles, secondary_muscles, is_compound, body_weight_loaded, bulletproof_roles, functional_roles, is_supported, eccentric_load_score, stim_to_fatigue_score, high_strain_tendon, experience_min, experience_max",
       )
       .is("user_id", null);
     if (catErr) return { ok: false, error: `Catalog load failed: ${catErr.message}` };
@@ -1210,6 +1221,16 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
     ? await getElbowForearmAtlRatio(supabase, user.id, userTimezoneForBlock)
     : 1.0;
 
+  // ADR 0012 — previous-block accessory recency, grouped by day-role, for
+  // value-weighted block rotation. Read BEFORE the archive below so the
+  // "most recent block" is the one we're about to archive. Only loaded
+  // when the archetype actually runs the dynamic picker; empty otherwise
+  // (and for a user's first-ever block) → byte-identical to pre-ADR-0012.
+  const recencyByRole = archetype.accessoryProfile
+    ? await getPreviousBlockAccessoryIdsByRole(supabase, user.id)
+    : new Map<string, Set<string>>();
+  const EMPTY_RECENCY: Set<string> = new Set();
+
   const archNow = new Date().toISOString();
   const { error: archErr } = await supabase
     .from("training_blocks")
@@ -1314,6 +1335,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
               secondaryMovement,
               parsed.data.focusMuscles,
               elbowForearmAtlRatio,
+              day.role ? (recencyByRole.get(day.role) ?? EMPTY_RECENCY) : EMPTY_RECENCY,
             );
 
       // ─── Bodyweight Phase 3 — prepend BW main + back_off items ───
