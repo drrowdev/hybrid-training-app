@@ -1,6 +1,6 @@
 # ADR 0009 — Cardio intensity: real time-in-zone source + display/engine unification
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-05-30
 **Phase:** Production (engine methodology review)
 **Relates to:** `apps/web/src/lib/engine/cardio-intensity.ts`, `apps/web/src/lib/integrations/strava/zones-from-summary.ts`, `apps/web/src/lib/stats/hr-zones.ts`
