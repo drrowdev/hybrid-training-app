@@ -2,7 +2,7 @@
 
 Science-informed hybrid training with adaptive load management — a public-ready, multi-user training app for serious recreational athletes who train across strength + endurance.
 
-**Status:** Phase 0 — foundation scaffold. No user-visible features yet.
+**Status:** Production. Multi-user, mobile-ready, with AI (Explain v1 + BYOAI), an MCP server for external clients, end-to-end Strava integration, and a five-archetype engine rebalanced through ADRs 0004–0006. See `HANDOFF.md` for the current-state snapshot and `CHANGELOG.md` for the running cycle log. ~2500 tests passing.
 
 ---
 
@@ -23,8 +23,8 @@ hybrid-training-app/
 ├── packages/
 │   ├── domain/             Pure TS: ceiling math, region freshness, EWMAs, RPE helpers
 │   ├── db/                 Drizzle schema + zod schemas + typed client
-│   ├── engine/             v2 archetype budgets, bucket pressure, stall diagnosis (Phase 2+)
-│   └── ui/                 shadcn/ui components shared web ↔ Capacitor (Phase 2+)
+│   ├── engine/             v2 archetype budgets, bucket pressure, stall diagnosis, modality-aware concurrent scalar
+│   └── ui/                 shadcn/ui components shared web ↔ Capacitor
 ├── docs/
 │   ├── knowledge/          The maintained wiki (plan, research, design constraints, log, index)
 │   └── adr/                Architecture Decision Records
@@ -47,8 +47,13 @@ You'll need a `.env.local` in `apps/web/` (and one in `packages/db/` for migrati
 
 - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` — Supabase project credentials.
 - `DATABASE_URL` — Drizzle migration target.
-- `AI_KEY_ENCRYPTION_KEY` — pgcrypto master key for BYOAI key vault (ADR 0002).
+- `NEXT_PUBLIC_SITE_URL` — canonical public URL used by Supabase Auth redirects.
+- `AI_KEY_ENCRYPTION_KEY` — pgcrypto master key for the BYOAI key vault (ADR 0002).
 - `MCP_TOKEN_SIGNING_KEY` — HMAC secret (≥ 32 chars) used to sign MCP bearer tokens and authorization codes (ADR 0003). **Required** at runtime when the `/mcp/*` routes are reachable.
+- `STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET` — Strava OAuth app credentials.
+- `STRAVA_WEBHOOK_VERIFY_TOKEN` — opaque string Strava echoes back during webhook verification.
+- `STRAVA_WEBHOOK_CALLBACK_URL` — public URL of `/api/integrations/strava/webhook`.
+- `STRAVA_WEBHOOK_SUBSCRIPTION_ID` — numeric id returned by Strava after `strava:subscribe`; the webhook handler rejects any event whose `subscription_id` doesn't match.
 
 ## Stack
 
@@ -60,10 +65,11 @@ You'll need a `.env.local` in `apps/web/` (and one in `packages/db/` for migrati
 | ORM | Drizzle ORM |
 | Auth | Supabase Auth (`@supabase/ssr`) |
 | Styling | Tailwind v4 + shadcn/ui |
-| Data fetching | TanStack Query (Phase 1) |
+| Data fetching | TanStack Query |
 | Forms | React Hook Form + Zod |
 | Hosting | Vercel (web) + Supabase (DB) |
-| Cardio | Strava integration (Phase 1) |
+| Cardio | Strava integration — OAuth + push-subscription webhook + history import |
+| AI | Pluggable `LlmProvider` (Anthropic / OpenAI / Gemini) with BYOAI vault (ADR 0002); MCP server at `/mcp` with OAuth 2.1 bridge (ADR 0003) |
 | Errors / analytics | Sentry + PostHog (Phase 0 stub) |
 
 ## MVP scope

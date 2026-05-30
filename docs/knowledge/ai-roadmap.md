@@ -5,6 +5,8 @@
 **Created:** 2026-05-23 (after a UX audit pass)
 **Wave context:** of an 18-item candidate list, items #1, #2, #4, #5, #6, #7, #17, #18 were lifted into the active build queue; items below were parked here.
 
+**2026-05-30 audit update.** Most of the originally-deferred items have since shipped. See the **"Closed — shipped"** section at the bottom. The roadmap itself is overdue a full re-write; until that happens, treat the per-item sections below as historical context for what shipped, not as the current backlog. Outstanding items as of 2026-05-30: **#13 Phase auto-shift** and **#16 TAPER auto-detection** (both ride on a notifications inbox that doesn't exist yet).
+
 ---
 
 ## #9 — `/races` dedicated page
@@ -164,9 +166,34 @@
 
 ---
 
-## #7 — AI chat surface (FAB + conversation backend) — deferred for dedicated planning
+## #7 — AI chat surface (FAB + conversation backend) — **shipped 2026-05-28 via ADR 0002 + 0003**
 
-**Why this is deferred.** Anything AI-touching needs its own planning pass — model selection, prompting strategy, conversation persistence, privacy posture, and rate-limit / cost model are decisions that shouldn't be made in passing as a UI affordance. A floating button is the easy part; the hard part is the engine behind it.
+**Status: shipped.** Replaced by the dual-path implementation laid out
+in [`docs/adr/0002-ai-architecture.md`](../adr/0002-ai-architecture.md)
+(Explain v1 + BYOAI) and
+[`docs/adr/0003-mcp-dual-path.md`](../adr/0003-mcp-dual-path.md) (MCP
+server + in-app chat through a shared 8-tool catalogue). The eight open
+questions below were resolved in those ADRs; the original deferral
+rationale is preserved here for lineage.
+
+- **Backend model:** BYOAI — pluggable `LlmProvider` for Anthropic /
+  OpenAI / Gemini; user supplies their own key, stored in a pgcrypto
+  vault keyed by `AI_KEY_ENCRYPTION_KEY`.
+- **Conversation persistence:** per-thread, Supabase-backed.
+- **Grounding:** tool-calling against an 8-tool catalogue
+  (`getEngineSnapshot` and friends) shared with the MCP server.
+- **Allowed actions:** read-only in v1.
+- **Privacy:** keys never leave the server vault; tool calls scoped to
+  the calling `user_id`.
+- **Voice:** plain-language, brand-pure (DC-Q1, DC-Q6).
+- **Fallback:** chat is opt-in per provider; absent a configured key
+  the FAB tells the user how to add one.
+- **Quality bar:** eval fixtures shipped alongside `getEngineSnapshot`
+  in PR #187; observability scaffolding in PR #186.
+
+### Original deferral rationale (historical)
+
+**Why this was deferred.** Anything AI-touching needs its own planning pass — model selection, prompting strategy, conversation persistence, privacy posture, and rate-limit / cost model are decisions that shouldn't be made in passing as a UI affordance. A floating button is the easy part; the hard part is the engine behind it.
 
 **The original ask.** A floating action button bottom-right on every `/app/*` page that opens a chat surface where the user can ask the engine questions ("Why is this week deload?", "Why did you reduce Tuesday's squat top set?", "Suggest accessories for tomorrow"). The engine already has reasoning surface area — override audit log, region freshness, ceiling explainers, tier-detection contributors — that a chat layer could expose conversationally.
 
@@ -244,3 +271,24 @@ Stats adherence is intentionally not in scope here; its empty-state pass is owne
 
 ### Bodyweight progression engine
 Proper push-up / pull-up / squat progression ladders with rep-based "training max" equivalents (e.g. `5 strict pull-ups` is a 1RM-equivalent that should drive band-assisted / weighted-vest progression). Currently bodyweight-only blocks fall back to accessories-only with RPE intensity ÔÇö the `BodyweightOnlyBanner` flags this as early support. Scope when picked up: a parallel main-lift slot for bodyweight movements, a rep-floor / rep-ceiling progression mechanic, and weighted-vest / dip-belt / band-assist tooling that the picker already understands.
+
+---
+
+## Closed — shipped
+
+2026-05-30 audit. Items lifted out of the parking lot:
+
+- **#9 /races page** — shipped 2026-05-23 as `/app/races` (PR #56).
+- **#10 /injuries page** — shipped 2026-05-23 as `/app/recovery/injuries` (PR #54). Further extended by Limitations v2 lifecycle in PR #189 (bilateral side + muscle-level filter + per-exercise allow + event lifecycle + Today banner). Migration 0070.
+- **#11 Training Profile page** — shipped 2026-05-23 as `/app/profile` (PR #55).
+- **#12 Calendar view modes** — shipped 2026-05-23 (PR #57: Month / Timeline / List with filters + legend). Further redesigned in the /plan layout shift (PRs #133, #200-#205) with scrollable calendar + drawer drill-down + filter persistence via `?filter=`.
+- **#14 'What is this?' inline help** — shipped 2026-05-23 as the `MetricHelp` primitive with central glossary (PR #53).
+- **#15 AMRAP -> e1RM distinction** — shipped 2026-05-23 (PR #52: AMRAP-driven e1RM vs entered 1RM distinction + suggestion banner). Anchor PR detection now binds to saved 1RM rather than historical max (PR #75).
+- **#18 EmptyState primitive** — shipped 2026-05-24 (see top of file).
+- **#7 AI chat surface** — shipped 2026-05-28 via ADR 0002 (Explain v1 + BYOAI) and ADR 0003 (MCP dual path). See the #7 section above for the resolved open-questions trail.
+
+## Still open
+
+- **#13 Phase auto-shift on race calendar** — unchanged. Still gated on a notifications inbox UI.
+- **#16 TAPER auto-detection with Accept/Dismiss** — unchanged. Bundle with #13.
+- **Open follow-up: Notifications inbox** — referenced in `Related` above. Needs its own design pass before #13 / #16 can land their Accept/Dismiss UX.
