@@ -401,6 +401,57 @@ describe("startQuickCardioSession", () => {
     expect(store.cardioLogs[0]!.modality).toBe("bike");
   });
 
+  it("accepts durationMin (5-300) and stores it as durationMin*60 seconds", async () => {
+    const { startQuickCardioSession } = await import("../actions");
+    await expectRedirect(() =>
+      startQuickCardioSession({ modality: "run", durationMin: 45 }),
+    );
+    const created = store.sessions.find((s) => s.id !== SOURCE_SESSION && s.user_id === SELF)!;
+    const cardio = store.cardioLogs.find((c) => c.session_id === created.id)!;
+    expect(cardio.duration_sec).toBe(45 * 60);
+  });
+
+  it("durationMin takes precedence over durationSec when both are provided", async () => {
+    const { startQuickCardioSession } = await import("../actions");
+    await expectRedirect(() =>
+      startQuickCardioSession({
+        modality: "run",
+        durationMin: 60,
+        // back-compat field — should be ignored when durationMin is set
+        durationSec: 1234,
+      }),
+    );
+    const created = store.sessions.find((s) => s.id !== SOURCE_SESSION && s.user_id === SELF)!;
+    const cardio = store.cardioLogs.find((c) => c.session_id === created.id)!;
+    expect(cardio.duration_sec).toBe(60 * 60);
+  });
+
+  it("rejects a durationMin below 5", async () => {
+    const { startQuickCardioSession } = await import("../actions");
+    await expect(
+      startQuickCardioSession({ modality: "run", durationMin: 4 }),
+    ).rejects.toThrow();
+  });
+
+  it("rejects a durationMin above 300", async () => {
+    const { startQuickCardioSession } = await import("../actions");
+    await expect(
+      startQuickCardioSession({ modality: "run", durationMin: 301 }),
+    ).rejects.toThrow();
+  });
+
+  it("rejects unknown fields (strict schema)", async () => {
+    const { startQuickCardioSession } = await import("../actions");
+    await expect(
+      startQuickCardioSession({
+        modality: "run",
+        durationMin: 30,
+        // @ts-expect-error — intentional unknown key for the strict-schema test
+        bogus: true,
+      }),
+    ).rejects.toThrow();
+  });
+
   it("does NOT link the new ad-hoc session to any planned_sessions row", async () => {
     const { startQuickCardioSession } = await import("../actions");
     await expectRedirect(() => startQuickCardioSession({ modality: "run" }));

@@ -1630,6 +1630,20 @@ const startQuickCardioSchema = z
   .object({
     modality: z.string().trim().min(1).max(40),
     movementId: z.string().uuid().optional().nullable(),
+    /**
+     * Either `durationMin` (5–300, preferred — passed by the Today
+     * page Quick-workout sheet after the user picks a chip) OR
+     * `durationSec` (legacy, kept for callers like repeatRecentSession
+     * that already speak the canonical storage unit).
+     *
+     * If both are supplied, `durationMin` wins.
+     */
+    durationMin: z.coerce
+      .number()
+      .int()
+      .min(5)
+      .max(300)
+      .optional(),
     durationSec: z.coerce
       .number()
       .int()
@@ -1643,6 +1657,7 @@ const startQuickCardioSchema = z
 export type StartQuickCardioInput = {
   modality: string;
   movementId?: string | null;
+  durationMin?: number;
   durationSec?: number;
   title?: string;
 };
@@ -1678,12 +1693,17 @@ export async function startQuickCardioSession(
     .single();
   if (sErr || !created) throw new Error(sErr?.message ?? "Could not create session");
 
+  const durationSec =
+    parsed.data.durationMin != null
+      ? parsed.data.durationMin * 60
+      : parsed.data.durationSec ?? QUICK_CARDIO_DEFAULT_DURATION_SEC;
+
   const { error: cErr } = await supabase.from("cardio_logs").insert({
     session_id: created.id,
     movement_id: parsed.data.movementId ?? null,
     block_index: 0,
     modality: parsed.data.modality,
-    duration_sec: parsed.data.durationSec ?? QUICK_CARDIO_DEFAULT_DURATION_SEC,
+    duration_sec: durationSec,
   });
   if (cErr) throw new Error(cErr.message);
 

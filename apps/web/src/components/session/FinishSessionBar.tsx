@@ -24,6 +24,7 @@ export function FinishSessionBar({
   variant,
   disabled,
   subtitle,
+  hybrid,
   testId = "finish-stickybar",
 }: {
   sessionId: string;
@@ -31,10 +32,22 @@ export function FinishSessionBar({
   disabled: boolean;
   /** Optional small text rendered under the bottom-variant button. */
   subtitle?: string | null;
+  /**
+   * Hybrid sessions (cardio + strength prescribed) need the disabled
+   * label to clarify which kind of work counts toward the gate —
+   * strength sets, not cardio time. Pure-strength sessions keep the
+   * generic copy (still accurate); pure-cardio sessions don't render
+   * this bar at all (see SessionLogClient — CardioLogForm owns the
+   * Finish button in that flow).
+   */
+  hybrid?: boolean;
   testId?: string;
 }) {
   const href = `/app/sessions/${sessionId}/complete`;
-  const label = disabled ? "Log at least 1 set to finish" : "Finish session →";
+  const disabledLabel = hybrid
+    ? "Log at least 1 strength set to finish"
+    : "Log at least 1 set to finish";
+  const label = disabled ? disabledLabel : "Finish session →";
 
   if (variant === "banner") {
     if (disabled) {

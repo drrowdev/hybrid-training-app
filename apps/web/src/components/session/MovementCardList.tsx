@@ -22,16 +22,12 @@ import { bucketForGroup } from "@/lib/sessions/movement-summary";
 import { MovementCard } from "./MovementCard";
 import { FreestyleMovementCard } from "./FreestyleMovementCard";
 import type { PlateInventoryItem } from "./plate-math";
-import { MovementPicker, type MovementSearchResult } from "@/components/movement-picker";
 import type { LoggedSet } from "./SessionLogClient";
 import type {
   addStrengthSet as addStrengthSetAction,
   fillSessionFromPlan as fillSessionFromPlanAction,
 } from "@/lib/sessions/actions";
-import {
-  addSessionMovementAction,
-  removeSessionMovementAction,
-} from "@/lib/sessions/session-movement-actions";
+import { removeSessionMovementAction } from "@/lib/sessions/session-movement-actions";
 import type { ResolvedFreestyleMovement } from "@/lib/sessions/freestyle-resolver";
 
 export type MovementCardListProps = {
@@ -77,15 +73,6 @@ export type MovementCardListProps = {
    * live in this component.
    */
   resolvedFreestyle?: ReadonlyArray<ResolvedFreestyleMovement>;
-  /**
-   * Suppress the inline "+ Add off-plan movement" button + picker at
-   * the bottom of the card list. The session page sets this on
-   * pure-cardio sessions so the +Add button can be rendered AFTER the
-   * cardio block instead of appearing as the first interactive thing
-   * on an otherwise-empty strength surface (Fix 3 of the
-   * active-session UX overhaul).
-   */
-  hideAddOffPlan?: boolean;
 };
 
 export function MovementCardList({
@@ -108,7 +95,6 @@ export function MovementCardList({
   plateInventory,
   bwGateStateByFamily,
   resolvedFreestyle,
-  hideAddOffPlan,
 }: MovementCardListProps) {
   const groups = useMemo(
     () => groupPrescriptionByMovement(prescription),
@@ -150,11 +136,15 @@ export function MovementCardList({
   // anything the server already knows about. Also acts as the
   // optimistic-remove ledger: we hide ids the user asked to remove
   // before the next server fetch lands.
-  const [pendingFreestyle, setPendingFreestyle] = useState<LoggedSet["movement"][]>([]);
+  //
+  // The actual "+ Add" entry point now lives in `<AddToWorkout>` at
+  // the page level (issue #210 unification — the inline picker that
+  // used to be rendered below this list was a duplicate surface).
+  // `pendingFreestyle` is retained as a no-op slot so the optimistic
+  // round-trip continues to work if a future caller wires it back up;
+  // today, the only mutator left is `setRemovedIds` via `handleRemove`.
+  const [pendingFreestyle] = useState<LoggedSet["movement"][]>([]);
   const [removedIds, setRemovedIds] = useState<Set<string>>(() => new Set());
-  const [showPicker, setShowPicker] = useState(false);
-  const [addBusy, setAddBusy] = useState(false);
-  const [addError, setAddError] = useState<string | null>(null);
 
   // Final ordered list of (movement, loggedSetCount) tuples for the
   // freestyle render block. When the server supplied a resolved union
@@ -204,50 +194,9 @@ export function MovementCardList({
     sets,
   ]);
 
-  const handlePick = async (m: MovementSearchResult | null) => {
-    if (!m) return;
-    setAddError(null);
-    setAddBusy(true);
-    // Optimistic insert into pending. If the server rejects we roll
-    // back so the card never appears.
-    const movement = {
-      id: m.id,
-      slug: m.slug,
-      display_name: m.display_name,
-      primary_region: m.primary_region,
-    };
-    // If the user previously removed this same id during the same
-    // session, drop the tombstone so the card reappears.
-    setRemovedIds((prev) => {
-      if (!prev.has(m.id)) return prev;
-      const next = new Set(prev);
-      next.delete(m.id);
-      return next;
-    });
-    setPendingFreestyle((prev) =>
-      prev.find((x) => x.id === m.id) ? prev : [...prev, movement],
-    );
-    setShowPicker(false);
-    try {
-      const result = await addSessionMovementAction(sessionId, m.id);
-      if (!result.ok) {
-        // Roll back optimistic add.
-        setPendingFreestyle((prev) => prev.filter((x) => x.id !== m.id));
-        setAddError(result.error);
-      }
-    } catch (err) {
-      setPendingFreestyle((prev) => prev.filter((x) => x.id !== m.id));
-      setAddError(err instanceof Error ? err.message : "Could not add movement.");
-    } finally {
-      setAddBusy(false);
-    }
-  };
-
   const handleRemove = (movementId: string) => {
-    // Strip from pending (covers the just-added-not-yet-refreshed
-    // case) AND drop into the tombstone set (covers persisted rows
-    // that already came down from the server).
-    setPendingFreestyle((prev) => prev.filter((x) => x.id !== movementId));
+    // Drop into the tombstone set so the card disappears immediately;
+    // the server action will revalidate on its own.
     setRemovedIds((prev) => {
       if (prev.has(movementId)) return prev;
       const next = new Set(prev);
@@ -351,72 +300,6 @@ export function MovementCardList({
           timerSoundEnabled={timerSoundEnabled}
         />
       ))}
-
-      {!isComplete && !hideAddOffPlan && (
-        <div
-          style={{
-            display: "grid",
-            justifyItems: "center",
-            gap: 6,
-            padding: "8px 0",
-          }}
-        >
-          {!showPicker ? (
-            <button
-              type="button"
-              onClick={() => {
-                setAddError(null);
-                setShowPicker(true);
-              }}
-              data-testid="movement-card-add"
-              disabled={addBusy}
-              style={{
-                // Small text-link-style button so it doesn't compete with the
-                // movement cards above. Reporting an off-plan movement is
-                // rare; the button shouldn't read as a primary action.
-                background: "transparent",
-                border: "1px dashed var(--cp-border)",
-                borderRadius: 999,
-                padding: "4px 14px",
-                fontSize: 12,
-                color: "var(--cp-text-muted)",
-                cursor: addBusy ? "default" : "pointer",
-                opacity: addBusy ? 0.6 : 1,
-              }}
-            >
-              {addBusy ? "Adding…" : "+ Add off-plan movement"}
-            </button>
-          ) : (
-            <div
-              className="cp-card"
-              style={{ padding: 12, display: "grid", gap: 8, width: "100%", maxWidth: 520 }}
-            >
-              <MovementPicker
-                name="__add_movement"
-                onChange={handlePick}
-                placeholder="Search the catalog…"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPicker(false)}
-                className="cp-btn"
-                style={{ padding: "6px 10px", fontSize: 11 }}
-              >
-                × cancel
-              </button>
-            </div>
-          )}
-          {addError && (
-            <div
-              role="alert"
-              data-testid="movement-card-add-error"
-              style={{ fontSize: 12, color: "var(--cp-danger)" }}
-            >
-              {addError}
-            </div>
-          )}
-        </div>
-      )}
 
     </div>
   );
