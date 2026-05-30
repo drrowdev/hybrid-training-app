@@ -38,16 +38,14 @@ export const GENERIC_CARDIO_DESCRIPTION =
   "Follow the prescribed intensity and duration. Adjust pace to match the target HR or RPE. Warm up easy for 5–10 minutes before the main effort and cool down easy afterwards.";
 
 /**
- * One-sentence form of each cardio description, suitable for the Today
- * hero summary (where the full "How to do it" paragraph would dominate
- * the card). The in-session card keeps the longer
- * `CARDIO_DESCRIPTIONS` paragraphs — these short forms exist purely so
- * the hero gets a recognisable opening line for every cardio kind.
+ * One-sentence form of each cardio description, used for compact
+ * surfaces where the full "How to do it" paragraph would dominate the
+ * card. The in-session card keeps the longer `CARDIO_DESCRIPTIONS`
+ * paragraphs — these short forms exist so callers can pick a
+ * recognisable opening line per cardio kind without falling back to
+ * the long body.
  *
- * Adding a new kind: register it here AND in `CARDIO_DESCRIPTIONS` (or
- * the cross-kind regression test in
- * `apps/web/src/components/today/__tests__/TodayHeroSummary.test.tsx`
- * will fail).
+ * Adding a new kind: register it here AND in `CARDIO_DESCRIPTIONS`.
  */
 export const CARDIO_ONE_LINERS: Record<CardioDescriptionKind, string> = {
   cardio_vo2:

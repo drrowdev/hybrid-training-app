@@ -52,7 +52,27 @@ function durationLine(input: SessionPreviewInput, movementCount: number): string
  * for the case-insensitive + shorthand-stripping normalisation.
  */
 
-export function SessionPreviewBody({ session }: { session: SessionPreviewInput }) {
+/**
+ * `full` (default) is the Preview-page surface: outer max-width
+ * container, back link, page header (eyebrow + title + meta), and a
+ * bottom "Start workout" CTA.
+ *
+ * `compact` is the Today-hero surface: just the inner section cards
+ * (movements / cardio / accessories / tendon / hinge). The hero card
+ * itself owns the eyebrow, title, top-line numbers, and primary CTA,
+ * so this variant strips the chrome that would otherwise duplicate
+ * them. Outer padding/max-width are also dropped so the section cards
+ * sit flush with the hero card's own padding.
+ */
+export type SessionPreviewVariant = "full" | "compact";
+
+export function SessionPreviewBody({
+  session,
+  variant = "full",
+}: {
+  session: SessionPreviewInput;
+  variant?: SessionPreviewVariant;
+}) {
   const sections = groupByMovementThenKind(session.items);
   const movementCount = sections.movements.length;
   const meta = durationLine(session, movementCount);
@@ -64,72 +84,89 @@ export function SessionPreviewBody({ session }: { session: SessionPreviewInput }
     sections.cardio.length > 0;
 
   // Dedup heuristic: when the inner card heading would just repeat
-  // `session.title` (already shown above), drop it. The two real
-  // cases this fires on:
+  // `session.title` (already shown above on Preview, or in the hero
+  // topline on Today), drop it. The two real cases this fires on:
   //   - cardio-only session: title "VO2 intervals" + movementName
   //     "VO2 Intervals — 4×4" → heading would be redundant.
   //   - single-movement strength session whose title is the movement
   //     name (rare; most strength titles are generic like "Strength
   //     A").
   const shouldHideHeading = makeShouldHideHeading(session.title);
+  const isCompact = variant === "compact";
+
+  // On the Preview page the page header already shows "~35 min" in
+  // the meta line, so CardioCard hides its Duration row to avoid
+  // repeating it. The compact hero variant dropped the standalone
+  // `~N min` topline from the hero card (see Today page edit) so the
+  // CardioCard Duration row IS the single source of truth there.
+  const hideCardioDurationRow = !isCompact;
 
   return (
     <div
       data-testid="session-preview-body"
+      data-variant={variant}
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: 20,
-        padding: "16px 16px 32px",
-        maxWidth: 720,
-        margin: "0 auto",
+        gap: isCompact ? 12 : 20,
+        ...(isCompact
+          ? { padding: 0 }
+          : {
+              padding: "16px 16px 32px",
+              maxWidth: 720,
+              margin: "0 auto",
+            }),
       }}
     >
-      <div>
-        <Link
-          href="/app"
-          data-testid="session-preview-back"
-          style={{
-            display: "inline-block",
-            fontSize: 13,
-            color: "var(--cp-text-muted)",
-            textDecoration: "none",
-            padding: "6px 0",
-          }}
-        >
-          ← Back to Today
-        </Link>
-      </div>
-
-      <header style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <div
-          className="mono"
-          data-testid="session-preview-eyebrow"
-          style={{
-            fontSize: 11,
-            letterSpacing: "0.08em",
-            color: "var(--cp-text-muted)",
-            textTransform: "uppercase",
-          }}
-        >
-          {session.eyebrow}
+      {!isCompact && (
+        <div>
+          <Link
+            href="/app"
+            data-testid="session-preview-back"
+            style={{
+              display: "inline-block",
+              fontSize: 13,
+              color: "var(--cp-text-muted)",
+              textDecoration: "none",
+              padding: "6px 0",
+            }}
+          >
+            ← Back to Today
+          </Link>
         </div>
-        <h1
-          data-testid="session-preview-title"
-          style={{ fontSize: 24, fontWeight: 700, color: "var(--cp-text)", margin: 0 }}
-        >
-          {session.title}
-        </h1>
-        {meta && (
+      )}
+
+      {!isCompact && (
+        <header style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <div
             className="mono"
-            data-testid="session-preview-meta"
-            style={{ fontSize: 12, color: "var(--cp-text-muted)" }}
+            data-testid="session-preview-eyebrow"
+            style={{
+              fontSize: 11,
+              letterSpacing: "0.08em",
+              color: "var(--cp-text-muted)",
+              textTransform: "uppercase",
+            }}
           >
-            {meta}
+            {session.eyebrow}
           </div>
-        )}
-      </header>
+          <h1
+            data-testid="session-preview-title"
+            style={{ fontSize: 24, fontWeight: 700, color: "var(--cp-text)", margin: 0 }}
+          >
+            {session.title}
+          </h1>
+          {meta && (
+            <div
+              className="mono"
+              data-testid="session-preview-meta"
+              style={{ fontSize: 12, color: "var(--cp-text-muted)" }}
+            >
+              {meta}
+            </div>
+          )}
+        </header>
+      )}
 
       {!hasAnything && (
         <div
@@ -181,9 +218,11 @@ export function SessionPreviewBody({ session }: { session: SessionPreviewInput }
           <CardioCard
             key={`cardio-${i}`}
             item={item}
-            // Preview surface shows "~35 min" in the page meta; drop
-            // the Duration row from the card so it isn't repeated.
-            hideDurationRow
+            // On Preview the page meta already shows "~35 min"; drop
+            // the Duration row to avoid repeating. The compact hero
+            // variant drops that meta line, so we let CardioCard show
+            // Duration as the single source of truth.
+            hideDurationRow={hideCardioDurationRow}
             hideHeading={shouldHideHeading(item.movementName ?? "Cardio")}
             testId={`session-preview-cardio-${i}`}
             rowTestIdPrefix={`session-preview-cardio-${i}`}
@@ -191,14 +230,16 @@ export function SessionPreviewBody({ session }: { session: SessionPreviewInput }
         ))}
       </div>
 
-      <Link
-        href={`/app/sessions/start/${session.id}`}
-        className="cp-btn primary big"
-        data-testid="session-preview-start-cta"
-        style={{ minHeight: 56, justifyContent: "center" }}
-      >
-        Start workout →
-      </Link>
+      {!isCompact && (
+        <Link
+          href={`/app/sessions/start/${session.id}`}
+          className="cp-btn primary big"
+          data-testid="session-preview-start-cta"
+          style={{ minHeight: 56, justifyContent: "center" }}
+        >
+          Start workout →
+        </Link>
+      )}
     </div>
   );
 }
