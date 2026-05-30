@@ -122,6 +122,8 @@ import {
   HINGE_COMPENSATION_FAMILY,
 } from "./hinge-compensation";
 import type { BwProgress } from "@hta/db";
+import { focusMusclesSchema, type FocusMuscle } from "./focus-muscles";
+import { getElbowForearmAtlRatio } from "@/lib/stats/region-spike-queries";
 
 type DbMovement = {
   id: string;
@@ -262,27 +264,11 @@ function resolveDeclaredExperience(
     : null;
 }
 
-/** Default per-muscle weekly target (MV-floor for trained lifter, Schoenfeld 2017). */
-const DEFAULT_MUSCLE_TARGET = 6;
-const AESTHETIC_TARGET_MUSCLES = [
-  "side_delts",
-  "rear_delts",
-  "biceps",
-  "triceps",
-  "calves",
-  "abs",
-  "upper_chest",
-  "lats",
-  "mid_back",
-  "hamstrings",
-  "forearms",
-];
-
-function defaultMuscleTargets(): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const m of AESTHETIC_TARGET_MUSCLES) out[m] = DEFAULT_MUSCLE_TARGET;
-  return out;
-}
+/** Default per-muscle weekly target — re-exported from the focus-muscle
+ *  engine module for back-compat with callers that import this name. */
+import {
+  defaultMuscleTargets,
+} from "./focus-muscle-targets";
 
 /**
  * Mutates `items` in place, prepending a warmup ladder for every
@@ -605,6 +591,21 @@ function assemblePrescriptionItems(
    * `buildPrescription`. Undefined for every other day.
    */
   secondaryMovement?: { id: string; slug: string; displayName: string },
+  /**
+   * Migration 0079 — per-block focus muscle groups (0–2). Forwarded to
+   * `defaultMuscleTargets` so the accessory picker biases its
+   * per-muscle target map toward the user's chosen muscles via the
+   * substitution-with-cap model. Empty array = pre-PR baseline.
+   */
+  focusMuscles: readonly FocusMuscle[] = [],
+  /**
+   * Elbow/forearm ATL ratio (current / 4-wk trailing avg). When
+   * forearms is a focus muscle and this exceeds 1.25, the engine
+   * silently caps forearm volume at MEV per Wernbom 2007 + Baar 2017.
+   * Defaults to 1.0 (no spike) — callers without history data
+   * short-circuit the gate cleanly.
+   */
+  elbowForearmAtlRatio: number = 1.0,
 ): PrescriptionItem[] {
   const items =
     day.kind === "strength" && omitMainStrength
@@ -651,8 +652,19 @@ function assemblePrescriptionItems(
       // and from week 4 onward. Main lifts, warmups, and cardio are
       // not affected — the ramp is applied at the accessory picker
       // boundary only.
+      //
+      // Focus-muscle bias (migration 0079, CP-2): when the active
+      // block has user-chosen focus muscles, `defaultMuscleTargets`
+      // pulls volume from non-focus aesthetic muscles toward the
+      // focus group(s). Substitution invariant preserved — total set
+      // count unchanged. Concurrent-load mod stays available even
+      // though we don't currently feed it (the picker's existing
+      // concurrent path is the truth-of-record for set scaling).
       perMuscleTargets: applyScalarToTargets(
-        defaultMuscleTargets(),
+        defaultMuscleTargets({
+          focusMuscles,
+          elbowForearmAtlRatio,
+        }).targetsByMuscle,
         onboardingRampScalar(experience, weekIndex),
       ),
       maxItems: applyScalarToMaxItems(
@@ -813,6 +825,13 @@ const createBlockSchema = z.object({
     .max(80)
     .optional()
     .transform((v) => (v && v.length > 0 ? v : null)),
+  /**
+   * Migration 0079 — per-block focus muscle groups (0–2). Submitted as
+   * repeated `focusMuscles` fields (FormData.getAll). Server-side
+   * validation mirrors the DB CHECK constraints; the DB is the final
+   * guard. See `lib/planner/focus-muscles.ts`.
+   */
+  focusMuscles: focusMusclesSchema,
 });
 
 export type CreateBlockResult =
@@ -833,6 +852,12 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
     powerEmphasis: formData.get("powerEmphasis") ?? undefined,
     cardioSource: formData.get("cardioSource") ?? undefined,
     cardioSourceName: formData.get("cardioSourceName") ?? undefined,
+    // Focus muscles arrive as repeated `focusMuscles` form fields.
+    // Empty getAll() → [] → focusMusclesSchema's `.default([])` path.
+    focusMuscles: formData
+      .getAll("focusMuscles")
+      .map((v) => (typeof v === "string" ? v : ""))
+      .filter((v) => v.length > 0),
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -1176,6 +1201,15 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   // honours `blockedRegions` + `tendinopathyActive` on every day.
   const limitationsContext = await readLimitationsContext(supabase, user.id);
 
+  // Migration 0079 — elbow/forearm ATL ratio for the forearm
+  // tendon-gate. Computed once per block-generation so we don't
+  // re-query for every session. Fails open to 1.0 (no spike) when
+  // history is missing.
+  const userTimezoneForBlock = await getUserTimezone(user.id);
+  const elbowForearmAtlRatio = parsed.data.focusMuscles.includes("forearms")
+    ? await getElbowForearmAtlRatio(supabase, user.id, userTimezoneForBlock)
+    : 1.0;
+
   const archNow = new Date().toISOString();
   const { error: archErr } = await supabase
     .from("training_blocks")
@@ -1195,6 +1229,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       days_per_week: parsed.data.daysPerWeek,
       day_index_overrides: dayIndexOverrides,
       power_emphasis: parsed.data.powerEmphasis,
+      focus_muscles: parsed.data.focusMuscles,
       cardio_source: parsed.data.cardioSource,
       cardio_source_name: parsed.data.cardioSourceName,
       notes: hasAnyTm
@@ -1277,6 +1312,8 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
               experience,
               limitationsContext,
               secondaryMovement,
+              parsed.data.focusMuscles,
+              elbowForearmAtlRatio,
             );
 
       // ─── Bodyweight Phase 3 — prepend BW main + back_off items ───
@@ -1475,6 +1512,8 @@ const customInputSchema = z.object({
     )
     .min(1)
     .max(14),
+  /** Migration 0079 — per-block focus muscle groups (0–2). */
+  focusMuscles: focusMusclesSchema,
 });
 
 /**
@@ -1613,6 +1652,12 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
     user.id,
   );
 
+  // Migration 0079 — elbow/forearm ATL ratio for the forearm gate.
+  const customTzForBlock = await getUserTimezone(user.id);
+  const customElbowForearmAtlRatio = parsed.data.focusMuscles.includes("forearms")
+    ? await getElbowForearmAtlRatio(supabase, user.id, customTzForBlock)
+    : 1.0;
+
   const customArchNow = new Date().toISOString();
   await supabase
     .from("training_blocks")
@@ -1630,6 +1675,7 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
       status: "active",
       days_per_week: daysPerWeek,
       notes: archetype.name,
+      focus_muscles: parsed.data.focusMuscles,
     })
     .select("id")
     .single();
@@ -1688,6 +1734,8 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
         customExperience,
         customLimitationsContext,
         secondaryMovement,
+        parsed.data.focusMuscles,
+        customElbowForearmAtlRatio,
       );
 
       // Phase 5 — stamp modality + effective_stress_load on every
@@ -1741,6 +1789,65 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
 }
 
 const blockIdSchema = z.object({ id: z.string().uuid() });
+
+// ─── updateBlockFocus (migration 0079) ────────────────────────────
+// Per-block "focus muscle groups" edit affordance on /app/plan. RLS-
+// scoped: the user_id eq filter combined with Supabase RLS guarantees
+// the caller can only mutate their own block. Idempotent: writing the
+// same focus list twice is a no-op (the column update is value-equal).
+//
+// Block-mid changes apply to FUTURE sessions only. Currently the
+// planner materialises every session eagerly at createBlock time, so
+// already-generated planned_sessions keep their pre-edit prescription.
+// Re-materialising remaining sessions would invalidate user notes /
+// drawer state on planned rows the user has already inspected, so the
+// pragmatic choice is: new focus → next block, or "Start a new block"
+// to apply mid-stream. Documented behaviour.
+
+const updateBlockFocusSchema = z.object({
+  id: z.string().uuid(),
+  focusMuscles: focusMusclesSchema,
+});
+
+export type UpdateBlockFocusResult =
+  | { ok: true; focusMuscles: string[] }
+  | { ok: false; error: string };
+
+export async function updateBlockFocus(
+  formData: FormData,
+): Promise<UpdateBlockFocusResult> {
+  const parsed = updateBlockFocusSchema.safeParse({
+    id: formData.get("id"),
+    focusMuscles: formData
+      .getAll("focusMuscles")
+      .map((v) => (typeof v === "string" ? v : ""))
+      .filter((v) => v.length > 0),
+  });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+
+  // RLS-scoped update — eq user_id is belt-and-braces alongside the
+  // RLS policy. We do NOT filter on status so the user can also
+  // pre-set focus on a queued (rare today) or just-archived block in
+  // a follow-up flow.
+  const { error } = await supabase
+    .from("training_blocks")
+    .update({ focus_muscles: parsed.data.focusMuscles })
+    .eq("id", parsed.data.id)
+    .eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/app/plan");
+  revalidatePath("/app");
+  return { ok: true, focusMuscles: parsed.data.focusMuscles };
+}
 
 const endBlockSchema = z.object({
   id: z.string().uuid(),
