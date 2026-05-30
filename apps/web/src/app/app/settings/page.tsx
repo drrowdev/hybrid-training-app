@@ -163,11 +163,11 @@ export default async function SettingsPage() {
           testId="settings-hub-preferences"
         />
         <SettingsHubCard
-          href="/app/settings/ai"
-          icon="🤖"
-          title="AI"
-          description="Bring-your-own key for Claude / GPT / Gemini."
-          testId="settings-hub-ai"
+          href="/app/settings/integrations"
+          icon="🔌"
+          title="Integrations"
+          description="Strava and AI providers"
+          testId="settings-hub-integrations"
         />
         <SettingsHubCard
           href="/app/settings/hr-zones"
