@@ -316,8 +316,8 @@ Decision 5 (realization microcycle) was **redirected** to ADR 0010 by commit `23
 
 Three deliberate scope-downs from the ADR text — recorded here so the live spec matches the code:
 1. **Recommend, not pre-select.** The nudge surfaces a recommendation card but does NOT pre-select the wizard archetype control (the ADR's literal "pre-select" language was scoped down to avoid an `archetypeId → {goal, secondary}` reverse-map the wizard does not yet expose). Pre-select is a follow-up.
-2. **Realization week is surfaced, not auto-applied.** `suggestRealizationWeek` fires after ≥ 2 consecutive event-less `STRENGTH_ANCHOR` blocks (and is suppressed when an A-event already drives a real taper), but is **not** wired to auto-reshape the planner block. The terminal-week reshape (volume down / heavy singles) is a deferred follow-up — `taper.ts` and `buildPrescription` are untouched.
-3. **Recovery-aware rule is dormant from the UI surface.** The pure function honours `recentReactiveDeloads >= 2` and the unit tests pin it, but `getNextBlockNudge` passes `recentReactiveDeloads: 0` because there is no persisted reactive-deload-count signal to query yet. Only rules 2–4 can fire in production today.
+2. **Realization week is surfaced, not auto-applied.** `suggestRealizationWeek` fires after ≥ 2 consecutive event-less `STRENGTH_ANCHOR` blocks (and is suppressed when an A-event already drives a real taper). It is **not** wired to auto-reshape the planner block; the copy now routes the user to the **manual custom-block path** ("set that up as a short custom block"). The automatic terminal-week reshape (volume down / heavy singles) is a deferred follow-up — `taper.ts` and `buildPrescription` are untouched.
+3. **Recovery-aware rule is LIVE.** The pure function honours `recentReactiveDeloads >= 2`, and `getNextBlockNudge` now passes the real count: it queries `tm_history` for `reason='deload'` rows since the oldest recent block's start and counts distinct `session_id` values (deload *episodes*, not rows). Read-only + user-scoped (RLS preserved). All four rules can now fire in production.
 
 ---
 
