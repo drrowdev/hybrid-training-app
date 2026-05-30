@@ -18,7 +18,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
-import { computeTaperRecommendation } from "./taper";
+import { computeTaperRecommendation, taperModalityForEvent } from "./taper";
 import { computeRecoveryWindow } from "./recovery";
 
 const eventIdSchema = z
@@ -69,6 +69,7 @@ function buildTaperWindow(args: {
   eventName: string;
   eventDate: string;
   priority: "A" | "B" | "C";
+  modality: string | null;
   fromDate: Date;
 }): {
   window: { date: string; volumeScale: number; intensityAction: "hold" | "hold_then_taper" | "minimal" }[];
@@ -80,6 +81,7 @@ function buildTaperWindow(args: {
     name: args.eventName,
     date: args.eventDate,
     priority: args.priority,
+    modality: taperModalityForEvent(args.modality),
   };
   const today = new Date(
     Date.UTC(
@@ -156,6 +158,7 @@ export async function applyTaperPlan(formData: FormData): Promise<ActionResult> 
     eventName: evt.name,
     eventDate: evt.event_date,
     priority: evt.priority,
+    modality: evt.modality,
     fromDate: new Date(),
   });
   if (!built) return { ok: false, error: "No active taper window" };
@@ -219,10 +222,12 @@ export async function declineTaperPlan(formData: FormData): Promise<ActionResult
     eventName: evt.name,
     eventDate: evt.event_date,
     priority: evt.priority,
+    modality: evt.modality,
     fromDate: new Date(),
   });
   if (!built) return { ok: false, error: "No active taper window" };
 
+  // Record the user's dismissal so the banner stays hidden for this window.
   const { error } = await supabase.from("prescription_modifications").insert({
     user_id: auth.userId,
     event_id: evt.id,

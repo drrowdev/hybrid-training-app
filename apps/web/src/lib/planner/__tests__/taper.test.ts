@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { computeTaperRecommendation } from "../taper";
+import {
+  computeTaperRecommendation,
+  taperModalityForEvent,
+  type TaperModality,
+} from "../taper";
 
 // Anchor "today" so tests are deterministic.
 const TODAY = new Date("2026-06-01T12:00:00Z");
@@ -12,6 +16,14 @@ function eventOn(daysOut: number, priority: "A" | "B" | "C" = "A") {
     date: d.toISOString().slice(0, 10),
     priority,
   };
+}
+
+function eventOnM(
+  daysOut: number,
+  modality: TaperModality,
+  priority: "A" | "B" | "C" = "A",
+) {
+  return { ...eventOn(daysOut, priority), modality };
 }
 
 describe("computeTaperRecommendation", () => {
@@ -76,5 +88,70 @@ describe("computeTaperRecommendation", () => {
     // Event-day headline does include the name.
     const r0 = computeTaperRecommendation(eventOn(0, "A"), TODAY)!;
     expect(r0.headline).toContain("Test event");
+  });
+});
+
+describe("ADR 0008 — modality-aware taper", () => {
+  it("defaults to the endurance curve when modality is absent (backward compat)", () => {
+    // No modality → identical to the legacy behaviour pinned above.
+    const r = computeTaperRecommendation(eventOn(3, "A"), TODAY)!;
+    expect(r.phase).toBe("polish");
+    expect(r.volumeScale).toBe(0.4);
+    expect(r.intensityAction).toBe("minimal");
+  });
+
+  describe("strength events", () => {
+    it("HOLDS intensity in the polish phase (the key fix vs endurance)", () => {
+      const r = computeTaperRecommendation(eventOnM(3, "strength"), TODAY)!;
+      expect(r.phase).toBe("polish");
+      // Endurance drops to "minimal" here; strength keeps heavy singles.
+      expect(r.intensityAction).toBe("hold");
+      // ~50% cut, not the endurance 60%.
+      expect(r.volumeScale).toBe(0.5);
+    });
+
+    it("uses a shorter 10-day window — 11d out is outside the taper", () => {
+      expect(computeTaperRecommendation(eventOnM(11, "strength"), TODAY)).toBeNull();
+      expect(computeTaperRecommendation(eventOnM(10, "strength"), TODAY)).not.toBeNull();
+    });
+
+    it("grades volume -30% / -45% / -50% across approach/deep/polish", () => {
+      expect(computeTaperRecommendation(eventOnM(9, "strength"), TODAY)!.volumeScale).toBe(0.7);
+      expect(computeTaperRecommendation(eventOnM(6, "strength"), TODAY)!.volumeScale).toBe(0.55);
+      expect(computeTaperRecommendation(eventOnM(2, "strength"), TODAY)!.volumeScale).toBe(0.5);
+    });
+
+    it("day 0 holds intensity for openers/activation (not a runner's rest)", () => {
+      const r = computeTaperRecommendation(eventOnM(0, "strength"), TODAY)!;
+      expect(r.phase).toBe("event_day");
+      expect(r.intensityAction).toBe("hold");
+    });
+  });
+
+  describe("mixed events", () => {
+    it("uses the endurance volume curve but HOLDS intensity in polish", () => {
+      const r = computeTaperRecommendation(eventOnM(3, "mixed"), TODAY)!;
+      expect(r.phase).toBe("polish");
+      // Endurance-depth cut...
+      expect(r.volumeScale).toBe(0.4);
+      // ...but a heavy primer is retained (hold, not minimal).
+      expect(r.intensityAction).toBe("hold");
+    });
+
+    it("keeps the 14-day endurance window", () => {
+      expect(computeTaperRecommendation(eventOnM(14, "mixed"), TODAY)).not.toBeNull();
+      expect(computeTaperRecommendation(eventOnM(15, "mixed"), TODAY)).toBeNull();
+    });
+  });
+
+  describe("taperModalityForEvent mapping", () => {
+    it("maps strength → strength, everything else → endurance", () => {
+      expect(taperModalityForEvent("strength")).toBe("strength");
+      for (const m of ["run", "bike", "swim", "row", "ski", "padel", "other"]) {
+        expect(taperModalityForEvent(m)).toBe("endurance");
+      }
+      expect(taperModalityForEvent(null)).toBe("endurance");
+      expect(taperModalityForEvent(undefined)).toBe("endurance");
+    });
   });
 });
