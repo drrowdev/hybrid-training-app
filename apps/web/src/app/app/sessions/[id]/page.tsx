@@ -1058,7 +1058,6 @@ export default async function SessionDetailPage({
               .filter((m): m is string => !!m),
           ),
         })}
-        hideAddOffPlan={isPureCardio}
       />
 
       {(() => {
