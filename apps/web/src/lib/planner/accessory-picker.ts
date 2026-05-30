@@ -187,6 +187,13 @@ export type PickFilters = {
    */
   blockedMuscles?: Set<string>;
   /**
+   * Specific catalog movement ids flagged by any active limitation
+   * (`affected_movement_ids`). An unconditional drop — NOT bypassed by
+   * `allowedMovementIds` (if the user flagged this exact movement as
+   * affected, we don't prescribe it). ADR 0014. Optional for back-compat.
+   */
+  blockedMovementIds?: Set<string>;
+  /**
    * Per-exercise allow-list across all active limitations. Movements
    * here bypass the muscle-level drop. Region drops still apply.
    * Optional for back-compat with legacy test fixtures.
@@ -517,6 +524,7 @@ function findCandidate(query: CandidateQuery): CatalogMovement | null {
   const candidates: CatalogMovement[] = [];
   for (const m of query.catalog) {
     if (query.usedThisSession.has(m.id)) continue;
+    if (query.filters.blockedMovementIds?.has(m.id)) continue;
     if (loadsBlockedRegion(m, query.filters.blockedRegions)) continue;
     if (
       loadsBlockedMuscle(
@@ -557,6 +565,7 @@ function findPowerCandidate(query: {
   const candidates: CatalogMovement[] = [];
   for (const m of query.catalog) {
     if (query.usedThisSession.has(m.id)) continue;
+    if (query.filters.blockedMovementIds?.has(m.id)) continue;
     if (loadsBlockedRegion(m, query.filters.blockedRegions)) continue;
     if (
       loadsBlockedMuscle(
@@ -656,7 +665,7 @@ function candidateScore(m: CatalogMovement, query: CandidateQuery): number {
   return score;
 }
 
-function loadsBlockedRegion(m: CatalogMovement, blocked: Set<string>): boolean {
+export function loadsBlockedRegion(m: CatalogMovement, blocked: Set<string>): boolean {
   if (blocked.has(m.primaryRegion)) return true;
   for (const r of m.secondaryRegions) if (blocked.has(r)) return true;
   return false;
@@ -670,7 +679,7 @@ function loadsBlockedRegion(m: CatalogMovement, blocked: Set<string>): boolean {
  * movement ("I can still do this one without pain"). Region drops
  * are unaffected and apply ahead of this gate.
  */
-function loadsBlockedMuscle(
+export function loadsBlockedMuscle(
   m: CatalogMovement,
   blockedMuscles: Set<string> | undefined,
   allowedMovementIds: Set<string> | undefined,
