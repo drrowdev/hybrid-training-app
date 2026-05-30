@@ -32,7 +32,7 @@ import type { PrescriptionItem } from "@hta/db";
 import type { DeclaredExperience } from "@hta/engine";
 import type { ArchetypeId, StrengthRole } from "./archetypes";
 import type { CatalogMovement } from "./accessory-picker";
-import { filterForExperienceTier } from "./accessory-picker";
+import { filterForExperienceTier, movementValueNorm, ROTATION_BASE, ACCESSORY_VALUE_BONUS } from "./accessory-picker";
 import { POWER_FUNCTIONAL_ROLES, type FunctionalRole } from "./accessory-roles";
 
 /**
@@ -220,7 +220,14 @@ export function pickPotentiationMovement({
       m.primaryMuscles.some((mu) => hint.preferredMuscles.includes(mu)) ||
       m.secondaryMuscles.some((mu) => hint.preferredMuscles.includes(mu));
     if (!matchesMuscle) s += 10;
-    if (recentlyUsedMovementIds.has(m.id)) s += 100;
+    // ADR 0012 — value-weighted block rotation (mirrors the accessory
+    // picker). Inert when there is no prior block (empty recency set), so
+    // structural pattern-matching is the sole driver on first blocks.
+    if (recentlyUsedMovementIds.size > 0) {
+      const value = movementValueNorm(m);
+      if (recentlyUsedMovementIds.has(m.id)) s += ROTATION_BASE * (1 - value);
+      s -= ACCESSORY_VALUE_BONUS * value;
+    }
     if (m.stimToFatigueScore != null) s -= m.stimToFatigueScore;
     return s;
   };
