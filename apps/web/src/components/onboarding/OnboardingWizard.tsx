@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   BlockWizard,
   type TmReadinessByArchetype,
@@ -20,6 +20,8 @@ import { addDaysToYmd, isoWeekdayYmd, todayYmd } from "@/lib/dates";
 import { EquipmentStep } from "@/components/onboarding/EquipmentStep";
 import { BwAssessmentStep } from "@/components/onboarding/bw-assessment/BwAssessmentStep";
 import type { BwAssessmentPayload } from "@/components/onboarding/bw-assessment/BwAssessmentStep";
+import { StravaConnectStep } from "@/components/onboarding/StravaConnectStep";
+import type { ImportSummary } from "@/lib/integrations/strava/import-history";
 import {
   hasLoadableMainLift,
   PRESET_BY_KEY,
@@ -87,6 +89,7 @@ export const STEPS = [
   "Equipment",
   "Training maxes",
   "Build your block",
+  "Connect Strava",
   "Confirm",
 ] as const;
 type StepLabel = (typeof STEPS)[number];
@@ -102,10 +105,15 @@ export function OnboardingWizard({
   initialEquipment,
   hasEquipmentRow,
   roleCandidates,
+  initialStravaConnected,
+  stravaIsConfigured,
+  initialStep,
   saveProfileAction,
   saveEquipmentAction,
   saveTmsAction,
   submitBwAssessmentAction,
+  connectStravaAction,
+  importStravaHistoryAction,
   finishAction,
   skipAction,
 }: {
@@ -115,17 +123,37 @@ export function OnboardingWizard({
   initialEquipment: Equipment;
   hasEquipmentRow: boolean;
   roleCandidates: RoleCandidates[];
+  /** True when the user already has a `strava_connections` row — either
+   *  set in a previous session or by completing the OAuth round-trip
+   *  during this onboarding flow. Drives whether the Strava step opens
+   *  in connect or import mode. */
+  initialStravaConnected: boolean;
+  /** Whether the Strava OAuth env vars are present in this environment.
+   *  Disables the connect CTA when false (the wizard still advances). */
+  stravaIsConfigured: boolean;
+  /** Optional starting step index — used to land on the Strava step
+   *  after the OAuth round-trip strips the in-memory wizard state. */
+  initialStep?: number;
   saveProfileAction: (fd: FormData) => Promise<OnboardingResult>;
   saveEquipmentAction: (fd: FormData) => Promise<void>;
   saveTmsAction: (fd: FormData) => Promise<OnboardingResult>;
   submitBwAssessmentAction: (
     payload: BwAssessmentPayload,
   ) => Promise<OnboardingResult>;
+  connectStravaAction: (fd: FormData) => Promise<void>;
+  importStravaHistoryAction: (input: {
+    startDate: string;
+    endDate?: string;
+    autoLinkToPlanned?: boolean;
+  }) => Promise<
+    | { ok: true; summary: ImportSummary }
+    | { ok: false; error: string }
+  >;
   finishAction: (fd: FormData) => Promise<OnboardingResult>;
   skipAction: () => Promise<void>;
 }) {
   const router = useRouter();
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(initialStep ?? 0);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -166,11 +194,58 @@ export function OnboardingWizard({
     return init;
   });
 
+  // ── OAuth round-trip persistence ──────────────────────────────────────
+  // The Strava connect step bounces the user out to strava.com and
+  // back; on return all React state is fresh. To avoid the user
+  // having to re-run the block wizard, we mirror `wizardSubmit` +
+  // `startedOn` into sessionStorage whenever they change, and read
+  // them back via lazy `useState` initializers on first mount.
+  // sessionStorage (not localStorage) is intentional — onboarding is
+  // a single-tab flow and the data should disappear when the tab does.
+  const STORAGE_KEY = "hta.onboarding.wizardSubmit.v1";
+  const readPersisted = (): {
+    wizardSubmit: WizardSubmit | null;
+    startedOn: string | null;
+  } => {
+    if (typeof window === "undefined") return { wizardSubmit: null, startedOn: null };
+    try {
+      const raw = window.sessionStorage.getItem(STORAGE_KEY);
+      if (!raw) return { wizardSubmit: null, startedOn: null };
+      const parsed = JSON.parse(raw) as {
+        wizardSubmit?: WizardSubmit;
+        startedOn?: string;
+      };
+      return {
+        wizardSubmit: parsed.wizardSubmit ?? null,
+        startedOn: parsed.startedOn ?? null,
+      };
+    } catch {
+      return { wizardSubmit: null, startedOn: null };
+    }
+  };
+
   // Step 4 state — the BlockWizard fills this in on its "Start" click.
-  const [wizardSubmit, setWizardSubmit] = useState<WizardSubmit | null>(null);
+  const [wizardSubmit, setWizardSubmit] = useState<WizardSubmit | null>(
+    () => readPersisted().wizardSubmit,
+  );
 
   // Step 5 state — start date.
-  const [startedOn, setStartedOn] = useState<string>(() => tomorrowYmd());
+  const [startedOn, setStartedOn] = useState<string>(
+    () => readPersisted().startedOn ?? tomorrowYmd(),
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!wizardSubmit) return;
+    try {
+      window.sessionStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ wizardSubmit, startedOn }),
+      );
+    } catch {
+      // Quota / private-mode failure — non-fatal.
+    }
+  }, [wizardSubmit, startedOn]);
 
   // ── Derived: role → ready (used by BlockWizard TM gate) ───────────────
   // A role is "ready" if either the user entered/seeded a 1RM for one of
@@ -292,6 +367,11 @@ export function OnboardingWizard({
       }
       case "Build your block":
         if (!wizardSubmit) return "Finish the block wizard to continue.";
+        return null;
+      case "Connect Strava":
+        // Optional step: always advanceable. Connect/import are
+        // value-add opt-ins; the wizard's Continue button doesn't gate
+        // on either.
         return null;
       case "Confirm":
         return null;
@@ -430,10 +510,12 @@ export function OnboardingWizard({
     });
   };
 
-  // BlockWizard's onComplete: capture the submit and advance to confirm.
+  // BlockWizard's onComplete: capture the submit and advance to the
+  // Connect Strava step (next visible step). After PR #211's onboarding
+  // wiring this slot was Confirm; the new Strava step sits in between.
   const onWizardComplete = async (submit: WizardSubmit): Promise<OnboardingResult> => {
     setWizardSubmit(submit);
-    setStep(STEPS.indexOf("Confirm"));
+    setStep(STEPS.indexOf("Connect Strava"));
     return { ok: true };
   };
 
@@ -565,6 +647,16 @@ export function OnboardingWizard({
               equipmentPreset={equipmentPreset}
             />
           </div>
+        )}
+
+        {currentLabel === "Connect Strava" && (
+          <StravaConnectStep
+            connected={initialStravaConnected}
+            connectAction={connectStravaAction}
+            importAction={importStravaHistoryAction}
+            isConfigured={stravaIsConfigured}
+            kicker="Step 6"
+          />
         )}
 
         {currentLabel === "Confirm" && wizardSubmit && (
@@ -919,7 +1011,7 @@ function ConfirmStep({
 
   return (
     <>
-      <Heading kicker="Step 6" title="When does your first block start?" />
+      <Heading kicker="Step 7" title="When does your first block start?" />
       <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.55 }}>
         Your first <strong>{wizardSubmit.daysPerWeek}-day</strong> block is ready. Pick a start
         date and we&apos;ll create the calendar.
