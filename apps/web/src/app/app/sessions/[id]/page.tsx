@@ -1194,14 +1194,45 @@ export default async function SessionDetailPage({
                       </div>
                     </div>
                     {!isComplete && (
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <Link href={`/app/sessions/${id}/cardio/${c.id}/edit`} style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          marginLeft: "auto",
+                        }}
+                      >
+                        <Link
+                          href={`/app/sessions/${id}/cardio/${c.id}/edit`}
+                          data-testid={`cardio-prescription-edit-${c.id}`}
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 500,
+                            color: "var(--cp-link)",
+                            lineHeight: 1,
+                            textDecoration: "none",
+                          }}
+                        >
                           edit
                         </Link>
-                        <form action={deleteCardio}>
+                        <form action={deleteCardio} style={{ display: "inline-flex", alignItems: "center" }}>
                           <input type="hidden" name="id" value={c.id} />
                           <input type="hidden" name="sessionId" value={id} />
-                          <button type="submit" style={{ fontSize: 11, background: "transparent", border: "none", color: "var(--cp-text-muted)", cursor: "pointer", padding: 0 }}>
+                          <button
+                            type="submit"
+                            data-testid={`cardio-prescription-delete-${c.id}`}
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 500,
+                              background: "transparent",
+                              border: "none",
+                              color: "var(--cp-link)",
+                              cursor: "pointer",
+                              padding: 0,
+                              lineHeight: 1,
+                              font: "inherit",
+                            }}
+                          >
                             delete
                           </button>
                         </form>
