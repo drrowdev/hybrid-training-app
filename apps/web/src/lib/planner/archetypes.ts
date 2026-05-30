@@ -13,6 +13,10 @@ import type { PrescriptionItem, PrescriptionItemKind } from "@hta/db";
 import type { AccessoryProfile } from "./accessory-roles";
 import { accessoryIntensity } from "./accessory-intensity";
 import { cleanPrescriptionNotes } from "./clean-prescription-notes";
+import {
+  NO_ACTIVE_MODIFICATIONS,
+  type ActiveModifications,
+} from "./modifications";
 
 export type ArchetypeId =
   | "strength_anchor"
@@ -1432,9 +1436,23 @@ export function buildPrescription(
    * without dual-main-lift fields configured.
    */
   secondaryMovement?: { id: string; slug: string; displayName: string },
+  /**
+   * Optional active prescription modifications for this user+date.
+   * Computed by the caller via `getActiveModifications` so this pure
+   * function stays sync. When omitted (default `NO_ACTIVE_MODIFICATIONS`)
+   * the output is bit-for-bit identical to pre-§7 behaviour — every
+   * existing call site keeps its current contract.
+   */
+  activeModifications: ActiveModifications = NO_ACTIVE_MODIFICATIONS,
 ): PrescriptionItem[] {
   const profile = archetype.weekProfiles.find((w) => w.weekIndex === weekIndex);
   if (!profile) return [];
+
+  // Apply active taper / recovery modifications as the very last step
+  // before returning. Centralised so we don't sprinkle scaling into
+  // the strength / tendon / cardio branches and risk drift.
+  const finalize = (items: PrescriptionItem[]): PrescriptionItem[] =>
+    applyModificationsToItems(items, activeModifications);
 
   if (day.kind === "strength") {
     const items: PrescriptionItem[] = profile.setIntensities.map((pct, i) => {
@@ -1488,9 +1506,9 @@ export function buildPrescription(
           ? Math.max(1, Math.round(day.secondaryMaxSets * profile.strengthVolumeScale))
           : day.secondaryMaxSets;
       const secondaryCapped = secondaryAll.slice(0, Math.min(cap, secondaryAll.length));
-      return [...primaryItems, ...secondaryCapped];
+      return finalize([...primaryItems, ...secondaryCapped]);
     }
-    return primaryItems;
+    return finalize(primaryItems);
   }
 
   if (day.kind === "tendon") {
@@ -1524,7 +1542,7 @@ export function buildPrescription(
         intensityCue: intensity.intensityCue,
       });
     }
-    return items;
+    return finalize(items);
   }
 
   // Cardio day.
@@ -1559,7 +1577,86 @@ export function buildPrescription(
       intensityLabel: "Alactic finisher",
     });
   }
-  return items;
+  return finalize(items);
+}
+
+/**
+ * Apply an active taper / recovery modification to a freshly built
+ * prescription. Pure: no DB, no time. Caller resolves the active
+ * modifications via `getActiveModifications` and threads them in.
+ *
+ * Strength + tendon items: scaled by `strengthLoadScale`. A scale of
+ * 0 drops them entirely; a fractional scale shrinks the set count
+ * proportionally (matching the deload pattern in `strengthVolumeScale`
+ * a few lines above). The taper "minimal" intensity action additionally
+ * caps `reps` at 50% — keep weight, fewer reps — per Bosquet 2007.
+ *
+ * Cardio items: `durationMin` is multiplied by `cardioLoadScale`. A
+ * 0 scale rounds up to 1 min so the user still sees the slot but
+ * understands "rest / activation only".
+ *
+ * Recovery wins over taper inside `getActiveModifications`, so by the
+ * time we get here `source` is unambiguous.
+ */
+function applyModificationsToItems(
+  items: PrescriptionItem[],
+  mods: ActiveModifications,
+): PrescriptionItem[] {
+  if (mods.source === null) return items;
+
+  const out: PrescriptionItem[] = [];
+  const strengthBuckets = new Map<string, PrescriptionItem[]>();
+  for (const item of items) {
+    if (item.kind === "main" || item.kind === "tendon") {
+      const k = `${item.kind}::${item.movementId}`;
+      const arr = strengthBuckets.get(k) ?? [];
+      arr.push(item);
+      strengthBuckets.set(k, arr);
+    } else if (item.kind.startsWith("cardio_")) {
+      // Cardio scaling: applied per-item.
+      if (mods.cardioLoadScale >= 1) {
+        out.push(item);
+      } else if (mods.cardioLoadScale <= 0) {
+        // Drop cardio entirely on a hard zero.
+        continue;
+      } else {
+        const scaled =
+          item.durationMin != null
+            ? Math.max(1, Math.round(item.durationMin * mods.cardioLoadScale))
+            : item.durationMin;
+        out.push({ ...item, durationMin: scaled });
+      }
+    } else {
+      // Accessories and other kinds pass through unmodified — accessories
+      // were never under the taper / recovery scope per the spec.
+      out.push(item);
+    }
+  }
+
+  for (const arr of strengthBuckets.values()) {
+    if (mods.strengthLoadScale <= 0) continue; // recovery: full skip
+    if (mods.strengthLoadScale >= 1) {
+      out.push(...arr);
+      continue;
+    }
+    // Slice to a proportional set count, matching the deload pattern.
+    const keepN = Math.max(1, Math.round(arr.length * mods.strengthLoadScale));
+    const kept = arr.slice(0, keepN);
+    if (mods.intensityAction === "minimal") {
+      // "minimal" — keep intensity, halve reps. Floor at 1.
+      for (const it of kept) {
+        if (it.reps != null) {
+          out.push({ ...it, reps: Math.max(1, Math.floor(it.reps * 0.5)) });
+        } else {
+          out.push(it);
+        }
+      }
+    } else {
+      out.push(...kept);
+    }
+  }
+
+  return out;
 }
 
 export function formatPrescriptionItem(item: PrescriptionItem, tmKg?: number): string {
