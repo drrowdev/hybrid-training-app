@@ -133,6 +133,9 @@ and the marginal fatigue is best justified.
 
 ## Implementation notes (as built — 2026-05-30)
 
+**Commit:** `21038f4` *feat(engine): solicit autoregulated AMRAP top set on strength archetypes
+(ADR 0007)*. Test count: 2659 → 2670 (+11; 7 ADR-0007, 4 amrap-detect).
+
 Two facts discovered during implementation deviate from the contract above. They do not
 change the *decision*, only the mechanism; recorded here so the ADR matches the code.
 

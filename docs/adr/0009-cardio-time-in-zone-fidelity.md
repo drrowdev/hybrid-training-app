@@ -118,3 +118,45 @@ re-tuning them without TRIMP-calibrated data would just swap one heuristic for a
   (cardio intensity) to state "TIZ from real streams when available, summary approximation
   otherwise; display card unified on the same source," and the canonical workspace mirror. No
   CP-2 numeric change (weights unchanged) — only a confidence-tag addition.
+
+## Implementation notes (as built — 2026-05-30)
+
+**Commit:** `8b3242d` *feat(engine): real stream-based time-in-zone + display/engine
+unification (ADR 0009)*. Test count: 2698 after the combined 0008 + 0009 batch (this commit
+added ~11 cases across `zones-from-stream.test.ts`, `client.test.ts`, `sync-row.test.ts`,
+and `hr-zones.test.ts`).
+
+Files touched:
+- `apps/web/src/lib/integrations/strava/zones-from-stream.ts` (new) — pure
+  `zonesFromStream({hrStream, timeStream, bands})` returning per-second-attributed
+  `{z1..z5}` seconds, or `null` when nothing trustworthy can be bucketed.
+- `apps/web/src/lib/integrations/strava/client.ts` — adds `fetchActivityStreams` (best-
+  effort `/streams?keys=heartrate,time&key_by_type=true`; returns `null` on any non-OK,
+  missing-field, or thrown error so the caller falls back gracefully).
+- `apps/web/src/lib/integrations/strava/sync.ts` — **only** the
+  single-activity webhook path (`syncStravaSingle`) calls `fetchActivityStreams`. The
+  bulk `syncStrava` and any historical import path stay summary-only (Decision 4 rate-
+  limit posture: one extra streams call per *new* activity, never per *every* row).
+- `apps/web/src/lib/integrations/strava/sync-row.ts` /
+  `apps/web/src/lib/integrations/strava/write-activity.ts` — pass through an optional
+  `streamZones`; when present it wins over `estimateZonesFromSummary`.
+- `apps/web/src/lib/engine/cardio-intensity.ts` — `ZONE_INTENSITY_WEIGHTS` and
+  `CARDIO_INTENSITY_MIN`/`MAX` retained; weights now carry the
+  `// heuristic — zone intensity weights (CP-1), pending TRIMP/Seiler calibration`
+  tag per Decision 3. **Math unchanged** — the scalar is byte-identical for a fixed
+  `hr_zones` input.
+- `apps/web/src/lib/stats/hr-zones.ts` — new `coerceStoredZones`,
+  `accumulateZoneTotals`, and `ZoneSource = "measured" | "approximated" | "mixed"`. The
+  fetcher `getHrZones` now prefers each row's stored `hr_zones` distribution and falls
+  back to single-avg-HR `bucketByZone` only for rows that lack one. The card emits the
+  `source` field so the footnote can read "Measured from per-second HR streams." vs
+  "Approximated from session-average HR…" vs the mixed-source line.
+- `apps/web/src/components/cardio/HrZonesCard.tsx` — three-way footnote on `state.source`.
+
+**Stream-fetch gap heuristic.** `MAX_GAP_SEC = 60` in `zones-from-stream.ts` caps a single
+inter-sample interval before attribution (auto-pause / GPS dropout protection — one bad
+delta can't dump an hour into a zone). Tagged CP-1; not separately cited.
+
+**Posture.** Stream fetch is opportunistic and **non-blocking** — a `null` from
+`fetchActivityStreams` (no stream, rate-limited, network error) silently falls back to
+the summary approximation. Bulk sync and history import remain summary-only by design.
