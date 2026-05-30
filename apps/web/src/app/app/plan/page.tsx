@@ -10,6 +10,7 @@ import {
   startSessionFromPlan,
   unskipPlannedSession,
   createBlock,
+  updateBlockFocus,
 } from "@/lib/planner/actions";
 import { updatePlannedSessionNotes } from "@/lib/sessions/actions";
 import { updateWizardDayPref } from "@/lib/profile/actions";
@@ -41,6 +42,7 @@ import {
   type RecentBlockCard,
   type TmReadinessByArchetype,
 } from "@/components/planner/BlockWizard";
+import { PlanBlockFocusCard } from "@/components/planner/PlanBlockFocusCard";
 import { addDaysToYmd } from "@/lib/dates";
 
 // Six wizard-resolvable archetype ids — must stay in sync with
@@ -273,6 +275,12 @@ export default async function PlanPage({
         unskipAction={unskipPlannedSession}
         updateNotesAction={updatePlannedSessionNotes}
         startSessionAction={startSessionFromPlan}
+      />
+
+      <PlanBlockFocusCard
+        blockId={block.id}
+        initialFocusMuscles={block.focusMuscles}
+        updateAction={updateBlockFocus}
       />
 
       <section

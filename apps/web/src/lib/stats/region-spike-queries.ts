@@ -114,3 +114,64 @@ function readContextAtl(context: unknown): number | null {
   if (!Number.isFinite(n)) return null;
   return n;
 }
+
+/**
+ * Fetch the elbow/forearm ATL ratio (current / 4-week trailing avg)
+ * used by the focus-muscle forearm tendon-gate.
+ *
+ * Returns `1.0` ("baseline, no spike") when:
+ *  - no current `region_state` row exists for elbow_forearm
+ *  - fewer than `MIN_HISTORY_DAYS` snapshots in the trailing window
+ *    (insufficient baseline — fail open rather than gate noisily)
+ *  - trailing avg is ≤ 0 (divide-by-zero guard)
+ *
+ * The gate in `defaultMuscleTargets` triggers when this value exceeds
+ * `1 + REGION_SPIKE_THRESHOLD` (= 1.25). 1.0 short-circuits the gate
+ * cleanly without leaking nullable plumbing into the engine.
+ *
+ * Pure read; never writes. Always safe to call at prescription time —
+ * if the table is missing or the user has no history, the engine still
+ * produces a baseline focus prescription.
+ */
+export async function getElbowForearmAtlRatio(
+  supabase: SupabaseClient,
+  userId: string,
+  tz: string,
+): Promise<number> {
+  const today = todayYmd(tz);
+  const windowEnd = addDaysToYmd(today, -1);
+  const windowStart = addDaysToYmd(windowEnd, -(HISTORY_WINDOW_DAYS - 1));
+
+  const currentResult = await supabase
+    .from("region_state")
+    .select("region, atl")
+    .eq("user_id", userId)
+    .eq("region", "elbow_forearm")
+    .maybeSingle();
+  if (currentResult.error || !currentResult.data) return 1.0;
+  const currentAtl = Number((currentResult.data as RegionStateRow).atl ?? 0);
+  if (!Number.isFinite(currentAtl) || currentAtl <= 0) return 1.0;
+
+  const historyResult = await supabase
+    .from("region_state_history")
+    .select("region, snapshot_date, context")
+    .eq("user_id", userId)
+    .eq("region", "elbow_forearm")
+    .gte("snapshot_date", windowStart)
+    .lte("snapshot_date", windowEnd);
+  if (historyResult.error) return 1.0;
+  const rows = (historyResult.data ?? []) as RegionHistoryRow[];
+
+  let sum = 0;
+  let count = 0;
+  for (const r of rows) {
+    const atl = readContextAtl(r.context);
+    if (atl == null) continue;
+    sum += atl;
+    count += 1;
+  }
+  if (count < MIN_HISTORY_DAYS) return 1.0;
+  const trailingAvg = sum / count;
+  if (!Number.isFinite(trailingAvg) || trailingAvg <= 0) return 1.0;
+  return currentAtl / trailingAvg;
+}
