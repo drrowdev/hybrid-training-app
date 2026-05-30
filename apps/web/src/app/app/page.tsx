@@ -27,6 +27,13 @@ import { dismissBwBanner } from "@/lib/profile/actions";
 import { OverdueNotice } from "@/components/today/OverdueNotice";
 import { RegionSpikeBanner } from "@/components/today/RegionSpikeBanner";
 import { TodayHeroSummary } from "@/components/today/TodayHeroSummary";
+import { QuickWorkoutCard } from "@/components/today/QuickWorkoutCard";
+import {
+  startQuickCardioSession,
+  startQuickStrengthSession,
+  repeatRecentSession,
+} from "@/lib/sessions/actions";
+import { getQuickRepeatCandidates } from "@/lib/sessions/queries";
 import {
   ActiveLimitationsCard,
   type ActiveLimitationSummary,
@@ -94,7 +101,7 @@ export default async function TodayPage() {
 
   const todayIso = todayYmd(profile?.timezone ?? "UTC");
 
-  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness, activeBlock, tmDict, tmRows, regionSpikes, { data: activeLimitationsRaw }] = await Promise.all([
+  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness, activeBlock, tmDict, tmRows, regionSpikes, { data: activeLimitationsRaw }, quickRepeatRecent] = await Promise.all([
     supabase
       .from("sessions")
       .select("id, title, slot, completed_at, performed_at")
@@ -123,6 +130,7 @@ export default async function TodayPage() {
       .is("resolved_at", null)
       .order("started_at", { ascending: false })
       .limit(20),
+    getQuickRepeatCandidates(supabase, userId, { limit: 3 }),
   ]);
 
   const activeLimitations: ActiveLimitationSummary[] = (
@@ -613,6 +621,14 @@ export default async function TodayPage() {
         {hasStravaConnection && <StravaStaleSyncTrigger />}
 
         <ActivitySection sessions={recent ?? []} todayIso={todayIso} />
+
+        <QuickWorkoutCard
+          variant={isRestDay ? "rest" : "planned"}
+          recent={quickRepeatRecent}
+          startCardio={startQuickCardioSession}
+          startStrength={startQuickStrengthSession}
+          repeatRecent={repeatRecentSession}
+        />
     </div>
   );
 }

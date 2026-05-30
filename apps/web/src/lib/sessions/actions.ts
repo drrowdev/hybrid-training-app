@@ -1603,3 +1603,266 @@ export async function swapPrescriptionItem(
 
   return { ok: true, prescription: nextPrescription };
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+ * Quick-workout entry points (Today page → off-plan ad-hoc session).
+ *
+ * Three actions back the Today-page "Quick workout" card + bottom sheet:
+ *   - `startQuickCardioSession`  — empty session + one cardio block
+ *   - `startQuickStrengthSession` — empty session, user adds movements
+ *   - `repeatRecentSession`       — clone the shape (movements / modality)
+ *                                   of a recent completed session
+ *
+ * All three are intentionally distinct from `startSession` so the
+ * "ad-hoc" classification stays explicit at the call site. They do NOT
+ * link the new row to any `planned_sessions.completed_session_id` — an
+ * off-plan workout never marks today's planned slot as complete. The
+ * load + region recompute paths (recomputeActualSessionLoad,
+ * recomputeRegionState) walk completed sessions regardless of planned
+ * linkage, so the ad-hoc session shows up in fatigue accounting without
+ * touching the planned-day ledger.
+ *
+ * Schema reuse only — no migration. `sessions`, `cardio_logs`, and the
+ * `add_session_movement` RPC are all pre-existing.
+ * ──────────────────────────────────────────────────────────────────── */
+
+const QUICK_CARDIO_DEFAULT_DURATION_SEC = 30 * 60;
+
+const startQuickCardioSchema = z
+  .object({
+    modality: z.string().trim().min(1).max(40),
+    movementId: z.string().uuid().optional().nullable(),
+    durationSec: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(36000)
+      .optional(),
+    title: z.string().trim().max(120).optional(),
+  })
+  .strict();
+
+export type StartQuickCardioInput = {
+  modality: string;
+  movementId?: string | null;
+  durationSec?: number;
+  title?: string;
+};
+
+export async function startQuickCardioSession(
+  input: StartQuickCardioInput,
+): Promise<void> {
+  const parsed = startQuickCardioSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) redirect("/login");
+
+  const defaultTitle =
+    parsed.data.modality === "run"
+      ? "Quick run"
+      : parsed.data.modality === "bike"
+        ? "Quick ride"
+        : `Quick ${parsed.data.modality}`;
+
+  const { data: created, error: sErr } = await supabase
+    .from("sessions")
+    .insert({
+      user_id: user.id,
+      title: parsed.data.title?.trim() || defaultTitle,
+    })
+    .select("id")
+    .single();
+  if (sErr || !created) throw new Error(sErr?.message ?? "Could not create session");
+
+  const { error: cErr } = await supabase.from("cardio_logs").insert({
+    session_id: created.id,
+    movement_id: parsed.data.movementId ?? null,
+    block_index: 0,
+    modality: parsed.data.modality,
+    duration_sec: parsed.data.durationSec ?? QUICK_CARDIO_DEFAULT_DURATION_SEC,
+  });
+  if (cErr) throw new Error(cErr.message);
+
+  revalidatePath("/app");
+  redirect(`/app/sessions/${created.id}`);
+}
+
+const startQuickStrengthSchema = z
+  .object({
+    title: z.string().trim().max(120).optional(),
+  })
+  .strict();
+
+export type StartQuickStrengthInput = {
+  title?: string;
+};
+
+export async function startQuickStrengthSession(
+  input: StartQuickStrengthInput = {},
+): Promise<void> {
+  const parsed = startQuickStrengthSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) redirect("/login");
+
+  const { data: created, error: sErr } = await supabase
+    .from("sessions")
+    .insert({
+      user_id: user.id,
+      title: parsed.data.title?.trim() || "Quick workout",
+    })
+    .select("id")
+    .single();
+  if (sErr || !created) throw new Error(sErr?.message ?? "Could not create session");
+
+  revalidatePath("/app");
+  redirect(`/app/sessions/${created.id}`);
+}
+
+const repeatRecentSchema = z
+  .object({
+    sessionId: z.string().uuid(),
+  })
+  .strict();
+
+export type RepeatRecentInput = {
+  sessionId: string;
+};
+
+/**
+ * Clone the *shape* of a completed session into a fresh ad-hoc session.
+ *
+ * What gets copied:
+ *   - The list of distinct `movement_ids` referenced by the source's
+ *     `session_movements` (preferred) or `set_logs` (fallback for older
+ *     sessions that pre-date the explicit session_movements row).
+ *   - One `cardio_logs` row per cardio block in the source, carrying
+ *     ONLY `modality` + `duration_sec` + `movement_id`. HR / distance /
+ *     pace / power / RPE / notes are reset to null so the user logs
+ *     fresh values.
+ *
+ * What does NOT get copied:
+ *   - `set_logs` (so the new session starts with zero work logged)
+ *   - Any planned_session linkage (this is an off-plan ad-hoc row)
+ *   - Strava-derived fields (strava_activity_id, external_source, etc.)
+ *
+ * The source session must be owned by the current user; RLS + the
+ * explicit `user_id` filter both enforce this.
+ */
+export async function repeatRecentSession(input: RepeatRecentInput): Promise<void> {
+  const parsed = repeatRecentSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) redirect("/login");
+
+  // 1. Verify ownership of the source (RLS-respect + defence-in-depth).
+  const { data: source, error: srcErr } = await supabase
+    .from("sessions")
+    .select("id, title, user_id")
+    .eq("id", parsed.data.sessionId)
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (srcErr) throw new Error(srcErr.message);
+  if (!source) throw new Error("Session not found.");
+
+  // 2. Read shape — session_movements (preferred) + cardio_logs +
+  // fallback set_logs for movements when session_movements is empty.
+  const [{ data: smRows }, { data: clRows }, { data: slRows }] = await Promise.all([
+    supabase
+      .from("session_movements")
+      .select("movement_id, sort_order")
+      .eq("session_id", source.id)
+      .order("sort_order", { ascending: true }),
+    supabase
+      .from("cardio_logs")
+      .select("movement_id, modality, duration_sec, block_index")
+      .eq("session_id", source.id)
+      .order("block_index", { ascending: true }),
+    supabase
+      .from("set_logs")
+      .select("movement_id")
+      .eq("session_id", source.id),
+  ]);
+
+  const distinctMovementIds: string[] = [];
+  const seen = new Set<string>();
+  for (const r of smRows ?? []) {
+    const id = r.movement_id as string | null;
+    if (id && !seen.has(id)) {
+      seen.add(id);
+      distinctMovementIds.push(id);
+    }
+  }
+  if (distinctMovementIds.length === 0) {
+    for (const r of slRows ?? []) {
+      const id = r.movement_id as string | null;
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        distinctMovementIds.push(id);
+      }
+    }
+  }
+
+  // 3. Create the new ad-hoc session.
+  const { data: created, error: insErr } = await supabase
+    .from("sessions")
+    .insert({
+      user_id: user.id,
+      title: source.title ?? "Quick workout",
+    })
+    .select("id")
+    .single();
+  if (insErr || !created) throw new Error(insErr?.message ?? "Could not create session");
+
+  // 4. Fan out movements via the atomic RPC (same path the in-session
+  // "+ add movement" picker uses, so sort_order assignment stays
+  // race-safe).
+  for (const movementId of distinctMovementIds) {
+    const { error: rpcErr } = await supabase.rpc("add_session_movement", {
+      p_session_id: created.id,
+      p_movement_id: movementId,
+      p_user_id: user.id,
+    });
+    if (rpcErr) throw new Error(rpcErr.message);
+  }
+
+  // 5. Re-insert cardio blocks with shape only — no logged metrics.
+  let blockIdx = 0;
+  for (const r of clRows ?? []) {
+    const modality = (r.modality as string | null) ?? "other";
+    const duration = Number(r.duration_sec ?? QUICK_CARDIO_DEFAULT_DURATION_SEC);
+    const { error: cErr } = await supabase.from("cardio_logs").insert({
+      session_id: created.id,
+      movement_id: (r.movement_id as string | null) ?? null,
+      block_index: blockIdx++,
+      modality,
+      duration_sec:
+        Number.isFinite(duration) && duration > 0
+          ? duration
+          : QUICK_CARDIO_DEFAULT_DURATION_SEC,
+    });
+    if (cErr) throw new Error(cErr.message);
+  }
+
+  revalidatePath("/app");
+  redirect(`/app/sessions/${created.id}`);
+}
