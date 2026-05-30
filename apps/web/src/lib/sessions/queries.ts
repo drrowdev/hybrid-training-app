@@ -241,3 +241,115 @@ export async function getPriorBestsForMovements(
   }
   return out;
 }
+
+/**
+ * Recent-completed sessions used to power the Today-page "Quick workout"
+ * sheet "Repeat" list. Scoped to the past 14 days because anything older
+ * is noise — the goal is "do what I did last Tuesday", not archaeology.
+ *
+ * Returns up to `limit` rows ordered by `performed_at` desc, with a
+ * coarse summary string for each. The summary is intentionally
+ * shape-only (set count + cardio modality) — we don't compute tonnage
+ * or RPE here because the row is a tap target, not a stats card.
+ */
+export type QuickRepeatCandidate = {
+  id: string;
+  title: string | null;
+  performedAt: string;
+  /** Short human summary like "5 movements · 12 sets" or "Run · 32 min". */
+  summary: string;
+};
+
+export async function getQuickRepeatCandidates(
+  supabase: SupabaseClient,
+  userId: string,
+  options: { limit?: number; sinceIso?: string } = {},
+): Promise<QuickRepeatCandidate[]> {
+  if (!userId) return [];
+  const limit = Math.max(1, Math.min(10, options.limit ?? 3));
+  const since =
+    options.sinceIso ??
+    new Date(Date.now() - 14 * 86_400_000).toISOString();
+
+  const { data: sessions, error } = await supabase
+    .from("sessions")
+    .select("id, title, performed_at")
+    .eq("user_id", userId)
+    .not("completed_at", "is", null)
+    .is("deleted_at", null)
+    .gte("performed_at", since)
+    .order("performed_at", { ascending: false })
+    .limit(limit);
+  if (error || !sessions || sessions.length === 0) return [];
+
+  const ids = sessions.map((s) => s.id as string);
+  const [{ data: setRows }, { data: cardioRows }] = await Promise.all([
+    supabase
+      .from("set_logs")
+      .select("session_id, movement_id")
+      .in("session_id", ids)
+      .eq("skipped", false),
+    supabase
+      .from("cardio_logs")
+      .select("session_id, modality, duration_sec")
+      .in("session_id", ids),
+  ]);
+
+  type Agg = {
+    setCount: number;
+    movementIds: Set<string>;
+    cardio: Array<{ modality: string; durationSec: number }>;
+  };
+  const aggBySession = new Map<string, Agg>();
+  for (const id of ids) {
+    aggBySession.set(id, { setCount: 0, movementIds: new Set(), cardio: [] });
+  }
+  for (const r of setRows ?? []) {
+    const a = aggBySession.get(r.session_id as string);
+    if (!a) continue;
+    a.setCount += 1;
+    if (r.movement_id) a.movementIds.add(r.movement_id as string);
+  }
+  for (const r of cardioRows ?? []) {
+    const a = aggBySession.get(r.session_id as string);
+    if (!a) continue;
+    a.cardio.push({
+      modality: (r.modality as string | null) ?? "other",
+      durationSec: Number(r.duration_sec ?? 0),
+    });
+  }
+
+  return sessions.map((s) => {
+    const a = aggBySession.get(s.id as string)!;
+    return {
+      id: s.id as string,
+      title: (s.title as string | null) ?? null,
+      performedAt: s.performed_at as string,
+      summary: summariseShape(a),
+    };
+  });
+}
+
+function summariseShape(agg: {
+  setCount: number;
+  movementIds: Set<string>;
+  cardio: Array<{ modality: string; durationSec: number }>;
+}): string {
+  const parts: string[] = [];
+  if (agg.movementIds.size > 0) {
+    const m = agg.movementIds.size;
+    const s = agg.setCount;
+    parts.push(`${m} movement${m === 1 ? "" : "s"} · ${s} set${s === 1 ? "" : "s"}`);
+  }
+  for (const c of agg.cardio) {
+    const min = Math.max(1, Math.round(c.durationSec / 60));
+    const label =
+      c.modality === "run"
+        ? "Run"
+        : c.modality === "bike"
+          ? "Ride"
+          : c.modality.charAt(0).toUpperCase() + c.modality.slice(1);
+    parts.push(`${label} · ${min} min`);
+  }
+  return parts.length > 0 ? parts.join(" + ") : "Empty session";
+}
