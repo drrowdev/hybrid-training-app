@@ -10,6 +10,7 @@ import {
   ymdInTimezone as ymdInTimezoneImpl,
 } from "@/lib/dates";
 import { ARCHETYPES, type ArchetypeId } from "./archetypes";
+import { applyAutoregVolumeScale } from "./autoreg-volume";
 
 /**
  * Resolve a block's `archetype` column to the human-facing display name.
@@ -159,7 +160,9 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
     plannedAt: d.planned_at ?? null,
     title: d.title,
     role: d.role,
-    prescription: (d.prescription as Prescription) ?? { items: [] },
+    prescription: applyAutoregVolumeScale(
+      (d.prescription as Prescription) ?? { items: [] },
+    ),
     completedSessionId: d.completed_session_id,
     skippedAt: d.skipped_at,
     notes: (d.notes as string | null) ?? null,
@@ -216,7 +219,9 @@ export async function getPlannedSessionById(
     plannedAt: data.planned_at ?? null,
     title: data.title,
     role: data.role,
-    prescription: (data.prescription as Prescription) ?? { items: [] },
+    prescription: applyAutoregVolumeScale(
+      (data.prescription as Prescription) ?? { items: [] },
+    ),
     completedSessionId: data.completed_session_id,
     skippedAt: data.skipped_at,
     notes: (data.notes as string | null) ?? null,

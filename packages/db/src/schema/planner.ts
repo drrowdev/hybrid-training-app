@@ -301,6 +301,17 @@ export type PrescriptionItem = {
 
 export type Prescription = {
   items: PrescriptionItem[];
+  /**
+   * ADR 0013 — within-block volume autoregulation. When set (< 1), the
+   * discretionary items (accessory / tendon / power_potentiation) are
+   * sliced to `round(n · scale)` from the END at read time (fill +
+   * render) — mirroring the per-week `strengthVolumeScale` deload shape,
+   * but applied to a single materialized session the user accepted a
+   * trim on. Mains / back-off / warmup are never affected. Absent ⇒
+   * no transform (byte-identical to legacy prescriptions). Reversible:
+   * clearing the field restores the full prescription.
+   */
+  autoregVolumeScale?: number;
 };
 
 export const plannedSessions = pgTable(
