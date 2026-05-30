@@ -25,3 +25,28 @@ export function isEmptyInProgressSession(input: SessionEmptyInputs): boolean {
     input.cardioLogCount === 0
   );
 }
+
+/**
+ * Predicate for the "Pick movements to start logging" empty-state
+ * card that's shown on a fresh Quick Strength session.
+ *
+ * We render the empty state ONLY when:
+ *   - The session is in progress (not complete)
+ *   - There are no logged sets and no cardio blocks
+ *   - There's NO planned prescription — this disambiguates a Quick
+ *     Strength session (which has no plan, so the user genuinely
+ *     needs the hint) from a planned session that the user just
+ *     opened (which already has cards rendered from the prescription
+ *     and so doesn't need an empty-state nudge).
+ */
+export type StrengthEmptyStateInputs = SessionEmptyInputs & {
+  hasPrescription: boolean;
+};
+
+export function shouldShowStrengthEmptyState(
+  input: StrengthEmptyStateInputs,
+): boolean {
+  return (
+    isEmptyInProgressSession(input) && !input.hasPrescription
+  );
+}
