@@ -20,6 +20,11 @@ import {
   STRENGTH_ROLE_LABELS,
   effectiveDays,
 } from "@/lib/planner/archetypes";
+import type { ArchetypeId } from "@/lib/planner/archetypes";
+import {
+  getNextBlockNudge,
+  type NextBlockNudge,
+} from "@/lib/planner/next-block-suggestion-server";
 import {
   getActiveBlock,
   getBlockNumberAndTotal,
@@ -95,6 +100,16 @@ export default async function PlanPage({
     const tz = prof?.timezone ?? "UTC";
     const planEquipment = resolveEquipment(prof ?? null);
 
+    // ADR 0010 — next-block suggestion nudge. Read-only, advice-only,
+    // user-scoped. Derived from the recent archetype sequence + the next
+    // A-event modality; null when no rule fires confidently.
+    const nudge = await getNextBlockNudge(
+      supabase,
+      user.id,
+      recent.map((b) => b.archetype as ArchetypeId),
+      todayYmd(tz),
+    );
+
     const tmReadinessByArchetype = Object.fromEntries(
       WIZARD_ARCHETYPE_IDS.map((id) => {
         const a = ARCHETYPES[id];
@@ -140,6 +155,9 @@ export default async function PlanPage({
           </p>
         </header>
         {blockBump && <BlockCompleteCard bump={blockBump} />}
+        {(nudge.suggestion || nudge.realization) && (
+          <NextBlockSuggestionCard nudge={nudge} />
+        )}
         <PlanNewSwitch
           recentBlocks={recentBlocks}
           tmReadinessByArchetype={tmReadinessByArchetype}
@@ -308,6 +326,70 @@ export default async function PlanPage({
         </div>
       </section>
     </div>
+  );
+}
+
+function NextBlockSuggestionCard({ nudge }: { nudge: NextBlockNudge }) {
+  const { suggestion, realization } = nudge;
+  if (!suggestion && !realization) return null;
+  const suggestedName = suggestion ? ARCHETYPES[suggestion.archetypeId]?.name : null;
+  return (
+    <section
+      className="cp-card"
+      style={{
+        padding: 20,
+        display: "grid",
+        gap: 12,
+        borderColor: "var(--cp-accent)",
+        background: "color-mix(in oklab, var(--cp-accent) 6%, transparent)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+        <div style={{ fontSize: 20, lineHeight: 1 }} aria-hidden="true">→</div>
+        <div style={{ display: "grid", gap: 4, flex: 1 }}>
+          <div
+            style={{
+              fontSize: 11,
+              color: "var(--cp-accent)",
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              fontWeight: 600,
+            }}
+          >
+            Suggested next focus
+          </div>
+          {suggestion && (
+            <>
+              <h2 style={{ fontSize: 18, margin: 0, letterSpacing: "-0.01em" }}>
+                Consider a {suggestedName} block next
+              </h2>
+              <p
+                style={{
+                  margin: 0,
+                  color: "var(--cp-text-muted)",
+                  fontSize: 13,
+                  lineHeight: 1.5,
+                }}
+              >
+                {suggestion.reason} It&rsquo;s only a suggestion — pick any focus below.
+              </p>
+            </>
+          )}
+          {realization && (
+            <p
+              style={{
+                margin: suggestion ? "4px 0 0" : 0,
+                color: "var(--cp-text-muted)",
+                fontSize: 13,
+                lineHeight: 1.5,
+              }}
+            >
+              {realization.reason}
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
