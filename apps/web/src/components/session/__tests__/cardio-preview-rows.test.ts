@@ -68,6 +68,60 @@ describe("cardioPreviewRows", () => {
     expect(intensity?.value).toBe("≤ 70% HRR");
   });
 
+  it("falls back to a kind-based Intensity when neither protocolNote nor hrCap is set", () => {
+    // The Long Z2 bug: a cardio_z2 with hrCap stripped (or any kind
+    // that doesn't ship with one) used to render zero Intensity rows.
+    // The fallback guarantees the hero / preview always have *some*
+    // intensity guidance to surface.
+    const z2 = cardioPreviewRows(
+      cardio({
+        kind: "cardio_z2" as PrescriptionItem["kind"],
+        durationMin: 60,
+      }),
+    );
+    expect(z2.find((r) => r.label === "Intensity")?.value).toMatch(/HRR/);
+
+    const vo2 = cardioPreviewRows(
+      cardio({
+        kind: "cardio_vo2" as PrescriptionItem["kind"],
+        durationMin: 30,
+      }),
+    );
+    expect(vo2.find((r) => r.label === "Intensity")?.value).toMatch(/HRmax/);
+
+    const threshold = cardioPreviewRows(
+      cardio({
+        kind: "cardio_threshold" as PrescriptionItem["kind"],
+        durationMin: 30,
+      }),
+    );
+    expect(threshold.find((r) => r.label === "Intensity")?.value).toMatch(
+      /threshold/i,
+    );
+
+    const alactic = cardioPreviewRows(
+      cardio({
+        kind: "cardio_alactic" as PrescriptionItem["kind"],
+        durationMin: 10,
+      }),
+    );
+    expect(alactic.find((r) => r.label === "Intensity")?.value).toMatch(
+      /max/i,
+    );
+  });
+
+  it("falls back to a generic Intensity for unknown cardio kinds", () => {
+    const rows = cardioPreviewRows(
+      cardio({
+        kind: "cardio_future_unknown" as unknown as PrescriptionItem["kind"],
+        durationMin: 30,
+      }),
+    );
+    expect(rows.find((r) => r.label === "Intensity")?.value).toBe(
+      "Follow prescribed effort",
+    );
+  });
+
   it("drops the hrCap row entirely when the protocolNote already produced an Intensity row", () => {
     const rows = cardioPreviewRows(
       cardio({
@@ -89,8 +143,14 @@ describe("cardioPreviewRows", () => {
     expect(rows.map((r) => r.label)).not.toContain("HR cap");
   });
 
-  it("returns an empty list for a wholly empty cardio item (defensive)", () => {
+  it("emits only the kind-based Intensity fallback for an otherwise-empty cardio item", () => {
+    // The parser now always surfaces *some* intensity guidance — even
+    // when the only signal is the kind itself — so downstream cards
+    // never render an empty cardio block. Previously this returned
+    // [] which left the Today hero with a single bare row for Z2.
     const rows = cardioPreviewRows(cardio({}));
-    expect(rows).toEqual([]);
+    expect(rows).toEqual([
+      { label: "Intensity", value: "90–95% HRmax (hard)" },
+    ]);
   });
 });
