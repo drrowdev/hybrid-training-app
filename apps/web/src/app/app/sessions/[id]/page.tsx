@@ -54,7 +54,7 @@ import type { ProgressionHint } from "@/components/session/PostSessionSummary";
 import type { Prescription } from "@hta/db";
 import { loadBwGateStatesForPrescription } from "@/lib/planner/bw-gate-state-loader";
 import { cardioModalityLabel } from "@/lib/session/cardio-modality-label";
-import { isEmptyInProgressSession } from "@/lib/sessions/empty-state";
+import { isEmptyInProgressSession, shouldShowStrengthEmptyState } from "@/lib/sessions/empty-state";
 
 export default async function SessionDetailPage({
   params,
@@ -1270,6 +1270,43 @@ export default async function SessionDetailPage({
         );
       })()}
 
+      {/* Strength empty-state hint (Fix 8 of the Quick-workout UX sweep).
+            Shown ONLY when this is truly a fresh Quick Strength session
+            with zero content: no logged sets, no cardio blocks, and no
+            prescription to fall back on. Points at the AddToWorkout
+            pill below as the next step. */}
+      {shouldShowStrengthEmptyState({
+        completedAt: session.completed_at as string | null,
+        setLogCount: sets.length,
+        cardioLogCount: cardio?.length ?? 0,
+        hasPrescription: !!plannedPrescription,
+      }) && (
+          <div
+            data-testid="strength-empty-state"
+            className="cp-card"
+            style={{
+              padding: "18px 16px",
+              display: "grid",
+              gap: 6,
+              justifyItems: "center",
+              textAlign: "center",
+              borderStyle: "dashed",
+            }}
+          >
+            <div style={{ fontSize: 24, lineHeight: 1 }} aria-hidden="true">
+              🏋️
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--cp-text)" }}>
+              Pick movements to start logging
+            </div>
+            <div
+              style={{ fontSize: 12, color: "var(--cp-text-muted)" }}
+            >
+              Tap <span aria-hidden="true">↓</span> &ldquo;Add to workout&rdquo; below
+            </div>
+          </div>
+        )}
+
       {/* AddToWorkout (issue #210) replaces three historical surfaces:
             - the per-section "+ add cardio block" disclosure that used
               to live inside the cardio section (with AddCardioBlockForm)
@@ -1293,8 +1330,14 @@ export default async function SessionDetailPage({
         // bottom bar entirely.
         const canFinish = sets.length > 0;
         const partial = canFinish && unloggedStrengthCount > 0;
+        // Hybrid = both cardio and strength prescribed. In that case
+        // the disabled-state copy needs to clarify it's a strength
+        // set that opens the gate, not cardio time.
+        const isHybrid = hasCardio && hasStrengthPrescription;
         const subtitle = !canFinish
-          ? "Log at least 1 set to finish."
+          ? isHybrid
+            ? "Log at least 1 strength set to finish."
+            : "Log at least 1 set to finish."
           : partial
             ? `${unloggedStrengthCount} of ${strengthItemCount} planned sets aren't logged. You can still finish; the session will be marked complete with what you logged. · Finish anyway`
             : null;
@@ -1304,6 +1347,7 @@ export default async function SessionDetailPage({
             variant="bottom"
             disabled={!canFinish}
             subtitle={subtitle}
+            hybrid={isHybrid}
             testId="finish-stickybar"
           />
         );
