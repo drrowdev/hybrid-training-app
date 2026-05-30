@@ -43,7 +43,11 @@ import {
   hasLoadableMainLift,
   resolveEquipment,
 } from "@/lib/settings/equipment-presets";
-import { computeTaperRecommendation, type TaperRecommendation } from "@/lib/planner/taper";
+import { computeTaperRecommendation } from "@/lib/planner/taper";
+import { computeRecoveryWindow } from "@/lib/planner/recovery";
+import { TaperBanner, type TaperBannerState } from "@/components/today/TaperBanner";
+import { RecoveryBanner, type RecoveryBannerState } from "@/components/today/RecoveryBanner";
+import { RaceCheckInCard } from "@/components/today/RaceCheckInCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { TmSuggestionBanner, type TmSuggestionView } from "@/components/today/TmSuggestionBanner";
 import {
@@ -287,7 +291,7 @@ export default async function TodayPage() {
     // Group D — next priority event (drives the taper recommendation).
     supabase
       .from("priority_events")
-      .select("name, event_date, priority")
+      .select("id, name, event_date, priority, modality, target_performance, result")
       .eq("user_id", userId)
       .gte("event_date", todayIso)
       .order("event_date", { ascending: true })
@@ -383,6 +387,142 @@ export default async function TodayPage() {
       ? { name: nextEvent.name, date: nextEvent.event_date, priority: nextEvent.priority }
       : null,
   );
+
+  // Fetch the most recent past event in the user's local tz (for the
+  // race check-in + recovery banner) and any active modification rows
+  // for either event. Both queries are cheap (LIMIT 1 / index hit).
+  const yesterdayIso = (() => {
+    const d = new Date(`${todayIso}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  })();
+  const { data: pastEventRow } = await supabase
+    .from("priority_events")
+    .select("id, name, event_date, priority, modality, target_performance, result")
+    .eq("user_id", userId)
+    .lt("event_date", todayIso)
+    .order("event_date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  type ModRow = {
+    id: string;
+    event_id: string | null;
+    kind: "taper" | "recovery";
+    status: "applied" | "declined" | "reverted";
+    applied_at: string;
+    payload: { triggeredPhase?: string; triggeredAtDaysOut?: number } | Record<string, unknown>;
+  };
+  const candidateEventIds = [nextEvent?.id, pastEventRow?.id].filter(
+    (x): x is string => typeof x === "string",
+  );
+  let modRows: ModRow[] = [];
+  if (candidateEventIds.length > 0) {
+    const { data: rows } = await supabase
+      .from("prescription_modifications")
+      .select("id,event_id,kind,status,applied_at,payload")
+      .eq("user_id", userId)
+      .in("event_id", candidateEventIds)
+      .neq("status", "reverted")
+      .order("applied_at", { ascending: false });
+    modRows = (rows ?? []) as ModRow[];
+  }
+
+  function latestForEvent(eventId: string, kind: "taper" | "recovery"): ModRow | null {
+    return modRows.find((r) => r.event_id === eventId && r.kind === kind) ?? null;
+  }
+
+  let taperBannerProps: React.ComponentProps<typeof TaperBanner> | null = null;
+  if (taper && nextEvent) {
+    const latest = latestForEvent(nextEvent.id, "taper");
+    let state: TaperBannerState;
+    if (!latest) state = { kind: "pending" };
+    else if (latest.status === "applied") {
+      const p = latest.payload as { triggeredPhase?: string; triggeredAtDaysOut?: number };
+      state = {
+        kind: "applied",
+        appliedDaysOut: typeof p.triggeredAtDaysOut === "number" ? p.triggeredAtDaysOut : taper.daysOut,
+        appliedPhase: (p.triggeredPhase as TaperBannerState extends { appliedPhase: infer X } ? X : never) ?? taper.phase,
+      };
+    } else state = { kind: "declined" };
+    taperBannerProps = {
+      eventId: nextEvent.id,
+      eventName: nextEvent.name,
+      daysOut: taper.daysOut,
+      phase: taper.phase as "approach" | "deep" | "polish" | "event_day",
+      volumeScale: taper.volumeScale,
+      intensityAction: taper.intensityAction,
+      state,
+    };
+  }
+
+  // Race check-in + recovery banner gating. The check-in shows the
+  // day after `event_date` until result.status is set; recovery
+  // banner shows after a "raced" or "partial" check-in.
+  let raceCheckInProps: { eventId: string; eventName: string } | null = null;
+  let recoveryBannerProps: React.ComponentProps<typeof RecoveryBanner> | null = null;
+  if (pastEventRow && pastEventRow.priority !== "C") {
+    const eventIso = String(pastEventRow.event_date);
+    const isYesterdayOrEarlier = eventIso <= yesterdayIso;
+    const resultObj = (pastEventRow.result as Record<string, unknown> | null) ?? null;
+    const resultStatus =
+      typeof resultObj?.status === "string"
+        ? (resultObj.status as "raced" | "partial" | "skipped")
+        : null;
+
+    if (isYesterdayOrEarlier && resultStatus === null) {
+      raceCheckInProps = { eventId: pastEventRow.id, eventName: pastEventRow.name };
+    } else if (resultStatus === "raced" || resultStatus === "partial") {
+      // Compute recovery to feed banner. We deliberately recompute
+      // (not snapshot-pull) so the *display* always reflects current
+      // engine spec; the *applied* row carries its own snapshot.
+      const distanceKm =
+        (typeof (pastEventRow.target_performance as Record<string, unknown> | null)?.targetDistanceKm ===
+        "number"
+          ? ((pastEventRow.target_performance as Record<string, unknown>).targetDistanceKm as number)
+          : null) ?? null;
+      const modality = (() => {
+        const m = pastEventRow.modality;
+        return m === "run" || m === "bike" || m === "swim" || m === "row" || m === "triathlon"
+          ? m
+          : ("other" as const);
+      })();
+      const win = computeRecoveryWindow({
+        distanceKm,
+        durationMin: null,
+        modality,
+        priority: pastEventRow.priority,
+        userTier: 2,
+      });
+      if (win) {
+        // Stop showing recovery banner after the window has passed.
+        const startD = new Date(`${eventIso}T00:00:00Z`);
+        startD.setUTCDate(startD.getUTCDate() + 1);
+        const endD = new Date(startD);
+        endD.setUTCDate(endD.getUTCDate() + win.days - 1);
+        const todayD = new Date(`${todayIso}T00:00:00Z`);
+        const inWindow = todayD >= startD && todayD <= endD;
+        if (inWindow) {
+          const latest = latestForEvent(pastEventRow.id, "recovery");
+          let state: RecoveryBannerState;
+          if (!latest) state = { kind: "pending" };
+          else if (latest.status === "applied") state = { kind: "applied" };
+          else state = { kind: "declined" };
+          recoveryBannerProps = {
+            eventId: pastEventRow.id,
+            eventName: pastEventRow.name,
+            days: win.days,
+            strengthLoadScale: win.strengthLoadScale,
+            cardioLoadScale: win.cardioLoadScale,
+            rampDays: win.rampDays,
+            ...(win.confidence ? { confidence: win.confidence } : {}),
+            state,
+          };
+        }
+      }
+    }
+  }
+
 
   for (const r of tmRows) {
     tmMetaByMovementId[r.movementId] = {
@@ -579,7 +719,11 @@ export default async function TodayPage() {
           </div>
         </header>
 
-        {taper && <TaperCard taper={taper} />}
+        {raceCheckInProps && <RaceCheckInCard {...raceCheckInProps} />}
+
+        {taperBannerProps && <TaperBanner {...taperBannerProps} />}
+
+        {recoveryBannerProps && <RecoveryBanner {...recoveryBannerProps} />}
 
         {!hasLoadableMainLift(resolveEquipment(profile)) && tmRows.length === 0 && (
           <BodyweightOnlyBanner
@@ -1477,31 +1621,4 @@ function formatUpcomingDay(iso: string, profile: ProfileForFormat): string {
     return target.toLocaleDateString(undefined, { weekday: "long" });
   }
   return formatDate(target, profile, "short_date");
-}
-
-function TaperCard({ taper }: { taper: TaperRecommendation }) {
-  const color = taper.phase === "polish" || taper.phase === "event_day" ? "var(--cp-danger)" : taper.phase === "deep" ? "var(--cp-warning)" : "var(--cp-link)";
-  return (
-    <section
-      className="cp-card"
-      style={{
-        padding: "14px 18px",
-        display: "grid",
-        gap: 6,
-        borderColor: color,
-        background: `color-mix(in oklab, ${color} 6%, transparent)`,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-        <div style={{ fontSize: 11, color, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-          Taper · {taper.eventName}
-        </div>
-        <span className="mono" style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-          {taper.daysOut === 0 ? "today" : `${taper.daysOut}d`}
-        </span>
-      </div>
-      <div style={{ fontSize: 15, fontWeight: 600 }}>{taper.headline}</div>
-      <div style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>{taper.detail}</div>
-    </section>
-  );
 }
