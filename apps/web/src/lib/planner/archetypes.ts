@@ -826,7 +826,7 @@ export const HYPERTROPHY_ANCHOR: Archetype = {
   id: "hypertrophy_anchor",
   name: "Hypertrophy Focus",
   oneLiner:
-    "Muscle-building block. Same four main patterns as Strength Focus but at hypertrophy intensity (60–75% TM, 6–10 reps, 4 working sets per pattern). One optional easy Z2 day preserves the aerobic floor. Curated accessory pool added per main lift — flies, lateral raises, biceps, calves — covering per-muscle volume gaps.",
+    "Muscle-building block. Same four main patterns as Strength Focus but at hypertrophy intensity (60–75% TM, 6–12 reps, final set taken close to failure, 4 working sets per pattern). One optional easy Z2 day preserves the aerobic floor. Curated accessory pool added per main lift — flies, lateral raises, biceps, calves — covering per-muscle volume gaps.",
   weeks: 4,
   accessoriesByDefault: true,
   // ADR 0006 — bench + OHP demoted to optional so dual-main-lift folding
@@ -989,8 +989,9 @@ export const HYPERTROPHY_ANCHOR: Archetype = {
   ],
   // Hypertrophy wave: 4 working sets each week, building reps then trading
   // reps for load before deloading. Intensities sit firmly in the 60–75% TM
-  // band (~54–67% of 1RM at TM 90%) — the rep range is what drives the
-  // stimulus, not %TM.
+  // band (~54–67% of 1RM at TM 90%). On non-deload weeks the final working
+  // set is effort-anchored (RIR 1–2) so the compound actually reaches the
+  // hypertrophy stimulus window; earlier sets accumulate volume.
   weekProfiles: [
     {
       weekIndex: 0,
@@ -1421,6 +1422,61 @@ export function shouldIncludeAccessories(archetype: Archetype, day: StrengthDay)
   return archetype.accessoriesByDefault === true;
 }
 
+/**
+ * ADR 0011 — effort-anchor the hypertrophy compound's final working set.
+ *
+ * Rationale (see docs/adr/0011-…): the printed reps on HYPERTROPHY_ANCHOR
+ * compounds sit 6–10 RIR shy of failure at the prescribed loads, so the
+ * compound delivers no real hypertrophy stimulus. We fix this by anchoring
+ * only the LAST set by RIR target (cue + raised rep target) at unchanged
+ * load. Earlier sets keep their fixed reps as accumulated volume; deload
+ * week is excluded; folded secondary slots are untouched.
+ *
+ * Pure: returns a new array, never mutates inputs.
+ */
+// heuristic — hypertrophy compound effort anchor (CP-1), per Schoenfeld 2021 / Helms 2018
+const HYPERTROPHY_FINAL_SET_BY_WEEK: Record<
+  number,
+  { reps: number; targetRir: { min: number; max: number }; cue: string }
+> = {
+  0: {
+    reps: 12,
+    targetRir: { min: 2, max: 2 },
+    cue: "Last set: take it close to failure — leave about 2 reps in reserve.",
+  },
+  1: {
+    reps: 10,
+    targetRir: { min: 2, max: 2 },
+    cue: "Last set: take it close to failure — leave about 2 reps in reserve.",
+  },
+  2: {
+    reps: 8,
+    targetRir: { min: 1, max: 1 },
+    cue: "Last set: take it close to failure — leave about 1 rep in reserve.",
+  },
+};
+
+function applyHypertrophyEffortAnchor(
+  items: PrescriptionItem[],
+  archetype: Archetype,
+  profile: WeekProfile,
+): PrescriptionItem[] {
+  if (archetype.id !== "hypertrophy_anchor") return items;
+  if (profile.intensityLabel === "Deload") return items;
+  if (items.length === 0) return items;
+  const spec = HYPERTROPHY_FINAL_SET_BY_WEEK[profile.weekIndex];
+  if (!spec) return items;
+  const lastIdx = items.length - 1;
+  const last = items[lastIdx]!;
+  const anchored: PrescriptionItem = {
+    ...last,
+    reps: spec.reps,
+    targetRir: { ...spec.targetRir },
+    intensityCue: spec.cue,
+  };
+  return [...items.slice(0, lastIdx), anchored];
+}
+
 export function buildPrescription(
   archetype: Archetype,
   weekIndex: number,
@@ -1469,10 +1525,14 @@ export function buildPrescription(
         notes: i === profile.setIntensities.length - 1 ? "top set" : undefined,
       };
     });
-    const primaryItems =
+    const scaledPrimary =
       profile.strengthVolumeScale != null && profile.strengthVolumeScale < 1
         ? items.slice(0, Math.max(1, Math.round(items.length * profile.strengthVolumeScale)))
         : items;
+    // ADR 0011 — effort-anchor the last working set on HYPERTROPHY_ANCHOR
+    // non-deload weeks. Applied BEFORE finalize() so taper/recovery
+    // modifications still scale the anchored item normally.
+    const primaryItems = applyHypertrophyEffortAnchor(scaledPrimary, archetype, profile);
 
     // ADR 0004 — dual-main-lift secondary slot.
     // The secondary movement reuses the wave's intensity ladder but is
