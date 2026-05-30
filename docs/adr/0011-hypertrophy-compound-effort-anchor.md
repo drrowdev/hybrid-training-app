@@ -113,3 +113,36 @@ instead of a bare rep count — arguably *clearer* about intent than the current
 - On acceptance: add CP-2 rows for the RIR targets / load-nudge (tagged heuristic), update the
   `HYPERTROPHY_ANCHOR` oneLiner + the misleading comment, update `hybrid-training-engine-live.md`
   §10 (archetypes) and the canonical workspace mirror.
+
+## Implementation notes (as built — 2026-05-30)
+
+**Commit:** `262ccba` *feat(engine): effort-anchor hypertrophy compound final set (ADR 0011)*.
+Test count: 2650 → 2659 (+9; ADR-0011 effort-anchor suite).
+
+Shipped exactly as scoped in the contract; the deviations are small and worth recording:
+
+1. **Files touched.** `apps/web/src/lib/planner/archetypes.ts` only: the
+   `HYPERTROPHY_ANCHOR` oneLiner now reads "6–12 reps, final set taken close to failure" and the
+   misleading "rep range is what drives the stimulus, not %TM" comment is gone (replaced with
+   "On non-deload weeks the final working set is effort-anchored (RIR 1–2)"). The actual
+   transform is a small pure helper `applyHypertrophyEffortAnchor(items, archetype, profile)`
+   called from the strength branch of `buildPrescription` *before* `finalize()`, so taper /
+   recovery / volume-scale modifications still scale the anchored item normally.
+
+2. **Per-week spec.** `HYPERTROPHY_FINAL_SET_BY_WEEK` (heuristic, CP-1 — Schoenfeld 2021 /
+   Helms 2018): week 0 → 12 reps @ RIR 2; week 1 → 10 reps @ RIR 2; week 2 → 8 reps @ RIR 1.
+   Loads are **unchanged** — Decision 3's "nudge load up" is delivered as a *rep* nudge at
+   constant %TM (the equivalent way to get the RIR target into the printed rep range while
+   staying inside the 60–75% TM identity band). Deload week (week 3) gets neither a rep change
+   nor an RIR target.
+
+3. **Display & AMRAP interaction.** The anchored item carries `targetRir`, `intensityCue` (the
+   "leave ~N reps in reserve" line), and after ADR 0007 also `isAmrap: false` (so the renderer
+   shows the RIR chip + cue, *not* a "+", and `detectAmrap` does not treat the high-rep set as
+   a TM-bump signal). Hypertrophy never solicits an open AMRAP — Decision 2 of this ADR
+   matches Decision 6 of ADR 0007.
+
+4. **Regression guard.** A pinned test asserts every non-hypertrophy archetype, the
+   hypertrophy deload week, folded secondaries, and accessories are byte-identical pre/post;
+   only the hypertrophy non-deload compound *final* set's `reps` / `targetRir` /
+   `intensityCue` change.

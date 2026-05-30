@@ -123,3 +123,52 @@ inference) tags an event accordingly.
 - On acceptance: add CP-2 rows for the strength-taper constants (tagged MODERATE), update
   `hybrid-training-engine-live.md` §17 (taper) and the canonical workspace mirror, and note the
   new `modality` field in the event-schema docs.
+
+## Implementation notes (as built — 2026-05-30)
+
+**Commits:** `67066ee` *feat(engine): modality-aware taper/peaking (ADR 0008, decisions 1-4 + 6)*
+and `233143a` *docs(adr): redirect ADR 0008 D5 realization microcycle to ADR 0010 nudge*.
+Test count: 2670 → 2698 after the combined 0008 + 0009 batch (the taper suite alone added
+~17 cases in `apps/web/src/lib/planner/__tests__/taper.test.ts`).
+
+Files touched: `apps/web/src/lib/planner/taper.ts`,
+`apps/web/src/lib/planner/taper-recovery-actions.ts`, `apps/web/src/app/app/page.tsx`,
+`apps/web/src/lib/planner/__tests__/taper.test.ts`.
+
+Shipped exactly as scoped — the strength branch matches the contract numerically:
+
+1. **`TaperModality` exported as `"endurance" | "strength" | "mixed"`** alongside a
+   `taperModalityForEvent(modality: string | null | undefined)` mapper. Only the literal
+   `"strength"` event-UI string maps to `"strength"`; every other value (including `null`,
+   `"run"`, `"bike"`, `"swim"`, `"row"`, `"ski"`, `"padel"`, `"other"`) maps to
+   `"endurance"` — preserving the pre-ADR-0008 curve for every existing row.
+
+2. **`computeTaperRecommendation`** now branches on `event.modality ?? "endurance"`. The
+   strength A-event window is **10 days** (vs endurance/mixed 14, B-events 7 in all
+   modalities). C-events still return null.
+
+3. **Strength branch (`strengthPhase`)** — volume cuts graded **−30% / −45% / −50%** across
+   approach (14–8d) / deep (7–4d) / polish (3–1d), `intensityAction: "hold"` at *every*
+   phase including polish (the key fix vs endurance, which drops to `"minimal"` at polish).
+   Day 0 returns `intensityAction: "hold"` with the "openers and activation only — the
+   heavy work is banked" detail, **not** the endurance branch's "rest or 5–10 minutes of
+   activation". Constants tagged `// heuristic — strength taper, per Pritchard 2015
+   (MODERATE) / Travis 2020 (MODERATE-LOW)`.
+
+4. **Mixed branch (`mixedPhase`)** — endurance volume curve verbatim
+   (−20% / −40% / −60%) but `intensityAction: "hold"` at polish (so one heavy strength
+   primer survives). Day 0 falls back to the endurance `"minimal"`.
+
+5. **Endurance branch (`endurancePhase`)** — current function verbatim, pinned by the
+   existing-behaviour tests; the only refactor was extracting it from
+   `computeTaperRecommendation`'s body into a named helper.
+
+6. **B-priority adjustment.** Volume cut is halved (`adjust = scale → 1 - (1 - scale) * 0.5`)
+   in every modality, and the max-window is clamped to 7d — same as the prior behaviour.
+
+7. **Decision 5 (realization microcycle) is redirected, not implemented here.** The taper
+   module ships modalities 1–4 + 6 only; the realization peak is delivered as an opt-in
+   *nudge* under ADR 0010 (`suggestRealizationWeek`) and does **not** auto-reshape the
+   terminal week of a STRENGTH_ANCHOR block — see ADR 0010's as-built note for the deferred-
+   reshape scope-down. The commit `233143a` updated this ADR's text to make the redirect
+   explicit.

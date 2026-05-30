@@ -117,3 +117,90 @@ is better than a low-confidence nudge that erodes trust.
   wellness-scale revalidation follow-up).
 - If users want more, this can later graduate to a 2–3 block look-ahead — but only on demand,
   and never at the cost of the one-tap simplicity.
+
+## Implementation notes (as built — 2026-05-30)
+
+**Commits:** `8682844` *feat(planner): next-block suggestion core (ADR 0010)* and `e93de1f`
+*feat(plan): surface next-block suggestion nudge (ADR 0010)*. Test count: 2698 → 2726 (+28;
+the ADR-0010 suite at
+`apps/web/src/lib/planner/__tests__/adr-0010-next-block-suggestion.test.ts` covers every
+rule + priority + the realization gate).
+
+Files touched:
+- `apps/web/src/lib/planner/next-block-suggestion.ts` (new) — pure `suggestNextArchetype` +
+  `suggestRealizationWeek`, fully unit-testable, zero I/O.
+- `apps/web/src/lib/planner/next-block-suggestion-server.ts` (new) — server glue
+  `getNextBlockNudge(supabase, userId, recentArchetypes, todayYmd)` that gathers the pure
+  function's inputs from a user-scoped (RLS-enforced) Supabase client.
+- `apps/web/src/app/app/plan/page.tsx` — adds the read-only nudge fetch and renders a
+  `NextBlockSuggestionCard` on the **no-active-block** surface above `PlanNewSwitch`.
+
+### Scope-downs from the ADR text (deliberate; document so the lead can diff-review)
+
+1. **Recommend, not pre-select.** Decision 4 of the ADR says the nudge "pre-selects the
+   archetype in the new-block flow but never forces". The shipped surface **recommends** the
+   archetype (renders a `NextBlockSuggestionCard` with the suggested archetype name + reason)
+   but does **not** pre-select it inside `PlanNewSwitch` / the wizard. Pre-selecting would
+   require an `archetypeId → {goal, secondary}` reverse-map the wizard does not currently
+   expose; rather than ship a half-mapped pre-select that silently picks the wrong wizard
+   path for half the archetypes, the surface stops at "recommend". **Follow-up:** add the
+   reverse-map and wire pre-select on the next wizard pass.
+
+2. **Realization week is surfaced, not auto-applied.** Decision 6 of the ADR talks about a
+   terminal-week reshape (volume −40–50%, intensity held/raised to singles) when the
+   accumulation gate fires. The shipped surface delivers the **nudge** via
+   `suggestRealizationWeek`, but does **not** wire the actual block-shape transform —
+   `taper.ts` carries no realization-week branch and `buildPrescription` is untouched. The
+   user sees "consider a realization week (lighter volume, heavy singles) to peak before
+   your next block" but the planner does not auto-reshape anything; the user would have to
+   build the realization block themselves. The gate is correctly tied to the consensus
+   accumulation threshold — fires after **≥ 2 consecutive event-less STRENGTH_ANCHOR blocks**
+   (`REALIZATION_MIN_STRENGTH_RUN = 2`) and is suppressed when an A-event modality already
+   drives a real taper/peak. **Follow-up:** the reshape transform itself is deferred to a
+   subsequent ADR / PR.
+
+3. **Recovery-aware rule (rule 1) is dormant from the UI surface.** The pure function
+   honours `recentReactiveDeloads >= REACTIVE_DELOAD_BACKOFF (=2)` and the unit tests pin
+   it, but `getNextBlockNudge` passes `recentReactiveDeloads: 0` because there is no
+   persisted reactive-deload-count signal to query yet. The code comment marks this
+   explicitly: "wire the count when a stored signal lands." So in production today, only
+   rules 2 (event-aware), 3 (phase sequence accumulation→strength), and 4 (anti-staleness)
+   can ever fire. **Follow-up:** stand up a reactive-deload-count query (likely from
+   `tm-bump`/`deload` history) and pass the real count through.
+
+### Heuristic constants (all CP-1, practitioner-consensus — NOT RCT-calibrated)
+
+In `next-block-suggestion.ts`, tagged `// heuristic — periodization sequencing thresholds
+(CP-1), practitioner-consensus`:
+
+- `REACTIVE_DELOAD_BACKOFF = 2` — ≥ this many recent reactive deloads → rebuild.
+- `ACCUMULATION_RUN_FOR_CONSOLIDATION = 2` — ≥ this many consecutive `hypertrophy_anchor`
+  blocks → consolidate with `strength_anchor`.
+- `STALENESS_RUN = 3` — same archetype this many times in a row → suggest the complementary
+  emphasis.
+- `REALIZATION_MIN_STRENGTH_RUN = 2` — ≥ this many consecutive `strength_anchor` blocks
+  (event-less) → suggest the opt-in realization week.
+
+### Rule priority (first match wins, encoded in `suggestNextArchetype`)
+
+1. **Recovery-aware** (`recentReactiveDeloads >= REACTIVE_DELOAD_BACKOFF`) → `rebuild`.
+   *Dormant in production — see scope-down 3.*
+2. **Event-aware** (`upcomingEventModality != null`) → matching archetype per
+   `archetypeForEventModality` (`strength` → `strength_anchor`, `endurance` →
+   `endurance_anchor`, `mixed` → `concurrent_hybrid`).
+3. **Phase sequence — accumulation → intensification** (`run.id === "hypertrophy_anchor" &&
+   run.length >= ACCUMULATION_RUN_FOR_CONSOLIDATION`) → `strength_anchor`.
+4. **Anti-staleness — complementary emphasis** (`run.length >= STALENESS_RUN` for any non-
+   `custom`, non-maintenance/rebuild archetype) → complement per `complementaryArchetype`.
+5. **Otherwise null** — silence beats a low-confidence nudge; the user picks freely.
+
+`suggestRealizationWeek` is independent of `suggestNextArchetype`; both are merged into
+`{suggestion, realization}` by `getNextBlockNudge` and rendered side-by-side when present.
+
+### What is **not** shipped
+
+- No persistence of dismissed nudges (Decision 2: the nudge recomputes each time).
+- No auto-creation of blocks, no archetype lock, no multi-block look-ahead (Decision 4).
+- No reactive-deload-count signal (see scope-down 3).
+- No realization-week reshape in the planner (see scope-down 2).
+- No archetype pre-select in the wizard surface (see scope-down 1).
