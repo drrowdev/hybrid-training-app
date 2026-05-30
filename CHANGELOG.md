@@ -5,6 +5,144 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+Cycle covering PRs #178 → #215 (2026-05-26 → 2026-05-30). Doc refresh on
+2026-05-30. The previous starting-point block is preserved below for history.
+
+### Added
+
+- **AI architecture — Explain v1 + BYOAI (ADR 0002).** In-app chat surface
+  (ChatFAB → drawer) backed by a pluggable `LlmProvider` (Anthropic /
+  OpenAI / Gemini) with bring-your-own-key storage in a pgcrypto-encrypted
+  vault. New `getEngineSnapshot` tool, eval fixtures, and observability
+  scaffolding. User keys never leave the server vault; the orchestrator
+  speaks to providers from the edge runtime. Migration 0069 (AI plumbing).
+- **MCP server + 8-tool catalogue (ADR 0003).** Streamable HTTP MCP
+  endpoint at `/mcp/[...mcp]/route.ts` with OAuth 2.1 authorization-code
+  bridge, PKCE, scope gating, and a shared 8-tool catalogue used by both
+  the in-app chat and external MCP clients. Authorization codes are
+  single-use (`mcp_consumed_codes`), bearer tokens are HMAC-signed via
+  `MCP_TOKEN_SIGNING_KEY`. Orchestrator v2 (PR #195) routes the in-app
+  chat through the same tool catalogue. Migrations 0071, 0072.
+- **Strava integration end-to-end.** Push-subscription webhook
+  (`/api/integrations/strava/webhook`) with idempotent
+  `strava_event_log` dedup, single-activity sync on create / update,
+  full historical import, an onboarding step (second-to-last), and a
+  3-state autofill banner on cardio sessions (suggested → applied →
+  ready-to-finish). Manual `pnpm --filter @hta/web run strava:subscribe`
+  registers the subscription once per environment. Migrations 0075, 0076.
+- **Engine — archetype rebalancing.**
+  - **ADR 0004:** Endurance Focus now prescribes a *dual* main lift
+    (squat + hinge) post-Huiberts 2024; companion fix trims the
+    Concurrent Hybrid template to match.
+  - **ADR 0005:** frequency-aware dual-main-lift *folding* — when the
+    weekly slot budget is tight, secondary main lifts fold into the
+    primary day instead of being dropped.
+  - **ADR 0006:** demote bench-press / overhead-press anchors in
+    Strength + Hypertrophy archetypes so folding can balance low-
+    frequency weeks symmetrically.
+- **Hybrid completion guard.** Shared `sessionPrescribesStrength` helper
+  prevents hybrid sessions from auto-completing on a cardio log alone.
+  Adopted by `logCardioSession`, `applyStravaAutofill`,
+  `finishStravaAppliedSession`, and the `importStravaHistory` auto-link
+  path. Migration 0074 adds a `cardio_logs` finish-uniqueness
+  constraint as a belt-and-braces backstop.
+- **Mobile UX overhaul.**
+  - Scrollable `/plan` calendar + mobile nav cleanup (#200), month-view
+    prev/next + title (#201), MORE tab → settings + week-only plan
+    view + full-screen swipe-dismiss drawer (#202).
+  - Preview-workout route — secondary CTA shows session details rather
+    than the whole plan (#203, #204).
+  - Today hero at-a-glance summary, deduped HR cap, copy unified on
+    "workout" (#206, #207).
+  - Cardio session rebuild — in-session log form + descriptions +
+    layout (#208), full active-session UX overhaul + Strava autofill
+    wiring (#209), Mockup B + shared RPE button-grid picker + unified
+    "+ Add to workout" affordance (#210).
+- **Limitations v2 lifecycle (#189).** Bilateral side + muscle-level
+  filter + per-exercise allow + event lifecycle (active / paused /
+  resolved) + Today banner. Migration 0070.
+- **Per-region load-spike warning banner on Today (#184).**
+- **Beginner-only accessory volume ramp for the first 3 weeks (#183).**
+- **Quick workout entry on Today (#213).** Inline dashed card + bottom-
+  sheet picker + three server actions (`startQuickCardioSession`,
+  `startQuickStrengthSession`, `repeatRecentSession`) for off-plan and
+  rest-day logging without going through the planner.
+- **Settings — Integrations sub-hub + cancel workout (#215).** Strava
+  and AI consolidated under a single `/app/settings/integrations` hub;
+  plain-language labels on the HR-zone method picker (%Max / %HRR /
+  %LTHR); a Cancel workout button surfaces on empty in-progress
+  sessions so abandoned starts no longer pile up in history.
+- **HR-zone configuration (#161, #162, #172).** Three methods (%Max,
+  %HRR, %LTHR) with editable percentages per method; cardio logs from
+  Strava populate `hr_zones`; engine consumes HR-aware buckets and per-
+  region load when zones are available (#167).
+- **External cardio source plumbing (#159, #160).** Planner reserves
+  cardio days and defers prescription when the external source is the
+  ground truth; classifier infers cardio kind from HR + duration.
+
+### Changed
+
+- **AI settings UI.** Dropped the master opt-in switch in favour of
+  collapsible MCP + BYOAI cards (#196); rewrote the key-storage
+  disclaimer for end users (#190); added an inline `i` button explaining
+  storage + privacy (#188); adopted the punchier "Bank-level encryption"
+  framing (#191). Migration 0073 drops the legacy `profiles.ai_opted_in`
+  column.
+- **Engine — modality-aware concurrent-training scalar (Stage A,
+  #181).** Continuous scalar replaces the prior discrete buckets.
+- **Engine hygiene (#178, #180).** Consolidated actual-session-load
+  reads onto a single helper; deduped `CARDIO_SCALAR`; tightened the
+  alactic classifier; documented the recovery-scale split.
+- **Daily wellness sliders feed `recoveryMultiplier` (#166).**
+- **Effective stress load recomputed from logged sets + cardio (#165).**
+- **Cardio-swap UX (#168, #158, #157).** Excludes unclassified
+  movements from the intensity-matched picker; per-card swap; plain-
+  language cardio protocols; larger disclosure arrows.
+- **Wellness — retired the standalone daily check-in card on
+  Today (#176)** now that the engine reads sliders directly.
+- **Retroactive `performed_at` + late-logged adherence breakdown (#174).**
+- **Plan overdue badge + always-today agenda cursor (#173).**
+- **`/plan` polish (#205).** Remove block tooltip, add overdue count,
+  unify history link styling.
+
+### Fixed
+
+- Use the shared strength-prescribed helper in
+  `finishStravaAppliedSession` so a hybrid session whose strength block
+  is unlogged can't be marked complete from a Strava finish (#214).
+- Anchor adherence requires a logged anchor set and uses main-lift role
+  names for the filter (#163, #164).
+- Mobile preview-workout readability + truly hide the desktop plan
+  timeline on mobile (#204).
+
+### Security
+
+- `MCP_TOKEN_SIGNING_KEY` (≥ 32 chars) is a hard runtime requirement on
+  any deployment that exposes `/mcp/*`.
+- Strava webhook handler validates `subscription_id` against
+  `STRAVA_WEBHOOK_SUBSCRIPTION_ID` and dedupes on
+  `(subscription_id, event_time, object_id, aspect_type)` via the
+  `strava_event_log` unique index (0075, 0076).
+- BYOAI key vault uses pgcrypto with `AI_KEY_ENCRYPTION_KEY` as the
+  master key; vault RPCs scope every read/write to the calling
+  `user_id` (defense in depth on top of RLS).
+- Hybrid completion guard prevents a cardio log from prematurely
+  marking a strength-bearing hybrid session as complete.
+
+### Removed
+
+- `profiles.ai_opted_in` (migration 0073) — replaced by per-provider
+  configuration in the AI settings card.
+
+### Migrations
+
+0069 AI plumbing · 0070 limitations v2 lifecycle · 0071 MCP server
+tables · 0072 MCP consumed authorization codes · 0073 drop
+`profiles.ai_opted_in` · 0074 `cardio_logs` finish-uniqueness ·
+0075 `strava_event_log` · 0076 `strava_event_log` payload columns.
+
+---
+
 ### Added — Phase 1 starting point: movement catalog (commit pending)
 
 - **0002_movement_metadata migration** applied live to Supabase: 22-value `muscle` enum (DC-T1 priorities), `axial_load` enum (DC-D3), `stability` enum (DC-O5), 7 new columns on `movements` (`primary_muscles`, `secondary_muscles`, `high_strain_tendon`, `axial_load`, `stability`, `bilateral`, `body_weight_loaded`). GIN indexes on muscle arrays for the aesthetics dashboard.
