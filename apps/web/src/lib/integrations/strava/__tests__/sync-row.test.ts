@@ -121,4 +121,19 @@ describe("buildSyncRow", () => {
     );
     expect(row?.cardio.hr_zones).toBeNull();
   });
+
+  it("uses the supplied hrZones override (measured stream) verbatim, bypassing the summary estimate", () => {
+    const bands = zoneBandsFromMaxHr(200);
+    const measured = { z1: 100, z2: 800, z3: 600, z4: 200, z5: 100 };
+    const row = buildSyncRow(activity(), "u", { bands, hrZones: measured });
+    expect(row?.cardio.hr_zones).toEqual(measured);
+  });
+
+  it("falls back to the summary estimate when hrZones override is null", () => {
+    const bands = zoneBandsFromMaxHr(200);
+    const row = buildSyncRow(activity(), "u", { bands, hrZones: null });
+    expect(row?.cardio.hr_zones).not.toBeNull();
+    const z = row!.cardio.hr_zones!;
+    expect(z.z1 + z.z2 + z.z3 + z.z4 + z.z5).toBe(row!.cardio.duration_sec);
+  });
 });

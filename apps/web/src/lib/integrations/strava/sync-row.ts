@@ -61,11 +61,17 @@ function deriveRpe(activity: StravaActivity): number | null {
 /**
  * Builds the rows we'd insert for one Strava activity, or null if the
  * activity should be skipped (unsupported sport type or zero duration).
+ *
+ * `options.hrZones`: when supplied (e.g. measured from the per-second HR
+ * stream via `zonesFromStream`), it is used verbatim as the row's
+ * `hr_zones`. When omitted, we fall back to the summary leak-model
+ * approximation (`estimateZonesFromSummary`). This is the ADR 0009
+ * "streams when available, approximation otherwise" contract.
  */
 export function buildSyncRow(
   activity: StravaActivity,
   userId: string,
-  options: { bands?: ZoneBands | null } = {},
+  options: { bands?: ZoneBands | null; hrZones?: HrZonesSeconds | null } = {},
 ): StravaSyncRow | null {
   const mapping = mapStravaActivity(activity.sport_type, activity.type);
   if (!mapping) return null;
@@ -78,12 +84,14 @@ export function buildSyncRow(
     activity.average_heartrate != null ? Math.round(activity.average_heartrate) : null;
   const maxHr =
     activity.max_heartrate != null ? Math.round(activity.max_heartrate) : null;
-  const hrZones = estimateZonesFromSummary({
-    avgHrBpm: avgHr,
-    maxHrBpm: maxHr,
-    durationSec: duration,
-    bands: options.bands ?? null,
-  });
+  const hrZones =
+    options.hrZones ??
+    estimateZonesFromSummary({
+      avgHrBpm: avgHr,
+      maxHrBpm: maxHr,
+      durationSec: duration,
+      bands: options.bands ?? null,
+    });
   return {
     session: {
       user_id: userId,

@@ -167,7 +167,11 @@ export function HrZonesCard({ state }: HrZonesCardProps) {
         <MetricHelp term="polarised_distribution" />
         {" "}
         <span style={{ fontStyle: "italic" }}>
-          Approximated from session average HR; per-second streams will refine this when available.
+          {state.source === "measured"
+            ? "Measured from per-second HR streams."
+            : state.source === "mixed"
+              ? "Measured from HR streams where available; approximated from session-average HR otherwise."
+              : "Approximated from session-average HR; per-second streams will refine this when available."}
         </span>
         {state.droppedCount > 0 && (
           <>

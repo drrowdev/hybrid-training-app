@@ -166,10 +166,54 @@ export async function listActivitiesSince(
 }
 
 /**
- * Sentinel error thrown when Strava returns 429 after exhausting our
- * retry budget. The caller (history import) catches this and folds it
- * into the user-visible summary instead of failing the whole run.
+ * Per-second activity streams (best-effort).
+ *
+ * Strava's streams endpoint returns measured time-series for an activity.
+ * We request only `heartrate` + `time` (keyed by type) to compute true
+ * time-in-zone. This is intentionally **best-effort**: streams are
+ * rate-limited and not every activity has an HR stream, so any failure
+ * (404 no streams, 429 rate-limited, network, malformed body) resolves to
+ * `null` and the caller falls back to the summary approximation. It never
+ * throws — a missing stream must never break an import or webhook sync.
  */
+export type StravaHrStream = {
+  /** Heart-rate samples (bpm), aligned index-for-index with `time`. */
+  heartrate: number[];
+  /** Elapsed-seconds offset of each sample. */
+  time: number[];
+};
+
+export async function fetchActivityStreams(
+  accessToken: string,
+  activityId: number,
+  options: { fetchImpl?: typeof fetch } = {},
+): Promise<StravaHrStream | null> {
+  const doFetch = options.fetchImpl ?? fetch;
+  const url = new URL(`${API_BASE}/activities/${activityId}/streams`);
+  url.searchParams.set("keys", "heartrate,time");
+  url.searchParams.set("key_by_type", "true");
+  try {
+    const res = await doFetch(url, {
+      headers: { authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as {
+      heartrate?: { data?: unknown };
+      time?: { data?: unknown };
+    };
+    const hr = body?.heartrate?.data;
+    const time = body?.time?.data;
+    if (!Array.isArray(hr) || !Array.isArray(time)) return null;
+    const heartrate = hr.filter((v): v is number => typeof v === "number");
+    const t = time.filter((v): v is number => typeof v === "number");
+    if (heartrate.length === 0 || t.length === 0) return null;
+    return { heartrate, time: t };
+  } catch {
+    return null;
+  }
+}
+
 export class StravaRateLimitError extends Error {
   constructor(message = "Strava rate limit reached.") {
     super(message);

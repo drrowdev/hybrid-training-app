@@ -27,6 +27,7 @@ import type { StravaActivity } from "./client";
 import { buildSyncRow } from "./sync-row";
 import { classifyAndLinkExternalCardio } from "./link-external-cardio";
 import type { ZoneBands } from "@/lib/stats/hr-zones";
+import type { HrZonesSeconds } from "./zones-from-summary";
 
 export type WriteActivityResult =
   | {
@@ -50,10 +51,16 @@ export async function writeStravaActivity(args: {
   activity: StravaActivity;
   bands: ZoneBands | null;
   userTimezone: string;
+  /**
+   * Measured per-zone seconds from the activity's HR stream, when the
+   * caller fetched it (ADR 0009). When omitted, `buildSyncRow` falls back
+   * to the summary leak-model approximation.
+   */
+  streamZones?: HrZonesSeconds | null;
 }): Promise<WriteActivityResult> {
-  const { supabase, userId, activity, bands, userTimezone } = args;
+  const { supabase, userId, activity, bands, userTimezone, streamZones } = args;
 
-  const row = buildSyncRow(activity, userId, { bands });
+  const row = buildSyncRow(activity, userId, { bands, hrZones: streamZones ?? null });
   if (!row) return { status: "skipped", reason: "unmappable" };
 
   const { data: inserted, error: insertErr } = await supabase
