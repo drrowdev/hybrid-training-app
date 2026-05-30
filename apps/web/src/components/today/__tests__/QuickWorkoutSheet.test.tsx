@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import * as path from "node:path";
 import { QuickWorkoutSheet } from "../QuickWorkoutSheet";
 import type { QuickRepeatCandidate } from "@/lib/sessions/queries";
 
@@ -29,6 +32,38 @@ describe("QuickWorkoutSheet", () => {
     expect(html).toBe("");
   });
 
+  it("source: cardio tiles open the inline duration row before submitting", () => {
+    // The Node-only vitest env can't simulate clicks. Verify the
+    // contract at the source level: the sheet wires Run / Ride /
+    // Other tiles to `openDuration(...)`, NEVER to a direct
+    // `startCardio({ modality })` (which would skip the duration
+    // prompt and revive the 30-min default).
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(
+      path.resolve(here, "..", "QuickWorkoutSheet.tsx"),
+      "utf8",
+    );
+
+    // Each cardio tile must hand off to openDuration().
+    expect(src).toMatch(/onClick=\{\(\) => openDuration\("run", "run"\)\}/);
+    expect(src).toMatch(/onClick=\{\(\) => openDuration\("bike", "ride"\)\}/);
+
+    // No tile should fire startCardio directly with just a modality —
+    // that pattern was the original bug.
+    expect(src).not.toMatch(/startCardio\(\{\s*modality:\s*"run"\s*\}\)/);
+    expect(src).not.toMatch(/startCardio\(\{\s*modality:\s*"bike"\s*\}\)/);
+
+    // startCardio must always be called WITH durationMin from the
+    // duration picker callback.
+    expect(src).toMatch(/startCardio\(\{\s*modality:\s*durationFor\.modality,\s*durationMin\s*\}\)/);
+
+    // Duration chips: 30 / 45 / 60 / 90 + Custom.
+    for (const min of [30, 45, 60, 90]) {
+      expect(src).toMatch(new RegExp(`\\{\\s*min:\\s*${min}\\b`));
+    }
+    expect(src).toMatch(/data-testid="quick-duration-custom"/);
+  });
+
   it("renders the four picker tiles when open", () => {
     const html = renderToStaticMarkup(
       <QuickWorkoutSheet
@@ -53,6 +88,25 @@ describe("QuickWorkoutSheet", () => {
     // Title + framing copy from the spec.
     expect(html).toContain("Quick workout");
     expect(html).toContain("won&#x27;t replace your planned");
+  });
+
+  it("does NOT render the duration picker row until a cardio tile is tapped", () => {
+    // Initial SSR render: no chip row visible. We can't simulate
+    // clicks in static-markup tests, but the absence of the testId on
+    // the first render is the regression contract that matters — the
+    // sheet must NOT submit anything before the user picks a duration.
+    const html = renderToStaticMarkup(
+      <QuickWorkoutSheet
+        open
+        onClose={() => {}}
+        recent={[]}
+        startCardio={noop}
+        startStrength={noop}
+        repeatRecent={noop}
+      />,
+    );
+    expect(html).not.toContain('data-testid="quick-duration-row"');
+    expect(html).not.toContain('data-testid="quick-duration-30"');
   });
 
   it("hides the recent list entirely when there are no recents", () => {

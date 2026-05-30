@@ -62,8 +62,9 @@ test.describe("@desktop freestyle movement persistence", () => {
     await page.goto(`/app/sessions/${sessionId}`);
     await page.waitForLoadState("networkidle");
 
-    // 3) Add the first movement via the picker.
-    await page.getByTestId("movement-card-add").click();
+    // 3) Add the first movement via the unified +Add to workout pill.
+    await page.getByTestId("add-to-workout-open").click();
+    await page.getByTestId("add-to-workout-pick-strength").click();
     const picker = page.getByPlaceholder(/search the catalog/i);
     await picker.fill("bench press");
     const benchOption = page
@@ -97,7 +98,8 @@ test.describe("@desktop freestyle movement persistence", () => {
     await expect(page.getByTestId(`freestyle-card-${bench.id}`)).toBeVisible();
 
     // 5) Add a second movement we'll remove.
-    await page.getByTestId("movement-card-add").click();
+    await page.getByTestId("add-to-workout-open").click();
+    await page.getByTestId("add-to-workout-pick-strength").click();
     await page.getByPlaceholder(/search the catalog/i).fill("press");
     const ohpOption = page
       .getByRole("button", { name: new RegExp(ohp.display_name as string, "i") })
