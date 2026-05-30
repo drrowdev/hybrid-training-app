@@ -131,7 +131,42 @@ and the marginal fatigue is best justified.
   `HYPERTROPHY_ANCHOR` is therefore excluded from this ADR's open-rep AMRAP path; its effort
   anchor ships via 0011 so the two changes stay independently reviewable.
 
-## Out of scope
+## Implementation notes (as built — 2026-05-30)
+
+Two facts discovered during implementation deviate from the contract above. They do not
+change the *decision*, only the mechanism; recorded here so the ADR matches the code.
+
+1. **`isAmrap: boolean` flag, not a `reps: "N+"` string.** The contract proposed emitting
+   `reps: "${N}+"`. But `PrescriptionItem.reps` is typed `number` (`packages/db/src/schema/planner.ts`),
+   and the runtime "N+" string path was a latent, untyped escape hatch only `amrap.ts` Strategy 1
+   parsed. Emitting the string for real would either be a type error or force a `reps: number | string`
+   widening that ripples through every renderer, the logger, e1RM, and the picker. Instead we added a
+   **typed, explicit `isAmrap?: boolean`** to `PrescriptionItem`. `true` = solicited AMRAP, `false` =
+   deliberately fixed top set (the new opt-out signal), `undefined` = legacy stored prescription
+   (renderers fall back to the positional last-main heuristic). `detectAmrap` gained a single
+   `if (item.isAmrap === false) continue;` guard in both strategies plus an `isAmrap === true` numeric
+   short-circuit; `deload.ts` / `tm-bump.ts` / `one-rm.ts` are untouched as promised. This is strictly
+   less blast radius than the string and is backward-compatible with the **persisted** prescription
+   JSON (prescriptions are stored at block creation, not rebuilt at view time — so in-flight blocks
+   keep working with no flag).
+
+2. **The "+" and the bump were already partially live (Context corrections).** `MovementFocusView.tsx`
+   already rendered the last main set's rep line as "reps+" via a *positional* heuristic, and
+   `detectAmrap` Strategy 2 already treated fixed {5,3,1} top sets as AMRAP targets for the bump.
+   So the user-visible "+" and the e1RM→TM bump were *already happening on a positional guess* — the
+   real gap this ADR closes is making that solicitation **explicit, archetype-scoped, and honest**:
+   only strength-goal archetypes (STRENGTH_ANCHOR, CONCURRENT_HYBRID, custom strength waves) now carry
+   `isAmrap: true` + the stop-cue; endurance / rebuild / maintenance / hypertrophy carry `isAmrap: false`
+   so they are *not* silently bumped off a positional fixed top set. Per the owner's archetype-scope
+   decision (2026-05-30): AMRAP is solicited on **strength + hybrid** only.
+
+3. **Display dependency on ADR 0011.** Main-lift `%TM` sets render their RIR chip + cue only when
+   `percentTm != null` — previously those branches were gated `percentTm == null` (accessory-only), so
+   0011's hypertrophy RIR target was invisible. This change adds a main-lift RIR chip
+   (`data-testid="main-intensity-chip"`) and a main-lift cue block (`data-testid="main-intensity-cue"`)
+   so both the AMRAP cue (0007) and the hypertrophy RIR target (0011) actually surface.
+
+
 
 - Velocity-based training / bar-speed autoregulation (separate, advanced-tier ADR).
 - Changing the wave intensities or rep targets themselves.

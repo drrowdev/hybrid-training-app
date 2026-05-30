@@ -7,8 +7,12 @@
  *     non-empty intensityCue. Non-final sets have NO targetRir/cue and
  *     their reps + percentTm are unchanged from the wave.
  *   - HYPERTROPHY_ANCHOR weekIndex 3 (Deload): NO targetRir on any item.
- *   - Regression: STRENGTH_ANCHOR a representative week's prescription
- *     attaches NO targetRir/intensityCue to main sets (hypertrophy-only).
+ *   - HYPERTROPHY_ANCHOR is excluded from the ADR 0007 AMRAP marker — its
+ *     final set carries isAmrap:false (RIR-anchored, not open AMRAP).
+ *   - Regression: STRENGTH_ANCHOR main sets carry NO RIR anchor
+ *     (targetRir/targetRpe) — the ADR 0011 effort anchor is hypertrophy-only.
+ *     (STRENGTH_ANCHOR's top set DOES carry the ADR 0007 AMRAP cue; that is
+ *     covered by the ADR 0007 test, not here.)
  *   - Folded secondary: a hypertrophy day with a secondary slot leaves
  *     the secondary "main" items untouched (only the primary final set
  *     carries the RIR anchor).
@@ -63,6 +67,8 @@ describe("ADR 0011 — hypertrophy compound effort anchor (final set)", () => {
       expect(last.intensityLabel).toMatch(/% TM$/);
       // Still tagged top set.
       expect(last.notes).toBe("top set");
+      // ADR 0007 — hypertrophy is RIR-anchored, never an open AMRAP.
+      expect(last.isAmrap).toBe(false);
     });
 
     it(`week ${weekIndex}: NON-final primary main sets have NO targetRir and unchanged wave reps/percentTm`, () => {
@@ -97,9 +103,11 @@ describe("ADR 0011 — hypertrophy compound effort anchor (final set)", () => {
       // Deload prescribes a flat 8 reps.
       expect(it.reps).toBe(8);
     }
+    // ADR 0007 — deload top set is explicitly NOT an AMRAP.
+    expect(mains[mains.length - 1]!.isAmrap).toBe(false);
   });
 
-  it("regression: STRENGTH_ANCHOR main sets get NO targetRir/intensityCue (hypertrophy-only change)", () => {
+  it("regression: STRENGTH_ANCHOR main sets get NO RIR anchor (ADR 0011 is hypertrophy-only)", () => {
     const day = firstStrengthAnchorDay();
     // Every non-deload week (and deload) of the strength archetype.
     for (let w = 0; w < STRENGTH_ANCHOR.weekProfiles.length; w++) {
@@ -107,9 +115,13 @@ describe("ADR 0011 — hypertrophy compound effort anchor (final set)", () => {
       const mains = items.filter((i) => i.kind === "main");
       expect(mains.length).toBeGreaterThan(0);
       for (const it of mains) {
+        // The RIR/RPE effort anchor is hypertrophy-only; strength uses AMRAP.
         expect(it.targetRir).toBeUndefined();
         expect(it.targetRpe).toBeUndefined();
-        expect(it.intensityCue).toBeUndefined();
+      }
+      // Non-top sets never carry an intensity cue.
+      for (let i = 0; i < mains.length - 1; i++) {
+        expect(mains[i]!.intensityCue).toBeUndefined();
       }
     }
   });

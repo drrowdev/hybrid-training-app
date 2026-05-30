@@ -54,11 +54,18 @@ describe("prescription assembler — RIR attachment", () => {
     expect(items.length).toBeGreaterThan(0);
     for (const it of items) {
       expect(it.kind).toBe("main");
+      // The RIR effort anchor is hypertrophy-only; strength uses AMRAP.
       expect(it.targetRir).toBeUndefined();
       expect(it.targetRpe).toBeUndefined();
       expect(it.tempoEccentricSec).toBeUndefined();
       expect(it.holdSec).toBeUndefined();
-      expect(it.intensityCue).toBeUndefined();
+      // ADR 0007 — only the solicited AMRAP top set carries an intensity cue;
+      // every other main set has none.
+      if (it.isAmrap === true) {
+        expect(it.intensityCue).toBeTruthy();
+      } else {
+        expect(it.intensityCue).toBeUndefined();
+      }
       // Main items keep their %TM cue intact.
       expect(it.percentTm).toBeTypeOf("number");
     }

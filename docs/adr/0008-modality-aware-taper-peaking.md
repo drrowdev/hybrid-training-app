@@ -1,6 +1,6 @@
 # ADR 0008 — Branch taper/peaking by event modality (strength vs endurance)
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-05-30
 **Phase:** Production (engine methodology review)
 **Relates to:** `apps/web/src/lib/planner/taper.ts`

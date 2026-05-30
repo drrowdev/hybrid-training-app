@@ -716,5 +716,7 @@ function formatItemBrief(item: PrescriptionItem): string {
   const sets = item.sets ?? 1;
   const reps = item.reps;
   const pct = item.percentTm ? ` @ ${item.percentTm}%` : "";
-  return reps != null ? `${sets} × ${reps}${pct}` : `${sets} sets${pct}`;
+  // ADR 0007 — surface the AMRAP top set with a trailing "+".
+  const amrap = item.isAmrap === true ? "+" : "";
+  return reps != null ? `${sets} × ${reps}${amrap}${pct}` : `${sets} sets${pct}`;
 }
