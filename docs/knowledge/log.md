@@ -336,3 +336,22 @@ Shared sessionPrescribesStrength helper now drives every 'did the session finish
 
 ## [2026-05-30] refine | Settings reorg + cancel workout (#215)
 /app/settings/integrations sub-hub consolidates Strava + AI cards. HR-zone method picker labels rewritten plain-language (%Max / %HRR / %LTHR). Cancel workout button on empty in-progress sessions stops abandoned starts piling up in history.
+
+
+## [2026-05-30] refine | .mailmap contributor consolidation (#217)
+Non-destructive collapse of 11 historical author identities to drrowdev + Copilot on the GitHub contributors page. No SHA rewrites.
+
+## [2026-05-30] refine | Cardio hero consistent for all kinds (#218)
+Z2, tempo, alactic, mixed get the same hero treatment as VO2. New cardioOneLinerForKind + kind-based Intensity fallback in cardio-preview-rows. Cross-kind regression test iterates every key in CARDIO_DESCRIPTIONS.
+
+## [2026-05-30] refine | Taper + post-race recovery lifecycle (#219)
+Interactive opt-in banners replace the advisory taper card; race check-in card the day after event_date; computeRecoveryWindow scales by distance x modality x tier x priority (Hikida 1983 / Nieman 2007 / Byrne 2002 / Newham 1983 / Dupuy 2018). Engine applies active modifications in buildPrescription. Migrations 0077 + 0078 (RLS fix from review).
+
+## [2026-05-30] refine | Today hero uses SessionPreviewBody compact (#220)
+Hero card now renders SessionPreviewBody variant=compact for one-source-of-truth with the Preview page. TodayHeroSummary deleted. Preview workout link dropped (redundant). Quick workout card moved above This Week.
+
+## [2026-05-30] refine | Focus muscle groups (#221)
+Per-block aesthetic specialisation: user picks 0-2 muscles from a 12-group allowlist; substitution-with-cap bias preserves total session set count. Forearm tendon-gate silently downgrades when elbow/forearm ATL spikes. Migration 0079 (training_blocks.focus_muscles). CP-2 row #34 added; engine-live updated.
+
+## [2026-05-30] refine | Quick workout UX sweep (#222)
+Inline duration chip picker replaces 30-min hardcoded default; single + Add to workout (kills regression); edit cardio page in min + M:SS/km via shared lib/cardio/units.ts; context-aware edit (prescription-only / logged / Strava-readonly); strength empty-state placeholder; cardio block renamed cardio session; hybrid finish bar clarifier.
