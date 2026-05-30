@@ -26,7 +26,7 @@ import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner"
 import { dismissBwBanner } from "@/lib/profile/actions";
 import { OverdueNotice } from "@/components/today/OverdueNotice";
 import { RegionSpikeBanner } from "@/components/today/RegionSpikeBanner";
-import { TodayHeroSummary } from "@/components/today/TodayHeroSummary";
+import { SessionPreviewBody } from "@/components/session/SessionPreviewBody";
 import { QuickWorkoutCard } from "@/components/today/QuickWorkoutCard";
 import {
   startQuickCardioSession,
@@ -760,12 +760,6 @@ export default async function TodayPage() {
           regionSpikes={regionSpikes}
         />
 
-        <WeekStrip days={weekDays} doneCount={doneCount} isRestDay={isRestDay} />
-
-        {hasStravaConnection && <StravaStaleSyncTrigger />}
-
-        <ActivitySection sessions={recent ?? []} todayIso={todayIso} />
-
         <QuickWorkoutCard
           variant={isRestDay ? "rest" : "planned"}
           recent={quickRepeatRecent}
@@ -773,6 +767,12 @@ export default async function TodayPage() {
           startStrength={startQuickStrengthSession}
           repeatRecent={repeatRecentSession}
         />
+
+        <WeekStrip days={weekDays} doneCount={doneCount} isRestDay={isRestDay} />
+
+        {hasStravaConnection && <StravaStaleSyncTrigger />}
+
+        <ActivitySection sessions={recent ?? []} todayIso={todayIso} />
     </div>
   );
 }
@@ -1405,24 +1405,26 @@ function PlannedSessionCard({
     return `based on e1RM (${kind} ${when})`;
   })();
 
-  // Estimated session minutes — sum of strength sets × ~3 min and
-  // cardio durationMin. Coarse on purpose; the Today hero only needs a
-  // rough orientation number.
-  const estMin = planned.prescription.items.reduce((acc, i) => {
-    if (i.kind.startsWith("cardio_")) return acc + (i.durationMin ?? 0);
-    const sets = i.sets ?? 1;
-    return acc + sets * (i.kind === "main" ? 4 : i.kind === "back_off" ? 3 : 2);
-  }, 0);
+  // (Hero topline used to compute an `estMin` rough duration here; it
+  // was dropped now that SessionPreviewBody renders structured per-
+  // section duration rows. See block comment above.)
 
   // Movement names + accessory tally are rendered by
-  // `<TodayHeroSummary>` below, which uses the same
-  // `groupByMovementThenKind` source as the Preview page so the two
-  // surfaces stay in sync. The older inline chip block lived here too
+  // `<SessionPreviewBody variant="compact">` below, which is the same
+  // component the Preview page uses — so the two surfaces stay in
+  // sync by construction. The older inline chip block lived here too
   // and double-counted everything that wasn't `main`/`back_off` —
   // including cardio + warm-ups + tendon — which produced a spurious
   // "+ 1 assistance" pill on cardio-only sessions that have zero
-  // user-visible accessories. Removed; the hero summary is now the
+  // user-visible accessories. Removed; the preview body is now the
   // single source of truth for "what am I about to do".
+
+  // Hero topline no longer renders the rough `~N min` duration — the
+  // structured preview body below shows per-section duration rows
+  // (CardioCard's "Duration" cell, strength sets, etc), so the
+  // standalone topline number was duplicate noise. Top-set + e1RM
+  // annotation stay because they are not surfaced anywhere in the
+  // preview body.
 
   return (
     <section
@@ -1478,7 +1480,7 @@ function PlannedSessionCard({
         )}
       </div>
       <h2 style={{ fontSize: 24, margin: 0, letterSpacing: "-0.01em", fontWeight: 700 }}>{planned.title}</h2>
-      {(topLine || estMin > 0) && (
+      {topLine && (
         <div
           data-testid="hero-topline"
           style={{
@@ -1489,20 +1491,9 @@ function PlannedSessionCard({
             color: "var(--cp-text)",
           }}
         >
-          {estMin > 0 && (
-            <span>
-              <span style={{ color: "var(--cp-text-muted)" }}>~</span>
-              <span className="mono" style={{ fontWeight: 700 }}>
-                {estMin}
-              </span>
-              <span style={{ color: "var(--cp-text-muted)" }}> min</span>
-            </span>
-          )}
-          {topLine && (
-            <span style={{ fontWeight: 600 }} className="mono">
-              {topLine}
-            </span>
-          )}
+          <span style={{ fontWeight: 600 }} className="mono">
+            {topLine}
+          </span>
           {topLineAnnotation && (
             <span
               data-testid="hero-topline-e1rm-annotation"
@@ -1540,8 +1531,22 @@ function PlannedSessionCard({
           </span>
         </div>
       )}
-      <div style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>
-        <TodayHeroSummary items={planned.prescription.items} />
+      <div data-testid="today-hero-preview" style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>
+        <SessionPreviewBody
+          variant="compact"
+          session={{
+            id: planned.id,
+            title: planned.title,
+            // Eyebrow + duration are rendered by the hero card itself
+            // (slot label / archetype / week badge above, structured
+            // duration rows inside the section cards). The compact
+            // variant of SessionPreviewBody skips its own header, so
+            // these strings are unused — pass placeholders.
+            eyebrow: "",
+            estDurationMin: null,
+            items: planned.prescription.items,
+          }}
+        />
       </div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: "auto" }}>
         {planned.completedSessionId ? (
@@ -1563,17 +1568,6 @@ function PlannedSessionCard({
             Start workout →
           </Link>
         )}
-        <Link
-          href={`/app/plan/preview/${planned.id}`}
-          style={{
-            fontSize: 13,
-            color: "var(--cp-text-muted)",
-            textDecoration: "none",
-            padding: "10px 6px",
-          }}
-        >
-          Preview workout
-        </Link>
       </div>
     </section>
   );

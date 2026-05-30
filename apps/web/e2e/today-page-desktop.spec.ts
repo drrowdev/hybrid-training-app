@@ -10,7 +10,8 @@ import { seedActiveBlock } from "./fixtures/session-log";
  *   - Hero session card renders with the archetype + week label and the
  *     resolved top-set numbers (weight × reps from prescription + TM).
  *   - "Start workout →" CTA links into the check-in flow.
- *   - The "Preview" secondary link goes to /app/plan.
+ *   - The "Preview" secondary link (separate, sitting elsewhere on
+ *     the page) goes to /app/plan.
  *
  * Auth + onboarding follow the same fixture pattern as the existing
  * session-log spec — see e2e/README.md for the wider rationale.
@@ -45,7 +46,9 @@ test.describe("@desktop today page (Phase 1)", () => {
     await expect(hero).toContainText(/week\s+\d+/i);
 
     // Top-line numbers: the seeded waves put week 0 at 70% TM × 5; the
-    // hero renders ~mins + "Top set NNkg × 5".
+    // hero renders "Top set NNkg × 5". (The standalone `~N min`
+    // duration was dropped — the structured preview body below now
+    // owns per-section duration rows.)
     const topline = page.getByTestId("hero-topline");
     await expect(topline).toBeVisible();
     await expect(topline).toContainText(/Top set/);
@@ -58,14 +61,14 @@ test.describe("@desktop today page (Phase 1)", () => {
     const href = await cta.getAttribute("href");
     expect(href).toBe(`/app/sessions/start/${seed.todayPlannedId}`);
 
-    // Secondary "Preview workout" link points to the read-only
-    // preview route for this specific planned session.
-    const preview = page.getByRole("link", { name: /^preview workout$/i }).first();
-    await expect(preview).toBeVisible();
-    await expect(preview).toHaveAttribute(
-      "href",
-      `/app/plan/preview/${seed.todayPlannedId}`,
-    );
+    // The previous "Preview workout" secondary link was removed once
+    // the hero started rendering the SessionPreviewBody inline — the
+    // drill-in target no longer adds new information. The deep-link
+    // route still exists (`/app/plan/preview/[plannedId]`) for other
+    // callers; just no longer surfaced from Today.
+    await expect(
+      page.getByRole("link", { name: /^preview workout$/i }),
+    ).toHaveCount(0);
 
     // Clicking Start auto-creates the session and lands on the log surface.
     // (The pre-session check-in interstitial was removed; the Today-page
@@ -165,5 +168,47 @@ test.describe("@desktop today page (Phase 1)", () => {
 
     // The new compressed week strip replaces the right-rail WeekDotsCard.
     await expect(page.getByTestId("today-week-strip")).toBeVisible();
+  });
+
+  test("Quick workout card sits directly under the hero, before Week strip and Recent activity", async ({
+    page,
+    context,
+    freshUser,
+    seedConfig,
+    admin,
+    baseURL,
+  }) => {
+    const url = baseURL ?? "http://localhost:3000";
+
+    await markOnboarded(admin, freshUser.userId);
+    await seedStrengthTms(admin, freshUser.userId);
+    await seedActiveBlock(admin, freshUser.userId);
+    await signInAs(context, freshUser, seedConfig, url);
+
+    await page.goto("/app");
+    await page.waitForLoadState("networkidle");
+
+    // DOM-order smoke test: read top offsets and assert
+    //   today-cta (hero) < quick-workout-card < today-week-strip
+    //   < Recent activity heading.
+    const quick = page.getByTestId("quick-workout-card");
+    const week = page.getByTestId("today-week-strip");
+    const recent = page.getByRole("heading", { name: /^recent activity$/i }).first();
+    const hero = page.getByTestId("today-cta").first();
+
+    await expect(hero).toBeVisible();
+    await expect(quick).toBeVisible();
+    await expect(week).toBeVisible();
+    await expect(recent).toBeVisible();
+
+    const [heroTop, quickTop, weekTop, recentTop] = await Promise.all([
+      hero.evaluate((el) => el.getBoundingClientRect().top),
+      quick.evaluate((el) => el.getBoundingClientRect().top),
+      week.evaluate((el) => el.getBoundingClientRect().top),
+      recent.evaluate((el) => el.getBoundingClientRect().top),
+    ]);
+    expect(heroTop).toBeLessThan(quickTop);
+    expect(quickTop).toBeLessThan(weekTop);
+    expect(weekTop).toBeLessThan(recentTop);
   });
 });
