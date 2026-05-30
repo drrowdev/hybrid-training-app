@@ -2,7 +2,7 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
-**Last updated:** 2026-05-30 (post PR #215 — AI + MCP + Strava + archetype + mobile UX cycle shipped)
+**Last updated:** 2026-05-30 (post PR #222 — Quick workout UX sweep)
 
 ## Where we are
 
@@ -32,7 +32,7 @@ external clients, and a rebalanced engine across all five archetypes.
   `drrowdevs-projects`. Auto-deploys on push to `main`. Deployment
   Protection disabled.
 - Supabase: project URL + keys in `apps/web/.env.local` (gitignored).
-  Region `eu-west-1`. Schema currently at migration 0076 (77 files in
+  Region `eu-west-1`. Schema currently at migration 0079 (80 files in
   `packages/db/drizzle/`).
 - Strava: app registered; one push-subscription per environment.
   Subscription ID is stored in `STRAVA_WEBHOOK_SUBSCRIPTION_ID` (env
@@ -47,7 +47,7 @@ external clients, and a rebalanced engine across all five archetypes.
 
 ## Since 2026-05-21 (last doc refresh)
 
-~30 PRs (#178 → #215) merged. Grouped by theme; see `CHANGELOG.md` for
+~37 PRs (#178 → #222) merged. Grouped by theme; see `CHANGELOG.md` for
 the bullet-level breakdown and `docs/knowledge/log.md` for the
 chronological narrative.
 
@@ -72,22 +72,43 @@ chronological narrative.
   workout route; cardio active-session rebuild (Mockup B); shared RPE
   button-grid picker; unified "+ Add to workout".
 - **Quick workout entry on Today.** Inline dashed card + bottom-sheet
-  picker + 3 server actions for off-plan / rest-day logging.
+  picker + 3 server actions for off-plan / rest-day logging. PR #222
+  follow-up swept Quick-cardio UX (inline duration chips, single
+  `+ Add to workout`, edit page in min + min:sec/km, Strava-readonly
+  + prescription-only edit views).
 - **Settings reorg.** `/app/settings/integrations` sub-hub (Strava +
-  AI consolidated); plain-language HR-zone method labels (%Max / %HRR
-  / %LTHR); Cancel workout button on empty in-progress sessions;
-  AI master opt-in switch dropped in favour of per-provider cards.
+  AI consolidated); plain-language HR-zone method labels; Cancel
+  workout button on empty in-progress sessions; AI master opt-in
+  switch dropped in favour of per-provider cards.
 - **Limitations v2 lifecycle.** Bilateral side + muscle-level filter +
   per-exercise allow + Today banner.
-- **Migrations 0069 → 0076 applied to prod:** AI plumbing, limitations
+- **Taper + recovery lifecycle (ADR 0008 / PR #219).** Opt-in banners
+  on Today; race check-in card the day after `event_date`;
+  `prescription_modifications` table; engine applies active mods
+  during `buildPrescription`. `computeRecoveryWindow` honors
+  distance × modality × tier × priority per Hikida 1983 / Nieman 2007
+  / Byrne 2002 / Newham 1983 / Dupuy 2018.
+- **Focus muscle groups (PR #221).** User picks 0–2 muscles per block;
+  substitution-with-cap bias keeps total session set count constant
+  (per Schoenfeld 2017 + Israetel 2017 + Wernbom 2007); forearm tendon
+  gate silently downgrades when elbow/forearm ATL spikes (Baar 2017 /
+  Kongsgaard 2009).
+- **Today hero unification (PR #220).** Hero card now renders
+  `SessionPreviewBody variant="compact"` — same source of truth as
+  the Preview page. `TodayHeroSummary` deleted. Quick workout card
+  moved above This Week.
+- **`.mailmap` contributor consolidation (PR #217).** GitHub
+  contributors page collapses to drrowdev + Copilot.
+- **Migrations 0069 → 0079 applied to prod:** AI plumbing, limitations
   v2 lifecycle, MCP tables, MCP consumed codes, drop `ai_opted_in`,
   `cardio_logs` finish-uniqueness, `strava_event_log` + payload
-  columns.
+  columns, `prescription_modifications` + RLS-fix follow-up,
+  `training_blocks.focus_muscles`.
 
 ## Verified live
 
-- `pnpm --filter @hta/web test --run` → **2506 / 2506 passing**
-  (252 files, ~17 s) as of merge of PR #215.
+- `pnpm --filter @hta/web test --run` → **2650 / 2650 passing**
+  as of merge of PR #222.
 - `pnpm --filter @hta/web build` → clean.
 - `pnpm --filter @hta/web lint` → clean.
 - `pnpm -r typecheck` → clean across all workspaces.

@@ -5,8 +5,69 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
-Cycle covering PRs #178 → #215 (2026-05-26 → 2026-05-30). Doc refresh on
+Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 2026-05-30. The previous starting-point block is preserved below for history.
+
+### Added (post-#215 wave)
+
+- **Quick workout UX sweep (PR #222).** Inline duration chip picker
+  (30 / 45 / 60 / 90 / Custom) on the QuickWorkoutSheet replaces the
+  30-min hardcoded default; single `+ Add to workout` button replaces
+  the parallel `+ Add off-plan movement` regression; edit cardio page
+  shows Duration in minutes and Pace in `M:SS/km` (or `/mi` per
+  profile units) via a new shared `lib/cardio/units.ts` helper;
+  context-aware edit page (prescription-only fields when no metrics
+  logged, full fields after, read-only when Strava-synced); strength
+  empty-state placeholder; "Edit cardio block" renamed to "Edit cardio
+  session"; hybrid finish bar now says "Log at least 1 strength set
+  to finish".
+- **Today hero card uses `SessionPreviewBody` (PR #220).** New
+  `variant="compact"` strips chrome, keeps the structured rows. Killed
+  the bespoke `TodayHeroSummary` to eliminate alignment drift between
+  hero and Preview. Dropped the "Preview workout" secondary link (now
+  redundant) and the standalone `~N min` topline (duration lives in
+  the structured row). Moved Quick workout card above This Week.
+- **Focus muscle groups (PR #221).** Per-block aesthetic specialisation:
+  user picks 0–2 muscles from a 12-group allowlist; engine applies a
+  substitution-with-cap bias that pushes focus muscles toward
+  concurrent-adjusted MAV while pulling non-focus muscles down to
+  preserve total session set count (invariant pinned by tests).
+  Includes a forearm tendon-gate that silently downgrades forearm
+  volume when elbow/forearm regional ATL is elevated. Wizard Step 2
+  chip multi-select + Plan-page edit modal + Today hero focus badge.
+  Migration 0079 (`training_blocks.focus_muscles text[]` with size + 
+  allowlist CHECK constraints).
+- **Taper + post-race recovery lifecycle (PR #219).** Replaces the
+  advisory taper card with an interactive opt-in banner on Today
+  (Apply / Decline / Undo states), adds a `RaceCheckInCard` the day
+  after `event_date` (raced / partial / skipped), and a
+  `RecoveryBanner` with the same opt-in pattern. `computeRecoveryWindow`
+  scales recovery duration by event distance × modality × user tier ×
+  priority (running 5K/10K/HM/marathon/ultra anchors; cycling 0.5×;
+  swim/row 0.35×). Engine integration applies active modifications in
+  `buildPrescription` (taper / recovery / ramp scaling). Migrations
+  0077 (`prescription_modifications` table) + 0078 (RLS policy fix
+  caught by review).
+- **Cardio hero card consistent for all kinds (PR #218).** Z2, tempo,
+  alactic, and mixed sessions get the same hero treatment as VO2 (was
+  bare HR cap line). New `cardioOneLinerForKind` short-form
+  descriptions + kind-based Intensity fallback in `cardio-preview-rows`
+  so the Intensity row is always emitted. Cross-kind regression test
+  iterates every key in `CARDIO_DESCRIPTIONS`.
+- **`.mailmap` contributor consolidation (PR #217).** Non-destructive
+  remap collapses 11 historical author identities to drrowdev + Copilot
+  on GitHub's contributors page.
+- **Shared strength-prescription helper fully unified (PR #214).**
+  `finishStravaAppliedSession` was the one remaining call site with an
+  inline `session_items` count instead of `sessionPrescribesStrength`;
+  external code review caught it. Now all 4 hybrid-completion guard
+  paths consume the shared predicate.
+
+### Migrations (post-#215)
+
+- **0077** — `prescription_modifications` (taper + recovery audit table)
+- **0078** — RLS policy fix for `prescription_modifications` (review-219 catch)
+- **0079** — `training_blocks.focus_muscles text[]` with size + allowlist CHECK
 
 ### Added
 
