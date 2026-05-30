@@ -1,0 +1,22 @@
+# Canonical author/committer mapping. GitHub's contributors page
+# and `git log --use-mailmap` (default since Git 2.43) honor this
+# file. Non-destructive — commit SHAs are unchanged, only the
+# displayed author is rewritten.
+#
+# Format:
+#   Canonical Name <canonical@email>                                 <commit@email>
+#   Canonical Name <canonical@email>  Commit Name <commit@email>
+
+# drrowdev — repo owner, all real-user commits
+drrowdev <280348738+drrowdev@users.noreply.github.com>  <mlagus@microsoft.com>
+drrowdev <280348738+drrowdev@users.noreply.github.com>  <mlagus@users.noreply.github.com>
+drrowdev <280348738+drrowdev@users.noreply.github.com>  <matti.lagus@microsoft.com>
+drrowdev <280348738+drrowdev@users.noreply.github.com>  <drrowdev@users.noreply.github.com>
+drrowdev <280348738+drrowdev@users.noreply.github.com>  <miikka@example.com>
+
+# Copilot — agent commits (multiple historical email shapes)
+Copilot <223556219+Copilot@users.noreply.github.com>  <copilot@github.com>
+Copilot <223556219+Copilot@users.noreply.github.com>  <copilot@noreply.github.com>
+Copilot <223556219+Copilot@users.noreply.github.com>  <copilot@users.noreply.github.com>
+Copilot <223556219+Copilot@users.noreply.github.com>  <agent@local>
+Copilot <223556219+Copilot@users.noreply.github.com>  <bot@local>
