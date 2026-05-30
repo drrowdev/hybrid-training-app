@@ -120,7 +120,7 @@ function makeBuilder(table: string): unknown {
     };
   }
   if (table === "prescription_modifications") {
-    let filters: Record<string, string> = {};
+    const filters: Record<string, string> = {};
     let order: { col: string; asc: boolean } | null = null;
     let limit: number | null = null;
     const builder: Record<string, unknown> = {
