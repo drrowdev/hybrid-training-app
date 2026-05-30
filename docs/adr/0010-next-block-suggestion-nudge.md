@@ -39,6 +39,7 @@ sequences and event-appropriate emphasis) at a small fraction of the complexity 
 | 3 | Suggestion heuristics | A pure function maps `(recentArchetypeHistory, upcomingAEvent, recentReactiveDeloads)` → `{ archetypeId, reason } \| null`. Core rules: (a) phase sequence — repeated hypertrophy (accumulation) → suggest strength (intensification/consolidation); (b) event-aware — an approaching A-event suggests the archetype matching its modality (ties to ADR 0008); (c) recovery-aware — repeated reactive deloads / cooked signals → suggest rebuild or maintenance; (d) anti-staleness — same archetype 3× in a row surfaces a "consider varying emphasis" note. | Encodes practitioner-consensus periodization without pretending to optimise an annual plan. Returns `null` (no nudge) when no rule fires confidently, so the user simply picks freely. |
 | 4 | Never auto-apply | The nudge **pre-selects** the archetype in the new-block flow but never auto-creates a block or locks the choice. | Preserves user agency and the "manual control always available" property. |
 | 5 | Honest confidence | The sequencing rules ship tagged `// heuristic — periodization sequencing (MODERATE), practitioner-consensus`. The reason strings are framed as suggestions ("a strength block would consolidate those gains"), not mandates. | The block-sequencing evidence base is framework-level, not RCT-grade (CP-1/CP-5). The copy and the code should both say so. |
+| 6 | Realization-week nudge (absorbs ADR 0008 D5) | When the user has run **enough consecutive strength/build volume without an A-event or realization** (heuristic threshold, e.g. ≥2 consecutive STRENGTH_ANCHOR blocks), the nudge offers an **opt-in realization microcycle**: a terminal-week reshape (volume −40–50%, intensity held/raised to singles) to test/peak before backing off. Never auto-applied; one tap to accept, otherwise the normal block runs unchanged. | ADR 0008 deliberately rejected auto-peaking *every* 4-week block (methodologically backwards + violates non-participant parity). Gating the realization reshape on accumulated build, surfaced as a nudge, delivers the peak when it's earned without silently altering most users' prescriptions. |
 
 ## Rationale
 
@@ -104,6 +105,8 @@ is better than a low-confidence nudge that erodes trust.
   recovery-aware backing-off — without a planner's complexity or a stored long-range plan.
 - Composes with ADR 0008: when an A-event approaches, the nudge points at the matching archetype
   and 0008 supplies the matching taper.
+- Owns ADR 0008's Decision 5 (realization microcycle): the event-less strength peak is delivered
+  here as an opt-in, accumulation-gated nudge rather than an automatic every-block reshape.
 - On acceptance: add an advisory-only "block sequencing guidance" note to
   `hybrid-training-engine-live.md` (explicitly: suggestion-only, never auto-applied), and the
   canonical workspace mirror. No CP-2 numeric constants (heuristic rules, tagged MODERATE).

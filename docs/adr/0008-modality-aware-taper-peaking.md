@@ -51,7 +51,7 @@ event-less strength blocks.
 | 2 | Endurance taper unchanged | `modality:"endurance"` → today's exact curve (Mujika/Bosquet). | It is correct and well-cited for the case it was built for. No regression. |
 | 3 | Strength taper branch | `modality:"strength"` → shorter window (10 d), **hold intensity to ~3 d out**, volume cut graded **−30% / −45% / −50%**, and the final phase keeps **heavy low-volume singles (openers)** rather than dropping max-effort work. Day 0 = activation + opener primer, not full rest. | Matches Pritchard 2015 / Travis 2020 strength-peaking; fixes the inverted `polish` behaviour. |
 | 4 | Mixed-event taper | `modality:"mixed"` (e.g. hybrid race, "test day for both") → endurance volume curve for the cardio side but **hold one heavy strength primer** into the final 3–5 days. | Hybrid events need both systems sharp; neither pure model fits. |
-| 5 | Realization peak for event-less strength blocks | When a STRENGTH_ANCHOR block has no upcoming A/B event, the **final** week becomes an optional **realization microcycle** (volume −40–50%, intensity held/raised to singles) before the calendar deload — distinct from a deload. Default ON for STRENGTH_ANCHOR, opt-out. | Gives the strength archetype a tested peak instead of fading into a deload; this is the standard end-of-block practice the engine currently omits. |
+| 5 | Realization peak for event-less strength blocks | When a STRENGTH_ANCHOR block has no upcoming A/B event, a **realization microcycle** (volume −40–50%, intensity held/raised to singles) reshapes the terminal build week before the deload. **Revised (2026-05-30): NOT default-ON every block.** The reshape mechanism is built opt-in and is *triggered by the ADR 0010 periodization nudge* after the user has accumulated enough consecutive build volume — not auto-applied to every 4-week block. Implemented under ADR 0010, not here. | Auto-peaking every mesocycle is methodologically backwards (realization belongs at end of a multi-block macrocycle, and it would silently alter week-3 prescriptions for the majority of event-less strength users — violating the non-participant-parity rule). Tying it to the 0010 nudge gates the peak on real accumulation. |
 | 6 | Confidence labelling | Strength-taper constants ship tagged `// heuristic — strength taper, per Pritchard 2015 (MODERATE)`; realization-week ON-by-default flagged as a defensible default, not a high-confidence constant. | CP-1/CP-5: the strength-taper dosing evidence is MODERATE, thinner than the endurance HIGH evidence. Be honest in the code. |
 
 ## Rationale
@@ -66,8 +66,12 @@ and *holding* heavy neural exposure late). Dropping max-effort work at 3 days ou
 
 Decision 5 closes the more glaring gap: the app's flagship STRENGTH_ANCHOR archetype has no
 way to *express* the strength it builds unless the user happens to register a race event. A
-brief realization week is the established way to do this and costs no new UI — it's an
-automatic terminal-week reshape, opt-out.
+brief realization week is the established way to do this. **However**, an automatic
+terminal-week reshape on *every* block was rejected (see Decision 5 "Why"): peaking every
+4-week mesocycle is too frequent and would change week-3 prescriptions for most event-less
+strength users. Instead the realization reshape is an **opt-in mechanism triggered by the ADR
+0010 next-block nudge** once the user has accumulated enough build volume — implemented under
+ADR 0010.
 
 **Why modality defaults to endurance:** every event row in production today was created without
 a modality field; defaulting to `"endurance"` means zero behavioural change for existing data
@@ -94,14 +98,15 @@ inference) tags an event accordingly.
 - `phaseFor` branches on modality. Endurance branch is the **current function verbatim**
   (pinned by an existing-behaviour test). Strength/mixed branches are new pure functions with
   their own phase tables.
-- Realization microcycle (Decision 5) is generated in the block planner, not in `taper.ts`:
-  when STRENGTH_ANCHOR + no A/B event, the terminal week's `weekProfile` is reshaped
-  (volume↓, intensity held to singles) before the deload week. Guard: this only fires for
-  STRENGTH_ANCHOR and only when no taper is otherwise active.
+- Realization microcycle (Decision 5) is **deferred to ADR 0010** (not implemented here). It is
+  generated in the block planner, not in `taper.ts`: an opt-in terminal-week reshape (volume↓,
+  intensity held to singles) suggested via the next-block nudge after sufficient accumulated
+  build — never auto-applied to every block. Guard: only STRENGTH_ANCHOR, only when no taper is
+  otherwise active, only on explicit user opt-in.
 - **Regression guard.** All endurance-event tapers and all currently-passing taper tests are
   byte-identical. New tests cover: strength-event polish phase *retains* heavy singles;
-  strength window caps at 10 d; event-less STRENGTH_ANCHOR gets a realization week; every other
-  archetype is unaffected.
+  strength window caps at 10 d; every other archetype is unaffected. (Realization-week tests
+  land with ADR 0010.)
 
 ## Out of scope
 
@@ -113,7 +118,8 @@ inference) tags an event accordingly.
 ## Implications
 
 - Strength and hybrid athletes get a peak that matches their sport instead of a runner's taper.
-- The STRENGTH_ANCHOR archetype gains a tested peak even without a registered event.
+- The STRENGTH_ANCHOR archetype gains a tested peak even without a registered event — delivered
+  via the ADR 0010 nudge (opt-in), not an automatic every-block reshape.
 - On acceptance: add CP-2 rows for the strength-taper constants (tagged MODERATE), update
   `hybrid-training-engine-live.md` §17 (taper) and the canonical workspace mirror, and note the
   new `modality` field in the event-schema docs.
