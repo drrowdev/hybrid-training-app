@@ -44,6 +44,10 @@ export type HrZones = {
 export const CARDIO_INTENSITY_MIN = 0.3;
 export const CARDIO_INTENSITY_MAX = 2.5;
 
+// heuristic — zone intensity weights (CP-1), pending TRIMP/Seiler calibration.
+// The shape (monotonic, steeper at the top) follows zone-weighted load
+// tradition (Edwards 1993 / Lucia TRIMP); the exact values are uncited and
+// must not be treated as precise. See ADR 0009.
 export const ZONE_INTENSITY_WEIGHTS = {
   z1: 0.5,
   z2: 0.8,

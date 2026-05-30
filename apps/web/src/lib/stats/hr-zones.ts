@@ -243,6 +243,93 @@ export function bucketByZone(
   return { totals, skipped };
 }
 
+/**
+ * Coerce a free-form `cardio_logs.hr_zones` jsonb value into per-zone
+ * seconds as `ZoneTotals`, or null if unusable. Accepts the lowercase
+ * `z1`..`z5` shape written by `zones-from-stream` / `zones-from-summary`
+ * (also tolerates capitalised keys); missing keys count as 0 seconds.
+ */
+export function coerceStoredZones(value: unknown): ZoneTotals | null {
+  if (!value || typeof value !== "object") return null;
+  const obj = value as Record<string, unknown>;
+  const pick = (k: string): number => {
+    const raw = obj[k.toLowerCase()] ?? obj[k.toUpperCase()];
+    const n = typeof raw === "number" ? raw : Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+  const totals: ZoneTotals = {
+    Z1: pick("z1"),
+    Z2: pick("z2"),
+    Z3: pick("z3"),
+    Z4: pick("z4"),
+    Z5: pick("z5"),
+  };
+  if (ZONES.reduce((acc, z) => acc + totals[z], 0) <= 0) return null;
+  return totals;
+}
+
+/** One cardio row as consumed by the zone accumulator. */
+export type ZoneActivity = {
+  durationSec: number;
+  avgHrBpm: number | null;
+  /** Stored per-zone seconds (measured stream or summary approximation). */
+  hrZones?: unknown;
+};
+
+export type ZoneSource = "measured" | "approximated" | "mixed";
+
+/**
+ * Accumulate seconds-per-zone across activities, preferring each row's
+ * **stored** `hr_zones` distribution (the same value the engine doses
+ * off, ADR 0009 Decision 2) and falling back to single-avg-HR bucketing
+ * only for rows that lack a stored distribution. This unifies the card
+ * with the engine: the number the user sees is the number the engine acts
+ * on.
+ *
+ *  - `contributing` — activities that added time to a zone.
+ *  - `skipped`      — activities with neither stored zones nor a usable
+ *                     avg HR.
+ *  - `source`       — "measured" if every contributing row used stored
+ *                     zones, "approximated" if every contributing row fell
+ *                     back to avg-HR bucketing, "mixed" otherwise.
+ */
+export function accumulateZoneTotals(
+  activities: ZoneActivity[],
+  bands: ZoneBands,
+): { totals: ZoneTotals; contributing: number; skipped: number; source: ZoneSource } {
+  const totals: ZoneTotals = { Z1: 0, Z2: 0, Z3: 0, Z4: 0, Z5: 0 };
+  let contributing = 0;
+  let skipped = 0;
+  let measured = 0;
+  let approximated = 0;
+
+  for (const a of activities) {
+    const stored = coerceStoredZones(a.hrZones);
+    if (stored) {
+      for (const z of ZONES) totals[z] += stored[z];
+      contributing += 1;
+      measured += 1;
+      continue;
+    }
+    if (a.avgHrBpm != null && Number.isFinite(a.avgHrBpm) && a.avgHrBpm > 0) {
+      totals[zoneForBpm(a.avgHrBpm, bands)] += a.durationSec;
+      contributing += 1;
+      approximated += 1;
+      continue;
+    }
+    skipped += 1;
+  }
+
+  const source: ZoneSource =
+    measured > 0 && approximated === 0
+      ? "measured"
+      : approximated > 0 && measured === 0
+        ? "approximated"
+        : "mixed";
+
+  return { totals, contributing, skipped, source };
+}
+
 export type PolarisedSplit = {
   easyPct: number;      // Z1 + Z2
   thresholdPct: number; // Z3
@@ -272,6 +359,8 @@ export type HrZoneState =
       activityCount: number;
       droppedCount: number;
       windowDays: number;
+      /** Whether the distribution came from measured streams, the summary approximation, or a mix. */
+      source: ZoneSource;
     };
 
 /**
@@ -332,34 +421,42 @@ export async function getHrZones(
   const { data: logs } = await supabase
     .from("cardio_logs")
     .select(
-      "duration_sec, avg_hr_bpm, external_source, session:sessions!inner(performed_at, deleted_at, user_id)",
+      "duration_sec, avg_hr_bpm, hr_zones, external_source, session:sessions!inner(performed_at, deleted_at, user_id)",
     )
     .eq("session.user_id", userId)
     .is("session.deleted_at", null)
     .gte("session.performed_at", `${since}T00:00:00Z`);
 
-  const activities: ActivitySummary[] = [];
+  const activities: ZoneActivity[] = [];
   for (const row of logs ?? []) {
     const session = Array.isArray(row.session) ? row.session[0] : row.session;
     if (!session) continue;
     activities.push({
       durationSec: row.duration_sec ?? 0,
       avgHrBpm: row.avg_hr_bpm == null ? null : Number(row.avg_hr_bpm),
+      hrZones: row.hr_zones,
     });
   }
 
-  const withHr = activities.filter((a) => a.avgHrBpm != null);
-  if (withHr.length === 0) return { kind: "no-hr-data" };
+  // An activity counts as "HR-tagged" if it has either a stored zone
+  // distribution or a usable average HR.
+  const hasHr = activities.filter(
+    (a) =>
+      coerceStoredZones(a.hrZones) != null ||
+      (a.avgHrBpm != null && Number.isFinite(a.avgHrBpm) && a.avgHrBpm > 0),
+  );
+  if (hasHr.length === 0) return { kind: "no-hr-data" };
   if (!bands) return { kind: "no-zones" };
 
-  const { totals, skipped } = bucketByZone(activities, bands);
+  const { totals, contributing, skipped, source } = accumulateZoneTotals(activities, bands);
   return {
     kind: "ok",
     totals,
     split: polarisedSplit(totals),
     bands,
-    activityCount: withHr.length,
+    activityCount: contributing,
     droppedCount: skipped,
     windowDays,
+    source,
   };
 }

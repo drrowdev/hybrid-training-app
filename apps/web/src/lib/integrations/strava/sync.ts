@@ -12,10 +12,12 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  fetchActivityStreams,
   listActivitiesSince,
   refreshAccessToken,
 } from "./client";
 import { writeStravaActivity } from "./write-activity";
+import { zonesFromStream } from "./zones-from-stream";
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
 import { getUserTimezone } from "@/lib/planner/queries";
 import { readZoneConfig } from "@/lib/stats/hr-zones";
@@ -197,12 +199,31 @@ export async function syncStravaSingle(
   );
 
   const userTimezone = await getUserTimezone(userId);
+
+  // Real time-in-zone from the per-second HR stream (ADR 0009). The
+  // single-activity webhook path is the budget-safe place to do this:
+  // exactly one extra streams call per new activity. Best-effort — a
+  // null result (no stream, rate-limited, error) falls back to the
+  // summary leak-model approximation inside buildSyncRow.
+  let streamZones = null;
+  if (bands) {
+    const streams = await fetchActivityStreams(accessToken, activityId);
+    if (streams) {
+      streamZones = zonesFromStream({
+        hrStream: streams.heartrate,
+        timeStream: streams.time,
+        bands,
+      });
+    }
+  }
+
   const result = await writeStravaActivity({
     supabase,
     userId,
     activity,
     bands,
     userTimezone,
+    streamZones,
   });
   if (result.status === "skipped") return { status: "skipped", reason: result.reason };
   if (result.status === "duplicate") return { status: "skipped", reason: "duplicate" };
