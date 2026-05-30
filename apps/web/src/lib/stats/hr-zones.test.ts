@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  accumulateZoneTotals,
   bucketByZone,
+  coerceStoredZones,
   computeZoneBands,
   computeZoneBandsSafe,
   DEFAULT_ZONE_PCTS,
@@ -63,6 +65,74 @@ describe("bucketByZone", () => {
     );
     expect(totals.Z2).toBe(600);
     expect(skipped).toBe(1);
+  });
+});
+
+describe("coerceStoredZones", () => {
+  it("reads lowercase z1..z5 second-counts", () => {
+    expect(coerceStoredZones({ z1: 10, z2: 20, z3: 0, z4: 0, z5: 5 })).toEqual({
+      Z1: 10,
+      Z2: 20,
+      Z3: 0,
+      Z4: 0,
+      Z5: 5,
+    });
+  });
+
+  it("tolerates capitalised keys and missing keys", () => {
+    expect(coerceStoredZones({ Z2: 30 })).toEqual({ Z1: 0, Z2: 30, Z3: 0, Z4: 0, Z5: 0 });
+  });
+
+  it("returns null for empty / non-object / all-zero input", () => {
+    expect(coerceStoredZones(null)).toBeNull();
+    expect(coerceStoredZones("nope")).toBeNull();
+    expect(coerceStoredZones({ z1: 0, z2: 0 })).toBeNull();
+  });
+});
+
+describe("accumulateZoneTotals", () => {
+  it("prefers stored hr_zones over avg-HR bucketing (measured source)", () => {
+    const { totals, contributing, skipped, source } = accumulateZoneTotals(
+      [
+        // Stored distribution: must be used verbatim, NOT bucketed to the avg's zone.
+        { durationSec: 1800, avgHrBpm: 130, hrZones: { z1: 0, z2: 1200, z3: 400, z4: 200, z5: 0 } },
+        { durationSec: 600, avgHrBpm: 175, hrZones: { z1: 0, z2: 0, z3: 100, z4: 500, z5: 0 } },
+      ],
+      BANDS,
+    );
+    expect(totals).toEqual({ Z1: 0, Z2: 1200, Z3: 500, Z4: 700, Z5: 0 });
+    expect(contributing).toBe(2);
+    expect(skipped).toBe(0);
+    expect(source).toBe("measured");
+  });
+
+  it("falls back to avg-HR bucketing for rows without stored zones (approximated source)", () => {
+    const { totals, source } = accumulateZoneTotals(
+      [
+        { durationSec: 1800, avgHrBpm: 130 }, // Z2
+        { durationSec: 600, avgHrBpm: 175 }, // Z4
+      ],
+      BANDS,
+    );
+    expect(totals.Z2).toBe(1800);
+    expect(totals.Z4).toBe(600);
+    expect(source).toBe("approximated");
+  });
+
+  it("reports a mixed source and skips rows with neither zones nor avg HR", () => {
+    const { totals, contributing, skipped, source } = accumulateZoneTotals(
+      [
+        { durationSec: 600, avgHrBpm: 130, hrZones: { z2: 600 } }, // measured
+        { durationSec: 600, avgHrBpm: 150 }, // approximated (Z3)
+        { durationSec: 600, avgHrBpm: null }, // skipped
+      ],
+      BANDS,
+    );
+    expect(totals.Z2).toBe(600);
+    expect(totals.Z3).toBe(600);
+    expect(contributing).toBe(2);
+    expect(skipped).toBe(1);
+    expect(source).toBe("mixed");
   });
 });
 
