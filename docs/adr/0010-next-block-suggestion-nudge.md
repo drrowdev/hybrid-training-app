@@ -130,8 +130,9 @@ Files touched:
 - `apps/web/src/lib/planner/next-block-suggestion.ts` (new) — pure `suggestNextArchetype` +
   `suggestRealizationWeek`, fully unit-testable, zero I/O.
 - `apps/web/src/lib/planner/next-block-suggestion-server.ts` (new) — server glue
-  `getNextBlockNudge(supabase, userId, recentArchetypes, todayYmd)` that gathers the pure
-  function's inputs from a user-scoped (RLS-enforced) Supabase client.
+  `getNextBlockNudge(supabase, userId, recentArchetypes, todayYmd, windowStartYmd)` that
+  gathers the pure function's inputs from a user-scoped (RLS-enforced) Supabase client,
+  including the recent reactive-deload episode count (see scope-down 3, now resolved).
 - `apps/web/src/app/app/plan/page.tsx` — adds the read-only nudge fetch and renders a
   `NextBlockSuggestionCard` on the **no-active-block** surface above `PlanNewSwitch`.
 
@@ -151,22 +152,26 @@ Files touched:
    accumulation gate fires. The shipped surface delivers the **nudge** via
    `suggestRealizationWeek`, but does **not** wire the actual block-shape transform —
    `taper.ts` carries no realization-week branch and `buildPrescription` is untouched. The
-   user sees "consider a realization week (lighter volume, heavy singles) to peak before
-   your next block" but the planner does not auto-reshape anything; the user would have to
-   build the realization block themselves. The gate is correctly tied to the consensus
+   copy now routes the user to the **manual custom-block path** rather than implying an
+   auto-feature: "consider a lighter week of heavy singles to peak and re-test your maxes —
+   you can set that up as a short custom block." The gate is correctly tied to the consensus
    accumulation threshold — fires after **≥ 2 consecutive event-less STRENGTH_ANCHOR blocks**
    (`REALIZATION_MIN_STRENGTH_RUN = 2`) and is suppressed when an A-event modality already
-   drives a real taper/peak. **Follow-up:** the reshape transform itself is deferred to a
-   subsequent ADR / PR.
+   drives a real taper/peak. **Follow-up (still deferred):** the automatic reshape transform
+   itself is deferred to a subsequent ADR / PR; only the dead-end copy was fixed.
 
-3. **Recovery-aware rule (rule 1) is dormant from the UI surface.** The pure function
-   honours `recentReactiveDeloads >= REACTIVE_DELOAD_BACKOFF (=2)` and the unit tests pin
-   it, but `getNextBlockNudge` passes `recentReactiveDeloads: 0` because there is no
-   persisted reactive-deload-count signal to query yet. The code comment marks this
-   explicitly: "wire the count when a stored signal lands." So in production today, only
-   rules 2 (event-aware), 3 (phase sequence accumulation→strength), and 4 (anti-staleness)
-   can ever fire. **Follow-up:** stand up a reactive-deload-count query (likely from
-   `tm-bump`/`deload` history) and pass the real count through.
+3. **Recovery-aware rule (rule 1) — RESOLVED, now LIVE.** The pure function honours
+   `recentReactiveDeloads >= REACTIVE_DELOAD_BACKOFF (=2)`, and `getNextBlockNudge` now
+   passes the **real** count. The signal already exists with no new migration: an accepted
+   reactive deload persists a `tm_history` row with `reason = "deload"` and a `session_id`
+   (`engine/tm-bump-actions.ts` + `engine/deload.ts`). The server glue queries those rows
+   since the oldest recent block's start (`windowStartYmd`) and counts **distinct sessions**
+   (deload *episodes*, not rows — one cooked period can deload several lifts). The query is
+   read-only and user-scoped (explicit `.eq("user_id", userId)` on the request-scoped
+   client; RLS preserved). So all four rules can now fire in production. Tested via six
+   server-glue tests in `adr-0010-next-block-suggestion.test.ts` (episode counting,
+   null-window skip, null-`session_id` fallback to row id, event mapping, and
+   recovery-outranks-event priority).
 
 ### Heuristic constants (all CP-1, practitioner-consensus — NOT RCT-calibrated)
 
@@ -184,7 +189,7 @@ In `next-block-suggestion.ts`, tagged `// heuristic — periodization sequencing
 ### Rule priority (first match wins, encoded in `suggestNextArchetype`)
 
 1. **Recovery-aware** (`recentReactiveDeloads >= REACTIVE_DELOAD_BACKOFF`) → `rebuild`.
-   *Dormant in production — see scope-down 3.*
+   *Live in production — `getNextBlockNudge` counts distinct `tm_history` deload episodes.*
 2. **Event-aware** (`upcomingEventModality != null`) → matching archetype per
    `archetypeForEventModality` (`strength` → `strength_anchor`, `endurance` →
    `endurance_anchor`, `mixed` → `concurrent_hybrid`).
@@ -201,6 +206,6 @@ In `next-block-suggestion.ts`, tagged `// heuristic — periodization sequencing
 
 - No persistence of dismissed nudges (Decision 2: the nudge recomputes each time).
 - No auto-creation of blocks, no archetype lock, no multi-block look-ahead (Decision 4).
-- No reactive-deload-count signal (see scope-down 3).
-- No realization-week reshape in the planner (see scope-down 2).
+- No realization-week reshape in the planner (see scope-down 2 — the *automatic* reshape
+  stays deferred; the opt-in nudge now points at the manual custom-block path).
 - No archetype pre-select in the wizard surface (see scope-down 1).
