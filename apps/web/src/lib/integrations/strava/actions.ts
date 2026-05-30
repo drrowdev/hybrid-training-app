@@ -14,9 +14,22 @@ import {
 } from "@/lib/integrations/strava/import-history";
 
 const STATE_COOKIE = "strava_oauth_state";
+const RETURN_TO_COOKIE = "strava_oauth_return_to";
 
-/** Generate a CSRF state token, set it as an httpOnly cookie, redirect to Strava. */
-export async function connectStrava(): Promise<void> {
+/** Allow-list of post-OAuth destinations. Anything else falls back to the
+ *  default Settings page. Keeps the callback from being abused as an open
+ *  redirector while still letting product surfaces (onboarding) opt in. */
+const ALLOWED_RETURN_TO = new Set<string>(["onboarding"]);
+
+/**
+ * Generate a CSRF state token, set it as an httpOnly cookie, redirect to Strava.
+ *
+ * Accepts optional `FormData` so callers can submit it from a `<form>`:
+ *   - `returnTo`: opaque key (see ALLOWED_RETURN_TO) telling the OAuth
+ *     callback which surface to bounce back to. When omitted the callback
+ *     defaults to the Strava settings page (existing behaviour).
+ */
+export async function connectStrava(formData?: FormData): Promise<void> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -32,6 +45,25 @@ export async function connectStrava(): Promise<void> {
     path: "/",
     maxAge: 600,
   });
+
+  const requestedReturnTo =
+    typeof formData?.get("returnTo") === "string"
+      ? String(formData.get("returnTo"))
+      : null;
+  if (requestedReturnTo && ALLOWED_RETURN_TO.has(requestedReturnTo)) {
+    cookieStore.set(RETURN_TO_COOKIE, requestedReturnTo, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 600,
+    });
+  } else {
+    // Defensive: stale cookie from a previous attempt shouldn't hijack
+    // a fresh Settings-page connect.
+    cookieStore.delete(RETURN_TO_COOKIE);
+  }
+
   redirect(authorizeUrl(state));
 }
 
