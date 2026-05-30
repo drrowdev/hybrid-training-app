@@ -43,7 +43,7 @@ import {
   hasLoadableMainLift,
   resolveEquipment,
 } from "@/lib/settings/equipment-presets";
-import { computeTaperRecommendation } from "@/lib/planner/taper";
+import { computeTaperRecommendation, taperModalityForEvent } from "@/lib/planner/taper";
 import { computeRecoveryWindow } from "@/lib/planner/recovery";
 import { TaperBanner, type TaperBannerState } from "@/components/today/TaperBanner";
 import { RecoveryBanner, type RecoveryBannerState } from "@/components/today/RecoveryBanner";
@@ -390,7 +390,12 @@ export default async function TodayPage() {
       ?.last_synced_at ?? null) as string | null;
   const taper = computeTaperRecommendation(
     nextEvent
-      ? { name: nextEvent.name, date: nextEvent.event_date, priority: nextEvent.priority }
+      ? {
+          name: nextEvent.name,
+          date: nextEvent.event_date,
+          priority: nextEvent.priority,
+          modality: taperModalityForEvent(nextEvent.modality),
+        }
       : null,
   );
 
