@@ -14,6 +14,7 @@ import {
   swapPrescriptionItem,
 } from "@/lib/sessions/actions";
 import { DeleteSessionButton } from "@/components/trash/DeleteSessionButton";
+import { CancelWorkoutButton } from "@/components/session/CancelWorkoutButton";
 import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
 import {
   type LoggedSet,
@@ -53,6 +54,7 @@ import type { ProgressionHint } from "@/components/session/PostSessionSummary";
 import type { Prescription } from "@hta/db";
 import { loadBwGateStatesForPrescription } from "@/lib/planner/bw-gate-state-loader";
 import { cardioModalityLabel } from "@/lib/session/cardio-modality-label";
+import { isEmptyInProgressSession } from "@/lib/sessions/empty-state";
 
 export default async function SessionDetailPage({
   params,
@@ -189,6 +191,15 @@ export default async function SessionDetailPage({
   const oneRmBySlug: Record<string, number> = Object.fromEntries(tmDict.oneRmBySlug);
 
   const isComplete = !!session.completed_at;
+  // "Cancel workout" escape hatch (Fix: in-session header) — show
+  // only when the user just opened a fresh session and has logged
+  // nothing yet. Any logged set or cardio block (or a completed
+  // session) routes through the normal Delete flow instead.
+  const isEmptyInProgress = isEmptyInProgressSession({
+    completedAt: session.completed_at as string | null,
+    setLogCount: sets.length,
+    cardioLogCount: cardio?.length ?? 0,
+  });
 
   // Pull the linked planned_session so we can build a contextual GRM
   // recommendation ("top set ~81% instead of 90%").
@@ -680,12 +691,19 @@ export default async function SessionDetailPage({
                   padding: 4,
                 }}
               >
-                <DeleteSessionButton
-                  sessionId={session.id}
-                  label={session.title || "Session"}
-                  redirectTo="/app/sessions"
-                  variant="menu"
-                />
+                {isEmptyInProgress ? (
+                  <CancelWorkoutButton
+                    sessionId={session.id}
+                    redirectTo="/app"
+                  />
+                ) : (
+                  <DeleteSessionButton
+                    sessionId={session.id}
+                    label={session.title || "Session"}
+                    redirectTo="/app/sessions"
+                    variant="menu"
+                  />
+                )}
               </div>
             </details>
           </div>

@@ -163,17 +163,17 @@ export default async function SettingsPage() {
           testId="settings-hub-preferences"
         />
         <SettingsHubCard
-          href="/app/settings/ai"
-          icon="🤖"
-          title="AI"
-          description="Bring-your-own key for Claude / GPT / Gemini."
-          testId="settings-hub-ai"
+          href="/app/settings/integrations"
+          icon="🔌"
+          title="Integrations"
+          description="Strava and AI providers"
+          testId="settings-hub-integrations"
         />
         <SettingsHubCard
           href="/app/settings/hr-zones"
           icon="💓"
           title="Heart-rate zones"
-          description="%Max, %HRR, or %LTHR. Powers HR-aware stats."
+          description="Define your heart rate training zones so the app can categorize cardio intensity."
           testId="settings-hub-hr-zones"
         />
       </div>

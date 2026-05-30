@@ -123,6 +123,24 @@ export function parseZonePct(s: string): number | null {
   return n >= 2 ? n / 100 : n;
 }
 
+/**
+ * Plain-language helper text shown below the HR-method dropdown.
+ * Mirrors the dropdown labels: the user-facing primary is the
+ * what/why; the technical name lives only in parentheses on the
+ * option itself. See settings/page.tsx (`Define your heart rate
+ * training zones…`) for the entry-point copy.
+ */
+export function hrMethodHelpText(method: HrMethod): string {
+  switch (method) {
+    case "max":
+      return "Simplest method. Just needs your max HR (or auto-calculated from age).";
+    case "hrr":
+      return "More accurate. Uses both max HR and resting HR for a wider range.";
+    case "lthr":
+      return "For experienced athletes. Uses your lactate threshold from a 30-min time trial.";
+  }
+}
+
 /** Display a fractional zone-pct as a 0–150 integer when sensible. */
 function pctToDisplay(p: number | null | undefined): string {
   if (p == null || !Number.isFinite(p)) return "";
@@ -430,12 +448,12 @@ export function HrZonesSettings({ initial, age }: HrZonesSettingsProps) {
               }}
               style={selectStyle}
             >
-              <option value="max">%Max HR</option>
-              <option value="hrr">%HRR (Karvonen)</option>
-              <option value="lthr">%LTHR (Friel)</option>
+              <option value="max">Percentage of max heart rate</option>
+              <option value="hrr">Percentage of heart rate reserve (Karvonen)</option>
+              <option value="lthr">Percentage of lactate threshold heart rate (Friel)</option>
             </select>
             <span style={{ ...errorStyle, color: "var(--cp-text-muted)" }}>
-              Pick how you want to define your zones.
+              {hrMethodHelpText(value.hrMethod)}
             </span>
           </label>
 
