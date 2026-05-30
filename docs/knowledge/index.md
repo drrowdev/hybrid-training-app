@@ -2,7 +2,7 @@
 
 **Purpose:** Catalog of all hand-off files for the hybrid training app project. Organized by role in the Karpathy personal-knowledge-base pattern (plan §6.10): raw sources are immutable; wiki pages are LLM-maintained; the schema governs ingest, citation, and lint workflows. This file is the seed of `docs/knowledge/index.md` in the eventual repo.
 
-**Last updated:** 2026-05-21
+**Last updated:** 2026-05-30
 
 ---
 
@@ -72,6 +72,24 @@ Per-feature design notes that capture rationale, data model, UX, engine deltas, 
 | [`docs/design/hypertrophy-accessories.md`](../design/hypertrophy-accessories.md) | **Hypertrophy accessories (planned).** Per-strength-pattern curated pools (squat/bench/deadlift/OHP), default-on for Hypertrophy Focus only. Per-muscle volume rollup on stats using DC-T1 22-muscle taxonomy + DC-M2 concurrent volume modifier. No new schema. Build queued after mobile polish. |
 
 | [`docs/design/prs-and-tm-progression.md`](../design/prs-and-tm-progression.md) | **PRs + auto TM progression (planned).** Three PR kinds (weight, reps-at-weight, e1RM); AMRAP-driven confidence-gate TM bump suggestion with 28-day cooldown, hard gates (cooldown, no-duplicate proposal, active limitations), and soft-signal scoring (heavy-week top-set outperformance + GRM<0.93 fatigue mask). Block-complete secondary trigger. Auto-deload after 2 GRM-real misses. New tm_history table + tm_change_reason enum. Per-lift TM trend chart. Build queued. |
+| [`docs/design/accessory-schema.md`](../design/accessory-schema.md) | **Accessory schema — research-grounded redesign (2026-05-21).** Supersedes the v1 design in `hypertrophy-accessories.md`. Accessory scheduling backed by data across all archetypes (Strength / Hypertrophy / Endurance / Concurrent-Hybrid / Maintenance / Rebuild) including two-a-day variants. |
+
+## Decisions / ADRs
+
+Architecture Decision Records under `docs/adr/`. Each ADR is finalised
+when it lands; superseding decisions land as a new ADR rather than an
+edit.
+
+| ADR | One-line summary |
+|---|---|
+| [`0001-stack-choices.md`](../adr/0001-stack-choices.md) | **Phase 0 stack.** Next.js 16 + TS strict + Drizzle + Supabase + Tailwind v4 + Vercel. Reasoning for each choice and the alternatives considered. |
+| [`0002-ai-architecture.md`](../adr/0002-ai-architecture.md) | **AI architecture — Explain v1 + BYOAI (2026-05-28).** Pluggable `LlmProvider` (Anthropic / OpenAI / Gemini) with bring-your-own-key storage in a pgcrypto vault keyed by `AI_KEY_ENCRYPTION_KEY`. In-app chat surface (ChatFAB → drawer) with the `getEngineSnapshot` tool. Shipped in PRs #186 + #187. Migration 0069. |
+| [`0003-mcp-dual-path.md`](../adr/0003-mcp-dual-path.md) | **MCP server + in-app chat dual path (2026-05-28).** Streamable HTTP MCP endpoint at `/mcp/[...mcp]/route.ts` with OAuth 2.1 authorization-code bridge (PKCE, single-use codes via `mcp_consumed_codes`, HMAC-signed bearer tokens via `MCP_TOKEN_SIGNING_KEY`). 8-tool catalogue shared between the in-app chat (orchestrator v2) and external MCP clients. Shipped in PRs #194 + #195. Migrations 0071 + 0072. |
+| [`0004-endurance-anchor-dual-main-lift.md`](../adr/0004-endurance-anchor-dual-main-lift.md) | **Endurance Focus dual main lift (2026-05-29).** Post-Huiberts 2024, the Endurance archetype now prescribes squat + hinge as a dual main lift; Concurrent Hybrid template trimmed to match. Shipped in PR #197. |
+| [`0005-frequency-aware-dual-main-lift-folding.md`](../adr/0005-frequency-aware-dual-main-lift-folding.md) | **Frequency-aware folding (2026-05-29).** When weekly slot budget is tight, secondary main lifts fold into the primary day instead of being dropped. Shipped in PR #198. |
+| [`0006-balance-all-archetypes-low-frequency.md`](../adr/0006-balance-all-archetypes-low-frequency.md) | **Balance Strength + Hypertrophy at low frequency (2026-05-29).** Demotes bench-press / overhead-press anchors so ADR-0005 folding produces symmetric prescriptions across archetypes at low weekly frequency. Shipped in PR #199. |
+
+---
 
 ## Tooling artifacts
 
