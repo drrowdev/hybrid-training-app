@@ -72,29 +72,50 @@ describe("buildTodayHeroSummary", () => {
         reps: 5,
       }),
     ]).rows;
-    expect(rows.map((r) => r.name)).toEqual(["Front Squat", "Bench Press"]);
-    expect(rows[0]!.protocol).toBe("1 × 5 @ 80%");
-    expect(rows[1]!.protocol).toBe("1 × 5 @ 75%");
+    const strength = rows.filter((r) => r.variant === "strength") as Array<
+      Extract<typeof rows[number], { variant: "strength" }>
+    >;
+    expect(strength.map((r) => r.name)).toEqual(["Front Squat", "Bench Press"]);
+    expect(strength[0]!.protocol).toBe("1 × 5 @ 80%");
+    expect(strength[1]!.protocol).toBe("1 × 5 @ 75%");
   });
 
-  it("renders cardio sessions as a single dot-separated line without a Duration sub-row", () => {
+  it("renders cardio sessions as a labelled block (description + Intensity + Total at minimum)", () => {
     const { rows } = buildTodayHeroSummary([
       cardio({
         durationMin: 35,
         protocolNote: "4 × 4 min @ 90–95% HRmax, 3 min easy recovery",
       }),
     ]);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.name).toBe("VO2 intervals");
-    // Duration is dropped (the hero topline already shows "~35 min").
-    expect(rows[0]!.protocol).not.toMatch(/35 min/);
-    // Intervals + Intensity + Recovery survive in the joined line.
-    expect(rows[0]!.protocol).toMatch(/4\s*×\s*4\s*min/);
-    expect(rows[0]!.protocol).toContain("HRmax");
-    expect(rows[0]!.protocol).toContain("easy recovery");
+    // Cardio-only single item: no cardio-header (deduped against the
+    // hero title above). Description → Intervals → Intensity →
+    // Recovery → Total.
+    expect(rows.map((r) => r.variant)).toEqual([
+      "cardio-description",
+      "cardio-detail",
+      "cardio-detail",
+      "cardio-detail",
+      "cardio-detail",
+    ]);
+    const detailRows = rows.filter((r) => r.variant === "cardio-detail") as Array<
+      Extract<typeof rows[number], { variant: "cardio-detail" }>
+    >;
+    expect(detailRows.map((r) => r.label)).toEqual([
+      "Intervals",
+      "Intensity",
+      "Recovery",
+      "Total",
+    ]);
+    expect(detailRows.find((r) => r.label === "Total")!.value).toBe("35 min");
+    expect(detailRows.find((r) => r.label === "Intervals")!.value).toMatch(
+      /4\s*×\s*4\s*min/,
+    );
+    expect(detailRows.find((r) => r.label === "Intensity")!.value).toContain(
+      "HRmax",
+    );
   });
 
-  it("never emits the duplicate 'HR cap' label inside the cardio line (Fix 1)", () => {
+  it("never emits the duplicate 'HR cap' label inside a cardio block (Fix 1)", () => {
     const { rows } = buildTodayHeroSummary([
       cardio({
         durationMin: 35,
@@ -102,16 +123,27 @@ describe("buildTodayHeroSummary", () => {
         hrCap: "90–95% HRmax during work",
       }),
     ]);
-    expect(rows[0]!.protocol).not.toContain("HR cap");
-    expect(rows[0]!.protocol).not.toContain("during work");
+    const detailRows = rows.filter((r) => r.variant === "cardio-detail") as Array<
+      Extract<typeof rows[number], { variant: "cardio-detail" }>
+    >;
+    expect(detailRows.map((r) => r.label)).not.toContain("HR cap");
+    expect(
+      detailRows.every((r) => !r.value.includes("during work")),
+    ).toBe(true);
   });
 
-  it("hybrid sessions list strength movements first, then cardio", () => {
+  it("hybrid sessions list strength movements first, then cardio (header + description + details)", () => {
     const { rows } = buildTodayHeroSummary([
       main({ percentTm: 80, reps: 5 }),
       cardio({ durationMin: 20, protocolNote: "easy spin" }),
     ]);
-    expect(rows.map((r) => r.name)).toEqual(["Front Squat", "VO2 intervals"]);
+    // Strength row + cardio-header + cardio-description + cardio-
+    // detail(s). Order is strength first, cardio block second.
+    expect(rows[0]!.variant).toBe("strength");
+    expect(rows[0]!).toMatchObject({ name: "Front Squat" });
+    expect(rows[1]!.variant).toBe("cardio-header");
+    expect(rows[1]!).toMatchObject({ name: "VO2 intervals" });
+    expect(rows[2]!.variant).toBe("cardio-description");
   });
 
   it("truncates to 5 rows with '… and N more' when more strength movements exist", () => {
@@ -212,7 +244,7 @@ describe("TodayHeroSummary", () => {
     expect(html).not.toMatch(/space-between/);
   });
 
-  it("cardio-only sessions render the cardio row WITHOUT the redundant movement name (dedup against the hero title)", () => {
+  it("cardio-only sessions render the cardio block WITHOUT the redundant movement name (dedup against the hero title)", () => {
     const html = renderToStaticMarkup(
       React.createElement(TodayHeroSummary, {
         items: [
@@ -223,9 +255,12 @@ describe("TodayHeroSummary", () => {
         ],
       }),
     );
-    expect(html).toContain('data-variant="cardio"');
+    expect(html).toContain('data-variant="cardio-description"');
+    expect(html).toContain('data-variant="cardio-detail"');
     // Name suppressed: the hero card already shows "VO2 intervals"
     // directly above this summary, so repeating it reads "amateurish".
+    // No cardio-header variant in the output for cardio-only sessions.
+    expect(html).not.toContain('data-variant="cardio-header"');
     expect(html).not.toContain("VO2 intervals");
     // The protocol detail is still rendered.
     expect(html).toMatch(/4\s*×\s*4\s*min/);
@@ -245,8 +280,171 @@ describe("TodayHeroSummary", () => {
     );
     // Strength row shows name + protocol stacked.
     expect(html).toContain("Front Squat");
-    // Cardio row keeps its name because the row above is something
+    // Cardio header keeps the name because the row above is something
     // else — the hero title can't be a synonym for both.
     expect(html).toContain("VO2 intervals");
+    expect(html).toContain('data-variant="cardio-header"');
+  });
+});
+
+/* -------------------------------------------------------------------- */
+/* Cross-kind regression: every cardio kind exported from the planner    */
+/* MUST render description + Intensity + Total in the hero. Guard rail   */
+/* against adding a new kind without wiring up a one-liner or fallback.  */
+/* -------------------------------------------------------------------- */
+
+import {
+  CARDIO_DESCRIPTIONS,
+  CARDIO_ONE_LINERS,
+  cardioOneLinerForKind,
+} from "@/lib/session/cardio-descriptions";
+
+const ALL_CARDIO_KINDS = Object.keys(CARDIO_DESCRIPTIONS) as Array<
+  keyof typeof CARDIO_DESCRIPTIONS
+>;
+
+describe("TodayHeroSummary cross-kind consistency", () => {
+  it.each(ALL_CARDIO_KINDS)(
+    "%s — minimal prescription (kind + durationMin only) renders description + Intensity + Total",
+    (kind) => {
+      const { rows } = buildTodayHeroSummary([
+        cardio({
+          kind: kind as unknown as PrescriptionItem["kind"],
+          movementName: `${kind} session`,
+          durationMin: 30,
+          // Intentionally no protocolNote or hrCap — exercises the
+          // kind-based Intensity fallback in cardio-preview-rows.
+        }),
+      ]);
+
+      const description = rows.find((r) => r.variant === "cardio-description");
+      expect(description, `${kind}: missing description row`).toBeDefined();
+      expect(
+        (description as { text: string }).text.length,
+        `${kind}: description text is empty`,
+      ).toBeGreaterThan(0);
+
+      const detailRows = rows.filter(
+        (r) => r.variant === "cardio-detail",
+      ) as Array<Extract<typeof rows[number], { variant: "cardio-detail" }>>;
+      const intensity = detailRows.find((r) => r.label === "Intensity");
+      expect(intensity, `${kind}: missing Intensity row`).toBeDefined();
+      expect(
+        intensity!.value.length,
+        `${kind}: Intensity value is empty`,
+      ).toBeGreaterThan(0);
+
+      const total = detailRows.find((r) => r.label === "Total");
+      expect(total, `${kind}: missing Total row`).toBeDefined();
+      expect(total!.value).toMatch(/min/);
+    },
+  );
+
+  it("every CARDIO_DESCRIPTIONS kind has a matching CARDIO_ONE_LINERS entry", () => {
+    // Catches the case where someone adds a new kind to the long-form
+    // paragraphs but forgets the hero one-liner.
+    for (const kind of ALL_CARDIO_KINDS) {
+      expect(
+        CARDIO_ONE_LINERS[kind],
+        `missing one-liner for ${kind}`,
+      ).toBeTypeOf("string");
+      expect(
+        CARDIO_ONE_LINERS[kind]!.length,
+        `one-liner for ${kind} is empty`,
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  it("cardioOneLinerForKind falls back to a generic sentence for unknown kinds", () => {
+    expect(cardioOneLinerForKind("cardio_future_unknown")).toMatch(
+      /Cardio session/i,
+    );
+    expect(cardioOneLinerForKind(undefined)).toMatch(/Cardio session/i);
+    expect(cardioOneLinerForKind(null)).toMatch(/Cardio session/i);
+  });
+});
+
+/* -------------------------------------------------------------------- */
+/* Concrete-case regression: scenarios from the original bug report      */
+/* -------------------------------------------------------------------- */
+
+describe("TodayHeroSummary concrete cardio cases", () => {
+  it("Long Z2 (cardio_z2, hrCap-only, no protocolNote) renders description + Intensity + Total", () => {
+    const { rows } = buildTodayHeroSummary([
+      cardio({
+        kind: "cardio_z2" as PrescriptionItem["kind"],
+        movementName: "Long Z2",
+        durationMin: 100,
+        hrCap: "≤ 70% HRR, conversational",
+      }),
+    ]);
+    const description = rows.find((r) => r.variant === "cardio-description");
+    expect(description).toBeDefined();
+    expect((description as { text: string }).text).toMatch(/conversation/i);
+
+    const details = rows.filter((r) => r.variant === "cardio-detail") as Array<
+      Extract<typeof rows[number], { variant: "cardio-detail" }>
+    >;
+    expect(details.map((r) => r.label)).toEqual(["Intensity", "Total"]);
+    expect(details[0]!.value).toContain("HRR");
+    expect(details[1]!.value).toBe("100 min");
+  });
+
+  it("Tempo run (cardio_threshold) with minimal protocolNote renders all three baseline rows", () => {
+    const { rows } = buildTodayHeroSummary([
+      cardio({
+        kind: "cardio_threshold" as PrescriptionItem["kind"],
+        movementName: "Tempo run",
+        durationMin: 40,
+        protocolNote: "20 min @ threshold pace",
+      }),
+    ]);
+    const description = rows.find((r) => r.variant === "cardio-description");
+    expect(description).toBeDefined();
+    const details = rows.filter((r) => r.variant === "cardio-detail") as Array<
+      Extract<typeof rows[number], { variant: "cardio-detail" }>
+    >;
+    // Whatever the parser extracts, Intensity + Total are non-
+    // negotiable for the hero.
+    expect(details.find((r) => r.label === "Intensity")).toBeDefined();
+    expect(details.find((r) => r.label === "Total")?.value).toBe("40 min");
+  });
+
+  it("VO2 (cardio_vo2, rich protocolNote) preserves the full Intervals/Intensity/Recovery/Total breakdown", () => {
+    const { rows } = buildTodayHeroSummary([
+      cardio({
+        kind: "cardio_vo2" as PrescriptionItem["kind"],
+        movementName: "VO2 intervals",
+        durationMin: 35,
+        protocolNote: "4 × 4 min @ 90–95% HRmax, 3 min easy recovery",
+      }),
+    ]);
+    const details = rows.filter((r) => r.variant === "cardio-detail") as Array<
+      Extract<typeof rows[number], { variant: "cardio-detail" }>
+    >;
+    expect(details.map((r) => r.label)).toEqual([
+      "Intervals",
+      "Intensity",
+      "Recovery",
+      "Total",
+    ]);
+  });
+
+  it("Easy bike Z2 (modality bike, kind cardio_z2) renders the same shape as Long Z2 run", () => {
+    const { rows } = buildTodayHeroSummary([
+      cardio({
+        kind: "cardio_z2" as PrescriptionItem["kind"],
+        movementName: "Easy bike",
+        durationMin: 60,
+        hrCap: "≤ 70% HRR",
+      }),
+    ]);
+    const description = rows.find((r) => r.variant === "cardio-description");
+    expect(description).toBeDefined();
+    const details = rows.filter((r) => r.variant === "cardio-detail") as Array<
+      Extract<typeof rows[number], { variant: "cardio-detail" }>
+    >;
+    expect(details.map((r) => r.label)).toEqual(["Intensity", "Total"]);
+    expect(details[1]!.value).toBe("60 min");
   });
 });

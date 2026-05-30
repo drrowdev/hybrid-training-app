@@ -38,6 +38,34 @@ export const GENERIC_CARDIO_DESCRIPTION =
   "Follow the prescribed intensity and duration. Adjust pace to match the target HR or RPE. Warm up easy for 5–10 minutes before the main effort and cool down easy afterwards.";
 
 /**
+ * One-sentence form of each cardio description, suitable for the Today
+ * hero summary (where the full "How to do it" paragraph would dominate
+ * the card). The in-session card keeps the longer
+ * `CARDIO_DESCRIPTIONS` paragraphs — these short forms exist purely so
+ * the hero gets a recognisable opening line for every cardio kind.
+ *
+ * Adding a new kind: register it here AND in `CARDIO_DESCRIPTIONS` (or
+ * the cross-kind regression test in
+ * `apps/web/src/components/today/__tests__/TodayHeroSummary.test.tsx`
+ * will fail).
+ */
+export const CARDIO_ONE_LINERS: Record<CardioDescriptionKind, string> = {
+  cardio_vo2:
+    "Hard intervals at 90–95% HRmax with full easy recovery.",
+  cardio_z2:
+    "Steady aerobic pace — easy enough to hold a conversation.",
+  cardio_threshold:
+    "Sustained hard effort just under your lactate threshold.",
+  cardio_alactic:
+    "Short, near-max efforts with long full recoveries between.",
+  cardio_external:
+    "Follow your external program's plan for this session.",
+};
+
+export const GENERIC_CARDIO_ONE_LINER =
+  "Cardio session — follow the prescribed intensity and duration.";
+
+/**
  * Resolve a description for any prescription item kind. Returns the
  * generic fallback for unknown / non-cardio kinds rather than null —
  * callers always render something so the user is never left without
@@ -51,4 +79,20 @@ export function describeCardioKind(
     return CARDIO_DESCRIPTIONS[kind as CardioDescriptionKind];
   }
   return GENERIC_CARDIO_DESCRIPTION;
+}
+
+/**
+ * Short one-sentence description for the Today hero card. Mirrors
+ * `describeCardioKind` but returns the brief form. Falls back to the
+ * generic one-liner so the hero never renders a blank description for
+ * an unrecognised cardio kind.
+ */
+export function cardioOneLinerForKind(
+  kind: PrescriptionItemKind | string | null | undefined,
+): string {
+  if (!kind) return GENERIC_CARDIO_ONE_LINER;
+  if (kind in CARDIO_ONE_LINERS) {
+    return CARDIO_ONE_LINERS[kind as CardioDescriptionKind];
+  }
+  return GENERIC_CARDIO_ONE_LINER;
 }
