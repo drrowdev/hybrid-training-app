@@ -196,12 +196,14 @@ function complementaryArchetype(id: ArchetypeId): NextBlockSuggestion | null {
  * Decision 6 (absorbed from ADR 0008 D5): a realization-week opportunity.
  *
  * When the user has accumulated enough consecutive strength blocks WITHOUT a
- * registered A-event, they've built strength they've never tested. Suggest
- * an OPT-IN realization microcycle (a terminal-week reshape: volume down,
- * intensity held/raised to heavy singles) before backing off — never
- * auto-applied. Gating on accumulated build (rather than firing every block)
- * is the whole point: a realization peak belongs at the end of a multi-block
- * build, not every 4-week mesocycle.
+ * registered A-event, they've built strength they've never tested. We
+ * surface ADVICE to run an opt-in realization microcycle (lighter volume,
+ * heavy singles) before backing off. This is advice-only: the engine does
+ * NOT auto-build or auto-reshape a realization week — the copy points the
+ * user at the manual path (a short custom block). Auto-reshaping the planner
+ * is a deferred follow-up. Gating on accumulated build (rather than firing
+ * every block) is the whole point: a realization peak belongs at the end of
+ * a multi-block build, not every 4-week mesocycle.
  *
  * Returns a reason string when the opportunity is earned, else null.
  */
@@ -217,7 +219,7 @@ export function suggestRealizationWeek(input: {
   if (run.id === "strength_anchor" && run.length >= REALIZATION_MIN_STRENGTH_RUN) {
     return {
       reason:
-        "You've built strength for a couple of blocks without testing it — consider a realization week (lighter volume, heavy singles) to peak before your next block.",
+        "You've built strength for a couple of blocks without testing it. Before your next block, consider a lighter week of heavy singles to peak and re-test your maxes — you can set that up as a short custom block.",
     };
   }
   return null;

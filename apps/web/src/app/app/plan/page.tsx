@@ -108,6 +108,7 @@ export default async function PlanPage({
       user.id,
       recent.map((b) => b.archetype as ArchetypeId),
       todayYmd(tz),
+      recent.length > 0 ? recent[recent.length - 1].startedOn : null,
     );
 
     const tmReadinessByArchetype = Object.fromEntries(

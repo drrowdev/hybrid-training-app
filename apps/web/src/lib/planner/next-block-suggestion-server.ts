@@ -17,8 +17,8 @@ import {
  * client, and every query is explicitly filtered to `userId`.
  *
  * The recent archetype history is passed in (the plan page already loads
- * `getRecentBlocks`) to avoid a duplicate query; this helper only adds the
- * cheap "next A-event" lookup.
+ * `getRecentBlocks`) to avoid a duplicate query; this helper adds the cheap
+ * "next A-event" lookup and the recent reactive-deload count.
  */
 export type NextBlockNudge = {
   suggestion: NextBlockSuggestion | null;
@@ -30,6 +30,12 @@ export async function getNextBlockNudge(
   userId: string,
   recentArchetypes: ArchetypeId[],
   todayYmd: string,
+  /**
+   * Start of the "recent" window for the reactive-deload count — typically
+   * the start date of the oldest recent block. Null skips the deload query
+   * (no recent blocks ⇒ no deloads to count).
+   */
+  windowStartYmd: string | null,
 ): Promise<NextBlockNudge> {
   // Next future A-priority event → peaking modality (ADR 0008 mapping).
   const { data: evt } = await supabase
@@ -43,13 +49,30 @@ export async function getNextBlockNudge(
     .maybeSingle();
   const upcomingEventModality = evt ? taperModalityForEvent(evt.modality) : null;
 
-  // NOTE: reactive-deload count is not persisted as a queryable signal yet,
-  // so rule 1 (recovery-aware) is dormant from this surface. The pure
-  // function already supports it; wire the count when a stored signal lands.
+  // Recent reactive-deload episodes. An accepted reactive deload writes a
+  // `tm_history` row with reason = "deload" (see engine/deload.ts +
+  // tm-bump-actions.ts). A single cooked period can deload several lifts,
+  // so we count distinct *sessions* (deload episodes), not rows — two
+  // separate under-recovery episodes in the window trip the rebuild rule.
+  let recentReactiveDeloads = 0;
+  if (windowStartYmd) {
+    const { data: deloadRows } = await supabase
+      .from("tm_history")
+      .select("id, session_id")
+      .eq("user_id", userId)
+      .eq("reason", "deload")
+      .gte("changed_at", `${windowStartYmd}T00:00:00Z`);
+    const episodes = new Set<string>();
+    for (const r of deloadRows ?? []) {
+      episodes.add((r.session_id as string | null) ?? (r.id as string));
+    }
+    recentReactiveDeloads = episodes.size;
+  }
+
   const input = {
     recentArchetypes,
     upcomingEventModality,
-    recentReactiveDeloads: 0,
+    recentReactiveDeloads,
   };
 
   return {

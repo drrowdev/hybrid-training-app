@@ -1,9 +1,50 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+// next-block-suggestion-server.ts opens with `import "server-only"`, which the
+// vitest node environment can't resolve — stub it to a no-op module.
+vi.mock("server-only", () => ({}));
+
 import {
   suggestNextArchetype,
   suggestRealizationWeek,
   type SuggestNextArchetypeInput,
 } from "../next-block-suggestion";
+import { getNextBlockNudge } from "../next-block-suggestion-server";
+
+/**
+ * Minimal Supabase query-builder fake. Every chain method returns the
+ * builder; the builder resolves (await or .maybeSingle()) to a per-table
+ * canned result. Covers the two queries getNextBlockNudge issues:
+ *   - events   → ...eq().gte().order().limit().maybeSingle()
+ *   - tm_history → ...eq().eq().gte()  (awaited directly)
+ */
+function makeSupabase(opts: {
+  event?: { event_date: string; priority: string; modality: string | null } | null;
+  deloadRows?: Array<{ id: string; session_id: string | null }>;
+}): SupabaseClient {
+  return {
+    from(table: string) {
+      const result =
+        table === "events"
+          ? { data: opts.event ?? null, error: null }
+          : { data: opts.deloadRows ?? [], error: null };
+      const builder: Record<string, unknown> = {};
+      const chain = () => builder;
+      builder.select = chain;
+      builder.eq = chain;
+      builder.gte = chain;
+      builder.order = chain;
+      builder.limit = chain;
+      builder.maybeSingle = () => Promise.resolve(result);
+      builder.then = (resolve: (r: typeof result) => unknown) => resolve(result);
+      return builder;
+    },
+  } as unknown as SupabaseClient;
+}
+
+const TODAY = "2026-05-30";
+const WINDOW_START = "2026-03-01";
 
 const base: SuggestNextArchetypeInput = {
   recentArchetypes: [],
@@ -206,7 +247,7 @@ describe("suggestRealizationWeek — Decision 6 (opt-in, accumulation-gated)", (
       upcomingEventModality: null,
     });
     expect(out).not.toBeNull();
-    expect(out?.reason).toMatch(/realization week/i);
+    expect(out?.reason).toMatch(/heavy singles/i);
   });
 
   it("a single strength block does NOT earn a realization week", () => {
@@ -243,5 +284,117 @@ describe("suggestRealizationWeek — Decision 6 (opt-in, accumulation-gated)", (
         upcomingEventModality: null,
       }),
     ).toBeNull();
+  });
+});
+
+describe("getNextBlockNudge (server glue)", () => {
+  it("counts distinct deload SESSIONS in the window and trips the rebuild rule at the threshold", async () => {
+    const supabase = makeSupabase({
+      event: null,
+      deloadRows: [
+        // Two lifts deloaded in one episode (session A) + one in episode B
+        // ⇒ 2 distinct sessions ⇒ at the REACTIVE_DELOAD_BACKOFF threshold.
+        { id: "h1", session_id: "sess-A" },
+        { id: "h2", session_id: "sess-A" },
+        { id: "h3", session_id: "sess-B" },
+      ],
+    });
+    const nudge = await getNextBlockNudge(
+      supabase,
+      "user-1",
+      ["hypertrophy_anchor"],
+      TODAY,
+      WINDOW_START,
+    );
+    expect(nudge.suggestion?.archetypeId).toBe("rebuild");
+  });
+
+  it("a single deload episode (rows sharing one session) does NOT trip rebuild", async () => {
+    const supabase = makeSupabase({
+      event: null,
+      deloadRows: [
+        { id: "h1", session_id: "sess-A" },
+        { id: "h2", session_id: "sess-A" },
+      ],
+    });
+    const nudge = await getNextBlockNudge(
+      supabase,
+      "user-1",
+      ["endurance_anchor"],
+      TODAY,
+      WINDOW_START,
+    );
+    // One episode < threshold, no other rule fires for a lone endurance block.
+    expect(nudge.suggestion).toBeNull();
+  });
+
+  it("falls back to row id when session_id is null (still counts as an episode)", async () => {
+    const supabase = makeSupabase({
+      event: null,
+      deloadRows: [
+        { id: "h1", session_id: null },
+        { id: "h2", session_id: null },
+      ],
+    });
+    const nudge = await getNextBlockNudge(
+      supabase,
+      "user-1",
+      ["hypertrophy_anchor"],
+      TODAY,
+      WINDOW_START,
+    );
+    expect(nudge.suggestion?.archetypeId).toBe("rebuild");
+  });
+
+  it("skips the deload query entirely when windowStartYmd is null", async () => {
+    const supabase = makeSupabase({
+      event: null,
+      // These rows would trip rebuild IF queried — but a null window must skip them.
+      deloadRows: [
+        { id: "h1", session_id: "sess-A" },
+        { id: "h2", session_id: "sess-B" },
+      ],
+    });
+    const nudge = await getNextBlockNudge(
+      supabase,
+      "user-1",
+      ["hypertrophy_anchor"],
+      TODAY,
+      null,
+    );
+    expect(nudge.suggestion).toBeNull();
+  });
+
+  it("maps an upcoming A-event modality to the matching archetype when no deload backoff", async () => {
+    const supabase = makeSupabase({
+      event: { event_date: "2026-07-01", priority: "A", modality: "running" },
+      deloadRows: [],
+    });
+    const nudge = await getNextBlockNudge(
+      supabase,
+      "user-1",
+      ["strength_anchor"],
+      TODAY,
+      WINDOW_START,
+    );
+    expect(nudge.suggestion?.archetypeId).toBe("endurance_anchor");
+  });
+
+  it("recovery backoff outranks an upcoming event (safety first)", async () => {
+    const supabase = makeSupabase({
+      event: { event_date: "2026-07-01", priority: "A", modality: "running" },
+      deloadRows: [
+        { id: "h1", session_id: "sess-A" },
+        { id: "h2", session_id: "sess-B" },
+      ],
+    });
+    const nudge = await getNextBlockNudge(
+      supabase,
+      "user-1",
+      ["strength_anchor"],
+      TODAY,
+      WINDOW_START,
+    );
+    expect(nudge.suggestion?.archetypeId).toBe("rebuild");
   });
 });
