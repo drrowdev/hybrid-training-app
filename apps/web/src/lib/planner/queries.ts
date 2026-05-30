@@ -42,6 +42,10 @@ export type ActiveBlock = {
   weeks: number;
   status: "active" | "completed" | "archived";
   notes: string | null;
+  /** Migration 0079 — per-block focus muscle groups (0–2). */
+  focusMuscles: string[];
+  /** Wizard step-2 power emphasis toggle (already on the row). */
+  powerEmphasis: boolean;
 };
 
 export type PlannedDay = {
@@ -113,7 +117,7 @@ export async function getActiveBlock(): Promise<ActiveBlock | null> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("training_blocks")
-    .select("id, archetype, started_on, weeks, status, notes")
+    .select("id, archetype, started_on, weeks, status, notes, focus_muscles, power_emphasis")
     .eq("status", "active")
     .is("deleted_at", null)
     .order("started_on", { ascending: false })
@@ -127,6 +131,10 @@ export async function getActiveBlock(): Promise<ActiveBlock | null> {
     weeks: data.weeks,
     status: data.status,
     notes: data.notes ?? null,
+    focusMuscles: Array.isArray(data.focus_muscles)
+      ? (data.focus_muscles as string[])
+      : [],
+    powerEmphasis: Boolean(data.power_emphasis),
   };
 }
 
