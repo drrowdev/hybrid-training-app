@@ -27,8 +27,17 @@ import {
   HrZonesSettings,
   previewZoneRows,
   parseZonePct,
+  hrMethodHelpText,
 } from "../HrZonesSettings";
 import { computeZoneBands } from "@/lib/stats/hr-zones";
+
+describe("hrMethodHelpText", () => {
+  it("returns a non-empty plain-language helper for each method", () => {
+    expect(hrMethodHelpText("max")).toMatch(/max HR/);
+    expect(hrMethodHelpText("hrr")).toMatch(/resting HR/);
+    expect(hrMethodHelpText("lthr")).toMatch(/lactate threshold|time trial/i);
+  });
+});
 
 describe("previewZoneRows", () => {
   it("returns 5 rows of em-dashes when bands are null (no inputs yet)", () => {
@@ -105,6 +114,56 @@ function render(props: React.ComponentProps<typeof HrZonesSettings>): string {
 }
 
 describe("HrZonesSettings — static render", () => {
+  it("renders the plain-language HR method labels in the dropdown", () => {
+    const html = render({
+      initial: { hrMethod: "max", hrMax: 190, hrResting: null, hrLthr: null, hrPercents: {} },
+      age: 30,
+    });
+    expect(html).toContain("Percentage of max heart rate");
+    expect(html).toContain("Percentage of heart rate reserve (Karvonen)");
+    expect(html).toContain("Percentage of lactate threshold heart rate (Friel)");
+    // The old bare-jargon labels must not leak back in as option text.
+    expect(html).not.toContain(">%Max HR<");
+    expect(html).not.toContain(">%HRR (Karvonen)<");
+    expect(html).not.toContain(">%LTHR (Friel)<");
+    // The static "Pick how you want to define your zones." helper is
+    // replaced by the dynamic per-method help text.
+    expect(html).not.toContain("Pick how you want to define your zones.");
+  });
+
+  it("shows the per-method helper text below the dropdown", () => {
+    const maxHtml = render({
+      initial: { hrMethod: "max", hrMax: 190, hrResting: null, hrLthr: null, hrPercents: {} },
+      age: 30,
+    });
+    expect(maxHtml).toContain("Simplest method. Just needs your max HR");
+
+    const hrrHtml = render({
+      initial: { hrMethod: "hrr", hrMax: 195, hrResting: 55, hrLthr: null, hrPercents: {} },
+      age: null,
+    });
+    expect(hrrHtml).toContain("Uses both max HR and resting HR");
+
+    const lthrHtml = render({
+      initial: { hrMethod: "lthr", hrMax: null, hrResting: null, hrLthr: 170, hrPercents: {} },
+      age: null,
+    });
+    expect(lthrHtml).toContain("For experienced athletes");
+  });
+
+  it("preserves the underlying enum values for the option elements", () => {
+    // `intake.hrMethod` still persists "max" / "hrr" / "lthr" — only
+    // the user-facing labels change. The form submission contract must
+    // not break.
+    const html = render({
+      initial: { hrMethod: "max", hrMax: 190, hrResting: null, hrLthr: null, hrPercents: {} },
+      age: 30,
+    });
+    expect(html).toContain('value="max"');
+    expect(html).toContain('value="hrr"');
+    expect(html).toContain('value="lthr"');
+  });
+
   it("method=max renders the Max-HR input, no resting / LTHR fields", () => {
     const html = render({
       initial: { hrMethod: "max", hrMax: 190, hrResting: null, hrLthr: null, hrPercents: {} },

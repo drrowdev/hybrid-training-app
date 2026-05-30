@@ -173,7 +173,7 @@ export default async function SettingsPage() {
           href="/app/settings/hr-zones"
           icon="💓"
           title="Heart-rate zones"
-          description="%Max, %HRR, or %LTHR. Powers HR-aware stats."
+          description="Define your heart rate training zones so the app can categorize cardio intensity."
           testId="settings-hub-hr-zones"
         />
       </div>

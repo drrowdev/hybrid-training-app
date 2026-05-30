@@ -40,4 +40,12 @@ describe("settings hub — tile contract", () => {
     // Strava lives under Preferences and (now) the Integrations sub-hub.
     expect(source).not.toContain('testId="settings-hub-strava"');
   });
+
+  it("uses plain-language copy on the Heart-rate zones tile", () => {
+    // Replaces the jargon-y "%Max, %HRR, or %LTHR. Powers HR-aware stats."
+    expect(source).toContain(
+      "Define your heart rate training zones so the app can categorize cardio intensity.",
+    );
+    expect(source).not.toContain("%Max, %HRR, or %LTHR");
+  });
 });
