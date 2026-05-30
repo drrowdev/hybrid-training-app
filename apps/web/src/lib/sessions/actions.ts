@@ -1392,21 +1392,19 @@ export async function finishStravaAppliedSession(
     if (cuErr) return { error: cuErr.message };
   }
 
-  // Hybrid guard — same shape as applyStravaAutofill above.
-  const [{ count: strengthPrescribedCount }, { count: setsLoggedCount }] =
-    await Promise.all([
-      supabase
-        .from("session_items")
-        .select("id", { count: "exact", head: true })
-        .eq("session_id", parsed.data.sessionId)
-        .eq("kind", "main"),
-      supabase
-        .from("set_logs")
-        .select("id", { count: "exact", head: true })
-        .eq("session_id", parsed.data.sessionId),
-    ]);
+  // Hybrid guard via the shared predicate so this can't drift from
+  // logCardioSession + applyStravaAutofill + importStravaHistory.
+  // See `lib/sessions/strength-prescribed.ts` — single source of truth
+  // for the "does this session prescribe strength?" rule.
+  const [hasStrengthPrescribed, { count: setsLoggedCount }] = await Promise.all([
+    sessionPrescribesStrength(supabase, parsed.data.sessionId),
+    supabase
+      .from("set_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", parsed.data.sessionId),
+  ]);
   const hasUnloggedStrength =
-    (strengthPrescribedCount ?? 0) > 0 && (setsLoggedCount ?? 0) === 0;
+    hasStrengthPrescribed && (setsLoggedCount ?? 0) === 0;
 
   if (!session.completed_at && !hasUnloggedStrength) {
     const durationMin = Math.max(1, Math.round((cardio.duration_sec ?? 60) / 60));
