@@ -9,6 +9,7 @@ import { recomputeActualSessionLoad } from "@/lib/engine/recompute-actual-sessio
 import { maybeCompleteBlock } from "@/lib/planner/completion";
 import { getUserTimezone } from "@/lib/planner/queries";
 import { roundToPlate } from "@/lib/planner/archetypes";
+import { applyAutoregVolumeScale } from "@/lib/planner/autoreg-volume";
 import type { Prescription, PrescriptionItem } from "@hta/db";
 import { applyPrescriptionSwap } from "./prescription-mutations";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
@@ -1047,7 +1048,7 @@ export async function fillSessionFromPlan(
     existingByKey.set(key, (existingByKey.get(key) ?? 0) + 1);
   }
 
-  const items = planned.prescription.items ?? [];
+  const items = applyAutoregVolumeScale(planned.prescription).items ?? [];
   let nextIndex = (existingRes.data ?? []).length;
   const inserts: SetInsert[] = [];
 

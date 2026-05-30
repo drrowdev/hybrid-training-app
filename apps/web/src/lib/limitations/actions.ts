@@ -4,6 +4,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
+import { loadPickerCatalog } from "@/lib/planner/picker-catalog";
+import { readLimitationsContext } from "@/lib/planner/limitations-context";
+import {
+  applyPrescriptionUpdates,
+  getActiveBlockRemainingSessions,
+} from "@/lib/planner/remaining-sessions";
+import { buildLimitationResponse } from "./response";
 import {
   limitationFormSchema,
   type LimitationActionResult,
@@ -414,4 +421,69 @@ export async function deleteLimitationById(
   revalidatePath("/app/recovery/injuries");
   revalidatePath("/app/settings/limitations");
   return { ok: true, id };
+}
+
+// ─── ADR 0014: mid-block limitation response ───────────────────────
+//
+// After a limitation is created / edited mid-block, the already-
+// materialized future sessions can still load the newly-flagged tissue.
+// `applyLimitationResponse` re-derives the deterministic remediation
+// plan from the user's CURRENT live state (never trusting a client
+// payload) and persists every safe swap / drop. Warn-only main-lift
+// offenders are surfaced in the UI but deliberately left untouched.
+
+export type ApplyLimitationResult =
+  | { ok: true; swapped: number; dropped: number; sessions: number }
+  | { ok: false; error: string };
+
+/** Form-friendly wrapper (Next form actions require Promise<void>). */
+export async function applyLimitationResponse(): Promise<void> {
+  await applyLimitationResponseResult();
+}
+
+export async function applyLimitationResponseResult(): Promise<ApplyLimitationResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) redirect("/login");
+
+  const active = await getActiveBlockRemainingSessions(supabase, user.id);
+  if (!active || active.remaining.length === 0) {
+    return { ok: true, swapped: 0, dropped: 0, sessions: 0 };
+  }
+
+  const ctx = await readLimitationsContext(supabase, user.id);
+  const hasLimits =
+    ctx.blockedRegions.size > 0 ||
+    ctx.blockedMuscles.size > 0 ||
+    ctx.blockedMovementIds.size > 0;
+  if (!hasLimits) return { ok: true, swapped: 0, dropped: 0, sessions: 0 };
+
+  const catalog = await loadPickerCatalog(supabase);
+  const plan = buildLimitationResponse(active.remaining, catalog, ctx);
+  if (plan.updates.length === 0) {
+    return { ok: true, swapped: 0, dropped: 0, sessions: 0 };
+  }
+
+  const { updated, error } = await applyPrescriptionUpdates(
+    supabase,
+    user.id,
+    active.blockId,
+    plan.updates,
+  );
+  if (error) return { ok: false, error };
+
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
+  revalidatePath("/app/sessions");
+  revalidatePath("/app/settings/limitations");
+  revalidatePath("/app/recovery/injuries");
+
+  return {
+    ok: true,
+    swapped: plan.swaps.length,
+    dropped: plan.drops.length,
+    sessions: updated,
+  };
 }

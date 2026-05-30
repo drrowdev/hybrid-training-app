@@ -164,6 +164,7 @@ export function pickPotentiationMovement({
   catalog,
   blockedRegions,
   blockedMuscles,
+  blockedMovementIds,
   allowedMovementIds,
   tendinopathyActive,
   recentlyUsedMovementIds,
@@ -174,6 +175,8 @@ export function pickPotentiationMovement({
   blockedRegions: Set<string>;
   /** Optional — see PR `feat/limitations-v2-lifecycle`. */
   blockedMuscles?: Set<string>;
+  /** Optional — specific flagged movement ids (ADR 0014). Unconditional drop. */
+  blockedMovementIds?: Set<string>;
   /** Optional — see PR `feat/limitations-v2-lifecycle`. */
   allowedMovementIds?: Set<string>;
   tendinopathyActive: boolean;
@@ -197,6 +200,7 @@ export function pickPotentiationMovement({
   const safe = tierFiltered.filter((m) => {
     const hasPowerRole = m.functionalRoles.some((r) => allowedRoles.has(r));
     if (!hasPowerRole) return false;
+    if (blockedMovementIds?.has(m.id)) return false;
     if (loadsBlockedRegion(m, blockedRegions)) return false;
     if (loadsBlockedMuscleHere(m, blockedMuscles, allowedMovementIds)) return false;
     if (tendinopathyActive && m.highStrainTendon) return false;

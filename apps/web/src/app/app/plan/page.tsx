@@ -48,6 +48,11 @@ import {
   type TmReadinessByArchetype,
 } from "@/components/planner/BlockWizard";
 import { PlanBlockFocusCard } from "@/components/planner/PlanBlockFocusCard";
+import { getVolumeAutoregOffer, type VolumeAutoregOffer } from "@/lib/planner/autoreg-offer";
+import { acceptVolumeAutoreg } from "@/lib/planner/autoreg-actions";
+import { getLimitationResponseOffer } from "@/lib/limitations/offer";
+import type { LimitationResponseOffer } from "@/lib/limitations/offer";
+import { applyLimitationResponse } from "@/lib/limitations/actions";
 import { addDaysToYmd } from "@/lib/dates";
 
 // Six wizard-resolvable archetype ids — must stay in sync with
@@ -266,9 +271,26 @@ export default async function PlanPage({
     !hasLoadableMainLift(resolveEquipment(profile)) &&
     planTmCtx.rows.length === 0;
 
+  // ADR 0013 / 0014 — mid-block adaptive offers. Both read-only here;
+  // the accept actions re-derive server-side before writing. Null when
+  // nothing applies (no over-budget signal / no offending limitation).
+  const [autoregOffer, limitationOffer] = await Promise.all([
+    getVolumeAutoregOffer(),
+    getLimitationResponseOffer(),
+  ]);
+
   return (
     <div style={{ display: "grid", gap: 24 }}>
       {tissueGaps.length > 0 && <TissueStackCard gaps={tissueGaps} />}
+      {limitationOffer && (
+        <LimitationResponseCard
+          offer={limitationOffer}
+          action={applyLimitationResponse}
+        />
+      )}
+      {autoregOffer && (
+        <VolumeAutoregCard offer={autoregOffer} action={acceptVolumeAutoreg} />
+      )}
       {showBodyweightBanner && (
         <BodyweightOnlyBanner
           dismissedAt={profile?.bw_banner_dismissed_at ?? null}
@@ -523,6 +545,159 @@ function TissueStackCard({ gaps }: { gaps: TissueStackGap[] }) {
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+/**
+ * ADR 0013 — within-block volume autoregulation offer. Surfaces only
+ * when this week's strength volume is over / way-over budget and there
+ * are un-started current-week sessions with discretionary volume to
+ * trim. Accepting stamps a reversible read-time scalar onto those rows.
+ */
+function VolumeAutoregCard({
+  offer,
+  action,
+}: {
+  offer: VolumeAutoregOffer;
+  action: () => Promise<void>;
+}) {
+  const pct = Math.round(offer.pct * 100);
+  const keepPct = Math.round(offer.scale * 100);
+  return (
+    <section
+      className="cp-card"
+      role="alert"
+      style={{
+        padding: "14px 18px",
+        display: "grid",
+        gap: 8,
+        borderColor: "var(--cp-warning)",
+        background: "color-mix(in oklab, var(--cp-warning) 6%, transparent)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          color: "var(--cp-warning)",
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          fontWeight: 600,
+        }}
+      >
+        Volume over budget
+      </div>
+      <div style={{ fontSize: 13, color: "var(--cp-text)" }}>
+        You&apos;re at <strong>{pct}%</strong> of this week&apos;s prescribed
+        strength sets ({offer.actual}/{offer.prescribed}). To keep quality
+        high and fatigue in check, the engine can trim accessory volume on
+        your {offer.sessionCount} remaining session
+        {offer.sessionCount === 1 ? "" : "s"} this week to about {keepPct}% of
+        plan. Main lifts are untouched, and this is reversible.
+      </div>
+      <form action={action}>
+        <button
+          type="submit"
+          className="cp-btn"
+          style={{ fontSize: 13, padding: "7px 14px", justifySelf: "start" }}
+        >
+          Ease this week&apos;s accessory volume
+        </button>
+      </form>
+    </section>
+  );
+}
+
+/**
+ * ADR 0014 — mid-block limitation response offer. Surfaces when an
+ * active limitation makes future sessions load a flagged region / muscle
+ * / movement. Accepting swaps discretionary offenders for safe
+ * alternatives and drops any that can't be safely replaced. Main-lift
+ * offenders are warn-only — load / ROM / grip changes on a primary lift
+ * are a clinician call, so they are listed but never auto-changed.
+ *
+ * This is load management, not medical advice.
+ */
+function LimitationResponseCard({
+  offer,
+  action,
+}: {
+  offer: LimitationResponseOffer;
+  action: () => Promise<void>;
+}) {
+  const autoCount = offer.swaps.length + offer.drops.length;
+  return (
+    <section
+      className="cp-card"
+      role="alert"
+      style={{
+        padding: "14px 18px",
+        display: "grid",
+        gap: 8,
+        borderColor: "var(--cp-accent)",
+        background: "color-mix(in oklab, var(--cp-accent) 6%, transparent)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          color: "var(--cp-accent)",
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          fontWeight: 600,
+        }}
+      >
+        Limitation — adjust remaining sessions
+      </div>
+      <div style={{ fontSize: 13, color: "var(--cp-text)" }}>
+        A limitation you flagged still affects movements scheduled later in
+        this block. The engine can adjust your upcoming sessions to work
+        around it:
+      </div>
+      {offer.swaps.length > 0 && (
+        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "var(--cp-text-muted)" }}>
+          {offer.swaps.slice(0, 6).map((s) => (
+            <li key={`${s.sessionId}-${s.itemIndex}`}>
+              <strong style={{ color: "var(--cp-text)" }}>{s.fromName}</strong>
+              {" → "}
+              <strong style={{ color: "var(--cp-text)" }}>{s.toName}</strong>
+            </li>
+          ))}
+          {offer.swaps.length > 6 && <li>+{offer.swaps.length - 6} more swaps</li>}
+        </ul>
+      )}
+      {offer.drops.length > 0 && (
+        <div style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>
+          {offer.drops.length} accessory movement
+          {offer.drops.length === 1 ? "" : "s"} with no safe alternative will be
+          removed.
+        </div>
+      )}
+      {offer.warns.length > 0 && (
+        <div style={{ fontSize: 12, color: "var(--cp-warning)" }}>
+          ⚠ {offer.warns.length} main-lift movement
+          {offer.warns.length === 1 ? "" : "s"} also load this area (
+          {offer.warns.slice(0, 3).map((w) => w.fromName).join(", ")}
+          {offer.warns.length > 3 ? "…" : ""}). These aren&apos;t changed
+          automatically — adjusting load, range of motion, or grip on a primary
+          lift is best decided with a clinician.
+        </div>
+      )}
+      <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
+        This is load management, not medical care. If symptoms persist or
+        worsen, see a qualified clinician.
+      </div>
+      {autoCount > 0 && (
+        <form action={action}>
+          <button
+            type="submit"
+            className="cp-btn"
+            style={{ fontSize: 13, padding: "7px 14px", justifySelf: "start" }}
+          >
+            Apply {autoCount} change{autoCount === 1 ? "" : "s"}
+          </button>
+        </form>
+      )}
     </section>
   );
 }

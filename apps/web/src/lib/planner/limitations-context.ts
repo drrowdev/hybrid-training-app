@@ -52,6 +52,15 @@ export type LimitationsContext = {
   blockedRegions: Set<string>;
   /** Union of `affected_muscles` across active rows. */
   blockedMuscles: Set<string>;
+  /**
+   * Union of `affected_movement_ids` across active rows — the specific
+   * movements the user flagged. ADR 0014: previously selected nowhere
+   * (the column was captured but silently dropped); now wired through
+   * so a per-movement flag drops that exact catalog id at both
+   * generation and the mid-block limitation-response path. The
+   * allow-list still wins (a movement in `allowedMovementIds` is kept).
+   */
+  blockedMovementIds: Set<string>;
   /** Union of `allowed_movement_ids` across active rows. */
   allowedMovementIds: Set<string>;
   tendinopathyActive: boolean;
@@ -61,6 +70,7 @@ export type LimitationsContext = {
 export const EMPTY_LIMITATIONS_CONTEXT: LimitationsContext = {
   blockedRegions: new Set(),
   blockedMuscles: new Set(),
+  blockedMovementIds: new Set(),
   allowedMovementIds: new Set(),
   tendinopathyActive: false,
 };
@@ -73,6 +83,7 @@ type LimitationRow = {
   kind: string | null;
   resolved_at: string | null;
   affected_muscles?: string[] | null;
+  affected_movement_ids?: string[] | null;
   allowed_movement_ids?: string[] | null;
 };
 
@@ -81,6 +92,7 @@ export function deriveLimitationsContext(
 ): LimitationsContext {
   const blockedRegions = new Set<string>();
   const blockedMuscles = new Set<string>();
+  const blockedMovementIds = new Set<string>();
   const allowedMovementIds = new Set<string>();
   let tendinopathyActive = false;
   for (const r of rows) {
@@ -88,9 +100,16 @@ export function deriveLimitationsContext(
     if (r.region) blockedRegions.add(r.region);
     if (r.kind && TENDINOPATHY_PATTERN.test(r.kind)) tendinopathyActive = true;
     for (const m of r.affected_muscles ?? []) blockedMuscles.add(m);
+    for (const id of r.affected_movement_ids ?? []) blockedMovementIds.add(id);
     for (const id of r.allowed_movement_ids ?? []) allowedMovementIds.add(id);
   }
-  return { blockedRegions, blockedMuscles, allowedMovementIds, tendinopathyActive };
+  return {
+    blockedRegions,
+    blockedMuscles,
+    blockedMovementIds,
+    allowedMovementIds,
+    tendinopathyActive,
+  };
 }
 
 export async function readLimitationsContext(
@@ -99,7 +118,9 @@ export async function readLimitationsContext(
 ): Promise<LimitationsContext> {
   const { data, error } = await supabase
     .from("limitations")
-    .select("region, kind, resolved_at, affected_muscles, allowed_movement_ids")
+    .select(
+      "region, kind, resolved_at, affected_muscles, affected_movement_ids, allowed_movement_ids",
+    )
     .eq("user_id", userId)
     .is("resolved_at", null);
 

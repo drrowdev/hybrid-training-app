@@ -374,3 +374,32 @@ Logic:
 
 **Constants flagged:** `ROTATION_BASE = 40`, `ACCESSORY_VALUE_BONUS = 8`, and the `ACCESSORY_VALUE_WEIGHTS {compound:2, loadable:1}` / `ACCESSORY_VALUE_MAX = 3` weighting are all `// heuristic CP-1` (CP-2 row #40). Per-block (not per-session) variation is MODERATE-confidence; the magnitudes and the compound+loadable value model are Stage-A heuristics.
 
+### Within-block volume autoregulation (ADR 0013)
+
+**Problem:** the ceiling (§7) *measured* when a user was over budget but the engine never *acted* on it — the over/way-over signal was display-only. A world-class coach trims discretionary work mid-week when fatigue is outrunning the plan.
+
+**Engine:** `apps/web/src/lib/planner/autoreg-volume.ts` adds a reversible read-time scalar `prescription.autoregVolumeScale`. When this week's **strength** ceiling band is `over` (110–130%) or `way-over` (≥130%), the engine offers to stamp the band's scale (`AUTOREG_VOLUME_SCALE_OVER = 0.8`, `AUTOREG_VOLUME_SCALE_WAYOVER = 0.66`) onto the user's remaining **un-started current-week** sessions. `applyAutoregVolumeScale` then trims discretionary items (`accessory`/`tendon`/`power_potentiation`) to `round(d · scale)`, slicing from the END of the discretionary subsequence — mirroring the `strengthVolumeScale` deload shape but confined to discretionary kinds. Mains, back-off, warm-ups, and all cardio are never touched.
+
+**Read seams:** the scalar is applied at the two points that turn a stored prescription into what the user sees / logs — `fillSessionFromPlan` (`lib/sessions/actions.ts`, the verbatim-copy into `set_logs`) and the planner display readers `getPlannedDays` / `getPlannedSessionById` (`lib/planner/queries.ts`) — so the trimmed view always matches what gets logged.
+
+**Offer/accept:** `lib/planner/autoreg-offer.ts:getVolumeAutoregOffer` (read-only) surfaces the banner on the active-block plan page; `autoreg-actions.ts:acceptVolumeAutoreg` re-derives the band + scale server-side (never trusts the client) and writes the field via `applyPrescriptionUpdates` (user-scoped, re-asserts the un-started predicate per row). Accepting is reversible: clearing the field restores the full prescription.
+
+**Parity guard:** absent / `>= 1` ⇒ `applyAutoregVolumeScale` returns the input unchanged, so every legacy prescription is byte-identical. The offer naturally fires once per current week (once accepted, the rows carry the field and stop qualifying).
+
+**Constants flagged:** `0.8 / 0.66` are `// heuristic CP-5` / LOW confidence (CP-2 row #41) — no study quantifies the optimal within-block trim fraction; they're anchored to the deload-scale family but gentler. The *mechanism* (act on the ceiling, don't just display it) is sound.
+
+### Mid-block limitation response (ADR 0014)
+
+**Problem:** blocks are materialized eagerly at creation, so a limitation added/edited *mid-block* couldn't reach the already-frozen future sessions — they kept loading the newly-flagged tissue. Also, `limitations.affected_movement_ids` was captured by the table but `readLimitationsContext`'s SELECT never read it, so per-movement flags were silently ignored even at generation (latent bug).
+
+**Engine:** `apps/web/src/lib/limitations/response.ts:buildLimitationResponse` (pure) scans the active block's un-started sessions and classifies each item against the limitation context (region / muscle / movement membership, reusing the now-exported `loadsBlockedRegion` / `loadsBlockedMuscle` picker predicates plus `blockedMovementIds`). Discretionary offenders (`accessory`/`tendon`/`power_potentiation`) are **swapped** for a limitation-safe same-target movement (`deriveReplacement` — shared non-blocked primary muscles ×3 + bulletproof roles ×2 + functional roles ×1 + compound/loadable bonuses, ties on id; never re-introduces a blocked region/muscle/id or a movement already in the session) or **dropped** when no safe like-for-like exists. Main-lift / back-off / warm-up offenders are **warn-only** — load/ROM/grip on a primary lift is a clinician call, never auto-rewritten.
+
+**Bug fix + new field:** `lib/planner/limitations-context.ts` now reads `affected_movement_ids` and exposes it as `blockedMovementIds` (unconditional — the allow-list does NOT bypass it; if the user flagged that exact movement, it's dropped). Plumbed into the accessory picker (`findCandidate` / `findPowerCandidate`) and power-emphasis primer so it applies at generation too.
+
+**Offer/accept:** `lib/limitations/offer.ts:getLimitationResponseOffer` (read-only) surfaces the banner on the active-block plan page; `lib/limitations/actions.ts:applyLimitationResponse` re-derives the plan server-side and persists swaps/drops via `applyPrescriptionUpdates`. Swaps preserve sets × reps and all effort cues — only the movement identity changes.
+
+**Shared catalog:** `lib/planner/picker-catalog.ts` (`loadPickerCatalog` + `toCatalogMovement` + `CATALOG_SELECT`) is the single catalog loader, de-duplicating the copy that previously lived inside `createBlock`.
+
+**Parity guard:** no active limitations ⇒ `buildLimitationResponse` returns an empty plan; the offer/accept paths short-circuit. Framing is **load management, not medical care** — the UI carries a clinician pointer and uses no program names. No new numeric constants (CP-2 row #42 documents the rule-based remediation + scoring weights).
+
+

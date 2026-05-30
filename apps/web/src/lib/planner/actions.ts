@@ -83,7 +83,7 @@ import {
   accessoryItemPrescription,
   inferAccessoryBucket,
 } from "./accessory-intensity";
-import type { BulletproofRole, FunctionalRole } from "./accessory-roles";
+import { loadPickerCatalog } from "./picker-catalog";
 import {
   applyPowerClampToMainItems,
   archetypeSupportsPowerTransforms,
@@ -125,48 +125,6 @@ import type { BwProgress } from "@hta/db";
 import { focusMusclesSchema, type FocusMuscle } from "./focus-muscles";
 import { getElbowForearmAtlRatio } from "@/lib/stats/region-spike-queries";
 import { getPreviousBlockAccessoryIdsByRole } from "./accessory-history-queries";
-
-type DbMovement = {
-  id: string;
-  slug: string;
-  display_name: string;
-  primary_region: string;
-  secondary_regions: string[] | null;
-  primary_muscles: string[] | null;
-  secondary_muscles: string[] | null;
-  is_compound: boolean;
-  body_weight_loaded: boolean;
-  bulletproof_roles: string[] | null;
-  functional_roles: string[] | null;
-  is_supported: boolean;
-  eccentric_load_score: number | null;
-  stim_to_fatigue_score: number | null;
-  high_strain_tendon: boolean;
-  experience_min: number | null;
-  experience_max: number | null;
-};
-
-function toCatalogMovement(m: DbMovement): CatalogMovement {
-  return {
-    id: m.id,
-    slug: m.slug,
-    displayName: m.display_name,
-    primaryMuscles: m.primary_muscles ?? [],
-    secondaryMuscles: m.secondary_muscles ?? [],
-    primaryRegion: m.primary_region,
-    secondaryRegions: m.secondary_regions ?? [],
-    bulletproofRoles: (m.bulletproof_roles ?? []) as BulletproofRole[],
-    functionalRoles: (m.functional_roles ?? []) as FunctionalRole[],
-    isSupported: m.is_supported,
-    isCompound: m.is_compound,
-    isLoadable: m.body_weight_loaded,
-    eccentricLoadScore: m.eccentric_load_score,
-    stimToFatigueScore: m.stim_to_fatigue_score,
-    highStrainTendon: m.high_strain_tendon,
-    experienceMin: m.experience_min ?? 0,
-    experienceMax: m.experience_max ?? 4,
-  };
-}
 
 /**
  * Movement-row shape used by the main-lift resolver. Only the columns
@@ -585,6 +543,7 @@ function assemblePrescriptionItems(
   limitationsContext: LimitationsContext = {
     blockedRegions: new Set(),
     blockedMuscles: new Set(),
+    blockedMovementIds: new Set(),
     allowedMovementIds: new Set(),
     tendinopathyActive: false,
   },
@@ -652,6 +611,7 @@ function assemblePrescriptionItems(
       filters: {
         blockedRegions: limitationsContext.blockedRegions,
         blockedMuscles: limitationsContext.blockedMuscles,
+        blockedMovementIds: limitationsContext.blockedMovementIds,
         allowedMovementIds: limitationsContext.allowedMovementIds,
         concurrentStressActive: false, // wired in a follow-up pass
         recentlyUsedMovementIds: recentlyUsedAccessoryIds,
@@ -738,6 +698,7 @@ function assemblePrescriptionItems(
         catalog,
         blockedRegions: limitationsContext.blockedRegions,
         blockedMuscles: limitationsContext.blockedMuscles,
+        blockedMovementIds: limitationsContext.blockedMovementIds,
         allowedMovementIds: limitationsContext.allowedMovementIds,
         tendinopathyActive: limitationsContext.tendinopathyActive,
         recentlyUsedMovementIds: recentlyUsedAccessoryIds,
@@ -953,14 +914,10 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   // the archetype has an accessoryProfile so legacy archetypes pay nothing.
   let pickerCatalog: CatalogMovement[] = [];
   if (archetype.accessoryProfile) {
-    const { data: full, error: catErr } = await supabase
-      .from("movements")
-      .select(
-        "id, slug, display_name, primary_region, secondary_regions, primary_muscles, secondary_muscles, is_compound, body_weight_loaded, bulletproof_roles, functional_roles, is_supported, eccentric_load_score, stim_to_fatigue_score, high_strain_tendon, experience_min, experience_max",
-      )
-      .is("user_id", null);
-    if (catErr) return { ok: false, error: `Catalog load failed: ${catErr.message}` };
-    pickerCatalog = (full as DbMovement[]).map(toCatalogMovement);
+    pickerCatalog = await loadPickerCatalog(supabase);
+    if (pickerCatalog.length === 0) {
+      return { ok: false, error: "Catalog load failed" };
+    }
   }
 
   const missingFixed = fixedSlugs.filter((s) => !movementBySlug.has(s));
