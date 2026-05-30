@@ -100,6 +100,11 @@ export function PlanNewSwitch({
     if (submit.cardioSourceName) {
       fd.set("cardioSourceName", submit.cardioSourceName);
     }
+    // Migration 0079 — repeated `focusMuscles` entries; createBlock
+    // reads via formData.getAll(). Empty list = no focus.
+    for (const m of submit.focusMuscles) {
+      fd.append("focusMuscles", m);
+    }
     const result = await action(fd);
     if (result.ok) {
       router.push("/app/plan");

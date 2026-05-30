@@ -30,6 +30,12 @@ export type WizardState = {
   externalCardio: boolean;
   /** Optional free-text program name shown on the session card. */
   externalCardioName: string;
+  /**
+   * Migration 0079 — per-block focus muscle groups (0–2). Ordered;
+   * third selection clears the oldest entry (the reducer enforces the
+   * cap). Empty array = no focus, engine produces pre-PR baseline.
+   */
+  focusMuscles: string[];
   /** Set when the user reached step 4 via "See lighter options" on step 1. */
   cameFromMaintenanceLink: boolean;
   /** Step-5 schedule; populated lazily when step 5 first renders. */
@@ -55,6 +61,7 @@ export const initialWizardState: WizardState = {
   twoADay: false,
   externalCardio: false,
   externalCardioName: "",
+  focusMuscles: [],
   cameFromMaintenanceLink: false,
   schedule: [],
   scheduleSig: null,
@@ -72,6 +79,7 @@ export type WizardAction =
   | { type: "toggle-two-a-day" }
   | { type: "toggle-external-cardio" }
   | { type: "set-external-cardio-name"; name: string }
+  | { type: "toggle-focus-muscle"; muscle: string }
   | { type: "maintenance-link" }
   | { type: "goto"; step: StepIndex }
   | { type: "next" }
@@ -100,6 +108,22 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
       return { ...state, externalCardio: !state.externalCardio };
     case "set-external-cardio-name":
       return { ...state, externalCardioName: action.name };
+    case "toggle-focus-muscle": {
+      // Migration 0079 — multi-select with size cap. Tapping a selected
+      // chip toggles it off; tapping an unselected chip adds it. When
+      // adding would exceed the FOCUS_MUSCLE_MAX of 2, drop the oldest
+      // selection (front of the list) so the newest choice always lands.
+      const idx = state.focusMuscles.indexOf(action.muscle);
+      if (idx >= 0) {
+        const next = state.focusMuscles.slice();
+        next.splice(idx, 1);
+        return { ...state, focusMuscles: next };
+      }
+      const next = state.focusMuscles.length >= 2
+        ? [state.focusMuscles[1]!, action.muscle]
+        : [...state.focusMuscles, action.muscle];
+      return { ...state, focusMuscles: next };
+    }
     case "maintenance-link":
       // "See lighter options" — synthesize a maintenance block, clear goal.
       return {

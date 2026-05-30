@@ -87,6 +87,12 @@ export type WizardSubmit = {
   cardioSource: "internal" | "external";
   /** Free-text label for the external program, e.g. "Runna". Empty when not provided. */
   cardioSourceName: string;
+  /**
+   * Migration 0079 — per-block focus muscle groups (0–2). Submitted as
+   * repeated `focusMuscles` form fields by `PlanNewSwitch`. Empty array
+   * = no focus, engine produces pre-PR baseline.
+   */
+  focusMuscles: string[];
 };
 
 export type TmGate = {
@@ -321,6 +327,7 @@ export function BlockWizard({
         power: state.power,
         cardioSource: state.externalCardio ? "external" : "internal",
         cardioSourceName: state.externalCardio ? state.externalCardioName.trim() : "",
+        focusMuscles: state.focusMuscles.slice(),
       });
       if (!result.ok) setSubmitError(result.error);
     });

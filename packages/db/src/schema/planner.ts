@@ -57,6 +57,23 @@ export const trainingBlocks = pgTable("training_blocks", {
    */
   powerEmphasis: boolean("power_emphasis").default(false),
   /**
+   * Per-block "focus muscle groups" (migration 0079). User picks up to
+   * 2 muscle groups; the engine biases accessory selection toward those
+   * muscles using the substitution-with-cap model — non-focus aesthetic
+   * accessories scale down so total session set count stays constant
+   * (no additive load; concurrent stress + stress budget preserved).
+   *
+   * Empty array = no focus → engine produces the pre-PR baseline.
+   * DB CHECK constraints enforce `length <= 2` and membership in the
+   * 12-group allowlist (see migration 0079 + `lib/planner/focus-muscles.ts`).
+   * Block-scoped, not user-scoped — different blocks can have different
+   * focus.
+   */
+  focusMuscles: text("focus_muscles")
+    .array()
+    .notNull()
+    .default(sql`'{}'::text[]`),
+  /**
    * Set when status transitions out of 'active' (manual end → 'archived'
    * or auto-complete → 'completed'). Single source of truth for
    * "when did this block end"; survives later `updated_at` touches

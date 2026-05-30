@@ -17,6 +17,8 @@ import {
   subStyle,
   titleStyle,
 } from "./shared";
+import { FocusMuscleChips } from "@/components/planner/FocusMuscleChips";
+import { FOCUS_MUSCLE_MAX } from "@/lib/planner/focus-muscles";
 
 export function Step2Focus({
   state,
@@ -104,6 +106,23 @@ export function Step2Focus({
           </button>
         </div>
       )}
+
+      <div className="wiz-focus-muscles" style={focusMuscleSectionStyle}>
+        <div style={{ fontSize: 14, fontWeight: 600 }}>
+          Focus muscle groups{" "}
+          <span style={{ fontWeight: 400, color: "var(--cp-text-muted)", fontSize: 12 }}>
+            (optional)
+          </span>
+        </div>
+        <p style={focusMuscleDescStyle}>
+          Pick up to {FOCUS_MUSCLE_MAX}. The engine will bias your accessory work toward
+          these groups while keeping total session volume the same.
+        </p>
+        <FocusMuscleChips
+          selected={state.focusMuscles}
+          onToggle={(muscle) => dispatch({ type: "toggle-focus-muscle", muscle })}
+        />
+      </div>
     </section>
   );
 }
@@ -147,6 +166,24 @@ const powerToggleRowStyle: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "space-between",
   gap: 12,
+};
+
+const focusMuscleSectionStyle: React.CSSProperties = {
+  background: "var(--cp-surface)",
+  border: "1px solid var(--cp-border)",
+  borderRadius: 12,
+  padding: "14px 18px",
+  marginTop: 14,
+  maxWidth: 720,
+  display: "grid",
+  gap: 8,
+};
+
+const focusMuscleDescStyle: React.CSSProperties = {
+  margin: 0,
+  fontSize: 12,
+  color: "var(--cp-text-muted)",
+  lineHeight: 1.45,
 };
 
 function switchStyle(on: boolean): React.CSSProperties {

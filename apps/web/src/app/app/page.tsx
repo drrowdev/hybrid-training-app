@@ -17,7 +17,7 @@ import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
 import { todayYmd } from "@/lib/dates";
 import { effectiveTimeOfDay, gapHoursBetween } from "@/lib/planner/time-of-day";
 import { getRegionFreshness, type FreshnessConflict } from "@/lib/stats/region-freshness-queries";
-import { getRegionSpikes } from "@/lib/stats/region-spike-queries";
+import { getRegionSpikes, getElbowForearmAtlRatio } from "@/lib/stats/region-spike-queries";
 import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
 import { findHeavyOnRecoveringConflictWithMuscles } from "@/lib/muscle/muscle-conflict";
 import { StravaStaleSyncTrigger } from "@/components/StravaStaleSyncTrigger";
@@ -62,6 +62,12 @@ import {
   formatEyebrowDate,
   type ProfileForFormat,
 } from "@/lib/format/datetime";
+import {
+  FOCUS_MUSCLE_LABEL,
+  isFocusMuscle,
+  type FocusMuscle,
+} from "@/lib/planner/focus-muscles";
+import { FOREARM_GATE_ATL_THRESHOLD } from "@/lib/planner/focus-muscle-targets";
 
 /**
  * Per-day cell used by the inline week strip. Mirrors the legacy
@@ -648,6 +654,18 @@ export default async function TodayPage() {
     return `${archetypeName.toUpperCase()} · W${week} · ${eyebrowText}`;
   })();
 
+  // Migration 0079 — forearm tendon-gate live indicator. Only fetch
+  // the ratio when forearms is a focus muscle on the active block; the
+  // helper itself fails open to 1.0 (no spike) when history is missing.
+  const forearmGateActiveThisWeek =
+    activeBlock && activeBlock.focusMuscles.includes("forearms")
+      ? (await getElbowForearmAtlRatio(
+          supabase,
+          userId,
+          profile?.timezone ?? "UTC",
+        )) > FOREARM_GATE_ATL_THRESHOLD
+      : false;
+
   return (
     <div
       style={{ display: "grid", gap: 18, minWidth: 0 }}
@@ -674,6 +692,12 @@ export default async function TodayPage() {
                   WEEK {(computedWeekIndex ?? 0) + 1}
                   <span style={{ margin: "0 8px", opacity: 0.5 }}>·</span>
                   {eyebrowText}
+                  {activeBlock.focusMuscles.length > 0 && (
+                    <FocusBadge
+                      muscles={activeBlock.focusMuscles}
+                      gateActive={forearmGateActiveThisWeek}
+                    />
+                  )}
                 </span>
                 <span className="cp-mobile-only" data-testid="today-eyebrow-mobile">
                   <span style={{ color: "var(--cp-accent)" }}>
@@ -683,6 +707,12 @@ export default async function TodayPage() {
                   W{(computedWeekIndex ?? 0) + 1}
                   <span style={{ margin: "0 6px", opacity: 0.5 }}>·</span>
                   {eyebrowText}
+                  {activeBlock.focusMuscles.length > 0 && (
+                    <FocusBadge
+                      muscles={activeBlock.focusMuscles}
+                      gateActive={forearmGateActiveThisWeek}
+                    />
+                  )}
                 </span>
               </>
             ) : (
@@ -774,6 +804,61 @@ export default async function TodayPage() {
 
         <ActivitySection sessions={recent ?? []} todayIso={todayIso} />
     </div>
+  );
+}
+
+/**
+ * Migration 0079 — Today hero focus-muscle badge. Pill-shape, rendered
+ * after the eyebrow date when the active block has user-chosen focus
+ * muscles. Appends "(reduced this week)" + a tooltip when the forearm
+ * tendon-gate is active for the current week.
+ */
+function FocusBadge({
+  muscles,
+  gateActive,
+}: {
+  muscles: readonly string[];
+  gateActive: boolean;
+}) {
+  const valid = muscles.filter(isFocusMuscle) as FocusMuscle[];
+  if (valid.length === 0) return null;
+  const label = valid.map((m) => FOCUS_MUSCLE_LABEL[m]).join(", ");
+  const showGate = gateActive && valid.includes("forearms");
+  return (
+    <>
+      <span style={{ margin: "0 8px", opacity: 0.5 }}>·</span>
+      <span
+        data-testid="today-focus-badge"
+        data-gate-active={showGate ? "true" : "false"}
+        title={
+          showGate
+            ? "Focus reduced this week due to elevated elbow/forearm load — let it settle."
+            : undefined
+        }
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          fontSize: 10,
+          fontWeight: 600,
+          letterSpacing: "0.04em",
+          padding: "2px 8px",
+          borderRadius: 999,
+          background: "var(--cp-accent-soft)",
+          color: "var(--cp-accent)",
+          border: "1px solid color-mix(in oklab, var(--cp-accent) 35%, transparent)",
+          textTransform: "none",
+        }}
+      >
+        <span aria-hidden="true">🎯</span>
+        <span>Focus: {label}</span>
+        {showGate && (
+          <span style={{ marginLeft: 4, color: "var(--cp-text-muted)", fontWeight: 500 }}>
+            (reduced this week)
+          </span>
+        )}
+      </span>
+    </>
   );
 }
 
