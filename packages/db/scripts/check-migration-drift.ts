@@ -35,7 +35,7 @@
  *     comes from the local pre-push check anyway.
  */
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -69,6 +69,16 @@ export interface CheckResult {
   missing: ExpectedMigration[];
   unknownDbHashes: string[];
   missingSqlFiles: { tag: string; sqlPath: string }[];
+  /**
+   * .sql files present on disk that have NO entry in _journal.json. This
+   * is the silent-drift failure mode that bit prod: a hand-authored
+   * migration added to drizzle/ but never registered in the journal is
+   * invisible to `drizzle-kit migrate` (never applied) AND to the
+   * journal-driven hash check below (never inspected). Listing the
+   * drizzle/ directory and asserting journal↔file bijection closes that
+   * blind spot at PR time, in offline mode, with no DB required.
+   */
+  orphanSqlFiles: string[];
   messages: string[];
 }
 
@@ -81,6 +91,14 @@ export interface CheckIO {
    */
   readSqlFile(sqlPath: string): Buffer | string | null;
   resolveSqlPath(tag: string): string;
+  /**
+   * Lists every migration tag (filename without .sql) present in the
+   * drizzle/ directory. Optional so existing callers/tests that only
+   * exercise the journal-driven checks keep working; when provided, the
+   * guard additionally asserts every on-disk .sql file has a journal
+   * entry (catches orphan files).
+   */
+  listSqlTags?: () => string[];
   loadDbHashes?: () => Promise<DbMigrationRow[]>;
   logger?: (line: string) => void;
 }
@@ -159,8 +177,51 @@ export async function runDriftCheck(io: CheckIO): Promise<CheckResult> {
       missing: [],
       unknownDbHashes: [],
       missingSqlFiles,
+      orphanSqlFiles: [],
       messages,
     };
+  }
+
+  // Reverse direction: every .sql file on disk must have a journal entry.
+  // An orphan file (on disk, not in the journal) is the exact silent-drift
+  // bug that hit prod — drizzle-kit never applies it and the journal-driven
+  // hash check below never inspects it. This runs offline (no DB needed),
+  // so it fails CI the moment such a file is committed.
+  const orphanSqlFiles: string[] = [];
+  if (io.listSqlTags) {
+    const journalTags = new Set(journal.entries.map((e) => e.tag));
+    for (const tag of io.listSqlTags()) {
+      if (!journalTags.has(tag)) {
+        orphanSqlFiles.push(tag);
+        const line = `✗ ${tag}.sql on disk but MISSING from _journal.json`;
+        messages.push(line);
+        log(line);
+      }
+    }
+    if (orphanSqlFiles.length > 0) {
+      const summary = `\nFAIL: ${orphanSqlFiles.length} .sql file${
+        orphanSqlFiles.length === 1 ? "" : "s"
+      } on disk ${
+        orphanSqlFiles.length === 1 ? "has" : "have"
+      } no _journal.json entry. Add the entr${
+        orphanSqlFiles.length === 1 ? "y" : "ies"
+      } so drizzle-kit applies and tracks ${
+        orphanSqlFiles.length === 1 ? "it" : "them"
+      }:\n  - ${orphanSqlFiles.join("\n  - ")}`;
+      messages.push(summary);
+      log(summary);
+      return {
+        ok: false,
+        exitCode: 1,
+        mode: io.loadDbHashes ? "full" : "offline",
+        expected,
+        missing: [],
+        unknownDbHashes: [],
+        missingSqlFiles: [],
+        orphanSqlFiles,
+        messages,
+      };
+    }
   }
 
   // 2. Offline mode (no DB): file-shape check only.
@@ -176,6 +237,7 @@ export async function runDriftCheck(io: CheckIO): Promise<CheckResult> {
       missing: [],
       unknownDbHashes: [],
       missingSqlFiles: [],
+      orphanSqlFiles: [],
       messages,
     };
   }
@@ -239,6 +301,7 @@ export async function runDriftCheck(io: CheckIO): Promise<CheckResult> {
       missing,
       unknownDbHashes,
       missingSqlFiles: [],
+      orphanSqlFiles: [],
       messages,
     };
   }
@@ -258,6 +321,7 @@ export async function runDriftCheck(io: CheckIO): Promise<CheckResult> {
     missing: [],
     unknownDbHashes,
     missingSqlFiles: [],
+    orphanSqlFiles: [],
     messages,
   };
 }
@@ -273,6 +337,10 @@ async function main(): Promise<void> {
     readSqlFile: (sqlPath) =>
       existsSync(sqlPath) ? readFileSync(sqlPath) : null,
     resolveSqlPath: (tag) => join(drizzleDir, `${tag}.sql`),
+    listSqlTags: () =>
+      readdirSync(drizzleDir)
+        .filter((f) => /^\d{4}_.+\.sql$/.test(f))
+        .map((f) => f.replace(/\.sql$/, "")),
   };
 
   const dbUrl = process.env.DATABASE_URL;

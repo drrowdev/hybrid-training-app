@@ -18,8 +18,9 @@ function makeIo(opts: {
   journal: JournalFile;
   sqlFiles: Record<string, string | null>;
   dbHashes?: string[];
+  sqlTags?: string[];
 }): CheckIO {
-  const { journal, sqlFiles, dbHashes } = opts;
+  const { journal, sqlFiles, dbHashes, sqlTags } = opts;
   const io: CheckIO = {
     readJournal: () => journal,
     resolveSqlPath: (tag) => `/fake/drizzle/${tag}.sql`,
@@ -30,6 +31,9 @@ function makeIo(opts: {
     },
     logger: () => {},
   };
+  if (sqlTags !== undefined) {
+    io.listSqlTags = () => sqlTags;
+  }
   if (dbHashes !== undefined) {
     io.loadDbHashes = async () =>
       dbHashes.map((hash) => ({ hash, created_at: 0 }));
@@ -155,6 +159,70 @@ describe("runDriftCheck — full mode", () => {
           m.includes("0002_orphan") && m.includes("MISSING .sql file"),
       ),
     ).toBe(true);
+  });
+});
+
+describe("runDriftCheck — orphan .sql file guard (journal↔file bijection)", () => {
+  it("exits 1 when a .sql file on disk has no journal entry", async () => {
+    // This is the exact silent-drift bug: a migration file added to
+    // drizzle/ but never registered in _journal.json.
+    const io = makeIo({
+      journal: { entries: [{ idx: 0, tag: "0001_alpha" }] },
+      sqlFiles: { "0001_alpha": "-- 0001\n", "0002_orphan": "-- 0002\n" },
+      sqlTags: ["0001_alpha", "0002_orphan"],
+      dbHashes: [hashSqlContents("-- 0001\n")],
+    });
+    const result = await runDriftCheck(io);
+    expect(result.ok).toBe(false);
+    expect(result.exitCode).toBe(1);
+    expect(result.orphanSqlFiles).toEqual(["0002_orphan"]);
+    expect(
+      result.messages.some(
+        (m) => m.includes("0002_orphan") && m.includes("MISSING from _journal.json"),
+      ),
+    ).toBe(true);
+  });
+
+  it("fails offline too — no DB needed to catch an orphan file", async () => {
+    const io = makeIo({
+      journal: { entries: [{ idx: 0, tag: "0001_alpha" }] },
+      sqlFiles: { "0001_alpha": "-- 0001\n", "0099_ghost": "-- 0099\n" },
+      sqlTags: ["0001_alpha", "0099_ghost"],
+      // no dbHashes → offline mode
+    });
+    const result = await runDriftCheck(io);
+    expect(result.ok).toBe(false);
+    expect(result.exitCode).toBe(1);
+    expect(result.mode).toBe("offline");
+    expect(result.orphanSqlFiles).toEqual(["0099_ghost"]);
+  });
+
+  it("passes when every .sql file has a journal entry (bijection holds)", async () => {
+    const io = makeIo({
+      journal: {
+        entries: [
+          { idx: 0, tag: "0001_alpha" },
+          { idx: 1, tag: "0002_beta" },
+        ],
+      },
+      sqlFiles: { "0001_alpha": "-- 0001\n", "0002_beta": "-- 0002\n" },
+      sqlTags: ["0001_alpha", "0002_beta"],
+    });
+    const result = await runDriftCheck(io);
+    expect(result.ok).toBe(true);
+    expect(result.exitCode).toBe(0);
+    expect(result.orphanSqlFiles).toHaveLength(0);
+  });
+
+  it("skips the orphan check when listSqlTags is not provided (back-compat)", async () => {
+    const io = makeIo({
+      journal: { entries: [{ idx: 0, tag: "0001_alpha" }] },
+      sqlFiles: { "0001_alpha": "-- 0001\n" },
+      // no sqlTags → io.listSqlTags undefined → orphan check skipped
+    });
+    const result = await runDriftCheck(io);
+    expect(result.ok).toBe(true);
+    expect(result.orphanSqlFiles).toHaveLength(0);
   });
 });
 
