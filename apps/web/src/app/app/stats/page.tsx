@@ -39,7 +39,9 @@ import { getFreshnessMini } from "@/lib/stats/freshness-mini";
 import { getVolumeForRange } from "@/lib/stats/volume";
 import { getBodyweightTrend } from "@/lib/stats/bodyweight-trend";
 import { getTrainingHeatmap } from "@/lib/stats/training-heatmap-data";
+import { getReadiness } from "@/lib/stats/readiness";
 import { TrainingHeatmap } from "@/components/stats/TrainingHeatmap";
+import { ReadinessCard } from "@/components/stats/ReadinessCard";
 import { type WeightUnit } from "@/lib/stats/units";
 import { type ProfileForFormat } from "@/lib/format/datetime";
 import { parseRange, rangeWindowDays } from "@/lib/stats/range";
@@ -87,6 +89,7 @@ export default async function StatsOverviewPage({
     freshness,
     bodyweight,
     heatmapCells,
+    readiness,
     adherence30d,
     adherence90d,
     adherenceAll,
@@ -101,6 +104,7 @@ export default async function StatsOverviewPage({
     getFreshnessMini(supabase, user.id),
     getBodyweightTrend(supabase, user.id, tz),
     getTrainingHeatmap(supabase, user.id, tz, 20),
+    getReadiness(supabase, user.id, tz),
     getAdherenceForWindow(supabase, user.id, tz, rangeWindowDays("30d")),
     getAdherenceForWindow(supabase, user.id, tz, rangeWindowDays("90d")),
     getAdherenceForWindow(supabase, user.id, tz, rangeWindowDays("all")),
@@ -129,6 +133,12 @@ export default async function StatsOverviewPage({
 
       {/* A — Current block strip */}
       <CurrentBlockStrip progress={block} />
+
+      {/* Readiness composite (ADR 0019) — load balance + corroborating
+          signals. Sits high in the page because it's the at-a-glance
+          "are you absorbing the work?" signal that frames the rest of
+          the cards. */}
+      <ReadinessCard readiness={readiness} />
 
       {/* Training calendar heatmap — last 20 weeks at a glance. */}
       <TrainingHeatmap cells={heatmapCells} weeks={20} />

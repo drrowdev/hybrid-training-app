@@ -30,6 +30,30 @@ Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 
 ### Added (post-#215 wave)
 
+- **Readiness composite stats card (ADR 0019).** A new body-wide
+  "are you absorbing the work?" surface at the top of `/app/stats`
+  (between the current block strip and the training heatmap). It
+  combines three honest signals that were already collected as a side
+  effect of normal logging — EWMA-ACWR over `region_state` (body-wide
+  ΣATL / ΣCTL with `detraining / productive / pushing / spiking`
+  bands), sRPE drift (`rising / stable / easing / no-data` from the
+  existing 4-week-vs-4-week query), and PR cadence (recent 28d vs prior
+  28d unique-movement count) — into a single verdict
+  (`building / detraining / productive / pushing-tolerated / watch /
+  overreaching`) with a confidence chip (`agree` when all three signals
+  point the same way as the band, `mixed` otherwise, `building` below
+  4 distinct ISO weeks of data). Banded acute:chronic gauge with
+  triangle marker, expandable drill-down with scalar Fitness / Fatigue
+  / Form, four signal cards, formula, and inline citations. **Hard
+  constraint:** does NOT feed `buildPrescription` or
+  `getCeilingExplain` — read-only stats overlay; CP-4 stays two-factor.
+  Bands (0.8 / 1.3 / 1.5 — Williams 2017 / Gabbett 2016 lineage with
+  Lolli 2019 / Impellizzeri 2020 critique) are tagged HEURISTIC / CP-1
+  with per-user calibration deferred to v2. 30 new pure unit tests
+  pin the band boundaries, cold-start gate, and verdict matrix.
+  Doesn't measure autonomic recovery (no HRV, no sleep) — the card
+  states this caveat verbatim. CP-2 row #45.
+
 - **Hardened, versioned data export (`export-v1`).** The "Export my data
   (JSON)" download (Settings → Account) now covers **every** user-authored
   table — training maxes + their history, training blocks, planned sessions,
