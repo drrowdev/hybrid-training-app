@@ -1409,7 +1409,7 @@ export function ReadinessDrawer({
             data-testid="stats-recovery-engine-link"
             style={{ marginLeft: "auto", fontSize: 12, color: "var(--cp-accent)", textDecoration: "none", fontWeight: 500 }}
           >
-            Engine internals →
+            How the planner sees you →
           </Link>
         </div>
       </div>
@@ -1631,7 +1631,7 @@ export function ConsistencyDrawer({
             data-testid="stats-consistency-adherence-link"
             style={{ fontSize: 12.5, color: "var(--cp-accent)", textDecoration: "none", fontWeight: 500, whiteSpace: "nowrap" }}
           >
-            Adherence dashboard →
+            Consistency details →
           </Link>
         </div>
       </div>
