@@ -70,7 +70,7 @@ import { swapPlannedSessions } from "./swap";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
 import {
   type CatalogMovement,
-  type WeekContextItem,
+  type WeekAccessoryHistoryItem,
 } from "./accessory-picker";
 import {
   type LimitationsContext,
@@ -879,7 +879,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   for (let week = 0; week < archetype.weeks; week++) {
     const weekProfile = archetype.weekProfiles.find((w) => w.weekIndex === week);
     const weekDeloadScale = weekProfile?.strengthVolumeScale ?? 1.0;
-    const weekContext: WeekContextItem[] = [];
+    const weekAccessoryHistory: WeekAccessoryHistoryItem[] = [];
     for (const day of activeDays) {
       let movement: { id: string; slug: string; displayName: string };
       let finisherMovement: { id: string; slug: string; displayName: string } | undefined;
@@ -929,7 +929,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
               finisherMovement,
               movementBySlug,
               pickerCatalog,
-              weekContext,
+              weekAccessoryHistory,
               weekDeloadScale,
               parsed.data.powerEmphasis,
               warmupScheme,
