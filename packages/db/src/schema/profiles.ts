@@ -263,6 +263,17 @@ export const profiles = pgTable("profiles", {
    */
   effortPreference: text("effort_preference").default("standard").notNull(),
   /**
+   * ADR 0017 — ranked cardio-modality preference. An ORDERED allow-list
+   * (index 0 = first choice) of catalog modalities the planner substitutes
+   * the default running cardio toward at block-creation time, holding the
+   * prescribed intensity (cardioKind) constant. NULL/empty reproduces the
+   * pre-ADR-0017 prescription byte-identical (everyone keeps running).
+   * Equipment is a filter on top; running is the terminal fallback. CHECK-
+   * constrained to the catalog modality vocabulary. See migration 0081 and
+   * `apps/web/src/lib/planner/preferred-cardio-modality.ts`.
+   */
+  preferredCardioModalities: text("preferred_cardio_modalities").array(),
+  /**
    * Which BYOAI provider the stored key targets. CHECK-constrained
    * at the DB level to {'anthropic','openai','gemini'} or null. See
    * migration 0069.

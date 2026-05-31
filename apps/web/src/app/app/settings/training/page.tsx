@@ -9,7 +9,9 @@ import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { WarmupSettings } from "@/components/settings/WarmupSettings";
 import { CardioSourceSettings } from "@/components/settings/CardioSourceSettings";
+import { CardioModalitySettings } from "@/components/settings/CardioModalitySettings";
 import { resolveWarmupScheme } from "@/lib/planner/warmups";
+import { sanitizePreferredModalities } from "@/lib/planner/preferred-cardio-modality";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +24,7 @@ export default async function TrainingSettingsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("warmup_scheme, preferred_cardio_source, preferred_cardio_source_name")
+    .select("warmup_scheme, preferred_cardio_source, preferred_cardio_source_name, preferred_cardio_modalities")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -31,6 +33,9 @@ export default async function TrainingSettingsPage() {
     (profile?.preferred_cardio_source as "internal" | "external" | undefined) ??
     "internal";
   const cardioSourceName = profile?.preferred_cardio_source_name ?? "";
+  const cardioModalities = sanitizePreferredModalities(
+    profile?.preferred_cardio_modalities as readonly unknown[] | null,
+  );
 
   return (
     <main
@@ -58,6 +63,11 @@ export default async function TrainingSettingsPage() {
         <CardioSourceSettings
           initial={{ source: cardioSource, name: cardioSourceName }}
         />
+      </section>
+
+      <section style={{ display: "grid", gap: 12 }}>
+        <h2 style={{ fontSize: 18, margin: 0 }}>Cardio types</h2>
+        <CardioModalitySettings initial={cardioModalities} />
       </section>
     </main>
   );

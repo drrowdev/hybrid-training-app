@@ -10,6 +10,20 @@ Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 
 ### Added (post-#215 wave)
 
+- **Ranked cardio-modality preference (ADR 0017).** A new setting
+  (Settings → Training → "Cardio types", also offered in onboarding)
+  lets you pick which cardio forms the planner programs by default — in
+  priority order — instead of always defaulting to running. The planner
+  substitutes the prescribed running movement for your top feasible
+  modality at the **same intensity** (gated by owned cardio equipment +
+  experience tier); if no preferred modality has a movement of the
+  needed intensity it falls back down your list and finally to running
+  (the only modality with a full intensity ladder). Selection-only and
+  **load-neutral** — a cardio session's training stress comes from its
+  kind + duration + HR cap, so swapping the movement changes no engine
+  math. Leaving the preference empty reproduces today's behaviour
+  byte-for-byte. Stored in `profiles.preferred_cardio_modalities`
+  (migration 0081).
 - **Hypertrophy early-set effort bump (ADR 0015).** The earlier
   (non-final) compound sets of the hypertrophy archetype — previously
   ~RIR 6–10 junk volume — now get a bounded rep bump (`+2`, capped at

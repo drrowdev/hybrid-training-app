@@ -2,7 +2,7 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
-**Last updated:** 2026-05-31 (post engine-methodology + conservativeness-hardening cycle — ADRs 0007–0016)
+**Last updated:** 2026-05-31 (post engine-methodology + conservativeness-hardening cycle + cardio-modality preference — ADRs 0007–0017)
 
 ## Where we are
 
@@ -32,7 +32,7 @@ external clients, and a rebalanced engine across all five archetypes.
   `drrowdevs-projects`. Auto-deploys on push to `main`. Deployment
   Protection disabled.
 - Supabase: project URL + keys in `apps/web/.env.local` (gitignored).
-  Region `eu-west-1`. Schema currently at migration 0080 (81 files in
+  Region `eu-west-1`. Schema currently at migration 0081 (82 files in
   `packages/db/drizzle/`).
 - Strava: app registered; one push-subscription per environment.
   Subscription ID is stored in `STRAVA_WEBHOOK_SUBSCRIPTION_ID` (env
@@ -108,7 +108,7 @@ chronological narrative.
 
 ## Since 2026-05-30 — engine methodology + conservativeness hardening
 
-A methodology review of the prescription engine produced ADRs 0007–0016
+A methodology review of the prescription engine produced ADRs 0007–0017
 (see `docs/adr/` and the `[Unreleased]` CHANGELOG). Two threads:
 
 - **Methodology ADRs 0007–0014.** Autoregulated AMRAP top set on
@@ -135,6 +135,15 @@ A methodology review of the prescription engine produced ADRs 0007–0016
   Searchable limitation movement list (the "+N more" dead-end fixed);
   Quick-Strength logging is now a single tap into a mobile-native picker;
   iOS-Safari sub-16px focus auto-zoom suppressed.
+- **ADR 0017 — ranked cardio-modality preference.** Users pick which
+  cardio forms get programmed, in priority order
+  (`profiles.preferred_cardio_modalities text[]`, migration 0081), set in
+  onboarding (Equipment step) + `/app/settings/training`. The planner
+  substitutes the default running cardio for the top feasible modality at
+  the same intensity (owned `equipment.cardio` + experience tier), else
+  falls back to running. Selection-only, **load-neutral** (no CP-2 change),
+  empty preference is byte-identical. New pure resolver
+  `preferred-cardio-modality.ts` + catalog adapter `cardio-catalog.ts`.
 - **Parked (await real user data):** dial magnitudes are CP-1 Stage-A
   heuristics; archetype refinements C (upper-body resumption), D (novice
   linear track), E (deload depth); wellness-scale thresholds.
