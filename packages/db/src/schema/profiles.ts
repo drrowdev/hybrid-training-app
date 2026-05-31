@@ -254,6 +254,15 @@ export const profiles = pgTable("profiles", {
   /** Free-text label for the user's preferred external program (e.g. "Runna"). */
   preferredCardioSourceName: text("preferred_cardio_source_name"),
   /**
+   * ADR 0016 — user-facing effort / volume dial for the hypertrophy
+   * archetype. CHECK-constrained to {'low','standard','high'}. Scales the
+   * hypertrophy compound effort anchor (early-set bump + final-set RIR) and
+   * the accessory sets-per-movement at block-creation time. DEFAULT
+   * 'standard' keeps every existing row byte-identical. No-op for all other
+   * archetypes. See migration 0080.
+   */
+  effortPreference: text("effort_preference").default("standard").notNull(),
+  /**
    * Which BYOAI provider the stored key targets. CHECK-constrained
    * at the DB level to {'anthropic','openai','gemini'} or null. See
    * migration 0069.

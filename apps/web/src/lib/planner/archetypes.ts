@@ -17,6 +17,10 @@ import {
   NO_ACTIVE_MODIFICATIONS,
   type ActiveModifications,
 } from "./modifications-types";
+import {
+  hypertrophyEffortConfig,
+  type EffortPreference,
+} from "./effort-preference";
 
 export type ArchetypeId =
   | "strength_anchor"
@@ -1476,60 +1480,73 @@ const HYPERTROPHY_FINAL_SET_BY_WEEK: Record<
 };
 
 // heuristic — hypertrophy compound EARLY-set effort bump (CP-1), per
-// Schoenfeld 2021 / Refalo 2023. See ADR 0015. The early (non-final) compound
-// sets sat at ~RIR 6–10 (junk-volume territory). We nudge them toward a
-// challenging-but-submaximal effort with a bounded rep bump + an honest cue,
-// NOT a literal RIR target: at 54–67% 1RM, true RIR 3–4 inverts (Helms/Zourdos
-// RPE chart, one-rm.ts) to ~12–15 reps/set — a volume explosion inappropriate
-// for a concurrent block. The bump is capped at the e1RM model's 12-rep
-// validity ceiling. True RIR 3–4 / higher volume is opt-in via the
-// effort/volume dial (ADR 0016).
-const HYPERTROPHY_EARLY_SET = {
-  repBonus: 2,
-  repCap: 12,
-  cue: "Build set — make it challenging; stop several reps short of failure.",
-} as const;
+// Schoenfeld 2021 / Refalo 2023. See ADR 0015 (default magnitude) and
+// ADR 0016 (the low/standard/high dial). The early (non-final) compound
+// sets sat at ~RIR 6–10 (junk-volume territory). The `standard` dial nudges
+// them toward a challenging-but-submaximal effort with a bounded rep bump +
+// an honest cue, NOT a literal RIR target: at 54–67% 1RM, true RIR 3–4
+// inverts (Helms/Zourdos RPE chart, one-rm.ts) to ~12–15 reps/set — a volume
+// explosion inappropriate for a concurrent block, so the bump is capped at
+// the e1RM model's validity ceiling. The `high` dial opts into the larger
+// bump; `low` skips it. Magnitudes live in effort-preference.ts.
+
+/** ADR 0011 final-set RIR cue — regenerated from the (dial-adjusted) RIR so
+ * the displayed reserve always matches the prescribed target. Reproduces the
+ * shipped `standard` strings exactly (RIR 2 → "about 2 reps"; RIR 1 →
+ * "about 1 rep"). */
+function hypertrophyFinalSetCue(rir: number): string {
+  const reserve = rir === 1 ? "1 rep" : `${rir} reps`;
+  return `Last set: take it close to failure — leave about ${reserve} in reserve.`;
+}
 
 function applyHypertrophyEffortAnchor(
   items: PrescriptionItem[],
   archetype: Archetype,
   profile: WeekProfile,
+  effortPreference: EffortPreference = "standard",
 ): PrescriptionItem[] {
   if (archetype.id !== "hypertrophy_anchor") return items;
   if (items.length === 0) return items;
+  const cfg = hypertrophyEffortConfig(effortPreference);
   const isDeload = profile.intensityLabel === "Deload";
   const lastIdx = items.length - 1;
   const last = items[lastIdx]!;
-  // Final compound set (ADR 0011): RIR-anchored on non-deload weeks. Always
+  // Final compound set (ADR 0011): RIR-anchored on non-deload weeks. The dial
+  // (ADR 0016) shifts the RIR by `finalRirDelta`, floored at 1 so we never
+  // prescribe training to failure on a concurrent-block compound. Always
   // isAmrap:false so the renderer shows the RIR chip (not a "+") and the AMRAP
   // detect/bump path leaves the high-rep set alone (ADR 0007 Decision 6).
-  const spec = isDeload
+  const baseSpec = isDeload
     ? undefined
     : HYPERTROPHY_FINAL_SET_BY_WEEK[profile.weekIndex];
-  const anchoredLast: PrescriptionItem = spec
-    ? {
-        ...last,
-        reps: spec.reps,
-        targetRir: { ...spec.targetRir },
-        intensityCue: spec.cue,
-        isAmrap: false,
-      }
-    : { ...last, isAmrap: false };
-  // Early compound sets (ADR 0015): on non-deload weeks, nudge effort out of
-  // junk-volume territory (~RIR 6–10) with a bounded rep bump + an honest
-  // submaximal cue. Deliberately NO targetRir — at hypertrophy loads a precise
-  // RIR-3-4 label would overstate the effort (see HYPERTROPHY_EARLY_SET).
+  let anchoredLast: PrescriptionItem;
+  if (baseSpec) {
+    const rir = Math.max(1, baseSpec.targetRir.max + cfg.finalRirDelta);
+    anchoredLast = {
+      ...last,
+      reps: baseSpec.reps,
+      targetRir: { min: rir, max: rir },
+      intensityCue: hypertrophyFinalSetCue(rir),
+      isAmrap: false,
+    };
+  } else {
+    anchoredLast = { ...last, isAmrap: false };
+  }
+  // Early compound sets (ADR 0015 / 0016): on non-deload weeks, nudge effort
+  // out of junk-volume territory (~RIR 6–10) with a bounded rep bump + an
+  // honest submaximal cue. Deliberately NO targetRir — at hypertrophy loads a
+  // precise RIR-3-4 label would overstate the effort. When `earlyRepBonus`
+  // is 0 (the `low` dial) the early sets are returned untouched.
   const earlySets = items.slice(0, lastIdx).map((item): PrescriptionItem =>
-    isDeload
+    isDeload || cfg.earlyRepBonus === 0
       ? item
       : {
           ...item,
           reps: Math.min(
-            HYPERTROPHY_EARLY_SET.repCap,
-            (item.reps ?? HYPERTROPHY_EARLY_SET.repCap) +
-              HYPERTROPHY_EARLY_SET.repBonus,
+            cfg.earlyRepCap,
+            (item.reps ?? cfg.earlyRepCap) + cfg.earlyRepBonus,
           ),
-          intensityCue: HYPERTROPHY_EARLY_SET.cue,
+          intensityCue: cfg.earlyCue,
         },
   );
   return [...earlySets, anchoredLast];
@@ -1589,6 +1606,13 @@ export function buildPrescription(
    * existing call site keeps its current contract.
    */
   activeModifications: ActiveModifications = NO_ACTIVE_MODIFICATIONS,
+  /**
+   * ADR 0016 — user effort/volume dial (`profiles.effort_preference`).
+   * Scales the hypertrophy compound effort anchor (early-set bump + final-set
+   * RIR). `"standard"` (the default) keeps every existing call site
+   * byte-identical; the param is a no-op for all non-hypertrophy archetypes.
+   */
+  effortPreference: EffortPreference = "standard",
 ): PrescriptionItem[] {
   const profile = archetype.weekProfiles.find((w) => w.weekIndex === weekIndex);
   if (!profile) return [];
@@ -1621,7 +1645,7 @@ export function buildPrescription(
     // ADR 0011 — effort-anchor the last working set on HYPERTROPHY_ANCHOR
     // non-deload weeks. Applied BEFORE finalize() so taper/recovery
     // modifications still scale the anchored item normally.
-    const anchoredPrimary = applyHypertrophyEffortAnchor(scaledPrimary, archetype, profile);
+    const anchoredPrimary = applyHypertrophyEffortAnchor(scaledPrimary, archetype, profile, effortPreference);
     // ADR 0007 — solicit a true AMRAP on the primary top set for archetypes
     // whose primary goal is strength (and a fixed-set marker otherwise).
     const primaryItems = applyTopSetAmrapMarker(anchoredPrimary, archetype, profile);

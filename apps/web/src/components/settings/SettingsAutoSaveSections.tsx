@@ -218,6 +218,56 @@ export function TrainingExperienceAutoSave({
   );
 }
 
+// ─── Effort / volume dial ────────────────────────────────────────────
+
+type EffortPreference = "low" | "standard" | "high";
+
+const EFFORT_PREFERENCE_OPTIONS = [
+  {
+    value: "low" as const,
+    label: "Easier",
+    hint: "Lower volume, more reps in reserve. Good when endurance work is heavy or you're managing fatigue.",
+    testId: "settings-effort-low",
+  },
+  {
+    value: "standard" as const,
+    label: "Balanced",
+    hint: "The default. Challenging but submaximal — concurrent-safe.",
+    testId: "settings-effort-standard",
+  },
+  {
+    value: "high" as const,
+    label: "Harder",
+    hint: "More accessory sets and closer to failure on muscle-building work. For when growth is the priority.",
+    testId: "settings-effort-high",
+  },
+];
+
+export function EffortPreferenceAutoSave({
+  initial,
+}: {
+  initial: EffortPreference;
+}) {
+  const save = useCallback(
+    (v: EffortPreference) => saveField("effortPreference", v),
+    [],
+  );
+  return (
+    <div
+      className="space-y-3 rounded-lg border border-foreground/10 p-4"
+      data-testid="settings-effort-preference-form"
+    >
+      <AutoSaveRadioGroup
+        name="effortPreference"
+        initial={initial}
+        options={EFFORT_PREFERENCE_OPTIONS}
+        save={save}
+        statusTestIdSuffix="settings-effort"
+      />
+    </div>
+  );
+}
+
 // ─── Two-a-day toggle + windows ──────────────────────────────────────
 
 export function TwoADayAutoSave({

@@ -24,6 +24,7 @@ const profileSchema = z.object({
       "highly_advanced_10y_plus",
     ])
     .optional(),
+  effortPreference: z.enum(["low", "standard", "high"]).optional(),
   allowsTwoADays: z.coerce.boolean().optional(),
   hapticsEnabled: z.coerce.boolean().optional(),
   timerSoundEnabled: z.coerce.boolean().optional(),
@@ -47,6 +48,7 @@ export async function updateProfile(formData: FormData): Promise<void> {
     phaseTargetWeeks: formData.get("phaseTargetWeeks") || undefined,
     trainingDaysPerWeek: formData.get("trainingDaysPerWeek") || undefined,
     trainingExperience: formData.get("trainingExperience") || undefined,
+    effortPreference: formData.get("effortPreference") || undefined,
     // Checkbox: present in FormData only when checked. Coerce explicitly.
     allowsTwoADays:
       formData.get("allowsTwoADaysPresent") === "1"
@@ -97,6 +99,7 @@ export async function updateProfile(formData: FormData): Promise<void> {
   if (parsed.data.phaseTargetWeeks !== undefined) updates.phase_target_weeks = parsed.data.phaseTargetWeeks ?? null;
   if (parsed.data.trainingDaysPerWeek !== undefined) updates.training_days_per_week = parsed.data.trainingDaysPerWeek;
   if (parsed.data.trainingExperience !== undefined) updates.training_experience = parsed.data.trainingExperience;
+  if (parsed.data.effortPreference !== undefined) updates.effort_preference = parsed.data.effortPreference;
   if (parsed.data.allowsTwoADays !== undefined) updates.allows_two_a_days = parsed.data.allowsTwoADays;
   if (parsed.data.hapticsEnabled !== undefined) updates.haptics_enabled = parsed.data.hapticsEnabled;
   if (parsed.data.timerSoundEnabled !== undefined) updates.timer_sound_enabled = parsed.data.timerSoundEnabled;

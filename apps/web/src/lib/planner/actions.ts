@@ -102,6 +102,7 @@ import {
 } from "./hinge-compensation";
 import type { BwProgress } from "@hta/db";
 import { focusMusclesSchema, type FocusMuscle } from "./focus-muscles";
+import { resolveEffortPreference } from "./effort-preference";
 import { getElbowForearmAtlRatio } from "@/lib/stats/region-spike-queries";
 import { getPreviousBlockAccessoryIdsByRole } from "./accessory-history-queries";
 
@@ -514,13 +515,14 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   // Look up the user's two-a-day preference + warmup-ladder config + equipment so we pick the right day pool, prepend warmups, and only prescribe movements they can actually do.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("allows_two_a_days, warmup_scheme, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_assessment_completed_at, bodyweight_kg, training_experience")
+    .select("allows_two_a_days, warmup_scheme, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_assessment_completed_at, bodyweight_kg, training_experience, effort_preference")
     .eq("id", user.id)
     .maybeSingle();
   const allowsTwoADays = Boolean(profile?.allows_two_a_days ?? false);
   const warmupScheme = resolveWarmupScheme(profile?.warmup_scheme);
   const equipment = resolveEquipment(profile);
   const experience = resolveDeclaredExperience(profile?.training_experience);
+  const effortPreference = resolveEffortPreference(profile?.effort_preference);
 
   const minDays = minDaysForArchetype(
     archetype,
@@ -943,6 +945,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
               parsed.data.focusMuscles,
               elbowForearmAtlRatio,
               day.role ? (recencyByRole.get(day.role) ?? EMPTY_RECENCY) : EMPTY_RECENCY,
+              effortPreference,
             );
 
       // ─── Bodyweight Phase 3 — prepend BW main + back_off items ───
@@ -1196,12 +1199,13 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
   // equipment-aware accessory filter. NULL → defaults via resolvers.
   const { data: customProfile } = await supabase
     .from("profiles")
-    .select("warmup_scheme, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_assessment_completed_at, training_experience")
+    .select("warmup_scheme, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_assessment_completed_at, training_experience, effort_preference")
     .eq("id", user.id)
     .maybeSingle();
   const customWarmupScheme = resolveWarmupScheme(customProfile?.warmup_scheme);
   const customEquipment = resolveEquipment(customProfile);
   const customExperience = resolveDeclaredExperience(customProfile?.training_experience);
+  const customEffortPreference = resolveEffortPreference(customProfile?.effort_preference);
 
   // Resolve all required movements.
   const candidateSlugs = allCandidateLiftSlugs(archetype);
@@ -1365,6 +1369,8 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
         secondaryMovement,
         parsed.data.focusMuscles,
         customElbowForearmAtlRatio,
+        new Set<string>(),
+        customEffortPreference,
       );
 
       // Phase 5 — stamp modality + effective_stress_load on every
