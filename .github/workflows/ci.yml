@@ -58,6 +58,15 @@ jobs:
         # pre-push hook on developer machines where DATABASE_URL is set.
         run: pnpm --filter @hta/db db:check:ci
 
+      - name: Knowledge-doc drift guard (offline)
+        # The private workspace mirror ($HTA_WORKSPACE_DOCS) is not on the
+        # CI runner, so this runs the in-repo checks only: every Accepted
+        # ADR that declares it adds a CP-2 row must be referenced in
+        # docs/knowledge/hybrid-training-design-constraints.md. The full
+        # repo<->workspace coverage parity fires from the pre-push hook on
+        # developer machines where HTA_WORKSPACE_DOCS is set.
+        run: pnpm docs:check-drift
+
       - name: Flag new migrations in PR description
         # When a PR adds files under packages/db/drizzle/*.sql, surface a
         # loud reminder in the job summary so the merger remembers to run
