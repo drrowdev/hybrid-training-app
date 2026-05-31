@@ -1439,14 +1439,17 @@ export function shouldIncludeAccessories(archetype: Archetype, day: StrengthDay)
 }
 
 /**
- * ADR 0011 — effort-anchor the hypertrophy compound's final working set.
+ * ADR 0011 + 0015 — effort-anchor the hypertrophy compound.
  *
- * Rationale (see docs/adr/0011-…): the printed reps on HYPERTROPHY_ANCHOR
- * compounds sit 6–10 RIR shy of failure at the prescribed loads, so the
- * compound delivers no real hypertrophy stimulus. We fix this by anchoring
- * only the LAST set by RIR target (cue + raised rep target) at unchanged
- * load. Earlier sets keep their fixed reps as accumulated volume; deload
- * week is excluded; folded secondary slots are untouched.
+ * Rationale (see docs/adr/0011-… and 0015-…): the printed reps on
+ * HYPERTROPHY_ANCHOR compounds sit 6–10 RIR shy of failure at the prescribed
+ * loads, so the compound delivers little hypertrophy stimulus.
+ *   - ADR 0011: the LAST set is RIR-anchored (cue + raised rep target) at
+ *     unchanged load — the working set reaches the effective-rep window.
+ *   - ADR 0015: the EARLIER sets get a bounded rep bump + an honest
+ *     submaximal cue (no precise RIR label — see HYPERTROPHY_EARLY_SET),
+ *     nudging them out of junk-volume territory without exploding volume.
+ * Deload week is excluded; folded secondary slots are untouched.
  *
  * Pure: returns a new array, never mutates inputs.
  */
@@ -1472,6 +1475,21 @@ const HYPERTROPHY_FINAL_SET_BY_WEEK: Record<
   },
 };
 
+// heuristic — hypertrophy compound EARLY-set effort bump (CP-1), per
+// Schoenfeld 2021 / Refalo 2023. See ADR 0015. The early (non-final) compound
+// sets sat at ~RIR 6–10 (junk-volume territory). We nudge them toward a
+// challenging-but-submaximal effort with a bounded rep bump + an honest cue,
+// NOT a literal RIR target: at 54–67% 1RM, true RIR 3–4 inverts (Helms/Zourdos
+// RPE chart, one-rm.ts) to ~12–15 reps/set — a volume explosion inappropriate
+// for a concurrent block. The bump is capped at the e1RM model's 12-rep
+// validity ceiling. True RIR 3–4 / higher volume is opt-in via the
+// effort/volume dial (ADR 0016).
+const HYPERTROPHY_EARLY_SET = {
+  repBonus: 2,
+  repCap: 12,
+  cue: "Build set — make it challenging; stop several reps short of failure.",
+} as const;
+
 function applyHypertrophyEffortAnchor(
   items: PrescriptionItem[],
   archetype: Archetype,
@@ -1479,17 +1497,16 @@ function applyHypertrophyEffortAnchor(
 ): PrescriptionItem[] {
   if (archetype.id !== "hypertrophy_anchor") return items;
   if (items.length === 0) return items;
+  const isDeload = profile.intensityLabel === "Deload";
   const lastIdx = items.length - 1;
   const last = items[lastIdx]!;
-  // Hypertrophy never solicits an open-rep AMRAP (ADR 0007 Decision 6); the
-  // last compound set is effort-anchored by RIR instead. Stamp isAmrap:false
-  // on every hypertrophy week so the renderer shows the RIR target, not a
-  // "+", and the AMRAP detect/bump path leaves the high-rep set alone.
-  const spec =
-    profile.intensityLabel === "Deload"
-      ? undefined
-      : HYPERTROPHY_FINAL_SET_BY_WEEK[profile.weekIndex];
-  const anchored: PrescriptionItem = spec
+  // Final compound set (ADR 0011): RIR-anchored on non-deload weeks. Always
+  // isAmrap:false so the renderer shows the RIR chip (not a "+") and the AMRAP
+  // detect/bump path leaves the high-rep set alone (ADR 0007 Decision 6).
+  const spec = isDeload
+    ? undefined
+    : HYPERTROPHY_FINAL_SET_BY_WEEK[profile.weekIndex];
+  const anchoredLast: PrescriptionItem = spec
     ? {
         ...last,
         reps: spec.reps,
@@ -1498,7 +1515,24 @@ function applyHypertrophyEffortAnchor(
         isAmrap: false,
       }
     : { ...last, isAmrap: false };
-  return [...items.slice(0, lastIdx), anchored];
+  // Early compound sets (ADR 0015): on non-deload weeks, nudge effort out of
+  // junk-volume territory (~RIR 6–10) with a bounded rep bump + an honest
+  // submaximal cue. Deliberately NO targetRir — at hypertrophy loads a precise
+  // RIR-3-4 label would overstate the effort (see HYPERTROPHY_EARLY_SET).
+  const earlySets = items.slice(0, lastIdx).map((item): PrescriptionItem =>
+    isDeload
+      ? item
+      : {
+          ...item,
+          reps: Math.min(
+            HYPERTROPHY_EARLY_SET.repCap,
+            (item.reps ?? HYPERTROPHY_EARLY_SET.repCap) +
+              HYPERTROPHY_EARLY_SET.repBonus,
+          ),
+          intensityCue: HYPERTROPHY_EARLY_SET.cue,
+        },
+  );
+  return [...earlySets, anchoredLast];
 }
 
 /**
