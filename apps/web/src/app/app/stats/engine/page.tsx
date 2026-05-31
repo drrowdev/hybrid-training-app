@@ -582,14 +582,6 @@ function CeilingExplainerCard({ ceiling }: { ceiling: CeilingExplain }) {
           helpTerm="ceiling"
         />
         <CeilingInputRow
-          label="Recovery multiplier (GRM)"
-          value={ceiling.recoveryMultiplier.toFixed(2)}
-          unit="×"
-          cite="ceiling-grm"
-          help="Compresses the ceiling when wellness signals dip. MVP = 1.0 until full wellness inputs land."
-          helpTerm="grm"
-        />
-        <CeilingInputRow
           label="Confidence bias"
           value={ceiling.confidenceBias.toFixed(2)}
           unit="×"

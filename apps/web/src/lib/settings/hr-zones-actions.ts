@@ -191,6 +191,5 @@ export async function updateHrZones(
 
   revalidatePath("/app/settings");
   revalidatePath("/app/settings/hr-zones");
-  revalidatePath("/app/stats/wellness");
   return result;
 }

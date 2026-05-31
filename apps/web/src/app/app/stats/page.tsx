@@ -268,11 +268,6 @@ function DeepDiveLinks() {
         href="/app/stats/blocks"
       />
       <DeepDive
-        title="Wellness dashboard"
-        body="Bodyweight, fatigue, motivation, prediction accuracy."
-        href="/app/stats/wellness"
-      />
-      <DeepDive
         title="Adherence dashboard"
         body="Weekly completion, weekday breakdown, archetype mix, skip notes, streaks."
         href="/app/stats/adherence"

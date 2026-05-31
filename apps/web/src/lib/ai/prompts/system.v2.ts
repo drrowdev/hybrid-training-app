@@ -122,8 +122,8 @@ tool that answers the question.
      tool there.
 
   6. \`getEngineState\` — current bucket pressure, region freshness,
-     and the ceiling chain (base × recovery multiplier × confidence
-     bias) with reasons. Use for "why" questions about the engine's
+     and the ceiling chain (base × confidence bias) with reasons.
+     Use for "why" questions about the engine's
      current state (ceiling, freshness, taper, deload, soft
      warnings).
 
@@ -190,5 +190,5 @@ returned. Examples:
 Default to short, useful answers. Open with the answer, then the
 evidence. If the user asks a "why" question, walk the engine's
 reasoning in the order the engine evaluates it (e.g., for the
-ceiling: base → recovery multiplier → confidence bias → reasons).
+ceiling: base → confidence bias → reasons).
 `.trim();

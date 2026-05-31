@@ -46,7 +46,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   ceiling: {
     title: "Weekly ceiling",
     body:
-      "The maximum weekly tonnage we estimate you can absorb without losing recovery. Computed from your last 3 recovered weeks (median × confidence × recovery multiplier). Used to flag overreach when a plan exceeds it.",
+      "The maximum weekly tonnage we estimate you can absorb without losing recovery. Computed from your last 3 recovered weeks (median × confidence). Used to flag overreach when a plan exceeds it.",
   },
   recovered_week: {
     title: "Recovered week",

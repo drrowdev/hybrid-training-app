@@ -26,7 +26,6 @@ const regionSchema = z.object({
 
 const ceilingSchema = z.object({
   base_ceiling: z.number(),
-  recovery_multiplier: z.number(),
   confidence_bias: z.number(),
   final_ceiling: z.number(),
   reasons: z.array(z.string()),
@@ -69,7 +68,7 @@ export const getEngineState: Tool<Input, Output> = {
       safe(() => getBucketPressure(ctx.supabase, ctx.userId, ctx.tz), []),
       safe(() => getRegionFreshness(ctx.supabase, ctx.userId), []),
       safe(
-        () => getCeilingExplain(ctx.supabase, ctx.userId, ctx.tz),
+        () => getCeilingExplain(ctx.supabase, ctx.userId),
         null as Awaited<ReturnType<typeof getCeilingExplain>> | null,
       ),
     ]);
@@ -78,7 +77,6 @@ export const getEngineState: Tool<Input, Output> = {
     if (ceiling) {
       reasons.push(
         `base from ${ceiling.formula} formula across ${ceiling.basisWeeks.length} basis week(s)`,
-        `recovery multiplier ${ceiling.recoveryMultiplier.toFixed(2)}`,
         `confidence bias ${ceiling.confidenceBias.toFixed(2)}`,
       );
       for (const n of ceiling.inputs.notes ?? []) reasons.push(n);
@@ -99,7 +97,6 @@ export const getEngineState: Tool<Input, Output> = {
       })),
       ceiling_explain: {
         base_ceiling: ceiling?.baseCeiling ?? 0,
-        recovery_multiplier: ceiling?.recoveryMultiplier ?? 1,
         confidence_bias: ceiling?.confidenceBias ?? 1,
         final_ceiling: ceiling?.finalCeiling ?? 0,
         reasons,
