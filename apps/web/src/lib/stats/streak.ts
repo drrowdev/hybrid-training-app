@@ -138,10 +138,12 @@ export async function getStreak(
     }
   }
 
-  // 2. Completed sessions in the last ~13 weeks (plenty for a 12-week
-  //    streak walk + the current week).
+  // 2. Completed sessions across the last ~53 weeks — wide enough to feed
+  //    the full 52-week streak walk in `computeStreak` (a shorter window
+  //    would silently cap the streak at the lookback horizon with no "+"
+  //    indicator). Payload is `performed_at` only, so a year of rows is cheap.
   const lookbackIso = new Date(
-    Date.now() - 13 * 7 * 86_400_000,
+    Date.now() - 53 * 7 * 86_400_000,
   ).toISOString();
   const { data: sessionRows } = await supabase
     .from("sessions")

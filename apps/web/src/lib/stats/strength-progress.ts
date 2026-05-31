@@ -225,11 +225,17 @@ export async function getStrengthProgress(
     .not("reps", "is", null)
     .gt("reps", 0);
 
-  // 3. Bucket by movement → e1RM points (chronological).
+  // 3. Bucket by movement → ONE top-set e1RM point per session. We keep
+  //    the max e1RM per `performed_at` (sessions share a timestamp across
+  //    their sets) rather than every working set, so weeks with heavier
+  //    backoff volume don't drag the slope down on set composition alone.
+  //    This matches the top-set-per-session basis the movement detail page
+  //    uses (`rollupTopSetsPerSession`).
   type Working = {
     movementId: string;
     label: string;
-    points: Array<{ performedAt: string; e1rm: number }>;
+    /** performed_at → best (max) e1RM logged in that session. */
+    best: Map<string, number>;
   };
   const byMovement = new Map<string, Working>();
   for (const r of (rows ?? []) as SetRow[]) {
@@ -243,15 +249,16 @@ export async function getStrengthProgress(
     const label = mv?.display_name ?? r.movement_id;
     const bucket =
       byMovement.get(r.movement_id) ??
-      ({ movementId: r.movement_id, label, points: [] } satisfies Working);
-    bucket.points.push({ performedAt: s.performed_at, e1rm: e1 });
+      ({ movementId: r.movement_id, label, best: new Map() } satisfies Working);
+    const prev = bucket.best.get(s.performed_at);
+    if (prev == null || e1 > prev) bucket.best.set(s.performed_at, e1);
     byMovement.set(r.movement_id, bucket);
   }
 
   // 4. Ensure every main lift surfaces, even with zero in-window points.
   for (const id of mainIds) {
     if (!byMovement.has(id)) {
-      byMovement.set(id, { movementId: id, label: id, points: [] });
+      byMovement.set(id, { movementId: id, label: id, best: new Map() });
     }
   }
 
@@ -259,9 +266,9 @@ export async function getStrengthProgress(
     .map((w) => ({
       movementId: w.movementId,
       label: w.label,
-      points: w.points.sort(
-        (a, b) => +new Date(a.performedAt) - +new Date(b.performedAt),
-      ),
+      points: Array.from(w.best.entries())
+        .map(([performedAt, e1rm]) => ({ performedAt, e1rm }))
+        .sort((a, b) => +new Date(a.performedAt) - +new Date(b.performedAt)),
     }));
 
   return composeStrengthProgress(perLiftPoints, windowDays);
