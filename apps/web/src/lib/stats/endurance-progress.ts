@@ -82,6 +82,8 @@ export type EnduranceProgress = {
   totalRuns: number;
   /** Pass-through of the time-in-zone distribution. */
   timeInZone: HrZoneState;
+  /** Chronological per-week mean easy-run pace (sec/km) for the drawer sparkline. Display only. */
+  weeklyPace: number[];
   detail: string;
   windowDays: number;
 };
@@ -103,9 +105,11 @@ export function classifyPaceSlope(samples: readonly EasyRunSample[]): {
   direction: EnduranceDirection;
   easyPaceSecPerKm: number | null;
   slopeSecPerKmPerWeek: number | null;
+  /** Chronological per-week mean pace (sec/km) — display-only sparkline series. */
+  weeklyPace: number[];
 } {
   if (samples.length === 0) {
-    return { direction: "no-run-data", easyPaceSecPerKm: null, slopeSecPerKmPerWeek: null };
+    return { direction: "no-run-data", easyPaceSecPerKm: null, slopeSecPerKmPerWeek: null, weeklyPace: [] };
   }
   const meanPace =
     samples.reduce((acc, s) => acc + s.avgPaceSecPerKm, 0) / samples.length;
@@ -120,11 +124,18 @@ export function classifyPaceSlope(samples: readonly EasyRunSample[]): {
     byWeek.set(monday, bucket);
   }
 
+  // Chronological per-week mean pace (rounded to whole sec/km), reused for the
+  // slope fit below and exposed for the endurance drawer's pace sparkline.
+  const weeklyPace = Array.from(byWeek.entries())
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([, v]) => Math.round(v.sum / v.count));
+
   if (byWeek.size < ENDURANCE_MIN_WEEKS) {
     return {
       direction: "building",
       easyPaceSecPerKm: Math.round(meanPace),
       slopeSecPerKmPerWeek: null,
+      weeklyPace,
     };
   }
 
@@ -148,6 +159,7 @@ export function classifyPaceSlope(samples: readonly EasyRunSample[]): {
       direction: "flat",
       easyPaceSecPerKm: Math.round(meanPace),
       slopeSecPerKmPerWeek: 0,
+      weeklyPace,
     };
   }
   const slopePerWeek = num / den;
@@ -166,6 +178,7 @@ export function classifyPaceSlope(samples: readonly EasyRunSample[]): {
     direction,
     easyPaceSecPerKm: Math.round(meanPace),
     slopeSecPerKmPerWeek: Math.round(slopePerWeek * 10) / 10,
+    weeklyPace,
   };
 }
 
@@ -283,6 +296,7 @@ export async function getEnduranceProgress(
     droppedRuns,
     totalRuns,
     timeInZone,
+    weeklyPace: classification.weeklyPace,
     detail: detailFor(
       classification.direction,
       samples.length,

@@ -23,6 +23,20 @@ describe("classifyPaceSlope — pure pace-slope classifier", () => {
     expect(r.direction).toBe("no-run-data");
     expect(r.easyPaceSecPerKm).toBeNull();
     expect(r.slopeSecPerKmPerWeek).toBeNull();
+    expect(r.weeklyPace).toEqual([]);
+  });
+
+  it("exposes a chronological per-week mean-pace series", () => {
+    // 4 weeks, falling pace; one week has two runs that get averaged.
+    const samples = [
+      sample(0, 360, 1),
+      sample(0, 350, 3),
+      sample(1, 340),
+      sample(2, 330),
+      sample(3, 320),
+    ];
+    const r = classifyPaceSlope(samples);
+    expect(r.weeklyPace).toEqual([355, 340, 330, 320]);
   });
 
   it("building when fewer than min-weeks of data", () => {
