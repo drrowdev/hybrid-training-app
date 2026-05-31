@@ -15,6 +15,7 @@ import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   StatsCommandCenter,
+  StrengthDrawer,
   type StatsCommandCenterProps,
   type StatsRangeBucket,
 } from "../StatsCommandCenter";
@@ -42,8 +43,37 @@ export function bucket(overrides: Partial<StatsRangeBucket> = {}): StatsRangeBuc
     strength: {
       direction: "up",
       perLift: [
-        { movementId: "sq", label: "Back Squat", pointCount: 6, slopePerWeek: 1.4, direction: "up" },
-        { movementId: "bp", label: "Bench Press", pointCount: 5, slopePerWeek: 0.3, direction: "flat" },
+        {
+          movementId: "sq",
+          slug: "back-squat",
+          label: "Back Squat",
+          pointCount: 6,
+          slopePerWeek: 1.4,
+          direction: "up",
+          points: [
+            { performedAt: "2026-03-01", e1rm: 140 },
+            { performedAt: "2026-03-15", e1rm: 144 },
+            { performedAt: "2026-04-01", e1rm: 148 },
+            { performedAt: "2026-04-15", e1rm: 150 },
+            { performedAt: "2026-05-01", e1rm: 152 },
+            { performedAt: "2026-05-20", e1rm: 155 },
+          ],
+        },
+        {
+          movementId: "bp",
+          slug: "bench-press",
+          label: "Bench Press",
+          pointCount: 5,
+          slopePerWeek: 0.3,
+          direction: "flat",
+          points: [
+            { performedAt: "2026-03-01", e1rm: 100 },
+            { performedAt: "2026-03-20", e1rm: 101 },
+            { performedAt: "2026-04-10", e1rm: 100 },
+            { performedAt: "2026-05-01", e1rm: 102 },
+            { performedAt: "2026-05-20", e1rm: 101 },
+          ],
+        },
       ],
       detail: "Squat and bench trending up over the window.",
       windowDays: 90,
@@ -168,6 +198,10 @@ describe("StatsCommandCenter - populated state", () => {
     }
   });
 
+  it("exposes the strength tile drawer affordance when there is data", () => {
+    expect(html).toContain('data-testid="stats-strength-expand"');
+  });
+
   it("renders the range toggle with all three options", () => {
     expect(html).toContain('data-testid="stats-range-toggle"');
     expect(html).toContain('data-range="30d"');
@@ -245,5 +279,34 @@ describe("StatsCommandCenter - cold-start state", () => {
   it("still renders the hero cells in the building state", () => {
     expect(html).toContain('data-testid="stats-progress-verdict"');
     expect(html).toContain('data-testid="stats-readiness-cell"');
+  });
+
+  it("hides the strength drawer affordance when there is no lift data", () => {
+    expect(html).not.toContain('data-testid="stats-strength-expand"');
+  });
+});
+
+describe("StrengthDrawer - per-lift e1RM detail", () => {
+  const open = renderToStaticMarkup(
+    <StrengthDrawer open onClose={() => {}} data={bucket().strength} range="90d" />,
+  );
+
+  it("renders one detail row per lift with a sparkline", () => {
+    const rows = open.match(/data-testid="stats-strength-drawer-lift"/g) ?? [];
+    expect(rows).toHaveLength(2);
+    // Sparkline primitive is wired in (the whole point of this slice).
+    expect(open).toContain('data-testid="sparkline-line"');
+  });
+
+  it("deep-links each lift to its movement history page", () => {
+    expect(open).toContain("/app/stats/movements/back-squat");
+    expect(open).toContain("/app/stats/movements/bench-press");
+  });
+
+  it("renders nothing when closed", () => {
+    const closed = renderToStaticMarkup(
+      <StrengthDrawer open={false} onClose={() => {}} data={bucket().strength} range="90d" />,
+    );
+    expect(closed).toBe("");
   });
 });

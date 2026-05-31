@@ -47,6 +47,7 @@ import { displayWeight, weightUnitLabel, type WeightUnit } from "@/lib/stats/uni
 import type { ProfileForFormat } from "@/lib/format/datetime";
 import { DEFAULT_RANGE, RANGE_LABEL, type Range } from "@/lib/stats/range";
 import { Sparkline } from "@/components/stats/charts/Sparkline";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { MetricHelp } from "@/components/ui/MetricHelp";
 
@@ -219,6 +220,7 @@ export function StatsCommandCenter(props: StatsCommandCenterProps) {
     units,
   } = props;
   const [range, setRange] = useState<Range>(initialRange);
+  const [openTile, setOpenTile] = useState<"strength" | null>(null);
 
   const syncUrl = useCallback((next: Range) => {
     if (typeof window === "undefined") return;
@@ -260,13 +262,24 @@ export function StatsCommandCenter(props: StatsCommandCenterProps) {
           gap: 14,
         }}
       >
-        <StrengthTile data={bucket.strength} range={range} />
+        <StrengthTile
+          data={bucket.strength}
+          range={range}
+          onExpand={() => setOpenTile("strength")}
+        />
         <EnduranceTile data={bucket.endurance} range={range} />
         <RecoveryLoadTile freshness={freshness} readiness={readiness} />
         <ConsistencyTile rhythm={rhythm} streak={streak} />
         <BodyweightTile data={bodyweight} units={units} />
         <VolumeTile data={bucket.volume} range={range} units={units} />
       </div>
+
+      <StrengthDrawer
+        open={openTile === "strength"}
+        onClose={() => setOpenTile(null)}
+        data={bucket.strength}
+        range={range}
+      />
     </div>
   );
 }
@@ -637,12 +650,45 @@ function Tile({
 }
 
 // A — Strength progress
-function StrengthTile({ data, range }: { data: StrengthProgress; range: Range }) {
+function StrengthTile({
+  data,
+  range,
+  onExpand,
+}: {
+  data: StrengthProgress;
+  range: Range;
+  onExpand?: () => void;
+}) {
   const liftRows = data.perLift.filter((l) => l.pointCount > 0);
   const isEmpty = data.direction === "building" && liftRows.length === 0;
   return (
     <Tile span={4} testid="stats-tile-strength" empty={isEmpty}>
-      <TileHead title="Strength progress" meta={`e1RM · ${RANGE_LABEL[range]}`} />
+      <TileHead
+        title="Strength progress"
+        meta={`e1RM · ${RANGE_LABEL[range]}`}
+        right={
+          isEmpty || onExpand == null ? undefined : (
+            <button
+              type="button"
+              onClick={onExpand}
+              data-testid="stats-strength-expand"
+              aria-label="Open strength progress detail"
+              style={{
+                background: "transparent",
+                border: "1px solid var(--cp-border)",
+                borderRadius: 6,
+                color: "var(--cp-text-muted)",
+                fontSize: 11,
+                cursor: "pointer",
+                padding: "3px 8px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Detail →
+            </button>
+          )
+        }
+      />
       {isEmpty ? (
         <EmptyState
           variant="inline"
@@ -680,6 +726,108 @@ function StrengthTile({ data, range }: { data: StrengthProgress; range: Range })
         </div>
       )}
     </Tile>
+  );
+}
+
+// A (drawer) — per-lift e1RM detail, opened from StrengthTile
+export function StrengthDrawer({
+  open,
+  onClose,
+  data,
+  range,
+}: {
+  open: boolean;
+  onClose: () => void;
+  data: StrengthProgress;
+  range: Range;
+}) {
+  const liftRows = data.perLift.filter((l) => l.pointCount > 0);
+  return (
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      testId="stats-strength-drawer"
+      ariaLabelledById="stats-strength-drawer-title"
+      title={
+        <div>
+          <div id="stats-strength-drawer-title" style={{ fontSize: 16, fontWeight: 600 }}>
+            Strength progress
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--cp-text-muted)", marginTop: 2 }}>
+            estimated 1RM per main lift · {RANGE_LABEL[range]}
+          </div>
+        </div>
+      }
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <p style={{ margin: 0, fontSize: 12.5, color: "var(--cp-text-muted)" }}>{data.detail}</p>
+        {liftRows.length === 0 ? (
+          <p style={{ margin: 0, fontSize: 12.5, color: "var(--cp-text-muted)" }}>
+            No main lift has enough logged sets in this window to chart yet.
+          </p>
+        ) : (
+          liftRows.map((l) => {
+            const tone = directionTone(l.direction);
+            const accent =
+              l.direction === "up" ? "success" : l.direction === "down" ? "danger" : "accent";
+            const latest = l.points.length > 0 ? l.points[l.points.length - 1]!.e1rm : null;
+            const slope = l.slopePerWeek;
+            const slopeText =
+              slope == null ? "—" : `${slope > 0 ? "+" : ""}${round1(slope)} kg/wk`;
+            return (
+              <div
+                key={l.movementId}
+                data-testid="stats-strength-drawer-lift"
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  paddingBottom: 12,
+                  borderBottom: "1px solid var(--cp-border)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{l.label}</span>
+                  <span
+                    className="mono"
+                    style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, color: toneVar(tone) }}
+                  >
+                    {slopeText}
+                  </span>
+                  <span style={{ width: 12, textAlign: "right", color: toneVar(tone), fontSize: 11 }}>
+                    {dirArrow(l.direction)}
+                  </span>
+                </div>
+                <Sparkline
+                  values={l.points.map((p) => p.e1rm)}
+                  accent={accent}
+                  ariaLabel={`${l.label} estimated 1RM trend, ${l.pointCount} sessions`}
+                />
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: 11.5, color: "var(--cp-text-muted)" }}>
+                  <span>
+                    {l.pointCount} session{l.pointCount === 1 ? "" : "s"}
+                    {latest != null && (
+                      <>
+                        {" · latest "}
+                        <span className="mono">{round1(latest)} kg</span>
+                      </>
+                    )}
+                  </span>
+                  {l.slug != null && (
+                    <Link
+                      href={`/app/stats/movements/${l.slug}`}
+                      style={{ marginLeft: "auto", color: "var(--cp-accent)", textDecoration: "none", fontWeight: 500 }}
+                    >
+                      Full history →
+                    </Link>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </BottomSheet>
   );
 }
 
