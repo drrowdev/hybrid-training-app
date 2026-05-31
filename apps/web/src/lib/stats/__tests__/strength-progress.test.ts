@@ -29,7 +29,7 @@ function liftRising(
       e1rm: startE1rm + d * slopePerDay,
     });
   }
-  return { movementId: id, label, points };
+  return { movementId: id, slug: id, label, points };
 }
 
 describe("composeStrengthProgress — pure verdict", () => {
@@ -49,8 +49,8 @@ describe("composeStrengthProgress — pure verdict", () => {
       [
         liftRising("a", "Squat", 150, 1.0),
         // Single point: regression returns null → "building"
-        { movementId: "b", label: "Bench", points: [{ performedAt: "2026-04-01", e1rm: 100 }] },
-        { movementId: "c", label: "Deadlift", points: [] },
+        { movementId: "b", slug: "b", label: "Bench", points: [{ performedAt: "2026-04-01", e1rm: 100 }] },
+        { movementId: "c", slug: "c", label: "Deadlift", points: [] },
       ],
       WIN,
     );
@@ -128,5 +128,15 @@ describe("composeStrengthProgress — pure verdict", () => {
     const a = r.perLift[0]!;
     expect(a.slopePerWeek).not.toBeNull();
     expect(a.slopePerWeek!).toBeCloseTo(2.0, 1);
+  });
+
+  it("threads slug + e1RM points through to perLift (drawer sparkline source)", () => {
+    const lift = liftRising("a", "Squat", 150, 1.0);
+    const r = composeStrengthProgress([lift], WIN);
+    const a = r.perLift[0]!;
+    expect(a.slug).toBe("a");
+    // The exposed points are exactly the series the slope was fit over.
+    expect(a.points).toEqual(lift.points);
+    expect(a.points.length).toBe(a.pointCount);
   });
 });
