@@ -214,6 +214,15 @@ select option {
     min-height: 44px;
     font-size: 16px;
   }
+  /* Inline `font-size` styles (e.g. the movement-picker search field at
+   * 13px, the cardio-duration field at 15px) have higher specificity than
+   * the rule above and would re-trigger iOS Safari's focus auto-zoom, which
+   * then sticks until the user manually pinches back out. Force the 16px
+   * floor past inline styles. The large set-entry numerals
+   * (`.cp-entry-input`, intentionally 28px on mobile) are exempt. */
+  input:not(.cp-entry-input), textarea, select {
+    font-size: 16px !important;
+  }
 }
 
 /* Sticky bottom action bar — sits below the fold for one-handed reach.
