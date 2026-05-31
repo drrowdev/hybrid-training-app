@@ -7,9 +7,13 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
 import { recomputeActualSessionLoad } from "@/lib/engine/recompute-actual-session-load";
 import { maybeCompleteBlock } from "@/lib/planner/completion";
-import { getUserTimezone } from "@/lib/planner/queries";
+import { getUserTimezone, dayDate } from "@/lib/planner/queries";
 import { roundToPlate } from "@/lib/planner/archetypes";
 import { applyAutoregVolumeScale } from "@/lib/planner/autoreg-volume";
+import {
+  applyModificationsToPrescription,
+  getActiveModifications,
+} from "@/lib/planner/modifications";
 import type { Prescription, PrescriptionItem } from "@hta/db";
 import { applyPrescriptionSwap } from "./prescription-mutations";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
@@ -1015,7 +1019,9 @@ export async function fillSessionFromPlan(
   const [plannedRes, existingRes, tmsRes] = await Promise.all([
     supabase
       .from("planned_sessions")
-      .select("id, prescription")
+      .select(
+        "id, prescription, week_index, day_index, training_blocks!inner(started_on)",
+      )
       .eq("completed_session_id", parsed.data.sessionId)
       .maybeSingle(),
     supabase
@@ -1028,7 +1034,16 @@ export async function fillSessionFromPlan(
       .eq("user_id", user.id),
   ]);
 
-  const planned = plannedRes.data as { id: string; prescription: Prescription | null } | null;
+  const planned = plannedRes.data as {
+    id: string;
+    prescription: Prescription | null;
+    week_index: number;
+    day_index: number;
+    training_blocks:
+      | { started_on: string }
+      | { started_on: string }[]
+      | null;
+  } | null;
   if (!planned || !planned.prescription) {
     return { error: "No planned session is linked to this log." };
   }
@@ -1048,7 +1063,21 @@ export async function fillSessionFromPlan(
     existingByKey.set(key, (existingByKey.get(key) ?? 0) + 1);
   }
 
-  const items = applyAutoregVolumeScale(planned.prescription).items ?? [];
+  // Resolve the session's calendar date from the plan slot so an
+  // accepted taper/recovery scales the materialised set_logs the same
+  // way the renderers (queries.ts) scale what the user sees.
+  const blockRel = planned.training_blocks;
+  const block = Array.isArray(blockRel) ? blockRel[0] : blockRel;
+  const base = applyAutoregVolumeScale(planned.prescription);
+  let items = base.items ?? [];
+  if (block) {
+    const slotDate = dayDate(block.started_on, planned.week_index, planned.day_index);
+    const mods = await getActiveModifications(
+      user.id,
+      new Date(`${slotDate}T00:00:00Z`),
+    );
+    items = applyModificationsToPrescription(base, mods).items ?? [];
+  }
   let nextIndex = (existingRes.data ?? []).length;
   const inserts: SetInsert[] = [];
 

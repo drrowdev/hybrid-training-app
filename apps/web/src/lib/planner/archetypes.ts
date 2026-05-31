@@ -1716,7 +1716,7 @@ export function buildPrescription(
  * Recovery wins over taper inside `getActiveModifications`, so by the
  * time we get here `source` is unambiguous.
  */
-function applyModificationsToItems(
+export function applyModificationsToItems(
   items: PrescriptionItem[],
   mods: ActiveModifications,
 ): PrescriptionItem[] {
