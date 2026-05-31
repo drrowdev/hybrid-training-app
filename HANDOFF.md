@@ -2,7 +2,7 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
-**Last updated:** 2026-05-31 (post engine-methodology + conservativeness-hardening cycle + cardio-modality preference — ADRs 0007–0017)
+**Last updated:** 2026-05-31 (post engine-methodology + conservativeness-hardening cycle + cardio-modality preference + daily wellness check-in retirement — ADRs 0007–0018)
 
 ## Where we are
 
@@ -146,12 +146,13 @@ A methodology review of the prescription engine produced ADRs 0007–0017
   `preferred-cardio-modality.ts` + catalog adapter `cardio-catalog.ts`.
 - **Parked (await real user data):** dial magnitudes are CP-1 Stage-A
   heuristics; archetype refinements C (upper-body resumption), D (novice
-  linear track), E (deload depth); wellness-scale thresholds.
+  linear track), E (deload depth).
 
 ## Verified live
 
-- `pnpm --filter @hta/web test --run` → **2815 / 2815 passing**
-  as of the ADR-0016 + rename merges (`d900344`, `d87a811`).
+- `pnpm --filter @hta/web test --run` → **2805 / 2805 passing**
+  after the ADR-0018 wellness-retirement merge (was 2815 before the
+  deleted wellness-recovery / wellness-stats / engine-multiplier tests).
 - `pnpm --filter @hta/web build` → clean.
 - `pnpm --filter @hta/web lint` → clean.
 - `pnpm -r typecheck` → clean across all workspaces.
@@ -168,10 +169,13 @@ A methodology review of the prescription engine produced ADRs 0007–0017
 
 ## Open work / known gaps
 
-- **Wellness scale validation has 0 rows of real-user data.** The
-  scales (fatigue / soreness / motivation) shipped, but until enough
-  user history accumulates, calibration of `recoveryMultiplier`
-  weights is stuck on the prior.
+- **Daily wellness check-in retired (ADR 0018).** The per-day
+  fatigue/soreness/motivation check-in and its ceiling `recoveryMultiplier`
+  were removed; the ceiling chain is now two-factor
+  (`baseCeiling × confidenceBias`). `wellness` columns are kept for history
+  + export, but no surface writes fresh daily fatigue/soreness. If a daily
+  readiness signal returns, it should come from a low-friction source
+  (e.g. passive HRV) and re-open CP-4 via a new ADR.
 - **E2E RPC smoke tests are gated by the Supabase free-tier 2-project
   cap.** CI runs them against a disposable project; locally,
   contributors need to spin up their own or skip.

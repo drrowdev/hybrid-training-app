@@ -17,9 +17,8 @@ vi.mock("@/lib/stats/engine", () => ({
   ]),
   getCeilingExplain: vi.fn(async () => ({
     baseCeiling: 12000,
-    recoveryMultiplier: 0.93,
     confidenceBias: 0.97,
-    finalCeiling: 10827,
+    finalCeiling: 11640,
     basisWeeks: [{ weekStart: "2026-04-01", weeklyTonnageKg: 12000 }],
     formula: "median-3-recovered",
     inputs: {
@@ -61,7 +60,7 @@ describe("getEngineState", () => {
     expect(out.bucket_pressure).toHaveLength(1);
     expect(out.bucket_pressure[0]?.percent_of_ceiling).toBe(0.42);
     expect(out.region_freshness[0]?.region).toBe("knee");
-    expect(out.ceiling_explain.final_ceiling).toBe(10827);
+    expect(out.ceiling_explain.final_ceiling).toBe(11640);
     expect(out.ceiling_explain.reasons.length).toBeGreaterThan(0);
   });
 
@@ -85,7 +84,6 @@ describe("getEngineState", () => {
       region_freshness: [],
       ceiling_explain: {
         base_ceiling: 0,
-        recovery_multiplier: 1,
         confidence_bias: 1,
         final_ceiling: 0,
         reasons: ["x"],

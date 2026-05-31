@@ -26,7 +26,7 @@ describe("knowledge embedding", () => {
   it("CP-2 constants table names the core engine knobs", () => {
     expect(CONSTANTS_TABLE_TEXT).toContain("ATL decay");
     expect(CONSTANTS_TABLE_TEXT).toContain("CTL decay");
-    expect(CONSTANTS_TABLE_TEXT).toContain("Recovery multiplier");
+    expect(CONSTANTS_TABLE_TEXT).toContain("Ceiling base lookback");
     expect(CONSTANTS_TABLE_TEXT).toContain("Confidence-bias");
     expect(CONSTANTS_TABLE_TEXT).toContain("Bucket count");
   });
