@@ -101,7 +101,7 @@ export default async function StatsAdherencePage({
           ← stats
         </Link>
         <h1 style={{ fontSize: 28, margin: "8px 0 0", letterSpacing: "-0.01em" }}>
-          Adherence
+          Consistency
         </h1>
         <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
           Sessions completed vs planned, the weekdays you train best, and
