@@ -110,6 +110,7 @@ import { focusMusclesSchema, type FocusMuscle } from "./focus-muscles";
 import { resolveEffortPreference } from "./effort-preference";
 import { getElbowForearmAtlRatio } from "@/lib/stats/region-spike-queries";
 import { getPreviousBlockAccessoryIdsByRole } from "./accessory-history-queries";
+import { archivePriorActiveBlocks } from "./archive-prior-blocks";
 
 /**
  * Movement-row shape used by the main-lift resolver. Only the columns
@@ -848,23 +849,19 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
     : 1.0;
 
   // ADR 0012 — previous-block accessory recency, grouped by day-role, for
-  // value-weighted block rotation. Read BEFORE the archive below so the
-  // "most recent block" is the one we're about to archive. Only loaded
-  // when the archetype actually runs the dynamic picker; empty otherwise
-  // (and for a user's first-ever block) → byte-identical to pre-ADR-0012.
+  // value-weighted block rotation. Read BEFORE inserting the new block so the
+  // "most recent block" is the still-active prior block (the one we'll archive
+  // at the very end). Only loaded when the archetype actually runs the dynamic
+  // picker; empty otherwise (and for a user's first-ever block) → byte-identical
+  // to pre-ADR-0012.
   const recencyByRole = archetype.accessoryProfile
     ? await getPreviousBlockAccessoryIdsByRole(supabase, user.id)
     : new Map<string, Set<string>>();
   const EMPTY_RECENCY: Set<string> = new Set();
 
-  const archNow = new Date().toISOString();
-  const { error: archErr } = await supabase
-    .from("training_blocks")
-    .update({ status: "archived", archived_at: archNow, ended_at: archNow })
-    .eq("user_id", user.id)
-    .eq("status", "active");
-  if (archErr) return { ok: false, error: `Couldn't archive prior block: ${archErr.message}` };
-
+  // Data-integrity fix: the prior active block is archived AFTER the new block
+  // and its planned_sessions are committed (see archivePriorActiveBlocks /
+  // the post-insert call below), so a failure here can never orphan the user.
   const { data: block, error: blockErr } = await supabase
     .from("training_blocks")
     .insert({
@@ -1123,9 +1120,17 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
 
   const { error: psErr } = await supabase.from("planned_sessions").insert(rows);
   if (psErr) {
-    // Roll back the block we just created so we don't leave a zombie.
+    // Roll back the block we just created so we don't leave a zombie. The
+    // prior active block was never archived, so the user keeps it intact.
     await supabase.from("training_blocks").delete().eq("id", block.id);
     return { ok: false, error: `Couldn't create planned sessions: ${psErr.message}` };
+  }
+
+  // New block + its planned_sessions are committed: now archive the prior
+  // active block(s). Non-fatal on failure — see archivePriorActiveBlocks.
+  const { error: archErr } = await archivePriorActiveBlocks(supabase, user.id, block.id);
+  if (archErr) {
+    console.error(`createBlock: failed to archive prior active block: ${archErr}`);
   }
 
   revalidatePath("/app");
@@ -1338,13 +1343,8 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
     ? await getElbowForearmAtlRatio(supabase, user.id, customTzForBlock)
     : 1.0;
 
-  const customArchNow = new Date().toISOString();
-  await supabase
-    .from("training_blocks")
-    .update({ status: "archived", archived_at: customArchNow, ended_at: customArchNow })
-    .eq("user_id", user.id)
-    .eq("status", "active");
-
+  // Data-integrity fix: archive the prior active block AFTER the new block and
+  // its planned_sessions are committed (post-insert call below), never before.
   const { data: block, error: blockErr } = await supabase
     .from("training_blocks")
     .insert({
@@ -1471,6 +1471,13 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
   if (psErr) {
     await supabase.from("training_blocks").delete().eq("id", block.id);
     return { ok: false, error: `Couldn't create planned sessions: ${psErr.message}` };
+  }
+
+  // New block + its planned_sessions are committed: now archive the prior
+  // active block(s). Non-fatal on failure — see archivePriorActiveBlocks.
+  const { error: archErr } = await archivePriorActiveBlocks(supabase, user.id, block.id);
+  if (archErr) {
+    console.error(`createCustomBlock: failed to archive prior active block: ${archErr}`);
   }
 
   revalidatePath("/app");
