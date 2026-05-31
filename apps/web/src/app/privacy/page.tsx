@@ -24,7 +24,7 @@ export default function PrivacyPage() {
         <ul className="list-disc list-inside text-sm space-y-1">
           <li><strong>Email address</strong> — required at signup; account identifier.</li>
           <li><strong>Display name</strong> — optional.</li>
-          <li><strong>Training data</strong> — sessions, sets, cardio activities, wellness check-ins, body weight, recorded limitations.</li>
+          <li><strong>Training data</strong> — sessions, sets, cardio activities, body weight, recorded limitations.</li>
           <li><strong>Strava data (if connected)</strong> — cardio activities; pulled with your consent, revocable.</li>
           <li><strong>Usage analytics</strong> (PostHog) — only with your consent.</li>
           <li><strong>Error reports</strong> (Sentry) — only with your consent.</li>

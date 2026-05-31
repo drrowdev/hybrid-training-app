@@ -8,6 +8,26 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 2026-05-30. The previous starting-point block is preserved below for history.
 
+### Removed (engine + UX simplification — ADR 0018)
+
+- **Retired the daily wellness check-in and dropped the ceiling chain to
+  two factors.** The per-day fatigue/soreness check-in (whose input card
+  was already retired in PR #176) is gone end-to-end: the daily
+  `recoveryMultiplier` engine path (`wellness-recovery.ts`) and its
+  `/app/stats/wellness` view are deleted, and the global ceiling is now
+  `finalCeiling = baseCeiling × confidenceBias` (was
+  `× recoveryMultiplier ×`). Because no surface had written fresh daily
+  fatigue/soreness since #176, that multiplier was a constant `1.0` for
+  everyone — so the removal is **behaviour-neutral on every prescription**.
+  The daily log is reduced to bodyweight only. **No DB migration:** the
+  `wellness` table columns (`fatigue` / `soreness` / `motivation` /
+  `notes`) are retained for history + data export, and
+  `wellness.bodyweight_kg` stays a live feature. The per-session GRM
+  (`grm.ts`, deload/advisory) is a separate, untouched signal. AI
+  knowledge, both system prompts, `getEngineState`, glossary, cmd-k, and
+  privacy copy updated to the two-factor chain. CP-4 updated from "stays
+  at 3 factors" to "stays at 2 factors".
+
 ### Added (post-#215 wave)
 
 - **Hardened, versioned data export (`export-v1`).** The "Export my data

@@ -76,27 +76,33 @@ Shipped by **PR #167** (`feat(engine): HR-aware cardio bucket + region load when
 * **Bulk `syncStrava` + historical import** — stay summary-only by design (Decision 4 rate-limit posture: one extra streams call per new activity, never per row). These rows keep using `estimateZonesFromSummary` (leak model from avg + max HR).
 * **`cardioIntensityScalar` is unchanged** — pinned byte-identical for a fixed `hr_zones` input. The interference scalar and freshness pipelines get truer inputs on the webhook path, not new math.
 
-## 6. Recovery — wellness sliders into a global multiplier
+## 6. Recovery — per-session GRM (the daily wellness multiplier was removed)
 
-`apps/web/src/lib/engine/wellness-recovery.ts` is the live recovery multiplier.
+The live recovery signal is the **per-session GRM**,
+`apps/web/src/lib/engine/grm.ts`:
+`raw = 1.0 + 0.06×fatigueDelta + 0.04×sorenessDelta`, clamped `[0.8, 1.0]`,
+threshold `GRM_RECOMMEND_THRESHOLD = 0.96`. It reads `sessions.fatigue` /
+`sessions.soreness` (**1–5 scale**) and feeds the deload-trigger and
+recovery-advice logic. This is live and unchanged.
 
-* Requires `MIN_HISTORICAL_POINTS = 3` (`wellness-recovery.ts:47`) recent rows to build a baseline.
-* Hard bounds: floor `0.7` (line 50), ceiling `1.1` (line 52). So the wellness check-in can swing the global ceiling by ±30 % down / +10 % up — note the asymmetry.
-* **Delta → multiplier** ladder (`wellness-recovery.ts:120-125`), where delta is `(today.fatigue + today.soreness) − baseline.(fatigue + soreness)` on the 1–9 slider scale:
-  delta ≤ −2 → `1.10`; ≤ −1 → `1.05`; < 1 → `1.00`; < 2 → `0.90`; < 3 → `0.80`; else `0.70`.
-* Returns null when there's no check-in today or fewer than 3 recent rows.
-* Wired into the ceiling explainer by **PR #166** (`feat(engine): wire daily wellness sliders into recoveryMultiplier`). Before that PR the multiplier was hard-coded to 1.0.
-* **PR #176** retired the Today-page daily wellness card. The schema, the engine path, and the historic rows are all still in place — but no UI is currently producing new rows, so the multiplier defaults to `1.0` for new users.
-
-A second, distinct recovery signal is `apps/web/src/lib/engine/grm.ts`:
-`raw = 1.0 + 0.06×fatigueDelta + 0.04×sorenessDelta`, clamped `[0.8, 1.0]`, threshold `GRM_RECOMMEND_THRESHOLD = 0.96`. **This is on a 1–5 scale**, separate from wellness-recovery's 1–9. The two systems coexist in the codebase.
+A second, **daily** recovery multiplier formerly lived in
+`apps/web/src/lib/engine/wellness-recovery.ts` (1–9 scale, read from
+`wellness.fatigue` / `wellness.soreness`, fed into `getCeilingExplain` as a
+third ceiling factor). It was **removed (ADR 0018)** together with the
+daily wellness check-in. History: it was wired into the ceiling explainer
+by PR #166, then the Today-page input card was retired by PR #176 — after
+which no UI wrote fresh rows, so `computeRecoveryMultiplier` always
+returned null → the multiplier was a constant `1.0`. Deleting it was a
+no-op on real prescriptions and dropped the ceiling chain to two factors
+(see §7). The `wellness` table columns are retained for history/export;
+`wellness.bodyweight_kg` is a separate live feature.
 
 ## 7. Ceiling — what's actually computed today
 
 There are **two** ceiling-related code paths, and the doc is honest about that:
 
-**(a) `apps/web/src/lib/stats/engine.ts:getCeilingExplain`** is the v2-spec-style global ceiling. It returns `{ baseCeiling, recoveryMultiplier, confidenceBias, finalCeiling, basisWeeks, formula, inputs }` and computes
-`finalCeiling = baseCeiling × recoveryMultiplier × confidenceBias` (`stats/engine.ts:716`).
+**(a) `apps/web/src/lib/stats/engine.ts:getCeilingExplain`** is the v2-spec-style global ceiling. It returns `{ baseCeiling, confidenceBias, finalCeiling, basisWeeks, formula, inputs }` and computes
+`finalCeiling = baseCeiling × confidenceBias`.
 
 The base picker is the pure helper `pickCeilingBase` in `packages/engine/src/recovered-weeks.ts:183`:
 * ≥ 3 recovered weeks in last 12 → median of the most recent 3, bias `1.00` (`recovered-weeks.ts:200-204`).
@@ -105,7 +111,7 @@ The base picker is the pure helper `pickCeilingBase` in `packages/engine/src/rec
 
 "Recovered week" (`recovered-weeks.ts:71-121`) means: ≥1 logged session, 0 skipped, 0 missed, `maxSrpe ≤ OVERREACH_SRPE = 9` (line 64), `avgFatigue < ELEVATED_STRESS = 4` (line 65), `avgSoreness < 4`. NULL fatigue/soreness pass the gate.
 
-So the live "ceiling" formula has **three factors** (baseCeiling × recoveryMultiplier × confidenceBias), not the six-factor product the v2 research note pencils in (no per-bucket headroom, no interference modifier, no anchor-coupling, no sex-specific adjustment). The recoveryMultiplier here is the same wellness-recovery from §6.
+So the live "ceiling" formula has **two factors** (baseCeiling × confidenceBias), not the six-factor product the v2 research note pencils in (no per-bucket headroom, no interference modifier, no anchor-coupling, no sex-specific adjustment). The daily `recoveryMultiplier` that was the third factor here was removed with the daily wellness check-in (§6, ADR 0018).
 
 **(b) `apps/web/src/lib/stats/ceiling-queries.ts`** is a separate Phase-2 MVP "set-count vs prescribed" surface used in different UI tiles. Bands (`ceiling-queries.ts:28-34`): `<0.7` under, `<0.9` on-budget, `<1.1` at-line, `<1.3` over, `≥1.3` way-over. It compares this-week working-set count to the archetype prescription on a rolling 7-day window. This is **not** the v2 chain; it's a one-factor ratio.
 
@@ -247,13 +253,13 @@ This is the PR #174 / #175 line of work.
 
 Reading `hybrid-training-research-v2.md` against the live engine:
 
-* **Ceiling is 3-factor, spec calls for ~6.** Live: `base × recoveryMultiplier × confidenceBias` (`stats/engine.ts:716`). Spec adds per-bucket headroom, sex-specific interference modifier, anchor-coupling, and a tier-aware compression. None of those live in either ceiling code path.
+* **Ceiling is 2-factor, spec calls for ~6.** Live: `base × confidenceBias` (`stats/engine.ts`, `getCeilingExplain`). Spec adds per-bucket headroom, sex-specific interference modifier, anchor-coupling, and a tier-aware compression. None of those live in either ceiling code path. (The daily `recoveryMultiplier` third factor was removed with the daily wellness check-in — §6, ADR 0018.)
 * **Interference modifier is a single global 0.7× scalar** triggered by ≥3 cardio sessions OR ≥240 min/wk (`muscle-volume.ts:99-134`). Spec wants modality-specific (Z2 vs threshold vs VO2 vs HIIT vs alactic carry different mTOR / AMPK / nervous-system costs) and per-muscle-group.
 * **Tier detection lacks the "feature engagement / BTS" signal.** The four live signals are declared experience, e1RM, schedule CV, recovery-input fraction (§9). The spec's behavioural / build-the-system engagement input is absent.
 * **HR zone time-in-zone is used and on the webhook path is now stream-measured.** §5 / §16 — `cardio-intensity.ts` weights by time-in-zone, and ADR 0009 made the source per-second-measured on `syncStravaSingle` (with the summary leak-model as fallback elsewhere). Older "doc said single-zone bucketing" claim was incorrect for the engine; corrected per ADR 0009.
 * **No sex-specific modifiers anywhere** — spec wants different volume-landmark scaling and interference cost for female lifters. `Select-String` for `female|sex|male` in the engine finds nothing.
 * **No archetype-level "hard conditioning budget" field** (§10). Spec wants archetypes to declare a quota the user can monitor against. Live archetypes only contain concrete day templates.
-* **GRM (1–5) and wellness-recovery (1–9) coexist** as two separate recovery systems (§6). Spec wants one unified signal.
+* **GRM (1–5) is the sole recovery signal.** The per-day wellness-recovery multiplier (1–9) was removed (§6, ADR 0018); only the per-session GRM remains.
 * **Modality stress multiplier is per-session, not per-set** (§8). Spec wants the bucket math to differ for hypertrophy vs strength sets within the same session.
 * **PR detection's e1RM ε = 0.05 absolute** (§15) — spec wants relative epsilons that scale with the lifter's absolute strength.
 
@@ -262,8 +268,7 @@ Reading `hybrid-training-research-v2.md` against the live engine:
 * **`CARDIO_SCALAR = 8`** (`bucket-load.ts:151` and again inlined at `region-ledger.ts:161`) — the constant that makes cardio comparable to strength in load units has no calibration note, no citation, and lives in two places. Change one without the other and bucket vs region freshness drift apart silently.
 * **Bucket coefficients** (`bucket-load.ts:119-125`): neural/metabolic/impact/tissue per-set multipliers (0.15, 0.5, 0.85, 0.2, 0.05, 0.4, 0.8 …) are engineering-eyeball defaults despite the file header citing Pareja-Blanco, Gabbett, Wilson, etc. None of the constants are tied back to those papers.
 * **RPE → multiplier ladder** (`bucket-load.ts:49-55`): a six-step staircase that is plausible but uncited; null-RPE → 0.5 is a particularly significant call (half-credit by default).
-* **Recovery delta bands** (`wellness-recovery.ts:120-125`): six bands (−2, −1, 1, 2, 3) on the **1–9 slider** that the slider was originally documented as 1–10. The module comment admits the half-unit slip is "below band granularity," but it's still an undocumented scale mismatch.
-* **Floor 0.7 / ceiling 1.1 asymmetry** on the recovery multiplier (`wellness-recovery.ts:50, 52`): the engine can punish a bad check-in 3× harder than it can reward a good one. No source given.
+* **(removed) Recovery delta bands + floor/ceiling asymmetry** — the daily wellness-recovery multiplier (`wellness-recovery.ts`, six delta bands on the 1–9 slider, asymmetric floor `0.7` / ceiling `1.1`) was deleted with the daily wellness check-in (§6, ADR 0018). It is no longer part of the engine.
 * **Cardio classifier thresholds** (`classify-cardio.ts:101-128`) — `0.95 maxPct ∧ <1200 s` for alactic, `0.92 maxPct` for VO2, etc. — are reasonable but have no citation in the file.
 * **CONCURRENT_SCALAR — superseded.** The legacy `0.7` / `≥3 sessions ∨ ≥240 min` trigger was replaced by the modality-aware continuous scalar in `apps/web/src/lib/engine/concurrent-scalar.ts` (see §11). Magnitudes there are still uncited Stage-A heuristics; *structural form* (continuous + modality-weighted) is now cited (Wilson 2012, Chen 2024, Schumann 2021).
 * **Bucket bands** (`bucket-state-queries.ts:67-77`) — five bands on freshness (0.85, 0.55, 0.3, 0.1) — uncited.
@@ -289,6 +294,7 @@ Reading `hybrid-training-research-v2.md` against the live engine:
 * **#174** `feat(sessions): retroactive performed_at + late-logged adherence breakdown` — §12, §17.
 * **#175** — PR #174 follow-ups (small).
 * **#176** `chore(today): retire daily wellness check-in card` — UI gone, engine path intact; §6 note.
+* **(post-#176, ADR 0018)** `chore: finish retiring the daily wellness check-in` — removed the engine path too: deleted `wellness-recovery.ts` + its ceiling-explainer wiring, dropping the ceiling chain to two factors (`baseCeiling × confidenceBias`). The daily check-in form is reduced to bodyweight only; `wellness` columns retained for history/export. §6 / §7.
 
 So in the last 17 merged PRs, the headline engine moves are: ESL recompute (#165), HR-aware cardio (#167) plus the HR-zones plumbing (#161/#162/#172), wellness wired into ceiling (#166) and then UI-retired (#176), anchor-adherence tightened (#163/#164), and late-logged surfaced (#174/#175). The audit findings J3, B4, H1, and Finding 1 in `engine-actual-vs-prescribed-audit.md` are closed by this batch. The remaining audit/spec gaps (per §18) are not addressed.
 

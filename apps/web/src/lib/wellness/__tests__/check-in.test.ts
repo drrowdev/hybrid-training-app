@@ -21,13 +21,22 @@ describe("dailyCheckInSchema — input validation", () => {
       dailyCheckInSchema.safeParse({ date: "2026-05-23", bodyweightKg: 500 }).success,
     ).toBe(false);
   });
-  it("rejects motivation outside 1-5", () => {
-    expect(
-      dailyCheckInSchema.safeParse({ date: "2026-05-23", motivation: 0 }).success,
-    ).toBe(false);
-    expect(
-      dailyCheckInSchema.safeParse({ date: "2026-05-23", motivation: 6 }).success,
-    ).toBe(false);
+  it("ignores retired check-in fields without failing", () => {
+    // The daily wellness check-in was retired; extra keys are stripped
+    // rather than rejected so any stale client payload still parses.
+    const r = dailyCheckInSchema.safeParse({
+      date: "2026-05-23",
+      bodyweightKg: 84.2,
+      motivation: 3,
+      fatigue: 5,
+      soreness: 5,
+      notes: "ignored",
+    });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(Object.prototype.hasOwnProperty.call(r.data, "motivation")).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(r.data, "fatigue")).toBe(false);
+    }
   });
 });
 
@@ -41,11 +50,16 @@ describe("dailyCheckInUpsertColumns — upsert shape", () => {
     expect(Object.prototype.hasOwnProperty.call(cols, "motivation")).toBe(false);
   });
 
-  it("nulls a field when the caller explicitly passes null", () => {
+  it("nulls bodyweight when the caller explicitly passes null", () => {
     const cols = dailyCheckInUpsertColumns({
       date: "2026-05-23",
-      notes: null,
+      bodyweightKg: null,
     });
-    expect(cols.notes).toBeNull();
+    expect(cols.bodyweight_kg).toBeNull();
+  });
+
+  it("emits only the date when no bodyweight is supplied", () => {
+    const cols = dailyCheckInUpsertColumns({ date: "2026-05-23" });
+    expect(cols).toEqual({ date: "2026-05-23" });
   });
 });

@@ -96,7 +96,7 @@ user's, never the global catalog.
 | `session_movements`          | `session_movements`          | Off-plan / freestyle movements attached to a session. Joined to `movement`. |
 | `set_logs`                   | `set_logs`                   | Individual logged sets (reps, weight, RPE, kind…). Joined to `movement`.   |
 | `cardio_logs`                | `cardio_logs`                | Logged cardio sessions. Joined to `movement`.                              |
-| `wellness`                   | `wellness`                   | Daily wellness check-ins.                                                  |
+| `wellness`                   | `wellness`                   | Daily log rows — body weight (live), plus retained legacy wellness check-in fields (fatigue/soreness/motivation/notes) kept for history (see ADR 0018). |
 | `limitations`                | `limitations`                | Active/historical injury or training limitations.                         |
 | `limitation_events`          | `limitation_events`          | Event log of limitation changes.                                          |
 | `priority_events`            | `priority_events`            | Races / priority events the user is training toward.                      |

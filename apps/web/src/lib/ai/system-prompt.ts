@@ -99,8 +99,8 @@ call \`getEngineSnapshot\` first. The snapshot includes:
   - over 1 year at monthly aggregates
   - their full PR timeline
   - current engine state: bucket pressure, region freshness, the
-    three-factor ceiling chain (base × recovery multiplier × confidence
-    bias) with the reasons it landed where it did
+    two-factor ceiling chain (base × confidence bias) with the reasons
+    it landed where it did
   - reference knowledge: archetype catalogue, calibration policy
     (CP-1..CP-5), and the CP-2 constants table
 
@@ -114,8 +114,8 @@ wasted budget.
 
 # Reading the snapshot — tiered resolution
 
-  - Questions about the last ~3 months → use \`last_90d.sessions\` and
-    \`last_90d.wellness_check_ins\` (daily detail).
+  - Questions about the last ~3 months → use \`last_90d.sessions\`
+    (daily detail).
   - Questions about the 3-to-12 month window → use
     \`last_year_weekly\` (weekly aggregates). Don't try to reason
     about specific sessions in this window; the data isn't there.
@@ -153,5 +153,5 @@ contains. Examples:
 Default to short, useful answers. Open with the answer, then the
 evidence. If the user asks a "why" question, walk the engine's
 reasoning in the order the engine evaluates it (e.g., for the
-ceiling: base → recovery multiplier → confidence bias → reasons).
+ceiling: base → confidence bias → reasons).
 `.trim();
