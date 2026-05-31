@@ -19,7 +19,19 @@ Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
   mean ~12–15 reps/set — a volume explosion the default avoids. Loads,
   the ADR 0011 final-set anchor, the deload week, and folded
   secondaries are unchanged. True RIR 3–4 / higher volume becomes
-  opt-in via the upcoming effort/volume dial (ADR 0016).
+  opt-in via the effort/volume dial (ADR 0016).
+
+- **Effort & volume dial (ADR 0016).** A new profile setting (Settings →
+  Profile → "Effort & volume": Easier / Balanced / Harder) lets you tune
+  how hard and high-volume the hypertrophy archetype's muscle work is.
+  One control moves two axes together — compound proximity-to-failure
+  (the ADR 0015 early-set bump + the final-set RIR) and accessory
+  sets-per-movement. "Balanced" is the default and reproduces today's
+  plan exactly; "Harder" pushes toward the productive 10–12 sets/muscle
+  range (but never to failure on a compound — RIR is floored at 1);
+  "Easier" backs both off for fatigue-heavy phases. Hypertrophy-only and
+  applied to your next created block; every other archetype is
+  unchanged.
 
 - **Quick workout UX sweep (PR #222).** Inline duration chip picker
   (30 / 45 / 60 / 90 / Custom) on the QuickWorkoutSheet replaces the
