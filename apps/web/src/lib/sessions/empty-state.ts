@@ -38,15 +38,26 @@ export function isEmptyInProgressSession(input: SessionEmptyInputs): boolean {
  *     needs the hint) from a planned session that the user just
  *     opened (which already has cards rendered from the prescription
  *     and so doesn't need an empty-state nudge).
+ *   - There are NO freestyle movements added yet — once the user adds
+ *     an off-plan movement card (even before logging a set against it)
+ *     the "pick movements to start" nudge is stale and must hide, or
+ *     it sits below a movement card the user just added.
  */
 export type StrengthEmptyStateInputs = SessionEmptyInputs & {
   hasPrescription: boolean;
+  /**
+   * Count of freestyle ("+ Add to workout") movement cards already on
+   * the page. Defaults to 0 for callers that predate this field.
+   */
+  freestyleMovementCount?: number;
 };
 
 export function shouldShowStrengthEmptyState(
   input: StrengthEmptyStateInputs,
 ): boolean {
   return (
-    isEmptyInProgressSession(input) && !input.hasPrescription
+    isEmptyInProgressSession(input) &&
+    !input.hasPrescription &&
+    (input.freestyleMovementCount ?? 0) === 0
   );
 }

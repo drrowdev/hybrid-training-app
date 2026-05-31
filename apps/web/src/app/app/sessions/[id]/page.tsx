@@ -209,6 +209,15 @@ export default async function SessionDetailPage({
     .eq("completed_session_id", id)
     .maybeSingle();
   const plannedPrescription = (planned?.prescription as Prescription | null) ?? null;
+  const resolvedFreestyle = resolveFreestyleMovements({
+    persisted: persistedFreestyle,
+    sets: setLogSlimForFreestyle,
+    prescribedMovementIds: new Set(
+      (plannedPrescription?.items ?? [])
+        .map((item) => item.movementId)
+        .filter((m): m is string => !!m),
+    ),
+  });
   const sessionModality = (planned?.session_modality as
     | "pure_strength"
     | "pure_hypertrophy"
@@ -583,6 +592,7 @@ export default async function SessionDetailPage({
   const hasCardio = cardioPrescriptionItems.length > 0;
   const hasStrengthPrescription = strengthItemCount > 0;
   const isPureCardio = hasCardio && !hasStrengthPrescription;
+  const isHybridSession = hasCardio && hasStrengthPrescription;
   const showCardioLogForm =
     hasCardio && !isComplete && !hasLoggedCardioRow;
   const userUnits: "metric" | "imperial" =
@@ -1049,15 +1059,7 @@ export default async function SessionDetailPage({
         trapBarKg={trapBarKg}
         plateInventory={plateInventory}
         bwGateStateByFamily={bwGateStateByFamily}
-        resolvedFreestyle={resolveFreestyleMovements({
-          persisted: persistedFreestyle,
-          sets: setLogSlimForFreestyle,
-          prescribedMovementIds: new Set(
-            (plannedPrescription?.items ?? [])
-              .map((item) => item.movementId)
-              .filter((m): m is string => !!m),
-          ),
-        })}
+        resolvedFreestyle={resolvedFreestyle}
       />
 
       {(() => {
@@ -1087,7 +1089,16 @@ export default async function SessionDetailPage({
           ({ it }) => !it.movementId || !loggedMovementIds.has(it.movementId),
         );
         const hasLoggedCardio = !!(cardio && cardio.length > 0);
-        const showCardioSection = hasLoggedCardio || cardioItemsIndexed.length > 0 || !isComplete;
+        // Previously this also fired on a bare `!isComplete`, which
+        // rendered an empty cardio `cp-card` on pure-strength Quick
+        // Workouts (nothing inside it — no prescription, no logged
+        // cardio, no log form). Gate strictly on "has something to
+        // render": a cardio prescription, a logged cardio row, or the
+        // inline cardio log form (which itself only shows when cardio
+        // is prescribed). Freestyle cardio added via AddToWorkout lands
+        // as a logged row, so it still surfaces here once added.
+        const showCardioSection =
+          hasLoggedCardio || cardioItemsIndexed.length > 0 || showCardioLogForm;
         if (!showCardioSection) return null;
         return (
         <section
@@ -1270,51 +1281,33 @@ export default async function SessionDetailPage({
         );
       })()}
 
-      {/* Strength empty-state hint (Fix 8 of the Quick-workout UX sweep).
-            Shown ONLY when this is truly a fresh Quick Strength session
-            with zero content: no logged sets, no cardio blocks, and no
-            prescription to fall back on. Points at the AddToWorkout
-            pill below as the next step. */}
-      {shouldShowStrengthEmptyState({
-        completedAt: session.completed_at as string | null,
-        setLogCount: sets.length,
-        cardioLogCount: cardio?.length ?? 0,
-        hasPrescription: !!plannedPrescription,
-      }) && (
-          <div
-            data-testid="strength-empty-state"
-            className="cp-card"
-            style={{
-              padding: "18px 16px",
-              display: "grid",
-              gap: 6,
-              justifyItems: "center",
-              textAlign: "center",
-              borderStyle: "dashed",
-            }}
-          >
-            <div style={{ fontSize: 24, lineHeight: 1 }} aria-hidden="true">
-              🏋️
-            </div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--cp-text)" }}>
-              Pick movements to start logging
-            </div>
-            <div
-              style={{ fontSize: 12, color: "var(--cp-text-muted)" }}
-            >
-              Tap <span aria-hidden="true">↓</span> &ldquo;Add to workout&rdquo; below
-            </div>
-          </div>
-        )}
-
       {/* AddToWorkout (issue #210) replaces three historical surfaces:
             - the per-section "+ add cardio block" disclosure that used
               to live inside the cardio section (with AddCardioBlockForm)
             - the pure-cardio-only "+ Add off-plan movement" pill
             - implicit "no strength entry" gap on cardio-only sessions
-          One unified pill at the bottom of the page handles them all. */}
+          One unified entry at the bottom of the page handles them all.
+
+          Quick-workout mobile sweep: on a fresh session the trigger
+          renders as the prominent "Pick movements to start logging"
+          card (the logical thing to tap) instead of a tiny pill, and it
+          opens straight into the session's known modality so the user
+          doesn't re-pick Strength/Cardio they already chose. The
+          standalone empty-state hint div is gone — this card IS the
+          empty state now. */}
       {!isComplete && (
-        <AddToWorkout sessionId={id} cardioAction={addCardioBlock} />
+        <AddToWorkout
+          sessionId={id}
+          cardioAction={addCardioBlock}
+          primaryModality={isPureCardio ? "cardio" : isHybridSession ? undefined : "strength"}
+          prominent={shouldShowStrengthEmptyState({
+            completedAt: session.completed_at as string | null,
+            setLogCount: sets.length,
+            cardioLogCount: cardio?.length ?? 0,
+            hasPrescription: !!plannedPrescription,
+            freestyleMovementCount: resolvedFreestyle.length,
+          })}
+        />
       )}
 
       {!isComplete && !isPureCardio && (() => {

@@ -128,4 +128,28 @@ describe("shouldShowStrengthEmptyState", () => {
       }),
     ).toBe(false);
   });
+
+  it("returns false once a freestyle movement has been added (even with no set yet)", () => {
+    expect(
+      shouldShowStrengthEmptyState({
+        completedAt: null,
+        setLogCount: 0,
+        cardioLogCount: 0,
+        hasPrescription: false,
+        freestyleMovementCount: 1,
+      }),
+    ).toBe(false);
+  });
+
+  it("still shows when freestyleMovementCount is 0 (explicit)", () => {
+    expect(
+      shouldShowStrengthEmptyState({
+        completedAt: null,
+        setLogCount: 0,
+        cardioLogCount: 0,
+        hasPrescription: false,
+        freestyleMovementCount: 0,
+      }),
+    ).toBe(true);
+  });
 });
