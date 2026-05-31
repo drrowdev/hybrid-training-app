@@ -71,7 +71,7 @@ describe("ADR 0011 — hypertrophy compound effort anchor (final set)", () => {
       expect(last.isAmrap).toBe(false);
     });
 
-    it(`week ${weekIndex}: NON-final primary main sets have NO targetRir and unchanged wave reps/percentTm`, () => {
+    it(`week ${weekIndex}: NON-final primary main sets get the ADR 0015 early-set bump (cue + bounded reps), NO targetRir`, () => {
       const day = firstHypertrophyStrengthDay();
       const items = buildPrescription(HYPERTROPHY_ANCHOR, weekIndex, day, PRIMARY);
       const mains = items.filter((i) => i.kind === "main");
@@ -82,10 +82,14 @@ describe("ADR 0011 — hypertrophy compound effort anchor (final set)", () => {
       const waveIntensities = profile.setIntensities;
       for (let i = 0; i < mains.length - 1; i++) {
         const item = mains[i]!;
+        // ADR 0015 — early sets are effort-bumped, not RIR-anchored.
         expect(item.targetRir).toBeUndefined();
         expect(item.targetRpe).toBeUndefined();
-        expect(item.intensityCue).toBeUndefined();
-        expect(item.reps).toBe(waveReps[i]);
+        expect(item.intensityCue).toBeTruthy();
+        expect(item.intensityCue!.length).toBeLessThanOrEqual(80);
+        // Bounded rep bump: +2 over the wave, capped at 12.
+        expect(item.reps).toBe(Math.min(12, waveReps[i]! + 2));
+        // Load is unchanged — still %TM-driven at the wave intensity.
         expect(item.percentTm).toBe(Math.round(waveIntensities[i]! * 100));
       }
     });
