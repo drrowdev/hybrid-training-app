@@ -16,10 +16,12 @@ function strength(direction: StrengthDirection, opts?: { topSlope?: number; labe
         : [
             {
               movementId: "m1",
+              slug: "m1",
               label: opts?.label ?? "Bench",
               pointCount: 5,
               slopePerWeek: slope,
               direction,
+              points: [],
             },
           ],
     windowDays: 56,

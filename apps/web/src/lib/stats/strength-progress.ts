@@ -54,8 +54,14 @@ export const STRENGTH_MIN_LIFTS_FOR_VERDICT = 2;
 
 export type StrengthDirection = "up" | "flat" | "down" | "building";
 
+export type StrengthE1rmPoint = { performedAt: string; e1rm: number };
+
 export type StrengthPerLift = {
   movementId: string;
+  /** movements.slug — for deep-linking to the movement detail page. null when
+   * the lift surfaced with no in-window sets (we only learn slug from a set's
+   * joined movement row). */
+  slug: string | null;
   /** Display name (movements.display_name) for the chip/tooltip. */
   label: string;
   /** Number of e1RM points the slope was fit over (within the window). */
@@ -67,6 +73,12 @@ export type StrengthPerLift = {
    */
   slopePerWeek: number | null;
   direction: StrengthDirection;
+  /**
+   * Chronological top-set e1RM points the slope was fit over. Exposed so the
+   * strength drawer can render a sparkline of the same series the verdict is
+   * derived from (display only — never an engine input).
+   */
+  points: StrengthE1rmPoint[];
 };
 
 export type StrengthProgress = {
@@ -78,9 +90,10 @@ export type StrengthProgress = {
 
 export type StrengthLiftPoints = {
   movementId: string;
+  slug: string | null;
   label: string;
   /** e1RM points in chronological order. */
-  points: Array<{ performedAt: string; e1rm: number }>;
+  points: StrengthE1rmPoint[];
 };
 
 /** Classify a single lift's slope given its sample count. */
@@ -109,10 +122,12 @@ export function composeStrengthProgress(
     const slopePerWeek = slopePerDay == null ? null : slopePerDay * 7;
     return {
       movementId: l.movementId,
+      slug: l.slug,
       label: l.label,
       pointCount: l.points.length,
       slopePerWeek,
       direction: classifyLift(slopePerWeek, l.points.length),
+      points: l.points,
     };
   });
 
@@ -157,8 +172,8 @@ type SetRow = {
   reps: number | null;
   movement_id: string;
   movement?:
-    | { id: string; display_name: string }
-    | Array<{ id: string; display_name: string }>
+    | { id: string; slug: string | null; display_name: string }
+    | Array<{ id: string; slug: string | null; display_name: string }>
     | null;
   session:
     | { performed_at: string }
@@ -212,7 +227,7 @@ export async function getStrengthProgress(
   const { data: rows } = await supabase
     .from("set_logs")
     .select(
-      "weight_kg, reps, movement_id, movement:movements(id, display_name), session:sessions!inner(performed_at, completed_at, deleted_at, user_id)",
+      "weight_kg, reps, movement_id, movement:movements(id, slug, display_name), session:sessions!inner(performed_at, completed_at, deleted_at, user_id)",
     )
     .eq("session.user_id", userId)
     .is("session.deleted_at", null)
@@ -233,6 +248,7 @@ export async function getStrengthProgress(
   //    uses (`rollupTopSetsPerSession`).
   type Working = {
     movementId: string;
+    slug: string | null;
     label: string;
     /** performed_at → best (max) e1RM logged in that session. */
     best: Map<string, number>;
@@ -249,7 +265,13 @@ export async function getStrengthProgress(
     const label = mv?.display_name ?? r.movement_id;
     const bucket =
       byMovement.get(r.movement_id) ??
-      ({ movementId: r.movement_id, label, best: new Map() } satisfies Working);
+      ({
+        movementId: r.movement_id,
+        slug: mv?.slug ?? null,
+        label,
+        best: new Map(),
+      } satisfies Working);
+    if (bucket.slug == null && mv?.slug != null) bucket.slug = mv.slug;
     const prev = bucket.best.get(s.performed_at);
     if (prev == null || e1 > prev) bucket.best.set(s.performed_at, e1);
     byMovement.set(r.movement_id, bucket);
@@ -258,13 +280,14 @@ export async function getStrengthProgress(
   // 4. Ensure every main lift surfaces, even with zero in-window points.
   for (const id of mainIds) {
     if (!byMovement.has(id)) {
-      byMovement.set(id, { movementId: id, label: id, best: new Map() });
+      byMovement.set(id, { movementId: id, slug: null, label: id, best: new Map() });
     }
   }
 
   const perLiftPoints: StrengthLiftPoints[] = Array.from(byMovement.values())
     .map((w) => ({
       movementId: w.movementId,
+      slug: w.slug,
       label: w.label,
       points: Array.from(w.best.entries())
         .map(([performedAt, e1rm]) => ({ performedAt, e1rm }))
