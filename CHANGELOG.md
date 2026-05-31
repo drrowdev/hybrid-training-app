@@ -10,6 +10,20 @@ Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 
 ### Added (stats page redesign — Direction C2, Phase 3 · drawers)
 
+- **Recovery & load tile now opens an acute:chronic drilldown drawer.**
+  The Recovery & load tile's header "Engine →" link is replaced by a
+  "Detail →" affordance that opens a side drawer (same shared
+  `BottomSheet` primitive). The drawer surfaces the readiness verdict +
+  confidence ("N of 3 signals agree" / "building baseline"), the
+  acute:chronic workload ratio on a 0–2.0 gauge with band threshold ticks
+  (0.8 / 1.3 / 1.5) and a Gabbett-2016 sweet-spot legend, a cold-start
+  notice when there is &lt;4 weeks of load history, and the three
+  corroborating signals (load balance, sRPE drift, output trend) the
+  readiness verdict is composed from. A footer states the readiness signal
+  is **display only — it never feeds workout prescription** and deep-links
+  to `/app/stats/engine` for the full internals. Reuses the existing
+  `getReadiness` payload — no new query, no engine input.
+
 - **Strength tile now opens an e1RM detail drawer.** The Strength
   progress tile gains a "Detail →" affordance that opens a side
   drawer (reusing the shared `BottomSheet` primitive — desktop
