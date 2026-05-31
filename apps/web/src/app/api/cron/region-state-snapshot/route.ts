@@ -12,7 +12,7 @@
  * linearly with user history. The cache replaces that with a single
  * indexed read of 14 rows per region.
  *
- * The 16-muscle grid (/app/freshness, /app/stats/wellness) is the
+ * The 16-muscle grid (/app/freshness) is the
  * same story at finer resolution — the same per-user lookback feeds
  * both tables, so we extend this handler rather than running a
  * second cron at a separate time.

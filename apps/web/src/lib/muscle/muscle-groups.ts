@@ -1,8 +1,8 @@
 /**
  * The 16-muscle grid taxonomy.
  *
- * This is the visualisation vocabulary surfaced on /app/freshness and
- * the /app/stats/wellness muscle card. It maps cleanly to the existing
+ * This is the visualisation vocabulary surfaced on /app/freshness. It
+ * maps cleanly to the existing
  * `muscle` enum on `movements` (22 finer values like front_delts /
  * rear_delts / upper_chest) — `MUSCLE_FROM_DB_ENUM` collapses the
  * fine-grained enum to the 16 display groups.

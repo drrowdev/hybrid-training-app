@@ -25,49 +25,40 @@
 
 - **CP-1 — No unvalidated v2 constant ships without a labeled plan.** Any v2-spec constant entering engine code (`apps/web/src/lib/engine/**`, `apps/web/src/lib/stats/**`, `packages/engine/**`, `packages/domain/**`) must be (a) explicitly labeled as a heuristic in a source comment, AND (b) accompanied by a documented validation plan covering: (i) what user-outcome signal will be used to refine it (e.g., adherence delta, sRPE-vs-prediction gap, deload-trigger frequency, perceived recovery delta), and (ii) what the rollback threshold is (the observed signal value at which the constant gets reverted or revised). The plan is referenced from the PR body before merge. Plans live alongside the constraint file or in an ADR; a one-line link in the PR body is sufficient if the plan exists.
 
-- **CP-2 — Every coefficient currently in engine code is heuristic-pending-data.** RPE multiplier curves, modality multipliers, HR-zone weights, recovery-multiplier deltas, the cardio scalar `8`, secondary-region weight `0.5`, bucket coefficients, freshness bands, volume landmarks — all the constants enumerated in the table at the bottom of this section — are flagged as heuristic-pending-data until a prospective validation has been run. Reviewers should treat any precision in these numbers (`0.18`, `1.07`, `0.97`, etc.) as engineering placeholder, not calibration output. When the validation lands, the relevant table row gets updated with the source and confidence label; until then, the heuristic flag stays.
+- **CP-2 — Every coefficient currently in engine code is heuristic-pending-data.** RPE multiplier curves, modality multipliers, HR-zone weights, the cardio scalar `8`, secondary-region weight `0.5`, bucket coefficients, freshness bands, volume landmarks — all the constants enumerated in the table at the bottom of this section — are flagged as heuristic-pending-data until a prospective validation has been run. Reviewers should treat any precision in these numbers (`0.18`, `1.07`, `0.97`, etc.) as engineering placeholder, not calibration output. When the validation lands, the relevant table row gets updated with the source and confidence label; until then, the heuristic flag stays.
 
 - **CP-3 — Precision requires a source comment or a heuristic tag.** Any constant in engine code presented with more than one significant figure of precision (e.g., `0.18`, `1.07`, `0.97`, `0.85`) must include either (a) a source comment naming where the precision came from (`// per Helms 2016, JSCR 30(1), HIGH`), OR (b) an explicit `// heuristic, no calibration data` tag. Two-decimal numbers without one of these two markers fail review. This applies to new constants and to any constant touched in a PR — drive-by additions of decimal precision must justify themselves on the way in.
 
-- **CP-4 — The ceiling chain stays at 3 factors.** The headline ceiling computation remains `finalCeiling = baseCeiling × recoveryMultiplier × confidenceBias` (`apps/web/src/lib/stats/engine.ts:716`) until a measurable user-outcome signal exists to motivate adding any of the v2-spec extras (`quality_modifier`, `interference_modifier`, `region_cap_factor`). Any PR that adds a 4th factor must also implement the **per-week compression cap** recommended in the external critique: the new chain can compress the previous week's final ceiling by no more than 25% week-over-week unless a hard safety trigger fires (active limitation escalation, DC-P4 score 3 deload trigger, or an explicit user-initiated deload). The cap is a runtime guard, not a comment; it applies at the point of ceiling assembly.
+- **CP-4 — The ceiling chain stays at 2 factors.** The headline ceiling computation is `finalCeiling = baseCeiling × confidenceBias` (`apps/web/src/lib/stats/engine.ts`, `getCeilingExplain`). The daily `recoveryMultiplier` third factor was **removed** when the daily wellness check-in was retired (see ADR 0018 and the Recovery-signal note below); it had defaulted to `1.0` for every user since the input UI was gone, so removing it was a no-op on real prescriptions. No additional factor (`recoveryMultiplier`, `quality_modifier`, `interference_modifier`, `region_cap_factor`) may be reintroduced until a measurable user-outcome signal motivates it. Any PR that adds a 3rd factor must also implement the **per-week compression cap** recommended in the external critique: the new chain can compress the previous week's final ceiling by no more than 25% week-over-week unless a hard safety trigger fires (active limitation escalation, DC-P4 score 3 deload trigger, or an explicit user-initiated deload). The cap is a runtime guard, not a comment; it applies at the point of ceiling assembly.
 
 - **CP-5 — Peer-reviewed constants must cite.** Any constant whose value comes from a peer-reviewed source must include a comment citation in the form `// per Author Year, Journal, ConfidenceTier`, using the HIGH / MODERATE / LOW confidence labels from `hybrid-training-research-new.md`. Example: `// 1/9th maintenance volume per Bickel 2011, Med Sci Sports Exerc 43(7), HIGH`. Engineering defaults that are *consistent with* peer-reviewed direction but are not directly the literature value should use the heuristic tag from CP-3, not a fabricated citation.
 
-### Recovery-scale coexistence
+### Recovery signal (and the retired daily wellness check-in)
 
-The engine deliberately maintains two recovery signals with different
-domains, scales, and write paths:
+The engine maintains **one** recovery signal:
 
 - **GRM (Global Recovery Multiplier)** — 1–5 scale, written per-session
   on `sessions.fatigue` and `sessions.soreness`. Domain: post-session
   immediate fatigue and DOMS. Consumed by `wasRealMiss` and the
-  deload-trigger logic. Computed from session-level deltas; clamp
-  [0.8, 1.0].
-- **Wellness check-in** — 1–9 scale, written per-day on `wellness.fatigue`
-  and `wellness.soreness`. Domain: pre-day systemic readiness. Consumed
-  by `computeRecoveryMultiplier` and fed into `getCeilingExplain`'s
-  recovery factor. Clamp [0.7, 1.1] (asymmetric — see CP-3 note in the
-  constants table).
+  deload-trigger logic (`apps/web/src/lib/engine/grm.ts`). Computed from
+  session-level deltas; clamp [0.8, 1.0]. This signal is **live and
+  unchanged.**
 
-The two are intentionally not reconciled into a single scale because
-they capture different physiological events:
-
-- Per-session GRM is reactive to today's training (DOMS, neural
-  saturation from the session you just finished).
-- Per-day wellness is anticipatory (yesterday's accumulated load, last
-  night's sleep, life-stress).
-
-A user can be GRM-fatigued (just did a hard squat session, soreness 5/5)
-while wellness-ready (slept 9 hours, low life stress, ready for
-tomorrow). The opposite also holds. Folding them into one scale would
-lose this temporal separation.
-
-Note (PR #176): the wellness check-in UI was retired in May 2026 because
-the friction-to-signal ratio was poor with zero prod rows to validate
-the threshold cascade. The plumbing remains live; new users currently
-see the recovery multiplier default to 1.0. Re-introduce when there is
-a less intrusive input surface (e.g., passive HRV trend from a
-wearable).
+A second, per-day **wellness check-in** signal (1–9 scale on
+`wellness.fatigue` / `wellness.soreness`, feeding a daily
+`recoveryMultiplier` into the ceiling chain via `computeRecoveryMultiplier`)
+previously coexisted. It was retired in two steps: first the Today-page
+input card (PR #176), then the engine path itself (ADR 0018). The card
+had near-zero adoption and zero prod rows to validate its threshold
+cascade, so with no UI writing fresh rows the multiplier defaulted to
+`1.0` for everyone — it was already inert. Removing it dropped the
+ceiling chain from three factors to two (`baseCeiling × confidenceBias`,
+see CP-4). The `wellness` table columns
+(`fatigue` / `soreness` / `motivation` / `notes`) are **retained** for
+history and data export; `wellness.bodyweight_kg` remains a live,
+separate feature (bodyweight nudge + trend). Re-introduce a daily
+readiness signal only behind a less intrusive input surface (e.g.,
+passive HRV trend from a wearable).
 
 ### Live-engine constants under CP-2 (heuristic-pending-data)
 
@@ -88,9 +79,7 @@ Derived from `hybrid-training-engine-live.md` §19 "Overconfident constants" and
 | 11 | Cardio intensity bounds | `apps/web/src/lib/engine/cardio-intensity.ts:44-45` | min `0.3`, max `2.5` | Engineering defaults | Cardio sessions hitting either clamp |
 | 12 | Cardio fallback (no HR zones) | `apps/web/src/lib/engine/cardio-intensity.ts` (fallback branch) | `clamp(rpe/10, 0.3, 1.0)`; null RPE → `0.5` | Engineering default | Cardio-ESL vs sRPE gap for HR-less sessions |
 | 13 | Region primary/secondary weights | `apps/web/src/lib/engine/set-load.ts:55-56` | `PRIMARY_REGION_WEIGHT = 1.0`, `SECONDARY_REGION_WEIGHT = 0.5` | Engineering default | Region-freshness vs perceived per-region recovery |
-| 14 | Wellness-recovery delta → multiplier ladder | `apps/web/src/lib/engine/wellness-recovery.ts:120-125` | delta ≤−2→`1.10`, ≤−1→`1.05`, <1→`1.00`, <2→`0.90`, <3→`0.80`, else `0.70` (on 1–9 slider scale) | Engineering default; scale-mismatch noted in §19 | Recovery-multiplier vs next-session sRPE-vs-prediction |
-| 15 | Wellness-recovery bounds | `apps/web/src/lib/engine/wellness-recovery.ts:50,52` | floor `0.7`, ceiling `1.1` (asymmetric ±30%/+10%) | None — asymmetry uncited | Frequency hitting either bound vs adherence outcome |
-| 16 | Wellness-recovery minimum history | `apps/web/src/lib/engine/wellness-recovery.ts:47` | `MIN_HISTORICAL_POINTS = 3` | Engineering default | Cold-start recovery quality vs warm-start |
+| 14–16 | ~~Wellness-recovery daily multiplier (delta ladder, bounds, min-history)~~ — **REMOVED** | ~~`apps/web/src/lib/engine/wellness-recovery.ts`~~ (deleted) | n/a | Removed with the daily wellness check-in (ADR 0018); ceiling chain is now two-factor `baseCeiling × confidenceBias` | n/a |
 | 17 | GRM raw formula | `apps/web/src/lib/engine/grm.ts` | `1.0 + 0.06×fatigueDelta + 0.04×sorenessDelta`, clamp `[0.8, 1.0]`, threshold `GRM_RECOMMEND_THRESHOLD = 0.96` (1–5 slider) | Engineering default; coexists with `wellness-recovery.ts` 1–9 scale | GRM-recommend trigger vs user override rate |
 | 18 | Confidence bias (recovered-weeks tiers) | `packages/engine/src/recovered-weeks.ts:200-241` | ≥3 recovered → `1.00`; 1–2 → `0.80`; 0 → lowest-of-4 × `0.9`, bias `0.80` | Engineering defaults; multipliers and tier widths uncited | Ceiling-vs-realized-tonnage gap per tier |
 | 19 | Recovered-week thresholds | `packages/engine/src/recovered-weeks.ts:64-65` (and §7 fixture) | `OVERREACH_SRPE = 9`, `ELEVATED_STRESS = 4`, soreness < `4` | Engineering defaults; sRPE threshold is plausibly literature-adjacent but uncited inline | Frequency a "recovered" week precedes a deload trigger |
@@ -166,7 +155,7 @@ If a row is added here, the corresponding code constant must carry the `// heuri
 
 - **DC-C4 — Systemic penalty formula (v2 §3.5; MVP simplified per § U)** [DEF→cal] — **MVP form** (no HRV / RHR / sleep self-log): `systemic_penalty = 0.55·N_fatigue + 0.30·N_soreness + 0.15·N_compliance_instability`. Both `N_fatigue` and `N_soreness` are derived from the pre-session 2-slider check-in (DC-P1) using `norm_high(x; good=1, bad=4)` on the 1–5 scale. **Future form** (when wearables / sleep self-log return): `0.30·N_sleep + 0.22·N_HRV_7d_zscore + 0.16·N_RHR + 0.16·N_compliance_instability + 0.16·N_soreness` per v2 §3.5 + `new` §6.1 Walker 2017 HIGH + Plews 2013 HIGH (HRV strictly 7-day rolling z-score, never point reading — see deferred DC-P3). *Test:* MVP weights sum to 1.00; injecting fatigue=4/5 + soreness=4/5 + compliance_instability=0.10 yields the documented penalty value. **Confidence: MODERATE-LOW** for MVP weights (engineering default; downgraded from HIGH-MODERATE because the peer-reviewed inputs are deferred).
 
-- **DC-C5 — Global recovery multiplier (v2 §3.6)** [DEF→cal] — `GRM = clamp(1.07 − 0.18·global_pressure − 0.12·systemic_penalty, 0.70, 1.08)`. *Test:* given pressures from v2 §3.13 worked example, GRM = 0.917. **Confidence: MODERATE-LOW.**
+- **DC-C5 — Global recovery multiplier (v2 §3.6)** [DEF→cal] — `GRM = clamp(1.07 − 0.18·global_pressure − 0.12·systemic_penalty, 0.70, 1.08)`. *Test:* given pressures from v2 §3.13 worked example, GRM = 0.917. **Confidence: MODERATE-LOW.** **[NOT IN CEILING CHAIN — May 2026, ADR 0018]** The daily-readiness `recoveryMultiplier` this constraint specified was removed from `getCeilingExplain` when the daily wellness check-in was retired; the ceiling chain is now two-factor (`baseCeiling × confidenceBias`). The per-session GRM (`grm.ts`, 1–5 scale, deload/advisory) is a separate, still-live signal and is unaffected.
 
 - **DC-C6 — Quality sensitivity matrix (v2 §3.7)** [DEF→cal] — Per-quality sensitivity to the six buckets follows the v2 §3.7 table; rows sum to 1.0; `quality_modifier_q = clamp(1.04 − 0.18·quality_pressure_q, 0.78, 1.04)`. *Test:* matrix-row-sum invariant + worked-example modifier values. **Confidence: MODERATE-LOW.**
 
