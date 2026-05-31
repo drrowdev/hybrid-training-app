@@ -39,6 +39,7 @@ function endurance(direction: EnduranceDirection, opts?: { slope?: number; total
     droppedRuns: 0,
     totalRuns: opts?.totalRuns ?? (direction === "no-run-data" ? 0 : 8),
     timeInZone: NO_ZONES,
+    weeklyPace: direction === "no-run-data" ? [] : [345, 342, 340, 338],
     detail: `endurance ${direction}`,
     windowDays: 56,
   };

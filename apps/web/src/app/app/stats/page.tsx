@@ -185,56 +185,43 @@ export default async function StatsOverviewPage({
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Bottom — deep-dive link grid (Phase 3 folds these into tile drawers)
+// Bottom — slim deep-dive footer. Tiles now open drawers for depth; these
+// stay as a low-emphasis index to the full subpages (each drawer is a
+// summary + a deep link, so the full pages still need an entry point).
 // ──────────────────────────────────────────────────────────────────────
 
 function DeepDiveLinks() {
+  const links: Array<{ label: string; href: string }> = [
+    { label: "PRs & per-movement", href: "/app/stats/prs" },
+    { label: "Engine internals", href: "/app/stats/engine" },
+    { label: "Block outcomes", href: "/app/stats/blocks" },
+    { label: "Adherence dashboard", href: "/app/stats/adherence" },
+  ];
   return (
     <section
       data-testid="stats-deep-dive-links"
-      style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", marginTop: 4 }}
-    >
-      <DeepDive
-        title="PRs & per-movement"
-        body="Personal records, top sets, and per-lift e1RM history."
-        href="/app/stats/prs"
-      />
-      <DeepDive
-        title="Engine internals"
-        body="Buckets, region freshness, RPE drift."
-        href="/app/stats/engine"
-      />
-      <DeepDive
-        title="Block outcomes"
-        body="Past blocks + completion stats."
-        href="/app/stats/blocks"
-      />
-      <DeepDive
-        title="Adherence dashboard"
-        body="Weekly completion, weekday breakdown, archetype mix, skip notes, streaks."
-        href="/app/stats/adherence"
-      />
-    </section>
-  );
-}
-
-function DeepDive({ title, body, href }: { title: string; body: string; href: string }) {
-  return (
-    <Link
-      href={href}
-      data-testid="stats-deep-dive"
       style={{
-        display: "block",
-        padding: 14,
-        border: "1px solid var(--cp-border)",
-        borderRadius: 10,
-        background: "var(--cp-surface)",
-        color: "inherit",
-        textDecoration: "none",
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "center",
+        gap: "6px 14px",
+        marginTop: 8,
+        paddingTop: 14,
+        borderTop: "1px solid var(--cp-border)",
+        fontSize: 12.5,
       }}
     >
-      <div style={{ fontWeight: 600, fontSize: 14 }}>{title} →</div>
-      <div style={{ fontSize: 12, color: "var(--cp-text-muted)", marginTop: 2 }}>{body}</div>
-    </Link>
+      <span style={{ color: "var(--cp-text-muted)", fontWeight: 600 }}>Full pages</span>
+      {links.map((l) => (
+        <Link
+          key={l.href}
+          href={l.href}
+          data-testid="stats-deep-dive"
+          style={{ color: "var(--cp-link)", textDecoration: "none" }}
+        >
+          {l.label} →
+        </Link>
+      ))}
+    </section>
   );
 }
