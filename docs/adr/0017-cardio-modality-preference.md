@@ -83,7 +83,7 @@ bounds, not calibrated quantities.
 
 ## Implementation contract (as built — 2026-05-31)
 
-**Commit:** _(filled on merge)_.
+**Commit:** `230334c`.
 
 1. **Storage.** Migration `0081` adds `profiles.preferred_cardio_modalities text[]`
    (nullable, no default = byte-identical for existing rows) + CHECK (≤8 entries,
