@@ -11,6 +11,11 @@ import {
 } from "@/lib/dates";
 import { ARCHETYPES, type ArchetypeId } from "./archetypes";
 import { applyAutoregVolumeScale } from "./autoreg-volume";
+import {
+  applyModificationsToPrescription,
+  getActiveModificationRows,
+  resolveModificationsForDate,
+} from "./modifications";
 
 /**
  * Resolve a block's `archetype` column to the human-facing display name.
@@ -141,6 +146,10 @@ export async function getActiveBlock(): Promise<ActiveBlock | null> {
 
 export async function getPlannedDays(blockId: string, startedOn: string): Promise<PlannedDay[]> {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
+  const modRows = user ? await getActiveModificationRows(user.id) : [];
   const { data } = await supabase
     .from("planned_sessions")
     .select(
@@ -151,23 +160,31 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
     .order("day_index", { ascending: true })
     .order("slot", { ascending: true });
   if (!data) return [];
-  return data.map((d) => ({
-    id: d.id,
-    blockId: d.block_id,
-    weekIndex: d.week_index,
-    dayIndex: d.day_index,
-    slot: (d.slot as SessionSlot) ?? "single",
-    plannedAt: d.planned_at ?? null,
-    title: d.title,
-    role: d.role,
-    prescription: applyAutoregVolumeScale(
+  return data.map((d) => {
+    const date = dayDate(startedOn, d.week_index, d.day_index);
+    const base = applyAutoregVolumeScale(
       (d.prescription as Prescription) ?? { items: [] },
-    ),
-    completedSessionId: d.completed_session_id,
-    skippedAt: d.skipped_at,
-    notes: (d.notes as string | null) ?? null,
-    date: dayDate(startedOn, d.week_index, d.day_index),
-  }));
+    );
+    const prescription = applyModificationsToPrescription(
+      base,
+      resolveModificationsForDate(modRows, date),
+    );
+    return {
+      id: d.id,
+      blockId: d.block_id,
+      weekIndex: d.week_index,
+      dayIndex: d.day_index,
+      slot: (d.slot as SessionSlot) ?? "single",
+      plannedAt: d.planned_at ?? null,
+      title: d.title,
+      role: d.role,
+      prescription,
+      completedSessionId: d.completed_session_id,
+      skippedAt: d.skipped_at,
+      notes: (d.notes as string | null) ?? null,
+      date,
+    };
+  });
 }
 
 /**
@@ -196,6 +213,9 @@ export async function getPlannedSessionById(
   plannedId: string,
 ): Promise<PlannedSessionWithBlock | null> {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
   const { data } = await supabase
     .from("planned_sessions")
     .select(
@@ -210,6 +230,15 @@ export async function getPlannedSessionById(
     | null;
   const block = Array.isArray(blockRel) ? blockRel[0] : blockRel;
   if (!block) return null;
+  const date = dayDate(block.started_on, data.week_index, data.day_index);
+  const base = applyAutoregVolumeScale(
+    (data.prescription as Prescription) ?? { items: [] },
+  );
+  const modRows = user ? await getActiveModificationRows(user.id) : [];
+  const prescription = applyModificationsToPrescription(
+    base,
+    resolveModificationsForDate(modRows, date),
+  );
   return {
     id: data.id,
     blockId: data.block_id,
@@ -219,13 +248,11 @@ export async function getPlannedSessionById(
     plannedAt: data.planned_at ?? null,
     title: data.title,
     role: data.role,
-    prescription: applyAutoregVolumeScale(
-      (data.prescription as Prescription) ?? { items: [] },
-    ),
+    prescription,
     completedSessionId: data.completed_session_id,
     skippedAt: data.skipped_at,
     notes: (data.notes as string | null) ?? null,
-    date: dayDate(block.started_on, data.week_index, data.day_index),
+    date,
     archetype: block.archetype,
     archetypeName: archetypeDisplayName(block.archetype, block.notes),
     blockStartedOn: block.started_on,

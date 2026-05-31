@@ -8,19 +8,28 @@
  * The DB stores only `status='applied'` rows that are currently
  * non-reverted; the active-window index keeps the lookup cheap.
  *
- * Caller is `assemblePrescriptionItems` in lib/planner/actions.ts —
- * it fetches once per session-generation request and forwards the
- * result into `buildPrescription` so existing call sites that don't
- * pass modifications keep their current behaviour bit-for-bit.
+ * Consumed read-time at the three seams that turn a stored
+ * prescription into what the user sees / logs — mirroring the
+ * `applyAutoregVolumeScale` pattern (ADR 0013):
+ *   - `getPlannedDays` / `getPlannedSessionById` (plan + session
+ *     renderers) in lib/planner/queries.ts
+ *   - `fillSessionFromPlan` (materialises set_logs) in
+ *     lib/sessions/actions.ts
+ * Each seam resolves the modification for the session's calendar date
+ * and runs `applyModificationsToPrescription`. Absent an applied row
+ * the transform is a byte-identical no-op, so users who never accept a
+ * taper/recovery see unchanged prescriptions (the regression invariant).
  */
 
 import { createClient } from "@/lib/supabase/server";
 import type {
+  Prescription,
   RecoveryPayload,
   TaperPayload,
   TaperPayloadDay,
 } from "@hta/db";
 import { scaleForDateInWindow } from "./recovery";
+import { applyModificationsToItems } from "./archetypes";
 import {
   NO_ACTIVE_MODIFICATIONS,
   type ActiveModifications,
@@ -38,28 +47,52 @@ function ymd(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/** A single currently-applied modification row, as read from the DB. */
+export type ActiveModificationRow = {
+  kind: string;
+  start_date: string;
+  end_date: string;
+  ramp_end_date: string | null;
+  payload: unknown;
+};
+
 /**
- * Read all currently-applied modifications for `userId` and reduce
- * them to a single effective scaling for `targetDate`.
- *
- * Recovery wins over taper when both rows happen to span the same
- * day — the user just raced, so the body's current physiological
- * state is "recovering", not "tapering for next event".
+ * Read every currently-applied (non-reverted, non-declined)
+ * modification row for `userId`, regardless of date. The caller
+ * resolves the effective scaling per target date in memory via
+ * `resolveModificationsForDate` — this lets a multi-day reader
+ * (`getPlannedDays`) fetch once instead of one query per day.
  */
-export async function getActiveModifications(
+export async function getActiveModificationRows(
   userId: string,
-  targetDate: Date,
-): Promise<ActiveModifications> {
-  const dateStr = ymd(targetDate);
+): Promise<ActiveModificationRow[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("prescription_modifications")
     .select("kind,start_date,end_date,ramp_end_date,payload")
     .eq("user_id", userId)
-    .eq("status", "applied")
-    .lte("start_date", dateStr)
-    .gte("end_date", dateStr);
-  if (error || !data || data.length === 0) return NO_ACTIVE_MODIFICATIONS;
+    .eq("status", "applied");
+  if (error || !data) return [];
+  return data as ActiveModificationRow[];
+}
+
+/**
+ * Reduce a set of applied modification rows to a single effective
+ * scaling for `targetDate`. Pure — no DB access.
+ *
+ * Recovery wins over taper when both rows happen to span the same
+ * day — the user just raced, so the body's current physiological
+ * state is "recovering", not "tapering for next event".
+ */
+export function resolveModificationsForDate(
+  rows: ActiveModificationRow[],
+  targetDate: Date | string,
+): ActiveModifications {
+  const dateStr = typeof targetDate === "string" ? targetDate : ymd(targetDate);
+  const data = rows.filter(
+    (r) => r.start_date <= dateStr && r.end_date >= dateStr,
+  );
+  if (data.length === 0) return NO_ACTIVE_MODIFICATIONS;
 
   // Recovery wins.
   const recovery = data.find((r) => r.kind === "recovery");
@@ -74,7 +107,7 @@ export async function getActiveModifications(
         rampDays: win.rampDays,
         ...(win.confidence ? { confidence: win.confidence } : {}),
       },
-      startDate: recovery.start_date as string,
+      startDate: recovery.start_date,
       targetDate: dateStr,
     });
     if (scales) {
@@ -112,4 +145,34 @@ export async function getActiveModifications(
   }
 
   return NO_ACTIVE_MODIFICATIONS;
+}
+
+/**
+ * Read all currently-applied modifications for `userId` and reduce
+ * them to a single effective scaling for `targetDate`. Convenience
+ * wrapper around `getActiveModificationRows` + `resolveModificationsForDate`
+ * for single-date callers.
+ */
+export async function getActiveModifications(
+  userId: string,
+  targetDate: Date,
+): Promise<ActiveModifications> {
+  const rows = await getActiveModificationRows(userId);
+  return resolveModificationsForDate(rows, targetDate);
+}
+
+/**
+ * Apply an effective modification to a materialised prescription,
+ * returning a scaled copy. No-op (returns the input unchanged, same
+ * reference) when there is no active modification — preserving the
+ * byte-identical regression invariant for users who never accept a
+ * taper/recovery.
+ */
+export function applyModificationsToPrescription(
+  prescription: Prescription,
+  mods: ActiveModifications,
+): Prescription {
+  if (mods.source === null) return prescription;
+  const items = applyModificationsToItems(prescription.items ?? [], mods);
+  return { ...prescription, items };
 }
