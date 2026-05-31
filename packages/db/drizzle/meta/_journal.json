@@ -110,407 +110,470 @@
     {
       "idx": 15,
       "version": "7",
-      "tag": "0015_tm_history",
       "when": 1779420000000,
+      "tag": "0015_tm_history",
       "breakpoints": false
     },
     {
       "idx": 16,
       "version": "7",
-      "tag": "0016_strava_integration",
       "when": 1779480000000,
+      "tag": "0016_strava_integration",
       "breakpoints": false
     },
     {
       "idx": 17,
       "version": "7",
-      "tag": "0017_events",
       "when": 1779486000000,
+      "tag": "0017_events",
       "breakpoints": false
     },
     {
       "idx": 18,
       "version": "7",
-      "tag": "0018_accessory_roles",
       "when": 1779492000000,
+      "tag": "0018_accessory_roles",
       "breakpoints": false
     },
     {
       "idx": 19,
       "version": "7",
-      "tag": "0019_tag_accessory_roles",
       "when": 1779498000000,
+      "tag": "0019_tag_accessory_roles",
       "breakpoints": false
     },
     {
       "idx": 20,
       "version": "7",
-      "tag": "0020_block_day_index_overrides",
       "when": 1779504000000,
+      "tag": "0020_block_day_index_overrides",
       "breakpoints": false
     },
     {
       "idx": 21,
       "version": "7",
-      "tag": "0021_training_experience",
       "when": 1779510000000,
+      "tag": "0021_training_experience",
       "breakpoints": false
     },
     {
       "idx": 22,
       "version": "7",
-      "tag": "0022_power_emphasis",
       "when": 1779516000000,
+      "tag": "0022_power_emphasis",
       "breakpoints": false
     },
     {
       "idx": 23,
       "version": "7",
-      "tag": "0023_power_movement_tagging",
       "when": 1779522000000,
+      "tag": "0023_power_movement_tagging",
       "breakpoints": false
     },
     {
       "idx": 24,
       "version": "7",
-      "tag": "0024_power_movements_seed",
       "when": 1779528000000,
+      "tag": "0024_power_movements_seed",
       "breakpoints": false
     },
     {
       "idx": 25,
       "version": "7",
-      "tag": "0025_block_lifecycle_timestamps",
       "when": 1779534000000,
+      "tag": "0025_block_lifecycle_timestamps",
       "breakpoints": false
     },
     {
       "idx": 26,
       "version": "7",
-      "tag": "0026_soft_delete",
       "when": 1779540000000,
+      "tag": "0026_soft_delete",
       "breakpoints": false
     },
     {
       "idx": 27,
       "version": "7",
-      "tag": "0027_daily_check_ins",
       "when": 1779546000000,
+      "tag": "0027_daily_check_ins",
       "breakpoints": false
     },
     {
       "idx": 28,
       "version": "7",
-      "tag": "0028_engine_override_events",
       "when": 1779552000000,
+      "tag": "0028_engine_override_events",
       "breakpoints": false
     },
     {
       "idx": 29,
       "version": "7",
-      "tag": "0029_region_state_history",
       "when": 1779558000000,
+      "tag": "0029_region_state_history",
       "breakpoints": false
     },
     {
       "idx": 30,
       "version": "7",
-      "tag": "0030_wellness_fatigue_soreness",
       "when": 1779564000000,
+      "tag": "0030_wellness_fatigue_soreness",
       "breakpoints": false
     },
     {
       "idx": 31,
       "version": "7",
-      "tag": "0031_muscle_state_history",
       "when": 1779570000000,
+      "tag": "0031_muscle_state_history",
       "breakpoints": false
     },
     {
       "idx": 32,
       "version": "7",
-      "tag": "0032_training_maxes_source",
       "when": 1779576000000,
+      "tag": "0032_training_maxes_source",
       "breakpoints": false
     },
     {
       "idx": 33,
       "version": "7",
-      "tag": "0033_limitations_full_shape",
       "when": 1779582000000,
+      "tag": "0033_limitations_full_shape",
       "breakpoints": false
     },
     {
       "idx": 34,
       "version": "7",
-      "tag": "0034_profiles_ai_notes",
       "when": 1779588000000,
+      "tag": "0034_profiles_ai_notes",
       "breakpoints": false
     },
     {
       "idx": 35,
       "version": "7",
-      "tag": "0035_priority_events_full_shape",
       "when": 1779594000000,
+      "tag": "0035_priority_events_full_shape",
       "breakpoints": false
     },
     {
       "idx": 36,
       "version": "7",
-      "tag": "0036_set_logs_prescription_link",
       "when": 1779680400000,
+      "tag": "0036_set_logs_prescription_link",
       "breakpoints": false
     },
     {
       "idx": 37,
       "version": "7",
-      "tag": "0041_profiles_time_date_format",
-      "when": 1779686400000,
+      "when": 1779681600000,
+      "tag": "0037_set_logs_skipped",
       "breakpoints": false
     },
     {
       "idx": 38,
       "version": "7",
-      "tag": "0042_bw_skill_tree",
-      "when": 1779692400000,
+      "when": 1779682800000,
+      "tag": "0038_profiles_equipment",
       "breakpoints": false
     },
     {
       "idx": 39,
       "version": "7",
-      "tag": "0043_bw_assessment",
-      "when": 1779778800000,
+      "when": 1779684000000,
+      "tag": "0039_profiles_warmup_scheme",
       "breakpoints": false
     },
     {
       "idx": 40,
       "version": "7",
-      "tag": "0044_bw_main_prescription",
-      "when": 1779865200000,
+      "when": 1779685200000,
+      "tag": "0040_profiles_equipment",
       "breakpoints": false
     },
     {
       "idx": 41,
       "version": "7",
-      "tag": "0045_bw_progression_events",
-      "when": 1779951600000,
+      "when": 1779686400000,
+      "tag": "0041_profiles_time_date_format",
       "breakpoints": false
     },
     {
       "idx": 42,
       "version": "7",
-      "tag": "0046_session_modality",
-      "when": 1780038000000,
+      "when": 1779692400000,
+      "tag": "0042_bw_skill_tree",
       "breakpoints": false
     },
     {
       "idx": 43,
       "version": "7",
-      "tag": "0047_bw_diagnostics_snapshots",
-      "when": 1780124400000,
+      "when": 1779778800000,
+      "tag": "0043_bw_assessment",
       "breakpoints": false
     },
     {
       "idx": 44,
       "version": "7",
-      "tag": "0048_bw_loaded",
-      "when": 1780210800000,
+      "when": 1779865200000,
+      "tag": "0044_bw_main_prescription",
       "breakpoints": false
     },
     {
       "idx": 45,
       "version": "7",
-      "tag": "0049_today_recovery_card_setting",
-      "when": 1780297200000,
+      "when": 1779951600000,
+      "tag": "0045_bw_progression_events",
       "breakpoints": false
     },
     {
       "idx": 46,
       "version": "7",
-      "tag": "0050_bw_catalog_grants",
-      "when": 1780383600000,
+      "when": 1780038000000,
+      "tag": "0046_session_modality",
       "breakpoints": false
     },
     {
       "idx": 47,
       "version": "7",
-      "tag": "0051_bw_table_grants",
-      "when": 1780470000000,
+      "when": 1780124400000,
+      "tag": "0047_bw_diagnostics_snapshots",
       "breakpoints": false
     },
     {
       "idx": 48,
       "version": "7",
-      "tag": "0052_training_experience_5_tiers",
-      "when": 1780556400000,
+      "when": 1780210800000,
+      "tag": "0048_bw_loaded",
       "breakpoints": false
     },
     {
       "idx": 49,
       "version": "7",
-      "tag": "0053_perf_indexes",
-      "when": 1780815600000,
+      "when": 1780297200000,
+      "tag": "0049_today_recovery_card_setting",
       "breakpoints": false
     },
     {
       "idx": 50,
       "version": "7",
-      "tag": "0054_prior_bests_rpc",
-      "when": 1780902000000,
+      "when": 1780383600000,
+      "tag": "0050_bw_catalog_grants",
       "breakpoints": false
     },
     {
       "idx": 51,
       "version": "7",
-      "tag": "0055_user_meaningful_state",
-      "when": 1781161200000,
+      "when": 1780470000000,
+      "tag": "0051_bw_table_grants",
       "breakpoints": false
     },
     {
       "idx": 52,
       "version": "7",
-      "tag": "0056_tag_power_roles",
-      "when": 1781247600000,
+      "when": 1780556400000,
+      "tag": "0052_training_experience_5_tiers",
       "breakpoints": false
     },
     {
       "idx": 53,
       "version": "7",
-      "tag": "0057_movement_experience_bands",
-      "when": 1781334000000,
+      "when": 1780815600000,
+      "tag": "0053_perf_indexes",
       "breakpoints": false
     },
     {
       "idx": 54,
       "version": "7",
-      "tag": "0058_backfill_experience_bands",
-      "when": 1781334060000,
+      "when": 1780902000000,
+      "tag": "0054_prior_bests_rpc",
       "breakpoints": false
     },
     {
       "idx": 55,
       "version": "7",
-      "tag": "0059_session_movements",
-      "when": 1781420400000,
+      "when": 1781161200000,
+      "tag": "0055_user_meaningful_state",
       "breakpoints": false
     },
     {
       "idx": 56,
       "version": "7",
-      "tag": "0060_session_movements_rpcs",
-      "when": 1781506800000,
+      "when": 1781247600000,
+      "tag": "0056_tag_power_roles",
       "breakpoints": false
     },
     {
       "idx": 57,
       "version": "7",
-      "tag": "0061_session_movements_fix_ambiguous",
-      "when": 1781600400000,
+      "when": 1781334000000,
+      "tag": "0057_movement_experience_bands",
       "breakpoints": false
     },
     {
       "idx": 58,
       "version": "7",
-      "tag": "0062_session_movements_grants",
-      "when": 1781605200000,
+      "when": 1781334060000,
+      "tag": "0058_backfill_experience_bands",
       "breakpoints": false
     },
     {
       "idx": 59,
       "version": "7",
-      "tag": "0063_session_movements_grant_update",
-      "when": 1781610000000,
+      "when": 1781420400000,
+      "tag": "0059_session_movements",
       "breakpoints": false
     },
     {
       "idx": 60,
       "version": "7",
-      "tag": "0064_external_cardio_source",
-      "when": 1781700000000,
+      "when": 1781506800000,
+      "tag": "0060_session_movements_rpcs",
       "breakpoints": false
     },
     {
       "idx": 61,
       "version": "7",
-      "tag": "0065_cardio_inferred_kind",
-      "when": 1781800000000,
+      "when": 1781600400000,
+      "tag": "0061_session_movements_fix_ambiguous",
       "breakpoints": false
     },
     {
       "idx": 62,
       "version": "7",
-      "tag": "0066_cardio_inferred_confidence_check",
-      "when": 1781803600000,
+      "when": 1781605200000,
+      "tag": "0062_session_movements_grants",
       "breakpoints": false
     },
     {
       "idx": 63,
       "version": "7",
-      "tag": "0067_enable_rls_movement_nodes",
-      "when": 1781892065569,
+      "when": 1781610000000,
+      "tag": "0063_session_movements_grant_update",
       "breakpoints": false
     },
     {
       "idx": 64,
       "version": "7",
-      "tag": "0068_planned_sessions_completed_or_skipped_check",
-      "when": 1781899200000,
+      "when": 1781700000000,
+      "tag": "0064_external_cardio_source",
       "breakpoints": false
     },
     {
       "idx": 65,
       "version": "7",
-      "tag": "0069_ai_plumbing",
-      "when": 1781985600000,
+      "when": 1781800000000,
+      "tag": "0065_cardio_inferred_kind",
       "breakpoints": false
     },
     {
       "idx": 66,
       "version": "7",
-      "tag": "0070_limitations_v2_lifecycle",
-      "when": 1782072000000,
+      "when": 1781803600000,
+      "tag": "0066_cardio_inferred_confidence_check",
       "breakpoints": false
     },
     {
       "idx": 67,
       "version": "7",
-      "tag": "0071_mcp",
-      "when": 1782158400000,
+      "when": 1781892065569,
+      "tag": "0067_enable_rls_movement_nodes",
       "breakpoints": false
     },
     {
       "idx": 68,
       "version": "7",
-      "tag": "0072_mcp_consumed_codes",
-      "when": 1782244800000,
+      "when": 1781899200000,
+      "tag": "0068_planned_sessions_completed_or_skipped_check",
       "breakpoints": false
     },
     {
       "idx": 69,
       "version": "7",
-      "tag": "0073_drop_ai_opted_in",
-      "when": 1782331200000,
+      "when": 1781985600000,
+      "tag": "0069_ai_plumbing",
       "breakpoints": false
     },
     {
       "idx": 70,
       "version": "7",
-      "tag": "0074_cardio_logs_finish_unique",
-      "when": 1782417600000,
+      "when": 1782072000000,
+      "tag": "0070_limitations_v2_lifecycle",
       "breakpoints": false
     },
     {
       "idx": 71,
       "version": "7",
-      "tag": "0075_strava_event_log",
-      "when": 1782504000000,
+      "when": 1782158400000,
+      "tag": "0071_mcp",
       "breakpoints": false
     },
     {
       "idx": 72,
       "version": "7",
-      "tag": "0077_prescription_modifications",
+      "when": 1782244800000,
+      "tag": "0072_mcp_consumed_codes",
+      "breakpoints": false
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1782331200000,
+      "tag": "0073_drop_ai_opted_in",
+      "breakpoints": false
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1782417600000,
+      "tag": "0074_cardio_logs_finish_unique",
+      "breakpoints": false
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1782504000000,
+      "tag": "0075_strava_event_log",
+      "breakpoints": false
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1782547200000,
+      "tag": "0076_strava_event_log_add_payload",
+      "breakpoints": false
+    },
+    {
+      "idx": 77,
+      "version": "7",
       "when": 1782590400000,
+      "tag": "0077_prescription_modifications",
+      "breakpoints": false
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1782676800000,
+      "tag": "0078_prescription_modifications_rls_fix",
+      "breakpoints": false
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1782763200000,
+      "tag": "0079_training_blocks_focus_muscles",
+      "breakpoints": false
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1782849600000,
+      "tag": "0080_profiles_effort_preference",
+      "breakpoints": false
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1782936000000,
+      "tag": "0081_profiles_preferred_cardio_modalities",
       "breakpoints": false
     }
   ]
