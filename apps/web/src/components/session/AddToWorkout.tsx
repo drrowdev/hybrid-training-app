@@ -44,9 +44,32 @@ type Mode = "closed" | "menu" | "strength" | "cardio";
 export type AddToWorkoutProps = {
   sessionId: string;
   cardioAction: CardioAction;
+  /**
+   * When set, opening the picker skips the Strength|Cardio chooser and
+   * jumps straight to this modality's MovementPicker. Use it when the
+   * session's modality is already known (a Quick Strength session opens
+   * to strength; a pure-cardio session opens to cardio) so the user
+   * doesn't re-pick a type they already chose. A small inline switch
+   * still lets them reach the other modality. When omitted, the full
+   * two-option chooser renders (the right call for hybrid sessions
+   * where either add is equally likely).
+   */
+  primaryModality?: "strength" | "cardio";
+  /**
+   * Render the closed-state trigger as the prominent empty-state card
+   * ("Pick movements to start logging") instead of the small pill. Used
+   * on a fresh Quick Strength session so the logical thing to tap — the
+   * big card — actually starts the add flow.
+   */
+  prominent?: boolean;
 };
 
-export function AddToWorkout({ sessionId, cardioAction }: AddToWorkoutProps) {
+export function AddToWorkout({
+  sessionId,
+  cardioAction,
+  primaryModality,
+  prominent = false,
+}: AddToWorkoutProps) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("closed");
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +77,10 @@ export function AddToWorkout({ sessionId, cardioAction }: AddToWorkoutProps) {
   const [cardioMovement, setCardioMovement] =
     useState<MovementSearchResult | null>(null);
   const [cardioDurationMin, setCardioDurationMin] = useState<string>("");
+
+  // Opening the flow honours `primaryModality` so a known-modality
+  // session skips the redundant chooser. Falls back to the chooser.
+  const openMode: Mode = primaryModality ?? "menu";
 
   const reset = () => {
     setMode("closed");
@@ -113,6 +140,42 @@ export function AddToWorkout({ sessionId, cardioAction }: AddToWorkoutProps) {
   };
 
   if (mode === "closed") {
+    if (prominent) {
+      return (
+        <div data-testid="add-to-workout">
+          <button
+            type="button"
+            data-testid="add-to-workout-open"
+            onClick={() => setMode(openMode)}
+            className="cp-card"
+            style={{
+              width: "100%",
+              padding: "18px 16px",
+              display: "grid",
+              gap: 6,
+              justifyItems: "center",
+              textAlign: "center",
+              borderStyle: "dashed",
+              cursor: "pointer",
+              font: "inherit",
+              color: "var(--cp-text)",
+            }}
+          >
+            <span style={{ fontSize: 24, lineHeight: 1 }} aria-hidden="true">
+              🏋️
+            </span>
+            <span
+              style={{ fontSize: 14, fontWeight: 600, color: "var(--cp-text)" }}
+            >
+              Pick movements to start logging
+            </span>
+            <span style={{ fontSize: 12, color: "var(--cp-accent)" }}>
+              Tap to add your first movement
+            </span>
+          </button>
+        </div>
+      );
+    }
     return (
       <div
         data-testid="add-to-workout"
@@ -121,7 +184,7 @@ export function AddToWorkout({ sessionId, cardioAction }: AddToWorkoutProps) {
         <button
           type="button"
           data-testid="add-to-workout-open"
-          onClick={() => setMode("menu")}
+          onClick={() => setMode(openMode)}
           style={pillButtonStyle}
         >
           + Add to workout
@@ -221,6 +284,19 @@ export function AddToWorkout({ sessionId, cardioAction }: AddToWorkoutProps) {
               Adding…
             </div>
           )}
+          {primaryModality && (
+            <button
+              type="button"
+              data-testid="add-to-workout-switch-cardio"
+              onClick={() => {
+                setError(null);
+                setMode("cardio");
+              }}
+              style={switchLinkStyle}
+            >
+              + Add cardio instead
+            </button>
+          )}
         </div>
       )}
 
@@ -274,6 +350,19 @@ export function AddToWorkout({ sessionId, cardioAction }: AddToWorkoutProps) {
           >
             {pending ? "Adding…" : "Add cardio block"}
           </button>
+          {primaryModality && (
+            <button
+              type="button"
+              data-testid="add-to-workout-switch-strength"
+              onClick={() => {
+                setError(null);
+                setMode("strength");
+              }}
+              style={switchLinkStyle}
+            >
+              + Add strength instead
+            </button>
+          )}
         </form>
       )}
 
@@ -321,4 +410,16 @@ const chooserTitleStyle: React.CSSProperties = {
 const chooserSubStyle: React.CSSProperties = {
   fontSize: 11,
   color: "var(--cp-text-muted)",
+};
+
+const switchLinkStyle: React.CSSProperties = {
+  justifySelf: "start",
+  background: "transparent",
+  border: "none",
+  color: "var(--cp-link)",
+  fontSize: 12,
+  fontWeight: 500,
+  fontFamily: "inherit",
+  cursor: "pointer",
+  padding: "2px 0",
 };
