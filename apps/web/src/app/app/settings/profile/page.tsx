@@ -3,6 +3,7 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { TrainingDaysControl } from "@/components/settings/TrainingDaysControl";
 import {
   BodyCompPhaseAutoSave,
+  EffortPreferenceAutoSave,
   ProfileBasicsAutoSave,
   TrainingExperienceAutoSave,
   TwoADayAutoSave,
@@ -16,6 +17,17 @@ type TrainingExperience =
   | "advanced_5y_10y"
   | "highly_advanced_10y_plus";
 type BodyCompPhase = "gain" | "maintain" | "lean_out";
+type EffortPreference = "low" | "standard" | "high";
+
+const EFFORT_PREFERENCE_LABEL: Record<EffortPreference, string> = {
+  low: "Easier",
+  standard: "Balanced",
+  high: "Harder",
+};
+
+function asEffortPreference(v: unknown): EffortPreference {
+  return v === "low" || v === "high" ? v : "standard";
+}
 
 const TRAINING_EXPERIENCE_VALUES: ReadonlySet<TrainingExperience> = new Set([
   "beginner_lt_6m",
@@ -65,18 +77,20 @@ export default async function ProfileSettingsPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "display_name, units, body_comp_phase, phase_started_at, phase_target_weeks, training_days_per_week, training_experience, allows_two_a_days, am_window_start, pm_window_start, timezone",
+      "display_name, units, body_comp_phase, phase_started_at, phase_target_weeks, training_days_per_week, training_experience, allows_two_a_days, am_window_start, pm_window_start, timezone, effort_preference",
     )
     .eq("id", user.id)
     .maybeSingle();
 
   const experience = asTrainingExperience(profile?.training_experience);
   const phase = asBodyCompPhase(profile?.body_comp_phase);
+  const effortPreference = asEffortPreference(profile?.effort_preference);
   const days = Number(profile?.training_days_per_week ?? 4);
   const twoADay = !!profile?.allows_two_a_days;
 
   const experienceSummary = experience ? EXPERIENCE_LABEL[experience] : "Not set";
   const phaseSummary = PHASE_LABEL[phase];
+  const effortSummary = EFFORT_PREFERENCE_LABEL[effortPreference];
   const preferencesSummary = `${days} days/wk · ${
     twoADay ? "two-a-day" : "single session"
   }`;
@@ -161,6 +175,23 @@ export default async function ProfileSettingsPage() {
                 : ""
             }
           />
+        </SettingsGroup>
+
+        {/* Effort / volume dial (ADR 0016) — hypertrophy-archetype lever.
+            Collapsed by default. New blocks only. */}
+        <SettingsGroup
+          id="effort-preference"
+          title="Effort &amp; volume"
+          summary={effortSummary}
+          testId="settings-group-effort-preference"
+        >
+          <p className="text-xs text-foreground/60">
+            How hard and high-volume your muscle-building work should be. This
+            tunes the muscle-building focus only — your strength and endurance
+            work is unchanged. Applies to new blocks; existing blocks keep what
+            they were built with.
+          </p>
+          <EffortPreferenceAutoSave initial={effortPreference} />
         </SettingsGroup>
 
         {/* Training preferences — frequency + two-a-day toggle.

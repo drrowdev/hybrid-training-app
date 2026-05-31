@@ -49,6 +49,10 @@ import {
 import { defaultMuscleTargets } from "./focus-muscle-targets";
 import type { LimitationsContext } from "./limitations-context";
 import type { FocusMuscle } from "./focus-muscles";
+import {
+  hypertrophyAccessorySetsPerItem,
+  type EffortPreference,
+} from "./effort-preference";
 /**
  * Mutates `items` in place, prepending a warmup ladder for every
  * distinct main-lift movement. The ladder is built off the heaviest
@@ -203,11 +207,29 @@ export function assemblePrescriptionItems(
    * block. Empty for first-ever blocks → byte-identical to pre-ADR-0012.
    */
   recentlyUsedAccessoryIds: Set<string> = new Set(),
+  /**
+   * ADR 0016 — user effort/volume dial (`profiles.effort_preference`).
+   * Forwarded to `buildPrescription` for the hypertrophy compound effort
+   * axis, and applied locally below for the hypertrophy accessory VOLUME
+   * axis (sets-per-movement). `"standard"` (the default) keeps every
+   * existing call site byte-identical and is a no-op for non-hypertrophy
+   * archetypes.
+   */
+  effortPreference: EffortPreference = "standard",
 ): PrescriptionItem[] {
   const items =
     day.kind === "strength" && omitMainStrength
       ? []
-      : buildPrescription(archetype, weekIndex, day, movement, finisherMovement, secondaryMovement);
+      : buildPrescription(
+          archetype,
+          weekIndex,
+          day,
+          movement,
+          finisherMovement,
+          secondaryMovement,
+          undefined,
+          effortPreference,
+        );
   if (day.kind !== "strength") return items;
 
   // ─── Power Emphasis Phase 3 — main-lift transforms ───
@@ -230,8 +252,27 @@ export function assemblePrescriptionItems(
 
   // Dynamic picker path.
   if (archetype.accessoryProfile && catalog && weekContext) {
+    // ADR 0016 volume axis — for the hypertrophy archetype only, scale the
+    // aesthetic sets-per-movement by the user's effort/volume dial. Movement
+    // SELECTION is untouched (the picker's role / focus / dedup invariants
+    // hold); only how many sets each chosen accessory carries moves. `low`
+    // trims, `high` pushes toward the 10–12 effective-sets/muscle/week zone.
+    // `standard` and every non-hypertrophy archetype are byte-identical.
+    const pickerProfile =
+      archetype.id === "hypertrophy_anchor" && effortPreference !== "standard"
+        ? {
+            ...archetype.accessoryProfile,
+            aesthetic: {
+              ...archetype.accessoryProfile.aesthetic,
+              setsPerItem: hypertrophyAccessorySetsPerItem(
+                effortPreference,
+                archetype.accessoryProfile.aesthetic.setsPerItem,
+              ),
+            },
+          }
+        : archetype.accessoryProfile;
     const picks = pickAccessoriesForSession({
-      profile: archetype.accessoryProfile,
+      profile: pickerProfile,
       weekDeloadScale,
       catalog,
       weekContext,
