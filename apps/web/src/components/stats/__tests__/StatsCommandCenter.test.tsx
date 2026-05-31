@@ -140,15 +140,6 @@ export function baseProps(overrides: Partial<StatsCommandCenterProps> = {}): Sta
         { date: "2026-05-29", kg: 82.5 },
       ],
     },
-    decisionTrace: {
-      headline: "Today's session: Lower strength",
-      reasons: [
-        { text: "Lower body is fresh, so the engine scheduled squat volume." },
-        { text: "Cardio kept easy to protect tomorrow's interval session." },
-      ],
-      noBlock: false,
-      restDay: false,
-    },
     units: "metric",
     formatProfile: { timezone: "Europe/Helsinki" },
     ...overrides,
@@ -171,7 +162,7 @@ describe("StatsCommandCenter - populated state", () => {
       "stats-card-freshness",
       "stats-tile-consistency",
       "stats-card-bodyweight",
-      "stats-tile-decision-trace",
+      "stats-tile-volume",
     ]) {
       expect(html).toContain(`data-testid="${id}"`);
     }
@@ -184,9 +175,11 @@ describe("StatsCommandCenter - populated state", () => {
     expect(html).toContain('data-range="all"');
   });
 
-  it("surfaces real decision-trace reasons (not a template)", () => {
-    expect(html).toContain("Lower body is fresh");
-    expect(html).toContain('data-testid="stats-decision-reason"');
+  it("renders training-volume tonnage bars from real data", () => {
+    expect(html).toContain('data-testid="stats-tile-volume"');
+    expect(html).toContain('data-testid="stats-volume-bar"');
+    // 124,000 kg total → grouped, locale-independent
+    expect(html).toContain("124,000");
   });
 
   it("renders the active-block context", () => {
@@ -237,7 +230,6 @@ describe("StatsCommandCenter - cold-start state", () => {
         }),
         streak: { currentStreakWeeks: 0, weeklyTarget: 3, thisWeekCompleted: 0, thisWeekTarget: 3, hasActiveBlock: false },
         bodyweight: { latest: null, delta30dKg: null, series: [] },
-        decisionTrace: { headline: "No active block", reasons: [], noBlock: true, restDay: false },
       })}
     />,
   );

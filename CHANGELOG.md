@@ -14,7 +14,7 @@ Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
   replaced by an answer-first hero band — **Progress** verdict ·
   **Readiness** composite · **Consistency** streak — over a six-tile
   bento (Strength progress · Endurance progress · Recovery & load ·
-  Consistency rhythm · Bodyweight · Why today). Endurance is now
+  Consistency rhythm · Bodyweight · Training volume). Endurance is now
   co-equal with strength rather than buried. Phase 1 (PR #226) shipped
   the five new tested query modules (`strength-progress`,
   `endurance-progress`, `progress-verdict`, `weekly-rhythm`, `streak`);
@@ -25,9 +25,21 @@ Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
   real query. There is deliberately **no "stress budget" meter** — the
   Recovery & load tile and the hero Readiness cell render the
   ACWR-grounded readiness composite (`readiness.ts`), not a fabricated
-  budget percentage. The "Why today" tile renders the engine's derived
-  decision-trace reasons. Cold-start states ("building" / "no run data")
-  are honored rather than rendering misleading zeros.
+  budget percentage. The sixth tile is **Training volume** — weekly
+  tonnage (Σ weight × reps, working sets only) from `getVolumeForRange`,
+  range-aware like the rest of the bento. Cold-start states ("building" /
+  "no run data") are honored rather than rendering misleading zeros.
+- **Decision-trace card pulled from the overview (honesty fix).** The
+  earlier "Why today looks like this" tile read as if the engine adapts
+  the session day-of; in reality every workout + prescription is
+  materialized at block creation (`createBlock` → one bulk
+  `planned_sessions` insert) and `getDecisionTrace` only *describes* the
+  fixed plan. Rather than reword a forward-looking card on a page whose
+  job is retrospective overview + historical deep-dive, the tile is
+  removed from `/app/stats` and replaced by the Training volume tile. The
+  decision trace still lives on the **Engine internals** deep-dive
+  (`/app/stats/engine`), an appropriate power-user surface;
+  `getDecisionTrace` and its tests are untouched.
 - **The 20-week training heatmap is removed from the overview.** Its
   `TrainingHeatmap` component + `training-heatmap-data` query are kept
   (with tests) for a potential Phase-3 drawer but no longer mount on the

@@ -4,7 +4,7 @@
  * The single landing page for everything the engine collects. A hero
  * verdict band (progress · readiness · consistency) sits over a bento of
  * focused tiles (strength, endurance, recovery & load, consistency &
- * balance, bodyweight, decision trace). The previous flat card grid and
+ * balance, bodyweight, training volume). The previous flat card grid and
  * the 20-week calendar heatmap were retired in this redesign — the
  * heatmap's grid layout tested poorly and the bento surfaces the same
  * "are you training consistently" signal through the weekly-rhythm tile.
@@ -15,7 +15,7 @@
  *    three windows in one Promise.all so the client toggle is a state
  *    swap, not a server round-trip (audit F1).
  *  - Range-invariant signals (block, readiness, streak, weekly rhythm,
- *    region freshness, bodyweight, decision trace) read once.
+ *    region freshness, bodyweight) read once.
  *
  * "all"-time strength/endurance use a 10-year window sentinel because
  * those two queries take a concrete `windowDays` (they bound the e1RM /
@@ -37,7 +37,6 @@ import { getEnduranceProgress } from "@/lib/stats/endurance-progress";
 import { getProgressVerdict } from "@/lib/stats/progress-verdict";
 import { getWeeklyRhythm } from "@/lib/stats/weekly-rhythm";
 import { getStreak } from "@/lib/stats/streak";
-import { getDecisionTrace } from "@/lib/stats/engine";
 import { type WeightUnit } from "@/lib/stats/units";
 import { type ProfileForFormat } from "@/lib/format/datetime";
 import { parseRange, rangeWindowDays, type Range } from "@/lib/stats/range";
@@ -92,7 +91,6 @@ export default async function StatsOverviewPage({
     readiness,
     streak,
     rhythm,
-    decisionTrace,
     adherence30d,
     adherence90d,
     adherenceAll,
@@ -115,7 +113,6 @@ export default async function StatsOverviewPage({
     getReadiness(supabase, user.id, tz),
     getStreak(supabase, user.id, tz),
     getWeeklyRhythm(supabase, user.id, tz),
-    getDecisionTrace(supabase, user.id, tz),
     getAdherenceForWindow(supabase, user.id, tz, rangeWindowDays("30d")),
     getAdherenceForWindow(supabase, user.id, tz, rangeWindowDays("90d")),
     getAdherenceForWindow(supabase, user.id, tz, rangeWindowDays("all")),
@@ -178,7 +175,6 @@ export default async function StatsOverviewPage({
         rhythm={rhythm}
         freshness={freshness}
         bodyweight={bodyweight}
-        decisionTrace={decisionTrace}
         units={units}
         formatProfile={formatProfile}
       />

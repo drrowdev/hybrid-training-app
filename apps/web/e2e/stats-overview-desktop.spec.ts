@@ -12,7 +12,7 @@ import {
  * Replaces the old flat-card-grid spec. The page is now a hero verdict
  * band (Progress · Readiness · Consistency) over a six-tile bento
  * (Strength / Endurance / Recovery & load / Consistency rhythm /
- * Bodyweight / Why today) with a bottom deep-dive link grid.
+ * Bodyweight / Training volume) with a bottom deep-dive link grid.
  *
  * Pre-condition (seeded via service-role admin client):
  *  - one active block + 5 completed planned sessions + 2 skipped
@@ -106,7 +106,7 @@ test.describe("@desktop /app/stats command center", () => {
     await expect(page.getByTestId("stats-tile-endurance")).toBeVisible();
     await expect(page.getByTestId("stats-card-freshness")).toBeVisible();
     await expect(page.getByTestId("stats-tile-consistency")).toBeVisible();
-    await expect(page.getByTestId("stats-tile-decision-trace")).toBeVisible();
+    await expect(page.getByTestId("stats-tile-volume")).toBeVisible();
 
     // Bodyweight tile renders the seeded value.
     const bodyweight = page.getByTestId("stats-card-bodyweight");

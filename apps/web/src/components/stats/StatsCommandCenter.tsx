@@ -15,8 +15,11 @@
  *    with the acute:chronic workload ratio. The "Recovery & load" tile
  *    shows region freshness + the same ACWR ratio band, not a fabricated
  *    budget percentage.
- *  - The "Why today" tile renders the engine's derived decision-trace
- *    reasons (getDecisionTrace), not a static template.
+ *  - The "Training volume" tile renders weekly tonnage (Σ weight × reps,
+ *    working sets only) from getVolumeForRange — a retrospective load
+ *    signal, range-aware like the rest of the bento. (The forward-looking
+ *    "why today" decision trace lives on the Engine internals deep-dive,
+ *    not on this overview — /stats is a retrospective surface.)
  *  - Strength / endurance / progress-verdict are the Phase-1 data-layer
  *    queries; cold-start ("building" / "no-run-data") states are honored
  *    rather than rendering misleading zeros.
@@ -40,7 +43,6 @@ import type { EnduranceProgress } from "@/lib/stats/endurance-progress";
 import type { ProgressVerdict, ProgressVerdictKind } from "@/lib/stats/progress-verdict";
 import type { WeeklyRhythm } from "@/lib/stats/weekly-rhythm";
 import type { Streak } from "@/lib/stats/streak";
-import type { DecisionTrace } from "@/lib/stats/engine";
 import { displayWeight, weightUnitLabel, type WeightUnit } from "@/lib/stats/units";
 import type { ProfileForFormat } from "@/lib/format/datetime";
 import { DEFAULT_RANGE, RANGE_LABEL, type Range } from "@/lib/stats/range";
@@ -66,7 +68,6 @@ export type StatsCommandCenterProps = {
   rhythm: WeeklyRhythm;
   freshness: FreshnessMiniRow[];
   bodyweight: BodyweightTrend;
-  decisionTrace: DecisionTrace;
   units: WeightUnit;
   formatProfile: ProfileForFormat;
 };
@@ -215,7 +216,6 @@ export function StatsCommandCenter(props: StatsCommandCenterProps) {
     rhythm,
     freshness,
     bodyweight,
-    decisionTrace,
     units,
   } = props;
   const [range, setRange] = useState<Range>(initialRange);
@@ -265,7 +265,7 @@ export function StatsCommandCenter(props: StatsCommandCenterProps) {
         <RecoveryLoadTile freshness={freshness} readiness={readiness} />
         <ConsistencyTile rhythm={rhythm} streak={streak} />
         <BodyweightTile data={bodyweight} units={units} />
-        <DecisionTraceTile trace={decisionTrace} />
+        <VolumeTile data={bucket.volume} range={range} units={units} />
       </div>
     </div>
   );
@@ -1070,31 +1070,80 @@ function BodyweightTile({ data, units }: { data: BodyweightTrend; units: WeightU
   );
 }
 
-// F — Decision trace (real engine reasons)
-function DecisionTraceTile({ trace }: { trace: DecisionTrace }) {
+// F — Training volume (weekly tonnage over the selected range)
+function fmtTonnage(v: number): string {
+  // Locale-independent thousands grouping so tests stay deterministic.
+  return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+function VolumeTile({
+  data,
+  range,
+  units,
+}: {
+  data: VolumeRangeResult;
+  range: Range;
+  units: WeightUnit;
+}) {
+  const unit = weightUnitLabel(units);
+  const buckets = data.weeklyKg;
+  const isEmpty = data.totalKg <= 0;
+  const maxKg = Math.max(...buckets, 1);
+  const totalDisp = displayWeight(data.totalKg, units);
+  const thisWeekKg = buckets.length > 0 ? buckets[buckets.length - 1] : 0;
+  const thisWeekDisp = displayWeight(thisWeekKg, units);
+  const labelStride = buckets.length > 18 ? 4 : buckets.length > 9 ? 2 : 1;
   return (
-    <Tile span={12} testid="stats-tile-decision-trace" empty={trace.noBlock}>
-      <TileHead title="Why today looks like this" meta="decision trace" />
-      <div style={{ fontSize: 13.5, marginBottom: trace.reasons.length > 0 ? 11 : 0 }}>{trace.headline}</div>
-      {trace.reasons.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {trace.reasons.map((reason, i) => (
-            <span
-              key={i}
-              data-testid="stats-decision-reason"
-              style={{
-                fontSize: 12,
-                padding: "5px 11px",
-                borderRadius: 8,
-                background: "var(--cp-surface-soft)",
-                border: "1px solid var(--cp-border)",
-                color: "var(--cp-text-muted)",
-              }}
-            >
-              {reason.text}
+    <Tile span={12} testid="stats-tile-volume" empty={isEmpty}>
+      <TileHead title="Training volume" meta={`tonnage · ${RANGE_LABEL[range]}`} />
+      {isEmpty ? (
+        <EmptyState
+          variant="inline"
+          title="No strength volume yet"
+          body="Log working strength sets and your weekly tonnage builds up here."
+        />
+      ) : (
+        <>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span className="mono" style={{ fontSize: 21, fontWeight: 700, letterSpacing: "-0.01em" }}>
+              {fmtTonnage(totalDisp)}
             </span>
-          ))}
-        </div>
+            <span style={{ fontSize: 11.5, color: "var(--cp-text-muted)" }}>{unit} total · {RANGE_LABEL[range]}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 96, paddingTop: 10 }}>
+            {buckets.map((kg, i) => {
+              const isNow = i === buckets.length - 1;
+              const ws = data.weekStarts[i] ?? String(i);
+              const heightPct = (kg / maxKg) * 100;
+              const showLabel = isNow || i % labelStride === 0;
+              return (
+                <div key={ws} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, height: "100%" }}>
+                  <div style={{ width: "100%", height: 70, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center" }}>
+                    <div
+                      data-testid="stats-volume-bar"
+                      title={`${fmtTonnage(displayWeight(kg, units))} ${unit}`}
+                      style={{
+                        width: "100%",
+                        maxWidth: 26,
+                        height: `${kg > 0 ? Math.max(3, heightPct) : 0}%`,
+                        background: "var(--cp-accent)",
+                        opacity: isNow ? 1 : 0.5,
+                        borderRadius: "4px 4px 0 0",
+                      }}
+                    />
+                  </div>
+                  <span style={{ fontSize: 10, color: isNow ? "var(--cp-accent)" : "var(--cp-text-muted)", fontWeight: isNow ? 600 : 400, minHeight: 12 }}>
+                    {showLabel ? (isNow ? "now" : weekShort(data.weekStarts[i] ?? "")) : ""}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ marginTop: 14, paddingTop: 13, borderTop: "1px solid var(--cp-border)", fontSize: 12.5 }}>
+            <span style={{ fontWeight: 600 }}>This week · {fmtTonnage(thisWeekDisp)} {unit}</span>
+            <span style={{ color: "var(--cp-text-muted)" }}> · Σ weight × reps, working sets only</span>
+          </div>
+        </>
       )}
     </Tile>
   );
