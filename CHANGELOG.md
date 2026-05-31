@@ -10,6 +10,17 @@ Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 
 ### Added (post-#215 wave)
 
+- **Hypertrophy early-set effort bump (ADR 0015).** The earlier
+  (non-final) compound sets of the hypertrophy archetype — previously
+  ~RIR 6–10 junk volume — now get a bounded rep bump (`+2`, capped at
+  12) and an honest "make it challenging" cue on non-deload weeks.
+  Deliberately **no** RIR-3-4 label: inverting the Helms/Zourdos RPE
+  chart shows literal RIR 3–4 at these light loads (54–67% 1RM) would
+  mean ~12–15 reps/set — a volume explosion the default avoids. Loads,
+  the ADR 0011 final-set anchor, the deload week, and folded
+  secondaries are unchanged. True RIR 3–4 / higher volume becomes
+  opt-in via the upcoming effort/volume dial (ADR 0016).
+
 - **Quick workout UX sweep (PR #222).** Inline duration chip picker
   (30 / 45 / 60 / 90 / Custom) on the QuickWorkoutSheet replaces the
   30-min hardcoded default; single `+ Add to workout` button replaces
