@@ -13,8 +13,8 @@
  *
  * The inputs mirror exactly what `createBlock` passes (see actions.ts:877+):
  *   - weekDeloadScale = weekProfile.strengthVolumeScale ?? 1.0
- *   - weekContext is a fresh [] per week, mutated in place by the assembler
- *   - catalog/weekContext present => dynamic picker; absent => legacy pools
+ *   - weekAccessoryHistory is a fresh [] per week, mutated in place by the assembler
+ *   - catalog/weekAccessoryHistory present => dynamic picker; absent => legacy pools
  *
  * This is a behavioural pin, NOT an assertion of desired behaviour. If a
  * change is intentional, regenerate with `-u` and review the snapshot diff.
@@ -33,7 +33,7 @@ import {
 } from "../archetypes";
 import { assemblePrescriptionItems } from "../assemble-prescription";
 import { ACCESSORY_POOLS } from "../accessories";
-import type { CatalogMovement, WeekContextItem } from "../accessory-picker";
+import type { CatalogMovement, WeekAccessoryHistoryItem } from "../accessory-picker";
 import type { DeclaredExperience } from "@hta/engine";
 
 type Mv = { id: string; slug: string; displayName: string };
@@ -152,7 +152,7 @@ function assemble(o: {
   finisher?: Mv;
   movementBySlug?: Map<string, { id: string; slug: string; display_name: string }>;
   catalog?: CatalogMovement[];
-  weekContext?: WeekContextItem[];
+  weekAccessoryHistory?: WeekAccessoryHistoryItem[];
   weekDeloadScale?: number;
   powerEmphasis?: boolean;
   omitMainStrength?: boolean;
@@ -167,7 +167,7 @@ function assemble(o: {
     o.finisher,
     o.movementBySlug ?? new Map(),
     o.catalog,
-    o.weekContext,
+    o.weekAccessoryHistory,
     o.weekDeloadScale ?? 1.0,
     o.powerEmphasis ?? false,
     undefined, // warmupScheme -> DEFAULT_WARMUP_SCHEME
@@ -190,7 +190,7 @@ describe("assemblePrescriptionItems — golden master", () => {
         weekIndex: 0,
         day: firstStrengthDay(STRENGTH_ANCHOR),
         catalog: CATALOG,
-        weekContext: [],
+        weekAccessoryHistory: [],
       }),
     ).toMatchSnapshot();
   });
@@ -202,7 +202,7 @@ describe("assemblePrescriptionItems — golden master", () => {
         weekIndex: 2,
         day: firstStrengthDay(STRENGTH_ANCHOR),
         catalog: POWER_CATALOG,
-        weekContext: [],
+        weekAccessoryHistory: [],
         powerEmphasis: true,
       }),
     ).toMatchSnapshot();
@@ -216,13 +216,13 @@ describe("assemblePrescriptionItems — golden master", () => {
         weekIndex: w,
         day: firstStrengthDay(STRENGTH_ANCHOR),
         catalog: CATALOG,
-        weekContext: [],
+        weekAccessoryHistory: [],
         weekDeloadScale: deloadScaleFor(STRENGTH_ANCHOR, w),
       }),
     ).toMatchSnapshot();
   });
 
-  it("strength_anchor: legacy static-pool fallback (no catalog/weekContext)", () => {
+  it("strength_anchor: legacy static-pool fallback (no catalog/weekAccessoryHistory)", () => {
     expect(
       assemble({
         archetype: STRENGTH_ANCHOR,
@@ -240,7 +240,7 @@ describe("assemblePrescriptionItems — golden master", () => {
         weekIndex: 0,
         day: firstStrengthDay(STRENGTH_ANCHOR),
         catalog: CATALOG,
-        weekContext: [],
+        weekAccessoryHistory: [],
         omitMainStrength: true,
       }),
     ).toMatchSnapshot();
@@ -253,7 +253,7 @@ describe("assemblePrescriptionItems — golden master", () => {
         weekIndex: 0,
         day: firstStrengthDay(HYPERTROPHY_ANCHOR),
         catalog: CATALOG,
-        weekContext: [],
+        weekAccessoryHistory: [],
       }),
     ).toMatchSnapshot();
   });
@@ -271,7 +271,7 @@ describe("assemblePrescriptionItems — golden master", () => {
         weekIndex: 1,
         day: dayWithSecondary,
         catalog: CATALOG,
-        weekContext: [],
+        weekAccessoryHistory: [],
         secondaryMovement: SECONDARY,
       }),
     ).toMatchSnapshot();
@@ -284,7 +284,7 @@ describe("assemblePrescriptionItems — golden master", () => {
         weekIndex: 0,
         day: firstStrengthDay(HYPERTROPHY_ANCHOR),
         catalog: CATALOG,
-        weekContext: [],
+        weekAccessoryHistory: [],
         experience: "beginner_lt_6m",
       }),
     ).toMatchSnapshot();
@@ -297,7 +297,7 @@ describe("assemblePrescriptionItems — golden master", () => {
         weekIndex: 0,
         day: firstStrengthDay(CONCURRENT_HYBRID),
         catalog: CATALOG,
-        weekContext: [],
+        weekAccessoryHistory: [],
       }),
     ).toMatchSnapshot();
   });
@@ -309,7 +309,7 @@ describe("assemblePrescriptionItems — golden master", () => {
         weekIndex: 0,
         day: firstStrengthDay(REBUILD),
         catalog: CATALOG,
-        weekContext: [],
+        weekAccessoryHistory: [],
       }),
     ).toMatchSnapshot();
   });
@@ -321,7 +321,7 @@ describe("assemblePrescriptionItems — golden master", () => {
         weekIndex: 0,
         day: firstStrengthDay(MAINTENANCE),
         catalog: CATALOG,
-        weekContext: [],
+        weekAccessoryHistory: [],
       }),
     ).toMatchSnapshot();
   });
@@ -333,7 +333,7 @@ describe("assemblePrescriptionItems — golden master", () => {
         weekIndex: 0,
         day: firstNonStrengthDay(ENDURANCE_ANCHOR),
         catalog: CATALOG,
-        weekContext: [],
+        weekAccessoryHistory: [],
       }),
     ).toMatchSnapshot();
   });

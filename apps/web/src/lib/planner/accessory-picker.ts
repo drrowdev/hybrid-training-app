@@ -168,7 +168,7 @@ export type CatalogMovement = {
   experienceMax?: number;
 };
 
-export type WeekContextItem = {
+export type WeekAccessoryHistoryItem = {
   /** Movement that was already prescribed earlier in this generated week. */
   movementId: string;
   bulletproofRoles: BulletproofRole[];
@@ -234,7 +234,7 @@ export function pickAccessoriesForSession({
   profile,
   weekDeloadScale,
   catalog,
-  weekContext,
+  weekAccessoryHistory,
   filters,
   perMuscleTargets,
   maxItems,
@@ -246,7 +246,8 @@ export function pickAccessoriesForSession({
   /** Deload scalar from the week profile (e.g. 0.5 on deload weeks). */
   weekDeloadScale: number;
   catalog: CatalogMovement[];
-  weekContext: WeekContextItem[];
+  /** Accessories already prescribed earlier this week — credited toward the weekly role/muscle floors. Mutated in place by the assembler across the week's days. */
+  weekAccessoryHistory: WeekAccessoryHistoryItem[];
   filters: PickFilters;
   /** Per-muscle weekly aesthetic target (already concurrent-modifier-applied by caller). */
   perMuscleTargets: Record<string, number>;
@@ -296,9 +297,9 @@ export function pickAccessoriesForSession({
   const usedThisSession = new Set<string>();
 
   const durFloor = effectiveDurabilityFloor(profile, filters.tendinopathyActive);
-  const durabilityProgress = countBulletproofRoles(weekContext);
-  const functionalProgress = countFunctionalRoles(weekContext);
-  const muscleProgress = countMusclesPrimary(weekContext);
+  const durabilityProgress = countBulletproofRoles(weekAccessoryHistory);
+  const functionalProgress = countFunctionalRoles(weekAccessoryHistory);
+  const muscleProgress = countMusclesPrimary(weekAccessoryHistory);
 
   // ─── 1. Durability deficits first ───
   for (const role of orderedBulletproofRoles(durFloor, durabilityProgress)) {
@@ -425,7 +426,7 @@ export function pickAccessoriesForSession({
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
-function countBulletproofRoles(week: WeekContextItem[]): Map<BulletproofRole, number> {
+function countBulletproofRoles(week: WeekAccessoryHistoryItem[]): Map<BulletproofRole, number> {
   const m = new Map<BulletproofRole, number>();
   for (const item of week) {
     for (const r of item.bulletproofRoles) m.set(r, (m.get(r) ?? 0) + 1);
@@ -433,7 +434,7 @@ function countBulletproofRoles(week: WeekContextItem[]): Map<BulletproofRole, nu
   return m;
 }
 
-function countFunctionalRoles(week: WeekContextItem[]): Map<FunctionalRole, number> {
+function countFunctionalRoles(week: WeekAccessoryHistoryItem[]): Map<FunctionalRole, number> {
   const m = new Map<FunctionalRole, number>();
   for (const item of week) {
     for (const r of item.functionalRoles) m.set(r, (m.get(r) ?? 0) + 1);
@@ -441,7 +442,7 @@ function countFunctionalRoles(week: WeekContextItem[]): Map<FunctionalRole, numb
   return m;
 }
 
-function countMusclesPrimary(week: WeekContextItem[]): Map<string, number> {
+function countMusclesPrimary(week: WeekAccessoryHistoryItem[]): Map<string, number> {
   const m = new Map<string, number>();
   for (const item of week) {
     for (const muscle of item.primaryMuscles) m.set(muscle, (m.get(muscle) ?? 0) + 1);

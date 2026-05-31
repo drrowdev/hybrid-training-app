@@ -67,7 +67,7 @@ describe("pickAccessoriesForSession — durability deficit first", () => {
       profile: STRENGTH_PROFILE,
       weekDeloadScale: 1.0,
       catalog: CATALOG,
-      weekContext: [],
+      weekAccessoryHistory: [],
       filters: EMPTY_FILTERS,
       perMuscleTargets: { side_delts: 6, triceps: 6 },
       maxItems: 4,
@@ -83,7 +83,7 @@ describe("pickAccessoriesForSession — durability deficit first", () => {
       profile: STRENGTH_PROFILE,
       weekDeloadScale: 1.0,
       catalog: CATALOG,
-      weekContext: [
+      weekAccessoryHistory: [
         { movementId: "iso1", bulletproofRoles: ["heavy_isometric"], functionalRoles: [], primaryMuscles: ["quads"] },
         { movementId: "hsr1", bulletproofRoles: ["hsr"], functionalRoles: [], primaryMuscles: ["hamstrings"] },
         { movementId: "plyo1", bulletproofRoles: ["plyometric_low"], functionalRoles: [], primaryMuscles: ["calves"] },
@@ -103,7 +103,7 @@ describe("pickAccessoriesForSession — durability deficit first", () => {
       profile: STRENGTH_PROFILE,
       weekDeloadScale: 1.0,
       catalog: CATALOG,
-      weekContext: [],
+      weekAccessoryHistory: [],
       filters: { ...EMPTY_FILTERS, tendinopathyActive: true },
       perMuscleTargets: { side_delts: 6 },
       maxItems: 10,
@@ -119,7 +119,7 @@ describe("pickAccessoriesForSession — functional deficit second", () => {
       profile: STRENGTH_PROFILE,
       weekDeloadScale: 1.0,
       catalog: CATALOG,
-      weekContext: [
+      weekAccessoryHistory: [
         { movementId: "iso1", bulletproofRoles: ["heavy_isometric"], functionalRoles: [], primaryMuscles: [] },
         { movementId: "hsr1", bulletproofRoles: ["hsr"], functionalRoles: [], primaryMuscles: [] },
         { movementId: "plyo1", bulletproofRoles: ["plyometric_low"], functionalRoles: [], primaryMuscles: [] },
@@ -143,7 +143,7 @@ describe("pickAccessoriesForSession — aesthetic gap-fill third", () => {
       weekDeloadScale: 1.0,
       catalog: CATALOG,
       // Durability + functional already met.
-      weekContext: [
+      weekAccessoryHistory: [
         { movementId: "iso1", bulletproofRoles: ["heavy_isometric"], functionalRoles: [], primaryMuscles: [] },
         { movementId: "hsr1", bulletproofRoles: ["hsr"], functionalRoles: [], primaryMuscles: [] },
         { movementId: "plyo1", bulletproofRoles: ["plyometric_low"], functionalRoles: [], primaryMuscles: [] },
@@ -168,7 +168,7 @@ describe("pickAccessoriesForSession — filters", () => {
       profile: STRENGTH_PROFILE,
       weekDeloadScale: 1.0,
       catalog: CATALOG,
-      weekContext: [],
+      weekAccessoryHistory: [],
       filters: { ...EMPTY_FILTERS, blockedRegions: new Set(["knee"]) },
       perMuscleTargets: { side_delts: 6 },
       maxItems: 10,
@@ -200,7 +200,7 @@ describe("pickAccessoriesForSession — filters", () => {
       profile: STRENGTH_PROFILE,
       weekDeloadScale: 1.0,
       catalog: catalogPlus,
-      weekContext: [],
+      weekAccessoryHistory: [],
       filters: {
         ...EMPTY_FILTERS,
         blockedMuscles: new Set(["adductors"]),
@@ -232,7 +232,7 @@ describe("pickAccessoriesForSession — filters", () => {
       profile: STRENGTH_PROFILE,
       weekDeloadScale: 1.0,
       catalog: minimalCatalog,
-      weekContext: [
+      weekAccessoryHistory: [
         // Floor met so the functional pass is eligible next.
         { movementId: "iso1", bulletproofRoles: ["heavy_isometric"], functionalRoles: [], primaryMuscles: [] },
         { movementId: "hsr1", bulletproofRoles: ["hsr"], functionalRoles: [], primaryMuscles: [] },
@@ -273,7 +273,7 @@ describe("pickAccessoriesForSession — filters", () => {
       profile: STRENGTH_PROFILE,
       weekDeloadScale: 1.0,
       catalog: minimalCatalog,
-      weekContext: [
+      weekAccessoryHistory: [
         { movementId: "iso1", bulletproofRoles: ["heavy_isometric"], functionalRoles: [], primaryMuscles: [] },
         { movementId: "hsr1", bulletproofRoles: ["hsr"], functionalRoles: [], primaryMuscles: [] },
         { movementId: "plyo1", bulletproofRoles: ["plyometric_low"], functionalRoles: [], primaryMuscles: [] },
@@ -304,7 +304,7 @@ describe("pickAccessoriesForSession — filters", () => {
       weekDeloadScale: 1.0,
       catalog: CATALOG,
       // Durability+ functional met → next pick is aesthetic for side_delts.
-      weekContext: [
+      weekAccessoryHistory: [
         { movementId: "iso1", bulletproofRoles: ["heavy_isometric"], functionalRoles: [], primaryMuscles: [] },
         { movementId: "hsr1", bulletproofRoles: ["hsr"], functionalRoles: [], primaryMuscles: [] },
         { movementId: "plyo1", bulletproofRoles: ["plyometric_low"], functionalRoles: [], primaryMuscles: [] },
@@ -333,7 +333,7 @@ describe("pickAccessoriesForSession — filters", () => {
       weekDeloadScale: 1.0,
       catalog: CATALOG,
       // Pre-satisfy hsr, plyo, carry so heavy_isometric is the only remaining deficit.
-      weekContext: [
+      weekAccessoryHistory: [
         { movementId: "hsr1", bulletproofRoles: ["hsr"], functionalRoles: [], primaryMuscles: [] },
         { movementId: "plyo1", bulletproofRoles: ["plyometric_low"], functionalRoles: [], primaryMuscles: [] },
         { movementId: "carry1", bulletproofRoles: ["carry"], functionalRoles: ["anti_rotation"], primaryMuscles: [] },
@@ -354,7 +354,7 @@ describe("pickAccessoriesForSession — deload scaling", () => {
       profile: STRENGTH_PROFILE,
       weekDeloadScale: 0.5,
       catalog: CATALOG,
-      weekContext: [],
+      weekAccessoryHistory: [],
       filters: EMPTY_FILTERS,
       perMuscleTargets: {},
       maxItems: 1,
@@ -368,7 +368,7 @@ describe("pickAccessoriesForSession — deload scaling", () => {
       profile: STRENGTH_PROFILE,
       weekDeloadScale: 0.1,
       catalog: CATALOG,
-      weekContext: [],
+      weekAccessoryHistory: [],
       filters: EMPTY_FILTERS,
       perMuscleTargets: {},
       maxItems: 1,
