@@ -16,6 +16,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   StatsCommandCenter,
   StrengthDrawer,
+  ReadinessDrawer,
   type StatsCommandCenterProps,
   type StatsRangeBucket,
 } from "../StatsCommandCenter";
@@ -202,6 +203,10 @@ describe("StatsCommandCenter - populated state", () => {
     expect(html).toContain('data-testid="stats-strength-expand"');
   });
 
+  it("exposes the recovery & load drawer affordance", () => {
+    expect(html).toContain('data-testid="stats-recovery-expand"');
+  });
+
   it("renders the range toggle with all three options", () => {
     expect(html).toContain('data-testid="stats-range-toggle"');
     expect(html).toContain('data-range="30d"');
@@ -306,6 +311,54 @@ describe("StrengthDrawer - per-lift e1RM detail", () => {
   it("renders nothing when closed", () => {
     const closed = renderToStaticMarkup(
       <StrengthDrawer open={false} onClose={() => {}} data={bucket().strength} range="90d" />,
+    );
+    expect(closed).toBe("");
+  });
+});
+
+describe("ReadinessDrawer - ACWR drilldown", () => {
+  const open = renderToStaticMarkup(
+    <ReadinessDrawer open onClose={() => {}} readiness={readiness()} />,
+  );
+
+  it("renders the three corroborating signals", () => {
+    const rows = open.match(/data-testid="stats-recovery-signal"/g) ?? [];
+    expect(rows).toHaveLength(3);
+  });
+
+  it("surfaces the acute:chronic ratio and the signals-agree count", () => {
+    expect(open).toContain("1.08");
+    expect(open).toContain('data-testid="stats-recovery-confidence"');
+    expect(open).toContain("2 of 3 signals agree");
+  });
+
+  it("deep-links to the engine internals page", () => {
+    expect(open).toContain('data-testid="stats-recovery-engine-link"');
+    expect(open).toContain("/app/stats/engine");
+  });
+
+  it("flags a provisional band in cold-start (weeksOfData < 4)", () => {
+    const cold = renderToStaticMarkup(
+      <ReadinessDrawer
+        open
+        onClose={() => {}}
+        readiness={readiness({
+          confidence: "building",
+          summary: {
+            rpeDrift: { verdict: "no-data", verdictLabel: "No data", slopePerDay: 0, meanRpe: null },
+            outputTrend: { direction: "no-data", detail: "Not enough PR history yet.", recentPrCount: 0, priorPrCount: 0 },
+            loadBalance: { bodyAcute: 0, bodyChronic: 0, ratio: null, band: "unknown", weeksOfData: 1 },
+          },
+        })}
+      />,
+    );
+    expect(cold).toContain("building baseline");
+    expect(cold).toMatch(/1 week of history/);
+  });
+
+  it("renders nothing when closed", () => {
+    const closed = renderToStaticMarkup(
+      <ReadinessDrawer open={false} onClose={() => {}} readiness={readiness()} />,
     );
     expect(closed).toBe("");
   });
