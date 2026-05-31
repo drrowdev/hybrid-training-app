@@ -18,10 +18,14 @@
  * Gabbett 2016) used a rolling 7-day / 28-day mean. Lolli 2019 critiqued
  * that approach because the 7-day window is mathematically nested inside
  * the 28-day window (the same days appear in both terms), producing
- * spurious correlations with injury. Williams 2017 showed the recommended
- * fix is an *uncoupled* exponentially-weighted moving average — exactly
- * what the region ledger persists. That makes this module the honest
- * body-wide expression of the same ACWR the field has converged on.
+ * spurious correlations with injury. Williams 2017 showed that an
+ * exponentially-weighted moving average recovers the same relationship
+ * with less coupled-pair noise than rolling averages — exactly what the
+ * region ledger persists. (EWMA still weights today's load into both the
+ * acute and chronic terms, so it is recency-weighted, not strictly
+ * "uncoupled"; the honest claim is reduced coupling noise, not its
+ * elimination — see Lolli 2019 / Impellizzeri 2020.) That makes this
+ * module the body-wide expression of the same ACWR the field uses.
  *
  * Honest limits (Impellizzeri 2020)
  * ─────────────────────────────────
