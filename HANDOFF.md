@@ -2,7 +2,7 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
-**Last updated:** 2026-05-31 (post engine-methodology + conservativeness-hardening cycle + cardio-modality preference + daily wellness check-in retirement — ADRs 0007–0018)
+**Last updated:** 2026-05-31 (post engine-methodology + conservativeness-hardening cycle + cardio-modality preference + daily wellness check-in retirement + readiness composite stats card — ADRs 0007–0019; test count 2835)
 
 ## Where we are
 
