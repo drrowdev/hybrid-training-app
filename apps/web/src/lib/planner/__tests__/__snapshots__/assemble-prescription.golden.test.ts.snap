@@ -1387,7 +1387,7 @@ exports[`assemblePrescriptionItems — golden master > strength_anchor: deload w
 ]
 `;
 
-exports[`assemblePrescriptionItems — golden master > strength_anchor: legacy static-pool fallback (no catalog/weekContext) 1`] = `
+exports[`assemblePrescriptionItems — golden master > strength_anchor: legacy static-pool fallback (no catalog/weekAccessoryHistory) 1`] = `
 [
   {
     "intensityLabel": "34% TM",

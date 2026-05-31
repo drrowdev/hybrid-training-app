@@ -3,7 +3,7 @@ import {
   pickAccessoriesForSession,
   movementValueNorm,
   type CatalogMovement,
-  type WeekContextItem,
+  type WeekAccessoryHistoryItem,
 } from "../accessory-picker";
 import type { AccessoryProfile } from "../accessory-roles";
 
@@ -45,7 +45,7 @@ const ISO_ONLY: AccessoryProfile = {
 };
 
 // Pre-satisfy every durability floor role except heavy_isometric.
-const PRESATISFIED_CONTEXT: WeekContextItem[] = [
+const PRESATISFIED_CONTEXT: WeekAccessoryHistoryItem[] = [
   { movementId: "hsr1", bulletproofRoles: ["hsr"], functionalRoles: [], primaryMuscles: [] },
   { movementId: "plyo1", bulletproofRoles: ["plyometric_low"], functionalRoles: [], primaryMuscles: [] },
   { movementId: "carry1", bulletproofRoles: ["carry"], functionalRoles: ["anti_rotation"], primaryMuscles: [] },
@@ -80,7 +80,7 @@ describe("value-weighted block rotation (ADR 0012)", () => {
       profile: ISO_ONLY,
       weekDeloadScale: 1.0,
       catalog,
-      weekContext: PRESATISFIED_CONTEXT,
+      weekAccessoryHistory: PRESATISFIED_CONTEXT,
       filters: { ...EMPTY_FILTERS, recentlyUsedMovementIds: new Set(["iso1"]) },
       perMuscleTargets: {},
       maxItems: 1,
@@ -97,7 +97,7 @@ describe("value-weighted block rotation (ADR 0012)", () => {
       profile: ISO_ONLY,
       weekDeloadScale: 1.0,
       catalog,
-      weekContext: PRESATISFIED_CONTEXT,
+      weekAccessoryHistory: PRESATISFIED_CONTEXT,
       filters: { ...EMPTY_FILTERS, recentlyUsedMovementIds: new Set(["iso1"]) },
       perMuscleTargets: {},
       maxItems: 1,
@@ -113,7 +113,7 @@ describe("value-weighted block rotation (ADR 0012)", () => {
       profile: ISO_ONLY,
       weekDeloadScale: 1.0,
       catalog,
-      weekContext: PRESATISFIED_CONTEXT,
+      weekAccessoryHistory: PRESATISFIED_CONTEXT,
       filters: { ...EMPTY_FILTERS, recentlyUsedMovementIds: new Set(["iso1"]) },
       perMuscleTargets: {},
       maxItems: 1,
@@ -134,7 +134,7 @@ describe("value-weighted block rotation (ADR 0012)", () => {
       profile: ISO_ONLY,
       weekDeloadScale: 1.0,
       catalog,
-      weekContext: PRESATISFIED_CONTEXT,
+      weekAccessoryHistory: PRESATISFIED_CONTEXT,
       filters: EMPTY_FILTERS,
       perMuscleTargets: {},
       maxItems: 1,

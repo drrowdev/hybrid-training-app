@@ -31,7 +31,7 @@ import {
   type StrengthDay,
 } from "../archetypes";
 import { assemblePrescriptionItems } from "../assemble-prescription";
-import type { CatalogMovement, WeekContextItem } from "../accessory-picker";
+import type { CatalogMovement, WeekAccessoryHistoryItem } from "../accessory-picker";
 import {
   resolveEffortPreference,
   hypertrophyEffortConfig,
@@ -230,7 +230,7 @@ const VOL_CATALOG: CatalogMovement[] = [
 
 function aestheticSets(archetype: Archetype, pref: EffortPreference): number[] {
   const day = firstStrengthDay(archetype);
-  const weekContext: WeekContextItem[] = [];
+  const weekAccessoryHistory: WeekAccessoryHistoryItem[] = [];
   const items = assemblePrescriptionItems(
     archetype,
     0,
@@ -239,7 +239,7 @@ function aestheticSets(archetype: Archetype, pref: EffortPreference): number[] {
     undefined,
     new Map(),
     VOL_CATALOG,
-    weekContext,
+    weekAccessoryHistory,
     1.0, // weekDeloadScale — no deload scaling
     false,
     undefined,

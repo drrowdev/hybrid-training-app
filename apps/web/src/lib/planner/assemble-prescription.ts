@@ -23,7 +23,7 @@ import { ACCESSORY_POOLS } from "./accessories";
 import {
   pickAccessoriesForSession,
   type CatalogMovement,
-  type WeekContextItem,
+  type WeekAccessoryHistoryItem,
 } from "./accessory-picker";
 import {
   accessoryIntensity,
@@ -122,6 +122,35 @@ function prependWarmupsForMainLifts(
  * When the archetype declares an `accessoryProfile`, the dynamic picker is
  * used (lib/planner/accessory-picker.ts). Otherwise we fall back to the
  * legacy static `ACCESSORY_POOLS` for backward compatibility.
+ *
+ * ## Contract
+ *
+ * **Output ordering (stable, relied on by the renderer/logger).** The returned
+ * array is always: `[warmups] → [main lift(s) + folded secondary] → [power
+ * primer] → [accessories]`. Warmups are spliced in front of each main movement
+ * by `prependWarmups`; the power primer (when `powerEmphasis`) sits between the
+ * mains and the accessories; accessories are appended last in picker order
+ * (durability deficits → functional → muscle targets → aesthetic fill).
+ *
+ * **Determinism.** Pure function of its arguments — no DB/Supabase/clock/random
+ * access. Identical inputs always yield an identical array. This is what the
+ * golden-master suite pins.
+ *
+ * **`weekAccessoryHistory` is mutated in place (by design).** The caller passes
+ * ONE array per generated *week* and reuses it across that week's days. Each day
+ * this function reads the array to credit already-prescribed accessory roles /
+ * muscles toward the weekly floor, then **pushes this day's picked accessories
+ * onto it** so later days in the same week see the running history. Callers must
+ * therefore create a fresh `[]` per week (never share one across weeks, never
+ * reuse a frozen snapshot). When the arg is `undefined`, the dynamic picker is
+ * skipped entirely and the legacy static pools are used.
+ *
+ * **Byte-identical default invariant.** Every parameter from `catalog` onward is
+ * optional/defaulted so legacy/in-flight callers and the golden harness produce
+ * the exact pre-existing prescription. In particular `effortPreference`
+ * defaults to `"standard"` (a no-op on every axis) and `recentlyUsedAccessoryIds`
+ * defaults to empty (no ADR-0012 rotation) — do not change a default without a
+ * golden-master update.
  */
 export function assemblePrescriptionItems(
   archetype: Archetype,
@@ -133,7 +162,7 @@ export function assemblePrescriptionItems(
   /** Full catalog for the picker. Optional for backward-compat callers. */
   catalog?: CatalogMovement[],
   /** Rolling per-week context — updated by caller in place. */
-  weekContext?: WeekContextItem[],
+  weekAccessoryHistory?: WeekAccessoryHistoryItem[],
   /** Week deload scalar from the archetype's week profile. */
   weekDeloadScale: number = 1.0,
   /** Wizard "Add power emphasis" toggle — persisted on `training_blocks.power_emphasis`. */
@@ -251,7 +280,7 @@ export function assemblePrescriptionItems(
   prependWarmupsForMainLifts(items, warmupScheme);
 
   // Dynamic picker path.
-  if (archetype.accessoryProfile && catalog && weekContext) {
+  if (archetype.accessoryProfile && catalog && weekAccessoryHistory) {
     // ADR 0016 volume axis — for the hypertrophy archetype only, scale the
     // aesthetic sets-per-movement by the user's effort/volume dial. Movement
     // SELECTION is untouched (the picker's role / focus / dedup invariants
@@ -275,7 +304,7 @@ export function assemblePrescriptionItems(
       profile: pickerProfile,
       weekDeloadScale,
       catalog,
-      weekContext,
+      weekAccessoryHistory,
       filters: {
         blockedRegions: limitationsContext.blockedRegions,
         blockedMuscles: limitationsContext.blockedMuscles,
@@ -347,7 +376,7 @@ export function assemblePrescriptionItems(
         ...slice,
       });
       if (catalogEntry) {
-        weekContext.push({
+        weekAccessoryHistory.push({
           movementId: catalogEntry.id,
           bulletproofRoles: catalogEntry.bulletproofRoles,
           functionalRoles: catalogEntry.functionalRoles,
