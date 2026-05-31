@@ -415,3 +415,33 @@ Logic:
 **Parity guard:** no active limitations ⇒ `buildLimitationResponse` returns an empty plan; the offer/accept paths short-circuit. Framing is **load management, not medical care** — the UI carries a clinician pointer and uses no program names. No new numeric constants (CP-2 row #42 documents the rule-based remediation + scoring weights).
 
 
+
+### Readiness composite — read surface, not a prescription input (ADR 0019)
+
+**Problem:** after ADR 0018 retired the daily wellness check-in, the body-wide "are you absorbing the work?" question had no single home — per-region freshness mini answers "is this region recovered for the next session?", not "is the whole athlete keeping up with this block?". Three honest signals already exist (EWMA-ACWR from `region_state`, sRPE drift from `lib/stats/rpe-drift-queries.ts`, PR cadence from `lib/stats/prs-range.ts`) — none conclusive on its own, but together they carry the corroboration the daily check-in was supposed to provide, without re-introducing a daily input.
+
+**Engine:** there is no engine path. The composite is a stats overlay. "Engine" here means "read-only aggregator on top of read-only aggregators."
+
+**Read surfaces (all new):**
+
+- `apps/web/src/lib/stats/load-balance.ts:getLoadBalance` — sums `region_state.atl` + `region_state.ctl` across all regions for the user, `ratio = acute / chronic`. Pure `aggregateLoadBalance` + `loadBand` classify into `detraining` (`<0.8`), `productive` (`<1.3`), `pushing` (`<1.5`), `spiking` (`≥1.5`). `weeksOfData` counts distinct ISO weeks across a 12-week lookback so the verdict can short-circuit at cold start. Bands tagged `// heuristic — readiness composite bands (CP-1)`.
+- `apps/web/src/lib/stats/output-trend.ts:getOutputTrend` — pulls `getPrsForRange(28)` and `getPrsForRange(56)`, subtracts to get prior-window PR count, classifies `rising / flat / falling / no-data` via the pure `classifyOutputTrend`. PR cadence (not e1RM slope) is the v1 proxy for objective output; tagged HEURISTIC / CP-1.
+- `apps/web/src/lib/stats/readiness.ts:getReadiness` — thin I/O wrapper that runs the three signals (load balance + `getRpeDriftBundle` + output trend) and hands the records to the pure `composeReadiness` for the verdict matrix. `READINESS_BUILDING_WEEK_THRESHOLD = 4` (distinct ISO weeks) forces `verdict = "building"` and `confidence = "building"` below that bar — an EWMA-ACWR built from fewer than 4 weeks is dominated by the 28-day chronic ramp.
+- `apps/web/src/components/stats/ReadinessCard.tsx` — the card itself: confidence chip + verdict word, banded acute:chronic gauge with triangle marker, "Does the evidence agree?" three-signal stack with the agree-count callout, honest caveat about load-absorption vs autonomic-recovery, expandable drill-down with scalar Fitness / Fatigue / Form, four signal cards, formula, and citations. Rendered between `CurrentBlockStrip` and `TrainingHeatmap` on `/app/stats`.
+
+**Composite rules** (in `composeReadiness`):
+
+- `weeksOfData < 4` → `building`, "Building baseline (N of 4 weeks)".
+- `band = detraining` → `detraining`, regardless of other signals.
+- `band ∈ {pushing, spiking}` + sRPE `rising` + output `falling` → `overreaching` (the only red verdict).
+- `band ∈ {pushing, spiking}` + sRPE `stable`|`easing` + output `rising`|`flat` → `pushing-tolerated` (productive overload — the corroboration carries it).
+- `band = productive` + sRPE `rising` + output `falling` → `watch`.
+- else → `productive`.
+
+`signalsAgree` counts how many of the three signals point the same way as the band; `confidence = signalsAgree >= 3 ? "agree" : "mixed"`. The card surfaces this explicitly — when the signals disagree, the verdict carries less weight by design, and the copy says so.
+
+**Hard constraint — does NOT feed prescription:** `getReadiness` is not read by `buildPrescription` (`apps/web/src/lib/planner/`) or `getCeilingExplain` (`apps/web/src/lib/stats/engine.ts`). CP-4 stays two-factor (`baseCeiling × confidenceBias`); this card adds no third factor and no silent autoregulation. It is a read surface — the user is the one who decides whether the verdict changes anything they do.
+
+**What this does NOT measure:** autonomic recovery (no HRV, no sleep, no resting HR). The card states this verbatim — it measures load **absorption** (am I keeping up with the work I imposed?), not whether you are ready for a hard session today. The bands themselves (0.8 / 1.3 / 1.5) are team-sport population averages per Williams 2017 / Gabbett 2016 lineage with Lolli 2019 / Impellizzeri 2020 critique noted; per-user band calibration is deferred to v2 once a personal ACWR distribution exists.
+
+**Parity guard:** empty / zero-data path renders an `EmptyState` (variant `card`) with "Log a few sessions" copy, matching `FreshnessCard` convention. Test coverage: 30 new pure unit tests pin the band boundaries (0.79 / 0.8 / 1.0 / 1.29 / 1.3 / 1.49 / 1.5 / 2.5), ISO-week distinct counting, cold-start gate, every (band × drift × output) cell that maps to a non-default verdict, and the gauge-marker math.
