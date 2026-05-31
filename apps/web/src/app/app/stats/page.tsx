@@ -193,9 +193,9 @@ export default async function StatsOverviewPage({
 function DeepDiveLinks() {
   const links: Array<{ label: string; href: string }> = [
     { label: "PRs & per-movement", href: "/app/stats/prs" },
-    { label: "Engine internals", href: "/app/stats/engine" },
+    { label: "How the planner sees you", href: "/app/stats/engine" },
     { label: "Block outcomes", href: "/app/stats/blocks" },
-    { label: "Adherence dashboard", href: "/app/stats/adherence" },
+    { label: "Consistency details", href: "/app/stats/adherence" },
   ];
   return (
     <section
