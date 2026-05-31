@@ -34,4 +34,21 @@ describe("AddToWorkout", () => {
     expect(html).not.toContain('data-testid="add-to-workout-pick-strength"');
     expect(html).not.toContain('data-testid="add-to-workout-pick-cardio"');
   });
+
+  it("renders the prominent empty-state card as the trigger when prominent", () => {
+    const html = renderToStaticMarkup(
+      <AddToWorkout
+        sessionId="s1"
+        cardioAction={noop as unknown as React.ComponentProps<typeof AddToWorkout>["cardioAction"]}
+        prominent
+        primaryModality="strength"
+      />,
+    );
+    // Same trigger test-id, but now a prominent card with the
+    // empty-state copy instead of the small pill.
+    expect(html).toContain('data-testid="add-to-workout-open"');
+    expect(html).toContain("Pick movements to start logging");
+    expect(html).toContain("Tap to add your first movement");
+    expect(html).not.toContain("+ Add to workout");
+  });
 });

@@ -35,7 +35,40 @@ export function MovementPicker({
   const [selected, setSelected] = useState<MovementSearchResult | null>(null);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  // Viewport-aware dropdown placement. On a small screen the picker
+  // often sits near the page bottom (the "+ Add to workout" tail), where
+  // a fixed downward dropdown runs off-screen behind the bottom tab bar.
+  // We measure available space on open and either flip the list upward or
+  // cap its height to whatever room is left below.
+  const [placement, setPlacement] = useState<{ dropUp: boolean; maxH: number }>(
+    { dropUp: false, maxH: 288 },
+  );
   const wrapRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const recomputePlacement = () => {
+    const el = inputRef.current;
+    if (!el || typeof window === "undefined") return;
+    const rect = el.getBoundingClientRect();
+    // Reserve space for the mobile bottom tab bar + a little breathing
+    // room so the last row isn't flush against it.
+    const SAFE_BOTTOM = 88;
+    const SAFE_TOP = 12;
+    const MAX = 288;
+    const MIN = 180;
+    const spaceBelow = window.innerHeight - rect.bottom - SAFE_BOTTOM;
+    const spaceAbove = rect.top - SAFE_TOP;
+    if (spaceBelow < MIN && spaceAbove > spaceBelow) {
+      setPlacement({ dropUp: true, maxH: Math.max(MIN, Math.min(MAX, spaceAbove)) });
+    } else {
+      setPlacement({ dropUp: false, maxH: Math.max(MIN, Math.min(MAX, spaceBelow)) });
+    }
+  };
+
+  const openList = () => {
+    recomputePlacement();
+    setOpen(true);
+  };
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -88,18 +121,20 @@ export function MovementPicker({
     <div ref={wrapRef} style={{ position: "relative" }}>
       <input type="hidden" name={name} value={selected?.id ?? ""} />
       <input
+        ref={inputRef}
         type="text"
         value={query}
         autoComplete="off"
         placeholder={placeholder}
-        onFocus={() => setOpen(true)}
+        onFocus={openList}
         onChange={(e) => {
           setQuery(e.target.value);
           if (selected) setSelected(null);
-          setOpen(true);
+          openList();
         }}
         style={{
           width: "100%",
+          boxSizing: "border-box",
           padding: "8px 12px",
           fontSize: 13,
           borderRadius: 8,
@@ -133,16 +168,22 @@ export function MovementPicker({
           style={{
             position: "absolute",
             zIndex: 50,
-            marginTop: 4,
-            maxHeight: "18rem",
+            ...(placement.dropUp
+              ? { bottom: "100%", marginBottom: 4, marginTop: 0 }
+              : { top: "100%", marginTop: 4, marginBottom: 0 }),
+            marginLeft: 0,
+            marginRight: 0,
+            maxHeight: placement.maxH,
             width: "100%",
+            boxSizing: "border-box",
             overflowY: "auto",
+            overscrollBehavior: "contain",
+            WebkitOverflowScrolling: "touch",
             background: "var(--cp-surface)",
             border: "1px solid var(--cp-border)",
             borderRadius: 8,
             boxShadow: "var(--cp-shadow, 0 8px 24px rgba(0,0,0,0.18))",
             padding: 0,
-            margin: 0,
             listStyle: "none",
           }}
         >
