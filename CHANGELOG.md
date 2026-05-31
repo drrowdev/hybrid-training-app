@@ -10,6 +10,19 @@ Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 
 ### Added (post-#215 wave)
 
+- **Hardened, versioned data export (`export-v1`).** The "Export my data
+  (JSON)" download (Settings → Account) now covers **every** user-authored
+  table — training maxes + their history, training blocks, planned sessions,
+  off-plan session movements, races, AI memories + chat history, bodyweight
+  progression, prescription edits, and engine overrides — not just the
+  previous 8-table subset, making the GDPR Art. 15/20 "complete record"
+  claim honest. Adds a `format_version: 1` integer with an additive-only
+  stability contract, a self-describing `excluded` section (secrets +
+  derived/recomputable tables are listed, never dumped), portable movement
+  slugs on every movement-referencing row, a new `docs/export-format.md`
+  contract doc, and a route test that fails CI if a covered table is dropped
+  or a secret/derived table ever leaks in. Read-path only — no migration, no
+  new write surface, no engine math.
 - **Ranked cardio-modality preference (ADR 0017).** A new setting
   (Settings → Training → "Cardio types", also offered in onboarding)
   lets you pick which cardio forms the planner programs by default — in
