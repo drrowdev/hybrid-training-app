@@ -10,6 +10,24 @@ Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 
 ### Added (stats page redesign — Direction C2, Phase 3 · drawers)
 
+- **Endurance & Consistency tiles now open detail drawers, and the
+  bottom deep-dive grid is demoted to a slim footer (Phase 3c).** The
+  Endurance tile gains a "Detail →" drawer showing a weekly easy-pace
+  sparkline (the per-week mean-pace series `classifyPaceSlope` already
+  computed internally and discarded — now exposed as `weeklyPace[]`,
+  display only), the easy/dropped run counts, and the **full
+  time-in-zone breakdown** (absolute minutes per zone, the user's bpm
+  band edges, polarised easy/threshold/hard split, activity count and
+  whether the distribution is measured vs estimated) — far more than the
+  tile's relative bars. The Consistency tile gains a drawer with a
+  week-by-week rhythm list, current-streak / weekly-target / active-weeks
+  / strength-to-cardio summary stats, and a deep link to the full
+  Adherence dashboard. With every tile now interactive, the four
+  prominent deep-dive **cards** at the page bottom collapse into a single
+  low-emphasis "Full pages" text-link row (PRs · Engine · Blocks ·
+  Adherence) — the full subpages stay reachable, just de-emphasised.
+  No prescription path touched; all new surfaces are read-only history.
+
 - **Recovery & load tile now opens an acute:chronic drilldown drawer.**
   The Recovery & load tile's header "Engine →" link is replaced by a
   "Detail →" affordance that opens a side drawer (same shared

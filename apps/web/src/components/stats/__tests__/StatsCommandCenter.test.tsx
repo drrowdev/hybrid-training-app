@@ -17,6 +17,8 @@ import {
   StatsCommandCenter,
   StrengthDrawer,
   ReadinessDrawer,
+  EnduranceDrawer,
+  ConsistencyDrawer,
   type StatsCommandCenterProps,
   type StatsRangeBucket,
 } from "../StatsCommandCenter";
@@ -87,6 +89,7 @@ export function bucket(overrides: Partial<StatsRangeBucket> = {}): StatsRangeBuc
       droppedRuns: 1,
       totalRuns: 12,
       timeInZone: { kind: "no-strava" },
+      weeklyPace: [330, 326, 321, 316, 312],
       detail: "Easy pace improving ~2s/km per week.",
       windowDays: 90,
     },
@@ -207,6 +210,11 @@ describe("StatsCommandCenter - populated state", () => {
     expect(html).toContain('data-testid="stats-recovery-expand"');
   });
 
+  it("exposes the endurance and consistency drawer affordances", () => {
+    expect(html).toContain('data-testid="stats-endurance-expand"');
+    expect(html).toContain('data-testid="stats-consistency-expand"');
+  });
+
   it("renders the range toggle with all three options", () => {
     expect(html).toContain('data-testid="stats-range-toggle"');
     expect(html).toContain('data-range="30d"');
@@ -243,6 +251,7 @@ describe("StatsCommandCenter - cold-start state", () => {
       droppedRuns: 0,
       totalRuns: 0,
       timeInZone: { kind: "no-strava" },
+      weeklyPace: [],
       detail: "Connect Strava or log runs to see pace and zone trends.",
       windowDays: 30,
     },
@@ -288,6 +297,10 @@ describe("StatsCommandCenter - cold-start state", () => {
 
   it("hides the strength drawer affordance when there is no lift data", () => {
     expect(html).not.toContain('data-testid="stats-strength-expand"');
+  });
+
+  it("hides the endurance drawer affordance when there are no runs", () => {
+    expect(html).not.toContain('data-testid="stats-endurance-expand"');
   });
 });
 
@@ -359,6 +372,84 @@ describe("ReadinessDrawer - ACWR drilldown", () => {
   it("renders nothing when closed", () => {
     const closed = renderToStaticMarkup(
       <ReadinessDrawer open={false} onClose={() => {}} readiness={readiness()} />,
+    );
+    expect(closed).toBe("");
+  });
+});
+
+describe("EnduranceDrawer - pace trend + time-in-zone", () => {
+  it("renders the pace sparkline series and easy-run counts", () => {
+    const open = renderToStaticMarkup(
+      <EnduranceDrawer open onClose={() => {}} data={bucket().endurance} range="90d" />,
+    );
+    // 9 of 12 runs easy, 1 dropped (from the bucket() endurance fixture)
+    expect(open).toContain("9 of 12 runs counted as easy");
+    expect(open).toContain("1 dropped");
+    expect(open).toContain("lower = faster");
+  });
+
+  it("renders absolute per-zone minutes + bpm bands when zone data is present", () => {
+    const withZones = bucket({
+      endurance: {
+        ...bucket().endurance,
+        timeInZone: {
+          kind: "ok",
+          totals: { Z1: 600, Z2: 3600, Z3: 1200, Z4: 300, Z5: 0 },
+          split: { easyPct: 70, thresholdPct: 20, hardPct: 5 },
+          bands: { z1Max: 120, z2Max: 140, z3Max: 160, z4Max: 175 },
+          activityCount: 6,
+          droppedCount: 1,
+          windowDays: 28,
+          source: "measured",
+        },
+      },
+    }).endurance;
+    const open = renderToStaticMarkup(
+      <EnduranceDrawer open onClose={() => {}} data={withZones} range="90d" />,
+    );
+    const rows = open.match(/data-testid="stats-endurance-zone-row"/g) ?? [];
+    expect(rows).toHaveLength(5);
+    expect(open).toContain("60 min"); // Z2 = 3600s = 60 min
+    expect(open).toContain("bpm");
+    expect(open).toContain("from measured HR streams");
+    expect(open).toContain("70% easy");
+  });
+
+  it("shows the zone gating note when HR zones are unavailable", () => {
+    const open = renderToStaticMarkup(
+      <EnduranceDrawer open onClose={() => {}} data={bucket().endurance} range="90d" />,
+    );
+    expect(open).toContain("Connect Strava to see time-in-zone");
+  });
+
+  it("renders nothing when closed", () => {
+    const closed = renderToStaticMarkup(
+      <EnduranceDrawer open={false} onClose={() => {}} data={bucket().endurance} range="90d" />,
+    );
+    expect(closed).toBe("");
+  });
+});
+
+describe("ConsistencyDrawer - rhythm summary + adherence deep link", () => {
+  const props = baseProps();
+  const open = renderToStaticMarkup(
+    <ConsistencyDrawer open onClose={() => {}} rhythm={props.rhythm} streak={props.streak} />,
+  );
+
+  it("renders a week-by-week row per rhythm week", () => {
+    const rows = open.match(/data-testid="stats-consistency-week-row"/g) ?? [];
+    expect(rows).toHaveLength(props.rhythm.weeks.length);
+  });
+
+  it("surfaces the current streak and deep-links to the adherence dashboard", () => {
+    expect(open).toContain("Current streak");
+    expect(open).toContain('data-testid="stats-consistency-adherence-link"');
+    expect(open).toContain("/app/stats/adherence");
+  });
+
+  it("renders nothing when closed", () => {
+    const closed = renderToStaticMarkup(
+      <ConsistencyDrawer open={false} onClose={() => {}} rhythm={props.rhythm} streak={props.streak} />,
     );
     expect(closed).toBe("");
   });

@@ -221,7 +221,9 @@ export function StatsCommandCenter(props: StatsCommandCenterProps) {
     units,
   } = props;
   const [range, setRange] = useState<Range>(initialRange);
-  const [openTile, setOpenTile] = useState<"strength" | "recovery" | null>(null);
+  const [openTile, setOpenTile] = useState<
+    "strength" | "recovery" | "endurance" | "consistency" | null
+  >(null);
 
   const syncUrl = useCallback((next: Range) => {
     if (typeof window === "undefined") return;
@@ -268,13 +270,21 @@ export function StatsCommandCenter(props: StatsCommandCenterProps) {
           range={range}
           onExpand={() => setOpenTile("strength")}
         />
-        <EnduranceTile data={bucket.endurance} range={range} />
+        <EnduranceTile
+          data={bucket.endurance}
+          range={range}
+          onExpand={() => setOpenTile("endurance")}
+        />
         <RecoveryLoadTile
           freshness={freshness}
           readiness={readiness}
           onExpand={() => setOpenTile("recovery")}
         />
-        <ConsistencyTile rhythm={rhythm} streak={streak} />
+        <ConsistencyTile
+          rhythm={rhythm}
+          streak={streak}
+          onExpand={() => setOpenTile("consistency")}
+        />
         <BodyweightTile data={bodyweight} units={units} />
         <VolumeTile data={bucket.volume} range={range} units={units} />
       </div>
@@ -285,10 +295,22 @@ export function StatsCommandCenter(props: StatsCommandCenterProps) {
         data={bucket.strength}
         range={range}
       />
+      <EnduranceDrawer
+        open={openTile === "endurance"}
+        onClose={() => setOpenTile(null)}
+        data={bucket.endurance}
+        range={range}
+      />
       <ReadinessDrawer
         open={openTile === "recovery"}
         onClose={() => setOpenTile(null)}
         readiness={readiness}
+      />
+      <ConsistencyDrawer
+        open={openTile === "consistency"}
+        onClose={() => setOpenTile(null)}
+        rhythm={rhythm}
+        streak={streak}
       />
     </div>
   );
@@ -842,11 +864,44 @@ export function StrengthDrawer({
 }
 
 // B — Endurance progress
-function EnduranceTile({ data, range }: { data: EnduranceProgress; range: Range }) {
+function EnduranceTile({
+  data,
+  range,
+  onExpand,
+}: {
+  data: EnduranceProgress;
+  range: Range;
+  onExpand?: () => void;
+}) {
   const noRun = data.direction === "no-run-data";
   return (
     <Tile span={4} testid="stats-tile-endurance" empty={noRun}>
-      <TileHead title="Endurance progress" meta={`easy run · ${RANGE_LABEL[range]}`} />
+      <TileHead
+        title="Endurance progress"
+        meta={`easy run · ${RANGE_LABEL[range]}`}
+        right={
+          noRun || onExpand == null ? undefined : (
+            <button
+              type="button"
+              onClick={onExpand}
+              data-testid="stats-endurance-expand"
+              aria-label="Open endurance progress detail"
+              style={{
+                background: "transparent",
+                border: "1px solid var(--cp-border)",
+                borderRadius: 6,
+                color: "var(--cp-text-muted)",
+                fontSize: 11,
+                cursor: "pointer",
+                padding: "3px 8px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Detail →
+            </button>
+          )
+        }
+      />
       {noRun ? (
         <EmptyState variant="inline" title="No easy runs yet" body={data.detail} />
       ) : (
@@ -920,6 +975,168 @@ function ZoneBars({ zones }: { zones: EnduranceProgress["timeInZone"] }) {
         })}
       </div>
     </div>
+  );
+}
+
+// B (drawer) — easy-run pace trend + full time-in-zone, opened from EnduranceTile
+export function EnduranceDrawer({
+  open,
+  onClose,
+  data,
+  range,
+}: {
+  open: boolean;
+  onClose: () => void;
+  data: EnduranceProgress;
+  range: Range;
+}) {
+  const pace = data.weeklyPace;
+  const accent: "success" | "danger" | "accent" =
+    data.direction === "up" ? "success" : data.direction === "down" ? "danger" : "accent";
+  const slope = data.slopeSecPerKmPerWeek;
+  const slopeText =
+    slope == null || data.direction === "building"
+      ? "—"
+      : `${slope > 0 ? "+" : ""}${round1(slope)} s/km·wk`;
+  const z = data.timeInZone;
+  return (
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      testId="stats-endurance-drawer"
+      ariaLabelledById="stats-endurance-drawer-title"
+      title={
+        <div>
+          <div id="stats-endurance-drawer-title" style={{ fontSize: 16, fontWeight: 600 }}>
+            Endurance progress
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--cp-text-muted)", marginTop: 2 }}>
+            easy-run pace + time-in-zone · {RANGE_LABEL[range]}
+          </div>
+        </div>
+      }
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span className="mono" style={{ fontSize: 22, fontWeight: 700 }}>
+              {data.easyPaceSecPerKm == null ? "—" : fmtPace(data.easyPaceSecPerKm)}
+            </span>
+            <span style={{ fontSize: 11.5, color: "var(--cp-text-muted)" }}>/km easy avg</span>
+            <span
+              className="mono"
+              style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, color: toneVar(directionTone(data.direction)) }}
+            >
+              {slopeText}
+            </span>
+          </div>
+          {pace.length >= 2 && (
+            <>
+              <Sparkline
+                values={pace}
+                accent={accent}
+                ariaLabel={`weekly easy-run pace trend, ${pace.length} weeks`}
+              />
+              <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
+                Weekly mean easy pace · lower = faster
+              </div>
+            </>
+          )}
+          <div style={{ fontSize: 11.5, color: "var(--cp-text-muted)" }}>{data.detail}</div>
+          <div style={{ fontSize: 11.5, color: "var(--cp-text-muted)" }}>
+            {data.sampleRuns} of {data.totalRuns} run{data.totalRuns === 1 ? "" : "s"} counted as easy
+            {data.droppedRuns > 0 && (
+              <>
+                {" · "}
+                {data.droppedRuns} dropped (effort unclear)
+              </>
+            )}
+          </div>
+        </section>
+
+        <section
+          data-testid="stats-endurance-zones"
+          style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 14, borderTop: "1px solid var(--cp-border)" }}
+        >
+          <div style={{ fontSize: 12.5, fontWeight: 600 }}>Time in zone</div>
+          {z.kind !== "ok" ? (
+            <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)" }}>
+              {z.kind === "no-strava"
+                ? "Connect Strava to see time-in-zone."
+                : z.kind === "no-zones"
+                  ? "Set your HR zones in Settings to see time-in-zone."
+                  : "No HR-stream data in this window yet."}
+            </p>
+          ) : (
+            <>
+              <div style={{ fontSize: 11.5, color: "var(--cp-text-muted)" }}>
+                {z.split.easyPct}% easy · {z.split.thresholdPct}% threshold · {z.split.hardPct}% hard
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 2 }}>
+                {(["Z1", "Z2", "Z3", "Z4", "Z5"] as const).map((zone) => {
+                  const mins = Math.round(z.totals[zone] / 60);
+                  const maxMins = Math.max(
+                    ...(["Z1", "Z2", "Z3", "Z4", "Z5"] as const).map((k) => z.totals[k]),
+                    1,
+                  ) / 60;
+                  const pct = Math.round((mins / Math.max(maxMins, 1)) * 100);
+                  const band =
+                    zone === "Z1"
+                      ? `<${z.bands.z1Max}`
+                      : zone === "Z2"
+                        ? `${z.bands.z1Max}–${z.bands.z2Max}`
+                        : zone === "Z3"
+                          ? `${z.bands.z2Max}–${z.bands.z3Max}`
+                          : zone === "Z4"
+                            ? `${z.bands.z3Max}–${z.bands.z4Max}`
+                            : `≥${z.bands.z4Max}`;
+                  return (
+                    <div
+                      key={zone}
+                      data-testid="stats-endurance-zone-row"
+                      style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12 }}
+                    >
+                      <span style={{ width: 22, fontWeight: 600 }}>{zone}</span>
+                      <span className="mono" style={{ width: 56, fontSize: 10.5, color: "var(--cp-text-muted)" }}>
+                        {band} bpm
+                      </span>
+                      <span style={{ flex: 1, height: 8, background: "var(--cp-surface-soft)", borderRadius: 4, overflow: "hidden" }}>
+                        <span
+                          style={{
+                            display: "block",
+                            height: "100%",
+                            width: `${Math.max(mins > 0 ? 3 : 0, pct)}%`,
+                            background: "var(--cp-link)",
+                            borderRadius: 4,
+                          }}
+                        />
+                      </span>
+                      <span className="mono" style={{ width: 48, textAlign: "right", color: "var(--cp-text-muted)" }}>
+                        {mins} min
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 4 }}>
+                {z.activityCount} activit{z.activityCount === 1 ? "y" : "ies"} · {z.windowDays}d ·{" "}
+                {z.source === "measured"
+                  ? "from measured HR streams"
+                  : z.source === "approximated"
+                    ? "estimated from average HR"
+                    : "mixed measured + estimated"}
+                {z.droppedCount > 0 && <> · {z.droppedCount} without HR dropped</>}
+              </div>
+            </>
+          )}
+        </section>
+
+        <p style={{ margin: 0, fontSize: 11, color: "var(--cp-text-muted)" }}>
+          Descriptive history — pace and zone distribution summarise what you ran, they do not
+          drive workout prescription.
+        </p>
+      </div>
+    </BottomSheet>
   );
 }
 
@@ -1201,7 +1418,15 @@ export function ReadinessDrawer({
 }
 
 // D — Consistency & balance (weekly rhythm bars + this-week)
-function ConsistencyTile({ rhythm, streak }: { rhythm: WeeklyRhythm; streak: Streak }) {
+function ConsistencyTile({
+  rhythm,
+  streak,
+  onExpand,
+}: {
+  rhythm: WeeklyRhythm;
+  streak: Streak;
+  onExpand?: () => void;
+}) {
   const weeks = rhythm.weeks.slice(-12);
   const maxCount = Math.max(
     ...weeks.map((w) => Math.max(w.strengthCount + w.cardioCount, w.plannedCount)),
@@ -1213,10 +1438,30 @@ function ConsistencyTile({ rhythm, streak }: { rhythm: WeeklyRhythm; streak: Str
       <TileHead
         title="Consistency & balance"
         right={
-          <span style={{ display: "flex", gap: 12, fontSize: 11, color: "var(--cp-text-muted)" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 11, color: "var(--cp-text-muted)" }}>
             <Legend color="var(--cp-accent)" label="Strength" />
             <Legend color="var(--cp-link)" label="Cardio" />
             <Legend dashed label="Planned" />
+            {!isEmpty && onExpand != null && (
+              <button
+                type="button"
+                onClick={onExpand}
+                data-testid="stats-consistency-expand"
+                aria-label="Open consistency detail"
+                style={{
+                  background: "transparent",
+                  border: "1px solid var(--cp-border)",
+                  borderRadius: 6,
+                  color: "var(--cp-text-muted)",
+                  fontSize: 11,
+                  cursor: "pointer",
+                  padding: "3px 8px",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Detail →
+              </button>
+            )}
           </span>
         }
       />
@@ -1284,6 +1529,124 @@ function ConsistencyTile({ rhythm, streak }: { rhythm: WeeklyRhythm; streak: Str
         </>
       )}
     </Tile>
+  );
+}
+
+// D (drawer) — weekly rhythm + adherence summary, opened from ConsistencyTile
+export function ConsistencyDrawer({
+  open,
+  onClose,
+  rhythm,
+  streak,
+}: {
+  open: boolean;
+  onClose: () => void;
+  rhythm: WeeklyRhythm;
+  streak: Streak;
+}) {
+  const weeks = rhythm.weeks.slice(-16);
+  const totalStrength = weeks.reduce((a, w) => a + w.strengthCount, 0);
+  const totalCardio = weeks.reduce((a, w) => a + w.cardioCount, 0);
+  const totalDone = totalStrength + totalCardio;
+  const balancePct = totalDone === 0 ? null : Math.round((totalStrength / totalDone) * 100);
+  const activeWeeks = weeks.filter((w) => w.strengthCount + w.cardioCount > 0).length;
+  return (
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      testId="stats-consistency-drawer"
+      ariaLabelledById="stats-consistency-drawer-title"
+      title={
+        <div>
+          <div id="stats-consistency-drawer-title" style={{ fontSize: 16, fontWeight: 600 }}>
+            Consistency &amp; balance
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--cp-text-muted)", marginTop: 2 }}>
+            weekly rhythm · last {weeks.length} weeks
+          </div>
+        </div>
+      }
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <section style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+          <Stat label="Current streak" value={`${streak.currentStreakWeeks} wk`} />
+          <Stat label="Weekly target" value={streak.weeklyTarget > 0 ? `${streak.weeklyTarget}/wk` : "—"} />
+          <Stat label="Active weeks" value={`${activeWeeks} of ${weeks.length}`} />
+          <Stat
+            label="Strength : cardio"
+            value={balancePct == null ? "—" : `${balancePct} : ${100 - balancePct}`}
+          />
+        </section>
+
+        {streak.hasActiveBlock && streak.thisWeekTarget > 0 && (
+          <p style={{ margin: 0, fontSize: 12.5 }}>
+            <span style={{ fontWeight: 600 }}>
+              This week · {streak.thisWeekCompleted} of {streak.thisWeekTarget} done
+            </span>
+          </p>
+        )}
+
+        <section style={{ display: "flex", flexDirection: "column", gap: 5, paddingTop: 14, borderTop: "1px solid var(--cp-border)" }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 2 }}>Week by week</div>
+          {weeks
+            .slice()
+            .reverse()
+            .map((w) => {
+              const done = w.strengthCount + w.cardioCount;
+              return (
+                <div
+                  key={w.weekStart}
+                  data-testid="stats-consistency-week-row"
+                  style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12 }}
+                >
+                  <span className="mono" style={{ width: 44, color: "var(--cp-text-muted)" }}>
+                    {weekShort(w.weekStart)}
+                  </span>
+                  <span style={{ flex: 1, display: "flex", gap: 4, alignItems: "center" }}>
+                    {w.strengthCount > 0 && (
+                      <span style={{ height: 9, borderRadius: 2, background: "var(--cp-accent)", width: `${w.strengthCount * 14}px`, maxWidth: 110 }} />
+                    )}
+                    {w.cardioCount > 0 && (
+                      <span style={{ height: 9, borderRadius: 2, background: "var(--cp-link)", width: `${w.cardioCount * 14}px`, maxWidth: 110 }} />
+                    )}
+                    {done === 0 && (
+                      <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>—</span>
+                    )}
+                  </span>
+                  <span className="mono" style={{ color: "var(--cp-text-muted)", width: 78, textAlign: "right" }}>
+                    {w.strengthCount}S · {w.cardioCount}C
+                    {w.plannedCount > 0 && <> / {w.plannedCount}</>}
+                  </span>
+                </div>
+              );
+            })}
+        </section>
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 12, borderTop: "1px solid var(--cp-border)" }}>
+          <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
+            Completion, weekday mix, archetype split and skip notes
+          </span>
+          <Link
+            href="/app/stats/adherence"
+            data-testid="stats-consistency-adherence-link"
+            style={{ fontSize: 12.5, color: "var(--cp-accent)", textDecoration: "none", fontWeight: 500, whiteSpace: "nowrap" }}
+          >
+            Adherence dashboard →
+          </Link>
+        </div>
+      </div>
+    </BottomSheet>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <span className="mono" style={{ fontSize: 18, fontWeight: 700 }}>
+        {value}
+      </span>
+      <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>{label}</span>
+    </div>
   );
 }
 
