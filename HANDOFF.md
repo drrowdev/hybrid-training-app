@@ -2,7 +2,7 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
-**Last updated:** 2026-05-31 (post engine-methodology + conservativeness-hardening cycle + cardio-modality preference + daily wellness check-in retirement + readiness composite stats card — ADRs 0007–0019; test count 2835)
+**Last updated:** 2026-05-31 (post engine-methodology + conservativeness-hardening cycle + cardio-modality preference + daily wellness check-in retirement + readiness composite stats card + **/app/stats Direction-C2 command-center redesign, Phase 2** — ADRs 0007–0019; test count 2893)
 
 ## Where we are
 
