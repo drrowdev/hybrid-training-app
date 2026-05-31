@@ -59,6 +59,14 @@ test.describe("@mobile quick strength workout", () => {
     // Escape hatch to the other modality is still reachable.
     await expect(page.getByTestId("add-to-workout-switch-cardio")).toBeVisible();
 
+    // iOS Safari auto-zooms (and stays zoomed) when a focused input has a
+    // font-size < 16px. Guard the global 16px mobile floor so an inline
+    // font-size on the search field can never reintroduce that bug.
+    const fontPx = await search.evaluate(
+      (el) => parseFloat(getComputedStyle(el).fontSize),
+    );
+    expect(fontPx).toBeGreaterThanOrEqual(16);
+
     // Pick a movement → its card renders and the empty-state clears.
     await search.click();
     await search.fill("chin");
