@@ -142,7 +142,7 @@ export default async function SettingsPage() {
         <SettingsHubCard
           href="/app/recovery/injuries"
           icon="🩹"
-          title="Injuries"
+          title="Limitations"
           description="Active limitations + history."
           badge={`${activeLimCount} active`}
           testId="settings-hub-injuries"

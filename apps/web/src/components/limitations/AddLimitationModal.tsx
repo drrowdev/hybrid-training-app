@@ -28,8 +28,11 @@ import {
 } from "@/lib/limitations/actions";
 import type { LimitationFormInput } from "@/lib/limitations/schema";
 import { AFFECTED_SIDES, type AffectedSide } from "@/lib/limitations/schema";
+import { REGION_LABELS } from "@/lib/settings/limitations-constants";
+import { REGIONS, inferRegion, type Region } from "@/lib/limitations/region";
 import { MusclePicker } from "@/components/muscle-grid/MusclePicker";
 import { MovementPicker } from "./MovementPicker";
+import { filterAffectedMovements } from "./utils";
 import type { LimitationRow, MovementRef } from "./types";
 
 const MUSCLE_SET = new Set<string>(ALL_MUSCLE_GROUPS);
@@ -70,6 +73,13 @@ export function AddLimitationModal({
   const [affectedSide, setAffectedSide] = useState<AffectedSide | null>(
     initial?.affectedSide ?? "bilateral",
   );
+  // Engine region selector. "auto" = infer from muscles (legacy
+  // behaviour), "none" = persist null, a Region = persist verbatim.
+  // Edit mode seeds from the stored value (region → that region,
+  // null → "none"); create mode defaults to "auto".
+  const [regionChoice, setRegionChoice] = useState<"auto" | "none" | Region>(
+    initial ? (initial.region ? (initial.region as Region) : "none") : "auto",
+  );
   const [allowedIds, setAllowedIds] = useState<Set<string>>(
     new Set(initial?.allowedMovementIds ?? []),
   );
@@ -89,6 +99,12 @@ export function AddLimitationModal({
       return () => window.clearTimeout(empty);
     }
     const ctrl = new AbortController();
+    const effectiveRegion =
+      regionChoice === "auto"
+        ? inferRegion(muscles)
+        : regionChoice === "none"
+          ? null
+          : regionChoice;
     const t = window.setTimeout(async () => {
       setPreviewLoading(true);
       try {
@@ -97,7 +113,7 @@ export function AddLimitationModal({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             affectedMuscles: muscles,
-            affectedRegion: initial?.region ?? null,
+            affectedRegion: effectiveRegion,
           }),
           signal: ctrl.signal,
         });
@@ -119,7 +135,7 @@ export function AddLimitationModal({
       window.clearTimeout(t);
       ctrl.abort();
     };
-  }, [muscles, open, initial?.region]);
+  }, [muscles, open, regionChoice]);
 
   if (!open) return null;
 
@@ -149,6 +165,12 @@ export function AddLimitationModal({
     const payload: LimitationFormInput = {
       kind: trimmedKind,
       severity,
+      region:
+        regionChoice === "auto"
+          ? undefined
+          : regionChoice === "none"
+            ? null
+            : regionChoice,
       affectedMuscles: muscles,
       affectedMovementIds: movements.map((m) => m.id),
       allowedMovementIds: Array.from(allowedIds),
@@ -301,6 +323,51 @@ export function AddLimitationModal({
           <div>
             <label style={labelStyle}>Affected muscles</label>
             <MusclePicker selected={muscles} onChange={setMuscles} />
+          </div>
+
+          <div>
+            <label htmlFor="lim-region" style={labelStyle}>
+              Engine region
+            </label>
+            <select
+              id="lim-region"
+              data-testid="lim-region"
+              value={regionChoice}
+              onChange={(e) =>
+                setRegionChoice(
+                  e.target.value as "auto" | "none" | Region,
+                )
+              }
+              style={fieldStyle}
+            >
+              <option value="auto">
+                Auto (from muscles
+                {muscles.length > 0
+                  ? inferRegion(muscles)
+                    ? ` → ${REGION_LABELS[inferRegion(muscles) as Region]}`
+                    : " → none"
+                  : ""}
+                )
+              </option>
+              <option value="none">None</option>
+              {REGIONS.map((r) => (
+                <option key={r} value={r}>
+                  {REGION_LABELS[r]}
+                </option>
+              ))}
+            </select>
+            <p
+              style={{
+                margin: "4px 0 0",
+                fontSize: 11,
+                color: "var(--cp-text-muted)",
+              }}
+            >
+              The region is the engine&apos;s strongest safety filter and
+              can&apos;t be bypassed by the allow-list below. Leave on
+              &ldquo;Auto&rdquo; to infer it from the muscles, or set it
+              explicitly (e.g. elbow / forearm for cubital tunnel).
+            </p>
           </div>
 
           <fieldset style={{ border: "none", padding: 0, margin: 0 }}>
@@ -466,7 +533,24 @@ function AffectedPreviewSection({
   onToggleAllowed: (id: string) => void;
   hasMuscles: boolean;
 }): ReactElement {
-  const visible = useMemo(() => preview.slice(0, 50), [preview]);
+  const [query, setQuery] = useState("");
+  const [expanded, setExpanded] = useState(false);
+
+  const COLLAPSE_LIMIT = 30;
+  const SEARCH_THRESHOLD = 8;
+
+  const filtered = useMemo(
+    () => filterAffectedMovements(preview, query),
+    [preview, query],
+  );
+  const searching = query.trim() !== "";
+  const collapsed = !expanded && !searching && filtered.length > COLLAPSE_LIMIT;
+  const visible = useMemo(
+    () => (collapsed ? filtered.slice(0, COLLAPSE_LIMIT) : filtered),
+    [filtered, collapsed],
+  );
+  const showSearch = preview.length > SEARCH_THRESHOLD;
+
   return (
     <section
       data-testid="affected-movements-preview"
@@ -510,7 +594,7 @@ function AffectedPreviewSection({
           Computing…
         </p>
       )}
-      {hasMuscles && !loading && visible.length === 0 && (
+      {hasMuscles && !loading && preview.length === 0 && (
         <p
           style={{
             margin: 0,
@@ -522,91 +606,156 @@ function AffectedPreviewSection({
           No movements in your catalog match this muscle selection.
         </p>
       )}
-      {hasMuscles && !loading && visible.length > 0 && (
-        <ul
-          style={{
-            listStyle: "none",
-            padding: 0,
-            margin: 0,
-            display: "grid",
-            gap: 4,
-          }}
-        >
-          {visible.map((m) => {
-            const allowed = allowedIds.has(m.id);
-            return (
-              <li
-                key={m.id}
-                data-testid={`affected-movement-${m.slug}`}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  padding: "4px 8px",
-                  borderRadius: 6,
-                  background: allowed
-                    ? "color-mix(in srgb, var(--cp-ok, #22c55e) 8%, transparent)"
-                    : "transparent",
-                }}
-              >
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    fontSize: 12,
-                  }}
-                >
-                  <span>{m.displayName}</span>
-                  <span
-                    style={{
-                      fontSize: 10,
-                      padding: "1px 6px",
-                      borderRadius: 999,
-                      border: "1px solid var(--cp-border)",
-                      color: "var(--cp-text-muted)",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.04em",
-                    }}
-                  >
-                    {m.affectedAs}
-                  </span>
-                </span>
-                <label
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
-                    fontSize: 11,
-                    color: "var(--cp-text-muted)",
-                    cursor: "pointer",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    data-testid={`affected-movement-allow-${m.slug}`}
-                    checked={allowed}
-                    onChange={() => onToggleAllowed(m.id)}
-                    style={{ accentColor: "var(--cp-ok, #22c55e)" }}
-                  />
-                  I can still do this
-                </label>
-              </li>
-            );
-          })}
-          {preview.length > visible.length && (
-            <li
+      {hasMuscles && !loading && preview.length > 0 && (
+        <>
+          {showSearch && (
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={`Search ${preview.length} affected movements…`}
+              aria-label="Search affected movements"
+              data-testid="affected-movements-search"
               style={{
-                fontSize: 11,
+                width: "100%",
+                padding: "6px 10px",
+                borderRadius: 8,
+                border: "1px solid var(--cp-border)",
+                background: "var(--cp-surface-soft, transparent)",
+                color: "var(--cp-text)",
+                fontSize: 12,
+                fontFamily: "inherit",
+              }}
+            />
+          )}
+          {visible.length === 0 ? (
+            <p
+              data-testid="affected-movements-no-match"
+              style={{
+                margin: 0,
+                fontSize: 12,
                 color: "var(--cp-text-muted)",
-                paddingTop: 4,
+                fontStyle: "italic",
               }}
             >
-              + {preview.length - visible.length} more not shown
-            </li>
+              No affected movements match &ldquo;{query.trim()}&rdquo;.
+            </p>
+          ) : (
+            <ul
+              style={{
+                listStyle: "none",
+                padding: 0,
+                margin: 0,
+                display: "grid",
+                gap: 4,
+                maxHeight: 280,
+                overflowY: "auto",
+              }}
+            >
+              {visible.map((m) => {
+                const allowed = allowedIds.has(m.id);
+                return (
+                  <li
+                    key={m.id}
+                    data-testid={`affected-movement-${m.slug}`}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      padding: "4px 8px",
+                      borderRadius: 6,
+                      background: allowed
+                        ? "color-mix(in srgb, var(--cp-ok, #22c55e) 8%, transparent)"
+                        : "transparent",
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        fontSize: 12,
+                      }}
+                    >
+                      <span>{m.displayName}</span>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          padding: "1px 6px",
+                          borderRadius: 999,
+                          border: "1px solid var(--cp-border)",
+                          color: "var(--cp-text-muted)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.04em",
+                        }}
+                      >
+                        {m.affectedAs}
+                      </span>
+                    </span>
+                    <label
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        fontSize: 11,
+                        color: "var(--cp-text-muted)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        data-testid={`affected-movement-allow-${m.slug}`}
+                        checked={allowed}
+                        onChange={() => onToggleAllowed(m.id)}
+                        style={{ accentColor: "var(--cp-ok, #22c55e)" }}
+                      />
+                      I can still do this
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
           )}
-        </ul>
+          {collapsed && (
+            <button
+              type="button"
+              data-testid="affected-movements-show-all"
+              onClick={() => setExpanded(true)}
+              style={{
+                justifySelf: "start",
+                padding: "4px 10px",
+                borderRadius: 8,
+                border: "1px solid var(--cp-border)",
+                background: "transparent",
+                color: "var(--cp-text-muted)",
+                fontSize: 11,
+                cursor: "pointer",
+              }}
+            >
+              Show all {filtered.length}
+            </button>
+          )}
+          {!searching && expanded && filtered.length > COLLAPSE_LIMIT && (
+            <button
+              type="button"
+              data-testid="affected-movements-show-fewer"
+              onClick={() => setExpanded(false)}
+              style={{
+                justifySelf: "start",
+                padding: "4px 10px",
+                borderRadius: 8,
+                border: "1px solid var(--cp-border)",
+                background: "transparent",
+                color: "var(--cp-text-muted)",
+                fontSize: 11,
+                cursor: "pointer",
+              }}
+            >
+              Show fewer
+            </button>
+          )}
+        </>
       )}
     </section>
   );
