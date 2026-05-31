@@ -16,6 +16,7 @@
     "test": "pnpm -r --workspace-concurrency=1 test",
     "db:generate": "pnpm --filter @hta/db db:generate",
     "db:migrate": "pnpm --filter @hta/db db:migrate",
+    "docs:check-drift": "node scripts/check-doc-drift.mjs",
     "prepare": "husky"
   },
   "devDependencies": {

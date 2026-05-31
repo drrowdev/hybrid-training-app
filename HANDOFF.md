@@ -2,7 +2,7 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
-**Last updated:** 2026-05-30 (post PR #222 — Quick workout UX sweep)
+**Last updated:** 2026-05-31 (post engine-methodology + conservativeness-hardening cycle — ADRs 0007–0016)
 
 ## Where we are
 
@@ -32,7 +32,7 @@ external clients, and a rebalanced engine across all five archetypes.
   `drrowdevs-projects`. Auto-deploys on push to `main`. Deployment
   Protection disabled.
 - Supabase: project URL + keys in `apps/web/.env.local` (gitignored).
-  Region `eu-west-1`. Schema currently at migration 0079 (80 files in
+  Region `eu-west-1`. Schema currently at migration 0080 (81 files in
   `packages/db/drizzle/`).
 - Strava: app registered; one push-subscription per environment.
   Subscription ID is stored in `STRAVA_WEBHOOK_SUBSCRIPTION_ID` (env
@@ -99,16 +99,50 @@ chronological narrative.
   moved above This Week.
 - **`.mailmap` contributor consolidation (PR #217).** GitHub
   contributors page collapses to drrowdev + Copilot.
-- **Migrations 0069 → 0079 applied to prod:** AI plumbing, limitations
+- **Migrations 0069 → 0080 applied to prod:** AI plumbing, limitations
   v2 lifecycle, MCP tables, MCP consumed codes, drop `ai_opted_in`,
   `cardio_logs` finish-uniqueness, `strava_event_log` + payload
   columns, `prescription_modifications` + RLS-fix follow-up,
-  `training_blocks.focus_muscles`.
+  `training_blocks.focus_muscles`, `profiles.effort_preference` (the
+  ADR-0016 dial, 0080).
+
+## Since 2026-05-30 — engine methodology + conservativeness hardening
+
+A methodology review of the prescription engine produced ADRs 0007–0016
+(see `docs/adr/` and the `[Unreleased]` CHANGELOG). Two threads:
+
+- **Methodology ADRs 0007–0014.** Autoregulated AMRAP top set on
+  strength/hybrid archetypes (0007); modality-aware taper/peaking (0008);
+  real stream-based cardio time-in-zone + display/engine unification
+  (0009); next-block periodization-sequencing nudge (0010); hypertrophy
+  compound final-set RIR effort-anchor (0011); value-weighted accessory
+  variation across blocks (0012); within-block volume autoregulation +
+  mid-block limitation response (0013/0014).
+- **Conservativeness review → bounded hardening (validated, not a
+  rewrite).** A red-teamed review concluded the engine is sound but
+  hypertrophy-conservative; fix was 5 bounded steps, all shipped:
+  (1) a **golden-master harness** for `assemblePrescriptionItems`
+  (`assemble-prescription.ts` extracted as a pure module, all branches
+  pinned); (2) **ADR 0015** bounded early-set effort bump on the
+  hypertrophy compound (no false RIR); (3) **ADR 0016** a user
+  **effort/volume dial** (`profiles.effort_preference` low|standard|high,
+  migration 0080) that scales compound effort + accessory volume,
+  hypertrophy-only, `standard` byte-identical; (4) **taper/recovery now
+  applies** to upcoming workouts on accept (read-time overlay, closes the
+  ADR-0008 gap); (5) cosmetic `weekContext → weekAccessoryHistory` rename
+  + an assembler ordering/mutation contract docblock.
+- **Limitations authoring polish + Quick-workout mobile-native flow.**
+  Searchable limitation movement list (the "+N more" dead-end fixed);
+  Quick-Strength logging is now a single tap into a mobile-native picker;
+  iOS-Safari sub-16px focus auto-zoom suppressed.
+- **Parked (await real user data):** dial magnitudes are CP-1 Stage-A
+  heuristics; archetype refinements C (upper-body resumption), D (novice
+  linear track), E (deload depth); wellness-scale thresholds.
 
 ## Verified live
 
-- `pnpm --filter @hta/web test --run` → **2650 / 2650 passing**
-  as of merge of PR #222.
+- `pnpm --filter @hta/web test --run` → **2815 / 2815 passing**
+  as of the ADR-0016 + rename merges (`d900344`, `d87a811`).
 - `pnpm --filter @hta/web build` → clean.
 - `pnpm --filter @hta/web lint` → clean.
 - `pnpm -r typecheck` → clean across all workspaces.
@@ -139,6 +173,14 @@ chronological narrative.
 - **Anti-abuse / cost controls on BYOAI.** Provider keys are user-
   supplied so usage cost lands on the user, but we still need per-user
   rate-limit telemetry on the orchestrator to surface runaway loops.
+- **Dial magnitudes are CP-1 Stage-A heuristics (ADR 0016).** The
+  ±1 set / +4 early-rep / ±1 RIR numbers in `effort-preference.ts` are
+  directional, not data-calibrated — revisit once `effort_preference` ×
+  outcome rows exist.
+- **BYOAI model picker (parked PR #192).** Merge-or-close decision
+  pending MCP-vs-BYOAI usage data.
+- **Wheelchair / Handcycle / Snowboard Strava cardio mapping.** Explicit
+  accessibility gap, deferred by owner choice.
 
 ## Sensitive files (never commit)
 
@@ -161,6 +203,14 @@ every required variable.
 - Every change to wiki pages appends to `docs/knowledge/log.md`.
 - Every new wiki page is added to `docs/knowledge/index.md`.
 - Architectural decisions land as ADRs in `docs/adr/00NN-*.md`.
+- **Engine constants + the live engine spec are mirrored in two places:**
+  the in-repo `docs/knowledge/hybrid-training-design-constraints.md`
+  (CP-2 table) + `hybrid-training-engine-live.md`, AND a private
+  canonical workspace mirror. Any CP-2 / engine-live change must land in
+  BOTH. `pnpm docs:check-drift` enforces it: CI runs the in-repo half
+  (every Accepted ADR that adds a CP-2 row must be referenced in CP-2);
+  the pre-push hook runs the full repo↔workspace coverage parity when
+  `HTA_WORKSPACE_DOCS` points at the mirror dir.
 - Migrations are append-only and numbered; never edit a committed one
   except for purely-additive idempotency tweaks
   (`ADD COLUMN IF NOT EXISTS`).

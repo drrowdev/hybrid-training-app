@@ -1,1 +1,1 @@
-pnpm -r typecheck && pnpm -r --filter './packages/**' test && pnpm --filter @hta/db db:check
+pnpm -r typecheck && pnpm -r --filter './packages/**' test && pnpm --filter @hta/db db:check && pnpm docs:check-drift
