@@ -18,6 +18,8 @@ import {
 import { seedDefaultOneRm } from "@/lib/training-maxes/defaults";
 import { addDaysToYmd, isoWeekdayYmd, todayYmd } from "@/lib/dates";
 import { EquipmentStep } from "@/components/onboarding/EquipmentStep";
+import { CardioModalitySettings } from "@/components/settings/CardioModalitySettings";
+import type { PreferredCardioModality } from "@/lib/planner/preferred-cardio-modality";
 import { BwAssessmentStep } from "@/components/onboarding/bw-assessment/BwAssessmentStep";
 import type { BwAssessmentPayload } from "@/components/onboarding/bw-assessment/BwAssessmentStep";
 import { StravaConnectStep } from "@/components/onboarding/StravaConnectStep";
@@ -104,6 +106,7 @@ export function OnboardingWizard({
   initialBodyweightKg,
   initialEquipment,
   hasEquipmentRow,
+  initialCardioModalities,
   roleCandidates,
   initialStravaConnected,
   stravaIsConfigured,
@@ -122,6 +125,7 @@ export function OnboardingWizard({
   initialBodyweightKg: number | null;
   initialEquipment: Equipment;
   hasEquipmentRow: boolean;
+  initialCardioModalities: PreferredCardioModality[];
   roleCandidates: RoleCandidates[];
   /** True when the user already has a `strava_connections` row — either
    *  set in a previous session or by completing the OAuth round-trip
@@ -603,6 +607,23 @@ export function OnboardingWizard({
             customizing={equipmentCustomizing}
             onToggleCustomize={(next) => setEquipmentCustomizing(next)}
           />
+        )}
+
+        {currentLabel === "Equipment" && (
+          <div
+            data-testid="onboarding-cardio-modality"
+            style={{
+              display: "grid",
+              gap: 10,
+              borderTop: "1px solid var(--cp-border)",
+              paddingTop: 16,
+            }}
+          >
+            <h3 style={{ fontSize: 16, margin: 0, letterSpacing: "-0.01em" }}>
+              Which cardio do you prefer?
+            </h3>
+            <CardioModalitySettings initial={initialCardioModalities} />
+          </div>
         )}
 
         {currentLabel === "Training maxes" && !useBwAssessment && (

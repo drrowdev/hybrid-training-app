@@ -77,6 +77,11 @@ import {
   readLimitationsContext,
 } from "./limitations-context";
 import { loadPickerCatalog } from "./picker-catalog";
+import { loadCardioCatalog } from "./cardio-catalog";
+import {
+  resolvePreferredCardioModality,
+  sanitizePreferredModalities,
+} from "./preferred-cardio-modality";
 import type { DeclaredExperience } from "@hta/engine";
 import { declaredExperienceToTier, tierInBand } from "./experience-tier";
 import {
@@ -515,7 +520,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   // Look up the user's two-a-day preference + warmup-ladder config + equipment so we pick the right day pool, prepend warmups, and only prescribe movements they can actually do.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("allows_two_a_days, warmup_scheme, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_assessment_completed_at, bodyweight_kg, training_experience, effort_preference")
+    .select("allows_two_a_days, warmup_scheme, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_assessment_completed_at, bodyweight_kg, training_experience, effort_preference, preferred_cardio_modalities")
     .eq("id", user.id)
     .maybeSingle();
   const allowsTwoADays = Boolean(profile?.allows_two_a_days ?? false);
@@ -523,6 +528,18 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   const equipment = resolveEquipment(profile);
   const experience = resolveDeclaredExperience(profile?.training_experience);
   const effortPreference = resolveEffortPreference(profile?.effort_preference);
+
+  // ADR 0017 — ranked cardio-modality preference. The catalog is loaded
+  // lazily; with no preference set the resolver is a no-op and the default
+  // (running) prescription is byte-identical to the pre-0017 behaviour.
+  const preferredCardioModalities = sanitizePreferredModalities(
+    profile?.preferred_cardio_modalities as readonly unknown[] | null,
+  );
+  const cardioCatalog =
+    preferredCardioModalities.length > 0
+      ? await loadCardioCatalog(supabase)
+      : [];
+  const cardioCatalogBySlug = new Map(cardioCatalog.map((c) => [c.slug, c]));
 
   const minDays = minDaysForArchetype(
     archetype,
@@ -903,10 +920,28 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
         // alternates, resolve to the user-tier-appropriate slug before
         // looking the movement up in the catalog. Falls back to the
         // default slug for tiers absent from the map.
-        const cardioSlug = resolveCardioSlugForTier(day, userTier);
-        const mv = movementBySlug.get(cardioSlug);
-        if (!mv) continue;
-        movement = { id: mv.id, slug: mv.slug, displayName: mv.display_name };
+        const baseCardioSlug = resolveCardioSlugForTier(day, userTier);
+        // ADR 0017 — substitute toward the user's preferred cardio modality
+        // (intensity-preserving). No-op when no preference is set.
+        const resolvedCardio = resolvePreferredCardioModality({
+          defaultSlug: baseCardioSlug,
+          cardioKind:
+            day.cardioKind === "cardio_external" ? "cardio_other" : day.cardioKind,
+          preferred: preferredCardioModalities,
+          ownedCardio: equipment.cardio,
+          userTier,
+          catalog: cardioCatalog,
+        });
+        const sub = resolvedCardio.substituted
+          ? cardioCatalogBySlug.get(resolvedCardio.slug)
+          : undefined;
+        if (sub) {
+          movement = { id: sub.id, slug: sub.slug, displayName: sub.displayName };
+        } else {
+          const mv = movementBySlug.get(resolvedCardio.slug);
+          if (!mv) continue;
+          movement = { id: mv.id, slug: mv.slug, displayName: mv.display_name };
+        }
         if (day.finisher) {
           const fin = movementBySlug.get(day.finisher.movementSlug);
           if (fin) finisherMovement = { id: fin.id, slug: fin.slug, displayName: fin.display_name };
@@ -1199,13 +1234,25 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
   // equipment-aware accessory filter. NULL → defaults via resolvers.
   const { data: customProfile } = await supabase
     .from("profiles")
-    .select("warmup_scheme, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_assessment_completed_at, training_experience, effort_preference")
+    .select("warmup_scheme, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_assessment_completed_at, training_experience, effort_preference, preferred_cardio_modalities")
     .eq("id", user.id)
     .maybeSingle();
   const customWarmupScheme = resolveWarmupScheme(customProfile?.warmup_scheme);
   const customEquipment = resolveEquipment(customProfile);
   const customExperience = resolveDeclaredExperience(customProfile?.training_experience);
   const customEffortPreference = resolveEffortPreference(customProfile?.effort_preference);
+
+  // ADR 0017 — ranked cardio-modality preference (custom-block path).
+  const customPreferredCardioModalities = sanitizePreferredModalities(
+    customProfile?.preferred_cardio_modalities as readonly unknown[] | null,
+  );
+  const customCardioCatalog =
+    customPreferredCardioModalities.length > 0
+      ? await loadCardioCatalog(supabase)
+      : [];
+  const customCardioCatalogBySlug = new Map(
+    customCardioCatalog.map((c) => [c.slug, c]),
+  );
 
   // Resolve all required movements.
   const candidateSlugs = allCandidateLiftSlugs(archetype);
@@ -1336,10 +1383,27 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
         }
       } else if (day.kind === "cardio") {
         // PR W2 — surface D. Per-tier cardio resolution (custom block path).
-        const cardioSlug = resolveCardioSlugForTier(day, customTier);
-        const mv = movementBySlug.get(cardioSlug);
-        if (!mv) continue;
-        movement = { id: mv.id, slug: mv.slug, displayName: mv.display_name };
+        const baseCardioSlug = resolveCardioSlugForTier(day, customTier);
+        // ADR 0017 — preferred-modality substitution (intensity-preserving).
+        const resolvedCardio = resolvePreferredCardioModality({
+          defaultSlug: baseCardioSlug,
+          cardioKind:
+            day.cardioKind === "cardio_external" ? "cardio_other" : day.cardioKind,
+          preferred: customPreferredCardioModalities,
+          ownedCardio: customEquipment.cardio,
+          userTier: customTier,
+          catalog: customCardioCatalog,
+        });
+        const sub = resolvedCardio.substituted
+          ? customCardioCatalogBySlug.get(resolvedCardio.slug)
+          : undefined;
+        if (sub) {
+          movement = { id: sub.id, slug: sub.slug, displayName: sub.displayName };
+        } else {
+          const mv = movementBySlug.get(resolvedCardio.slug);
+          if (!mv) continue;
+          movement = { id: mv.id, slug: mv.slug, displayName: mv.display_name };
+        }
         if (day.finisher) {
           const fin = movementBySlug.get(day.finisher.movementSlug);
           if (fin) finisherMovement = { id: fin.id, slug: fin.slug, displayName: fin.display_name };
