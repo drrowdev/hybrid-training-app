@@ -11,21 +11,12 @@ import {
   getActiveBlockRemainingSessions,
 } from "@/lib/planner/remaining-sessions";
 import { buildLimitationResponse } from "./response";
+import { REGIONS, resolveRegion } from "./region";
 import {
   limitationFormSchema,
   type LimitationActionResult,
   type LimitationFormInput,
 } from "./schema";
-
-const REGIONS = [
-  "foot_ankle_calf",
-  "knee",
-  "hamstring_posterior",
-  "adductor_groin",
-  "lumbar_trunk",
-  "shoulder_scapular",
-  "elbow_forearm",
-] as const;
 
 /**
  * Best-effort region inference for new rows added through the
@@ -33,36 +24,9 @@ const REGIONS = [
  * for a region. The engine's existing DC-V safety gates still read
  * `limitations.region`, so a row with no region is invisible to them.
  *
- * Mapping is intentionally lossy (16 muscles → 7 regions). Picks the
- * first match in the user's selection; if no muscle maps cleanly we
- * leave `region` null and rely on the muscle/movement arrays.
+ * The muscle→region map and the inference / resolution helpers live in
+ * `./region` (a pure module) so they can be unit-tested and reused.
  */
-const MUSCLE_TO_REGION: Record<string, (typeof REGIONS)[number]> = {
-  calves: "foot_ankle_calf",
-  quads: "knee",
-  hamstrings: "hamstring_posterior",
-  glutes: "hamstring_posterior",
-  adductors: "adductor_groin",
-  erectors: "lumbar_trunk",
-  core: "lumbar_trunk",
-  obliques: "lumbar_trunk",
-  shoulders: "shoulder_scapular",
-  traps: "shoulder_scapular",
-  lats: "shoulder_scapular",
-  back: "shoulder_scapular",
-  chest: "shoulder_scapular",
-  biceps: "elbow_forearm",
-  triceps: "elbow_forearm",
-  forearms: "elbow_forearm",
-};
-
-function inferRegion(muscles: string[]): (typeof REGIONS)[number] | null {
-  for (const m of muscles) {
-    const r = MUSCLE_TO_REGION[m];
-    if (r) return r;
-  }
-  return null;
-}
 
 const limitationSchema = z.object({
   region: z.enum(REGIONS),
@@ -188,7 +152,10 @@ export async function createLimitation(
   } = await getAuthUser();
   if (!user) redirect("/login");
 
-  const inferred = inferRegion(parsed.data.affectedMuscles);
+  const region = resolveRegion(
+    parsed.data.region,
+    parsed.data.affectedMuscles,
+  );
 
   const { data, error } = await supabase
     .from("limitations")
@@ -196,7 +163,7 @@ export async function createLimitation(
       user_id: user.id,
       kind: parsed.data.kind,
       severity: parsed.data.severity,
-      region: inferred,
+      region,
       affected_muscles: parsed.data.affectedMuscles,
       affected_movement_ids: parsed.data.affectedMovementIds,
       allowed_movement_ids: parsed.data.allowedMovementIds,
@@ -247,13 +214,16 @@ export async function updateLimitation(
   }
 
   const supabase = await createClient();
-  const inferred = inferRegion(parsed.data.affectedMuscles);
+  const region = resolveRegion(
+    parsed.data.region,
+    parsed.data.affectedMuscles,
+  );
   const { error } = await supabase
     .from("limitations")
     .update({
       kind: parsed.data.kind,
       severity: parsed.data.severity,
-      region: inferred,
+      region,
       affected_muscles: parsed.data.affectedMuscles,
       affected_movement_ids: parsed.data.affectedMovementIds,
       allowed_movement_ids: parsed.data.allowedMovementIds,

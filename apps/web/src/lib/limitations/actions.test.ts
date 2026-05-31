@@ -111,4 +111,23 @@ describe("limitationFormSchema", () => {
     });
     expect(tooBig.success).toBe(false);
   });
+
+  it("accepts an optional region (omitted, null, or a valid value)", () => {
+    expect(limitationFormSchema.safeParse(base).success).toBe(true);
+    expect(
+      limitationFormSchema.safeParse({ ...base, region: null }).success,
+    ).toBe(true);
+    expect(
+      limitationFormSchema.safeParse({ ...base, region: "elbow_forearm" })
+        .success,
+    ).toBe(true);
+  });
+
+  it("rejects an unknown region value", () => {
+    const r = limitationFormSchema.safeParse({
+      ...base,
+      region: "wrist" as unknown as "elbow_forearm",
+    });
+    expect(r.success).toBe(false);
+  });
 });
