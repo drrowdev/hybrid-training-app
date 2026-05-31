@@ -7,21 +7,25 @@ import {
 } from "./fixtures/seed-blocks";
 
 /**
- * Desktop /app/stats — Phase 1 overview dashboard.
+ * Desktop /app/stats — Direction-C2 command-center redesign.
  *
- * Pre-condition (seeded directly via service-role admin client):
+ * Replaces the old flat-card-grid spec. The page is now a hero verdict
+ * band (Progress · Readiness · Consistency) over a six-tile bento
+ * (Strength / Endurance / Recovery & load / Consistency rhythm /
+ * Bodyweight / Why today) with a bottom deep-dive link grid.
+ *
+ * Pre-condition (seeded via service-role admin client):
  *  - one active block + 5 completed planned sessions + 2 skipped
- *  - one bodyweight wellness entry
+ *  - one bodyweight wellness entry (82.5 kg)
  *
- * The spec then signs the user in, lands on /app/stats, asserts every
- * card renders with non-empty data, and clicks each "View / deep dive"
- * link to confirm the routing surface is intact.
+ * The spec signs the user in, lands on /app/stats, asserts the hero +
+ * every bento tile mounts, and clicks each deep-dive link to confirm
+ * the routing surface is intact.
  */
-
-test.describe("@desktop /app/stats overview", () => {
+test.describe("@desktop /app/stats command center", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "Chromium-only for first PR");
 
-  test("renders every card with seeded data + bottom deep-dive links route correctly", async ({
+  test("renders hero + every bento tile with seeded data + deep-dive links route correctly", async ({
     page,
     context,
     freshUser,
@@ -50,8 +54,6 @@ test.describe("@desktop /app/stats overview", () => {
       blockId,
       { totalSessions: 8, loggedCount: 5 },
     );
-    // Mark 2 of the unfilled planned rows as skipped so the adherence
-    // card's "skipped → missed" wiring is exercised.
     const toSkip = plannedIds.slice(5, 7);
     {
       const { error } = await admin
@@ -81,7 +83,7 @@ test.describe("@desktop /app/stats overview", () => {
     await page.goto("/app/stats");
     await page.waitForLoadState("networkidle");
 
-    // ─── A: Current block strip ────────────────────────────────────
+    // ─── Block-context strip ───────────────────────────────────────
     const activeBlock = page.getByTestId("stats-card-active-block");
     await expect(activeBlock).toBeVisible();
     await expect(activeBlock).toContainText(/Strength Focus/i);
@@ -91,74 +93,60 @@ test.describe("@desktop /app/stats overview", () => {
       /5 of \d+ sessions logged/i,
     );
 
-    // ─── B: Adherence ──────────────────────────────────────────────
-    const adherence = page.getByTestId("stats-card-adherence");
-    await expect(adherence).toBeVisible();
-    // 5 logged out of 7 scheduled-to-date (skipped count toward the
-    // denominator) → 71%. Use a regex bracket so a slightly different
-    // seed run still passes.
-    await expect(adherence).toContainText(/%/);
-    await expect(adherence).toContainText(/skipped/i);
+    // ─── Hero band (3 cells) ───────────────────────────────────────
+    await expect(page.getByTestId("stats-progress-verdict")).toBeVisible();
+    await expect(page.getByTestId("stats-readiness-cell")).toBeVisible();
+    await expect(page.getByTestId("stats-card-adherence")).toBeVisible();
+    // Hero cell labels carry the active range.
+    await expect(page.getByText(/Progress · 30 days/i)).toBeVisible();
+    await expect(page.getByText(/Consistency · 30 days/i)).toBeVisible();
 
-    // ─── C: PRs window — empty state in this fixture ──────────────
-    // No actual set_logs were inserted, so the PR walk finds nothing.
-    const prs = page.getByTestId("stats-card-prs");
-    await expect(prs).toBeVisible();
-    await expect(prs).toContainText(/PRs/i);
+    // ─── Bento tiles (6) ───────────────────────────────────────────
+    await expect(page.getByTestId("stats-tile-strength")).toBeVisible();
+    await expect(page.getByTestId("stats-tile-endurance")).toBeVisible();
+    await expect(page.getByTestId("stats-card-freshness")).toBeVisible();
+    await expect(page.getByTestId("stats-tile-consistency")).toBeVisible();
+    await expect(page.getByTestId("stats-tile-decision-trace")).toBeVisible();
 
-    // ─── D: Region freshness — no logged sessions → empty state ───
-    const freshness = page.getByTestId("stats-card-freshness");
-    await expect(freshness).toBeVisible();
-
-    // ─── F: Volume — no set_logs → empty state but card renders ───
-    const volume = page.getByTestId("stats-card-volume");
-    await expect(volume).toBeVisible();
-
-    // ─── G: Bodyweight card ────────────────────────────────────────
+    // Bodyweight tile renders the seeded value.
     const bodyweight = page.getByTestId("stats-card-bodyweight");
     await expect(bodyweight).toBeVisible();
     await expect(bodyweight).toContainText(/82\.5/);
 
-    // ─── Bottom deep-dive grid + routing ───────────────────────────
+    // ─── Bottom deep-dive grid + routing (Phase 3 folds into drawers) ─
     const deepDives = page.getByTestId("stats-deep-dive");
     await expect(deepDives).toHaveCount(4);
 
-    // Per-movement → anchor on the same page.
+    // 0: PRs & per-movement records page.
     await deepDives.nth(0).click();
-    await expect(page).toHaveURL(/\/app\/stats(#movements)?$/);
+    await expect(page).toHaveURL(/\/app\/stats\/prs$/);
 
-    // Engine internals.
+    // 1: engine internals.
     await page.goto("/app/stats");
     await page.waitForLoadState("networkidle");
     await page.getByTestId("stats-deep-dive").nth(1).click();
     await expect(page).toHaveURL(/\/app\/stats\/engine$/);
 
-    // Block outcomes → /app/stats/blocks.
+    // 2: block outcomes.
     await page.goto("/app/stats");
     await page.waitForLoadState("networkidle");
     await page.getByTestId("stats-deep-dive").nth(2).click();
     await expect(page).toHaveURL(/\/app\/stats\/blocks$/);
 
-    // Wellness dashboard → /app/stats/wellness (Phase 3).
+    // 3: adherence detail (was the pre-redesign wellness mismatch).
     await page.goto("/app/stats");
     await page.waitForLoadState("networkidle");
     await page.getByTestId("stats-deep-dive").nth(3).click();
-    await expect(page).toHaveURL(/\/app\/stats\/wellness$/);
+    await expect(page).toHaveURL(/\/app\/stats\/adherence$/);
 
-    // Current-block CTA → /app/plan/history.
+    // Active-block CTA → plan history.
     await page.goto("/app/stats");
     await page.waitForLoadState("networkidle");
     await page.getByTestId("stats-active-block-cta").click();
     await expect(page).toHaveURL(/\/app\/plan\/history$/);
-
-    // Freshness CTA → /app/stats/engine.
-    await page.goto("/app/stats");
-    await page.waitForLoadState("networkidle");
-    await page.getByTestId("stats-freshness-cta").click();
-    await expect(page).toHaveURL(/\/app\/stats\/engine$/);
   });
 
-  test("range toggle: clicking 90d / all / 30d updates the URL and re-renders cards", async ({
+  test("range toggle: clicking 90d / all / 30d updates the URL and the hero labels", async ({
     page,
     context,
     freshUser,
@@ -168,7 +156,6 @@ test.describe("@desktop /app/stats overview", () => {
   }) => {
     await markOnboarded(admin, freshUser.userId);
 
-    // Seed a minimal block so the page has something to render.
     const startedOn = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
     const blockId = await seedRecentBlock(admin, freshUser.userId, {
       archetype: "strength_anchor",
@@ -194,26 +181,22 @@ test.describe("@desktop /app/stats overview", () => {
       "true",
     );
 
-    // Click 90 days → URL gains ?range=90d.
+    // Click 90 days → URL gains ?range=90d and hero label re-renders.
     await page.getByTestId("stats-range-option").filter({ hasText: "90 days" }).click();
-    await page.waitForLoadState("networkidle");
     await expect(page).toHaveURL(/\/app\/stats\?range=90d$/);
-    await expect(page.getByTestId("stats-card-adherence")).toContainText(/last 90 days/i);
-    await expect(page.getByTestId("stats-card-prs")).toContainText(/last 90 days/i);
+    await expect(page.getByText(/Progress · 90 days/i)).toBeVisible();
 
     // Click All-time → URL gains ?range=all.
     await page.getByTestId("stats-range-option").filter({ hasText: "All-time" }).click();
-    await page.waitForLoadState("networkidle");
     await expect(page).toHaveURL(/\/app\/stats\?range=all$/);
-    await expect(page.getByTestId("stats-card-adherence")).toContainText(/all-time/i);
+    await expect(page.getByText(/Progress · All-time/i)).toBeVisible();
 
     // Click 30 days → URL drops the param (canonical clean URL).
     await page.getByTestId("stats-range-option").filter({ hasText: "30 days" }).click();
-    await page.waitForLoadState("networkidle");
     await expect(page).toHaveURL(/\/app\/stats$/);
   });
 
-  test("no active block → renders the 'Start one →' CTA", async ({
+  test("no active block → renders the 'Start one' CTA", async ({
     page,
     context,
     freshUser,

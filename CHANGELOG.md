@@ -8,6 +8,35 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 2026-05-30. The previous starting-point block is preserved below for history.
 
+### Changed (stats page redesign — Direction C2, Phase 2)
+
+- **`/app/stats` is now a command-center bento.** The flat card grid is
+  replaced by an answer-first hero band — **Progress** verdict ·
+  **Readiness** composite · **Consistency** streak — over a six-tile
+  bento (Strength progress · Endurance progress · Recovery & load ·
+  Consistency rhythm · Bodyweight · Why today). Endurance is now
+  co-equal with strength rather than buried. Phase 1 (PR #226) shipped
+  the five new tested query modules (`strength-progress`,
+  `endurance-progress`, `progress-verdict`, `weekly-rhythm`, `streak`);
+  this phase wires them into the new `StatsCommandCenter` client
+  component and rewrites the `/app/stats` server page. The global range
+  toggle (30d / 90d / all-time, URL-synced) is preserved.
+- **Honesty posture (no hardcoded numbers).** Every value traces to a
+  real query. There is deliberately **no "stress budget" meter** — the
+  Recovery & load tile and the hero Readiness cell render the
+  ACWR-grounded readiness composite (`readiness.ts`), not a fabricated
+  budget percentage. The "Why today" tile renders the engine's derived
+  decision-trace reasons. Cold-start states ("building" / "no run data")
+  are honored rather than rendering misleading zeros.
+- **The 20-week training heatmap is removed from the overview.** Its
+  `TrainingHeatmap` component + `training-heatmap-data` query are kept
+  (with tests) for a potential Phase-3 drawer but no longer mount on the
+  page. This **supersedes** the earlier Readiness-card placement note
+  below ("between the current block strip and the training heatmap"):
+  the readiness composite is now the hero's middle cell. The
+  `calendar-heatmap` e2e spec is dropped and `stats-overview-desktop`
+  is rewritten for the new bento.
+
 ### Removed (engine + UX simplification — ADR 0018)
 
 - **Retired the daily wellness check-in and dropped the ceiling chain to
