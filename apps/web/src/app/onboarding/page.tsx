@@ -20,6 +20,7 @@ import {
 } from "@/lib/planner/archetypes";
 import { needsOnboarding } from "@/lib/onboarding/gate";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
+import { sanitizePreferredModalities } from "@/lib/planner/preferred-cardio-modality";
 
 const MAIN_ROLES: StrengthRole[] = ["squat", "horizontal_press", "deadlift", "vertical_press"];
 
@@ -39,7 +40,7 @@ export default async function OnboardingPage({
     supabase
       .from("profiles")
       .select(
-        "display_name, units, bodyweight_kg, onboarded_at, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg",
+        "display_name, units, bodyweight_kg, onboarded_at, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, preferred_cardio_modalities",
       )
       .eq("id", user.id)
       .maybeSingle(),
@@ -86,6 +87,9 @@ export default async function OnboardingPage({
 
   const hasEquipmentRow = profile?.equipment != null && typeof profile.equipment === "object";
   const initialEquipment = resolveEquipment(profile ?? null);
+  const initialCardioModalities = sanitizePreferredModalities(
+    profile?.preferred_cardio_modalities as readonly unknown[] | null,
+  );
 
   const stravaIsConfigured =
     Boolean(process.env.STRAVA_CLIENT_ID) &&
@@ -110,6 +114,7 @@ export default async function OnboardingPage({
       initialBodyweightKg={profile?.bodyweight_kg ? Number(profile.bodyweight_kg) : null}
       initialEquipment={initialEquipment}
       hasEquipmentRow={hasEquipmentRow}
+      initialCardioModalities={initialCardioModalities}
       roleCandidates={roleCandidates}
       initialStravaConnected={Boolean(stravaConnection)}
       stravaIsConfigured={stravaIsConfigured}

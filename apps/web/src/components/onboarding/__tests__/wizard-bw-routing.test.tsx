@@ -52,6 +52,7 @@ function render(preset: typeof HOME_GYM_PRESET | typeof BODYWEIGHT_ONLY_PRESET) 
       initialBodyweightKg={null}
       initialEquipment={preset}
       hasEquipmentRow={true}
+      initialCardioModalities={[]}
       roleCandidates={[]}
       initialStravaConnected={false}
       stravaIsConfigured={false}
