@@ -69,6 +69,58 @@ export function durationDays(startIso: string, endIso: string | null): number {
   return Math.max(0, Math.floor((b - a) / 86_400_000));
 }
 
+/**
+ * Free-text search predicate for an active-limitation card. Matches an
+ * all-lowercase, whitespace-collapsed query against the row's kind,
+ * severity, affected-side, notes, region label, affected-muscle labels,
+ * and resolved affected-movement names. Pure + unit-tested; the caller
+ * pre-resolves the label/name strings so this stays free of label maps.
+ */
+export function matchesLimitationQuery(
+  item: {
+    kind?: string | null;
+    severity?: string | null;
+    side?: string | null;
+    notes?: string | null;
+    regionLabel?: string | null;
+    muscleLabels?: readonly string[];
+    movementNames?: readonly string[];
+  },
+  query: string,
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (q === "") return true;
+  const haystack = [
+    item.kind ?? "",
+    item.severity ?? "",
+    item.side ?? "",
+    item.notes ?? "",
+    item.regionLabel ?? "",
+    ...(item.muscleLabels ?? []),
+    ...(item.movementNames ?? []),
+  ]
+    .join(" ")
+    .toLowerCase();
+  return q.split(/\s+/).every((token) => haystack.includes(token));
+}
+
+/**
+ * Free-text filter for the affected-movements preview. Matches against
+ * the movement display name and slug (case-insensitive substring).
+ * Generic so it can be unit-tested without the preview's full shape.
+ */
+export function filterAffectedMovements<
+  T extends { displayName: string; slug: string },
+>(items: readonly T[], query: string): T[] {
+  const q = query.trim().toLowerCase();
+  if (q === "") return [...items];
+  return items.filter(
+    (m) =>
+      m.displayName.toLowerCase().includes(q) ||
+      m.slug.toLowerCase().includes(q),
+  );
+}
+
 const EVENT_VERB: Record<string, string> = {
   skip: "Skipped",
   swap: "Substituted",

@@ -16,6 +16,7 @@
  */
 import { z } from "zod";
 import { ALL_MUSCLE_GROUPS } from "@/lib/muscle/muscle-groups";
+import { REGIONS } from "@/lib/settings/limitations-constants";
 
 export const AFFECTED_SIDES = ["left", "right", "bilateral"] as const;
 export type AffectedSide = (typeof AFFECTED_SIDES)[number];
@@ -28,6 +29,14 @@ export const limitationFormSchema = z
       .min(1, "Kind is required")
       .max(80, "Keep it short"),
     severity: z.enum(["mild", "moderate", "severe"]),
+    /**
+     * Optional engine-facing region.
+     *   - omitted (`undefined`) → "Auto": inferred from the muscles.
+     *   - explicit `null` → "None": no region filter.
+     *   - a region value → used verbatim.
+     * Left optional so callers that never set it stay byte-identical.
+     */
+    region: z.enum(REGIONS).nullable().optional(),
     affectedMuscles: z
       .array(z.enum(ALL_MUSCLE_GROUPS as unknown as [string, ...string[]]))
       .max(16),

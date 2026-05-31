@@ -10,21 +10,22 @@
  * Server component: pulls the rows in parallel, hands plain
  * serialisable shapes to the client components.
  *
- * NOTE: the engine's planner currently reads `limitations.region` to
- * apply the DC-V safety ceilings. The new `affected_muscles` /
- * `affected_movement_ids` arrays added in 0033 are NOT yet consumed
- * by the planner — that's the obvious next step (issue follow-up:
- * wire muscle / movement arrays into the planner's ceiling
- * computation, so a row with no region but a muscle selection still
- * applies a ceiling).
+ * NOTE: post-ADR-0014 the planner consumes `region` (DC-V safety
+ * ceilings) AND the `affected_muscles` / `affected_movement_ids`
+ * arrays (mid-block limitation response — swaps/drops on upcoming
+ * sessions). A row with no region but a muscle/movement selection
+ * still affects future prescriptions.
  */
 import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ALL_MUSCLE_GROUPS, type MuscleGroup } from "@/lib/muscle/muscle-groups";
-import { ActiveLimitationCard } from "@/components/limitations/ActiveLimitationCard";
+import { ActiveLimitationsList } from "@/components/limitations/ActiveLimitationsList";
 import { AddLimitationButton } from "@/components/limitations/AddLimitationButton";
 import { HistorySection } from "@/components/limitations/HistorySection";
+import { LimitationResponseCard } from "@/components/limitations/LimitationResponseCard";
+import { getLimitationResponseOffer } from "@/lib/limitations/offer";
+import { applyLimitationResponse } from "@/lib/limitations/actions";
 import { getFormatProfile } from "@/lib/format/profile";
 import type {
   LimitationRow,
@@ -76,25 +77,27 @@ export default async function InjuriesPage() {
   } = await getAuthUser();
   if (!user) redirect("/login");
 
-  const [activeRes, resolvedRes, formatProfile] = await Promise.all([
-    supabase
-      .from("limitations")
-      .select(
-        "id, kind, severity, region, affected_muscles, affected_movement_ids, allowed_movement_ids, affected_side, notes, started_at, resolved_at, engine_action",
-      )
-      .is("resolved_at", null)
-      .order("started_at", { ascending: false })
-      .limit(100),
-    supabase
-      .from("limitations")
-      .select(
-        "id, kind, severity, region, affected_muscles, affected_movement_ids, allowed_movement_ids, affected_side, notes, started_at, resolved_at, engine_action",
-      )
-      .not("resolved_at", "is", null)
-      .order("resolved_at", { ascending: false })
-      .limit(100),
-    getFormatProfile(supabase, user.id),
-  ]);
+  const [activeRes, resolvedRes, formatProfile, limitationOffer] =
+    await Promise.all([
+      supabase
+        .from("limitations")
+        .select(
+          "id, kind, severity, region, affected_muscles, affected_movement_ids, allowed_movement_ids, affected_side, notes, started_at, resolved_at, engine_action",
+        )
+        .is("resolved_at", null)
+        .order("started_at", { ascending: false })
+        .limit(100),
+      supabase
+        .from("limitations")
+        .select(
+          "id, kind, severity, region, affected_muscles, affected_movement_ids, allowed_movement_ids, affected_side, notes, started_at, resolved_at, engine_action",
+        )
+        .not("resolved_at", "is", null)
+        .order("resolved_at", { ascending: false })
+        .limit(100),
+      getFormatProfile(supabase, user.id),
+      getLimitationResponseOffer(),
+    ]);
 
   const active: LimitationRow[] = (activeRes.data ?? []).map((r) =>
     normaliseRow(r as RawRow),
@@ -124,19 +127,33 @@ export default async function InjuriesPage() {
 
   const hasAny = rows.length > 0;
 
+  const activeItems = active.map((row) => ({
+    row,
+    movements: row.affectedMovementIds
+      .map((id) => movementRefs.get(id))
+      .filter((m): m is MovementRef => Boolean(m)),
+  }));
+
   return (
     <main
       data-testid="injuries-page"
       style={{ display: "grid", gap: 24, maxWidth: 880, margin: "0 auto" }}
     >
       <header style={{ display: "grid", gap: 6 }}>
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>Injuries</h1>
+        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>Limitations</h1>
         <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
-          Flag an injury or restriction; the engine will cap or rotate around
-          the affected muscles and movements so you can keep training around
-          the issue.
+          Flag an injury or other restriction; the engine will cap or rotate
+          around the affected muscles and movements so you can keep training
+          around the issue.
         </p>
       </header>
+
+      {limitationOffer && (
+        <LimitationResponseCard
+          offer={limitationOffer}
+          action={applyLimitationResponse}
+        />
+      )}
 
       {!hasAny ? (
         <>
@@ -156,32 +173,10 @@ export default async function InjuriesPage() {
       )}
 
       {active.length > 0 && (
-        <section data-testid="active-section" style={{ display: "grid", gap: 12 }}>
-          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>
-            Active{" "}
-            <span
-              style={{
-                fontSize: 12,
-                fontWeight: 500,
-                color: "var(--cp-text-muted)",
-              }}
-            >
-              ({active.length})
-            </span>
-          </h2>
-          <div style={{ display: "grid", gap: 12 }}>
-            {active.map((row) => (
-              <ActiveLimitationCard
-                key={row.id}
-                row={row}
-                movements={row.affectedMovementIds
-                  .map((id) => movementRefs.get(id))
-                  .filter((m): m is MovementRef => Boolean(m))}
-                formatProfile={formatProfile}
-              />
-            ))}
-          </div>
-        </section>
+        <ActiveLimitationsList
+          items={activeItems}
+          formatProfile={formatProfile}
+        />
       )}
 
       <HistorySection rows={resolved} />
