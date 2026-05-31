@@ -44,6 +44,7 @@ import type { ProgressVerdict, ProgressVerdictKind } from "@/lib/stats/progress-
 import type { WeeklyRhythm } from "@/lib/stats/weekly-rhythm";
 import type { Streak } from "@/lib/stats/streak";
 import { displayWeight, weightUnitLabel, type WeightUnit } from "@/lib/stats/units";
+import { LOAD_BAND_THRESHOLDS } from "@/lib/stats/load-balance";
 import type { ProfileForFormat } from "@/lib/format/datetime";
 import { DEFAULT_RANGE, RANGE_LABEL, type Range } from "@/lib/stats/range";
 import { Sparkline } from "@/components/stats/charts/Sparkline";
@@ -220,7 +221,7 @@ export function StatsCommandCenter(props: StatsCommandCenterProps) {
     units,
   } = props;
   const [range, setRange] = useState<Range>(initialRange);
-  const [openTile, setOpenTile] = useState<"strength" | null>(null);
+  const [openTile, setOpenTile] = useState<"strength" | "recovery" | null>(null);
 
   const syncUrl = useCallback((next: Range) => {
     if (typeof window === "undefined") return;
@@ -268,7 +269,11 @@ export function StatsCommandCenter(props: StatsCommandCenterProps) {
           onExpand={() => setOpenTile("strength")}
         />
         <EnduranceTile data={bucket.endurance} range={range} />
-        <RecoveryLoadTile freshness={freshness} readiness={readiness} />
+        <RecoveryLoadTile
+          freshness={freshness}
+          readiness={readiness}
+          onExpand={() => setOpenTile("recovery")}
+        />
         <ConsistencyTile rhythm={rhythm} streak={streak} />
         <BodyweightTile data={bodyweight} units={units} />
         <VolumeTile data={bucket.volume} range={range} units={units} />
@@ -279,6 +284,11 @@ export function StatsCommandCenter(props: StatsCommandCenterProps) {
         onClose={() => setOpenTile(null)}
         data={bucket.strength}
         range={range}
+      />
+      <ReadinessDrawer
+        open={openTile === "recovery"}
+        onClose={() => setOpenTile(null)}
+        readiness={readiness}
       />
     </div>
   );
@@ -917,9 +927,11 @@ function ZoneBars({ zones }: { zones: EnduranceProgress["timeInZone"] }) {
 function RecoveryLoadTile({
   freshness,
   readiness,
+  onExpand,
 }: {
   freshness: FreshnessMiniRow[];
   readiness: Readiness;
+  onExpand?: () => void;
 }) {
   const colorByAccent: Record<FreshnessMiniRow["accent"], Tone> = {
     success: "success",
@@ -933,13 +945,26 @@ function RecoveryLoadTile({
         title="Recovery & load"
         helpTerm="region_freshness"
         right={
-          <Link
-            href="/app/stats/engine"
-            data-testid="stats-freshness-cta"
-            style={{ fontSize: 11.5, color: "var(--cp-text-muted)", textDecoration: "none" }}
-          >
-            Engine →
-          </Link>
+          onExpand == null ? undefined : (
+            <button
+              type="button"
+              onClick={onExpand}
+              data-testid="stats-recovery-expand"
+              aria-label="Open recovery and load detail"
+              style={{
+                background: "transparent",
+                border: "1px solid var(--cp-border)",
+                borderRadius: 6,
+                color: "var(--cp-text-muted)",
+                fontSize: 11,
+                cursor: "pointer",
+                padding: "3px 8px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Detail →
+            </button>
+          )
         }
       />
       {freshness.length === 0 ? (
@@ -1015,6 +1040,163 @@ function AcwrStrip({
         />
       </div>
     </div>
+  );
+}
+
+// C (drawer) — readiness / ACWR drilldown, opened from RecoveryLoadTile
+export function ReadinessDrawer({
+  open,
+  onClose,
+  readiness,
+}: {
+  open: boolean;
+  onClose: () => void;
+  readiness: Readiness;
+}) {
+  const lb = readiness.summary.loadBalance;
+  const tone = readinessTone(readiness.verdict);
+  const ratio = lb.ratio;
+  const building = readiness.confidence === "building" || lb.weeksOfData < 4;
+  // Band thresholds as positions on the 0..2.0 gauge axis.
+  const tickPct = (t: number) => Math.min(100, Math.max(0, (t / 2.0) * 100));
+  const ticks: Array<{ pct: number; label: string }> = [
+    { pct: tickPct(LOAD_BAND_THRESHOLDS.detrainingMax), label: LOAD_BAND_THRESHOLDS.detrainingMax.toFixed(1) },
+    { pct: tickPct(LOAD_BAND_THRESHOLDS.productiveMax), label: LOAD_BAND_THRESHOLDS.productiveMax.toFixed(1) },
+    { pct: tickPct(LOAD_BAND_THRESHOLDS.pushingMax), label: LOAD_BAND_THRESHOLDS.pushingMax.toFixed(1) },
+  ];
+  const ot = readiness.summary.outputTrend;
+  const rd = readiness.summary.rpeDrift;
+  const signals: Array<{ label: string; value: string; detail: string }> = [
+    {
+      label: "Load balance",
+      value:
+        ratio == null
+          ? "Building"
+          : `${ratio.toFixed(2)} · ${ACWR_BAND_LABEL[lb.band] ?? lb.band}`,
+      detail: `acute ${Math.round(lb.bodyAcute)} vs chronic ${Math.round(lb.bodyChronic)} (Σ ATL / Σ CTL)`,
+    },
+    {
+      label: "sRPE drift · 28d",
+      value: rd.verdictLabel,
+      detail: rd.meanRpe == null ? "Not enough sessions yet" : `mean session RPE ${round1(rd.meanRpe)}`,
+    },
+    {
+      label: "Output trend · 28d",
+      value: ot.direction === "no-data" ? "No PR history yet" : ot.direction,
+      detail: ot.direction === "no-data" ? ot.detail : `${ot.recentPrCount} PRs recent vs ${ot.priorPrCount} prior`,
+    },
+  ];
+  return (
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      testId="stats-recovery-drawer"
+      ariaLabelledById="stats-recovery-drawer-title"
+      title={
+        <div>
+          <div id="stats-recovery-drawer-title" style={{ fontSize: 16, fontWeight: 600 }}>
+            Recovery &amp; load
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--cp-text-muted)", marginTop: 2 }}>
+            acute:chronic workload + corroborating signals
+          </div>
+        </div>
+      }
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span style={{ fontSize: 15, fontWeight: 700, color: toneVar(tone) }}>
+              {readiness.verdictLabel}
+            </span>
+            <span
+              data-testid="stats-recovery-confidence"
+              style={{ marginLeft: "auto", fontSize: 11, color: "var(--cp-text-muted)" }}
+            >
+              {building ? "building baseline" : `${readiness.signalsAgree} of 3 signals agree`}
+            </span>
+          </div>
+          <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--cp-text)" }}>{readiness.headline}</p>
+          <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--cp-text-muted)" }}>{readiness.subtext}</p>
+        </div>
+
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600 }}>Acute:chronic ratio</span>
+            <span className="mono" style={{ fontSize: 13, fontWeight: 700 }}>
+              {ratio == null ? "—" : ratio.toFixed(2)}
+            </span>
+          </div>
+          <div style={{ position: "relative", height: 12, borderRadius: 999, background: "var(--cp-surface-soft)", overflow: "hidden" }}>
+            <div
+              style={{
+                height: "100%",
+                width: `${Math.min(100, Math.max(0, readiness.gaugeMarkerPct))}%`,
+                background: "linear-gradient(90deg, var(--cp-accent), var(--cp-warning))",
+                borderRadius: 999,
+              }}
+            />
+            {ticks.map((t) => (
+              <span
+                key={t.pct}
+                aria-hidden
+                style={{ position: "absolute", top: 0, bottom: 0, left: `${t.pct}%`, width: 1, background: "var(--cp-border-strong)" }}
+              />
+            ))}
+          </div>
+          <div style={{ position: "relative", height: 14, marginTop: 2, fontSize: 9.5, color: "var(--cp-text-muted)" }}>
+            {ticks.map((t) => (
+              <span key={t.pct} className="mono" style={{ position: "absolute", left: `${t.pct}%`, transform: "translateX(-50%)" }}>
+                {t.label}
+              </span>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 8, lineHeight: 1.5 }}>
+            Detraining &lt;{LOAD_BAND_THRESHOLDS.detrainingMax} · productive{" "}
+            {LOAD_BAND_THRESHOLDS.detrainingMax}–{LOAD_BAND_THRESHOLDS.productiveMax} · pushing{" "}
+            {LOAD_BAND_THRESHOLDS.productiveMax}–{LOAD_BAND_THRESHOLDS.pushingMax} · spiking &gt;
+            {LOAD_BAND_THRESHOLDS.pushingMax}. EWMA acute:chronic on session load; thresholds echo
+            the Gabbett 2016 sweet-spot range.
+          </div>
+          {building && (
+            <div style={{ fontSize: 11, color: "var(--cp-warning)", marginTop: 6 }}>
+              Only {lb.weeksOfData} week{lb.weeksOfData === 1 ? "" : "s"} of history — the chronic
+              baseline is still warming up, so treat the band as provisional.
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--cp-text-muted)", marginBottom: 8 }}>
+            Corroborating signals
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {signals.map((s) => (
+              <div key={s.label} data-testid="stats-recovery-signal" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                  <span style={{ fontSize: 12.5, color: "var(--cp-text-muted)" }}>{s.label}</span>
+                  <span className="mono" style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600 }}>{s.value}</span>
+                </div>
+                <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>{s.detail}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, paddingTop: 4, borderTop: "1px solid var(--cp-border)" }}>
+          <span style={{ fontSize: 10.5, color: "var(--cp-text-muted)" }}>
+            Display only — readiness never feeds workout prescription.
+          </span>
+          <Link
+            href="/app/stats/engine"
+            data-testid="stats-recovery-engine-link"
+            style={{ marginLeft: "auto", fontSize: 12, color: "var(--cp-accent)", textDecoration: "none", fontWeight: 500 }}
+          >
+            Engine internals →
+          </Link>
+        </div>
+      </div>
+    </BottomSheet>
   );
 }
 
