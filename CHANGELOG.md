@@ -8,6 +8,20 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 2026-05-30. The previous starting-point block is preserved below for history.
 
+### Added (stats page redesign — Direction C2, Phase 3 · drawers)
+
+- **Strength tile now opens an e1RM detail drawer.** The Strength
+  progress tile gains a "Detail →" affordance that opens a side
+  drawer (reusing the shared `BottomSheet` primitive — desktop
+  right-panel / mobile bottom-sheet, Escape + backdrop + scroll-lock).
+  Each main lift shows a `Sparkline` of its estimated-1RM trend, the
+  kg/week slope + direction, session count and latest e1RM, and a "Full
+  history →" deep link to `/app/stats/movements/{slug}`. The series is
+  the **same** top-set-per-session e1RM data the tile's verdict is
+  already fit over — `getStrengthProgress` computed it internally and
+  previously discarded it; it now exposes `points[]` + `slug` per lift
+  (display only, never an engine input). No prescription path touched.
+
 ### Changed (stats page redesign — Direction C2, Phase 2)
 
 - **`/app/stats` is now a command-center bento.** The flat card grid is
