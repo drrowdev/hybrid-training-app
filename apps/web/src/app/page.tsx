@@ -2,34 +2,61 @@ import Link from "next/link";
 
 export default function Home() {
   return (
-    <main className="min-h-screen flex items-center justify-center px-6">
-      <div className="max-w-md space-y-6 text-center">
-        <header className="space-y-2">
-          <h1 className="text-3xl font-semibold tracking-tight">
-            Hybrid Training App
-          </h1>
-          <p className="text-sm text-foreground/60">
-            Science-informed hybrid training with adaptive load management. Phase 0 — foundation only.
-          </p>
-        </header>
-        <nav className="flex justify-center gap-3">
-          <Link
-            href="/login"
-            className="rounded-md bg-foreground text-background px-4 py-2 text-sm font-medium hover:opacity-90"
+    <main
+      style={{
+        minHeight: "100dvh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+        background: "var(--cp-bg)",
+        color: "var(--cp-text)",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gap: 32,
+          justifyItems: "center",
+          textAlign: "center",
+        }}
+      >
+        <div style={{ display: "grid", gap: 12, justifyItems: "center" }}>
+          <div
+            aria-label="SxC"
+            style={{
+              fontFamily: "var(--font-brand), system-ui, sans-serif",
+              fontWeight: 700,
+              fontSize: "clamp(64px, 18vw, 104px)",
+              lineHeight: 1,
+              letterSpacing: "-0.03em",
+            }}
           >
-            Sign in
-          </Link>
-          <Link
-            href="/api/health"
-            className="rounded-md border border-foreground/20 px-4 py-2 text-sm hover:bg-foreground/5"
+            S
+            <span style={{ color: "var(--cp-accent)", margin: "0 2px" }}>×</span>
+            C
+          </div>
+          <div
+            style={{
+              fontFamily: "var(--cp-font-mono)",
+              fontWeight: 500,
+              fontSize: 12,
+              textTransform: "uppercase",
+              letterSpacing: "0.28em",
+              color: "var(--cp-text-muted)",
+            }}
           >
-            Health check
-          </Link>
-        </nav>
-        <footer className="flex justify-center gap-4 text-xs text-foreground/50 pt-4">
-          <Link href="/privacy" className="hover:underline">Privacy</Link>
-          <Link href="/terms" className="hover:underline">Terms</Link>
-        </footer>
+            Strength <span style={{ color: "var(--cp-accent)" }}>×</span> Cardio
+          </div>
+        </div>
+
+        <Link
+          href="/login"
+          className="cp-btn primary big"
+          style={{ minWidth: 200, justifyContent: "center" }}
+        >
+          Sign in
+        </Link>
       </div>
     </main>
   );
