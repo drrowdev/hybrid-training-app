@@ -632,6 +632,24 @@ a.cp-tbr-pop-item { color: var(--cp-text); }
   .cp-desktop-only { display: none !important; }
 }
 
+/* ── Today — two-column layout (primary actions + glanceable rail) ──
+   Above 768px the Today page splits into a main column and a ~320px
+   right rail (Up next / This week / Recent activity). At/below 768px it
+   collapses to a single column and the rail stacks beneath the main
+   column in DOM order. */
+.today-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 768px) {
+  .today-grid {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+}
+
 /* ── Top nav — mobile hides brand glyph, primary tabs, right cluster ─
    On mobile the BottomTabBar handles primary navigation, the Today
    header surfaces the Strava sync pill, and /app/profile surfaces
