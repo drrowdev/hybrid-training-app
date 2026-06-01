@@ -28,7 +28,12 @@ export type AdaptationGuidance = {
   rotates: boolean;
   /** One-line summary for the UI. */
   summary: string;
-  /** Short citation label for the tooltip. */
+  /**
+   * Short internal citation label. NOT surfaced in the UI — research
+   * refs and confidence levels are deliberately kept out of end-user
+   * copy (see MetricHelp / PlanRedesign). Retained for provenance and
+   * potential internal/debug surfaces only.
+   */
   citation: string;
 };
 
