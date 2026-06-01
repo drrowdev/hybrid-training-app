@@ -40,6 +40,19 @@
 
   --cp-font-sans: var(--font-sans), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --cp-font-mono: var(--font-mono), Consolas, "Courier New", Courier, monospace;
+
+  /* Height of the fixed mobile BottomTabBar (links row, excl. safe-area
+     inset which is added separately). Bottom-pinned overlays — the
+     armed Finish bar and the floating rest timer — offset by this so
+     they never sit under the nav. Collapsed to 0 on desktop where the
+     tab bar is hidden (see the ≥769px reset below). */
+  --cp-bottomnav-h: 56px;
+}
+
+@media (min-width: 769px) {
+  :root {
+    --cp-bottomnav-h: 0px;
+  }
 }
 
 html[data-theme="dark"] {
@@ -256,6 +269,20 @@ select option {
   position: static;
   opacity: 0.55;
   box-shadow: none;
+}
+
+/* On mobile the armed Finish bar must clear the fixed BottomTabBar
+ * (z-40) — otherwise the nav covers the lower ~56px of the primary
+ * "Finish session" CTA and the rest-timer pill can intercept the tap.
+ * Lift it to sit directly above the tab bar and out-stack both the nav
+ * and the rest timer (z-39). The dimmed pre-armed bar is `position:
+ * static` (inline in content) so it is intentionally excluded. */
+@media (max-width: 768px) {
+  .cp-stickybar:not(.cp-stickybar--dim) {
+    bottom: calc(var(--cp-bottomnav-h) + env(safe-area-inset-bottom));
+    padding-bottom: 10px;
+    z-index: 41;
+  }
 }
 
 /* Phase 3 E1 — bigger set-input numerals on mobile so they're
