@@ -104,7 +104,7 @@ analogue of ADR 0020's duration governor:
 | Archetype | Today's top set | Tilted ceiling (proposed) | Rationale |
 |-----------|-----------------|---------------------------|-----------|
 | `hypertrophy_anchor` | 0.75 | **≤ 0.825** | Strictly below `concurrent_hybrid`'s 0.85 and far below `strength_anchor`'s 0.95 — recognisably still a hypertrophy block. Heavy enough (~0.80–0.825 ≈ 82–84% of true 1RM at TM 0.90) to bias strength (ACSM 2009: ≥80% 1RM region for strength) while volume holds hypertrophy (Schoenfeld 2017: hypertrophy preserved across loads at equal effort). |
-| `endurance_anchor` | 0.75–0.90 | **no load tilt** | The maintenance lift already tops out at `0.90 ×TM` triples by default, and those lift days only exist when the secondary is `strength`/`muscle` (Cardio+Skip is pure cardio). The strength quality is therefore already expressed — as the *presence* of heavy lift days — at the ceiling the concurrent-compatibility window allows. Pushing past 0.90 toward strength territory breaches the archetype's aerobic-protection mandate (interference effect, Wilson 2012) for negligible headroom. Resolved param 3. |
+| `endurance_anchor` | 0.75–0.90 | **no load tilt** | The maintenance lift already tops out at `0.90 ×TM` triples by default, and those lift days only exist when the secondary is `strength`/`muscle` (Cardio+Skip is pure cardio). The strength quality is therefore already expressed — as the *presence* of heavy lift days at a literature-recommended maintenance dose (Rønnestad & Mujika 2014; Spiering 2021). Going heavier (singles toward 0.95+) buys little for a *secondary* maintenance goal while taxing the shared weekly recovery budget the priority aerobic sessions depend on (neuromuscular fatigue + eccentric DOMS degrade subsequent run/ride quality). NB: this is a recovery-budget argument, **not** a classic interference-effect one — concurrent interference runs endurance→strength/hypertrophy and is attenuated by day-separation, and heavy lifting does not impair aerobic adaptation (it tends to aid it). Resolved param 3. |
 
 This keeps CP-4 intact: the tilt adjusts the *base* weekProfile **before** the
 existing concurrent/taper scalar chain runs, so it adds no new multiplier to
@@ -222,13 +222,26 @@ parameter 2).
    would sacrifice the primary goal for a duration problem that does not exist.
 3. **No load tilt on `endurance_anchor`** (locked, high confidence). The engine
    intensity tilt is scoped to `hypertrophy_anchor` **only**. The maintenance
-   lift already runs `0.90 ×TM` triples, and those lift days exist *only* when
-   the secondary is `strength`/`muscle` (Cardio+Skip = pure cardio, zero
-   lifting) — so Cardio+Strength is already meaningful and honest vs Skip
-   without any added load. Pushing past 0.90 toward strength territory would
-   breach the archetype's aerobic-protection mandate (interference effect,
-   Wilson 2012 meta) for negligible headroom. `endurance_anchor` needs
-   preview-copy honesty only (already inlined), no engine change.
+   lift already runs `0.90 ×TM` triples — squarely in the literature's
+   recommended heavy-but-low-volume maintenance zone (Rønnestad & Mujika 2014;
+   Spiering 2021) — and those lift days exist *only* when the secondary is
+   `strength`/`muscle` (Cardio+Skip = pure cardio, zero lifting), so
+   Cardio+Strength is already meaningful and honest vs Skip without any added
+   load. The reason not to push heavier is the **shared weekly recovery
+   budget**: on an endurance-*primary* block the priority is fresh legs for key
+   aerobic sessions, and singles toward 0.95+ add neuromuscular fatigue +
+   eccentric DOMS that degrade subsequent run/ride quality — for negligible
+   benefit to a *secondary* maintenance goal.
+   - **Correction (2026-06-01):** an earlier draft justified this via the
+     *interference effect* (Wilson 2012) and an "aerobic-protection mandate."
+     That citation was a misapplication: concurrent interference runs
+     endurance→strength/hypertrophy/power, is moderated by session proximity
+     (largely attenuated when modalities are on separate days), and heavy
+     resistance work does **not** impair aerobic adaptation — it tends to
+     improve it (running economy; Beattie 2014). The decision stands, but on
+     recovery-budget + maintenance-dose grounds, not interference.
+   `endurance_anchor` needs preview-copy honesty only (already inlined), no
+   engine change.
 4. **No duration governor** (locked). The in-place tilt is duration-neutral
    (heavier load, equal-or-fewer reps, no added set); the identity ceiling + rep
    cap are sufficient bounds. ADR 0020's session-duration governor is not reused.
