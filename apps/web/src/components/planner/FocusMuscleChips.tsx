@@ -14,8 +14,6 @@
  *    enum exposes them separately but users think "shoulders" —
  *    expanding inline (not a nested modal) keeps the picker
  *    self-explanatory.
- *  - Forearms chip carries a small warning glyph + tooltip explaining
- *    the tendon-gate behaviour.
  */
 "use client";
 
@@ -76,7 +74,6 @@ export function FocusMuscleChips({
             );
           }
           const isSelected = selected.includes(entry.muscle);
-          const isForearm = entry.muscle === "forearms";
           return (
             <button
               key={entry.muscle}
@@ -84,23 +81,10 @@ export function FocusMuscleChips({
               aria-pressed={isSelected}
               onClick={() => onToggle(entry.muscle)}
               style={chipStyle(isSelected)}
-              title={
-                isForearm
-                  ? "Forearm bias may be auto-reduced if pulling-day load is already high."
-                  : undefined
-              }
               data-testid={`focus-chip-${entry.muscle}`}
               data-selected={isSelected ? "true" : "false"}
             >
               {FOCUS_MUSCLE_LABEL[entry.muscle]}
-              {isForearm && (
-                <span
-                  aria-label="Forearm tendon-gate may reduce volume this week"
-                  style={{ marginLeft: 6, opacity: 0.85 }}
-                >
-                  ⚠
-                </span>
-              )}
             </button>
           );
         })}
@@ -125,12 +109,6 @@ export function FocusMuscleChips({
             );
           })}
         </div>
-      )}
-
-      {selected.includes("forearms") && (
-        <p style={warningHintStyle} data-testid="focus-forearm-hint">
-          ⚠ Forearm bias may be auto-reduced if pulling-day load is already high.
-        </p>
       )}
     </div>
   );
@@ -172,11 +150,3 @@ function chipStyle(selected: boolean, sub: boolean = false): React.CSSProperties
     transition: "background .15s, color .15s, border-color .15s",
   };
 }
-
-const warningHintStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 11.5,
-  color: "var(--cp-text-muted)",
-  lineHeight: 1.5,
-  fontStyle: "italic",
-};
