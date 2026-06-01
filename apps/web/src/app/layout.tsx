@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Archivo } from "next/font/google";
 import { ServiceWorkerRegister } from "@/components/shell/ServiceWorkerRegister";
 import { InstallPrompt } from "@/components/shell/InstallPrompt";
 import "./globals.css";
@@ -16,7 +16,16 @@ const geistMono = Geist_Mono({
   variable: "--font-mono",
 });
 
+// Brand wordmark face (S×C). Bold only — used for the nav brand glyph.
+const archivo = Archivo({
+  subsets: ["latin"],
+  display: "swap",
+  weight: "700",
+  variable: "--font-brand",
+});
+
 export const metadata: Metadata = {
+  metadataBase: new URL("https://getsxc.app"),
   title: "Hybrid Training",
   description: "Train hybrid. One plan, two modalities, zero collisions.",
   manifest: "/manifest.webmanifest",
@@ -29,6 +38,27 @@ export const metadata: Metadata = {
     // 180×180, full-bleed (no transparency, no pre-rounded corners) — iOS
     // applies its own mask. Source: scripts/generate-icons.mjs.
     apple: "/icons/apple-touch-icon.png",
+  },
+  openGraph: {
+    type: "website",
+    siteName: "SxC — Strength × Cardio",
+    title: "Hybrid Training",
+    description: "Train hybrid. One plan, two modalities, zero collisions.",
+    url: "https://getsxc.app",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "SxC — Strength × Cardio",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Hybrid Training",
+    description: "Train hybrid. One plan, two modalities, zero collisions.",
+    images: ["/og-image.png"],
   },
   other: {
     // Next.js 15's `appleWebApp.capable: true` emits the modern
@@ -66,7 +96,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${geist.variable} ${geistMono.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`${geist.variable} ${geistMono.variable} ${archivo.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
       </head>

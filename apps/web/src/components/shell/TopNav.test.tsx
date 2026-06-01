@@ -4,7 +4,7 @@
  *   1. The right cluster wrapper carries the `cp-topbar-right-wrap`
  *      class that globals.css uses to hide it under 768px.
  *   2. The primary tabs nav carries `cp-topnav-tabs` for the same.
- *   3. The brand link carries `cp-topnav-brand` so the "H" glyph is
+ *   3. The brand link carries `cp-topnav-brand` so the S×C wordmark is
  *      hidden on mobile.
  *   4. globals.css actually contains a max-width:768px rule that sets
  *      these three classes to display:none — otherwise the markup
