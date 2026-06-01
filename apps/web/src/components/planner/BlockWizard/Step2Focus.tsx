@@ -59,18 +59,6 @@ export function Step2Focus({
         })}
       </div>
 
-      {guidance && (
-        <p
-          className="wiz-adaptation-hint"
-          style={adaptationHintStyle}
-          data-testid="wiz-adaptation-hint"
-        >
-          <span aria-hidden="true" style={{ marginRight: 6 }}>ⓘ</span>
-          {guidance.summary}
-          <span style={citationStyle}> · {guidance.citation}</span>
-        </p>
-      )}
-
       {powerEligible && (
         <div className="wiz-power-row" style={powerToggleRowStyle}>
           <div>
@@ -123,6 +111,17 @@ export function Step2Focus({
           onToggle={(muscle) => dispatch({ type: "toggle-focus-muscle", muscle })}
         />
       </div>
+
+      {guidance && (
+        <p
+          className="wiz-adaptation-hint"
+          style={adaptationHintStyle}
+          data-testid="wiz-adaptation-hint"
+        >
+          <span aria-hidden="true" style={{ marginRight: 6 }}>ⓘ</span>
+          {guidance.summary}
+        </p>
+      )}
     </section>
   );
 }
@@ -147,12 +146,6 @@ const adaptationHintStyle: React.CSSProperties = {
   fontSize: 13,
   lineHeight: 1.5,
   maxWidth: 720,
-};
-
-const citationStyle: React.CSSProperties = {
-  color: "var(--cp-text-soft)",
-  fontSize: 11.5,
-  marginLeft: 2,
 };
 
 const powerToggleRowStyle: React.CSSProperties = {
