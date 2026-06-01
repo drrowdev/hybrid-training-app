@@ -20,29 +20,7 @@ import {
   formatEyebrowDate,
   type ProfileForFormat,
 } from "@/lib/format/datetime";
-
-/**
- * Mirror of the Plan-page duration heuristic: sum cardio `durationMin`
- * and add a flat 5 min per strength item. Pure cosmetic — see
- * `apps/web/src/app/app/plan/page.tsx` for the original. Duplicated
- * here rather than re-exported so the Plan page doesn't have to
- * publish an internal helper just for this preview surface.
- */
-function estimateDurationMin(
-  items: SessionPreviewInput["items"],
-): number | null {
-  let dur: number | null = null;
-  for (const it of items) {
-    if (it.kind?.startsWith("cardio_") && it.durationMin) {
-      dur = (dur ?? 0) + it.durationMin;
-    }
-  }
-  const strengthCount = items.filter(
-    (i) => !(i.kind ?? "").startsWith("cardio_"),
-  ).length;
-  if (strengthCount > 0) dur = (dur ?? 0) + strengthCount * 5;
-  return dur;
-}
+import { estimateSessionMinutes } from "@/lib/sessions/estimate-duration";
 
 export default async function PreviewWorkoutPage({
   params,
@@ -90,7 +68,7 @@ export default async function PreviewWorkoutPage({
     id: planned.id,
     title: planned.title,
     eyebrow,
-    estDurationMin: estimateDurationMin(items),
+    estDurationMin: estimateSessionMinutes(items),
     items,
   };
 
