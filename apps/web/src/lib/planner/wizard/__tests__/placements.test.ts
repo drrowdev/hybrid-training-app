@@ -292,6 +292,56 @@ describe("applyPlacementsToActiveDays (Test B — materialiser remap)", () => {
       expect(d.slot).toBe(before[i]!.slot);
     });
   });
+
+  it("Test E — never emits duplicate (dayIndex, slot) when a placed day collides with a leftover canonical day", () => {
+    // Regression for the production error:
+    //   duplicate key value violates unique constraint
+    //   "planned_sessions_block_week_day_slot_unique_idx"
+    // strength_anchor@4 canonical = strength:0, cardio:2, strength:3, cardio:5.
+    // The user places only ONE strength session, on day 3 — the day the
+    // SECOND canonical strength template already occupies. The first strength
+    // template remaps onto day 3; without the uniqueness guard the leftover
+    // second strength template kept its canonical day 3 too → collision.
+    const canonical = daysForFrequency(ARCHETYPES.strength_anchor, 4, false);
+    const strengthDays = canonical.filter((d) => d.kind === "strength").map((d) => d.dayIndex);
+    expect(strengthDays.length).toBeGreaterThanOrEqual(2);
+
+    const placements: Placement[] = [
+      { dayIndex: strengthDays[1]!, slot: "single", kind: "strength", weightKey: "Strength day (heavy)" },
+    ];
+    const remapped = applyPlacementsToActiveDays(canonical, placements);
+
+    const keys = remapped.map((d) => `${d.dayIndex}|${d.slot ?? "single"}`);
+    expect(new Set(keys).size).toBe(keys.length);
+    // The placed strength session lands on the user-chosen day.
+    expect(remapped.some((d) => d.kind === "strength" && d.dayIndex === strengthDays[1])).toBe(true);
+    // Same session count and kind mix preserved (no day dropped).
+    expect(remapped.length).toBe(canonical.length);
+    expect(remapped.filter((d) => d.kind === "strength").length).toBe(
+      canonical.filter((d) => d.kind === "strength").length,
+    );
+  });
+
+  it("Test F — keeps every (dayIndex, slot) unique across a sweep of partial placements", () => {
+    // Exhaustive guard: for each archetype/frequency, place a single
+    // strength session on each possible weekday and assert the remap is
+    // always collision-free regardless of where the user drops it.
+    for (const archetype of Object.values(ARCHETYPES)) {
+      for (const freq of [3, 4, 5, 6] as const) {
+        const canonical = daysForFrequency(archetype, freq, false);
+        if (!canonical.some((d) => d.kind === "strength")) continue;
+        for (let day = 0; day <= 6; day++) {
+          const placements: Placement[] = [
+            { dayIndex: day, slot: "single", kind: "strength", weightKey: "Strength day (heavy)" },
+          ];
+          const remapped = applyPlacementsToActiveDays(canonical, placements);
+          const keys = remapped.map((d) => `${d.dayIndex}|${d.slot ?? "single"}`);
+          expect(new Set(keys).size).toBe(keys.length);
+          expect(remapped.length).toBe(canonical.length);
+        }
+      }
+    }
+  });
 });
 
 describe("end-to-end — wizard serialiser → materialiser remap (the bug repro)", () => {
