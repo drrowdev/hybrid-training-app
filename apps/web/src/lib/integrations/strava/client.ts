@@ -12,7 +12,17 @@
 
 const AUTHORIZE_URL = "https://www.strava.com/oauth/authorize";
 const TOKEN_URL = "https://www.strava.com/oauth/token";
-const API_BASE = "https://www.strava.com/api/v3";
+/**
+ * Strava REST base. Single source of truth for the API host — every
+ * request (here and in sync.ts) must build on this constant so the
+ * 2027 base-URL cutover is a one-line change.
+ *
+ * MIGRATION (Strava Developer Program, effective 2027-06-01): the API
+ * base moves to "https://www.api-v3.strava.com". Flip this constant on
+ * the cutover date. Access tokens already travel in the Authorization
+ * header (the other 2027 requirement), so no other change is needed.
+ */
+export const API_BASE = "https://www.strava.com/api/v3";
 
 export type StravaTokenResponse = {
   accessToken: string;
