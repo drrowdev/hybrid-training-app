@@ -36,10 +36,9 @@ export function PlanBlockFocusCard({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const hasForearm = focusMuscles.includes("forearms");
   const label = focusMuscles.length === 0
     ? "No focus muscles set"
-    : `Focus: ${formatFocusMuscles(focusMuscles)}${hasForearm ? " ⚠" : ""}`;
+    : `Focus: ${formatFocusMuscles(focusMuscles)}`;
   const ctaLabel = focusMuscles.length === 0 ? "+ Add focus" : "Edit";
 
   const openModal = (): void => {
