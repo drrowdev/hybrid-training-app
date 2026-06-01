@@ -138,9 +138,15 @@ export function buildWeekShape(
   };
 
   if (a.id === "strength_anchor") {
-    const heavyMeta = "top set ≤ 95% TM · 3 working sets";
+    const tilt = a.accessoryEmphasis === "hypertrophy";
+    const heavyMeta = tilt
+      ? "top set ≤ 95% TM · 3 working sets + hypertrophy accessories"
+      : "top set ≤ 95% TM · 3 working sets";
     for (let i = 0; i < a.sessions.strength; i++)
-      push("🏋️", "Strength day", heavyMeta, "Strength day (heavy)", 55);
+      push("🏋️", "Strength day", heavyMeta, "Strength day (heavy)", tilt ? 60 : 55);
+    // A muscle secondary tilts accessory volume onto the strength days above —
+    // it never produces standalone hypertrophy days (sessions.hypertrophy is 0
+    // for strength_anchor). This loop is retained defensively only.
     for (let i = 0; i < a.sessions.hypertrophy; i++)
       push(
         "🏋️",

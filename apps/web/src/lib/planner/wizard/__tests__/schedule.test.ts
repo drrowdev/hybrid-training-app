@@ -53,25 +53,33 @@ describe("defaultSchedule — Strength Focus 4d", () => {
   });
 });
 
-describe("defaultSchedule — Strength + Muscle 6d (swap pass)", () => {
-  it("reproduces the swap-pass result: heavy on Mon/Wed/Fri/Sun, hyper on Tue/Sat, zero warnings (DC-D4)", () => {
-    // 6 days = 4 strength + 2 hypertrophy (lift-led distribution).
+describe("defaultSchedule — Strength + Muscle 6d (no phantom hypertrophy day)", () => {
+  it("renders all six days as strength days carrying the hypertrophy accessory tilt — never a standalone Hypertrophy day", () => {
+    // ADR 0020 preview reconciliation: the muscle secondary tilts accessory
+    // volume ONTO the strength days, so the preview must show strength days
+    // (identical structure to Strength + Skip), not invent a hypertrophy day
+    // the engine never builds.
     const a = resolveArchetype({ days: 6, goal: "strength", secondary: "muscle", twoADay: false })!;
-    expect(a.sessions).toEqual({ strength: 4, hypertrophy: 2, cardio: 0, tendon: 0 });
+    expect(a.sessions).toEqual({ strength: 6, hypertrophy: 0, cardio: 0, tendon: 0 });
+    expect(a.accessoryEmphasis).toBe("hypertrophy");
+
     const cells = defaultSchedule(a, ctx("strength", "muscle"));
-    const map = Object.fromEntries(
-      cells
-        .filter((c) => c.am)
-        .map((c) => [c.day, c.am!.weightKey] as const),
-    );
-    // High-CNS on the "rest island" days (Mon Wed Fri Sun), hypertrophy fills Tue/Sat.
-    expect(map[0]).toBe("Strength day (heavy)");
-    expect(map[2]).toBe("Strength day (heavy)");
-    expect(map[4]).toBe("Strength day (heavy)");
-    expect(map[6]).toBe("Strength day (heavy)");
-    expect(map[1]).toBe("Hypertrophy day");
-    expect(map[5]).toBe("Hypertrophy day");
-    expect(sequencingWarnings(cells)).toHaveLength(0);
+    const placed = cells.filter((c) => c.am).map((c) => c.am!);
+    expect(placed).toHaveLength(6);
+    // Every placed day is a strength day; no phantom hypertrophy day.
+    expect(placed.every((s) => s.weightKey === "Strength day (heavy)")).toBe(true);
+    expect(placed.some((s) => s.weightKey === "Hypertrophy day")).toBe(false);
+    // The tilt is surfaced in the meta copy on those strength days.
+    expect(placed.every((s) => s.meta.includes("hypertrophy accessories"))).toBe(true);
+  });
+
+  it("has the same weightKey layout as Strength + Skip 6d (tilt is within-day only)", () => {
+    const muscle = resolveArchetype({ days: 6, goal: "strength", secondary: "muscle", twoADay: false })!;
+    const skip = resolveArchetype({ days: 6, goal: "strength", secondary: "skip", twoADay: false })!;
+    const keys = (a: typeof muscle, secondary: "muscle" | "skip") =>
+      defaultSchedule(a, ctx("strength", secondary))
+        .map((c) => c.am?.weightKey ?? null);
+    expect(keys(muscle, "muscle")).toEqual(keys(skip, "skip"));
   });
 });
 

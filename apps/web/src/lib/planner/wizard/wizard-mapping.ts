@@ -45,6 +45,14 @@ export type ResolvedArchetype = {
   weeks: number;
   powerEligible: boolean;
   sessions: SessionBreakdown;
+  /**
+   * When the secondary focus is expressed as an accessory volume tilt ON the
+   * primary's own days (ADR 0020) rather than as standalone sessions, this
+   * names the tilt so the preview annotates those days instead of inventing a
+   * phantom standalone day the engine never builds. v1: "hypertrophy" for a
+   * muscle secondary on strength_anchor. `null`/absent everywhere else.
+   */
+  accessoryEmphasis?: "hypertrophy" | null;
 };
 
 /** Strength-led distribution (primary lift + cardio filler). */
@@ -189,20 +197,22 @@ export function resolveArchetype(input: {
 
   if (goal === "strength") {
     const dist = distributeLiftLed(effective);
-    // Secondary not yet picked (null) is treated like an explicit "skip"
-    // so the live preview reflects what the user has actually chosen.
+    // A muscle secondary is delivered as an accessory volume tilt ON the
+    // strength days (ADR 0020) — NOT as a standalone hypertrophy day. So the
+    // preview keeps every day a strength day (identical to "skip") and flags
+    // the emphasis; it must never invent a phantom hypertrophy day the engine
+    // doesn't build. Secondary not yet picked (null) is treated like "skip".
     const sessions: SessionBreakdown =
-      secondary === "muscle"
-        ? { ...empty, strength: dist.primary, hypertrophy: dist.secondary }
-        : secondary === "skip" || secondary == null
-          ? { ...empty, strength: effective }
-          : { ...empty, strength: dist.primary, cardio: dist.secondary };
+      secondary === "muscle" || secondary === "skip" || secondary == null
+        ? { ...empty, strength: effective }
+        : { ...empty, strength: dist.primary, cardio: dist.secondary };
     return {
       id: "strength_anchor",
       name: "Strength Focus",
       weeks: 4,
       powerEligible: true,
       sessions,
+      accessoryEmphasis: secondary === "muscle" ? "hypertrophy" : null,
     };
   }
 
