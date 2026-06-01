@@ -45,6 +45,8 @@ import {
   isEquipmentAvailable,
 } from "./equipment-requirements";
 import { declaredExperienceToTier, tierInBand } from "./experience-tier";
+import { inferAccessoryBucket } from "./accessory-intensity";
+import type { AccessoryBucket } from "./accessory-intensity";
 
 /**
  * Experience tiers that should NOT see plyometric / ballistic / Olympic
@@ -174,6 +176,15 @@ export type WeekAccessoryHistoryItem = {
   bulletproofRoles: BulletproofRole[];
   functionalRoles: FunctionalRole[];
   primaryMuscles: string[];
+  /**
+   * Set count this item contributed (ADR 0022). The per-muscle aesthetic
+   * progress accumulator is denominated in **sets/week** to match the
+   * `perMuscleTargets` units. When omitted (legacy callers / fixtures that
+   * never recorded it) the picker falls back to `profile.aesthetic.setsPerItem`
+   * — "assume one standard exposure at the archetype base." Production always
+   * supplies the real value via the assembler.
+   */
+  sets?: number;
 };
 
 export type PickFilters = {
@@ -299,7 +310,7 @@ export function pickAccessoriesForSession({
   const durFloor = effectiveDurabilityFloor(profile, filters.tendinopathyActive);
   const durabilityProgress = countBulletproofRoles(weekAccessoryHistory);
   const functionalProgress = countFunctionalRoles(weekAccessoryHistory);
-  const muscleProgress = countMusclesPrimary(weekAccessoryHistory);
+  const muscleProgress = countMusclesPrimary(weekAccessoryHistory, profile.aesthetic.setsPerItem);
 
   // ─── 1. Durability deficits first ───
   for (const role of orderedBulletproofRoles(durFloor, durabilityProgress)) {
@@ -316,12 +327,13 @@ export function pickAccessoriesForSession({
     if (!candidate) continue;
     // No user-facing rationale string — the movement's display name (e.g.
     // "Farmer carry") is enough; the internal bucket name must not leak.
-    picks.push(buildPick(candidate, profile, weekDeloadScale, "durability", ""));
+    const pick = buildPick(candidate, profile, weekDeloadScale, "durability", "");
+    picks.push(pick);
     usedThisSession.add(candidate.id);
     bumpBulletproof(durabilityProgress, candidate.bulletproofRoles);
     bumpFunctional(functionalProgress, candidate.functionalRoles);
     for (const m of candidate.primaryMuscles) {
-      muscleProgress.set(m, (muscleProgress.get(m) ?? 0) + 1);
+      muscleProgress.set(m, (muscleProgress.get(m) ?? 0) + pick.sets);
     }
   }
 
@@ -339,12 +351,13 @@ export function pickAccessoriesForSession({
     });
     if (!candidate) continue;
     // No user-facing rationale string — see note above.
-    picks.push(buildPick(candidate, profile, weekDeloadScale, "functional", ""));
+    const pick = buildPick(candidate, profile, weekDeloadScale, "functional", "");
+    picks.push(pick);
     usedThisSession.add(candidate.id);
     bumpBulletproof(durabilityProgress, candidate.bulletproofRoles);
     bumpFunctional(functionalProgress, candidate.functionalRoles);
     for (const m of candidate.primaryMuscles) {
-      muscleProgress.set(m, (muscleProgress.get(m) ?? 0) + 1);
+      muscleProgress.set(m, (muscleProgress.get(m) ?? 0) + pick.sets);
     }
   }
 
@@ -361,21 +374,20 @@ export function pickAccessoriesForSession({
       usedThisSession,
     });
     if (candidate) {
-      picks.push(
-        buildPick(
-          candidate,
-          profile,
-          weekDeloadScale,
-          "power",
-          "Power emphasis: explosive intent (3–5 reps, full recovery)",
-          { repsOverride: 5, setsOverride: profile.aesthetic.setsPerItem },
-        ),
+      const pick = buildPick(
+        candidate,
+        profile,
+        weekDeloadScale,
+        "power",
+        "Power emphasis: explosive intent (3–5 reps, full recovery)",
+        { repsOverride: 5, setsOverride: profile.aesthetic.setsPerItem },
       );
+      picks.push(pick);
       usedThisSession.add(candidate.id);
       bumpBulletproof(durabilityProgress, candidate.bulletproofRoles);
       bumpFunctional(functionalProgress, candidate.functionalRoles);
       for (const m of candidate.primaryMuscles) {
-        muscleProgress.set(m, (muscleProgress.get(m) ?? 0) + 1);
+        muscleProgress.set(m, (muscleProgress.get(m) ?? 0) + pick.sets);
       }
       powerPickAdded = true;
     }
@@ -403,21 +415,20 @@ export function pickAccessoriesForSession({
       muscleProgress.set(gapMuscle, (perMuscleTargets[gapMuscle] ?? PER_MUSCLE_TARGETS_FALLBACK));
       continue;
     }
-    picks.push(
-      buildPick(
-        candidate,
-        profile,
-        weekDeloadScale,
-        "aesthetic",
-        // No user-facing rationale string — see note above.
-        "",
-      ),
+    const pick = buildPick(
+      candidate,
+      profile,
+      weekDeloadScale,
+      "aesthetic",
+      // No user-facing rationale string — see note above.
+      "",
     );
+    picks.push(pick);
     usedThisSession.add(candidate.id);
     bumpBulletproof(durabilityProgress, candidate.bulletproofRoles);
     bumpFunctional(functionalProgress, candidate.functionalRoles);
     for (const m of candidate.primaryMuscles) {
-      muscleProgress.set(m, (muscleProgress.get(m) ?? 0) + 1);
+      muscleProgress.set(m, (muscleProgress.get(m) ?? 0) + pick.sets);
     }
   }
 
@@ -442,10 +453,17 @@ function countFunctionalRoles(week: WeekAccessoryHistoryItem[]): Map<FunctionalR
   return m;
 }
 
-function countMusclesPrimary(week: WeekAccessoryHistoryItem[]): Map<string, number> {
+function countMusclesPrimary(
+  week: WeekAccessoryHistoryItem[],
+  fallbackSets: number,
+): Map<string, number> {
   const m = new Map<string, number>();
   for (const item of week) {
-    for (const muscle of item.primaryMuscles) m.set(muscle, (m.get(muscle) ?? 0) + 1);
+    // ADR 0022 — aesthetic progress is denominated in sets/week to match
+    // the perMuscleTargets units. Credit each item's recorded set count
+    // (falling back to the archetype base when a legacy item omits it).
+    const sets = item.sets ?? fallbackSets;
+    for (const muscle of item.primaryMuscles) m.set(muscle, (m.get(muscle) ?? 0) + sets);
   }
   return m;
 }
@@ -692,6 +710,26 @@ export function loadsBlockedMuscle(
   return false;
 }
 
+function repsForBucket(
+  bucket: AccessoryBucket,
+  repRange: { min: number; max: number },
+): number {
+  // ADR 0022 — bias reps within the archetype's existing range by movement
+  // type. heuristic, consistent with Schoenfeld 2017 (hypertrophy is largely
+  // rep-range-insensitive at matched effort, so compound→low / isolation→high
+  // is a free joint-stress / practicality win). isometric / carry / plyometric
+  // / tendon buckets ignore the rep number downstream (holds / distance /
+  // explosive-intent overrides), so the midpoint there is harmless.
+  switch (bucket) {
+    case "isolation":
+      return repRange.max;
+    case "compound":
+      return repRange.min;
+    default:
+      return Math.round((repRange.min + repRange.max) / 2);
+  }
+}
+
 function buildPick(
   movement: CatalogMovement,
   profile: AccessoryProfile,
@@ -702,9 +740,17 @@ function buildPick(
 ): AccessoryPick {
   const baseSets = overrides?.setsOverride ?? profile.aesthetic.setsPerItem;
   const sets = Math.max(1, Math.round(baseSets * weekDeloadScale));
+  const bucket = inferAccessoryBucket({
+    reason,
+    slug: movement.slug,
+    primaryRegion: movement.primaryRegion,
+    primaryMuscles: movement.primaryMuscles,
+    isCompound: movement.isCompound,
+    bulletproofRoles: movement.bulletproofRoles,
+    functionalRoles: movement.functionalRoles,
+  });
   const reps =
-    overrides?.repsOverride ??
-    Math.round((profile.aesthetic.repRange.min + profile.aesthetic.repRange.max) / 2);
+    overrides?.repsOverride ?? repsForBucket(bucket, profile.aesthetic.repRange);
   return {
     movementId: movement.id,
     slug: movement.slug,
