@@ -193,6 +193,37 @@ export function PlanNewSwitch({
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
+      {!hideBuildCta && (
+        <section style={{ display: "grid", gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => {
+              setError(null);
+              setWizardPrefill(null);
+              setMode("wizard");
+            }}
+            className="pn-cta"
+            style={bigCtaStyle}
+          >
+            Build a new block →
+          </button>
+          <Link
+            href="/app/plan/new/custom"
+            style={{
+              fontSize: 12,
+              color: "var(--cp-text-muted)",
+              textDecoration: "none",
+              justifySelf: "start",
+              paddingLeft: 4,
+            }}
+          >
+            More options · build a custom block →
+          </Link>
+        </section>
+      )}
+
+      {error && <div style={errorBoxStyle}>{error}</div>}
+
       {recentBlocks.length > 0 && (
         <section>
           <h2 style={{ fontSize: 16, margin: "0 0 4px", fontWeight: 600 }}>Run it again</h2>
@@ -278,37 +309,6 @@ export function PlanNewSwitch({
               );
             })}
           </div>
-        </section>
-      )}
-
-      {error && <div style={errorBoxStyle}>{error}</div>}
-
-      {!hideBuildCta && (
-        <section style={{ display: "grid", gap: 8 }}>
-          <button
-            type="button"
-            onClick={() => {
-              setError(null);
-              setWizardPrefill(null);
-              setMode("wizard");
-            }}
-            className="pn-cta"
-            style={bigCtaStyle}
-          >
-            Build a new block →
-          </button>
-          <Link
-            href="/app/plan/new/custom"
-            style={{
-              fontSize: 12,
-              color: "var(--cp-text-muted)",
-              textDecoration: "none",
-              justifySelf: "start",
-              paddingLeft: 4,
-            }}
-          >
-            More options · build a custom block →
-          </Link>
         </section>
       )}
 
