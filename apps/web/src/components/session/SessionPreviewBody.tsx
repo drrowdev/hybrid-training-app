@@ -74,8 +74,18 @@ export function SessionPreviewBody({
   variant?: SessionPreviewVariant;
 }) {
   const sections = groupByMovementThenKind(session.items);
-  const movementCount = sections.movements.length;
-  const meta = durationLine(session, movementCount);
+  // Count every exercise the session prescribes — main lifts AND
+  // accessories/tendon/hinge — not just the main-lift sections. Counting
+  // only `movements` undersold a strength day ("2 movements" for a session
+  // that actually has two main lifts plus six accessories). Cardio is
+  // represented by its duration, so it stays out of the exercise count
+  // (a pure-cardio session keeps the bare "~N min" meta line).
+  const exerciseCount =
+    sections.movements.length +
+    sections.accessories.length +
+    sections.tendon.length +
+    sections.hingeCompensations.length;
+  const meta = durationLine(session, exerciseCount);
   const hasAnything =
     sections.movements.length > 0 ||
     sections.accessories.length > 0 ||
@@ -91,7 +101,17 @@ export function SessionPreviewBody({
   //   - single-movement strength session whose title is the movement
   //     name (rare; most strength titles are generic like "Strength
   //     A").
-  const shouldHideHeading = makeShouldHideHeading(session.title);
+  //
+  // Gate the dedup to sessions with at most ONE movement card. On a
+  // folded dual-main-lift day the title can equal one lift's name
+  // ("Front Squat") while the day also prescribes a second lift; firing
+  // the dedup there hid only the first card's heading and left the
+  // second showing — an inconsistency. With 2+ movement cards no heading
+  // is ever redundant with a single title, so we never hide.
+  const shouldHideHeading =
+    sections.movements.length > 1
+      ? () => false
+      : makeShouldHideHeading(session.title);
   const isCompact = variant === "compact";
 
   // On the Preview page the page header already shows "~35 min" in
