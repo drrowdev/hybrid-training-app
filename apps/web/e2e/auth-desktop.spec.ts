@@ -1,9 +1,6 @@
 import { test, expect } from "./fixtures/seed";
 import {
-  deleteUserByEmail,
-  findUserByEmail,
   generateMagicLink,
-  generateSignupLink,
   signInAs,
 } from "./fixtures/auth";
 import { markOnboarded } from "./fixtures/seed-blocks";
@@ -15,12 +12,15 @@ import { markOnboarded } from "./fixtures/seed-blocks";
  * ("auth + log + program-run"). Auth methods exposed by the UI today:
  *
  *   - Email + password sign-in   (`signInWithPassword`)
- *   - Email + password sign-up   (`signUp` → confirmation email)
  *   - Magic link                 (`signInWithOtp`, PKCE)
  *   - Sign-out                   (server action from AppShell footer)
  *
- * No OAuth providers are wired. No password-reset flow exists. Both
- * are intentionally out of scope here.
+ * Self-service sign-up is intentionally disabled during the private
+ * testing phase (`SIGNUPS_ENABLED = false` in lib/auth/actions.ts): the
+ * UI exposes no sign-up tab and the `signUp` action is short-circuited,
+ * so there is no UI sign-up scenario to cover here. No OAuth providers
+ * are wired. No password-reset flow exists. Both are intentionally out
+ * of scope.
  *
  * Magic-link strategy (per locked decision): admin `generateLink`
  * mints the action URL the user would receive in their inbox; the
@@ -32,12 +32,6 @@ import { markOnboarded } from "./fixtures/seed-blocks";
  *       admin createUser (confirmed) → generateLink({ type: 'magiclink' })
  *       → navigate to action_link → land in /app (or /onboarding).
  *       Service-role verify the auth user matches.
- *
- *   B — Sign-up via UI form:
- *       /login → signup tab → submit email + password →
- *       "check your email" confirmation state → admin look-up the
- *       new user → generateLink({ type: 'signup' }) → navigate →
- *       land in /onboarding (first-time signup gate).
  *
  *   C — Sign-out clears session:
  *       cookie-inject sign in → /app → click Sign out →
@@ -120,104 +114,6 @@ test.describe("@desktop auth", () => {
     );
     expect(error).toBeNull();
     expect(lookup?.user?.email?.toLowerCase()).toBe(freshUser.email.toLowerCase());
-  });
-
-  test("B: sign-up via UI shows confirmation, then signup link onboards", async ({
-    page,
-    seedConfig,
-    baseURL,
-  }, testInfo) => {
-    const url = baseURL ?? "http://localhost:3000";
-    const baseHost = new URL(url).host;
-    // Supabase's built-in email validator rejects RFC 2606 reserved TLDs
-    // (.test, .example, .invalid, .localhost) AND @example.com. Use a
-    // non-reserved fake .com — no mail is delivered because the spec only
-    // exercises the UI shape, not real email confirmation. Cleanup runs
-    // via deleteUserByEmail in the finally block below.
-    const email = `e2e+signup+${Date.now()}+${Math.random()
-      .toString(36)
-      .slice(2, 8)}@hta-e2e.com`;
-    const password = `E2E-${Math.random().toString(36).slice(2)}-${Date.now()}`;
-
-    try {
-      await page.goto("/login");
-      await page.getByTestId("auth-tab-signup").click();
-
-      const form = page.getByTestId("auth-form-signup");
-      await expect(form).toBeVisible();
-      await form.getByTestId("auth-email-input").fill(email);
-      await form.getByTestId("auth-password-input").fill(password);
-      await form.getByTestId("auth-submit").click();
-
-      // The signUp action returns { ok: true } on success and the form
-      // re-renders with the "check your email" confirmation. If the
-      // Supabase project blocks the test email domain (disposable-domain
-      // list) OR has no SMTP configured, the action returns
-      // { error: ... } and we surface a skip rather than a failure —
-      // the UI shape is what this scenario verifies; the project config
-      // is outside the scope of an E2E spec.
-      const confirm = page.getByTestId("auth-signup-confirm");
-      const errorMsg = form.locator("p.text-red-600");
-      await Promise.race([
-        confirm.waitFor({ state: "visible", timeout: 15_000 }),
-        errorMsg.waitFor({ state: "visible", timeout: 15_000 }),
-      ]).catch(() => {});
-
-      if (await errorMsg.isVisible()) {
-        const text = (await errorMsg.textContent()) ?? "";
-        testInfo.skip(
-          true,
-          `signUp returned an error from the Supabase project: "${text.trim()}". ` +
-            "Typically this is the disposable-domain list rejecting the test " +
-            "TLD, or no SMTP wired up. Add the test domain to the allow-list " +
-            "(or wire SMTP) on the Supabase project to exercise this scenario.",
-        );
-        return;
-      }
-      await expect(confirm).toBeVisible();
-
-      const created = await findUserByEmail(seedConfig, email);
-      expect(created, "signUp should have created the user").not.toBeNull();
-
-      // Mint the confirmation link the user would get by email.
-      const actionLink = await generateSignupLink(
-        seedConfig,
-        email,
-        password,
-        url,
-        "/app",
-      );
-
-      await page.goto(actionLink);
-      try {
-        await page.waitForURL(/\/(onboarding|app)(\?|$|#|\/)/, {
-          timeout: 15_000,
-        });
-      } catch {
-        const landed = new URL(page.url());
-        const wrongHost = landed.host !== baseHost;
-        const implicitFlow = page.url().includes("#access_token=");
-        if (wrongHost || implicitFlow) {
-          testInfo.skip(
-            true,
-            `Signup-confirm callback landed on ${landed.host}${landed.pathname} ` +
-              "instead of the test baseURL — same Supabase URL-config / PKCE " +
-              "precondition as scenario A. Skipping E2E click-through.",
-          );
-          return;
-        }
-        throw new Error(
-          `Signup confirmation did not redirect into the app. Landed at ${page.url()}`,
-        );
-      }
-      // First-time signup: no profile.onboarded_at, no TMs → /app gate
-      // forwards to /onboarding. We accept either (race with the gate).
-      expect(new URL(page.url()).pathname).toMatch(
-        /^\/onboarding(\/|$)|^\/app(\/|$)/,
-      );
-    } finally {
-      await deleteUserByEmail(seedConfig, email);
-    }
   });
 
   test("C: sign-out clears session and re-visiting /app redirects to /login", async ({
