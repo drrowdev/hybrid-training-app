@@ -89,7 +89,7 @@ const BW_HYBRID_WAVES: Wave[] = [
   },
 ];
 
-function strengthWaves(strengthHypDays: number, isBw: boolean): Wave[] {
+function strengthWaves(strengthHypDays: number, isBw: boolean, accessoryTilt = false): Wave[] {
   const base: Wave[] = isBw
     ? BW_STRENGTH_WAVES.map((w) => ({ ...w }))
     : [
@@ -114,6 +114,21 @@ function strengthWaves(strengthHypDays: number, isBw: boolean): Wave[] {
             "Half the sets at the same weights. Fatigue clears so the heavy work locks in.",
         },
       ];
+  if (accessoryTilt) {
+    // Muscle secondary: hypertrophy is added as accessory volume ON each
+    // strength day (ADR 0020), not as a separate day. Describe it that way.
+    const tiltBlurb = isBw
+      ? "accessory variants and longer-eccentric back-off sets added after the main work on every strength day"
+      : "extra accessory sets at moderate weights added after the main work on every strength day";
+    return base.map((w, i) => {
+      if (i < 3)
+        return { ...w, detail: w.detail + ` Plus ${tiltBlurb} — same dose every week.` };
+      return {
+        ...w,
+        detail: w.detail + ` The accessory volume also drops back during recovery.`,
+      };
+    });
+  }
   if (strengthHypDays === 0) return base;
   const hypBlurb = isBw
     ? `moderate-RIR set${strengthHypDays === 1 ? "" : "s"} with longer eccentrics and accessory variants`
@@ -346,7 +361,8 @@ const BW_MAINTENANCE_WAVES: Wave[] = [
 ];
 
 function wavesFor(state: WizardState, a: ResolvedArchetype, isBw: boolean): Wave[] {
-  if (a.id === "strength_anchor") return strengthWaves(a.sessions.hypertrophy, isBw);
+  if (a.id === "strength_anchor")
+    return strengthWaves(a.sessions.hypertrophy, isBw, a.accessoryEmphasis === "hypertrophy");
   if (a.id === "hypertrophy_anchor") return hypertrophyWaves(a.sessions.strength, isBw);
   if (a.id === "endurance_anchor") return enduranceWaves(a.sessions.strength, state.secondary, isBw);
   if (a.id === "concurrent_hybrid") {
@@ -368,6 +384,10 @@ function whyMatchText(state: WizardState, a: ResolvedArchetype, isBw: boolean): 
       : "Hybrid Focus caps the top set so heavy lifting doesn’t sap your cardio sessions. The aerobic side runs one easy Z2 and one harder VO2 / threshold day — protects both qualities without competing.";
   }
   if (a.id === "strength_anchor") {
+    if (a.accessoryEmphasis === "hypertrophy" && c === 0)
+      return isBw
+        ? "Strength Focus runs a 4-week progression on the main bodyweight families — tempos slow and holds lengthen each week, peaking in week 3. Your muscle secondary adds hypertrophy accessory volume onto every strength day — extra back-off and accessory work after the heavy sets — so you build muscle without spending a separate day or diluting the strength signal."
+        : "Strength Focus runs a 4-week intensity wave on the main lifts — top sets get heavier each week, peaking in week 3. Your muscle secondary adds hypertrophy accessory volume onto every strength day — extra accessory work after the heavy sets — so you build muscle without spending a separate day or diluting the strength signal.";
     if (h > 0 && c === 0)
       return isBw
         ? "Strength Focus runs a 4-week progression on the main bodyweight families — tempos slow and holds lengthen each week, peaking in week 3. The extra hypertrophy days add muscle without competing for the strength signal — moderate-RIR work and accessory variants on different days from your hardest sessions."

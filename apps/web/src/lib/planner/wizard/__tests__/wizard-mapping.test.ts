@@ -19,11 +19,24 @@ describe("resolveArchetype — primary × secondary mapping", () => {
     expect(r?.sessions).toEqual({ strength: 4, hypertrophy: 0, cardio: 0, tendon: 0 });
   });
 
-  it("strength + muscle → strength_anchor, lift-led distribution", () => {
-    // 4 effective → primary=3, secondary=1
+  it("strength + muscle → strength_anchor, all strength days + hypertrophy accessory tilt (no phantom day)", () => {
+    // ADR 0020: the muscle secondary is an accessory volume tilt ON the
+    // strength days, not a standalone hypertrophy day. Preview must match the
+    // block the engine builds: every day is a strength day, flagged with the
+    // hypertrophy accessory emphasis.
     const r = resolveArchetype({ days: 4, goal: "strength", secondary: "muscle", twoADay: false });
     expect(r?.id).toBe("strength_anchor");
-    expect(r?.sessions).toEqual({ strength: 3, hypertrophy: 1, cardio: 0, tendon: 0 });
+    expect(r?.sessions).toEqual({ strength: 4, hypertrophy: 0, cardio: 0, tendon: 0 });
+    expect(r?.accessoryEmphasis).toBe("hypertrophy");
+  });
+
+  it("strength + muscle has the SAME session breakdown as strength + skip (tilt is within-day)", () => {
+    const muscle = resolveArchetype({ days: 4, goal: "strength", secondary: "muscle", twoADay: false });
+    const skip = resolveArchetype({ days: 4, goal: "strength", secondary: "skip", twoADay: false });
+    expect(muscle?.sessions).toEqual(skip?.sessions);
+    // The only difference is the emphasis flag — skip has none.
+    expect(skip?.accessoryEmphasis).toBe(null);
+    expect(muscle?.accessoryEmphasis).toBe("hypertrophy");
   });
 
   it("strength + cardio → concurrent_hybrid (hybrid distribution)", () => {
