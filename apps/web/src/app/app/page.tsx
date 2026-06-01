@@ -1472,8 +1472,13 @@ function PlannedSessionCard({
   // Movement names + accessory tally are rendered by
   // `<SessionPreviewBody variant="compact">` below, which is the same
   // component the Preview page uses — so the two surfaces stay in
-  // sync by construction. The older inline chip block lived here too
-  // and double-counted everything that wasn't `main`/`back_off` —
+  // sync by construction. In the compact variant strength movements
+  // are condensed to one overview row each (name + working-set/top-set
+  // summary) so a multi-lift day doesn't balloon the hero with every
+  // warm-up + working set; cardio keeps its full structured card. The
+  // "Preview" CTA drills into the full set-by-set breakdown on the
+  // Preview page. The older inline chip block lived here too and
+  // double-counted everything that wasn't `main`/`back_off` —
   // including cardio + warm-ups + tendon — which produced a spurious
   // "+ 1 assistance" pill on cardio-only sessions that have zero
   // user-visible accessories. Removed; the preview body is now the
@@ -1628,6 +1633,14 @@ function PlannedSessionCard({
             Start workout →
           </Link>
         )}
+        <Link
+          href={`/app/plan/preview/${planned.id}`}
+          className="cp-btn big"
+          data-testid="today-preview-cta"
+          style={{ flex: "0 1 auto", minHeight: 56, justifyContent: "center" }}
+        >
+          Preview
+        </Link>
       </div>
     </section>
   );

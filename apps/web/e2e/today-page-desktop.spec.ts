@@ -61,14 +61,16 @@ test.describe("@desktop today page (Phase 1)", () => {
     const href = await cta.getAttribute("href");
     expect(href).toBe(`/app/sessions/start/${seed.todayPlannedId}`);
 
-    // The previous "Preview workout" secondary link was removed once
-    // the hero started rendering the SessionPreviewBody inline — the
-    // drill-in target no longer adds new information. The deep-link
-    // route still exists (`/app/plan/preview/[plannedId]`) for other
-    // callers; just no longer surfaced from Today.
-    await expect(
-      page.getByRole("link", { name: /^preview workout$/i }),
-    ).toHaveCount(0);
+    // The hero now condenses strength to overview rows and exposes a
+    // secondary "Preview" CTA that drills into the full set-by-set
+    // breakdown on the Preview page (`/app/plan/preview/[plannedId]`).
+    const preview = page.getByTestId("today-preview-cta").first();
+    await expect(preview).toBeVisible();
+    await expect(preview).toHaveText(/^preview$/i);
+    await expect(preview).toHaveAttribute(
+      "href",
+      `/app/plan/preview/${seed.todayPlannedId}`,
+    );
 
     // Clicking Start auto-creates the session and lands on the log surface.
     // (The pre-session check-in interstitial was removed; the Today-page
