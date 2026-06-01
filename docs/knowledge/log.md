@@ -355,3 +355,6 @@ Per-block aesthetic specialisation: user picks 0-2 muscles from a 12-group allow
 
 ## [2026-05-30] refine | Quick workout UX sweep (#222)
 Inline duration chip picker replaces 30-min hardcoded default; single + Add to workout (kills regression); edit cardio page in min + M:SS/km via shared lib/cardio/units.ts; context-aware edit (prescription-only / logged / Strava-readonly); strength empty-state placeholder; cardio block renamed cardio session; hybrid finish bar clarifier.
+
+## [2026-06-01] decision | Brand identity locked — SxC (docs/design/brand-identity.md)
+Consumer brand SxC (Strength x Cardio), domain getsxc.app. Wordmark Archivo Bold 700 + green x multiplier glyph; descriptor STRENGTH x CARDIO in JetBrains Mono 500 wide-tracked (.28em). Iron palette + accent green mapped to existing --cp-accent/--cp-text. App changes: header H glyph -> theme-adaptive S x C live-text wordmark (TopNav.tsx); Archivo via next/font as --font-brand + OpenGraph/Twitter metadata (layout.tsx); charcoal app-icon master + favicon swapped; outlined-path brand SVGs under public/branding; 1200x630 OG card public/og-image.png. Spec doc added to index under Feature design docs.
