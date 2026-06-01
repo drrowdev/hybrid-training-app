@@ -575,6 +575,13 @@
       "when": 1782936000000,
       "tag": "0081_profiles_preferred_cardio_modalities",
       "breakpoints": false
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1783022400000,
+      "tag": "0082_training_blocks_goal_secondary_focus",
+      "breakpoints": false
     }
   ]
 }
