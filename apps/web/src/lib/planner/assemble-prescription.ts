@@ -421,6 +421,9 @@ export function assemblePrescriptionItems(
             bulletproofRoles: catalogEntry.bulletproofRoles,
             functionalRoles: catalogEntry.functionalRoles,
             primaryMuscles: catalogEntry.primaryMuscles,
+            // ADR 0022 — record sets so the next day's per-muscle aesthetic
+            // progress accumulator can credit weekly volume in sets, not items.
+            sets: p.sets,
           });
         }
       }
