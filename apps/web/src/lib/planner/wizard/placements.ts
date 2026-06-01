@@ -163,6 +163,14 @@ function bucketKey(kind: string, sub: string): string {
  * When `placements` is null / undefined / empty, returns the input
  * unchanged — preserves behaviour for blocks created before this fix
  * and for in-progress wizard submissions that race the rollout.
+ *
+ * Guarantees the returned templates carry **unique** `(dayIndex, slot)`
+ * pairs. A partial placement set can otherwise leave a leftover canonical
+ * template on the same day+slot as a placed session, which would violate
+ * `planned_sessions_block_week_day_slot_unique_idx` on insert and abort
+ * block creation. Placed templates win their requested slot; leftover
+ * templates keep their canonical slot when free and relocate to the nearest
+ * free day otherwise.
  */
 export function applyPlacementsToActiveDays(
   activeDays: DayTemplate[],
@@ -195,7 +203,11 @@ export function applyPlacementsToActiveDays(
   const consumed = new WeakSet<Placement>();
   const kindCursor = new Map<string, number>();
 
-  return activeDays.map((day) => {
+  // Phase 1 — resolve each canonical template to the placement that should
+  // own it (sub-kind match first, then kind-only fallback). Records the
+  // desired (dayIndex, slot) per template *without* committing it, so Phase 2
+  // can guarantee the final set is collision-free.
+  const desired: ({ dayIndex: number; slot: PlacementSlot } | null)[] = activeDays.map((day) => {
     const subKey = bucketKey(day.kind, templateSubKind(day));
     const subBucket = byKindSub.get(subKey);
     const subIdx = subCursor.get(subKey) ?? 0;
@@ -203,7 +215,7 @@ export function applyPlacementsToActiveDays(
     if (placement) {
       subCursor.set(subKey, subIdx + 1);
       consumed.add(placement);
-      return { ...day, dayIndex: placement.dayIndex, slot: placement.slot } as DayTemplate;
+      return { dayIndex: placement.dayIndex, slot: placement.slot };
     }
 
     // Fall back to kind-only — pick the next unconsumed placement of
@@ -217,10 +229,73 @@ export function applyPlacementsToActiveDays(
         const fallback = kindBucket[idx]!;
         kindCursor.set(kindKey, idx + 1);
         consumed.add(fallback);
-        return { ...day, dayIndex: fallback.dayIndex, slot: fallback.slot } as DayTemplate;
+        return { dayIndex: fallback.dayIndex, slot: fallback.slot };
       }
     }
 
-    return day;
+    return null;
   });
+
+  // Phase 2 — commit assignments so no two templates share the same
+  // (dayIndex, slot). Without this guard a *partial* placement set (fewer
+  // user-placed sessions than canonical templates of a kind) can leave a
+  // leftover template on a canonical day that a placed session already
+  // occupies. That collision violates
+  // planned_sessions_block_week_day_slot_unique_idx at insert time and aborts
+  // block creation ("duplicate key value violates unique constraint"). Placed
+  // templates claim their requested slot first (user intent is authoritative);
+  // leftover templates then keep their canonical slot when it's free, else
+  // relocate to the nearest free day.
+  const used = new Set<string>();
+  const result: DayTemplate[] = new Array(activeDays.length);
+  const slotKey = (dayIndex: number, slot: PlacementSlot) => `${dayIndex}|${slot}`;
+
+  const claim = (preferred: {
+    dayIndex: number;
+    slot: PlacementSlot;
+  }): { dayIndex: number; slot: PlacementSlot } => {
+    if (!used.has(slotKey(preferred.dayIndex, preferred.slot))) {
+      used.add(slotKey(preferred.dayIndex, preferred.slot));
+      return preferred;
+    }
+    // Preferred slot is taken — find the nearest free day for the same slot,
+    // then any free (day, slot) combination as a last resort.
+    for (let d = 0; d <= 6; d++) {
+      if (!used.has(slotKey(d, preferred.slot))) {
+        used.add(slotKey(d, preferred.slot));
+        return { dayIndex: d, slot: preferred.slot };
+      }
+    }
+    for (const slot of ["single", "am", "pm"] as PlacementSlot[]) {
+      for (let d = 0; d <= 6; d++) {
+        if (!used.has(slotKey(d, slot))) {
+          used.add(slotKey(d, slot));
+          return { dayIndex: d, slot };
+        }
+      }
+    }
+    // Unreachable in practice (21 possible slots ≫ max templates). Keep the
+    // preferred slot rather than throw — no worse than the pre-fix behaviour.
+    return preferred;
+  };
+
+  // Pass 1: placement-matched templates claim their requested slot.
+  activeDays.forEach((day, i) => {
+    const want = desired[i];
+    if (!want) return;
+    const got = claim(want);
+    result[i] = { ...day, dayIndex: got.dayIndex, slot: got.slot } as DayTemplate;
+  });
+  // Pass 2: leftover templates keep their canonical slot when free, else move.
+  activeDays.forEach((day, i) => {
+    if (desired[i]) return;
+    const canonicalSlot = (day.slot ?? "single") as PlacementSlot;
+    const got = claim({ dayIndex: day.dayIndex, slot: canonicalSlot });
+    result[i] =
+      got.dayIndex === day.dayIndex && got.slot === canonicalSlot
+        ? day
+        : ({ ...day, dayIndex: got.dayIndex, slot: got.slot } as DayTemplate);
+  });
+
+  return result;
 }
