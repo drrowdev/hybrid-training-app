@@ -4,12 +4,12 @@
  * TopNav — desktop top navigation bar.
  *
  * Layout (left → centre → right):
- *   1. Brand glyph (big green H) → /app
+ *   1. Brand wordmark (S×C, green ×) → /app
  *   2. Primary tabs: Today / Plan / Stats / Settings with pill-style active
  *      highlight via usePathname().
  *   3. Status cluster (TopBarRight): Search / sync / bell / avatar.
  *
- * Mobile (≤768 px): primary tabs, brand glyph, and the right cluster
+ * Mobile (≤768 px): primary tabs, brand wordmark, and the right cluster
  * are all hidden via CSS so the BottomTabBar + Today-page header take
  * over. The header itself stays sticky for the safe-area inset and
  * the brand link remains in the DOM for screen-readers.
@@ -119,23 +119,23 @@ export function TopNav({
         <Link
           href="/app"
           data-testid="topnav-brand"
-          aria-label="Hybrid — home"
+          aria-label="SxC — home"
           className="cp-topnav-brand"
           style={{
             textDecoration: "none",
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            color: "var(--cp-accent)",
-            fontWeight: 800,
-            fontSize: 24,
+            fontFamily: "var(--font-brand), system-ui, sans-serif",
+            fontWeight: 700,
+            fontSize: 22,
             lineHeight: 1,
             letterSpacing: "-0.02em",
-            width: 32,
+            color: "var(--cp-text)",
             height: 32,
           }}
         >
-          H
+          S<span style={{ color: "var(--cp-accent)", margin: "0 1px" }}>×</span>C
         </Link>
 
       <nav

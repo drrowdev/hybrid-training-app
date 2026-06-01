@@ -2,7 +2,7 @@
 
 **Purpose:** Catalog of all hand-off files for the hybrid training app project. Organized by role in the Karpathy personal-knowledge-base pattern (plan §6.10): raw sources are immutable; wiki pages are LLM-maintained; the schema governs ingest, citation, and lint workflows. This file is the seed of `docs/knowledge/index.md` in the eventual repo.
 
-**Last updated:** 2026-05-30
+**Last updated:** 2026-06-01
 
 ---
 
@@ -73,6 +73,7 @@ Per-feature design notes that capture rationale, data model, UX, engine deltas, 
 
 | [`docs/design/prs-and-tm-progression.md`](../design/prs-and-tm-progression.md) | **PRs + auto TM progression (planned).** Three PR kinds (weight, reps-at-weight, e1RM); AMRAP-driven confidence-gate TM bump suggestion with 28-day cooldown, hard gates (cooldown, no-duplicate proposal, active limitations), and soft-signal scoring (heavy-week top-set outperformance + GRM<0.93 fatigue mask). Block-complete secondary trigger. Auto-deload after 2 GRM-real misses. New tm_history table + tm_change_reason enum. Per-lift TM trend chart. Build queued. |
 | [`docs/design/accessory-schema.md`](../design/accessory-schema.md) | **Accessory schema — research-grounded redesign (2026-05-21).** Supersedes the v1 design in `hypertrophy-accessories.md`. Accessory scheduling backed by data across all archetypes (Strength / Hypertrophy / Endurance / Concurrent-Hybrid / Maintenance / Rebuild) including two-a-day variants. |
+| [`docs/design/brand-identity.md`](../design/brand-identity.md) | **Brand identity — SxC (locked 2026-06-01).** Consumer brand `SxC` (Strength × Cardio), domain `getsxc.app`. Wordmark Archivo Bold 700 with green `×` multiplier glyph; descriptor `STRENGTH × CARDIO` in JetBrains Mono 500, wide-tracked (.28em). Iron palette (`#1A1A1A`/`#F4F3F1`) + accent green (`#65A30D` light / `#A3E635` dark) mapped to `--cp-accent`/`--cp-text`. Header renders the wordmark as theme-adaptive live text; charcoal app-icon master (never green-tile, contrast rule); outlined-path SVGs + 1200×630 OG card under `public/branding`/`public/og-image.png`. Usage rules + asset catalog inline. |
 
 ## Decisions / ADRs
 
