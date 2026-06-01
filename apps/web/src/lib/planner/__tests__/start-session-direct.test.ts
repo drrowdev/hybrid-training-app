@@ -242,6 +242,38 @@ describe("startSessionDirect — no pre-workout check-in", () => {
     );
   });
 
+  it("skips revalidatePath when skipRevalidate is set (render-time caller)", async () => {
+    // The /app/sessions/start/[plannedId] page invokes this action during
+    // render. Next 16 makes revalidatePath-during-render a hard throw, so
+    // the page passes { skipRevalidate: true }. The insert + link + redirect
+    // must still happen; only the revalidation is suppressed. /app and
+    // /app/plan are cookie-dynamic (staleTimes.dynamic=0) so the started
+    // state still shows on the next navigation.
+    state.planned = {
+      id: VALID_UUID,
+      title: "Upper push",
+      slot: "single",
+      planned_at: "2026-05-18T07:00:00Z",
+      prescription: null,
+      completed_session_id: null,
+      user_id: "user-1",
+    };
+
+    await expect(
+      startSessionDirect(VALID_UUID, { skipRevalidate: true }),
+    ).rejects.toBeInstanceOf(RedirectError);
+
+    // Side effects still happen: row inserted, planned linked, redirect fired.
+    expect(state.sessionInsertCalls).toHaveLength(1);
+    expect(state.plannedUpdateCalls).toEqual([
+      { payload: { completed_session_id: "new-session-uuid" }, id: VALID_UUID },
+    ]);
+    expect(state.redirected).toBe("/app/sessions/new-session-uuid");
+
+    // But NO revalidatePath calls — that is what would crash during render.
+    expect(state.revalidated).toEqual([]);
+  });
+
   it("is idempotent: redirects to the already-linked session without re-inserting", async () => {
     state.planned = {
       id: VALID_UUID,

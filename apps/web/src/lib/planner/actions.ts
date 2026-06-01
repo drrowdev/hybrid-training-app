@@ -2114,7 +2114,13 @@ export async function startSessionFromPlan(formData: FormData): Promise<void> {
  *      `completed_session_id` so the plan calendar knows the row is
  *      now linked-and-in-progress.
  *   3. Revalidate `/app` + `/app/plan` so the CTAs flip on the next
- *      paint.
+ *      paint. SKIPPED when `options.skipRevalidate` is set — the
+ *      URL-driven `/app/sessions/start/[plannedId]` page invokes this
+ *      helper DURING RENDER, where `revalidatePath` is unsupported in
+ *      Next 16 (it throws). That path relies on `/app` + `/app/plan`
+ *      being cookie-dynamic routes (router-cache `staleTimes.dynamic=0`),
+ *      so a fresh server render on the next navigation reflects the
+ *      started session without an explicit revalidate.
  *   4. Redirect to `/app/sessions/<new-id>` — the session log surface.
  *
  * Idempotent re-entry: if the planned row already has a
@@ -2123,7 +2129,7 @@ export async function startSessionFromPlan(formData: FormData): Promise<void> {
  */
 export async function startSessionDirect(
   plannedId: string,
-  options?: { performedAt?: string },
+  options?: { performedAt?: string; skipRevalidate?: boolean },
 ): Promise<never> {
   const parsed = startPlannedSchema.safeParse({ id: plannedId });
   if (!parsed.success) throw new Error("Invalid planned session id");
@@ -2204,14 +2210,18 @@ export async function startSessionDirect(
       .eq("id", planned.id)
       .maybeSingle();
     if (winner?.completed_session_id) {
-      revalidatePath("/app");
-      revalidatePath("/app/plan");
+      if (!options?.skipRevalidate) {
+        revalidatePath("/app");
+        revalidatePath("/app/plan");
+      }
       redirect(`/app/sessions/${winner.completed_session_id}`);
     }
     throw new Error("Failed to link planned session after race");
   }
 
-  revalidatePath("/app");
-  revalidatePath("/app/plan");
+  if (!options?.skipRevalidate) {
+    revalidatePath("/app");
+    revalidatePath("/app/plan");
+  }
   redirect(`/app/sessions/${session.id}`);
 }

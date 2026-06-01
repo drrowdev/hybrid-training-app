@@ -22,5 +22,9 @@ export default async function StartSessionPage({
   if (!/^[0-9a-f-]{36}$/i.test(plannedId)) redirect("/app");
   // `startSessionDirect` always redirects — either to the linked
   // session (idempotent re-entry) or to the newly created one.
-  await startSessionDirect(plannedId);
+  // `skipRevalidate` because this runs DURING RENDER, where
+  // `revalidatePath` is unsupported in Next 16 (it throws). `/app` and
+  // `/app/plan` are cookie-dynamic, so the next navigation re-renders
+  // fresh without an explicit revalidate.
+  await startSessionDirect(plannedId, { skipRevalidate: true });
 }
