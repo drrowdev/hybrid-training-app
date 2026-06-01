@@ -17,7 +17,7 @@ import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
 import { todayYmd } from "@/lib/dates";
 import { effectiveTimeOfDay, gapHoursBetween } from "@/lib/planner/time-of-day";
 import { getRegionFreshness, type FreshnessConflict } from "@/lib/stats/region-freshness-queries";
-import { getRegionSpikes, getElbowForearmAtlRatio } from "@/lib/stats/region-spike-queries";
+import { getRegionSpikes } from "@/lib/stats/region-spike-queries";
 import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
 import { findHeavyOnRecoveringConflictWithMuscles } from "@/lib/muscle/muscle-conflict";
 import { StravaStaleSyncTrigger } from "@/components/StravaStaleSyncTrigger";
@@ -67,7 +67,6 @@ import {
   isFocusMuscle,
   type FocusMuscle,
 } from "@/lib/planner/focus-muscles";
-import { FOREARM_GATE_ATL_THRESHOLD } from "@/lib/planner/focus-muscle-targets";
 
 /**
  * Per-day cell used by the inline week strip. Mirrors the legacy
@@ -659,18 +658,6 @@ export default async function TodayPage() {
     return `${archetypeName.toUpperCase()} · W${week} · ${eyebrowText}`;
   })();
 
-  // Migration 0079 — forearm tendon-gate live indicator. Only fetch
-  // the ratio when forearms is a focus muscle on the active block; the
-  // helper itself fails open to 1.0 (no spike) when history is missing.
-  const forearmGateActiveThisWeek =
-    activeBlock && activeBlock.focusMuscles.includes("forearms")
-      ? (await getElbowForearmAtlRatio(
-          supabase,
-          userId,
-          profile?.timezone ?? "UTC",
-        )) > FOREARM_GATE_ATL_THRESHOLD
-      : false;
-
   return (
     <div
       style={{ display: "grid", gap: 18, minWidth: 0 }}
@@ -700,7 +687,6 @@ export default async function TodayPage() {
                   {activeBlock.focusMuscles.length > 0 && (
                     <FocusBadge
                       muscles={activeBlock.focusMuscles}
-                      gateActive={forearmGateActiveThisWeek}
                     />
                   )}
                 </span>
@@ -715,7 +701,6 @@ export default async function TodayPage() {
                   {activeBlock.focusMuscles.length > 0 && (
                     <FocusBadge
                       muscles={activeBlock.focusMuscles}
-                      gateActive={forearmGateActiveThisWeek}
                     />
                   )}
                 </span>
@@ -815,31 +800,21 @@ export default async function TodayPage() {
 /**
  * Migration 0079 — Today hero focus-muscle badge. Pill-shape, rendered
  * after the eyebrow date when the active block has user-chosen focus
- * muscles. Appends "(reduced this week)" + a tooltip when the forearm
- * tendon-gate is active for the current week.
+ * muscles.
  */
 function FocusBadge({
   muscles,
-  gateActive,
 }: {
   muscles: readonly string[];
-  gateActive: boolean;
 }) {
   const valid = muscles.filter(isFocusMuscle) as FocusMuscle[];
   if (valid.length === 0) return null;
   const label = valid.map((m) => FOCUS_MUSCLE_LABEL[m]).join(", ");
-  const showGate = gateActive && valid.includes("forearms");
   return (
     <>
       <span style={{ margin: "0 8px", opacity: 0.5 }}>·</span>
       <span
         data-testid="today-focus-badge"
-        data-gate-active={showGate ? "true" : "false"}
-        title={
-          showGate
-            ? "Focus reduced this week due to elevated elbow/forearm load — let it settle."
-            : undefined
-        }
         style={{
           display: "inline-flex",
           alignItems: "center",
@@ -857,11 +832,6 @@ function FocusBadge({
       >
         <span aria-hidden="true">🎯</span>
         <span>Focus: {label}</span>
-        {showGate && (
-          <span style={{ marginLeft: 4, color: "var(--cp-text-muted)", fontWeight: 500 }}>
-            (reduced this week)
-          </span>
-        )}
       </span>
     </>
   );
