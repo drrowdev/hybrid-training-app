@@ -74,6 +74,17 @@ export const trainingBlocks = pgTable("training_blocks", {
     .notNull()
     .default(sql`'{}'::text[]`),
   /**
+   * Wizard PRIMARY goal + SECONDARY focus captured at block creation
+   * (migration 0082, ADR 0020). Raw wizard channel values are stored
+   * verbatim — `goal` ∈ {strength,muscle,cardio,resilience} and
+   * `secondaryFocus` ∈ that set plus {skip,maintenance,none} — to avoid
+   * information loss; `resolveSecondaryFocus` collapses anything outside the
+   * tiltable set to `none` at read time. Both NULL on legacy / custom-builder
+   * blocks, which the engine treats as the pre-ADR-0020 baseline (no tilt).
+   */
+  goal: text("goal"),
+  secondaryFocus: text("secondary_focus"),
+  /**
    * Set when status transitions out of 'active' (manual end → 'archived'
    * or auto-complete → 'completed'). Single source of truth for
    * "when did this block end"; survives later `updated_at` touches

@@ -105,6 +105,11 @@ export function PlanNewSwitch({
     for (const m of submit.focusMuscles) {
       fd.append("focusMuscles", m);
     }
+    // ADR 0020 — persist + act on the wizard goal/secondary. Omit when null
+    // (maintenance shortcut / no secondary chosen) so the server reads them as
+    // absent → NULL columns → no volume tilt.
+    if (submit.goal) fd.set("goal", submit.goal);
+    if (submit.secondary) fd.set("secondaryFocus", submit.secondary);
     const result = await action(fd);
     if (result.ok) {
       router.push("/app/plan");

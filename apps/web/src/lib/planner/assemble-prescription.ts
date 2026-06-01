@@ -53,6 +53,13 @@ import {
   hypertrophyAccessorySetsPerItem,
   type EffortPreference,
 } from "./effort-preference";
+import {
+  isActiveTilt,
+  secondaryVolumeTilt,
+  sessionDurationCapMinutes,
+  type SecondaryFocus,
+} from "./secondary-focus";
+import { estimateSessionSeconds } from "@/lib/sessions/estimate-duration";
 /**
  * Mutates `items` in place, prepending a warmup ladder for every
  * distinct main-lift movement. The ladder is built off the heaviest
@@ -245,6 +252,15 @@ export function assemblePrescriptionItems(
    * archetypes.
    */
   effortPreference: EffortPreference = "standard",
+  /**
+   * ADR 0020 — wizard SECONDARY focus, resolved to the engine enum. A
+   * `"muscle"` secondary on a strength / endurance primary tilts the accessory
+   * block toward hypertrophy volume (+1 movement, +1 set/movement), then trims
+   * that tilt to the session-duration cap. `"none"` (the default) is a
+   * byte-identical no-op on every archetype — every existing call site keeps
+   * its exact pre-ADR-0020 prescription.
+   */
+  secondaryFocus: SecondaryFocus = "none",
 ): PrescriptionItem[] {
   const items =
     day.kind === "strength" && omitMainStrength
@@ -281,118 +297,147 @@ export function assemblePrescriptionItems(
 
   // Dynamic picker path.
   if (archetype.accessoryProfile && catalog && weekAccessoryHistory) {
+    const accessoryProfile = archetype.accessoryProfile;
+    const pickerCatalog = catalog;
+    const history = weekAccessoryHistory;
+
     // ADR 0016 volume axis — for the hypertrophy archetype only, scale the
     // aesthetic sets-per-movement by the user's effort/volume dial. Movement
     // SELECTION is untouched (the picker's role / focus / dedup invariants
     // hold); only how many sets each chosen accessory carries moves. `low`
     // trims, `high` pushes toward the 10–12 effective-sets/muscle/week zone.
     // `standard` and every non-hypertrophy archetype are byte-identical.
-    const pickerProfile =
+    const effortAdjustedSetsPerItem =
       archetype.id === "hypertrophy_anchor" && effortPreference !== "standard"
-        ? {
-            ...archetype.accessoryProfile,
-            aesthetic: {
-              ...archetype.accessoryProfile.aesthetic,
-              setsPerItem: hypertrophyAccessorySetsPerItem(
-                effortPreference,
-                archetype.accessoryProfile.aesthetic.setsPerItem,
-              ),
-            },
-          }
-        : archetype.accessoryProfile;
-    const picks = pickAccessoriesForSession({
-      profile: pickerProfile,
-      weekDeloadScale,
-      catalog,
-      weekAccessoryHistory,
-      filters: {
-        blockedRegions: limitationsContext.blockedRegions,
-        blockedMuscles: limitationsContext.blockedMuscles,
-        blockedMovementIds: limitationsContext.blockedMovementIds,
-        allowedMovementIds: limitationsContext.allowedMovementIds,
-        concurrentStressActive: false, // wired in a follow-up pass
-        recentlyUsedMovementIds: recentlyUsedAccessoryIds,
-        tendinopathyActive: limitationsContext.tendinopathyActive,
-      },
-      // Beginner-onboarding ramp (CP-3 heuristic, CP-5 principle):
-      // compress accessory volume for declared beginner/novice users
-      // during their first three block weeks. No-op for everyone else
-      // and from week 4 onward. Main lifts, warmups, and cardio are
-      // not affected — the ramp is applied at the accessory picker
-      // boundary only.
-      //
-      // Focus-muscle bias (migration 0079, CP-2): when the active
-      // block has user-chosen focus muscles, `defaultMuscleTargets`
-      // pulls volume from non-focus aesthetic muscles toward the
-      // focus group(s). Substitution invariant preserved — total set
-      // count unchanged. Concurrent-load mod stays available even
-      // though we don't currently feed it (the picker's existing
-      // concurrent path is the truth-of-record for set scaling).
-      perMuscleTargets: applyScalarToTargets(
-        defaultMuscleTargets({
-          focusMuscles,
-          elbowForearmAtlRatio,
-        }).targetsByMuscle,
-        onboardingRampScalar(experience, weekIndex),
-      ),
-      maxItems: applyScalarToMaxItems(
-        archetype.accessoryProfile.aesthetic.itemsPerSession + 4, // small budget for durability + functional fills
-        onboardingRampScalar(experience, weekIndex),
-      ),
-      powerEmphasis,
-      equipment,
-      experience,
-    });
-    for (const p of picks) {
-      const catalogEntry = catalog.find((c) => c.id === p.movementId);
-      const bucket = inferAccessoryBucket({
-        reason: p.reason,
-        slug: catalogEntry?.slug ?? p.slug,
-        primaryRegion: catalogEntry?.primaryRegion,
-        primaryMuscles: catalogEntry?.primaryMuscles,
-        isCompound: catalogEntry?.isCompound,
-        bulletproofRoles: catalogEntry?.bulletproofRoles,
-        functionalRoles: catalogEntry?.functionalRoles,
-        highStrainTendon: catalogEntry?.highStrainTendon,
+        ? hypertrophyAccessorySetsPerItem(
+            effortPreference,
+            accessoryProfile.aesthetic.setsPerItem,
+          )
+        : accessoryProfile.aesthetic.setsPerItem;
+
+    const ramp = onboardingRampScalar(experience, weekIndex);
+    // Focus-muscle bias (migration 0079, CP-2): when the active block has
+    // user-chosen focus muscles, `defaultMuscleTargets` pulls volume from
+    // non-focus aesthetic muscles toward the focus group(s). Substitution
+    // invariant preserved — total set count unchanged. Beginner-onboarding ramp
+    // (CP-3 / CP-5): compress accessory volume for declared beginner/novice
+    // users during their first three block weeks; no-op otherwise. Both are
+    // tilt-independent, so resolve them once.
+    const perMuscleTargets = applyScalarToTargets(
+      defaultMuscleTargets({
+        focusMuscles,
+        elbowForearmAtlRatio,
+      }).targetsByMuscle,
+      ramp,
+    );
+
+    // ADR 0020 secondary-focus volume tilt — an additive bump to the accessory
+    // aesthetic profile (+1 set/movement, +1 movement) for a `muscle` secondary
+    // on a strength / endurance primary. `NO_TILT` for every other (primary,
+    // secondary) combination, so the closure below collapses to the exact
+    // pre-ADR-0020 single-pick path for every existing call site.
+    const tilt = secondaryVolumeTilt(archetype.id, secondaryFocus);
+
+    // Build the accessory section for a given tilt magnitude WITHOUT touching
+    // outer state: returns the materialised items plus the week-history delta,
+    // so the governor can price candidate tilts and only commit the winner's
+    // dedup history.
+    const buildAccessorySection = (
+      setBonus: number,
+      itemBonus: number,
+    ): {
+      accessoryItems: PrescriptionItem[];
+      historyDelta: WeekAccessoryHistoryItem[];
+    } => {
+      const pickerProfile = {
+        ...accessoryProfile,
+        aesthetic: {
+          ...accessoryProfile.aesthetic,
+          setsPerItem: effortAdjustedSetsPerItem + setBonus,
+        },
+      };
+      const picks = pickAccessoriesForSession({
+        profile: pickerProfile,
+        weekDeloadScale,
+        catalog: pickerCatalog,
+        weekAccessoryHistory: history,
+        filters: {
+          blockedRegions: limitationsContext.blockedRegions,
+          blockedMuscles: limitationsContext.blockedMuscles,
+          blockedMovementIds: limitationsContext.blockedMovementIds,
+          allowedMovementIds: limitationsContext.allowedMovementIds,
+          concurrentStressActive: false, // wired in a follow-up pass
+          recentlyUsedMovementIds: recentlyUsedAccessoryIds,
+          tendinopathyActive: limitationsContext.tendinopathyActive,
+        },
+        perMuscleTargets,
+        maxItems: applyScalarToMaxItems(
+          // small budget for durability + functional fills; +itemBonus is the
+          // secondary-focus tilt's extra hypertrophy movement.
+          accessoryProfile.aesthetic.itemsPerSession + 4 + itemBonus,
+          ramp,
+        ),
+        powerEmphasis,
+        equipment,
+        experience,
       });
-      const intensity = accessoryIntensity({
-        archetype: archetype.id,
-        bucket,
-        weekIndex,
-      });
-      const slice = accessoryItemPrescription({
-        bucket,
-        intensity,
-        reps: p.reps,
-      });
-      items.push({
-        movementId: p.movementId,
-        movementSlug: p.slug,
-        movementName: p.displayName,
-        kind: "accessory",
-        sets: p.sets,
-        intensityLabel: p.reason,
-        notes: p.rationale ? p.rationale : undefined,
-        ...slice,
-      });
-      if (catalogEntry) {
-        weekAccessoryHistory.push({
-          movementId: catalogEntry.id,
-          bulletproofRoles: catalogEntry.bulletproofRoles,
-          functionalRoles: catalogEntry.functionalRoles,
-          primaryMuscles: catalogEntry.primaryMuscles,
+      const accessoryItems: PrescriptionItem[] = [];
+      const historyDelta: WeekAccessoryHistoryItem[] = [];
+      for (const p of picks) {
+        const catalogEntry = pickerCatalog.find((c) => c.id === p.movementId);
+        const bucket = inferAccessoryBucket({
+          reason: p.reason,
+          slug: catalogEntry?.slug ?? p.slug,
+          primaryRegion: catalogEntry?.primaryRegion,
+          primaryMuscles: catalogEntry?.primaryMuscles,
+          isCompound: catalogEntry?.isCompound,
+          bulletproofRoles: catalogEntry?.bulletproofRoles,
+          functionalRoles: catalogEntry?.functionalRoles,
+          highStrainTendon: catalogEntry?.highStrainTendon,
         });
+        const intensity = accessoryIntensity({
+          archetype: archetype.id,
+          bucket,
+          weekIndex,
+        });
+        const slice = accessoryItemPrescription({
+          bucket,
+          intensity,
+          reps: p.reps,
+        });
+        accessoryItems.push({
+          movementId: p.movementId,
+          movementSlug: p.slug,
+          movementName: p.displayName,
+          kind: "accessory",
+          sets: p.sets,
+          intensityLabel: p.reason,
+          notes: p.rationale ? p.rationale : undefined,
+          ...slice,
+        });
+        if (catalogEntry) {
+          historyDelta.push({
+            movementId: catalogEntry.id,
+            bulletproofRoles: catalogEntry.bulletproofRoles,
+            functionalRoles: catalogEntry.functionalRoles,
+            primaryMuscles: catalogEntry.primaryMuscles,
+          });
+        }
       }
-    }
+      return { accessoryItems, historyDelta };
+    };
+
     // ─── Power Emphasis Phase 3 — PAP / PAPE primer ───
-    // Prepended *after* the rest of the prescription is assembled so
-    // it's the first item the lifter sees. Pattern-matched to the
-    // day's primary lift; honours blocked regions + tendinopathy.
+    // Pattern-matched to the day's primary lift; honours blocked regions +
+    // tendinopathy. Tilt-independent (it reads previous-block recency, not this
+    // session's picks), so resolve it once — both for the duration estimate and
+    // for final placement (unshifted to the front, unchanged from before).
+    let primerItem: PrescriptionItem | undefined;
     if (powerTransformsApply) {
       const strengthDay = day as StrengthDay;
       const pick = pickPotentiationMovement({
         strengthRole: strengthDay.role,
-        catalog,
+        catalog: pickerCatalog,
         blockedRegions: limitationsContext.blockedRegions,
         blockedMuscles: limitationsContext.blockedMuscles,
         blockedMovementIds: limitationsContext.blockedMovementIds,
@@ -401,10 +446,59 @@ export function assemblePrescriptionItems(
         recentlyUsedMovementIds: recentlyUsedAccessoryIds,
         experience,
       });
-      if (pick) {
-        items.unshift(buildPotentiationItem(pick.movement));
+      if (pick) primerItem = buildPotentiationItem(pick.movement);
+    }
+
+    // Duration governor (ADR 0020): keep the FULLEST tilt whose estimated
+    // session stays within the duration cap. Try full → drop the extra movement
+    // → drop the extra set (→ no tilt). The estimate prices the main lifts +
+    // warmups already in `items` plus the candidate accessories + primer. When
+    // the tilt is inactive there is a single candidate, so the picker runs
+    // exactly once and this branch is byte-identical to the pre-ADR-0020 path.
+    const candidates: Array<{ setBonus: number; itemBonus: number }> =
+      isActiveTilt(tilt)
+        ? [
+            {
+              setBonus: tilt.setsPerItemDelta,
+              itemBonus: tilt.itemsPerSessionDelta,
+            },
+            { setBonus: tilt.setsPerItemDelta, itemBonus: 0 },
+            { setBonus: 0, itemBonus: 0 },
+          ]
+        : [{ setBonus: 0, itemBonus: 0 }];
+
+    let chosen = buildAccessorySection(
+      candidates[0].setBonus,
+      candidates[0].itemBonus,
+    );
+    if (candidates.length > 1) {
+      const capSec =
+        sessionDurationCapMinutes(archetype.id, secondaryFocus) * 60;
+      for (let i = 0; i < candidates.length; i++) {
+        const trial =
+          i === 0
+            ? chosen
+            : buildAccessorySection(
+                candidates[i].setBonus,
+                candidates[i].itemBonus,
+              );
+        const sec = estimateSessionSeconds([
+          ...items,
+          ...trial.accessoryItems,
+          ...(primerItem ? [primerItem] : []),
+        ]);
+        if (sec <= capSec || i === candidates.length - 1) {
+          chosen = trial;
+          break;
+        }
       }
     }
+
+    // Commit the chosen tilt: append the accessory items + their dedup history,
+    // then prepend the (tilt-independent) power primer so it leads the session.
+    for (const it of chosen.accessoryItems) items.push(it);
+    for (const h of chosen.historyDelta) history.push(h);
+    if (primerItem) items.unshift(primerItem);
     return items;
   }
 
