@@ -15,6 +15,7 @@ import {
   fetchActivityStreams,
   listActivitiesSince,
   refreshAccessToken,
+  API_BASE,
 } from "./client";
 import { writeStravaActivity } from "./write-activity";
 import { zonesFromStream } from "./zones-from-stream";
@@ -174,7 +175,7 @@ export async function syncStravaSingle(
   }
 
   const res = await fetch(
-    `https://www.strava.com/api/v3/activities/${activityId}`,
+    `${API_BASE}/activities/${activityId}`,
     {
       headers: { authorization: `Bearer ${accessToken}` },
       cache: "no-store",
