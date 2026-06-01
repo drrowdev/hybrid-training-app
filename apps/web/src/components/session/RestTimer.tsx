@@ -101,8 +101,9 @@ export function RestTimer({
         style={{
           position: "fixed",
           right: 16,
-          bottom: 88,
-          zIndex: 40,
+          bottom:
+            "calc(var(--cp-finishbar-clearance, calc(var(--cp-bottomnav-h, 0px) + env(safe-area-inset-bottom) + 96px)) + 12px)",
+          zIndex: 39,
           minWidth: 96,
           minHeight: 56,
           padding: "12px 18px",
@@ -128,8 +129,9 @@ export function RestTimer({
       style={{
         position: "fixed",
         right: 16,
-        bottom: 88,
-        zIndex: 40,
+        bottom:
+          "calc(var(--cp-finishbar-clearance, calc(var(--cp-bottomnav-h, 0px) + env(safe-area-inset-bottom) + 96px)) + 12px)",
+        zIndex: 39,
         display: "flex",
         alignItems: "center",
         gap: 6,

@@ -377,11 +377,22 @@ export function MovementFocusView({
       if (flash && (flash.isWeightPr || flash.isE1rmPr || flash.isRepPr || flash.e1rmKg != null)) {
         setPrFlash(flash);
       }
-      // Inline rest timer.
-      const secs = restSecondsForKind(SET_KIND_TO_LOG[activeItem.kind] ?? "main");
-      if (secs > 0) {
-        setRestSeconds(secs);
-        setRestToken((t) => t + 1);
+      // Inline rest timer — skipped after the final slot of this
+      // movement (B2). There is no "next set" to rest before, so a
+      // running countdown would mislabel itself "next <movement>" and
+      // its pill would linger over the Finish CTA at the exact moment
+      // the lifter wants to finish. We must also CLEAR any timer still
+      // running from the previous set (e.g. the rest-before-final-set
+      // countdown) — otherwise it lingers past completion.
+      const isLastSlot = cursor >= totalSlots - 1;
+      if (isLastSlot) {
+        setRestSeconds(0);
+      } else {
+        const secs = restSecondsForKind(SET_KIND_TO_LOG[activeItem.kind] ?? "main");
+        if (secs > 0) {
+          setRestSeconds(secs);
+          setRestToken((t) => t + 1);
+        }
       }
       onSaved?.({
         itemIndex: activeItemIndex,
