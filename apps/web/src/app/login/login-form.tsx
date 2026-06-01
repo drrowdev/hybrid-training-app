@@ -1,19 +1,12 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import {
-  signIn,
-  signInWithMagicLink,
-  signUp,
-} from "@/lib/auth/actions";
+import { signIn, signInWithMagicLink } from "@/lib/auth/actions";
 
 type Result = { error?: string; ok?: boolean; message?: string } | null;
 
 async function signInAction(_prev: Result, formData: FormData): Promise<Result> {
   return signIn(formData);
-}
-async function signUpAction(_prev: Result, formData: FormData): Promise<Result> {
-  return signUp(formData);
 }
 async function magicLinkAction(
   _prev: Result,
@@ -23,13 +16,9 @@ async function magicLinkAction(
 }
 
 export function LoginForm({ next }: { next: string }) {
-  const [mode, setMode] = useState<"signin" | "signup" | "magic">("signin");
+  const [mode, setMode] = useState<"signin" | "magic">("signin");
   const [signInState, signInForm, signInPending] = useActionState(
     signInAction,
-    null,
-  );
-  const [signUpState, signUpForm, signUpPending] = useActionState(
-    signUpAction,
     null,
   );
   const [magicState, magicForm, magicPending] = useActionState(
@@ -60,7 +49,6 @@ export function LoginForm({ next }: { next: string }) {
     <div className="w-full max-w-sm space-y-4">
       <div className="flex gap-1 p-1 rounded-lg bg-foreground/5 w-fit">
         {tab("signin", "Sign in")}
-        {tab("signup", "Sign up")}
         {tab("magic", "Magic link")}
       </div>
 
@@ -95,45 +83,6 @@ export function LoginForm({ next }: { next: string }) {
           </button>
           {signInState?.error && (
             <p className="text-sm text-red-600">{signInState.error}</p>
-          )}
-        </form>
-      )}
-
-      {mode === "signup" && (
-        <form action={signUpForm} className="space-y-3" data-testid="auth-form-signup">
-          <input
-            name="email"
-            type="email"
-            required
-            placeholder="you@example.com"
-            data-testid="auth-email-input"
-            className="w-full rounded-md border border-foreground/15 bg-transparent px-3 py-2"
-          />
-          <input
-            name="password"
-            type="password"
-            required
-            minLength={8}
-            placeholder="At least 8 characters"
-            data-testid="auth-password-input"
-            className="w-full rounded-md border border-foreground/15 bg-transparent px-3 py-2"
-          />
-          <button
-            type="submit"
-            disabled={signUpPending}
-            data-testid="auth-submit"
-            className="cp-btn primary big"
-            style={{ width: "100%" }}
-          >
-            {signUpPending ? "Creating account…" : "Create account"}
-          </button>
-          {signUpState?.error && (
-            <p className="text-sm text-red-600">{signUpState.error}</p>
-          )}
-          {signUpState?.ok && (
-            <p className="text-sm text-emerald-600" data-testid="auth-signup-confirm">
-              Check your email to confirm your account.
-            </p>
           )}
         </form>
       )}
