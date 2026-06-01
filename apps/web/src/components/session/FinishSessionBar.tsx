@@ -18,6 +18,7 @@
  */
 
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 
 export function FinishSessionBar({
   sessionId,
@@ -48,6 +49,45 @@ export function FinishSessionBar({
     ? "Log at least 1 strength set to finish"
     : "Log at least 1 set to finish";
   const label = disabled ? disabledLabel : "Finish session →";
+
+  // The armed bottom bar overlaps the floating rest-timer's corner. Publish
+  // the bar's live top-clearance (viewport-bottom → bar-top) as a CSS var so
+  // RestTimer can dock just above it — robust to subtitle wrap, safe-area, and
+  // sticky scroll state. Only the armed bottom variant participates; the dim
+  // (in-flow) bar and the banner variant remove the var so the timer falls
+  // back to its bottom-nav offset.
+  const barRef = useRef<HTMLDivElement>(null);
+  const publishesClearance = variant === "bottom" && !disabled;
+  useEffect(() => {
+    const root = document.documentElement;
+    const el = barRef.current;
+    if (!publishesClearance || !el) {
+      root.style.removeProperty("--cp-finishbar-clearance");
+      return;
+    }
+    let raf = 0;
+    const measure = () => {
+      raf = 0;
+      const rect = el.getBoundingClientRect();
+      const clearance = Math.max(0, Math.round(window.innerHeight - rect.top));
+      root.style.setProperty("--cp-finishbar-clearance", `${clearance}px`);
+    };
+    const schedule = () => {
+      if (!raf) raf = window.requestAnimationFrame(measure);
+    };
+    measure();
+    const ro = new ResizeObserver(schedule);
+    ro.observe(el);
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      if (raf) window.cancelAnimationFrame(raf);
+      root.style.removeProperty("--cp-finishbar-clearance");
+    };
+  }, [publishesClearance]);
 
   if (variant === "banner") {
     if (disabled) {
@@ -84,6 +124,7 @@ export function FinishSessionBar({
   // Bottom sticky variant.
   return (
     <div
+      ref={barRef}
       data-testid={testId}
       data-armed={disabled ? "false" : "true"}
       className={`cp-stickybar${disabled ? " cp-stickybar--dim" : ""}`}
