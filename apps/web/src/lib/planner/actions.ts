@@ -108,6 +108,7 @@ import {
 import type { BwProgress } from "@hta/db";
 import { focusMusclesSchema, type FocusMuscle } from "./focus-muscles";
 import { resolveEffortPreference } from "./effort-preference";
+import { resolveSecondaryFocus } from "./secondary-focus";
 import { getElbowForearmAtlRatio } from "@/lib/stats/region-spike-queries";
 import { getPreviousBlockAccessoryIdsByRole } from "./accessory-history-queries";
 import { archivePriorActiveBlocks } from "./archive-prior-blocks";
@@ -461,6 +462,25 @@ const createBlockSchema = z.object({
    * guard. See `lib/planner/focus-muscles.ts`.
    */
   focusMuscles: focusMusclesSchema,
+  /**
+   * ADR 0020 — wizard PRIMARY goal + SECONDARY focus. Optional: the legacy /
+   * custom-builder paths and any pre-0082 client omit them, in which case the
+   * block is created with NULL goal/secondary and the engine produces the
+   * pre-ADR-0020 baseline (no tilt). Raw wizard channel values are stored
+   * verbatim; `resolveSecondaryFocus` collapses non-tiltable values to `none`.
+   */
+  goal: z.enum(["strength", "muscle", "cardio", "resilience"]).optional(),
+  secondaryFocus: z
+    .enum([
+      "strength",
+      "muscle",
+      "cardio",
+      "resilience",
+      "skip",
+      "maintenance",
+      "none",
+    ])
+    .optional(),
 });
 
 export type CreateBlockResult =
@@ -487,6 +507,8 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       .getAll("focusMuscles")
       .map((v) => (typeof v === "string" ? v : ""))
       .filter((v) => v.length > 0),
+    goal: (formData.get("goal") as string | null) || undefined,
+    secondaryFocus: (formData.get("secondaryFocus") as string | null) || undefined,
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -529,6 +551,9 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   const equipment = resolveEquipment(profile);
   const experience = resolveDeclaredExperience(profile?.training_experience);
   const effortPreference = resolveEffortPreference(profile?.effort_preference);
+  // ADR 0020 — resolved wizard secondary focus that drives the volume tilt.
+  // `none` for legacy / custom blocks → byte-identical pre-ADR-0020 engine.
+  const secondaryFocus = resolveSecondaryFocus(parsed.data.secondaryFocus);
 
   // ADR 0017 — ranked cardio-modality preference. The catalog is loaded
   // lazily; with no preference set the resolver is a no-op and the default
@@ -874,6 +899,8 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       day_index_overrides: dayIndexOverrides,
       power_emphasis: parsed.data.powerEmphasis,
       focus_muscles: parsed.data.focusMuscles,
+      goal: parsed.data.goal ?? null,
+      secondary_focus: parsed.data.secondaryFocus ?? null,
       cardio_source: parsed.data.cardioSource,
       cardio_source_name: parsed.data.cardioSourceName,
       notes: hasAnyTm
@@ -978,6 +1005,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
               elbowForearmAtlRatio,
               day.role ? (recencyByRole.get(day.role) ?? EMPTY_RECENCY) : EMPTY_RECENCY,
               effortPreference,
+              secondaryFocus,
             );
 
       // ─── Bodyweight Phase 3 — prepend BW main + back_off items ───

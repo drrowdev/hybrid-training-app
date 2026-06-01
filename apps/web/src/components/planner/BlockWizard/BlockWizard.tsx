@@ -29,6 +29,8 @@ import {
   resolveArchetype,
   wizardOutput,
   type ResolvedArchetype,
+  type Goal,
+  type Secondary,
 } from "@/lib/planner/wizard/wizard-mapping";
 import {
   DAY_LABELS,
@@ -93,6 +95,14 @@ export type WizardSubmit = {
    * = no focus, engine produces pre-PR baseline.
    */
   focusMuscles: string[];
+  /**
+   * ADR 0020 — wizard PRIMARY goal + SECONDARY focus, forwarded so the engine
+   * can apply the secondary-focus volume tilt and persist the user's choice on
+   * the block. `goal` is null on the maintenance shortcut; `secondary` is null
+   * until the user reaches step 3.
+   */
+  goal: Goal | null;
+  secondary: Secondary | null;
 };
 
 export type TmGate = {
@@ -328,6 +338,8 @@ export function BlockWizard({
         cardioSource: state.externalCardio ? "external" : "internal",
         cardioSourceName: state.externalCardio ? state.externalCardioName.trim() : "",
         focusMuscles: state.focusMuscles.slice(),
+        goal: state.goal,
+        secondary: state.secondary,
       });
       if (!result.ok) setSubmitError(result.error);
     });
