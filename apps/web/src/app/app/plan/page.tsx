@@ -10,7 +10,6 @@ import {
   startSessionFromPlan,
   unskipPlannedSession,
   createBlock,
-  updateBlockFocus,
 } from "@/lib/planner/actions";
 import { updatePlannedSessionNotes } from "@/lib/sessions/actions";
 import { estimateSessionMinutes } from "@/lib/sessions/estimate-duration";
@@ -48,7 +47,6 @@ import {
   type RecentBlockCard,
   type TmReadinessByArchetype,
 } from "@/components/planner/BlockWizard";
-import { PlanBlockFocusCard } from "@/components/planner/PlanBlockFocusCard";
 import { getVolumeAutoregOffer, type VolumeAutoregOffer } from "@/lib/planner/autoreg-offer";
 import { acceptVolumeAutoreg } from "@/lib/planner/autoreg-actions";
 import { getLimitationResponseOffer } from "@/lib/limitations/offer";
@@ -326,12 +324,6 @@ export default async function PlanPage({
         unskipAction={unskipPlannedSession}
         updateNotesAction={updatePlannedSessionNotes}
         startSessionAction={startSessionFromPlan}
-      />
-
-      <PlanBlockFocusCard
-        blockId={block.id}
-        initialFocusMuscles={block.focusMuscles}
-        updateAction={updateBlockFocus}
       />
 
       <section
