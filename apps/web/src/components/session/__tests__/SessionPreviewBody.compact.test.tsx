@@ -101,16 +101,25 @@ describe("SessionPreviewBody (compact / Today hero)", () => {
     expect(matches.length).toBe(1);
   });
 
-  it("renders per-movement strength details (regression — was previously TodayHeroSummary's strength branch)", () => {
+  it("condenses each strength movement to a single overview row (no full set-by-set lines)", () => {
     const items: PrescriptionItem[] = [
-      main({ movementId: "m-1", movementName: "Front Squat", percentTm: 80, reps: 5 }),
+      main({ movementId: "m-1", movementName: "Front Squat", percentTm: 85, reps: 5 }),
       main({ movementId: "m-2", movementName: "Bench Press", percentTm: 75, reps: 5 }),
     ];
     const html = renderCompact(items, { title: "Strength A" });
+    // Movements appear, each tagged with its per-movement testid, inside
+    // the single condensed STRENGTH card.
     expect(html).toContain("Front Squat");
     expect(html).toContain("Bench Press");
+    expect(html).toContain('data-testid="session-preview-section-strength"');
     expect(html).toContain('data-testid="session-preview-movement-m-1"');
     expect(html).toContain('data-testid="session-preview-movement-m-2"');
+    // Condensed: the per-movement summary line is shown…
+    expect(html).toContain("top 85% × 5");
+    // …and the full warm-up / per-set "Set N" breakdown is NOT (that
+    // lives on the Preview page / full variant only).
+    expect(html).not.toContain("Set 1");
+    expect(html).not.toContain("Warm-up");
   });
 
   it("renders both strength and cardio for hybrid sessions", () => {

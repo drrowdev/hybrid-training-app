@@ -185,13 +185,28 @@ export function SessionPreviewBody({
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {sections.movements.map((sec) => (
-          <MovementCard
-            key={sec.rowKey}
-            section={sec}
-            hideHeading={shouldHideHeading(sec.movementName)}
-          />
-        ))}
+        {/*
+          Strength rendering differs by variant. The full Preview page
+          shows every warm-up + working set per movement (the user is
+          drilling in to see exactly what they'll do). The compact hero
+          condenses each movement to a single overview row
+          (name + working-set count + top set) so a strength day with
+          two main lifts + a warm-up ramp each doesn't balloon the card
+          to 12+ set lines. Cardio keeps its full structured card in
+          both variants — it's already compact and reads well there.
+          The "Preview" CTA on the hero is the drill-in to full sets.
+        */}
+        {isCompact
+          ? sections.movements.length > 0 && (
+              <CondensedStrengthCard sections={sections.movements} />
+            )
+          : sections.movements.map((sec) => (
+              <MovementCard
+                key={sec.rowKey}
+                section={sec}
+                hideHeading={shouldHideHeading(sec.movementName)}
+              />
+            ))}
 
         {sections.accessories.length > 0 && (
           <MovementListCard
@@ -314,6 +329,90 @@ function MovementCard({
           ))}
         </SetGroup>
       )}
+    </section>
+  );
+}
+
+/**
+ * Compact one-line summary of a strength movement's working sets,
+ * used by the Today hero. Prefers the marked top set, falling back to
+ * the first main set, then any set. Reads "3 sets · top 85% × 5" for
+ * %TM-based main work, or "3 sets · 60 kg × 8" for load-based work.
+ * The full set-by-set breakdown lives on the Preview page.
+ */
+function condensedStrengthSummary(
+  section: import("@/lib/plan/prescription-grouping").MovementPrescriptionSection,
+): string {
+  const working = section.sets;
+  if (working.length === 0) {
+    // No main work parsed (rare). Fall back to the first warm-up so the
+    // row never renders an empty right-hand cell.
+    const wu = section.warmups[0];
+    return wu ? formatPrescriptionItem(wu) : "";
+  }
+  const top =
+    working.find((s) => s.isTopSet) ??
+    working.find((s) => s.item.kind === "main") ??
+    working[0];
+  const setLabel = `${working.length} set${working.length === 1 ? "" : "s"}`;
+  const item = top.item;
+  if (item.percentTm != null && item.reps != null) {
+    return `${setLabel} · top ${item.percentTm}% × ${item.reps}`;
+  }
+  const formatted = formatPrescriptionItem(item);
+  return formatted ? `${setLabel} · ${formatted}` : setLabel;
+}
+
+/**
+ * Today-hero condensed strength block: a single STRENGTH card with one
+ * overview row per movement (name + `condensedStrengthSummary`). Keeps
+ * the per-movement `session-preview-movement-<rowKey>` testid on each
+ * row so callers/tests can still target individual movements. The full
+ * warm-up + working-set breakdown is reached via the hero's "Preview"
+ * CTA → the Preview page (full variant).
+ */
+function CondensedStrengthCard({
+  sections,
+}: {
+  sections: import("@/lib/plan/prescription-grouping").MovementPrescriptionSection[];
+}) {
+  return (
+    <section data-testid="session-preview-section-strength" style={cardStyle}>
+      <div className="mono" style={eyebrowStyle}>
+        STRENGTH
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {sections.map((sec) => (
+          <div
+            key={sec.rowKey}
+            data-testid={`session-preview-movement-${sec.rowKey}`}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "baseline",
+              gap: 12,
+              padding: "8px 0",
+              borderBottom: "1px solid var(--cp-border)",
+            }}
+          >
+            <span
+              style={{ fontSize: 14, fontWeight: 600, color: "var(--cp-text)" }}
+            >
+              {sec.movementName}
+            </span>
+            <span
+              className="mono"
+              style={{
+                fontSize: 13,
+                color: "var(--cp-text-muted)",
+                textAlign: "right",
+              }}
+            >
+              {condensedStrengthSummary(sec) || "—"}
+            </span>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
