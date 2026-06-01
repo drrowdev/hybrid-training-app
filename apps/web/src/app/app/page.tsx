@@ -790,7 +790,7 @@ export default async function TodayPage() {
           <NextBlockSuggestionCard
             nudge={endingNudge}
             eyebrow={"Final week \u00b7 what\u2019s next"}
-            cta={{ href: "/app/plan", label: "Plan your next block" }}
+            cta={{ href: "/app/plan?new=1", label: "Plan your next block" }}
             testId="block-ending-nudge"
           />
         )}
