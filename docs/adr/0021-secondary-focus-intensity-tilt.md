@@ -1,8 +1,7 @@
 # ADR 0021 — Intensity-direction secondary focus (main-lift intensity tilt)
 
-- **Status:** Proposed (design only — no engine code in this ADR). Open
-  parameters to resolve with the user before implementation (see "Open
-  parameters").
+- **Status:** Proposed (design only — no engine code in this ADR).
+  **Parameters resolved with the user 2026-06-01** (see "Resolved parameters").
 - **Date:** 2026-06-01
 - **Extends:** ADR 0020 (secondary focus as a first-class engine input). ADR
   0020 shipped the **volume-direction** half (a `muscle` secondary tilts
@@ -21,8 +20,8 @@ matrix marked four combinations ⚠️ **intensity-direction** and deferred them
 
 | Primary | Secondary | Archetype | v1 (ADR 0020) | This ADR |
 |---------|-----------|-----------|---------------|----------|
-| Muscle  | Strength  | `hypertrophy_anchor` | **inert** (engine no-op; preview still shows a phantom standalone heavy "Strength day") | **in scope** |
-| Cardio  | Strength  | `endurance_anchor`   | **inert** (engine no-op; preview already inlines "Heavy maintenance lift" meta) | **in scope** |
+| Muscle  | Strength  | `hypertrophy_anchor` | **inert** (engine no-op; preview still shows a phantom standalone heavy "Strength day") | **in scope** (engine load tilt) |
+| Cardio  | Strength  | `endurance_anchor`   | **inert** (engine no-op; preview already inlines "Heavy maintenance lift" meta) | **honest by construction** — no load tilt (Resolved param 3) |
 | Strength | Muscle   | `strength_anchor`    | shipped (volume tilt + preview reconciled, PR #236/#237) | — |
 | Cardio  | Muscle    | `endurance_anchor`   | shipped (volume tilt) | — |
 
@@ -78,7 +77,8 @@ secondaryIntensityTilt(primaryArchetypeId, secondary) -> {
 ```
 
 Returns the identity (`{ 0, null }`) for everything except a `strength`
-secondary on `hypertrophy_anchor` / `endurance_anchor`, so callers apply it
+secondary on `hypertrophy_anchor` (the **only** load-tilted combo — see
+Resolved param 3 for why `endurance_anchor` is excluded), so callers apply it
 unconditionally (byte-identical no-op everywhere else).
 
 Application, per non-deload `WeekProfile` of the main lift:
@@ -89,9 +89,12 @@ Application, per non-deload `WeekProfile` of the main lift:
 - **Top-set reps:** if `topSetRepCap` is set, clamp the final set's reps down to
   it (e.g. a hypertrophy `8` → `5`), making the heavier set a genuine strength
   set rather than a near-failure hypertrophy set.
-- **Volume preserved (default):** no set is removed. The block keeps its
-  hypertrophy volume and *gains* a heavier top set. (See Open parameter 2 — the
-  alternative is to trade one back-off set to hold session duration.)
+- **Volume preserved:** the tilt modifies the **existing** top set in place
+  (load up, reps down) — it adds **no set**, so it is duration-neutral and
+  total hard-set count per muscle is unchanged. For a `muscle`-*primary* block
+  hypertrophy volume is the whole point, so no set is ever removed (the heavier
+  top set is still a high-tension hypertrophy-effective set; Schoenfeld 2017).
+  Resolved param 2.
 - **Deload weeks untouched** (`intensityLabel === "Deload"`), same carve-out the
   taper/effort systems already respect.
 
@@ -101,7 +104,7 @@ analogue of ADR 0020's duration governor:
 | Archetype | Today's top set | Tilted ceiling (proposed) | Rationale |
 |-----------|-----------------|---------------------------|-----------|
 | `hypertrophy_anchor` | 0.75 | **≤ 0.825** | Strictly below `concurrent_hybrid`'s 0.85 and far below `strength_anchor`'s 0.95 — recognisably still a hypertrophy block. Heavy enough (~0.80–0.825 ≈ 82–84% of true 1RM at TM 0.90) to bias strength (ACSM 2009: ≥80% 1RM region for strength) while volume holds hypertrophy (Schoenfeld 2017: hypertrophy preserved across loads at equal effort). |
-| `endurance_anchor` | 0.75–0.90 | **≤ 0.90** (rep-cap only above ~0.85) | Maintenance lift is already near the top of the concurrent-compatible window; protecting aerobic adaptation is the archetype's whole point. The tilt mainly **lowers top-set reps** (heavier singles/triples feel) rather than pushing %TM past 0.90 (Spiering 2021: strength is *maintained* by retained intensity at low volume — intensity, not more volume, is the lever here). |
+| `endurance_anchor` | 0.75–0.90 | **no load tilt** | The maintenance lift already tops out at `0.90 ×TM` triples by default, and those lift days only exist when the secondary is `strength`/`muscle` (Cardio+Skip is pure cardio). The strength quality is therefore already expressed — as the *presence* of heavy lift days — at the ceiling the concurrent-compatibility window allows. Pushing past 0.90 toward strength territory breaches the archetype's aerobic-protection mandate (interference effect, Wilson 2012) for negligible headroom. Resolved param 3. |
 
 This keeps CP-4 intact: the tilt adjusts the *base* weekProfile **before** the
 existing concurrent/taper scalar chain runs, so it adds no new multiplier to
@@ -160,7 +163,6 @@ the Clawpilot workspace mirror when code lands:
 | `SECONDARY_STRENGTH_TOPSET_PCT_DELTA` | `+0.05` | added to the top-set %TM of each non-deload main-lift week when a `strength` secondary is active | `// heuristic, no calibration data` — direction per ACSM/Ratamess 2009 (≥80% 1RM for maximal strength, HIGH); Lopez 2021 load–strength dose response (HIGH) |
 | `SECONDARY_STRENGTH_TOPSET_REP_CAP` | `5` | final-set rep ceiling under a `strength` secondary (true top set vs near-failure hypertrophy set) | `// heuristic, no calibration data` — heavy-low-rep strength region, Schoenfeld–Grgic 2017 (HIGH) |
 | `STRENGTH_TILT_CEILING_HYPERTROPHY` | `0.825` | identity ceiling: tilted top set on `hypertrophy_anchor` stays strictly below concurrent's 0.85 | `// product rule` — archetype-identity invariant (see below) |
-| `STRENGTH_TILT_CEILING_ENDURANCE` | `0.90` | identity ceiling on `endurance_anchor` (protect aerobic adaptation) | `// product rule`; Spiering 2021 maintenance review (MED) |
 
 Magnitudes are intentionally small (one notch of load, a rep cap) — the
 conservative first step, tunable once we have logged top-set load data.
@@ -177,7 +179,8 @@ parameter 2).
 - **Rollback threshold:** if heavier top sets are routinely missed (AMRAP/load
   shortfall) or adherence drops, walk `SECONDARY_STRENGTH_TOPSET_PCT_DELTA`
   toward `0`; if duration becomes the problem, switch to the volume-traded
-  variant (Open parameter 2).
+  variant (volume-traded — explicitly rejected as the default per Resolved
+  param 2, but available as a rollback lever if real duration data demands it).
 - Until data exists, the delta stays `+0.05` clamped by the identity ceiling and
   is surfaced honestly as heuristic.
 
@@ -205,23 +208,30 @@ parameter 2).
 7. RLS posture unchanged (fields already shipped in ADR 0020): Zod `.strict()`
    off on `createBlockSchema` as today, ownership check, user-scoped client.
 
-## Open parameters (to resolve with user before implementation)
+## Resolved parameters (with user, 2026-06-01)
 
-1. **Top-set load delta.** `+0.05 ×TM` (proposed, lands hypertrophy's 0.75 peak
-   at ~0.80) vs a softer `+0.025`. Higher = clearer strength signal, more
-   recovery cost.
-2. **Volume-preserved vs volume-traded.** Default keeps all sets and adds a
-   heavier top set (longer/harder session, may bump duration). Alternative
-   trades one back-off set for the heavier top set to hold session duration
-   (cleaner time budget, slightly less hypertrophy volume). Which default?
-3. **Cardio + Strength aggressiveness.** The endurance archetype's mandate is to
-   protect aerobic adaptation; its maintenance lift is already near-heavy. Tilt
-   it (rep-cap toward heavy singles/triples) or treat it as **already honest /
-   near-maximal and make it a documented no-op** (engine unchanged, preview copy
-   only)?
-4. **Duration governor.** The intensity tilt is roughly duration-neutral
-   (heavier but equal/fewer reps). Does it still need to run through ADR 0020's
-   session-duration governor, or is the identity ceiling + rep cap sufficient?
+1. **Top-set load delta: `+0.05 ×TM`** (locked). Lands `hypertrophy_anchor`'s
+   0.75 peak at ~0.80 — the ≥80%-1RM strength region (ACSM/Ratamess 2009;
+   Lopez 2021), clamped by the 0.825 identity ceiling.
+2. **Volume-preserved** (locked, high confidence). The tilt modifies the
+   existing top set in place and adds **no set**, so it is duration-neutral and
+   hard-set count per muscle is unchanged; hypertrophy volume — the primary goal
+   of a `muscle`-primary block — is fully retained (Schoenfeld 2017: equal-effort
+   sets are hypertrophy-effective across the load range, so a heavier top set
+   loses no growth stimulus). Volume-*trading* (deleting a set) was rejected: it
+   would sacrifice the primary goal for a duration problem that does not exist.
+3. **No load tilt on `endurance_anchor`** (locked, high confidence). The engine
+   intensity tilt is scoped to `hypertrophy_anchor` **only**. The maintenance
+   lift already runs `0.90 ×TM` triples, and those lift days exist *only* when
+   the secondary is `strength`/`muscle` (Cardio+Skip = pure cardio, zero
+   lifting) — so Cardio+Strength is already meaningful and honest vs Skip
+   without any added load. Pushing past 0.90 toward strength territory would
+   breach the archetype's aerobic-protection mandate (interference effect,
+   Wilson 2012 meta) for negligible headroom. `endurance_anchor` needs
+   preview-copy honesty only (already inlined), no engine change.
+4. **No duration governor** (locked). The in-place tilt is duration-neutral
+   (heavier load, equal-or-fewer reps, no added set); the identity ceiling + rep
+   cap are sufficient bounds. ADR 0020's session-duration governor is not reused.
 
 ## Out of scope
 
@@ -233,9 +243,11 @@ parameter 2).
 
 ## Phasing
 
-- **This ADR (0021):** intensity tilt for `hypertrophy_anchor` + `strength`
-  secondary (the user's analogue of the case that started ADR 0020), and
-  `endurance_anchor` + `strength` pending Open parameter 3; no-op golden-master
-  + identity-ceiling guards; preview reconciliation for the remaining phantom.
+- **This ADR (0021):** intensity load tilt for `hypertrophy_anchor` +
+  `strength` secondary **only** (the user's analogue of the case that started
+  ADR 0020); no-op golden-master + identity-ceiling guards; preview
+  reconciliation for the remaining phantom standalone "Strength day".
+  `endurance_anchor` + `strength` is resolved as honest-by-construction (no
+  engine change, copy only — Resolved param 3).
 - **Later:** back-off main-lift volume channel; per-combo calibration of the
-  delta and ceilings against logged load data.
+  delta and ceiling against logged load data.
