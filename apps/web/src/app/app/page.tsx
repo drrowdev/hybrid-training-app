@@ -765,69 +765,85 @@ export default async function TodayPage() {
           </div>
         </header>
 
-        {raceCheckInProps && <RaceCheckInCard {...raceCheckInProps} />}
+        {/* Two-column on wide screens: primary actions in the main
+            column, glanceable cards (Up next / This week / Recent
+            activity) in the right rail. Collapses to a single column
+            ≤768px where the rail stacks below the main column. */}
+        <div className="today-grid">
+          <div className="today-main" style={{ display: "grid", gap: 18, minWidth: 0 }}>
+            {raceCheckInProps && <RaceCheckInCard {...raceCheckInProps} />}
 
-        {taperBannerProps && <TaperBanner {...taperBannerProps} />}
+            {taperBannerProps && <TaperBanner {...taperBannerProps} />}
 
-        {recoveryBannerProps && <RecoveryBanner {...recoveryBannerProps} />}
+            {recoveryBannerProps && <RecoveryBanner {...recoveryBannerProps} />}
 
-        {!hasLoadableMainLift(resolveEquipment(profile)) && tmRows.length === 0 && (
-          <BodyweightOnlyBanner
-            dismissedAt={profile?.bw_banner_dismissed_at ?? null}
-            dismissBwBannerAction={dismissBwBanner}
-          />
-        )}
+            {!hasLoadableMainLift(resolveEquipment(profile)) && tmRows.length === 0 && (
+              <BodyweightOnlyBanner
+                dismissedAt={profile?.bw_banner_dismissed_at ?? null}
+                dismissBwBannerAction={dismissBwBanner}
+              />
+            )}
 
-        <TmSuggestionBanner
-          suggestions={pendingSuggestions}
-          acceptAction={acceptTmSuggestion}
-          dismissAction={dismissTmSuggestion}
-        />
+            <TmSuggestionBanner
+              suggestions={pendingSuggestions}
+              acceptAction={acceptTmSuggestion}
+              dismissAction={dismissTmSuggestion}
+            />
 
-        <ActiveLimitationsCard limitations={activeLimitations} />
+            <ActiveLimitationsCard limitations={activeLimitations} />
 
-        {endingNudge && (endingNudge.suggestion || endingNudge.realization) && (
-          <NextBlockSuggestionCard
-            nudge={endingNudge}
-            eyebrow={"Final week \u00b7 what\u2019s next"}
-            cta={{ href: "/app/plan?new=1", label: "Plan your next block" }}
-            testId="block-ending-nudge"
-          />
-        )}
+            {endingNudge && (endingNudge.suggestion || endingNudge.realization) && (
+              <NextBlockSuggestionCard
+                nudge={endingNudge}
+                eyebrow={"Final week \u00b7 what\u2019s next"}
+                cta={{ href: "/app/plan?new=1", label: "Plan your next block" }}
+                testId="block-ending-nudge"
+              />
+            )}
 
 
-        <TodaySessionCard
-          openSession={openSession}
-          completedToday={completedToday}
-          plannedToday={plannedToday}
-          isTwoADay={isTwoADay}
-          timezone={timezone}
-          amWindowStart={amWindowStart}
-          pmWindowStart={pmWindowStart}
-          conflictsBySlot={conflictsBySlot}
-          archetypeName={archetypeName}
-          weekIndex={computedWeekIndex}
-          tmById={tmById}
-          tmMetaByMovementId={tmMetaByMovementId}
-          nextUpcoming={upcoming[0] ?? null}
-          formatProfile={formatProfile}
-          overdueCount={overdueSummary.count}
-          regionSpikes={regionSpikes}
-        />
+            <TodaySessionCard
+              openSession={openSession}
+              completedToday={completedToday}
+              plannedToday={plannedToday}
+              isTwoADay={isTwoADay}
+              timezone={timezone}
+              amWindowStart={amWindowStart}
+              pmWindowStart={pmWindowStart}
+              conflictsBySlot={conflictsBySlot}
+              archetypeName={archetypeName}
+              weekIndex={computedWeekIndex}
+              tmById={tmById}
+              tmMetaByMovementId={tmMetaByMovementId}
+              nextUpcoming={upcoming[0] ?? null}
+              formatProfile={formatProfile}
+              overdueCount={overdueSummary.count}
+              regionSpikes={regionSpikes}
+            />
 
-        <QuickWorkoutCard
-          variant={isRestDay ? "rest" : "planned"}
-          recent={quickRepeatRecent}
-          startCardio={startQuickCardioSession}
-          startStrength={startQuickStrengthSession}
-          repeatRecent={repeatRecentSession}
-        />
+            <QuickWorkoutCard
+              variant={isRestDay ? "rest" : "planned"}
+              recent={quickRepeatRecent}
+              startCardio={startQuickCardioSession}
+              startStrength={startQuickStrengthSession}
+              repeatRecent={repeatRecentSession}
+            />
 
-        <WeekStrip days={weekDays} doneCount={doneCount} isRestDay={isRestDay} />
+            {hasStravaConnection && <StravaStaleSyncTrigger />}
+          </div>
 
-        {hasStravaConnection && <StravaStaleSyncTrigger />}
+          <aside
+            className="today-rail"
+            aria-label="At a glance"
+            style={{ display: "grid", gap: 14, minWidth: 0 }}
+          >
+            <UpNextCard upcoming={upcoming} formatProfile={formatProfile} />
 
-        <ActivitySection sessions={recent ?? []} todayIso={todayIso} />
+            <WeekStrip days={weekDays} doneCount={doneCount} isRestDay={isRestDay} />
+
+            <ActivitySection sessions={recent ?? []} todayIso={todayIso} />
+          </aside>
+        </div>
     </div>
   );
 }
@@ -878,6 +894,71 @@ function FocusBadge({
  * WeekDotsCard used; rendered inline on Today between the hero and
  * Recent activity. Mon-anchored to match the existing convention.
  */
+/**
+ * Up next — the next 1–3 upcoming planned sessions, promoted out of the
+ * day card into the Today right rail. Mirrors the prescription summary
+ * the day card uses so the lines read identically.
+ */
+function UpNextCard({
+  upcoming,
+  formatProfile,
+}: {
+  upcoming: PlannedDay[];
+  formatProfile: ProfileForFormat;
+}) {
+  const items = upcoming.slice(0, 3);
+  return (
+    <section
+      className="cp-card"
+      data-testid="up-next-card"
+      aria-label="Up next"
+      style={{ padding: 16, display: "grid", gap: 10 }}
+    >
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+        <h2
+          style={{
+            fontSize: 11,
+            margin: 0,
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+            fontWeight: 600,
+            color: "var(--cp-text-muted)",
+          }}
+        >
+          Up next
+        </h2>
+        <Link href="/app/plan" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+          Full plan →
+        </Link>
+      </div>
+      {items.length === 0 ? (
+        <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
+          Nothing scheduled.
+        </p>
+      ) : (
+        <div style={{ display: "grid", gap: 10 }}>
+          {items.map((p) => {
+            const summary = summarisePrescription(p.prescription.items);
+            return (
+              <div key={p.id} style={{ display: "grid", gap: 2 }}>
+                <div style={{ fontSize: 13, color: "var(--cp-text)" }}>
+                  <strong style={{ fontWeight: 600 }}>
+                    {formatUpcomingDay(p.date, formatProfile)}
+                  </strong>{" "}
+                  · {p.title}
+                </div>
+                {summary && (
+                  <div style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>{summary}</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function WeekStrip({
   days,
   doneCount,
@@ -1409,29 +1490,6 @@ function TodaySessionCard({
           );
         })}
       </div>
-      {nextUpcoming && plannedToday.length === 1 && (
-        <div
-          data-testid="up-next-strip"
-          style={{
-            fontSize: 12,
-            color: "var(--cp-text-muted)",
-            padding: "8px 12px",
-            background: "var(--cp-surface-soft)",
-            borderRadius: 8,
-            border: "1px solid var(--cp-border)",
-          }}
-        >
-          Up next:{" "}
-          <span style={{ color: "var(--cp-text)", fontWeight: 600 }}>
-            {formatUpcomingDay(nextUpcoming.date, formatProfile)}
-          </span>{" "}
-          · {nextUpcoming.title}
-          {(() => {
-            const summary = summarisePrescription(nextUpcoming.prescription.items);
-            return summary ? ` · ${summary}` : "";
-          })()}
-        </div>
-      )}
     </div>
   );
 }
