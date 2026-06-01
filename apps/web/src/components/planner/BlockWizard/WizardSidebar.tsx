@@ -477,7 +477,12 @@ function summarySentence(state: WizardState, a: ResolvedArchetype | null): Summa
 function formatSessions(a: ResolvedArchetype): string {
   const parts: string[] = [];
   const { strength, hypertrophy, cardio, tendon } = a.sessions;
-  if (strength > 0) parts.push(`${strength} strength`);
+  if (strength > 0)
+    parts.push(
+      a.accessoryEmphasis === "hypertrophy"
+        ? `${strength} strength + hypertrophy accessories`
+        : `${strength} strength`,
+    );
   if (hypertrophy > 0) parts.push(`${hypertrophy} hypertrophy`);
   if (cardio > 0) parts.push(`${cardio} cardio`);
   if (tendon > 0) parts.push(`${tendon} tendon`);
