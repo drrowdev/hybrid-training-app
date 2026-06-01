@@ -3,11 +3,13 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   summarisePrescription,
   roundToPlate,
+  type ArchetypeId,
 } from "@/lib/planner/archetypes";
 import {
   archetypeDisplayName,
   getActiveBlock,
   getPlannedDays,
+  getRecentBlocks,
   getTodayPlannedSessions,
   getUpcomingPlannedSessions,
   type PlannedDay,
@@ -34,6 +36,8 @@ import {
   repeatRecentSession,
 } from "@/lib/sessions/actions";
 import { getQuickRepeatCandidates } from "@/lib/sessions/queries";
+import { getNextBlockNudge } from "@/lib/planner/next-block-suggestion-server";
+import { NextBlockSuggestionCard } from "@/components/planner/NextBlockSuggestionCard";
 import {
   ActiveLimitationsCard,
   type ActiveLimitationSummary,
@@ -622,6 +626,28 @@ export default async function TodayPage() {
       )
     : null;
 
+  // Final-week next-block guidance (ADR 0010). The /app/plan nudge only
+  // appears once a block has ended; surfacing the same read-only, advice-only
+  // suggestion during the block's final week reaches the user at the decision
+  // point instead of after they've already left the block. Computed only in
+  // the final week to keep the extra queries off the common Today path.
+  const inFinalWeek =
+    activeBlock != null &&
+    computedWeekIndex != null &&
+    computedWeekIndex >= activeBlock.weeks - 1;
+  const endingNudge = inFinalWeek
+    ? await (async () => {
+        const recent = await getRecentBlocks(3);
+        return getNextBlockNudge(
+          supabase,
+          userId,
+          recent.map((b) => b.archetype as ArchetypeId),
+          todayIso,
+          recent.length > 0 ? recent[recent.length - 1].startedOn : null,
+        );
+      })()
+    : null;
+
   // Today is a single-column layout — the right rail (Training Maxes
   // summary) was retired with the shell refresh; TM details live on
   // /app/profile and /app/settings/training-maxes now.
@@ -759,6 +785,15 @@ export default async function TodayPage() {
         />
 
         <ActiveLimitationsCard limitations={activeLimitations} />
+
+        {endingNudge && (endingNudge.suggestion || endingNudge.realization) && (
+          <NextBlockSuggestionCard
+            nudge={endingNudge}
+            eyebrow={"Final week \u00b7 what\u2019s next"}
+            cta={{ href: "/app/plan", label: "Plan your next block" }}
+            testId="block-ending-nudge"
+          />
+        )}
 
 
         <TodaySessionCard
