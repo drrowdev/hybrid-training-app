@@ -1111,7 +1111,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       let title = day.title;
       if (day.kind === "strength") {
         // When the BW path is the source of truth for this session,
-        // derive the title from the first BW main movement so the day
+        // derive the title from the BW main movement(s) so the day
         // card header reads "Wall handstand hold" / "Push-up" — not the
         // barbell day-template label that no longer applies. Falls
         // through to the barbell title only when the barbell path
@@ -1120,10 +1120,26 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
           ? items.find((it) => it.kind === "main")
           : undefined;
         if (firstBwMain) {
-          const name = firstBwMain.movementName ?? movement.displayName;
+          const bwMainNames = items
+            .filter((it) => it.kind === "main")
+            .map((it) => it.movementName)
+            .filter((n): n is string => Boolean(n));
+          const name =
+            bwMainNames.length > 0
+              ? bwMainNames.join(" + ")
+              : movement.displayName;
           title = `${name}${isDeload ? " (deload)" : ""}`;
         } else if (hasAnyTm && !bwActive) {
-          title = `${movement.displayName}${isDeload ? " (deload)" : ""}`;
+          // Barbell strength day. A folded dual-main-lift day (ADR
+          // 0004/0005) is named after BOTH resolved lifts — "Front Squat
+          // + Standing Overhead Press" — so it isn't mislabelled after
+          // only its first lift and the heading-dedup heuristic doesn't
+          // hide just one of the two movement cards.
+          const name =
+            day.secondaryRole && secondaryMovement
+              ? `${movement.displayName} + ${secondaryMovement.displayName}`
+              : movement.displayName;
+          title = `${name}${isDeload ? " (deload)" : ""}`;
         } else if (isDeload) {
           title = `${day.title} (deload)`;
         }
@@ -1475,7 +1491,13 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
 
       let title = day.title;
       if (day.kind === "strength") {
-        title = `${movement.displayName}${isDeload ? " (deload)" : ""}`;
+        // Folded dual-main-lift days name both resolved lifts so the day
+        // isn't mislabelled after only its first lift (see standard path).
+        const name =
+          day.secondaryRole && secondaryMovement
+            ? `${movement.displayName} + ${secondaryMovement.displayName}`
+            : movement.displayName;
+        title = `${name}${isDeload ? " (deload)" : ""}`;
       } else if (isDeload) {
         title = `${day.title} (deload)`;
       }

@@ -329,4 +329,36 @@ describe("SessionPreviewBody (static markup)", () => {
     expect(html).toMatch(/<h3[^>]*>\s*Front Squat\s*<\/h3>/);
     expect(html).toMatch(/<h3[^>]*>\s*Overhead Press\s*<\/h3>/);
   });
+
+  it("folded day whose title equals a lift name keeps BOTH headings (dedup must not over-fire on multi-movement days)", () => {
+    const items: PrescriptionItem[] = [
+      {
+        kind: "main",
+        movementId: "m-squat",
+        movementSlug: "front_squat",
+        movementName: "Front Squat",
+        sets: 3,
+        reps: 5,
+        percentTm: 80,
+      } as unknown as PrescriptionItem,
+      {
+        kind: "main",
+        movementId: "m-ohp",
+        movementSlug: "overhead_press",
+        movementName: "Standing Overhead Press",
+        sets: 3,
+        reps: 5,
+        percentTm: 75,
+      } as unknown as PrescriptionItem,
+    ];
+    // Title equals the first lift's name — the real-world folded-day case
+    // that previously hid only the first card's heading.
+    const html = renderToStaticMarkup(
+      React.createElement(SessionPreviewBody, {
+        session: fixture({ title: "Front Squat", items }),
+      }),
+    );
+    expect(html).toMatch(/<h3[^>]*>\s*Front Squat\s*<\/h3>/);
+    expect(html).toMatch(/<h3[^>]*>\s*Standing Overhead Press\s*<\/h3>/);
+  });
 });
