@@ -1546,65 +1546,6 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
 
 const blockIdSchema = z.object({ id: z.string().uuid() });
 
-// ─── updateBlockFocus (migration 0079) ────────────────────────────
-// Per-block "focus muscle groups" edit affordance on /app/plan. RLS-
-// scoped: the user_id eq filter combined with Supabase RLS guarantees
-// the caller can only mutate their own block. Idempotent: writing the
-// same focus list twice is a no-op (the column update is value-equal).
-//
-// Block-mid changes apply to FUTURE sessions only. Currently the
-// planner materialises every session eagerly at createBlock time, so
-// already-generated planned_sessions keep their pre-edit prescription.
-// Re-materialising remaining sessions would invalidate user notes /
-// drawer state on planned rows the user has already inspected, so the
-// pragmatic choice is: new focus → next block, or "Start a new block"
-// to apply mid-stream. Documented behaviour.
-
-const updateBlockFocusSchema = z.object({
-  id: z.string().uuid(),
-  focusMuscles: focusMusclesSchema,
-});
-
-export type UpdateBlockFocusResult =
-  | { ok: true; focusMuscles: string[] }
-  | { ok: false; error: string };
-
-export async function updateBlockFocus(
-  formData: FormData,
-): Promise<UpdateBlockFocusResult> {
-  const parsed = updateBlockFocusSchema.safeParse({
-    id: formData.get("id"),
-    focusMuscles: formData
-      .getAll("focusMuscles")
-      .map((v) => (typeof v === "string" ? v : ""))
-      .filter((v) => v.length > 0),
-  });
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
-  }
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await getAuthUser();
-  if (!user) return { ok: false, error: "Not signed in" };
-
-  // RLS-scoped update — eq user_id is belt-and-braces alongside the
-  // RLS policy. We do NOT filter on status so the user can also
-  // pre-set focus on a queued (rare today) or just-archived block in
-  // a follow-up flow.
-  const { error } = await supabase
-    .from("training_blocks")
-    .update({ focus_muscles: parsed.data.focusMuscles })
-    .eq("id", parsed.data.id)
-    .eq("user_id", user.id);
-  if (error) return { ok: false, error: error.message };
-
-  revalidatePath("/app/plan");
-  revalidatePath("/app");
-  return { ok: true, focusMuscles: parsed.data.focusMuscles };
-}
-
 const endBlockSchema = z.object({
   id: z.string().uuid(),
   reason: z.string().max(280).optional(),
