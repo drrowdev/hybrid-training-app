@@ -73,6 +73,7 @@ export default async function PlanPage({
   searchParams: Promise<{
     view?: string;
     filter?: string;
+    new?: string;
   }>;
 }) {
   const supabase = await createClient();
@@ -81,9 +82,15 @@ export default async function PlanPage({
   } = await getAuthUser();
   if (!user) redirect("/login");
 
+  const sp = await searchParams;
+  // `?new=1` forces the block-creation wizard even when an active block
+  // exists, so "Start a new block" works mid-block. createBlock archives
+  // the prior active block on submit (archive-after-insert), so this is
+  // the safe replace path.
+  const forceNew = sp?.new === "1";
   const block = await getActiveBlock();
 
-  if (!block) {
+  if (!block || forceNew) {
     // No active block — render the wizard inline with optional "Run it
     // again" cards above. Previously the user had to:
     //   /app/plan → click "Start a block" → /app/plan/new → click
@@ -153,12 +160,27 @@ export default async function PlanPage({
 
     return (
       <div style={{ display: "grid", gap: 20 }}>
+        {block && (
+          <Link
+            href="/app/plan"
+            data-testid="back-to-current-block"
+            style={{
+              fontSize: 13,
+              color: "var(--cp-text-muted)",
+              textDecoration: "none",
+            }}
+          >
+            ← Back to current block
+          </Link>
+        )}
         <header>
           <h1 style={{ fontSize: 28, margin: 0, letterSpacing: "-0.01em" }}>Plan</h1>
           <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-            {firstTime
-              ? "Let's shape your first block. The engine picks the days, weights, and weekly wave — you log what actually happens."
-              : "Start a new block, or run a recent one again."}
+            {block
+              ? "Starting a new block archives your current one. You keep all logged sessions."
+              : firstTime
+                ? "Let's shape your first block. The engine picks the days, weights, and weekly wave — you log what actually happens."
+                : "Start a new block, or run a recent one again."}
           </p>
         </header>
         {blockBump && <BlockCompleteCard bump={blockBump} />}
@@ -214,7 +236,6 @@ export default async function PlanPage({
     getBlockNumberAndTotal(block.id),
   ]);
   const timezone = profile?.timezone ?? "UTC";
-  const sp = await searchParams;
   const today = todayYmd(timezone);
   const todayWeek = all.find((d) => d.date === today)?.weekIndex ?? -1;
 
@@ -315,23 +336,50 @@ export default async function PlanPage({
 
       <section
         className="cp-card"
-        style={{
-          padding: 16,
-          display: sessions.every((s) => s.done || s.skipped) ? "block" : "none",
-        }}
+        data-testid="block-controls"
+        style={{ padding: 16, display: "grid", gap: 14 }}
       >
+        <div style={{ fontSize: 13, fontWeight: 600 }}>Block controls</div>
+
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
+            flexWrap: "wrap",
             gap: 12,
           }}
         >
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 500 }}>Done with this block?</div>
+          <div style={{ minWidth: 200 }}>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>Start a new block</div>
             <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-              Archives the schedule. You keep all logged sessions.
+              Builds a fresh schedule and archives this one. You keep all logged sessions.
+            </div>
+          </div>
+          <Link
+            href="/app/plan?new=1"
+            className="cp-btn primary"
+            data-testid="start-new-block"
+          >
+            Start a new block
+          </Link>
+        </div>
+
+        <div style={{ borderTop: "1px solid var(--cp-border)" }} />
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 12,
+          }}
+        >
+          <div style={{ minWidth: 200 }}>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>End current block</div>
+            <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
+              Archives the schedule without starting a new one. You keep all logged sessions.
             </div>
           </div>
           <EndBlockForm blockId={block.id} action={endBlock} />
