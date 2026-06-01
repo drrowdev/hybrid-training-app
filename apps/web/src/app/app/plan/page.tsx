@@ -13,6 +13,7 @@ import {
   updateBlockFocus,
 } from "@/lib/planner/actions";
 import { updatePlannedSessionNotes } from "@/lib/sessions/actions";
+import { estimateSessionMinutes } from "@/lib/sessions/estimate-duration";
 import { updateWizardDayPref } from "@/lib/profile/actions";
 import type { WizardDayPrefValue } from "@/lib/planner/wizard/day-pref";
 import {
@@ -226,20 +227,8 @@ export default async function PlanPage({
     const isCardio =
       items.length > 0 && items.every((i) => (i.kind ?? "").startsWith("cardio_"));
     const hasStrengthItems = items.some((i) => !(i.kind ?? "").startsWith("cardio_"));
-    // Rough duration estimate — sum cardio durationMin, then add a flat
-    // 5 min per non-cardio item. Pure UI cosmetic, no engine impact.
-    let dur: number | null = null;
-    for (const it of items) {
-      if (it.kind?.startsWith("cardio_") && it.durationMin) {
-        dur = (dur ?? 0) + it.durationMin;
-      }
-    }
-    if (hasStrengthItems) {
-      const strengthCount = items.filter(
-        (i) => !(i.kind ?? "").startsWith("cardio_"),
-      ).length;
-      dur = (dur ?? 0) + strengthCount * 5;
-    }
+    // Set-aware duration estimate (shared with the planner's tilt governor).
+    const dur = estimateSessionMinutes(items);
     return {
       id: p.id,
       weekIndex: p.weekIndex,
