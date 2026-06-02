@@ -57,9 +57,20 @@ export async function signIn(formData: FormData) {
 }
 
 /**
- * Magic-link sign-in: server emails a single-use login URL.
+ * Email one-time-code sign-in (step 1): server emails a 6-digit code.
+ *
+ * Uses the same `signInWithOtp` primitive as the old magic link; whether the
+ * email contains a clickable link or a 6-digit code is decided by the Supabase
+ * "Magic Link" email template (`{{ .Token }}` => code). We deliberately do NOT
+ * pass `emailRedirectTo` here: that option biases Supabase toward minting a
+ * link. Omitting it keeps the token (code) front-and-centre. The user then
+ * submits the code to `verifyEmailCode` (step 2).
+ *
+ * Codes keep the session inside the app — critical for the native iOS shell,
+ * where a magic link would punt the user out to Safari and strand the session
+ * there instead of returning to the WKWebView.
  */
-export async function signInWithMagicLink(formData: FormData) {
+export async function sendEmailCode(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim();
   if (!email) return { error: "Email required." };
 
@@ -67,15 +78,36 @@ export async function signInWithMagicLink(formData: FormData) {
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      // While sign-ups are disabled, a magic link must only authenticate an
+      // While sign-ups are disabled, a code must only authenticate an
       // existing user — never silently provision a new account.
       shouldCreateUser: SIGNUPS_ENABLED,
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/auth/callback`,
     },
   });
   if (error) return { error: error.message };
 
-  return { ok: true as const, message: "Check your email for a sign-in link." };
+  return { ok: true as const, message: "We emailed you a 6-digit code." };
+}
+
+/**
+ * Email one-time-code sign-in (step 2): verify the 6-digit code and start the
+ * session. On success this sets the auth cookies and redirects, so the native
+ * shell never has to leave the app.
+ */
+export async function verifyEmailCode(formData: FormData) {
+  const email = String(formData.get("email") ?? "").trim();
+  const token = String(formData.get("token") ?? "").trim();
+  if (!email || !token) return { error: "Email and code required." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.verifyOtp({
+    email,
+    token,
+    type: "email",
+  });
+  if (error) return { error: error.message };
+
+  const next = String(formData.get("next") ?? "/app");
+  redirect(next);
 }
 
 export async function signOut() {
