@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>SxC</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #1a1a1a;
+        color: #f4f3f1;
+        font-family: -apple-system, system-ui, sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      }
+      .wrap {
+        padding: 24px;
+      }
+      .mark {
+        font-weight: 800;
+        font-size: 44px;
+        letter-spacing: 0.02em;
+      }
+      .x {
+        color: #a3e635;
+      }
+      .msg {
+        margin-top: 16px;
+        font-size: 15px;
+        color: #b8b6b1;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      Fallback shell. The native app loads https://getsxc.app via server.url;
+      this is only shown if that URL cannot be reached at launch.
+    -->
+    <div class="wrap">
+      <div class="mark">S<span class="x">×</span>C</div>
+      <div class="msg">Connecting…</div>
+    </div>
+  </body>
+</html>
