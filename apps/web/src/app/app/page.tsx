@@ -80,8 +80,31 @@ type WeekDayCell = {
   strengthDone: boolean;
   cardioDone: boolean;
   planned: boolean;
+  /** Type of the planned (not-yet-done) session for this day: strength,
+   * cardio, mixed, or null when the modality is unknown (legacy rows). */
+  plannedKind: "S" | "C" | "SC" | null;
   isToday: boolean;
 };
+
+/** Visual-only mapping of a planned session's modality to a strength /
+ * cardio / mixed bucket for the "This week" dots. Never feeds the engine
+ * or the completion guard — purely cosmetic. */
+function plannedKindFromModality(m: string | null | undefined): "S" | "C" | "SC" | null {
+  switch (m) {
+    case "pure_strength":
+    case "pure_hypertrophy":
+    case "skill_focused":
+      return "S";
+    case "pure_z2_aerobic":
+    case "pure_hiit":
+    case "restorative":
+      return "C";
+    case "mixed_modal":
+      return "SC";
+    default:
+      return null;
+  }
+}
 
 /** Coarse "N days/weeks ago" string used by the e1RM hero annotation. */
 function relativeFromIso(iso: string | null, now: Date = new Date()): string {
@@ -345,6 +368,7 @@ export default async function TodayPage() {
         week_index: number;
         day_index: number;
         completed_session_id: string | null;
+        session_modality: string | null;
       }>;
     }> => {
       const [{ data: ws }, { data: wc }, { data: wp }] = await Promise.all([
@@ -365,13 +389,14 @@ export default async function TodayPage() {
         activeBlock
           ? supabase
               .from("planned_sessions")
-              .select("week_index, day_index, completed_session_id")
+              .select("week_index, day_index, completed_session_id, session_modality")
               .eq("block_id", activeBlock.id)
           : Promise.resolve({
               data: [] as Array<{
                 week_index: number;
                 day_index: number;
                 completed_session_id: string | null;
+                session_modality: string | null;
               }>,
             }),
       ]);
@@ -382,6 +407,7 @@ export default async function TodayPage() {
           week_index: number;
           day_index: number;
           completed_session_id: string | null;
+          session_modality: string | null;
         }>,
       };
     })(),
@@ -593,16 +619,25 @@ export default async function TodayPage() {
 
   // Planned days for the current ISO week from the active block.
   const weekPlannedDows = new Set<number>();
+  const weekPlannedKind = new Map<number, "S" | "C" | "SC">();
   if (activeBlock) {
     const startMonday = mondayOfYmd(activeBlock.startedOn);
     for (const p of (weekPlannedRows ?? []) as Array<{
       week_index: number;
       day_index: number;
       completed_session_id: string | null;
+      session_modality: string | null;
     }>) {
       const dayYmd = addDaysToYmd(startMonday, p.week_index * 7 + p.day_index);
       if (dayYmd >= monday && dayYmd <= sunday && !p.completed_session_id) {
-        weekPlannedDows.add(isoWeekdayYmd(dayYmd));
+        const dow = isoWeekdayYmd(dayYmd);
+        weekPlannedDows.add(dow);
+        const kind = plannedKindFromModality(p.session_modality);
+        if (kind) {
+          const prev = weekPlannedKind.get(dow);
+          // Two different planned modalities on one day reads as mixed.
+          weekPlannedKind.set(dow, !prev ? kind : prev === kind ? prev : "SC");
+        }
       }
     }
   }
@@ -611,6 +646,7 @@ export default async function TodayPage() {
     strengthDone: weekStrengthDows.has(i),
     cardioDone: weekCardioDows.has(i),
     planned: weekPlannedDows.has(i),
+    plannedKind: weekPlannedKind.get(i) ?? null,
     isToday: i === todayDow,
   }));
   const doneCount = weekDays.filter((d) => d.strengthDone || d.cardioDone).length;
@@ -839,7 +875,7 @@ export default async function TodayPage() {
           >
             <UpNextCard upcoming={upcoming} formatProfile={formatProfile} />
 
-            <WeekStrip days={weekDays} doneCount={doneCount} isRestDay={isRestDay} />
+            <WeekCard days={weekDays} doneCount={doneCount} />
 
             <ActivitySection sessions={recent ?? []} todayIso={todayIso} />
           </aside>
@@ -937,10 +973,19 @@ function UpNextCard({
         </p>
       ) : (
         <div style={{ display: "grid", gap: 10 }}>
-          {items.map((p) => {
+          {items.map((p, i) => {
             const summary = summarisePrescription(p.prescription.items);
             return (
-              <div key={p.id} style={{ display: "grid", gap: 2 }}>
+              <div
+                key={p.id}
+                style={{
+                  display: "grid",
+                  gap: 2,
+                  ...(i > 0
+                    ? { borderTop: "1px solid var(--cp-border)", paddingTop: 10 }
+                    : {}),
+                }}
+              >
                 <div style={{ fontSize: 13, color: "var(--cp-text)" }}>
                   <strong style={{ fontWeight: 600 }}>
                     {formatUpcomingDay(p.date, formatProfile)}
@@ -959,115 +1004,169 @@ function UpNextCard({
   );
 }
 
-function WeekStrip({
+function WeekCard({
   days,
   doneCount,
-  isRestDay,
 }: {
   days: WeekDayCell[];
   doneCount: number;
-  isRestDay: boolean;
 }) {
   const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
-  const todayCell = days.find((d) => d.isToday);
-  const plannedToday = todayCell?.planned ?? false;
-  const summary = isRestDay
-    ? `${doneCount} done · rest today`
-    : `${doneCount} done · today ${plannedToday ? "planned" : "—"}`;
+  const plannedCount = days.filter((d) => d.planned).length;
   return (
-    <div
+    <section
+      className="cp-card"
       data-testid="today-week-strip"
       aria-label="This week"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 14,
-        padding: "10px 16px",
-        background: "var(--cp-surface)",
-        border: "1px solid var(--cp-border)",
-        borderRadius: 10,
-        fontSize: 12,
-        flexWrap: "wrap",
-      }}
+      style={{ padding: 16, display: "grid", gap: 12 }}
     >
-      <span
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+        <h2
+          style={{
+            fontSize: 11,
+            margin: 0,
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+            fontWeight: 600,
+            color: "var(--cp-text-muted)",
+          }}
+        >
+          This week
+        </h2>
+        <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+          {doneCount} done{plannedCount > 0 ? ` · ${plannedCount} planned` : ""}
+        </span>
+      </div>
+      <div
         style={{
-          color: "var(--cp-text-muted)",
-          fontSize: 11,
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-          fontWeight: 600,
+          display: "grid",
+          gridTemplateColumns: "repeat(7, 1fr)",
+          gap: "6px 4px",
+          justifyItems: "center",
         }}
       >
-        This week
-      </span>
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        {DAY_LABELS.map((l, i) => (
+          <span
+            key={`h${i}`}
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              color: days[i]?.isToday ? "var(--cp-accent)" : "var(--cp-text-muted)",
+            }}
+          >
+            {l}
+          </span>
+        ))}
         {days.map((d, i) => (
-          <WeekStripDot key={i} label={DAY_LABELS[i]!} cell={d} />
+          <WeekDot key={`d${i}`} cell={d} />
         ))}
       </div>
-      <span style={{ color: "var(--cp-text-muted)", marginLeft: "auto" }}>{summary}</span>
-    </div>
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 12,
+          fontSize: 11,
+          color: "var(--cp-text-muted)",
+        }}
+      >
+        <WeekLegendSwatch color="var(--cp-accent)" label="Strength" />
+        <WeekLegendSwatch color="var(--cp-link)" label="Cardio" />
+        <WeekLegendSwatch dashed label="Planned" />
+      </div>
+    </section>
   );
 }
 
-function WeekStripDot({ label, cell }: { label: string; cell: WeekDayCell }) {
-  const base: React.CSSProperties = {
-    width: 22,
-    height: 22,
-    borderRadius: "50%",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 10,
-    fontWeight: 600,
-    border: "1px solid var(--cp-border)",
-    color: "var(--cp-text-muted)",
-  };
-  if (cell.isToday) {
-    base.borderColor = "var(--cp-accent)";
-    base.color = "var(--cp-text)";
-  }
-  if (cell.strengthDone) {
-    return (
+function WeekLegendSwatch({
+  color,
+  dashed,
+  label,
+}: {
+  color?: string;
+  dashed?: boolean;
+  label: string;
+}) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
       <span
-        title="Strength done"
+        aria-hidden
         style={{
-          ...base,
-          background: "var(--cp-accent)",
-          color: "var(--cp-accent-fg, #0a0a0a)",
-          borderColor: "var(--cp-accent)",
-          fontWeight: 700,
+          width: 11,
+          height: 11,
+          borderRadius: "50%",
+          background: dashed ? "transparent" : color,
+          border: dashed ? "1px dashed var(--cp-text-muted)" : "none",
         }}
-      >
-        {label}
-      </span>
-    );
+      />
+      {label}
+    </span>
+  );
+}
+
+function WeekDot({ cell }: { cell: WeekDayCell }) {
+  let bg = "transparent";
+  let color = "var(--cp-border)";
+  let label = "·";
+  let dashed = false;
+  let solidBorder = true;
+  let title = "Rest";
+
+  if (cell.strengthDone && cell.cardioDone) {
+    bg = "linear-gradient(135deg, var(--cp-accent) 0 50%, var(--cp-link) 50% 100%)";
+    color = "#0a0a0a";
+    label = "S/C";
+    solidBorder = false;
+    title = "Strength + cardio done";
+  } else if (cell.strengthDone) {
+    bg = "var(--cp-accent)";
+    color = "var(--cp-accent-fg, #0a0a0a)";
+    label = "S";
+    solidBorder = false;
+    title = "Strength done";
+  } else if (cell.cardioDone) {
+    bg = "var(--cp-link)";
+    color = "#001028";
+    label = "C";
+    solidBorder = false;
+    title = "Cardio done";
+  } else if (cell.planned) {
+    dashed = true;
+    solidBorder = false;
+    color = "var(--cp-text-muted)";
+    label = cell.plannedKind === "SC" ? "S/C" : (cell.plannedKind ?? "");
+    title = "Planned";
   }
-  if (cell.cardioDone) {
-    return (
-      <span
-        title="Cardio done"
-        style={{
-          ...base,
-          background: "var(--cp-link)",
-          color: "#001028",
-          borderColor: "var(--cp-link)",
-          fontWeight: 700,
-        }}
-      >
-        {label}
-      </span>
-    );
-  }
-  if (cell.planned) {
-    return (
-      <span title="Planned" style={{ ...base, borderStyle: "dashed" }}>
-        {label}
-      </span>
-    );
-  }
-  return <span style={base}>{label}</span>;
+
+  const border = dashed
+    ? "1px dashed var(--cp-text-muted)"
+    : solidBorder
+      ? "1px solid var(--cp-border)"
+      : "1px solid transparent";
+
+  return (
+    <span
+      title={title}
+      style={{
+        width: 24,
+        height: 24,
+        borderRadius: "50%",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: label.length > 1 ? 8 : 10,
+        fontWeight: 700,
+        background: bg,
+        color,
+        border,
+        ...(cell.isToday
+          ? { boxShadow: "0 0 0 2px var(--cp-bg), 0 0 0 3px var(--cp-accent)" }
+          : {}),
+      }}
+    >
+      {label}
+    </span>
+  );
 }
 
 /**
@@ -1776,7 +1875,7 @@ function formatUpcomingDay(iso: string, profile: ProfileForFormat): string {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const diffDays = Math.round((target.getTime() - today.getTime()) / 86_400_000);
-  if (diffDays === 1) return "tomorrow";
+  if (diffDays === 1) return "Tomorrow";
   if (diffDays >= 2 && diffDays <= 6) {
     return target.toLocaleDateString(undefined, { weekday: "long" });
   }
