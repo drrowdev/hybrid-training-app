@@ -1,0 +1,72 @@
+# Codemagic CI — builds an UNSIGNED iOS .ipa for the SxC Capacitor shell.
+#
+# Why unsigned: in the solo-testing stack, signing happens ON-DEVICE via
+# SideStore using the user's free Apple ID — so no Apple certificates, API keys,
+# or provisioning profiles ever live in CI. Codemagic only needs to produce the
+# unsigned app binary; SideStore re-signs and installs it.
+#
+# Free tier: this targets the Mac mini M2 instance (500 free min/month). A build
+# is only needed when NATIVE config/plugins change — web changes ship via Vercel
+# (remote-load, server.url=getsxc.app), not through a new .ipa.
+#
+# Trigger: manual (Codemagic UI / API). No automatic build on push, to conserve
+# free minutes. Flip `triggering` on if you want push builds later.
+
+workflows:
+  ios-unsigned:
+    name: SxC iOS (unsigned, for SideStore)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      vars:
+        # Husky's prepare script is irrelevant in CI and can choke on hooks.
+        HUSKY: 0
+      node: 22
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Install pnpm
+        script: |
+          npm install -g pnpm@10.33.2
+      - name: Install dependencies
+        script: |
+          pnpm install --frozen-lockfile
+      - name: Capacitor sync (iOS)
+        script: |
+          cd apps/mobile
+          pnpm exec cap sync ios
+      - name: CocoaPods install
+        script: |
+          cd apps/mobile/ios/App
+          pod install
+      - name: Build unsigned archive
+        script: |
+          cd apps/mobile/ios/App
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath "$CM_BUILD_DIR/App.xcarchive" \
+            archive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            DEVELOPMENT_TEAM=""
+      - name: Package unsigned .ipa
+        script: |
+          cd "$CM_BUILD_DIR"
+          APP_PATH="App.xcarchive/Products/Applications/App.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "App.app not found in archive — build failed?" >&2
+            exit 1
+          fi
+          rm -rf Payload SxC-unsigned.ipa
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -qry SxC-unsigned.ipa Payload
+          echo "Built unsigned IPA:"
+          ls -lh SxC-unsigned.ipa
+    artifacts:
+      - $CM_BUILD_DIR/SxC-unsigned.ipa
