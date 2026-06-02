@@ -392,7 +392,7 @@ export default async function TodayPage() {
   let taperBannerProps: React.ComponentProps<typeof TaperBanner> | null = null;
   if (taper && nextEvent) {
     const latest = latestForEvent(nextEvent.id, "taper");
-    let state: TaperBannerState;
+    let state: TaperBannerState | null;
     if (!latest) state = { kind: "pending" };
     else if (latest.status === "applied") {
       const p = latest.payload as { triggeredPhase?: string; triggeredAtDaysOut?: number };
@@ -401,16 +401,30 @@ export default async function TodayPage() {
         appliedDaysOut: typeof p.triggeredAtDaysOut === "number" ? p.triggeredAtDaysOut : taper.daysOut,
         appliedPhase: (p.triggeredPhase as TaperBannerState extends { appliedPhase: infer X } ? X : never) ?? taper.phase,
       };
-    } else state = { kind: "declined" };
-    taperBannerProps = {
-      eventId: nextEvent.id,
-      eventName: nextEvent.name,
-      daysOut: taper.daysOut,
-      phase: taper.phase as "approach" | "deep" | "polish" | "event_day",
-      volumeScale: taper.volumeScale,
-      intensityAction: taper.intensityAction,
-      state,
-    };
+    } else {
+      // Declined: the user dismissed the taper for this window. Keep the
+      // audit row but hide the banner entirely — re-surface as a fresh
+      // prompt only if a DEEPER taper phase has since been crossed (mirrors
+      // the applied-reprompt logic in TaperBanner). Otherwise the banner
+      // stays gone for the rest of this taper window.
+      const p = latest.payload as { triggeredPhase?: string; triggeredAtDaysOut?: number };
+      const crossedDeeper =
+        typeof p.triggeredAtDaysOut === "number" &&
+        taper.daysOut < p.triggeredAtDaysOut &&
+        p.triggeredPhase !== taper.phase;
+      state = crossedDeeper ? { kind: "pending" } : null;
+    }
+    if (state) {
+      taperBannerProps = {
+        eventId: nextEvent.id,
+        eventName: nextEvent.name,
+        daysOut: taper.daysOut,
+        phase: taper.phase as "approach" | "deep" | "polish" | "event_day",
+        volumeScale: taper.volumeScale,
+        intensityAction: taper.intensityAction,
+        state,
+      };
+    }
   }
 
   // Race check-in + recovery banner gating. The check-in shows the
