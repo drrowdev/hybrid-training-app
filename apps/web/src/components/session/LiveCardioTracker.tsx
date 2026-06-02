@@ -339,7 +339,7 @@ export function LiveCardioTracker(props: LiveCardioTrackerProps) {
   const distanceDisplay = metersToDisplay(track.totalMeters, units);
   const distUnit = units === "imperial" ? "mi" : "km";
   const avgPace = paceSecPerUnit(elapsedSec, track.totalMeters, units);
-  const showGps = !indoorRef.current;
+  const showGps = !indoor;
 
   return (
     <div
