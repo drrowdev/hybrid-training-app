@@ -403,16 +403,9 @@ export default async function TodayPage() {
       };
     } else {
       // Declined: the user dismissed the taper for this window. Keep the
-      // audit row but hide the banner entirely — re-surface as a fresh
-      // prompt only if a DEEPER taper phase has since been crossed (mirrors
-      // the applied-reprompt logic in TaperBanner). Otherwise the banner
-      // stays gone for the rest of this taper window.
-      const p = latest.payload as { triggeredPhase?: string; triggeredAtDaysOut?: number };
-      const crossedDeeper =
-        typeof p.triggeredAtDaysOut === "number" &&
-        taper.daysOut < p.triggeredAtDaysOut &&
-        p.triggeredPhase !== taper.phase;
-      state = crossedDeeper ? { kind: "pending" } : null;
+      // audit row (the engine ignores it) but hide the banner outright —
+      // a declined recommendation should disappear, not nag.
+      state = null;
     }
     if (state) {
       taperBannerProps = {
@@ -475,20 +468,24 @@ export default async function TodayPage() {
         const inWindow = todayD >= startD && todayD <= endD;
         if (inWindow) {
           const latest = latestForEvent(pastEventRow.id, "recovery");
-          let state: RecoveryBannerState;
+          let state: RecoveryBannerState | null;
           if (!latest) state = { kind: "pending" };
           else if (latest.status === "applied") state = { kind: "applied" };
-          else state = { kind: "declined" };
-          recoveryBannerProps = {
-            eventId: pastEventRow.id,
-            eventName: pastEventRow.name,
-            days: win.days,
-            strengthLoadScale: win.strengthLoadScale,
-            cardioLoadScale: win.cardioLoadScale,
-            rampDays: win.rampDays,
-            ...(win.confidence ? { confidence: win.confidence } : {}),
-            state,
-          };
+          // Declined: hide the banner outright (audit row stays). A declined
+          // recommendation should disappear, not persist.
+          else state = null;
+          if (state) {
+            recoveryBannerProps = {
+              eventId: pastEventRow.id,
+              eventName: pastEventRow.name,
+              days: win.days,
+              strengthLoadScale: win.strengthLoadScale,
+              cardioLoadScale: win.cardioLoadScale,
+              rampDays: win.rampDays,
+              ...(win.confidence ? { confidence: win.confidence } : {}),
+              state,
+            };
+          }
         }
       }
     }

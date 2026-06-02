@@ -159,23 +159,6 @@ export function BottomTabBar({ auditCount = 0 }: { auditCount?: number } = {}) {
         backdropFilter: "blur(12px)",
       }}
     >
-      {/* Overscroll filler: on iOS rubber-band scroll the fixed nav lifts a
-          few px, revealing the page background below it as a dark gap above
-          the home indicator. This off-screen elevated strip (top:100%) rides
-          up with the nav during the bounce and keeps the bottom edge seamless.
-          No layout impact — it overflows the nav and the viewport at rest. */}
-      <span
-        aria-hidden
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          top: "100%",
-          height: 200,
-          background: "var(--cp-bg-elevated)",
-          pointerEvents: "none",
-        }}
-      />
       {TABS.map((t) => {
         const active = t.match(pathname);
         return (
