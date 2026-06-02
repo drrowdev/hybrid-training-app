@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Archivo } from "next/font/google";
 import { ServiceWorkerRegister } from "@/components/shell/ServiceWorkerRegister";
 import { InstallPrompt } from "@/components/shell/InstallPrompt";
+import { APPLE_SPLASH_SCREENS } from "@/lib/pwa/splash-screens";
 import "./globals.css";
 
 const geist = Geist({
@@ -38,6 +39,13 @@ export const metadata: Metadata = {
     // 180×180, full-bleed (no transparency, no pre-rounded corners) — iOS
     // applies its own mask. Source: scripts/generate-icons.mjs.
     apple: "/icons/apple-touch-icon.png",
+    // iOS launch ("splash") screens — one per device, keyed by media query.
+    // Source: scripts/generate-splash.mjs.
+    other: APPLE_SPLASH_SCREENS.map((s) => ({
+      rel: "apple-touch-startup-image",
+      url: s.url,
+      media: s.media,
+    })),
   },
   openGraph: {
     type: "website",
