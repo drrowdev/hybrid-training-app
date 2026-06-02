@@ -41,16 +41,16 @@ export function RegionSpikeBanner({ spikes }: { spikes: ReadonlyArray<RegionSpik
         alignItems: "center",
         gap: 8,
         padding: "8px 12px",
-        border: "1px solid var(--cp-warning)",
-        background: "color-mix(in srgb, var(--cp-warning) 10%, transparent)",
+        border: "1px solid var(--cp-border)",
+        background: "var(--cp-surface)",
         borderRadius: 10,
         fontSize: 13,
-        color: "var(--cp-text)",
+        color: "var(--cp-text-muted)",
       }}
     >
-      <span aria-hidden style={{ fontSize: 14 }}>⚠️</span>
       <span>
-        Your <strong>{worstLabel}</strong> load is up <strong>{worstPct}%</strong> this week —
+        Your <strong style={{ color: "var(--cp-text)" }}>{worstLabel}</strong> load is up{" "}
+        <strong style={{ color: "var(--cp-text)" }}>{worstPct}%</strong> this week —
         consider holding pace.
       </span>
     </div>
