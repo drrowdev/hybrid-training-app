@@ -654,9 +654,26 @@ a.cp-tbr-pop-item { color: var(--cp-text); }
    On mobile the BottomTabBar handles primary navigation, the Today
    header surfaces the Strava sync pill, and /app/profile surfaces
    notifications + quick search, so the top-bar collapses to just the
-   sticky safe-area inset. */
+   safe-area inset.
+
+   The desktop header is a 56px elevated bar with a bottom border. Left
+   as-is on mobile it renders an empty grey slab (--cp-bg-elevated) under
+   the status bar that reads as un-native chrome. Collapse it to exactly
+   the safe-area inset, paint it in the page background, and drop the
+   border so the status-bar region blends seamlessly into the page. The
+   header stays in the DOM (sticky) purely to reserve the inset. Inline
+   styles on the <header> set height/background/padding/border, so these
+   overrides need !important. */
 @media (max-width: 768px) {
   .cp-topnav-brand,
   .cp-topnav-tabs,
   .cp-topbar-right-wrap { display: none !important; }
+
+  .cp-topbar {
+    height: 0 !important;
+    min-height: 0 !important;
+    padding-top: env(safe-area-inset-top) !important;
+    background: var(--cp-bg) !important;
+    border-bottom: none !important;
+  }
 }
