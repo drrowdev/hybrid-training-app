@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
-  summarisePrescription,
   roundToPlate,
   type ArchetypeId,
 } from "@/lib/planner/archetypes";
@@ -694,9 +693,9 @@ export default async function TodayPage() {
         </header>
 
         {/* Two-column on wide screens: primary actions in the main
-            column, glanceable cards (Up next / This week / Recent
-            activity) in the right rail. Collapses to a single column
-            ≤768px where the rail stacks below the main column. */}
+            column, glanceable cards (This week / Recent activity) in the
+            right rail. Collapses to a single column ≤768px where the rail
+            stacks below the main column. */}
         <div className="today-grid">
           <div className="today-main" style={{ display: "grid", gap: 18, minWidth: 0 }}>
             {raceCheckInProps && <RaceCheckInCard {...raceCheckInProps} />}
@@ -765,8 +764,6 @@ export default async function TodayPage() {
             aria-label="At a glance"
             style={{ display: "grid", gap: 14, minWidth: 0 }}
           >
-            <UpNextCard upcoming={upcoming} formatProfile={formatProfile} />
-
             <div data-testid="today-week-strip">
               <ThisWeekRail
                 sessions={weekRailSessions}
@@ -826,86 +823,6 @@ function FocusBadge({
         <span>Focus: {label}</span>
       </span>
     </>
-  );
-}
-
-/**
- * Compressed week strip — single row with day dots + a summary on the
- * right. Pulls from the same week-aggregation data the right-rail
- * WeekDotsCard used; rendered inline on Today between the hero and
- * Recent activity. Mon-anchored to match the existing convention.
- */
-/**
- * Up next — the next 1–3 upcoming planned sessions, promoted out of the
- * day card into the Today right rail. Mirrors the prescription summary
- * the day card uses so the lines read identically.
- */
-function UpNextCard({
-  upcoming,
-  formatProfile,
-}: {
-  upcoming: PlannedDay[];
-  formatProfile: ProfileForFormat;
-}) {
-  const items = upcoming.slice(0, 3);
-  return (
-    <section
-      className="cp-card"
-      data-testid="up-next-card"
-      aria-label="Up next"
-      style={{ padding: 16, display: "grid", gap: 10 }}
-    >
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-        <h2
-          style={{
-            fontSize: 11,
-            margin: 0,
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            fontWeight: 600,
-            color: "var(--cp-text-muted)",
-          }}
-        >
-          Up next
-        </h2>
-        <Link href="/app/plan" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
-          Full plan →
-        </Link>
-      </div>
-      {items.length === 0 ? (
-        <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
-          Nothing scheduled.
-        </p>
-      ) : (
-        <div style={{ display: "grid", gap: 10 }}>
-          {items.map((p, i) => {
-            const summary = summarisePrescription(p.prescription.items);
-            return (
-              <div
-                key={p.id}
-                style={{
-                  display: "grid",
-                  gap: 2,
-                  ...(i > 0
-                    ? { borderTop: "1px solid var(--cp-border)", paddingTop: 10 }
-                    : {}),
-                }}
-              >
-                <div style={{ fontSize: 13, color: "var(--cp-text)" }}>
-                  <strong style={{ fontWeight: 600 }}>
-                    {formatUpcomingDay(p.date, formatProfile)}
-                  </strong>{" "}
-                  · {p.title}
-                </div>
-                {summary && (
-                  <div style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>{summary}</div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </section>
   );
 }
 
