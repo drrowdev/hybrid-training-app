@@ -54,6 +54,18 @@ export type CardioLogFormProps = {
   stravaApplied?: boolean;
   /** Required when `stravaApplied` is true. */
   stravaFinishAction?: StravaFinishAction;
+  /**
+   * When the form is opened as the "finish" step of a live tracking
+   * session, the measured duration (minutes) pre-fills the Duration field,
+   * overriding the prescribed default.
+   */
+  initialDurationMin?: number | null;
+  /**
+   * GPS-measured distance in kilometres from a live tracking session.
+   * Pre-fills the distance field (converted to the display unit) and opens
+   * the "More details" disclosure so the captured value is visible.
+   */
+  initialDistanceKm?: number | null;
 };
 
 const MI_TO_KM = 1.609344;
@@ -67,20 +79,38 @@ export function CardioLogForm({
   action,
   stravaApplied,
   stravaFinishAction,
+  initialDurationMin,
+  initialDistanceKm,
 }: CardioLogFormProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
+  const durationDefault =
+    initialDurationMin != null
+      ? initialDurationMin
+      : prescribedDurationMin;
+
+  const initialDistanceDisplay =
+    initialDistanceKm != null && initialDistanceKm > 0
+      ? String(
+          Math.round(
+            (units === "imperial"
+              ? initialDistanceKm / MI_TO_KM
+              : initialDistanceKm) * 100,
+          ) / 100,
+        )
+      : "";
+
   const [completed, setCompleted] = useState<boolean>(true);
   const [duration, setDuration] = useState<string>(
-    prescribedDurationMin != null ? String(prescribedDurationMin) : "",
+    durationDefault != null ? String(durationDefault) : "",
   );
   const [rpe, setRpe] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
-  const [showMore, setShowMore] = useState(false);
+  const [showMore, setShowMore] = useState(initialDistanceDisplay !== "");
   const [avgHr, setAvgHr] = useState<string>("");
-  const [distance, setDistance] = useState<string>("");
+  const [distance, setDistance] = useState<string>(initialDistanceDisplay);
 
   const distanceUnit = units === "imperial" ? "mi" : "km";
 
