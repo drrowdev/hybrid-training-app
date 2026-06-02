@@ -1,6 +1,15 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getAuthUser } from "@/lib/supabase/server";
 
-export default function Home() {
+export default async function Home() {
+  // The Capacitor shell launches at "/". If a session is already live,
+  // skip the landing/sign-in screen and go straight to Today.
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (user) redirect("/app");
+
   return (
     <main
       style={{
