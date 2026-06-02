@@ -24,17 +24,16 @@ export function OverdueNotice({ count }: { count: number }) {
         alignItems: "center",
         gap: 8,
         padding: "8px 12px",
-        border: "1px solid var(--cp-warning)",
-        background: "color-mix(in srgb, var(--cp-warning) 10%, transparent)",
+        border: "1px solid var(--cp-border)",
+        background: "var(--cp-surface)",
         borderRadius: 10,
         fontSize: 13,
-        color: "var(--cp-text)",
+        color: "var(--cp-text-muted)",
         textDecoration: "none",
       }}
     >
-      <span aria-hidden style={{ fontSize: 14 }}>⚠️</span>
       <span>
-        You have <strong>{count}</strong> overdue session
+        You have <strong style={{ color: "var(--cp-text)" }}>{count}</strong> overdue session
         {count === 1 ? "" : "s"} — review {count === 1 ? "it" : "them"} →
       </span>
     </Link>
