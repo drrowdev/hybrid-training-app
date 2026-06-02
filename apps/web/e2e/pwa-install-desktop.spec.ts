@@ -41,6 +41,24 @@ test.describe("PWA install metadata", () => {
     await expect(vp).toHaveAttribute("content", /viewport-fit=cover/);
   });
 
+  test("exposes at least one iOS launch (splash) screen", async ({ page }) => {
+    await page.goto("/");
+    const splash = page.locator('link[rel="apple-touch-startup-image"]');
+    expect(await splash.count()).toBeGreaterThan(0);
+    // Each entry must carry a media query and a /splash/ href so iOS can
+    // pick the device-matched image.
+    const first = splash.first();
+    await expect(first).toHaveAttribute("media", /orientation: portrait/);
+    await expect(first).toHaveAttribute("href", /\/splash\/apple-splash-/);
+  });
+
+  test("offline fallback page is served", async ({ request, baseURL }) => {
+    const res = await request.get(`${baseURL}/offline.html`);
+    expect(res.status()).toBe(200);
+    expect(res.headers()["content-type"]).toMatch(/text\/html/);
+    expect(await res.text()).toMatch(/offline/i);
+  });
+
   test("manifest is valid JSON declaring standalone display", async ({
     request,
     baseURL,
