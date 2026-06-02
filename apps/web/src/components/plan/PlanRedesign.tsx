@@ -33,6 +33,7 @@ import type { DragEvent } from "react";
 import { formatPrescriptionItem } from "@/lib/planner/archetypes";
 import { isOverdue, overdueDays } from "@/lib/planner/overdue";
 import { LogNowDateForm } from "@/components/plan/LogNowDateForm";
+import { RailList } from "@/components/plan/ThisWeekRail";
 import { addDaysToYmd } from "@/lib/dates";
 import {
   groupByMovementThenKind,
@@ -154,7 +155,7 @@ function pillTitle(s: PlanSessionInput): string {
  * `completed_session_id IS NOT NULL`; `skipped` mirrors `skipped_at IS
  * NOT NULL` — see `planner/queries.ts` and the plan page mapping.
  */
-function sessionToOverdueCandidate(s: PlanSessionInput) {
+export function sessionToOverdueCandidate(s: PlanSessionInput) {
   return {
     date: s.date,
     completedSessionId: s.done ? "linked" : null,
@@ -517,7 +518,9 @@ export function PlanRedesign(props: PlanRedesignProps) {
                       >
                         <span className="day-num mono">
                           {cellDate ? shortDate(cellDate) : `${DOW_FULL[d]}`}
-                          {isToday && <span className="today-chip mono">TODAY</span>}
+                          {isToday && (
+                            <span className="today-dot" aria-label="Today" title="Today" />
+                          )}
                         </span>
                         {shown.length === 0 ? (
                           <span className="session-pill rest">Rest</span>
@@ -577,60 +580,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
           )}
         </div>
 
-        <aside className="plan-rail" aria-label="This week" data-testid="plan-this-week">
-          <h3>This week</h3>
-          <div className="rail-list">
-            {rail.map((row) => {
-              const s = row.session;
-              const dayDate = s?.date ?? null;
-              const isToday = dayDate === today;
-              const isPast = dayDate !== null && dayDate < today;
-              if (!s) {
-                return (
-                  <div
-                    key={row.dayIndex}
-                    className="rail-item rest-item"
-                    data-testid={`plan-rail-${row.dayIndex}`}
-                  >
-                    <span className="rail-day mono">{row.dow}</span>
-                    <span className="rail-name">Rest</span>
-                    <span className="rail-kind mono">—</span>
-                  </div>
-                );
-              }
-              const overdue = isOverdue(sessionToOverdueCandidate(s), today);
-              const tag = s.done ? "Done" : s.skipped ? "Skipped" : null;
-              return (
-                <button
-                  type="button"
-                  key={row.dayIndex}
-                  className={`rail-item ${isPast && !isToday ? "past" : ""} ${
-                    isToday ? "today-item" : ""
-                  }${overdue ? " overdue" : ""}`}
-                  data-testid={`plan-rail-${row.dayIndex}`}
-                  onClick={() => openDrawer(s.id)}
-                >
-                  <span className="rail-day mono">{row.dow}</span>
-                  <span className="rail-name">
-                    {s.title}
-                    {isToday && <span className="today-chip mono">TODAY</span>}
-                    {overdue && (
-                      <span
-                        className="overdue-pill mono"
-                        data-testid={`overdue-pill-${s.id}`}
-                      >
-                        Overdue · {overdueDays(sessionToOverdueCandidate(s), today)}d
-                      </span>
-                    )}
-                  </span>
-                  <span className="rail-kind mono">
-                    {tag ?? (s.isCardio ? "Cardio" : "Strength")}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </aside>
+        <RailList rail={rail} today={today} onOpen={openDrawer} />
       </div>
 
       <div className="plan-legend" data-testid="plan-legend">
@@ -889,9 +839,18 @@ export function PlanRedesign(props: PlanRedesignProps) {
           display: inline-flex;
           align-items: center;
           gap: 4px;
+          white-space: nowrap;
         }
         .plan-day-cell[data-today="true"] .day-num { color: var(--cp-accent); font-weight: 700; }
         .plan-day-cell[data-past="true"] .day-num { opacity: 0.5; }
+
+        .today-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: var(--cp-accent);
+          flex: none;
+        }
 
         .today-chip {
           background: var(--cp-accent);
