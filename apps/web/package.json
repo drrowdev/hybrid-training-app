@@ -18,6 +18,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
+    "@capacitor-community/background-geolocation": "^1.2.26",
+    "@capacitor/core": "^7.4.0",
     "@google/generative-ai": "^0.21.0",
     "@hta/db": "workspace:*",
     "@hta/domain": "workspace:*",
