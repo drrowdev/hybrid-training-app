@@ -27,7 +27,10 @@ workflows:
     scripts:
       - name: Install pnpm
         script: |
-          npm install -g pnpm@10.33.2
+          # The Codemagic Mac image ships a pnpm at /usr/local/bin/pnpm, so a
+          # plain global install collides (EEXIST). --force overwrites it and
+          # pins the exact version that matches pnpm-lock.yaml.
+          npm install -g pnpm@10.33.2 --force
       - name: Install dependencies
         script: |
           pnpm install --frozen-lockfile
