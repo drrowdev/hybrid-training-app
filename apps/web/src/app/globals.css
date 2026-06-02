@@ -86,27 +86,12 @@ html[data-theme="dark"] {
   --cp-highlight: rgba(163, 230, 53, 0.12);
 }
 
-/* The iOS WKWebView paints its rubber-band overscroll gutter with the
- * ROOT element's background, and position:fixed chrome (the bottom tab bar)
- * tracks the layout viewport during the bounce — so when the user drags past
- * the bottom, the nav lifts a few px and the gutter shows through as a dark
- * gap above the home indicator. In-page elements can't cover it (the gutter
- * is outside the body box). Fix: paint <html> with the elevated nav colour so
- * the bottom-bounce gutter matches the tab bar, and keep <body> on the page
- * background. body covers the whole document at rest, so html only shows in
- * the overscroll gutter. The top gutter then matches the elevated chrome too. */
-html {
-  background: var(--cp-bg-elevated);
-}
 html, body {
+  background: var(--cp-bg);
   color: var(--cp-text);
   font-family: var(--cp-font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-body {
-  background: var(--cp-bg);
-  min-height: 100dvh;
 }
 
 /* Standalone PWA (Add-to-Home-Screen on iOS, installed app on Chromium):
