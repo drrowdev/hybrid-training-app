@@ -1,0 +1,22 @@
+# Capacitor / iOS build artifacts — the Xcode project IS committed so Codemagic
+# can build it, but generated/derived outputs are not. Paths are relative to
+# apps/mobile/.
+
+# CocoaPods (restored by `pod install` in CI)
+ios/App/Pods/
+ios/App/Podfile.lock
+
+# Xcode build output
+ios/App/build/
+ios/DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Capacitor copies the fallback shell here on `cap sync`; the source of truth is
+# apps/mobile/www, so the copied dir is ignored.
+ios/App/App/public/
+
+# Build outputs
+*.ipa
+*.dSYM.zip
+*.app
