@@ -1406,12 +1406,6 @@ export function SessionDrawer({
   const overdueDayCount = overdue
     ? overdueDays(sessionToOverdueCandidate(session), today)
     : 0;
-  // Idempotency-friendly: once a one-tap action has been fired, disable
-  // both CTAs locally so a fast double-tap can't post twice while the
-  // server action is still in flight. The server actions are also safe
-  // to call repeatedly (skip is upsert-like; start is idempotent on
-  // completed_session_id), but the client lock keeps the UX honest.
-  const [oneTapFired, setOneTapFired] = useState(false);
 
   // ── Mobile swipe-down-to-dismiss ─────────────────────────────────
   // On phones the drawer is a full-screen bottom sheet (see CSS below).
@@ -1713,36 +1707,14 @@ export function SessionDrawer({
               </form>
             )}
             {overdue && !session.skipped && !session.done && (
-              <>
-                <form
-                  action={skipAction}
-                  onSubmit={() => setOneTapFired(true)}
-                  style={{ display: "contents" }}
-                >
-                  <input type="hidden" name="id" value={session.id} />
-                  <button
-                    type="submit"
-                    className="cp-btn"
-                    data-testid={`overdue-skip-${session.id}`}
-                    disabled={oneTapFired}
-                    aria-busy={oneTapFired}
-                    title="Mark this overdue session as skipped"
-                  >
-                    Mark skipped
-                  </button>
-                </form>
-                <LogNowDateForm
-                  plannedId={session.id}
-                  title={session.title}
-                  defaultDateYmd={session.date <= today ? session.date : today}
-                  maxDateYmd={today}
-                  minDateYmd={addDaysToYmd(today, -14)}
-                  action={startSessionAction}
-                  onOpenChange={(o) => {
-                    if (o) setOneTapFired(true);
-                  }}
-                />
-              </>
+              <LogNowDateForm
+                plannedId={session.id}
+                title={session.title}
+                defaultDateYmd={session.date <= today ? session.date : today}
+                maxDateYmd={today}
+                minDateYmd={addDaysToYmd(today, -14)}
+                action={startSessionAction}
+              />
             )}
           </div>
 
@@ -2046,6 +2018,24 @@ export function SessionDrawer({
             font-size: 14px;
             font-weight: 700;
           }
+          .plan-drawer .cardio-block { margin-bottom: 8px; }
+          .plan-drawer .cardio-line {
+            display: grid;
+            grid-template-columns: 84px 1fr;
+            gap: 8px;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--cp-border);
+            font-size: 14px;
+            align-items: baseline;
+          }
+          .plan-drawer .cardio-line .lbl {
+            color: var(--cp-text-muted);
+            font-family: var(--cp-font-mono);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+          }
+          .plan-drawer .cardio-line .val { color: var(--cp-text); }
           .plan-drawer .notes {
             width: 100%;
             min-height: 80px;
@@ -2065,17 +2055,17 @@ export function SessionDrawer({
 }
 
 function rangeHint(item: PrescriptionItem): string | null {
-  // UI-only hint label. The engine knows the canonical set × rep
-  // range; we just surface it so the user can see roughly what's
-  // expected when they edit a row. Nothing is validated.
+  // UI-only target label shown as a pill on the movement head, e.g.
+  // "Target 1 × 5" (sets × reps). Purely a glanceable summary of the
+  // set rows below it — nothing is validated.
   const sets = item.sets ?? null;
   const reps = item.reps ?? null;
   if (sets == null && reps == null) return null;
   if (sets != null && reps != null) {
-    return `Engine: ${sets} × ${reps}`;
+    return `Target ${sets} × ${reps}`;
   }
-  if (reps != null) return `Engine: × ${reps}`;
-  return `Engine: ${sets} sets`;
+  if (reps != null) return `Target ${reps} rep${reps === 1 ? "" : "s"}`;
+  return `Target ${sets} set${sets === 1 ? "" : "s"}`;
 }
 
 function DrawerMovement({
@@ -2197,13 +2187,44 @@ function DrawerCardio({ items }: { items: PrescriptionItem[] }) {
   return (
     <div data-testid="plan-drawer-section-cardio">
       <div className="section">Cardio</div>
-      {items.map((it, i) => (
-        <div key={i} className="set-row">
-          <span className="n">C{i + 1}</span>
-          <span>{it.movementName ?? "Cardio"}</span>
-          <span className="v">{formatPrescriptionItem(it)}</span>
-        </div>
-      ))}
+      {items.map((it, i) => {
+        const duration = it.durationMin != null ? `${it.durationMin} min` : null;
+        const target = it.hrCap ?? null;
+        const protocol = it.protocolNote ?? null;
+        // When neither a target nor a protocol is present, fall back to
+        // the one-line formatter so the row is never empty.
+        const fallback = !target && !protocol ? formatPrescriptionItem(it) : null;
+        return (
+          <div key={i} data-testid={`plan-drawer-cardio-${i}`} className="cardio-block">
+            <div className="movement-head">
+              <span>{it.movementName ?? "Cardio"}</span>
+              {duration && (
+                <span className="range-pill" data-testid="plan-drawer-cardio-duration">
+                  {duration}
+                </span>
+              )}
+            </div>
+            {target && (
+              <div className="cardio-line">
+                <span className="lbl">Target</span>
+                <span className="val">{target}</span>
+              </div>
+            )}
+            {protocol && (
+              <div className="cardio-line">
+                <span className="lbl">Protocol</span>
+                <span className="val">{protocol}</span>
+              </div>
+            )}
+            {fallback && (
+              <div className="cardio-line">
+                <span className="lbl">Detail</span>
+                <span className="val">{fallback}</span>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
