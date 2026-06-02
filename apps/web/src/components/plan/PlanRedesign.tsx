@@ -2054,18 +2054,24 @@ export function SessionDrawer({
   );
 }
 
-function rangeHint(item: PrescriptionItem): string | null {
+function rangeHint(rows: PlanSetRow[]): string | null {
   // UI-only target label shown as a pill on the movement head, e.g.
-  // "Target 1 × 5" (sets × reps). Purely a glanceable summary of the
-  // set rows below it — nothing is validated.
-  const sets = item.sets ?? null;
-  const reps = item.reps ?? null;
-  if (sets == null && reps == null) return null;
-  if (sets != null && reps != null) {
-    return `Target ${sets} × ${reps}`;
+  // "Target 3 × 5" — the count of working sets × their rep target.
+  // Warm-ups are excluded (they live in a separate list), so this
+  // mirrors the numbered set rows shown directly below. Purely a
+  // glanceable summary — nothing is validated.
+  const reps = rows
+    .map((r) => r.item.reps)
+    .filter((n): n is number => n != null);
+  const count = rows.length;
+  if (count === 0) return null;
+  if (reps.length === 0) {
+    return `Target ${count} set${count === 1 ? "" : "s"}`;
   }
-  if (reps != null) return `Target ${reps} rep${reps === 1 ? "" : "s"}`;
-  return `Target ${sets} set${sets === 1 ? "" : "s"}`;
+  const min = Math.min(...reps);
+  const max = Math.max(...reps);
+  const repLabel = min === max ? String(min) : `${min}–${max}`;
+  return `Target ${count} × ${repLabel}`;
 }
 
 function DrawerMovement({
@@ -2080,9 +2086,9 @@ function DrawerMovement({
     <div data-testid={`plan-drawer-movement-${section.rowKey}`}>
       <div className="movement-head">
         <span>{section.movementName}</span>
-        {section.sets[0] && rangeHint(section.sets[0].item) && (
+        {section.sets.length > 0 && rangeHint(section.sets) && (
           <span className="range-pill" data-testid="plan-drawer-range-pill">
-            {rangeHint(section.sets[0].item)}
+            {rangeHint(section.sets)}
           </span>
         )}
       </div>
