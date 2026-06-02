@@ -945,11 +945,13 @@ export function PlanRedesign(props: PlanRedesignProps) {
         .plan-legend .swatch.rest-sw { background: transparent; }
 
         .plan-rail {
+          --rail-pad: 20px;
           background: var(--cp-surface);
           border: 1px solid var(--cp-border);
           border-radius: 16px;
-          padding: 20px;
+          padding: var(--rail-pad);
           align-self: start;
+          overflow: hidden;
         }
         .plan-rail h3 {
           margin: 0 0 12px;
@@ -983,11 +985,13 @@ export function PlanRedesign(props: PlanRedesignProps) {
         .rail-kind { font-size: 10px; color: var(--cp-text-muted); letter-spacing: 0.05em; text-transform: uppercase; }
         .rail-item.past { opacity: 0.55; }
         .rail-item.past .rail-name { text-decoration: line-through; }
+        .rail-item.today-item,
+        .rail-item.overdue {
+          margin-inline: calc(-1 * var(--rail-pad));
+          padding-inline: var(--rail-pad);
+        }
         .rail-item.today-item {
           background: var(--cp-accent-soft);
-          margin: 0 -20px;
-          padding-left: 20px;
-          padding-right: 20px;
           border-bottom-color: transparent;
         }
         .rail-item.today-item + .rail-item { border-top: 1px solid var(--cp-border); }
@@ -1017,7 +1021,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
           .plan-filter { display: none !important; }
           .plan-main { display: none !important; }
           .plan-rail {
-            padding: 16px;
+            --rail-pad: 16px;
           }
           .plan-rail h3 {
             font-size: 12px;
