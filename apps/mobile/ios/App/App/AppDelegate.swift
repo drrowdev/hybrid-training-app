@@ -1,5 +1,6 @@
 import UIKit
 import Capacitor
+import WebKit
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -27,6 +28,37 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func applicationDidBecomeActive(_ application: UIApplication) {
         // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+
+        // Make the remote web app feel native by killing the WKWebView's
+        // rubber-band overscroll: no bounce past the top of the page, and no
+        // dark gutter revealed under the fixed bottom tab bar when the user
+        // drags up at the bottom. The web layer can't fix this — the bounce is
+        // the native scroll view, and the revealed gutter is the webview's own
+        // background, outside the HTML document. We walk the view hierarchy to
+        // the WKWebView (avoids depending on a specific Capacitor API surface)
+        // and disable bounce. Idempotent; the retry covers cold-start timing
+        // where the webview may not be in the hierarchy yet at first activate.
+        disableWebViewBounce()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.disableWebViewBounce()
+        }
+    }
+
+    private func disableWebViewBounce() {
+        guard let root = window?.rootViewController?.view,
+              let webView = AppDelegate.findWebView(in: root) else { return }
+        let scrollView = webView.scrollView
+        scrollView.bounces = false
+        scrollView.alwaysBounceVertical = false
+        scrollView.alwaysBounceHorizontal = false
+    }
+
+    private static func findWebView(in view: UIView) -> WKWebView? {
+        if let webView = view as? WKWebView { return webView }
+        for subview in view.subviews {
+            if let found = findWebView(in: subview) { return found }
+        }
+        return nil
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
