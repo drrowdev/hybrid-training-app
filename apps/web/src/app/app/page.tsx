@@ -34,6 +34,7 @@ import {
   startQuickCardioSession,
   startQuickStrengthSession,
   repeatRecentSession,
+  updatePlannedSessionNotes,
 } from "@/lib/sessions/actions";
 import { getQuickRepeatCandidates } from "@/lib/sessions/queries";
 import { getNextBlockNudge } from "@/lib/planner/next-block-suggestion-server";
@@ -60,7 +61,7 @@ import {
 } from "@/lib/training-maxes/actions";
 import type { TmFormula, TmSource } from "@hta/db";
 import { listTrainingMaxes } from "@/lib/training-maxes/queries";
-import { mondayOfYmd, addDaysToYmd, isoWeekdayYmd } from "@/lib/dates";
+import { addDaysToYmd } from "@/lib/dates";
 import {
   formatDate,
   formatEyebrowDate,
@@ -71,40 +72,15 @@ import {
   isFocusMuscle,
   type FocusMuscle,
 } from "@/lib/planner/focus-muscles";
-
-/**
- * Per-day cell used by the inline week strip. Mirrors the legacy
- * WeekDotsCard shape so the existing fetcher can stay unchanged.
- */
-type WeekDayCell = {
-  strengthDone: boolean;
-  cardioDone: boolean;
-  planned: boolean;
-  /** Type of the planned (not-yet-done) session for this day: strength,
-   * cardio, mixed, or null when the modality is unknown (legacy rows). */
-  plannedKind: "S" | "C" | "SC" | null;
-  isToday: boolean;
-};
-
-/** Visual-only mapping of a planned session's modality to a strength /
- * cardio / mixed bucket for the "This week" dots. Never feeds the engine
- * or the completion guard — purely cosmetic. */
-function plannedKindFromModality(m: string | null | undefined): "S" | "C" | "SC" | null {
-  switch (m) {
-    case "pure_strength":
-    case "pure_hypertrophy":
-    case "skill_focused":
-      return "S";
-    case "pure_z2_aerobic":
-    case "pure_hiit":
-    case "restorative":
-      return "C";
-    case "mixed_modal":
-      return "SC";
-    default:
-      return null;
-  }
-}
+import {
+  movePlannedSession,
+  skipPlannedSession,
+  startSessionFromPlan,
+  unskipPlannedSession,
+} from "@/lib/planner/actions";
+import { estimateSessionMinutes } from "@/lib/sessions/estimate-duration";
+import { ThisWeekRail } from "@/components/plan/ThisWeekRail";
+import type { PlanSessionInput } from "@/components/plan/PlanRedesign";
 
 /** Coarse "N days/weeks ago" string used by the e1RM hero annotation. */
 function relativeFromIso(iso: string | null, now: Date = new Date()): string {
@@ -215,10 +191,6 @@ export default async function TodayPage() {
   const plannedMovementIds = Array.from(
     new Set(plannedToday.flatMap((p) => p.prescription.items.map((i) => i.movementId))),
   );
-  const monday = mondayOfYmd(todayIso);
-  const sunday = addDaysToYmd(monday, 6);
-  const todayDow = isoWeekdayYmd(todayIso); // 0=Mon..6=Sun
-
   const [
     sessionPerformedAt,
     pendingSuggestions,
@@ -226,7 +198,6 @@ export default async function TodayPage() {
     nextEvent,
     { movementRegionById, movementSlugById },
     muscleFreshnessRows,
-    { weekSessions, weekCardioRows, weekPlannedRows },
   ] = await Promise.all([
     // Group A — derived-session timestamps used by the TM hero topline
     // annotation. Depends on tmRows (already resolved).
@@ -358,59 +329,6 @@ export default async function TodayPage() {
 
     // Group F — muscle-level freshness (PR feat/muscle-grid-16).
     getMuscleFreshness(supabase, userId, { tz: profile?.timezone ?? "UTC" }),
-
-    // Group G — current-ISO-week sessions + cardio + planned rows for
-    // the right-rail WeekDotsCard.
-    (async (): Promise<{
-      weekSessions: Array<{ id: string; performed_at: string }> | null;
-      weekCardioRows: Array<{ session_id: string }> | null;
-      weekPlannedRows: Array<{
-        week_index: number;
-        day_index: number;
-        completed_session_id: string | null;
-        session_modality: string | null;
-      }>;
-    }> => {
-      const [{ data: ws }, { data: wc }, { data: wp }] = await Promise.all([
-        supabase
-          .from("sessions")
-          .select("id, performed_at")
-          .is("deleted_at", null)
-          .not("completed_at", "is", null)
-          .gte("performed_at", `${monday}T00:00:00`)
-          .lt("performed_at", `${addDaysToYmd(sunday, 1)}T00:00:00`),
-        supabase
-          .from("cardio_logs")
-          .select("session_id, sessions!inner(performed_at, deleted_at, completed_at)")
-          .gte("sessions.performed_at", `${monday}T00:00:00`)
-          .lt("sessions.performed_at", `${addDaysToYmd(sunday, 1)}T00:00:00`)
-          .is("sessions.deleted_at", null)
-          .not("sessions.completed_at", "is", null),
-        activeBlock
-          ? supabase
-              .from("planned_sessions")
-              .select("week_index, day_index, completed_session_id, session_modality")
-              .eq("block_id", activeBlock.id)
-          : Promise.resolve({
-              data: [] as Array<{
-                week_index: number;
-                day_index: number;
-                completed_session_id: string | null;
-                session_modality: string | null;
-              }>,
-            }),
-      ]);
-      return {
-        weekSessions: ws as Array<{ id: string; performed_at: string }> | null,
-        weekCardioRows: wc as Array<{ session_id: string }> | null,
-        weekPlannedRows: (wp ?? []) as Array<{
-          week_index: number;
-          day_index: number;
-          completed_session_id: string | null;
-          session_modality: string | null;
-        }>,
-      };
-    })(),
   ]);
 
   const hasStravaConnection = Boolean(stravaConn);
@@ -601,56 +519,6 @@ export default async function TodayPage() {
   const amWindowStart = profile?.am_window_start ?? "07:00:00";
   const pmWindowStart = profile?.pm_window_start ?? "17:00:00";
 
-  const cardioSessionIds = new Set<string>(
-    ((weekCardioRows ?? []) as Array<{ session_id: string }>).map((r) => r.session_id),
-  );
-  const weekStrengthDows = new Set<number>();
-  const weekCardioDows = new Set<number>();
-  for (const s of (weekSessions ?? []) as Array<{ id: string; performed_at: string }>) {
-    const ymd = s.performed_at.slice(0, 10);
-    // Only count days that actually fall in [monday..sunday]; the gte/lt
-    // above scope by absolute instant so a session right after midnight
-    // in a forward-shifted tz could land outside the calendar week.
-    const dow = isoWeekdayYmd(ymd);
-    if (dow < 0 || dow > 6) continue;
-    if (cardioSessionIds.has(s.id)) weekCardioDows.add(dow);
-    else weekStrengthDows.add(dow);
-  }
-
-  // Planned days for the current ISO week from the active block.
-  const weekPlannedDows = new Set<number>();
-  const weekPlannedKind = new Map<number, "S" | "C" | "SC">();
-  if (activeBlock) {
-    const startMonday = mondayOfYmd(activeBlock.startedOn);
-    for (const p of (weekPlannedRows ?? []) as Array<{
-      week_index: number;
-      day_index: number;
-      completed_session_id: string | null;
-      session_modality: string | null;
-    }>) {
-      const dayYmd = addDaysToYmd(startMonday, p.week_index * 7 + p.day_index);
-      if (dayYmd >= monday && dayYmd <= sunday && !p.completed_session_id) {
-        const dow = isoWeekdayYmd(dayYmd);
-        weekPlannedDows.add(dow);
-        const kind = plannedKindFromModality(p.session_modality);
-        if (kind) {
-          const prev = weekPlannedKind.get(dow);
-          // Two different planned modalities on one day reads as mixed.
-          weekPlannedKind.set(dow, !prev ? kind : prev === kind ? prev : "SC");
-        }
-      }
-    }
-  }
-
-  const weekDays: WeekDayCell[] = Array.from({ length: 7 }, (_, i) => ({
-    strengthDone: weekStrengthDows.has(i),
-    cardioDone: weekCardioDows.has(i),
-    planned: weekPlannedDows.has(i),
-    plannedKind: weekPlannedKind.get(i) ?? null,
-    isToday: i === todayDow,
-  }));
-  const doneCount = weekDays.filter((d) => d.strengthDone || d.cardioDone).length;
-
   const computedWeekIndex = activeBlock
     ? Math.max(
         0,
@@ -695,12 +563,36 @@ export default async function TodayPage() {
   // "you have N overdue" link above the day's primary card so the user
   // can review them on /app/plan — we never auto-open a past planned
   // session in the today flow.
+  const plannedDaysAll = activeBlock
+    ? await getPlannedDays(activeBlock.id, activeBlock.startedOn)
+    : [];
   const overdueSummary = activeBlock
-    ? summariseOverdue(
-        await getPlannedDays(activeBlock.id, activeBlock.startedOn),
-        todayIso,
-      )
+    ? summariseOverdue(plannedDaysAll, todayIso)
     : { count: 0, oldestDate: null, items: [] };
+  // "This week" rail sessions — built in the same PlanSessionInput shape
+  // the /app/plan page uses so the Today rail reuses the shared rail +
+  // drawer (single source of truth; see components/plan/ThisWeekRail).
+  const weekRailSessions: PlanSessionInput[] = plannedDaysAll.map((p) => {
+    const items = p.prescription?.items ?? [];
+    const isCardio =
+      items.length > 0 && items.every((i) => (i.kind ?? "").startsWith("cardio_"));
+    const hasStrengthItems = items.some((i) => !(i.kind ?? "").startsWith("cardio_"));
+    return {
+      id: p.id,
+      weekIndex: p.weekIndex,
+      dayIndex: p.dayIndex,
+      date: p.date,
+      title: p.title,
+      isCardio,
+      isStrength: hasStrengthItems,
+      done: !!p.completedSessionId,
+      skipped: !!p.skippedAt,
+      slot: p.slot,
+      items,
+      estDurationMin: estimateSessionMinutes(items),
+      notes: p.notes,
+    };
+  });
   const formatProfile: ProfileForFormat = profile
     ? {
         timezone: profile.timezone,
@@ -875,7 +767,20 @@ export default async function TodayPage() {
           >
             <UpNextCard upcoming={upcoming} formatProfile={formatProfile} />
 
-            <WeekCard days={weekDays} doneCount={doneCount} />
+            <div data-testid="today-week-strip">
+              <ThisWeekRail
+                sessions={weekRailSessions}
+                today={todayIso}
+                currentWeekIndex={computedWeekIndex ?? -1}
+                weeks={activeBlock?.weeks ?? 1}
+                logHrefBase="/app/sessions/start"
+                moveAction={movePlannedSession}
+                skipAction={skipPlannedSession}
+                unskipAction={unskipPlannedSession}
+                updateNotesAction={updatePlannedSessionNotes}
+                startSessionAction={startSessionFromPlan}
+              />
+            </div>
 
             <ActivitySection sessions={recent ?? []} todayIso={todayIso} />
           </aside>
@@ -1001,171 +906,6 @@ function UpNextCard({
         </div>
       )}
     </section>
-  );
-}
-
-function WeekCard({
-  days,
-  doneCount,
-}: {
-  days: WeekDayCell[];
-  doneCount: number;
-}) {
-  const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
-  const plannedCount = days.filter((d) => d.planned).length;
-  return (
-    <section
-      className="cp-card"
-      data-testid="today-week-strip"
-      aria-label="This week"
-      style={{ padding: 16, display: "grid", gap: 12 }}
-    >
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-        <h2
-          style={{
-            fontSize: 11,
-            margin: 0,
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            fontWeight: 600,
-            color: "var(--cp-text-muted)",
-          }}
-        >
-          This week
-        </h2>
-        <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
-          {doneCount} done{plannedCount > 0 ? ` · ${plannedCount} planned` : ""}
-        </span>
-      </div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(7, 1fr)",
-          gap: "6px 4px",
-          justifyItems: "center",
-        }}
-      >
-        {DAY_LABELS.map((l, i) => (
-          <span
-            key={`h${i}`}
-            style={{
-              fontSize: 10,
-              fontWeight: 600,
-              color: days[i]?.isToday ? "var(--cp-accent)" : "var(--cp-text-muted)",
-            }}
-          >
-            {l}
-          </span>
-        ))}
-        {days.map((d, i) => (
-          <WeekDot key={`d${i}`} cell={d} />
-        ))}
-      </div>
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 12,
-          fontSize: 11,
-          color: "var(--cp-text-muted)",
-        }}
-      >
-        <WeekLegendSwatch color="var(--cp-accent)" label="Strength" />
-        <WeekLegendSwatch color="var(--cp-link)" label="Cardio" />
-        <WeekLegendSwatch dashed label="Planned" />
-      </div>
-    </section>
-  );
-}
-
-function WeekLegendSwatch({
-  color,
-  dashed,
-  label,
-}: {
-  color?: string;
-  dashed?: boolean;
-  label: string;
-}) {
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-      <span
-        aria-hidden
-        style={{
-          width: 11,
-          height: 11,
-          borderRadius: "50%",
-          background: dashed ? "transparent" : color,
-          border: dashed ? "1px dashed var(--cp-text-muted)" : "none",
-        }}
-      />
-      {label}
-    </span>
-  );
-}
-
-function WeekDot({ cell }: { cell: WeekDayCell }) {
-  let bg = "transparent";
-  let color = "var(--cp-border)";
-  let label = "·";
-  let dashed = false;
-  let solidBorder = true;
-  let title = "Rest";
-
-  if (cell.strengthDone && cell.cardioDone) {
-    bg = "linear-gradient(135deg, var(--cp-accent) 0 50%, var(--cp-link) 50% 100%)";
-    color = "#0a0a0a";
-    label = "S/C";
-    solidBorder = false;
-    title = "Strength + cardio done";
-  } else if (cell.strengthDone) {
-    bg = "var(--cp-accent)";
-    color = "var(--cp-accent-fg, #0a0a0a)";
-    label = "S";
-    solidBorder = false;
-    title = "Strength done";
-  } else if (cell.cardioDone) {
-    bg = "var(--cp-link)";
-    color = "#001028";
-    label = "C";
-    solidBorder = false;
-    title = "Cardio done";
-  } else if (cell.planned) {
-    dashed = true;
-    solidBorder = false;
-    color = "var(--cp-text-muted)";
-    label = cell.plannedKind === "SC" ? "S/C" : (cell.plannedKind ?? "");
-    title = "Planned";
-  }
-
-  const border = dashed
-    ? "1px dashed var(--cp-text-muted)"
-    : solidBorder
-      ? "1px solid var(--cp-border)"
-      : "1px solid transparent";
-
-  return (
-    <span
-      title={title}
-      style={{
-        width: 24,
-        height: 24,
-        borderRadius: "50%",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: label.length > 1 ? 8 : 10,
-        fontWeight: 700,
-        background: bg,
-        color,
-        border,
-        ...(cell.isToday
-          ? { boxShadow: "0 0 0 2px var(--cp-bg), 0 0 0 3px var(--cp-accent)" }
-          : {}),
-      }}
-    >
-      {label}
-    </span>
   );
 }
 
