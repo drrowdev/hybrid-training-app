@@ -6,15 +6,18 @@
 //    shell only shows when the network is truly down
 //  - Everything else: network only
 
-const VERSION = "hta-v1";
+const VERSION = "hta-v2";
 const SHELL_CACHE = `${VERSION}-shell`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
+
+const OFFLINE_URL = "/offline.html";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(SHELL_CACHE).then((cache) =>
       cache.addAll([
+        OFFLINE_URL,
         "/manifest.webmanifest",
         "/icons/icon-192.png",
         "/icons/icon-512.png",
@@ -83,7 +86,13 @@ async function networkFirst(request, cacheName, timeoutMs) {
   } catch {
     const cached = await cache.match(request);
     if (cached) return cached;
-    throw new Error("offline");
+    // Truly offline with nothing cached: for page navigations, fall back to
+    // the branded offline shell instead of the browser's error page.
+    if (request.mode === "navigate") {
+      const offline = await caches.match(OFFLINE_URL);
+      if (offline) return offline;
+    }
+    return Response.error();
   }
 }
 
