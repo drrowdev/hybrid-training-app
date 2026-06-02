@@ -14,7 +14,12 @@ const config: CapacitorConfig = {
     cleartext: false,
   },
   ios: {
-    contentInset: "always",
+    // `never`: the web layer owns all safe-area padding via CSS env(safe-area-inset-*)
+    // (viewport-fit=cover). Letting the native scroll view ALSO add safe-area content
+    // inset double-pads and, at the bottom, leaves a scrollable inset region painted
+    // with the native webview background — the dark "gutter" revealed when pulling up
+    // past the bottom tab bar. Disabling native inset adjustment removes that gutter.
+    contentInset: "never",
   },
 };
 

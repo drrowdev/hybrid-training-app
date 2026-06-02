@@ -51,6 +51,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         scrollView.bounces = false
         scrollView.alwaysBounceVertical = false
         scrollView.alwaysBounceHorizontal = false
+        // The web layer owns all safe-area padding via CSS env(safe-area-inset-*)
+        // (viewport-fit=cover). Stop the native scroll view from also adding safe-area
+        // content inset: its bottom portion is a scrollable region painted with the
+        // webview background, which shows as a dark gutter under the fixed bottom tab
+        // bar when dragging up at the end of the page. `.never` removes that gutter.
+        // Belt-and-suspenders with capacitor.config.ts `ios.contentInset: "never"`.
+        scrollView.contentInsetAdjustmentBehavior = .never
     }
 
     private static func findWebView(in view: UIView) -> WKWebView? {
