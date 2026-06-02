@@ -23,6 +23,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CardioLogForm, type CardioLogFormProps } from "./CardioLogForm";
 import {
+  startGeoWatch,
+  detectGeoProvider,
+  type GeoWatchHandle,
+} from "@/lib/cardio/geo-provider";
+import {
   initTrackState,
   accumulateSample,
   metersToDisplay,
@@ -68,10 +73,11 @@ export function LiveCardioTracker(props: LiveCardioTrackerProps) {
   // --- refs for side-effect bookkeeping ---
   const runningRef = useRef(false);
   const indoorRef = useRef(false);
+  const trackingActiveRef = useRef(false);
   const accumulatedSecRef = useRef(0);
   const segmentStartRef = useRef<number | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const watchIdRef = useRef<number | null>(null);
+  const watchHandleRef = useRef<GeoWatchHandle | null>(null);
   // WakeLockSentinel isn't in every TS DOM lib target — keep it loose.
   const wakeLockRef = useRef<{ release: () => Promise<void> } | null>(null);
 
@@ -107,44 +113,45 @@ export function LiveCardioTracker(props: LiveCardioTrackerProps) {
     wakeLockRef.current = null;
   }, []);
 
-  const startGps = useCallback(() => {
+  const startGps = useCallback(async () => {
     if (indoorRef.current) return;
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
+    if (detectGeoProvider() === "none") {
       setGps("unavailable");
       return;
     }
     setGps("acquiring");
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      (pos) => {
-        setGps("ok");
+    const handle = await startGeoWatch({
+      onStatus: (s) => setGps(s),
+      onSample: (sample) => {
         if (!runningRef.current) return; // ignore fixes while paused
-        const { latitude, longitude, accuracy, speed } = pos.coords;
         setTrack((prev) =>
           accumulateSample(prev, {
-            lat: latitude,
-            lon: longitude,
-            accuracyM: accuracy ?? 9999,
-            t: pos.timestamp,
+            lat: sample.lat,
+            lon: sample.lon,
+            accuracyM: sample.accuracyM,
+            t: sample.t,
           }),
         );
-        setLivePaceSecPerUnit(speedToPaceSecPerUnit(speed, units));
+        setLivePaceSecPerUnit(speedToPaceSecPerUnit(sample.speedMps, units));
       },
-      (err) => {
-        setGps(err.code === err.PERMISSION_DENIED ? "denied" : "unavailable");
-      },
-      { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 },
-    );
+    });
+    // The watch resolves asynchronously (native plugin import + permission
+    // prompt). If the session already finished, tear it straight back down.
+    if (!trackingActiveRef.current) {
+      handle.stop();
+      return;
+    }
+    watchHandleRef.current = handle;
   }, [units]);
 
   const stopGps = useCallback(() => {
-    if (watchIdRef.current != null && navigator.geolocation) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-    }
-    watchIdRef.current = null;
+    watchHandleRef.current?.stop();
+    watchHandleRef.current = null;
   }, []);
 
   const start = useCallback(() => {
     runningRef.current = true;
+    trackingActiveRef.current = true;
     indoorRef.current = indoor;
     segmentStartRef.current = Date.now();
     setRunning(true);
@@ -153,7 +160,7 @@ export function LiveCardioTracker(props: LiveCardioTrackerProps) {
       tickRef.current = setInterval(recomputeElapsed, 250);
     }
     void acquireWakeLock();
-    startGps();
+    void startGps();
   }, [indoor, recomputeElapsed, acquireWakeLock, startGps]);
 
   const pause = useCallback(() => {
@@ -184,6 +191,7 @@ export function LiveCardioTracker(props: LiveCardioTrackerProps) {
       segmentStartRef.current = null;
     }
     runningRef.current = false;
+    trackingActiveRef.current = false;
     setRunning(false);
     if (tickRef.current) {
       clearInterval(tickRef.current);
@@ -212,10 +220,9 @@ export function LiveCardioTracker(props: LiveCardioTrackerProps) {
   // Cleanup on unmount.
   useEffect(() => {
     return () => {
+      trackingActiveRef.current = false;
       if (tickRef.current) clearInterval(tickRef.current);
-      if (watchIdRef.current != null && navigator.geolocation) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-      }
+      watchHandleRef.current?.stop();
       void wakeLockRef.current?.release();
     };
   }, []);

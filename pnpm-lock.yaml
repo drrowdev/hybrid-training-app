@@ -26,6 +26,9 @@ importers:
 
   apps/mobile:
     dependencies:
+      '@capacitor-community/background-geolocation':
+        specifier: ^1.2.26
+        version: 1.2.26(@capacitor/core@7.6.5)
       '@capacitor/core':
         specifier: ^7.4.0
         version: 7.6.5
@@ -42,6 +45,12 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.32.1
         version: 0.32.1
+      '@capacitor-community/background-geolocation':
+        specifier: ^1.2.26
+        version: 1.2.26(@capacitor/core@7.6.5)
+      '@capacitor/core':
+        specifier: ^7.4.0
+        version: 7.6.5
       '@google/generative-ai':
         specifier: ^0.21.0
         version: 0.21.0
@@ -259,6 +268,11 @@ packages:
 
   '@bytecodealliance/preview2-shim@0.17.6':
     resolution: {integrity: sha512-n3cM88gTen5980UOBAD6xDcNNL3ocTK8keab21bpx1ONdA+ARj7uD1qoFxOWCyKlkpSi195FH+GeAut7Oc6zZw==}
+
+  '@capacitor-community/background-geolocation@1.2.26':
+    resolution: {integrity: sha512-kuva8VQ6zM+uIKgHUJTP87IYbmGKhX7DZw62JYfGZ888h4Xr5zeN+UTR6KBRHQVrGBpzSfbv+6/HQVuHYa7W5A==}
+    peerDependencies:
+      '@capacitor/core': '>=3.0.0'
 
   '@capacitor/cli@7.6.5':
     resolution: {integrity: sha512-nlhNoWZIL7YcV1JgNP8+p7WAVIG+zwsY20ZQJ0zd+2lLeCx9MijfELLhLzMCq33c2pILwOvLww8HUqZ5uYCvHg==}
@@ -4908,6 +4922,10 @@ snapshots:
       '@babel/helper-validator-identifier': 7.28.5
 
   '@bytecodealliance/preview2-shim@0.17.6': {}
+
+  '@capacitor-community/background-geolocation@1.2.26(@capacitor/core@7.6.5)':
+    dependencies:
+      '@capacitor/core': 7.6.5
 
   '@capacitor/cli@7.6.5':
     dependencies:
