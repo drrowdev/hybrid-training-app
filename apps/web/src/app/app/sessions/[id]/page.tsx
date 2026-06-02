@@ -23,7 +23,7 @@ import {
 } from "@/components/session/SessionLogClient";
 import { SessionWorkArea } from "@/components/session/SessionWorkArea";
 import { CardioPrescriptionList } from "@/components/session/CardioPrescriptionList";
-import { CardioLogForm } from "@/components/session/CardioLogForm";
+import { LiveCardioTracker } from "@/components/session/LiveCardioTracker";
 import { AddToWorkout } from "@/components/session/AddToWorkout";
 import {
   resolveFreestyleMovements,
@@ -1256,7 +1256,7 @@ export default async function SessionDetailPage({
           )}
           {showCardioLogForm && (
             <div style={{ marginTop: 14 }}>
-              <CardioLogForm
+              <LiveCardioTracker
                 sessionId={id}
                 prescribedDurationMin={firstCardioPrescription?.durationMin ?? null}
                 movementId={firstCardioPrescription?.movementId ?? null}
