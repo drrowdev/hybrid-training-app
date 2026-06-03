@@ -16,6 +16,12 @@ import {
   getActiveModificationRows,
   resolveModificationsForDate,
 } from "./modifications";
+import {
+  applySupersetPairing,
+  getSupersetAccessoriesPref,
+  loadPrimaryMusclesByMovementId,
+  resolverFromMap,
+} from "./superset-view";
 
 /**
  * Resolve a block's `archetype` column to the human-facing display name.
@@ -160,7 +166,7 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
     .order("day_index", { ascending: true })
     .order("slot", { ascending: true });
   if (!data) return [];
-  return data.map((d) => {
+  const days = data.map((d) => {
     const date = dayDate(startedOn, d.week_index, d.day_index);
     const base = applyAutoregVolumeScale(
       (d.prescription as Prescription) ?? { items: [] },
@@ -185,6 +191,25 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
       date,
     };
   });
+
+  // ADR 0026 P4 — antagonist-superset pairing is a read-time presentation
+  // layer applied AFTER autoreg + modifications, gated by the user's pref.
+  // Resolve muscles for the accessory movements present across the block in a
+  // single query, then regroup each day's prescription. Off (default) -> no
+  // query, every prescription byte-identical.
+  const supersetOn = user
+    ? await getSupersetAccessoriesPref(supabase, user.id)
+    : false;
+  if (!supersetOn) return days;
+  const movementIds = days.flatMap((d) =>
+    (d.prescription.items ?? []).map((it) => it.movementId),
+  );
+  const muscleMap = await loadPrimaryMusclesByMovementId(supabase, movementIds);
+  const resolve = resolverFromMap(muscleMap);
+  return days.map((d) => ({
+    ...d,
+    prescription: applySupersetPairing(d.prescription, true, resolve),
+  }));
 }
 
 /**
@@ -235,10 +260,23 @@ export async function getPlannedSessionById(
     (data.prescription as Prescription) ?? { items: [] },
   );
   const modRows = user ? await getActiveModificationRows(user.id) : [];
-  const prescription = applyModificationsToPrescription(
+  const modified = applyModificationsToPrescription(
     base,
     resolveModificationsForDate(modRows, date),
   );
+  // ADR 0026 P4 — read-time superset pairing after autoreg + modifications.
+  let prescription = modified;
+  if (user && (await getSupersetAccessoriesPref(supabase, user.id))) {
+    const muscleMap = await loadPrimaryMusclesByMovementId(
+      supabase,
+      (modified.items ?? []).map((it) => it.movementId),
+    );
+    prescription = applySupersetPairing(
+      modified,
+      true,
+      resolverFromMap(muscleMap),
+    );
+  }
   return {
     id: data.id,
     blockId: data.block_id,
