@@ -112,8 +112,37 @@ classification table is anatomy, not calibration.
 
 Profile-level preference `superset_accessories boolean NOT NULL DEFAULT false`
 (execution style — applies to all blocks; simpler than per-block). Default false keeps
-existing prescriptions byte-identical. The new write path follows the RLS posture:
-explicit user-ownership check, Zod `.strict()`, user-scoped Supabase client.
+existing prescriptions byte-identical. The write path follows the RLS posture: it
+extends the existing `updateProfile` action (explicit user-ownership check via the
+user-scoped Supabase client + `.eq("id", user.id)`). Note: the shared `profileSchema`
+is intentionally NOT `.strict()` — its `safeParse` input is a fixed object literal
+built field-by-field from named `FormData` keys, so no unknown key can reach it;
+strictness would add nothing here and could break the other existing fields that share
+this schema. The new field uses the established present-sentinel (`<name>Present="1"`) +
+`on` checkbox convention.
+
+## Integration timing — read-time, not assemble-time (P4)
+
+Pairing is applied at the prescription **read seams** (`getPlannedDays` /
+`getPlannedSessionById` in `lib/planner/queries.ts`), as the final transform AFTER
+`applyAutoregVolumeScale` (ADR 0013) and modifications — NOT stored at assemble time.
+This is load-bearing, not a convenience:
+
+- **Survivor-set invariance.** `pairAntagonistAccessories` pulls each A2 partner up next
+  to its A1. The autoreg end-slice keeps the first `round(d·scale)` discretionary items
+  by position, so pairing BEFORE the slice could pull a low-priority A2 into the kept
+  window and push a different accessory into the trimmed tail — changing WHICH items
+  survive between ON and OFF. Applying AFTER the slice fixes the survivor set first, so
+  the regroup is purely cosmetic and ON ≡ OFF on the item set (honouring the toggle copy:
+  "never changes which exercises or how many sets you get").
+- **Live preference.** Reading current pref each render means flipping the toggle
+  re-groups the current block immediately (like haptics / timer-sound), with no
+  re-materialisation and no stale superset meta baked into stored prescriptions or
+  set_logs. The persisted prescription and the materialised set_logs stay pairing-free;
+  pairing exists only in the display projection.
+
+The P2 estimator matches pairs by `meta.supersetGroup` id (a map), not adjacency, so the
+read-time regroup prices correctly without depending on stored order.
 
 ## Consequences
 
@@ -128,10 +157,12 @@ explicit user-ownership check, Zod `.strict()`, user-scoped Supabase client.
    `arePairable`, `pairAntagonistAccessories` (meta tag + minimal A2-adjacency).
 2. **P2 — superset-aware `estimateSessionSeconds`.** (this PR) meta-gated overlapped
    rest; unpaired path proven byte-identical.
-3. **P3 — `superset_accessories` preference** (migration + schema + Zod + wizard
-   toggle + RLS) and thread to assemble.
-4. **P4 — assemble post-pass:** apply pairing after governor selection when pref ON;
-   golden test OFF byte-identical / ON same item set.
+3. **P3 — `superset_accessories` preference** (migration 0084 + schema + Zod + Settings
+   toggle + RLS). Shipped PR #283. No behavior change (unconsumed until P4).
+4. **P4 — read-time pairing pass:** `lib/planner/superset-view.ts` (`applySupersetPairing`
+   + RLS-safe muscle resolver), applied after autoreg + modifications at the
+   `queries.ts` read seams, gated by the pref. OFF byte-identical (identity return); ON
+   regroups the same survivor set. See "Integration timing" above.
 5. **P5 — UI render** (A1/A2 grouping, superset-aware rest timer, widowed fallback).
 6. **P6 — preview/plan paired time.**
 7. **P7 — docs:** add `SUPERSET_TRANSITION_SEC` to the CP-2 table in both the workspace
