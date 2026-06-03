@@ -35,6 +35,18 @@ Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
   yet:** the preference is not consumed by the planner until P4 — every existing row
   defaults OFF and reproduces today's prescription + duration byte-identical.
 
+- **Antagonist supersets now actually group your accessories when enabled (P4 of
+  ADR 0026).** With the Settings toggle on, the plan / preview / session views pair
+  opposing accessories (e.g. a curl with a pushdown) into A1/A2 supersets and show the
+  shorter resulting session time. Pairing is a read-time presentation layer applied
+  after the autoreg trim, so it **never changes which exercises or how many sets you
+  get** — it only regroups what you'd already do and rests you once per round instead
+  of twice. The preference is live (flip it and the current block regroups on the next
+  view); stored prescriptions and logged sets stay pairing-free. New
+  `lib/planner/superset-view.ts` (`applySupersetPairing` + an RLS-safe muscle resolver)
+  wired into the two planner read seams. **No change for users with the toggle off:**
+  the read path returns the prescription untouched, byte-identical to before.
+
 ### Added (intensity-aware concurrent interference — ADR 0025)
 
 - **The concurrent-cardio volume pull-back on the Stats chart is now
