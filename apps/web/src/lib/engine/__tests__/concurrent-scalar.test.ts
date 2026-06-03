@@ -12,6 +12,7 @@ import { describe, it, expect } from "vitest";
 import {
   MODALITY_INTERFERENCE,
   computeConcurrentScalar,
+  computeConcurrentScalarFromBlocks,
   isConcurrentScaled,
 } from "../concurrent-scalar";
 
@@ -140,5 +141,114 @@ describe("isConcurrentScaled", () => {
 
   it("false at 1.0 (no cardio)", () => {
     expect(isConcurrentScaled(1.0)).toBe(false);
+  });
+});
+
+describe("computeConcurrentScalarFromBlocks — back-compat & continuity", () => {
+  it("blocks with no zones reduce to the legacy dose curve", () => {
+    // run 300 min, no intensity signal → identical to the record path.
+    expect(
+      computeConcurrentScalarFromBlocks([
+        { modality: "run", minutes: 300, hrZones: null, rpe: null },
+      ]),
+    ).toBeCloseTo(0.70, 3);
+  });
+
+  it("matches the modality-record entry point block-for-block", () => {
+    const fromRecord = computeConcurrentScalar({ run: 150, bike: 150 });
+    const fromBlocks = computeConcurrentScalarFromBlocks([
+      { modality: "run", minutes: 150 },
+      { modality: "bike", minutes: 150 },
+    ]);
+    expect(fromBlocks).toBeCloseTo(fromRecord, 6);
+    expect(fromBlocks).toBeCloseTo(0.79, 3);
+  });
+
+  it("empty block list returns 1.0", () => {
+    expect(computeConcurrentScalarFromBlocks([])).toBe(1.0);
+  });
+
+  it("rpe-only blocks (no hr zones) are NOT adjusted — intensity ignored", () => {
+    // Deliberate Stage-B exclusion: rpe must not move the scalar.
+    const withRpe = computeConcurrentScalarFromBlocks([
+      { modality: "run", minutes: 300, hrZones: null, rpe: 9 },
+    ]);
+    expect(withRpe).toBeCloseTo(0.70, 3);
+  });
+});
+
+describe("computeConcurrentScalarFromBlocks — intensity dimension (ADR 0025)", () => {
+  it("fully-Z2 zones equal the no-signal reference (Z2 is the anchor)", () => {
+    const z2 = computeConcurrentScalarFromBlocks([
+      { modality: "run", minutes: 300, hrZones: { z2: 3600 } },
+    ]);
+    const noSignal = computeConcurrentScalarFromBlocks([
+      { modality: "run", minutes: 300, hrZones: null },
+    ]);
+    expect(z2).toBeCloseTo(noSignal, 6);
+    expect(z2).toBeCloseTo(0.70, 3);
+  });
+
+  it("fully-Z5 intervals compress more than the same Z2 minutes", () => {
+    const z5 = computeConcurrentScalarFromBlocks([
+      { modality: "run", minutes: 120, hrZones: { z5: 3600 } },
+    ]);
+    const z2 = computeConcurrentScalarFromBlocks([
+      { modality: "run", minutes: 120, hrZones: { z2: 3600 } },
+    ]);
+    expect(z5).toBeLessThan(z2);
+  });
+
+  it("recovery-zone (Z1) work compresses less than the Z2 reference", () => {
+    const z1 = computeConcurrentScalarFromBlocks([
+      { modality: "run", minutes: 200, hrZones: { z1: 3600 } },
+    ]);
+    const z2 = computeConcurrentScalarFromBlocks([
+      { modality: "run", minutes: 200, hrZones: { z2: 3600 } },
+    ]);
+    expect(z1).toBeGreaterThan(z2);
+  });
+
+  it("a hard-intervals week compresses more than an easy week of equal minutes/modality", () => {
+    // Same total run minutes, same modality — only the zone mix differs.
+    const hard = computeConcurrentScalarFromBlocks([
+      { modality: "run", minutes: 200, hrZones: { z2: 3600 } },
+      { modality: "run", minutes: 40, hrZones: { z5: 3600 } },
+    ]);
+    const easy = computeConcurrentScalarFromBlocks([
+      { modality: "run", minutes: 200, hrZones: { z2: 3600 } },
+      { modality: "run", minutes: 40, hrZones: { z2: 3600 } },
+    ]);
+    expect(hard).toBeLessThan(easy);
+  });
+
+  it("intensity premium is bounded — pure Z5 caps at the 2.75× anchor", () => {
+    // 30 min run, pure Z5 → 30 × 1.0 × 2.75 = 82.5 weighted
+    // → 1.0 - 0.30 × (82.5/300) = 0.9175. (Not driven to the floor by
+    // a single short hard session.)
+    const scalar = computeConcurrentScalarFromBlocks([
+      { modality: "run", minutes: 30, hrZones: { z5: 3600 } },
+    ]);
+    expect(scalar).toBeCloseTo(0.9175, 3);
+  });
+
+  it("low modality coefficient still dampens a high-intensity block", () => {
+    // bike (coef 0.4) Z5: 60 × 0.4 × 2.75 = 66 weighted vs run (coef 1.0)
+    // Z5: 60 × 1.0 × 2.75 = 165 weighted — modality ordering survives
+    // the intensity weighting.
+    const bikeZ5 = computeConcurrentScalarFromBlocks([
+      { modality: "bike", minutes: 60, hrZones: { z5: 3600 } },
+    ]);
+    const runZ5 = computeConcurrentScalarFromBlocks([
+      { modality: "run", minutes: 60, hrZones: { z5: 3600 } },
+    ]);
+    expect(bikeZ5).toBeGreaterThan(runZ5);
+  });
+
+  it("unusable zone payloads fall back to the reference (no crash)", () => {
+    const garbage = computeConcurrentScalarFromBlocks([
+      { modality: "run", minutes: 300, hrZones: { foo: 1 } as unknown },
+    ]);
+    expect(garbage).toBeCloseTo(0.70, 3);
   });
 });

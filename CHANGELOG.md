@@ -8,6 +8,26 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 2026-05-30. The previous starting-point block is preserved below for history.
 
+### Added (intensity-aware concurrent interference — ADR 0025)
+
+- **The concurrent-cardio volume pull-back on the Stats chart is now
+  intensity-aware.** Previously the muscle-volume "concurrent" modifier weighted
+  cardio by *modality* only, so a week of easy Z2 miles and a week of the same
+  duration in VO2/threshold intervals compressed your displayed volume targets
+  identically. The interference contribution of each logged cardio block is now
+  additionally weighted by a time-in-zone intensity multiplier, anchored at the
+  Z2 reference: Z2 → ×1.0 (unchanged), threshold/VO2 → a premium, recovery-zone →
+  a discount. The premium is per-minute and hard sessions are short, so long easy
+  volume stays the dominant interference source. **Stats/display only** — this
+  does not touch `buildPrescription` or the ceiling chain (CP-4: no
+  `interference_modifier` is introduced). Only objective `hr_zones` data earns an
+  adjustment; RPE-only and no-data blocks fall back to ×1.0, so every user without
+  HR-zone data sees **byte-identical** output and all continuity pins hold. Reuses
+  the existing `ZONE_INTENSITY_WEIGHTS` (ADR 0009) — no new intensity constants.
+  New per-block entry point `computeConcurrentScalarFromBlocks` +
+  `cardioBlocksFromLogs` builder; the modality-record `computeConcurrentScalar`
+  stays as an intensity-blind back-compat wrapper.
+
 ### Added (tendon-floor guarantee — ADR 0024 addendum)
 
 - **The weekly connective-tissue floor is now an enforced, tested invariant.**
