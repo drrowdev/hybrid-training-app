@@ -61,6 +61,7 @@ import {
   accessoryVolumeCandidates,
   type AccessoryVolumeLevel,
 } from "./accessory-volume";
+import { FLOOR_FUNCTIONAL_RESERVE } from "./accessory-roles";
 import { estimateSessionSeconds } from "@/lib/sessions/estimate-duration";
 /**
  * Mutates `items` in place, prepending a warmup ladder for every
@@ -379,10 +380,33 @@ export function assemblePrescriptionItems(
           tendinopathyActive: limitationsContext.tendinopathyActive,
         },
         perMuscleTargets,
-        maxItems: applyScalarToMaxItems(
-          // small budget for durability + functional fills; +itemBonus is the
-          // secondary-focus tilt's extra hypertrophy movement.
-          accessoryProfile.aesthetic.itemsPerSession + 4 + itemBonus,
+        // DC-O4 tendon-floor protection (ADR 0024 addendum): the durability +
+        // functional reserve (+FLOOR_FUNCTIONAL_RESERVE) is held OUTSIDE the
+        // onboarding ramp so a beginner's early-week ramp scales hypertrophy
+        // breadth (the aesthetic itemsPerSession + the per-muscle aesthetic
+        // targets, both ramped) — NOT the low-fatigue tissue-prep floor (heavy
+        // isometric / HSR / plyo / carries). Two caps:
+        //   • `maxItems` (total ceiling) holds the floor/functional reserve out
+        //     of the ramp, giving floor + functional fills the room the ramp
+        //     used to steal — closing the lone measured gap (maintenance
+        //     carries in beginner ramp weeks).
+        //   • `aestheticMaxItems` keeps the ORIGINAL ramped aesthetic budget
+        //     (`itemsPerSession + reserve + itemBonus`, fully ramped) so the
+        //     reserve can NEVER leak into extra hypertrophy volume for a
+        //     beginner.
+        // At ramp = 1.0 (every non-beginner call site) both caps equal the
+        // previous `itemsPerSession + 4 + itemBonus`, so the result is
+        // byte-identical; only beginner/novice block weeks 0–2 change, and only
+        // by GAINING protected floor/functional headroom.
+        maxItems:
+          applyScalarToMaxItems(
+            accessoryProfile.aesthetic.itemsPerSession + itemBonus,
+            ramp,
+          ) + FLOOR_FUNCTIONAL_RESERVE,
+        aestheticMaxItems: applyScalarToMaxItems(
+          accessoryProfile.aesthetic.itemsPerSession +
+            itemBonus +
+            FLOOR_FUNCTIONAL_RESERVE,
           ramp,
         ),
         powerEmphasis,

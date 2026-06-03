@@ -202,3 +202,77 @@ the engine directly, not the wizard. Threaded as a prop
 archetype; disabled only on maintenance; `lowEqualsMedium` only on base-1
 archetypes; `muscle` secondary bumps to High and never recommends an inert
 Medium; null recommendation for maintenance. Full suite green.
+
+## Addendum (2026-06-03) — tendon-floor guarantee + cross-archetype invariant
+
+The Low/Medium/High lever raised a safety question: can trimming accessory volume
+ever drop a generated week below the DC-O4 weekly connective-tissue floor
+(heavy isometric, HSR, plyometric, 2x carry)? This addendum makes that floor an
+explicit, enforced, offline-checkable invariant. No new calibrated constant
+beyond a single heuristic reserve (CP-3).
+
+### What was already true
+
+The dynamic accessory picker fills the **durability floor FIRST** (before
+functional / power / aesthetic), bounded by `maxItems` and accumulated across
+the week via `weekAccessoryHistory`. The Low/Med/High lever only ever trims the
+**aesthetic** section, so it structurally cannot touch the floor. A full-matrix
+gap map (every archetype x frequency x level x week x {experienced, beginner})
+confirmed the floor is met EVERYWHERE for experienced users. The single measured
+gap was **beginner/novice onboarding-ramp weeks 0-1 on maintenance freq=4**: the
+ramp scaled the per-session budget down far enough that the 2nd weekly carry
+could not be seated.
+
+### The fix — protect the floor reserve from the onboarding ramp
+
+`assemble-prescription.ts` now passes the picker **two caps** instead of one:
+
+- `maxItems` (total ceiling) = `ramp x (aesthetic.itemsPerSession + itemBonus)`
+  `+ FLOOR_FUNCTIONAL_RESERVE`. The reserve is held **outside** the ramp, so
+  beginner ramp weeks keep the floor/functional headroom the ramp used to steal.
+- `aestheticMaxItems` (aesthetic-only cap) = the **original** fully-ramped budget
+  `ramp x (aesthetic.itemsPerSession + itemBonus + FLOOR_FUNCTIONAL_RESERVE)`.
+  This bounds the hypertrophy gap-fill section alone, so the unramped reserve can
+  **never leak into extra aesthetic volume** for a beginner.
+
+At `ramp = 1.0` (every non-beginner call site) both caps equal the previous
+`itemsPerSession + 4 + itemBonus`, so output is **byte-identical** — the
+golden-master suite passes unchanged. Only beginner/novice block weeks 0–2 can
+change, and only by gaining protected floor/functional fills (the aesthetic
+budget stays at its original ramped value, verified byte-identical by the
+existing beginner golden snapshot).
+
+`FLOOR_FUNCTIONAL_RESERVE = 4` (`accessory-roles.ts`) is a tuned heuristic
+(CP-3), not sized from first principles — resizing it would shift experienced
+prescriptions and is out of scope.
+
+### The invariant — `tendon-floor.ts` + `tendon-floor.test.ts`
+
+A pure, DB-free module exposes:
+
+- `contextualFloor({ tendinopathyActive, experience })` — the floor a context can
+  honestly be held to. Plyometrics are suppressed for active tendinopathy AND for
+  beginner/novice tiers (the picker's experience band drops high-skill plyo), so
+  the floor's plyo line drops to zero in those contexts. Isometric / HSR / carry
+  are universal.
+- `countFloorRoles(items, roleBySlug)` — tallies bulletproof roles from a
+  materialised week's accessory + tendon items (mirrors the runtime
+  `getCurrentWeekTissueStackGaps` query, offline).
+- `checkTendonFloor(count, floor)` — met/deficits, merging plyo low+high against
+  `FLOOR_PLYOMETRIC_TOTAL`.
+
+`tendon-floor.test.ts` drives the **production** week path (`foldDualMainLifts` →
+`assemblePrescriptionItems` with a shared week history) for every archetype ×
+frequency × Low/Med/High × week across three contexts — experienced, beginner
+ramp, tendinopathy active — and asserts the contextual floor is met every week.
+This locks the guarantee so the volume lever (or any future engine change) can
+never silently regress below it.
+
+### Honest residual — equipment-impossible floors
+
+Enforcement cannot conjure a movement the catalog/equipment filter removed (e.g.
+a bodyweight-only user with no loaded-carry option). Those cases are the
+deliberate non-goal: they remain covered by the existing runtime disclosure
+`getCurrentWeekTissueStackGaps` (the tissue-stack warning surface), not by the
+generator. The invariant therefore runs against a full catalog — it protects the
+engine's ordering/budget logic, which is the only thing the engine controls.
