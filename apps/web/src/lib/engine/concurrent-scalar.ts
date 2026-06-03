@@ -24,7 +24,23 @@
  *   user-outcome data (planned: 12-week tracking of hypertrophy
  *   outcomes vs cardio modality mix, comparing predicted vs actual
  *   muscle-volume tolerance).
+ *
+ * INTENSITY DIMENSION (ADR 0025):
+ *   The per-block contribution is additionally weighted by an
+ *   intensity multiplier derived from time-in-zone, so a minute of
+ *   Z5 VO2 work interferes more than a minute of easy Z2. The
+ *   multiplier is anchored at the Z2 reference (=1.0) and reuses the
+ *   existing `ZONE_INTENSITY_WEIGHTS` — no new intensity coefficients.
+ *   Blocks with no objective HR-zone signal contribute at 1.0, so the
+ *   legacy dose-only behaviour is preserved exactly.
  */
+
+import {
+  ZONE_INTENSITY_WEIGHTS,
+  cardioIntensityScalar,
+  normaliseHrZones,
+  type HrZones,
+} from "@/lib/engine/cardio-intensity";
 
 /**
  * Per-modality interference coefficient. Higher value = more
@@ -127,6 +143,121 @@ const SLOPE_BEFORE_KNEE = 0.30;
 const SLOPE_AFTER_KNEE = 0.10;
 
 /**
+ * Intensity-aware interference (ADR 0025).
+ *
+ * The modality coefficient answers "how much does a MINUTE of this
+ * activity interfere?" — but a minute of Z5 VO2 work is not the same
+ * stimulus as a minute of easy Z2. We refine each block's contribution
+ * by an intensity multiplier derived from time-in-zone, reusing the
+ * existing `ZONE_INTENSITY_WEIGHTS` (so NO new intensity coefficients
+ * enter the engine).
+ *
+ * The multiplier is normalised to the Z2 reference so the legacy
+ * dose-only behaviour is preserved exactly:
+ *   - Z2 (the reference endurance intensity) → 1.0   (no change)
+ *   - threshold / VO2 work                   → > 1.0 (premium)
+ *   - recovery-zone work                     → < 1.0 (discount)
+ *   - NO objective HR-zone signal            → 1.0   (continuity)
+ *
+ * Only objective time-in-zone data earns an adjustment. RPE-only and
+ * no-data blocks fall back to 1.0, so every existing stats output and
+ * every continuity pin stays byte-identical. RPE is a deliberate
+ * Stage-B exclusion — a single subjective number is too coarse to
+ * anchor an interference premium against the Z2 reference.
+ *
+ * CP-4 note: this scalar is consumed by stats only
+ * (`getWeeklyMuscleVolume`); it does NOT enter the prescription ceiling
+ * chain, so it adds no forbidden `interference_modifier`. Magnitudes
+ * are heuristic, Stage-B (calibrate vs predicted-vs-actual hypertrophy
+ * tolerance on intensity-mixed weeks).
+ */
+// reference endurance intensity — Z2 is the "bread and butter" zone the
+// modality coefficients were implicitly calibrated against.
+const INTENSITY_REFERENCE = ZONE_INTENSITY_WEIGHTS.z2;
+// derived bounds: a fully-Z1 session (pure recovery) and a fully-Z5
+// session (pure VO2) are the natural extremes of the time-in-zone
+// average; the clamp is purely defensive against degenerate inputs and
+// never binds for real zone mixes.
+const INTENSITY_MULT_MIN = ZONE_INTENSITY_WEIGHTS.z1 / INTENSITY_REFERENCE; // 0.625
+const INTENSITY_MULT_MAX = ZONE_INTENSITY_WEIGHTS.z5 / INTENSITY_REFERENCE; // 2.75
+
+/**
+ * A single logged cardio block. `hrZones` is the raw `cardio_logs.hr_zones`
+ * jsonb (coerced via `normaliseHrZones`); `rpe` is accepted for shape
+ * completeness but intentionally NOT used for the interference multiplier.
+ */
+export type CardioInterferenceBlock = {
+  modality: string;
+  minutes: number;
+  hrZones?: HrZones | unknown | null;
+  rpe?: number | null;
+};
+
+function clampLocal(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+/**
+ * Per-block intensity multiplier, normalised to the Z2 reference.
+ * Returns 1.0 (no adjustment) unless the block carries usable
+ * time-in-zone data.
+ */
+function intensityMultiplier(block: CardioInterferenceBlock): number {
+  const zones = normaliseHrZones(block.hrZones ?? null);
+  if (!zones) return 1.0;
+  const minutes = Number.isFinite(block.minutes) ? block.minutes : 0;
+  const intensity = cardioIntensityScalar({
+    hrZones: zones,
+    durationSec: Math.max(1, minutes * 60),
+    rpe: null,
+  });
+  if (!Number.isFinite(intensity) || intensity <= 0) return 1.0;
+  return clampLocal(
+    intensity / INTENSITY_REFERENCE,
+    INTENSITY_MULT_MIN,
+    INTENSITY_MULT_MAX,
+  );
+}
+
+/**
+ * Map a weighted dose to the scalar via the piecewise-linear curve.
+ * Shared by both the block and modality-record entry points.
+ */
+function doseToScalar(weightedDose: number): number {
+  if (weightedDose <= 0) return 1.0;
+  if (weightedDose >= DOSE_SATURATION_MIN) return SCALAR_FLOOR;
+  if (weightedDose <= DOSE_KNEE_MIN) {
+    return 1.0 - SLOPE_BEFORE_KNEE * (weightedDose / DOSE_KNEE_MIN);
+  }
+  return (
+    SCALAR_AT_KNEE -
+    SLOPE_AFTER_KNEE * ((weightedDose - DOSE_KNEE_MIN) / DOSE_KNEE_MIN)
+  );
+}
+
+/**
+ * Intensity-aware concurrent scalar from per-block cardio data
+ * (ADR 0025). Each block contributes
+ * `minutes × modalityCoef × intensityMultiplier`. Blocks without
+ * time-in-zone data contribute at intensity 1.0, so a week of
+ * modality-only data reduces exactly to the legacy dose curve.
+ */
+export function computeConcurrentScalarFromBlocks(
+  blocks: ReadonlyArray<CardioInterferenceBlock>,
+): number {
+  let weightedDose = 0;
+  for (const block of blocks) {
+    const minutes = block.minutes;
+    if (!Number.isFinite(minutes) || minutes <= 0) continue;
+    const key = block.modality.toLowerCase().trim();
+    const coef =
+      MODALITY_INTERFERENCE[key] ?? MODALITY_INTERFERENCE.other ?? 0.7;
+    weightedDose += minutes * coef * intensityMultiplier(block);
+  }
+  return doseToScalar(weightedDose);
+}
+
+/**
  * Compute the concurrent-training scalar from per-modality cardio
  * minutes for a single week.
  *
@@ -151,28 +282,20 @@ const SLOPE_AFTER_KNEE = 0.10;
  * Unknown modality keys fall back to the `other` coefficient (0.7)
  * so freeform user-authored modalities still compress volume rather
  * than silently bypassing the scaler.
+ *
+ * Intensity-blind back-compat entry point: delegates to
+ * `computeConcurrentScalarFromBlocks`, treating each modality bucket as
+ * a block with no intensity signal (multiplier 1.0). All legacy
+ * continuity pins therefore hold byte-identical.
  */
 export function computeConcurrentScalar(
   minutesByModality: Record<string, number>,
 ): number {
-  let weightedDose = 0;
+  const blocks: CardioInterferenceBlock[] = [];
   for (const [modality, minutes] of Object.entries(minutesByModality)) {
-    if (!Number.isFinite(minutes) || minutes <= 0) continue;
-    const key = modality.toLowerCase().trim();
-    const coef =
-      MODALITY_INTERFERENCE[key] ?? MODALITY_INTERFERENCE.other ?? 0.7;
-    weightedDose += minutes * coef;
+    blocks.push({ modality, minutes, hrZones: null, rpe: null });
   }
-
-  if (weightedDose <= 0) return 1.0;
-  if (weightedDose >= DOSE_SATURATION_MIN) return SCALAR_FLOOR;
-  if (weightedDose <= DOSE_KNEE_MIN) {
-    return 1.0 - SLOPE_BEFORE_KNEE * (weightedDose / DOSE_KNEE_MIN);
-  }
-  return (
-    SCALAR_AT_KNEE -
-    SLOPE_AFTER_KNEE * ((weightedDose - DOSE_KNEE_MIN) / DOSE_KNEE_MIN)
-  );
+  return computeConcurrentScalarFromBlocks(blocks);
 }
 
 /**

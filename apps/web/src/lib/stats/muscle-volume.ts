@@ -14,8 +14,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
-  computeConcurrentScalar,
+  computeConcurrentScalarFromBlocks,
   isConcurrentScaled,
+  type CardioInterferenceBlock,
 } from "@/lib/engine/concurrent-scalar";
 
 /** One row in the chart. */
@@ -147,6 +148,35 @@ export function minutesByModalityFromCardioLogs(
   return out;
 }
 
+/**
+ * Build the per-block input for the intensity-aware concurrent scalar
+ * (ADR 0025). Keeps each cardio log discrete (not aggregated by
+ * modality) so its time-in-zone signal survives into the interference
+ * computation. Rows with no `hr_zones` contribute at intensity 1.0,
+ * matching the legacy dose-only behaviour.
+ */
+export function cardioBlocksFromLogs(
+  rows: ReadonlyArray<{
+    modality: string | null;
+    duration_sec: number | null;
+    hr_zones?: unknown;
+    rpe?: number | null;
+  }>,
+): CardioInterferenceBlock[] {
+  const blocks: CardioInterferenceBlock[] = [];
+  for (const row of rows) {
+    const minutes = (row.duration_sec ?? 0) / 60;
+    if (minutes <= 0) continue;
+    blocks.push({
+      modality: (row.modality ?? "").trim().toLowerCase() || "other",
+      minutes,
+      hrZones: row.hr_zones ?? null,
+      rpe: row.rpe ?? null,
+    });
+  }
+  return blocks;
+}
+
 export type MuscleVolumeResult = {
   rows: MuscleVolumeRow[];
   /** True when the concurrent modifier is active. UI surfaces an info pill. */
@@ -202,14 +232,19 @@ export async function getWeeklyMuscleVolume(
       .neq("set_kind", "warmup"),
     supabase
       .from("cardio_logs")
-      .select("id, duration_sec, modality")
+      .select("id, duration_sec, modality, hr_zones, rpe")
       .in("session_id", sessionIds),
   ]);
 
-  const minutesByModality = minutesByModalityFromCardioLogs(
-    (cardio ?? []) as Array<{ modality: string | null; duration_sec: number | null }>,
+  const cardioBlocks = cardioBlocksFromLogs(
+    (cardio ?? []) as Array<{
+      modality: string | null;
+      duration_sec: number | null;
+      hr_zones?: unknown;
+      rpe?: number | null;
+    }>,
   );
-  const scalar = computeConcurrentScalar(minutesByModality);
+  const scalar = computeConcurrentScalarFromBlocks(cardioBlocks);
   const concurrentScaled = isConcurrentScaled(scalar);
 
   // Step 3: aggregate per primary muscle. Fan out each set across all of
