@@ -110,6 +110,9 @@ export function PlanNewSwitch({
     // absent → NULL columns → no volume tilt.
     if (submit.goal) fd.set("goal", submit.goal);
     if (submit.secondary) fd.set("secondaryFocus", submit.secondary);
+    // ADR 0024 — per-block accessory volume level. Always sent ("medium" is
+    // the byte-identical default); the server validates against the enum.
+    fd.set("accessoryVolume", submit.accessoryVolume);
     const result = await action(fd);
     if (result.ok) {
       router.push("/app/plan");

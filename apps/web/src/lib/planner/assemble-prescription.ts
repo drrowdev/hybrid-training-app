@@ -50,15 +50,17 @@ import { defaultMuscleTargets } from "./focus-muscle-targets";
 import type { LimitationsContext } from "./limitations-context";
 import type { FocusMuscle } from "./focus-muscles";
 import {
-  hypertrophyAccessorySetsPerItem,
   type EffortPreference,
 } from "./effort-preference";
 import {
-  isActiveTilt,
   secondaryVolumeTilt,
   sessionDurationCapMinutes,
   type SecondaryFocus,
 } from "./secondary-focus";
+import {
+  accessoryVolumeCandidates,
+  type AccessoryVolumeLevel,
+} from "./accessory-volume";
 import { estimateSessionSeconds } from "@/lib/sessions/estimate-duration";
 /**
  * Mutates `items` in place, prepending a warmup ladder for every
@@ -244,12 +246,11 @@ export function assemblePrescriptionItems(
    */
   recentlyUsedAccessoryIds: Set<string> = new Set(),
   /**
-   * ADR 0016 — user effort/volume dial (`profiles.effort_preference`).
-   * Forwarded to `buildPrescription` for the hypertrophy compound effort
-   * axis, and applied locally below for the hypertrophy accessory VOLUME
-   * axis (sets-per-movement). `"standard"` (the default) keeps every
-   * existing call site byte-identical and is a no-op for non-hypertrophy
-   * archetypes.
+   * ADR 0016 — user effort dial (`profiles.effort_preference`). Forwarded to
+   * `buildPrescription` for the hypertrophy compound EFFORT axis only (the ADR
+   * 0016 accessory VOLUME axis was superseded by ADR 0024's `accessoryVolume`
+   * level below). `"standard"` (the default) keeps every existing call site
+   * byte-identical and is a no-op for non-hypertrophy archetypes.
    */
   effortPreference: EffortPreference = "standard",
   /**
@@ -261,6 +262,15 @@ export function assemblePrescriptionItems(
    * its exact pre-ADR-0020 prescription.
    */
   secondaryFocus: SecondaryFocus = "none",
+  /**
+   * ADR 0024 — per-block accessory VOLUME level (`training_blocks.accessory_volume`).
+   * Composes additively with the secondary-focus tilt at the same accessory
+   * site: `low` trims one aesthetic movement (breadth, not depth), `high` adds
+   * one movement + one set, and `medium` (the default) is a byte-identical
+   * no-op on every archetype — so every existing call site keeps its exact
+   * pre-ADR-0024 prescription.
+   */
+  accessoryVolume: AccessoryVolumeLevel = "medium",
 ): PrescriptionItem[] {
   const items =
     day.kind === "strength" && omitMainStrength
@@ -301,20 +311,6 @@ export function assemblePrescriptionItems(
     const pickerCatalog = catalog;
     const history = weekAccessoryHistory;
 
-    // ADR 0016 volume axis — for the hypertrophy archetype only, scale the
-    // aesthetic sets-per-movement by the user's effort/volume dial. Movement
-    // SELECTION is untouched (the picker's role / focus / dedup invariants
-    // hold); only how many sets each chosen accessory carries moves. `low`
-    // trims, `high` pushes toward the 10–12 effective-sets/muscle/week zone.
-    // `standard` and every non-hypertrophy archetype are byte-identical.
-    const effortAdjustedSetsPerItem =
-      archetype.id === "hypertrophy_anchor" && effortPreference !== "standard"
-        ? hypertrophyAccessorySetsPerItem(
-            effortPreference,
-            accessoryProfile.aesthetic.setsPerItem,
-          )
-        : accessoryProfile.aesthetic.setsPerItem;
-
     const ramp = onboardingRampScalar(experience, weekIndex);
     // Focus-muscle bias (migration 0079, CP-2): when the active block has
     // user-chosen focus muscles, `defaultMuscleTargets` pulls volume from
@@ -334,9 +330,21 @@ export function assemblePrescriptionItems(
     // ADR 0020 secondary-focus volume tilt — an additive bump to the accessory
     // aesthetic profile (+1 set/movement, +1 movement) for a `muscle` secondary
     // on a strength / endurance primary. `NO_TILT` for every other (primary,
-    // secondary) combination, so the closure below collapses to the exact
-    // pre-ADR-0020 single-pick path for every existing call site.
-    const tilt = secondaryVolumeTilt(archetype.id, secondaryFocus);
+    // secondary) combination.
+    //
+    // ADR 0024 accessory-volume level — composes ADDITIVELY with the secondary
+    // tilt and is floored against this archetype's own profile (never below one
+    // aesthetic movement or 2 sets; a full no-op on archetypes that ship zero
+    // aesthetic items). The result is the duration-governor candidate ladder,
+    // fullest first. `medium` + a non-tilting secondary yields a single
+    // candidate, so the closure below collapses to the exact pre-ADR-0024
+    // single-pick path for every existing call site.
+    const tiltCandidates = accessoryVolumeCandidates({
+      aestheticBaseItems: accessoryProfile.aesthetic.itemsPerSession,
+      baseSetsPerItem: accessoryProfile.aesthetic.setsPerItem,
+      level: accessoryVolume,
+      secondary: secondaryVolumeTilt(archetype.id, secondaryFocus),
+    });
 
     // Build the accessory section for a given tilt magnitude WITHOUT touching
     // outer state: returns the materialised items plus the week-history delta,
@@ -353,7 +361,7 @@ export function assemblePrescriptionItems(
         ...accessoryProfile,
         aesthetic: {
           ...accessoryProfile.aesthetic,
-          setsPerItem: effortAdjustedSetsPerItem + setBonus,
+          setsPerItem: accessoryProfile.aesthetic.setsPerItem + setBonus,
         },
       };
       const picks = pickAccessoriesForSession({
@@ -452,23 +460,15 @@ export function assemblePrescriptionItems(
       if (pick) primerItem = buildPotentiationItem(pick.movement);
     }
 
-    // Duration governor (ADR 0020): keep the FULLEST tilt whose estimated
-    // session stays within the duration cap. Try full → drop the extra movement
-    // → drop the extra set (→ no tilt). The estimate prices the main lifts +
-    // warmups already in `items` plus the candidate accessories + primer. When
-    // the tilt is inactive there is a single candidate, so the picker runs
-    // exactly once and this branch is byte-identical to the pre-ADR-0020 path.
-    const candidates: Array<{ setBonus: number; itemBonus: number }> =
-      isActiveTilt(tilt)
-        ? [
-            {
-              setBonus: tilt.setsPerItemDelta,
-              itemBonus: tilt.itemsPerSessionDelta,
-            },
-            { setBonus: tilt.setsPerItemDelta, itemBonus: 0 },
-            { setBonus: 0, itemBonus: 0 },
-          ]
-        : [{ setBonus: 0, itemBonus: 0 }];
+    // Duration governor (ADR 0020/0024): keep the FULLEST tilt whose estimated
+    // session stays within the duration cap. The candidate ladder descends from
+    // the full composed tilt (level + secondary) → drop the extra movement →
+    // drop the extra set → the floored identity. The estimate prices the main
+    // lifts + warmups already in `items` plus the candidate accessories +
+    // primer. A net-≤-identity tilt (medium, low, or a mix) is a single
+    // candidate, so the picker runs exactly once and this branch is
+    // byte-identical to the pre-tilt path.
+    const candidates = tiltCandidates;
 
     let chosen = buildAccessorySection(
       candidates[0].setBonus,
