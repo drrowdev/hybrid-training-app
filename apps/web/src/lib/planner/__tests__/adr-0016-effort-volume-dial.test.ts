@@ -1,8 +1,10 @@
 /**
- * ADR 0016 — user effort/volume dial (`profiles.effort_preference`).
+ * ADR 0016 — user effort dial (`profiles.effort_preference`).
  *
- * Pins both axes of the hypertrophy-only dial and the cross-archetype
- * regression invariant:
+ * Pins the compound EFFORT axis of the hypertrophy-only dial and the
+ * cross-archetype regression invariant. (The ADR 0016 accessory VOLUME axis
+ * was superseded by ADR 0024's per-block `accessory_volume` level; its tests
+ * now live in `adr-0024-accessory-volume-level.test.ts`.)
  *
  *   EFFORT axis (compound, via buildPrescription):
  *     - standard (default) == standard (explicit): byte-identical, so every
@@ -14,13 +16,7 @@
  *     - Regression: a non-hypertrophy archetype is byte-identical across all
  *       three dial settings — the compound axis is hypertrophy-only.
  *
- *   VOLUME axis (accessory, via assemblePrescriptionItems):
- *     - hypertrophy aesthetic accessories carry setsPerItem 2 / 3 / 4 for
- *       low / standard / high.
- *     - Regression: a non-hypertrophy archetype's accessory sets are
- *       unchanged across all three dial settings.
- *
- *   Config units: resolver default + setsPerItem scaling/floor.
+ *   Config units: resolver default + effort config magnitudes.
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -30,12 +26,9 @@ import {
   type Archetype,
   type StrengthDay,
 } from "../archetypes";
-import { assemblePrescriptionItems } from "../assemble-prescription";
-import type { CatalogMovement, WeekAccessoryHistoryItem } from "../accessory-picker";
 import {
   resolveEffortPreference,
   hypertrophyEffortConfig,
-  hypertrophyAccessorySetsPerItem,
   type EffortPreference,
 } from "../effort-preference";
 
@@ -199,85 +192,6 @@ describe("ADR 0016 effort axis — hypertrophy compound dial", () => {
   });
 });
 
-// ── Volume axis ──────────────────────────────────────────────────────
-
-const VOL_CATALOG: CatalogMovement[] = [
-  {
-    id: "lr1", slug: "db-lateral-raise", displayName: "DB Lateral Raise",
-    primaryMuscles: ["side_delts"], secondaryMuscles: [], primaryRegion: "shoulder_scapular",
-    secondaryRegions: [], bulletproofRoles: [], functionalRoles: [], isSupported: false,
-    isCompound: false, eccentricLoadScore: null, stimToFatigueScore: null, highStrainTendon: false,
-  },
-  {
-    id: "bi1", slug: "db-curl", displayName: "DB Curl",
-    primaryMuscles: ["biceps"], secondaryMuscles: [], primaryRegion: "elbow_forearm",
-    secondaryRegions: [], bulletproofRoles: [], functionalRoles: [], isSupported: false,
-    isCompound: false, eccentricLoadScore: null, stimToFatigueScore: null, highStrainTendon: false,
-  },
-  {
-    id: "tri1", slug: "rope-pushdown", displayName: "Rope Pushdown",
-    primaryMuscles: ["triceps"], secondaryMuscles: [], primaryRegion: "elbow_forearm",
-    secondaryRegions: [], bulletproofRoles: [], functionalRoles: [], isSupported: true,
-    isCompound: false, eccentricLoadScore: null, stimToFatigueScore: null, highStrainTendon: false,
-  },
-  {
-    id: "calf1", slug: "standing-calf-raise", displayName: "Standing Calf Raise",
-    primaryMuscles: ["calves"], secondaryMuscles: [], primaryRegion: "foot_ankle_calf",
-    secondaryRegions: [], bulletproofRoles: [], functionalRoles: [], isSupported: false,
-    isCompound: false, eccentricLoadScore: null, stimToFatigueScore: null, highStrainTendon: false,
-  },
-];
-
-function aestheticSets(archetype: Archetype, pref: EffortPreference): number[] {
-  const day = firstStrengthDay(archetype);
-  const weekAccessoryHistory: WeekAccessoryHistoryItem[] = [];
-  const items = assemblePrescriptionItems(
-    archetype,
-    0,
-    day,
-    PRIMARY,
-    undefined,
-    new Map(),
-    VOL_CATALOG,
-    weekAccessoryHistory,
-    1.0, // weekDeloadScale — no deload scaling
-    false,
-    undefined,
-    undefined,
-    false,
-    null,
-    undefined,
-    undefined,
-    [],
-    1.0,
-    new Set(),
-    pref,
-  );
-  return items
-    .filter((i) => i.kind === "accessory" && i.intensityLabel === "aesthetic")
-    .map((i) => i.sets!);
-}
-
-describe("ADR 0016 volume axis — hypertrophy accessory sets-per-movement", () => {
-  it("hypertrophy aesthetic accessories scale 2 / 3 / 4 for low / standard / high", () => {
-    const low = aestheticSets(HYPERTROPHY_ANCHOR, "low");
-    const standard = aestheticSets(HYPERTROPHY_ANCHOR, "standard");
-    const high = aestheticSets(HYPERTROPHY_ANCHOR, "high");
-    expect(low.length).toBeGreaterThan(0);
-    expect(standard.length).toBeGreaterThan(0);
-    expect(high.length).toBeGreaterThan(0);
-    for (const s of low) expect(s).toBe(2);
-    for (const s of standard) expect(s).toBe(3);
-    for (const s of high) expect(s).toBe(4);
-  });
-
-  it("regression: a non-hypertrophy archetype's accessory sets are unchanged across dials", () => {
-    const std = aestheticSets(STRENGTH_ANCHOR, "standard");
-    expect(aestheticSets(STRENGTH_ANCHOR, "low")).toEqual(std);
-    expect(aestheticSets(STRENGTH_ANCHOR, "high")).toEqual(std);
-  });
-});
-
 // ── Config units ─────────────────────────────────────────────────────
 
 describe("ADR 0016 config helpers", () => {
@@ -295,12 +209,5 @@ describe("ADR 0016 config helpers", () => {
     expect(cfg.earlyRepBonus).toBe(2);
     expect(cfg.earlyRepCap).toBe(12);
     expect(cfg.finalRirDelta).toBe(0);
-  });
-
-  it("hypertrophyAccessorySetsPerItem scales by ±1 and floors at 1", () => {
-    expect(hypertrophyAccessorySetsPerItem("low", 3)).toBe(2);
-    expect(hypertrophyAccessorySetsPerItem("standard", 3)).toBe(3);
-    expect(hypertrophyAccessorySetsPerItem("high", 3)).toBe(4);
-    expect(hypertrophyAccessorySetsPerItem("low", 1)).toBe(1); // floor
   });
 });
