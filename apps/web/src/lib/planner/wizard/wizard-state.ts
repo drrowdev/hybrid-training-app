@@ -44,6 +44,14 @@ export type WizardState = {
    * one movement + one set. Independent of the effort dial.
    */
   accessoryVolume: AccessoryVolumeLevel;
+  /**
+   * ADR 0024 addendum — `true` once the user manually picks an accessory-volume
+   * level. While `false`, the wizard pre-selects the engine-recommended level
+   * for the current (archetype, secondary) pair; once the user touches the
+   * control we stop overriding their choice. Reset whenever the primary or
+   * secondary changes so the recommendation re-applies for the new combination.
+   */
+  accessoryVolumeTouched: boolean;
   /** Set when the user reached step 4 via "See lighter options" on step 1. */
   cameFromMaintenanceLink: boolean;
   /** Step-5 schedule; populated lazily when step 5 first renders. */
@@ -71,6 +79,7 @@ export const initialWizardState: WizardState = {
   externalCardioName: "",
   focusMuscles: [],
   accessoryVolume: "medium",
+  accessoryVolumeTouched: false,
   cameFromMaintenanceLink: false,
   schedule: [],
   scheduleSig: null,
@@ -90,6 +99,7 @@ export type WizardAction =
   | { type: "set-external-cardio-name"; name: string }
   | { type: "toggle-focus-muscle"; muscle: string }
   | { type: "set-accessory-volume"; level: AccessoryVolumeLevel }
+  | { type: "recommend-accessory-volume"; level: AccessoryVolumeLevel }
   | { type: "maintenance-link" }
   | { type: "goto"; step: StepIndex }
   | { type: "next" }
@@ -106,12 +116,27 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
     case "set-days":
       return { ...state, days: action.days };
     case "set-goal":
-      // Changing the primary clears the secondary so the user re-picks.
-      return { ...state, goal: action.goal, secondary: null, power: false };
+      // Changing the primary clears the secondary so the user re-picks. Also
+      // clear the accessory-volume "touched" flag so the engine recommendation
+      // re-applies for the new primary (ADR 0024 addendum).
+      return {
+        ...state,
+        goal: action.goal,
+        secondary: null,
+        power: false,
+        accessoryVolumeTouched: false,
+      };
     case "set-secondary":
-      return { ...state, secondary: action.secondary };
+      // A muscle secondary shifts the recommended accessory volume — re-arm the
+      // recommendation by clearing the manual-touch flag.
+      return { ...state, secondary: action.secondary, accessoryVolumeTouched: false };
     case "set-accessory-volume":
-      return { ...state, accessoryVolume: action.level };
+      return { ...state, accessoryVolume: action.level, accessoryVolumeTouched: true };
+    case "recommend-accessory-volume":
+      // Advisory pre-select: only applies while the user hasn't manually chosen.
+      return state.accessoryVolumeTouched
+        ? state
+        : { ...state, accessoryVolume: action.level };
     case "toggle-power":
       return { ...state, power: !state.power };
     case "toggle-two-a-day":
