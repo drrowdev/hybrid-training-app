@@ -93,6 +93,21 @@ export const profiles = pgTable("profiles", {
    */
   timerSoundEnabled: boolean("timer_sound_enabled").default(true).notNull(),
   /**
+   * ADR 0026 — antagonist-superset accessories opt-in. When TRUE, the planner
+   * pairs opposing accessory movements (e.g. biceps curl + triceps pushdown)
+   * into supersets so the lifter rests once per round instead of twice — a
+   * shorter session at preserved volume (Robbins 2010; Weakley 2020). An
+   * execution style applied to all blocks (like haptics / timer-sound), NOT a
+   * programming choice. Pairing is a post-selection annotation layer: it never
+   * changes which accessories are prescribed, only how they group + the
+   * displayed time. DEFAULT FALSE reproduces today's output byte-identical —
+   * the pairing pass is never invoked. See migration 0084 +
+   * `apps/web/src/lib/planner/antagonist-pairs.ts`.
+   */
+  supersetAccessories: boolean("superset_accessories")
+    .default(false)
+    .notNull(),
+  /**
    * Phase 3 today-redesign — controls whether the Today page renders
    * the inline 1/3/5/7/9 fatigue + soreness `HowRecoveredCard`. The
    * card is the only manual check-in surface (the pre-session
