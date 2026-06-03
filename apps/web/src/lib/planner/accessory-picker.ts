@@ -249,6 +249,7 @@ export function pickAccessoriesForSession({
   filters,
   perMuscleTargets,
   maxItems,
+  aestheticMaxItems,
   powerEmphasis = false,
   equipment,
   experience = null,
@@ -264,6 +265,17 @@ export function pickAccessoriesForSession({
   perMuscleTargets: Record<string, number>;
   /** Hard cap on items for this session — typically archetype.aesthetic.itemsPerSession + a small budget for functional/durability fills. */
   maxItems: number;
+  /**
+   * Separate, usually smaller cap on the AESTHETIC (hypertrophy gap-fill)
+   * section only. The durability + functional floors may use the full
+   * `maxItems`; aesthetic fills stop at this lower budget. Lets the caller
+   * hold a tissue-prep floor/functional reserve OUTSIDE the onboarding ramp
+   * (so a beginner's ramp compresses hypertrophy breadth but never the DC-O4
+   * floor) without that reserve leaking into extra aesthetic volume. Defaults
+   * to `maxItems` — byte-identical to the single-cap behaviour for every
+   * existing call site. See ADR 0024 addendum + tendon-floor invariant.
+   */
+  aestheticMaxItems?: number;
   /** Wizard toggle. Biases the picker toward power-tagged movements + trims hypertrophy filler. */
   powerEmphasis?: boolean;
   /**
@@ -394,12 +406,16 @@ export function pickAccessoriesForSession({
   }
 
   // ─── 3. Aesthetic gap-fill ───
-  // When power emphasis is on, trim the aesthetic budget by ~1 item (and at
-  // least leave room for the power pick we just inserted). High-rep
-  // hypertrophy fillers blunt the RFD signal — Schoenfeld 2017.
+  // Aesthetic fills are bounded by their OWN budget (`aestheticMaxItems`,
+  // defaulting to `maxItems`), which may be lower than the total `maxItems`
+  // when the caller reserves floor/functional headroom. When power emphasis is
+  // on, trim that budget by ~1 item (and at least leave room for the power pick
+  // we just inserted). High-rep hypertrophy fillers blunt the RFD signal —
+  // Schoenfeld 2017.
+  const aestheticBudget = aestheticMaxItems ?? maxItems;
   const aestheticCap = powerEmphasis
-    ? Math.max(picks.length, maxItems - (powerPickAdded ? 0 : 1) - 1)
-    : maxItems;
+    ? Math.max(picks.length, aestheticBudget - (powerPickAdded ? 0 : 1) - 1)
+    : aestheticBudget;
   while (picks.length < aestheticCap) {
     const gapMuscle = pickLargestAestheticGap(perMuscleTargets, muscleProgress);
     if (!gapMuscle) break;
