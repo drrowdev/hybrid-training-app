@@ -170,5 +170,29 @@ describe("estimate-duration", () => {
         20 * 60;
       expect(estimateSessionSeconds(items)).toBe(expected);
     });
+
+    it("surfaces a shorter ~N min on Plan/Preview when the pair is present (minute wrapper)", () => {
+      // P6 surface contract: the Plan + Preview pages call estimateSessionMinutes
+      // on the *paired* read-path items (P4 applySupersetPairing), so the `~N min`
+      // the lifter sees must drop once two opposing accessories are grouped. Guard
+      // at the minute boundary the surfaces actually render, not just seconds.
+      const mainWork: PrescriptionItem[] = [
+        item({ kind: "main", sets: 3, movementId: "squat" }),
+      ];
+      const pairedMin = estimateSessionMinutes([
+        ...mainWork,
+        ssA1({ movementId: "curl" }),
+        ssA2({ movementId: "pushdown" }),
+      ]);
+      const soloMin = estimateSessionMinutes([
+        ...mainWork,
+        item({ kind: "accessory", sets: 3, movementId: "curl" }),
+        item({ kind: "accessory", sets: 3, movementId: "pushdown" }),
+      ]);
+      expect(pairedMin).not.toBeNull();
+      expect(soloMin).not.toBeNull();
+      // 225s of dropped rest = a visible whole-minute reduction in the shown copy.
+      expect(pairedMin!).toBeLessThan(soloMin!);
+    });
   });
 });
