@@ -8,6 +8,28 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 2026-05-30. The previous starting-point block is preserved below for history.
 
+### Added (tendon-floor guarantee — ADR 0024 addendum)
+
+- **The weekly connective-tissue floor is now an enforced, tested invariant.**
+  Guarantees every generated week ships the DC-O4 tissue-stack floor (heavy
+  isometric, HSR, plyometric, 2× carry) for every archetype × frequency ×
+  accessory-volume level × week — so the Low/Med/High lever (or any future
+  engine change) can never silently drop below it. The accessory picker already
+  filled the durability floor first, so this is mostly a lock-in: a full-matrix
+  gap map found exactly one real gap — beginner/novice onboarding-ramp weeks
+  dropping the 2nd weekly carry on maintenance — because the ramp shrank the
+  per-session budget. Fixed by giving the picker **two caps**: a total ceiling
+  that holds a floor/functional reserve **outside** the onboarding ramp, plus a
+  separate aesthetic-only cap (`aestheticMaxItems`) that keeps the original
+  ramped hypertrophy budget so the reserve can't leak into extra accessory
+  volume. **Byte-identical** for every non-beginner prescription (ramp = 1.0);
+  golden master unchanged. New pure module `lib/planner/tendon-floor.ts`
+  (`contextualFloor` / `countFloorRoles` / `checkTendonFloor`, with plyometrics
+  correctly suppressed for tendinopathy + beginner/novice) and a cross-archetype
+  invariant test drive the production week path to assert the floor every week.
+  Equipment-impossible floors (e.g. bodyweight-only, no loaded carry) remain the
+  honest residual covered by the existing runtime tissue-stack warning.
+
 ### Added (accessory volume — live estimates + recommendation, ADR 0024 addendum)
 
 - **Accessory-volume control now shows on every plan + recommends a level.**
