@@ -58,6 +58,19 @@ Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
   toggle-off / unpaired list is structurally identical to before. (The live
   in-workout logger gets the same grouping next — P5b.)
 
+- **The live in-workout logger now groups antagonist pairs too (P5b of ADR 0026).**
+  With the toggle on, the per-movement card list on the active session screen pulls
+  each paired accessory's two cards adjacent and wraps them in the same "Superset ·
+  alternate, rest once" bracket as plan / preview, so the grouping the lifter saw
+  while planning carries through to execution. Crucially the underlying
+  `prescription.items` order is left untouched — the logger matches logged sets to
+  items by stored positional index, so only the CARD render is regrouped (new
+  `lib/sessions/superset-cards.ts`: `buildSupersetByMovementId` derives membership
+  from the unpaired prescription, `segmentAccessoryGroups` clusters the cards). The
+  rest timer stays per-card/advisory for now; automated cross-card "rest once per
+  round" coordination is a deliberate follow-up. Toggle-off / no-pairs renders the
+  exact legacy card layout (empty membership map). Full suite 3279 green, build clean.
+
 ### Added (intensity-aware concurrent interference — ADR 0025)
 
 - **The concurrent-cardio volume pull-back on the Stats chart is now

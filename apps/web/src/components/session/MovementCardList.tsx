@@ -19,6 +19,10 @@ import {
   type MovementGroup,
 } from "@/lib/sessions/movement-grouping";
 import { bucketForGroup } from "@/lib/sessions/movement-summary";
+import {
+  segmentAccessoryGroups,
+  type SupersetCardInfo,
+} from "@/lib/sessions/superset-cards";
 import { MovementCard } from "./MovementCard";
 import { FreestyleMovementCard } from "./FreestyleMovementCard";
 import type { PlateInventoryItem } from "./plate-math";
@@ -29,6 +33,8 @@ import type {
 } from "@/lib/sessions/actions";
 import { removeSessionMovementAction } from "@/lib/sessions/session-movement-actions";
 import type { ResolvedFreestyleMovement } from "@/lib/sessions/freestyle-resolver";
+
+const EMPTY_SUPERSET_MAP: ReadonlyMap<string, SupersetCardInfo> = new Map();
 
 export type MovementCardListProps = {
   sessionId: string;
@@ -73,6 +79,13 @@ export type MovementCardListProps = {
    * live in this component.
    */
   resolvedFreestyle?: ReadonlyArray<ResolvedFreestyleMovement>;
+  /**
+   * ADR 0026 P5b — accessory movementId -> antagonist-superset membership, built
+   * server-side from the (unpaired) prescription so paired accessory CARDS can be
+   * bracketed and pulled adjacent WITHOUT reordering the index-bearing items.
+   * Empty / omitted = no supersets (every card renders solo, as before).
+   */
+  supersetByMovementId?: ReadonlyMap<string, SupersetCardInfo>;
 };
 
 export function MovementCardList({
@@ -95,6 +108,7 @@ export function MovementCardList({
   plateInventory,
   bwGateStateByFamily,
   resolvedFreestyle,
+  supersetByMovementId,
 }: MovementCardListProps) {
   const groups = useMemo(
     () => groupPrescriptionByMovement(prescription),
@@ -232,6 +246,16 @@ export function MovementCardList({
     [mainGroups, accessoryGroups, otherGroups],
   );
 
+  // ADR 0026 P5b — fold the accessory cards into solo cards + antagonist
+  // superset clusters (A2 pulled adjacent to A1). Membership is derived
+  // server-side from the unpaired prescription; the underlying items are NOT
+  // reordered, so the index-based set matching is untouched. Empty map (pref
+  // off / no pairs) => every entry is solo, original order preserved.
+  const accessorySegments = useMemo(
+    () => segmentAccessoryGroups(accessoryGroups, supersetByMovementId ?? EMPTY_SUPERSET_MAP),
+    [accessoryGroups, supersetByMovementId],
+  );
+
   const renderCard = (group: MovementGroup) => {
     const idx = orderedGroups.indexOf(group);
     return (
@@ -274,7 +298,15 @@ export function MovementCardList({
             label="Accessory work"
             testId="movement-group-accessory"
           />
-          {accessoryGroups.map(renderCard)}
+          {accessorySegments.map((seg) =>
+            seg.kind === "solo" ? (
+              renderCard(seg.group)
+            ) : (
+              <SupersetCardBracket key={seg.groupId} groupId={seg.groupId}>
+                {seg.groups.map(renderCard)}
+              </SupersetCardBracket>
+            ),
+          )}
         </>
       )}
 
@@ -382,6 +414,47 @@ function PrescribedCard(props: {
       persistKeyPrefix={`mc:${props.sessionId}`}
       bwGateStateByFamily={props.bwGateStateByFamily}
     />
+  );
+}
+
+/**
+ * ADR 0026 P5b — bracket around an antagonist superset pair in the logger.
+ * Wraps the two paired accessory cards with a left accent rule + a "Superset ·
+ * alternate, rest once" caption so the lifter does them back-to-back and rests
+ * a single time per round. Internal A1/A2 slot codes are NOT surfaced.
+ */
+function SupersetCardBracket({
+  groupId,
+  children,
+}: {
+  groupId: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      data-testid="superset-card-bracket"
+      data-superset-group={groupId}
+      style={{
+        display: "grid",
+        gap: 12,
+        borderLeft: "2px solid var(--cp-accent, var(--cp-text-muted))",
+        paddingLeft: 10,
+      }}
+    >
+      <div
+        className="mono"
+        style={{
+          fontSize: 10,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          color: "var(--cp-accent, var(--cp-text-muted))",
+          fontWeight: 600,
+        }}
+      >
+        Superset · alternate, rest once
+      </div>
+      {children}
+    </div>
   );
 }
 
