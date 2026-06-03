@@ -71,6 +71,16 @@ Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
   round" coordination is a deliberate follow-up. Toggle-off / no-pairs renders the
   exact legacy card layout (empty membership map). Full suite 3279 green, build clean.
 
+- **Antagonist-superset feature complete — paired time + constants doc (P6/P7 of ADR
+  0026).** Closes out the antagonist-superset work: the Plan and Preview surfaces already
+  show the shorter paired duration (they price the P4-paired read-path items through the
+  superset-aware `estimateSessionSeconds`), now pinned by a minute-wrapper paired-vs-solo
+  surface-contract test so the shown `~N min` can't silently regress to the un-paired
+  number. The new `SUPERSET_TRANSITION_SEC = 15` constant is documented as CP-2 row 47
+  (Robbins 2010 / Weakley 2017 antagonist-pairing evidence; CP-1 heuristic for the 15 s
+  station-switch magnitude, which only affects the displayed estimate, never prescription)
+  in both the canonical workspace constants doc and the `docs/knowledge` mirror.
+
 ### Added (intensity-aware concurrent interference — ADR 0025)
 
 - **The concurrent-cardio volume pull-back on the Stats chart is now
