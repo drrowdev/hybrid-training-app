@@ -9,10 +9,21 @@
  */
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import type { WizardState, WizardAction } from "@/lib/planner/wizard/wizard-state";
 import type { ResolvedArchetype } from "@/lib/planner/wizard/wizard-mapping";
 import type { EquipmentPreset } from "@/lib/settings/equipment-schema";
 import type { AccessoryVolumeLevel } from "@/lib/planner/accessory-volume";
+import {
+  accessoryVolumeApplicability,
+  recommendedAccessoryVolume,
+  type AccessoryVolumeRecommendation,
+} from "@/lib/planner/accessory-volume-recommendation";
+import { resolveSecondaryFocus } from "@/lib/planner/secondary-focus";
+import type {
+  EstimateAccessoryVolumeInput,
+  EstimateAccessoryVolumeResult,
+} from "@/lib/planner/estimate-actions";
 
 type Wave = { label: string; detail: string };
 
@@ -455,26 +466,60 @@ const ACCESSORY_VOLUME_OPTIONS: {
   },
 ];
 
+/** Server action prop type — the read-only per-level duration estimator. */
+export type EstimateAccessoryVolumeAction = (
+  input: EstimateAccessoryVolumeInput,
+) => Promise<EstimateAccessoryVolumeResult>;
+
 /**
- * ADR 0024 — accessory-volume segmented control. Three options (Low / Medium /
- * High) with an always-visible explanation of the current choice (acts as a
- * touch-friendly tooltip). `medium` is the byte-identical default. Only the
- * accessory budget moves; main lifts + cardio are untouched.
+ * ADR 0024 (+ addendum) — accessory-volume segmented control. Three options
+ * (Low / Medium / High) with an always-visible explanation of the current
+ * choice (acts as a touch-friendly tooltip). `medium` is the byte-identical
+ * default. Only the accessory budget moves; main lifts + cardio are untouched.
+ *
+ * The addendum adds: a live ballpark time estimate under each level, an
+ * engine-recommended pick (chip + reason), an honest "Low == Medium here" note
+ * on archetypes whose accessory base is already minimal, and a DISABLED state
+ * for archetypes that ship zero accessories (Maintenance) so the control is
+ * still visible — never silently missing.
  */
 function AccessoryVolumeControl({
   value,
   onChange,
+  recommendation,
+  disabled,
+  lowEqualsMedium,
+  estimates,
+  estimateLoading,
 }: {
   value: AccessoryVolumeLevel;
   onChange: (level: AccessoryVolumeLevel) => void;
+  recommendation: AccessoryVolumeRecommendation | null;
+  disabled: boolean;
+  lowEqualsMedium: boolean;
+  estimates: Record<AccessoryVolumeLevel, number | null> | null;
+  estimateLoading: boolean;
 }): React.ReactElement {
   const active =
     ACCESSORY_VOLUME_OPTIONS.find((o) => o.level === value) ??
     ACCESSORY_VOLUME_OPTIONS[1]!;
+  const recLabel = recommendation
+    ? (ACCESSORY_VOLUME_OPTIONS.find((o) => o.level === recommendation.level)?.label ??
+      recommendation.level)
+    : null;
+  const minutesLabel = (level: AccessoryVolumeLevel): string | null => {
+    if (estimateLoading) return "…";
+    const m = estimates?.[level];
+    return typeof m === "number" ? `~${m} min` : null;
+  };
   return (
-    <section style={reviewCardStyle} data-testid="accessory-volume-control">
+    <section
+      style={reviewCardStyle}
+      data-testid="accessory-volume-control"
+      aria-disabled={disabled || undefined}
+    >
       <h3 style={cardHeadStyle}>Accessory volume</h3>
-      <div style={cardBodyStyle}>
+      <div style={{ ...cardBodyStyle, opacity: disabled ? 0.6 : 1 }}>
         <div
           role="radiogroup"
           aria-label="Accessory volume"
@@ -482,31 +527,78 @@ function AccessoryVolumeControl({
         >
           {ACCESSORY_VOLUME_OPTIONS.map((o) => {
             const selected = o.level === value;
+            const isRecommended = recommendation?.level === o.level;
+            const mins = minutesLabel(o.level);
             return (
               <button
                 key={o.level}
                 type="button"
                 role="radio"
                 aria-checked={selected}
+                aria-label={
+                  isRecommended ? `${o.label} (recommended)` : o.label
+                }
+                disabled={disabled}
                 data-testid={`accessory-volume-${o.level}`}
-                onClick={() => onChange(o.level)}
+                data-recommended={isRecommended ? "true" : undefined}
+                onClick={() => !disabled && onChange(o.level)}
                 style={{
                   flex: 1,
-                  padding: "10px 8px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 3,
+                  padding: "9px 6px",
                   borderRadius: 10,
                   fontSize: 14,
                   fontWeight: 600,
-                  cursor: "pointer",
+                  cursor: disabled ? "default" : "pointer",
                   border: selected
                     ? "1px solid var(--cp-accent)"
-                    : "1px solid var(--cp-border)",
+                    : isRecommended
+                      ? "1px solid var(--cp-accent)"
+                      : "1px solid var(--cp-border)",
                   background: selected
                     ? "var(--cp-accent-soft, var(--cp-surface))"
                     : "var(--cp-surface)",
                   color: selected ? "var(--cp-accent)" : "var(--cp-text)",
                 }}
               >
-                {o.label}
+                <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  {o.label}
+                  {isRecommended && (
+                    <span
+                      aria-hidden="true"
+                      data-testid={`accessory-volume-rec-chip-${o.level}`}
+                      style={{
+                        fontSize: 9,
+                        fontWeight: 700,
+                        letterSpacing: "0.04em",
+                        textTransform: "uppercase",
+                        padding: "1px 5px",
+                        borderRadius: 999,
+                        background: "var(--cp-accent)",
+                        color: "var(--cp-accent-fg)",
+                      }}
+                    >
+                      ★
+                    </span>
+                  )}
+                </span>
+                {mins && (
+                  <span
+                    data-testid={`accessory-volume-est-${o.level}`}
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      color: selected
+                        ? "var(--cp-accent)"
+                        : "var(--cp-text-muted)",
+                    }}
+                  >
+                    {mins}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -517,6 +609,47 @@ function AccessoryVolumeControl({
         >
           {active.blurb}
         </p>
+        {!disabled && (estimates !== null || estimateLoading) && (
+          <p style={{ margin: "6px 0 0", fontSize: 11, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
+            Times are a rough estimate for one strength workout — main lifts,
+            warm-ups, rest and accessories. Cardio days aren&apos;t affected by this
+            setting.
+          </p>
+        )}
+        {!disabled && recommendation && recLabel && (
+          <p
+            data-testid="accessory-volume-recommendation"
+            style={{
+              margin: "10px 0 0",
+              fontSize: 12.5,
+              color: "var(--cp-text)",
+              lineHeight: 1.5,
+            }}
+          >
+            <span style={{ color: "var(--cp-accent)", fontWeight: 700 }}>
+              ★ Recommended: {recLabel}.
+            </span>{" "}
+            {recommendation.reason}
+          </p>
+        )}
+        {!disabled && lowEqualsMedium && (
+          <p
+            data-testid="accessory-volume-floor-note"
+            style={{ margin: "8px 0 0", fontSize: 11.5, color: "var(--cp-text-muted)", lineHeight: 1.5 }}
+          >
+            On this plan the accessory base is already minimal, so Low and Medium
+            are the same — High is the level that adds extra muscle work.
+          </p>
+        )}
+        {disabled && (
+          <p
+            data-testid="accessory-volume-disabled-note"
+            style={{ margin: "8px 0 0", fontSize: 11.5, color: "var(--cp-text-muted)", lineHeight: 1.5 }}
+          >
+            This block has no accessory work — it&apos;s strength-and-cardio
+            maintenance only, so there&apos;s nothing to adjust here.
+          </p>
+        )}
       </div>
     </section>
   );
@@ -527,24 +660,84 @@ export function Step4Review({
   dispatch,
   resolved,
   equipmentPreset,
+  estimateAction,
 }: {
   state: WizardState;
   dispatch: React.Dispatch<WizardAction>;
   resolved: ResolvedArchetype;
   /** Equipment preset from the user's profile. Drives bodyweight-aware copy. */
   equipmentPreset?: EquipmentPreset | null;
+  /**
+   * ADR 0024 addendum — read-only server action that prices a representative
+   * strength workout at each accessory-volume level. Optional: when absent the
+   * control still renders (recommendation + copy) without live time estimates.
+   */
+  estimateAction?: EstimateAccessoryVolumeAction;
 }): React.ReactElement {
   const isBw = equipmentPreset === "bodyweight_only";
   const waves = wavesFor(state, resolved, isBw);
-  // ADR 0024 — the accessory-volume lever only changes the prescription on
-  // archetypes whose aesthetic accessory base is ≥ 2 movements (Low has
-  // something to trim, High something to add). On cardio-led / rebuild /
-  // maintenance blocks the accessory budget is already at its floor, so the
-  // control would be a dead knob — hide it there to avoid choice fatigue.
-  const accessoryVolumeApplies =
-    resolved.id === "strength_anchor" ||
-    resolved.id === "hypertrophy_anchor" ||
-    resolved.id === "concurrent_hybrid";
+
+  // ADR 0024 addendum — the control is now shown on EVERY archetype. Its
+  // applicability + the engine recommendation are derived from the archetype's
+  // own aesthetic accessory base, the single source of truth that also drives
+  // the engine floor, so this never drifts from real prescription behaviour.
+  const secondaryFocus = resolveSecondaryFocus(state.secondary);
+  const applicability = useMemo(
+    () => accessoryVolumeApplicability(resolved.id),
+    [resolved.id],
+  );
+  const recommendation = useMemo(
+    () => recommendedAccessoryVolume({ archetypeId: resolved.id, secondary: secondaryFocus }),
+    [resolved.id, secondaryFocus],
+  );
+
+  // Pre-select the recommended level (advisory). The reducer guards against
+  // stomping a level the user picked manually.
+  useEffect(() => {
+    if (recommendation && applicability.enabled) {
+      dispatch({ type: "recommend-accessory-volume", level: recommendation.level });
+    }
+  }, [recommendation, applicability.enabled, dispatch]);
+
+  // Live per-level time estimates. Re-fetched whenever an input that changes the
+  // representative strength day moves (archetype / days / secondary / focus /
+  // power). The accessory level itself is NOT a dependency — all three levels
+  // are priced in one round-trip. `loading` is DERIVED (not set synchronously
+  // inside the effect) by comparing the current input key against the key the
+  // loaded estimate was computed for — so setState only ever runs async.
+  const [estimate, setEstimate] = useState<{
+    key: string | null;
+    minutes: Record<AccessoryVolumeLevel, number | null> | null;
+  }>({ key: null, minutes: null });
+  const focusKey = state.focusMuscles.join(",");
+  const requestKey =
+    estimateAction && state.days != null
+      ? [resolved.id, state.days, state.secondary ?? "", state.power ? "1" : "0", focusKey].join("|")
+      : null;
+  const estimateLoading = requestKey !== null && estimate.key !== requestKey;
+  useEffect(() => {
+    if (!estimateAction || state.days == null || requestKey == null) return;
+    let cancelled = false;
+    estimateAction({
+      archetype: resolved.id,
+      daysPerWeek: state.days,
+      secondaryFocus: state.secondary ?? null,
+      focusMuscles: state.focusMuscles,
+      powerEmphasis: state.power,
+    })
+      .then((res) => {
+        if (cancelled) return;
+        setEstimate({ key: requestKey, minutes: res.ok ? res.minutes : null });
+      })
+      .catch(() => {
+        if (!cancelled) setEstimate({ key: requestKey, minutes: null });
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estimateAction, requestKey]);
+
   return (
     <section>
       <div style={pillStyle}>Step 4 of 5 · Review</div>
@@ -556,12 +749,15 @@ export function Step4Review({
         <div style={cardBodyStyle}>{whyMatchText(state, resolved, isBw)}</div>
       </section>
 
-      {accessoryVolumeApplies && (
-        <AccessoryVolumeControl
-          value={state.accessoryVolume}
-          onChange={(level) => dispatch({ type: "set-accessory-volume", level })}
-        />
-      )}
+      <AccessoryVolumeControl
+        value={state.accessoryVolume}
+        onChange={(level) => dispatch({ type: "set-accessory-volume", level })}
+        recommendation={recommendation}
+        disabled={!applicability.enabled}
+        lowEqualsMedium={applicability.lowEqualsMedium}
+        estimates={estimate.minutes}
+        estimateLoading={estimateLoading}
+      />
 
       {state.power && (
         <section

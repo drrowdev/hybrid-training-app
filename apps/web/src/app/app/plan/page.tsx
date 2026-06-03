@@ -14,6 +14,7 @@ import {
 import { updatePlannedSessionNotes } from "@/lib/sessions/actions";
 import { estimateSessionMinutes } from "@/lib/sessions/estimate-duration";
 import { updateWizardDayPref } from "@/lib/profile/actions";
+import { estimateAccessoryVolumeMinutes } from "@/lib/planner/estimate-actions";
 import type { WizardDayPrefValue } from "@/lib/planner/wizard/day-pref";
 import {
   ARCHETYPES,
@@ -201,6 +202,7 @@ export default async function PlanPage({
             (prof?.preferred_cardio_source as "internal" | "external" | undefined) ?? null
           }
           preferredCardioSourceName={prof?.preferred_cardio_source_name ?? null}
+          estimateAccessoryVolumeAction={estimateAccessoryVolumeMinutes}
         />
         {recentBlocks.length > 0 && (
           <Link

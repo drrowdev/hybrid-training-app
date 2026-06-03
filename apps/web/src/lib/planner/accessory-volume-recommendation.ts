@@ -1,0 +1,156 @@
+/**
+ * ADR 0024 addendum — accessory-volume RECOMMENDATION + applicability.
+ *
+ * PR #278 shipped the Low/Medium/High accessory-volume lever but hid it on
+ * archetypes where it looked inert. This follow-up makes the control visible on
+ * EVERY priority combination and pre-selects an engine-recommended level (with a
+ * plain-language reason) so the user gets guidance instead of a bare knob.
+ *
+ * Two pure helpers, both keyed off the resolved archetype + secondary focus:
+ *
+ *   - `accessoryVolumeApplicability(archetypeId)` — derived from the archetype's
+ *     OWN aesthetic accessory base, the single source of truth that also drives
+ *     the engine floor (`accessory-volume.ts#floorBonus`). Tells the UI whether
+ *     the control does anything and whether Low collapses into Medium.
+ *
+ *   - `recommendedAccessoryVolume(...)` — the suggested level + reason. Base
+ *     suggestion per archetype; a `"muscle"` secondary pushes to the level that
+ *     actually ADDS volume (never an inert one). Returns `null` for archetypes
+ *     that ship zero accessories (Maintenance) so the caller renders a disabled
+ *     control rather than a misleading recommendation.
+ *
+ * This module is advisory only: it pre-selects a wizard DEFAULT. The persisted
+ * schema default stays `medium`, so the engine's byte-identical guarantee from
+ * PR #278 is untouched.
+ */
+import { ARCHETYPES, type ArchetypeId } from "./archetypes";
+import type { AccessoryVolumeLevel } from "./accessory-volume";
+import type { SecondaryFocus } from "./secondary-focus";
+
+/** Archetype ids the wizard can resolve to (every real archetype, not custom). */
+export type RecommendableArchetypeId = Exclude<ArchetypeId, "custom">;
+
+export interface AccessoryVolumeApplicability {
+  /**
+   * `false` only for archetypes whose aesthetic accessory base is 0
+   * (Maintenance): the lever is a full no-op at every level, so the control is
+   * shown DISABLED. Every other archetype is interactive.
+   */
+  enabled: boolean;
+  /**
+   * `true` when the aesthetic base is exactly 1 (Endurance / Rebuild). The
+   * engine floor keeps at least one aesthetic movement, so `low` and `medium`
+   * resolve to the SAME prescription — only `high` adds volume. The UI surfaces
+   * this honestly instead of presenting a knob whose bottom two stops do
+   * nothing.
+   */
+  lowEqualsMedium: boolean;
+  /** The archetype's aesthetic `itemsPerSession` base (for callers/tests). */
+  aestheticBaseItems: number;
+}
+
+/**
+ * Read the archetype's aesthetic accessory base from the archetype registry —
+ * the same field the engine floors against — so this never drifts from the
+ * actual prescription behaviour.
+ */
+export function accessoryVolumeApplicability(
+  archetypeId: RecommendableArchetypeId,
+): AccessoryVolumeApplicability {
+  const base = ARCHETYPES[archetypeId]?.accessoryProfile?.aesthetic.itemsPerSession ?? 0;
+  return {
+    enabled: base > 0,
+    lowEqualsMedium: base === 1,
+    aestheticBaseItems: base,
+  };
+}
+
+export interface AccessoryVolumeRecommendation {
+  level: AccessoryVolumeLevel;
+  /** One-line, plain-language justification shown next to the control. */
+  reason: string;
+}
+
+/**
+ * Recommend an accessory-volume level for a resolved (archetype, secondary)
+ * pair. `null` ⇒ the control is inert for this archetype (Maintenance) and
+ * should be rendered disabled with an explanatory note rather than a
+ * recommendation chip.
+ *
+ * Rules:
+ *   - Base suggestion per archetype (strength → Medium, hypertrophy → High,
+ *     concurrent → Medium, endurance → Low, rebuild → Low).
+ *   - A `"muscle"` secondary means the user explicitly wants more growth, so we
+ *     recommend the level that actually adds aesthetic volume. On archetypes
+ *     whose base is 1 (Endurance) Low/Medium are identical, so the meaningful
+ *     "more" is High; on the breadth-2 archetypes it's a single step Medium →
+ *     High. Hypertrophy is already at High.
+ *   - Other secondaries (`strength`, `cardio`, `none`) don't change the
+ *     accessory amount, so the base suggestion stands.
+ */
+export function recommendedAccessoryVolume(args: {
+  archetypeId: RecommendableArchetypeId;
+  secondary: SecondaryFocus;
+}): AccessoryVolumeRecommendation | null {
+  const { archetypeId, secondary } = args;
+  const wantsMuscle = secondary === "muscle";
+
+  switch (archetypeId) {
+    case "hypertrophy_anchor":
+      return {
+        level: "high",
+        reason:
+          "Muscle growth is the whole point of this block, so more accessory volume is the productive choice.",
+      };
+
+    case "strength_anchor":
+      return wantsMuscle
+        ? {
+            level: "high",
+            reason:
+              "You added muscle as a second goal — extra accessory volume drives that growth alongside your main lifts.",
+          }
+        : {
+            level: "medium",
+            reason:
+              "Balanced accessory work supports your main lifts without stretching the session out.",
+          };
+
+    case "concurrent_hybrid":
+      return wantsMuscle
+        ? {
+            level: "high",
+            reason:
+              "With muscle as a second goal, extra accessory volume adds the hypertrophy work on top of your balanced plan.",
+          }
+        : {
+            level: "medium",
+            reason:
+              "A balanced amount keeps both your strength and cardio days manageable.",
+          };
+
+    case "endurance_anchor":
+      return wantsMuscle
+        ? {
+            level: "high",
+            reason:
+              "Cardio leads this plan, but you also want muscle — High is the only level that actually adds hypertrophy work here.",
+          }
+        : {
+            level: "low",
+            reason:
+              "Cardio leads this plan — keeping accessory work light protects recovery for your sessions.",
+          };
+
+    case "rebuild":
+      return {
+        level: "low",
+        reason:
+          "You're easing back into training — minimal accessory volume protects tendons and keeps fatigue in check.",
+      };
+
+    case "maintenance":
+    default:
+      return null;
+  }
+}
