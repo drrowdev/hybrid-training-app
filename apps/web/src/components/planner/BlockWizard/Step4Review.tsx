@@ -702,19 +702,22 @@ export function Step4Review({
   // Live per-level time estimates. Re-fetched whenever an input that changes the
   // representative strength day moves (archetype / days / secondary / focus /
   // power). The accessory level itself is NOT a dependency — all three levels
-  // are priced in one round-trip.
+  // are priced in one round-trip. `loading` is DERIVED (not set synchronously
+  // inside the effect) by comparing the current input key against the key the
+  // loaded estimate was computed for — so setState only ever runs async.
   const [estimate, setEstimate] = useState<{
-    loading: boolean;
+    key: string | null;
     minutes: Record<AccessoryVolumeLevel, number | null> | null;
-  }>({ loading: false, minutes: null });
+  }>({ key: null, minutes: null });
   const focusKey = state.focusMuscles.join(",");
+  const requestKey =
+    estimateAction && state.days != null
+      ? [resolved.id, state.days, state.secondary ?? "", state.power ? "1" : "0", focusKey].join("|")
+      : null;
+  const estimateLoading = requestKey !== null && estimate.key !== requestKey;
   useEffect(() => {
-    if (!estimateAction || state.days == null) {
-      setEstimate({ loading: false, minutes: null });
-      return;
-    }
+    if (!estimateAction || state.days == null || requestKey == null) return;
     let cancelled = false;
-    setEstimate((prev) => ({ loading: true, minutes: prev.minutes }));
     estimateAction({
       archetype: resolved.id,
       daysPerWeek: state.days,
@@ -724,19 +727,16 @@ export function Step4Review({
     })
       .then((res) => {
         if (cancelled) return;
-        setEstimate({
-          loading: false,
-          minutes: res.ok ? res.minutes : null,
-        });
+        setEstimate({ key: requestKey, minutes: res.ok ? res.minutes : null });
       })
       .catch(() => {
-        if (!cancelled) setEstimate({ loading: false, minutes: null });
+        if (!cancelled) setEstimate({ key: requestKey, minutes: null });
       });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [estimateAction, resolved.id, state.days, state.secondary, state.power, focusKey]);
+  }, [estimateAction, requestKey]);
 
   return (
     <section>
@@ -756,7 +756,7 @@ export function Step4Review({
         disabled={!applicability.enabled}
         lowEqualsMedium={applicability.lowEqualsMedium}
         estimates={estimate.minutes}
-        estimateLoading={estimate.loading}
+        estimateLoading={estimateLoading}
       />
 
       {state.power && (

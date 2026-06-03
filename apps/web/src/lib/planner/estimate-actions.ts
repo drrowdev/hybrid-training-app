@@ -43,7 +43,6 @@ import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import { resolveEffortPreference } from "./effort-preference";
 import { resolveSecondaryFocus } from "./secondary-focus";
 import {
-  resolveAccessoryVolumeLevel,
   type AccessoryVolumeLevel,
 } from "./accessory-volume";
 import { accessoryVolumeApplicability } from "./accessory-volume-recommendation";
