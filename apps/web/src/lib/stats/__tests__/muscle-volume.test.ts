@@ -8,6 +8,7 @@ import {
   classifyBand,
   scaleThresholds,
   minutesByModalityFromCardioLogs,
+  cardioBlocksFromLogs,
   type VolumeBand,
 } from "../muscle-volume";
 
@@ -135,5 +136,36 @@ describe("minutesByModalityFromCardioLogs", () => {
       { modality: "swim", duration_sec: null },
     ]);
     expect(out).toEqual({});
+  });
+});
+
+describe("cardioBlocksFromLogs", () => {
+  it("keeps logs discrete (not aggregated) and carries zones/rpe", () => {
+    const blocks = cardioBlocksFromLogs([
+      { modality: "run", duration_sec: 1800, hr_zones: { z2: 1800 }, rpe: 4 },
+      { modality: "run", duration_sec: 600, hr_zones: { z5: 600 }, rpe: 9 },
+    ]);
+    expect(blocks).toEqual([
+      { modality: "run", minutes: 30, hrZones: { z2: 1800 }, rpe: 4 },
+      { modality: "run", minutes: 10, hrZones: { z5: 600 }, rpe: 9 },
+    ]);
+  });
+
+  it("defaults modality to 'other' and zones/rpe to null", () => {
+    const blocks = cardioBlocksFromLogs([
+      { modality: null, duration_sec: 600 },
+    ]);
+    expect(blocks).toEqual([
+      { modality: "other", minutes: 10, hrZones: null, rpe: null },
+    ]);
+  });
+
+  it("skips zero/negative/null durations", () => {
+    const blocks = cardioBlocksFromLogs([
+      { modality: "run", duration_sec: 0 },
+      { modality: "bike", duration_sec: -60 },
+      { modality: "swim", duration_sec: null },
+    ]);
+    expect(blocks).toEqual([]);
   });
 });
