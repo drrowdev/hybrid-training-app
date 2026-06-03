@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { isStandalonePwa } from "@/lib/pwa/standalone";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -42,8 +43,11 @@ export function InstallPrompt() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    // Hide if already installed.
-    if (window.matchMedia("(display-mode: standalone)").matches) return;
+    // Hide if already running as an installed app — a home-screen PWA OR our
+    // Capacitor native shell. The shell is a remote-loaded webview, so the
+    // bare display-mode check missed it and the "add to home screen" nudge
+    // wrongly appeared inside the native app.
+    if (isStandalonePwa()) return;
     if (isSuppressed()) return;
 
     // Bump visit counter (capped — we don't need huge values).
@@ -134,7 +138,7 @@ export function InstallPrompt() {
   return (
     <div
       role="region"
-      aria-label="Install Hybrid"
+      aria-label="Install SxC"
       style={{
         position: "fixed",
         left: 12,
@@ -155,7 +159,7 @@ export function InstallPrompt() {
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
         <div style={{ fontSize: 22, lineHeight: 1 }} aria-hidden="true">⚡</div>
         <div style={{ display: "grid", gap: 4, flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>Install Hybrid for faster gym access</div>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>Install SxC for faster gym access</div>
           {iOS ? (
             <div style={{ fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
               Tap the <strong>Share</strong> icon in Safari, then{" "}
@@ -163,7 +167,7 @@ export function InstallPrompt() {
             </div>
           ) : (
             <div style={{ fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
-              One tap to put Hybrid on your home screen. Opens full-screen, no browser
+              One tap to put SxC on your home screen. Opens full-screen, no browser
               chrome.
             </div>
           )}

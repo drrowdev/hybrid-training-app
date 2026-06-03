@@ -9,6 +9,7 @@ import { isStandalonePwa } from "../standalone";
 type StubWin = {
   matchMedia?: (q: string) => { matches: boolean };
   navigator: { standalone?: boolean };
+  Capacitor?: { isNativePlatform?: () => boolean };
 };
 
 const g = globalThis as unknown as { window?: StubWin; navigator?: StubWin["navigator"] };
@@ -55,6 +56,15 @@ describe("isStandalonePwa", () => {
     setWindow({
       matchMedia: () => ({ matches: false }),
       navigator: { standalone: true },
+    });
+    expect(isStandalonePwa()).toBe(true);
+  });
+
+  it("returns true inside the Capacitor native shell", () => {
+    setWindow({
+      matchMedia: () => ({ matches: false }),
+      navigator: {},
+      Capacitor: { isNativePlatform: () => true },
     });
     expect(isStandalonePwa()).toBe(true);
   });
