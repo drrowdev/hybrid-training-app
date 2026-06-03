@@ -8,6 +8,28 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 2026-05-30. The previous starting-point block is preserved below for history.
 
+### Added (accessory volume — live estimates + recommendation, ADR 0024 addendum)
+
+- **Accessory-volume control now shows on every plan + recommends a level.**
+  Follow-up to ADR 0024. The Step 4 control is no longer hidden on cardio-led /
+  rebuild / maintenance plans — it renders on **every** priority combination so
+  the setting never silently disappears. Each level (Low / Medium / High) now
+  carries a **live ballpark time estimate** for one strength workout, computed by
+  a new read-only preview action (`estimateAccessoryVolumeMinutes`) that reuses
+  the exact engine path — `assemblePrescriptionItems` + `estimateSessionMinutes`
+  (the same set-aware estimator the ADR 0020 duration governor uses) — so the
+  number the user sees equals what the engine budgets to (High already reflects
+  the governor trim). The wizard **pre-selects an engine-recommended level** with
+  a one-line reason (strength→Medium, hypertrophy→High, concurrent→Medium,
+  endurance/rebuild→Low; a `muscle` secondary bumps up one level), advisory only —
+  the reducer never stomps a level the user picked. Archetypes whose accessory
+  base is already minimal (endurance / rebuild) show an honest "Low = Medium here,
+  High adds the extra work" note; Maintenance (zero accessories) shows the control
+  **disabled** with an explanation rather than hidden. Zero engine-regression
+  risk: no edits to `createBlock`, the assembler, or the engine — the estimate is
+  a separate read-only path and the DB default stays `medium` (byte-identical
+  guarantee preserved).
+
 ### Added (accessory volume level — ADR 0024)
 
 - **Per-block accessory-volume control (Low / Medium / High).** A new

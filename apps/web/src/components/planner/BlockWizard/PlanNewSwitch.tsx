@@ -26,6 +26,7 @@ import {
   type TmReadinessByArchetype,
   type WizardSubmit,
 } from "./BlockWizard";
+import type { EstimateAccessoryVolumeAction } from "./Step4Review";
 import type { EquipmentPreset } from "@/lib/settings/equipment-schema";
 import type { WizardDayPrefValue } from "@/lib/planner/wizard/day-pref";
 import { BlockCreatingOverlay } from "./BlockCreatingOverlay";
@@ -62,6 +63,7 @@ export function PlanNewSwitch({
   saveDayPrefAction,
   preferredCardioSource = null,
   preferredCardioSourceName = null,
+  estimateAccessoryVolumeAction,
 }: {
   recentBlocks: RecentBlockCard[];
   tmReadinessByArchetype: TmReadinessByArchetype;
@@ -81,6 +83,8 @@ export function PlanNewSwitch({
   /** Phase 1 "external cardio" — profile-level defaults forwarded to BlockWizard. */
   preferredCardioSource?: "internal" | "external" | null;
   preferredCardioSourceName?: string | null;
+  /** ADR 0024 addendum — read-only accessory-volume time estimator, forwarded to BlockWizard. */
+  estimateAccessoryVolumeAction?: EstimateAccessoryVolumeAction;
 }): React.ReactElement {
   const [mode, setMode] = useState<"home" | "wizard">(initialMode);
   const [wizardPrefill, setWizardPrefill] = useState<BlockWizardPrefill | null>(null);
@@ -189,6 +193,7 @@ export function PlanNewSwitch({
           saveDayPrefAction={saveDayPrefAction}
           preferredCardioSource={preferredCardioSource}
           preferredCardioSourceName={preferredCardioSourceName}
+          estimateAccessoryVolumeAction={estimateAccessoryVolumeAction}
         />
       </div>
     );
