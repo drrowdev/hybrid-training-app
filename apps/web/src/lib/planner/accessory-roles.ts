@@ -68,6 +68,17 @@ export const DC_O4_FLOOR: Record<BulletproofRole, number> = {
 /** Sum of plyometric_low + plyometric_high must be ≥ this for the floor to count satisfied. */
 export const FLOOR_PLYOMETRIC_TOTAL = 1;
 
+/**
+ * Per-session accessory budget reserved for the DC-O4 durability floor +
+ * functional-role fills, held OUTSIDE the onboarding ramp. Sized so the
+ * picker can always seat the weekly floor (heavy isometric / HSR / plyo /
+ * 2× carry) plus an archetype's functional requirements across the week's
+ * strength days. Heuristic magnitude (CP-3) — empirically sufficient: with a
+ * full catalog every archetype × frequency × accessory-volume level meets the
+ * floor at this reserve (see ADR 0024 addendum + tendon-floor invariant test).
+ */
+export const FLOOR_FUNCTIONAL_RESERVE = 4;
+
 export type AccessoryAestheticProfile = {
   /** Number of aesthetic gap-fill items per strength session. */
   itemsPerSession: number;
