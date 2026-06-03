@@ -140,3 +140,65 @@ follow-ups.
 - **Antagonist-superset accessories** (engine review #4) — the time-efficiency lever; later.
 - Re-tuning the underlying landmark numbers (`LANDMARKS` / `DEFAULT_MUSCLE_TARGET`).
 - Retroactive edit of already-materialised blocks (bake-at-creation only).
+
+## Addendum (2026-06-03) — live time estimates + engine recommendation, always-visible control
+
+Three UX gaps surfaced after the initial ship. This addendum extends the same
+lever — no new engine behaviour, no new constant — purely additive preview + UI.
+
+### Decisions
+
+1. **The control is shown on every priority combination.** The original ship
+   hid the control on archetypes whose accessory base is at its floor (cardio-led
+   / rebuild / maintenance) to avoid a dead knob. That made users ask "why is it
+   missing here?". The control now renders everywhere. Its *meaningfulness* is
+   derived from the archetype's own aesthetic accessory base
+   (`accessoryVolumeApplicability` reads `ARCHETYPES[id].accessoryProfile`):
+   base ≥ 2 → three distinct levels; base == 1 (endurance / rebuild) → Low ==
+   Medium (floored), only High adds, shown with an honest note; base == 0
+   (maintenance) → fully inert → control rendered **disabled** with an
+   explanation. This reads applicability from the single source of truth that
+   also drives the engine floor, so the UI can never drift from real behaviour.
+
+2. **An engine-recommended level is pre-selected, with a one-line reason.**
+   `recommendedAccessoryVolume({archetypeId, secondary})` returns `{level, reason}`:
+   strength_anchor → Medium, hypertrophy_anchor → High, concurrent_hybrid →
+   Medium, endurance_anchor → Low, rebuild → Low; a `muscle` secondary bumps up
+   one level (on base-1 archetypes it skips the inert Medium straight to High —
+   the level that actually adds volume). Maintenance → no recommendation (null).
+   The pre-select is **advisory**: a new `accessoryVolumeTouched` flag in the
+   wizard reducer prevents `recommend-accessory-volume` from ever stomping a level
+   the user picked, and `set-goal` / `set-secondary` reset the flag so a changed
+   priority re-recommends.
+
+3. **Each level shows a live ballpark time estimate.** A new read-only server
+   action `estimateAccessoryVolumeMinutes` (`lib/planner/estimate-actions.ts`)
+   prices a representative strength workout at Low / Medium / High by reusing the
+   exact engine path — `assemblePrescriptionItems` (including the ADR 0020
+   duration-governor trim that already bounds High) + `estimateSessionMinutes`
+   (the same set-aware estimator the governor uses). Timing is **load-independent**
+   in this model (per-set work ≈ constant; rest is per-kind, not %TM-scaled), so
+   the action skips TM resolution, bodyweight-node hydration, cardio substitution
+   and day placement, and synthesizes a representative main (+ secondary) lift —
+   the set *counts* that drive duration come from the archetype week profile. It
+   runs on a full (max `strengthVolumeScale`) week, on the first folded strength
+   day, and returns `{applicable:false}` for pure-cardio shapes with no strength
+   day. Auth + Zod `.strict()`; never touches a write path.
+
+### Why this is zero engine-regression risk
+
+No edits to `createBlock`, `assemblePrescriptionItems`, or any engine module. The
+estimate is a separate read-only path; the DB/schema default for `accessory_volume`
+stays `medium`, so the byte-identical guarantee from the original ship is
+preserved. The wizard pre-selecting (and sending) a recommended level for **new**
+blocks is an intended product change, not a regression — golden-master tests call
+the engine directly, not the wizard. Threaded as a prop
+(`estimateAccessoryVolumeAction`) through `page.tsx → PlanNewSwitch → BlockWizard
+→ Step4Review`, mirroring the existing `saveDayPrefAction` pattern.
+
+### Tests
+
+`adr-0024-accessory-volume-recommendation.test.ts` pins: applicability bases per
+archetype; disabled only on maintenance; `lowEqualsMedium` only on base-1
+archetypes; `muscle` secondary bumps to High and never recommends an inert
+Medium; null recommendation for maintenance. Full suite green.

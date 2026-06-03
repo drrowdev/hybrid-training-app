@@ -57,7 +57,7 @@ import {
 import { Step1Days } from "./Step1Days";
 import { Step2Focus } from "./Step2Focus";
 import { Step3Secondary } from "./Step3Secondary";
-import { Step4Review } from "./Step4Review";
+import { Step4Review, type EstimateAccessoryVolumeAction } from "./Step4Review";
 import { Step5Schedule } from "./Step5Schedule";
 import { WizardSidebar } from "./WizardSidebar";
 import { BlockCreatingOverlay } from "./BlockCreatingOverlay";
@@ -183,6 +183,13 @@ export type BlockWizardProps = {
    */
   preferredCardioSource?: "internal" | "external" | null;
   preferredCardioSourceName?: string | null;
+  /**
+   * ADR 0024 addendum — read-only server action that prices a representative
+   * strength workout at each accessory-volume level for the live time estimate
+   * shown on the review step. Optional; when absent the control still renders
+   * without per-level minute estimates.
+   */
+  estimateAccessoryVolumeAction?: EstimateAccessoryVolumeAction;
 };
 
 export function BlockWizard({
@@ -195,6 +202,7 @@ export function BlockWizard({
   saveDayPrefAction,
   preferredCardioSource = null,
   preferredCardioSourceName = null,
+  estimateAccessoryVolumeAction,
 }: BlockWizardProps): React.ReactElement {
   const [state, dispatch] = useReducer(
     wizardReducer,
@@ -369,7 +377,7 @@ export function BlockWizard({
         {state.step === 2 && <Step2Focus state={state} dispatch={dispatch} resolved={resolved} />}
         {state.step === 3 && <Step3Secondary state={state} dispatch={dispatch} />}
         {state.step === 4 && resolved && (
-          <Step4Review state={state} dispatch={dispatch} resolved={resolved} equipmentPreset={equipmentPreset} />
+          <Step4Review state={state} dispatch={dispatch} resolved={resolved} equipmentPreset={equipmentPreset} estimateAction={estimateAccessoryVolumeAction} />
         )}
         {state.step === 5 && resolved && (
           <Step5Schedule
