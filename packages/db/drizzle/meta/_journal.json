@@ -589,6 +589,13 @@
       "when": 1783108800000,
       "tag": "0083_training_blocks_accessory_volume",
       "breakpoints": false
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1783195200000,
+      "tag": "0084_profiles_superset_accessories",
+      "breakpoints": false
     }
   ]
 }

@@ -25,6 +25,16 @@ Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
   default-off preference), and with no superset meta present the estimator reduces to
   its exact legacy per-item computation — byte-identical, full suite green.
 
+- **Antagonist-superset opt-in preference (P3 of ADR 0026).** New profile-level
+  `superset_accessories` boolean (migration 0084, DEFAULT false) plus a "Pair opposing
+  accessories into supersets" toggle under Settings -> Preferences -> Training style.
+  An execution style applied to all blocks (like haptics / timer-sound), wired through
+  the same RLS-safe `updateProfile` path (present-sentinel + `on` checkbox convention,
+  user-scoped client, `.eq("id", user.id)`). The toggle is honest about the trade-off
+  (shorter session, same work, modestly higher perceived effort). **No behavior change
+  yet:** the preference is not consumed by the planner until P4 — every existing row
+  defaults OFF and reproduces today's prescription + duration byte-identical.
+
 ### Added (intensity-aware concurrent interference — ADR 0025)
 
 - **The concurrent-cardio volume pull-back on the Stats chart is now
