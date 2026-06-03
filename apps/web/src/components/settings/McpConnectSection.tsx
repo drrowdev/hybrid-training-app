@@ -37,7 +37,7 @@ const CLIENT_INSTRUCTIONS: Array<{
     steps: [
       "Open Claude → Settings → Connectors.",
       "Click \"Add custom connector\" and paste the MCP server URL above.",
-      "Sign in with your Hybrid Training account when Claude redirects you.",
+      "Sign in with your SxC account when Claude redirects you.",
       "Approve the requested scope (read-only access to your training data).",
       "The 8 tools appear in Claude's tool list — start a chat and ask about your training.",
     ],
@@ -60,7 +60,7 @@ const CLIENT_INSTRUCTIONS: Array<{
     steps: [
       "Open Cursor → Settings → MCP.",
       "Add a new MCP server with the URL above (transport: streamable-http).",
-      "Authenticate with your Hybrid Training account when prompted.",
+      "Authenticate with your SxC account when prompted.",
       "The catalogue's tools appear in Cursor's tool picker — invoke them from chat.",
     ],
   },

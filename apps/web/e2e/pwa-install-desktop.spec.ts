@@ -30,7 +30,7 @@ test.describe("PWA install metadata", () => {
     ).toHaveAttribute("content", "yes");
     await expect(
       page.locator('meta[name="apple-mobile-web-app-title"]'),
-    ).toHaveAttribute("content", "Hybrid");
+    ).toHaveAttribute("content", "SxC");
     await expect(
       page.locator('meta[name="apple-mobile-web-app-status-bar-style"]'),
     ).toHaveAttribute("content", "black-translucent");
@@ -67,8 +67,8 @@ test.describe("PWA install metadata", () => {
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
     expect(body.display).toBe("standalone");
-    expect(body.name).toBe("Hybrid Training");
-    expect(body.short_name).toBe("Hybrid");
+    expect(body.name).toBe("SxC — Strength × Cardio");
+    expect(body.short_name).toBe("SxC");
     expect(Array.isArray(body.icons)).toBe(true);
     // Must include at least one maskable icon so Android adaptive icons
     // don't get cropped, plus a 192 and a 512.
