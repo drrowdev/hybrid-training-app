@@ -47,6 +47,17 @@ Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
   wired into the two planner read seams. **No change for users with the toggle off:**
   the read path returns the prescription untouched, byte-identical to before.
 
+- **Plan and Preview now show antagonist pairs as a labelled superset (P5a of
+  ADR 0026).** When the toggle is on, the accessory lists on the plan day-drawer
+  and the workout preview wrap each antagonist pair in a "Superset · alternate,
+  rest once" bracket so you can see at a glance which two accessories are meant to
+  be done back-to-back. A pair trimmed down to one survivor (or whose partner lands
+  in a different render section) falls back to a normal solo row — never a
+  half-bracket. New pure `lib/plan/superset-grouping.ts` (`segmentSupersetRows`)
+  folds the flat accessory list into solo rows + superset clusters; the
+  toggle-off / unpaired list is structurally identical to before. (The live
+  in-workout logger gets the same grouping next — P5b.)
+
 ### Added (intensity-aware concurrent interference — ADR 0025)
 
 - **The concurrent-cardio volume pull-back on the Stats chart is now

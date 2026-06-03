@@ -19,7 +19,11 @@
  */
 import Link from "next/link";
 import type { PrescriptionItem } from "@hta/db";
-import { groupByMovementThenKind } from "@/lib/plan/prescription-grouping";
+import {
+  groupByMovementThenKind,
+  type PrescriptionMovementRow,
+} from "@/lib/plan/prescription-grouping";
+import { segmentSupersetRows } from "@/lib/plan/superset-grouping";
 import { formatPrescriptionItem } from "@/lib/planner/archetypes";
 import { CardioCard } from "./CardioCard";
 import { makeShouldHideHeading } from "@/lib/session/heading-dedup";
@@ -498,48 +502,106 @@ function MovementListCard({
 }: {
   testId: string;
   kind: string;
-  rows: Array<{ rowKey: string; movementName: string; items: PrescriptionItem[] }>;
+  rows: PrescriptionMovementRow[];
 }) {
+  const segments = segmentSupersetRows(rows);
   return (
     <section data-testid={testId} style={cardStyle}>
       <div className="mono" style={eyebrowStyle}>
         {kind}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {rows.map((r) => (
-          <div
-            key={r.rowKey}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "baseline",
-              gap: 12,
-              padding: "8px 0",
-              borderBottom: "1px solid var(--cp-border)",
-            }}
-          >
-            <span
-              style={{ fontSize: 14, fontWeight: 500, color: "var(--cp-text)" }}
-            >
-              {r.movementName}
-            </span>
-            <span
-              className="mono"
-              style={{
-                fontSize: 13,
-                color: "var(--cp-text-muted)",
-                textAlign: "right",
-              }}
-            >
-              {r.items
-                .map((it) => formatPrescriptionItem(it))
-                .filter(Boolean)
-                .join(" · ")}
-            </span>
-          </div>
-        ))}
+        {segments.map((seg) =>
+          seg.kind === "solo" ? (
+            <AccessoryRow key={seg.row.rowKey} row={seg.row} />
+          ) : (
+            <SupersetCluster key={seg.groupId} groupId={seg.groupId}>
+              {seg.rows.map((r) => (
+                <AccessoryRow key={r.rowKey} row={r} withinSuperset />
+              ))}
+            </SupersetCluster>
+          ),
+        )}
       </div>
     </section>
+  );
+}
+
+function AccessoryRow({
+  row,
+  withinSuperset = false,
+}: {
+  row: PrescriptionMovementRow;
+  withinSuperset?: boolean;
+}) {
+  return (
+    <div
+      data-testid={withinSuperset ? "superset-accessory-row" : undefined}
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "baseline",
+        gap: 12,
+        padding: "8px 0",
+        borderBottom: withinSuperset ? "none" : "1px solid var(--cp-border)",
+      }}
+    >
+      <span style={{ fontSize: 14, fontWeight: 500, color: "var(--cp-text)" }}>
+        {row.movementName}
+      </span>
+      <span
+        className="mono"
+        style={{ fontSize: 13, color: "var(--cp-text-muted)", textAlign: "right" }}
+      >
+        {row.items
+          .map((it) => formatPrescriptionItem(it))
+          .filter(Boolean)
+          .join(" · ")}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Visual bracket around an antagonist superset (ADR 0026). Wraps the paired
+ * accessory rows with a left accent rule, a "SUPERSET" tag, and a one-line
+ * "alternate, rest once" hint so the lifter understands they do the two
+ * movements back-to-back and rest a single time per round. Internal slot codes
+ * (A1/A2) are NOT surfaced — only the human idea "do these two together".
+ */
+function SupersetCluster({
+  groupId,
+  children,
+}: {
+  groupId: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      data-testid="superset-cluster"
+      data-superset-group={groupId}
+      style={{
+        borderLeft: "2px solid var(--cp-accent, var(--cp-text-muted))",
+        paddingLeft: 10,
+        margin: "2px 0",
+        borderBottom: "1px solid var(--cp-border)",
+      }}
+    >
+      <div
+        className="mono"
+        style={{
+          fontSize: 10,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          color: "var(--cp-accent, var(--cp-text-muted))",
+          fontWeight: 600,
+          paddingTop: 6,
+        }}
+      >
+        Superset · alternate, rest once
+      </div>
+      {children}
+    </div>
   );
 }
 
