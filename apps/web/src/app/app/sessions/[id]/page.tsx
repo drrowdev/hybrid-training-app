@@ -52,6 +52,16 @@ import {
 } from "@/lib/sessions/prescription-progress";
 import type { ProgressionHint } from "@/components/session/PostSessionSummary";
 import type { Prescription } from "@hta/db";
+import {
+  getSupersetAccessoriesPref,
+  loadPrimaryMusclesByMovementId,
+  resolverFromMap,
+} from "@/lib/planner/superset-view";
+import {
+  accessoryMovementIds,
+  buildSupersetByMovementId,
+  type SupersetCardInfo,
+} from "@/lib/sessions/superset-cards";
 import { loadBwGateStatesForPrescription } from "@/lib/planner/bw-gate-state-loader";
 import { cardioModalityLabel } from "@/lib/session/cardio-modality-label";
 import { isEmptyInProgressSession, shouldShowStrengthEmptyState } from "@/lib/sessions/empty-state";
@@ -209,6 +219,26 @@ export default async function SessionDetailPage({
     .eq("completed_session_id", id)
     .maybeSingle();
   const plannedPrescription = (planned?.prescription as Prescription | null) ?? null;
+
+  // ADR 0026 P5b — when the lifter has opted into antagonist supersets, derive
+  // accessory pairing from the (unpaired) stored prescription so the logger can
+  // bracket paired CARDS adjacent. We never reorder `prescription.items` (the
+  // index-based set matching depends on their order); only the card render is
+  // grouped. Off / no pairs => empty map => byte-identical legacy card layout.
+  let supersetByMovementId: ReadonlyMap<string, SupersetCardInfo> = new Map();
+  if (plannedPrescription) {
+    const supersetPrefOn = await getSupersetAccessoriesPref(supabase, user.id);
+    if (supersetPrefOn) {
+      const accessoryIds = accessoryMovementIds(plannedPrescription);
+      if (accessoryIds.length > 0) {
+        const muscleMap = await loadPrimaryMusclesByMovementId(supabase, accessoryIds);
+        supersetByMovementId = buildSupersetByMovementId(
+          plannedPrescription,
+          resolverFromMap(muscleMap),
+        );
+      }
+    }
+  }
   const resolvedFreestyle = resolveFreestyleMovements({
     persisted: persistedFreestyle,
     sets: setLogSlimForFreestyle,
@@ -1060,6 +1090,7 @@ export default async function SessionDetailPage({
         plateInventory={plateInventory}
         bwGateStateByFamily={bwGateStateByFamily}
         resolvedFreestyle={resolvedFreestyle}
+        supersetByMovementId={supersetByMovementId}
       />
 
       {(() => {

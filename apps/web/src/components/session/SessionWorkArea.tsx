@@ -26,6 +26,7 @@ import { FinishSessionBar } from "./FinishSessionBar";
 import { MovementCardList } from "./MovementCardList";
 import type { PlateInventoryItem } from "./plate-math";
 import type { ResolvedFreestyleMovement } from "@/lib/sessions/freestyle-resolver";
+import type { SupersetCardInfo } from "@/lib/sessions/superset-cards";
 
 type AddStrengthSetAction = typeof addStrengthSetAction;
 type FillSessionFromPlanAction = typeof fillSessionFromPlanAction;
@@ -61,6 +62,7 @@ export function SessionWorkArea({
   plateInventory,
   bwGateStateByFamily,
   resolvedFreestyle,
+  supersetByMovementId,
 }: {
   sessionId: string;
   isComplete: boolean;
@@ -104,6 +106,12 @@ export function SessionWorkArea({
    * correct but loses anything the user added without logging a set.
    */
   resolvedFreestyle?: ReadonlyArray<ResolvedFreestyleMovement>;
+  /**
+   * ADR 0026 P5b — antagonist-superset membership keyed by accessory
+   * movementId, built server-side. Threaded straight through to
+   * `MovementCardList`. Omitted / empty = no supersets (solo cards).
+   */
+  supersetByMovementId?: ReadonlyMap<string, SupersetCardInfo>;
 }) {
   // The card-list layout doesn't currently surface `lastSetHints`,
   // `plannedSessionId`, or the page-level swap server action — they're
@@ -151,6 +159,7 @@ export function SessionWorkArea({
         plateInventory={plateInventory}
         bwGateStateByFamily={bwGateStateByFamily}
         resolvedFreestyle={resolvedFreestyle}
+        supersetByMovementId={supersetByMovementId}
       />
     </>
   );
