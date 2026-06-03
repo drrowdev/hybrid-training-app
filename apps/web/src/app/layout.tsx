@@ -27,12 +27,12 @@ const archivo = Archivo({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://getsxc.app"),
-  title: "Hybrid Training",
+  title: "SxC — Strength × Cardio",
   description: "Train hybrid. One plan, two modalities, zero collisions.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    title: "Hybrid",
+    title: "SxC",
     statusBarStyle: "black-translucent",
   },
   icons: {
@@ -50,7 +50,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: "SxC — Strength × Cardio",
-    title: "Hybrid Training",
+    title: "SxC — Strength × Cardio",
     description: "Train hybrid. One plan, two modalities, zero collisions.",
     url: "https://getsxc.app",
     images: [
@@ -64,7 +64,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Hybrid Training",
+    title: "SxC — Strength × Cardio",
     description: "Train hybrid. One plan, two modalities, zero collisions.",
     images: ["/og-image.png"],
   },
