@@ -41,6 +41,7 @@ import {
   type MovementPrescriptionSection,
   type PrescriptionMovementRow,
 } from "@/lib/plan/prescription-grouping";
+import { segmentSupersetRows } from "@/lib/plan/superset-grouping";
 import type { PrescriptionItem } from "@hta/db";
 
 export type PlanFilter = "all" | "strength" | "cardio";
@@ -2169,26 +2170,81 @@ function DrawerRowSection({
   rows: PrescriptionMovementRow[];
   testId: string;
 }) {
+  const segments = segmentSupersetRows(rows);
+  const rendered: React.ReactNode[] = [];
+  let num = 0;
+  for (const seg of segments) {
+    if (seg.kind === "solo") {
+      num += 1;
+      rendered.push(
+        <DrawerAccessoryRow key={seg.row.rowKey} prefix={prefix} num={num} row={seg.row} />,
+      );
+      continue;
+    }
+    const inner: React.ReactNode[] = [];
+    for (const r of seg.rows) {
+      num += 1;
+      inner.push(<DrawerAccessoryRow key={r.rowKey} prefix={prefix} num={num} row={r} />);
+    }
+    rendered.push(
+      <div
+        key={seg.groupId}
+        data-testid="superset-cluster"
+        data-superset-group={seg.groupId}
+        style={{
+          borderLeft: "2px solid var(--cp-accent, var(--cp-text-muted))",
+          paddingLeft: 8,
+          margin: "2px 0",
+        }}
+      >
+        <div
+          className="mono"
+          style={{
+            fontSize: 10,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            color: "var(--cp-accent, var(--cp-text-muted))",
+            fontWeight: 600,
+          }}
+        >
+          Superset · alternate, rest once
+        </div>
+        {inner}
+      </div>,
+    );
+  }
   return (
     <div data-testid={testId}>
       <div className="section">{label}</div>
-      {rows.map((r, i) => (
-        <div key={r.rowKey} className="set-row">
-          <span className="n">
-            {prefix}
-            {i + 1}
+      {rendered}
+    </div>
+  );
+}
+
+function DrawerAccessoryRow({
+  prefix,
+  num,
+  row,
+}: {
+  prefix: string;
+  num: number;
+  row: PrescriptionMovementRow;
+}) {
+  return (
+    <div className="set-row">
+      <span className="n">
+        {prefix}
+        {num}
+      </span>
+      <span>{row.movementName}</span>
+      <span className="v">
+        {row.items.map((it, j) => (
+          <span key={j}>
+            {j > 0 ? " · " : ""}
+            {formatPrescriptionItem(it)}
           </span>
-          <span>{r.movementName}</span>
-          <span className="v">
-            {r.items.map((it, j) => (
-              <span key={j}>
-                {j > 0 ? " · " : ""}
-                {formatPrescriptionItem(it)}
-              </span>
-            ))}
-          </span>
-        </div>
-      ))}
+        ))}
+      </span>
     </div>
   );
 }
