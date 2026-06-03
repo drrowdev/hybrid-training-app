@@ -8,6 +8,30 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 2026-05-30. The previous starting-point block is preserved below for history.
 
+### Added (accessory volume level — ADR 0024)
+
+- **Per-block accessory-volume control (Low / Medium / High).** A new
+  block-wizard lever (Step 4 · Review) lets the user dial how much
+  *accessory* work a strength day carries, deliberately split from the
+  ADR 0016 effort axis — Low trims volume without softening how hard the
+  remaining sets are (heavy compounds + AMRAP top sets stay). `Medium` is
+  the default and is **byte-identical** to the pre-feature prescription on
+  every archetype (migration 0083 backfills `training_blocks.accessory_volume`
+  to `'medium'`, and the golden master + every ADR 0011/0015/0016/0020/0022
+  pin stays green). `Low` trims exactly one aesthetic accessory movement
+  (breadth, not depth — the kept movements keep their full set count, and the
+  durability/functional floor is untouched); `High` adds one movement plus one
+  set per movement, bounded by the ADR 0020 session-duration governor. The
+  control composes additively with the secondary-focus tilt at the same
+  assembler site, is floored against each archetype's own accessory profile
+  (a no-op on cardio-led / rebuild / maintenance blocks, which are already at
+  their accessory floor — the wizard hides the control there to avoid a dead
+  knob), and only ever moves aesthetic accessories: main lifts, cardio,
+  durability and functional work are identical across all three levels.
+  Magnitudes are CP-1 [DEF→cal] heuristics (Schoenfeld 2019 low-volume;
+  Currier 2023; Baz-Valle 2022). Supersedes the ADR 0016 hypertrophy-only
+  accessory VOLUME axis, which is retired (its EFFORT axis is unchanged).
+
 ### Added (stats page redesign — Direction C2, Phase 3 · drawers)
 
 - **Endurance & Consistency tiles now open detail drawers, and the

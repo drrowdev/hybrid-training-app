@@ -14,6 +14,7 @@
  */
 import type { Goal, Secondary } from "./wizard-mapping";
 import type { ScheduleCell } from "./schedule";
+import type { AccessoryVolumeLevel } from "../accessory-volume";
 
 export type StepIndex = 1 | 2 | 3 | 4 | 5;
 
@@ -36,6 +37,13 @@ export type WizardState = {
    * cap). Empty array = no focus, engine produces pre-PR baseline.
    */
   focusMuscles: string[];
+  /**
+   * ADR 0024 — per-block accessory volume level (`low | medium | high`).
+   * `medium` (the default) reproduces today's prescription byte-for-byte;
+   * `low` trims one aesthetic accessory (breadth, not depth) and `high` adds
+   * one movement + one set. Independent of the effort dial.
+   */
+  accessoryVolume: AccessoryVolumeLevel;
   /** Set when the user reached step 4 via "See lighter options" on step 1. */
   cameFromMaintenanceLink: boolean;
   /** Step-5 schedule; populated lazily when step 5 first renders. */
@@ -62,6 +70,7 @@ export const initialWizardState: WizardState = {
   externalCardio: false,
   externalCardioName: "",
   focusMuscles: [],
+  accessoryVolume: "medium",
   cameFromMaintenanceLink: false,
   schedule: [],
   scheduleSig: null,
@@ -80,6 +89,7 @@ export type WizardAction =
   | { type: "toggle-external-cardio" }
   | { type: "set-external-cardio-name"; name: string }
   | { type: "toggle-focus-muscle"; muscle: string }
+  | { type: "set-accessory-volume"; level: AccessoryVolumeLevel }
   | { type: "maintenance-link" }
   | { type: "goto"; step: StepIndex }
   | { type: "next" }
@@ -100,6 +110,8 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
       return { ...state, goal: action.goal, secondary: null, power: false };
     case "set-secondary":
       return { ...state, secondary: action.secondary };
+    case "set-accessory-volume":
+      return { ...state, accessoryVolume: action.level };
     case "toggle-power":
       return { ...state, power: !state.power };
     case "toggle-two-a-day":

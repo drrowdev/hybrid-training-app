@@ -25,6 +25,7 @@ import {
   wizardReducer,
   type WizardState,
 } from "@/lib/planner/wizard/wizard-state";
+import type { AccessoryVolumeLevel } from "@/lib/planner/accessory-volume";
 import {
   resolveArchetype,
   wizardOutput,
@@ -103,6 +104,12 @@ export type WizardSubmit = {
    */
   goal: Goal | null;
   secondary: Secondary | null;
+  /**
+   * ADR 0024 — per-block accessory volume level (`low | medium | high`).
+   * `medium` is the byte-identical default. Forwarded to `createBlock` and
+   * persisted on the block; the engine applies the matching accessory tilt.
+   */
+  accessoryVolume: AccessoryVolumeLevel;
 };
 
 export type TmGate = {
@@ -340,6 +347,7 @@ export function BlockWizard({
         focusMuscles: state.focusMuscles.slice(),
         goal: state.goal,
         secondary: state.secondary,
+        accessoryVolume: state.accessoryVolume,
       });
       if (!result.ok) setSubmitError(result.error);
     });
@@ -361,7 +369,7 @@ export function BlockWizard({
         {state.step === 2 && <Step2Focus state={state} dispatch={dispatch} resolved={resolved} />}
         {state.step === 3 && <Step3Secondary state={state} dispatch={dispatch} />}
         {state.step === 4 && resolved && (
-          <Step4Review state={state} resolved={resolved} equipmentPreset={equipmentPreset} />
+          <Step4Review state={state} dispatch={dispatch} resolved={resolved} equipmentPreset={equipmentPreset} />
         )}
         {state.step === 5 && resolved && (
           <Step5Schedule

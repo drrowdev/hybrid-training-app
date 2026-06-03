@@ -582,6 +582,13 @@
       "when": 1783022400000,
       "tag": "0082_training_blocks_goal_secondary_focus",
       "breakpoints": false
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1783108800000,
+      "tag": "0083_training_blocks_accessory_volume",
+      "breakpoints": false
     }
   ]
 }
