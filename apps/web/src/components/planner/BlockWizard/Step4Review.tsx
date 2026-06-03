@@ -9,9 +9,10 @@
  */
 "use client";
 
-import type { WizardState } from "@/lib/planner/wizard/wizard-state";
+import type { WizardState, WizardAction } from "@/lib/planner/wizard/wizard-state";
 import type { ResolvedArchetype } from "@/lib/planner/wizard/wizard-mapping";
 import type { EquipmentPreset } from "@/lib/settings/equipment-schema";
+import type { AccessoryVolumeLevel } from "@/lib/planner/accessory-volume";
 
 type Wave = { label: string; detail: string };
 
@@ -429,18 +430,121 @@ function whyMatchText(state: WizardState, a: ResolvedArchetype, isBw: boolean): 
   return "";
 }
 
+const ACCESSORY_VOLUME_OPTIONS: {
+  level: AccessoryVolumeLevel;
+  label: string;
+  blurb: string;
+}[] = [
+  {
+    level: "low",
+    label: "Low",
+    blurb:
+      "Just the essentials: your main lifts plus a couple of key accessories. Best when you're short on time or recovery. Keeps strength; muscle growth is slower.",
+  },
+  {
+    level: "medium",
+    label: "Medium",
+    blurb:
+      "Balanced accessory work to build muscle alongside your main lifts. The default.",
+  },
+  {
+    level: "high",
+    label: "High",
+    blurb:
+      "Extra accessory volume to push muscle growth. Best when you have time and recovery to spare.",
+  },
+];
+
+/**
+ * ADR 0024 — accessory-volume segmented control. Three options (Low / Medium /
+ * High) with an always-visible explanation of the current choice (acts as a
+ * touch-friendly tooltip). `medium` is the byte-identical default. Only the
+ * accessory budget moves; main lifts + cardio are untouched.
+ */
+function AccessoryVolumeControl({
+  value,
+  onChange,
+}: {
+  value: AccessoryVolumeLevel;
+  onChange: (level: AccessoryVolumeLevel) => void;
+}): React.ReactElement {
+  const active =
+    ACCESSORY_VOLUME_OPTIONS.find((o) => o.level === value) ??
+    ACCESSORY_VOLUME_OPTIONS[1]!;
+  return (
+    <section style={reviewCardStyle} data-testid="accessory-volume-control">
+      <h3 style={cardHeadStyle}>Accessory volume</h3>
+      <div style={cardBodyStyle}>
+        <div
+          role="radiogroup"
+          aria-label="Accessory volume"
+          style={{ display: "flex", gap: 8, marginBottom: 10 }}
+        >
+          {ACCESSORY_VOLUME_OPTIONS.map((o) => {
+            const selected = o.level === value;
+            return (
+              <button
+                key={o.level}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                data-testid={`accessory-volume-${o.level}`}
+                onClick={() => onChange(o.level)}
+                style={{
+                  flex: 1,
+                  padding: "10px 8px",
+                  borderRadius: 10,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  border: selected
+                    ? "1px solid var(--cp-accent)"
+                    : "1px solid var(--cp-border)",
+                  background: selected
+                    ? "var(--cp-accent-soft, var(--cp-surface))"
+                    : "var(--cp-surface)",
+                  color: selected ? "var(--cp-accent)" : "var(--cp-text)",
+                }}
+              >
+                {o.label}
+              </button>
+            );
+          })}
+        </div>
+        <p
+          aria-live="polite"
+          style={{ margin: 0, fontSize: 12.5, color: "var(--cp-text-muted)", lineHeight: 1.5 }}
+        >
+          {active.blurb}
+        </p>
+      </div>
+    </section>
+  );
+}
+
 export function Step4Review({
   state,
+  dispatch,
   resolved,
   equipmentPreset,
 }: {
   state: WizardState;
+  dispatch: React.Dispatch<WizardAction>;
   resolved: ResolvedArchetype;
   /** Equipment preset from the user's profile. Drives bodyweight-aware copy. */
   equipmentPreset?: EquipmentPreset | null;
 }): React.ReactElement {
   const isBw = equipmentPreset === "bodyweight_only";
   const waves = wavesFor(state, resolved, isBw);
+  // ADR 0024 — the accessory-volume lever only changes the prescription on
+  // archetypes whose aesthetic accessory base is ≥ 2 movements (Low has
+  // something to trim, High something to add). On cardio-led / rebuild /
+  // maintenance blocks the accessory budget is already at its floor, so the
+  // control would be a dead knob — hide it there to avoid choice fatigue.
+  const accessoryVolumeApplies =
+    resolved.id === "strength_anchor" ||
+    resolved.id === "hypertrophy_anchor" ||
+    resolved.id === "concurrent_hybrid";
   return (
     <section>
       <div style={pillStyle}>Step 4 of 5 · Review</div>
@@ -451,6 +555,13 @@ export function Step4Review({
         <h3 style={cardHeadStyle}>Why this match?</h3>
         <div style={cardBodyStyle}>{whyMatchText(state, resolved, isBw)}</div>
       </section>
+
+      {accessoryVolumeApplies && (
+        <AccessoryVolumeControl
+          value={state.accessoryVolume}
+          onChange={(level) => dispatch({ type: "set-accessory-volume", level })}
+        />
+      )}
 
       {state.power && (
         <section

@@ -109,6 +109,7 @@ import type { BwProgress } from "@hta/db";
 import { focusMusclesSchema, type FocusMuscle } from "./focus-muscles";
 import { resolveEffortPreference } from "./effort-preference";
 import { resolveSecondaryFocus } from "./secondary-focus";
+import { resolveAccessoryVolumeLevel } from "./accessory-volume";
 import { getElbowForearmAtlRatio } from "@/lib/stats/region-spike-queries";
 import { getPreviousBlockAccessoryIdsByRole } from "./accessory-history-queries";
 import { archivePriorActiveBlocks } from "./archive-prior-blocks";
@@ -481,6 +482,13 @@ const createBlockSchema = z.object({
       "none",
     ])
     .optional(),
+  /**
+   * ADR 0024 — per-block accessory volume level. Optional: legacy /
+   * custom-builder paths and any pre-0083 client omit it, in which case the
+   * block is created with the DB default `'medium'` (the byte-identical
+   * pre-ADR-0024 baseline). Bounded enum is the write guard.
+   */
+  accessoryVolume: z.enum(["low", "medium", "high"]).optional(),
 });
 
 export type CreateBlockResult =
@@ -509,6 +517,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       .filter((v) => v.length > 0),
     goal: (formData.get("goal") as string | null) || undefined,
     secondaryFocus: (formData.get("secondaryFocus") as string | null) || undefined,
+    accessoryVolume: (formData.get("accessoryVolume") as string | null) || undefined,
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -554,6 +563,9 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   // ADR 0020 — resolved wizard secondary focus that drives the volume tilt.
   // `none` for legacy / custom blocks → byte-identical pre-ADR-0020 engine.
   const secondaryFocus = resolveSecondaryFocus(parsed.data.secondaryFocus);
+  // ADR 0024 — per-block accessory volume level (`low | medium | high`).
+  // `medium` (the default) is a byte-identical no-op on every archetype.
+  const accessoryVolume = resolveAccessoryVolumeLevel(parsed.data.accessoryVolume);
 
   // ADR 0017 — ranked cardio-modality preference. The catalog is loaded
   // lazily; with no preference set the resolver is a no-op and the default
@@ -901,6 +913,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       focus_muscles: parsed.data.focusMuscles,
       goal: parsed.data.goal ?? null,
       secondary_focus: parsed.data.secondaryFocus ?? null,
+      accessory_volume: parsed.data.accessoryVolume ?? "medium",
       cardio_source: parsed.data.cardioSource,
       cardio_source_name: parsed.data.cardioSourceName,
       notes: hasAnyTm
@@ -1006,6 +1019,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
               day.role ? (recencyByRole.get(day.role) ?? EMPTY_RECENCY) : EMPTY_RECENCY,
               effortPreference,
               secondaryFocus,
+              accessoryVolume,
             );
 
       // ─── Bodyweight Phase 3 — prepend BW main + back_off items ───

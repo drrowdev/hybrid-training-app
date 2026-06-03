@@ -85,6 +85,16 @@ export const trainingBlocks = pgTable("training_blocks", {
   goal: text("goal"),
   secondaryFocus: text("secondary_focus"),
   /**
+   * Per-block accessory VOLUME level (migration 0083, ADR 0024):
+   * `low | medium | high`. A lever for how much accessory work a strength day
+   * carries, split from the ADR 0016 effort axis. `medium` is the
+   * byte-identical identity and the NOT NULL DEFAULT, so every existing row
+   * reads as the pre-ADR-0024 baseline. `resolveAccessoryVolumeLevel`
+   * collapses anything unrecognised to `medium` at read time. See
+   * `apps/web/src/lib/planner/accessory-volume.ts`.
+   */
+  accessoryVolume: text("accessory_volume").default("medium").notNull(),
+  /**
    * Set when status transitions out of 'active' (manual end → 'archived'
    * or auto-complete → 'completed'). Single source of truth for
    * "when did this block end"; survives later `updated_at` touches

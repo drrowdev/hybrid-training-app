@@ -1,13 +1,18 @@
 /**
- * ADR 0016 — user-facing effort / volume dial for the hypertrophy archetype.
+ * ADR 0016 — user-facing EFFORT dial for the hypertrophy archetype.
  *
  * A single `profiles.effort_preference` enum (`low | standard | high`) that
- * scales BOTH axes of the hypertrophy block at block-creation time:
+ * scales the hypertrophy block's compound proximity-to-failure at
+ * block-creation time:
  *
  *   - EFFORT axis (compound proximity-to-failure): the early-set rep bump
  *     (ADR 0015) and the final-set RIR anchor (ADR 0011).
- *   - VOLUME axis (accessory work): the aesthetic `setsPerItem` count the
- *     dynamic accessory picker emits per chosen movement.
+ *
+ * NOTE: the original ADR 0016 VOLUME axis (scaling the aesthetic `setsPerItem`
+ * the accessory picker emits) has been SUPERSEDED by ADR 0024's accessory-
+ * volume level (`accessory-volume.ts`), which generalises a volume lever
+ * across every archetype and splits it cleanly from this effort axis (low
+ * volume ≠ low effort). This module now owns the EFFORT axis only.
  *
  * `standard` reproduces today's behaviour byte-for-byte. The dial is a
  * generation-time preference: like `training_experience` / `equipment`, a
@@ -15,11 +20,10 @@
  * existing block's materialised prescription.
  *
  * SCOPE: the dial is intentionally hypertrophy-only. The conservativeness
- * review (engine-live §10; design-constraints CP-2 rows 41/43) located both
- * findings — sub-failure compound effort (A) and below-target accessory
- * volume (B) — in the hypertrophy archetype. For every other archetype the
- * dial is a no-op; a "high" lifter on a concurrent / endurance archetype
- * keeps the concurrent-safe identity untouched.
+ * review (engine-live §10; design-constraints CP-2 rows 41/43) located the
+ * sub-failure compound-effort finding in the hypertrophy archetype. For every
+ * other archetype the dial is a no-op; a "high" lifter on a concurrent /
+ * endurance archetype keeps the concurrent-safe identity untouched.
  *
  * Calibration policy: all magnitudes below are CP-1 [DEF→cal] Stage-A
  * heuristics — directionally grounded (Schoenfeld 2021 dose-response;
@@ -120,24 +124,3 @@ export function hypertrophyEffortConfig(
   }
 }
 
-/**
- * Volume axis — resolve the effective accessory `setsPerItem` for the
- * hypertrophy aesthetic profile under a dial setting. Each accessory
- * movement the picker chooses emits this many working sets.
- *
- *   - low      : base − 1 (fewer sets/movement; ~8 sets/session).
- *   - standard : base (today; 4 items × 3 = 12 sets/session).
- *   - high     : base + 1 (~16 sets/session → into the 10–12 effective
- *                sets/muscle/week productive zone, Baz-Valle 2022).
- *
- * Clamped at a floor of 1 so a movement always carries real work. Movement
- * SELECTION is unchanged — only sets-per-movement moves — so the accessory
- * picker's role / focus-muscle / dedup invariants are untouched.
- */
-export function hypertrophyAccessorySetsPerItem(
-  pref: EffortPreference,
-  baseSetsPerItem: number,
-): number {
-  const delta = pref === "low" ? -1 : pref === "high" ? 1 : 0;
-  return Math.max(1, baseSetsPerItem + delta);
-}
