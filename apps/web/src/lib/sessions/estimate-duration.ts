@@ -26,6 +26,7 @@
 
 import type { PrescriptionItem, PrescriptionItemKind } from "@hta/db";
 import { restSecondsForKind } from "./rest";
+import { SUPERSET_GROUP_KEY } from "../planner/antagonist-pairs";
 
 /**
  * Per-set working time (concentric + eccentric + bar setup), independent of
@@ -33,6 +34,16 @@ import { restSecondsForKind } from "./rest";
  * 12-rep accessory. // heuristic, no calibration data
  */
 export const WORK_SEC_PER_SET = 40;
+
+/**
+ * Antagonist-superset station-switch time (ADR 0026). When two opposing
+ * accessories are paired, each round is `A1 work → switch → A2 work → one
+ * rest` instead of two separate rests, so the only added cost vs the
+ * overlapped rest is the brief move between stations. ~15 s spans grabbing
+ * the second implement / stepping to the adjacent station.
+ * // heuristic, no calibration data — refine against logged set timestamps.
+ */
+export const SUPERSET_TRANSITION_SEC = 15;
 
 /**
  * `power_potentiation` primers (explosive submaximal doubles with full
@@ -58,18 +69,65 @@ function restSecForItem(kind: PrescriptionItemKind): number {
   return restSecondsForKind(kind);
 }
 
+function supersetGroupOf(it: PrescriptionItem): string | null {
+  const g = (it.meta as Record<string, unknown> | undefined)?.[
+    SUPERSET_GROUP_KEY
+  ];
+  return typeof g === "string" && g.length > 0 ? g : null;
+}
+
 /**
  * Total estimated wall-clock seconds for a planned session's items.
  * Cardio items contribute their planned `durationMin`; strength-family items
  * contribute `sets × (work + rest)`. `cardio_external` (no duration) and
  * empty inputs contribute nothing.
+ *
+ * **Antagonist supersets (ADR 0026):** when two accessory items share a
+ * `meta.supersetGroup` (and BOTH are present with equal sets), they are priced
+ * as a paired block — one overlapped rest per round plus a short station
+ * switch — instead of two full rests. A "widowed" member whose partner was
+ * trimmed away (ADR 0013 autoreg end-slice) is priced solo. With no superset
+ * meta present this loop reduces to the exact legacy per-item computation, so
+ * the estimate is byte-identical when the feature is off.
  */
 export function estimateSessionSeconds(
   items: readonly PrescriptionItem[] | null | undefined,
 ): number {
   if (!items || items.length === 0) return 0;
-  let sec = 0;
+
+  // Collect superset members, then price valid pairs (exactly two present,
+  // both accessory, equal sets) with overlapped rest. Everything else — incl.
+  // widowed members — falls through to the solo pricing below.
+  const groups = new Map<string, PrescriptionItem[]>();
   for (const it of items) {
+    const g = supersetGroupOf(it);
+    if (g) {
+      const arr = groups.get(g);
+      if (arr) arr.push(it);
+      else groups.set(g, [it]);
+    }
+  }
+  const pairedMembers = new Set<PrescriptionItem>();
+  let sec = 0;
+  for (const members of groups.values()) {
+    if (members.length !== 2) continue;
+    const [a, b] = members;
+    if (a.kind !== "accessory" || b.kind !== "accessory") continue;
+    const rounds = Math.max(1, a.sets ?? 1);
+    if (rounds !== Math.max(1, b.sets ?? 1)) continue;
+    const restPair = Math.max(restSecForItem(a.kind), restSecForItem(b.kind));
+    sec +=
+      rounds *
+      (workSecForItem(a) +
+        workSecForItem(b) +
+        SUPERSET_TRANSITION_SEC +
+        restPair);
+    pairedMembers.add(a);
+    pairedMembers.add(b);
+  }
+
+  for (const it of items) {
+    if (pairedMembers.has(it)) continue;
     if (isCardio(it.kind)) {
       sec += (it.durationMin ?? 0) * 60;
       continue;
