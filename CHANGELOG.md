@@ -8,6 +8,23 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 2026-05-30. The previous starting-point block is preserved below for history.
 
+### Added (antagonist-superset accessories, engine machinery — ADR 0026)
+
+- **Pure pairing module + superset-aware duration estimate (P1 + P2 of ADR 0026).**
+  Lays the foundation for antagonist supersets (e.g. biceps curl + triceps pushdown
+  rested once per round instead of twice) without changing any behavior yet. New
+  `lib/planner/antagonist-pairs.ts`: an anatomical reciprocal-antagonist classifier
+  (elbow flex/ext, knee ext/flex, horizontal push/pull, ankle plantar/dorsi — true
+  isolation antagonists only) plus a pure post-selection pass that tags paired
+  accessories via `meta.supersetGroup`/`meta.supersetSlot` and pulls each A2 partner
+  adjacent to its A1 (A1 keeps its priority slot). `estimateSessionSeconds` gains a
+  meta-gated branch that prices a valid pair as one overlapped rest + a short station
+  switch per round (`SUPERSET_TRANSITION_SEC = 15`, a tagged CP-1 heuristic), saving
+  ~75 s/round; a "widowed" member whose partner was trimmed (ADR 0013 autoreg slice)
+  is priced solo. **No behavior change:** pairing is unwired (lands at P4 behind a
+  default-off preference), and with no superset meta present the estimator reduces to
+  its exact legacy per-item computation — byte-identical, full suite green.
+
 ### Added (intensity-aware concurrent interference — ADR 0025)
 
 - **The concurrent-cardio volume pull-back on the Stats chart is now
