@@ -40,6 +40,18 @@ Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
   route's `loading.tsx`; returning the id and pushing on the client engages the
   existing session-detail skeleton immediately, so the tap feels instant.
 
+### Performance (mobile — launch native shell directly at /app)- The iOS Capacitor shell remote-loaded the site root (`server.url =
+  https://getsxc.app`). For a signed-in user, `/` is just the public
+  marketing/sign-in landing that runs an auth check and `redirect("/app")` — so
+  every cold launch paid for an extra device↔server round-trip plus a couple of
+  Supabase auth calls before the real page even started rendering. The shell now
+  boots directly at `https://getsxc.app/app`: signed-in users land on Today
+  immediately (showing `/app`'s loading skeleton while it renders), and
+  signed-out users are sent by middleware to `/login?next=/app` — the preferred
+  native first-run anyway. Native-only change; web behaviour is unchanged. Auth
+  is unaffected (OAuth callbacks use absolute `/api` paths; Supabase cookies are
+  path-`/` scoped). Reaches the device on the next `cap sync` + Codemagic build.
+
 ### Added (mobile — native splash screen across remote-load)- The iOS Capacitor shell remote-loads getsxc.app, so a cold launch spent a
   few seconds booting the WKWebView and fetching the site over the network —
   previously revealing a blank webview because the launch image (the branded
