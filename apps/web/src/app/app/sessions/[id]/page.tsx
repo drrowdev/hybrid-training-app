@@ -30,6 +30,7 @@ import {
   type PersistedFreestyle,
 } from "@/lib/sessions/freestyle-resolver";
 import { FinishSessionBar } from "@/components/session/FinishSessionBar";
+import { SessionWakeLock } from "@/components/session/SessionWakeLock";
 import { PostSessionSummary } from "@/components/session/PostSessionSummary";
 import { StravaAutofillBanner, type StravaAutofillMatch } from "@/components/session/StravaAutofillBanner";
 import { MODALITY_LABEL } from "@/lib/planner/session-modality";
@@ -762,6 +763,11 @@ export default async function SessionDetailPage({
           </div>
         </div>
       </header>
+
+      {/* Keep the screen awake while the workout is in progress so the
+          rest timer + set logger stay visible without the phone
+          auto-locking. Best-effort; no-ops where unsupported. */}
+      <SessionWakeLock active={!isComplete} />
 
       {!isComplete && stravaConnected && (
         <StravaAutofillBanner
