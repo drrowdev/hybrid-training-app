@@ -1,13 +1,15 @@
 /**
  * Quick-workout server-action tests.
  *
- * Covers the three Today-page entry points added in `feat/quick-workout-c`:
- *   - startQuickCardioSession  → empty session tagged with quick-cardio
- *     intent (modality + duration), NO cardio_logs row, redirect
- *   - startQuickStrengthSession → empty session, redirect
- *   - repeatRecentSession      → clone session shape (movements + cardio
- *     modality/duration); NEVER copies set_logs and NEVER links the
- *     new session to a planned_sessions row
+ * Covers the Today-page entry points:
+ *   - startQuickStrengthSession → empty session, returns the new id
+ *   - repeatRecentSession      → clone strength shape (movements only);
+ *     NEVER copies set_logs or cardio, NEVER links the new session to a
+ *     planned_sessions row, and returns the new id
+ *
+ * Both RETURN the new session id (the Today sheet navigates client-side)
+ * rather than calling redirect(); the `next/navigation` mock below still
+ * backs the no-user `redirect("/login")` guard.
  *
  * The regression test at the bottom proves the "ad-hoc doesn't complete
  * the planned day" accounting invariant: no insert / update touches
@@ -360,31 +362,19 @@ function reset() {
   store.nextId = 0;
 }
 
-async function expectRedirect(fn: () => Promise<unknown>): Promise<string> {
-  try {
-    await fn();
-  } catch (e) {
-    const msg = (e as Error).message ?? "";
-    const m = /NEXT_REDIRECT;[^;]+;(.+)$/.exec(msg);
-    if (!m) throw e;
-    return m[1]!;
-  }
-  throw new Error("expected redirect, got none");
-}
-
 beforeEach(() => {
   reset();
 });
 
 describe("startQuickStrengthSession", () => {
-  it("creates an empty session and redirects, with no movements or cardio attached", async () => {
+  it("creates an empty session and returns its id, with no movements or cardio attached", async () => {
     const { startQuickStrengthSession } = await import("../actions");
-    const url = await expectRedirect(() => startQuickStrengthSession());
+    const id = await startQuickStrengthSession();
 
     const created = store.sessions.find((s) => s.id !== SOURCE_SESSION && s.user_id === SELF)!;
     expect(created).toBeDefined();
     expect(created.title).toBe("Quick workout");
-    expect(url).toBe(`/app/sessions/${created.id}`);
+    expect(id).toBe(created.id);
 
     expect(store.sessionMovements.filter((m) => m.session_id === created.id)).toHaveLength(0);
     expect(store.cardioLogs.filter((c) => c.session_id === created.id)).toHaveLength(0);
@@ -393,7 +383,7 @@ describe("startQuickStrengthSession", () => {
 
   it("does NOT mark today's planned session complete", async () => {
     const { startQuickStrengthSession } = await import("../actions");
-    await expectRedirect(() => startQuickStrengthSession());
+    await startQuickStrengthSession();
     expect(store.plannedSessions[0]!.completed_session_id).toBeNull();
   });
 });
@@ -414,15 +404,14 @@ describe("repeatRecentSession", () => {
     });
 
     const { repeatRecentSession } = await import("../actions");
-    await expectRedirect(() =>
-      repeatRecentSession({ sessionId: SOURCE_SESSION }),
-    );
+    const id = await repeatRecentSession({ sessionId: SOURCE_SESSION });
 
     const created = store.sessions.find(
       (s) => s.id !== SOURCE_SESSION && s.id !== OTHER_USER_SESSION && s.user_id === SELF,
     )!;
     expect(created).toBeDefined();
     expect(created.title).toBe("Tuesday push");
+    expect(id).toBe(created.id);
 
     const newMovements = store.sessionMovements
       .filter((m) => m.session_id === created.id)
@@ -453,9 +442,7 @@ describe("repeatRecentSession", () => {
 
   it("does NOT touch planned_sessions.completed_session_id (ad-hoc accounting regression)", async () => {
     const { repeatRecentSession } = await import("../actions");
-    await expectRedirect(() =>
-      repeatRecentSession({ sessionId: SOURCE_SESSION }),
-    );
+    await repeatRecentSession({ sessionId: SOURCE_SESSION });
     expect(store.updates.find((u) => u.table === "planned_sessions")).toBeUndefined();
     expect(store.plannedSessions[0]!.completed_session_id).toBeNull();
   });

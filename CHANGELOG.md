@@ -8,6 +8,17 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 2026-05-30. The previous starting-point block is preserved below for history.
 
+### Fixed (Today — instant Quick Workout navigation)
+
+- Quick Workout → Strength (and "Repeat") no longer hangs on a "Starting…"
+  button while the destination session page renders. The server actions
+  (`startQuickStrengthSession`, `repeatRecentSession`) now **return the new
+  session id** instead of calling `redirect()`, and the Today sheet navigates
+  client-side via `router.push`. A Server Action `redirect()` blocks the
+  caller's transition until the full destination RSC is ready and bypasses the
+  route's `loading.tsx`; returning the id and pushing on the client engages the
+  existing session-detail skeleton immediately, so the tap feels instant.
+
 ### Added (mobile — native Taptic-Engine haptics)
 
 - `lib/feedback/hapticTick` now prefers the native **Taptic Engine** when the

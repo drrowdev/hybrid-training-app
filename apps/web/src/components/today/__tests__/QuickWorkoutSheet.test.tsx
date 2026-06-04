@@ -1,9 +1,13 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QuickWorkoutSheet } from "../QuickWorkoutSheet";
 import type { QuickRepeatCandidate } from "@/lib/sessions/queries";
 
-const noop = async () => {};
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
+const noop = async () => "00000000-0000-4000-8000-0000000000ff";
 
 function candidate(over: Partial<QuickRepeatCandidate> = {}): QuickRepeatCandidate {
   return {

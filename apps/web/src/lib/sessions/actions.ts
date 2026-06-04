@@ -1656,6 +1656,13 @@ export async function swapPrescriptionItem(
  *
  * Schema reuse only — no migration. `sessions` and the
  * `add_session_movement` RPC are all pre-existing.
+ *
+ * Navigation contract: both RETURN the new session id rather than calling
+ * `redirect()`. The Today-page sheet then navigates client-side via
+ * `router.push`, which engages the `/app/sessions/[id]` `loading.tsx`
+ * skeleton instantly. A server-action `redirect()` does NOT show that
+ * loading boundary — it blocks the caller's `useTransition` until the full
+ * destination RSC is ready, which is what made "Starting…" hang.
  * ──────────────────────────────────────────────────────────────────── */
 
 const startQuickStrengthSchema = z
@@ -1670,7 +1677,7 @@ export type StartQuickStrengthInput = {
 
 export async function startQuickStrengthSession(
   input: StartQuickStrengthInput = {},
-): Promise<void> {
+): Promise<string> {
   const parsed = startQuickStrengthSchema.safeParse(input);
   if (!parsed.success) {
     throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
@@ -1693,7 +1700,7 @@ export async function startQuickStrengthSession(
   if (sErr || !created) throw new Error(sErr?.message ?? "Could not create session");
 
   revalidatePath("/app");
-  redirect(`/app/sessions/${created.id}`);
+  return created.id;
 }
 
 const repeatRecentSchema = z
@@ -1725,7 +1732,7 @@ export type RepeatRecentInput = {
  * The source session must be owned by the current user; RLS + the
  * explicit `user_id` filter both enforce this.
  */
-export async function repeatRecentSession(input: RepeatRecentInput): Promise<void> {
+export async function repeatRecentSession(input: RepeatRecentInput): Promise<string> {
   const parsed = repeatRecentSchema.safeParse(input);
   if (!parsed.success) {
     throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
@@ -1805,5 +1812,5 @@ export async function repeatRecentSession(input: RepeatRecentInput): Promise<voi
   }
 
   revalidatePath("/app");
-  redirect(`/app/sessions/${created.id}`);
+  return created.id;
 }
