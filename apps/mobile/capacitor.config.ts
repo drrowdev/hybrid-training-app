@@ -10,7 +10,17 @@ const config: CapacitorConfig = {
   appName: "SxC",
   webDir: "www",
   server: {
-    url: "https://getsxc.app",
+    // Launch directly at /app, not the site root. The root path `/` is the
+    // public marketing/sign-in landing; for a signed-in user it only runs an
+    // auth check and `redirect("/app")`, costing an extra device↔server
+    // round-trip + Supabase auth call on every cold launch before the real
+    // page renders. Booting at /app skips that hop: signed-in users land on
+    // Today immediately (showing /app's loading skeleton while it renders), and
+    // signed-out users are sent by middleware to /login?next=/app — the
+    // preferred native first-run anyway (no marketing page for an installed
+    // app). Auth is unaffected: OAuth callbacks use absolute /api paths and the
+    // Supabase cookies are path-`/` scoped.
+    url: "https://getsxc.app/app",
     cleartext: false,
   },
   ios: {
