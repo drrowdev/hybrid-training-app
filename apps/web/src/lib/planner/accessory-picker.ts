@@ -253,6 +253,7 @@ export function pickAccessoriesForSession({
   powerEmphasis = false,
   equipment,
   experience = null,
+  compoundCoverageCredit,
 }: {
   profile: AccessoryProfile;
   /** Deload scalar from the week profile (e.g. 0.5 on deload weeks). */
@@ -295,6 +296,16 @@ export function pickAccessoriesForSession({
    * See `experience-tier-scope.md` §4.
    */
   experience?: DeclaredExperience | null;
+  /**
+   * ADR 0027 Lever B — synergist credit. A muscle → effective-set map of the
+   * coverage the week's main compound lifts already deliver to each aesthetic
+   * target muscle. Folded into the aesthetic ledger (`muscleProgress`) so the
+   * gap-fill prioritises genuinely under-trained muscles instead of muscles the
+   * squat/bench/deadlift already train. Optional — omitted by legacy callers
+   * and tests, leaving the pre-ADR-0027 ledger untouched. See
+   * `synergist-credit.ts`.
+   */
+  compoundCoverageCredit?: Map<string, number>;
 }): AccessoryPick[] {
   const equipmentFiltered = equipment
     ? catalog.filter((m) => isEquipmentAvailable(inferRequiredEquipment(m), equipment))
@@ -323,6 +334,16 @@ export function pickAccessoriesForSession({
   const durabilityProgress = countBulletproofRoles(weekAccessoryHistory);
   const functionalProgress = countFunctionalRoles(weekAccessoryHistory);
   const muscleProgress = countMusclesPrimary(weekAccessoryHistory, profile.aesthetic.setsPerItem);
+  // ADR 0027 Lever B — seed the aesthetic ledger with the coverage the week's
+  // main compound lifts already deliver, so the gap-fill redirects toward
+  // genuinely under-trained muscles. Additive on top of accessory history; only
+  // ever credits muscles a main lift trains (covered muscles), so it can
+  // de-prioritise but never starve a truly-missed muscle.
+  if (compoundCoverageCredit) {
+    for (const [muscle, credit] of compoundCoverageCredit) {
+      muscleProgress.set(muscle, (muscleProgress.get(muscle) ?? 0) + credit);
+    }
+  }
 
   // ─── 1. Durability deficits first ───
   for (const role of orderedBulletproofRoles(durFloor, durabilityProgress)) {
@@ -425,6 +446,8 @@ export function pickAccessoriesForSession({
       filters,
       usedThisSession,
       preferSupported: profile.aesthetic.biasSupported && filters.concurrentStressActive,
+      // ADR 0027 Lever A — prefer targeted isolation over a redundant compound.
+      demoteCompound: true,
     });
     if (!candidate) {
       // No catalog match for this muscle — mark it satisfied so we don't loop forever.
@@ -553,6 +576,15 @@ type CandidateQuery = {
   filters: PickFilters;
   usedThisSession: Set<string>;
   preferSupported?: boolean;
+  /**
+   * ADR 0027 Lever A — aesthetic-slot anti-redundancy. When set, compound
+   * movements are penalised in the candidate ranking so the hypertrophy
+   * gap-fill slot prefers targeted isolation over a redundant compound that
+   * merely echoes the main lift. Set ONLY on the aesthetic `findCandidate`
+   * call; the durability / functional / power passes leave it unset (compounds
+   * are correct there).
+   */
+  demoteCompound?: boolean;
 };
 
 function findCandidate(query: CandidateQuery): CatalogMovement | null {
@@ -659,6 +691,18 @@ export const ROTATION_BASE = 40; // heuristic CP-1
 // or the structural phase order.
 export const ACCESSORY_VALUE_BONUS = 8; // heuristic CP-1
 
+// ADR 0027 Lever A — aesthetic-slot compound demotion. Penalty added to a
+// compound's candidate score ONLY in the aesthetic (hypertrophy gap-fill)
+// slot, so a targeted isolation reliably outranks a redundant compound that
+// merely echoes the main lift. Set to 2× ACCESSORY_VALUE_BONUS so it cleanly
+// REVERSES the ADR-0012 staple bias inside this slot (a fresh isolation beats a
+// fresh compound for a shared muscle gap), while staying BELOW ROTATION_BASE
+// (40) so block-to-block rotation among isolations still dominates. Resulting
+// order for a gap muscle: fresh isolation < fresh compound < recently-used
+// isolation — a compound is chosen only when it is the sole surviving
+// candidate. heuristic CP-1 (Stage-A); revisit against logged selection data.
+export const AESTHETIC_COMPOUND_PENALTY = 2 * ACCESSORY_VALUE_BONUS; // = 16
+
 /**
  * Movement staple-value, normalised to [0,1]. Compound + loadable = 1.0
  * (a sticky staple — e.g. weighted chin-up / dip / row); a redundant
@@ -696,6 +740,8 @@ function candidateScore(m: CatalogMovement, query: CandidateQuery): number {
   }
   if (query.preferSupported && !m.isSupported) score += 30;
   if (query.filters.concurrentStressActive && (m.eccentricLoadScore ?? 3) >= 4) score += 20;
+  // ADR 0027 Lever A — demote redundant compounds in the aesthetic slot only.
+  if (query.demoteCompound && m.isCompound) score += AESTHETIC_COMPOUND_PENALTY;
   if (m.stimToFatigueScore != null) score -= m.stimToFatigueScore; // higher SFR is better
   return score;
 }
