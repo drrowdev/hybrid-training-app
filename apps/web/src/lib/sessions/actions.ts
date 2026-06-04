@@ -1878,49 +1878,20 @@ export async function generateQuickStrengthSession(
   });
   if (!plan.ok) throw new Error(plan.error);
 
-  // Create the ad-hoc session row (off-plan — no planned_sessions linkage).
+  // Store the generated prescription ON the session (off-plan — no
+  // planned_sessions linkage). The session page renders the grouped MAIN
+  // LIFTS / ACCESSORY WORK layout and the "0 of N" progress counter from this,
+  // identical to a planned workout. We deliberately do NOT pre-insert set_logs:
+  // those would read as already-logged. The user logs each set interactively,
+  // and the per-set target weight (%TM × TM) is computed at render time.
+  const prescription: Prescription = { items: plan.items };
   const { data: created, error: insErr } = await supabase
     .from("sessions")
-    .insert({ user_id: user.id, title: plan.title })
+    .insert({ user_id: user.id, title: plan.title, prescription })
     .select("id")
     .single();
   if (insErr || !created) {
     throw new Error(insErr?.message ?? "Could not create session");
-  }
-
-  // Materialise the prescription into set_logs — mirrors `fillSessionFromPlan`:
-  // each strength-kind item fans out into `sets` rows; main/back-off/warmup
-  // weights resolve from %TM × the user's TM (rounded to plate), accessories
-  // carry a null weight (the user enters load, aided by the "last time" hint).
-  const inserts: SetInsert[] = [];
-  let nextIndex = 0;
-  for (let itemIdx = 0; itemIdx < plan.items.length; itemIdx++) {
-    const item = plan.items[itemIdx] as PrescriptionItem;
-    if (!STRENGTH_KINDS.includes(item.kind as SetInsert["set_kind"])) continue;
-    const setKind = item.kind as SetInsert["set_kind"];
-    const setCount = Math.max(1, item.sets ?? 1);
-    const reps = item.reps ?? null;
-    const tm = plan.tmByMovementId.get(item.movementId);
-    const weight =
-      typeof item.percentTm === "number" && tm
-        ? roundToPlate(tm * (item.percentTm / 100))
-        : null;
-    for (let i = 0; i < setCount; i++) {
-      inserts.push({
-        session_id: created.id,
-        movement_id: item.movementId,
-        set_index: nextIndex++,
-        set_kind: setKind,
-        weight_kg: weight,
-        reps,
-        prescription_item_index: itemIdx,
-      });
-    }
-  }
-
-  if (inserts.length > 0) {
-    const { error: slErr } = await supabase.from("set_logs").insert(inserts);
-    if (slErr) throw new Error(slErr.message);
   }
 
   revalidatePath("/app");

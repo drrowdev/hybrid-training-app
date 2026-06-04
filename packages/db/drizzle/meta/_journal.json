@@ -610,6 +610,13 @@
       "when": 1783368000000,
       "tag": "0086_backfill_strava_cardio_pace",
       "breakpoints": false
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1783454400000,
+      "tag": "0087_sessions_prescription",
+      "breakpoints": false
     }
   ]
 }
