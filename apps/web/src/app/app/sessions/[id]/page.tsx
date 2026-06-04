@@ -80,28 +80,69 @@ export default async function SessionDetailPage({
   } = await getAuthUser();
   if (!user) redirect("/login");
 
-  const { data: session } = await supabase
-    .from("sessions")
-    .select(
-      "id, performed_at, title, fatigue, soreness, session_rpe, duration_min, notes, completed_at, quick_cardio_modality, quick_cardio_duration_sec",
-    )
-    .eq("id", id)
-    .is("deleted_at", null)
-    .maybeSingle();
+  // Independent reads for this view are batched into a single round-trip
+  // (was a ~7-query sequential waterfall). None depend on another's result;
+  // the session-row existence check happens right after the batch resolves.
+  // Phase 3 C1/C2 — feedback prefs thread into the log client (haptic tick on
+  // set save + tone at rest=0); bar weights + plate inventory ride along so
+  // the focus view can render the plate-per-side breakdown. Persisted
+  // freestyle additions (migration 0059) are union'd with set_logs below.
+  // The linked planned_session powers the contextual GRM recommendation.
+  const [
+    { data: session },
+    { data: feedbackPrefs },
+    { data: setsRaw },
+    { data: cardio },
+    { data: sessionMovementsRaw },
+    tmDict,
+    { data: planned },
+  ] = await Promise.all([
+    supabase
+      .from("sessions")
+      .select(
+        "id, performed_at, title, fatigue, soreness, session_rpe, duration_min, notes, completed_at, quick_cardio_modality, quick_cardio_duration_sec",
+      )
+      .eq("id", id)
+      .is("deleted_at", null)
+      .maybeSingle(),
+    supabase
+      .from("profiles")
+      .select(
+        "haptics_enabled, timer_sound_enabled, barbell_kg, trap_bar_kg, plate_inventory_kg, equipment, timezone, time_format, date_format, units",
+      )
+      .eq("id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("set_logs")
+      .select(
+        "id, set_index, set_kind, weight_kg, reps, duration_sec, distance_m, rpe, notes, prescription_item_index, skipped, skip_reason, created_at, movement:movements(id, slug, display_name, primary_region)",
+      )
+      .eq("session_id", id)
+      .order("set_index", { ascending: true }),
+    supabase
+      .from("cardio_logs")
+      .select(
+        "id, block_index, modality, duration_sec, distance_km, avg_hr_bpm, max_hr_bpm, rpe, notes, inferred_kind, inferred_confidence, external_source, movement:movements(id, display_name)",
+      )
+      .eq("session_id", id)
+      .order("block_index", { ascending: true }),
+    supabase
+      .from("session_movements")
+      .select(
+        "sort_order, added_at, movement:movements(id, slug, display_name, primary_region)",
+      )
+      .eq("session_id", id)
+      .order("sort_order", { ascending: true }),
+    getTrainingMaxDict(),
+    supabase
+      .from("planned_sessions")
+      .select("id, prescription, session_modality, effective_stress_load, week_index")
+      .eq("completed_session_id", id)
+      .maybeSingle(),
+  ]);
 
   if (!session) notFound();
 
-  // Phase 3 C1/C2 — load feedback preferences so we can thread them
-  // into the log client (haptic tick on set save + tone at rest=0).
-  // Bar weights + plate inventory ride along so the focus view can
-  // render the plate-per-side breakdown next to the target weight.
-  const { data: feedbackPrefs } = await supabase
-    .from("profiles")
-    .select(
-      "haptics_enabled, timer_sound_enabled, barbell_kg, trap_bar_kg, plate_inventory_kg, equipment, timezone, time_format, date_format, units",
-    )
-    .eq("id", user.id)
-    .maybeSingle();
   const hapticsEnabled = feedbackPrefs?.haptics_enabled ?? true;
   const timerSoundEnabled = feedbackPrefs?.timer_sound_enabled ?? true;
   // Resolve via the same canonical helper the settings page uses, so
@@ -111,22 +152,6 @@ export default async function SessionDetailPage({
   const barbellKg = equipment.bars.barbellKg || 20;
   const trapBarKg = equipment.bars.trapBarKg ?? 25;
   const plateInventory = equipment.plates.map((weightKg) => ({ weightKg }));
-
-  const { data: setsRaw } = await supabase
-    .from("set_logs")
-    .select(
-      "id, set_index, set_kind, weight_kg, reps, duration_sec, distance_m, rpe, notes, prescription_item_index, skipped, skip_reason, created_at, movement:movements(id, slug, display_name, primary_region)",
-    )
-    .eq("session_id", id)
-    .order("set_index", { ascending: true });
-
-  const { data: cardio } = await supabase
-    .from("cardio_logs")
-    .select(
-      "id, block_index, modality, duration_sec, distance_km, avg_hr_bpm, max_hr_bpm, rpe, notes, inferred_kind, inferred_confidence, external_source, movement:movements(id, display_name)",
-    )
-    .eq("session_id", id)
-    .order("block_index", { ascending: true });
 
   const sets: LoggedSet[] = (setsRaw ?? []).map((s) => {
     const m = Array.isArray(s.movement) ? s.movement[0] : s.movement;
@@ -155,14 +180,6 @@ export default async function SessionDetailPage({
   // `resolveFreestyleMovements`; the page passes the persisted block
   // through to the client so a refresh keeps mistakenly-added but
   // not-yet-logged cards on screen.
-  const { data: sessionMovementsRaw } = await supabase
-    .from("session_movements")
-    .select(
-      "sort_order, added_at, movement:movements(id, slug, display_name, primary_region)",
-    )
-    .eq("session_id", id)
-    .order("sort_order", { ascending: true });
-
   const persistedFreestyle: PersistedFreestyle[] = (sessionMovementsRaw ?? [])
     .map((row) => {
       const m = Array.isArray(row.movement) ? row.movement[0] : row.movement;
@@ -197,7 +214,6 @@ export default async function SessionDetailPage({
     };
   });
 
-  const tmDict = await getTrainingMaxDict();
   const tmBySlug: Record<string, number> = Object.fromEntries(tmDict.bySlug);
   const oneRmBySlug: Record<string, number> = Object.fromEntries(tmDict.oneRmBySlug);
 
@@ -212,13 +228,8 @@ export default async function SessionDetailPage({
     cardioLogCount: cardio?.length ?? 0,
   });
 
-  // Pull the linked planned_session so we can build a contextual GRM
-  // recommendation ("top set ~81% instead of 90%").
-  const { data: planned } = await supabase
-    .from("planned_sessions")
-    .select("id, prescription, session_modality, effective_stress_load, week_index")
-    .eq("completed_session_id", id)
-    .maybeSingle();
+  // The linked planned_session (loaded in the batch above) powers the
+  // contextual GRM recommendation ("top set ~81% instead of 90%").
   const plannedPrescription = (planned?.prescription as Prescription | null) ?? null;
 
   // ADR 0026 P5b — when the lifter has opted into antagonist supersets, derive
