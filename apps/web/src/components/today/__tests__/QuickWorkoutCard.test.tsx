@@ -1,9 +1,13 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QuickWorkoutCard } from "../QuickWorkoutCard";
 
-const noopStrength = async () => {};
-const noopRepeat = async () => {};
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
+const noopStrength = async () => "00000000-0000-4000-8000-0000000000ff";
+const noopRepeat = async () => "00000000-0000-4000-8000-0000000000ff";
 
 describe("QuickWorkoutCard", () => {
   it("renders the planned-day subtitle when variant is 'planned'", () => {
