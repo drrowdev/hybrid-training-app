@@ -65,7 +65,7 @@ export type QuickPlanResult =
   | {
       ok: true;
       items: PrescriptionItem[];
-      /** value_kg per movement, for the action's %TM → weight materialisation. */
+      /** Training max (kg) per movement, for the action's %TM → weight step. */
       tmByMovementId: Map<string, number>;
       title: string;
       role: StrengthRole;
@@ -188,7 +188,7 @@ export async function resolveQuickStrengthPlan(
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "warmup_scheme, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_assessment_completed_at, bodyweight_kg, training_experience, effort_preference",
+      "warmup_scheme, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_assessment_completed_at, bodyweight_kg, training_experience, effort_preference, tm_percent_default",
     )
     .eq("id", userId)
     .maybeSingle();
@@ -221,15 +221,24 @@ export async function resolveQuickStrengthPlan(
 
   const { data: tms, error: tmErr } = await supabase
     .from("training_maxes")
-    .select("movement_id, value_kg")
+    .select("movement_id, one_rm_kg, tm_percent")
     .eq("user_id", userId)
     .in("movement_id", candidateMovementIds);
   if (tmErr) return { ok: false, error: `TM lookup failed: ${tmErr.message}` };
 
+  // Training max = stored 1RM × effective TM% (per-movement override, else the
+  // profile default, else 90). Mirrors `getTrainingMaxContext`. The action then
+  // applies the item's %TM to this and rounds to plate.
+  const defaultPct = Number(profile?.tm_percent_default ?? 90);
   const tmByMovementId = new Map<string, number>();
   for (const row of tms ?? []) {
-    const v = Number(row.value_kg);
-    if (Number.isFinite(v) && v > 0) tmByMovementId.set(row.movement_id as string, v);
+    const oneRm = Number(row.one_rm_kg);
+    if (!Number.isFinite(oneRm) || oneRm <= 0) continue;
+    const pct = row.tm_percent == null ? defaultPct : Number(row.tm_percent);
+    const tm = (oneRm * pct) / 100;
+    if (Number.isFinite(tm) && tm > 0) {
+      tmByMovementId.set(row.movement_id as string, tm);
+    }
   }
 
   // Resolve a buildable main lift per strength role, in archetype day order.
