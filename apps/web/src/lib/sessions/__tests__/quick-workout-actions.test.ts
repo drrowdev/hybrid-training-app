@@ -376,104 +376,6 @@ beforeEach(() => {
   reset();
 });
 
-describe("startQuickCardioSession", () => {
-  it("creates a session tagged with quick-cardio intent and NO cardio_logs row", async () => {
-    const { startQuickCardioSession } = await import("../actions");
-    const url = await expectRedirect(() =>
-      startQuickCardioSession({ modality: "run" }),
-    );
-
-    const created = store.sessions.find((s) => s.id !== SOURCE_SESSION && s.user_id === SELF)!;
-    expect(created).toBeDefined();
-    expect(created.title).toBe("Quick run");
-    expect(url).toBe(`/app/sessions/${created.id}`);
-
-    // Intent is recorded on the session insert, not pre-logged as cardio.
-    const sessionInsert = store.inserts.find(
-      (i) => i.table === "sessions" && i.row.user_id === SELF,
-    )!;
-    expect(sessionInsert.row.quick_cardio_modality).toBe("run");
-    expect(sessionInsert.row.quick_cardio_duration_sec).toBe(30 * 60);
-
-    // Pre-logging a cardio_logs row would gate OUT the live tracker.
-    const cardio = store.cardioLogs.filter((c) => c.session_id === created.id);
-    expect(cardio).toHaveLength(0);
-  });
-
-  it("uses the bike modality for a quick ride and a sensible default title", async () => {
-    const { startQuickCardioSession } = await import("../actions");
-    await expectRedirect(() => startQuickCardioSession({ modality: "bike" }));
-    const created = store.sessions.find((s) => s.id !== SOURCE_SESSION && s.user_id === SELF)!;
-    expect(created.title).toBe("Quick ride");
-    const sessionInsert = store.inserts.find(
-      (i) => i.table === "sessions" && i.row.user_id === SELF,
-    )!;
-    expect(sessionInsert.row.quick_cardio_modality).toBe("bike");
-    expect(store.cardioLogs).toHaveLength(0);
-  });
-
-  it("accepts durationMin (5-300) and stores it as durationMin*60 seconds on the session", async () => {
-    const { startQuickCardioSession } = await import("../actions");
-    await expectRedirect(() =>
-      startQuickCardioSession({ modality: "run", durationMin: 45 }),
-    );
-    const sessionInsert = store.inserts.find(
-      (i) => i.table === "sessions" && i.row.user_id === SELF,
-    )!;
-    expect(sessionInsert.row.quick_cardio_duration_sec).toBe(45 * 60);
-  });
-
-  it("durationMin takes precedence over durationSec when both are provided", async () => {
-    const { startQuickCardioSession } = await import("../actions");
-    await expectRedirect(() =>
-      startQuickCardioSession({
-        modality: "run",
-        durationMin: 60,
-        // back-compat field — should be ignored when durationMin is set
-        durationSec: 1234,
-      }),
-    );
-    const sessionInsert = store.inserts.find(
-      (i) => i.table === "sessions" && i.row.user_id === SELF,
-    )!;
-    expect(sessionInsert.row.quick_cardio_duration_sec).toBe(60 * 60);
-  });
-
-  it("rejects a durationMin below 5", async () => {
-    const { startQuickCardioSession } = await import("../actions");
-    await expect(
-      startQuickCardioSession({ modality: "run", durationMin: 4 }),
-    ).rejects.toThrow();
-  });
-
-  it("rejects a durationMin above 300", async () => {
-    const { startQuickCardioSession } = await import("../actions");
-    await expect(
-      startQuickCardioSession({ modality: "run", durationMin: 301 }),
-    ).rejects.toThrow();
-  });
-
-  it("rejects unknown fields (strict schema)", async () => {
-    const { startQuickCardioSession } = await import("../actions");
-    await expect(
-      startQuickCardioSession({
-        modality: "run",
-        durationMin: 30,
-        // @ts-expect-error — intentional unknown key for the strict-schema test
-        bogus: true,
-      }),
-    ).rejects.toThrow();
-  });
-
-  it("does NOT link the new ad-hoc session to any planned_sessions row", async () => {
-    const { startQuickCardioSession } = await import("../actions");
-    await expectRedirect(() => startQuickCardioSession({ modality: "run" }));
-    const plannedTouched = store.updates.find((u) => u.table === "planned_sessions");
-    expect(plannedTouched).toBeUndefined();
-    expect(store.plannedSessions[0]!.completed_session_id).toBeNull();
-  });
-});
-
 describe("startQuickStrengthSession", () => {
   it("creates an empty session and redirects, with no movements or cardio attached", async () => {
     const { startQuickStrengthSession } = await import("../actions");
@@ -497,7 +399,9 @@ describe("startQuickStrengthSession", () => {
 });
 
 describe("repeatRecentSession", () => {
-  it("copies movements + cardio shape from the source but NOT set_logs", async () => {
+  it("copies strength movements from the source but NOT set_logs or cardio", async () => {
+    // A source cardio block must NOT be cloned — quick workouts are
+    // strength-only; ad-hoc cardio lives in Strava.
     store.cardioLogs.push({
       session_id: SOURCE_SESSION,
       movement_id: null,
@@ -526,19 +430,13 @@ describe("repeatRecentSession", () => {
       .sort();
     expect(newMovements).toEqual([MOVEMENT_A, MOVEMENT_B].sort());
 
+    // Cardio is NOT cloned into the new session.
     const newCardio = store.cardioLogs.filter((c) => c.session_id === created.id);
-    expect(newCardio).toHaveLength(1);
-    // Shape preserved: modality + duration. Metrics NOT copied.
-    expect(newCardio[0]!.modality).toBe("run");
-    expect(newCardio[0]!.duration_sec).toBe(32 * 60);
-    // The insert path only passes modality/duration/movement/block_index;
-    // avg_hr / distance / rpe must NOT show up in the recorded insert.
-    const insertRow = store.inserts.find(
+    expect(newCardio).toHaveLength(0);
+    const cardioInsert = store.inserts.find(
       (i) => i.table === "cardio_logs" && i.row.session_id === created.id,
-    )!;
-    expect(insertRow.row.avg_hr_bpm).toBeUndefined();
-    expect(insertRow.row.distance_km).toBeUndefined();
-    expect(insertRow.row.rpe).toBeUndefined();
+    );
+    expect(cardioInsert).toBeUndefined();
 
     // Set logs from the source are NOT copied into the new session.
     expect(store.setLogs.filter((s) => s.session_id === created.id)).toHaveLength(0);
