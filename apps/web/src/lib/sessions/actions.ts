@@ -1018,7 +1018,7 @@ export async function fillSessionFromPlan(
 
   // Resolve the linked plan + TM dict in parallel so the cost is one
   // round-trip per data source.
-  const [plannedRes, existingRes, tmsRes] = await Promise.all([
+  const [plannedRes, existingRes, tmsRes, profileRes] = await Promise.all([
     supabase
       .from("planned_sessions")
       .select(
@@ -1032,8 +1032,13 @@ export async function fillSessionFromPlan(
       .eq("session_id", parsed.data.sessionId),
     supabase
       .from("training_maxes")
-      .select("movement_id, value_kg, movements!inner(slug)")
+      .select("movement_id, one_rm_kg, tm_percent")
       .eq("user_id", user.id),
+    supabase
+      .from("profiles")
+      .select("tm_percent_default")
+      .eq("id", user.id)
+      .maybeSingle(),
   ]);
 
   const planned = plannedRes.data as {
@@ -1050,11 +1055,21 @@ export async function fillSessionFromPlan(
     return { error: "No planned session is linked to this log." };
   }
 
-  // Build a tm lookup by movement_id for percentTm resolution.
+  // Build a tm lookup by movement_id for percentTm resolution. The training
+  // max = stored 1RM × effective TM% (per-movement override, else the profile
+  // default, else 90) — same formula as `getTrainingMaxContext`.
+  const defaultPct = Number(profileRes.data?.tm_percent_default ?? 90);
   const tmByMovementId = new Map<string, number>();
-  for (const row of (tmsRes.data ?? []) as Array<{ movement_id: string; value_kg: number | string }>) {
-    const v = Number(row.value_kg);
-    if (Number.isFinite(v) && v > 0) tmByMovementId.set(row.movement_id, v);
+  for (const row of (tmsRes.data ?? []) as Array<{
+    movement_id: string;
+    one_rm_kg: number | string | null;
+    tm_percent: number | string | null;
+  }>) {
+    const oneRm = Number(row.one_rm_kg);
+    if (!Number.isFinite(oneRm) || oneRm <= 0) continue;
+    const pct = row.tm_percent == null ? defaultPct : Number(row.tm_percent);
+    const tm = (oneRm * pct) / 100;
+    if (Number.isFinite(tm) && tm > 0) tmByMovementId.set(row.movement_id, tm);
   }
 
   // Group existing set_logs by (movement_id, set_kind) so the
