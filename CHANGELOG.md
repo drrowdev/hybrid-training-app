@@ -8,6 +8,22 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 2026-05-30. The previous starting-point block is preserved below for history.
 
+### Added (mobile — screen wake lock during active sessions)
+
+- The screen now stays awake while a workout session is in progress so the
+  rest timer + set logger remain visible instead of the phone auto-locking
+  mid-session. New `lib/pwa/wake-lock.ts` controller + `SessionWakeLock`
+  component (mounted on the session page, gated `!isComplete`); re-acquires
+  on `visibilitychange` → visible because the OS auto-releases when hidden.
+  W3C Screen Wake Lock API — iOS 16.4+ Safari and Android Chrome; best-effort
+  no-op elsewhere. This restores wake-lock coverage that previously lived only
+  in the now-removed cardio tracker, and extends it to strength/hybrid sessions.
+- New `docs/knowledge/mobile-platform-notes.md` documents the PWA capability
+  matrix and known per-OS limitations (iOS has no Web Vibration API so haptics
+  no-op on iPhone; web push is install-gated on iOS) plus an Android parity
+  checklist. Records that a Capacitor wrapper is the lever for native iOS
+  haptics + push if those become priorities.
+
 ### Changed (cardio capture is Strava's job — in-app GPS removed)
 
 - Strategic pivot: the app's differentiator is the training ENGINE
