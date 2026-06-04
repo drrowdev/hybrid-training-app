@@ -32,6 +32,7 @@ import { QuickWorkoutCard } from "@/components/today/QuickWorkoutCard";
 import {
   startQuickStrengthSession,
   repeatRecentSession,
+  generateQuickStrengthSession,
   updatePlannedSessionNotes,
 } from "@/lib/sessions/actions";
 import { getQuickRepeatCandidates } from "@/lib/sessions/queries";
@@ -763,6 +764,7 @@ export default async function TodayPage() {
               recent={quickRepeatRecent}
               startStrength={startQuickStrengthSession}
               repeatRecent={repeatRecentSession}
+              generateStrength={generateQuickStrengthSession}
             />
 
             {hasStravaConnection && <StravaStaleSyncTrigger />}

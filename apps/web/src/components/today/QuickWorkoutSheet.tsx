@@ -26,6 +26,9 @@ import type { QuickRepeatCandidate } from "@/lib/sessions/queries";
 
 export type StartStrengthFn = () => Promise<string>;
 export type RepeatFn = (input: { sessionId: string }) => Promise<string>;
+export type GenerateStrengthFn = (input: {
+  length: "short" | "normal";
+}) => Promise<string>;
 
 export function QuickWorkoutSheet({
   open,
@@ -33,12 +36,14 @@ export function QuickWorkoutSheet({
   recent,
   startStrength,
   repeatRecent,
+  generateStrength,
 }: {
   open: boolean;
   onClose: () => void;
   recent: QuickRepeatCandidate[];
   startStrength: StartStrengthFn;
   repeatRecent: RepeatFn;
+  generateStrength: GenerateStrengthFn;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -89,13 +94,68 @@ export function QuickWorkoutSheet({
               lineHeight: 1.4,
             }}
           >
-            Start a strength session now. It won&apos;t replace your planned
-            workout — it&apos;s logged on top.
+            Generate one tuned to what&apos;s recovered, or build your own. It
+            won&apos;t replace your planned workout — it&apos;s logged on top.
           </p>
         </div>
       }
     >
-      <div data-testid="quick-workout-tiles" style={{ display: "grid", gap: 10 }}>
+      <div
+        data-testid="quick-workout-generate"
+        style={{ display: "grid", gap: 8 }}
+      >
+        <div
+          style={{
+            fontSize: 11,
+            letterSpacing: "0.1em",
+            color: "var(--cp-text-muted)",
+            textTransform: "uppercase",
+            fontWeight: 600,
+          }}
+        >
+          Generate for me
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <GenerateTile
+            length="short"
+            label="Short"
+            sublabel="~30 min"
+            disabled={pending}
+            loading={pendingId === "generate:short"}
+            onClick={() =>
+              fire("generate:short", () => generateStrength({ length: "short" }))
+            }
+          />
+          <GenerateTile
+            length="normal"
+            label="Normal"
+            sublabel="up to ~60 min"
+            disabled={pending}
+            loading={pendingId === "generate:normal"}
+            onClick={() =>
+              fire("generate:normal", () =>
+                generateStrength({ length: "normal" }),
+              )
+            }
+          />
+        </div>
+        <p
+          style={{
+            margin: "2px 0 0",
+            fontSize: 11,
+            color: "var(--cp-text-muted)",
+            lineHeight: 1.4,
+          }}
+        >
+          Picks the freshest lift for today and fills accessories around the
+          muscles you haven&apos;t hit recently.
+        </p>
+      </div>
+
+      <div
+        data-testid="quick-workout-tiles"
+        style={{ display: "grid", gap: 10, marginTop: 20 }}
+      >
         <StrengthTile
           disabled={pending}
           loading={pendingId === "strength"}
@@ -186,10 +246,58 @@ function StrengthTile({
         🏋️
       </span>
       <span style={{ display: "grid", gap: 2 }}>
-        <span style={{ fontSize: 14, fontWeight: 700 }}>Strength</span>
+        <span style={{ fontSize: 14, fontWeight: 700 }}>Start empty</span>
         <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
           {loading ? "Starting…" : "build your own"}
         </span>
+      </span>
+    </button>
+  );
+}
+
+function GenerateTile({
+  length,
+  label,
+  sublabel,
+  onClick,
+  disabled,
+  loading,
+}: {
+  length: "short" | "normal";
+  label: string;
+  sublabel: string;
+  onClick: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={`quick-tile-generate-${length}`}
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "flex-start",
+        gap: 2,
+        padding: 14,
+        background: "var(--cp-accent-soft)",
+        border: "1px solid var(--cp-accent)",
+        borderRadius: 12,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled && !loading ? 0.5 : 1,
+        textAlign: "left",
+        color: "var(--cp-text)",
+        font: "inherit",
+        width: "100%",
+      }}
+    >
+      <span style={{ fontSize: 14, fontWeight: 700 }}>
+        {loading ? "Generating…" : label}
+      </span>
+      <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+        {sublabel}
       </span>
     </button>
   );
