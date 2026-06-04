@@ -1636,7 +1636,9 @@ export async function swapPrescriptionItem(
  * Quick-workout entry points (Today page → off-plan ad-hoc session).
  *
  * Three actions back the Today-page "Quick workout" card + bottom sheet:
- *   - `startQuickCardioSession`  — empty session + one cardio block
+ *   - `startQuickCardioSession`  — empty session tagged with quick-cardio
+ *                                   intent (modality + duration); opens the
+ *                                   live GPS tracker, logs on finish
  *   - `startQuickStrengthSession` — empty session, user adds movements
  *   - `repeatRecentSession`       — clone the shape (movements / modality)
  *                                   of a recent completed session
@@ -1713,29 +1715,27 @@ export async function startQuickCardioSession(
         ? "Quick ride"
         : `Quick ${parsed.data.modality}`;
 
-  const { data: created, error: sErr } = await supabase
-    .from("sessions")
-    .insert({
-      user_id: user.id,
-      title: parsed.data.title?.trim() || defaultTitle,
-    })
-    .select("id")
-    .single();
-  if (sErr || !created) throw new Error(sErr?.message ?? "Could not create session");
-
   const durationSec =
     parsed.data.durationMin != null
       ? parsed.data.durationMin * 60
       : parsed.data.durationSec ?? QUICK_CARDIO_DEFAULT_DURATION_SEC;
 
-  const { error: cErr } = await supabase.from("cardio_logs").insert({
-    session_id: created.id,
-    movement_id: parsed.data.movementId ?? null,
-    block_index: 0,
-    modality: parsed.data.modality,
-    duration_sec: durationSec,
-  });
-  if (cErr) throw new Error(cErr.message);
+  // Native cardio Phase 0 — record the quick-cardio INTENT on the session
+  // (chosen modality + target duration) instead of pre-inserting a
+  // `cardio_logs` row. A pre-logged row trips the session page's
+  // `hasLoggedCardioRow` guard and gates OUT the live GPS tracker. The real
+  // cardio_logs row is written on finish by `logCardioSession`.
+  const { data: created, error: sErr } = await supabase
+    .from("sessions")
+    .insert({
+      user_id: user.id,
+      title: parsed.data.title?.trim() || defaultTitle,
+      quick_cardio_modality: parsed.data.modality,
+      quick_cardio_duration_sec: durationSec,
+    })
+    .select("id")
+    .single();
+  if (sErr || !created) throw new Error(sErr?.message ?? "Could not create session");
 
   revalidatePath("/app");
   redirect(`/app/sessions/${created.id}`);

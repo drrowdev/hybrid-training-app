@@ -596,6 +596,13 @@
       "when": 1783195200000,
       "tag": "0084_profiles_superset_accessories",
       "breakpoints": false
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1783281600000,
+      "tag": "0085_sessions_quick_cardio_intent",
+      "breakpoints": false
     }
   ]
 }
