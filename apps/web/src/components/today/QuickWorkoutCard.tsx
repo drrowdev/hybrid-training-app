@@ -20,7 +20,6 @@
 import { useState } from "react";
 import {
   QuickWorkoutSheet,
-  type StartCardioFn,
   type StartStrengthFn,
   type RepeatFn,
 } from "./QuickWorkoutSheet";
@@ -31,13 +30,11 @@ export type QuickWorkoutVariant = "planned" | "rest";
 export function QuickWorkoutCard({
   variant,
   recent,
-  startCardio,
   startStrength,
   repeatRecent,
 }: {
   variant: QuickWorkoutVariant;
   recent: QuickRepeatCandidate[];
-  startCardio: StartCardioFn;
   startStrength: StartStrengthFn;
   repeatRecent: RepeatFn;
 }) {
@@ -108,7 +105,6 @@ export function QuickWorkoutCard({
         open={open}
         onClose={() => setOpen(false)}
         recent={recent}
-        startCardio={startCardio}
         startStrength={startStrength}
         repeatRecent={repeatRecent}
       />

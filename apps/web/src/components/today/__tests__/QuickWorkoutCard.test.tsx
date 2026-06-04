@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QuickWorkoutCard } from "../QuickWorkoutCard";
 
-const noopCardio = async () => {};
 const noopStrength = async () => {};
 const noopRepeat = async () => {};
 
@@ -12,7 +11,6 @@ describe("QuickWorkoutCard", () => {
       <QuickWorkoutCard
         variant="planned"
         recent={[]}
-        startCardio={noopCardio}
         startStrength={noopStrength}
         repeatRecent={noopRepeat}
       />,
@@ -29,7 +27,6 @@ describe("QuickWorkoutCard", () => {
       <QuickWorkoutCard
         variant="rest"
         recent={[]}
-        startCardio={noopCardio}
         startStrength={noopStrength}
         repeatRecent={noopRepeat}
       />,
@@ -44,7 +41,6 @@ describe("QuickWorkoutCard", () => {
       <QuickWorkoutCard
         variant="planned"
         recent={[]}
-        startCardio={noopCardio}
         startStrength={noopStrength}
         repeatRecent={noopRepeat}
       />,
@@ -52,3 +48,4 @@ describe("QuickWorkoutCard", () => {
     expect(html).toMatch(/<button[^>]+data-testid="quick-workout-card"/);
   });
 });
+

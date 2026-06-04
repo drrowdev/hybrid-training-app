@@ -23,7 +23,7 @@ import {
 } from "@/components/session/SessionLogClient";
 import { SessionWorkArea } from "@/components/session/SessionWorkArea";
 import { CardioPrescriptionList } from "@/components/session/CardioPrescriptionList";
-import { LiveCardioTracker } from "@/components/session/LiveCardioTracker";
+import { CardioLogForm } from "@/components/session/CardioLogForm";
 import { AddToWorkout } from "@/components/session/AddToWorkout";
 import {
   resolveFreestyleMovements,
@@ -619,11 +619,12 @@ export default async function SessionDetailPage({
   );
   const firstCardioPrescription = cardioPrescriptionItems[0] ?? null;
   const hasLoggedCardioRow = (cardio ?? []).length > 0;
-  // Native cardio Phase 0 — a Quick run/ride (Today "Quick workout") carries
-  // no prescription; its intent (modality + target duration) lives on the
-  // session row. Treat it as cardio so the live GPS tracker opens, but do NOT
-  // synthesize a prescription item (we don't want the planned-block card —
-  // just the tracker). The real cardio_logs row is written on finish.
+  // Native cardio Phase 0 (now legacy) — a Quick run/ride created before
+  // in-app cardio capture was removed carries no prescription; its intent
+  // (modality + target duration) lives on the session row. Treat it as cardio
+  // so the manual CardioLogForm opens (GPS live tracking has been removed —
+  // cardio capture now happens in Strava). New quick workouts are
+  // strength-only, so these columns stay NULL going forward.
   const quickCardioModality =
     (session as { quick_cardio_modality?: string | null }).quick_cardio_modality ?? null;
   const quickCardioDurationSec =
@@ -1299,7 +1300,7 @@ export default async function SessionDetailPage({
           )}
           {showCardioLogForm && (
             <div style={{ marginTop: 14 }}>
-              <LiveCardioTracker
+              <CardioLogForm
                 sessionId={id}
                 prescribedDurationMin={
                   firstCardioPrescription?.durationMin ?? quickCardioDurationMin ?? null
