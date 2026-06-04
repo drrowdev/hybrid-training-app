@@ -63,6 +63,15 @@ export const sessions = pgTable("sessions", {
     .notNull(),
   /** Optional Strava activity ID when this session was imported. Unique per user. */
   stravaActivityId: bigint("strava_activity_id", { mode: "number" }),
+  /**
+   * Native cardio Phase 0 — quick-cardio intent. Set by
+   * `startQuickCardioSession` (Today "Quick workout" -> Run / Ride / Other)
+   * so the session page opens the live GPS tracker instead of pre-logging a
+   * `cardio_logs` row. NULL on every non-quick-cardio session. The real
+   * cardio_logs row is written on finish by `logCardioSession`.
+   */
+  quickCardioModality: text("quick_cardio_modality"),
+  quickCardioDurationSec: integer("quick_cardio_duration_sec"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),

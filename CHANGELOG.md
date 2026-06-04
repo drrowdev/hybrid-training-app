@@ -8,6 +8,21 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 2026-05-30. The previous starting-point block is preserved below for history.
 
+### Fixed (native cardio — Quick run/ride now opens the live tracker, Phase 0)
+
+- Quick run / ride (Today "Quick workout" sheet) now opens the live GPS
+  tracker (running clock + distance + pace + screen wake-lock) instead of a
+  bare read-only "run / 90 min + finish" card. The quick-cardio flow used to
+  pre-insert a `cardio_logs` row, which tripped the session page's
+  `hasLoggedCardioRow` guard and gated the live tracker OUT. It now records the
+  quick-cardio intent (modality + target duration) on the session row and
+  writes the real `cardio_logs` row on finish via the unchanged
+  `logCardioSession` action.
+- Migration 0085: `sessions.quick_cardio_modality` + `quick_cardio_duration_sec`
+  (both nullable; NULL = every existing/non-quick session, byte-identical prior
+  behaviour). First step of the native cardio Strava-parity roadmap (route map,
+  elevation, splits, Bluetooth HR follow on).
+
 ### Added (antagonist-superset accessories, engine machinery — ADR 0026)
 
 - **Pure pairing module + superset-aware duration estimate (P1 + P2 of ADR 0026).**
