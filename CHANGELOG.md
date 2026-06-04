@@ -8,6 +8,15 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 2026-05-30. The previous starting-point block is preserved below for history.
 
+### Performance (engine — accessory catalog map lookup)- The dynamic accessory picker in `assemble-prescription.ts` resolved each
+  pick's catalog entry with `pickerCatalog.find((c) => c.id === ...)` — an O(n)
+  scan over the movement catalog per accessory pick. The catalog is now indexed
+  once into a `Map<id, entry>` (first-wins insertion, preserving the exact entry
+  `.find` returned), making the per-pick lookup O(1). This runs only at block
+  creation, so the win is small, but it removes a quadratic-ish hot spot from the
+  assembler. Prescriptions are byte-identical (verified: 1431 planner tests pass,
+  full suite 3249).
+
 ### Performance (session detail — parallelized top-of-page reads)
 
 - The session-detail page (`sessions/[id]`) ran a ~7-query sequential
