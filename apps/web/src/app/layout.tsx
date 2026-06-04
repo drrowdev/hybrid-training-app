@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Archivo } from "next/font/google";
 import { ServiceWorkerRegister } from "@/components/shell/ServiceWorkerRegister";
 import { InstallPrompt } from "@/components/shell/InstallPrompt";
+import { SplashScreenController } from "@/components/shell/SplashScreenController";
 import { APPLE_SPLASH_SCREENS } from "@/lib/pwa/splash-screens";
 import "./globals.css";
 
@@ -110,6 +111,7 @@ export default function RootLayout({
       </head>
       <body>
         {children}
+        <SplashScreenController />
         <ServiceWorkerRegister />
         <InstallPrompt />
       </body>

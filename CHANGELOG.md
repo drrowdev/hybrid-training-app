@@ -40,6 +40,23 @@ Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
   route's `loading.tsx`; returning the id and pushing on the client engages the
   existing session-detail skeleton immediately, so the tap feels instant.
 
+### Added (mobile — native splash screen across remote-load)- The iOS Capacitor shell remote-loads getsxc.app, so a cold launch spent a
+  few seconds booting the WKWebView and fetching the site over the network —
+  previously revealing a blank webview because the launch image (the branded
+  SxC wordmark on iron-dark) vanished the instant the webview was created. The
+  splash is now managed by `@capacitor/splash-screen` with
+  `launchAutoHide: false`, so the branded screen stays up across that gap and is
+  dismissed — with a 250ms cross-fade — only once the first route has hydrated
+  and painted (`SplashScreenController`, which calls the plugin over the
+  injected `window.Capacitor` bridge so the web bundle stays native-dep-free
+  under remote-load). A double-`requestAnimationFrame` defers the hide one frame
+  so content is on-screen before the fade; a 5s safety timeout guarantees the
+  splash never hangs on a hydration stall, and the offline `www` fallback shell
+  hides the splash itself so an unreachable site shows "Connecting…" rather than
+  a frozen splash. This does not make the remote fetch itself faster, but it
+  replaces the blank-webview cold-start with a branded screen so the launch
+  feels intentional and instant.
+
 ### Added (mobile — native Taptic-Engine haptics)
 
 - `lib/feedback/hapticTick` now prefers the native **Taptic Engine** when the
