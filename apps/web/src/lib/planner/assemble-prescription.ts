@@ -310,6 +310,15 @@ export function assemblePrescriptionItems(
   if (archetype.accessoryProfile && catalog && weekAccessoryHistory) {
     const accessoryProfile = archetype.accessoryProfile;
     const pickerCatalog = catalog;
+    // Index the catalog by movement id once. The per-pick lookup below used
+    // `pickerCatalog.find((c) => c.id === ...)` (O(n) per accessory pick); a
+    // prebuilt Map makes it O(1). First-wins insertion (`has` guard) preserves
+    // the exact entry `.find` would have returned, so prescriptions stay
+    // byte-identical even if the catalog ever contains duplicate ids.
+    const pickerCatalogById = new Map<string, (typeof pickerCatalog)[number]>();
+    for (const c of pickerCatalog) {
+      if (!pickerCatalogById.has(c.id)) pickerCatalogById.set(c.id, c);
+    }
     const history = weekAccessoryHistory;
 
     const ramp = onboardingRampScalar(experience, weekIndex);
@@ -416,7 +425,7 @@ export function assemblePrescriptionItems(
       const accessoryItems: PrescriptionItem[] = [];
       const historyDelta: WeekAccessoryHistoryItem[] = [];
       for (const p of picks) {
-        const catalogEntry = pickerCatalog.find((c) => c.id === p.movementId);
+        const catalogEntry = pickerCatalogById.get(p.movementId);
         const bucket = inferAccessoryBucket({
           reason: p.reason,
           slug: catalogEntry?.slug ?? p.slug,
