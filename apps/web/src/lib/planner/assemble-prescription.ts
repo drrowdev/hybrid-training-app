@@ -47,6 +47,7 @@ import {
   type WarmupScheme,
 } from "./warmups";
 import { defaultMuscleTargets } from "./focus-muscle-targets";
+import { computeWeeklyCompoundCredit } from "./synergist-credit";
 import type { LimitationsContext } from "./limitations-context";
 import type { FocusMuscle } from "./focus-muscles";
 import {
@@ -421,6 +422,9 @@ export function assemblePrescriptionItems(
         powerEmphasis,
         equipment,
         experience,
+        // ADR 0027 Lever B — credit the week's main-lift synergist coverage so
+        // the aesthetic gap-fill redirects to genuinely under-trained muscles.
+        compoundCoverageCredit: computeWeeklyCompoundCredit(archetype),
       });
       const accessoryItems: PrescriptionItem[] = [];
       const historyDelta: WeekAccessoryHistoryItem[] = [];
