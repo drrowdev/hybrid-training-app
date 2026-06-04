@@ -26,12 +26,12 @@ importers:
 
   apps/mobile:
     dependencies:
-      '@capacitor-community/background-geolocation':
-        specifier: ^1.2.26
-        version: 1.2.26(@capacitor/core@7.6.5)
       '@capacitor/core':
         specifier: ^7.4.0
         version: 7.6.5
+      '@capacitor/haptics':
+        specifier: ^7.0.0
+        version: 7.0.5(@capacitor/core@7.6.5)
       '@capacitor/ios':
         specifier: ^7.4.0
         version: 7.6.5(@capacitor/core@7.6.5)
@@ -281,6 +281,11 @@ packages:
 
   '@capacitor/core@7.6.5':
     resolution: {integrity: sha512-JWyxD9LaK1oY588B/khJIG3Ec4NHI/Ki4v1b4XzqPNt2a27au0F2AhLTwYexV4Bp3Ruxf+8oYqxFAC8/7sGBWA==}
+
+  '@capacitor/haptics@7.0.5':
+    resolution: {integrity: sha512-ujXuUkL8UG1YLhuJo/q+jiHr0K5JmclGZHmV1RttmiUBRG1XpC4Fc4gXUJyEX+6IoyfwWhgtPvJFRUB31HYnRQ==}
+    peerDependencies:
+      '@capacitor/core': '>=7.0.0'
 
   '@capacitor/ios@7.6.5':
     resolution: {integrity: sha512-jJK3wW65GAsmzgaswoePWDQ7mADIwQNWqWGcOeZyrPP7+lzW5/8gGqu9ASFGbG+GplFfgwRWzd4oH/7xb+lYFw==}
@@ -4952,6 +4957,10 @@ snapshots:
   '@capacitor/core@7.6.5':
     dependencies:
       tslib: 2.8.1
+
+  '@capacitor/haptics@7.0.5(@capacitor/core@7.6.5)':
+    dependencies:
+      '@capacitor/core': 7.6.5
 
   '@capacitor/ios@7.6.5(@capacitor/core@7.6.5)':
     dependencies:
