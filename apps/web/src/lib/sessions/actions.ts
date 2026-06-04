@@ -9,6 +9,8 @@ import { recomputeActualSessionLoad } from "@/lib/engine/recompute-actual-sessio
 import { maybeCompleteBlock } from "@/lib/planner/completion";
 import { getUserTimezone, dayDate } from "@/lib/planner/queries";
 import { roundToPlate } from "@/lib/planner/archetypes";
+import { resolveQuickStrengthPlan } from "@/lib/planner/quick-generate-resolve";
+import type { QuickLength } from "@/lib/planner/quick-generate";
 import { applyAutoregVolumeScale } from "@/lib/planner/autoreg-volume";
 import {
   applyModificationsToPrescription,
@@ -1809,6 +1811,100 @@ export async function repeatRecentSession(input: RepeatRecentInput): Promise<str
       p_user_id: user.id,
     });
     if (rpcErr) throw new Error(rpcErr.message);
+  }
+
+  revalidatePath("/app");
+  return created.id;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+ * Quick-generate — freshness-aware deterministic strength session.
+ *
+ * Unlike `startQuickStrengthSession` (empty session, user adds movements),
+ * this BUILDS a ready-to-log strength session via the prescription engine:
+ *   - resolves the user's archetype from their active (or most recent) block,
+ *   - routes the main lift to the freshest pattern (16-muscle freshness),
+ *   - fills accessories with a freshness-masked target map,
+ *   - trims to a Short (~30 min) or Normal (~60 min) duration budget.
+ *
+ * Deterministic — no AI. RLS: user-scoped client + explicit user_id filters +
+ * Zod `.strict()`. Off-plan: never links to a planned_sessions slot.
+ * ──────────────────────────────────────────────────────────────────── */
+
+const generateQuickStrengthSchema = z
+  .object({
+    length: z.enum(["short", "normal"]),
+  })
+  .strict();
+
+export type GenerateQuickStrengthInput = {
+  length: QuickLength;
+};
+
+export async function generateQuickStrengthSession(
+  input: GenerateQuickStrengthInput,
+): Promise<string> {
+  const parsed = generateQuickStrengthSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) redirect("/login");
+
+  const tz = await getUserTimezone();
+  const plan = await resolveQuickStrengthPlan(supabase, user.id, {
+    length: parsed.data.length,
+    tz,
+  });
+  if (!plan.ok) throw new Error(plan.error);
+
+  // Create the ad-hoc session row (off-plan — no planned_sessions linkage).
+  const { data: created, error: insErr } = await supabase
+    .from("sessions")
+    .insert({ user_id: user.id, title: plan.title })
+    .select("id")
+    .single();
+  if (insErr || !created) {
+    throw new Error(insErr?.message ?? "Could not create session");
+  }
+
+  // Materialise the prescription into set_logs — mirrors `fillSessionFromPlan`:
+  // each strength-kind item fans out into `sets` rows; main/back-off/warmup
+  // weights resolve from %TM × the user's TM (rounded to plate), accessories
+  // carry a null weight (the user enters load, aided by the "last time" hint).
+  const inserts: SetInsert[] = [];
+  let nextIndex = 0;
+  for (let itemIdx = 0; itemIdx < plan.items.length; itemIdx++) {
+    const item = plan.items[itemIdx] as PrescriptionItem;
+    if (!STRENGTH_KINDS.includes(item.kind as SetInsert["set_kind"])) continue;
+    const setKind = item.kind as SetInsert["set_kind"];
+    const setCount = Math.max(1, item.sets ?? 1);
+    const reps = item.reps ?? null;
+    const tm = plan.tmByMovementId.get(item.movementId);
+    const weight =
+      typeof item.percentTm === "number" && tm
+        ? roundToPlate(tm * (item.percentTm / 100))
+        : null;
+    for (let i = 0; i < setCount; i++) {
+      inserts.push({
+        session_id: created.id,
+        movement_id: item.movementId,
+        set_index: nextIndex++,
+        set_kind: setKind,
+        weight_kg: weight,
+        reps,
+        prescription_item_index: itemIdx,
+      });
+    }
+  }
+
+  if (inserts.length > 0) {
+    const { error: slErr } = await supabase.from("set_logs").insert(inserts);
+    if (slErr) throw new Error(slErr.message);
   }
 
   revalidatePath("/app");

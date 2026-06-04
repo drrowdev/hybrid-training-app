@@ -8,6 +8,8 @@ vi.mock("next/navigation", () => ({
 
 const noopStrength = async () => "00000000-0000-4000-8000-0000000000ff";
 const noopRepeat = async () => "00000000-0000-4000-8000-0000000000ff";
+const noopGenerate = async (_: { length: "short" | "normal" }) =>
+  "00000000-0000-4000-8000-0000000000fe";
 
 describe("QuickWorkoutCard", () => {
   it("renders the planned-day subtitle when variant is 'planned'", () => {
@@ -17,6 +19,7 @@ describe("QuickWorkoutCard", () => {
         recent={[]}
         startStrength={noopStrength}
         repeatRecent={noopRepeat}
+        generateStrength={noopGenerate}
       />,
     );
     expect(html).toContain('data-testid="quick-workout-card"');
@@ -33,6 +36,7 @@ describe("QuickWorkoutCard", () => {
         recent={[]}
         startStrength={noopStrength}
         repeatRecent={noopRepeat}
+        generateStrength={noopGenerate}
       />,
     );
     expect(html).toContain('data-variant="rest"');
@@ -47,9 +51,9 @@ describe("QuickWorkoutCard", () => {
         recent={[]}
         startStrength={noopStrength}
         repeatRecent={noopRepeat}
+        generateStrength={noopGenerate}
       />,
     );
     expect(html).toMatch(/<button[^>]+data-testid="quick-workout-card"/);
   });
 });
-
