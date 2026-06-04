@@ -36,6 +36,7 @@ import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import { resolveSecondaryFocus } from "./secondary-focus";
 import { resolveAccessoryVolumeLevel } from "./accessory-volume";
 import { resolveEffortPreference } from "./effort-preference";
+import { TM_RESOLUTION_SELECT } from "@/lib/training-maxes/columns";
 import type { FocusMuscle } from "./focus-muscles";
 import {
   assembleQuickStrengthItems,
@@ -221,7 +222,7 @@ export async function resolveQuickStrengthPlan(
 
   const { data: tms, error: tmErr } = await supabase
     .from("training_maxes")
-    .select("movement_id, one_rm_kg, tm_percent")
+    .select(TM_RESOLUTION_SELECT)
     .eq("user_id", userId)
     .in("movement_id", candidateMovementIds);
   if (tmErr) return { ok: false, error: `TM lookup failed: ${tmErr.message}` };
