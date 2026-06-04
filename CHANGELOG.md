@@ -10,6 +10,13 @@ Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 
 ### Fixed (native cardio — Quick run/ride now opens the live tracker, Phase 0)
 
+- Strava import now computes `avg_pace_sec_per_km` for distance-bearing
+  activities (`pace = duration / distance`, sec/km). Previously the import row
+  builder (`lib/integrations/strava/sync-row.ts`) left pace NULL, so pace PRs
+  (`lib/stats/pace-prs.ts`, run modality) never populated for imported runs.
+  Migration 0086 backfills the column on existing Strava-sourced rows that have
+  a positive distance and no pace yet — historical imports light up immediately.
+
 - Quick run / ride (Today "Quick workout" sheet) now opens the live GPS
   tracker (running clock + distance + pace + screen wake-lock) instead of a
   bare read-only "run / 90 min + finish" card. The quick-cardio flow used to

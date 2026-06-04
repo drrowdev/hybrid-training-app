@@ -35,6 +35,7 @@ export type StravaSyncRow = {
     modality: string;
     duration_sec: number;
     distance_km: number | null;
+    avg_pace_sec_per_km: number | null;
     avg_hr_bpm: number | null;
     max_hr_bpm: number | null;
     rpe: number | null;
@@ -92,6 +93,14 @@ export function buildSyncRow(
       durationSec: duration,
       bands: options.bands ?? null,
     });
+  const distanceKm =
+    activity.distance > 0 ? Number((activity.distance / 1000).toFixed(3)) : null;
+  // Average pace (sec/km) for distance-bearing activities. Strava import
+  // previously left this null, so pace PRs (lib/stats/pace-prs.ts) never
+  // populated for imported runs. pace = duration / distance. Only PR-relevant
+  // for runs, but computed for any distance activity — harmless elsewhere.
+  const avgPaceSecPerKm =
+    distanceKm != null && distanceKm > 0 ? Math.round(duration / distanceKm) : null;
   return {
     session: {
       user_id: userId,
@@ -106,7 +115,8 @@ export function buildSyncRow(
     cardio: {
       modality: mapping.modality,
       duration_sec: duration,
-      distance_km: activity.distance > 0 ? Number((activity.distance / 1000).toFixed(3)) : null,
+      distance_km: distanceKm,
+      avg_pace_sec_per_km: avgPaceSecPerKm,
       avg_hr_bpm: avgHr,
       max_hr_bpm: maxHr,
       rpe,

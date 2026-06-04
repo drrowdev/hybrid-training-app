@@ -83,6 +83,7 @@ export async function writeStravaActivity(args: {
       modality: row.cardio.modality,
       duration_sec: row.cardio.duration_sec,
       distance_km: row.cardio.distance_km,
+      avg_pace_sec_per_km: row.cardio.avg_pace_sec_per_km,
       avg_hr_bpm: row.cardio.avg_hr_bpm,
       max_hr_bpm: row.cardio.max_hr_bpm,
       rpe: row.cardio.rpe,
