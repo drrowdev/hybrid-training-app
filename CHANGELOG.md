@@ -8,6 +8,31 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 2026-05-30. The previous starting-point block is preserved below for history.
 
+### Changed (cardio capture is Strava's job — in-app GPS removed)
+
+- Strategic pivot: the app's differentiator is the training ENGINE
+  (prescriptions, load, concurrent interference, taper), not re-creating
+  Strava in-app. Cardio is captured in Strava/wearables and flows into the
+  engine via the existing Strava integration (load + HR zones + interference).
+  In-app cardio capture has been removed accordingly.
+- Removed the in-app live GPS cardio tracker entirely: deleted
+  `LiveCardioTracker`, the `lib/cardio/geo-provider` + `live-tracker` modules,
+  and their tests. Planned cardio sessions now render the manual `CardioLogForm`
+  (RPE / duration / distance / notes) — and, when Strava is connected, the
+  existing `StravaAutofillBanner` "Sync now" / "Use" flow to pull a matched
+  activity. No GPS permission is requested anywhere in the web app.
+- Quick workouts are now STRENGTH-ONLY. The Today "Quick workout" sheet drops
+  the Run / Ride / Other tiles and the duration picker; it offers a single
+  Strength start plus a Recent list of completed strength workouts to clone.
+  Steering ad-hoc cardio out of the quick picker reinforces "cardio happens in
+  Strava." Removed the `startQuickCardioSession` server action + schema and the
+  cardio-cloning path in `repeatRecentSession`; `getQuickRepeatCandidates` now
+  returns strength sessions only.
+- Migration 0085 columns (`sessions.quick_cardio_modality` +
+  `quick_cardio_duration_sec`) stay in place but are no longer written — they
+  remain readable for legacy quick-cardio sessions, which now render the manual
+  form instead of the deleted tracker. No drop migration.
+
 ### Fixed (native cardio — Quick run/ride now opens the live tracker, Phase 0)
 
 - Strava import now computes `avg_pace_sec_per_km` for distance-bearing

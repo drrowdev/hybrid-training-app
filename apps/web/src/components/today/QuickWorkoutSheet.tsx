@@ -2,17 +2,19 @@
 
 /**
  * Quick-workout bottom sheet — fired from `<QuickWorkoutCard>` on the
- * Today page. Renders a 2×2 picker for the four common ad-hoc workout
- * shapes (Run / Ride / Strength / Other) plus, when available, a
- * "Recent" list of completed sessions the user can clone with one tap.
+ * Today page. Quick workouts are STRENGTH-ONLY: the sheet offers a
+ * single "Strength" start plus, when available, a "Recent" list of
+ * completed strength workouts the user can clone with one tap.
  *
- * All four picker tiles + every Recent row call a server action exposed
- * via props rather than imported directly — keeps the component pure
- * for tests and lets the page wire the actions once.
+ * Cardio is intentionally NOT a quick-workout option. In-app cardio
+ * capture (GPS live tracking) was removed — cardio is logged in Strava
+ * and flows in via the Strava integration, or is entered manually on a
+ * planned cardio session. Steering ad-hoc cardio out of the quick-workout
+ * picker keeps that mental model clean.
  *
- * The "Other" tile expands inline into a small modality dropdown
- * (swim / row / ski / walk / other) so we don't make the user dig
- * through a third-level picker for a rarely-used cardio kind.
+ * Both the Strength start and every Recent row call a server action
+ * exposed via props rather than imported directly — keeps the component
+ * pure for tests and lets the page wire the actions once.
  *
  * Wraps the shared `<BottomSheet>` for the backdrop + swipe-down UX.
  */
@@ -21,58 +23,22 @@ import { useState, useTransition } from "react";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import type { QuickRepeatCandidate } from "@/lib/sessions/queries";
 
-export type StartCardioFn = (input: {
-  modality: string;
-  durationMin?: number;
-}) => void | Promise<void>;
 export type StartStrengthFn = () => void | Promise<void>;
 export type RepeatFn = (input: { sessionId: string }) => void | Promise<void>;
-
-const OTHER_MODALITIES: Array<{ value: string; label: string }> = [
-  { value: "swim", label: "Swim" },
-  { value: "row", label: "Row" },
-  { value: "ski", label: "Ski erg" },
-  { value: "walk", label: "Walk / hike" },
-  { value: "other", label: "Other cardio" },
-];
-
-const DURATION_CHIPS: ReadonlyArray<{ min: number; label: string }> = [
-  { min: 30, label: "30 min" },
-  { min: 45, label: "45 min" },
-  { min: 60, label: "60 min" },
-  { min: 90, label: "90 min" },
-];
-
-/** Allowed range, mirrors the server-side Zod schema. */
-const MIN_DURATION = 5;
-const MAX_DURATION = 300;
 
 export function QuickWorkoutSheet({
   open,
   onClose,
   recent,
-  startCardio,
   startStrength,
   repeatRecent,
 }: {
   open: boolean;
   onClose: () => void;
   recent: QuickRepeatCandidate[];
-  startCardio: StartCardioFn;
   startStrength: StartStrengthFn;
   repeatRecent: RepeatFn;
 }) {
-  const [otherOpen, setOtherOpen] = useState(false);
-  const [otherModality, setOtherModality] = useState<string>("swim");
-  // Which tile (if any) is in "waiting for the user to pick a
-  // duration" mode. Tapping Run/Ride/Other expands the duration row
-  // INLINE underneath the picker grid — no second sheet, no modal.
-  const [durationFor, setDurationFor] = useState<
-    | { modality: string; tileId: string }
-    | null
-  >(null);
-  const [customMin, setCustomMin] = useState<string>("");
-  const [customError, setCustomError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [pendingId, setPendingId] = useState<string | null>(null);
 
@@ -89,36 +55,6 @@ export function QuickWorkoutSheet({
         }
       });
     });
-  };
-
-  const openDuration = (modality: string, tileId: string) => {
-    // Tapping the same tile again collapses the duration row.
-    if (durationFor?.tileId === tileId) {
-      setDurationFor(null);
-      return;
-    }
-    setDurationFor({ modality, tileId });
-    setCustomMin("");
-    setCustomError(null);
-    setOtherOpen(false);
-  };
-
-  const pickDuration = (durationMin: number) => {
-    if (!durationFor) return;
-    fire(`${durationFor.tileId}:${durationMin}`, () =>
-      startCardio({ modality: durationFor.modality, durationMin }),
-    );
-  };
-
-  const submitCustom = () => {
-    if (!durationFor) return;
-    setCustomError(null);
-    const n = Number(customMin);
-    if (!Number.isFinite(n) || !Number.isInteger(n) || n < MIN_DURATION || n > MAX_DURATION) {
-      setCustomError(`Enter a whole number ${MIN_DURATION}–${MAX_DURATION}`);
-      return;
-    }
-    pickDuration(n);
   };
 
   return (
@@ -143,138 +79,19 @@ export function QuickWorkoutSheet({
               lineHeight: 1.4,
             }}
           >
-            Start something now. It won&apos;t replace your planned
+            Start a strength session now. It won&apos;t replace your planned
             workout — it&apos;s logged on top.
           </p>
         </div>
       }
     >
-      <div
-        data-testid="quick-workout-tiles"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 10,
-        }}
-      >
-        <Tile
-          testId="quick-tile-run"
-          icon="🏃"
-          label="Run"
-          sub="cardio"
-          disabled={pending}
-          loading={pendingId?.startsWith("run") ?? false}
-          active={durationFor?.tileId === "run"}
-          onClick={() => openDuration("run", "run")}
-        />
-        <Tile
-          testId="quick-tile-ride"
-          icon="🚴"
-          label="Ride"
-          sub="cardio"
-          disabled={pending}
-          loading={pendingId?.startsWith("ride") ?? false}
-          active={durationFor?.tileId === "ride"}
-          onClick={() => openDuration("bike", "ride")}
-        />
-        <Tile
-          testId="quick-tile-strength"
-          icon="🏋️"
-          label="Strength"
-          sub="build your own"
+      <div data-testid="quick-workout-tiles" style={{ display: "grid", gap: 10 }}>
+        <StrengthTile
           disabled={pending}
           loading={pendingId === "strength"}
-          onClick={() => {
-            setDurationFor(null);
-            fire("strength", () => startStrength());
-          }}
-        />
-        <Tile
-          testId="quick-tile-other"
-          icon="+"
-          label="Other"
-          sub={otherOpen ? "pick a modality" : "swim · row · ski · …"}
-          disabled={pending}
-          loading={pendingId?.startsWith("other") ?? false}
-          onClick={() => {
-            setDurationFor(null);
-            setOtherOpen((v) => !v);
-          }}
-          active={otherOpen}
+          onClick={() => fire("strength", () => startStrength())}
         />
       </div>
-
-      {durationFor && (
-        <DurationPickerRow
-          testId="quick-duration-row"
-          pending={pending}
-          custom={customMin}
-          customError={customError}
-          onChip={pickDuration}
-          onCustomChange={(v) => {
-            setCustomError(null);
-            setCustomMin(v);
-          }}
-          onCustomSubmit={submitCustom}
-        />
-      )}
-
-      {otherOpen && !durationFor && (
-        <div
-          data-testid="quick-tile-other-panel"
-          style={{
-            marginTop: 10,
-            padding: 12,
-            border: "1px solid var(--cp-border)",
-            background: "var(--cp-bg)",
-            borderRadius: 12,
-            display: "grid",
-            gap: 8,
-          }}
-        >
-          <label
-            htmlFor="quick-other-modality"
-            style={{ fontSize: 12, color: "var(--cp-text-muted)" }}
-          >
-            Modality
-          </label>
-          <select
-            id="quick-other-modality"
-            data-testid="quick-other-modality"
-            value={otherModality}
-            onChange={(e) => setOtherModality(e.target.value)}
-            disabled={pending}
-            style={{
-              padding: "8px 10px",
-              borderRadius: 8,
-              border: "1px solid var(--cp-border)",
-              background: "var(--cp-surface)",
-              color: "var(--cp-text)",
-              fontSize: 14,
-            }}
-          >
-            {OTHER_MODALITIES.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            className="cp-btn primary"
-            data-testid="quick-other-start"
-            disabled={pending}
-            onClick={() => {
-              // Hand off to the inline duration row instead of
-              // submitting with the silent 30-min default.
-              setOtherOpen(false);
-              openDuration(otherModality, "other");
-            }}
-          >
-            Next: pick duration
-          </button>
-        </div>
-      )}
 
       {recent.length > 0 && (
         <div
@@ -309,45 +126,35 @@ export function QuickWorkoutSheet({
   );
 }
 
-function Tile({
-  icon,
-  label,
-  sub,
+function StrengthTile({
   onClick,
-  testId,
   disabled,
   loading,
-  active,
 }: {
-  icon: string;
-  label: string;
-  sub: string;
   onClick: () => void;
-  testId: string;
   disabled?: boolean;
   loading?: boolean;
-  active?: boolean;
 }) {
   return (
     <button
       type="button"
-      data-testid={testId}
+      data-testid="quick-tile-strength"
       onClick={onClick}
       disabled={disabled}
-      aria-pressed={active ? true : undefined}
       style={{
-        display: "grid",
-        gap: 6,
-        justifyItems: "start",
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
         padding: 16,
         background: "var(--cp-bg)",
-        border: `1px solid ${active ? "var(--cp-accent)" : "var(--cp-border)"}`,
+        border: "1px solid var(--cp-border)",
         borderRadius: 12,
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled && !loading ? 0.5 : 1,
         textAlign: "left",
         color: "var(--cp-text)",
         font: "inherit",
+        width: "100%",
       }}
     >
       <span
@@ -363,158 +170,19 @@ function Tile({
           justifyContent: "center",
           fontSize: 18,
           fontWeight: 700,
+          flex: "0 0 auto",
         }}
       >
-        {icon}
+        🏋️
       </span>
-      <span style={{ fontSize: 14, fontWeight: 700 }}>{label}</span>
-      <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
-        {loading ? "Starting…" : sub}
+      <span style={{ display: "grid", gap: 2 }}>
+        <span style={{ fontSize: 14, fontWeight: 700 }}>Strength</span>
+        <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+          {loading ? "Starting…" : "build your own"}
+        </span>
       </span>
     </button>
   );
-}
-
-/**
- * Inline duration row that appears under the picker grid after the
- * user taps Run / Ride / Other. Keeps the sheet height tight (under
- * ~60px additional vertical space) and lives INSIDE the BottomSheet
- * so the swipe-to-dismiss handler on the sheet's drag handle still
- * works; chip taps are handled by their own button elements and
- * don't bubble into the swipe gesture.
- */
-function DurationPickerRow({
-  testId,
-  pending,
-  custom,
-  customError,
-  onChip,
-  onCustomChange,
-  onCustomSubmit,
-}: {
-  testId: string;
-  pending: boolean;
-  custom: string;
-  customError: string | null;
-  onChip: (min: number) => void;
-  onCustomChange: (value: string) => void;
-  onCustomSubmit: () => void;
-}) {
-  return (
-    <div
-      data-testid={testId}
-      style={{
-        marginTop: 10,
-        padding: 10,
-        border: "1px solid var(--cp-border)",
-        background: "var(--cp-bg)",
-        borderRadius: 12,
-        display: "grid",
-        gap: 8,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 11,
-          letterSpacing: "0.08em",
-          textTransform: "uppercase",
-          color: "var(--cp-text-muted)",
-          fontWeight: 600,
-        }}
-      >
-        How long?
-      </div>
-      <div
-        style={{
-          display: "flex",
-          gap: 6,
-          flexWrap: "wrap",
-        }}
-      >
-        {DURATION_CHIPS.map((c) => (
-          <button
-            key={c.min}
-            type="button"
-            data-testid={`quick-duration-${c.min}`}
-            disabled={pending}
-            onClick={() => onChip(c.min)}
-            style={chipStyle(pending)}
-          >
-            {c.label}
-          </button>
-        ))}
-        <div
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-            marginLeft: "auto",
-          }}
-        >
-          <input
-            type="number"
-            inputMode="numeric"
-            min={MIN_DURATION}
-            max={MAX_DURATION}
-            placeholder="Custom"
-            aria-label="Custom duration in minutes"
-            data-testid="quick-duration-custom"
-            value={custom}
-            disabled={pending}
-            onChange={(e) => onCustomChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                onCustomSubmit();
-              }
-            }}
-            style={{
-              width: 76,
-              padding: "6px 8px",
-              borderRadius: 999,
-              border: "1px solid var(--cp-border)",
-              background: "var(--cp-surface)",
-              color: "var(--cp-text)",
-              fontSize: 12,
-            }}
-          />
-          <button
-            type="button"
-            data-testid="quick-duration-custom-go"
-            onClick={onCustomSubmit}
-            disabled={pending}
-            style={chipStyle(pending)}
-          >
-            Go
-          </button>
-        </div>
-      </div>
-      {customError && (
-        <div
-          role="alert"
-          data-testid="quick-duration-error"
-          style={{ fontSize: 11, color: "var(--cp-danger)" }}
-        >
-          {customError}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function chipStyle(disabled: boolean): React.CSSProperties {
-  return {
-    padding: "6px 12px",
-    borderRadius: 999,
-    border: "1px solid var(--cp-border)",
-    background: "var(--cp-surface)",
-    color: "var(--cp-text)",
-    fontSize: 12,
-    fontWeight: 600,
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.55 : 1,
-    font: "inherit",
-  };
 }
 
 function RecentRow({
