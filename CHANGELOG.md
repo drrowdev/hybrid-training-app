@@ -8,6 +8,25 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 2026-05-30. The previous starting-point block is preserved below for history.
 
+### Added (mobile — native Taptic-Engine haptics)
+
+- `lib/feedback/hapticTick` now prefers the native **Taptic Engine** when the
+  app runs inside the Capacitor shell, calling the `@capacitor/haptics` plugin
+  over the injected `window.Capacitor` bridge (mapping the legacy vibration
+  duration onto a LIGHT/MEDIUM/HEAVY impact). This is the only path that produces
+  a real buzz on iPhone — iOS Safari never implemented the Web Vibration API — so
+  the set-logged tick and rest-timer-done cue now actually fire on iOS. On plain
+  web it falls back to `navigator.vibrate` (real on Android, no-op on iOS
+  browsers). One codebase, progressive enhancement; the web bundle adds no native
+  deps. So the rest timer + set logger give eyes-free confirmation on iPhone.
+- Native shell cleanup: dropped the dead `@capacitor-community/background-geolocation`
+  plugin and removed the background-location `Info.plist` keys
+  (`NSLocationWhenInUse*`, `NSLocationAlwaysAndWhenInUse*`, `UIBackgroundModes:
+  location`) — leftovers from the removed in-app cardio tracker. The shell now
+  requests no location permission. Added `@capacitor/haptics` in its place.
+  (Native push via APNs/FCM remains gated on the $99/yr Apple Developer Program +
+  a backend send pipeline — see `docs/knowledge/mobile-platform-notes.md`.)
+
 ### Added (mobile — screen wake lock during active sessions)
 
 - The screen now stays awake while a workout session is in progress so the

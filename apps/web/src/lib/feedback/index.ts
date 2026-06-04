@@ -7,9 +7,51 @@
  * window` and silently no-ops in non-DOM contexts.
  */
 
-/** Short haptic tick (Web Vibration API). Default duration ~10ms. */
+/** Capacitor `ImpactStyle` serialized values (we call the plugin over the
+ * injected native bridge rather than importing `@capacitor/haptics`, so the
+ * web bundle stays free of native deps under remote-load). */
+type ImpactStyle = "HEAVY" | "MEDIUM" | "LIGHT";
+
+interface CapacitorBridge {
+  isNativePlatform?: () => boolean;
+  Plugins?: {
+    Haptics?: {
+      impact?: (opts: { style: ImpactStyle }) => unknown;
+    };
+  };
+}
+
+/**
+ * Fire a native Taptic-Engine impact when running inside the Capacitor shell.
+ * Returns true if a native haptic was dispatched. iOS Safari never implements
+ * the Web Vibration API, so on iPhone this is the ONLY path that produces a
+ * real buzz; on plain web (no native bridge) it returns false and the caller
+ * falls back to `navigator.vibrate` (which works on Android, no-ops on iOS).
+ */
+function nativeHaptic(ms: number): boolean {
+  if (typeof window === "undefined") return false;
+  const cap = (window as unknown as { Capacitor?: CapacitorBridge }).Capacitor;
+  if (!cap?.isNativePlatform?.()) return false;
+  const impact = cap.Plugins?.Haptics?.impact;
+  if (typeof impact !== "function") return false;
+  // Map the legacy vibration duration onto an impact weight: the rest-timer
+  // cue (~120ms) wants a firm thud; a set-logged tick (~10ms) a light tap.
+  const style: ImpactStyle = ms >= 100 ? "HEAVY" : ms >= 20 ? "MEDIUM" : "LIGHT";
+  try {
+    void Promise.resolve(impact({ style })).catch(() => undefined);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Short haptic tick. Prefers the native Taptic Engine inside the Capacitor
+ * shell, falling back to the Web Vibration API. Default duration ~10ms.
+ */
 export function hapticTick(enabled: boolean, ms = 10): void {
   if (!enabled) return;
+  if (nativeHaptic(ms)) return;
   if (typeof navigator === "undefined") return;
   try {
     const nav = navigator as Navigator & {
