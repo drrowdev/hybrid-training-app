@@ -53,6 +53,7 @@ describe("buildSyncRow", () => {
     expect(row?.session.title).toBe("Morning Run (Strava)");
     expect(row?.cardio.modality).toBe("run");
     expect(row?.cardio.distance_km).toBe(6.5);
+    expect(row?.cardio.avg_pace_sec_per_km).toBe(277);
     expect(row?.cardio.avg_hr_bpm).toBe(152);
     expect(row?.mapping.primaryRegion).toBe("knee");
   });
@@ -79,6 +80,23 @@ describe("buildSyncRow", () => {
   it("emits null distance when activity has no distance", () => {
     const row = buildSyncRow(activity({ distance: 0 }), "u");
     expect(row?.cardio.distance_km).toBeNull();
+  });
+
+  it("computes avg pace (sec/km) from duration and distance", () => {
+    // moving_time 1800s over 6.5km → 276.9 → 277 sec/km.
+    const row = buildSyncRow(activity(), "u");
+    expect(row?.cardio.avg_pace_sec_per_km).toBe(277);
+  });
+
+  it("emits null pace when there is no distance", () => {
+    const row = buildSyncRow(activity({ distance: 0 }), "u");
+    expect(row?.cardio.avg_pace_sec_per_km).toBeNull();
+  });
+
+  it("computes pace off elapsed_time when moving_time is zero", () => {
+    // elapsed 3000s over 6.5km → 461.5 → 462 sec/km.
+    const row = buildSyncRow(activity({ moving_time: 0, elapsed_time: 3000 }), "u");
+    expect(row?.cardio.avg_pace_sec_per_km).toBe(462);
   });
 
   it("stamps the external_source and stringifies the activity id on cardio_logs", () => {
