@@ -20,11 +20,12 @@
  */
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import type { QuickRepeatCandidate } from "@/lib/sessions/queries";
 
-export type StartStrengthFn = () => void | Promise<void>;
-export type RepeatFn = (input: { sessionId: string }) => void | Promise<void>;
+export type StartStrengthFn = () => Promise<string>;
+export type RepeatFn = (input: { sessionId: string }) => Promise<string>;
 
 export function QuickWorkoutSheet({
   open,
@@ -39,21 +40,30 @@ export function QuickWorkoutSheet({
   startStrength: StartStrengthFn;
   repeatRecent: RepeatFn;
 }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [pendingId, setPendingId] = useState<string | null>(null);
 
-  const fire = (id: string, fn: () => void | Promise<void>) => {
+  const fire = (id: string, fn: () => Promise<string>) => {
     if (pending) return;
     setPendingId(id);
-    startTransition(() => {
-      Promise.resolve(fn()).catch((err) => {
-        // Server actions that redirect throw `NEXT_REDIRECT`; that's
+    startTransition(async () => {
+      try {
+        const sessionId = await fn();
+        // Navigate client-side so the destination's loading.tsx skeleton
+        // shows instantly — a server-action redirect() would instead block
+        // this transition until the full session RSC was ready ("Starting…"
+        // hang). The create itself is a single insert round-trip.
+        if (sessionId) router.push(`/app/sessions/${sessionId}`);
+      } catch (err) {
+        // A server action that still redirects throws `NEXT_REDIRECT`; that's
         // expected and not an error path the user needs to see.
         const msg = err instanceof Error ? err.message : String(err);
         if (!/NEXT_REDIRECT/i.test(msg)) {
           console.error("[quick-workout] action failed", err);
+          setPendingId(null);
         }
-      });
+      }
     });
   };
 
