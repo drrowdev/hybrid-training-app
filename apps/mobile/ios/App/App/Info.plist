@@ -22,14 +22,6 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>SxC uses your location to track distance, pace and route during cardio workouts.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>SxC needs background location access to keep tracking your cardio workout when the screen is off or the app is in the background.</string>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>location</string>
-	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
