@@ -82,7 +82,7 @@ export default async function SessionDetailPage({
   const { data: session } = await supabase
     .from("sessions")
     .select(
-      "id, performed_at, title, fatigue, soreness, session_rpe, duration_min, notes, completed_at",
+      "id, performed_at, title, fatigue, soreness, session_rpe, duration_min, notes, completed_at, quick_cardio_modality, quick_cardio_duration_sec",
     )
     .eq("id", id)
     .is("deleted_at", null)
@@ -619,7 +619,19 @@ export default async function SessionDetailPage({
   );
   const firstCardioPrescription = cardioPrescriptionItems[0] ?? null;
   const hasLoggedCardioRow = (cardio ?? []).length > 0;
-  const hasCardio = cardioPrescriptionItems.length > 0;
+  // Native cardio Phase 0 — a Quick run/ride (Today "Quick workout") carries
+  // no prescription; its intent (modality + target duration) lives on the
+  // session row. Treat it as cardio so the live GPS tracker opens, but do NOT
+  // synthesize a prescription item (we don't want the planned-block card —
+  // just the tracker). The real cardio_logs row is written on finish.
+  const quickCardioModality =
+    (session as { quick_cardio_modality?: string | null }).quick_cardio_modality ?? null;
+  const quickCardioDurationSec =
+    (session as { quick_cardio_duration_sec?: number | null }).quick_cardio_duration_sec ?? null;
+  const quickCardioDurationMin =
+    quickCardioDurationSec != null ? Math.round(quickCardioDurationSec / 60) : null;
+  const hasQuickCardio = !!quickCardioModality;
+  const hasCardio = cardioPrescriptionItems.length > 0 || hasQuickCardio;
   const hasStrengthPrescription = strengthItemCount > 0;
   const isPureCardio = hasCardio && !hasStrengthPrescription;
   const isHybridSession = hasCardio && hasStrengthPrescription;
@@ -1289,14 +1301,18 @@ export default async function SessionDetailPage({
             <div style={{ marginTop: 14 }}>
               <LiveCardioTracker
                 sessionId={id}
-                prescribedDurationMin={firstCardioPrescription?.durationMin ?? null}
+                prescribedDurationMin={
+                  firstCardioPrescription?.durationMin ?? quickCardioDurationMin ?? null
+                }
                 movementId={firstCardioPrescription?.movementId ?? null}
                 modality={
                   (firstCardioPrescription?.movementId
                     ? cardioModalityByMovementId[firstCardioPrescription.movementId] ?? null
                     : null)
                     ?.toLowerCase()
-                    ?.replace(/\s+/g, "_") ?? "other"
+                    ?.replace(/\s+/g, "_") ??
+                  quickCardioModality ??
+                  "other"
                 }
                 units={userUnits}
                 action={logCardioSession}
