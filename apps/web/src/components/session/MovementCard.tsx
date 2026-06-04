@@ -28,6 +28,8 @@ import { MovementFocusView, type FocusLoggedSet } from "./MovementFocusView";
 import { SwapMovementModal } from "./SwapMovementModal";
 import { DisclosureArrow } from "./DisclosureArrow";
 import type { PlateInventoryItem } from "./plate-math";
+import type { LastSetHint } from "./SessionLogClient";
+import { formatHintDate } from "@/lib/sessions/format-hint-date";
 import type { fillSessionFromPlan } from "@/lib/sessions/actions";
 
 export type MovementCardProps = {
@@ -41,6 +43,13 @@ export type MovementCardProps = {
   loggedSetIdByItemIndex: Readonly<Record<number, string>>;
   loggedSets: FocusLoggedSet[];
   priorBest: { heaviestWeight: number | null; bestE1rm: number | null } | undefined;
+  /**
+   * Prior-session top set for this movement ("last time: X kg × Y").
+   * Set by the parent for accessory cards only; mains leave it
+   * undefined since they show a TM-derived prescribed weight instead.
+   * When present it renders a muted hint row in the expanded body.
+   */
+  lastSetHint?: LastSetHint;
   addStrengthSet: (fd: FormData) => Promise<{ error?: string; ok?: true }>;
   fillFromPlan?: typeof fillSessionFromPlan | null;
   /** Parent-controlled: only the first card in a fresh session shows the session-level fill button. */
@@ -80,6 +89,7 @@ export function MovementCard({
   loggedSetIdByItemIndex,
   loggedSets,
   priorBest,
+  lastSetHint,
   addStrengthSet,
   fillFromPlan,
   showFillFromPlan,
@@ -365,6 +375,7 @@ export function MovementCard({
 
       {!collapsed && (
         <div style={{ padding: "0 14px 14px", display: "grid", gap: 12 }}>
+          <LastSetHintRow hint={lastSetHint} label={group.movementName} />
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {fillFromPlan && showFillFromPlan && cardState !== "completed" && (
               <FillFromPlanButton
@@ -415,6 +426,39 @@ export function MovementCard({
         }}
       />
     </section>
+  );
+}
+
+/**
+ * Muted "Last <movement>: X kg × Y (date)" row shown in the expanded
+ * body of accessory cards. For accessories — which carry no TM-derived
+ * prescribed weight — the prior-session top set is the lifter's primary
+ * weight-selection signal. Renders nothing when no hint is available.
+ *
+ * Exported as a pure presentational unit so the render contract can be
+ * tested in isolation without standing up the heavy focus view.
+ */
+export function LastSetHintRow({
+  hint,
+  label,
+}: {
+  hint?: LastSetHint | null;
+  label: string;
+}) {
+  if (!hint) return null;
+  return (
+    <div
+      data-testid="last-time-hint"
+      style={{ fontSize: 12, color: "var(--cp-text-muted)" }}
+    >
+      Last {label.toLowerCase()}:{" "}
+      <span style={{ color: "var(--cp-text)", fontWeight: 500 }} className="mono">
+        {hint.weightKg} kg × {hint.reps}
+      </span>
+      <span style={{ marginLeft: 6, color: "var(--cp-text-muted)" }}>
+        ({formatHintDate(hint.performedAt)})
+      </span>
+    </div>
   );
 }
 
