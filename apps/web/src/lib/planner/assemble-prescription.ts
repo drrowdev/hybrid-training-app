@@ -47,6 +47,7 @@ import {
   type WarmupScheme,
 } from "./warmups";
 import { defaultMuscleTargets } from "./focus-muscle-targets";
+import { applyGoalWeightToTargets } from "./aesthetic-goal-weight";
 import { computeWeeklyCompoundCredit } from "./synergist-credit";
 import type { LimitationsContext } from "./limitations-context";
 import type { FocusMuscle } from "./focus-muscles";
@@ -54,6 +55,7 @@ import {
   type EffortPreference,
 } from "./effort-preference";
 import {
+  isActiveTilt,
   secondaryVolumeTilt,
   sessionDurationCapMinutes,
   type SecondaryFocus,
@@ -331,10 +333,27 @@ export function assemblePrescriptionItems(
     // users during their first three block weeks; no-op otherwise. Both are
     // tilt-independent, so resolve them once.
     const perMuscleTargets = applyScalarToTargets(
-      defaultMuscleTargets({
-        focusMuscles,
-        elbowForearmAtlRatio,
-      }).targetsByMuscle,
+      // ADR 0028 — goal-weighted aesthetic profile. Down-weight the physique
+      // triad (side delts / biceps / calves) by ×0.5 on performance-primary
+      // archetypes so the gap-fill (which ADR 0027 redirects toward
+      // main-lift-uncovered muscles) doesn't over-feed vanity isolation on a
+      // strength / hybrid / endurance block. Cancelled by an HONOURED
+      // `muscle` secondary (an active ADR 0020 tilt) or an explicit focus
+      // pick; identity on every other archetype. A `muscle` secondary on
+      // concurrent_hybrid is inert per ADR 0020, so it does NOT cancel.
+      applyGoalWeightToTargets(
+        defaultMuscleTargets({
+          focusMuscles,
+          elbowForearmAtlRatio,
+        }).targetsByMuscle,
+        {
+          archetypeId: archetype.id,
+          secondaryMuscleHonored: isActiveTilt(
+            secondaryVolumeTilt(archetype.id, secondaryFocus),
+          ),
+          focusMuscles,
+        },
+      ),
       ramp,
     );
 
