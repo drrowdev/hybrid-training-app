@@ -603,6 +603,13 @@
       "when": 1783281600000,
       "tag": "0085_sessions_quick_cardio_intent",
       "breakpoints": false
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1783368000000,
+      "tag": "0086_backfill_strava_cardio_pace",
+      "breakpoints": false
     }
   ]
 }
