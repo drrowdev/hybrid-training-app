@@ -11,6 +11,7 @@ import { getUserTimezone, dayDate } from "@/lib/planner/queries";
 import { roundToPlate } from "@/lib/planner/archetypes";
 import { resolveQuickStrengthPlan } from "@/lib/planner/quick-generate-resolve";
 import type { QuickLength } from "@/lib/planner/quick-generate";
+import { TM_RESOLUTION_SELECT } from "@/lib/training-maxes/columns";
 import { applyAutoregVolumeScale } from "@/lib/planner/autoreg-volume";
 import {
   applyModificationsToPrescription,
@@ -1032,7 +1033,7 @@ export async function fillSessionFromPlan(
       .eq("session_id", parsed.data.sessionId),
     supabase
       .from("training_maxes")
-      .select("movement_id, one_rm_kg, tm_percent")
+      .select(TM_RESOLUTION_SELECT)
       .eq("user_id", user.id),
     supabase
       .from("profiles")
