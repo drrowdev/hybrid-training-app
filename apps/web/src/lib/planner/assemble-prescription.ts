@@ -275,6 +275,16 @@ export function assemblePrescriptionItems(
    * pre-ADR-0024 prescription.
    */
   accessoryVolume: AccessoryVolumeLevel = "medium",
+  /**
+   * Quick-generate freshness mask (deterministic quick-workout path only). A
+   * per-muscle multiplier, keyed by the same fine `movements` muscle enum as
+   * the picker's `perMuscleTargets` (`side_delts`, `upper_chest`, …), applied
+   * to each aesthetic target AFTER the onboarding ramp so the gap-fill biases
+   * toward recovered muscles. `undefined` (every planned-block caller) is a
+   * byte-identical no-op — a missing key is treated as ×1.0 and the floor
+   * mirrors `applyScalarToTargets`. See `quick-generate.ts`.
+   */
+  aestheticTargetMask?: ReadonlyMap<string, number>,
 ): PrescriptionItem[] {
   const items =
     day.kind === "strength" && omitMainStrength
@@ -356,6 +366,22 @@ export function assemblePrescriptionItems(
       ),
       ramp,
     );
+
+    // Quick-generate freshness mask (default identity). Down-weights the
+    // aesthetic target of muscles loaded in the last couple of days so a
+    // one-off quick session's gap-fill flows to recovered muscles. A missing
+    // key is ×1.0; the floor mirrors `applyScalarToTargets` (positive targets
+    // never drop below 1). Absent for every planned-block caller → no-op.
+    if (aestheticTargetMask) {
+      for (const key of Object.keys(perMuscleTargets)) {
+        const mult = aestheticTargetMask.get(key);
+        if (mult == null || mult === 1) continue;
+        const v = perMuscleTargets[key];
+        if (v <= 0) continue;
+        const scaled = Math.floor(v * mult);
+        perMuscleTargets[key] = scaled < 1 ? 1 : scaled;
+      }
+    }
 
     // ADR 0020 secondary-focus volume tilt — an additive bump to the accessory
     // aesthetic profile (+1 set/movement, +1 movement) for a `muscle` secondary

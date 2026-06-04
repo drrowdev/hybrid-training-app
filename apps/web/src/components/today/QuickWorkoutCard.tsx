@@ -22,6 +22,7 @@ import {
   QuickWorkoutSheet,
   type StartStrengthFn,
   type RepeatFn,
+  type GenerateStrengthFn,
 } from "./QuickWorkoutSheet";
 import type { QuickRepeatCandidate } from "@/lib/sessions/queries";
 
@@ -32,11 +33,13 @@ export function QuickWorkoutCard({
   recent,
   startStrength,
   repeatRecent,
+  generateStrength,
 }: {
   variant: QuickWorkoutVariant;
   recent: QuickRepeatCandidate[];
   startStrength: StartStrengthFn;
   repeatRecent: RepeatFn;
+  generateStrength: GenerateStrengthFn;
 }) {
   const [open, setOpen] = useState(false);
   const subtitle =
@@ -107,6 +110,7 @@ export function QuickWorkoutCard({
         recent={recent}
         startStrength={startStrength}
         repeatRecent={repeatRecent}
+        generateStrength={generateStrength}
       />
     </>
   );
