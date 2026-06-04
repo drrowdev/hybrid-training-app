@@ -72,6 +72,16 @@ export const sessions = pgTable("sessions", {
    */
   quickCardioModality: text("quick_cardio_modality"),
   quickCardioDurationSec: integer("quick_cardio_duration_sec"),
+  /**
+   * Off-plan prescription (migration 0087, ADR 0029). Carries the
+   * `Prescription` ({ items: PrescriptionItem[] }) for a session that has no
+   * linked `planned_sessions` row — currently the quick-generate strength flow.
+   * The session page sources its prescription from the linked planned_session
+   * first, then falls back to this column, so an off-plan generated session
+   * renders the same grouped layout + progress counter as a planned one. NULL
+   * on every planned / freestyle session.
+   */
+  prescription: jsonb("prescription"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),

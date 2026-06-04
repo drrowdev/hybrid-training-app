@@ -100,7 +100,7 @@ export default async function SessionDetailPage({
     supabase
       .from("sessions")
       .select(
-        "id, performed_at, title, fatigue, soreness, session_rpe, duration_min, notes, completed_at, quick_cardio_modality, quick_cardio_duration_sec",
+        "id, performed_at, title, fatigue, soreness, session_rpe, duration_min, notes, completed_at, quick_cardio_modality, quick_cardio_duration_sec, prescription",
       )
       .eq("id", id)
       .is("deleted_at", null)
@@ -229,8 +229,13 @@ export default async function SessionDetailPage({
   });
 
   // The linked planned_session (loaded in the batch above) powers the
-  // contextual GRM recommendation ("top set ~81% instead of 90%").
-  const plannedPrescription = (planned?.prescription as Prescription | null) ?? null;
+  // contextual GRM recommendation ("top set ~81% instead of 90%"). An off-plan
+  // session (e.g. quick-generate, ADR 0029) has no planned_session row, so we
+  // fall back to the prescription stored directly on the session — both render
+  // the identical grouped layout + progress counter downstream.
+  const plannedPrescription =
+    (planned?.prescription as Prescription | null) ??
+    ((session as { prescription?: Prescription | null }).prescription ?? null);
 
   // ADR 0026 P5b — when the lifter has opted into antagonist supersets, derive
   // accessory pairing from the (unpaired) stored prescription so the logger can
