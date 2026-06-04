@@ -8,7 +8,19 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 2026-05-30. The previous starting-point block is preserved below for history.
 
-### Fixed (Today — instant Quick Workout navigation)
+### Performance (session detail — parallelized top-of-page reads)
+
+- The session-detail page (`sessions/[id]`) ran a ~7-query sequential
+  waterfall at the top of render (session → profile/feedback prefs → set_logs
+  → cardio_logs → session_movements → training-max dict → linked
+  planned_session), each blocking on the prior round-trip. These reads are
+  mutually independent, so they now resolve in a single `Promise.all`. On a
+  high-latency mobile link this collapses ~7 serial round-trips into one,
+  cutting a large chunk off the page's time-to-first-byte. No behaviour change:
+  the `notFound()` guard still fires when the session row is absent, and all
+  downstream derivations are unchanged.
+
+
 
 - Quick Workout → Strength (and "Repeat") no longer hangs on a "Starting…"
   button while the destination session page renders. The server actions
