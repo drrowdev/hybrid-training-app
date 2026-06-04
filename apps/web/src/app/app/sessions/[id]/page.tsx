@@ -1341,8 +1341,18 @@ export default async function SessionDetailPage({
           opens straight into the session's known modality so the user
           doesn't re-pick Strength/Cardio they already chose. The
           standalone empty-state hint div is gone — this card IS the
-          empty state now. */}
-      {!isComplete && (
+          empty state now.
+
+          Pure-cardio sessions (Quick run/ride or a planned cardio-only
+          session) are deliberately excluded: a cardio workout should
+          present ONLY its modality (the live tracker owns the surface +
+          its own Finish CTA). Showing a STRENGTH "Pick movements to
+          start logging" card under the tracker is noise — the empty
+          predicate fires because a quick-cardio session has no
+          prescription and no logged row until finish. Hybrid sessions
+          still render it (you can add strength); quick/planned strength
+          still render it (that IS the right empty state). */}
+      {!isComplete && !isPureCardio && (
         <AddToWorkout
           sessionId={id}
           cardioAction={addCardioBlock}
