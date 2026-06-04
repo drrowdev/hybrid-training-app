@@ -22,6 +22,14 @@ Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
   (both nullable; NULL = every existing/non-quick session, byte-identical prior
   behaviour). First step of the native cardio Strava-parity roadmap (route map,
   elevation, splits, Bluetooth HR follow on).
+- Quick cardio sessions no longer render the strength "Pick movements to start
+  logging" empty-state card under the live tracker. A cardio-only session now
+  presents ONLY its modality (the tracker + its own Finish CTA) — the
+  `AddToWorkout` strength entry is gated out for pure-cardio sessions
+  (`!isPureCardio`). The empty-state predicate fired because a quick-cardio
+  session has no prescription and no logged row until finish; that strength
+  nudge was noise on a cardio workout. Hybrid and strength sessions are
+  unchanged.
 
 ### Added (antagonist-superset accessories, engine machinery — ADR 0026)
 
