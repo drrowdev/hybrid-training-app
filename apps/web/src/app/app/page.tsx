@@ -30,7 +30,6 @@ import { RegionSpikeBanner } from "@/components/today/RegionSpikeBanner";
 import { SessionPreviewBody } from "@/components/session/SessionPreviewBody";
 import { QuickWorkoutCard } from "@/components/today/QuickWorkoutCard";
 import {
-  startQuickCardioSession,
   startQuickStrengthSession,
   repeatRecentSession,
   updatePlannedSessionNotes,
@@ -762,7 +761,6 @@ export default async function TodayPage() {
             <QuickWorkoutCard
               variant={isRestDay ? "rest" : "planned"}
               recent={quickRepeatRecent}
-              startCardio={startQuickCardioSession}
               startStrength={startQuickStrengthSession}
               repeatRecent={repeatRecentSession}
             />
