@@ -8,6 +8,8 @@ vi.mock("next/navigation", () => ({
 }));
 
 const noop = async () => "00000000-0000-4000-8000-0000000000ff";
+const genNoop = async (_: { length: "short" | "normal" }) =>
+  "00000000-0000-4000-8000-0000000000fe";
 
 function candidate(over: Partial<QuickRepeatCandidate> = {}): QuickRepeatCandidate {
   return {
@@ -27,12 +29,13 @@ describe("QuickWorkoutSheet", () => {
         recent={[]}
         startStrength={noop}
         repeatRecent={noop}
+        generateStrength={genNoop}
       />,
     );
     expect(html).toBe("");
   });
 
-  it("renders only the Strength tile when open — no cardio tiles", () => {
+  it("renders the Generate (Short/Normal) tiles plus the Start-empty tile", () => {
     const html = renderToStaticMarkup(
       <QuickWorkoutSheet
         open
@@ -40,18 +43,22 @@ describe("QuickWorkoutSheet", () => {
         recent={[]}
         startStrength={noop}
         repeatRecent={noop}
+        generateStrength={genNoop}
       />,
     );
+    expect(html).toContain('data-testid="quick-workout-generate"');
+    expect(html).toContain('data-testid="quick-tile-generate-short"');
+    expect(html).toContain('data-testid="quick-tile-generate-normal"');
+    expect(html).toContain(">Short<");
+    expect(html).toContain(">Normal<");
+    expect(html).toContain("~30 min");
+    expect(html).toContain("up to ~60 min");
     expect(html).toContain('data-testid="quick-workout-tiles"');
     expect(html).toContain('data-testid="quick-tile-strength"');
-    expect(html).toContain(">Strength<");
-    // Cardio is logged in Strava — no Run / Ride / Other quick tiles.
+    expect(html).toContain(">Start empty<");
     expect(html).not.toContain('data-testid="quick-tile-run"');
     expect(html).not.toContain('data-testid="quick-tile-ride"');
     expect(html).not.toContain('data-testid="quick-tile-other"');
-    expect(html).not.toContain(">Run<");
-    expect(html).not.toContain(">Ride<");
-    // Title + framing copy.
     expect(html).toContain("Quick workout");
     expect(html).toContain("won&#x27;t replace your planned");
   });
@@ -64,6 +71,7 @@ describe("QuickWorkoutSheet", () => {
         recent={[]}
         startStrength={noop}
         repeatRecent={noop}
+        generateStrength={genNoop}
       />,
     );
     expect(html).not.toContain('data-testid="quick-duration-row"');
@@ -78,6 +86,7 @@ describe("QuickWorkoutSheet", () => {
         recent={[]}
         startStrength={noop}
         repeatRecent={noop}
+        generateStrength={genNoop}
       />,
     );
     expect(html).not.toContain('data-testid="quick-workout-recent"');
@@ -99,6 +108,7 @@ describe("QuickWorkoutSheet", () => {
         ]}
         startStrength={noop}
         repeatRecent={noop}
+        generateStrength={genNoop}
       />,
     );
     expect(html).toContain('data-testid="quick-workout-recent"');
