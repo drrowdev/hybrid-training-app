@@ -21,6 +21,22 @@ const config: CapacitorConfig = {
     // past the bottom tab bar. Disabling native inset adjustment removes that gutter.
     contentInset: "never",
   },
+  plugins: {
+    // The branded SxC launch image (iron-dark #1A1A1A, white S×C wordmark) is
+    // shown by the iOS LaunchScreen storyboard the instant the icon is tapped.
+    // Remote-load means the WKWebView then spends a few seconds booting and
+    // fetching getsxc.app over the network — a gap that would otherwise reveal a
+    // blank webview. `launchAutoHide: false` keeps the splash up across that gap;
+    // the web shell calls `SplashScreen.hide()` (via the Capacitor bridge in
+    // `SplashScreenController`) once the first route has hydrated and painted.
+    SplashScreen: {
+      launchAutoHide: false,
+      backgroundColor: "#1A1A1A",
+      showSpinner: false,
+      splashFullScreen: true,
+      splashImmersive: true,
+    },
+  },
 };
 
 export default config;

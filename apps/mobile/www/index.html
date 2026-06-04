@@ -47,5 +47,23 @@
       <div class="mark">S<span class="x">×</span>C</div>
       <div class="msg">Connecting…</div>
     </div>
+    <script>
+      // The native splash is configured with launchAutoHide:false and is
+      // normally dismissed by the React app once it loads from getsxc.app. If we
+      // are here, that remote URL was unreachable and the React app never ran —
+      // so hide the splash ourselves over the Capacitor bridge to reveal this
+      // "Connecting…" shell instead of an indefinitely-frozen splash.
+      (function () {
+        try {
+          var cap = window.Capacitor;
+          if (cap && cap.isNativePlatform && cap.isNativePlatform()) {
+            var sp = cap.Plugins && cap.Plugins.SplashScreen;
+            if (sp && sp.hide) sp.hide({ fadeOutDuration: 250 });
+          }
+        } catch (e) {
+          /* best-effort */
+        }
+      })();
+    </script>
   </body>
 </html>
