@@ -21,6 +21,7 @@ import {
   setLogs,
   trainingBlocks,
   plannedSessions,
+  sessions,
 } from "@hta/db";
 import { TM_RESOLUTION_COLUMNS } from "@/lib/training-maxes/columns";
 
@@ -73,6 +74,12 @@ const CONTRACTS: Contract[] = [
     name: "planned_sessions fill source",
     table: plannedSessions,
     columns: ["prescription", "week_index", "day_index", "completed_session_id"],
+  },
+  {
+    // The off-plan prescription source for the session detail page (ADR 0029).
+    name: "sessions off-plan prescription",
+    table: sessions,
+    columns: ["prescription", "completed_at", "deleted_at"],
   },
   {
     // quick-generate-resolve archetype context.
