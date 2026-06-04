@@ -45,9 +45,10 @@ export function SessionWorkArea({
   fillFromPlan,
   hapticsEnabled,
   timerSoundEnabled,
-  // `lastSetHints` is still computed server-side for backward compat
-  // (analytics consumers can read it), but the new card layout
-  // surfaces "last set" inline via the priorBest/loggedSets pair.
+  // `lastSetHints` (prior-session "last time: X kg × Y" for each
+  // movement) is computed server-side and threaded to the card list,
+  // which surfaces it on accessory cards — the only weight-selection
+  // signal there, since accessories have no TM-derived target.
   lastSetHints,
   priorBests,
   // Prescription wiring (null when the session is freestyle / unlinked).
@@ -113,11 +114,10 @@ export function SessionWorkArea({
    */
   supersetByMovementId?: ReadonlyMap<string, SupersetCardInfo>;
 }) {
-  // The card-list layout doesn't currently surface `lastSetHints`,
-  // `plannedSessionId`, or the page-level swap server action — they're
-  // accepted to preserve the existing prop contract from the server
-  // page (and to keep tests that reach into the prop shape happy).
-  void lastSetHints;
+  // `plannedSessionId` and the page-level swap server action aren't
+  // surfaced by the card-list layout — they're accepted to preserve the
+  // existing prop contract from the server page (and to keep tests that
+  // reach into the prop shape happy).
   void plannedSessionId;
   void swapAction;
   const loggedSet = new Set<number>(loggedItemIndices);
@@ -150,6 +150,7 @@ export function SessionWorkArea({
         skippedItemIndices={skippedSet}
         loggedSetIdByItemIndex={loggedSetIdByItemIndex}
         priorBests={priorBestsForCards}
+        lastSetHints={lastSetHints}
         addStrengthSet={addStrengthSet}
         fillFromPlan={fillFromPlan}
         hapticsEnabled={hapticsEnabled}
