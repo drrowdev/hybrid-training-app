@@ -26,7 +26,7 @@ import {
 import { MovementCard } from "./MovementCard";
 import { FreestyleMovementCard } from "./FreestyleMovementCard";
 import type { PlateInventoryItem } from "./plate-math";
-import type { LoggedSet } from "./SessionLogClient";
+import type { LoggedSet, LastSetHint } from "./SessionLogClient";
 import type {
   addStrengthSet as addStrengthSetAction,
   fillSessionFromPlan as fillSessionFromPlanAction,
@@ -47,6 +47,14 @@ export type MovementCardListProps = {
   skippedItemIndices?: ReadonlySet<number>;
   loggedSetIdByItemIndex: Readonly<Record<number, string>>;
   priorBests: Record<string, { heaviestWeight: number | null; bestE1rm: number | null }>;
+  /**
+   * Prior-session "last time: X kg × Y (date)" top set per movementId,
+   * computed server-side. Surfaced on accessory cards only — mains have
+   * a TM-derived prescribed weight, so the hint would be redundant noise
+   * there. Optional (defaults to `{}`) so existing callers/tests are
+   * unaffected.
+   */
+  lastSetHints?: Record<string, LastSetHint>;
   addStrengthSet: typeof addStrengthSetAction;
   fillFromPlan: typeof fillSessionFromPlanAction;
   hapticsEnabled: boolean;
@@ -99,6 +107,7 @@ export function MovementCardList({
   skippedItemIndices,
   loggedSetIdByItemIndex,
   priorBests,
+  lastSetHints = {},
   addStrengthSet,
   fillFromPlan,
   hapticsEnabled,
@@ -256,6 +265,13 @@ export function MovementCardList({
     [accessoryGroups, supersetByMovementId],
   );
 
+  // Accessory movementIds — the only bucket that surfaces the
+  // prior-session "last time" hint (mains use a TM-derived target).
+  const accessoryIds = useMemo(
+    () => new Set(accessoryGroups.map((g) => g.movementId)),
+    [accessoryGroups],
+  );
+
   const renderCard = (group: MovementGroup) => {
     const idx = orderedGroups.indexOf(group);
     return (
@@ -270,6 +286,11 @@ export function MovementCardList({
         loggedSetIdByItemIndex={loggedSetIdByItemIndex}
         loggedSets={setsByMovement.get(group.movementId) ?? []}
         priorBests={priorBests}
+        lastSetHint={
+          accessoryIds.has(group.movementId)
+            ? lastSetHints[group.movementId]
+            : undefined
+        }
         addStrengthSet={addStrengthSet}
         fillFromPlan={fillFromPlan}
         showFillFromPlan={idx === 0 && showFillOnFirst}
@@ -347,6 +368,7 @@ function PrescribedCard(props: {
   loggedSetIdByItemIndex: Readonly<Record<number, string>>;
   loggedSets: LoggedSet[];
   priorBests: Record<string, { heaviestWeight: number | null; bestE1rm: number | null }>;
+  lastSetHint?: LastSetHint;
   addStrengthSet: typeof addStrengthSetAction;
   fillFromPlan: typeof fillSessionFromPlanAction;
   showFillFromPlan: boolean;
@@ -403,6 +425,7 @@ function PrescribedCard(props: {
       loggedSetIdByItemIndex={props.loggedSetIdByItemIndex}
       loggedSets={focusLogged}
       priorBest={priorBest}
+      lastSetHint={props.lastSetHint}
       addStrengthSet={props.addStrengthSet}
       fillFromPlan={props.fillFromPlan}
       showFillFromPlan={props.showFillFromPlan}
