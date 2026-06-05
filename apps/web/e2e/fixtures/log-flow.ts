@@ -42,18 +42,24 @@ export async function logPrescribedSet(
   await page.waitForTimeout(900);
 }
 
-/** Finish the in-progress session and submit the completion form. */
+/**
+ * Finish the in-progress session. The Finish bar now completes inline
+ * (no /complete interstitial): submitting it stamps `completed_at` and
+ * redirects back to the session detail, which renders the summary.
+ */
 export async function finishAndCompleteSession(
   page: Page,
   sessionId: string,
 ): Promise<void> {
   await page
     .getByTestId("finish-stickybar")
-    .getByRole("link", { name: /finish session/i })
+    .getByRole("button", { name: /finish session/i })
     .click();
-  await page.waitForURL(`**/app/sessions/${sessionId}/complete`, {
-    timeout: 30_000,
-  });
-  await page.getByRole("button", { name: /complete session/i }).click();
   await page.waitForURL(`**/app/sessions/${sessionId}`, { timeout: 30_000 });
+  // Completion is confirmed by the status banner flipping to "complete".
+  await expect(page.getByTestId("session-status-banner")).toHaveAttribute(
+    "data-state",
+    "complete",
+    { timeout: 30_000 },
+  );
 }

@@ -8,17 +8,19 @@
  *   - `variant="banner"` — compact pill embedded in the
  *     "Session in progress" status banner.
  *
- * Both render a single `<Link href="/app/sessions/:id/complete">` so
- * there's exactly one canonical destination — only the chrome differs.
+ * Both submit `completeSession` directly (inline form) — there is no
+ * separate `/complete` interstitial page any more. On success the action
+ * stamps `completed_at`, derives RPE + duration from the logged sets, and
+ * redirects back to the session detail, which then renders the
+ * PostSessionSummary.
  *
- * `disabled` is enforced both visually and via aria-disabled. Next's
- * `<Link>` doesn't accept a `disabled` attribute, so when the gate is
- * dimmed we swap to a plain button-styled `<span>` to keep keyboard
- * users from being navigated.
+ * `disabled` is enforced both visually and via aria-disabled. When the
+ * gate is dimmed we render a plain button-styled `<span>` so keyboard
+ * users can't submit.
  */
 
-import Link from "next/link";
 import { useEffect, useRef } from "react";
+import { completeSession } from "@/lib/sessions/actions";
 
 export function FinishSessionBar({
   sessionId,
@@ -44,7 +46,6 @@ export function FinishSessionBar({
   hybrid?: boolean;
   testId?: string;
 }) {
-  const href = `/app/sessions/${sessionId}/complete`;
   const disabledLabel = hybrid
     ? "Log at least 1 strength set to finish"
     : "Log at least 1 set to finish";
@@ -109,15 +110,21 @@ export function FinishSessionBar({
       );
     }
     return (
-      <Link
-        href={href}
+      <form
+        action={completeSession}
         data-testid={testId}
         data-armed="true"
-        className="cp-btn primary"
-        style={{ padding: "8px 14px", fontSize: 12 }}
+        style={{ display: "contents" }}
       >
-        Finish session →
-      </Link>
+        <input type="hidden" name="sessionId" value={sessionId} />
+        <button
+          type="submit"
+          className="cp-btn primary"
+          style={{ padding: "8px 14px", fontSize: 12 }}
+        >
+          Finish session →
+        </button>
+      </form>
     );
   }
 
@@ -144,13 +151,16 @@ export function FinishSessionBar({
           {label}
         </span>
       ) : (
-        <Link
-          href={href}
-          className="cp-btn primary big"
-          style={{ flex: 1, textAlign: "center" }}
-        >
-          Finish session →
-        </Link>
+        <form action={completeSession} style={{ flex: 1, display: "flex" }}>
+          <input type="hidden" name="sessionId" value={sessionId} />
+          <button
+            type="submit"
+            className="cp-btn primary big"
+            style={{ flex: 1, textAlign: "center" }}
+          >
+            Finish session →
+          </button>
+        </form>
       )}
       {subtitle && (
         <div
