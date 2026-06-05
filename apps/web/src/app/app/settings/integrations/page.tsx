@@ -40,7 +40,7 @@ export default async function IntegrationsSettingsPage() {
   const aiConfigured = profile?.byoai_key_vault_id != null;
 
   return (
-    <main className="min-h-screen px-6 py-8 max-w-2xl mx-auto space-y-6">
+    <div className="space-y-6">
       <PageHeader
         back={{ href: "/app/settings", label: "Settings" }}
         title="Integrations"
@@ -65,6 +65,6 @@ export default async function IntegrationsSettingsPage() {
           testId="settings-hub-integrations-ai"
         />
       </div>
-    </main>
+    </div>
   );
 }
