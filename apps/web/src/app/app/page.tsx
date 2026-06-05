@@ -1072,9 +1072,6 @@ function TodaySessionCard({
             <Link href={`/app/sessions/${openSession.id}`} className="cp-btn primary big">
               ⚡ Resume workout
             </Link>
-            <Link href={`/app/sessions/${openSession.id}/complete`} className="cp-btn">
-              Wrap up
-            </Link>
           </div>
         </section>
       </>
