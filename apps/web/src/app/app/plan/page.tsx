@@ -45,8 +45,9 @@ import {
   type RecentBlockCard,
   type TmReadinessByArchetype,
 } from "@/components/planner/BlockWizard";
-import { getVolumeAutoregOffer, type VolumeAutoregOffer } from "@/lib/planner/autoreg-offer";
-import { acceptVolumeAutoreg } from "@/lib/planner/autoreg-actions";
+import { getVolumeAutoregOffer } from "@/lib/planner/autoreg-offer";
+import { acceptVolumeAutoregResult } from "@/lib/planner/autoreg-actions";
+import { VolumeAutoregCard } from "@/components/plan/VolumeAutoregCard";
 import { getLimitationResponseOffer } from "@/lib/limitations/offer";
 import { applyLimitationResponse } from "@/lib/limitations/actions";
 import { LimitationResponseCard } from "@/components/limitations/LimitationResponseCard";
@@ -289,7 +290,7 @@ export default async function PlanPage({
         />
       )}
       {autoregOffer && (
-        <VolumeAutoregCard offer={autoregOffer} action={acceptVolumeAutoreg} />
+        <VolumeAutoregCard offer={autoregOffer} applyAction={acceptVolumeAutoregResult} />
       )}
       {showBodyweightBanner && (
         <BodyweightOnlyBanner
@@ -511,56 +512,5 @@ function TissueStackCard({ gaps }: { gaps: TissueStackGap[] }) {
  * when this week's strength volume is over / way-over budget and there
  * are un-started current-week sessions with discretionary volume to
  * trim. Accepting stamps a reversible read-time scalar onto those rows.
+ * Rendered by the client `VolumeAutoregCard` (confirmation modal lives there).
  */
-function VolumeAutoregCard({
-  offer,
-  action,
-}: {
-  offer: VolumeAutoregOffer;
-  action: () => Promise<void>;
-}) {
-  const pct = Math.round(offer.pct * 100);
-  const keepPct = Math.round(offer.scale * 100);
-  return (
-    <section
-      className="cp-card"
-      role="alert"
-      style={{
-        padding: "14px 18px",
-        display: "grid",
-        gap: 8,
-        borderColor: "var(--cp-warning)",
-        background: "color-mix(in oklab, var(--cp-warning) 6%, transparent)",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 11,
-          color: "var(--cp-warning)",
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-          fontWeight: 600,
-        }}
-      >
-        Volume over budget
-      </div>
-      <div style={{ fontSize: 13, color: "var(--cp-text)" }}>
-        You&apos;re at <strong>{pct}%</strong> of this week&apos;s prescribed
-        strength sets ({offer.actual}/{offer.prescribed}). To keep quality
-        high and fatigue in check, the engine can trim accessory volume on
-        your {offer.sessionCount} remaining session
-        {offer.sessionCount === 1 ? "" : "s"} this week to about {keepPct}% of
-        plan. Main lifts are untouched, and this is reversible.
-      </div>
-      <form action={action}>
-        <button
-          type="submit"
-          className="cp-btn"
-          style={{ fontSize: 13, padding: "7px 14px", justifySelf: "start" }}
-        >
-          Ease this week&apos;s accessory volume
-        </button>
-      </form>
-    </section>
-  );
-}

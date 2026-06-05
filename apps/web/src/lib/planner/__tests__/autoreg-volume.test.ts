@@ -4,6 +4,7 @@ import {
   applyAutoregVolumeScale,
   autoregScaleForBand,
   hasDiscretionaryVolume,
+  previewAutoregTrim,
   AUTOREG_VOLUME_SCALE_OVER,
   AUTOREG_VOLUME_SCALE_WAYOVER,
 } from "../autoreg-volume";
@@ -113,5 +114,40 @@ describe("hasDiscretionaryVolume", () => {
     expect(
       hasDiscretionaryVolume(rx([item({ movementId: "z2", kind: "cardio_z2" })])),
     ).toBe(false);
+  });
+});
+
+describe("previewAutoregTrim", () => {
+  it("reports per-movement before -> after for the accessories that lose sets", () => {
+    const p = rx([
+      item({ movementId: "main", kind: "main", movementName: "Bench" }),
+      item({ movementId: "pd1", movementName: "Pushdown" }),
+      item({ movementId: "pd2", movementName: "Pushdown" }),
+      item({ movementId: "pd3", movementName: "Pushdown" }),
+      item({ movementId: "lr1", movementName: "Lateral raise" }),
+      item({ movementId: "lr2", movementName: "Lateral raise" }),
+    ]);
+    // 5 discretionary, scale 0.8 -> keep round(5*0.8)=4 -> drop 1 from the end.
+    const changes = previewAutoregTrim(p, 0.8);
+    expect(changes).toEqual([{ name: "Lateral raise", before: 2, after: 1 }]);
+  });
+
+  it("omits movements that don't change and the protected mains", () => {
+    const p = rx([
+      item({ movementId: "main", kind: "main", movementName: "Squat" }),
+      item({ movementId: "a1", movementName: "Curl" }),
+      item({ movementId: "a2", movementName: "Curl" }),
+    ]);
+    // 2 discretionary, scale 0.5 -> keep 1 -> Curl 2 -> 1.
+    expect(previewAutoregTrim(p, 0.5)).toEqual([
+      { name: "Curl", before: 2, after: 1 },
+    ]);
+  });
+
+  it("returns [] when nothing is trimmed (scale >= 1 or no discretionary)", () => {
+    expect(previewAutoregTrim(rx([item({ movementId: "a1", movementName: "Curl" })]), 1)).toEqual([]);
+    expect(
+      previewAutoregTrim(rx([item({ movementId: "m", kind: "main", movementName: "Bench" })]), 0.5),
+    ).toEqual([]);
   });
 });
