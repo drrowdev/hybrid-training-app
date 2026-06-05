@@ -60,6 +60,7 @@ import {
 import { allAccessorySlugs } from "./accessories";
 import { foldDualMainLifts } from "./main-lift-folding";
 import { assemblePrescriptionItems } from "./assemble-prescription";
+import { expandPrescriptionSetItems } from "./expand-prescription-sets";
 import {
   applyPlacementsToActiveDays,
   dayIndexOverridesSchema,
@@ -1119,7 +1120,9 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
           }
         }
       }
-      const prescription: Prescription = { items };
+      const prescription: Prescription = {
+        items: expandPrescriptionSetItems(items),
+      };
       const isDeload = weekProfile?.intensityLabel === "Deload";
 
       let title = day.title;
@@ -1500,7 +1503,9 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
       // read them without re-classifying.
       const customClass = classifyPlannedSession(items, archetype.id);
 
-      const prescription: Prescription = { items };
+      const prescription: Prescription = {
+        items: expandPrescriptionSetItems(items),
+      };
       const isDeload = archetype.weekProfiles.find((w) => w.weekIndex === week)?.intensityLabel === "Deload";
 
       let title = day.title;
