@@ -1,8 +1,8 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { editSet } from "@/lib/sessions/actions";
 import { SET_KIND_LABELS } from "@/lib/sessions/set-kind-labels";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 const SET_KINDS = ["warmup", "main", "back_off", "accessory", "tendon"] as const;
 
@@ -33,18 +33,18 @@ export default async function EditSetPage({
 
   return (
     <main className="min-h-screen px-6 py-8 max-w-md mx-auto space-y-6">
-      <header className="space-y-1">
-        <Link href={`/app/sessions/${id}`} className="text-xs text-foreground/50 hover:text-foreground">
-          ← back to session
-        </Link>
-        <h1 className="text-2xl font-semibold tracking-tight">Edit set</h1>
-        {movement && (
-          <p className="text-sm text-foreground/60">
-            {movement.display_name}{" "}
-            <span className="text-xs text-foreground/40">· {movement.pattern}</span>
-          </p>
-        )}
-      </header>
+      <PageHeader
+        back={{ href: `/app/sessions/${id}`, label: "Workout" }}
+        title="Edit set"
+        subtitle={
+          movement ? (
+            <>
+              {movement.display_name}{" "}
+              <span className="text-xs text-foreground/40">· {movement.pattern}</span>
+            </>
+          ) : undefined
+        }
+      />
 
       <form action={editSet} className="space-y-4 rounded-lg border border-foreground/10 p-4">
         <input type="hidden" name="id" value={set.id} />

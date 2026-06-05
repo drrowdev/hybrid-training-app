@@ -12,6 +12,7 @@ import { CardioSourceSettings } from "@/components/settings/CardioSourceSettings
 import { CardioModalitySettings } from "@/components/settings/CardioModalitySettings";
 import { resolveWarmupScheme } from "@/lib/planner/warmups";
 import { sanitizePreferredModalities } from "@/lib/planner/preferred-cardio-modality";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -47,11 +48,10 @@ export default async function TrainingSettingsPage() {
         padding: "24px 16px",
       }}
     >
-      <header>
-        <h1 style={{ fontSize: 24, margin: 0, letterSpacing: "-0.01em" }}>
-          Training
-        </h1>
-      </header>
+      <PageHeader
+        back={{ href: "/app/settings", label: "Settings" }}
+        title="Training"
+      />
 
       <section style={{ display: "grid", gap: 12 }}>
         <h2 style={{ fontSize: 18, margin: 0 }}>Warmup ladder</h2>

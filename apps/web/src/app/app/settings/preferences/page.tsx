@@ -10,6 +10,7 @@ import {
   resolveDateFormat,
   resolveTimeFormat,
 } from "@/lib/format/datetime";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export default async function PreferencesSettingsPage() {
   const supabase = await createClient();
@@ -28,12 +29,11 @@ export default async function PreferencesSettingsPage() {
 
   return (
     <main className="min-h-screen px-6 py-8 max-w-2xl mx-auto space-y-8">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Preferences</h1>
-        <p className="text-xs text-foreground/60">
-          How the app behaves during sessions and how it stays in sync.
-        </p>
-      </header>
+      <PageHeader
+        back={{ href: "/app/settings", label: "Settings" }}
+        title="Preferences"
+        subtitle="How the app behaves during sessions and how it stays in sync."
+      />
 
       <div className="space-y-6">
         {/* Time & date format */}

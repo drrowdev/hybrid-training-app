@@ -51,6 +51,7 @@ import { getLimitationResponseOffer } from "@/lib/limitations/offer";
 import { applyLimitationResponse } from "@/lib/limitations/actions";
 import { LimitationResponseCard } from "@/components/limitations/LimitationResponseCard";
 import { NextBlockSuggestionCard } from "@/components/planner/NextBlockSuggestionCard";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { addDaysToYmd } from "@/lib/dates";
 
 // Six wizard-resolvable archetype ids — must stay in sync with
@@ -157,29 +158,17 @@ export default async function PlanPage({
 
     return (
       <div style={{ display: "grid", gap: 20 }}>
-        {block && (
-          <Link
-            href="/app/plan"
-            data-testid="back-to-current-block"
-            style={{
-              fontSize: 13,
-              color: "var(--cp-text-muted)",
-              textDecoration: "none",
-            }}
-          >
-            ← Back to current block
-          </Link>
-        )}
-        <header>
-          <h1 style={{ fontSize: 28, margin: 0, letterSpacing: "-0.01em" }}>Plan</h1>
-          <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-            {block
+        <PageHeader
+          back={block ? { href: "/app/plan", label: "Plan" } : undefined}
+          title="Plan"
+          subtitle={
+            block
               ? "Starting a new block archives your current one. You keep all logged sessions."
               : firstTime
                 ? "Let's shape your first block. The engine picks the days, weights, and weekly wave — you log what actually happens."
-                : "Start a new block, or run a recent one again."}
-          </p>
-        </header>
+                : "Start a new block, or run a recent one again."
+          }
+        />
         {blockBump && <BlockCompleteCard bump={blockBump} />}
         {(nudge.suggestion || nudge.realization) && (
           <NextBlockSuggestionCard

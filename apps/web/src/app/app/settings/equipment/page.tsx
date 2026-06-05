@@ -12,6 +12,7 @@ import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { EquipmentEditor } from "@/components/settings/EquipmentEditor";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -43,23 +44,11 @@ export default async function EquipmentSettingsPage() {
         padding: "24px 16px",
       }}
     >
-      <header>
-        <h1 style={{ fontSize: 24, margin: 0, letterSpacing: "-0.01em" }}>
-          Equipment
-        </h1>
-        <p
-          style={{
-            margin: "6px 0 0",
-            fontSize: 13,
-            color: "var(--cp-text-muted)",
-            lineHeight: 1.5,
-          }}
-        >
-          Tell us what you have to train with. We use this to pick the right
-          plate breakdown and (later) to filter accessory suggestions to gear
-          you actually own.
-        </p>
-      </header>
+      <PageHeader
+        back={{ href: "/app/settings", label: "Settings" }}
+        title="Equipment"
+        subtitle="Tell us what you have to train with. We use this to pick the right plate breakdown and (later) to filter accessory suggestions to gear you actually own."
+      />
 
       <EquipmentEditor initial={equipment} units={units} />
     </main>

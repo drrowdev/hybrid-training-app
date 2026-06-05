@@ -68,7 +68,7 @@ function renderCompact(items: PrescriptionItem[], over?: Partial<SessionPreviewI
 describe("SessionPreviewBody (compact / Today hero)", () => {
   it("strips outer chrome: no back link, no outer header, no Start CTA", () => {
     const html = renderCompact([cardio()], { title: "VO2 intervals" });
-    expect(html).not.toContain('data-testid="session-preview-back"');
+    expect(html).not.toContain('data-testid="back-link"');
     expect(html).not.toContain('data-testid="session-preview-eyebrow"');
     expect(html).not.toContain('data-testid="session-preview-title"');
     expect(html).not.toContain('data-testid="session-preview-meta"');
@@ -164,7 +164,7 @@ describe("SessionPreviewBody (full / Preview page) — variant defaults preserve
     const html = renderToStaticMarkup(
       <SessionPreviewBody session={input([cardio()], { title: "VO2 intervals" })} />,
     );
-    expect(html).toContain('data-testid="session-preview-back"');
+    expect(html).toContain('data-testid="back-link"');
     expect(html).toContain('data-testid="session-preview-eyebrow"');
     expect(html).toContain('data-testid="session-preview-title"');
     expect(html).toContain('data-testid="session-preview-meta"');

@@ -13,6 +13,7 @@ import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
 import { MuscleGrid16 } from "@/components/muscle-grid/MuscleGrid16";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { MetricHelp } from "@/components/ui/MetricHelp";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -34,24 +35,16 @@ export default async function FreshnessPage() {
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
-      <header>
-        <Link
-          href="/app"
-          data-testid="freshness-back"
-          style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
-        >
-          ← today
-        </Link>
-        <h1 style={{ fontSize: 28, margin: "8px 0 0", letterSpacing: "-0.01em" }}>
-          Muscle freshness
-          <MetricHelp term="muscle_freshness" />
-        </h1>
-        <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-          16-muscle resolution. Green ≥ 4 days fresh · yellow 2–3 days
-          · red &lt; 2 days · grey not yet trained. Hover a muscle for
-          the last movements that loaded it.
-        </p>
-      </header>
+      <PageHeader
+        back={{ href: "/app", label: "Today" }}
+        title={
+          <>
+            Muscle freshness
+            <MetricHelp term="muscle_freshness" />
+          </>
+        }
+        subtitle="16-muscle resolution. Green ≥ 4 days fresh · yellow 2–3 days · red < 2 days · grey not yet trained. Hover a muscle for the last movements that loaded it."
+      />
 
       <section
         data-testid="freshness-grid-card"

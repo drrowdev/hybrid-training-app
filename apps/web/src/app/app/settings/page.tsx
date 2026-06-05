@@ -11,6 +11,7 @@ import { ProfileNotifications } from "@/components/profile/ProfileNotifications"
 import { QuickSearchRow } from "@/components/profile/QuickSearchRow";
 import { markAuditRead } from "@/lib/profile/actions";
 import { getNotificationsData } from "@/lib/profile/queries";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -80,9 +81,7 @@ export default async function SettingsPage() {
 
   return (
     <main className="min-h-screen px-6 py-8 max-w-2xl mx-auto space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-      </header>
+      <PageHeader title="Settings" />
 
       {/* Mobile-only: Notifications + Quick search. Hidden on desktop
           where the top-bar already surfaces both. The MORE tab routes

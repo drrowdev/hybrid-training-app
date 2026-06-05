@@ -8,6 +8,7 @@ import {
 } from "@/lib/integrations/strava/actions";
 import { StravaPoweredBadge } from "@/components/StravaPoweredBadge";
 import { ImportHistorySection } from "@/components/settings/StravaImportHistory";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 function formatTimeAgo(iso: string | null): string {
   if (!iso) return "never";
@@ -46,16 +47,12 @@ export default async function StravaSettingsPage({
 
   return (
     <main className="min-h-screen px-6 py-12 max-w-2xl mx-auto space-y-6">
-      <header className="space-y-1">
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <h1 style={{ fontSize: 28, margin: 0 }}>Strava</h1>
-          <StravaPoweredBadge />
-        </div>
-        <p style={{ color: "var(--cp-text-muted)", margin: 0, fontSize: 14 }}>
-          Pull your runs, rides, swims, and other cardio into the training
-          ledger so region freshness reflects all your work, not just lifts.
-        </p>
-      </header>
+      <PageHeader
+        back={{ href: "/app/settings", label: "Settings" }}
+        title="Strava"
+        subtitle="Pull your runs, rides, swims, and other cardio into the training ledger so region freshness reflects all your work, not just lifts."
+        actions={<StravaPoweredBadge />}
+      />
 
       {params.strava_connected === "1" && (
         <div

@@ -4,6 +4,7 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { formatHitValue, getRecentPrs } from "@/lib/stats/pr-queries";
 import { PR_KIND_LABEL } from "@/lib/engine/pr";
 import { formatDate } from "@/lib/format/datetime";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export default async function AllPrsPage() {
   const supabase = await createClient();
@@ -23,16 +24,11 @@ export default async function AllPrsPage() {
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
-      <header>
-        <Link href="/app/stats" style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}>
-          ← stats
-        </Link>
-        <h1 style={{ fontSize: 28, margin: "8px 0 0", letterSpacing: "-0.01em" }}>All PRs</h1>
-        <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-          Every personal record we&apos;ve caught, newest first. Weight PRs, reps-at-weight PRs,
-          and estimated-1RM PRs are tracked separately — a session can fire more than one.
-        </p>
-      </header>
+      <PageHeader
+        back={{ href: "/app/stats", label: "Stats" }}
+        title="All PRs"
+        subtitle="Every personal record we've caught, newest first. Weight PRs, reps-at-weight PRs, and estimated-1RM PRs are tracked separately — a session can fire more than one."
+      />
 
       {prs.length === 0 ? (
         <section className="cp-card" style={{ padding: 20 }}>

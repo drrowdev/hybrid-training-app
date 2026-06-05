@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { startSession } from "@/lib/sessions/actions";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 /**
  * Start an ad-hoc (off-plan) session.
@@ -13,20 +13,11 @@ import { startSession } from "@/lib/sessions/actions";
 export default function NewSessionPage() {
   return (
     <main className="min-h-screen px-6 py-12 max-w-md mx-auto space-y-6">
-      <header className="space-y-1">
-        <Link
-          href="/app"
-          className="text-xs text-foreground/50 hover:text-foreground"
-        >
-          ← back
-        </Link>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Start workout
-        </h1>
-        <p className="text-sm text-foreground/60">
-          Off-plan workout. Log what you actually did on the next screen.
-        </p>
-      </header>
+      <PageHeader
+        back={{ href: "/app", label: "Today" }}
+        title="Start workout"
+        subtitle="Off-plan workout. Log what you actually did on the next screen."
+      />
       <form action={startSession} className="space-y-4">
         <div className="space-y-2">
           <label className="text-sm font-medium" htmlFor="title">

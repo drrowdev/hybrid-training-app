@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { SettingsHubCard } from "@/components/settings/SettingsHubCard";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 /**
  * Integrations sub-hub — collects all external-account links under one
@@ -40,18 +41,11 @@ export default async function IntegrationsSettingsPage() {
 
   return (
     <main className="min-h-screen px-6 py-8 max-w-2xl mx-auto space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Integrations</h1>
-        <p
-          style={{
-            margin: "6px 0 0",
-            fontSize: 13,
-            color: "var(--cp-text-muted)",
-          }}
-        >
-          Connect external services and AI providers.
-        </p>
-      </header>
+      <PageHeader
+        back={{ href: "/app/settings", label: "Settings" }}
+        title="Integrations"
+        subtitle="Connect external services and AI providers."
+      />
 
       <div className="settings-hub-grid">
         <SettingsHubCard

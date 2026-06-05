@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { AiSettingsPanel } from "@/components/settings/AiSettingsPanel";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -62,9 +63,10 @@ export default async function AiSettingsPage() {
 
   return (
     <main className="min-h-screen px-6 py-8 max-w-2xl mx-auto space-y-8">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">AI</h1>
-      </header>
+      <PageHeader
+        back={{ href: "/app/settings", label: "Settings" }}
+        title="AI"
+      />
 
       <AiSettingsPanel
         initialProvider={provider}

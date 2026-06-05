@@ -44,6 +44,7 @@ import {
   type AdherenceByRange,
 } from "@/components/stats/AdherenceRangeView";
 import { AdherenceBreakdownCard } from "@/components/stats/AdherenceBreakdownCard";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -92,23 +93,11 @@ export default async function StatsAdherencePage({
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
-      <header>
-        <Link
-          href="/app/stats"
-          data-testid="stats-adherence-back"
-          style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
-        >
-          ← stats
-        </Link>
-        <h1 style={{ fontSize: 28, margin: "8px 0 0", letterSpacing: "-0.01em" }}>
-          Consistency
-        </h1>
-        <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-          Sessions completed vs planned, the weekdays you train best, and
-          how skipped sessions accumulate. Skipped counts as missed for
-          every % we report.
-        </p>
-      </header>
+      <PageHeader
+        back={{ href: "/app/stats", label: "Stats" }}
+        title="Consistency"
+        subtitle="Sessions completed vs planned, the weekdays you train best, and how skipped sessions accumulate. Skipped counts as missed for every % we report."
+      />
 
       <RunPlanAdherenceCard
         weeks={runPlan.weeks}
@@ -130,18 +119,11 @@ export default async function StatsAdherencePage({
       <footer
         style={{
           display: "flex",
-          justifyContent: "space-between",
+          justifyContent: "flex-end",
           gap: 12,
           marginTop: 4,
         }}
       >
-        <Link
-          href="/app/stats"
-          data-testid="stats-adherence-overview-link"
-          style={{ color: "var(--cp-text-muted)", fontSize: 13, textDecoration: "none" }}
-        >
-          ← Stats overview
-        </Link>
         <Link
           href="/app/stats/blocks"
           data-testid="stats-adherence-blocks-link"
