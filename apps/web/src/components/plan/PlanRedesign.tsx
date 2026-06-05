@@ -56,6 +56,8 @@ export type PlanSessionInput = {
   isCardio: boolean;
   isStrength: boolean;
   done: boolean;
+  /** Linked session exists but isn't finished yet (started, not done). */
+  inProgress?: boolean;
   skipped: boolean;
   slot: "single" | "am" | "pm";
   items: PrescriptionItem[];
@@ -152,9 +154,10 @@ function pillTitle(s: PlanSessionInput): string {
 /**
  * Adapt the client-side `PlanSessionInput` (which uses `done`/`skipped`
  * booleans) to the pure-helper shape so we can share the overdue rule
- * with the server-side `PlannedDay` callers. `done` mirrors
- * `completed_session_id IS NOT NULL`; `skipped` mirrors `skipped_at IS
- * NOT NULL` — see `planner/queries.ts` and the plan page mapping.
+ * with the server-side `PlannedDay` callers. `done` mirrors the linked
+ * session's `completed_at IS NOT NULL` (NOT merely `completed_session_id`,
+ * which is set on START); `skipped` mirrors `skipped_at IS NOT NULL` — see
+ * `planner/queries.ts` and the plan page mapping.
  */
 export function sessionToOverdueCandidate(s: PlanSessionInput) {
   return {

@@ -124,6 +124,10 @@ export function RailList({
                 <span className="rail-status done" aria-label="Done">✓</span>
               ) : s.skipped ? (
                 <span className="rail-status skip" aria-label="Skipped">⊘</span>
+              ) : s.inProgress ? (
+                <span className="rail-status inprog mono" aria-label="In progress">
+                  ▸
+                </span>
               ) : (
                 <span className="rail-kind mono">
                   {s.isCardio ? "Cardio" : "Strength"}
@@ -183,6 +187,7 @@ export function RailList({
           min-width: 18px;
         }
         .rail-status.done { color: var(--cp-accent); }
+        .rail-status.inprog { color: var(--cp-warning); font-size: 12px; }
         .rail-status.skip { color: var(--cp-text-muted); }
         .rail-item.done .rail-name { color: var(--cp-text-muted); }
         .rail-item.skipped .rail-name {
