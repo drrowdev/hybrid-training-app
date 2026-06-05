@@ -128,14 +128,14 @@ a { color: var(--cp-link); }
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--cp-text-muted);
+  color: var(--cp-link);
   text-decoration: none;
   font-size: 13px;
   font-weight: 500;
   margin-bottom: 10px;
   transition: color .12s;
 }
-.cp-back-link:hover { color: var(--cp-accent); }
+.cp-back-link:hover { color: var(--cp-accent-hover); }
 
 /* Canonical page container — one max-width + responsive padding so every
    route lines up. Rendered via the shared <PageContainer> / page header. */
@@ -256,11 +256,11 @@ select option {
  * (not inside a component <style> block) so server and client pages
  * can share one class and stay visually identical. */
 .plan-nav-link {
-  color: var(--cp-text-muted);
+  color: var(--cp-link);
   text-decoration: none;
   font-size: 13px;
 }
-.plan-nav-link:hover { color: var(--cp-accent); }
+.plan-nav-link:hover { color: var(--cp-accent-hover); }
 
 /* Mobile: enforce minimum 44px tap targets on every interactive control
  * and grow the body font so inputs don't trigger the iOS zoom-to-zoom-in

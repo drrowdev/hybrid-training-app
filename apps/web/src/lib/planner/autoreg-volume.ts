@@ -65,6 +65,43 @@ export function hasDiscretionaryVolume(prescription: Prescription): boolean {
   return (prescription.items ?? []).some(isDiscretionary);
 }
 
+/** Count discretionary working sets grouped by movement name. */
+function countDiscretionaryByName(items: PrescriptionItem[]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const it of items) {
+    if (!isDiscretionary(it)) continue;
+    const name = it.movementName ?? it.movementSlug ?? "Accessory";
+    m.set(name, (m.get(name) ?? 0) + 1);
+  }
+  return m;
+}
+
+export type AutoregTrimChange = { name: string; before: number; after: number };
+
+/**
+ * Pure preview of what {@link applyAutoregVolumeScale} would do to one
+ * prescription at the given scale: per accessory movement, the before/after
+ * working-set count. Only movements that lose sets are returned. Mains,
+ * back-off and warm-ups never appear (they're protected).
+ */
+export function previewAutoregTrim(
+  prescription: Prescription,
+  scale: number,
+): AutoregTrimChange[] {
+  const before = countDiscretionaryByName(prescription.items ?? []);
+  const trimmed = applyAutoregVolumeScale({
+    ...prescription,
+    autoregVolumeScale: scale,
+  });
+  const after = countDiscretionaryByName(trimmed.items ?? []);
+  const out: AutoregTrimChange[] = [];
+  for (const [name, b] of before) {
+    const a = after.get(name) ?? 0;
+    if (b !== a) out.push({ name, before: b, after: a });
+  }
+  return out;
+}
+
 /**
  * Apply the stored `autoregVolumeScale` to a prescription, returning a
  * trimmed copy. No-op (returns the input unchanged) when the field is
