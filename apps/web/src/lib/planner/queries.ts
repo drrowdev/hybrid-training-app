@@ -72,7 +72,10 @@ export type PlannedDay = {
   title: string;
   role: string;
   prescription: Prescription;
+  /** Session linked to this planned day (set on START — presence ≠ done). */
   completedSessionId: string | null;
+  /** When the linked session was actually finished. null = started-but-not-done. */
+  completedAt: string | null;
   skippedAt: string | null;
   /** Drawer notes — see migration 0055 / `hybrid-sync-audit.md` §3a. */
   notes: string | null;
@@ -166,6 +169,29 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
     .order("day_index", { ascending: true })
     .order("slot", { ascending: true });
   if (!data) return [];
+
+  // `completed_session_id` is set when a planned session is STARTED (see
+  // startSessionDirect), so its presence only means "linked / in-progress".
+  // Resolve the linked sessions' `completed_at` so callers can tell a truly
+  // finished day from one that was merely opened.
+  const linkedIds = Array.from(
+    new Set(
+      data
+        .map((d) => d.completed_session_id as string | null)
+        .filter((x): x is string => !!x),
+    ),
+  );
+  const completedAtById = new Map<string, string | null>();
+  if (linkedIds.length > 0) {
+    const { data: linkedSessions } = await supabase
+      .from("sessions")
+      .select("id, completed_at")
+      .in("id", linkedIds);
+    for (const s of linkedSessions ?? []) {
+      completedAtById.set(s.id as string, (s.completed_at as string | null) ?? null);
+    }
+  }
+
   const days = data.map((d) => {
     const date = dayDate(startedOn, d.week_index, d.day_index);
     const base = applyAutoregVolumeScale(
@@ -186,6 +212,9 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
       role: d.role,
       prescription,
       completedSessionId: d.completed_session_id,
+      completedAt: d.completed_session_id
+        ? completedAtById.get(d.completed_session_id) ?? null
+        : null,
       skippedAt: d.skipped_at,
       notes: (d.notes as string | null) ?? null,
       date,
@@ -277,6 +306,15 @@ export async function getPlannedSessionById(
       resolverFromMap(muscleMap),
     );
   }
+  let completedAt: string | null = null;
+  if (data.completed_session_id) {
+    const { data: linked } = await supabase
+      .from("sessions")
+      .select("completed_at")
+      .eq("id", data.completed_session_id)
+      .maybeSingle();
+    completedAt = (linked?.completed_at as string | null) ?? null;
+  }
   return {
     id: data.id,
     blockId: data.block_id,
@@ -288,6 +326,7 @@ export async function getPlannedSessionById(
     role: data.role,
     prescription,
     completedSessionId: data.completed_session_id,
+    completedAt,
     skippedAt: data.skipped_at,
     notes: (data.notes as string | null) ?? null,
     date,
