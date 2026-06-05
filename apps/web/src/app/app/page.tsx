@@ -1068,53 +1068,113 @@ function TodaySessionCard({
         <section
           data-testid="today-rest"
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
+            display: "grid",
             gap: 14,
-            padding: "14px 18px",
-            background: "var(--cp-surface)",
+            padding: "18px 20px",
+            background:
+              "linear-gradient(180deg, var(--cp-bg-elevated), var(--cp-surface))",
             border: "1px solid var(--cp-border)",
-            borderRadius: 12,
-            flexWrap: "wrap",
+            borderRadius: 16,
           }}
         >
-        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-          <span aria-hidden style={{ fontSize: 18 }}>☕</span>
-          <div style={{ fontSize: 13, color: "var(--cp-text-muted)", minWidth: 0 }}>
-            <strong style={{ color: "var(--cp-text)", fontSize: 14, fontWeight: 600, marginRight: 6 }}>
-              Rest day.
-            </strong>
-            {nextUpcoming ? (
-              <span data-testid="rest-tomorrow">
-                Next session:{" "}
-                <strong style={{ color: "var(--cp-text)", fontWeight: 600 }}>
-                  {formatUpcomingDay(nextUpcoming.date, formatProfile)} · {nextUpcoming.title}
-                </strong>
-                {nextTopLine && (
-                  <span style={{ color: "var(--cp-text-muted)" }}> · {nextTopLine}</span>
-                )}
-              </span>
-            ) : (
-              <span>Nothing on the schedule.</span>
-            )}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+            <span
+              aria-hidden
+              style={{
+                flex: "0 0 auto",
+                width: 38,
+                height: 38,
+                borderRadius: 11,
+                display: "grid",
+                placeItems: "center",
+                fontSize: 20,
+                background: "var(--cp-surface-soft)",
+              }}
+            >
+              ☕
+            </span>
+            <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
+              <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.01em" }}>
+                Rest day
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--cp-text-muted)" }}>
+                Recovery is where the adaptation happens. Nothing scheduled today.
+              </div>
+            </div>
           </div>
-        </div>
-        <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-          <Link
-            href="/app/sessions/new"
-            style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 14,
+              padding: "12px 14px",
+              background: "var(--cp-surface)",
+              border: "1px solid var(--cp-border)",
+              borderRadius: 12,
+              flexWrap: "wrap",
+            }}
           >
-            Log freestyle
-          </Link>
-          <Link
-            href="/app/plan"
-            style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
-          >
-            View plan →
-          </Link>
-        </div>
-      </section>
+            {nextUpcoming ? (
+              <div data-testid="rest-tomorrow" style={{ display: "grid", gap: 3, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 10.5,
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                    color: "var(--cp-text-muted)",
+                    fontWeight: 700,
+                  }}
+                >
+                  Next session
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{nextUpcoming.title}</div>
+                <div style={{ fontSize: 12.5, color: "var(--cp-text-muted)" }}>
+                  {formatUpcomingDay(nextUpcoming.date, formatProfile)}
+                  {nextTopLine && (
+                    <>
+                      {" · "}
+                      <span style={{ color: "var(--cp-accent)" }}>{nextTopLine}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 3, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 10.5,
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                    color: "var(--cp-text-muted)",
+                    fontWeight: 700,
+                  }}
+                >
+                  Next session
+                </div>
+                <div style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>
+                  Nothing on the schedule.
+                </div>
+              </div>
+            )}
+            <Link
+              href="/app/plan"
+              style={{
+                flex: "0 0 auto",
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: "var(--cp-text)",
+                textDecoration: "none",
+                padding: "7px 12px",
+                border: "1px solid var(--cp-border-strong)",
+                borderRadius: 9,
+                whiteSpace: "nowrap",
+              }}
+            >
+              View plan →
+            </Link>
+          </div>
+        </section>
       </>
     );
   }
