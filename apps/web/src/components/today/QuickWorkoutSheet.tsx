@@ -274,16 +274,16 @@ function GenerateTile({
     <button
       type="button"
       data-testid={`quick-tile-generate-${length}`}
+      data-loading={loading ? "true" : "false"}
       onClick={onClick}
       disabled={disabled}
+      className="cp-generate-tile"
       style={{
         display: "flex",
         flexDirection: "column",
         alignItems: "flex-start",
         gap: 2,
         padding: 14,
-        background: "var(--cp-accent-soft)",
-        border: "1px solid var(--cp-accent)",
         borderRadius: 12,
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled && !loading ? 0.5 : 1,
