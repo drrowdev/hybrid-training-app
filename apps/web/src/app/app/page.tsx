@@ -751,6 +751,7 @@ export default async function TodayPage() {
               conflictsBySlot={conflictsBySlot}
               archetypeName={archetypeName}
               weekIndex={computedWeekIndex}
+              blockWeeks={activeBlock?.weeks ?? null}
               tmById={tmById}
               tmMetaByMovementId={tmMetaByMovementId}
               nextUpcoming={upcoming[0] ?? null}
@@ -841,6 +842,24 @@ function FocusBadge({
  * Recent activity grouped by Today / Yesterday / Earlier. Replaces the
  * original flat list — same row structure, just bucketed.
  */
+function ActivityPill({ label, mono }: { label: string; mono?: boolean }) {
+  return (
+    <span
+      className={mono ? "mono" : undefined}
+      style={{
+        fontSize: 10.5,
+        color: "var(--cp-text-muted)",
+        background: "var(--cp-surface-soft)",
+        border: "1px solid var(--cp-border)",
+        borderRadius: 7,
+        padding: "2px 7px",
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
 function ActivitySection({
   sessions,
   todayIso,
@@ -906,43 +925,75 @@ function ActivitySection({
             >
               {g.label}
             </div>
-            {g.items.map((s) => (
-              <Link
-                key={s.id}
-                href={`/app/sessions/${s.id}`}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  background: "var(--cp-surface)",
-                  border: "1px solid var(--cp-border)",
-                  borderRadius: 10,
-                  padding: "12px 14px",
-                  textDecoration: "none",
-                  color: "inherit",
-                }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
+            {g.items.map((s) => {
+              const complete = !!s.completed_at;
+              return (
+                <Link
+                  key={s.id}
+                  href={`/app/sessions/${s.id}`}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    background: "var(--cp-surface)",
+                    border: "1px solid var(--cp-border)",
+                    borderRadius: 11,
+                    padding: "11px 13px",
+                    textDecoration: "none",
+                    color: "inherit",
+                  }}
+                >
+                  <span
+                    aria-hidden
                     style={{
-                      fontSize: 14,
-                      fontWeight: 600,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
+                      flex: "0 0 auto",
+                      width: 28,
+                      height: 28,
+                      borderRadius: 8,
+                      display: "grid",
+                      placeItems: "center",
+                      fontSize: 13,
+                      background: complete
+                        ? "var(--cp-accent-soft)"
+                        : "color-mix(in srgb, var(--cp-warning) 16%, transparent)",
+                      color: complete ? "var(--cp-accent)" : "var(--cp-warning)",
                     }}
                   >
-                    {s.title ?? "Untitled session"}
+                    {complete ? "✓" : "◷"}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: 13.5,
+                        fontWeight: 600,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {s.title ?? "Untitled session"}
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 6,
+                        marginTop: 4,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      {!complete && <ActivityPill label="in progress" />}
+                      {s.session_rpe != null && (
+                        <ActivityPill label={`sRPE ${s.session_rpe}`} mono />
+                      )}
+                      {s.duration_min != null && (
+                        <ActivityPill label={`${s.duration_min} min`} mono />
+                      )}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 12, color: "var(--cp-text-muted)", marginTop: 2 }}>
-                    {s.completed_at ? "✓ complete" : "in progress"}
-                    {s.session_rpe ? ` · sRPE ${s.session_rpe}` : ""}
-                    {s.duration_min ? ` · ${s.duration_min} min` : ""}
-                  </div>
-                </div>
-                <span style={{ color: "var(--cp-text-muted)", fontSize: 16 }} aria-hidden>›</span>
-              </Link>
-            ))}
+                  <span style={{ color: "var(--cp-text-muted)", fontSize: 16 }} aria-hidden>›</span>
+                </Link>
+              );
+            })}
           </div>
         ))}
     </section>
@@ -960,6 +1011,7 @@ function TodaySessionCard({
   conflictsBySlot,
   archetypeName,
   weekIndex,
+  blockWeeks,
   tmById,
   tmMetaByMovementId,
   nextUpcoming,
@@ -977,6 +1029,7 @@ function TodaySessionCard({
   conflictsBySlot: Map<string, FreshnessConflict>;
   archetypeName: string | null;
   weekIndex: number | null;
+  blockWeeks: number | null;
   tmById: Record<string, number>;
   tmMetaByMovementId: Record<string, {
     source: TmSource;
@@ -1310,6 +1363,7 @@ function TodaySessionCard({
                 conflict={conflictsBySlot.get(p.id) ?? null}
                 archetypeName={archetypeName}
                 weekIndex={weekIndex}
+                blockWeeks={blockWeeks}
                 tmById={tmById}
                 tmMetaByMovementId={tmMetaByMovementId}
               />
@@ -1328,6 +1382,7 @@ function PlannedSessionCard({
   conflict,
   archetypeName,
   weekIndex,
+  blockWeeks,
   tmById,
   tmMetaByMovementId,
 }: {
@@ -1337,6 +1392,7 @@ function PlannedSessionCard({
   conflict: FreshnessConflict | null;
   archetypeName: string | null;
   weekIndex: number | null;
+  blockWeeks: number | null;
   tmById: Record<string, number>;
   tmMetaByMovementId: Record<string, {
     source: TmSource;
@@ -1385,6 +1441,23 @@ function PlannedSessionCard({
     return `based on e1RM (${kind} ${when})`;
   })();
 
+  // Glanceable hero metrics (redesign): estimated duration + the number of
+  // distinct movements the user will train. Both derive from the same
+  // prescription the preview body renders, so they never disagree with it.
+  const estMin = estimateSessionMinutes(planned.prescription.items);
+  const movementCount = new Set(
+    planned.prescription.items
+      .filter((i) => i.kind !== "warmup")
+      .map((i) => i.movementId)
+      .filter((m): m is string => !!m),
+  ).size;
+  const weekLabel =
+    weekIndex != null
+      ? blockWeeks != null
+        ? `Week ${weekIndex + 1} of ${blockWeeks}`
+        : `Week ${weekIndex + 1}`
+      : null;
+
   // (Hero topline used to compute an `estMin` rough duration here; it
   // was dropped now that SessionPreviewBody renders structured per-
   // section duration rows. See block comment above.)
@@ -1417,42 +1490,107 @@ function PlannedSessionCard({
       data-testid={`today-card-${planned.id}`}
       data-hero="planned"
       style={{
+        position: "relative",
+        overflow: "hidden",
         padding: 18,
         display: "grid",
         gap: 12,
         borderColor: "var(--cp-border)",
+        background:
+          "linear-gradient(165deg, var(--cp-bg-elevated), var(--cp-surface))",
         minHeight: isTwoADay ? 200 : 280,
       }}
     >
-      <div style={{ fontSize: 11, color: "var(--cp-accent)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
-        {isTwoADay && planned.slot !== "single" ? (
-          <>
-            <span data-testid={`slot-label-${planned.slot}`}>{slotLabel}</span>
-            {archetypeName && weekIndex != null && (
-              <span style={{ color: "var(--cp-text-muted)", fontWeight: 600, marginLeft: 8 }}>
-                · {archetypeName} · Week {weekIndex + 1}
-              </span>
-            )}
-            {timeOfDay && (
-              <span className="mono" style={{ color: "var(--cp-text-muted)", marginLeft: 8 }}>
-                {timeOfDay}
-              </span>
-            )}
-          </>
-        ) : (
-          <>
-            {archetypeName && weekIndex != null
-              ? `${archetypeName} · Week ${weekIndex + 1}`
-              : slotLabel}
-          </>
+      <span
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: "0 0 auto 0",
+          height: 3,
+          background:
+            "linear-gradient(90deg, var(--cp-accent), transparent 70%)",
+          opacity: 0.8,
+        }}
+      />
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          flexWrap: "wrap",
+        }}
+      >
+        {archetypeName && (
+          <span
+            style={{
+              fontSize: 10.5,
+              fontWeight: 700,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              padding: "4px 9px",
+              borderRadius: 999,
+              color: "var(--cp-accent)",
+              background: "var(--cp-accent-soft)",
+            }}
+          >
+            {archetypeName}
+          </span>
+        )}
+        {weekLabel && (
+          <span
+            style={{
+              fontSize: 10.5,
+              fontWeight: 700,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              padding: "4px 9px",
+              borderRadius: 999,
+              color: "var(--cp-text-muted)",
+              background: "var(--cp-surface-soft)",
+              border: "1px solid var(--cp-border)",
+            }}
+          >
+            {weekLabel}
+          </span>
+        )}
+        {isTwoADay && planned.slot !== "single" && (
+          <span
+            data-testid={`slot-label-${planned.slot}`}
+            style={{
+              fontSize: 10.5,
+              fontWeight: 700,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              padding: "4px 9px",
+              borderRadius: 999,
+              color: "var(--cp-text-muted)",
+              background: "var(--cp-surface-soft)",
+              border: "1px solid var(--cp-border)",
+            }}
+          >
+            {slotLabel}
+            {timeOfDay ? ` · ${timeOfDay}` : ""}
+          </span>
+        )}
+        {!archetypeName && !weekLabel && !(isTwoADay && planned.slot !== "single") && (
+          <span
+            style={{
+              fontSize: 10.5,
+              fontWeight: 700,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              color: "var(--cp-accent)",
+            }}
+          >
+            {slotLabel}
+          </span>
         )}
         {planned.completedSessionId && (
           <span
             data-testid="slot-complete-badge"
             style={{
-              marginLeft: 10,
               fontSize: 10,
-              padding: "1px 6px",
+              padding: "2px 7px",
               borderRadius: 999,
               background: "color-mix(in oklab, var(--cp-success) 18%, transparent)",
               color: "var(--cp-success)",
@@ -1463,32 +1601,73 @@ function PlannedSessionCard({
             ✓ logged
           </span>
         )}
+        {estMin != null && (
+          <span
+            className="mono"
+            style={{
+              marginLeft: "auto",
+              fontSize: 11.5,
+              color: "var(--cp-text-muted)",
+            }}
+          >
+            ~{estMin} min
+          </span>
+        )}
       </div>
-      <h2 style={{ fontSize: 24, margin: 0, letterSpacing: "-0.01em", fontWeight: 700 }}>{planned.title}</h2>
-      {topLine && (
+      <h2 style={{ fontSize: 26, margin: 0, letterSpacing: "-0.02em", fontWeight: 700 }}>{planned.title}</h2>
+      {(topLine || movementCount > 0) && (
         <div
           data-testid="hero-topline"
           style={{
             display: "flex",
             flexWrap: "wrap",
-            gap: 16,
-            fontSize: 13,
-            color: "var(--cp-text)",
+            alignItems: "center",
+            gap: 8,
           }}
         >
-          <span style={{ fontWeight: 600 }} className="mono">
-            {topLine}
-          </span>
+          {topLine && (
+            <span
+              className="mono"
+              style={{
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: "var(--cp-accent)",
+                background: "var(--cp-accent-soft)",
+                border:
+                  "1px solid color-mix(in srgb, var(--cp-accent) 30%, var(--cp-border))",
+                borderRadius: 9,
+                padding: "6px 11px",
+              }}
+            >
+              {topLine}
+            </span>
+          )}
+          {movementCount > 0 && (
+            <span
+              className="mono"
+              style={{
+                fontSize: 12.5,
+                color: "var(--cp-text-soft)",
+                background: "var(--cp-surface)",
+                border: "1px solid var(--cp-border)",
+                borderRadius: 9,
+                padding: "6px 11px",
+              }}
+            >
+              {movementCount} movement{movementCount === 1 ? "" : "s"}
+            </span>
+          )}
           {topLineAnnotation && (
             <span
               data-testid="hero-topline-e1rm-annotation"
               style={{
                 color: "var(--cp-text-muted)",
+                fontSize: 12,
                 fontWeight: 500,
                 fontStyle: "italic",
               }}
             >
-              · {topLineAnnotation}
+              {topLineAnnotation}
             </span>
           )}
         </div>
