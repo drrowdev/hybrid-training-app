@@ -288,9 +288,11 @@ describe("PlanRedesign — this week rail", () => {
     }
   });
 
-  it("tags done sessions with 'Done' and future ones with Strength/Cardio kind", () => {
+  it("marks done sessions with a ✓ status and future ones with Strength/Cardio kind", () => {
     const html = render();
-    expect(html).toContain(">Done<");
+    // Done rows render a ✓ glyph (aria-label="Done") instead of a text tag.
+    expect(html).toContain('aria-label="Done"');
+    expect(html).toContain(">✓<");
     expect(html).toContain(">Strength<");
     expect(html).toContain(">Cardio<");
   });

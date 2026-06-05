@@ -138,9 +138,13 @@ test.describe("@desktop today page (Phase 1)", () => {
     await expect(cta).toHaveText(/start workout/i);
     expect(await cta.getAttribute("href")).toBe(`/app/sessions/start/${seed.todayPlannedId}`);
 
-    const preview = page.getByRole("link", { name: /^preview plan$/i }).first();
+    const preview = page.getByTestId("today-preview-cta").first();
     await expect(preview).toBeVisible();
-    await expect(preview).toHaveAttribute("href", "/app/plan");
+    await expect(preview).toHaveText(/preview/i);
+    await expect(preview).toHaveAttribute(
+      "href",
+      `/app/plan/preview/${seed.todayPlannedId}`,
+    );
   });
 
   test("Today regressions — removed surfaces stay removed", async ({
@@ -193,9 +197,11 @@ test.describe("@desktop today page (Phase 1)", () => {
     await page.goto("/app");
     await page.waitForLoadState("networkidle");
 
-    // DOM-order smoke test: read top offsets and assert
-    //   today-cta (hero) < quick-workout-card < today-week-strip
-    //   < Recent activity heading.
+    // DOM-order test: hero (today-cta) precedes the quick-workout card, which
+    // precedes the week strip, which precedes the Recent activity heading.
+    // Asserted via DOM document order (compareDocumentPosition) rather than
+    // viewport-Y — the right rail and left column have unrelated Y offsets in
+    // the two-column desktop layout, so a top-coordinate comparison is invalid.
     const quick = page.getByTestId("quick-workout-card");
     const week = page.getByTestId("today-week-strip");
     const recent = page.getByRole("heading", { name: /^recent activity$/i }).first();
@@ -206,14 +212,20 @@ test.describe("@desktop today page (Phase 1)", () => {
     await expect(week).toBeVisible();
     await expect(recent).toBeVisible();
 
-    const [heroTop, quickTop, weekTop, recentTop] = await Promise.all([
-      hero.evaluate((el) => el.getBoundingClientRect().top),
-      quick.evaluate((el) => el.getBoundingClientRect().top),
-      week.evaluate((el) => el.getBoundingClientRect().top),
-      recent.evaluate((el) => el.getBoundingClientRect().top),
-    ]);
-    expect(heroTop).toBeLessThan(quickTop);
-    expect(quickTop).toBeLessThan(weekTop);
-    expect(weekTop).toBeLessThan(recentTop);
+    const inOrder = await page.evaluate(
+      (els) => {
+        const before = (a: Element, b: Element) =>
+          (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+        const [h, q, w, r] = els as Element[];
+        return before(h, q) && before(q, w) && before(w, r);
+      },
+      [
+        await hero.elementHandle(),
+        await quick.elementHandle(),
+        await week.elementHandle(),
+        await recent.elementHandle(),
+      ],
+    );
+    expect(inOrder).toBe(true);
   });
 });

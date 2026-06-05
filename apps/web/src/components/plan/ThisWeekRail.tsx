@@ -50,9 +50,28 @@ export function RailList({
   onOpen: (id: string) => void;
   heading?: string;
 }) {
+  const sessions = rail
+    .map((r) => r.session)
+    .filter((s): s is NonNullable<typeof s> => s != null);
+  const total = sessions.length;
+  const doneCount = sessions.filter((s) => s.done).length;
+  const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
+
   return (
     <aside className="plan-rail" aria-label={heading} data-testid="plan-this-week">
-      <h3>{heading}</h3>
+      <div className="rail-head">
+        <h3>{heading}</h3>
+        {total > 0 && (
+          <span className="rail-prog mono" data-testid="rail-progress">
+            {doneCount} / {total} done
+          </span>
+        )}
+      </div>
+      {total > 0 && (
+        <div className="rail-bar" aria-hidden>
+          <i style={{ width: `${pct}%` }} />
+        </div>
+      )}
       <div className="rail-list">
         {rail.map((row) => {
           const s = row.session;
@@ -73,14 +92,18 @@ export function RailList({
             );
           }
           const overdue = isOverdue(sessionToOverdueCandidate(s), today);
-          const tag = s.done ? "Done" : s.skipped ? "Skipped" : null;
+          const statusClass = s.done
+            ? "done"
+            : s.skipped
+              ? "skipped"
+              : "";
           return (
             <button
               type="button"
               key={row.dayIndex}
               className={`rail-item ${isPast && !isToday ? "past" : ""} ${
                 isToday ? "today-item" : ""
-              }${overdue ? " overdue" : ""}`}
+              }${overdue ? " overdue" : ""}${statusClass ? ` ${statusClass}` : ""}`}
               data-testid={`plan-rail-${row.dayIndex}`}
               onClick={() => onOpen(s.id)}
             >
@@ -97,9 +120,15 @@ export function RailList({
                   </span>
                 )}
               </span>
-              <span className="rail-kind mono">
-                {tag ?? (s.isCardio ? "Cardio" : "Strength")}
-              </span>
+              {s.done ? (
+                <span className="rail-status done" aria-label="Done">✓</span>
+              ) : s.skipped ? (
+                <span className="rail-status skip" aria-label="Skipped">⊘</span>
+              ) : (
+                <span className="rail-kind mono">
+                  {s.isCardio ? "Cardio" : "Strength"}
+                </span>
+              )}
             </button>
           );
         })}
@@ -115,13 +144,50 @@ export function RailList({
           overflow: hidden;
         }
         .plan-rail h3 {
-          margin: 0 0 12px;
+          margin: 0;
           font-size: 11px;
           letter-spacing: 0.12em;
           text-transform: uppercase;
           color: var(--cp-text-muted);
           font-weight: 600;
           font-family: var(--cp-font-mono);
+        }
+        .rail-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          margin-bottom: 6px;
+        }
+        .rail-prog {
+          font-size: 10.5px;
+          color: var(--cp-text-muted);
+        }
+        .rail-bar {
+          height: 4px;
+          border-radius: 999px;
+          background: var(--cp-surface-soft);
+          overflow: hidden;
+          margin-bottom: 10px;
+        }
+        .rail-bar i {
+          display: block;
+          height: 100%;
+          background: var(--cp-accent);
+          border-radius: 999px;
+          transition: width 200ms ease;
+        }
+        .rail-status {
+          font-size: 14px;
+          text-align: center;
+          min-width: 18px;
+        }
+        .rail-status.done { color: var(--cp-accent); }
+        .rail-status.skip { color: var(--cp-text-muted); }
+        .rail-item.done .rail-name { color: var(--cp-text-muted); }
+        .rail-item.skipped .rail-name {
+          color: var(--cp-text-muted);
+          text-decoration: line-through;
         }
         .rail-list { display: flex; flex-direction: column; }
         .rail-item {
