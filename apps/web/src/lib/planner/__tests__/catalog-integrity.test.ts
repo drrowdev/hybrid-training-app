@@ -191,3 +191,44 @@ describe("seed catalog — accessory-pattern leak guard", () => {
     expect(cardioPicks).toEqual([]);
   });
 });
+
+describe("seed catalog — role-coverage floors", () => {
+  const countBp = (role: string) =>
+    SEED_MOVEMENTS.filter((m) => ((m.bulletproofRoles ?? []) as string[]).includes(role)).length;
+  const countFn = (role: string) =>
+    SEED_MOVEMENTS.filter((m) => ((m.functionalRoles ?? []) as string[]).includes(role)).length;
+
+  // DC-O4 durability floor — every archetype must be able to seat these each
+  // week. These were ALL zero in prod before migration 0088 (reseed wiped the
+  // 0019 tagging). The numbers are the per-week floor from accessory-roles.ts.
+  it("durability-floor bulletproof roles are covered", () => {
+    expect(countBp("heavy_isometric"), "heavy_isometric").toBeGreaterThanOrEqual(1);
+    expect(countBp("hsr"), "hsr").toBeGreaterThanOrEqual(1);
+    expect(countBp("plyometric_low") + countBp("plyometric_high"), "plyometric").toBeGreaterThanOrEqual(1);
+    expect(countBp("carry"), "carry").toBeGreaterThanOrEqual(2);
+  });
+
+  // Archetype functional requirements (max across archetypes): single_leg 1,
+  // anti_rotation 1, hip_stabilizer 2, ankle_foot 2, loaded_mobility 1.
+  it("archetype functional roles are covered", () => {
+    expect(countFn("single_leg"), "single_leg").toBeGreaterThanOrEqual(1);
+    expect(countFn("anti_rotation"), "anti_rotation").toBeGreaterThanOrEqual(1);
+    expect(countFn("hip_stabilizer"), "hip_stabilizer").toBeGreaterThanOrEqual(2);
+    expect(countFn("ankle_foot"), "ankle_foot").toBeGreaterThanOrEqual(2);
+    expect(countFn("loaded_mobility"), "loaded_mobility").toBeGreaterThanOrEqual(1);
+  });
+
+  // A user with no machines must still be able to seat the endurance_anchor
+  // hip_stabilizer (2) + ankle_foot (2) requirements — i.e. ≥2 non-machine
+  // candidates per role.
+  it("hip_stabilizer + ankle_foot are satisfiable without machines", () => {
+    const machineFree = (role: string) =>
+      SEED_MOVEMENTS.filter((m) => {
+        if (!((m.functionalRoles ?? []) as string[]).includes(role)) return false;
+        const req = resolveRequiredEquipment({ slug: m.slug, pattern: m.pattern, equipment: m.equipment });
+        return req.kind !== "machine" && req.kind !== "machine_generic";
+      }).length;
+    expect(machineFree("hip_stabilizer"), "hip_stabilizer machine-free").toBeGreaterThanOrEqual(2);
+    expect(machineFree("ankle_foot"), "ankle_foot machine-free").toBeGreaterThanOrEqual(2);
+  });
+});
