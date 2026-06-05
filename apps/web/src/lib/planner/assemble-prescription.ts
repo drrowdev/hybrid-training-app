@@ -285,6 +285,13 @@ export function assemblePrescriptionItems(
    * mirrors `applyScalarToTargets`. See `quick-generate.ts`.
    */
   aestheticTargetMask?: ReadonlyMap<string, number>,
+  /**
+   * Quick-generate variation seed (quick-workout path only). Forwarded to the
+   * accessory picker so consecutive quick generations rotate among comparable
+   * candidates. `undefined` (every planned-block caller) is a byte-identical
+   * no-op — the deterministic best pick. See `quick-generate.ts`.
+   */
+  variationSeed?: number,
 ): PrescriptionItem[] {
   const items =
     day.kind === "strength" && omitMainStrength
@@ -470,6 +477,7 @@ export function assemblePrescriptionItems(
         // ADR 0027 Lever B — credit the week's main-lift synergist coverage so
         // the aesthetic gap-fill redirects to genuinely under-trained muscles.
         compoundCoverageCredit: computeWeeklyCompoundCredit(archetype),
+        variationSeed,
       });
       const accessoryItems: PrescriptionItem[] = [];
       const historyDelta: WeekAccessoryHistoryItem[] = [];

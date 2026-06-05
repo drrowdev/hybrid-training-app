@@ -125,25 +125,38 @@ function resolveMainForDay(
   movementBySlug: Map<string, StrengthMovementRow>,
   tmByMovementId: Map<string, number>,
   tier: number | null,
+  /** When set, rotate among the equally-valid main candidates (quick variation). */
+  variationSeed?: number,
 ): ResolvedMain | null {
   let firstWithTm: StrengthMovementRow | null = null;
   let firstPresent: StrengthMovementRow | null = null;
+  // Tier-appropriate movements that have a TM — the preferred bucket. The
+  // deterministic path uses the first; the seeded path rotates among them so
+  // a user with several loadable lifts for the pattern (e.g. back / front /
+  // box squat) sees a different main each generate.
+  const tierOkWithTm: StrengthMovementRow[] = [];
   for (const slug of day.candidateSlugs) {
     const mv = movementBySlug.get(slug);
     if (!mv) continue;
     if (!firstPresent) firstPresent = mv;
     const hasTm = tmByMovementId.has(mv.id);
     if (hasTm && !firstWithTm) firstWithTm = mv;
-    if (
-      hasTm &&
-      tierInBand(tier, mv.experience_min ?? 0, mv.experience_max ?? 4)
-    ) {
-      return {
-        day,
-        movement: { id: mv.id, slug: mv.slug, displayName: mv.display_name },
-        omitMainStrength: false,
-      };
+    if (hasTm && tierInBand(tier, mv.experience_min ?? 0, mv.experience_max ?? 4)) {
+      tierOkWithTm.push(mv);
     }
+  }
+  if (tierOkWithTm.length > 0) {
+    const idx =
+      variationSeed == null
+        ? 0
+        : ((variationSeed % tierOkWithTm.length) + tierOkWithTm.length) %
+          tierOkWithTm.length;
+    const mv = tierOkWithTm[idx]!;
+    return {
+      day,
+      movement: { id: mv.id, slug: mv.slug, displayName: mv.display_name },
+      omitMainStrength: false,
+    };
   }
   if (firstWithTm) {
     return {
@@ -173,7 +186,7 @@ function resolveMainForDay(
 export async function resolveQuickStrengthPlan(
   supabase: SupabaseClient,
   userId: string,
-  opts: { length: QuickLength; tz?: string },
+  opts: { length: QuickLength; tz?: string; seed?: number },
 ): Promise<QuickPlanResult> {
   const ctx = await resolveBlockContext(supabase, userId);
   const archetype: Archetype = ARCHETYPES[ctx.archetypeId];
@@ -246,7 +259,13 @@ export async function resolveQuickStrengthPlan(
   const resolvableByRole = new Map<StrengthRole, ResolvedMain>();
   for (const day of strengthDays) {
     if (resolvableByRole.has(day.role)) continue;
-    const resolved = resolveMainForDay(day, movementBySlug, tmByMovementId, tier);
+    const resolved = resolveMainForDay(
+      day,
+      movementBySlug,
+      tmByMovementId,
+      tier,
+      opts.seed,
+    );
     if (resolved) resolvableByRole.set(day.role, resolved);
   }
   if (resolvableByRole.size === 0) {
@@ -302,6 +321,7 @@ export async function resolveQuickStrengthPlan(
     accessoryVolume: resolveAccessoryVolumeLevel(ctx.accessoryVolumeRaw),
     freshnessByGroup,
     length: opts.length,
+    variationSeed: opts.seed,
   });
 
   if (items.length === 0) {

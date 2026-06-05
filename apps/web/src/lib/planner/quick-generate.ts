@@ -203,6 +203,8 @@ export type QuickAssembleParams = {
   /** Per-group freshness bands from `getMuscleFreshness`. */
   freshnessByGroup: ReadonlyMap<MuscleGroup, MuscleFreshnessBand>;
   length: QuickLength;
+  /** Per-generate variation seed — rotates accessory picks. Undefined = deterministic. */
+  variationSeed?: number;
 };
 
 /**
@@ -244,6 +246,7 @@ export function assembleQuickStrengthItems(
     params.secondaryFocus ?? "none",
     params.accessoryVolume ?? "medium",
     mask,
+    params.variationSeed,
   );
 
   return trimToDurationCap(items, durationCapMinutes(params.length));
