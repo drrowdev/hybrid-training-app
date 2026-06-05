@@ -79,7 +79,7 @@ test.describe("@desktop today page (Phase 1)", () => {
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 15_000 });
   });
 
-  test("rest day shows compact banner with Log freestyle + View plan links", async ({
+  test("rest day shows redesigned card with Next session block + View plan", async ({
     page,
     context,
     freshUser,
@@ -105,9 +105,12 @@ test.describe("@desktop today page (Phase 1)", () => {
     await expect(rest).toContainText(/rest day/i);
     // Next-session preview points at the upcoming planned session.
     await expect(page.getByTestId("rest-tomorrow")).toBeVisible();
-    // Single log path on rest day: "Log freestyle" + "View plan" text links.
-    await expect(rest.getByRole("link", { name: /log freestyle/i })).toBeVisible();
+    // Redesigned rest card: a "Next session" block + a "View plan" link.
+    // "Log freestyle" was removed (the Quick Workout card's "Start empty"
+    // covers the off-plan log path).
+    await expect(rest.getByText(/next session/i)).toBeVisible();
     await expect(rest.getByRole("link", { name: /view plan/i })).toBeVisible();
+    await expect(rest.getByRole("link", { name: /log freestyle/i })).toHaveCount(0);
     // Removed regressions guarded with toHaveCount(0).
     await expect(rest.locator(".cp-info")).toHaveCount(0);
   });
