@@ -250,6 +250,23 @@ const CORE: NewMovement[] = [
   core("bird-dog", "Bird Dog", { equipment: "bodyweight", primaryMuscles: ["abs", "lower_back", "glutes"], bilateral: false }),
 ];
 
+// ─── prehab: hip-stabiliser (glute-med / frontal plane) + ankle/foot (8) ───
+// Closes a catalog gap surfaced by the role-coverage audit: the durability /
+// functional picker needs machine-free `hip_stabilizer` + `ankle_foot`
+// candidates (endurance_anchor requires 2 of each per week). Tagged
+// automatically by `deriveAccessoryRoles` (slug + region rules).
+const PREHAB: NewMovement[] = [
+  m("clamshell-band", "Clamshell (band)", { equipment: "band", primaryRegion: "hamstring_posterior", primaryMuscles: ["abductors", "glutes"], bilateral: false, experienceMax: 2, metadata: { emphasis: "glute-med-prehab" } }),
+  m("monster-walk-band", "Monster Walk (band)", { equipment: "band", primaryRegion: "hamstring_posterior", primaryMuscles: ["abductors", "glutes"], metadata: { emphasis: "glute-med-prehab" } }),
+  m("side-lying-hip-abduction", "Side-Lying Hip Abduction", { equipment: "bodyweight-or-loaded", primaryRegion: "hamstring_posterior", primaryMuscles: ["abductors", "glutes"], bilateral: false }),
+  m("single-leg-glute-bridge", "Single-Leg Glute Bridge", { equipment: "bodyweight", primaryRegion: "hamstring_posterior", primaryMuscles: ["glutes"], secondaryMuscles: ["hamstrings"], bilateral: false, metadata: { emphasis: "glute-stability" } }),
+  m("fire-hydrant", "Fire Hydrant", { equipment: "bodyweight-or-band", primaryRegion: "hamstring_posterior", primaryMuscles: ["glutes", "abductors"], bilateral: false }),
+  m("single-leg-calf-raise", "Single-Leg Calf Raise", { equipment: "bodyweight-or-loaded", primaryRegion: "foot_ankle_calf", primaryMuscles: ["calves"], bilateral: false, highStrainTendon: true }),
+  m("heel-walk", "Heel Walk", { equipment: "bodyweight", primaryRegion: "foot_ankle_calf", primaryMuscles: ["tibialis"], metadata: { emphasis: "tibialis-anterior" } }),
+  m("ankle-dorsiflexion-band", "Banded Dorsiflexion", { equipment: "band", primaryRegion: "foot_ankle_calf", primaryMuscles: ["tibialis"] }),
+  m("short-foot-drill", "Short Foot Drill", { equipment: "bodyweight", primaryRegion: "foot_ankle_calf", primaryMuscles: ["tibialis"], metadata: { emphasis: "foot-intrinsics" } }),
+];
+
 export const PATTERNS_PART_2: NewMovement[] = [
   ...BICEPS,
   ...TRICEPS,
@@ -259,4 +276,5 @@ export const PATTERNS_PART_2: NewMovement[] = [
   ...BACK_ISO,
   ...LEG_ISO,
   ...CORE,
+  ...PREHAB,
 ];

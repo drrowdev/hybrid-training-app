@@ -98,10 +98,14 @@ export function deriveAccessoryRoles(m: RoleDerivationInput): {
   if (/loaded-mobility|spinal-flexion/.test(proto) || /jefferson|cossack|atg-split|deficit-rdl/.test(slug)) {
     functional.add("loaded_mobility");
   }
-  // hip_stabilizer — frontal-plane hip (abduction/adduction/copenhagen).
-  if (/abduction|adduction|copenhagen/.test(slug)) functional.add("hip_stabilizer");
-  // ankle_foot — tibialis / calf / foot.
-  if (m.primaryRegion === "foot_ankle_calf" && /tibialis|calf/.test(slug)) functional.add("ankle_foot");
+  // hip_stabilizer — frontal-plane hip / glute-med prehab.
+  if (/abduction|adduction|copenhagen|clamshell|monster-walk|fire-hydrant|single-leg-glute-bridge/.test(slug)) {
+    functional.add("hip_stabilizer");
+  }
+  // ankle_foot — tibialis / calf / foot prehab.
+  if (m.primaryRegion === "foot_ankle_calf" && /tibialis|calf|dorsiflexion|short-foot|heel-walk/.test(slug)) {
+    functional.add("ankle_foot");
+  }
   // compound_assistance — non-main compound strength variants.
   if (
     m.isCompound &&
