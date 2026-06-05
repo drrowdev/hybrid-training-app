@@ -225,6 +225,21 @@ select option {
   color: var(--cp-text-muted);
 }
 
+/* Quick-workout "Generate" length tiles — neutral at rest, accent on
+   hover / keyboard focus (or while generating) so neither tile reads as a
+   pre-selected option. */
+.cp-generate-tile {
+  background: var(--cp-bg);
+  border: 1px solid var(--cp-border);
+  transition: background .12s, border-color .12s;
+}
+.cp-generate-tile:not(:disabled):hover,
+.cp-generate-tile:focus-visible,
+.cp-generate-tile[data-loading="true"] {
+  background: var(--cp-accent-soft);
+  border-color: var(--cp-accent);
+}
+
 .cp-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   padding: 10px 14px;
