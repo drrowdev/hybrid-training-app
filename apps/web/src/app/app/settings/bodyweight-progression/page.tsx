@@ -33,6 +33,7 @@ import {
   type BwCategoryGroup,
   type BwCategoryRow,
 } from "@/components/settings/BwProgressionCategories";
+import { PageHeader } from "@/components/ui/PageHeader";
 import type {
   BwRowLoadedSuggestion,
   BwRowNode,
@@ -346,22 +347,16 @@ export default async function BodyweightProgressionPage() {
 
   return (
     <div data-testid="bw-progression-page" style={{ display: "grid", gap: 20 }}>
-      <header style={{ display: "grid", gap: 8 }}>
-        <h1 style={{ fontSize: 26, margin: 0, letterSpacing: "-0.01em" }}>
-          Bodyweight progression
-        </h1>
-        <p
-          style={{
-            margin: "2px 0 0",
-            color: "var(--cp-text-muted)",
-            fontSize: 14,
-            lineHeight: 1.55,
-          }}
-        >
-          {seeded
+      <PageHeader
+        back={{ href: "/app/settings", label: "Settings" }}
+        title="Bodyweight progression"
+        subtitle={
+          seeded
             ? "You have completed your assessment. Here is your current node per family."
-            : "You haven’t completed the bodyweight assessment yet. Run it to seed your starting nodes per movement family."}
-        </p>
+            : "You haven’t completed the bodyweight assessment yet. Run it to seed your starting nodes per movement family."
+        }
+      />
+      <div style={{ display: "grid", gap: 8 }}>
         <div
           data-testid="bw-progression-summary"
           style={{
@@ -420,7 +415,7 @@ export default async function BodyweightProgressionPage() {
             Last assessment: {formatDate(assessmentCompletedAt, formatProfile)}
           </span>
         )}
-      </header>
+      </div>
 
       <BwDiagnosticsSection results={diagnostics} />
 

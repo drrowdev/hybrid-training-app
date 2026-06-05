@@ -16,6 +16,7 @@ import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { getTrashedItems } from "@/lib/planner/queries";
 import { TrashItemRow } from "@/components/trash/TrashItemRow";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export default async function TrashPage() {
   const supabase = await createClient();
@@ -32,14 +33,17 @@ export default async function TrashPage() {
       data-testid="trash-page"
       style={{ display: "grid", gap: 20, maxWidth: 720 }}
     >
-      <header>
-        <h1 style={{ fontSize: 26, margin: 0, letterSpacing: "-0.01em" }}>
-          Trash
-          <span style={{ fontSize: 14, color: "var(--cp-text-muted)", fontWeight: 400, marginLeft: 8 }}>
-            ({totalCount})
-          </span>
-        </h1>
-      </header>
+      <PageHeader
+        back={{ href: "/app/settings", label: "Settings" }}
+        title={
+          <>
+            Trash
+            <span style={{ fontSize: 14, color: "var(--cp-text-muted)", fontWeight: 400, marginLeft: 8 }}>
+              ({totalCount})
+            </span>
+          </>
+        }
+      />
 
       <section
         role="note"

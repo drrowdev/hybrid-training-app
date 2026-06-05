@@ -18,6 +18,7 @@ import {
   resolveEquipment,
 } from "@/lib/settings/equipment-presets";
 import { TmSection, type PickerGroup, type RoleGroupInput } from "@/components/training-maxes/TmSection";
+import { PageHeader } from "@/components/ui/PageHeader";
 import Link from "next/link";
 export default async function TrainingMaxesPage() {
   const supabase = await createClient();
@@ -118,32 +119,31 @@ export default async function TrainingMaxesPage() {
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      <header>
-        <h1 style={{ fontSize: 26, margin: 0, letterSpacing: "-0.01em" }}>
-          Training maxes
-        </h1>
-        {bodyweightOnly ? (
-          <p
-            data-testid="training-maxes-bodyweight-note"
-            style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14, lineHeight: 1.55 }}
-          >
-            Training maxes are 1-rep estimates for your main lifts. You&apos;re on a
-            bodyweight-only setup, so there&apos;s no main lift to attach a number to yet.
-            If you add a barbell or dumbbells in{" "}
-            <Link href="/app/settings/equipment" style={{ color: "var(--cp-accent)" }}>
-              Settings → Equipment
-            </Link>{" "}
-            later, this page becomes useful again.
-          </p>
-        ) : (
-          <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-            Enter your 1RM for each main lift. The app applies a default TM% to compute the
-            working <em>training max</em> used by the planner. Pick whichever variant of squat,
-            bench, deadlift, or overhead press you actually train — back squat, front squat,
-            trap-bar deadlift, push press, etc. are all valid.
-          </p>
-        )}
-      </header>
+      <PageHeader
+        back={{ href: "/app/settings", label: "Settings" }}
+        title="Training maxes"
+      />
+      {bodyweightOnly ? (
+        <p
+          data-testid="training-maxes-bodyweight-note"
+          style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 14, lineHeight: 1.55 }}
+        >
+          Training maxes are 1-rep estimates for your main lifts. You&apos;re on a
+          bodyweight-only setup, so there&apos;s no main lift to attach a number to yet.
+          If you add a barbell or dumbbells in{" "}
+          <Link href="/app/settings/equipment" style={{ color: "var(--cp-accent)" }}>
+            Settings → Equipment
+          </Link>{" "}
+          later, this page becomes useful again.
+        </p>
+      ) : (
+        <p style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 14 }}>
+          Enter your 1RM for each main lift. The app applies a default TM% to compute the
+          working <em>training max</em> used by the planner. Pick whichever variant of squat,
+          bench, deadlift, or overhead press you actually train — back squat, front squat,
+          trap-bar deadlift, push press, etc. are all valid.
+        </p>
+      )}
 
       <TmSection
         initialDefaultPercent={ctx.defaultPercent}

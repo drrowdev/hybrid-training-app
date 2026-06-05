@@ -14,6 +14,7 @@ import {
   type Region,
 } from "@/lib/settings/limitations-constants";
 import { LimitationsToggleSection } from "./LimitationsToggleSection";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 const REGIONS: { value: string; label: string }[] = [
   { value: "foot_ankle_calf", label: "Foot / ankle / calf" },
@@ -74,13 +75,11 @@ export default async function LimitationsPage() {
 
   return (
     <main className="min-h-screen px-6 py-8 max-w-2xl mx-auto space-y-8">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Active limitations</h1>
-        <p className="text-xs text-foreground/60">
-          Add a row when you&apos;re hurt; mark resolved when better. The app uses these to avoid
-          loading the affected region until you say it&apos;s fine. Not asked daily.
-        </p>
-      </header>
+      <PageHeader
+        back={{ href: "/app/settings", label: "Settings" }}
+        title="Active limitations"
+        subtitle="Add a row when you're hurt; mark resolved when better. The app uses these to avoid loading the affected region until you say it's fine. Not asked daily."
+      />
 
       <LimitationsToggleSection
         initialBlockedRegions={initialBlockedRegions}

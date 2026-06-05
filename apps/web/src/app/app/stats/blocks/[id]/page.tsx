@@ -39,6 +39,7 @@ import { MiniBars } from "@/components/stats/charts/MiniBars";
 import { Sparkline } from "@/components/stats/charts/Sparkline";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { MetricHelp } from "@/components/ui/MetricHelp";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -83,7 +84,6 @@ export default async function StatsBlockDetailPage({
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
-      <BackLink />
       {comparison ? (
         <ComparisonView comparison={comparison} units={units} pickerBlocks={pickerBlocks} primaryId={id} />
       ) : (
@@ -121,18 +121,6 @@ function SoloView({
   );
 }
 
-function BackLink(): ReactElement {
-  return (
-    <Link
-      href="/app/stats/blocks"
-      data-testid="stats-block-back-link"
-      style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
-    >
-      ← all blocks
-    </Link>
-  );
-}
-
 // ── B1 header ─────────────────────────────────────────────────────────
 
 function Header({ summary }: { summary: BlockSummary }): ReactElement {
@@ -147,16 +135,15 @@ function Header({ summary }: { summary: BlockSummary }): ReactElement {
       ? "Ended"
       : "Active";
   return (
-    <header data-testid="stats-block-header" style={{ display: "grid", gap: 6 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <h1 style={{ fontSize: 28, margin: 0, letterSpacing: "-0.01em" }}>{block.archetypeName}</h1>
-        <StatusBadge status={block.status} />
-      </div>
-      <p style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 14 }}>
-        {block.archetypeName} · {block.weeks} {block.weeks === 1 ? "week" : "weeks"} · {dateRange} ·{" "}
-        {statusWord}
-      </p>
-    </header>
+    <PageHeader
+      back={{ href: "/app/stats/blocks", label: "Block outcomes" }}
+      title={block.archetypeName}
+      titleTestId="stats-block-header"
+      actions={<StatusBadge status={block.status} />}
+      subtitle={`${block.archetypeName} · ${block.weeks} ${
+        block.weeks === 1 ? "week" : "weeks"
+      } · ${dateRange} · ${statusWord}`}
+    />
   );
 }
 

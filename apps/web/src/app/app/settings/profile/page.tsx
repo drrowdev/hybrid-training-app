@@ -9,6 +9,7 @@ import {
   TwoADayAutoSave,
 } from "@/components/settings/SettingsAutoSaveSections";
 import { SettingsGroup } from "@/components/settings/SettingsGroup";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 type TrainingExperience =
   | "beginner_lt_6m"
@@ -97,15 +98,11 @@ export default async function ProfileSettingsPage() {
 
   return (
     <main className="min-h-screen px-6 py-8 max-w-2xl mx-auto space-y-8">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Training profile
-        </h1>
-        <p className="text-xs text-foreground/60">
-          Identity and the defaults the planner uses when building a new
-          block.
-        </p>
-      </header>
+      <PageHeader
+        back={{ href: "/app/settings", label: "Settings" }}
+        title="Training profile"
+        subtitle="Identity and the defaults the planner uses when building a new block."
+      />
 
       <div className="space-y-3">
         {/* Profile — name + units. Always open: smallest section and the
