@@ -41,8 +41,8 @@ import {
 import type { DeclaredExperience } from "@hta/engine";
 import type { Equipment } from "@/lib/settings/equipment-schema";
 import {
-  inferRequiredEquipment,
   isEquipmentAvailable,
+  resolveRequiredEquipment,
 } from "./equipment-requirements";
 import { declaredExperienceToTier, tierInBand } from "./experience-tier";
 import { inferAccessoryBucket } from "./accessory-intensity";
@@ -168,6 +168,20 @@ export type CatalogMovement = {
    */
   experienceMin?: number;
   experienceMax?: number;
+  /**
+   * DB `movements.pattern`. Used to exclude cardio movements (`"cardio"`)
+   * from the strength-accessory candidate pool — they're conditioning, not
+   * accessories, and render nonsensically through the accessory-intensity
+   * path. Optional so legacy fixture catalogs (no pattern) are unaffected.
+   */
+  pattern?: string | null;
+  /**
+   * DB `movements.equipment` tag (e.g. `"machine-reverse-pec"`, `"erg"`,
+   * `"barbell"`). Authoritative input to equipment filtering for the
+   * machine/cable family via `resolveRequiredEquipment`. Optional so
+   * legacy fixtures fall back to slug inference unchanged.
+   */
+  equipment?: string | null;
 };
 
 export type WeekAccessoryHistoryItem = {
@@ -315,9 +329,18 @@ export function pickAccessoriesForSession({
    */
   variationSeed?: number;
 }): AccessoryPick[] {
+  // Cardio movements are conditioning, not strength accessories. They have
+  // muscle tags (lats, quads, …) so the aesthetic gap-fill could otherwise
+  // pick e.g. "Erg Row — Threshold" as an accessory, where it renders
+  // nonsensically through the accessory-intensity path. Exclude them from
+  // the candidate pool entirely. Legacy fixtures omit `pattern` (undefined)
+  // so they're unaffected.
+  const strengthCatalog = catalog.filter((m) => m.pattern !== "cardio");
   const equipmentFiltered = equipment
-    ? catalog.filter((m) => isEquipmentAvailable(inferRequiredEquipment(m), equipment))
-    : catalog;
+    ? strengthCatalog.filter((m) =>
+        isEquipmentAvailable(resolveRequiredEquipment(m), equipment),
+      )
+    : strengthCatalog;
   if (equipment && equipmentFiltered.length === 0) {
     // Pathological: every catalog entry was rejected. Surface so we
     // notice in logs rather than silently producing an empty

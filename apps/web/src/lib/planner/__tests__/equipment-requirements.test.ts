@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   inferRequiredEquipment,
   isEquipmentAvailable,
+  requirementFromEquipmentTag,
+  resolveRequiredEquipment,
   type EquipmentRequirement,
 } from "../equipment-requirements";
 import {
@@ -235,5 +237,74 @@ describe("isEquipmentAvailable — every requirement kind", () => {
     expect(isEquipmentAvailable(r, commercial)).toBe(false);
     expect(isEquipmentAvailable(r, home)).toBe(false);
     expect(isEquipmentAvailable(r, travel)).toBe(false);
+  });
+});
+
+describe("requirementFromEquipmentTag — DB equipment column mapping", () => {
+  it("maps tracked machines to their MachineType", () => {
+    expect(requirementFromEquipmentTag("machine-leg-press")).toEqual({ kind: "machine", machine: "leg_press" });
+    expect(requirementFromEquipmentTag("machine-leg-curl-seated")).toEqual({ kind: "machine", machine: "leg_curl" });
+    expect(requirementFromEquipmentTag("machine-leg-ext")).toEqual({ kind: "machine", machine: "leg_extension" });
+    expect(requirementFromEquipmentTag("machine-hack")).toEqual({ kind: "machine", machine: "hack_squat" });
+    expect(requirementFromEquipmentTag("machine-chest-press")).toEqual({ kind: "machine", machine: "chest_press" });
+    expect(requirementFromEquipmentTag("smith")).toEqual({ kind: "machine", machine: "smith_machine" });
+    expect(requirementFromEquipmentTag("machine-row")).toEqual({ kind: "machine", machine: "seated_row" });
+  });
+
+  it("maps unknown machine tags to the generic-machine requirement", () => {
+    // The exact leak the user reported + its cousins.
+    expect(requirementFromEquipmentTag("machine-reverse-pec")).toEqual({ kind: "machine_generic" });
+    expect(requirementFromEquipmentTag("machine-pec-deck")).toEqual({ kind: "machine_generic" });
+    expect(requirementFromEquipmentTag("machine-pendulum")).toEqual({ kind: "machine_generic" });
+    expect(requirementFromEquipmentTag("machine-abduction")).toEqual({ kind: "machine_generic" });
+    expect(requirementFromEquipmentTag("ghd-machine")).toEqual({ kind: "machine_generic" });
+    expect(requirementFromEquipmentTag("machine")).toEqual({ kind: "machine_generic" });
+  });
+
+  it("maps cable tags to the cable requirement", () => {
+    expect(requirementFromEquipmentTag("cable")).toEqual({ kind: "cable" });
+    expect(requirementFromEquipmentTag("cable-rope")).toEqual({ kind: "cable" });
+  });
+
+  it("returns null for tags with a bodyweight/free alternative (stay broadly available)", () => {
+    expect(requirementFromEquipmentTag("machine-or-bw")).toBeNull();
+    expect(requirementFromEquipmentTag("bodyweight-or-machine")).toBeNull();
+    expect(requirementFromEquipmentTag("bodyweight")).toBeNull();
+  });
+
+  it("returns null for non-machine implements (slug heuristic handles those)", () => {
+    expect(requirementFromEquipmentTag("barbell")).toBeNull();
+    expect(requirementFromEquipmentTag("dumbbells")).toBeNull();
+    expect(requirementFromEquipmentTag("erg")).toBeNull();
+    expect(requirementFromEquipmentTag(null)).toBeNull();
+    expect(requirementFromEquipmentTag(undefined)).toBeNull();
+  });
+});
+
+describe("resolveRequiredEquipment — DB tag precedence over slug", () => {
+  it("uses the DB equipment tag when it implies a machine the slug misses", () => {
+    // rear-delt-fly-machine would fall through to bodyweight_or_generic
+    // on the slug heuristic alone; the DB tag pins it as machine-only.
+    expect(
+      resolveRequiredEquipment({ slug: "rear-delt-fly-machine", equipment: "machine-reverse-pec" }),
+    ).toEqual({ kind: "machine_generic" });
+  });
+
+  it("falls back to slug inference when the DB tag is absent or non-machine", () => {
+    expect(resolveRequiredEquipment({ slug: "lateral-raise-db" })).toEqual({ kind: "dumbbells" });
+    expect(
+      resolveRequiredEquipment({ slug: "lateral-raise-db", equipment: "dumbbells" }),
+    ).toEqual({ kind: "dumbbells" });
+  });
+});
+
+describe("isEquipmentAvailable — machine_generic", () => {
+  it("is satisfied iff the user owns at least one machine", () => {
+    const r: EquipmentRequirement = { kind: "machine_generic" };
+    expect(isEquipmentAvailable(r, COMMERCIAL_GYM_PRESET)).toBe(true);
+    expect(isEquipmentAvailable(r, HOME_GYM_PRESET)).toBe(false);
+    // Travel/hotel ships a cable stack → owns a machine.
+    expect(isEquipmentAvailable(r, TRAVEL_HOTEL_PRESET)).toBe(true);
+    expect(isEquipmentAvailable(r, CUSTOM_EMPTY_PRESET)).toBe(false);
   });
 });
