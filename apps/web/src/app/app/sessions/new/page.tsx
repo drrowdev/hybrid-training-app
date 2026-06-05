@@ -12,7 +12,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
  */
 export default function NewSessionPage() {
   return (
-    <main className="min-h-screen px-6 py-12 max-w-md mx-auto space-y-6">
+    <div className="space-y-6">
       <PageHeader
         back={{ href: "/app", label: "Today" }}
         title="Start workout"
@@ -40,6 +40,6 @@ export default function NewSessionPage() {
           Start workout
         </button>
       </form>
-    </main>
+    </div>
   );
 }

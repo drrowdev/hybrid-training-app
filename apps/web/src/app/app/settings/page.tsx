@@ -80,7 +80,7 @@ export default async function SettingsPage() {
   );
 
   return (
-    <main className="min-h-screen px-6 py-8 max-w-2xl mx-auto space-y-6">
+    <div className="space-y-6">
       <PageHeader title="Settings" />
 
       {/* Mobile-only: Notifications + Quick search. Hidden on desktop
@@ -176,6 +176,6 @@ export default async function SettingsPage() {
           testId="settings-hub-hr-zones"
         />
       </div>
-    </main>
+    </div>
   );
 }

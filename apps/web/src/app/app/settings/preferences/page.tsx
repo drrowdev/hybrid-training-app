@@ -28,7 +28,7 @@ export default async function PreferencesSettingsPage() {
     .maybeSingle();
 
   return (
-    <main className="min-h-screen px-6 py-8 max-w-2xl mx-auto space-y-8">
+    <div className="space-y-8">
       <PageHeader
         back={{ href: "/app/settings", label: "Settings" }}
         title="Preferences"
@@ -112,6 +112,6 @@ export default async function PreferencesSettingsPage() {
           </Link>
         </div>
       </div>
-    </main>
+    </div>
   );
 }

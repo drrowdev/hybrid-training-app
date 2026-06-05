@@ -50,7 +50,7 @@ export default async function EventsSettingsPage() {
     .limit(10);
 
   return (
-    <main className="min-h-screen px-6 py-12 max-w-2xl mx-auto space-y-6">
+    <div className="space-y-6">
       <PageHeader
         back={{ href: "/app/settings", label: "Settings" }}
         title="Events"
@@ -109,7 +109,7 @@ export default async function EventsSettingsPage() {
           </ul>
         </section>
       )}
-    </main>
+    </div>
   );
 }
 
