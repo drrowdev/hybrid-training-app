@@ -7,6 +7,7 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
 import { recomputeActualSessionLoad } from "@/lib/engine/recompute-actual-session-load";
 import { maybeCompleteBlock } from "@/lib/planner/completion";
+import { expandPrescriptionSetItems } from "@/lib/planner/expand-prescription-sets";
 import { getUserTimezone, dayDate } from "@/lib/planner/queries";
 import { roundToPlate } from "@/lib/planner/archetypes";
 import { resolveQuickStrengthPlan } from "@/lib/planner/quick-generate-resolve";
@@ -1932,7 +1933,9 @@ export async function generateQuickStrengthSession(
   // identical to a planned workout. We deliberately do NOT pre-insert set_logs:
   // those would read as already-logged. The user logs each set interactively,
   // and the per-set target weight (%TM × TM) is computed at render time.
-  const prescription: Prescription = { items: plan.items };
+  const prescription: Prescription = {
+    items: expandPrescriptionSetItems(plan.items),
+  };
   const { data: created, error: insErr } = await supabase
     .from("sessions")
     .insert({ user_id: user.id, title: plan.title, prescription })
