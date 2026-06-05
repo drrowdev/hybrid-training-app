@@ -1,9 +1,9 @@
 /**
- * Today-page overdue notice: shown above the day's primary card when
+ * Today-page overdue notice: shown above the day''s primary card when
  * the user has past planned sessions in limbo, hidden otherwise.
  *
- * Asserts the secondary nature of the notice — it's a Link to /app/plan,
- * NOT a primary CTA, so the day's actual session (or rest-day banner)
+ * Asserts the secondary nature of the notice - it''s a Link to /app/plan,
+ * NOT a primary CTA, so the day''s actual session (or rest-day banner)
  * remains the lead action.
  */
 import { describe, it, expect } from "vitest";
@@ -25,17 +25,16 @@ describe("OverdueNotice", () => {
     const html = renderToStaticMarkup(<OverdueNotice count={1} />);
     expect(html).toContain('data-testid="today-overdue-notice"');
     expect(html).toContain('href="/app/plan"');
-    expect(html).toContain("1</strong>");
-    expect(html).toContain("overdue session");
-    expect(html).toContain("review it");
+    expect(html).toContain("1 overdue session");
+    expect(html).toContain("log it or skip");
+    expect(html).toContain("Review");
     // Secondary: no primary-CTA class, no big button shape.
     expect(html).not.toMatch(/cp-btn primary/);
   });
 
   it("uses the plural message when count > 1", () => {
     const html = renderToStaticMarkup(<OverdueNotice count={4} />);
-    expect(html).toContain("4</strong>");
-    expect(html).toContain("overdue sessions");
-    expect(html).toContain("review them");
+    expect(html).toContain("4 overdue sessions");
+    expect(html).toContain("log them or skip");
   });
 });
