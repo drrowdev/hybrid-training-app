@@ -30,6 +30,15 @@ export type EquipmentRequirement =
   | { kind: "dumbbells" }
   | { kind: "kettlebells" }
   | { kind: "machine"; machine: MachineType }
+  /**
+   * A movement tagged as machine-only in the DB `equipment` column whose
+   * specific implement isn't one of the ten tracked `MachineType`s (e.g.
+   * reverse pec deck, pendulum squat, hip abduction/adduction). We can't
+   * map it to a single owned machine, so it's satisfied iff the user owns
+   * *any* machine at all. Better than the legacy slug heuristic, which let
+   * every such movement through regardless of machine ownership.
+   */
+  | { kind: "machine_generic" }
   | { kind: "cable" }
   | { kind: "bands" }
   | { kind: "weighted_vest" }
@@ -171,6 +180,86 @@ export function inferRequiredEquipment(movement: {
 }
 
 /**
+ * Map the authoritative DB `movements.equipment` tag to a hard
+ * machine/cable requirement, taking precedence over the slug heuristic.
+ *
+ * The slug heuristic in `inferRequiredEquipment` only recognises a
+ * handful of machine slugs (leg press / curl / extension / hack /
+ * chest press) and lets every *other* machine movement through as
+ * `bodyweight_or_generic` — so a user with no machines was still being
+ * prescribed reverse pec deck, pendulum squat, hip abduction, etc. The
+ * `equipment` column tags these explicitly (`machine-reverse-pec`,
+ * `machine-pendulum`, `machine-abduction`, …), so we use it as the
+ * source of truth for the machine/cable family.
+ *
+ * Returns `null` (→ caller falls back to slug inference) for:
+ *   - a missing tag,
+ *   - any tag offering a non-machine alternative (`*-or-bw`,
+ *     `*-or-bodyweight`, `bodyweight-or-*`) — those movements have a
+ *     free/bodyweight option and must stay broadly available,
+ *   - any non-machine, non-cable implement (barbell / dumbbell / band /
+ *     bodyweight / cardio gear …), which the slug heuristic already
+ *     handles well.
+ */
+export function requirementFromEquipmentTag(
+  tag: string | null | undefined,
+): EquipmentRequirement | null {
+  if (!tag) return null;
+  const t = tag.toLowerCase();
+
+  // Escape hatch: any movement whose tag offers a bodyweight / free
+  // alternative is never a hard machine requirement.
+  if (
+    t.includes("bodyweight") ||
+    t.includes("or-bw") ||
+    t.includes("bw-or")
+  ) {
+    return null;
+  }
+
+  // Specific machines we can match against the user's tracked inventory.
+  if (t.includes("leg-press")) return { kind: "machine", machine: "leg_press" };
+  if (t.includes("leg-curl")) return { kind: "machine", machine: "leg_curl" };
+  if (t.includes("leg-ext")) return { kind: "machine", machine: "leg_extension" };
+  if (t.includes("hack")) return { kind: "machine", machine: "hack_squat" };
+  if (t.includes("chest-press")) return { kind: "machine", machine: "chest_press" };
+  if (t.includes("smith")) return { kind: "machine", machine: "smith_machine" };
+  if (t.includes("seated-row") || t === "machine-row") {
+    return { kind: "machine", machine: "seated_row" };
+  }
+  if (t.includes("hip-thrust")) return { kind: "machine", machine: "hip_thrust" };
+
+  // Cable stack.
+  if (t === "cable" || t.startsWith("cable-") || t.includes("-cable")) {
+    return { kind: "cable" };
+  }
+
+  // Any other machine-tagged movement — satisfied iff the user owns a
+  // machine of some kind.
+  if (t === "machine" || t.startsWith("machine-") || t.includes("-machine")) {
+    return { kind: "machine_generic" };
+  }
+
+  return null;
+}
+
+/**
+ * Resolve the equipment requirement for a catalog movement, preferring
+ * the authoritative DB `equipment` tag for the machine/cable family and
+ * falling back to the slug heuristic for everything else.
+ */
+export function resolveRequiredEquipment(movement: {
+  slug: string;
+  pattern?: string | null;
+  equipment?: string | null;
+}): EquipmentRequirement {
+  return (
+    requirementFromEquipmentTag(movement.equipment) ??
+    inferRequiredEquipment(movement)
+  );
+}
+
+/**
  * Does the user own / have access to the implement implied by `req`?
  *
  * `bodyweight_or_generic` is always true. Loaded-implement checks read
@@ -198,6 +287,8 @@ export function isEquipmentAvailable(
       return equipment.kettlebells.length > 0;
     case "machine":
       return equipment.machines.includes(req.machine);
+    case "machine_generic":
+      return equipment.machines.length > 0;
     case "cable":
       return equipment.machines.includes("cable_stack");
     case "bands":

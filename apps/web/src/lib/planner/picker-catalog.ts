@@ -28,11 +28,13 @@ export type DbMovement = {
   high_strain_tendon: boolean;
   experience_min: number | null;
   experience_max: number | null;
+  pattern: string;
+  equipment: string | null;
 };
 
 /** Column projection for the picker catalog. */
 export const CATALOG_SELECT =
-  "id, slug, display_name, primary_region, secondary_regions, primary_muscles, secondary_muscles, is_compound, body_weight_loaded, bulletproof_roles, functional_roles, is_supported, eccentric_load_score, stim_to_fatigue_score, high_strain_tendon, experience_min, experience_max";
+  "id, slug, display_name, primary_region, secondary_regions, primary_muscles, secondary_muscles, is_compound, body_weight_loaded, bulletproof_roles, functional_roles, is_supported, eccentric_load_score, stim_to_fatigue_score, high_strain_tendon, experience_min, experience_max, pattern, equipment";
 
 export function toCatalogMovement(m: DbMovement): CatalogMovement {
   return {
@@ -53,6 +55,8 @@ export function toCatalogMovement(m: DbMovement): CatalogMovement {
     highStrainTendon: m.high_strain_tendon,
     experienceMin: m.experience_min ?? 0,
     experienceMax: m.experience_max ?? 4,
+    pattern: m.pattern,
+    equipment: m.equipment,
   };
 }
 
