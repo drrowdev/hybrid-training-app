@@ -44,6 +44,7 @@ import {
   StatsCommandCenter,
   type StatsRangeBucket,
 } from "@/components/stats/StatsCommandCenter";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -159,12 +160,10 @@ export default async function StatsOverviewPage({
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
-      <header>
-        <h1 style={{ fontSize: 28, margin: 0, letterSpacing: "-0.01em" }}>Stats</h1>
-        <p style={{ margin: "4px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-          A command center — read the verdict up top, scan the tiles for detail.
-        </p>
-      </header>
+      <PageHeader
+        title="Stats"
+        subtitle="A command center — read the verdict up top, scan the tiles for detail."
+      />
 
       <StatsCommandCenter
         initialRange={range}

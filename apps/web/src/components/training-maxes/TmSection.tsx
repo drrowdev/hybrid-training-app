@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import Link from "next/link";
 import type { TmRow, TmSourceSet } from "@/lib/training-maxes/queries";
 import { DefaultTmPercentControl } from "./DefaultTmPercentControl";
 import { TmAutoForm } from "./TmAutoForm";
@@ -200,12 +199,6 @@ export function TmSection({
           action={upsertAction}
         />
       </section>
-
-      <div style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
-        <Link href="/app/settings" style={{ color: "var(--cp-link)" }}>
-          ← back to settings
-        </Link>
-      </div>
     </div>
   );
 }

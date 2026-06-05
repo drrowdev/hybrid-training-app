@@ -11,6 +11,7 @@ import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { logBodyweight } from "@/lib/settings/actions";
 import { todayYmd } from "@/lib/dates";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -39,13 +40,11 @@ export default async function BodyweightSettingsPage() {
       data-testid="bodyweight-page"
       className="min-h-screen px-6 py-8 max-w-2xl mx-auto space-y-8"
     >
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Bodyweight</h1>
-        <p className="text-xs text-foreground/60">
-          Log when you weigh — weekly is plenty. Helps the app spot weight
-          drift over time.
-        </p>
-      </header>
+      <PageHeader
+        back={{ href: "/app/settings", label: "Settings" }}
+        title="Bodyweight"
+        subtitle="Log when you weigh — weekly is plenty. Helps the app spot weight drift over time."
+      />
 
       <section className="space-y-3">
         <form

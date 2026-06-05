@@ -26,6 +26,7 @@ import { todayYmd } from "@/lib/dates";
 import { getBlockIndex, type BlockIndexRow } from "@/lib/stats/blocks";
 import { StatusBadge } from "@/components/blocks/StatusBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -48,21 +49,11 @@ export default async function StatsBlocksIndexPage() {
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
-      <header>
-        <Link
-          href="/app/stats"
-          style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
-        >
-          ← stats
-        </Link>
-        <h1 style={{ fontSize: 28, margin: "8px 0 0", letterSpacing: "-0.01em" }}>
-          Block outcomes
-        </h1>
-        <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-          Every block you&apos;ve run — open one to see e1RM progression, adherence, RPE creep,
-          power emphasis outcomes, and wellness during the block.
-        </p>
-      </header>
+      <PageHeader
+        back={{ href: "/app/stats", label: "Stats" }}
+        title="Block outcomes"
+        subtitle="Every block you've run — open one to see e1RM progression, adherence, RPE creep, power emphasis outcomes, and wellness during the block."
+      />
 
       {blocks.length === 0 ? (
         <BlocksEmpty />

@@ -55,6 +55,7 @@ import {
   MovementRangeView,
   type MovementByRange,
 } from "@/components/stats/MovementRangeView";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 type FmtProfile = Parameters<typeof fmtDate>[1];
 
@@ -166,28 +167,17 @@ export default async function MovementDeepDivePage({
   return (
     <div style={{ display: "grid", gap: 18 }} data-testid="stats-movement-page">
       {/* ── A · Header ────────────────────────────────────────────── */}
-      <header data-testid="stats-movement-header">
-        <Link
-          href="/app/stats"
-          style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
-        >
-          ← all stats
-        </Link>
-        <h1
-          style={{ fontSize: 28, margin: "8px 0 0", letterSpacing: "-0.01em" }}
-          data-testid="stats-movement-title"
-        >
-          {movement.display_name}
-        </h1>
-        <div style={{ fontSize: 12, color: "var(--cp-text-muted)", marginTop: 4 }}>
-          {movement.primary_region.replace(/_/g, " ")}
-          {meta?.pattern ? ` · ${meta.pattern.replace(/_/g, " ")}` : ""}
-          {movement.is_compound ? " · compound" : " · isolation"}
-        </div>
-
+      <PageHeader
+        back={{ href: "/app/stats", label: "Stats" }}
+        title={movement.display_name}
+        titleTestId="stats-movement-title"
+        subtitle={`${movement.primary_region.replace(/_/g, " ")}${
+          meta?.pattern ? ` · ${meta.pattern.replace(/_/g, " ")}` : ""
+        }${movement.is_compound ? " · compound" : " · isolation"}`}
+      />
+      <div data-testid="stats-movement-header">
         <div
           style={{
-            marginTop: 14,
             display: "flex",
             alignItems: "baseline",
             gap: 14,
@@ -238,7 +228,7 @@ export default async function MovementDeepDivePage({
           units={units}
           formatProfile={profile}
         />
-      </header>
+      </div>
 
       {isCardio && hrZones && pacePrs && (
         <>

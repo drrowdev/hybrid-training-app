@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { deleteAccount } from "@/lib/auth/delete-account";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export default async function AccountSettingsPage() {
   const supabase = await createClient();
@@ -30,15 +31,12 @@ export default async function AccountSettingsPage() {
 
   return (
     <main className="min-h-screen px-6 py-8 max-w-2xl mx-auto space-y-8">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Account &amp; data
-        </h1>
-        <p className="text-xs text-foreground/50 font-mono">{user.email}</p>
-        <p className="text-xs text-foreground/60">
-          Trash, exports, and account deletion.
-        </p>
-      </header>
+      <PageHeader
+        back={{ href: "/app/settings", label: "Settings" }}
+        title="Account & data"
+        subtitle="Trash, exports, and account deletion."
+      />
+      <p className="text-xs text-foreground/50 font-mono">{user.email}</p>
 
       <div className="space-y-6">
         {/* Trash */}

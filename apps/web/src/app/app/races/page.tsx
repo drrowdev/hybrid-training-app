@@ -16,6 +16,7 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { getUserTimezone } from "@/lib/planner/queries";
 import { todayYmd } from "@/lib/dates";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { EventsClient } from "@/components/events/EventsClient";
 import type { EventRowView } from "@/components/events/types";
 import type {
@@ -81,13 +82,10 @@ export default async function RacesPage() {
       data-testid="races-page"
       style={{ display: "grid", gap: 20, maxWidth: 880, margin: "0 auto" }}
     >
-      <header style={{ display: "grid", gap: 6 }}>
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>Events</h1>
-        <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
-          Races, comps, meets and tests. The planner uses A and B priority
-          events to suggest a taper in the final 14 days.
-        </p>
-      </header>
+      <PageHeader
+        title="Events"
+        subtitle="Races, comps, meets and tests. The planner uses A and B priority events to suggest a taper in the final 14 days."
+      />
 
       {!hasAny ? (
         <EmptyState

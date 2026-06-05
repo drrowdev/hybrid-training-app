@@ -27,6 +27,7 @@ import { segmentSupersetRows } from "@/lib/plan/superset-grouping";
 import { formatPrescriptionItem } from "@/lib/planner/archetypes";
 import { CardioCard } from "./CardioCard";
 import { makeShouldHideHeading } from "@/lib/session/heading-dedup";
+import { BackLink } from "@/components/ui/BackLink";
 
 export type SessionPreviewInput = {
   id: string;
@@ -142,23 +143,7 @@ export function SessionPreviewBody({
             }),
       }}
     >
-      {!isCompact && (
-        <div>
-          <Link
-            href="/app"
-            data-testid="session-preview-back"
-            style={{
-              display: "inline-block",
-              fontSize: 13,
-              color: "var(--cp-text-muted)",
-              textDecoration: "none",
-              padding: "6px 0",
-            }}
-          >
-            ← Back to Today
-          </Link>
-        </div>
-      )}
+      {!isCompact && <BackLink href="/app" label="Today" />}
 
       {!isCompact && (
         <header style={{ display: "flex", flexDirection: "column", gap: 6 }}>

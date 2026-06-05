@@ -3,6 +3,7 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { createPriorityEvent, deletePriorityEvent } from "@/lib/planner/events-actions";
 import { getUserTimezone } from "@/lib/planner/queries";
 import { todayYmd } from "@/lib/dates";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 type EventRow = {
   id: string;
@@ -50,15 +51,11 @@ export default async function EventsSettingsPage() {
 
   return (
     <main className="min-h-screen px-6 py-12 max-w-2xl mx-auto space-y-6">
-      <header>
-        <h1 style={{ fontSize: 28, margin: 0, letterSpacing: "-0.01em" }}>
-          Events
-        </h1>
-        <p style={{ color: "var(--cp-text-muted)", fontSize: 14, margin: "4px 0 0" }}>
-          Races, comps, tests. A-priority events trigger a 14-day taper. B
-          events get a 7-day mini-taper. C events are just logged.
-        </p>
-      </header>
+      <PageHeader
+        back={{ href: "/app/settings", label: "Settings" }}
+        title="Events"
+        subtitle="Races, comps, tests. A-priority events trigger a 14-day taper. B events get a 7-day mini-taper. C events are just logged."
+      />
 
       <section className="cp-card" style={{ padding: 20, display: "grid", gap: 12 }}>
         <h2 style={{ margin: 0, fontSize: 16 }}>Add an event</h2>
