@@ -151,6 +151,13 @@ a { color: var(--cp-link); }
 
 .mono { font-family: var(--cp-font-mono); }
 
+/* Native checkboxes / radios pick up the brand accent everywhere (Tailwind
+   pages otherwise render the browser-default purple). */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--cp-accent);
+}
+
 /* Native form controls — themed so they don't fall back to browser defaults */
 input[type="text"],
 input[type="number"],

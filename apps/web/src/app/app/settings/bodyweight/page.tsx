@@ -36,9 +36,9 @@ export default async function BodyweightSettingsPage() {
     .limit(12);
 
   return (
-    <main
+    <div
       data-testid="bodyweight-page"
-      className="min-h-screen px-6 py-8 max-w-2xl mx-auto space-y-8"
+      className="space-y-8"
     >
       <PageHeader
         back={{ href: "/app/settings", label: "Settings" }}
@@ -99,7 +99,7 @@ export default async function BodyweightSettingsPage() {
           </details>
         )}
       </section>
-    </main>
+    </div>
   );
 }
 
