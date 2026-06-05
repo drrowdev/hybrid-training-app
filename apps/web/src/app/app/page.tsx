@@ -595,7 +595,8 @@ export default async function TodayPage() {
       title: p.title,
       isCardio,
       isStrength: hasStrengthItems,
-      done: !!p.completedSessionId,
+      done: p.completedAt != null,
+      inProgress: !!p.completedSessionId && p.completedAt == null,
       skipped: !!p.skippedAt,
       slot: p.slot,
       items,
@@ -1256,8 +1257,8 @@ function TodaySessionCard({
   // cards drop to the bottom (de-emphasised but still visible).
   const orderedPlannedToday = isTwoADay
     ? [...plannedToday].sort((a, b) => {
-        const aDone = a.completedSessionId ? 1 : 0;
-        const bDone = b.completedSessionId ? 1 : 0;
+        const aDone = a.completedAt != null ? 1 : 0;
+        const bDone = b.completedAt != null ? 1 : 0;
         if (aDone !== bDone) return aDone - bDone;
         // Within same completion bucket: AM before PM.
         const slotOrder = (s: string) => (s === "am" ? 0 : s === "pm" ? 1 : 2);
@@ -1270,10 +1271,10 @@ function TodaySessionCard({
   // minus now-in-user-timezone — falls back to "PM session next" when
   // we can't resolve a clock time.
   const completedAmSlot = isTwoADay
-    ? plannedToday.find((p) => p.slot === "am" && p.completedSessionId)
+    ? plannedToday.find((p) => p.slot === "am" && p.completedAt != null)
     : null;
   const openPmSlot = completedAmSlot
-    ? plannedToday.find((p) => p.slot === "pm" && !p.completedSessionId)
+    ? plannedToday.find((p) => p.slot === "pm" && p.completedAt == null)
     : null;
   const pmHoursFromNow = (() => {
     if (!openPmSlot) return null;
@@ -1585,7 +1586,7 @@ function PlannedSessionCard({
             {slotLabel}
           </span>
         )}
-        {planned.completedSessionId && (
+        {planned.completedAt && (
           <span
             data-testid="slot-complete-badge"
             style={{
