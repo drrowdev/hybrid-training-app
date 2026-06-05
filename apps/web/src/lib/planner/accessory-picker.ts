@@ -488,6 +488,7 @@ export function pickAccessoriesForSession({
       preferSupported: profile.aesthetic.biasSupported && filters.concurrentStressActive,
       // ADR 0027 Lever A — prefer targeted isolation over a redundant compound.
       demoteCompound: true,
+      aestheticEligibleOnly: true,
       variationSeed: seedFor(),
     });
     if (!candidate) {
@@ -627,6 +628,15 @@ type CandidateQuery = {
    */
   demoteCompound?: boolean;
   /**
+   * AESTHETIC pass only. When true, candidates whose movement `pattern`
+   * isn't a hypertrophy-eligible pattern (see `AESTHETIC_ELIGIBLE_PATTERNS`)
+   * are excluded, so cardio / plyometric / Olympic / tendon / carry / drill
+   * movements can never be prescribed as a rep-based muscle-gap filler.
+   * Movements with no `pattern` (legacy fixture catalogs) are never excluded
+   * — keeps existing fixture-driven goldens byte-identical.
+   */
+  aestheticEligibleOnly?: boolean;
+  /**
    * Quick-generate variation (quick-workout path only). When set, the
    * candidate ranking still computes the quality score, but instead of always
    * returning the single best movement, it rotates among the top few
@@ -654,6 +664,12 @@ function findCandidate(query: CandidateQuery): CatalogMovement | null {
     if (query.requiredBulletproofRole && !m.bulletproofRoles.includes(query.requiredBulletproofRole)) continue;
     if (query.requiredFunctionalRole && !m.functionalRoles.includes(query.requiredFunctionalRole)) continue;
     if (query.requiredMuscle && !m.primaryMuscles.includes(query.requiredMuscle)) continue;
+    if (
+      query.aestheticEligibleOnly &&
+      m.pattern != null &&
+      !AESTHETIC_ELIGIBLE_PATTERNS.has(m.pattern)
+    )
+      continue;
     candidates.push(m);
   }
   if (candidates.length === 0) return null;
@@ -677,6 +693,38 @@ function findCandidate(query: CandidateQuery): CatalogMovement | null {
 
 /** How many near-best candidates the quick variation rotates among. */
 const VARIATION_TOP_K = 3;
+
+/**
+ * Movement patterns eligible for the AESTHETIC (hypertrophy muscle-gap)
+ * pass. These are straight-set, rep-based resistance movements you'd
+ * legitimately prescribe at ~8–15 reps to fill a per-muscle volume gap.
+ *
+ * Everything else is excluded from the aesthetic slot — NOT from the
+ * picker entirely — because those patterns reach the prescription through
+ * their own dedicated, correctly-shaped paths:
+ *   - `cardio`               → conditioning, already stripped from the pool.
+ *   - `plyometric`/`olympic` → the power pass (`findPowerCandidate`),
+ *                              prescribed as low-rep explosive work.
+ *   - `tendon`               → the durability floor (heavy isometric / HSR),
+ *                              prescribed as holds / slow tempo.
+ *   - `carry`                → durability / functional (loaded carries are
+ *                              time/distance, not 12-rep hypertrophy).
+ *   - `drill`                → running-form work, never a strength accessory.
+ *
+ * Without this guard the muscle-gap pass — which filters by `primaryMuscles`
+ * alone — could pick e.g. `pogo-hop` (plyo, calves) or `iso-calf-hold`
+ * (tendon) as a "4×12 @ RIR 3" calf filler, the same class of bug as the
+ * "Erg Row — Threshold" cardio leak. See accessory-picker-cardio-machine
+ * + catalog-integrity tests.
+ */
+const AESTHETIC_ELIGIBLE_PATTERNS: ReadonlySet<string> = new Set([
+  "squat",
+  "hinge",
+  "press",
+  "pull",
+  "isolation",
+  "cuff",
+]);
 
 /**
  * Bit-mix a seed into a well-distributed non-negative int (variant of the
