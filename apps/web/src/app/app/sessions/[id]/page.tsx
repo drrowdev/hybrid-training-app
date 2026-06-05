@@ -790,7 +790,7 @@ export default async function SessionDetailPage({
           sessionId={id}
           match={stravaMatch}
           applyAction={applyStravaAutofill}
-          syncAction={async () => syncStravaForSession(id)}
+          syncAction={syncStravaForSession.bind(null, id)}
           lastSyncedAt={stravaLastSyncedAt}
         />
       )}
