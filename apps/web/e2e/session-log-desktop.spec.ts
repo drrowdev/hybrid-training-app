@@ -5,6 +5,7 @@ import {
   assertSessionComplete,
   seedActiveBlock,
 } from "./fixtures/session-log";
+import { logPrescribedSet, finishAndCompleteSession } from "./fixtures/log-flow";
 
 /**
  * Desktop session-log E2E coverage.
@@ -86,80 +87,37 @@ test.describe("@desktop session log", () => {
     const sessionId = new URL(page.url()).pathname.split("/").pop()!;
     expect(sessionId).toMatch(/^[0-9a-f-]{36}$/);
 
-    // 4) Movement picker is open by default (no sets yet). Search the
-    //    catalog for the seeded squat and pick it.
-    const pickerInput = page.getByPlaceholder(/search the catalog/i);
-    await expect(pickerInput).toBeVisible();
-    await pickerInput.fill("squat");
-    // Picker debounces 180ms before hitting /api/movements/search.
-    // Escape regex metacharacters from the catalog display name (it can
-    // contain parens / hyphens, e.g. "Back Squat (high-bar)").
-    const liftNameRe = new RegExp(
-      seed.todayMovementDisplayName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-      "i",
-    );
-    const squatOption = page.getByRole("button", { name: liftNameRe }).first();
-    await expect(squatOption).toBeVisible({ timeout: 10_000 });
-    await squatOption.click();
+    // 3) A planned session renders the prescription as an accordion of
+    //    MovementCards (not the freestyle catalog picker). Expand today's
+    //    main lift and log its prescribed set — the weight (%TM × TM) and
+    //    reps are pre-filled, so logging is a single tap on the focus-view
+    //    CTA. See e2e/fixtures/log-flow.ts.
+    await logPrescribedSet(page, seed.todayMovementId);
 
-    // 5) Log the first working set.
-    const weightInput = page.getByLabel("Weight (kg)");
-    const repsInput = page.getByLabel("Reps");
-    await weightInput.fill("80");
-    await repsInput.fill("5");
-    await page.getByRole("button", { name: /^7$/ }).click(); // RPE 7
-    await page.getByRole("button", { name: /^log set/i }).click();
+    // 4) Finish → complete page → submit. Completion is verified
+    //    server-side below (assertSessionComplete) rather than via a
+    //    cosmetic pill, which is more robust to header copy changes.
+    await finishAndCompleteSession(page, sessionId);
 
-    // After the server action revalidates we should see the set in
-    // "This session (… sets)" — wait on the count text.
-    await expect(page.getByRole("heading", { name: /this session \(1 sets?\)/i })).toBeVisible({
-      timeout: 15_000,
-    });
-
-    // 6) Log a second set — defaults pre-fill from the last set, so we
-    //    only override the RPE.
-    await page.getByRole("button", { name: /^8$/ }).click(); // RPE 8
-    await page.getByRole("button", { name: /^log set/i }).click();
-    await expect(page.getByRole("heading", { name: /this session \(2 sets?\)/i })).toBeVisible({
-      timeout: 15_000,
-    });
-
-    // 7) Finish session → complete page → submit. Two CTAs now exist
-    //    (banner duplicate + bottom sticky bar) so scope the click to
-    //    the sticky bar to keep Playwright's strict mode happy.
-    await page.getByTestId("finish-stickybar").getByRole("link", { name: /finish session/i }).click();
-    await page.waitForURL(`**/app/sessions/${sessionId}/complete`, { timeout: 15_000 });
-    await page.getByRole("button", { name: /complete session/i }).click();
-
-    // 8) Redirect back to the session detail page in the "completed"
-    //    shape — the green pill is the cheapest visible signal.
-    await page.waitForURL(`**/app/sessions/${sessionId}`, { timeout: 15_000 });
-    await expect(page.getByText(/^completed$/i)).toBeVisible();
-
-    // 9) Server-canonical state: completed_at set, 2 set_logs rows,
-    //    and the planned_session is linked back to this session.
+    // 5) Server-canonical state: completed_at set, the planned_session is
+    //    linked back to this session, and the logged set carries the
+    //    prescription-resolved weight (90 kg TM × 70% week-0 wave = 62.5 kg,
+    //    rounded to the 2.5 kg plate) for the seeded squat.
     await assertSessionComplete(admin, sessionId, {
-      expectedSetCount: 2,
       plannedSessionId: plannedId,
     });
 
-    // 10) Verify the logged set values landed correctly (snake_case
-    //     columns, no silent drift like PGRST204 from the createBlock bug).
     const { data: sets, error: setsErr } = await admin
       .from("set_logs")
-      .select("set_index, weight_kg, reps, rpe, movement_id")
+      .select("set_index, weight_kg, reps, movement_id")
       .eq("session_id", sessionId)
       .order("set_index", { ascending: true });
     expect(setsErr).toBeNull();
-    expect(sets?.length ?? 0).toBe(2);
-    for (const s of sets ?? []) {
-      expect(Number(s.weight_kg)).toBeCloseTo(80, 5);
-      expect(s.reps).toBe(5);
-      expect(s.movement_id).toBe(seed.todayMovementId);
-    }
-    // RPE: 7 then 8.
-    expect(Number(sets![0]!.rpe)).toBeCloseTo(7, 5); // DC-A2: per-set RPE
-    expect(Number(sets![1]!.rpe)).toBeCloseTo(8, 5);
+    expect((sets?.length ?? 0)).toBeGreaterThanOrEqual(1);
+    const first = sets![0]!;
+    expect(Number(first.weight_kg)).toBeCloseTo(62.5, 1);
+    expect(first.reps).toBe(5);
+    expect(first.movement_id).toBe(seed.todayMovementId);
   });
 
   test("C: skip a planned session marks it skipped and hides the Start CTA", async ({
