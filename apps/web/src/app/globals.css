@@ -22,7 +22,7 @@
   --cp-success: #16a34a;
   --cp-danger: #dc2626;
   --cp-warning: #d97706;
-  --cp-link: #0078d4;
+  --cp-link: #65a30d;
   /* Modality accents — strength (crimson) / cardio (blue). Used by the
      plan timeline session pills and "this week" rail. Soft variants are
      low-opacity backgrounds; the solid variants are the 2px left-border
@@ -73,7 +73,7 @@ html[data-theme="dark"] {
   --cp-success: #4ade80;
   --cp-danger: #f87171;
   --cp-warning: #fbbf24;
-  --cp-link: #4da6ff;
+  --cp-link: #a3e635;
   --cp-strength: #fd8ea1;
   --cp-strength-soft: rgba(253, 142, 161, 0.14);
   --cp-cardio: #4da6ff;
@@ -110,6 +110,44 @@ html, body {
 button, input, select, textarea { font-family: inherit; color: inherit; }
 
 a { color: var(--cp-link); }
+
+/* Canonical inline text link — accent, quiet until hover. Use for any
+   genuine in-content link or nav action (e.g. "View all →", "Edit"). */
+.cp-link {
+  color: var(--cp-link);
+  text-decoration: none;
+  font-weight: 500;
+  cursor: pointer;
+}
+.cp-link:hover { text-decoration: underline; }
+
+/* Canonical back-link — quiet navigation chrome sitting above a page
+   header. Pair with a leading "←" and the parent's name, e.g. "← Plan".
+   Rendered via the shared <BackLink> component. */
+.cp-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--cp-text-muted);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 10px;
+  transition: color .12s;
+}
+.cp-back-link:hover { color: var(--cp-accent); }
+
+/* Canonical page container — one max-width + responsive padding so every
+   route lines up. Rendered via the shared <PageContainer> / page header. */
+.cp-page {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 28px 24px 96px;
+}
+@media (max-width: 640px) {
+  .cp-page { padding: 18px 16px 96px; }
+}
 
 .mono { font-family: var(--cp-font-mono); }
 
@@ -211,11 +249,11 @@ select option {
  * (not inside a component <style> block) so server and client pages
  * can share one class and stay visually identical. */
 .plan-nav-link {
-  color: var(--cp-link);
+  color: var(--cp-text-muted);
   text-decoration: none;
   font-size: 13px;
 }
-.plan-nav-link:hover { text-decoration: underline; }
+.plan-nav-link:hover { color: var(--cp-accent); }
 
 /* Mobile: enforce minimum 44px tap targets on every interactive control
  * and grow the body font so inputs don't trigger the iOS zoom-to-zoom-in

@@ -21,7 +21,7 @@ export type PlateViewProps = {
 const PLATE_COLORS: Array<{ max: number; bg: string; fg: string }> = [
   { max: 25, bg: "var(--cp-danger)", fg: "var(--cp-accent-fg, #fff)" },
   { max: 20, bg: "var(--cp-warning)", fg: "var(--cp-accent-fg, #111)" },
-  { max: 15, bg: "var(--cp-link)", fg: "var(--cp-accent-fg, #fff)" },
+  { max: 15, bg: "var(--cp-cardio)", fg: "var(--cp-accent-fg, #fff)" },
   { max: 10, bg: "var(--cp-success)", fg: "var(--cp-accent-fg, #fff)" },
   { max: 5, bg: "var(--cp-accent-soft)", fg: "var(--cp-accent)" },
   { max: 2.5, bg: "var(--cp-text-muted)", fg: "var(--cp-bg-elevated)" },
