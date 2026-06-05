@@ -19,6 +19,7 @@ import {
 } from "@/lib/planner/queries";
 import { DeleteBlockMenu } from "@/components/trash/DeleteBlockMenu";
 import { StatusBadge } from "@/components/blocks/StatusBadge";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { groupBlocksByMonth } from "@/lib/plan/history-grouping";
 
 const PAGE_SIZE = 20;
@@ -87,18 +88,11 @@ export default async function PlanHistoryPage({
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      <header>
-        <Link href="/app/plan" className="plan-nav-link">
-          ← Plan
-        </Link>
-        <h1 style={{ fontSize: 28, margin: "8px 0 0", letterSpacing: "-0.01em" }}>
-          Block history
-        </h1>
-        <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-          Every block you&apos;ve run — most recent first. Expand a row to see the planned sessions
-          and jump into anything you logged.
-        </p>
-      </header>
+      <PageHeader
+        back={{ href: "/app/plan", label: "Plan" }}
+        title="Block history"
+        subtitle="Every block you've run — most recent first. Expand a row to see the planned sessions and jump into anything you logged."
+      />
 
       {pageBlocks.length === 0 ? (
         <section

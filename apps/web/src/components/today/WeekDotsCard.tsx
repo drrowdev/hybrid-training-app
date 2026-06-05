@@ -91,7 +91,7 @@ export function WeekDotsCard({
         }}
       >
         <Legend label="Strength" background="var(--cp-accent)" />
-        <Legend label="Cardio" background="var(--cp-link)" />
+        <Legend label="Cardio" background="var(--cp-cardio)" />
         <Legend
           label="Planned"
           background="transparent"
@@ -125,7 +125,7 @@ function Dot({ cell }: { cell: WeekDayCell }) {
         style={{
           ...baseStyle,
           background:
-            "linear-gradient(90deg, var(--cp-accent) 0 50%, var(--cp-link) 50% 100%)",
+            "linear-gradient(90deg, var(--cp-accent) 0 50%, var(--cp-cardio) 50% 100%)",
           color: "#fff",
         }}
       >
@@ -153,7 +153,7 @@ function Dot({ cell }: { cell: WeekDayCell }) {
         title="Cardio"
         style={{
           ...baseStyle,
-          background: "var(--cp-link)",
+          background: "var(--cp-cardio)",
           color: "#fff",
         }}
       >

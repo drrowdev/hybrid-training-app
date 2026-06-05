@@ -89,7 +89,7 @@ function toneVar(tone: Tone): string {
     case "accent":
       return "var(--cp-accent)";
     case "cardio":
-      return "var(--cp-link)";
+      return "var(--cp-cardio)";
     case "muted":
       return "var(--cp-text-muted)";
   }
@@ -595,7 +595,7 @@ function ProofChip({ text, cardio }: { text: string; cardio?: boolean }) {
         borderRadius: 999,
         background: "var(--cp-surface-soft)",
         border: "1px solid var(--cp-border)",
-        color: cardio ? "var(--cp-link)" : "var(--cp-text)",
+        color: cardio ? "var(--cp-cardio)" : "var(--cp-text)",
         fontWeight: 600,
       }}
     >
@@ -966,7 +966,7 @@ function ZoneBars({ zones }: { zones: EnduranceProgress["timeInZone"] }) {
                   width: "100%",
                   height: `${Math.max(h, 2)}%`,
                   borderRadius: "4px 4px 0 0",
-                  background: "var(--cp-link)",
+                  background: "var(--cp-cardio)",
                 }}
               />
               <span style={{ fontSize: 10, color: "var(--cp-text-muted)" }}>{z}</span>
@@ -1106,7 +1106,7 @@ export function EnduranceDrawer({
                             display: "block",
                             height: "100%",
                             width: `${Math.max(mins > 0 ? 3 : 0, pct)}%`,
-                            background: "var(--cp-link)",
+                            background: "var(--cp-cardio)",
                             borderRadius: 4,
                           }}
                         />
@@ -1440,7 +1440,7 @@ function ConsistencyTile({
         right={
           <span style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 11, color: "var(--cp-text-muted)" }}>
             <Legend color="var(--cp-accent)" label="Strength" />
-            <Legend color="var(--cp-link)" label="Cardio" />
+            <Legend color="var(--cp-cardio)" label="Cardio" />
             <Legend dashed label="Planned" />
             {!isEmpty && onExpand != null && (
               <button
@@ -1501,7 +1501,7 @@ function ConsistencyTile({
                           width: "100%",
                           maxWidth: 30,
                           height: `${(w.cardioCount / maxCount) * 100}%`,
-                          background: "var(--cp-link)",
+                          background: "var(--cp-cardio)",
                           borderRadius: w.strengthCount > 0 ? 0 : "5px 5px 0 0",
                         }}
                       />
@@ -1607,7 +1607,7 @@ export function ConsistencyDrawer({
                       <span style={{ height: 9, borderRadius: 2, background: "var(--cp-accent)", width: `${w.strengthCount * 14}px`, maxWidth: 110 }} />
                     )}
                     {w.cardioCount > 0 && (
-                      <span style={{ height: 9, borderRadius: 2, background: "var(--cp-link)", width: `${w.cardioCount * 14}px`, maxWidth: 110 }} />
+                      <span style={{ height: 9, borderRadius: 2, background: "var(--cp-cardio)", width: `${w.cardioCount * 14}px`, maxWidth: 110 }} />
                     )}
                     {done === 0 && (
                       <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>—</span>

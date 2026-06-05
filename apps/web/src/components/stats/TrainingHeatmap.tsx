@@ -38,9 +38,9 @@ function cellBackground(state: CellState): string {
     case "strength":
       return "var(--cp-accent)";
     case "cardio":
-      return "var(--cp-link)";
+      return "var(--cp-cardio)";
     case "both":
-      return "linear-gradient(45deg, var(--cp-accent) 0 50%, var(--cp-link) 50% 100%)";
+      return "linear-gradient(45deg, var(--cp-accent) 0 50%, var(--cp-cardio) 50% 100%)";
     case "rest":
     case "missed":
     case "empty":

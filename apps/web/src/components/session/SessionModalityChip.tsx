@@ -9,7 +9,7 @@
  *
  * Color rules (per the Phase 5 spec):
  *   - mixed_modal  → var(--cp-warning)  (signals "plan recovery")
- *   - skill_focused → var(--cp-link)    (CNS-heavy day)
+ *   - skill_focused → var(--cp-cardio)  (CNS-heavy day)
  *   - everything else → var(--cp-text-muted)
  *
  * Tooltip body is rendered via the native `title` attribute so the
@@ -33,7 +33,7 @@ export function SessionModalityChip({
     modality === "mixed_modal"
       ? "var(--cp-warning)"
       : modality === "skill_focused"
-        ? "var(--cp-link)"
+        ? "var(--cp-cardio)"
         : "var(--cp-text-muted)";
   return (
     <span
