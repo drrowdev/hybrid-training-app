@@ -45,7 +45,7 @@ const SIGNAL_GLYPH: Record<DiagnosticResult["signal"]["kind"], string> = {
 function colourFor(sev: DiagnosticSeverity): string {
   if (sev === "hard") return "var(--cp-danger)";
   if (sev === "soft") return "var(--cp-warning)";
-  return "var(--cp-link)";
+  return "var(--cp-cardio)";
 }
 
 const MAX_VISIBLE = 5;

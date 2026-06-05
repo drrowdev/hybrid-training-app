@@ -26,7 +26,7 @@ describe("SessionModalityChip", () => {
     );
     expect(html).toContain('data-modality="skill_focused"');
     expect(html).toContain("Skill-focused");
-    expect(html).toContain("var(--cp-link)");
+    expect(html).toContain("var(--cp-cardio)");
   });
 
   it("renders the pure-strength pill with the muted color binding", () => {
