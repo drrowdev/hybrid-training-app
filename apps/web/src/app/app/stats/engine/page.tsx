@@ -15,7 +15,6 @@
  * No new engine logic; this surface only reads from helpers in
  * `lib/stats/engine.ts` and the existing region/bucket ledgers.
  */
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { getUserTimezone } from "@/lib/planner/queries";
@@ -41,6 +40,7 @@ import { MiniLine } from "@/components/stats/charts/MiniLine";
 import { PressureMeter, pressureTone } from "@/components/stats/charts/PressureMeter";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { MetricHelp } from "@/components/ui/MetricHelp";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -77,21 +77,12 @@ export default async function EnginePage() {
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
-      <header data-testid="stats-engine-header">
-        <Link
-          href="/app/stats"
-          data-testid="stats-engine-back"
-          style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
-        >
-          ← stats
-        </Link>
-        <h1 style={{ fontSize: 28, margin: "8px 0 0", letterSpacing: "-0.01em" }}>
-          How the planner sees you
-        </h1>
-        <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-          Plain-language explanation of why today&apos;s session is what it is.
-        </p>
-      </header>
+      <PageHeader
+        back={{ href: "/app/stats", label: "Stats" }}
+        title="How the planner sees you"
+        titleTestId="stats-engine-header"
+        subtitle="Plain-language explanation of why today's session is what it is."
+      />
 
       <DecisionTraceCard trace={trace} />
       <RegionFreshnessCard regions={regions} />

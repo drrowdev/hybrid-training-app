@@ -19,6 +19,7 @@
 import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { ALL_MUSCLE_GROUPS, type MuscleGroup } from "@/lib/muscle/muscle-groups";
 import { ActiveLimitationsList } from "@/components/limitations/ActiveLimitationsList";
 import { AddLimitationButton } from "@/components/limitations/AddLimitationButton";
@@ -139,14 +140,10 @@ export default async function InjuriesPage() {
       data-testid="injuries-page"
       style={{ display: "grid", gap: 24, maxWidth: 880, margin: "0 auto" }}
     >
-      <header style={{ display: "grid", gap: 6 }}>
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>Limitations</h1>
-        <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
-          Flag an injury or other restriction; the engine will cap or rotate
-          around the affected muscles and movements so you can keep training
-          around the issue.
-        </p>
-      </header>
+      <PageHeader
+        title="Limitations"
+        subtitle="Flag an injury or other restriction; the engine will cap or rotate around the affected muscles and movements so you can keep training around the issue."
+      />
 
       {limitationOffer && (
         <LimitationResponseCard

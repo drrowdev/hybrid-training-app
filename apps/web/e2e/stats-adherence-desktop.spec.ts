@@ -112,8 +112,8 @@ test.describe("@desktop /app/stats/adherence", () => {
     await page.waitForLoadState("networkidle");
     await expect(page).toHaveURL(/\/app\/stats\/adherence$/);
 
-    // ── Footer links ────────────────────────────────────────────
-    await expect(page.getByTestId("stats-adherence-overview-link")).toBeVisible();
+    // ── Nav: top back-link → Stats overview; footer → block outcomes ──
+    await expect(page.getByTestId("back-link")).toBeVisible();
     await expect(page.getByTestId("stats-adherence-blocks-link")).toBeVisible();
     await page.getByTestId("stats-adherence-blocks-link").click();
     await expect(page).toHaveURL(/\/app\/stats\/blocks$/);

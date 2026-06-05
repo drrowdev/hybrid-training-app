@@ -25,6 +25,8 @@ export type PageHeaderProps = {
   actions?: ReactNode;
   /** Quiet back-link rendered above the eyebrow. */
   back?: { href: string; label: string };
+  /** Optional data-testid applied to the <h1> (preserve a page's old heading testid). */
+  titleTestId?: string;
 };
 
 export function PageHeader({
@@ -33,6 +35,7 @@ export function PageHeader({
   subtitle,
   actions,
   back,
+  titleTestId,
 }: PageHeaderProps): ReactElement {
   return (
     <header style={{ marginBottom: 24 }} data-testid="page-header">
@@ -61,6 +64,7 @@ export function PageHeader({
             </div>
           )}
           <h1
+            data-testid={titleTestId}
             style={{
               margin: 0,
               fontSize: 28,

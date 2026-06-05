@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { createCustomBlock } from "@/lib/planner/actions";
@@ -6,6 +5,7 @@ import { updateProfile } from "@/lib/settings/actions";
 import { todayYmd } from "@/lib/planner/queries";
 import { getTrainingMaxContext } from "@/lib/training-maxes/queries";
 import { CustomBlockBuilder } from "@/components/planner/CustomBlockBuilder";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export default async function NewCustomBlockPage() {
   const supabase = await createClient();
@@ -28,17 +28,11 @@ export default async function NewCustomBlockPage() {
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      <header>
-        <Link href="/app/plan/new" style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}>
-          ← plan presets
-        </Link>
-        <h1 style={{ fontSize: 28, margin: "8px 0 0", letterSpacing: "-0.01em" }}>Build a custom block</h1>
-        <p style={{ margin: "6px 0 0", color: "var(--cp-text-muted)", fontSize: 14 }}>
-          Pick your block length, intensity wave, and what happens on each day.
-          Strength days use whichever variant you&apos;ve set a TM for. The same prescription
-          pipeline as the curated presets generates the planned sessions.
-        </p>
-      </header>
+      <PageHeader
+        back={{ href: "/app/plan/new", label: "Plan presets" }}
+        title="Build a custom block"
+        subtitle="Pick your block length, intensity wave, and what happens on each day. Strength days use whichever variant you've set a TM for. The same prescription pipeline as the curated presets generates the planned sessions."
+      />
 
       <CustomBlockBuilder
         defaultStartedOn={todayYmd(timezone)}

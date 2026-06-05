@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { editCardio } from "@/lib/sessions/actions";
@@ -6,6 +5,7 @@ import {
   EditCardioForm,
   type EditCardioMode,
 } from "@/components/session/EditCardioForm";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export default async function EditCardioPage({
   params,
@@ -74,15 +74,11 @@ export default async function EditCardioPage({
 
   return (
     <main className="min-h-screen px-6 py-8 max-w-md mx-auto space-y-6">
-      <header className="space-y-1">
-        <Link href={`/app/sessions/${id}`} className="text-xs text-foreground/50 hover:text-foreground">
-          ← back to session
-        </Link>
-        <h1 className="text-2xl font-semibold tracking-tight" data-testid="edit-cardio-heading">
-          Edit cardio session
-        </h1>
-        <p className="text-sm text-foreground/60">{movement?.display_name ?? block.modality}</p>
-      </header>
+      <PageHeader
+        back={{ href: `/app/sessions/${id}`, label: "Workout" }}
+        title={<span data-testid="edit-cardio-heading">Edit cardio session</span>}
+        subtitle={movement?.display_name ?? block.modality}
+      />
 
       <EditCardioForm
         sessionId={id}

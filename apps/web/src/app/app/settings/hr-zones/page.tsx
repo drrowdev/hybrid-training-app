@@ -12,6 +12,7 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { HrZonesSettings } from "@/components/settings/HrZonesSettings";
 import { readIntake } from "@/lib/profile/intake";
 import type { HrMethod } from "@/lib/stats/hr-zones";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -54,20 +55,11 @@ export default async function HrZonesSettingsPage() {
         padding: "24px 16px",
       }}
     >
-      <header>
-        <h1 style={{ fontSize: 24, margin: 0, letterSpacing: "-0.01em" }}>HR zones</h1>
-        <p
-          style={{
-            margin: "6px 0 0",
-            fontSize: 13,
-            color: "var(--cp-text-muted)",
-            lineHeight: 1.5,
-          }}
-        >
-          Configure how Z1–Z5 are derived for the Time-in-HR-zones card and
-          for any session classifier that uses HR. Changes auto-save.
-        </p>
-      </header>
+      <PageHeader
+        back={{ href: "/app/settings", label: "Settings" }}
+        title="HR zones"
+        subtitle="Configure how Z1–Z5 are derived for the Time-in-HR-zones card and for any session classifier that uses HR. Changes auto-save."
+      />
 
       <HrZonesSettings initial={initial} age={age} />
     </main>

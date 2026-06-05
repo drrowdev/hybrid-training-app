@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { DeleteSessionButton } from "@/components/trash/DeleteSessionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { formatDate } from "@/lib/format/datetime";
 
 export default async function SessionsListPage() {
@@ -30,25 +31,25 @@ export default async function SessionsListPage() {
 
   return (
     <main className="min-h-screen px-6 py-8 max-w-2xl mx-auto space-y-6">
-      <header className="space-y-1">
-        <Link
-          href="/app"
-          className="text-xs text-foreground/50 hover:text-foreground"
-        >
-          ← back
-        </Link>
-        <div className="flex items-baseline justify-between gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Sessions <span className="text-base text-foreground/50 font-normal">({sessions?.length ?? 0})</span>
-          </h1>
+      <PageHeader
+        back={{ href: "/app", label: "Today" }}
+        title={
+          <>
+            Sessions{" "}
+            <span className="text-base text-foreground/50 font-normal">
+              ({sessions?.length ?? 0})
+            </span>
+          </>
+        }
+        actions={
           <Link
             href="/app/sessions/new"
             className="rounded-md bg-foreground text-background px-3 py-1.5 text-sm font-medium hover:opacity-90"
           >
             New
           </Link>
-        </div>
-      </header>
+        }
+      />
 
       {(!sessions || sessions.length === 0) && (
         <EmptyState

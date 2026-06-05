@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { completeSession } from "@/lib/sessions/actions";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 export default async function CompleteSessionPage({
   params,
@@ -37,18 +37,11 @@ export default async function CompleteSessionPage({
 
   return (
     <main className="min-h-screen px-6 py-12 max-w-md mx-auto space-y-6">
-      <header className="space-y-1">
-        <Link
-          href={`/app/sessions/${id}`}
-          className="text-xs text-foreground/50 hover:text-foreground"
-        >
-          ← back to session
-        </Link>
-        <h1 className="text-2xl font-semibold tracking-tight">Finish session</h1>
-        <p className="text-sm text-foreground/60">
-          {setCount ?? 0} sets · {cardioCount ?? 0} cardio blocks
-        </p>
-      </header>
+      <PageHeader
+        back={{ href: `/app/sessions/${id}`, label: "Workout" }}
+        title="Finish session"
+        subtitle={`${setCount ?? 0} sets · ${cardioCount ?? 0} cardio blocks`}
+      />
 
       <div className="rounded-lg border border-foreground/15 bg-foreground/[0.02] p-4 text-sm text-foreground/70">
         Session RPE and duration are computed automatically from your logged

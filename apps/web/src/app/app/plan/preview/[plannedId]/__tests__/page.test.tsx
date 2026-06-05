@@ -106,9 +106,9 @@ describe("SessionPreviewBody (static markup)", () => {
     const html = renderToStaticMarkup(
       React.createElement(SessionPreviewBody, { session: fixture() }),
     );
-    expect(html).toContain('data-testid="session-preview-back"');
+    expect(html).toContain('data-testid="back-link"');
     expect(html).toContain('href="/app"');
-    expect(html).toContain("Back to Today");
+    expect(html).toContain("Today");
   });
 
   it("renders prescription rows for movement sets and accessories", () => {
