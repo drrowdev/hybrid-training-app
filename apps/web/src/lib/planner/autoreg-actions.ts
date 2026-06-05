@@ -17,11 +17,6 @@ export type AcceptAutoregResult =
   | { ok: true; sessions: number; scale: number }
   | { ok: false; error: string };
 
-/** Form-friendly wrapper (Next form actions require Promise<void>). */
-export async function acceptVolumeAutoreg(): Promise<void> {
-  await acceptVolumeAutoregResult();
-}
-
 /**
  * Stamp the offered `autoregVolumeScale` onto the user's CURRENT-week
  * un-started sessions. Re-derives the band + scale server-side from live
