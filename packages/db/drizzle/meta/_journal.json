@@ -617,6 +617,13 @@
       "when": 1783454400000,
       "tag": "0087_sessions_prescription",
       "breakpoints": false
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1783540800000,
+      "tag": "0088_tag_accessory_roles_v2",
+      "breakpoints": false
     }
   ]
 }
