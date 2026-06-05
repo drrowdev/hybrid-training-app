@@ -11,18 +11,31 @@ import { getActiveBlockRemainingSessions } from "@/lib/planner/remaining-session
 import {
   autoregScaleForBand,
   hasDiscretionaryVolume,
+  previewAutoregTrim,
+  type AutoregTrimChange,
 } from "@/lib/planner/autoreg-volume";
+
+/** Per-session breakdown of the accessory sets a trim would drop. */
+export type AutoregSessionPreview = {
+  sessionId: string;
+  title: string;
+  drops: AutoregTrimChange[];
+};
 
 export type VolumeAutoregOffer = {
   blockId: string;
   band: "over" | "way-over";
   bandLabel: string;
   scale: number;
+  /** Whole-percent "keep" fraction (e.g. 66) for display. */
+  keepPct: number;
   pct: number;
   actual: number;
   prescribed: number;
   /** Number of current-week un-started sessions the trim would apply to. */
   sessionCount: number;
+  /** Exactly which accessory sets get trimmed, per remaining session. */
+  preview: AutoregSessionPreview[];
 };
 
 export async function getVolumeAutoregOffer(): Promise<VolumeAutoregOffer | null> {
@@ -49,14 +62,22 @@ export async function getVolumeAutoregOffer(): Promise<VolumeAutoregOffer | null
   );
   if (targets.length === 0) return null;
 
+  const preview: AutoregSessionPreview[] = targets.map((s) => ({
+    sessionId: s.id,
+    title: s.title,
+    drops: previewAutoregTrim(s.prescription, scale),
+  }));
+
   return {
     blockId: active.blockId,
     band: util.strength.band as "over" | "way-over",
     bandLabel: util.strength.bandLabel,
     scale,
+    keepPct: Math.round(scale * 100),
     pct: util.strength.pct,
     actual: util.strength.actual,
     prescribed: util.strength.prescribed,
     sessionCount: targets.length,
+    preview,
   };
 }
