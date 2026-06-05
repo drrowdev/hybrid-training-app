@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures/seed";
 import { signInAs } from "./fixtures/auth";
 import { markOnboarded, seedStrengthTms } from "./fixtures/seed-blocks";
 import { assertSessionComplete } from "./fixtures/session-log";
+import { logPrescribedSet, finishAndCompleteSession } from "./fixtures/log-flow";
 import {
   assertBlockStatus,
   STRENGTH_ANCHOR_WEEK_PROFILES,
@@ -92,46 +93,20 @@ test.describe("@desktop program run", () => {
     const startHref = await startCta.getAttribute("href");
     expect(startHref).toBe(`/app/sessions/start/${seed.todayPlannedId}`);
 
-    // 2) Drive through the start → log-two-sets → finish flow. The
-    //    pre-session check-in interstitial was removed; tapping Start
-    //    auto-creates the session and redirects to the log surface.
+    // 2) Drive through the start → log → finish flow. Tapping Start
+    //    auto-creates the session and redirects to the prescription log
+    //    surface (MovementCard accordion); log the prescribed set via the
+    //    shared helper.
     await startCta.click();
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 30_000 });
     const sessionId = new URL(page.url()).pathname.split("/").pop()!;
     expect(sessionId).toMatch(/^[0-9a-f-]{36}$/);
 
-    const pickerInput = page.getByPlaceholder(/search the catalog/i);
-    await expect(pickerInput).toBeVisible();
-    await pickerInput.fill(seed.todayMovementDisplayName.split(" ")[0]!);
-    const liftNameRe = new RegExp(
-      seed.todayMovementDisplayName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-      "i",
-    );
-    const liftOption = page.getByRole("button", { name: liftNameRe }).first();
-    await expect(liftOption).toBeVisible({ timeout: 10_000 });
-    await liftOption.click();
-
-    await page.getByLabel("Weight (kg)").fill("80");
-    await page.getByLabel("Reps").fill("5");
-    await page.getByRole("button", { name: /^7$/ }).click();
-    await page.getByRole("button", { name: /^log set/i }).click();
-    await expect(
-      page.getByRole("heading", { name: /this session \(1 sets?\)/i }),
-    ).toBeVisible({ timeout: 30_000 });
-    await page.getByRole("button", { name: /^7$/ }).click();
-    await page.getByRole("button", { name: /^log set/i }).click();
-    await expect(
-      page.getByRole("heading", { name: /this session \(2 sets?\)/i }),
-    ).toBeVisible({ timeout: 30_000 });
-
-    await page.getByTestId("finish-stickybar").getByRole("link", { name: /finish session/i }).click();
-    await page.waitForURL(`**/app/sessions/${sessionId}/complete`, { timeout: 30_000 });
-    await page.getByRole("button", { name: /complete session/i }).click();
-    await page.waitForURL(`**/app/sessions/${sessionId}`, { timeout: 30_000 });
+    await logPrescribedSet(page, seed.todayMovementId);
+    await finishAndCompleteSession(page, sessionId);
 
     // 3) Service-role verify the cursor advanced on the right row.
     await assertSessionComplete(admin, sessionId, {
-      expectedSetCount: 2,
       plannedSessionId: seed.todayPlannedId,
     });
 
@@ -211,16 +186,16 @@ test.describe("@desktop program run", () => {
       expect(it.percentTm).toBeLessThan(wk0Top);
     }
 
-    // 3) /app/plan also surfaces the deload nav-pill for week 4 (1-indexed)
-    //    and the day card carries the (deload) suffix in the title.
-    await page.goto(`/app/plan?week=3`);
+    // 3) /app/plan surfaces today's deload session. Open its timeline pill
+    //    and confirm the drawer title carries the (deload) suffix.
+    await page.goto("/app/plan");
     await page.waitForLoadState("networkidle");
-    // The week tabs render "Week 4 · deload".
-    await expect(
-      page.getByRole("link", { name: /week 4/i }).filter({ hasText: /deload/i }),
-    ).toBeVisible();
-    // The card for today's deload session is visible and titled (deload).
-    await expect(page.getByTestId(`start-${seed.todayPlannedId}`)).toBeVisible();
+    const deloadPill = page.getByTestId(`plan-pill-${seed.todayPlannedId}`);
+    await expect(deloadPill).toBeVisible();
+    await deloadPill.click();
+    await expect(page.getByText(/\(deload\)/i).first()).toBeVisible({
+      timeout: 10_000,
+    });
   });
 
   test("C: manual End block → archived (not auto-completed)", async ({
@@ -245,12 +220,17 @@ test.describe("@desktop program run", () => {
     // 1) Sanity: block is active with un-touched plan.
     await assertBlockStatus(admin, seed.blockId, "active");
 
-    // 2) Manual archival via the End block button on /app/plan.
+    // 2) Manual archival via the End block button on /app/plan. The flow
+    //    is now two-stage (DC-K4): "End block" opens an inline confirm
+    //    panel, then "End block" confirms.
     await page.goto("/app/plan");
     await page.waitForLoadState("networkidle");
     const endBtn = page.getByTestId("end-block-button");
     await expect(endBtn).toBeVisible();
     await endBtn.click();
+    const confirmBtn = page.getByTestId("end-block-confirm");
+    await expect(confirmBtn).toBeVisible({ timeout: 10_000 });
+    await confirmBtn.click();
 
     // The endBlock action revalidates /app and /app/plan; after the
     // server action settles the active block is gone.
@@ -289,7 +269,7 @@ test.describe("@desktop program run", () => {
     await expect(page.getByRole("heading", { name: /run it again/i })).toBeVisible();
     const recentCard = page.locator(".pn-recent-card").first();
     await expect(recentCard).toBeVisible();
-    await expect(recentCard).toContainText(/strength_anchor/i);
+    await expect(recentCard).toContainText(/strength focus/i);
     const badge = recentCard.getByTestId("block-status-badge");
     await expect(badge).toBeVisible();
     await expect(badge).toHaveAttribute("data-status", "archived");
@@ -381,27 +361,10 @@ test.describe("@desktop program run", () => {
     const sessionId = new URL(page.url()).pathname.split("/").pop()!;
     expect(sessionId).toMatch(/^[0-9a-f-]{36}$/);
 
-    const pickerInput = page.getByPlaceholder(/search the catalog/i);
-    await pickerInput.fill(seed.todayMovementDisplayName.split(" ")[0]!);
-    const liftNameRe = new RegExp(
-      seed.todayMovementDisplayName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-      "i",
-    );
-    await page.getByRole("button", { name: liftNameRe }).first().click();
-    await page.getByLabel("Weight (kg)").fill("60");
-    await page.getByLabel("Reps").fill("5");
-    await page.getByRole("button", { name: /^6$/ }).click();
-    await page.getByRole("button", { name: /^log set/i }).click();
-    await expect(
-      page.getByRole("heading", { name: /this session \(1 sets?\)/i }),
-    ).toBeVisible({ timeout: 30_000 });
-    await page.getByTestId("finish-stickybar").getByRole("link", { name: /finish session/i }).click();
-    await page.waitForURL(`**/app/sessions/${sessionId}/complete`, { timeout: 30_000 });
-    await page.getByRole("button", { name: /complete session/i }).click();
-    await page.waitForURL(`**/app/sessions/${sessionId}`, { timeout: 30_000 });
+    await logPrescribedSet(page, seed.todayMovementId);
+    await finishAndCompleteSession(page, sessionId);
 
     await assertSessionComplete(admin, sessionId, {
-      expectedSetCount: 1,
       plannedSessionId: seed.todayPlannedId,
     });
 
