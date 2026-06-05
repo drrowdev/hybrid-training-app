@@ -1264,7 +1264,7 @@ export async function applyStravaAutofill(
   const { data: srcRaw, error: srcErr } = await supabase
     .from("cardio_logs")
     .select(
-      "id, modality, duration_sec, distance_km, avg_hr_bpm, max_hr_bpm, avg_pace_sec_per_km, rpe, strava_activity_id, external_source, sessions!inner(user_id, deleted_at)",
+      "id, session_id, modality, duration_sec, distance_km, avg_hr_bpm, max_hr_bpm, avg_pace_sec_per_km, rpe, notes, strava_activity_id, external_source, sessions!inner(user_id, deleted_at)",
     )
     .eq("id", parsed.data.cardioLogId)
     .eq("external_source", "strava")
@@ -1276,6 +1276,7 @@ export async function applyStravaAutofill(
 
   const src = srcRaw as {
     id: string;
+    session_id: string;
     modality: string;
     duration_sec: number;
     distance_km: number | string | null;
@@ -1283,6 +1284,7 @@ export async function applyStravaAutofill(
     max_hr_bpm: number | null;
     avg_pace_sec_per_km: number | null;
     rpe: number | string | null;
+    notes: string | null;
     strava_activity_id: string | null;
     external_source: string | null;
   };
@@ -1311,35 +1313,78 @@ export async function applyStravaAutofill(
   const hasUnloggedStrength =
     hasStrengthPrescribed && (setsLoggedCount ?? 0) === 0;
 
-  // review-208 #1 alignment — upsert on (session_id, block_index=0)
-  // instead of inserting a new row. The cardio log form writes to the
-  // same (session_id, 0) slot, so the user pressing "Use" on the
-  // Strava banner AFTER having entered manual values in the form
-  // updates one row instead of producing a confusing duplicate. Ad-hoc
-  // extra cardio blocks (added via "+ add cardio block") use higher
-  // indices and a different code path, so they are untouched.
-  const { data: inserted, error: insErr } = await supabase
+  // One Strava activity = exactly one `cardio_logs` row (enforced by
+  // `cardio_logs_strava_unique`). So "Use" RE-PARENTS the matched row onto
+  // this session instead of copying it — a copy would duplicate the unique
+  // `strava_activity_id` and fail. The source row lives on a standalone
+  // import session that Strava sync created (`write-activity.ts`); once the
+  // cardio is moved that session is an empty orphan, retired below.
+  const sourceSessionId = src.session_id;
+
+  // Idempotent: the activity is already attached to this session (e.g. the
+  // user pressed "Use" twice).
+  if (sourceSessionId === parsed.data.sessionId) {
+    return { ok: true, cardioLogId: src.id };
+  }
+
+  // Clear this session's (session, block_index=0) slot first so the move
+  // doesn't collide with the `cardio_logs_session_block_unique` index. This
+  // preserves the previous upsert-replace semantics: a manual cardio entry
+  // the user typed into slot 0 is replaced by the authoritative Strava row.
+  // Ad-hoc extra cardio blocks use higher indices and are untouched.
+  const { error: delErr } = await supabase
     .from("cardio_logs")
-    .upsert(
-      {
-        session_id: parsed.data.sessionId,
-        block_index: 0,
-        modality: src.modality,
-        duration_sec: src.duration_sec,
-        distance_km: src.distance_km,
-        avg_hr_bpm: src.avg_hr_bpm,
-        max_hr_bpm: src.max_hr_bpm,
-        avg_pace_sec_per_km: src.avg_pace_sec_per_km,
-        rpe: src.rpe,
-        strava_activity_id: src.strava_activity_id,
-        external_source: src.external_source,
-        notes: "Autofilled from Strava",
-      },
-      { onConflict: "session_id,block_index" },
-    )
-    .select("id")
-    .maybeSingle();
-  if (insErr) return { error: insErr.message };
+    .delete()
+    .eq("session_id", parsed.data.sessionId)
+    .eq("block_index", 0)
+    .neq("id", src.id);
+  if (delErr) return { error: delErr.message };
+
+  // Move the activity onto this session at slot 0. Preserves
+  // strava_activity_id, hr_zones, HR / distance / pace — no data loss, no
+  // duplicate id. Keep the Strava description if present, else mark provenance.
+  const { error: moveErr } = await supabase
+    .from("cardio_logs")
+    .update({
+      session_id: parsed.data.sessionId,
+      block_index: 0,
+      notes: src.notes ?? "Autofilled from Strava",
+    })
+    .eq("id", src.id);
+  if (moveErr) return { error: moveErr.message };
+
+  // Retire the now-empty import session. First re-point any planned-session
+  // completion link (the separate `classifyAndLinkExternalCardio` auto-link
+  // path may have pointed a `cardio_external` day at it) to this session so
+  // the plan still shows completion and no `completed_session_id` dangles at
+  // a trashed row. Best-effort: the activity is already correctly moved, so
+  // a cleanup failure must not fail the whole "Use".
+  await supabase
+    .from("planned_sessions")
+    .update({ completed_session_id: parsed.data.sessionId })
+    .eq("completed_session_id", sourceSessionId)
+    .eq("user_id", user.id);
+
+  // Soft-delete the import session only when it has no remaining child rows
+  // (it shouldn't — it held this single imported cardio). This removes the
+  // duplicate empty cardio workout from history.
+  const [{ count: remainingCardio }, { count: remainingSets }] = await Promise.all([
+    supabase
+      .from("cardio_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", sourceSessionId),
+    supabase
+      .from("set_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", sourceSessionId),
+  ]);
+  if ((remainingCardio ?? 0) === 0 && (remainingSets ?? 0) === 0) {
+    await supabase
+      .from("sessions")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", sourceSessionId)
+      .eq("user_id", user.id);
+  }
 
   // Mirror `logCardioSession`: only flip the session to completed when
   // the hybrid-completion guard allows it. For pure-cardio sessions
@@ -1362,7 +1407,10 @@ export async function applyStravaAutofill(
   }
 
   revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
-  return { ok: true, cardioLogId: inserted?.id };
+  revalidatePath(`/app/sessions/${sourceSessionId}`);
+  revalidatePath("/app");
+  revalidatePath("/app/history");
+  return { ok: true, cardioLogId: src.id };
 }
 
 const finishStravaAppliedSchema = z.object({
