@@ -406,33 +406,68 @@ test.describe("@desktop session log", () => {
     await page.goto(`/app/sessions/start/${seed.todayPlannedId}`);
     // Pre-session interstitial removed — auto-redirects to the session log.
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 15_000 });
+    const sessionId = new URL(page.url()).pathname.split("/").pop()!;
 
-    // Strava banner is visible — within window + cardio modality. This is
-    // the core intent of this scenario ("banner appears for a recent
-    // activity"), and the regression guard for the server-component crash
-    // fixed alongside this test: the page passed an inline closure as the
-    // banner's `syncAction`, which Next refuses to serialise to a Client
-    // Component → the whole session page 500'd for any Strava-connected
-    // user. It now binds the `syncStravaForSession` server action.
+    // Strava banner is visible — within window + cardio modality. The banner
+    // mounting at all is also the regression guard for the server-component
+    // crash fixed alongside this test: the page passed an inline closure as
+    // the banner's `syncAction`, which Next refuses to serialise to a Client
+    // Component → the whole session page 500'd for any Strava-connected user.
+    // It now binds the `syncStravaForSession` server action.
     const banner = page.getByTestId("strava-autofill");
     await expect(banner).toBeVisible({ timeout: 10_000 });
     await expect(banner).toHaveAttribute("data-state", "match");
     await expect(banner).toContainText(/bike/i);
     await expect(banner).toContainText(/45 min/i);
 
-    // The "Use" affordance renders for a matched activity.
-    await expect(banner.getByTestId("strava-autofill-use")).toBeVisible();
+    // Apply the autofill.
+    await banner.getByTestId("strava-autofill-use").click();
+    await expect(banner).toHaveAttribute("data-state", "applied", { timeout: 10_000 });
 
-    // NOTE: the full "Use" → cardio_logs persistence path is deliberately
-    // NOT asserted here. `applyStravaAutofill` upserts a NEW cardio_logs row
-    // copying the matched activity's `strava_activity_id`, which violates the
-    // global `cardio_logs_strava_unique (strava_activity_id)` constraint
-    // whenever the match is a real imported row (every production case —
-    // Strava sync writes a standalone session + cardio_log holding that id).
-    // Fixing it requires a product decision on the apply semantics
-    // (re-parent the existing row + retire the orphan import session, vs
-    // link-without-copy), so it's tracked separately rather than asserted
-    // against current broken behaviour.
+    // `applyStravaAutofill` RE-PARENTS the matched cardio_logs row onto this
+    // session rather than copying it (a copy would duplicate the globally
+    // unique strava_activity_id). So there is still exactly ONE row for the
+    // activity, now living on the in-progress session at block_index 0.
+    await expect
+      .poll(
+        async () => {
+          const { data } = await admin
+            .from("cardio_logs")
+            .select("session_id, block_index, modality, duration_sec, distance_km, avg_hr_bpm, external_source")
+            .eq("strava_activity_id", "9999001");
+          return data?.length ?? 0;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(1);
+    const { data: moved } = await admin
+      .from("cardio_logs")
+      .select("session_id, block_index, modality, duration_sec, distance_km, avg_hr_bpm, external_source")
+      .eq("strava_activity_id", "9999001")
+      .maybeSingle();
+    expect(moved?.session_id).toBe(sessionId);
+    expect(moved?.block_index).toBe(0);
+    expect(moved?.modality).toBe("bike");
+    expect(moved?.duration_sec).toBe(2700);
+    expect(Number(moved?.distance_km)).toBeCloseTo(18.4, 2);
+    expect(moved?.avg_hr_bpm).toBe(138);
+    expect(moved?.external_source).toBe("strava");
+
+    // The now-empty standalone import session is soft-deleted (retired from
+    // history) rather than left as a duplicate empty cardio workout.
+    await expect
+      .poll(
+        async () => {
+          const { data } = await admin
+            .from("sessions")
+            .select("deleted_at")
+            .eq("id", stravaSession!.id)
+            .maybeSingle();
+          return data?.deleted_at != null;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(true);
   });
 
   test("G: feat/logging-works — prescription click prefills, ✓ appears, banner + edit link render", async ({
