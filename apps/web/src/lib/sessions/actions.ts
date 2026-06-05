@@ -1921,9 +1921,13 @@ export async function generateQuickStrengthSession(
   if (!user) redirect("/login");
 
   const tz = await getUserTimezone();
+  // Fresh per-generate seed so each "Generate" rotates the main lift + accessory
+  // picks (deterministic given the seed; varies per click). See ADR 0029.
+  const variationSeed = Math.floor(Math.random() * 1_000_000);
   const plan = await resolveQuickStrengthPlan(supabase, user.id, {
     length: parsed.data.length,
     tz,
+    seed: variationSeed,
   });
   if (!plan.ok) throw new Error(plan.error);
 

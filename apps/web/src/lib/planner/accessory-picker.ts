@@ -254,6 +254,7 @@ export function pickAccessoriesForSession({
   equipment,
   experience = null,
   compoundCoverageCredit,
+  variationSeed,
 }: {
   profile: AccessoryProfile;
   /** Deload scalar from the week profile (e.g. 0.5 on deload weeks). */
@@ -306,6 +307,13 @@ export function pickAccessoriesForSession({
    * `synergist-credit.ts`.
    */
   compoundCoverageCredit?: Map<string, number>;
+  /**
+   * Quick-generate variation seed (quick-workout path only). Forwarded to each
+   * `findCandidate` call (offset per slot so different gaps rotate
+   * independently) so consecutive quick generations vary. `undefined` (every
+   * planned-block caller) keeps the deterministic best-pick — byte-identical.
+   */
+  variationSeed?: number;
 }): AccessoryPick[] {
   const equipmentFiltered = equipment
     ? catalog.filter((m) => isEquipmentAvailable(inferRequiredEquipment(m), equipment))
@@ -329,6 +337,13 @@ export function pickAccessoriesForSession({
   const workingCatalog = filterForExperienceTier(equipmentFiltered, experience);
   const picks: AccessoryPick[] = [];
   const usedThisSession = new Set<string>();
+
+  // Quick-generate variation: hand each `findCandidate` a distinct seed
+  // (base + running cursor) so different slots rotate independently. Returns
+  // `undefined` for every planned-block caller → deterministic best pick.
+  let variationCursor = 0;
+  const seedFor = (): number | undefined =>
+    variationSeed == null ? undefined : variationSeed + variationCursor++;
 
   const durFloor = effectiveDurabilityFloor(profile, filters.tendinopathyActive);
   const durabilityProgress = countBulletproofRoles(weekAccessoryHistory);
@@ -356,6 +371,7 @@ export function pickAccessoriesForSession({
       requiredBulletproofRole: role,
       filters,
       usedThisSession,
+      variationSeed: seedFor(),
     });
     if (!candidate) continue;
     // No user-facing rationale string — the movement's display name (e.g.
@@ -381,6 +397,7 @@ export function pickAccessoriesForSession({
       requiredFunctionalRole: role,
       filters,
       usedThisSession,
+      variationSeed: seedFor(),
     });
     if (!candidate) continue;
     // No user-facing rationale string — see note above.
@@ -448,6 +465,7 @@ export function pickAccessoriesForSession({
       preferSupported: profile.aesthetic.biasSupported && filters.concurrentStressActive,
       // ADR 0027 Lever A — prefer targeted isolation over a redundant compound.
       demoteCompound: true,
+      variationSeed: seedFor(),
     });
     if (!candidate) {
       // No catalog match for this muscle — mark it satisfied so we don't loop forever.
@@ -585,6 +603,15 @@ type CandidateQuery = {
    * are correct there).
    */
   demoteCompound?: boolean;
+  /**
+   * Quick-generate variation (quick-workout path only). When set, the
+   * candidate ranking still computes the quality score, but instead of always
+   * returning the single best movement, it rotates among the top few
+   * near-best candidates by this seed — so two consecutive quick generations
+   * differ without dropping below comparable quality. `undefined` (every
+   * planned-block caller) returns the deterministic best pick — byte-identical.
+   */
+  variationSeed?: number;
 };
 
 function findCandidate(query: CandidateQuery): CatalogMovement | null {
@@ -608,13 +635,37 @@ function findCandidate(query: CandidateQuery): CatalogMovement | null {
   }
   if (candidates.length === 0) return null;
 
-  // Rank: lower score = better.
-  candidates.sort((a, b) => {
-    const sa = candidateScore(a, query);
-    const sb = candidateScore(b, query);
-    return sa - sb;
-  });
-  return candidates[0] ?? null;
+  // Rank: lower score = better. Stable sort preserves catalog order on ties,
+  // so the unseeded pick is byte-identical to the pre-variation behaviour.
+  candidates.sort((a, b) => candidateScore(a, query) - candidateScore(b, query));
+
+  // Deterministic path (every planned-block caller): the single best pick.
+  if (query.variationSeed == null) return candidates[0] ?? null;
+
+  // Quick-generate variation: rotate among the top-K near-best candidates so
+  // consecutive generations differ while staying within comparable quality.
+  // The seed is bit-mixed (not used additively) so a per-slot cursor doesn't
+  // collapse the variation to a single uniform shift — neighbouring base seeds
+  // map to genuinely different rotations rather than the same offset.
+  const k = Math.min(VARIATION_TOP_K, candidates.length);
+  const pickIdx = mixSeed(query.variationSeed) % k;
+  return candidates[pickIdx] ?? candidates[0] ?? null;
+}
+
+/** How many near-best candidates the quick variation rotates among. */
+const VARIATION_TOP_K = 3;
+
+/**
+ * Bit-mix a seed into a well-distributed non-negative int (variant of the
+ * splitmix32 finalizer). Ensures additively-adjacent seeds (e.g. base + a
+ * per-slot cursor) produce uncorrelated rotations instead of a uniform shift.
+ */
+function mixSeed(seed: number): number {
+  let x = seed | 0;
+  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b);
+  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b);
+  x = x ^ (x >>> 16);
+  return x < 0 ? x + 0x100000000 : x;
 }
 
 /**
