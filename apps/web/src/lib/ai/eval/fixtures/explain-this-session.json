@@ -1,0 +1,16 @@
+{
+  "id": "explain-this-session",
+  "name": "explain-this-session",
+  "synthetic": true,
+  "synthetic_note": "Synthetic — pending real recording against system.v2. Regenerate via refresh mode against a real provider key. Expected tool-call: getSessionDetail with the in-context sessionId. Anti-paraphrase guard: the answer must SYNTHESISE across generationContext (plan phase + a readiness/performance factor) rather than restate a single per-movement reason — hence the `wave` (loading-wave / plan position) and `fresh` (readiness) substring rules.",
+  "promptHash": "32c073fd8abd2c26112176dcf87dc816be6e8fe30587a636f4715491a47f73b0",
+  "input": "Why is this workout programmed the way it is?",
+  "matchers": {
+    "shape": { "text": "string", "tool_calls": "array" },
+    "elementRules": [
+      { "path": "tool_calls", "mustContain": "getSessionDetail", "minLength": 1 },
+      { "path": "text", "mustContain": "wave" },
+      { "path": "text", "mustContain": "fresh" }
+    ]
+  }
+}

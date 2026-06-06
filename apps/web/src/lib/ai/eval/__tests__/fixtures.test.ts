@@ -22,6 +22,7 @@ const FIXTURE_IDS = [
   "knee-pain-suggestion",
   "compare-blocks",
   "no-data-question",
+  "explain-this-session",
 ] as const;
 
 async function loadFixture(id: string): Promise<EvalFixture & {
