@@ -136,6 +136,11 @@ export function MetricHelp({
     fontWeight: 400,
     lineHeight: 1.45,
     textAlign: "left",
+    // Reset inherited typographic transforms — the popover is often nested
+    // inside an uppercased, letter-spaced section divider, and we don't want
+    // the explanatory copy rendered in all-caps.
+    textTransform: "none",
+    letterSpacing: "normal",
     boxShadow: "var(--cp-shadow, 0 8px 24px rgba(0, 0, 0, 0.18))",
     zIndex: 50,
     pointerEvents: open ? "auto" : "none",

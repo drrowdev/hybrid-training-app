@@ -52,6 +52,17 @@ export type QuickLength = "short" | "normal";
 export const SHORT_CAP_MIN = 30;
 export const NORMAL_CAP_MIN = 60;
 
+/**
+ * Minimum accessories a SHORT quick session keeps, even if the conservative
+ * duration estimate nudges slightly past the cap. A heavy barbell main eats
+ * most of a 30-minute budget, and the estimator charges full rest on every set
+ * (including the last of each item), so the trim would otherwise strip the
+ * session down to a single accessory — too bare to feel like a real workout.
+ * Keeping a main + two accessories yields a proper mini-session (~30–35 min).
+ */
+// heuristic — practitioner time budgets (CP-1), no calibration data
+export const SHORT_MIN_ACCESSORIES = 2;
+
 export function durationCapMinutes(length: QuickLength): number {
   return length === "short" ? SHORT_CAP_MIN : NORMAL_CAP_MIN;
 }
@@ -249,22 +260,37 @@ export function assembleQuickStrengthItems(
     params.variationSeed,
   );
 
-  return trimToDurationCap(items, durationCapMinutes(params.length));
+  return trimToDurationCap(
+    items,
+    durationCapMinutes(params.length),
+    params.length === "short" ? SHORT_MIN_ACCESSORIES : 0,
+  );
 }
 
 /**
  * Drop trailing accessory items until the estimated session duration fits the
  * cap (or no trimmable accessory remains). Non-accessory items (main, warmup,
  * tendon, cardio) are never removed.
+ *
+ * `minAccessories` is a floor the trim won't cross: once the session is down to
+ * that many accessories it stops, even if still over the cap. This keeps a
+ * short session from collapsing to a single accessory when a heavy main lift
+ * dominates the (deliberately conservative) duration estimate.
  */
 export function trimToDurationCap(
   items: PrescriptionItem[],
   capMinutes: number,
+  minAccessories = 0,
 ): PrescriptionItem[] {
   const out = [...items];
   // Guard against pathological loops: at most one pass per accessory item.
   let guard = out.length + 1;
   while (guard-- > 0) {
+    const accessoryCount = out.reduce(
+      (n, it) => (it.kind === "accessory" ? n + 1 : n),
+      0,
+    );
+    if (accessoryCount <= minAccessories) break; // hold the floor
     const est = estimateSessionMinutes(out);
     if (est == null || est <= capMinutes) break;
     const lastAccessoryIdx = findLastIndex(
