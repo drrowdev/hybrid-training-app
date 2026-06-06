@@ -1,0 +1,9 @@
+{
+  "promptHash": "32c073fd8abd2c26112176dcf87dc816be6e8fe30587a636f4715491a47f73b0",
+  "provider": "anthropic",
+  "response": {
+    "text": "You're in your second loading wave, about two weeks out from a deload, so today's main lift sits at a submaximal training max — heavy enough to build strength but light enough to keep fatigue in check before the back-off week. The accessories fill what the squat leaves: the carry is low-fatigue grip and trunk durability, and the curl adds direct biceps volume because you set biceps as a focus and your pulls under-train it. Your legs read fresh after yesterday's rest, which is why today leans into the squat pattern rather than backing it off.",
+    "tool_calls": ["getSessionDetail"]
+  },
+  "usage": { "input_tokens": 2100, "output_tokens": 132 }
+}
