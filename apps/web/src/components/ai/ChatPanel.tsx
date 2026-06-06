@@ -166,6 +166,9 @@ export function ChatPanel({
     async (textArg?: string, contextSessionId?: string) => {
       const text = (textArg ?? input).trim();
       if (!text || sending) return;
+      // A seeded / chip send carries the session context; remember it so the
+      // follow-up chips show and subsequent sends keep re-supplying it.
+      if (contextSessionId) setContextSessionId(contextSessionId);
       // Only clear the composer for a normal composer send; a seeded send
       // carries its own text and must not wipe whatever the user typed.
       if (textArg === undefined) setInput("");
@@ -248,7 +251,6 @@ export function ChatPanel({
   useEffect(() => {
     if (!seed || lastSeedRef.current === seed) return;
     lastSeedRef.current = seed;
-    if (seed.sessionId) setContextSessionId(seed.sessionId);
     void send(seed.prompt, seed.sessionId);
   }, [seed, send]);
 
