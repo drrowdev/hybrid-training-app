@@ -216,7 +216,7 @@ function DeepDiveLinks() {
           key={l.href}
           href={l.href}
           data-testid="stats-deep-dive"
-          style={{ color: "var(--cp-link)", textDecoration: "none" }}
+          className="cp-link"
         >
           {l.label} →
         </Link>

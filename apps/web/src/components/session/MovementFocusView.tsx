@@ -657,10 +657,8 @@ export function MovementFocusView({
             }}
           >
             <summary
+              className="cp-link"
               style={{
-                cursor: "pointer",
-                color: "var(--cp-link)",
-                textDecoration: "underline",
                 fontSize: 11,
               }}
             >
@@ -740,7 +738,7 @@ export function MovementFocusView({
             >
               <a
                 href="/app/settings/equipment"
-                style={{ color: "var(--cp-link)", textDecoration: "underline" }}
+                className="cp-link"
               >
                 Set up plate inventory →
               </a>

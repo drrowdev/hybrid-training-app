@@ -106,11 +106,10 @@ export function EmptyState({
         <Link
           href={action.href}
           data-testid="empty-state-action"
+          className="cp-link"
           style={{
             marginTop: isCard ? 6 : 2,
             fontSize: isCard ? 13 : 12,
-            color: "var(--cp-accent, var(--cp-link))",
-            textDecoration: "none",
             fontWeight: 600,
           }}
         >

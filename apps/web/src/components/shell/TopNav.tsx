@@ -14,8 +14,8 @@
  * over. The header itself stays sticky for the safe-area inset and
  * the brand link remains in the DOM for screen-readers.
  *
- * Inline styles only — global `a { color: var(--cp-link) }` would otherwise
- * paint every link blue and we don't want that here.
+ * Inline styles only — the global `a { color: var(--cp-text-muted) }` rule
+ * would otherwise repaint these links and we don't want that here.
  */
 
 import Link from "next/link";

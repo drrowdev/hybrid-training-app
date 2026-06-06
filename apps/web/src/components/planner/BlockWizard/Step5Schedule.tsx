@@ -166,7 +166,7 @@ export function Step5Schedule({
               e.preventDefault();
               handleResetDefaults();
             }}
-            style={prefNoteLinkStyle}
+            className="cp-link"
           >
             Reset to defaults
           </a>
@@ -194,7 +194,7 @@ export function Step5Schedule({
               e.preventDefault();
               handleResetDefaults();
             }}
-            style={prefNoteLinkStyle}
+            className="cp-link"
           >
             Reset to defaults
           </a>
@@ -442,9 +442,4 @@ const prefNoteStyle: React.CSSProperties = {
   marginBottom: 0,
   fontSize: 11,
   color: "var(--cp-text-muted)",
-};
-
-const prefNoteLinkStyle: React.CSSProperties = {
-  color: "var(--cp-link)",
-  textDecoration: "none",
 };

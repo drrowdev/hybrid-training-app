@@ -41,10 +41,9 @@ function StravaLink({ activityId }: { activityId: string }) {
       rel="noopener noreferrer"
       aria-label="View activity on Strava"
       data-testid="cardio-pace-pr-strava-link"
+      className="cp-link"
       style={{
         fontSize: 11,
-        color: "var(--cp-accent, var(--cp-link))",
-        textDecoration: "none",
         marginLeft: 4,
       }}
     >
