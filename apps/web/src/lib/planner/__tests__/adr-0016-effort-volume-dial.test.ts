@@ -145,12 +145,13 @@ describe("ADR 0016 effort axis — hypertrophy compound dial", () => {
     }
   });
 
-  it("week 3 (deload): dial is a no-op (high == low == standard)", () => {
+  it("deload week: dial is a no-op (high == low == standard)", () => {
     const day = firstStrengthDay(HYPERTROPHY_ANCHOR);
+    const deloadWk = HYPERTROPHY_ANCHOR.weekProfiles.find((w) => w.intensityLabel === "Deload")!.weekIndex;
     const mk = (p: EffortPreference) =>
       buildPrescription(
         HYPERTROPHY_ANCHOR,
-        3,
+        deloadWk,
         day,
         PRIMARY,
         undefined,

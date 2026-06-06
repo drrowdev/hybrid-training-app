@@ -342,7 +342,8 @@ const BASE_MATRIX: Record<AccessoryBucket, Record<MatrixArchetype, BaseEntry>> =
 
 /**
  * Per-week distance prescription for loaded carries, in metres.
- * Index 0..3 maps to week 1..4 of the standard 4-week wave.
+ * Index 0..2 maps to the three wave positions; index 3 is the deload
+ * (ADR 0030 — selected by the explicit deload flag, not an absolute index).
  *
  * Sources:
  *   - McGill 2014 — loaded carries train trunk endurance under load;
@@ -443,10 +444,23 @@ function cueFor(
  * Plyometric items ignore the RIR modifier — they're cued by intent,
  * not by proximity to failure (Behm & Sale 1993).
  */
-function weekRirOffset(weekIndex: number): number {
-  if (weekIndex === 0) return 1;
-  if (weekIndex === 3) return 2;
-  return 0;
+/**
+ * Wave-relative week role. The loading wave is 3 weeks; a standard block runs
+ * one or more waves (ADR 0030) then a single deload. `weekRirOffset` shapes
+ * the RIR by position WITHIN the wave (so a repeated wave shapes identically),
+ * and the deload is signalled explicitly by the caller rather than inferred
+ * from an absolute index.
+ *   - wave position 0 — ramp (lighter / introductory): +1 RIR
+ *   - wave position 1/2 — build / push: +0
+ *   - deload: +2 RIR; isometric holds drop to 60% duration.
+ * The main lift already provides the heavy stimulus; we don't compete with it
+ * on accessories (Israetel volume-landmark wave).
+ */
+const ACCESSORY_WAVE_LENGTH = 3;
+
+function weekRirOffset(weekIndex: number, isDeload: boolean): number {
+  if (isDeload) return 2;
+  return weekIndex % ACCESSORY_WAVE_LENGTH === 0 ? 1 : 0;
 }
 
 function clampRir(r: number): number {
@@ -470,12 +484,20 @@ export function accessoryIntensity(args: {
   archetype: ArchetypeId;
   bucket: AccessoryBucket;
   weekIndex: number;
+  /**
+   * True on the block's volume-led deload week. Defaults to the legacy
+   * single-wave convention (`weekIndex === 3`) so existing callers and unit
+   * tests stay byte-identical; multi-wave callers (ADR 0030) pass it
+   * explicitly because the deload is no longer at a fixed index.
+   */
+  isDeload?: boolean;
 }): AccessoryIntensity {
   const archetype: MatrixArchetype =
     args.archetype === "custom" ? "strength_anchor" : args.archetype;
   const bucket = args.bucket;
   const base = BASE_MATRIX[bucket][archetype];
-  const offset = weekRirOffset(args.weekIndex);
+  const isDeload = args.isDeload ?? args.weekIndex === 3;
+  const offset = weekRirOffset(args.weekIndex, isDeload);
   const cue = cueFor(bucket, archetype);
 
   const out: AccessoryIntensity = { intensityCue: cue };
@@ -487,10 +509,12 @@ export function accessoryIntensity(args: {
   }
 
   if (bucket === "carry") {
-    // Distance-based prescription — McGill 2014 + practitioner
-    // consensus. Week index is clamped into the matrix range so
-    // 5+ week experiments don't crash.
-    const idx = Math.max(0, Math.min(3, args.weekIndex));
+    // Distance-based prescription — McGill 2014 + practitioner consensus.
+    // Build weeks read the escalating wave distances (wave-relative 0..2);
+    // the deload reads the reduced final-row distance.
+    const idx = isDeload
+      ? CARRY_DISTANCE_MATRIX[archetype].length - 1
+      : Math.min(ACCESSORY_WAVE_LENGTH - 1, args.weekIndex % ACCESSORY_WAVE_LENGTH);
     const row = CARRY_DISTANCE_MATRIX[archetype][idx];
     if (row) out.distanceM = { ...row };
     return out;
@@ -498,8 +522,8 @@ export function accessoryIntensity(args: {
 
   if (bucket === "isometric") {
     if (base.hold) {
-      if (args.weekIndex === 3) {
-        // Week 4 (deload): drop hold time to 60% of base (rounded).
+      if (isDeload) {
+        // Deload: drop hold time to 60% of base (rounded).
         out.holdSec = {
           min: Math.max(5, Math.round(base.hold.min * 0.6)),
           max: Math.max(5, Math.round(base.hold.max * 0.6)),
