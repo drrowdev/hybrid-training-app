@@ -106,7 +106,12 @@ const outputSchema = z.object({
 
 const inputSchema = z
   .object({
-    sessionId: z.string().min(1).describe("The session id to explain."),
+    sessionId: z
+      .string()
+      .min(1)
+      .describe(
+        "The session id to explain. Accepts a completed/in-progress session id, or a planned-session id for a not-yet-started workout.",
+      ),
   })
   .strict();
 
@@ -126,7 +131,7 @@ function emptyContext(): Output["generationContext"] {
 export const getSessionDetail: Tool<Input, Output> = {
   name: "getSessionDetail",
   description:
-    "Returns full detail for one of the user's workout sessions — its prescribed movements with the engine's per-movement reason, plus the generation context (athlete profile, goal/focus, plan phase, performance, readiness) that shaped it. Use this to explain WHY a session is programmed as it is.",
+    "Returns full detail for one of the user's workout sessions — its prescribed movements with the engine's per-movement reason, plus the generation context (athlete profile, goal/focus, plan phase, performance, readiness) that shaped it. Accepts a completed/in-progress session id OR a planned-session id for a not-yet-started workout. Use this to explain WHY a session is programmed as it is.",
   inputSchema,
   outputSchema,
   async handler(input, ctx) {
