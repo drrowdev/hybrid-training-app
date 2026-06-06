@@ -292,6 +292,7 @@ export function AddToWorkout({
                 setError(null);
                 setMode("cardio");
               }}
+              className="cp-link"
               style={switchLinkStyle}
             >
               + Add cardio instead
@@ -358,6 +359,7 @@ export function AddToWorkout({
                 setError(null);
                 setMode("strength");
               }}
+              className="cp-link"
               style={switchLinkStyle}
             >
               + Add strength instead
@@ -416,10 +418,8 @@ const switchLinkStyle: React.CSSProperties = {
   justifySelf: "start",
   background: "transparent",
   border: "none",
-  color: "var(--cp-link)",
   fontSize: 12,
   fontWeight: 500,
   fontFamily: "inherit",
-  cursor: "pointer",
   padding: "2px 0",
 };

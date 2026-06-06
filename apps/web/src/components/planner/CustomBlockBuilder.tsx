@@ -567,7 +567,7 @@ export function CustomBlockBuilder({
       )}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-        <Link href="/app/plan/new" style={{ fontSize: 13, color: "var(--cp-link)", textDecoration: "none" }}>
+        <Link href="/app/plan/new" className="cp-link" style={{ fontSize: 13 }}>
           ← back to presets
         </Link>
         <button type="submit" className="cp-btn primary big" disabled={!isReady || isPending}>

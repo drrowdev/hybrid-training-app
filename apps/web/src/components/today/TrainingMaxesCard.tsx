@@ -33,10 +33,9 @@ export function TrainingMaxesCard({ rows }: { rows: TmRow[] }) {
         </h4>
         <Link
           href="/app/settings"
+          className="cp-link"
           style={{
             fontSize: 12,
-            color: "var(--cp-link)",
-            textDecoration: "none",
             fontWeight: 500,
           }}
         >
@@ -55,7 +54,7 @@ export function TrainingMaxesCard({ rows }: { rows: TmRow[] }) {
           No training maxes set yet.{" "}
           <Link
             href="/app/settings"
-            style={{ color: "var(--cp-link)" }}
+            className="cp-link"
           >
             Set them →
           </Link>
