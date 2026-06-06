@@ -51,6 +51,9 @@ import { VolumeAutoregCard } from "@/components/plan/VolumeAutoregCard";
 import { getDeloadSkipOffer } from "@/lib/planner/deload-skip-offer";
 import { acceptDeloadSkip } from "@/lib/planner/deload-skip-actions";
 import { DeloadSkipCard } from "@/components/plan/DeloadSkipCard";
+import { getEarlyDeloadRecommendation } from "@/lib/planner/early-deload-offer";
+import { acceptEarlyDeload } from "@/lib/planner/early-deload-actions";
+import { EarlyDeloadCard } from "@/components/plan/EarlyDeloadCard";
 import { getLimitationResponseOffer } from "@/lib/limitations/offer";
 import { applyLimitationResponse } from "@/lib/limitations/actions";
 import { LimitationResponseCard } from "@/components/limitations/LimitationResponseCard";
@@ -279,10 +282,11 @@ export default async function PlanPage({
   // ADR 0013 / 0014 — mid-block adaptive offers. Both read-only here;
   // the accept actions re-derive server-side before writing. Null when
   // nothing applies (no over-budget signal / no offending limitation).
-  const [autoregOffer, limitationOffer, deloadSkipOffer] = await Promise.all([
+  const [autoregOffer, limitationOffer, deloadSkipOffer, earlyDeloadReco] = await Promise.all([
     getVolumeAutoregOffer(),
     getLimitationResponseOffer(),
     getDeloadSkipOffer(),
+    getEarlyDeloadRecommendation(),
   ]);
 
   return (
@@ -296,6 +300,9 @@ export default async function PlanPage({
       )}
       {autoregOffer && (
         <VolumeAutoregCard offer={autoregOffer} applyAction={acceptVolumeAutoregResult} />
+      )}
+      {earlyDeloadReco && (
+        <EarlyDeloadCard reco={earlyDeloadReco} applyAction={acceptEarlyDeload} />
       )}
       {deloadSkipOffer && (
         <DeloadSkipCard offer={deloadSkipOffer} applyAction={acceptDeloadSkip} />
