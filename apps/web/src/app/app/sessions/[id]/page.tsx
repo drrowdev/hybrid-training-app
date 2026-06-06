@@ -1282,12 +1282,11 @@ export default async function SessionDetailPage({
                         <Link
                           href={`/app/sessions/${id}/cardio/${c.id}/edit`}
                           data-testid={`cardio-prescription-edit-${c.id}`}
+                          className="cp-link"
                           style={{
                             fontSize: 11,
                             fontWeight: 500,
-                            color: "var(--cp-link)",
                             lineHeight: 1,
-                            textDecoration: "none",
                           }}
                         >
                           edit
@@ -1298,13 +1297,12 @@ export default async function SessionDetailPage({
                           <button
                             type="submit"
                             data-testid={`cardio-prescription-delete-${c.id}`}
+                            className="cp-link"
                             style={{
                               fontSize: 11,
                               fontWeight: 500,
                               background: "transparent",
                               border: "none",
-                              color: "var(--cp-link)",
-                              cursor: "pointer",
                               padding: 0,
                               lineHeight: 1,
                               font: "inherit",

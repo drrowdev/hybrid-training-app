@@ -64,12 +64,11 @@ export function TmSourceDetail({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls={`tm-source-detail-body-${row.id}`}
+        className="cp-link"
         style={{
           background: "transparent",
           border: "none",
           padding: 0,
-          color: "var(--cp-link)",
-          cursor: "pointer",
           fontSize: 12,
           fontWeight: 500,
         }}
@@ -100,7 +99,7 @@ export function TmSourceDetail({
               <span style={{ color: "var(--cp-text-muted)" }}>Source set · </span>
               <Link
                 href={`/app/sessions/${sourceSet.sessionId}`}
-                style={{ color: "var(--cp-link)", textDecoration: "none" }}
+                className="cp-link"
               >
                 <span className="mono" style={{ color: "var(--cp-text)" }}>
                   {fmtNum(sourceSet.weightKg)} kg × {fmtNum(sourceSet.reps)}
