@@ -20,7 +20,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { clearByoaiKey as clearVault, storeByoaiKey as storeVault } from "./vault";
-import { setKeySchema } from "./schema";
+import { setKeySchema, setModelSchema } from "./schema";
+import { isKnownModel, type ProviderName } from "./models";
+
+function isProviderName(v: unknown): v is ProviderName {
+  return v === "anthropic" || v === "openai" || v === "gemini";
+}
 
 export type AiActionResult =
   | { ok: true }
@@ -150,6 +155,48 @@ export async function setByoaiKey(
     action: isRotate ? "rotate" : "set",
     provider: parsed.data.provider,
   });
+
+  revalidatePath("/app/settings/ai");
+  return { ok: true };
+}
+
+/**
+ * Persist the user's chosen model. Validated against the curated catalogue for
+ * the user's currently-configured provider — an unknown id (or a model that
+ * doesn't belong to their provider) is rejected, so the picker can only store a
+ * model the resolver will actually use.
+ */
+export async function setByoaiModel(model: string): Promise<AiActionResult> {
+  const parsed = setModelSchema.safeParse({ model });
+  if (!parsed.success) {
+    return { ok: false, errors: parsed.error.issues.map((i) => i.message) };
+  }
+
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) redirect("/login");
+
+  const supabase = await createClient();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("byoai_provider")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const provider = profile?.byoai_provider as ProviderName | null | undefined;
+  if (!provider || !isProviderName(provider)) {
+    return { ok: false, errors: ["Configure a provider and API key first."] };
+  }
+  if (!isKnownModel(provider, parsed.data.model)) {
+    return { ok: false, errors: ["That model isn't available for your provider."] };
+  }
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ byoai_model: parsed.data.model })
+    .eq("id", user.id);
+  if (error) return { ok: false, errors: [error.message] };
 
   revalidatePath("/app/settings/ai");
   return { ok: true };
