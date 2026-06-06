@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { AiSettingsPanel } from "@/components/settings/AiSettingsPanel";
+import { AiBenefits } from "@/components/settings/AiBenefits";
 import { PageHeader } from "@/components/ui/PageHeader";
 
 export const dynamic = "force-dynamic";
@@ -67,6 +68,8 @@ export default async function AiSettingsPage() {
         back={{ href: "/app/settings", label: "Settings" }}
         title="AI"
       />
+
+      <AiBenefits />
 
       <AiSettingsPanel
         initialProvider={provider}
