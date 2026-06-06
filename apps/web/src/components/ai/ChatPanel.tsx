@@ -380,7 +380,7 @@ export function ChatPanel({
                   }
                 }}
                 placeholder="Why is my ceiling compressed this week?"
-                rows={2}
+                rows={3}
                 data-testid="ai-chat-input"
                 disabled={sending}
               />
@@ -576,6 +576,7 @@ export function ChatPanel({
         .cp-ai-composer textarea {
           flex: 1;
           min-width: 0;
+          min-height: 60px;
           resize: none;
           border: 1px solid var(--cp-border);
           border-radius: 10px;

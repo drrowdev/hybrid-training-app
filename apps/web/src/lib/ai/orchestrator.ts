@@ -220,6 +220,7 @@ function messagesTokenCount(messages: LlmMessage[]): number {
   let n = 0;
   for (const m of messages) {
     if (m.role === "tool") n += approxTokens(JSON.stringify(m.result));
+    else if ("toolCalls" in m) n += approxTokens(JSON.stringify(m.toolCalls));
     else n += approxTokens(m.content);
   }
   return n;
@@ -375,11 +376,27 @@ export async function runChatTurn(
         break;
       }
 
-      for (const tc of pending) {
-        if (toolCallsThisTurn >= MAX_TOOL_CALLS_PER_TURN) {
-          capExhausted = true;
-          break;
-        }
+      // Respect the per-turn cap: only satisfy as many calls as remain.
+      const remaining = MAX_TOOL_CALLS_PER_TURN - toolCallsThisTurn;
+      const toSatisfy = pending.slice(0, Math.max(0, remaining));
+      if (toSatisfy.length < pending.length) capExhausted = true;
+      if (toSatisfy.length === 0) break;
+
+      // Record the assistant's tool-call turn BEFORE the results. Providers
+      // (Anthropic / OpenAI / Gemini) all reject a tool result that isn't
+      // preceded by the matching assistant tool_use/tool_calls turn (400 →
+      // surfaced to the user as "bad input"). This was the bug that made the
+      // chat error right after the first "let me pull up the details" reply.
+      messages.push({
+        role: "assistant",
+        toolCalls: toSatisfy.map((tc) => ({
+          id: tc.id,
+          name: tc.name,
+          args: tc.args,
+        })),
+      });
+
+      for (const tc of toSatisfy) {
         toolCallsThisTurn++;
         toolCallsInThisAttempt++;
         const tool = toolsByName.get(tc.name);

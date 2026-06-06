@@ -13,10 +13,12 @@
  * another. Keep this list current as providers rotate models.
  *
  * Verification: the Anthropic ids were confirmed against the live /v1/models
- * endpoint (Opus 4.8 / Sonnet 4.6 / Haiku 4.5 are the current generation).
- * The OpenAI / Gemini ids match the app's existing provider defaults but were
- * not live-probed (no key for those providers on hand) — revisit when adding
- * a non-Anthropic key.
+ * endpoint (Opus 4.8 / Sonnet 4.6 / Haiku 4.5 are the current generation). The
+ * OpenAI ids (GPT-5.5 flagship, GPT-5.4 mini) and Gemini ids (Gemini 3.5 Flash
+ * — the documented stable id — and 3.5 Pro) were confirmed against each
+ * provider's official model docs (June 2026); both OpenAI ids are documented as
+ * supporting Chat Completions + function calling + streaming, which the app's
+ * providers use. Keep this list current as providers rotate models.
  */
 export type ProviderName = "anthropic" | "openai" | "gemini";
 
@@ -34,20 +36,20 @@ export const MODEL_CATALOGUE: Record<ProviderName, ModelOption[]> = {
     { id: "claude-haiku-4-5", label: "Claude Haiku 4.5 (fastest / cheapest)" },
   ],
   openai: [
-    { id: "gpt-4o-mini", label: "GPT-4o mini (recommended)" },
-    { id: "gpt-4o", label: "GPT-4o (most capable)" },
+    { id: "gpt-5.4-mini", label: "GPT-5.4 mini (recommended)" },
+    { id: "gpt-5.5", label: "GPT-5.5 (most capable)" },
   ],
   gemini: [
-    { id: "gemini-1.5-flash-latest", label: "Gemini 1.5 Flash (recommended)" },
-    { id: "gemini-1.5-pro-latest", label: "Gemini 1.5 Pro (most capable)" },
+    { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash (recommended)" },
+    { id: "gemini-3.5-pro", label: "Gemini 3.5 Pro (most capable)" },
   ],
 };
 
 /** The default model per provider — the first catalogue entry. */
 export const DEFAULT_MODEL: Record<ProviderName, string> = {
   anthropic: "claude-sonnet-4-6",
-  openai: "gpt-4o-mini",
-  gemini: "gemini-1.5-flash-latest",
+  openai: "gpt-5.4-mini",
+  gemini: "gemini-3.5-flash",
 };
 
 /** True when `model` is a known catalogue id for `provider`. */
