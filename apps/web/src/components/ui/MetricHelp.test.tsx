@@ -63,6 +63,28 @@ describe("MetricHelp", () => {
     expect(html).toBe("");
   });
 
+  it('variant="why" renders the accent spark instead of the info dot', () => {
+    const html = renderToStaticMarkup(
+      <MetricHelp term="deload" variant="why" />,
+    );
+    expect(html).toContain("✦");
+    expect(html).not.toContain("ⓘ");
+    expect(html).toContain('data-variant="why"');
+  });
+
+  it('variant="why" uses "Why:" aria-label phrasing', () => {
+    const html = renderToStaticMarkup(
+      <MetricHelp term="deload" variant="why" />,
+    );
+    expect(html).toMatch(/aria-label="Why: [^"]+"/);
+  });
+
+  it('default variant stays the muted info dot', () => {
+    const html = renderToStaticMarkup(<MetricHelp term="deload" />);
+    expect(html).toContain("ⓘ");
+    expect(html).toContain('data-variant="info"');
+  });
+
   it("supports placement prop without crashing", () => {
     for (const p of ["top", "bottom", "left", "right"] as const) {
       const html = renderToStaticMarkup(<MetricHelp term="tsb" placement={p} />);
