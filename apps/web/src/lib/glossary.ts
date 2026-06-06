@@ -268,6 +268,32 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
       "This day has two sessions — an AM and a PM. Research recommends ≥6 h between sessions when one is heavy lifting and the other is cardio, to protect the strength signal.",
     citation: "Robineau 2016",
   },
+
+  // ─── "Why the engine programmed this" (engine-reasoning sparks) ──────
+  deload: {
+    title: "Why this week backs off (deload)",
+    body:
+      "A planned lighter week — reduced volume, easier loads — that lets accumulated fatigue dissipate so the next hard block lands on a recovered body. It's the secondary valve; submaximal loading is the primary one. Train through it feeling fresh and the app may offer to skip it.",
+    citation: "Bell 2022",
+  },
+  training_max: {
+    title: "Why a training max (not your true max)",
+    body:
+      "Your percentages come off a training max set deliberately BELOW your true 1RM (~85–90%). Working submaximally keeps every rep clean and fatigue low, and fits alongside your cardio — which is what drives steady long-term strength, not maxing out each session.",
+    citation: "Helms 2018",
+  },
+  submaximal_loading: {
+    title: "Why the percentages stay submaximal",
+    body:
+      "Loads wave up across the weeks but stay short of a true max, with reps left in reserve. It is the accumulation of quality work over time — not grinding to failure — that builds strength while keeping you fresh enough to recover and to train your other qualities.",
+    citation: "Helms 2018",
+  },
+  accessory_work: {
+    title: "Why these accessories were chosen",
+    body:
+      "Accessories aren't random — the engine fills the gaps your main lifts leave: durability work (tendons, carries, single-leg), muscles the big lifts under-train, and movement quality. Selection adapts to your equipment, recent fatigue, and any focus muscles you set.",
+    citation: "Schoenfeld 2017",
+  },
 };
 
 /**
