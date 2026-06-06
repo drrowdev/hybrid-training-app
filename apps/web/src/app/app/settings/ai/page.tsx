@@ -40,13 +40,14 @@ export default async function AiSettingsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("byoai_provider, byoai_key_vault_id, byoai_unlocked_at")
+    .select("byoai_provider, byoai_key_vault_id, byoai_unlocked_at, byoai_model")
     .eq("id", user.id)
     .maybeSingle();
 
   const provider =
     (profile?.byoai_provider as "anthropic" | "openai" | "gemini" | null) ?? null;
   const keyConfigured = profile?.byoai_key_vault_id != null;
+  const model = (profile?.byoai_model as string | null) ?? null;
 
   const { data: mcpRows } = await supabase
     .from("mcp_authorizations")
@@ -75,6 +76,7 @@ export default async function AiSettingsPage() {
         initialProvider={provider}
         initialKeyConfigured={keyConfigured}
         initialMcpConfigured={mcpConfigured}
+        initialModel={model}
       />
     </div>
   );

@@ -28,7 +28,8 @@
  */
 
 import { useState, useTransition } from "react";
-import { clearByoaiKey, setByoaiKey } from "@/lib/ai/actions";
+import { clearByoaiKey, setByoaiKey, setByoaiModel } from "@/lib/ai/actions";
+import { MODEL_CATALOGUE, resolveModel } from "@/lib/ai/models";
 import { McpConnectSection } from "./McpConnectSection";
 
 type Provider = "anthropic" | "openai" | "gemini";
@@ -56,10 +57,12 @@ export function AiSettingsPanel({
   initialProvider,
   initialKeyConfigured,
   initialMcpConfigured = false,
+  initialModel = null,
 }: {
   initialProvider: Provider | null;
   initialKeyConfigured: boolean;
   initialMcpConfigured?: boolean;
+  initialModel?: string | null;
 }) {
   const [provider, setProvider] = useState<Provider>(
     initialProvider ?? "anthropic",
@@ -69,9 +72,23 @@ export function AiSettingsPanel({
   const [keyValue, setKeyValue] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [showKeyInfo, setShowKeyInfo] = useState(false);
+  const [model, setModel] = useState<string>(
+    resolveModel(initialProvider ?? "anthropic", initialModel),
+  );
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  const saveModel = (next: string) => {
+    setModel(next);
+    setError(null);
+    setStatus(null);
+    startTransition(async () => {
+      const r = await setByoaiModel(next);
+      if (r.ok) setStatus("Model updated.");
+      else setError(r.errors.join("; "));
+    });
+  };
 
   const saveKey = () => {
     setError(null);
@@ -83,6 +100,7 @@ export function AiSettingsPanel({
         setReplaceMode(false);
         setKeyValue("");
         setShowKey(false);
+        setModel(resolveModel(provider, null));
         setStatus(`${PROVIDER_LABEL[provider]} key saved.`);
       } else {
         setError(r.errors.join("; "));
@@ -187,6 +205,27 @@ export function AiSettingsPanel({
                     Clear
                   </button>
                 </div>
+
+                {/* Model picker — only meaningful once a key is configured. */}
+                <label className="block text-sm" data-testid="ai-model-section">
+                  Model
+                  <select
+                    value={model}
+                    onChange={(e) => saveModel(e.target.value)}
+                    disabled={isPending}
+                    data-testid="ai-model-select"
+                    className="mt-2 block w-full rounded border border-foreground/10 bg-transparent p-2 text-sm"
+                  >
+                    {MODEL_CATALOGUE[provider].map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="block text-xs text-foreground/60 mt-1">
+                    Used for the in-app chat. Billed against your own key.
+                  </span>
+                </label>
               </div>
             ) : (
               <div className="space-y-2">
