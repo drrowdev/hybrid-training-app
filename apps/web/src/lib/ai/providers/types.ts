@@ -74,7 +74,7 @@ export function classifyProviderError(err: unknown): LlmErrorCode {
 
   if (status === 401 || status === 403) return "auth-failed";
   if (status === 429) return "rate-limited";
-  if (status === 400 || status === 422) return "bad-input";
+  if (status === 400 || status === 404 || status === 422) return "bad-input";
   if (status === 408 || message.includes("timeout") || e?.name === "AbortError")
     return "llm-timeout";
   if (status === 503 || status === 502 || status === 504) return "llm-unreachable";
