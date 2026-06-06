@@ -67,6 +67,20 @@ export class AnthropicProvider implements LlmProvider {
           ],
         };
       }
+      if (m.role === "assistant" && "toolCalls" in m) {
+        // The assistant's tool-use turn — must precede the tool_result(s) or
+        // Anthropic rejects the request (400). Maps each pending call to a
+        // tool_use content block.
+        return {
+          role: "assistant",
+          content: m.toolCalls.map((tc) => ({
+            type: "tool_use",
+            id: tc.id,
+            name: tc.name,
+            input: tc.args ?? {},
+          })),
+        };
+      }
       return { role: m.role, content: m.content };
     });
 

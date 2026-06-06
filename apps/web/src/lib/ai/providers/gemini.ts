@@ -16,7 +16,7 @@ import {
   classifyProviderError,
 } from "./types";
 
-const DEFAULT_MODEL = "gemini-1.5-flash-latest";
+const DEFAULT_MODEL = "gemini-3.5-flash";
 
 type GeminiModelLike = {
   generateContentStream: (args: unknown) => Promise<{
@@ -64,6 +64,14 @@ export class GeminiProvider implements LlmProvider {
               },
             },
           ],
+        });
+      } else if (m.role === "assistant" && "toolCalls" in m) {
+        // The model's function-call turn — must precede the functionResponse.
+        contents.push({
+          role: "model",
+          parts: m.toolCalls.map((tc) => ({
+            functionCall: { name: tc.id, args: tc.args ?? {} },
+          })),
         });
       } else {
         contents.push({

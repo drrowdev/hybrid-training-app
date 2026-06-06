@@ -25,8 +25,9 @@ describe("model catalogue", () => {
 
   it("isKnownModel only accepts ids belonging to the provider", () => {
     expect(isKnownModel("anthropic", "claude-opus-4-8")).toBe(true);
-    expect(isKnownModel("anthropic", "gpt-4o")).toBe(false);
-    expect(isKnownModel("openai", "gpt-4o")).toBe(true);
+    expect(isKnownModel("anthropic", "gpt-5.5")).toBe(false);
+    expect(isKnownModel("openai", "gpt-5.5")).toBe(true);
+    expect(isKnownModel("gemini", "gemini-3.5-flash")).toBe(true);
   });
 
   it("resolveModel keeps a valid stored choice", () => {
@@ -35,7 +36,7 @@ describe("model catalogue", () => {
 
   it("resolveModel falls back to default for null or a stale/cross-provider id", () => {
     expect(resolveModel("anthropic", null)).toBe(DEFAULT_MODEL.anthropic);
-    expect(resolveModel("anthropic", "gpt-4o")).toBe(DEFAULT_MODEL.anthropic);
+    expect(resolveModel("anthropic", "gpt-5.5")).toBe(DEFAULT_MODEL.anthropic);
     expect(resolveModel("anthropic", "claude-3-5-sonnet-latest")).toBe(
       DEFAULT_MODEL.anthropic,
     );

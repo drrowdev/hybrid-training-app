@@ -16,8 +16,11 @@ export type LlmTool = {
   inputSchema: Record<string, unknown>;
 };
 
+export type LlmToolCall = { id: string; name: string; args: unknown };
+
 export type LlmMessage =
   | { role: "user" | "assistant"; content: string }
+  | { role: "assistant"; toolCalls: LlmToolCall[] }
   | { role: "tool"; toolCallId: string; result: unknown };
 
 export type LlmRequestArgs = {
