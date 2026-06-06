@@ -311,10 +311,10 @@ describe("orchestrator — runChatTurn", () => {
 });
 
 describe("orchestrator — buildLlmTools + zodToJsonSchema", () => {
-  it("advertises the catalogue's 8 tools when given the real catalogue", async () => {
+  it("advertises the catalogue's 9 tools when given the real catalogue", async () => {
     const { catalogue } = await import("../tools");
     const tools = buildLlmTools(catalogue);
-    expect(tools).toHaveLength(8);
+    expect(tools).toHaveLength(9);
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(
       [
@@ -325,6 +325,7 @@ describe("orchestrator — buildLlmTools + zodToJsonSchema", () => {
         "getPrTimeline",
         "getProfile",
         "getRecentSessions",
+        "getSessionDetail",
         "getWeeklyAggregates",
       ].sort(),
     );

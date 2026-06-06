@@ -16,6 +16,7 @@ import { getPrTimeline } from "./getPrTimeline";
 import { getEngineState } from "./getEngineState";
 import { getMemories } from "./getMemories";
 import { getKnowledge } from "./getKnowledge";
+import { getSessionDetail } from "./getSessionDetail";
 
 export {
   getProfile,
@@ -26,10 +27,11 @@ export {
   getEngineState,
   getMemories,
   getKnowledge,
+  getSessionDetail,
 };
 
 /**
- * The 8 tools registered with both surfaces. Adding a tool here adds
+ * The 9 tools registered with both surfaces. Adding a tool here adds
  * it to both the MCP route and (post-PR B) the in-app orchestrator —
  * by design.
  */
@@ -42,4 +44,5 @@ export const catalogue: readonly AnyTool[] = [
   getEngineState as AnyTool,
   getMemories as AnyTool,
   getKnowledge as AnyTool,
+  getSessionDetail as AnyTool,
 ] as const;
