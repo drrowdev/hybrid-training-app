@@ -28,6 +28,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
 import { hasAiAccess } from "@/lib/ai/access";
 import { logLlmCall } from "@/lib/ai/observability";
@@ -42,6 +43,7 @@ export const dynamic = "force-dynamic";
 type ChatRequestBody = {
   thread_id?: string;
   message?: string;
+  context_session_id?: string;
 };
 
 function jsonError(
@@ -121,6 +123,16 @@ export async function POST(req: Request): Promise<Response> {
   if (!message) return jsonError(400, "bad-input", "message is required.");
   if (message.length > 4000)
     return jsonError(400, "bad-input", "message is too long (4000 char cap).");
+
+  // Optional session context. Validated as an optional string; absent or
+  // malformed values are ignored so non-session turns stay byte-identical.
+  const contextParse = z
+    .string()
+    .optional()
+    .safeParse(body.context_session_id);
+  const contextSessionId = contextParse.success
+    ? contextParse.data
+    : undefined;
 
   let threadId = body.thread_id ?? "";
   if (threadId) {
@@ -203,6 +215,7 @@ export async function POST(req: Request): Promise<Response> {
         threadId,
         priorMessages,
         userMessage: message,
+        contextSessionId,
         assistantMessageId,
         onEvent: emit,
       });

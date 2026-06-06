@@ -15,6 +15,8 @@ import {
 } from "@/lib/sessions/actions";
 import { DeleteSessionButton } from "@/components/trash/DeleteSessionButton";
 import { CancelWorkoutButton } from "@/components/session/CancelWorkoutButton";
+import { AskWhyButton } from "@/components/session/AskWhyButton";
+import { hasAiAccess } from "@/lib/ai/access";
 import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
 import {
   type LoggedSet,
@@ -108,7 +110,7 @@ export default async function SessionDetailPage({
     supabase
       .from("profiles")
       .select(
-        "haptics_enabled, timer_sound_enabled, barbell_kg, trap_bar_kg, plate_inventory_kg, equipment, timezone, time_format, date_format, units",
+        "haptics_enabled, timer_sound_enabled, barbell_kg, trap_bar_kg, plate_inventory_kg, equipment, timezone, time_format, date_format, units, byoai_provider, byoai_key_vault_id, byoai_unlocked_at",
       )
       .eq("id", user.id)
       .maybeSingle(),
@@ -690,6 +692,17 @@ export default async function SessionDetailPage({
     }
   }
 
+  // Mirror ChatMount's server-side gate so the entry point matches the
+  // chat surface's availability for this user.
+  const aiAccess = hasAiAccess({
+    byoai_provider:
+      (feedbackPrefs?.byoai_provider as string | null | undefined) ?? null,
+    byoai_key_vault_id:
+      (feedbackPrefs?.byoai_key_vault_id as string | null | undefined) ?? null,
+    byoai_unlocked_at:
+      (feedbackPrefs?.byoai_unlocked_at as string | null | undefined) ?? null,
+  });
+
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <header>
@@ -725,6 +738,11 @@ export default async function SessionDetailPage({
             {session.title ?? "Session"}
           </h1>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {aiAccess ? (
+              <AskWhyButton sessionId={session.id} />
+            ) : (
+              <AskWhyButton href="/app/settings/ai" />
+            )}
             <details className="cp-menu" style={{ position: "relative" }}>
               <summary
                 aria-label="More actions"
