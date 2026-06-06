@@ -80,9 +80,10 @@ describe("ADR 0015 — hypertrophy compound early-set effort bump", () => {
     }
   });
 
-  it("week 3 (deload): early sets unchanged — no rep bump, no cue, no RIR", () => {
+  it("deload week: early sets unchanged — no rep bump, no cue, no RIR", () => {
     const day = firstHypertrophyStrengthDay();
-    const items = buildPrescription(HYPERTROPHY_ANCHOR, 3, day, PRIMARY);
+    const deloadWk = HYPERTROPHY_ANCHOR.weekProfiles.find((w) => w.intensityLabel === "Deload")!.weekIndex;
+    const items = buildPrescription(HYPERTROPHY_ANCHOR, deloadWk, day, PRIMARY);
     const mains = items.filter((i) => i.kind === "main");
     expect(mains.length).toBeGreaterThan(0);
     for (const item of mains) {
