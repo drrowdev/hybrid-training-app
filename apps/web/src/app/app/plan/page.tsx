@@ -204,7 +204,7 @@ export default async function PlanPage({
         {recentBlocks.length > 0 && (
           <Link
             href="/app/plan/history"
-            style={{ fontSize: 12, color: "var(--cp-text-muted)", textDecoration: "none" }}
+            className="plan-nav-link"
           >
             View full history →
           </Link>
