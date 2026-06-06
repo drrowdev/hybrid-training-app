@@ -144,10 +144,11 @@ describe("ADR 0004 — buildPrescription secondary-slot cap", () => {
   });
 
   it("deload week shrinks the secondary cap proportionally (volume scale applies to both lifts)", () => {
-    // Week 3 in ENDURANCE_ANCHOR is the deload with strengthVolumeScale = 0.5.
+    // The deload week (last week) carries strengthVolumeScale = 0.5.
+    const deloadWk = ENDURANCE_ANCHOR.weekProfiles.find((w) => w.intensityLabel === "Deload")!.weekIndex;
     const items = buildPrescription(
       ENDURANCE_ANCHOR,
-      3,
+      deloadWk,
       tue as DayTemplate,
       FAKE_PRIMARY,
       undefined,
