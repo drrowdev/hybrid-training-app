@@ -80,6 +80,9 @@ import {
 import { estimateSessionMinutes } from "@/lib/sessions/estimate-duration";
 import { ThisWeekRail } from "@/components/plan/ThisWeekRail";
 import type { PlanSessionInput } from "@/components/plan/PlanRedesign";
+import { hasAiAccess } from "@/lib/ai/access";
+import { AskWhyButton } from "@/components/session/AskWhyButton";
+import { askWhySessionId } from "@/lib/sessions/ask-why";
 
 /** Coarse "N days/weeks ago" string used by the e1RM hero annotation. */
 function relativeFromIso(iso: string | null, now: Date = new Date()): string {
@@ -105,10 +108,16 @@ export default async function TodayPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "display_name, timezone, am_window_start, pm_window_start, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, time_format, date_format, bw_nudge_hidden_until, bw_banner_dismissed_at",
+      "display_name, timezone, am_window_start, pm_window_start, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, time_format, date_format, bw_nudge_hidden_until, bw_banner_dismissed_at, byoai_provider, byoai_key_vault_id, byoai_unlocked_at",
     )
     .eq("id", userId)
     .maybeSingle();
+
+  const aiAccess = hasAiAccess({
+    byoai_provider: profile?.byoai_provider ?? null,
+    byoai_key_vault_id: profile?.byoai_key_vault_id ?? null,
+    byoai_unlocked_at: profile?.byoai_unlocked_at ?? null,
+  });
 
   const todayIso = todayYmd(profile?.timezone ?? "UTC");
 
@@ -759,6 +768,7 @@ export default async function TodayPage() {
               formatProfile={formatProfile}
               overdueCount={overdueSummary.count}
               regionSpikes={regionSpikes}
+              aiAccess={aiAccess}
             />
 
             <QuickWorkoutCard
@@ -1019,6 +1029,7 @@ function TodaySessionCard({
   formatProfile,
   overdueCount,
   regionSpikes,
+  aiAccess,
 }: {
   openSession: { id: string; title: string | null } | null;
   completedToday: { id: string; title: string | null }[];
@@ -1043,6 +1054,7 @@ function TodaySessionCard({
   formatProfile: ProfileForFormat;
   overdueCount: number;
   regionSpikes: ReadonlyArray<RegionSpike>;
+  aiAccess: boolean;
 }) {
   // Secondary, non-blocking notice rendered above the day's primary
   // card whenever the user has past-incomplete planned sessions sitting
@@ -1364,6 +1376,7 @@ function TodaySessionCard({
                 blockWeeks={blockWeeks}
                 tmById={tmById}
                 tmMetaByMovementId={tmMetaByMovementId}
+                aiAccess={aiAccess}
               />
             </div>
           );
@@ -1383,6 +1396,7 @@ function PlannedSessionCard({
   blockWeeks,
   tmById,
   tmMetaByMovementId,
+  aiAccess,
 }: {
   planned: PlannedDay;
   isTwoADay: boolean;
@@ -1399,6 +1413,7 @@ function PlannedSessionCard({
     derivedFromSessionId: string | null;
     derivedFromSessionPerformedAt: string | null;
   }>;
+  aiAccess: boolean;
 }) {
   const slotLabel =
     planned.slot === "am" ? "Morning" : planned.slot === "pm" ? "Evening" : "Today's session";
@@ -1738,6 +1753,11 @@ function PlannedSessionCard({
         >
           Preview
         </Link>
+        {aiAccess ? (
+          <AskWhyButton sessionId={askWhySessionId(planned)} />
+        ) : (
+          <AskWhyButton href="/app/settings/ai" />
+        )}
       </div>
     </section>
   );

@@ -2,7 +2,7 @@
  * MCP route smoke test — boots an `McpServer` in-process via the same
  * `buildMcpServerForContext` helper the route uses, drives a
  * `tools/list` JSON-RPC roundtrip through an in-memory transport
- * pair, and asserts all 8 catalogue tools register.
+ * pair, and asserts all 9 catalogue tools register.
  *
  * Verification gate from ADR 0003 §"Verification gates" #2 (the
  * Streamable HTTP slice is exercised by the route handler itself in
@@ -17,7 +17,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildMcpServerForContext } from "../[...mcp]/route";
 
 describe("MCP server route — tools/list", () => {
-  it("registers all 8 catalogue tools and answers tools/list", async () => {
+  it("registers all 9 catalogue tools and answers tools/list", async () => {
     const server = buildMcpServerForContext({
       userId: "smoke-test-user",
       supabase: {} as unknown as SupabaseClient,
@@ -41,6 +41,7 @@ describe("MCP server route — tools/list", () => {
         "getPrTimeline",
         "getProfile",
         "getRecentSessions",
+        "getSessionDetail",
         "getWeeklyAggregates",
       ].sort(),
     );

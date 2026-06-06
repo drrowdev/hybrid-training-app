@@ -242,6 +242,7 @@ type SessionRow = {
 };
 
 type PlannedRow = {
+  id?: string | null;
   prescription: Prescription | null;
   week_index: number | null;
   day_index: number | null;
@@ -397,26 +398,48 @@ export async function loadSessionDetail(
     .maybeSingle();
 
   const session = (sessionData as SessionRow | null) ?? null;
-  if (!session) return null;
 
-  // On-plan: the prescription + plan position come from the linked
-  // planned_sessions row. Off-plan / quick sessions carry their own
-  // prescription jsonb on the session row instead.
-  const { data: plannedData } = await supabase
-    .from("planned_sessions")
-    .select(
-      "prescription, week_index, day_index, block_id, role, title, session_modality",
-    )
-    .eq("completed_session_id", sessionId)
-    .eq("user_id", userId)
-    .maybeSingle();
+  // The id may be a real `sessions.id` (a started/completed workout) or a
+  // `planned_sessions.id` (a not-yet-started planned workout — the Today card
+  // and plan drawer hold this id before any session row exists). Resolve both.
+  let planned: PlannedRow | null = null;
+  let onPlan = false;
 
-  const planned = (plannedData as PlannedRow | null) ?? null;
-  const onPlan = planned != null;
+  if (session) {
+    // Started/completed. On-plan prescription + plan position come from the
+    // linked planned_sessions row; off-plan / quick sessions carry their own
+    // prescription jsonb on the session row instead.
+    const { data: plannedData } = await supabase
+      .from("planned_sessions")
+      .select(
+        "id, prescription, week_index, day_index, block_id, role, title, session_modality",
+      )
+      .eq("completed_session_id", sessionId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    planned = (plannedData as PlannedRow | null) ?? null;
+    onPlan = planned != null;
+  } else {
+    // Not a session row — resolve the id as a planned (not-yet-started)
+    // session the user owns.
+    const { data: plannedById } = await supabase
+      .from("planned_sessions")
+      .select(
+        "id, prescription, week_index, day_index, block_id, role, title, session_modality",
+      )
+      .eq("id", sessionId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    planned = (plannedById as PlannedRow | null) ?? null;
+    if (!planned) return null; // neither a session nor a planned session owned by the user
+    onPlan = true;
+  }
 
-  const prescription: Prescription | null = onPlan
-    ? planned?.prescription ?? null
-    : session.prescription ?? null;
+  const prescription: Prescription | null = session
+    ? onPlan
+      ? planned?.prescription ?? null
+      : session.prescription ?? null
+    : planned?.prescription ?? null;
 
   // Resolve the parent block — by the planned session's block_id (on-plan),
   // else fall back to the user's active block (off-plan context).
@@ -460,8 +483,8 @@ export async function loadSessionDetail(
     : OFF_PLAN_PHASE;
 
   const title = onPlan
-    ? planned?.title ?? session.title ?? null
-    : session.title ?? null;
+    ? planned?.title ?? session?.title ?? null
+    : session?.title ?? null;
 
   const generationContext = await loadGenerationContext(
     userId,
@@ -476,8 +499,10 @@ export async function loadSessionDetail(
   return {
     onPlan,
     session: {
-      id: session.id,
-      date: session.performed_at ? String(session.performed_at).slice(0, 10) : null,
+      id: session?.id ?? sessionId,
+      date: session?.performed_at
+        ? String(session.performed_at).slice(0, 10)
+        : null,
       title,
       archetype,
       weekIndex,

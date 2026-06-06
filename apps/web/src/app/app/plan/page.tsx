@@ -61,6 +61,7 @@ import { LimitationResponseCard } from "@/components/limitations/LimitationRespo
 import { NextBlockSuggestionCard } from "@/components/planner/NextBlockSuggestionCard";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { addDaysToYmd } from "@/lib/dates";
+import { hasAiAccess } from "@/lib/ai/access";
 
 // Six wizard-resolvable archetype ids — must stay in sync with
 // `ResolvedArchetype["id"]` in lib/planner/wizard/wizard-mapping.ts.
@@ -228,7 +229,7 @@ export default async function PlanPage({
     getPlannedDays(block.id, block.startedOn),
     supabase
       .from("profiles")
-      .select("timezone, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_banner_dismissed_at")
+      .select("timezone, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_banner_dismissed_at, byoai_provider, byoai_key_vault_id, byoai_unlocked_at")
       .eq("id", user.id)
       .maybeSingle(),
     getBlockNumberAndTotal(block.id),
@@ -236,6 +237,12 @@ export default async function PlanPage({
   const timezone = profile?.timezone ?? "UTC";
   const today = todayYmd(timezone);
   const todayWeek = all.find((d) => d.date === today)?.weekIndex ?? -1;
+
+  const aiAccess = hasAiAccess({
+    byoai_provider: profile?.byoai_provider ?? null,
+    byoai_key_vault_id: profile?.byoai_key_vault_id ?? null,
+    byoai_unlocked_at: profile?.byoai_unlocked_at ?? null,
+  });
 
   const view: PlanViewMode = sp?.view === "month" ? "month" : "timeline";
   const filter: PlanFilter =
@@ -334,6 +341,7 @@ export default async function PlanPage({
         unskipAction={unskipPlannedSession}
         updateNotesAction={updatePlannedSessionNotes}
         startSessionAction={startSessionFromPlan}
+        aiAccess={aiAccess}
       />
 
       <section
