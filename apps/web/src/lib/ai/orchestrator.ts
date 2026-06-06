@@ -63,6 +63,14 @@ export type RunTurnOptions = {
   priorMessages: LlmMessage[];
   /** The new user message text for this turn. */
   userMessage: string;
+  /**
+   * Session the user is currently viewing, if any. When set, ONE line is
+   * appended to the base v2 system prompt steering the model to call
+   * getSessionDetail for "this workout" style questions. When absent, the
+   * assembled prompt (and therefore the prompt_hash) is byte-identical to
+   * the no-context turn.
+   */
+  contextSessionId?: string;
   /** Stable identifier the route will surface in the final `done` event. */
   assistantMessageId: string;
   onEvent: (event: SseEvent) => void;
@@ -274,6 +282,14 @@ export async function runChatTurn(
   for (const t of cat) toolsByName.set(t.name, t);
   const llmTools = buildLlmTools(cat);
 
+  // Per-turn system prompt. With a session in context we append ONE steering
+  // line; without it `systemPrompt === SYSTEM_PROMPT` (same reference), so the
+  // assembled prompt and the deterministic prompt_hash are byte-identical to
+  // the no-context turn.
+  const systemPrompt = opts.contextSessionId
+    ? `${SYSTEM_PROMPT}\n\nThe user is currently viewing session ${opts.contextSessionId}. When they ask about "this workout", "this session", "today's workout", or why it is programmed this way, call getSessionDetail with sessionId="${opts.contextSessionId}".`
+    : SYSTEM_PROMPT;
+
   const ctx: ToolContext = {
     userId: opts.userId,
     supabase: opts.supabase,
@@ -299,12 +315,12 @@ export async function runChatTurn(
       validationResult: "failed",
       retryCount: 0,
       latencyMs: Date.now() - t0,
-      promptHash: computePromptHash(SYSTEM_PROMPT, messages, llmTools),
+      promptHash: computePromptHash(systemPrompt, messages, llmTools),
       errorCode: "history-too-large",
     };
   }
 
-  const promptHash = computePromptHash(SYSTEM_PROMPT, messages, llmTools);
+  const promptHash = computePromptHash(systemPrompt, messages, llmTools);
   let assistantText = "";
   let usage: LlmUsage = { input_tokens: 0, output_tokens: 0 };
   const toolCalls: Array<{ id: string; name: string; result: unknown }> = [];
@@ -322,7 +338,7 @@ export async function runChatTurn(
       const pending: Array<{ id: string; name: string; args: unknown }> = [];
       try {
         for await (const ev of opts.provider.chat({
-          system: SYSTEM_PROMPT,
+          system: systemPrompt,
           messages,
           tools: llmTools,
           stream: true,

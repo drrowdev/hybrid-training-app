@@ -8,6 +8,7 @@ import {
   runChatTurn,
   zodToJsonSchema,
 } from "../orchestrator";
+import { SYSTEM_PROMPT } from "../prompts/system.v2";
 import type { AnyTool } from "../tools";
 import type {
   LlmEvent,
@@ -298,6 +299,66 @@ describe("orchestrator — runChatTurn", () => {
     });
     expect(r.errorCode).toBe("rate-limited");
     expect(events.at(-1)?.type).toBe("error");
+  });
+
+  it("appends the session-context line to the system prompt when contextSessionId is set", async () => {
+    let capturedSystem = "";
+    const provider: LlmProvider = {
+      name: "anthropic",
+      chat(args: LlmRequestArgs): AsyncIterable<LlmEvent> {
+        capturedSystem = args.system;
+        return (async function* () {
+          yield { type: "text_delta", delta: "ok" };
+          yield { type: "done", usage: { input_tokens: 1, output_tokens: 1 } };
+        })();
+      },
+    };
+    await runChatTurn({
+      provider,
+      supabase: fakeSupabase(),
+      userId: "u1",
+      tz: "UTC",
+      threadId: "t1",
+      priorMessages: [],
+      userMessage: "Why is this workout programmed this way?",
+      contextSessionId: "sess-123",
+      assistantMessageId: "a1",
+      onEvent: () => {},
+      catalogueOverride: [],
+    });
+    expect(capturedSystem).toContain(SYSTEM_PROMPT);
+    expect(capturedSystem).toContain("currently viewing session sess-123");
+    expect(capturedSystem).toContain(
+      'call getSessionDetail with sessionId="sess-123"',
+    );
+  });
+
+  it("leaves the system prompt byte-identical when contextSessionId is absent", async () => {
+    let capturedSystem = "";
+    const provider: LlmProvider = {
+      name: "anthropic",
+      chat(args: LlmRequestArgs): AsyncIterable<LlmEvent> {
+        capturedSystem = args.system;
+        return (async function* () {
+          yield { type: "text_delta", delta: "ok" };
+          yield { type: "done", usage: { input_tokens: 1, output_tokens: 1 } };
+        })();
+      },
+    };
+    await runChatTurn({
+      provider,
+      supabase: fakeSupabase(),
+      userId: "u1",
+      tz: "UTC",
+      threadId: "t1",
+      priorMessages: [],
+      userMessage: "Hi",
+      assistantMessageId: "a1",
+      onEvent: () => {},
+      catalogueOverride: [],
+    });
+    expect(capturedSystem).toBe(SYSTEM_PROMPT);
+    expect(capturedSystem).not.toContain("currently viewing session");
   });
 
   it("computePromptHash is stable and deterministic", () => {
