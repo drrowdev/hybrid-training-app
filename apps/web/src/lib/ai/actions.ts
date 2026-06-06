@@ -106,11 +106,26 @@ export async function setByoaiKey(
   const priorVaultId = prior?.byoai_key_vault_id as string | null | undefined;
   const isRotate = Boolean(priorVaultId);
 
-  const { vaultId } = await storeVault(
-    user.id,
-    parsed.data.provider,
-    parsed.data.plaintextKey,
-  );
+  // Store the ciphertext. This is the one persistence call that can throw
+  // (missing AI_KEY_ENCRYPTION_KEY, service-role/RPC failure); catch it so a
+  // misconfigured vault returns a friendly inline error instead of crashing the
+  // server action to Next's error page.
+  let vaultId: string;
+  try {
+    ({ vaultId } = await storeVault(
+      user.id,
+      parsed.data.provider,
+      parsed.data.plaintextKey,
+    ));
+  } catch (err) {
+    console.error("[setByoaiKey] vault store failed:", (err as Error).message);
+    return {
+      ok: false,
+      errors: [
+        "We couldn't securely store your key right now. Please try again — if it keeps failing, the key vault may be misconfigured on the server.",
+      ],
+    };
+  }
 
   const { error: profErr } = await supabase
     .from("profiles")
