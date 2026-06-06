@@ -19,6 +19,7 @@ import {
   type MovementGroup,
 } from "@/lib/sessions/movement-grouping";
 import { bucketForGroup } from "@/lib/sessions/movement-summary";
+import { MetricHelp } from "@/components/ui/MetricHelp";
 import {
   segmentAccessoryGroups,
   type SupersetCardInfo,
@@ -318,6 +319,7 @@ export function MovementCardList({
           <SectionDivider
             label="Accessory work"
             testId="movement-group-accessory"
+            helpTerm="accessory_work"
           />
           {accessorySegments.map((seg) =>
             seg.kind === "solo" ? (
@@ -484,9 +486,11 @@ function SupersetCardBracket({
 function SectionDivider({
   label,
   testId,
+  helpTerm,
 }: {
   label: string;
   testId: string;
+  helpTerm?: string;
 }) {
   return (
     <div
@@ -507,7 +511,10 @@ function SectionDivider({
         aria-hidden="true"
         style={{ height: 1, flex: 1, background: "var(--cp-border)" }}
       />
-      {label}
+      <span style={{ display: "inline-flex", alignItems: "center" }}>
+        {label}
+        {helpTerm && <MetricHelp term={helpTerm} variant="why" placement="bottom" />}
+      </span>
       <span
         aria-hidden="true"
         style={{ height: 1, flex: 1, background: "var(--cp-border)" }}

@@ -27,6 +27,7 @@ import { buildMovementRecap } from "@/lib/sessions/movement-recap";
 import { MovementFocusView, type FocusLoggedSet } from "./MovementFocusView";
 import { SwapMovementModal } from "./SwapMovementModal";
 import { DisclosureArrow } from "./DisclosureArrow";
+import { MetricHelp } from "@/components/ui/MetricHelp";
 import type { PlateInventoryItem } from "./plate-math";
 import type { LastSetHint } from "./SessionLogClient";
 import { formatHintDate } from "@/lib/sessions/format-hint-date";
@@ -255,18 +256,21 @@ export function MovementCard({
           {group.movementName}
         </span>
         {tmKg != null && (
-          <span
-            className="mono"
-            style={{
-              fontSize: 11,
-              padding: "2px 6px",
-              borderRadius: 6,
-              background: "var(--cp-surface-soft)",
-              color: "var(--cp-text-muted)",
-              border: "1px solid var(--cp-border)",
-            }}
-          >
-            TM {tmKg} kg
+          <span style={{ display: "inline-flex", alignItems: "center" }}>
+            <span
+              className="mono"
+              style={{
+                fontSize: 11,
+                padding: "2px 6px",
+                borderRadius: 6,
+                background: "var(--cp-surface-soft)",
+                color: "var(--cp-text-muted)",
+                border: "1px solid var(--cp-border)",
+              }}
+            >
+              TM {tmKg} kg
+            </span>
+            <MetricHelp term="training_max" variant="why" placement="bottom" />
           </span>
         )}
         {collapsed && headerSummary && (

@@ -33,6 +33,14 @@ export type MetricHelpProps = {
   term: string;
   /** Where the popover anchors relative to the trigger. Defaults to "top". */
   placement?: "top" | "bottom" | "left" | "right";
+  /**
+   * Affordance style. `"info"` (default) is the neutral muted `ⓘ` dot used for
+   * metric definitions. `"why"` is an accent-green spark (✦) used where the
+   * engine PROGRAMMED or PROPOSED something and the user might wonder why — it
+   * reads as "there's reasoning behind this" (the engine is deterministic +
+   * science-grounded, NOT AI; the popover copy reflects that).
+   */
+  variant?: "info" | "why";
 };
 
 const POPOVER_WIDTH = 280;
@@ -56,6 +64,7 @@ function popoverPosition(
 export function MetricHelp({
   term,
   placement = "top",
+  variant = "info",
 }: MetricHelpProps): ReactElement | null {
   const entry = getGlossaryEntry(term);
   const [open, setOpen] = useState(false);
@@ -89,6 +98,8 @@ export function MetricHelp({
 
   if (entry == null) return null;
 
+  const isWhy = variant === "why";
+
   const triggerStyle: CSSProperties = {
     display: "inline-flex",
     alignItems: "center",
@@ -98,9 +109,11 @@ export function MetricHelp({
     padding: 0,
     marginLeft: 4,
     borderRadius: "50%",
-    background: "var(--cp-surface-soft)",
-    border: "1px solid var(--cp-border)",
-    color: "var(--cp-text-muted)",
+    background: isWhy ? "var(--cp-accent-soft)" : "var(--cp-surface-soft)",
+    border: isWhy
+      ? "1px solid color-mix(in oklab, var(--cp-accent) 40%, transparent)"
+      : "1px solid var(--cp-border)",
+    color: isWhy ? "var(--cp-accent)" : "var(--cp-text-muted)",
     fontSize: 10,
     fontWeight: 600,
     lineHeight: 1,
@@ -144,7 +157,8 @@ export function MetricHelp({
       <button
         type="button"
         data-testid="metric-help-trigger"
-        aria-label={`What is ${entry.title}?`}
+        data-variant={variant}
+        aria-label={isWhy ? `Why: ${entry.title}` : `What is ${entry.title}?`}
         aria-describedby={open ? popoverId : undefined}
         aria-expanded={open}
         onClick={(e) => {
@@ -156,7 +170,7 @@ export function MetricHelp({
         onBlur={() => setOpen(false)}
         style={triggerStyle}
       >
-        <span aria-hidden="true">ⓘ</span>
+        <span aria-hidden="true">{isWhy ? "✦" : "ⓘ"}</span>
       </button>
       <span
         id={popoverId}
