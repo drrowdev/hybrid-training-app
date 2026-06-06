@@ -330,11 +330,60 @@ const STRENGTH_DAYS: StrengthDay[] = [
   },
 ];
 
-export const STRENGTH_ANCHOR: Archetype = {
+/**
+ * Phase 1 deload cadence (ADR 0030). Expand a single 3-week loading wave into
+ * `DELOAD_CADENCE_WAVES` waves before the (unchanged, volume-led) deload, so a
+ * standard block runs ~6 weeks of accumulation + 1 deload instead of the legacy
+ * 3 + 1.
+ *
+ * Why: the fixed week-4 deload was inherited from the strength-only 3:1 model
+ * and is SHORTER than every grounded hybrid-program norm —
+ *   - Tactical Barbell (Black): 6-week blocks, "no re-testing of maximums for
+ *     at least 6 weeks", submaximal + never-to-failure ("muscle failure is the
+ *     enemy") as the PRIMARY fatigue lever so the lifter "rarely feels
+ *     over-trained" and can "continue on this path for a lengthy period";
+ *   - 5/3/1 Forever (Wendler): deload is the 7th-Week Protocol BETWEEN a Leader
+ *     and Anchor phase — "not done every seventh week; it's just a name" — with
+ *     "more than two cycles will burn you out" capping accumulation at ~6 weeks;
+ *   - empirical surveys: Bell 2022 (~4-6 wk) and Rogerson 2024 (5.6 ± 2.3 wk).
+ * The deload itself stays VOLUME-led (Mujika & Padilla 2003; Bell 2022;
+ * Rogerson 2024) — `strengthVolumeScale` + `z2DurationMinOverride` unchanged.
+ *
+ * Calibration: `DELOAD_CADENCE_WAVES` is a CP-2 [DEF→cal] Stage-A heuristic.
+ * Confidence is HIGH that 4 weeks is too short and ~6 is the cross-program
+ * norm, MEDIUM on the exact wave count. Per-archetype / load- / experience-
+ * gated cadence and an autoregulated trigger are deferred to Phase 2/3 where a
+ * live fatigue proxy (GRM + cardio interference scalar) can earn the
+ * differentiation. See docs/knowledge/hybrid-training-design-constraints.md.
+ *
+ * No-op for archetypes without a "Deload" week (e.g. maintenance).
+ */
+const DELOAD_CADENCE_WAVES = 2; // [DEF→cal] CP-2 — see grounding above
+
+export function expandToTwoWaves(profiles: WeekProfile[]): WeekProfile[] {
+  const deloadIdx = profiles.findIndex((p) => p.intensityLabel === "Deload");
+  if (deloadIdx < 0) return profiles; // no deload (maintenance) — unchanged
+  const build = profiles.filter((_, i) => i !== deloadIdx);
+  const deload = profiles[deloadIdx]!;
+  const out: WeekProfile[] = [];
+  for (let wave = 0; wave < DELOAD_CADENCE_WAVES; wave++) {
+    for (const p of build) out.push({ ...p, weekIndex: out.length });
+  }
+  out.push({ ...deload, weekIndex: out.length });
+  return out;
+}
+
+/** Apply the Phase 1 cadence: expand the loading waves and re-derive `weeks`. */
+function withExpandedCadence(a: Archetype): Archetype {
+  const weekProfiles = expandToTwoWaves(a.weekProfiles);
+  return { ...a, weekProfiles, weeks: weekProfiles.length };
+}
+
+export const STRENGTH_ANCHOR: Archetype = withExpandedCadence({
   id: "strength_anchor",
   name: "Strength Focus",
   oneLiner:
-    "Strength-led concurrent training. Four main lifts (your choice of variant per role) hit a weekly intensity wave with a deload at week 4. Polarized cardio is added when the day budget allows.",
+    "Strength-led concurrent training. Four main lifts (your choice of variant per role) hit a weekly intensity wave, with a volume-led deload after two waves. Polarized cardio is added when the day budget allows.",
   weeks: 4,
   // ADR 0007 — strength is the primary goal, so the top set is a true AMRAP.
   solicitTopSetAmrap: true,
@@ -447,9 +496,9 @@ export const STRENGTH_ANCHOR: Archetype = {
       z2DurationMinOverride: 30,
     },
   ],
-};
+});
 
-export const ENDURANCE_ANCHOR: Archetype = {
+export const ENDURANCE_ANCHOR: Archetype = withExpandedCadence({
   id: "endurance_anchor",
   name: "Endurance Focus",
   oneLiner:
@@ -691,7 +740,7 @@ export const ENDURANCE_ANCHOR: Archetype = {
       z2DurationMinOverride: 30,
     },
   ],
-};
+});
 
 /**
  * Rebuild — return-to-training / post-injury safety block.
@@ -711,7 +760,7 @@ export const ENDURANCE_ANCHOR: Archetype = {
  * Rebuild fills the genuinely distinct safety case + introduces the tendon
  * day primitive that future archetypes can reuse.
  */
-export const REBUILD: Archetype = {
+export const REBUILD: Archetype = withExpandedCadence({
   id: "rebuild",
   name: "Rebuild",
   oneLiner:
@@ -812,7 +861,7 @@ export const REBUILD: Archetype = {
       z2DurationMinOverride: 25,
     },
   ],
-};
+});
 
 /**
  * Hypertrophy Anchor — muscle-building block.
@@ -821,7 +870,7 @@ export const REBUILD: Archetype = {
  * - Lower per-set intensity (60–75% TM, so 54–67% of true 1RM at TM 90%)
  * - Higher rep counts (6–10 reps per set)
  * - More working sets per pattern (4 sets vs Strength Anchor's 3)
- * - 4-week block with mild deload
+ * - Two-wave block with a mild deload
  *
  * Caveat shipped in the one-liner: v1 prescribes only the main lift per
  * session. Accessory work (chest flies, lateral raises, biceps, calves, abs)
@@ -839,7 +888,7 @@ export const REBUILD: Archetype = {
  * reuses existing infrastructure with no new primitive (unlike Rebuild's
  * tendon-day addition). Quality over quantity threshold met.
  */
-export const HYPERTROPHY_ANCHOR: Archetype = {
+export const HYPERTROPHY_ANCHOR: Archetype = withExpandedCadence({
   id: "hypertrophy_anchor",
   name: "Hypertrophy Focus",
   oneLiner:
@@ -1037,7 +1086,7 @@ export const HYPERTROPHY_ANCHOR: Archetype = {
       z2DurationMinOverride: 25,
     },
   ],
-};
+});
 
 /**
  * Concurrent / Hybrid Focus — the intended default for most users.
@@ -1049,7 +1098,7 @@ export const HYPERTROPHY_ANCHOR: Archetype = {
  * compromised by neural drain — per Wilson 2012 (HIGH meta) the
  * compatibility window favours intensity below max-strength territory.
  */
-export const CONCURRENT_HYBRID: Archetype = {
+export const CONCURRENT_HYBRID: Archetype = withExpandedCadence({
   id: "concurrent_hybrid",
   name: "Hybrid Focus",
   oneLiner:
@@ -1151,7 +1200,7 @@ export const CONCURRENT_HYBRID: Archetype = {
       z2DurationMinOverride: 35,
     },
   ],
-};
+});
 
 /**
  * Maintenance — keep the lights on during a busy stretch.
@@ -1699,6 +1748,7 @@ export function buildPrescription(
       archetype: archetype.id,
       bucket: "tendon",
       weekIndex,
+      isDeload,
     });
     const items: PrescriptionItem[] = [];
     for (let i = 0; i < sets; i++) {

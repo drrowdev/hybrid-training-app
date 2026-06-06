@@ -308,6 +308,13 @@ export function assemblePrescriptionItems(
         );
   if (day.kind !== "strength") return items;
 
+  // ADR 0030 — the deload week is no longer a fixed index (blocks run multiple
+  // loading waves before one deload), so resolve it from the week profile and
+  // thread it into accessory-intensity (which otherwise assumed week 3).
+  const isDeloadWeek =
+    archetype.weekProfiles.find((w) => w.weekIndex === weekIndex)?.intensityLabel ===
+    "Deload";
+
   // ─── Power Emphasis Phase 3 — main-lift transforms ───
   // Clamp top set + rewrite reps for any set above the rewrite
   // threshold. No-op on archetypes without heavy strength to cap
@@ -497,6 +504,7 @@ export function assemblePrescriptionItems(
           archetype: archetype.id,
           bucket,
           weekIndex,
+          isDeload: isDeloadWeek,
         });
         const slice = accessoryItemPrescription({
           bucket,
@@ -609,6 +617,7 @@ export function assemblePrescriptionItems(
         archetype: archetype.id,
         bucket,
         weekIndex,
+        isDeload: isDeloadWeek,
       });
       const slice = accessoryItemPrescription({
         bucket,
