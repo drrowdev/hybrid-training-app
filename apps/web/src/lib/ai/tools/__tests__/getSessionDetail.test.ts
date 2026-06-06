@@ -97,6 +97,72 @@ describe("getSessionDetail", () => {
     expect(out.generationContext.goal?.focusMuscles).toEqual(["biceps"]);
   });
 
+  it("planned-not-started: resolves a planned_sessions.id directly (no session row yet)", async () => {
+    const ctx = makeCtx("u1", {
+      sessions: [],
+      planned_sessions: [
+        {
+          id: "planned-7",
+          user_id: "u1",
+          block_id: "blk-1",
+          completed_session_id: null,
+          week_index: 0,
+          day_index: 0,
+          role: "squat",
+          title: "Upcoming squat day",
+          session_modality: "pure_strength",
+          prescription: {
+            items: [
+              {
+                movementId: "m-squat",
+                movementName: "Back Squat",
+                kind: "main",
+                sets: 3,
+                reps: 5,
+                percentTm: 85,
+              },
+              {
+                movementId: "m-carry",
+                movementName: "Farmer Carry",
+                kind: "accessory",
+                sets: 3,
+                notes: "Low-fatigue grip and trunk durability.",
+              },
+            ],
+          },
+        },
+      ],
+      training_blocks: [
+        {
+          id: "blk-1",
+          user_id: "u1",
+          archetype: "strength_anchor",
+          started_on: today,
+          weeks: 4,
+          focus_muscles: [],
+          secondary_focus: "none",
+          accessory_volume: "medium",
+          power_emphasis: false,
+          status: "active",
+          deleted_at: null,
+        },
+      ],
+      profiles: [],
+      limitations: [],
+    });
+
+    const out = await getSessionDetail.handler({ sessionId: "planned-7" }, ctx);
+
+    expect(out.found).toBe(true);
+    expect(out.onPlan).toBe(true);
+    expect(out.session.date).toBeNull(); // not performed yet
+    expect(out.session.archetype).toBe("strength_anchor");
+    expect(out.movements).toHaveLength(2);
+    expect(out.movements.find((m) => m.kind === "accessory")?.why).toBe(
+      "Low-fatigue grip and trunk durability.",
+    );
+  });
+
   it("RLS isolation: a session owned by user-b is invisible to user-a", async () => {
     const ctx = makeCtx("user-a", {
       sessions: [

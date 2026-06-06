@@ -43,6 +43,7 @@ import {
 } from "@/lib/plan/prescription-grouping";
 import { segmentSupersetRows } from "@/lib/plan/superset-grouping";
 import { MetricHelp } from "@/components/ui/MetricHelp";
+import { AskWhyButton } from "@/components/session/AskWhyButton";
 import type { PrescriptionItem } from "@hta/db";
 
 export type PlanFilter = "all" | "strength" | "cardio";
@@ -105,6 +106,13 @@ export type PlanRedesignProps = {
    * "Log now" date picker.
    */
   startSessionAction: (formData: FormData) => Promise<void> | void;
+  /**
+   * Whether the user has in-app AI access (BYOAI key configured). When
+   * true the session drawer's "Ask why" control dispatches the
+   * `sxc:ask-coach` event; when false it links to `/app/settings/ai`.
+   * Mirrors the server-side `hasAiAccess` gate.
+   */
+  aiAccess?: boolean;
 };
 
 const DOW_FULL = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
@@ -196,6 +204,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
     unskipAction,
     updateNotesAction,
     startSessionAction,
+    aiAccess,
   } = props;
 
   // View + filter are pure client-side transforms over the same
@@ -640,6 +649,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
           unskipAction={unskipAction}
           updateNotesAction={updateNotesAction}
           startSessionAction={startSessionAction}
+          aiAccess={aiAccess}
         />
       )}
 
@@ -1413,6 +1423,7 @@ export function SessionDrawer({
   unskipAction,
   updateNotesAction,
   startSessionAction,
+  aiAccess,
 }: {
   session: PlanSessionInput;
   today: string;
@@ -1427,6 +1438,7 @@ export function SessionDrawer({
     notes: string,
   ) => Promise<{ ok?: true; error?: string }>;
   startSessionAction: (formData: FormData) => Promise<void> | void;
+  aiAccess?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [showSwap, setShowSwap] = useState(false);
@@ -1751,6 +1763,12 @@ export function SessionDrawer({
                 action={startSessionAction}
               />
             )}
+            {(session.isStrength || session.isCardio) &&
+              (aiAccess ? (
+                <AskWhyButton sessionId={session.id} />
+              ) : (
+                <AskWhyButton href="/app/settings/ai" />
+              ))}
           </div>
 
           {showSwap && (
