@@ -302,6 +302,13 @@ export const profiles = pgTable("profiles", {
    */
   byoaiKeyVaultId: text("byoai_key_vault_id"),
   /**
+   * The user's chosen model id for their BYOAI provider (e.g.
+   * "claude-sonnet-4-6"). Null = use the provider's default. Validated
+   * against the curated catalogue in `apps/web/src/lib/ai/models.ts`; the
+   * resolver falls back to the provider default if it's null or stale.
+   */
+  byoaiModel: text("byoai_model"),
+  /**
    * Reserved for a future one-time-payment unlock. Default `now()`
    * means every free-tier user is treated as unlocked today (the
    * gate is purely the opt-in + provider + key trio). See `hasAiAccess`.

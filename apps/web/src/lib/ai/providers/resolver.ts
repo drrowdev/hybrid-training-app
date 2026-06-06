@@ -15,6 +15,7 @@ import { decryptByoaiKey } from "../vault";
 import { AnthropicProvider } from "./anthropic";
 import { GeminiProvider } from "./gemini";
 import { OpenAiProvider } from "./openai";
+import { resolveModel } from "../models";
 import type { LlmProvider, LlmProviderName } from "./types";
 
 function isProviderName(v: unknown): v is LlmProviderName {
@@ -27,7 +28,7 @@ export async function getProviderForUser(
   const admin = createAdmin();
   const { data: profile } = await admin
     .from("profiles")
-    .select("byoai_provider, byoai_key_vault_id")
+    .select("byoai_provider, byoai_key_vault_id, byoai_model")
     .eq("id", userId)
     .maybeSingle();
 
@@ -39,12 +40,19 @@ export async function getProviderForUser(
   const apiKey = await decryptByoaiKey(userId, vaultId);
   if (!apiKey) return null;
 
+  // The user's chosen model, falling back to the provider default if it's
+  // unset or stale (e.g. left over from a different provider).
+  const model = resolveModel(
+    provider,
+    (profile.byoai_model as string | null) ?? null,
+  );
+
   switch (provider) {
     case "anthropic":
-      return new AnthropicProvider({ apiKey });
+      return new AnthropicProvider({ apiKey, model });
     case "openai":
-      return new OpenAiProvider({ apiKey });
+      return new OpenAiProvider({ apiKey, model });
     case "gemini":
-      return new GeminiProvider({ apiKey });
+      return new GeminiProvider({ apiKey, model });
   }
 }
