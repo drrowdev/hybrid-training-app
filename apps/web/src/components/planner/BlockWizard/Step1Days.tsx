@@ -153,7 +153,8 @@ export function Step1Days({
             e.preventDefault();
             dispatch({ type: "maintenance-link" });
           }}
-          style={{ color: "var(--cp-link)", textDecoration: "none", fontWeight: 500 }}
+          className="cp-link"
+          style={{ fontWeight: 500 }}
         >
           See lighter options →
         </a>

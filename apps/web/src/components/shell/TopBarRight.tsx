@@ -18,7 +18,7 @@
  * the project convention (see PlanRedesign / SettingsHubCard). A handful
  * of rules that can't be inlined — the native `<details>` marker hide,
  * the < 640px responsive collapse of the search label, and an override
- * for the global `a { color: var(--cp-link) }` rule — live in
+ * for the global `a { color: var(--cp-text-muted) }` rule — live in
  * `globals.css` under the `.cp-tbr-*` namespace.
  */
 
