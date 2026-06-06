@@ -85,6 +85,14 @@ describe("MetricHelp", () => {
     expect(html).toContain('data-variant="info"');
   });
 
+  it("resets inherited casing so the popover never renders in all-caps", () => {
+    // The why-spark is often nested in an uppercased, letter-spaced section
+    // divider; the popover must opt out so its prose reads normally.
+    const html = renderToStaticMarkup(<MetricHelp term="deload" variant="why" />);
+    expect(html).toContain("text-transform:none");
+    expect(html).toContain("letter-spacing:normal");
+  });
+
   it("supports placement prop without crashing", () => {
     for (const p of ["top", "bottom", "left", "right"] as const) {
       const html = renderToStaticMarkup(<MetricHelp term="tsb" placement={p} />);

@@ -291,7 +291,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   accessory_work: {
     title: "Why these accessories were chosen",
     body:
-      "Accessories aren't random — the engine fills the gaps your main lifts leave: durability work (tendons, carries, single-leg), muscles the big lifts under-train, and movement quality. Selection adapts to your equipment, recent fatigue, and any focus muscles you set.",
+      "These movements cover what your main lift leaves out — grip and tendon work (carries, isometrics), single-leg balance, and muscles the big lifts barely hit. The picks also fit your equipment, how recently each area was trained, and any focus muscles you've set.",
     citation: "Schoenfeld 2017",
   },
 };
