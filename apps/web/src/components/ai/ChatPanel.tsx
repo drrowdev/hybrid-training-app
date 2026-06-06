@@ -20,6 +20,25 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
+type Seed = { sessionId?: string; prompt: string };
+
+/**
+ * Build the JSON body for POST /api/ai/chat. `context_session_id` is
+ * only present when a session context is supplied (seeded sends), so
+ * normal composer sends remain byte-identical to before.
+ */
+export function buildChatBody(
+  threadId: string | null,
+  message: string,
+  contextSessionId?: string,
+): Record<string, unknown> {
+  return {
+    thread_id: threadId,
+    message,
+    ...(contextSessionId ? { context_session_id: contextSessionId } : {}),
+  };
+}
+
 type ThreadRow = {
   id: string;
   title: string | null;
@@ -51,8 +70,10 @@ type StreamEvent =
 
 export function ChatPanel({
   onClose,
+  seed,
 }: {
   onClose: () => void;
+  seed?: Seed | null;
 }): React.ReactElement {
   const [threads, setThreads] = useState<ThreadRow[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
@@ -120,77 +141,94 @@ export function ChatPanel({
     }
   }, [messages]);
 
-  const send = useCallback(async () => {
-    const text = input.trim();
-    if (!text || sending) return;
-    setInput("");
-    setError(null);
-    setSending(true);
-    setToolIndicator(null);
-
-    const userMsg: Message = {
-      id: `local-${Date.now()}`,
-      role: "user",
-      content: text,
-    };
-    const assistantMsg: Message = {
-      id: `local-assistant-${Date.now()}`,
-      role: "assistant",
-      content: "",
-      toolCalls: [],
-    };
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
-
-    try {
-      const r = await fetch("/api/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ thread_id: activeThreadId, message: text }),
-      });
-
-      if (!r.ok || !r.body) {
-        let errText = "Couldn't reach the AI service.";
-        try {
-          const e = (await r.json()) as { errors?: string[] };
-          if (e.errors?.[0]) errText = e.errors[0];
-        } catch {
-          /* keep default */
-        }
-        setError(errText);
-        setSending(false);
-        return;
-      }
-
-      const reader = r.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const frames = buffer.split("\n\n");
-        buffer = frames.pop() ?? "";
-        for (const frame of frames) {
-          const evt = parseFrame(frame);
-          if (!evt) continue;
-          applyStreamEvent(
-            evt,
-            assistantMsg.id,
-            setMessages,
-            setActiveThreadId,
-            setToolIndicator,
-            setError,
-          );
-        }
-      }
-    } catch (err) {
-      setError("Network error talking to the AI service.");
-      console.warn("chat send failed", (err as Error).message);
-    } finally {
-      setSending(false);
+  const send = useCallback(
+    async (textArg?: string, contextSessionId?: string) => {
+      const text = (textArg ?? input).trim();
+      if (!text || sending) return;
+      // Only clear the composer for a normal composer send; a seeded send
+      // carries its own text and must not wipe whatever the user typed.
+      if (textArg === undefined) setInput("");
+      setError(null);
+      setSending(true);
       setToolIndicator(null);
-    }
-  }, [activeThreadId, input, sending]);
+
+      const userMsg: Message = {
+        id: `local-${Date.now()}`,
+        role: "user",
+        content: text,
+      };
+      const assistantMsg: Message = {
+        id: `local-assistant-${Date.now()}`,
+        role: "assistant",
+        content: "",
+        toolCalls: [],
+      };
+      setMessages((prev) => [...prev, userMsg, assistantMsg]);
+
+      try {
+        const r = await fetch("/api/ai/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            buildChatBody(activeThreadId, text, contextSessionId),
+          ),
+        });
+
+        if (!r.ok || !r.body) {
+          let errText = "Couldn't reach the AI service.";
+          try {
+            const e = (await r.json()) as { errors?: string[] };
+            if (e.errors?.[0]) errText = e.errors[0];
+          } catch {
+            /* keep default */
+          }
+          setError(errText);
+          setSending(false);
+          return;
+        }
+
+        const reader = r.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const frames = buffer.split("\n\n");
+          buffer = frames.pop() ?? "";
+          for (const frame of frames) {
+            const evt = parseFrame(frame);
+            if (!evt) continue;
+            applyStreamEvent(
+              evt,
+              assistantMsg.id,
+              setMessages,
+              setActiveThreadId,
+              setToolIndicator,
+              setError,
+            );
+          }
+        }
+      } catch (err) {
+        setError("Network error talking to the AI service.");
+        console.warn("chat send failed", (err as Error).message);
+      } finally {
+        setSending(false);
+        setToolIndicator(null);
+      }
+    },
+    [activeThreadId, input, sending],
+  );
+
+  // Auto-send a seeded question exactly once. New events produce a new
+  // `seed` object reference; the ref guards against re-firing when `send`
+  // (and thus this effect) re-runs for the same seed.
+  const lastSeedRef = useRef<Seed | null>(null);
+  useEffect(() => {
+    if (!seed || lastSeedRef.current === seed) return;
+    lastSeedRef.current = seed;
+    void send(seed.prompt, seed.sessionId);
+  }, [seed, send]);
 
   return (
     <div className="cp-ai-overlay" data-testid="ai-chat-panel">
