@@ -361,6 +361,51 @@ describe("orchestrator — runChatTurn", () => {
     expect(capturedSystem).not.toContain("currently viewing session");
   });
 
+  it("precedes each tool result with the assistant tool-call turn (provider contract)", async () => {
+    // Regression: a tool result that isn't preceded by the matching assistant
+    // tool_use/tool_calls turn is rejected by every provider (400 → "bad
+    // input"). The second provider call must see …user, assistant(toolCalls),
+    // tool(result).
+    let secondCallMessages: LlmRequestArgs["messages"] | null = null;
+    let call = 0;
+    const provider: LlmProvider = {
+      name: "anthropic",
+      chat(args: LlmRequestArgs): AsyncIterable<LlmEvent> {
+        call += 1;
+        if (call === 2) secondCallMessages = args.messages;
+        const first = call === 1;
+        return (async function* () {
+          if (first) {
+            yield { type: "tool_call", id: "tc-1", name: "getProfile", args: {} };
+          } else {
+            yield { type: "text_delta", delta: "done" };
+          }
+          yield { type: "done", usage: { input_tokens: 1, output_tokens: 1 } };
+        })();
+      },
+    };
+    await runChatTurn({
+      provider,
+      supabase: fakeSupabase(),
+      userId: "u1",
+      tz: "UTC",
+      threadId: "t1",
+      priorMessages: [],
+      userMessage: "What kind of lifter am I?",
+      assistantMessageId: "a1",
+      onEvent: () => {},
+      catalogueOverride: [stubTool("getProfile", () => ({ tier: "intermediate" }))],
+    });
+
+    const msgs = secondCallMessages as LlmRequestArgs["messages"] | null;
+    expect(msgs).not.toBeNull();
+    const toolIdx = msgs!.findIndex((m) => m.role === "tool");
+    expect(toolIdx).toBeGreaterThan(0);
+    const prev = msgs![toolIdx - 1]!;
+    expect(prev.role).toBe("assistant");
+    expect("toolCalls" in prev && prev.toolCalls[0]?.id).toBe("tc-1");
+  });
+
   it("computePromptHash is stable and deterministic", () => {
     const h1 = computePromptHash("sys", [{ role: "user", content: "x" }], []);
     const h2 = computePromptHash("sys", [{ role: "user", content: "x" }], []);

@@ -19,7 +19,7 @@ import {
   classifyProviderError,
 } from "./types";
 
-const DEFAULT_MODEL = "gpt-4o-mini";
+const DEFAULT_MODEL = "gpt-5.4-mini";
 
 type OpenAiLike = {
   chat: {
@@ -51,6 +51,22 @@ export class OpenAiProvider implements LlmProvider {
           role: "tool",
           tool_call_id: m.toolCallId,
           content: JSON.stringify(m.result),
+        });
+      } else if (m.role === "assistant" && "toolCalls" in m) {
+        // The assistant's tool-call turn — must precede the tool messages or
+        // OpenAI rejects the request (400). content is null when the turn is
+        // only tool calls.
+        messages.push({
+          role: "assistant",
+          content: null,
+          tool_calls: m.toolCalls.map((tc) => ({
+            id: tc.id,
+            type: "function",
+            function: {
+              name: tc.name,
+              arguments: JSON.stringify(tc.args ?? {}),
+            },
+          })),
         });
       } else {
         messages.push({ role: m.role, content: m.content });
