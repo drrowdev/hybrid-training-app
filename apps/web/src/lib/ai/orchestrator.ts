@@ -250,7 +250,7 @@ function providerErrorMessage(code: string): string {
     case "llm-refused":
       return "The provider refused to answer that question.";
     case "bad-input":
-      return "The request was malformed. Try rephrasing.";
+      return "Your provider rejected the request — bad input, or the configured model is unavailable for your account.";
     default:
       return "Something went wrong reaching the provider.";
   }
