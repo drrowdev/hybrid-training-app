@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { buildChatBody } from "../ChatPanel";
+import { buildChatBody, SESSION_FOLLOWUP_CHIPS } from "../ChatPanel";
 
 describe("ChatPanel — buildChatBody", () => {
   it("omits context_session_id for a normal composer send", () => {
@@ -35,5 +35,23 @@ describe("ChatPanel — buildChatBody", () => {
   it("omits context_session_id when the session id is an empty string", () => {
     const body = buildChatBody("t", "hi", "");
     expect("context_session_id" in body).toBe(false);
+  });
+});
+
+describe("ChatPanel — session follow-up chips", () => {
+  it("offers session-specific follow-ups", () => {
+    expect(SESSION_FOLLOWUP_CHIPS.length).toBeGreaterThanOrEqual(2);
+    expect(SESSION_FOLLOWUP_CHIPS).toContain("Why these accessories?");
+  });
+
+  it("a chip send carries the session context (so the model can re-read getSessionDetail)", () => {
+    for (const chip of SESSION_FOLLOWUP_CHIPS) {
+      const body = buildChatBody("t-1", chip, "sess-9");
+      expect(body).toEqual({
+        thread_id: "t-1",
+        message: chip,
+        context_session_id: "sess-9",
+      });
+    }
   });
 });

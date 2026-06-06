@@ -23,6 +23,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 type Seed = { sessionId?: string; prompt: string };
 
 /**
+ * Suggested follow-ups shown once a session-anchored thread has its first
+ * answer. Each is sent as a normal turn but re-supplies the session context so
+ * the model can re-read getSessionDetail for the specific follow-up.
+ */
+const SESSION_FOLLOWUP_CHIPS = [
+  "Why this order?",
+  "Why so light today?",
+  "Why these accessories?",
+] as const;
+export { SESSION_FOLLOWUP_CHIPS };
+
+/**
  * Build the JSON body for POST /api/ai/chat. `context_session_id` is
  * only present when a session context is supplied (seeded sends), so
  * normal composer sends remain byte-identical to before.
@@ -82,6 +94,13 @@ export function ChatPanel({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toolIndicator, setToolIndicator] = useState<string | null>(null);
+  // The session this thread is anchored to (set by a session-seeded open).
+  // While set, follow-up chips appear and each send re-supplies the context so
+  // the model can re-read getSessionDetail for follow-ups. Cleared on thread
+  // switch / new thread.
+  const [contextSessionId, setContextSessionId] = useState<string | undefined>(
+    undefined,
+  );
   const listRef = useRef<HTMLDivElement | null>(null);
 
   // Initial thread list fetch.
@@ -105,6 +124,7 @@ export function ChatPanel({
     setActiveThreadId(id);
     setMessages([]);
     setError(null);
+    setContextSessionId(undefined);
     try {
       const r = await fetch(`/api/ai/threads/${id}/messages`);
       const json = (await r.json()) as {
@@ -133,6 +153,7 @@ export function ChatPanel({
     setActiveThreadId(null);
     setMessages([]);
     setError(null);
+    setContextSessionId(undefined);
   }, []);
 
   useEffect(() => {
@@ -227,6 +248,7 @@ export function ChatPanel({
   useEffect(() => {
     if (!seed || lastSeedRef.current === seed) return;
     lastSeedRef.current = seed;
+    if (seed.sessionId) setContextSessionId(seed.sessionId);
     void send(seed.prompt, seed.sessionId);
   }, [seed, send]);
 
@@ -328,6 +350,22 @@ export function ChatPanel({
                 </div>
               ) : null}
             </div>
+
+            {contextSessionId && !sending && messages.length > 0 ? (
+              <div className="cp-ai-chips" data-testid="ai-chat-followup-chips">
+                {SESSION_FOLLOWUP_CHIPS.map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    className="cp-ai-chip"
+                    data-testid="ai-chat-followup-chip"
+                    onClick={() => void send(chip, contextSessionId)}
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
+            ) : null}
 
             <div className="cp-ai-composer">
               <textarea
@@ -491,6 +529,31 @@ export function ChatPanel({
           font-size: 12px;
           opacity: 0.6;
           margin: 0;
+        }
+        .cp-ai-chips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          padding: 8px 8px 0;
+        }
+        .cp-ai-chip {
+          background: var(--cp-accent-soft, rgba(99, 102, 241, 0.12));
+          border: 1px solid
+            color-mix(in oklab, var(--cp-accent, #4f46e5) 40%, transparent);
+          color: var(--cp-accent, #4f46e5);
+          border-radius: 999px;
+          padding: 5px 12px;
+          font-size: 12px;
+          font-weight: 500;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+        .cp-ai-chip:hover {
+          background: color-mix(
+            in oklab,
+            var(--cp-accent, #4f46e5) 18%,
+            transparent
+          );
         }
         .cp-ai-composer {
           border-top: 1px solid rgba(0, 0, 0, 0.08);
