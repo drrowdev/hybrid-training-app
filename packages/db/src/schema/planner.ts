@@ -342,6 +342,15 @@ export type Prescription = {
    * the engine doesn't re-treat the week as a deload. Absent ⇒ untouched.
    */
   deloadSkipped?: boolean;
+  /**
+   * ADR 0032 (Phase 3) — early deload. Set `true` on a loading week's sessions
+   * when the user accepts an early-deload recommendation: the stored
+   * prescription is replaced with the block's deload-week prescription so the
+   * current week becomes a deload. Idempotency / "already early-deloaded"
+   * marker. Absent ⇒ untouched. The SCHEDULED deload always remains (fixed
+   * fallback); Phase 2 will offer to skip it if the user has since recovered.
+   */
+  earlyDeload?: boolean;
 };
 
 export const plannedSessions = pgTable(
