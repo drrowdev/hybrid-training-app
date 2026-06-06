@@ -42,6 +42,7 @@ import {
   type PrescriptionMovementRow,
 } from "@/lib/plan/prescription-grouping";
 import { segmentSupersetRows } from "@/lib/plan/superset-grouping";
+import { MetricHelp } from "@/components/ui/MetricHelp";
 import type { PrescriptionItem } from "@hta/db";
 
 export type PlanFilter = "all" | "strength" | "cardio";
@@ -77,6 +78,8 @@ export type PlanRedesignProps = {
   weeks: number;
   today: string; // YYYY-MM-DD
   currentWeekIndex: number; // 0-indexed; -1 if today is outside the block
+  /** 0-indexed deload week (null = archetype has no deload, e.g. maintenance). */
+  deloadWeekIndex?: number | null;
   sessions: PlanSessionInput[];
   view: PlanViewMode;
   filter: PlanFilter;
@@ -183,6 +186,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
     weeks,
     today,
     currentWeekIndex,
+    deloadWeekIndex,
     sessions,
     view: initialView,
     filter: initialFilter,
@@ -497,6 +501,28 @@ export function PlanRedesign(props: PlanRedesignProps) {
                 >
                   <div className="plan-week-label">
                     <span className="wk mono">Week {w + 1}</span>
+                    {deloadWeekIndex === w && (
+                      <span
+                        data-testid={`plan-week-deload-${w}`}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 2 }}
+                      >
+                        <span
+                          className="mono"
+                          style={{
+                            fontSize: 9,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.06em",
+                            color: "var(--cp-accent)",
+                            border: "1px solid color-mix(in oklab, var(--cp-accent) 35%, transparent)",
+                            borderRadius: 5,
+                            padding: "0 4px",
+                          }}
+                        >
+                          Deload
+                        </span>
+                        <MetricHelp term="deload" variant="why" placement="bottom" />
+                      </span>
+                    )}
                     <span className="wk-prog mono">
                       {weekProgress[w]!.done}/{weekProgress[w]!.total || "—"}
                     </span>
