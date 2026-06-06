@@ -30,7 +30,15 @@ import { getGlossaryEntry } from "@/lib/glossary";
 
 export type MetricHelpProps = {
   /** Glossary term id (see `GLOSSARY` keys), e.g. "ceiling" or "tsb". */
-  term: string;
+  term?: string;
+  /**
+   * Inline content override. When `body` is provided the popover renders this
+   * text directly instead of looking `term` up in the glossary — used for
+   * dynamic, per-instance explanations (e.g. an accessory's specific "why").
+   * `title` defaults to a sensible label per variant when omitted.
+   */
+  title?: string;
+  body?: string;
   /** Where the popover anchors relative to the trigger. Defaults to "top". */
   placement?: "top" | "bottom" | "left" | "right";
   /**
@@ -63,10 +71,12 @@ function popoverPosition(
 
 export function MetricHelp({
   term,
+  title,
+  body,
   placement = "top",
   variant = "info",
 }: MetricHelpProps): ReactElement | null {
-  const entry = getGlossaryEntry(term);
+  const entry = term ? getGlossaryEntry(term) : null;
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLSpanElement | null>(null);
   const popoverId = useId();
@@ -96,9 +106,13 @@ export function MetricHelp({
     };
   }, [open]);
 
-  if (entry == null) return null;
+  if (entry == null && body == null) return null;
 
   const isWhy = variant === "why";
+  const resolvedBody = body ?? entry?.body ?? null;
+  if (resolvedBody == null) return null;
+  const resolvedTitle =
+    title ?? entry?.title ?? (isWhy ? "Why this" : "Details");
 
   const triggerStyle: CSSProperties = {
     display: "inline-flex",
@@ -163,7 +177,7 @@ export function MetricHelp({
         type="button"
         data-testid="metric-help-trigger"
         data-variant={variant}
-        aria-label={isWhy ? `Why: ${entry.title}` : `What is ${entry.title}?`}
+        aria-label={isWhy ? `Why: ${resolvedTitle}` : `What is ${resolvedTitle}?`}
         aria-describedby={open ? popoverId : undefined}
         aria-expanded={open}
         onClick={(e) => {
@@ -187,13 +201,13 @@ export function MetricHelp({
           data-testid="metric-help-title"
           style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--cp-text)" }}
         >
-          {entry.title}
+          {resolvedTitle}
         </strong>
         <span
           data-testid="metric-help-body"
           style={{ display: "block", marginTop: 4, color: "var(--cp-text-muted)" }}
         >
-          {entry.body}
+          {resolvedBody}
         </span>
       </span>
     </span>
