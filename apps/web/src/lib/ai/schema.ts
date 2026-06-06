@@ -12,5 +12,9 @@ export const setKeySchema = z.object({
   plaintextKey: z.string().trim().min(8).max(512),
 });
 
+export const setModelSchema = z.object({
+  model: z.string().trim().min(1).max(128),
+});
+
 export type ProviderName = z.infer<typeof providerSchema>;
 export type SetKeyInput = z.infer<typeof setKeySchema>;
