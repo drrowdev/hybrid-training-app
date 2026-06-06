@@ -90,7 +90,7 @@ export default async function PlanHistoryPage({
     <div style={{ display: "grid", gap: 20 }}>
       <PageHeader
         back={{ href: "/app/plan", label: "Plan" }}
-        title="Block history"
+        title="Plan history"
         subtitle="Every block you've run — most recent first. Expand a row to see the planned sessions and jump into anything you logged."
       />
 

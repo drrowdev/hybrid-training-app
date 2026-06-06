@@ -667,12 +667,13 @@ export function PlanRedesign(props: PlanRedesignProps) {
         .plan-nav-link {
           /* Defined globally in globals.css — declared here too so
            * mobile-first viewports without globals.css cache still
-           * paint correctly during SSR. */
-          color: var(--cp-link);
+           * paint correctly during SSR. Muted until hover, then accent. */
+          color: var(--cp-text-muted);
           text-decoration: none;
           font-size: 13px;
+          transition: color 0.12s;
         }
-        .plan-nav-link:hover { text-decoration: underline; }
+        .plan-nav-link:hover { color: var(--cp-link); }
         .plan-meta b.plan-meta-overdue-count {
           color: var(--cp-danger);
         }
