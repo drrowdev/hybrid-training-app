@@ -46,6 +46,7 @@ import {
 } from "./equipment-requirements";
 import { declaredExperienceToTier, tierInBand } from "./experience-tier";
 import { inferAccessoryBucket } from "./accessory-intensity";
+import { accessoryRationale } from "./accessory-rationale";
 import type { AccessoryBucket } from "./accessory-intensity";
 
 /**
@@ -397,9 +398,15 @@ export function pickAccessoriesForSession({
       variationSeed: seedFor(),
     });
     if (!candidate) continue;
-    // No user-facing rationale string — the movement's display name (e.g.
-    // "Farmer carry") is enough; the internal bucket name must not leak.
-    const pick = buildPick(candidate, profile, weekDeloadScale, "durability", "");
+    // Plain-language reason from the known durability trigger (surfaced as a
+    // per-movement "why" spark). The internal bucket name never leaks.
+    const pick = buildPick(
+      candidate,
+      profile,
+      weekDeloadScale,
+      "durability",
+      accessoryRationale({ reason: "durability", bulletproofRole: role }),
+    );
     picks.push(pick);
     usedThisSession.add(candidate.id);
     bumpBulletproof(durabilityProgress, candidate.bulletproofRoles);
@@ -423,8 +430,14 @@ export function pickAccessoriesForSession({
       variationSeed: seedFor(),
     });
     if (!candidate) continue;
-    // No user-facing rationale string — see note above.
-    const pick = buildPick(candidate, profile, weekDeloadScale, "functional", "");
+    // Plain-language reason from the known functional trigger.
+    const pick = buildPick(
+      candidate,
+      profile,
+      weekDeloadScale,
+      "functional",
+      accessoryRationale({ reason: "functional", functionalRole: role }),
+    );
     picks.push(pick);
     usedThisSession.add(candidate.id);
     bumpBulletproof(durabilityProgress, candidate.bulletproofRoles);
@@ -501,8 +514,8 @@ export function pickAccessoriesForSession({
       profile,
       weekDeloadScale,
       "aesthetic",
-      // No user-facing rationale string — see note above.
-      "",
+      // Plain-language reason naming the muscle this fill targets.
+      accessoryRationale({ reason: "aesthetic", gapMuscle }),
     );
     picks.push(pick);
     usedThisSession.add(candidate.id);

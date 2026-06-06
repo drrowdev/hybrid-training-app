@@ -220,6 +220,17 @@ export function MovementCard({
     [group, loggedSets, tmKg],
   );
 
+  // Per-movement "why" for accessory cards — the engine's own deterministic
+  // selection reason, threaded onto the item as `notes`. Mains carry no notes
+  // (they show a TM-derived target instead), so this only lights up for
+  // accessories/durability/power picks. Surfaced as a ✦ "why" spark.
+  const accessoryWhy = useMemo(() => {
+    const first = group.items[0];
+    if (!first || first.kind === "main") return undefined;
+    const note = first.notes;
+    return typeof note === "string" && note.trim().length > 0 ? note : undefined;
+  }, [group.items]);
+
   return (
     <section
       data-testid={`movement-card-${group.movementId}`}
@@ -252,8 +263,26 @@ export function MovementCard({
           flexWrap: "wrap",
         }}
       >
-        <span style={{ fontWeight: 600, fontSize: 15, flex: "1 1 auto" }}>
-          {group.movementName}
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            flex: "1 1 auto",
+            minWidth: 0,
+          }}
+        >
+          <span style={{ fontWeight: 600, fontSize: 15 }}>
+            {group.movementName}
+          </span>
+          {accessoryWhy && (
+            <MetricHelp
+              title="Why this movement"
+              body={accessoryWhy}
+              variant="why"
+              placement="bottom"
+            />
+          )}
         </span>
         {tmKg != null && (
           <span style={{ display: "inline-flex", alignItems: "center" }}>
