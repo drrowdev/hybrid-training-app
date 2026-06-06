@@ -20,7 +20,11 @@ import {
   classifyProviderError,
 } from "./types";
 
-const DEFAULT_MODEL = "claude-3-5-sonnet-latest";
+// Verified current model. Anthropic retires dated model ids over time
+// (e.g. claude-3-5-sonnet-latest now 404s), which surfaces as an opaque
+// provider error — so keep this pointed at a live model and allow an env
+// override for the next rotation without a code change.
+const DEFAULT_MODEL = process.env.ANTHROPIC_DEFAULT_MODEL ?? "claude-sonnet-4-6";
 const DEFAULT_MAX_TOKENS = 2048;
 
 type AnthropicLike = {

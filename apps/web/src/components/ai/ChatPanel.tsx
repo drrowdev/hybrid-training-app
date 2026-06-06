@@ -416,30 +416,35 @@ export function ChatPanel({
           bottom: 0;
           width: 100%;
           max-width: 420px;
-          background: var(--cp-bg, #fff);
-          color: var(--cp-fg, #111);
+          background: var(--cp-surface);
+          color: var(--cp-text);
           display: flex;
           flex-direction: column;
-          box-shadow: -8px 0 24px rgba(0, 0, 0, 0.2);
+          box-shadow: var(--cp-shadow, -8px 0 24px rgba(0, 0, 0, 0.2));
         }
         .cp-ai-header {
           display: flex;
           align-items: center;
           gap: 8px;
           padding: 12px 16px;
-          border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+          border-bottom: 1px solid var(--cp-border);
         }
         .cp-ai-title {
           flex: 1;
           font-weight: 600;
+          color: var(--cp-text);
         }
         .cp-ai-mini-btn {
-          background: transparent;
-          border: 1px solid rgba(0, 0, 0, 0.12);
+          background: var(--cp-surface-soft);
+          border: 1px solid var(--cp-border);
+          color: var(--cp-text);
           padding: 4px 10px;
           border-radius: 6px;
           font-size: 12px;
           cursor: pointer;
+        }
+        .cp-ai-mini-btn:hover {
+          background: var(--cp-bg-elevated, var(--cp-surface-soft));
         }
         .cp-ai-body {
           flex: 1;
@@ -448,7 +453,7 @@ export function ChatPanel({
         }
         .cp-ai-threads {
           width: 140px;
-          border-right: 1px solid rgba(0, 0, 0, 0.08);
+          border-right: 1px solid var(--cp-border);
           padding: 8px;
           overflow-y: auto;
           display: none;
@@ -464,16 +469,17 @@ export function ChatPanel({
           text-align: left;
           background: transparent;
           border: none;
+          color: var(--cp-text);
           padding: 6px 8px;
           border-radius: 6px;
           font-size: 12px;
           cursor: pointer;
         }
         .cp-ai-thread:hover {
-          background: rgba(0, 0, 0, 0.04);
+          background: var(--cp-surface-soft);
         }
         .cp-ai-thread.is-active {
-          background: rgba(0, 0, 0, 0.08);
+          background: var(--cp-accent-soft);
           font-weight: 600;
         }
         .cp-ai-conversation {
@@ -495,41 +501,44 @@ export function ChatPanel({
           padding: 8px 12px;
           border-radius: 12px;
           font-size: 14px;
-          line-height: 1.45;
+          line-height: 1.5;
           white-space: pre-wrap;
         }
         .cp-ai-msg-user {
           align-self: flex-end;
-          background: var(--cp-accent, #4f46e5);
-          color: white;
+          background: var(--cp-accent);
+          color: var(--cp-accent-fg);
         }
         .cp-ai-msg-assistant {
           align-self: flex-start;
-          background: rgba(0, 0, 0, 0.05);
+          background: var(--cp-surface-soft);
+          color: var(--cp-text);
+          border: 1px solid var(--cp-border);
         }
         .cp-ai-msg-body {
           word-break: break-word;
         }
         .cp-ai-tokens {
           font-size: 11px;
-          opacity: 0.6;
+          color: var(--cp-text-muted);
           margin-top: 4px;
         }
         .cp-ai-tool {
           font-size: 12px;
-          opacity: 0.7;
+          color: var(--cp-text-muted);
           font-style: italic;
         }
         .cp-ai-error {
           padding: 8px 12px;
-          background: rgba(220, 38, 38, 0.08);
-          color: #b91c1c;
+          background: color-mix(in oklab, var(--cp-danger, #dc2626) 12%, transparent);
+          color: var(--cp-danger, #f87171);
+          border: 1px solid color-mix(in oklab, var(--cp-danger, #dc2626) 40%, transparent);
           border-radius: 6px;
           font-size: 13px;
         }
         .cp-ai-empty {
           font-size: 12px;
-          opacity: 0.6;
+          color: var(--cp-text-muted);
           margin: 0;
         }
         .cp-ai-chips {
@@ -558,28 +567,42 @@ export function ChatPanel({
           );
         }
         .cp-ai-composer {
-          border-top: 1px solid rgba(0, 0, 0, 0.08);
-          padding: 8px;
+          border-top: 1px solid var(--cp-border);
+          padding: 12px;
           display: flex;
           gap: 8px;
+          align-items: stretch;
         }
         .cp-ai-composer textarea {
           flex: 1;
+          min-width: 0;
           resize: none;
-          border: 1px solid rgba(0, 0, 0, 0.12);
-          border-radius: 6px;
-          padding: 6px 8px;
+          border: 1px solid var(--cp-border);
+          border-radius: 10px;
+          padding: 10px 12px;
           font: inherit;
-          background: transparent;
-          color: inherit;
+          font-size: 14px;
+          line-height: 1.4;
+          background: var(--cp-surface-soft);
+          color: var(--cp-text);
+        }
+        .cp-ai-composer textarea::placeholder {
+          color: var(--cp-text-muted);
+        }
+        .cp-ai-composer textarea:focus {
+          outline: none;
+          border-color: var(--cp-accent);
         }
         .cp-ai-send {
-          background: var(--cp-accent, #4f46e5);
-          color: white;
+          flex: 0 0 auto;
+          align-self: stretch;
+          min-width: 72px;
+          background: var(--cp-accent);
+          color: var(--cp-accent-fg);
           border: none;
-          padding: 0 14px;
-          border-radius: 6px;
-          font-weight: 500;
+          padding: 0 18px;
+          border-radius: 10px;
+          font-weight: 600;
           cursor: pointer;
         }
         .cp-ai-send:disabled {
