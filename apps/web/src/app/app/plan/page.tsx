@@ -48,6 +48,9 @@ import {
 import { getVolumeAutoregOffer } from "@/lib/planner/autoreg-offer";
 import { acceptVolumeAutoregResult } from "@/lib/planner/autoreg-actions";
 import { VolumeAutoregCard } from "@/components/plan/VolumeAutoregCard";
+import { getDeloadSkipOffer } from "@/lib/planner/deload-skip-offer";
+import { acceptDeloadSkip } from "@/lib/planner/deload-skip-actions";
+import { DeloadSkipCard } from "@/components/plan/DeloadSkipCard";
 import { getLimitationResponseOffer } from "@/lib/limitations/offer";
 import { applyLimitationResponse } from "@/lib/limitations/actions";
 import { LimitationResponseCard } from "@/components/limitations/LimitationResponseCard";
@@ -276,9 +279,10 @@ export default async function PlanPage({
   // ADR 0013 / 0014 — mid-block adaptive offers. Both read-only here;
   // the accept actions re-derive server-side before writing. Null when
   // nothing applies (no over-budget signal / no offending limitation).
-  const [autoregOffer, limitationOffer] = await Promise.all([
+  const [autoregOffer, limitationOffer, deloadSkipOffer] = await Promise.all([
     getVolumeAutoregOffer(),
     getLimitationResponseOffer(),
+    getDeloadSkipOffer(),
   ]);
 
   return (
@@ -292,6 +296,9 @@ export default async function PlanPage({
       )}
       {autoregOffer && (
         <VolumeAutoregCard offer={autoregOffer} applyAction={acceptVolumeAutoregResult} />
+      )}
+      {deloadSkipOffer && (
+        <DeloadSkipCard offer={deloadSkipOffer} applyAction={acceptDeloadSkip} />
       )}
       {showBodyweightBanner && (
         <BodyweightOnlyBanner

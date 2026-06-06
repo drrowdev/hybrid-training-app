@@ -333,6 +333,15 @@ export type Prescription = {
    * clearing the field restores the full prescription.
    */
   autoregVolumeScale?: number;
+  /**
+   * ADR 0031 (Phase 2) — autoregulated deload skip. Set `true` on a deload
+   * week's sessions when the user accepts a skip: the stored prescription is
+   * replaced with the block's wave-opener (first loading week) prescription so
+   * the week becomes a normal loading week. The marker is purely an
+   * idempotency / "already skipped" signal so the offer stops re-surfacing and
+   * the engine doesn't re-treat the week as a deload. Absent ⇒ untouched.
+   */
+  deloadSkipped?: boolean;
 };
 
 export const plannedSessions = pgTable(
