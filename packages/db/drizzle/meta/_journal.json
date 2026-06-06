@@ -631,6 +631,13 @@
       "when": 1783627200000,
       "tag": "0089_seed_prehab_movements",
       "breakpoints": false
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1783714200000,
+      "tag": "0090_byoai_pgcrypto_search_path",
+      "breakpoints": false
     }
   ]
 }
