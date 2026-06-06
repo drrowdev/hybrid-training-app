@@ -11,6 +11,7 @@ import {
   trimToDurationCap,
   SHORT_CAP_MIN,
   NORMAL_CAP_MIN,
+  SHORT_MIN_ACCESSORIES,
 } from "../quick-generate";
 import { STRENGTH_ANCHOR } from "../archetypes";
 import type { MuscleGroup } from "@/lib/muscle/muscle-groups";
@@ -161,5 +162,17 @@ describe("quick-generate — duration trim", () => {
   it("is a no-op when already under the cap", () => {
     const items = [main(), accessory(1)];
     expect(trimToDurationCap(items, 120)).toHaveLength(2);
+  });
+
+  it("holds the minAccessories floor even when over the cap", () => {
+    const items = [main(), accessory(1), accessory(2), accessory(3), accessory(4)];
+    // Impossibly tight cap, but the floor keeps two accessories + the main.
+    const trimmed = trimToDurationCap(items, 1, 2);
+    expect(trimmed.filter((i) => i.kind === "accessory").length).toBe(2);
+    expect(trimmed.some((i) => i.kind === "main")).toBe(true);
+  });
+
+  it("SHORT_MIN_ACCESSORIES keeps a short session from collapsing to one accessory", () => {
+    expect(SHORT_MIN_ACCESSORIES).toBeGreaterThanOrEqual(2);
   });
 });
