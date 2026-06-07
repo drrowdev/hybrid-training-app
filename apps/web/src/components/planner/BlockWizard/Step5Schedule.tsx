@@ -398,7 +398,6 @@ function chipStyle(highCNS: boolean): React.CSSProperties {
     display: "flex",
     flexDirection: "column",
     gap: 2,
-    overflow: "hidden",
     minWidth: 0,
   };
 }
@@ -408,7 +407,10 @@ const chipTitleStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "flex-start",
   gap: 4,
-  overflowWrap: "break-word",
+  // Wrap at word boundaries (never mid-word, which produced "Maintenanc/e").
+  // The day cell grows via its minHeight, so the full title stays visible.
+  overflowWrap: "normal",
+  wordBreak: "normal",
   minWidth: 0,
 };
 
