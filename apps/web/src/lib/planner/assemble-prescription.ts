@@ -292,6 +292,13 @@ export function assemblePrescriptionItems(
    * no-op — the deterministic best pick. See `quick-generate.ts`.
    */
   variationSeed?: number,
+  /**
+   * ADR 0034 — true when the block's cardio includes a running-impact day
+   * (computed once by the caller from the resolved cardio modalities). Drives
+   * the durability floor's Phase-1 Achilles/calf HSR preference. Default false
+   * → byte-identical (every legacy caller and the golden harness omit it).
+   */
+  runningCardio: boolean = false,
 ): PrescriptionItem[] {
   const items =
     day.kind === "strength" && omitMainStrength
@@ -489,6 +496,12 @@ export function assemblePrescriptionItems(
         // when the aesthetic budget is fully trimmed. Empty array (no focus
         // muscle) → no-op, byte-identical.
         focusMuscles,
+        // ADR 0034 — modality- & pattern-aware durability floor. `runningCardio`
+        // steers the week's first HSR to the Achilles/calf region; the day's
+        // primary role steers later HSR to the day's pattern tendon region.
+        // Both default to no-op (false / undefined) → byte-identical.
+        runningCardio,
+        dayPrimaryRole: day.kind === "strength" ? day.role : undefined,
         variationSeed,
       });
       const accessoryItems: PrescriptionItem[] = [];
