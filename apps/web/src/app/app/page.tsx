@@ -994,7 +994,7 @@ function ActivitySection({
                     >
                       {!complete && <ActivityPill label="in progress" />}
                       {s.session_rpe != null && (
-                        <ActivityPill label={`sRPE ${s.session_rpe}`} mono />
+                        <ActivityPill label={`Effort ${s.session_rpe}`} mono />
                       )}
                       {s.duration_min != null && (
                         <ActivityPill label={`${s.duration_min} min`} mono />
