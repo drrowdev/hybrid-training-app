@@ -162,3 +162,19 @@ export function isoWeekdayYmd(ymd: string): number {
 export function mondayOfYmd(ymd: string): string {
   return addDaysToYmd(ymd, -isoWeekdayYmd(ymd));
 }
+
+/**
+ * The upcoming Monday (as YYYY-MM-DD) on or after `ymd` — returns `ymd`
+ * itself when it is already a Monday, otherwise the next Monday.
+ * Timezone-free.
+ *
+ * Used as the default start date for a new training block: blocks are
+ * laid out as full Mon–Sun weeks, so starting mid- or late-week strands
+ * the earlier days of week 1 in the past (they render as overdue). Anchoring
+ * the start to the upcoming Monday gives a clean week 1 with no past days.
+ */
+export function upcomingMondayYmd(ymd: string): string {
+  const weekday = isoWeekdayYmd(ymd); // Mon=0 … Sun=6
+  if (weekday === 0) return ymd;
+  return addDaysToYmd(ymd, 7 - weekday);
+}
