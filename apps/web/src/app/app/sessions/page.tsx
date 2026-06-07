@@ -77,7 +77,7 @@ export default async function SessionsListPage() {
                 </div>
                 <div className="text-xs text-foreground/60">
                   {s.completed_at ? "✓ complete" : "in progress"}
-                  {s.session_rpe ? ` · sRPE ${s.session_rpe}` : ""}
+                  {s.session_rpe ? ` · Effort ${s.session_rpe}` : ""}
                   {s.duration_min ? ` · ${s.duration_min} min` : ""}
                 </div>
               </Link>
