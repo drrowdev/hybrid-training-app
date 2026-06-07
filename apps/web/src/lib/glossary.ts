@@ -294,6 +294,12 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
       "These movements cover what your main lift leaves out — grip and tendon work (carries, isometrics), single-leg balance, and muscles the big lifts barely hit. The picks also fit your equipment, how recently each area was trained, and any focus muscles you've set.",
     citation: "Schoenfeld 2017",
   },
+  hsr: {
+    title: "HSR — Heavy Slow Resistance",
+    body:
+      "A tendon-loading protocol: heavy weight moved deliberately slowly (a slow ~3s lower and ~3s lift). The slow tempo under load builds tendon stiffness and resilience — similar results to eccentric-only work, better adherence. That's why these reps are paced, not rushed.",
+    citation: "Kongsgaard 2009",
+  },
 };
 
 /**
