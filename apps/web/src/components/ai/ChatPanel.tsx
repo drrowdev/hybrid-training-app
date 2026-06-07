@@ -540,6 +540,7 @@ export function ChatPanel({
           display: flex;
           min-height: 0;
           position: relative;
+          overflow: hidden;
         }
         /* History is an overlay, hidden by default, so the conversation gets the
            full drawer width. It slides in from the left when toggled. */
@@ -563,10 +564,11 @@ export function ChatPanel({
           z-index: 3;
           transform: translateX(-100%);
           transition: transform 0.16s ease;
-          box-shadow: 8px 0 24px rgba(0, 0, 0, 0.18);
+          box-shadow: none;
         }
         .cp-ai-threads.is-open {
           transform: translateX(0);
+          box-shadow: 8px 0 24px rgba(0, 0, 0, 0.18);
         }
         .cp-ai-threads-head {
           font-size: 11px;
