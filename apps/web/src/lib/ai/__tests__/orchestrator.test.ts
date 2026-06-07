@@ -417,14 +417,15 @@ describe("orchestrator — runChatTurn", () => {
 });
 
 describe("orchestrator — buildLlmTools + zodToJsonSchema", () => {
-  it("advertises the catalogue's 9 tools when given the real catalogue", async () => {
+  it("advertises the catalogue's 10 tools when given the real catalogue", async () => {
     const { catalogue } = await import("../tools");
     const tools = buildLlmTools(catalogue);
-    expect(tools).toHaveLength(9);
+    expect(tools).toHaveLength(10);
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(
       [
         "getActiveBlock",
+        "getCardioAnalysis",
         "getEngineState",
         "getKnowledge",
         "getMemories",

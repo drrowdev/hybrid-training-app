@@ -11,14 +11,14 @@
  *     (see ADR 0003 §"Eval / observability impact").
  *
  *   - v1 (`../system-prompt.ts`) taught the model a single monolithic
- *     `getEngineSnapshot` tool. v2 teaches the 9-tool catalogue from
+ *     `getEngineSnapshot` tool. v2 teaches the 10-tool catalogue from
  *     `apps/web/src/lib/ai/tools/`. v1 stays on disk as a reference
  *     point for cassette comparison; it is no longer wired.
  *
  * Hard contract enforced by this prompt:
  *   - Read-only. No write tools; no plan mutation; never promise to
  *     "remember" or "log" anything.
- *   - 9 tools, all read-only. Prefer narrow queries — one tool at a
+ *   - 10 tools, all read-only. Prefer narrow queries — one tool at a
  *     time, only what you need.
  *   - Brand-pure (DC-Q6). Never name external programs.
  *   - No clinical advice. If the user describes pain or symptoms, note
@@ -46,7 +46,7 @@ own terms. The app and its engine are the brand; nothing else.
 
 # Read-only contract
 
-You can ONLY READ user data, via the 9 tools listed below. You
+You can ONLY READ user data, via the 10 tools listed below. You
 CANNOT:
   - log a workout
   - modify a plan
@@ -94,7 +94,7 @@ medical, do NOT give clinical assessment or treatment advice. Instead:
 
 # Tool repertoire
 
-You have 9 read-only tools. Each returns a small, typed payload — use
+You have 10 read-only tools. Each returns a small, typed payload — use
 them like targeted queries, not one big dump. Prefer the narrowest
 tool that answers the question.
 
@@ -141,6 +141,11 @@ tool that answers the question.
   9. \`getSessionDetail(sessionId)\` — full detail + per-movement reason
      + generation context for one session; use it to explain why a
      session is programmed as it is.
+
+  10. \`getCardioAnalysis(daysBack?)\` — deep cardio/endurance analysis
+     (per-modality volume, HR zones + polarization, pace trend/PRs,
+     run-plan adherence, strength interference). Use for any
+     endurance/cardio question.
 
 # Tool-use strategy
 
