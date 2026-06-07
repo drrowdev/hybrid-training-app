@@ -14,9 +14,11 @@
  * `context_session_id`) and a `prompt` rendered as the user message.
  */
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 
 import { ChatFab } from "./ChatFab";
 import { ChatPanel } from "./ChatPanel";
+import { starterChipsForPath } from "./starter-chips";
 
 export type AskCoachSeed = { sessionId?: string; prompt: string };
 
@@ -39,6 +41,7 @@ export function parseAskCoachEvent(detail: unknown): AskCoachSeed | null {
 export function ChatRoot(): React.ReactElement {
   const [open, setOpen] = useState(false);
   const [seed, setSeed] = useState<AskCoachSeed | null>(null);
+  const pathname = usePathname();
 
   useEffect(() => {
     function onAskCoach(e: Event): void {
@@ -53,10 +56,24 @@ export function ChatRoot(): React.ReactElement {
     };
   }, []);
 
+  // Clearing the seed on close is what stops the drawer from re-asking the last
+  // seeded prompt when it's reopened from the FAB: the seed is consumed once,
+  // then forgotten, so a plain FAB open never carries a stale question.
+  const handleClose = () => {
+    setOpen(false);
+    setSeed(null);
+  };
+
   return (
     <>
       <ChatFab onClick={() => setOpen(true)} />
-      {open ? <ChatPanel onClose={() => setOpen(false)} seed={seed} /> : null}
+      {open ? (
+        <ChatPanel
+          onClose={handleClose}
+          seed={seed}
+          starterChips={starterChipsForPath(pathname)}
+        />
+      ) : null}
     </>
   );
 }
