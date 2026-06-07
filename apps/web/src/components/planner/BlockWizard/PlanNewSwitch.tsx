@@ -32,6 +32,7 @@ import type { WizardDayPrefValue } from "@/lib/planner/wizard/day-pref";
 import { BlockCreatingOverlay } from "./BlockCreatingOverlay";
 
 import type { Placement } from "@/lib/planner/wizard/placements";
+import { upcomingMondayYmd } from "@/lib/dates";
 
 export type RecentBlockCard = {
   id: string;
@@ -93,10 +94,15 @@ export function PlanNewSwitch({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
+  // New blocks are laid out as full Mon–Sun weeks, so starting mid-/late-week
+  // strands the earlier days of week 1 in the past (overdue). Anchor the start
+  // to the upcoming Monday (today if it's Monday) for a clean week 1.
+  const blockStart = upcomingMondayYmd(todayYmd);
+
   const completeFromWizard = async (submit: WizardSubmit): Promise<CreateBlockResult> => {
     const fd = new FormData();
     fd.set("archetype", submit.archetypeId);
-    fd.set("startedOn", todayYmd);
+    fd.set("startedOn", blockStart);
     fd.set("daysPerWeek", String(submit.daysPerWeek));
     fd.set("dayIndexOverrides", JSON.stringify(submit.dayIndexOverrides));
     fd.set("powerEmphasis", submit.power ? "true" : "false");
@@ -129,7 +135,7 @@ export function PlanNewSwitch({
     setError(null);
     const fd = new FormData();
     fd.set("archetype", block.archetype);
-    fd.set("startedOn", todayYmd);
+    fd.set("startedOn", blockStart);
     // Default to 4 d/wk when the source block has no recorded
     // daysPerWeek and we couldn't derive one — matches the wizard's
     // own implicit default.
