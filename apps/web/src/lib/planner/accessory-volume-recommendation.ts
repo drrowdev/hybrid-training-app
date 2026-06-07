@@ -38,11 +38,10 @@ export interface AccessoryVolumeApplicability {
    */
   enabled: boolean;
   /**
-   * `true` when the aesthetic base is exactly 1 (Endurance / Rebuild). The
-   * engine floor keeps at least one aesthetic movement, so `low` and `medium`
-   * resolve to the SAME prescription — only `high` adds volume. The UI surfaces
-   * this honestly instead of presenting a knob whose bottom two stops do
-   * nothing.
+   * Retained for back-compat with the Step 4 control, but now ALWAYS `false`:
+   * `low` drops the last aesthetic movement even on base-1 archetypes
+   * (Endurance / Rebuild), so Low / Medium / High are three genuinely distinct
+   * volumes on every enabled archetype. See `accessory-volume.ts#floorBonus`.
    */
   lowEqualsMedium: boolean;
   /** The archetype's aesthetic `itemsPerSession` base (for callers/tests). */
@@ -60,7 +59,10 @@ export function accessoryVolumeApplicability(
   const base = ARCHETYPES[archetypeId]?.accessoryProfile?.aesthetic.itemsPerSession ?? 0;
   return {
     enabled: base > 0,
-    lowEqualsMedium: base === 1,
+    // Low now trims a movement on every enabled archetype (floors at 0), so the
+    // three levels are always distinct — there is no longer a "Low == Medium"
+    // case to flag.
+    lowEqualsMedium: false,
     aestheticBaseItems: base,
   };
 }

@@ -488,7 +488,6 @@ function AccessoryVolumeControl({
   onChange,
   recommendation,
   disabled,
-  lowEqualsMedium,
   estimates,
   estimateLoading,
 }: {
@@ -496,7 +495,6 @@ function AccessoryVolumeControl({
   onChange: (level: AccessoryVolumeLevel) => void;
   recommendation: AccessoryVolumeRecommendation | null;
   disabled: boolean;
-  lowEqualsMedium: boolean;
   estimates: Record<AccessoryVolumeLevel, number | null> | null;
   estimateLoading: boolean;
 }): React.ReactElement {
@@ -632,15 +630,6 @@ function AccessoryVolumeControl({
             {recommendation.reason}
           </p>
         )}
-        {!disabled && lowEqualsMedium && (
-          <p
-            data-testid="accessory-volume-floor-note"
-            style={{ margin: "8px 0 0", fontSize: 11.5, color: "var(--cp-text-muted)", lineHeight: 1.5 }}
-          >
-            On this plan the accessory base is already minimal, so Low and Medium
-            are the same — High is the level that adds extra muscle work.
-          </p>
-        )}
         {disabled && (
           <p
             data-testid="accessory-volume-disabled-note"
@@ -754,7 +743,6 @@ export function Step4Review({
         onChange={(level) => dispatch({ type: "set-accessory-volume", level })}
         recommendation={recommendation}
         disabled={!applicability.enabled}
-        lowEqualsMedium={applicability.lowEqualsMedium}
         estimates={estimate.minutes}
         estimateLoading={estimateLoading}
       />

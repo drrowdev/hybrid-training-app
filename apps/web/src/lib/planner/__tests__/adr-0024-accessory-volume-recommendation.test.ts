@@ -45,9 +45,9 @@ describe("accessoryVolumeApplicability", () => {
     }
   });
 
-  it("flags Low==Medium exactly on the base-1 archetypes", () => {
-    expect(accessoryVolumeApplicability("endurance_anchor").lowEqualsMedium).toBe(true);
-    expect(accessoryVolumeApplicability("rebuild").lowEqualsMedium).toBe(true);
+  it("never flags Low==Medium — low trims a movement on every enabled archetype", () => {
+    expect(accessoryVolumeApplicability("endurance_anchor").lowEqualsMedium).toBe(false);
+    expect(accessoryVolumeApplicability("rebuild").lowEqualsMedium).toBe(false);
     expect(accessoryVolumeApplicability("strength_anchor").lowEqualsMedium).toBe(false);
     expect(accessoryVolumeApplicability("hypertrophy_anchor").lowEqualsMedium).toBe(false);
     expect(accessoryVolumeApplicability("concurrent_hybrid").lowEqualsMedium).toBe(false);
