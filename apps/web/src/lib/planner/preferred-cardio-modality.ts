@@ -220,3 +220,39 @@ export function resolvePreferredCardioModality(args: {
   // No preferred modality is feasible for this kind — fall back to default.
   return { slug: defaultSlug, substituted: false, modality: null };
 }
+
+/**
+ * ADR 0034 — does this block's cardio include a running-impact day?
+ *
+ * Running is the archetype default for every zoned cardio day (ADR 0017), so a
+ * day stays on running unless the resolver substitutes it for a preferred
+ * modality. A day counts as running-impact when the resolved modality is
+ * `running` (i.e. NOT substituted away). External / unzoned (`cardio_other`)
+ * days carry no running-impact assumption and are ignored.
+ *
+ * Used to drive the durability floor's Achilles/calf HSR preference. Pure.
+ */
+export function blockUsesRunningCardio(
+  cardioDays: ReadonlyArray<{ cardioKind: CardioKind; defaultSlug: string }>,
+  shared: {
+    preferred: readonly unknown[] | null | undefined;
+    ownedCardio: readonly CardioMachineType[];
+    userTier: number | null;
+    catalog: readonly CardioCatalogEntry[];
+  },
+): boolean {
+  return cardioDays.some((d) => {
+    if (d.cardioKind === "cardio_other") return false;
+    const resolved = resolvePreferredCardioModality({
+      defaultSlug: d.defaultSlug,
+      cardioKind: d.cardioKind,
+      preferred: shared.preferred,
+      ownedCardio: shared.ownedCardio,
+      userTier: shared.userTier,
+      catalog: shared.catalog,
+    });
+    // Not substituted => stays on the archetype default, which ADR 0017
+    // guarantees is running for every zoned cardio day.
+    return !resolved.substituted;
+  });
+}

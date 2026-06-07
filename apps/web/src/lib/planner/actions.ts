@@ -47,6 +47,7 @@ import {
   ARCHETYPES,
   type Archetype,
   type ArchetypeId,
+  type CardioDay,
   type DayTemplate,
   type StrengthDay,
   allCandidateLiftSlugs,
@@ -80,6 +81,7 @@ import {
 import { loadPickerCatalog } from "./picker-catalog";
 import { loadCardioCatalog } from "./cardio-catalog";
 import {
+  blockUsesRunningCardio,
   resolvePreferredCardioModality,
   sanitizePreferredModalities,
 } from "./preferred-cardio-modality";
@@ -932,6 +934,24 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   }
 
   const rows: PlannedSessionInsertRow[] = [];
+  // ADR 0034 — does this block run? Resolve the cardio modality of each cardio
+  // day once (running unless the user substituted it away) so the durability
+  // floor can prioritise Achilles/calf HSR for runners.
+  const runningCardio = blockUsesRunningCardio(
+    activeDays
+      .filter((d): d is CardioDay => d.kind === "cardio")
+      .map((d) => ({
+        cardioKind:
+          d.cardioKind === "cardio_external" ? "cardio_other" : d.cardioKind,
+        defaultSlug: resolveCardioSlugForTier(d, userTier),
+      })),
+    {
+      preferred: preferredCardioModalities,
+      ownedCardio: equipment.cardio,
+      userTier,
+      catalog: cardioCatalog,
+    },
+  );
   for (let week = 0; week < archetype.weeks; week++) {
     const weekProfile = archetype.weekProfiles.find((w) => w.weekIndex === week);
     const weekDeloadScale = weekProfile?.strengthVolumeScale ?? 1.0;
@@ -1022,6 +1042,9 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
               effortPreference,
               secondaryFocus,
               accessoryVolume,
+              undefined, // aestheticTargetMask (planned-block path)
+              undefined, // variationSeed (planned-block path)
+              runningCardio,
             );
 
       // ─── Bodyweight Phase 3 — prepend BW main + back_off items ───
