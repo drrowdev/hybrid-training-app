@@ -26,6 +26,7 @@ import type {
 import { ARCHETYPES } from "@/lib/planner/archetypes";
 import type { ArchetypeId } from "@/lib/planner/archetypes";
 import { deloadWeekIndexFor } from "@/lib/planner/deload-skip";
+import { isMaxIntentRpe, MAX_INTENT_LABEL } from "@/lib/sessions/effort-label";
 
 export type SessionMovement = {
   kind: string;
@@ -265,7 +266,9 @@ function movementIntensity(item: PrescriptionItem): string | null {
   if (item.intensityLabel) parts.push(item.intensityLabel);
   const rir = formatRange(item.targetRir, "RIR");
   if (rir) parts.push(rir);
-  const rpe = formatRange(item.targetRpe, "RPE");
+  const rpe = isMaxIntentRpe(item.targetRpe)
+    ? MAX_INTENT_LABEL
+    : formatRange(item.targetRpe, "RPE");
   if (rpe) parts.push(rpe);
   if (item.hrCap) parts.push(item.hrCap);
   if (item.protocolNote) parts.push(item.protocolNote);
