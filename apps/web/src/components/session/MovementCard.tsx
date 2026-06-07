@@ -36,6 +36,15 @@ import type { fillSessionFromPlan } from "@/lib/sessions/actions";
 export type MovementCardProps = {
   sessionId: string;
   group: MovementGroup;
+  /**
+   * Session-complete read-only mode. When true the card defaults
+   * collapsed (condensed-by-default review), suppresses every edit
+   * affordance (swap, fill-from-plan, set logging), and renders a
+   * read-only per-set breakdown when expanded instead of the
+   * interactive focus view. Collapse state is ephemeral (not persisted)
+   * so a reviewed session always opens condensed.
+   */
+  readOnly?: boolean;
   tmKg: number | undefined;
   /** Saved 1RM from training_maxes.one_rm_kg. Drives TM-anchored PR flash. */
   oneRmKg: number | undefined;
@@ -83,6 +92,7 @@ const RECAP_DELAY_MS = 4500;
 export function MovementCard({
   sessionId,
   group,
+  readOnly = false,
   tmKg,
   oneRmKg,
   loggedItemIndices,
@@ -109,8 +119,11 @@ export function MovementCard({
 
   // Compute the initial collapsed value. Server render uses card state
   // defaults; client mount syncs with localStorage so the user's
-  // explicit toggles win across page reloads.
+  // explicit toggles win across page reloads. In read-only (completed
+  // session) mode every card starts collapsed regardless of per-movement
+  // state — the user is reviewing, not logging.
   const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (readOnly) return true;
     if (cardState === "completed") return true;
     if (cardState === "not_started") return true;
     return false;
@@ -118,8 +131,11 @@ export function MovementCard({
   const userOverrodeRef = useRef(false);
   const autoCollapsedRef = useRef(false);
   const [swapOpen, setSwapOpen] = useState(false);
-  // Hydrate from localStorage on mount.
+  // Hydrate from localStorage on mount. Skipped in read-only mode so a
+  // completed session always opens condensed, ignoring whatever toggle
+  // state was persisted while the workout was being logged.
   useEffect(() => {
+    if (readOnly) return;
     if (typeof window === "undefined") return;
     try {
       const raw = window.localStorage.getItem(storageKey);
@@ -135,11 +151,13 @@ export function MovementCard({
     } catch {
       /* ignore */
     }
-  }, [storageKey]);
+  }, [storageKey, readOnly]);
 
   // Auto-collapse to recap once every set is logged. Latches via
   // autoCollapsedRef so re-expanding doesn't snap the card shut again.
+  // No-op in read-only mode (the card is already collapsed).
   useEffect(() => {
+    if (readOnly) return;
     if (!complete) return;
     if (autoCollapsedRef.current) return;
     if (userOverrodeRef.current) return;
@@ -148,7 +166,7 @@ export function MovementCard({
       setCollapsed(true);
     }, RECAP_DELAY_MS);
     return () => window.clearTimeout(id);
-  }, [complete]);
+  }, [complete, readOnly]);
 
   // Latch the cursor where "Edit sets" tapped on the recap — the
   // focus view picks this up via its `initialCursor` prop. Reset
@@ -159,10 +177,14 @@ export function MovementCard({
     userOverrodeRef.current = true;
     setCollapsed((v) => {
       const next = !v;
-      try {
-        window.localStorage.setItem(storageKey, next ? "closed" : "open");
-      } catch {
-        /* ignore */
+      // Read-only review toggles are ephemeral — don't persist, so the
+      // session reopens condensed next visit.
+      if (!readOnly) {
+        try {
+          window.localStorage.setItem(storageKey, next ? "closed" : "open");
+        } catch {
+          /* ignore */
+        }
       }
       return next;
     });
@@ -366,15 +388,17 @@ export function MovementCard({
             <span style={{ flex: "1 1 auto", fontWeight: 600, color: "var(--cp-text)" }}>
               {group.movementName} complete
             </span>
-            <button
-              type="button"
-              onClick={expandAtLastLogged}
-              className="cp-btn"
-              style={{ padding: "4px 10px", fontSize: 11 }}
-              data-testid={`movement-card-edit-${group.movementId}`}
-            >
-              Edit sets
-            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={expandAtLastLogged}
+                className="cp-btn"
+                style={{ padding: "4px 10px", fontSize: 11 }}
+                data-testid={`movement-card-edit-${group.movementId}`}
+              >
+                Edit sets
+              </button>
+            )}
           </div>
           <ul
             data-testid={`movement-card-recap-lines-${group.movementId}`}
@@ -406,7 +430,13 @@ export function MovementCard({
         </div>
       )}
 
-      {!collapsed && (
+      {!collapsed && readOnly && (
+        <div style={{ padding: "0 14px 14px", display: "grid", gap: 12 }}>
+          <ReadOnlySetList group={group} loggedSets={loggedSets} />
+        </div>
+      )}
+
+      {!collapsed && !readOnly && (
         <div style={{ padding: "0 14px 14px", display: "grid", gap: 12 }}>
           <LastSetHintRow hint={lastSetHint} label={group.movementName} />
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -449,17 +479,106 @@ export function MovementCard({
         </div>
       )}
 
-      <SwapMovementModal
-        open={swapOpen}
-        onClose={() => setSwapOpen(false)}
-        sessionId={sessionId}
-        original={{ id: group.movementId, displayName: group.movementName }}
-        onSwapped={() => {
-          setSwapOpen(false);
-        }}
-      />
+      {!readOnly && (
+        <SwapMovementModal
+          open={swapOpen}
+          onClose={() => setSwapOpen(false)}
+          sessionId={sessionId}
+          original={{ id: group.movementId, displayName: group.movementName }}
+          onSwapped={() => {
+            setSwapOpen(false);
+          }}
+        />
+      )}
     </section>
   );
+}
+
+/**
+ * Read-only per-set breakdown shown when a *completed* session's
+ * movement card is expanded for a deeper dive. Lists each logged set
+ * (weight × reps, or distance / duration for carries / time work) plus
+ * its RPE, and flags skipped slots. No inputs, no actions — the session
+ * is locked once finished.
+ *
+ * Exported so the presentational contract can be pinned in isolation.
+ */
+export function ReadOnlySetList({
+  group,
+  loggedSets,
+}: {
+  group: MovementGroup;
+  loggedSets: FocusLoggedSet[];
+}) {
+  if (loggedSets.length === 0) {
+    return (
+      <div
+        data-testid={`movement-card-readonly-empty-${group.movementId}`}
+        style={{ fontSize: 13, color: "var(--cp-text-muted)" }}
+      >
+        No sets were logged for this movement.
+      </div>
+    );
+  }
+  return (
+    <ul
+      data-testid={`movement-card-readonly-sets-${group.movementId}`}
+      style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 6 }}
+    >
+      {loggedSets.map((s, i) => (
+        <li
+          key={s.id}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "auto 1fr auto",
+            gap: 12,
+            alignItems: "baseline",
+            padding: "8px 0",
+            borderBottom:
+              i === loggedSets.length - 1 ? "none" : "1px solid var(--cp-border)",
+            opacity: s.skipped ? 0.6 : 1,
+          }}
+        >
+          <span className="mono" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+            Set {i + 1}
+          </span>
+          <span
+            className="mono"
+            style={{
+              fontSize: 14,
+              color: "var(--cp-text)",
+              textDecoration: s.skipped ? "line-through" : "none",
+            }}
+          >
+            {s.skipped ? `Skipped${s.skipReason ? ` (${s.skipReason})` : ""}` : formatReadOnlySet(s)}
+          </span>
+          {!s.skipped && s.rpe != null && (
+            <span className="mono" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+              RPE {s.rpe}
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** One-line value for a logged set: weight × reps, a loaded carry's
+ * distance, or a timed effort's duration. */
+function formatReadOnlySet(s: FocusLoggedSet): string {
+  if (s.distanceM != null && s.distanceM > 0) {
+    const load = s.weightKg != null && s.weightKg > 0 ? ` @ ${s.weightKg} kg` : "";
+    return `${s.distanceM} m${load}`;
+  }
+  if ((s.reps == null || s.reps <= 0) && s.durationSec != null && s.durationSec > 0) {
+    const mins = Math.floor(s.durationSec / 60);
+    const secs = s.durationSec % 60;
+    const t = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+    return s.weightKg != null && s.weightKg > 0 ? `${t} @ ${s.weightKg} kg` : t;
+  }
+  const w = s.weightKg != null && s.weightKg > 0 ? `${s.weightKg} kg` : "BW";
+  const reps = s.reps ?? 0;
+  return `${w} × ${reps}`;
 }
 
 /**

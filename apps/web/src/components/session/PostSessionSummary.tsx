@@ -37,12 +37,20 @@ export type ProgressionHint = {
 export function PostSessionSummary({
   sessionId,
   summary,
+  sessionRpe,
   initialNotes,
   progressionHints,
   bwDiagnostics,
 }: {
   sessionId: string;
   summary: SessionSummary;
+  /**
+   * Session RPE (the "how hard overall, 1-10" rating captured at
+   * finish). Surfaced here as a friendly "Effort" stat so the
+   * post-mortem owns it — the in-progress banner no longer renders a
+   * separate completed-state line. Null when the user didn't rate it.
+   */
+  sessionRpe?: number | string | null;
   initialNotes: string | null;
   /** Up to 3 suggested-progression hints for the main lifts (Phase 2 D2). */
   progressionHints?: ProgressionHint[];
@@ -57,6 +65,16 @@ export function PostSessionSummary({
   const [showNote, setShowNote] = useState(false);
   const [savedNote, setSavedNote] = useState<string | null>(initialNotes);
   const [error, setError] = useState<string | null>(null);
+
+  // Normalise sRPE to a trimmed numeric string ("7.5", "8"). The column
+  // is numeric but can arrive as a string from the row; drop trailing
+  // ".0" so "8.0" reads as "8".
+  const effortValue = (() => {
+    if (sessionRpe == null) return null;
+    const n = Number(sessionRpe);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    return Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10);
+  })();
 
   const submitNote = async (fd: FormData) => {
     setError(null);
@@ -127,6 +145,13 @@ export function PostSessionSummary({
           highlight={summary.prCount > 0}
           testId="summary-prs"
         />
+        {effortValue != null && (
+          <SummaryStat
+            label="Effort"
+            value={`${effortValue} / 10`}
+            testId="summary-effort"
+          />
+        )}
       </div>
 
       {progressionHints && progressionHints.length > 0 && (
@@ -308,13 +333,11 @@ export function PostSessionSummary({
 
       {!showNote && (
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Link href="/app" className="cp-btn primary big" data-testid="summary-done" style={{ flex: "1 1 auto" }}>
-            Done
-          </Link>
           <button
             type="button"
             className="cp-btn"
             onClick={() => setShowNote(true)}
+            data-testid="summary-add-note"
             style={{ minHeight: 48 }}
           >
             {savedNote ? "Edit note" : "Add a note"}
