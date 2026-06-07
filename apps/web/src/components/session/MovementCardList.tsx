@@ -280,6 +280,7 @@ export function MovementCardList({
         key={group.movementId}
         sessionId={sessionId}
         group={group}
+        readOnly={isComplete}
         tmBySlug={tmBySlug}
         oneRmBySlug={oneRmBySlug}
         loggedItemIndices={loggedItemIndices}
@@ -343,6 +344,7 @@ export function MovementCardList({
           key={m.id}
           sessionId={sessionId}
           movement={m}
+          readOnly={isComplete}
           loggedSets={setsByMovement.get(m.id) ?? []}
           loggedSetCount={loggedSetCount}
           tmKg={tmBySlug[m.slug]}
@@ -363,6 +365,7 @@ export function MovementCardList({
 function PrescribedCard(props: {
   sessionId: string;
   group: MovementGroup;
+  readOnly?: boolean;
   tmBySlug: Record<string, number>;
   oneRmBySlug: Record<string, number>;
   loggedItemIndices: ReadonlySet<number>;
@@ -420,6 +423,7 @@ function PrescribedCard(props: {
     <MovementCard
       sessionId={props.sessionId}
       group={props.group}
+      readOnly={props.readOnly}
       tmKg={tmKg}
       oneRmKg={oneRmKg}
       loggedItemIndices={props.loggedItemIndices}
