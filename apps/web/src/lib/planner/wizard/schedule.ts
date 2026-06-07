@@ -216,7 +216,7 @@ export function buildWeekShape(
         : "heavy singles/triples ≥ 85% TM";
     const dur = isMuscleBias ? 50 : 40;
     for (let i = 0; i < a.sessions.strength; i++)
-      push("🏋️", "Maintenance lift", meta, key, dur);
+      push("🏋️", "Strength", meta, key, dur);
     const c = a.sessions.cardio;
     if (c >= 1) push("🏃", "Long Z2", "aerobic base · conversational", "Polarized Z2", 75);
     if (c >= 2)
@@ -226,7 +226,7 @@ export function buildWeekShape(
     for (let i = 3; i < c; i++) push("🚴", "Easy Z2", "aerobic base", "Easy Z2 (recovery)", 45);
   } else if (a.id === "maintenance") {
     for (let i = 0; i < a.sessions.strength; i++)
-      push("🏋️", "Maintenance lift", "65–70% TM · 3 sets", "Maintenance lift", 35);
+      push("🏋️", "Strength", "65–70% TM · 3 sets", "Maintenance lift", 35);
     for (let i = 0; i < a.sessions.cardio; i++)
       push("🚴", "Easy Z2", "maintenance dose", "Maintenance Z2", 25);
   } else if (a.id === "rebuild") {
