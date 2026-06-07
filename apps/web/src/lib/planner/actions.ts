@@ -114,6 +114,7 @@ import { resolveAccessoryVolumeLevel } from "./accessory-volume";
 import { getElbowForearmAtlRatio } from "@/lib/stats/region-spike-queries";
 import { getPreviousBlockAccessoryIdsByRole } from "./accessory-history-queries";
 import { archivePriorActiveBlocks } from "./archive-prior-blocks";
+import { descriptiveSessionTitle } from "./session-title";
 
 /**
  * Movement-row shape used by the main-lift resolver. Only the columns
@@ -1125,7 +1126,10 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       };
       const isDeload = weekProfile?.intensityLabel === "Deload";
 
-      let title = day.title;
+      // Descriptive default name: "<Modality> · <focus>". Strength days
+      // name their main lift(s); cardio/tendon days keep their type label.
+      // See `descriptiveSessionTitle` — title is a display-only label.
+      let base = day.title;
       if (day.kind === "strength") {
         // When the BW path is the source of truth for this session,
         // derive the title from the BW main movement(s) so the day
@@ -1141,28 +1145,23 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
             .filter((it) => it.kind === "main")
             .map((it) => it.movementName)
             .filter((n): n is string => Boolean(n));
-          const name =
+          base =
             bwMainNames.length > 0
               ? bwMainNames.join(" + ")
               : movement.displayName;
-          title = `${name}${isDeload ? " (deload)" : ""}`;
         } else if (hasAnyTm && !bwActive) {
           // Barbell strength day. A folded dual-main-lift day (ADR
           // 0004/0005) is named after BOTH resolved lifts — "Front Squat
           // + Standing Overhead Press" — so it isn't mislabelled after
           // only its first lift and the heading-dedup heuristic doesn't
           // hide just one of the two movement cards.
-          const name =
+          base =
             day.secondaryRole && secondaryMovement
               ? `${movement.displayName} + ${secondaryMovement.displayName}`
               : movement.displayName;
-          title = `${name}${isDeload ? " (deload)" : ""}`;
-        } else if (isDeload) {
-          title = `${day.title} (deload)`;
         }
-      } else if (isDeload) {
-        title = `${day.title} (deload)`;
       }
+      const title = descriptiveSessionTitle(day.kind, base, isDeload);
 
       rows.push({
         block_id: block.id,
@@ -1508,18 +1507,16 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
       };
       const isDeload = archetype.weekProfiles.find((w) => w.weekIndex === week)?.intensityLabel === "Deload";
 
-      let title = day.title;
+      let base = day.title;
       if (day.kind === "strength") {
         // Folded dual-main-lift days name both resolved lifts so the day
         // isn't mislabelled after only its first lift (see standard path).
-        const name =
+        base =
           day.secondaryRole && secondaryMovement
             ? `${movement.displayName} + ${secondaryMovement.displayName}`
             : movement.displayName;
-        title = `${name}${isDeload ? " (deload)" : ""}`;
-      } else if (isDeload) {
-        title = `${day.title} (deload)`;
       }
+      const title = descriptiveSessionTitle(day.kind, base, isDeload);
 
       rows.push({
         block_id: block.id,
