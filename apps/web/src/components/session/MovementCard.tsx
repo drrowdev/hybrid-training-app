@@ -329,7 +329,6 @@ export function MovementCard({
             >
               TM {tmKg} kg
             </span>
-            <MetricHelp term="training_max" variant="why" placement="bottom" />
           </span>
         )}
         {collapsed && headerSummary && (

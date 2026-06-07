@@ -19,6 +19,7 @@ import {
 } from "@/lib/settings/equipment-presets";
 import { TmSection, type PickerGroup, type RoleGroupInput } from "@/components/training-maxes/TmSection";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { MetricHelp } from "@/components/ui/MetricHelp";
 import Link from "next/link";
 export default async function TrainingMaxesPage() {
   const supabase = await createClient();
@@ -139,7 +140,9 @@ export default async function TrainingMaxesPage() {
       ) : (
         <p style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 14 }}>
           Enter your 1RM for each main lift. The app applies a default TM% to compute the
-          working <em>training max</em> used by the planner. Pick whichever variant of squat,
+          working <em>training max</em>
+          <MetricHelp term="training_max" variant="why" placement="bottom" />{" "}
+          used by the planner. Pick whichever variant of squat,
           bench, deadlift, or overhead press you actually train — back squat, front squat,
           trap-bar deadlift, push press, etc. are all valid.
         </p>
