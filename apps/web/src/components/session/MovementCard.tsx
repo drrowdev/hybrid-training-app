@@ -24,6 +24,7 @@ import {
 } from "@/lib/sessions/movement-grouping";
 import { summariseGroupForHeader } from "@/lib/sessions/movement-summary";
 import { buildMovementRecap } from "@/lib/sessions/movement-recap";
+import { cleanPrescriptionNotes } from "@/lib/planner/clean-prescription-notes";
 import { MovementFocusView, type FocusLoggedSet } from "./MovementFocusView";
 import { SwapMovementModal } from "./SwapMovementModal";
 import { DisclosureArrow } from "./DisclosureArrow";
@@ -246,12 +247,19 @@ export function MovementCard({
   // selection reason, threaded onto the item as `notes`. Mains carry no notes
   // (they show a TM-derived target instead), so this only lights up for
   // accessories/durability/power picks. Surfaced as a ✦ "why" spark.
+  //
+  // Run through `cleanPrescriptionNotes` so leaked engine-bucket jargon
+  // (e.g. "Weekly tissue floor: hsr") is stripped to null rather than
+  // shown raw — only genuine human-readable reasons surface. Hidden
+  // entirely on a completed session (readOnly): the per-movement "why"
+  // is logging-time guidance, not review material.
   const accessoryWhy = useMemo(() => {
+    if (readOnly) return undefined;
     const first = group.items[0];
     if (!first || first.kind === "main") return undefined;
-    const note = first.notes;
-    return typeof note === "string" && note.trim().length > 0 ? note : undefined;
-  }, [group.items]);
+    const note = cleanPrescriptionNotes(first.notes);
+    return note && note.trim().length > 0 ? note : undefined;
+  }, [group.items, readOnly]);
 
   return (
     <section

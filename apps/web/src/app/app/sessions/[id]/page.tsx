@@ -739,9 +739,20 @@ export default async function SessionDetailPage({
           </h1>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {aiAccess ? (
-              <AskWhyButton sessionId={session.id} />
+              <AskWhyButton
+                sessionId={session.id}
+                label={isComplete ? "Why this workout?" : undefined}
+                prompt={
+                  isComplete
+                    ? "Why was this workout programmed the way it was?"
+                    : undefined
+                }
+              />
             ) : (
-              <AskWhyButton href="/app/settings/ai" />
+              <AskWhyButton
+                href="/app/settings/ai"
+                label={isComplete ? "Why this workout?" : undefined}
+              />
             )}
             <details className="cp-menu" style={{ position: "relative" }}>
               <summary
