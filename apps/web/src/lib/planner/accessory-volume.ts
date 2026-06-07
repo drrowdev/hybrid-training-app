@@ -6,11 +6,17 @@
  * failure dial). "Minimalism" is simply the `low` end of this control on a
  * strength-leaning block: keep the heavy compounds, trim accessory breadth.
  *
- *   - low    : one fewer aesthetic accessory movement (trims BREADTH, not
- *              depth — the kept movements keep their full set count). The
+ *   - low    : trims accessory BREADTH. Drops the lowest-value aesthetic
+ *              movement(s); the kept movements keep their full set count. The
  *              picker fills durability → functional → aesthetic in priority
  *              order, so a `-1` item budget only ever drops the lowest-value
  *              AESTHETIC pick; the durability / functional floor is untouched.
+ *              On a cardio-led archetype whose aesthetic base is a single
+ *              movement (Endurance / Rebuild), `low` drops that last aesthetic
+ *              pick too — the session keeps its main lift + the durability /
+ *              functional essentials, which is exactly what "minimal accessory
+ *              volume" means. This makes Low strictly leaner than Medium at
+ *              every archetype (it used to collapse into Medium at base 1).
  *   - medium : the byte-identical identity (`NO_TILT`). Default for every
  *              block / legacy row, so the golden master and the ADR
  *              0011/0015/0016/0020/0022 pins stay green.
@@ -91,17 +97,19 @@ export interface VolumeBonus {
 
 /**
  * Floor a raw `(itemBonus, setBonus)` against an archetype's OWN accessory
- * profile so a downward tilt never strips the last aesthetic movement and
- * never drops a movement below 2 working sets:
+ * profile so a downward tilt never goes nonsensical:
  *
  *   - An archetype that ships zero aesthetic items (Maintenance) is a full
  *     no-op — there is nothing to scale.
- *   - Otherwise at least ONE aesthetic movement always survives, so `low` is a
- *     no-op on archetypes whose base is already 1 (Endurance / Rebuild) and
- *     trims exactly one on Strength (2 → 1) / Hypertrophy (4 → 3) / Concurrent
- *     (2 → 1).
+ *   - Otherwise the aesthetic item budget floors at 0: `low` trims one
+ *     aesthetic movement on every archetype, INCLUDING dropping the single
+ *     aesthetic pick on base-1 archetypes (Endurance / Rebuild). The
+ *     durability + functional floors (single-leg, HSR, hip/ankle work) are
+ *     seated separately and always survive, so "Low" is genuinely minimal
+ *     accessory volume, not an empty session. (Previously floored at 1, which
+ *     made Low collapse into Medium at base 1 — the UX bug this fixes.)
  *   - Sets-per-movement never falls below 2 (a lone set is too weak a
- *     stimulus — minimalism trims breadth, not depth).
+ *     stimulus — the down-tilt trims breadth, not depth).
  */
 function floorBonus(
   aestheticBaseItems: number,
@@ -112,7 +120,7 @@ function floorBonus(
   if (aestheticBaseItems <= 0) {
     return { itemBonus: 0, setBonus: 0 };
   }
-  const items = Math.max(1, aestheticBaseItems + rawItemBonus);
+  const items = Math.max(0, aestheticBaseItems + rawItemBonus);
   const sets = Math.max(2, baseSetsPerItem + rawSetBonus);
   return { itemBonus: items - aestheticBaseItems, setBonus: sets - baseSetsPerItem };
 }

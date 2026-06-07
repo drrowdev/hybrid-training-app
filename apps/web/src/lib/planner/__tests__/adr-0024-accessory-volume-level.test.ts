@@ -130,8 +130,16 @@ const ALL: { name: string; archetype: Archetype }[] = [
   { name: "maintenance", archetype: MAINTENANCE },
 ];
 
-// Archetypes whose aesthetic base is ≥ 2 — where `low` has a movement to trim.
-const TRIMMABLE = new Set(["strength_anchor", "hypertrophy_anchor", "concurrent_hybrid"]);
+// Archetypes with at least one aesthetic movement — `low` now trims one on
+// ALL of them (it drops the single pick on the base-1 archetypes too). Only
+// Maintenance (zero aesthetic base) is a full no-op.
+const TRIMMABLE = new Set([
+  "strength_anchor",
+  "endurance_anchor",
+  "rebuild",
+  "hypertrophy_anchor",
+  "concurrent_hybrid",
+]);
 
 // ── Identity (medium == default) ─────────────────────────────────────────
 
@@ -164,7 +172,7 @@ describe("ADR 0024 — `low` trims exactly one aesthetic movement (breadth)", ()
       const med = aestheticItems(strengthDayItems(archetype, "medium")!);
       const low = aestheticItems(strengthDayItems(archetype, "low")!);
       if (TRIMMABLE.has(name)) {
-        expect(med.length).toBeGreaterThanOrEqual(2);
+        expect(med.length).toBeGreaterThanOrEqual(1);
         expect(low.length).toBe(med.length - 1);
       } else {
         expect(low.length).toBe(med.length);
@@ -258,7 +266,7 @@ describe("ADR 0024 config helpers", () => {
   });
 
   it("low never strips the last aesthetic movement (item floor at 1)", () => {
-    // base 1 (Endurance / Rebuild) → low is a no-op.
+    // base 1 (Endurance / Rebuild) → low drops the single aesthetic pick to 0.
     expect(
       accessoryVolumeCandidates({
         aestheticBaseItems: 1,
@@ -266,7 +274,7 @@ describe("ADR 0024 config helpers", () => {
         level: "low",
         secondary: NO_SECONDARY,
       }),
-    ).toEqual([{ itemBonus: 0, setBonus: 0 }]);
+    ).toEqual([{ itemBonus: -1, setBonus: 0 }]);
     // base 2 (Strength) → low drops exactly one.
     expect(
       accessoryVolumeCandidates({
