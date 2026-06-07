@@ -4,6 +4,7 @@ import {
   normalizeCardioModality,
   sanitizePreferredModalities,
   resolvePreferredCardioModality,
+  blockUsesRunningCardio,
   type CardioCatalogEntry,
 } from "../preferred-cardio-modality";
 
@@ -193,5 +194,45 @@ describe("resolvePreferredCardioModality — experience-tier filter", () => {
       userTier: null,
     });
     expect(r.slug).toBe("bike-indoor-vo2-4x4");
+  });
+});
+
+describe("blockUsesRunningCardio (ADR 0034)", () => {
+  const shared = {
+    ownedCardio: ALL_GEAR,
+    userTier: 4 as number | null,
+    catalog: CATALOG,
+  };
+  const z2Day = { cardioKind: "cardio_z2" as const, defaultSlug: "run-easy-z2" };
+  const vo2Day = { cardioKind: "cardio_vo2" as const, defaultSlug: "run-vo2-4x4" };
+
+  it("returns true when no modality preference is set (all cardio is running default)", () => {
+    expect(blockUsesRunningCardio([z2Day, vo2Day], { ...shared, preferred: [] })).toBe(true);
+  });
+
+  it("returns false when a full-ladder modality (cycling) substitutes every day away from running", () => {
+    expect(
+      blockUsesRunningCardio([z2Day, vo2Day], { ...shared, preferred: ["cycling"] }),
+    ).toBe(false);
+  });
+
+  it("returns true when a z2-only modality (swimming) still falls back to running on interval days", () => {
+    // swimming covers z2 but not vo2 → the vo2 day stays on running.
+    expect(
+      blockUsesRunningCardio([z2Day, vo2Day], { ...shared, preferred: ["swimming"] }),
+    ).toBe(true);
+  });
+
+  it("ignores external / unzoned cardio days", () => {
+    const externalDay = { cardioKind: "cardio_other" as const, defaultSlug: "whatever" };
+    expect(
+      blockUsesRunningCardio([externalDay], { ...shared, preferred: [] }),
+    ).toBe(false);
+  });
+
+  it("returns true when running is the explicit top preference", () => {
+    expect(
+      blockUsesRunningCardio([z2Day], { ...shared, preferred: ["running", "cycling"] }),
+    ).toBe(true);
   });
 });

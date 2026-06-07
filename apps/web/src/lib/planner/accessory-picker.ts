@@ -271,6 +271,8 @@ export function pickAccessoriesForSession({
   experience = null,
   compoundCoverageCredit,
   focusMuscles = [],
+  runningCardio = false,
+  dayPrimaryRole,
   variationSeed,
 }: {
   profile: AccessoryProfile;
@@ -335,6 +337,19 @@ export function pickAccessoriesForSession({
    * byte-identical. See `focus-muscle-targets.ts` + the substitution-bias path.
    */
   focusMuscles?: readonly string[];
+  /**
+   * ADR 0034 — true when the block's cardio includes a running-impact day.
+   * Drives Phase 1: the week's FIRST HSR fill prefers the Achilles/calf region
+   * (highest-probability overuse site for runners). Default false → byte-identical.
+   */
+  runningCardio?: boolean;
+  /**
+   * ADR 0034 — the day's primary main-lift role (`squat` / `deadlift` /
+   * `horizontal_press` / `vertical_press`). Drives Phase 2: HSR fills not claimed
+   * by the running/Achilles preference prefer the day's pattern tendon region
+   * (hinge day → posterior, squat day → knee). Undefined → no pattern preference.
+   */
+  dayPrimaryRole?: string;
   /**
    * Quick-generate variation seed (quick-workout path only). Forwarded to each
    * `findCandidate` call (offset per slot so different gaps rotate
@@ -403,9 +418,26 @@ export function pickAccessoriesForSession({
     const current = effectiveBulletproofCount(role, durabilityProgress);
     const target = effectiveBulletproofTarget(role, durFloor);
     if (current >= target) continue;
+    // ADR 0034 — region preference for the HSR slot. Phase 1: a running-impact
+    // block steers its FIRST HSR of the week (none picked yet) to the
+    // Achilles/calf region. Phase 2: any later HSR prefers the day's main-lift
+    // pattern region (hinge → posterior, squat → knee), so tendon loading is
+    // distributed across patterns instead of doubling patellar work. Soft —
+    // findCandidate falls back to any in-role HSR when no region match exists.
+    let preferRegion: string | undefined;
+    if (role === "hsr") {
+      const hsrPickedThisWeek = current; // weekly count credited before this fill
+      preferRegion =
+        runningCardio && hsrPickedThisWeek === 0
+          ? RUNNING_HSR_REGION
+          : dayPrimaryRole
+            ? HSR_REGION_BY_ROLE[dayPrimaryRole]
+            : undefined;
+    }
     const candidate = findCandidate({
       catalog: workingCatalog,
       requiredBulletproofRole: role,
+      preferRegion,
       filters,
       usedThisSession,
       variationSeed: seedFor(),
@@ -686,6 +718,14 @@ type CandidateQuery = {
   requiredBulletproofRole?: BulletproofRole;
   requiredFunctionalRole?: FunctionalRole;
   requiredMuscle?: string;
+  /**
+   * ADR 0034 — soft region preference. When set, a candidate whose
+   * `primaryRegion` matches gets a ranking BOOST (never a hard filter), so a
+   * region-targeted durability fill prefers e.g. a calf/Achilles HSR for a
+   * runner or a hinge-pattern HSR on deadlift day — while gracefully falling
+   * back to any in-role candidate when no matching-region movement is feasible.
+   */
+  preferRegion?: string;
   filters: PickFilters;
   usedThisSession: Set<string>;
   preferSupported?: boolean;
@@ -896,6 +936,30 @@ export const ACCESSORY_VALUE_BONUS = 8; // heuristic CP-1
 // candidate. heuristic CP-1 (Stage-A); revisit against logged selection data.
 export const AESTHETIC_COMPOUND_PENALTY = 2 * ACCESSORY_VALUE_BONUS; // = 16
 
+// ADR 0034 — soft region-preference weight for region-targeted durability
+// fills (Achilles HSR for runners; day-pattern HSR). Set ABOVE ROTATION_BASE
+// (40) so a matching tendon region reliably wins over block-rotation novelty,
+// but it is only a SCORE term — hard role / limitation / equipment filters
+// still gate selection, so it can never force an empty fill. Structural soft
+// preference, not a dose — no calibration debt (CP-1 N/A).
+export const REGION_PREFERENCE_BONUS = 50;
+
+// ADR 0034 — day-pattern -> preferred HSR tendon region. Used by Phase 2 so a
+// hinge day gets posterior-chain HSR (slow RDL) and a squat day gets knee/quad
+// HSR (slow front squat), instead of doubling patellar load. Presses map to the
+// shoulder region; no shoulder HSR exists yet (Phase 3), so the soft preference
+// simply no-ops and falls back to any HSR. Keyed by `StrengthRole` strings
+// (kept loose to avoid importing the archetype module).
+const HSR_REGION_BY_ROLE: Record<string, string> = {
+  squat: "knee",
+  deadlift: "hamstring_posterior",
+  horizontal_press: "shoulder_scapular",
+  vertical_press: "shoulder_scapular",
+};
+
+/** ADR 0034 — the Achilles/calf tendon region a running-impact block prioritises. */
+const RUNNING_HSR_REGION = "foot_ankle_calf";
+
 /**
  * Movement staple-value, normalised to [0,1]. Compound + loadable = 1.0
  * (a sticky staple — e.g. weighted chin-up / dip / row); a redundant
@@ -932,6 +996,14 @@ function candidateScore(m: CatalogMovement, query: CandidateQuery): number {
     score -= ACCESSORY_VALUE_BONUS * value;
   }
   if (query.preferSupported && !m.isSupported) score += 30;
+  // ADR 0034 — soft region preference for region-targeted durability fills.
+  // A matching primaryRegion outranks block-rotation novelty (bonus > ROTATION_BASE)
+  // because honouring the modality/pattern-specific tendon need matters more than
+  // rotating to a different region; still below any hard filter, so limitations /
+  // equipment / role gates always win.
+  if (query.preferRegion && m.primaryRegion === query.preferRegion) {
+    score -= REGION_PREFERENCE_BONUS;
+  }
   if (query.filters.concurrentStressActive && (m.eccentricLoadScore ?? 3) >= 4) score += 20;
   // ADR 0027 Lever A — demote redundant compounds in the aesthetic slot only.
   if (query.demoteCompound && m.isCompound) score += AESTHETIC_COMPOUND_PENALTY;
