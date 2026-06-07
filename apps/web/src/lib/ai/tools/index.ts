@@ -19,6 +19,7 @@ import { getKnowledge } from "./getKnowledge";
 import { getSessionDetail } from "./getSessionDetail";
 import { getCardioAnalysis } from "./getCardioAnalysis";
 import { getLiftProgress } from "./getLiftProgress";
+import { getBodyweightTrend } from "./getBodyweightTrend";
 
 export {
   getProfile,
@@ -32,10 +33,11 @@ export {
   getSessionDetail,
   getCardioAnalysis,
   getLiftProgress,
+  getBodyweightTrend,
 };
 
 /**
- * The 11 tools registered with both surfaces. Adding a tool here adds
+ * The 12 tools registered with both surfaces. Adding a tool here adds
  * it to both the MCP route and (post-PR B) the in-app orchestrator —
  * by design.
  */
@@ -51,4 +53,5 @@ export const catalogue: readonly AnyTool[] = [
   getSessionDetail as AnyTool,
   getCardioAnalysis as AnyTool,
   getLiftProgress as AnyTool,
+  getBodyweightTrend as AnyTool,
 ] as const;
