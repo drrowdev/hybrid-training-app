@@ -160,6 +160,41 @@ describe("ADR 0004 — buildPrescription secondary-slot cap", () => {
     expect(secondaryItems.length).toBeLessThan(tue.secondaryMaxSets!);
     expect(secondaryItems.length).toBeGreaterThanOrEqual(1);
   });
+
+  it("deload keeps the HEAVIEST working sets — the top set is retained, not dropped (Finding #5)", () => {
+    const deloadProfile = ENDURANCE_ANCHOR.weekProfiles.find(
+      (w) => w.intensityLabel === "Deload",
+    )!;
+    const deloadWk = deloadProfile.weekIndex;
+    const items = buildPrescription(
+      ENDURANCE_ANCHOR,
+      deloadWk,
+      tue as DayTemplate,
+      FAKE_PRIMARY,
+      undefined,
+      FAKE_SECONDARY,
+    );
+
+    const fullLadder = deloadProfile.setIntensities.map((p) => Math.round(p * 100));
+    const topPct = Math.max(...fullLadder);
+
+    for (const movementId of [FAKE_PRIMARY.id, FAKE_SECONDARY.id]) {
+      const working = items.filter(
+        (it) => it.movementId === movementId && it.kind === "main",
+      );
+      // The trim drops sets, so fewer than the full ladder remain...
+      expect(working.length).toBeLessThan(fullLadder.length);
+      // ...but the heaviest set (the top touch) is KEPT — the old front-slice
+      // dropped it, topping the deload out at a lighter intensity.
+      const keptPcts = working.map((it) => it.percentTm);
+      expect(keptPcts).toContain(topPct);
+      // And the kept sets are the heaviest contiguous tail, not the lightest.
+      const lightestKept = Math.min(...(keptPcts as number[]));
+      const droppedCount = fullLadder.length - working.length;
+      const expectedLightestKept = fullLadder[droppedCount];
+      expect(lightestKept).toBe(expectedLightestKept);
+    }
+  });
 });
 
 describe("ADR 0004 — CONCURRENT_HYBRID daysForFrequency trim fix", () => {
