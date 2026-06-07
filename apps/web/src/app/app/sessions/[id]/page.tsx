@@ -16,6 +16,7 @@ import {
 import { DeleteSessionButton } from "@/components/trash/DeleteSessionButton";
 import { CancelWorkoutButton } from "@/components/session/CancelWorkoutButton";
 import { AskWhyButton } from "@/components/session/AskWhyButton";
+import { EditableSessionTitle } from "@/components/session/EditableSessionTitle";
 import { hasAiAccess } from "@/lib/ai/access";
 import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
 import {
@@ -734,9 +735,10 @@ export default async function SessionDetailPage({
           );
         })()}
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
-          <h1 style={{ fontSize: 26, margin: "4px 0 0", letterSpacing: "-0.01em" }}>
-            {session.title ?? "Session"}
-          </h1>
+          <EditableSessionTitle
+            sessionId={session.id}
+            initialTitle={session.title ?? "Session"}
+          />
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {aiAccess ? (
               <AskWhyButton
