@@ -913,16 +913,13 @@ export function MovementFocusView({
               textAlign: "right",
             }}
           >
-            Next:{" "}
-            {bucketLabelForKind(nextItem.kind, nextSlot!, totalSlots).split(" · ")[0]}
-            {nextWeight != null ? (
-              <>
-                {" · "}
-                <span className="mono">
-                  {nextWeight} kg × {nextItem.reps ?? targetReps}
-                </span>
-              </>
-            ) : null}
+            Next: Set {nextSlot! + 1} of {totalSlots}
+            {" · "}
+            <span className="mono">
+              {nextWeight != null
+                ? `${nextWeight} kg × ${nextItem.reps ?? targetReps}`
+                : renderTargetLine(nextItem, nextItem.reps ?? targetReps, false)}
+            </span>
           </div>
         )}
       </form>
