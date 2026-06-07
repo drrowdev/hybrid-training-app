@@ -131,7 +131,11 @@ describe("groupPrescriptionSections", () => {
   });
 });
 
-import { describeRowExternalLoad, groupByMovementThenKind } from "../prescription-grouping";
+import {
+  collapseIdenticalSetItems,
+  describeRowExternalLoad,
+  groupByMovementThenKind,
+} from "../prescription-grouping";
 
 describe("describeRowExternalLoad", () => {
   function row(items: PrescriptionItem[]) {
@@ -359,6 +363,48 @@ describe("groupByMovementThenKind", () => {
     const out = groupByMovementThenKind(items);
     expect(out.movements).toHaveLength(0);
     expect(out.tendon).toHaveLength(1);
+  });
+});
+
+describe("collapseIdenticalSetItems", () => {
+  it("merges consecutive identical single-set items into one summed-set item", () => {
+    const items: PrescriptionItem[] = [
+      item({ kind: "accessory", movementSlug: "box_jump", reps: 14, sets: 1 }),
+      item({ kind: "accessory", movementSlug: "box_jump", reps: 14, sets: 1 }),
+    ];
+    const out = collapseIdenticalSetItems(items);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.sets).toBe(2);
+    expect(out[0]!.reps).toBe(14);
+  });
+
+  it("keeps structurally-different items separate", () => {
+    const items: PrescriptionItem[] = [
+      item({ kind: "accessory", movementSlug: "box_jump", reps: 14, sets: 1 }),
+      item({ kind: "accessory", movementSlug: "box_jump", reps: 12, sets: 1 }),
+    ];
+    const out = collapseIdenticalSetItems(items);
+    expect(out).toHaveLength(2);
+  });
+
+  it("sums existing multi-set counts when items match", () => {
+    const items: PrescriptionItem[] = [
+      item({ kind: "accessory", movementSlug: "curl", reps: 10, sets: 2 }),
+      item({ kind: "accessory", movementSlug: "curl", reps: 10, sets: 1 }),
+    ];
+    const out = collapseIdenticalSetItems(items);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.sets).toBe(3);
+  });
+
+  it("does not merge non-adjacent identical items separated by a different item", () => {
+    const items: PrescriptionItem[] = [
+      item({ kind: "accessory", movementSlug: "curl", reps: 10, sets: 1 }),
+      item({ kind: "accessory", movementSlug: "curl", reps: 12, sets: 1 }),
+      item({ kind: "accessory", movementSlug: "curl", reps: 10, sets: 1 }),
+    ];
+    const out = collapseIdenticalSetItems(items);
+    expect(out).toHaveLength(3);
   });
 });
 

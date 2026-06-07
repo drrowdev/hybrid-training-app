@@ -37,6 +37,7 @@ import { RailList } from "@/components/plan/ThisWeekRail";
 import { addDaysToYmd } from "@/lib/dates";
 import {
   groupByMovementThenKind,
+  collapseIdenticalSetItems,
   type PlanSetRow,
   type MovementPrescriptionSection,
   type PrescriptionMovementRow,
@@ -1612,7 +1613,21 @@ export function SessionDrawer({
   };
 
   const sections = useMemo(() => groupByMovementThenKind(session.items), [session.items]);
-  const movementCount = sections.movements.length;
+  const mainLiftCount = sections.movements.length;
+  const accessoryCount =
+    sections.accessories.length +
+    sections.hingeCompensations.length +
+    sections.tendon.length;
+  const compositionLabel = useMemo(() => {
+    const parts: string[] = [];
+    if (mainLiftCount > 0) {
+      parts.push(`${mainLiftCount} main lift${mainLiftCount === 1 ? "" : "s"}`);
+    }
+    if (accessoryCount > 0) {
+      parts.push(`${accessoryCount} accessor${accessoryCount === 1 ? "y" : "ies"}`);
+    }
+    return parts.join(" + ");
+  }, [mainLiftCount, accessoryCount]);
   const dur = session.estDurationMin;
 
   const handleSwap = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -1703,7 +1718,7 @@ export function SessionDrawer({
                   Overdue · {overdueDayCount}d
                 </span>
               )}
-              {movementCount > 0 && ` · ${movementCount} movement${movementCount === 1 ? "" : "s"}`}
+              {compositionLabel && ` · ${compositionLabel}`}
               {dur != null && ` · ~${dur} min`}
             </div>
           </div>
@@ -2301,7 +2316,7 @@ function DrawerAccessoryRow({
       </span>
       <span>{row.movementName}</span>
       <span className="v">
-        {row.items.map((it, j) => (
+        {collapseIdenticalSetItems(row.items).map((it, j) => (
           <span key={j}>
             {j > 0 ? " · " : ""}
             {formatPrescriptionItem(it)}
