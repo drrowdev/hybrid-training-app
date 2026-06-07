@@ -15,7 +15,7 @@
  */
 import type { BulletproofRole, FunctionalRole } from "./accessory-roles";
 
-export type AccessoryReason = "durability" | "functional" | "aesthetic" | "power";
+export type AccessoryReason = "durability" | "functional" | "aesthetic" | "power" | "focus";
 
 const DURABILITY_WHY: Record<BulletproofRole, string> = {
   carry:
@@ -93,6 +93,12 @@ export function accessoryRationale(input: {
       return muscle
         ? `Adds direct ${muscle} volume — your main lift trains it only lightly, so this tops it up.`
         : "Adds direct volume to a muscle your main lift trains only lightly.";
+    }
+    case "focus": {
+      const muscle = input.gapMuscle ? humanizeMuscle(input.gapMuscle) : null;
+      return muscle
+        ? `Direct ${muscle} work — it's your focus muscle, so the plan guarantees a baseline of it even when accessory volume is low.`
+        : "Direct work for your focus muscle — guaranteed a baseline even when accessory volume is low.";
     }
   }
 }
