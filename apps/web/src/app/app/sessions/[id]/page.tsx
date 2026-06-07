@@ -741,17 +741,17 @@ export default async function SessionDetailPage({
             {aiAccess ? (
               <AskWhyButton
                 sessionId={session.id}
-                label={isComplete ? "Why this workout?" : undefined}
+                label={isComplete ? "How did I do?" : undefined}
                 prompt={
                   isComplete
-                    ? "Why was this workout programmed the way it was?"
+                    ? "How did this workout go? Assess how I performed — top sets, any PRs, effort vs. target — and what I got out of it."
                     : undefined
                 }
               />
             ) : (
               <AskWhyButton
                 href="/app/settings/ai"
-                label={isComplete ? "Why this workout?" : undefined}
+                label={isComplete ? "How did I do?" : undefined}
               />
             )}
             <details className="cp-menu" style={{ position: "relative" }}>
