@@ -32,21 +32,24 @@ const SPARK_STYLE: React.CSSProperties = {
   fontFamily: "inherit",
 };
 
-const LABEL = "Ask why this workout";
+const DEFAULT_LABEL = "Ask why this workout";
 
 export function AskWhyButton({
   sessionId,
   href,
+  label = DEFAULT_LABEL,
   prompt = "Why is this workout programmed the way it is?",
 }: {
   sessionId?: string;
   href?: string;
+  /** Override the chip text — e.g. a past-tense label on a completed session. */
+  label?: string;
   prompt?: string;
 }): React.ReactElement {
   if (href) {
     return (
       <Link href={href} data-testid="session-ask-why" style={SPARK_STYLE}>
-        <span aria-hidden="true">✦</span> {LABEL}
+        <span aria-hidden="true">✦</span> {label}
       </Link>
     );
   }
@@ -63,7 +66,7 @@ export function AskWhyButton({
         );
       }}
     >
-      <span aria-hidden="true">✦</span> {LABEL}
+      <span aria-hidden="true">✦</span> {label}
     </button>
   );
 }
