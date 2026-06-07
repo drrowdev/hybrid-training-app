@@ -17,7 +17,7 @@
  */
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   FOCUS_MUSCLE_LABEL,
   SHOULDER_FOCUS_VARIANTS,
@@ -52,25 +52,95 @@ export function FocusMuscleChips({
   onToggle: (muscle: string) => void;
 }): React.ReactElement {
   const anyShoulderSelected = selected.some((m) => SHOULDER_VARIANT_SET.has(m));
-  const [shouldersOpen, setShouldersOpen] = useState<boolean>(anyShoulderSelected);
+  // Surface the chosen delt variant(s) on the collapsed parent chip so the
+  // selection stays visible without opening the dropdown.
+  const selectedShoulderLabel =
+    SHOULDER_FOCUS_VARIANTS.filter((m) => selected.includes(m))
+      .map((m) => FOCUS_MUSCLE_LABEL[m])
+      .join(", ") || null;
+  const [shouldersOpen, setShouldersOpen] = useState<boolean>(false);
+  const shouldersRef = useRef<HTMLSpanElement>(null);
+
+  // Close the shoulders dropdown on an outside click or Escape so it
+  // behaves like a normal menu rather than a sticky sub-row.
+  useEffect(() => {
+    if (!shouldersOpen) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (!shouldersRef.current?.contains(e.target as Node)) {
+        setShouldersOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShouldersOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [shouldersOpen]);
 
   return (
     <div data-testid="focus-muscle-chips" style={containerStyle}>
       <div style={chipsRowStyle}>
-        {ROW_LAYOUT.map((entry, i) => {
+        {ROW_LAYOUT.map((entry) => {
           if (entry.kind === "shoulders") {
             return (
-              <button
+              <span
                 key="shoulders"
-                type="button"
-                aria-expanded={shouldersOpen || anyShoulderSelected}
-                aria-pressed={anyShoulderSelected}
-                onClick={() => setShouldersOpen((v) => !v)}
-                style={chipStyle(anyShoulderSelected)}
-                data-testid="focus-chip-shoulders"
+                ref={shouldersRef}
+                style={{ position: "relative", display: "inline-flex" }}
               >
-                Shoulders <span aria-hidden="true" style={{ opacity: 0.7 }}>⌄</span>
-              </button>
+                <button
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded={shouldersOpen}
+                  aria-pressed={anyShoulderSelected}
+                  onClick={() => setShouldersOpen((v) => !v)}
+                  style={chipStyle(anyShoulderSelected)}
+                  data-testid="focus-chip-shoulders"
+                >
+                  {selectedShoulderLabel ?? "Shoulders"}{" "}
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      opacity: 0.7,
+                      marginLeft: 2,
+                      display: "inline-block",
+                      transition: "transform .15s",
+                      transform: shouldersOpen ? "rotate(180deg)" : "none",
+                    }}
+                  >
+                    ⌄
+                  </span>
+                </button>
+                {shouldersOpen && (
+                  <div
+                    role="menu"
+                    style={dropdownStyle}
+                    data-testid="focus-shoulders-subrow"
+                  >
+                    {SHOULDER_FOCUS_VARIANTS.map((m) => {
+                      const isSelected = selected.includes(m);
+                      return (
+                        <button
+                          key={m}
+                          type="button"
+                          role="menuitemcheckbox"
+                          aria-checked={isSelected}
+                          onClick={() => onToggle(m)}
+                          style={chipStyle(isSelected, true)}
+                          data-testid={`focus-chip-${m}`}
+                          data-selected={isSelected ? "true" : "false"}
+                        >
+                          {FOCUS_MUSCLE_LABEL[m]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </span>
             );
           }
           const isSelected = selected.includes(entry.muscle);
@@ -89,27 +159,6 @@ export function FocusMuscleChips({
           );
         })}
       </div>
-
-      {(shouldersOpen || anyShoulderSelected) && (
-        <div style={subRowStyle} data-testid="focus-shoulders-subrow">
-          {SHOULDER_FOCUS_VARIANTS.map((m) => {
-            const isSelected = selected.includes(m);
-            return (
-              <button
-                key={m}
-                type="button"
-                aria-pressed={isSelected}
-                onClick={() => onToggle(m)}
-                style={chipStyle(isSelected, true)}
-                data-testid={`focus-chip-${m}`}
-                data-selected={isSelected ? "true" : "false"}
-              >
-                {FOCUS_MUSCLE_LABEL[m]}
-              </button>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
@@ -125,13 +174,25 @@ const chipsRowStyle: React.CSSProperties = {
   gap: 8,
 };
 
-const subRowStyle: React.CSSProperties = {
+/**
+ * Anchored dropdown beneath the Shoulders chip — the delt variants open
+ * directly under where the user clicked rather than as a full-width row
+ * below the wrapped chip grid.
+ */
+const dropdownStyle: React.CSSProperties = {
+  position: "absolute",
+  top: "calc(100% + 6px)",
+  left: 0,
+  zIndex: 30,
   display: "flex",
-  flexWrap: "wrap",
-  gap: 8,
-  paddingLeft: 12,
-  borderLeft: "2px solid var(--cp-border)",
-  marginLeft: 4,
+  flexDirection: "column",
+  gap: 6,
+  padding: 8,
+  borderRadius: 12,
+  background: "var(--cp-surface)",
+  border: "1px solid var(--cp-border)",
+  boxShadow: "var(--cp-shadow, 0 8px 24px rgba(0,0,0,0.18))",
+  minWidth: "max-content",
 };
 
 function chipStyle(selected: boolean, sub: boolean = false): React.CSSProperties {
