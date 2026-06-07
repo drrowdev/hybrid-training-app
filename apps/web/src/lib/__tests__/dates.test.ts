@@ -12,6 +12,7 @@ import {
   isoWeekdayYmd,
   mondayOfYmd,
   todayYmd,
+  upcomingMondayYmd,
   ymdInTimezone,
   ymdToUtc,
 } from "@/lib/dates";
@@ -225,5 +226,18 @@ describe("mondayOfYmd", () => {
     expect(mondayOfYmd("2025-03-30")).toBe("2025-03-24");
     // 2025-10-26 (DST end, Helsinki) is a Sunday. Its Monday is 2025-10-20.
     expect(mondayOfYmd("2025-10-26")).toBe("2025-10-20");
+  });
+});
+
+describe("upcomingMondayYmd", () => {
+  it("returns the same day when ymd is already a Monday", () => {
+    expect(upcomingMondayYmd("2025-01-06")).toBe("2025-01-06"); // Mon
+  });
+
+  it("advances to the next Monday for any other weekday", () => {
+    expect(upcomingMondayYmd("2025-01-07")).toBe("2025-01-13"); // Tue → next Mon
+    expect(upcomingMondayYmd("2025-01-08")).toBe("2025-01-13"); // Wed
+    expect(upcomingMondayYmd("2025-01-11")).toBe("2025-01-13"); // Sat
+    expect(upcomingMondayYmd("2025-01-12")).toBe("2025-01-13"); // Sun → tomorrow
   });
 });

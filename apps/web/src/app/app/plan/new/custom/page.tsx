@@ -3,6 +3,7 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { createCustomBlock } from "@/lib/planner/actions";
 import { updateProfile } from "@/lib/settings/actions";
 import { todayYmd } from "@/lib/planner/queries";
+import { upcomingMondayYmd } from "@/lib/dates";
 import { getTrainingMaxContext } from "@/lib/training-maxes/queries";
 import { CustomBlockBuilder } from "@/components/planner/CustomBlockBuilder";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -35,7 +36,7 @@ export default async function NewCustomBlockPage() {
       />
 
       <CustomBlockBuilder
-        defaultStartedOn={todayYmd(timezone)}
+        defaultStartedOn={upcomingMondayYmd(todayYmd(timezone))}
         defaultDaysPerWeek={defaultDaysPerWeek}
         hasAnyStrengthTm={hasAnyStrengthTm}
         allowsTwoADays={allowsTwoADays}
