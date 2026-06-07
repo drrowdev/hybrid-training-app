@@ -36,8 +36,6 @@ export function SessionWorkArea({
   sessionId,
   isComplete,
   performedAt,
-  durationMin,
-  sessionRpe,
   sets,
   tmBySlug,
   oneRmBySlug,
@@ -68,8 +66,6 @@ export function SessionWorkArea({
   sessionId: string;
   isComplete: boolean;
   performedAt: string;
-  durationMin: number | null;
-  sessionRpe: number | string | null;
   sets: LoggedSet[];
   tmBySlug: Record<string, number>;
   oneRmBySlug: Record<string, number>;
@@ -133,8 +129,6 @@ export function SessionWorkArea({
         sessionId={sessionId}
         isComplete={isComplete}
         performedAt={performedAt}
-        durationMin={durationMin}
-        sessionRpe={sessionRpe}
         loggedCount={sets.length}
         prescriptionItemCount={prescription?.items?.length ?? 0}
       />
@@ -171,23 +165,19 @@ export function SessionWorkArea({
  * at the top of the workflow (no `position: sticky` because the page
  * already has a bottom CTA bar — pinning two CTAs is visually busy).
  *
- * Completed sessions get the post-mortem variant: "✓ Session complete
- * · 52 min · sRPE 7".
+ * On a completed session this renders nothing — the PostSessionSummary
+ * card above already owns the "Session complete" recap (incl. effort).
  */
 function InProgressBanner({
   sessionId,
   isComplete,
   performedAt,
-  durationMin,
-  sessionRpe,
   loggedCount,
   prescriptionItemCount,
 }: {
   sessionId: string;
   isComplete: boolean;
   performedAt: string;
-  durationMin: number | null;
-  sessionRpe: number | string | null;
   loggedCount: number;
   prescriptionItemCount: number;
 }) {
@@ -202,32 +192,12 @@ function InProgressBanner({
   }, [isComplete, performedAt]);
 
   if (isComplete) {
-    return (
-      <div
-        data-testid="session-status-banner"
-        data-state="complete"
-        className="cp-card"
-        style={{
-          padding: "10px 14px",
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          background: "color-mix(in oklab, var(--cp-success) 8%, transparent)",
-          borderColor: "color-mix(in oklab, var(--cp-success) 40%, var(--cp-border))",
-        }}
-      >
-        <span aria-hidden="true" style={{ color: "var(--cp-success)", fontWeight: 700 }}>
-          ✓
-        </span>
-        <span style={{ fontSize: 13, color: "var(--cp-text)", fontWeight: 600 }}>
-          Session complete
-        </span>
-        <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
-          {durationMin != null ? `· ${durationMin} min` : ""}
-          {sessionRpe != null ? ` · sRPE ${sessionRpe}` : ""}
-        </span>
-      </div>
-    );
+    // The completed-state line used to render here ("✓ Session complete ·
+    // 52 min · sRPE 7"), but it duplicated the PostSessionSummary card
+    // that already sits directly above on a completed session — including
+    // the effort rating, now surfaced there as a friendly "Effort" stat.
+    // Render nothing so the post-mortem owns the summary.
+    return null;
   }
 
   if (loggedCount === 0) return null;

@@ -71,6 +71,7 @@ export function FreestyleMovementCard({
   onRemove,
   hapticsEnabled,
   timerSoundEnabled,
+  readOnly = false,
 }: {
   sessionId: string;
   movement: LoggedSet["movement"];
@@ -100,12 +101,18 @@ export function FreestyleMovementCard({
   onRemove?: (movementId: string) => void;
   hapticsEnabled: boolean;
   timerSoundEnabled: boolean;
+  /**
+   * Session-complete read-only mode. Defaults the card collapsed,
+   * hides the remove kebab, and swaps the log form for a read-only
+   * per-set breakdown when expanded.
+   */
+  readOnly?: boolean;
 }) {
   // priorBest used to drive historical-max PR detection; the flash is
   // now anchored to the saved 1RM (see lib/engine/tm-anchored-pr.ts).
   // The prop is retained for back-compat with the parent prop chain.
   void priorBest;
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(readOnly);
   const last = loggedSets[loggedSets.length - 1];
   const [weight, setWeight] = useState<number>(
     last?.weight_kg ? Number(last.weight_kg) : 0,
@@ -154,7 +161,7 @@ export function FreestyleMovementCard({
   }, [menuOpen]);
 
   const effectiveLoggedCount = loggedSetCount ?? loggedSets.length;
-  const canRemove = !!removeSessionMovement && effectiveLoggedCount === 0;
+  const canRemove = !readOnly && !!removeSessionMovement && effectiveLoggedCount === 0;
 
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -374,7 +381,13 @@ export function FreestyleMovementCard({
         </div>
       )}
 
-      {!collapsed && (
+      {!collapsed && readOnly && (
+        <div style={{ padding: "0 14px 14px" }}>
+          <FreestyleReadOnlySets movementId={movement.id} loggedSets={loggedSets} />
+        </div>
+      )}
+
+      {!collapsed && !readOnly && (
         <div style={{ padding: "0 14px 14px", display: "grid", gap: 10 }}>
           {restSeconds > 0 && (
             <RestTimer
@@ -560,6 +573,94 @@ function pillStyle(color: string): React.CSSProperties {
     color,
     fontWeight: 700,
   };
+}
+
+/**
+ * Read-only per-set breakdown for a freestyle movement on a completed
+ * (locked) session. Mirrors the prescribed card's read-only list:
+ * weight × reps (or distance / duration), RPE, and skipped flags — no
+ * inputs, no actions.
+ */
+function FreestyleReadOnlySets({
+  movementId,
+  loggedSets,
+}: {
+  movementId: string;
+  loggedSets: LoggedSet[];
+}) {
+  if (loggedSets.length === 0) {
+    return (
+      <div
+        data-testid={`freestyle-readonly-empty-${movementId}`}
+        style={{ fontSize: 13, color: "var(--cp-text-muted)" }}
+      >
+        No sets were logged for this movement.
+      </div>
+    );
+  }
+  return (
+    <ul
+      data-testid={`freestyle-readonly-sets-${movementId}`}
+      style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 6 }}
+    >
+      {loggedSets.map((s, i) => {
+        const skipped = s.skipped ?? false;
+        const rpe = s.rpe == null ? null : Number(s.rpe);
+        return (
+          <li
+            key={s.id}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "auto 1fr auto",
+              gap: 12,
+              alignItems: "baseline",
+              padding: "8px 0",
+              borderBottom:
+                i === loggedSets.length - 1 ? "none" : "1px solid var(--cp-border)",
+              opacity: skipped ? 0.6 : 1,
+            }}
+          >
+            <span className="mono" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+              Set {i + 1}
+            </span>
+            <span
+              className="mono"
+              style={{
+                fontSize: 14,
+                color: "var(--cp-text)",
+                textDecoration: skipped ? "line-through" : "none",
+              }}
+            >
+              {skipped
+                ? `Skipped${s.skip_reason ? ` (${s.skip_reason})` : ""}`
+                : formatFreestyleSet(s)}
+            </span>
+            {!skipped && rpe != null && Number.isFinite(rpe) && (
+              <span className="mono" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+                RPE {rpe}
+              </span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function formatFreestyleSet(s: LoggedSet): string {
+  const weight = s.weight_kg == null ? null : Number(s.weight_kg);
+  const hasWeight = weight != null && Number.isFinite(weight) && weight > 0;
+  if (s.distance_m != null && s.distance_m > 0) {
+    return `${s.distance_m} m${hasWeight ? ` @ ${weight} kg` : ""}`;
+  }
+  if ((s.reps == null || s.reps <= 0) && s.duration_sec != null && s.duration_sec > 0) {
+    const mins = Math.floor(s.duration_sec / 60);
+    const secs = s.duration_sec % 60;
+    const t = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+    return hasWeight ? `${t} @ ${weight} kg` : t;
+  }
+  const w = hasWeight ? `${weight} kg` : "BW";
+  return `${w} × ${s.reps ?? 0}`;
 }
 
 function FreestyleStepper({
