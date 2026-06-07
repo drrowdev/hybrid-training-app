@@ -484,6 +484,11 @@ export function assemblePrescriptionItems(
         // ADR 0027 Lever B — credit the week's main-lift synergist coverage so
         // the aesthetic gap-fill redirects to genuinely under-trained muscles.
         compoundCoverageCredit: computeWeeklyCompoundCredit(archetype),
+        // Finding #1 — focus-muscle MEV floor. Forward the declared focus
+        // muscles so the picker can guarantee each reaches its MEV landmark even
+        // when the aesthetic budget is fully trimmed. Empty array (no focus
+        // muscle) → no-op, byte-identical.
+        focusMuscles,
         variationSeed,
       });
       const accessoryItems: PrescriptionItem[] = [];
