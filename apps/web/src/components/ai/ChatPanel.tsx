@@ -20,6 +20,8 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { ChatMarkdown } from "./ChatMarkdown";
+
 type Seed = { sessionId?: string; prompt: string };
 
 /**
@@ -320,17 +322,16 @@ export function ChatPanel({
                     data-testid={`ai-chat-message-${m.role}-${idx}`}
                   >
                     <div className="cp-ai-msg-body">
-                      {m.content || (m.role === "assistant" ? "…" : "")}
+                      {m.role === "assistant" ? (
+                        m.content ? (
+                          <ChatMarkdown text={m.content} />
+                        ) : (
+                          "…"
+                        )
+                      ) : (
+                        m.content
+                      )}
                     </div>
-                    {m.role === "assistant" && m.usage ? (
-                      <div
-                        className="cp-ai-tokens"
-                        data-testid="ai-chat-token-cost"
-                      >
-                        ≈ {formatTokens(m.usage.input_tokens)} input +{" "}
-                        {formatTokens(m.usage.output_tokens)} output tokens
-                      </div>
-                    ) : null}
                   </article>
                 ))
               )}
@@ -518,10 +519,47 @@ export function ChatPanel({
         .cp-ai-msg-body {
           word-break: break-word;
         }
-        .cp-ai-tokens {
-          font-size: 11px;
-          color: var(--cp-text-muted);
-          margin-top: 4px;
+        /* Markdown rendering inside assistant bubbles (ChatMarkdown). */
+        .cp-ai-msg-body :global(.md-root) {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .cp-ai-msg-body :global(.md-p) {
+          margin: 0;
+        }
+        .cp-ai-msg-body :global(.md-h3) {
+          margin: 4px 0 0;
+          font-size: 14px;
+          font-weight: 700;
+          line-height: 1.35;
+          color: var(--cp-text);
+        }
+        .cp-ai-msg-body :global(.md-h4) {
+          margin: 2px 0 0;
+          font-size: 13px;
+          font-weight: 700;
+          line-height: 1.35;
+          color: var(--cp-text);
+        }
+        .cp-ai-msg-body :global(.md-ul) {
+          margin: 0;
+          padding-left: 18px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .cp-ai-msg-body :global(.md-ul li) {
+          margin: 0;
+        }
+        .cp-ai-msg-body :global(.md-hr) {
+          border: none;
+          border-top: 1px solid var(--cp-border);
+          margin: 6px 0 2px;
+        }
+        .cp-ai-msg-body :global(.md-root strong) {
+          font-weight: 700;
+          color: var(--cp-text);
         }
         .cp-ai-tool {
           font-size: 12px;
@@ -675,7 +713,3 @@ function applyStreamEvent(
   }
 }
 
-function formatTokens(n: number): string {
-  if (n < 1000) return String(n);
-  return `${(n / 1000).toFixed(1)}k`;
-}
