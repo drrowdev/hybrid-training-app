@@ -180,6 +180,23 @@ describe("PlanRedesign — timeline grid", () => {
     expect(html).toContain("TODAY");
   });
 
+  it("highlights today even when today is a REST day (no session)", () => {
+    // today=2026-05-27 is week 0, day 2 (Wed) — no session lands there in
+    // the fixture. The cell still resolves its date via the grid anchor,
+    // so it carries the today highlight (regression: previously a rest
+    // cell had a null date and never highlighted).
+    const html = render({ today: "2026-05-27" });
+    // Timeline rest cell 0-2 is flagged today (attrs render before the
+    // testid in JSX order).
+    expect(html).toMatch(
+      /data-today="true"[^>]*data-testid="plan-day-cell-0-2"/,
+    );
+    // The "This week" rail's rest row for the same day also highlights +
+    // shows the TODAY chip.
+    expect(html).toMatch(/data-today="true"[^>]*data-testid="plan-rail-2"/);
+    expect(html).toContain("TODAY");
+  });
+
   it("mutes past + done sessions (line-through via 'muted' modifier)", () => {
     const html = render();
     // s3 is on 2026-05-25 (before today) AND done → muted modifier
