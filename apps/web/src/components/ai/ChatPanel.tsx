@@ -105,6 +105,9 @@ export function ChatPanel({
   const [contextSessionId, setContextSessionId] = useState<string | undefined>(
     undefined,
   );
+  // History panel is hidden by default so the conversation gets the full
+  // drawer width; toggled open as an overlay from the header menu button.
+  const [historyOpen, setHistoryOpen] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
 
   // Initial thread list fetch.
@@ -129,6 +132,7 @@ export function ChatPanel({
     setMessages([]);
     setError(null);
     setContextSessionId(undefined);
+    setHistoryOpen(false);
     try {
       const r = await fetch(`/api/ai/threads/${id}/messages`);
       const json = (await r.json()) as {
@@ -158,6 +162,7 @@ export function ChatPanel({
     setMessages([]);
     setError(null);
     setContextSessionId(undefined);
+    setHistoryOpen(false);
   }, []);
 
   const deleteThread = useCallback(
@@ -285,7 +290,18 @@ export function ChatPanel({
       <div className="cp-ai-backdrop" onClick={onClose} aria-hidden="true" />
       <aside className="cp-ai-drawer" role="dialog" aria-label="AI chat">
         <header className="cp-ai-header">
-          <div className="cp-ai-title">AI</div>
+          <button
+            type="button"
+            onClick={() => setHistoryOpen((v) => !v)}
+            data-testid="ai-chat-history-toggle"
+            className="cp-ai-mini-btn cp-ai-icon-btn"
+            aria-label="Conversation history"
+            aria-expanded={historyOpen}
+            title="History"
+          >
+            ☰
+          </button>
+          <div className="cp-ai-header-spacer" />
           <button
             type="button"
             onClick={newThread}
@@ -298,7 +314,7 @@ export function ChatPanel({
             type="button"
             onClick={onClose}
             data-testid="ai-chat-close"
-            className="cp-ai-mini-btn"
+            className="cp-ai-mini-btn cp-ai-icon-btn"
             aria-label="Close"
           >
             ×
@@ -306,11 +322,20 @@ export function ChatPanel({
         </header>
 
         <div className="cp-ai-body">
+          {historyOpen ? (
+            <div
+              className="cp-ai-threads-backdrop"
+              onClick={() => setHistoryOpen(false)}
+              aria-hidden="true"
+            />
+          ) : null}
           <aside
-            className="cp-ai-threads"
+            className={`cp-ai-threads ${historyOpen ? "is-open" : ""}`}
             data-testid="ai-chat-thread-list"
-            aria-label="Threads"
+            aria-label="Conversation history"
+            aria-hidden={!historyOpen}
           >
+            <div className="cp-ai-threads-head">History</div>
             {threads.length === 0 ? (
               <p className="cp-ai-empty">No prior conversations.</p>
             ) : (
@@ -435,8 +460,8 @@ export function ChatPanel({
                     void send();
                   }
                 }}
-                placeholder="Why is my ceiling compressed this week?"
-                rows={1}
+                placeholder="Ask about your training…"
+                rows={2}
                 data-testid="ai-chat-input"
                 disabled={sending}
               />
@@ -482,42 +507,74 @@ export function ChatPanel({
           display: flex;
           align-items: center;
           gap: 8px;
-          padding: 12px 16px;
+          padding: 10px 12px;
           border-bottom: 1px solid var(--cp-border);
         }
-        .cp-ai-title {
+        .cp-ai-header-spacer {
           flex: 1;
-          font-weight: 600;
-          color: var(--cp-text);
         }
         .cp-ai-mini-btn {
           background: var(--cp-surface-soft);
           border: 1px solid var(--cp-border);
           color: var(--cp-text);
-          padding: 4px 10px;
-          border-radius: 6px;
-          font-size: 12px;
+          padding: 5px 11px;
+          border-radius: 8px;
+          font-size: 13px;
+          line-height: 1;
           cursor: pointer;
         }
         .cp-ai-mini-btn:hover {
           background: var(--cp-bg-elevated, var(--cp-surface-soft));
         }
+        .cp-ai-icon-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 30px;
+          height: 30px;
+          padding: 0;
+          font-size: 16px;
+        }
         .cp-ai-body {
           flex: 1;
           display: flex;
           min-height: 0;
+          position: relative;
+        }
+        /* History is an overlay, hidden by default, so the conversation gets the
+           full drawer width. It slides in from the left when toggled. */
+        .cp-ai-threads-backdrop {
+          position: absolute;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.35);
+          z-index: 2;
         }
         .cp-ai-threads {
-          width: 140px;
+          position: absolute;
+          top: 0;
+          left: 0;
+          bottom: 0;
+          width: 260px;
+          max-width: 80%;
+          background: var(--cp-surface);
           border-right: 1px solid var(--cp-border);
-          padding: 8px;
+          padding: 10px;
           overflow-y: auto;
-          display: none;
+          z-index: 3;
+          transform: translateX(-100%);
+          transition: transform 0.16s ease;
+          box-shadow: 8px 0 24px rgba(0, 0, 0, 0.18);
         }
-        @media (min-width: 768px) {
-          .cp-ai-threads {
-            display: block;
-          }
+        .cp-ai-threads.is-open {
+          transform: translateX(0);
+        }
+        .cp-ai-threads-head {
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: var(--cp-text-muted);
+          padding: 2px 6px 8px;
         }
         .cp-ai-thread-row {
           display: flex;
@@ -701,16 +758,16 @@ export function ChatPanel({
         .cp-ai-composer textarea {
           flex: 1;
           min-width: 0;
-          min-height: 40px;
-          max-height: 140px;
+          min-height: 56px;
+          max-height: 160px;
           overflow-y: auto;
           resize: none;
           border: 1px solid var(--cp-border);
           border-radius: 10px;
-          padding: 9px 12px;
+          padding: 10px 12px;
           font: inherit;
           font-size: 14px;
-          line-height: 1.4;
+          line-height: 1.45;
           background: var(--cp-surface-soft);
           color: var(--cp-text);
         }
