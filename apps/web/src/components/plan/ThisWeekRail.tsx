@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { isOverdue, overdueDays } from "@/lib/planner/overdue";
+import { addDaysToYmd } from "@/lib/dates";
 import {
   SessionDrawer,
   sessionToOverdueCandidate,
@@ -57,6 +58,18 @@ export function RailList({
   const doneCount = sessions.filter((s) => s.done).length;
   const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
 
+  // Start date (dayIndex 0) of the displayed week, derived from any
+  // dated session: its date minus its dayIndex. Lets rest rows — which
+  // carry no session date — still resolve their calendar date, so
+  // "today" highlights even when today is a rest day (mirrors the
+  // timeline + month views). Null only when the week has no dated
+  // sessions at all.
+  const weekStart = useMemo(() => {
+    const anchor = rail.find((r) => r.session?.date);
+    if (!anchor || !anchor.session?.date) return null;
+    return addDaysToYmd(anchor.session.date, -anchor.dayIndex);
+  }, [rail]);
+
   return (
     <aside className="plan-rail" aria-label={heading} data-testid="plan-this-week">
       <div className="rail-head">
@@ -75,18 +88,24 @@ export function RailList({
       <div className="rail-list">
         {rail.map((row) => {
           const s = row.session;
-          const dayDate = s?.date ?? null;
+          const dayDate =
+            s?.date ??
+            (weekStart ? addDaysToYmd(weekStart, row.dayIndex) : null);
           const isToday = dayDate === today;
           const isPast = dayDate !== null && dayDate < today;
           if (!s) {
             return (
               <div
                 key={row.dayIndex}
-                className="rail-item rest-item"
+                className={`rail-item rest-item${isToday ? " today-item" : ""}`}
+                data-today={isToday ? "true" : undefined}
                 data-testid={`plan-rail-${row.dayIndex}`}
               >
                 <span className="rail-day mono">{row.dow}</span>
-                <span className="rail-name">Rest</span>
+                <span className="rail-name">
+                  Rest
+                  {isToday && <span className="today-chip mono">TODAY</span>}
+                </span>
                 <span className="rail-kind mono">—</span>
               </div>
             );
