@@ -1146,6 +1146,44 @@ export async function fillSessionFromPlan(
   return { ok: true, inserted: inserts.length };
 }
 
+const updateTitleSchema = z.object({
+  sessionId: z.string().uuid(),
+  title: z.string().trim().min(1).max(120),
+});
+
+/**
+ * Rename a workout. The title is purely a user-facing label (DB tables
+ * and routes use the immutable session id), so this only writes
+ * `sessions.title`. RLS-scoped to the owner. Latest write wins.
+ */
+export async function updateSessionTitle(
+  formData: FormData,
+): Promise<{ ok?: true; error?: string }> {
+  const parsed = updateTitleSchema.safeParse({
+    sessionId: formData.get("sessionId"),
+    title: formData.get("title"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) return { error: "Not signed in." };
+
+  const { error } = await supabase
+    .from("sessions")
+    .update({ title: parsed.data.title })
+    .eq("id", parsed.data.sessionId)
+    .eq("user_id", user.id);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
+  return { ok: true };
+}
+
 const updateNotesSchema = z.object({
   sessionId: z.string().uuid(),
   notes: z.string().trim().max(2000).optional().nullable(),
