@@ -290,7 +290,11 @@ describe("getSessionDetail", () => {
           created_at: `${today}T08:10:00.000Z`,
         },
       ],
-      movements: [{ id: "m-fsq", display_name: "Front Squat" }],
+      movements: [{ id: "m-fsq", display_name: "Front Squat", slug: "front_squat" }],
+      // Saved 1RM well above the logged top set's e1RM → no PR.
+      training_maxes: [
+        { user_id: "u1", movement_id: "m-fsq", one_rm_kg: 130 },
+      ],
       training_blocks: [
         {
           id: "blk-1",
@@ -319,6 +323,7 @@ describe("getSessionDetail", () => {
     expect(out.performance).not.toBeNull();
     expect(out.performance?.hasLog).toBe(true);
     expect(out.performance?.loggedWorkingSets).toBe(1);
+    expect(out.performance?.prCount).toBe(0);
     expect(out.performance?.movements).toHaveLength(1);
     expect(out.performance?.movements[0]?.movementId).toBe("m-fsq");
     expect(out.performance?.movements[0]?.loggedSets).toHaveLength(1);

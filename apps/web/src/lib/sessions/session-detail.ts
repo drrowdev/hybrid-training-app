@@ -125,6 +125,14 @@ export type SessionPerformance = {
   totalLoggedSets: number;
   /** Logged working sets: non-warmup, non-skipped, with weight + reps. */
   loggedWorkingSets: number;
+  /**
+   * Number of PRs the engine credits this session — identical to the
+   * count on the post-session summary card (TM-anchored: a logged top
+   * set whose estimated 1RM beats the saved 1RM for that lift). 0 means
+   * no PR. Lets the AI answer "was this a PR?" directly instead of
+   * hedging.
+   */
+  prCount: number;
   /** Per-movement actuals for everything the user actually logged. */
   movements: PerformedMovement[];
   /**
@@ -455,24 +463,33 @@ async function loadSessionPerformance(
     return (data ?? []) as LogRow[];
   }, []);
 
-  // Resolve display names for every logged movement id (covers freestyle
-  // movements that aren't in the prescription).
+  // Resolve display names + slugs for every logged movement id (covers
+  // freestyle movements that aren't in the prescription). Slug feeds the
+  // TM-anchored PR check below.
   const loggedIds = Array.from(
     new Set(rows.map((r) => r.movement_id).filter((id): id is string => !!id)),
   );
   const nameById = new Map<string, string>();
+  const slugById = new Map<string, string>();
   if (loggedIds.length > 0) {
-    const names = await safe<Array<{ id: string; display_name: string | null }>>(
-      async () => {
-        const { data } = await supabase
-          .from("movements")
-          .select("id, display_name")
-          .in("id", loggedIds);
-        return (data ?? []) as Array<{ id: string; display_name: string | null }>;
-      },
-      [],
-    );
-    for (const m of names) if (m.id) nameById.set(m.id, m.display_name ?? "");
+    const movs = await safe<
+      Array<{ id: string; display_name: string | null; slug: string | null }>
+    >(async () => {
+      const { data } = await supabase
+        .from("movements")
+        .select("id, display_name, slug")
+        .in("id", loggedIds);
+      return (data ?? []) as Array<{
+        id: string;
+        display_name: string | null;
+        slug: string | null;
+      }>;
+    }, []);
+    for (const m of movs) {
+      if (!m.id) continue;
+      nameById.set(m.id, m.display_name ?? "");
+      if (m.slug) slugById.set(m.id, m.slug);
+    }
   }
   // Prescription provides a name fallback + the prescribed-movement set.
   const prescribedNameById = new Map<string, string>();
@@ -531,10 +548,46 @@ async function loadSessionPerformance(
     }
   }
 
+  // PR count — reuse the exact TM-anchored detector the post-session
+  // summary card uses, so the AI's "was this a PR?" answer always matches
+  // the visible PRs stat. Needs each logged set's movement slug + the
+  // user's saved 1RMs (one_rm_kg) keyed by slug.
+  const prCount = await safe<number>(async () => {
+    if (rows.length === 0 || !prescription) return 0;
+    const { countSessionTmAnchoredPrs } = await import("@/lib/stats/pr-queries");
+    const { data: tmRows } = await supabase
+      .from("training_maxes")
+      .select("movement_id, one_rm_kg")
+      .eq("user_id", userId);
+    const oneRmBySlug: Record<string, number> = {};
+    for (const t of (tmRows ?? []) as Array<{
+      movement_id: string;
+      one_rm_kg: number | string | null;
+    }>) {
+      const slug = slugById.get(t.movement_id);
+      const oneRm = t.one_rm_kg == null ? null : Number(t.one_rm_kg);
+      if (slug && oneRm != null && Number.isFinite(oneRm)) {
+        oneRmBySlug[slug] = oneRm;
+      }
+    }
+    const setsForPr = rows.map((r) => ({
+      set_kind: r.set_kind ?? "main",
+      weight_kg: r.weight_kg,
+      reps: r.reps,
+      rpe: r.rpe,
+      movement: {
+        id: r.movement_id,
+        slug: slugById.get(r.movement_id) ?? "",
+      },
+    }));
+    return countSessionTmAnchoredPrs(setsForPr, oneRmBySlug, prescription);
+  }, 0);
+
   return {
     hasLog: true,
     totalLoggedSets,
     loggedWorkingSets,
+    prCount,
     movements: Array.from(byMovement.values()),
     notPerformed,
   };

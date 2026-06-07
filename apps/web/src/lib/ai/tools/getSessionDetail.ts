@@ -115,6 +115,7 @@ const performanceSchema2 = z
     hasLog: z.boolean(),
     totalLoggedSets: z.number().int(),
     loggedWorkingSets: z.number().int(),
+    prCount: z.number().int(),
     movements: z.array(performedMovementSchema),
     notPerformed: z.array(z.string()),
   })
