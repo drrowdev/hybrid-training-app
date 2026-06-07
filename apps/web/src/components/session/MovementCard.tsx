@@ -305,6 +305,9 @@ export function MovementCard({
           <span style={{ fontWeight: 600, fontSize: 15 }}>
             {group.movementName}
           </span>
+          {/Hsr|HSR|\(hsr\)/i.test(group.movementName) && (
+            <MetricHelp term="hsr" variant="info" placement="bottom" />
+          )}
           {accessoryWhy && (
             <MetricHelp
               title="Why this movement"
