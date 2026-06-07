@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { catalogue, getProfile, getKnowledge } from "..";
 
 describe("catalogue", () => {
-  it("exports exactly 9 tools in the ADR 0003 order", () => {
-    expect(catalogue.length).toBe(9);
+  it("exports exactly 10 tools in the ADR 0003 order", () => {
+    expect(catalogue.length).toBe(10);
     expect(catalogue.map((t) => t.name)).toEqual([
       "getProfile",
       "getActiveBlock",
@@ -14,6 +14,7 @@ describe("catalogue", () => {
       "getMemories",
       "getKnowledge",
       "getSessionDetail",
+      "getCardioAnalysis",
     ]);
   });
 
