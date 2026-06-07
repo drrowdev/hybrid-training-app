@@ -96,11 +96,36 @@ const generationContextSchema = z.object({
   readiness: readinessSchema,
 });
 
+const performedSetSchema = z.object({
+  weightKg: z.number().nullable(),
+  reps: z.number().nullable(),
+  rpe: z.number().nullable(),
+  skipped: z.boolean(),
+  setKind: z.string(),
+});
+
+const performedMovementSchema = z.object({
+  movementId: z.string(),
+  name: z.string().nullable(),
+  loggedSets: z.array(performedSetSchema),
+});
+
+const performanceSchema2 = z
+  .object({
+    hasLog: z.boolean(),
+    totalLoggedSets: z.number().int(),
+    loggedWorkingSets: z.number().int(),
+    movements: z.array(performedMovementSchema),
+    notPerformed: z.array(z.string()),
+  })
+  .nullable();
+
 const outputSchema = z.object({
   found: z.boolean(),
   onPlan: z.boolean(),
   session: sessionSchema,
   movements: z.array(movementSchema),
+  performance: performanceSchema2,
   generationContext: generationContextSchema,
 });
 
@@ -131,7 +156,7 @@ function emptyContext(): Output["generationContext"] {
 export const getSessionDetail: Tool<Input, Output> = {
   name: "getSessionDetail",
   description:
-    "Returns full detail for one of the user's workout sessions — its prescribed movements with the engine's per-movement reason, plus the generation context (athlete profile, goal/focus, plan phase, performance, readiness) that shaped it. Accepts a completed/in-progress session id OR a planned-session id for a not-yet-started workout. Use this to explain WHY a session is programmed as it is.",
+    "Returns full detail for one of the user's workout sessions — its prescribed movements with the engine's per-movement reason and the generation context that shaped it, PLUS `performance`: what the user ACTUALLY logged (per-movement sets, working-set count, and `notPerformed` = prescribed movements with zero logged sets). Accepts a completed/in-progress session id OR a planned-session id (where `performance` is null). Use this to explain WHY a session is programmed AND to assess HOW the user actually did — basing any recap on `performance`, never the prescription alone.",
   inputSchema,
   outputSchema,
   async handler(input, ctx) {
@@ -156,6 +181,7 @@ export const getSessionDetail: Tool<Input, Output> = {
           phase: "",
         },
         movements: [],
+        performance: null,
         generationContext: emptyContext(),
       };
     }
@@ -165,6 +191,7 @@ export const getSessionDetail: Tool<Input, Output> = {
       onPlan: detail.onPlan,
       session: detail.session,
       movements: detail.movements,
+      performance: detail.performance,
       generationContext: detail.generationContext,
     };
   },
