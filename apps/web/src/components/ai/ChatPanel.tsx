@@ -85,9 +85,11 @@ type StreamEvent =
 export function ChatPanel({
   onClose,
   seed,
+  starterChips,
 }: {
   onClose: () => void;
   seed?: Seed | null;
+  starterChips?: { heading: string; prompts: string[] };
 }): React.ReactElement {
   const [threads, setThreads] = useState<ThreadRow[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
@@ -157,6 +159,28 @@ export function ChatPanel({
     setError(null);
     setContextSessionId(undefined);
   }, []);
+
+  const deleteThread = useCallback(
+    async (id: string) => {
+      // Optimistically drop it from the list; if it was open, reset to a
+      // fresh thread.
+      setThreads((prev) => prev.filter((t) => t.id !== id));
+      setActiveThreadId((cur) => {
+        if (cur === id) {
+          setMessages([]);
+          setContextSessionId(undefined);
+          return null;
+        }
+        return cur;
+      });
+      try {
+        await fetch(`/api/ai/threads/${id}`, { method: "DELETE" });
+      } catch {
+        /* best-effort; the row is already gone from the UI */
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (listRef.current) {
@@ -291,14 +315,28 @@ export function ChatPanel({
               <p className="cp-ai-empty">No prior conversations.</p>
             ) : (
               threads.map((t) => (
-                <button
+                <div
                   key={t.id}
-                  type="button"
-                  className={`cp-ai-thread ${activeThreadId === t.id ? "is-active" : ""}`}
-                  onClick={() => loadThread(t.id)}
+                  className={`cp-ai-thread-row ${activeThreadId === t.id ? "is-active" : ""}`}
                 >
-                  {t.title || "Untitled"}
-                </button>
+                  <button
+                    type="button"
+                    className="cp-ai-thread"
+                    onClick={() => loadThread(t.id)}
+                  >
+                    {t.title || "Untitled"}
+                  </button>
+                  <button
+                    type="button"
+                    className="cp-ai-thread-del"
+                    data-testid="ai-chat-thread-delete"
+                    aria-label={`Delete conversation: ${t.title || "Untitled"}`}
+                    title="Delete conversation"
+                    onClick={() => void deleteThread(t.id)}
+                  >
+                    ×
+                  </button>
+                </div>
               ))
             )}
           </aside>
@@ -368,6 +406,23 @@ export function ChatPanel({
                   </button>
                 ))}
               </div>
+            ) : !contextSessionId &&
+              !sending &&
+              messages.length === 0 &&
+              starterChips ? (
+              <div className="cp-ai-chips" data-testid="ai-chat-starter-chips">
+                {starterChips.prompts.map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    className="cp-ai-chip"
+                    data-testid="ai-chat-starter-chip"
+                    onClick={() => void send(chip)}
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
             ) : null}
 
             <div className="cp-ai-composer">
@@ -381,7 +436,7 @@ export function ChatPanel({
                   }
                 }}
                 placeholder="Why is my ceiling compressed this week?"
-                rows={3}
+                rows={1}
                 data-testid="ai-chat-input"
                 disabled={sending}
               />
@@ -464,9 +519,21 @@ export function ChatPanel({
             display: block;
           }
         }
+        .cp-ai-thread-row {
+          display: flex;
+          align-items: center;
+          gap: 2px;
+          border-radius: 6px;
+        }
+        .cp-ai-thread-row:hover {
+          background: var(--cp-surface-soft);
+        }
+        .cp-ai-thread-row.is-active {
+          background: var(--cp-accent-soft);
+        }
         .cp-ai-thread {
-          display: block;
-          width: 100%;
+          flex: 1;
+          min-width: 0;
           text-align: left;
           background: transparent;
           border: none;
@@ -474,14 +541,34 @@ export function ChatPanel({
           padding: 6px 8px;
           border-radius: 6px;
           font-size: 12px;
+          line-height: 1.3;
           cursor: pointer;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
-        .cp-ai-thread:hover {
-          background: var(--cp-surface-soft);
-        }
-        .cp-ai-thread.is-active {
-          background: var(--cp-accent-soft);
+        .cp-ai-thread-row.is-active .cp-ai-thread {
           font-weight: 600;
+        }
+        .cp-ai-thread-del {
+          flex: 0 0 auto;
+          background: transparent;
+          border: none;
+          color: var(--cp-text-muted);
+          font-size: 15px;
+          line-height: 1;
+          padding: 4px 6px;
+          border-radius: 6px;
+          cursor: pointer;
+          opacity: 0;
+        }
+        .cp-ai-thread-row:hover .cp-ai-thread-del,
+        .cp-ai-thread-del:focus {
+          opacity: 1;
+        }
+        .cp-ai-thread-del:hover {
+          color: var(--cp-danger, #f87171);
+          background: color-mix(in oklab, var(--cp-danger, #dc2626) 14%, transparent);
         }
         .cp-ai-conversation {
           flex: 1;
@@ -606,19 +693,21 @@ export function ChatPanel({
         }
         .cp-ai-composer {
           border-top: 1px solid var(--cp-border);
-          padding: 12px;
+          padding: 10px 12px;
           display: flex;
           gap: 8px;
-          align-items: stretch;
+          align-items: flex-end;
         }
         .cp-ai-composer textarea {
           flex: 1;
           min-width: 0;
-          min-height: 60px;
+          min-height: 40px;
+          max-height: 140px;
+          overflow-y: auto;
           resize: none;
           border: 1px solid var(--cp-border);
           border-radius: 10px;
-          padding: 10px 12px;
+          padding: 9px 12px;
           font: inherit;
           font-size: 14px;
           line-height: 1.4;
@@ -634,13 +723,14 @@ export function ChatPanel({
         }
         .cp-ai-send {
           flex: 0 0 auto;
-          align-self: stretch;
-          min-width: 72px;
+          height: 40px;
+          min-width: 64px;
           background: var(--cp-accent);
           color: var(--cp-accent-fg);
           border: none;
-          padding: 0 18px;
+          padding: 0 16px;
           border-radius: 10px;
+          font-size: 13px;
           font-weight: 600;
           cursor: pointer;
         }
