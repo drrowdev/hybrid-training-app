@@ -817,6 +817,7 @@ export default async function SessionDetailPage({
         <PostSessionSummary
           sessionId={id}
           summary={summary}
+          sessionRpe={(session.session_rpe as number | string | null) ?? null}
           initialNotes={session.notes ?? null}
           progressionHints={progressionHints}
           bwDiagnostics={bwSessionDiagnostics}
@@ -1121,8 +1122,6 @@ export default async function SessionDetailPage({
         sessionId={id}
         isComplete={isComplete}
         performedAt={session.performed_at as string}
-        durationMin={(session.duration_min as number | null) ?? null}
-        sessionRpe={(session.session_rpe as number | string | null) ?? null}
         sets={sets}
         tmBySlug={tmBySlug}
         oneRmBySlug={oneRmBySlug}
