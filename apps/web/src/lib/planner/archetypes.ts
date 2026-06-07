@@ -1687,9 +1687,28 @@ export function buildPrescription(
         notes: i === profile.setIntensities.length - 1 ? "top set" : undefined,
       };
     });
+    // Deload volume trim. A reduced-volume week carries `strengthVolumeScale < 1`,
+    // which drops the set count (e.g. 3 → 2). On the DELOAD week specifically,
+    // KEEP THE HEAVIEST sets (slice from the end) rather than the lightest: the
+    // last set carries the "top set" marker (above), and a deload that retains a
+    // moderate top touch (e.g. 60/70% instead of 50/60%) preserves bar-speed /
+    // neuromuscular calibration into the next block — a volume deload, not an
+    // intensity deload. Non-deload reduced-volume weeks (e.g. the maintenance
+    // archetype, which carries a permanent `strengthVolumeScale` without a
+    // "Deload" label) keep the original front-slice so their deliberately-tuned
+    // intensity ladder stays byte-identical.
+    const deloadWeek = profile.intensityLabel === "Deload";
     const scaledPrimary =
       profile.strengthVolumeScale != null && profile.strengthVolumeScale < 1
-        ? items.slice(0, Math.max(1, Math.round(items.length * profile.strengthVolumeScale)))
+        ? (() => {
+            const keep = Math.max(
+              1,
+              Math.round(items.length * profile.strengthVolumeScale),
+            );
+            return deloadWeek
+              ? items.slice(items.length - keep)
+              : items.slice(0, keep);
+          })()
         : items;
     // ADR 0011 — effort-anchor the last working set on HYPERTROPHY_ANCHOR
     // non-deload weeks. Applied BEFORE finalize() so taper/recovery
@@ -1726,11 +1745,19 @@ export function buildPrescription(
           notes: i === profile.setIntensities.length - 1 ? "top set" : undefined,
         };
       });
-      const cap =
-        profile.strengthVolumeScale != null && profile.strengthVolumeScale < 1
-          ? Math.max(1, Math.round(day.secondaryMaxSets * profile.strengthVolumeScale))
-          : day.secondaryMaxSets;
-      const secondaryCapped = secondaryAll.slice(0, Math.min(cap, secondaryAll.length));
+      const scaledSecondary =
+        profile.strengthVolumeScale != null && profile.strengthVolumeScale < 1;
+      const cap = scaledSecondary
+        ? Math.max(1, Math.round(day.secondaryMaxSets * profile.strengthVolumeScale!))
+        : day.secondaryMaxSets;
+      const keepN = Math.min(cap, secondaryAll.length);
+      // On the DELOAD week, keep the heaviest sets (mirror the primary: retain
+      // the top touch for calibration). Every other week — including non-deload
+      // reduced-volume weeks like the maintenance archetype — keeps the existing
+      // front-slice so established prescriptions stay byte-identical.
+      const secondaryCapped = (scaledSecondary && deloadWeek)
+        ? secondaryAll.slice(secondaryAll.length - keepN)
+        : secondaryAll.slice(0, keepN);
       return finalize([...primaryItems, ...secondaryCapped]);
     }
     return finalize(primaryItems);
