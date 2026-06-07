@@ -47,6 +47,7 @@ import {
 import { declaredExperienceToTier, tierInBand } from "./experience-tier";
 import { inferAccessoryBucket } from "./accessory-intensity";
 import { accessoryRationale } from "./accessory-rationale";
+import { FOCUS_LANDMARKS } from "./focus-muscle-targets";
 import type { AccessoryBucket } from "./accessory-intensity";
 
 /**
@@ -269,6 +270,7 @@ export function pickAccessoriesForSession({
   equipment,
   experience = null,
   compoundCoverageCredit,
+  focusMuscles = [],
   variationSeed,
 }: {
   profile: AccessoryProfile;
@@ -322,6 +324,17 @@ export function pickAccessoriesForSession({
    * `synergist-credit.ts`.
    */
   compoundCoverageCredit?: Map<string, number>;
+  /**
+   * Finding #1 — focus-muscle MEV floor. The user's 0–2 declared focus muscles
+   * (from `FOCUS_MUSCLE_ALLOWLIST`). When present, a guaranteed top-up pass runs
+   * AFTER the aesthetic gap-fill to bring each focus muscle to at least its MEV
+   * landmark (`FOCUS_LANDMARKS[m].building`) in direct sets/week — seated above
+   * the aesthetic trim so a low-volume base-1 archetype, whose tissue floor can
+   * saturate the per-session cap and starve the gap-fill, still honours the
+   * declared focus. Empty (every non-focus user) → the pass no-ops and output is
+   * byte-identical. See `focus-muscle-targets.ts` + the substitution-bias path.
+   */
+  focusMuscles?: readonly string[];
   /**
    * Quick-generate variation seed (quick-workout path only). Forwarded to each
    * `findCandidate` call (offset per slot so different gaps rotate
@@ -523,6 +536,51 @@ export function pickAccessoriesForSession({
     bumpFunctional(functionalProgress, candidate.functionalRoles);
     for (const m of candidate.primaryMuscles) {
       muscleProgress.set(m, (muscleProgress.get(m) ?? 0) + pick.sets);
+    }
+  }
+
+  // ─── 4. Focus-muscle MEV floor (Finding #1) ───
+  // When the user declared focus muscles, guarantee each reaches at least its
+  // MEV landmark (`FOCUS_LANDMARKS[m].building`) in direct sets/week. This is
+  // seated ABOVE the aesthetic trim: a low-volume base-1 archetype
+  // (endurance / rebuild), whose durability + functional floor can saturate the
+  // per-session `maxItems` cap and starve the aesthetic gap-fill entirely, would
+  // otherwise honour the elevated focus *target* nowhere (the gap-fill never
+  // runs). Runs AFTER the gap-fill so it is a TRUE NO-OP whenever the normal
+  // path already brought the muscle to MEV (healthy budgets). Entirely gated on
+  // `focusMuscles` — byte-identical for every user who hasn't picked one. Adds
+  // at most one pick per under-MEV focus muscle per session (<=2 total),
+  // accumulating toward the weekly floor across the block's strength days via
+  // `weekAccessoryHistory` (the assembler records every pick's sets).
+  for (const m of focusMuscles) {
+    const floor = FOCUS_LANDMARKS[m]?.building ?? 0;
+    if (floor <= 0) continue;
+    if ((muscleProgress.get(m) ?? 0) >= floor) continue;
+    const candidate = findCandidate({
+      catalog: workingCatalog,
+      requiredMuscle: m,
+      filters,
+      usedThisSession,
+      preferSupported:
+        profile.aesthetic.biasSupported && filters.concurrentStressActive,
+      demoteCompound: true,
+      aestheticEligibleOnly: true,
+      variationSeed: seedFor(),
+    });
+    if (!candidate) continue;
+    const pick = buildPick(
+      candidate,
+      profile,
+      weekDeloadScale,
+      "aesthetic",
+      accessoryRationale({ reason: "focus", gapMuscle: m }),
+    );
+    picks.push(pick);
+    usedThisSession.add(candidate.id);
+    bumpBulletproof(durabilityProgress, candidate.bulletproofRoles);
+    bumpFunctional(functionalProgress, candidate.functionalRoles);
+    for (const mm of candidate.primaryMuscles) {
+      muscleProgress.set(mm, (muscleProgress.get(mm) ?? 0) + pick.sets);
     }
   }
 
