@@ -16,6 +16,7 @@ import { ARCHETYPES, type ArchetypeId } from "@/lib/planner/archetypes";
 import { deloadWeekIndexFor } from "@/lib/planner/deload-skip";
 import { cleanPrescriptionNotes } from "@/lib/planner/clean-prescription-notes";
 import { FOCUS_MUSCLE_LABEL, type FocusMuscle } from "@/lib/planner/focus-muscles";
+import { isMaxIntentRpe, MAX_INTENT_LABEL } from "@/lib/sessions/effort-label";
 import type {
   BlockReviewData,
   ReviewItem,
@@ -89,7 +90,9 @@ function itemIntensity(it: PrescriptionItem): string | null {
   if (it.intensityLabel) parts.push(it.intensityLabel);
   const rir = fmtRange(it.targetRir, "RIR ");
   if (rir) parts.push(rir);
-  const rpe = fmtRange(it.targetRpe, "RPE ");
+  const rpe = isMaxIntentRpe(it.targetRpe)
+    ? MAX_INTENT_LABEL
+    : fmtRange(it.targetRpe, "RPE ");
   if (rpe) parts.push(rpe);
   if (it.hrCap) parts.push(it.hrCap);
   if (it.protocolNote) parts.push(it.protocolNote);
