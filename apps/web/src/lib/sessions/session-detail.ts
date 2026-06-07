@@ -100,10 +100,51 @@ export type GenerationContext = {
   readiness: GenerationReadiness | null;
 };
 
+export type PerformedSet = {
+  weightKg: number | null;
+  reps: number | null;
+  rpe: number | null;
+  skipped: boolean;
+  setKind: string;
+};
+
+export type PerformedMovement = {
+  movementId: string;
+  name: string | null;
+  loggedSets: PerformedSet[];
+};
+
+export type SessionPerformance = {
+  /**
+   * True when this id resolved to a real `sessions` row (started or
+   * completed) — i.e. a workout that CAN have logged sets. False/absent
+   * for a not-yet-started planned id, where there is nothing performed.
+   */
+  hasLog: boolean;
+  /** Total logged set rows of any kind (incl. warm-ups + skipped). */
+  totalLoggedSets: number;
+  /** Logged working sets: non-warmup, non-skipped, with weight + reps. */
+  loggedWorkingSets: number;
+  /** Per-movement actuals for everything the user actually logged. */
+  movements: PerformedMovement[];
+  /**
+   * Names of PRESCRIBED movements with zero logged sets — i.e. planned
+   * but NOT performed. The single most important signal for an honest
+   * post-workout recap: the AI must not narrate these as done.
+   */
+  notPerformed: string[];
+};
+
 export type SessionDetail = {
   onPlan: boolean;
   session: SessionSummary;
   movements: SessionMovement[];
+  /**
+   * What the user actually logged, vs the prescribed `movements` above.
+   * Null only when the id is a not-yet-started planned session (no
+   * session row exists yet, so nothing can have been performed).
+   */
+  performance: SessionPerformance | null;
   generationContext: GenerationContext;
 };
 
@@ -383,6 +424,122 @@ async function loadGenerationContext(
   return { athlete, goal, planPosition, performance, readiness };
 }
 
+/**
+ * Read what the user ACTUALLY logged for a real session row, grouped by
+ * movement, plus the list of prescribed movements that were never
+ * performed (zero logged sets). RLS: the caller has already confirmed
+ * the `sessions` row is owned by the user, and set_logs.session_id pins
+ * the read to that row.
+ */
+async function loadSessionPerformance(
+  userId: string,
+  sessionId: string,
+  supabase: SupabaseClient,
+  prescription: Prescription | null,
+): Promise<SessionPerformance> {
+  type LogRow = {
+    movement_id: string;
+    weight_kg: number | string | null;
+    reps: number | null;
+    rpe: number | string | null;
+    set_kind: string | null;
+    skipped: boolean | null;
+  };
+
+  const rows = await safe<LogRow[]>(async () => {
+    const { data } = await supabase
+      .from("set_logs")
+      .select("movement_id, weight_kg, reps, rpe, set_kind, skipped, created_at")
+      .eq("session_id", sessionId)
+      .order("created_at", { ascending: true });
+    return (data ?? []) as LogRow[];
+  }, []);
+
+  // Resolve display names for every logged movement id (covers freestyle
+  // movements that aren't in the prescription).
+  const loggedIds = Array.from(
+    new Set(rows.map((r) => r.movement_id).filter((id): id is string => !!id)),
+  );
+  const nameById = new Map<string, string>();
+  if (loggedIds.length > 0) {
+    const names = await safe<Array<{ id: string; display_name: string | null }>>(
+      async () => {
+        const { data } = await supabase
+          .from("movements")
+          .select("id, display_name")
+          .in("id", loggedIds);
+        return (data ?? []) as Array<{ id: string; display_name: string | null }>;
+      },
+      [],
+    );
+    for (const m of names) if (m.id) nameById.set(m.id, m.display_name ?? "");
+  }
+  // Prescription provides a name fallback + the prescribed-movement set.
+  const prescribedNameById = new Map<string, string>();
+  for (const it of prescription?.items ?? []) {
+    if (it.movementId) {
+      prescribedNameById.set(
+        it.movementId,
+        it.movementName ?? it.movementSlug ?? "",
+      );
+    }
+  }
+
+  const byMovement = new Map<string, PerformedMovement>();
+  let totalLoggedSets = 0;
+  let loggedWorkingSets = 0;
+  for (const r of rows) {
+    if (!r.movement_id) continue;
+    totalLoggedSets += 1;
+    const weight = r.weight_kg == null ? null : Number(r.weight_kg);
+    const reps = r.reps == null ? null : Number(r.reps);
+    const skipped = r.skipped ?? false;
+    const kind = r.set_kind ?? "main";
+    if (!skipped && kind !== "warmup" && weight != null && weight > 0 && reps != null && reps > 0) {
+      loggedWorkingSets += 1;
+    }
+    const entry =
+      byMovement.get(r.movement_id) ??
+      ({
+        movementId: r.movement_id,
+        name:
+          nameById.get(r.movement_id) ||
+          prescribedNameById.get(r.movement_id) ||
+          null,
+        loggedSets: [],
+      } satisfies PerformedMovement);
+    entry.loggedSets.push({
+      weightKg: weight,
+      reps,
+      rpe: r.rpe == null ? null : Number(r.rpe),
+      skipped,
+      setKind: kind,
+    });
+    byMovement.set(r.movement_id, entry);
+  }
+
+  // Prescribed movements with no logged set at all = planned-but-not-done.
+  const loggedIdSet = new Set(byMovement.keys());
+  const notPerformed: string[] = [];
+  const seenNames = new Set<string>();
+  for (const it of prescription?.items ?? []) {
+    if (!it.movementId || loggedIdSet.has(it.movementId)) continue;
+    const name = it.movementName ?? it.movementSlug ?? null;
+    if (name && !seenNames.has(name)) {
+      seenNames.add(name);
+      notPerformed.push(name);
+    }
+  }
+
+  return {
+    hasLog: true,
+    totalLoggedSets,
+    loggedWorkingSets,
+    movements: Array.from(byMovement.values()),
+    notPerformed,
+  };
+}
+
 export async function loadSessionDetail(
   userId: string,
   sessionId: string,
@@ -496,6 +653,12 @@ export async function loadSessionDetail(
     prescription,
   );
 
+  // Actuals: only a real session row can have logged sets. A planned-only
+  // id (not yet started) has nothing performed → null.
+  const performance = session
+    ? await loadSessionPerformance(userId, session.id, supabase, prescription)
+    : null;
+
   return {
     onPlan,
     session: {
@@ -509,6 +672,7 @@ export async function loadSessionDetail(
       phase,
     },
     movements: mapMovements(prescription?.items),
+    performance,
     generationContext,
   };
 }
