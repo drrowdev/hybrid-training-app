@@ -385,3 +385,43 @@ function loadSourceLabel(source: string): string {
       return source;
   }
 }
+
+/**
+ * Collapse a run of structurally-identical prescription items into a single
+ * item whose `sets` is the summed set count.
+ *
+ * The planner sometimes expands an accessory's prescribed sets into multiple
+ * one-set items (e.g. a 2×14 box jump becomes two `{ sets: 1, reps: 14 }`
+ * entries). Rendered naively that reads "1 × 14 · 1 × 14" — confusing. This
+ * merges adjacent items that match on every field *except* `sets`, summing the
+ * set counts so the same prescription renders as a clean "2 × 14".
+ *
+ * Items that genuinely differ (different reps, intensity, distance, hold, …)
+ * are kept separate, preserving the original order.
+ */
+export function collapseIdenticalSetItems(
+  items: PrescriptionItem[],
+): PrescriptionItem[] {
+  const out: PrescriptionItem[] = [];
+  for (const item of items) {
+    const prev = out[out.length - 1];
+    if (prev && sameExceptSets(prev, item)) {
+      out[out.length - 1] = {
+        ...prev,
+        sets: (prev.sets ?? 1) + (item.sets ?? 1),
+      };
+    } else {
+      out.push(item);
+    }
+  }
+  return out;
+}
+
+function sameExceptSets(a: PrescriptionItem, b: PrescriptionItem): boolean {
+  const stripSets = (it: PrescriptionItem) => {
+    const { sets: _sets, ...rest } = it as PrescriptionItem & { sets?: number };
+    void _sets;
+    return JSON.stringify(rest);
+  };
+  return stripSets(a) === stripSets(b);
+}
