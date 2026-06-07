@@ -295,6 +295,17 @@ export function PlanRedesign(props: PlanRedesignProps) {
     return m;
   }, [sessions]);
 
+  // Date of grid cell (0,0), derived from any session: its date minus
+  // its (week*7 + day) offset. Lets EVERY cell — including rest days with
+  // no session — resolve its calendar date, so "today" highlights even on
+  // a rest day (mirrors the month view, which computes dates independently
+  // of sessions). Null only when the block has no dated sessions at all.
+  const gridAnchorDate = useMemo(() => {
+    const anchor = sessions.find((s) => s.date);
+    if (!anchor) return null;
+    return addDaysToYmd(anchor.date, -(anchor.weekIndex * 7 + anchor.dayIndex));
+  }, [sessions]);
+
   // Filter is applied at render time so the per-week progress counters
   // always reflect the real block, not the filtered view.
   const visible = useCallback(
@@ -540,7 +551,11 @@ export function PlanRedesign(props: PlanRedesignProps) {
                     const cellKey = `${w}-${d}`;
                     const all = byCell.get(cellKey) ?? [];
                     const shown = visible(all);
-                    const cellDate = all[0]?.date ?? null;
+                    const cellDate =
+                      all[0]?.date ??
+                      (gridAnchorDate
+                        ? addDaysToYmd(gridAnchorDate, w * 7 + d)
+                        : null);
                     const isToday = cellDate === today;
                     const isPast = cellDate !== null && cellDate < today;
                     return (
