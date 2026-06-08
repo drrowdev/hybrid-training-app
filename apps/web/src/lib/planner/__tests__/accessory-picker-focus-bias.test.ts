@@ -220,4 +220,70 @@ describe("pickAccessoriesForSession — focus-muscle MEV floor (Finding #1)", ()
     // forearms `building` (MEV) landmark = 4.
     expect(totalForearmSets).toBeGreaterThanOrEqual(4);
   });
+
+  // Review-fix regression: indirect grip/isometric work (a carry or a dead
+  // hang that lists forearms as a primaryMuscle) must NOT satisfy the focus
+  // MEV, and must NOT be selected to fill it — otherwise two durability picks
+  // silently "complete" the forearm floor with ~40s of isometric work.
+  describe("direct-loaded only (review fix)", () => {
+    // Catalog where the forearm-tagged movements are an isometric dead hang
+    // (heavy_isometric) and a grip carry — plus ONE genuine loaded wrist curl.
+    const INDIRECT_CATALOG: CatalogMovement[] = [
+      mv({ id: "hang", slug: "dead-hang", primaryMuscles: ["forearms"], primaryRegion: "elbow_forearm", bulletproofRoles: ["heavy_isometric"] }),
+      mv({ id: "fcarry", slug: "farmer-carry", primaryMuscles: ["traps", "forearms"], primaryRegion: "lumbar_trunk", bulletproofRoles: ["carry"] }),
+      mv({ id: "fcarry2", slug: "suitcase-carry", primaryMuscles: ["traps", "forearms"], primaryRegion: "lumbar_trunk", bulletproofRoles: ["carry"] }),
+      mv({ id: "wc", slug: "wrist-curl", primaryMuscles: ["forearms"], primaryRegion: "elbow_forearm" }),
+      mv({ id: "hip1", slug: "hip-abduction", primaryMuscles: ["glutes"], primaryRegion: "hip_pelvis", functionalRoles: ["hip_stabilizer"] }),
+      mv({ id: "ankle1", slug: "heel-walk", primaryMuscles: ["tibialis"], primaryRegion: "foot_ankle_calf", functionalRoles: ["ankle_foot"] }),
+    ];
+    const profile: AccessoryProfile = {
+      aesthetic: { itemsPerSession: 1, setsPerItem: 2, repRange: { min: 12, max: 15 }, biasSupported: false },
+      functional: { weeklyRoleRequirements: {} },
+      durability: { extras: [{ role: "carry", count: 2 }] },
+    };
+
+    it("picks a genuine loaded wrist curl, never the dead hang or carry, for the focus floor", () => {
+      const targets = defaultMuscleTargets({ focusMuscles: ["forearms"] });
+      const picks = pickAccessoriesForSession({
+        profile,
+        weekDeloadScale: 1.0,
+        catalog: INDIRECT_CATALOG,
+        weekAccessoryHistory: [],
+        filters: EMPTY_FILTERS,
+        perMuscleTargets: targets.targetsByMuscle,
+        maxItems: 6,
+        focusMuscles: ["forearms"],
+      });
+      // A wrist curl was added by the focus floor...
+      expect(picks.some((p) => p.slug === "wrist-curl")).toBe(true);
+      // ...and the focus floor never used the dead hang to "fill" forearms.
+      const focusPicks = picks.filter((p) => p.reason === "aesthetic");
+      expect(focusPicks.every((p) => p.slug !== "dead-hang")).toBe(true);
+    });
+
+    it("indirect forearm credit (carry + dead hang) does NOT block the floor on a later day", () => {
+      // Simulate a prior day that already ran a dead hang + 2 carries — all
+      // tagged forearms but indirect. The MEV floor must still fire today.
+      const history: Parameters<typeof pickAccessoriesForSession>[0]["weekAccessoryHistory"] = [
+        { movementId: "hang", bulletproofRoles: ["heavy_isometric"], functionalRoles: [], primaryMuscles: ["forearms"], sets: 2 },
+        { movementId: "fcarry", bulletproofRoles: ["carry"], functionalRoles: [], primaryMuscles: ["traps", "forearms"], sets: 2 },
+        { movementId: "fcarry2", bulletproofRoles: ["carry"], functionalRoles: [], primaryMuscles: ["traps", "forearms"], sets: 2 },
+      ];
+      const targets = defaultMuscleTargets({ focusMuscles: ["forearms"] });
+      const picks = pickAccessoriesForSession({
+        profile,
+        weekDeloadScale: 1.0,
+        catalog: INDIRECT_CATALOG,
+        weekAccessoryHistory: history,
+        filters: EMPTY_FILTERS,
+        perMuscleTargets: targets.targetsByMuscle,
+        maxItems: 6,
+        focusMuscles: ["forearms"],
+      });
+      // 6 indirect "forearm" sets in history would have satisfied building=4
+      // under the old logic — but they're indirect, so the floor still adds
+      // direct wrist work.
+      expect(picks.some((p) => p.slug === "wrist-curl")).toBe(true);
+    });
+  });
 });
