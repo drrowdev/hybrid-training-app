@@ -143,6 +143,18 @@ export type CardioDay = {
     durationMin: number;
     protocolNote: string;
   };
+  /**
+   * ADR 0038 — cardio mesocycle progression. Optional per-week-peak override for
+   * a high-intensity session: on the PEAK week of each loading wave the engine
+   * progresses interval density (e.g. VO2 4×4 → 5×4) by swapping in these
+   * values. Only the count/density progresses, never volume + intensity at once
+   * (research-v2 §4). Absent ⇒ no interval progression for this day (byte-
+   * identical). Applied only for cardio-emphasis blocks (see `cardioProgressionPlan`).
+   */
+  peakWeek?: {
+    durationMin?: number;
+    protocolNote?: string;
+  };
   priority: DayPriority;
   rank: number;
 };
@@ -594,6 +606,11 @@ export const ENDURANCE_ANCHOR: Archetype = withExpandedCadence({
       durationMin: 35,
       hrCap: "90–95% HRmax during work",
       protocolNote: "4 × 4 min @ 90–95% HRmax, 3 min easy recovery",
+      // ADR 0038 — peak-week interval-density progression.
+      peakWeek: {
+        durationMin: 42,
+        protocolNote: "5 × 4 min @ 90–95% HRmax, 3 min easy recovery",
+      },
       priority: "anchor",
       rank: 2,
     },
@@ -710,6 +727,11 @@ export const ENDURANCE_ANCHOR: Archetype = withExpandedCadence({
       durationMin: 35,
       hrCap: "90–95% HRmax during work",
       protocolNote: "4 × 4 min @ 90–95% HRmax, 3 min easy recovery",
+      // ADR 0038 — peak-week interval-density progression.
+      peakWeek: {
+        durationMin: 42,
+        protocolNote: "5 × 4 min @ 90–95% HRmax, 3 min easy recovery",
+      },
       priority: "anchor",
       rank: 2,
     },
@@ -1508,6 +1530,155 @@ export function requiredCardioSlugs(archetype: Archetype): string[] {
     set.add(DELOAD_VO2_TO_THRESHOLD_SLUG);
   }
   return Array.from(set);
+}
+
+/**
+ * ADR 0038 — cardio mesocycle progression.
+ *
+ * The engine's own spec (research-v2 §4, engine-biased block) prescribes:
+ * "Aerobic: add easy volume first (~5–10%/week), then add quality to hard
+ * sessions. Threshold/VO₂max: progress interval count or density — not both.
+ * Strength: hold." The strength-hold half is already implemented (TB/5-3-1
+ * static wave); this adds the missing aerobic half: a weekly EASY-VOLUME creep
+ * on Z2 days plus a peak-week VO₂ interval-density bump, both scaled to how
+ * cardio-dominant the block is.
+ *
+ * `cardioProgressionTier` derives the emphasis from the archetype + secondary
+ * focus; `CARDIO_CREEP_PARAMS` sets the per-tier creep rate, cap, and breadth.
+ * `cardioWaveContext` finds the week's position within its loading wave (the
+ * cadence concatenates waves with no mid-deload, so waves are detected from the
+ * repeating intensity-label pattern, not deload separators). All pure; a no-op
+ * on the deload week, on non-cardio days, and on archetypes whose tier is
+ * "none" — so every existing block stays byte-identical.
+ */
+export type CardioProgressionTier = "pure" | "mixed" | "balanced" | "none";
+
+export function cardioProgressionTier(
+  archetypeId: ArchetypeId,
+  secondaryFocus: string | null,
+): CardioProgressionTier {
+  if (archetypeId === "endurance_anchor") {
+    // Cardio is the primary goal. A strength/muscle SECONDARY tempers the creep
+    // (protect recovery for the strength work); none/cardio secondary is a pure
+    // cardio build.
+    return secondaryFocus === "strength" || secondaryFocus === "muscle"
+      ? "mixed"
+      : "pure";
+  }
+  if (archetypeId === "concurrent_hybrid") return "balanced";
+  // Strength-led or non-cardio archetypes: cardio is maintenance, not a build.
+  return "none";
+}
+
+interface CardioCreepParams {
+  /** Easy-volume increase per wave-step (fraction). CP-1 heuristic. */
+  creepPerWeek: number;
+  /** Hard ceiling on cumulative creep within a wave (fraction). */
+  cap: number;
+  /** Pure cardio creeps ALL easy Z2 days; otherwise only the long Z2 driver. */
+  includeShortEasy: boolean;
+}
+
+// CP-1 [DEF→cal] — grounded in the 5–10%/week aerobic-volume rule (research-v2
+// §4); magnitude + breadth scale with cardio dominance to keep interference in
+// check on concurrent blocks. Un-tuned against real outcome data.
+const CARDIO_CREEP_PARAMS: Record<
+  Exclude<CardioProgressionTier, "none">,
+  CardioCreepParams
+> = {
+  pure: { creepPerWeek: 0.1, cap: 0.2, includeShortEasy: true },
+  mixed: { creepPerWeek: 0.05, cap: 0.15, includeShortEasy: false },
+  balanced: { creepPerWeek: 0.05, cap: 0.1, includeShortEasy: false },
+};
+
+export interface CardioWaveContext {
+  /** 0-based position of this build week within its loading wave (0 = base). */
+  positionInWave: number;
+  /** True when this is the last build week of its wave (the peak week). */
+  isPeakWeek: boolean;
+  /** True on a deload week (progression never applies). */
+  isDeload: boolean;
+}
+
+export function cardioWaveContext(
+  profiles: WeekProfile[],
+  weekIndex: number,
+): CardioWaveContext {
+  const sorted = [...profiles].sort((a, b) => a.weekIndex - b.weekIndex);
+  const idx = sorted.findIndex((p) => p.weekIndex === weekIndex);
+  if (idx < 0) return { positionInWave: 0, isPeakWeek: false, isDeload: false };
+  if (sorted[idx]!.intensityLabel === "Deload") {
+    return { positionInWave: 0, isPeakWeek: false, isDeload: true };
+  }
+  // Build weeks only (deloads separate nothing here — the cadence concatenates
+  // waves — so a wave boundary is where the FIRST build label repeats).
+  const build = sorted.filter((p) => p.intensityLabel !== "Deload");
+  const bIdx = build.findIndex((p) => p.weekIndex === weekIndex);
+  const firstLabel = build[0]!.intensityLabel;
+  // Walk back to the wave start: the most recent week whose label === firstLabel.
+  let start = bIdx;
+  while (start > 0 && build[start]!.intensityLabel !== firstLabel) start--;
+  // Walk forward to the wave end: last week before the next firstLabel repeat.
+  let end = bIdx;
+  while (
+    end < build.length - 1 &&
+    build[end + 1]!.intensityLabel !== firstLabel
+  ) {
+    end++;
+  }
+  return {
+    positionInWave: bIdx - start,
+    isPeakWeek: bIdx === end,
+    isDeload: false,
+  };
+}
+
+export interface CardioProgressionPlan {
+  /** Overrides the cardio day's rendered duration (easy creep or VO₂ bump). */
+  durationMinOverride?: number;
+  /** Overrides the protocol note (VO₂ peak-week density bump). */
+  protocolNoteOverride?: string;
+}
+
+/**
+ * Compute the ADR 0038 progression for one cardio day on one week. Returns
+ * `null` when nothing changes (deload week, tier "none", non-progressing day,
+ * or the base week of a wave) — so the caller leaves the day untouched.
+ */
+export function cardioProgressionPlan(args: {
+  day: CardioDay;
+  archetype: Archetype;
+  weekIndex: number;
+  secondaryFocus: string | null;
+}): CardioProgressionPlan | null {
+  const { day, archetype, weekIndex, secondaryFocus } = args;
+  const tier = cardioProgressionTier(archetype.id, secondaryFocus);
+  if (tier === "none") return null;
+  const ctx = cardioWaveContext(archetype.weekProfiles, weekIndex);
+  if (ctx.isDeload) return null; // deload handled by ADR 0037 / z2 override
+  const params = CARDIO_CREEP_PARAMS[tier];
+
+  // VO₂ interval-density bump on the peak week (count, not intensity). Gated on
+  // an explicit `peakWeek` config so it only fires where the archetype opts in.
+  if (day.cardioKind === "cardio_vo2" && ctx.isPeakWeek && day.peakWeek) {
+    return {
+      durationMinOverride: day.peakWeek.durationMin ?? day.durationMin,
+      protocolNoteOverride: day.peakWeek.protocolNote,
+    };
+  }
+
+  // Easy-volume creep on Z2 days. Pure cardio creeps every easy Z2 session;
+  // mixed/balanced creep only the long Z2 driver (role contains "long").
+  if (day.cardioKind === "cardio_z2" && day.durationMin != null) {
+    const isLong = (day.role ?? "").includes("long");
+    const eligible = params.includeShortEasy || isLong;
+    if (eligible && ctx.positionInWave > 0) {
+      const mult =
+        1 + Math.min(params.creepPerWeek * ctx.positionInWave, params.cap);
+      return { durationMinOverride: Math.round(day.durationMin * mult) };
+    }
+  }
+  return null;
 }
 
 /**

@@ -55,6 +55,7 @@ import {
   daySlotKey,
   minDaysForArchetype,
   deloadCardioPlan,
+  cardioProgressionPlan,
   requiredFixedSlugs,
   resolveCardioSlugForTier,
   STRENGTH_ROLE_LABELS,
@@ -1037,16 +1038,30 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
           const fin = movementBySlug.get(day.finisher.movementSlug);
           if (fin) finisherMovement = { id: fin.id, slug: fin.slug, displayName: fin.display_name };
         }
-        if (dPlan) {
+        // ADR 0038 — cardio mesocycle progression on the build weeks (mutually
+        // exclusive with the deload plan, which owns the deload week). Easy-Z2
+        // volume creep + VO2 peak-week density bump, scaled to cardio emphasis.
+        const pPlan = dPlan
+          ? null
+          : cardioProgressionPlan({ day, archetype, weekIndex: week, secondaryFocus });
+        if (dPlan || pPlan) {
           cardioDayOverride = {
             ...day,
-            cardioKind: effCardioKind,
-            finisher: dPlan.dropFinisher ? undefined : day.finisher,
-            // Clear the VO2-specific protocol / HR cap when converted: the
-            // easy-Z2 / threshold movement carries its own meaning and the label
-            // comes from cardioKind. `z2DurationMinOverride` still trims duration.
-            ...(dPlan.cardioKindOverride
-              ? { hrCap: undefined, protocolNote: undefined }
+            ...(dPlan
+              ? {
+                  cardioKind: effCardioKind,
+                  finisher: dPlan.dropFinisher ? undefined : day.finisher,
+                  // Clear the VO2-specific protocol / HR cap when converted.
+                  ...(dPlan.cardioKindOverride
+                    ? { hrCap: undefined, protocolNote: undefined }
+                    : {}),
+                }
+              : {}),
+            ...(pPlan?.durationMinOverride != null
+              ? { durationMin: pPlan.durationMinOverride }
+              : {}),
+            ...(pPlan?.protocolNoteOverride != null
+              ? { protocolNote: pPlan.protocolNoteOverride }
               : {}),
           };
         }
@@ -1545,13 +1560,29 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
           const fin = movementBySlug.get(day.finisher.movementSlug);
           if (fin) finisherMovement = { id: fin.id, slug: fin.slug, displayName: fin.display_name };
         }
-        if (dPlan) {
+        // ADR 0038 — cardio progression. A custom block's archetype id is
+        // "custom" → tier "none", so this is always a no-op here; wired for
+        // parallelism with the createBlock loop.
+        const pPlan = dPlan
+          ? null
+          : cardioProgressionPlan({ day, archetype, weekIndex: week, secondaryFocus: null });
+        if (dPlan || pPlan) {
           cardioDayOverride = {
             ...day,
-            cardioKind: effCardioKind,
-            finisher: dPlan.dropFinisher ? undefined : day.finisher,
-            ...(dPlan.cardioKindOverride
-              ? { hrCap: undefined, protocolNote: undefined }
+            ...(dPlan
+              ? {
+                  cardioKind: effCardioKind,
+                  finisher: dPlan.dropFinisher ? undefined : day.finisher,
+                  ...(dPlan.cardioKindOverride
+                    ? { hrCap: undefined, protocolNote: undefined }
+                    : {}),
+                }
+              : {}),
+            ...(pPlan?.durationMinOverride != null
+              ? { durationMin: pPlan.durationMinOverride }
+              : {}),
+            ...(pPlan?.protocolNoteOverride != null
+              ? { protocolNote: pPlan.protocolNoteOverride }
               : {}),
           };
         }
