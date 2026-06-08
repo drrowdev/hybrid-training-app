@@ -1332,7 +1332,17 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
               : movement.displayName;
         }
       }
-      const title = descriptiveSessionTitle(day.kind, base, isDeload);
+      // ADR 0044 (UX) — an external-cardio day ("Logged via Runna") is NOT
+      // touched by the engine's deload downgrade (ADR 0037), so tagging it
+      // "(deload)" implies a change the app didn't make. Suppress the suffix on
+      // those days; engine-controlled cardio + strength days keep it.
+      const isExternalCardioDay =
+        day.kind === "cardio" && parsed.data.cardioSource === "external";
+      const title = descriptiveSessionTitle(
+        day.kind,
+        base,
+        isDeload && !isExternalCardioDay,
+      );
 
       rows.push({
         block_id: block.id,
