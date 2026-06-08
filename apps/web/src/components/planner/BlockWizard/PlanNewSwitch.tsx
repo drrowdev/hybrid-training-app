@@ -19,7 +19,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import {
   BlockWizard,
   type BlockWizardPrefill,
@@ -65,6 +65,7 @@ export function PlanNewSwitch({
   preferredCardioSource = null,
   preferredCardioSourceName = null,
   estimateAccessoryVolumeAction,
+  seedArchetype = null,
 }: {
   recentBlocks: RecentBlockCard[];
   tmReadinessByArchetype: TmReadinessByArchetype;
@@ -86,6 +87,12 @@ export function PlanNewSwitch({
   preferredCardioSourceName?: string | null;
   /** ADR 0024 addendum — read-only accessory-volume time estimator, forwarded to BlockWizard. */
   estimateAccessoryVolumeAction?: EstimateAccessoryVolumeAction;
+  /**
+   * Next-block suggestion seed (`?build=<archetype>`). When set, the wizard
+   * opens pre-filled with that archetype's focus combo, landing on the focus
+   * step so the user sees which focuses make up the suggested block.
+   */
+  seedArchetype?: string | null;
 }): React.ReactElement {
   const [mode, setMode] = useState<"home" | "wizard">(initialMode);
   const [wizardPrefill, setWizardPrefill] = useState<BlockWizardPrefill | null>(null);
@@ -93,6 +100,23 @@ export function PlanNewSwitch({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  // `?build=<archetype>` from the next-block suggestion nudge: open the wizard
+  // pre-seeded with that archetype's focus combo, landing on the focus step.
+  // Runs once. Days default to the most recent block's dose (or 4) — the user
+  // adjusts everything from the focus step onward.
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (seededRef.current || !seedArchetype) return;
+    seededRef.current = true;
+    setWizardPrefill({
+      archetype: seedArchetype,
+      daysPerWeek: recentBlocks[0]?.daysPerWeek ?? 4,
+      dayIndexOverrides: null,
+      fromSuggestion: true,
+    });
+    setMode("wizard");
+  }, [seedArchetype, recentBlocks]);
 
   // New blocks are laid out as full Mon–Sun weeks, so starting mid-/late-week
   // strands the earlier days of week 1 in the past (overdue). Anchor the start
