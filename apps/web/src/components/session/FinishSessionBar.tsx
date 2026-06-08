@@ -57,8 +57,12 @@ export function FinishSessionBar({
   // sticky scroll state. Only the armed bottom variant participates; the dim
   // (in-flow) bar and the banner variant remove the var so the timer falls
   // back to its bottom-nav offset.
+  // The Finish bar used to float (sticky) above the rest-timer, so it published
+  // its clearance for RestTimer to dock above it. Now it's in-flow at the bottom
+  // of the content, so there's nothing to dock around — never publish the var
+  // (RestTimer falls back to its bottom-nav offset).
   const barRef = useRef<HTMLDivElement>(null);
-  const publishesClearance = variant === "bottom" && !disabled;
+  const publishesClearance = false;
   useEffect(() => {
     const root = document.documentElement;
     const el = barRef.current;
@@ -128,14 +132,26 @@ export function FinishSessionBar({
     );
   }
 
-  // Bottom sticky variant.
+  // Bottom in-flow variant. Previously a sticky bar pinned to the viewport
+  // bottom; that permanently occupied screen estate on mobile. It now sits at
+  // the END of the session content — the user scrolls past the movement cards
+  // to reach it — so the logging surface gets the full screen. `.cp-main`
+  // already reserves ~96px bottom padding, so it clears the fixed bottom nav.
   return (
     <div
       ref={barRef}
       data-testid={testId}
       data-armed={disabled ? "false" : "true"}
-      className={`cp-stickybar${disabled ? " cp-stickybar--dim" : ""}`}
-      style={{ marginInline: -16, flexDirection: "column", gap: 4 }}
+      style={{
+        marginInline: -16,
+        marginTop: 16,
+        paddingTop: 16,
+        borderTop: "1px solid var(--cp-border)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 4,
+        paddingInline: 16,
+      }}
     >
       {disabled ? (
         <span
