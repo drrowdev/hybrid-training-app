@@ -16,8 +16,10 @@ import type { EquipmentPreset } from "@/lib/settings/equipment-schema";
 import type { AccessoryVolumeLevel } from "@/lib/planner/accessory-volume";
 import {
   accessoryVolumeApplicability,
+  accessoryVolumeRedundancy,
   recommendedAccessoryVolume,
   type AccessoryVolumeRecommendation,
+  type AccessoryVolumeRedundancy,
 } from "@/lib/planner/accessory-volume-recommendation";
 import { resolveSecondaryFocus } from "@/lib/planner/secondary-focus";
 import type {
@@ -490,6 +492,7 @@ function AccessoryVolumeControl({
   disabled,
   estimates,
   estimateLoading,
+  redundancy,
 }: {
   value: AccessoryVolumeLevel;
   onChange: (level: AccessoryVolumeLevel) => void;
@@ -497,14 +500,26 @@ function AccessoryVolumeControl({
   disabled: boolean;
   estimates: Record<AccessoryVolumeLevel, number | null> | null;
   estimateLoading: boolean;
+  redundancy: AccessoryVolumeRedundancy;
 }): React.ReactElement {
   const active =
     ACCESSORY_VOLUME_OPTIONS.find((o) => o.level === value) ??
     ACCESSORY_VOLUME_OPTIONS[1]!;
-  const recLabel = recommendation
-    ? (ACCESSORY_VOLUME_OPTIONS.find((o) => o.level === recommendation.level)?.label ??
-      recommendation.level)
+  const levelLabel = (level: AccessoryVolumeLevel): string =>
+    ACCESSORY_VOLUME_OPTIONS.find((o) => o.level === level)?.label ?? level;
+  // Only apply redundancy once the live estimate has resolved (no flicker
+  // against a stale config while a new estimate is in flight).
+  const isRedundant = (level: AccessoryVolumeLevel): boolean =>
+    !estimateLoading && redundancy.redundant.has(level);
+  const anyRedundant = !estimateLoading && redundancy.redundant.size > 0;
+  // If the recommended level turns out redundant, move the ★ to the leanest
+  // level that yields the same session so we never recommend a greyed-out level.
+  const effectiveRecLevel: AccessoryVolumeLevel | null = recommendation
+    ? isRedundant(recommendation.level)
+      ? (redundancy.equivalentLevel[recommendation.level] ?? recommendation.level)
+      : recommendation.level
     : null;
+  const recLabel = effectiveRecLevel ? levelLabel(effectiveRecLevel) : null;
   const minutesLabel = (level: AccessoryVolumeLevel): string | null => {
     if (estimateLoading) return "…";
     const m = estimates?.[level];
@@ -525,8 +540,13 @@ function AccessoryVolumeControl({
         >
           {ACCESSORY_VOLUME_OPTIONS.map((o) => {
             const selected = o.level === value;
-            const isRecommended = recommendation?.level === o.level;
+            const isRecommended = effectiveRecLevel === o.level;
             const mins = minutesLabel(o.level);
+            const levelRedundant = isRedundant(o.level);
+            const levelDisabled = disabled || levelRedundant;
+            const equivalentLabel = levelRedundant
+              ? levelLabel(redundancy.equivalentLevel[o.level] ?? o.level)
+              : null;
             return (
               <button
                 key={o.level}
@@ -536,10 +556,16 @@ function AccessoryVolumeControl({
                 aria-label={
                   isRecommended ? `${o.label} (recommended)` : o.label
                 }
-                disabled={disabled}
+                disabled={levelDisabled}
+                title={
+                  levelRedundant && equivalentLabel
+                    ? `Same session as ${equivalentLabel} on a cardio-led block — accessory volume is capped here to protect recovery.`
+                    : undefined
+                }
                 data-testid={`accessory-volume-${o.level}`}
                 data-recommended={isRecommended ? "true" : undefined}
-                onClick={() => !disabled && onChange(o.level)}
+                data-redundant={levelRedundant ? "true" : undefined}
+                onClick={() => !levelDisabled && onChange(o.level)}
                 style={{
                   flex: 1,
                   display: "flex",
@@ -550,7 +576,8 @@ function AccessoryVolumeControl({
                   borderRadius: 10,
                   fontSize: 14,
                   fontWeight: 600,
-                  cursor: disabled ? "default" : "pointer",
+                  cursor: levelDisabled ? "default" : "pointer",
+                  opacity: levelRedundant ? 0.45 : 1,
                   border: selected
                     ? "1px solid var(--cp-accent)"
                     : isRecommended
@@ -614,6 +641,17 @@ function AccessoryVolumeControl({
             setting.
           </p>
         )}
+        {!disabled && anyRedundant && (
+          <p
+            data-testid="accessory-volume-redundant-note"
+            style={{ margin: "8px 0 0", fontSize: 11.5, color: "var(--cp-text-muted)", lineHeight: 1.5 }}
+          >
+            Greyed-out levels would produce the same session. On a cardio-led
+            block the plan caps accessory volume — the mandatory durability,
+            balance and focus-muscle work already fills the strength day, so
+            adding more would only eat into your recovery for cardio.
+          </p>
+        )}
         {!disabled && recommendation && recLabel && (
           <p
             data-testid="accessory-volume-recommendation"
@@ -627,7 +665,9 @@ function AccessoryVolumeControl({
             <span style={{ color: "var(--cp-accent)", fontWeight: 700 }}>
               ★ Recommended: {recLabel}.
             </span>{" "}
-            {recommendation.reason}
+            {effectiveRecLevel !== recommendation.level
+              ? "Cardio leads this plan — the accessory work is already at the most this block adds without cutting into recovery."
+              : recommendation.reason}
           </p>
         )}
         {disabled && (
@@ -727,6 +767,25 @@ export function Step4Review({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estimateAction, requestKey]);
 
+  // Realized-aware redundancy: on a cardio-led block the mandatory durability /
+  // functional / focus floor saturates the strength day, so the aesthetic lever
+  // produces an IDENTICAL session at two (or three) levels. Detect that from the
+  // live estimate and (a) grey out the duplicate levels in the control, and
+  // (b) clamp the selection down to the leanest equivalent so we never submit a
+  // greyed-out level.
+  const redundancy = useMemo<AccessoryVolumeRedundancy>(
+    () => accessoryVolumeRedundancy(estimate.minutes),
+    [estimate.minutes],
+  );
+  useEffect(() => {
+    if (estimateLoading) return;
+    if (!redundancy.redundant.has(state.accessoryVolume)) return;
+    const equivalent = redundancy.equivalentLevel[state.accessoryVolume];
+    if (equivalent && equivalent !== state.accessoryVolume) {
+      dispatch({ type: "clamp-accessory-volume", level: equivalent });
+    }
+  }, [redundancy, estimateLoading, state.accessoryVolume, dispatch]);
+
   return (
     <section>
       <div style={pillStyle}>Step 4 of 5 · Review</div>
@@ -745,6 +804,7 @@ export function Step4Review({
         disabled={!applicability.enabled}
         estimates={estimate.minutes}
         estimateLoading={estimateLoading}
+        redundancy={redundancy}
       />
 
       {state.power && (
