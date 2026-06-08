@@ -136,6 +136,58 @@ function h(level: number, text: string): string {
   return `${"#".repeat(level)} ${text}`;
 }
 
+/**
+ * Compact equipment summary for the review doc (preset + populated groups +
+ * accessories). Pure — lives here, not in the server-only loader, so it stays
+ * unit-testable. The nested `accessories` object (bands / rings / pull-up bar /
+ * dip belt / vest / sandbag) is surfaced explicitly: it was previously omitted,
+ * which made the external reviewer repeatedly flag legitimate band-based prehab
+ * (e.g. Monster Walk) as an "equipment mismatch" because it could not see the
+ * bands the athlete actually owns.
+ */
+export function summariseEquipment(equipment: unknown): string[] {
+  if (!equipment || typeof equipment !== "object") return [];
+  const e = equipment as Record<string, unknown>;
+  const out: string[] = [];
+  if (typeof e.preset === "string") out.push(`preset: ${e.preset}`);
+  for (const key of [
+    "bars",
+    "plates",
+    "dumbbells",
+    "kettlebells",
+    "machines",
+    "cardio",
+  ]) {
+    const v = e[key];
+    if (Array.isArray(v) && v.length > 0) out.push(`${key} (${v.length})`);
+    else if (v && typeof v === "object") out.push(key);
+  }
+  const acc = e.accessories;
+  if (acc && typeof acc === "object") {
+    const a = acc as Record<string, unknown>;
+    if (a.bands === true) {
+      out.push(
+        typeof a.bandStrength === "string" ? `bands (${a.bandStrength})` : "bands",
+      );
+    }
+    if (a.pullUpBar === true) out.push("pull-up bar");
+    if (a.rings === true) out.push("rings");
+    if (a.dipBelt === true) {
+      out.push(
+        typeof a.dipBeltMaxKg === "number"
+          ? `dip belt (+${a.dipBeltMaxKg}kg)`
+          : "dip belt",
+      );
+    }
+    if (a.ankleWeights === true) out.push("ankle weights");
+    if (Array.isArray(a.weightedVest) && a.weightedVest.length > 0) out.push("weighted vest");
+    else if (a.weightedVest === true) out.push("weighted vest");
+    if (Array.isArray(a.sandbag) && a.sandbag.length > 0) out.push("sandbag");
+    else if (a.sandbag === true) out.push("sandbag");
+  }
+  return out;
+}
+
 function fmtKg(n: number | null): string {
   if (n == null || !Number.isFinite(n)) return "—";
   return Number.isInteger(n) ? `${n} kg` : `${Math.round(n * 10) / 10} kg`;
