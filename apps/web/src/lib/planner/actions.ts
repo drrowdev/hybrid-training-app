@@ -91,6 +91,10 @@ import {
   modalityPreferenceForDay,
   type GoalModality,
 } from "./cardio-modality-plan";
+import {
+  computeInterferenceVolumeBonus,
+  scalarModalityKey,
+} from "./interference-volume";
 import type { DeclaredExperience } from "@hta/engine";
 import { declaredExperienceToTier, tierInBand } from "./experience-tier";
 import {
@@ -999,6 +1003,51 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   const cardioDays = activeDays.filter(
     (d): d is CardioDay => d.kind === "cardio",
   );
+  // ADR 0040 — interference-aware accessory headroom. When the cardio catalog is
+  // loaded (an event goal or a preference is present, so diversification is
+  // possible), compare each cardio day's PLANNED modality (post-ADR-0039) to the
+  // archetype's DEFAULT modality and grant a small (≤ +1) accessory-item bonus
+  // when the planned mix interferes less with strength. With no catalog there is
+  // no diversification → planned == default → 0 → byte-identical.
+  let interferenceItemBonus = 0;
+  if (cardioCatalog.length > 0) {
+    const defaultMix: Record<string, number> = {};
+    const plannedMix: Record<string, number> = {};
+    for (const day of cardioDays) {
+      const minutes = day.durationMin ?? 0;
+      if (minutes <= 0) continue;
+      const defaultSlug = resolveCardioSlugForTier(day, userTier);
+      const defModality = cardioCatalogBySlug.get(defaultSlug)?.modality ?? null;
+      const defKey = scalarModalityKey(defModality);
+      defaultMix[defKey] = (defaultMix[defKey] ?? 0) + minutes;
+      const dayPreferred = modalityPreferenceForDay({
+        day,
+        allCardioDays: cardioDays,
+        archetypeId: archetype.id,
+        secondaryFocus,
+        goal: goalModality,
+        userPreferred: preferredCardioModalities,
+      });
+      const resolved = resolvePreferredCardioModality({
+        defaultSlug,
+        cardioKind:
+          day.cardioKind === "cardio_external" ? "cardio_other" : day.cardioKind,
+        preferred: dayPreferred,
+        ownedCardio: equipment.cardio,
+        userTier,
+        catalog: cardioCatalog,
+      });
+      const planModality =
+        cardioCatalogBySlug.get(resolved.slug)?.modality ?? defModality;
+      const planKey = scalarModalityKey(planModality);
+      plannedMix[planKey] = (plannedMix[planKey] ?? 0) + minutes;
+    }
+    interferenceItemBonus = computeInterferenceVolumeBonus({
+      defaultMinutesByModality: defaultMix,
+      plannedMinutesByModality: plannedMix,
+      archetypeId: archetype.id,
+    });
+  }
   for (let week = 0; week < archetype.weeks; week++) {
     const weekProfile = archetype.weekProfiles.find((w) => w.weekIndex === week);
     const weekDeloadScale = weekProfile?.strengthVolumeScale ?? 1.0;
@@ -1143,6 +1192,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
               undefined, // variationSeed (planned-block path)
               runningCardio,
               pressingMainLiftCount,
+              interferenceItemBonus,
             );
 
       // ─── Bodyweight Phase 3 — prepend BW main + back_off items ───

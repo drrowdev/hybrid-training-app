@@ -309,6 +309,16 @@ export function assemblePrescriptionItems(
    * harness omit it).
    */
   pressingMainLiftCount: number = 0,
+  /**
+   * ADR 0040 — interference-aware accessory headroom. A small bonus to the
+   * aesthetic item budget (capped at +1) granted when the block's PLANNED cardio
+   * modality mix interferes LESS with strength than an all-running reference
+   * (cycling/rowing spare the legs — Wilson 2012), so the freed recovery buys a
+   * little more strength accessory work. Computed once by the caller; gated to
+   * strength-emphasis archetypes. Default 0 → byte-identical (every legacy caller
+   * and the golden harness omit it; a running-cardio block resolves to 0).
+   */
+  interferenceItemBonus: number = 0,
 ): PrescriptionItem[] {
   const items =
     day.kind === "strength" && omitMainStrength
@@ -431,6 +441,9 @@ export function assemblePrescriptionItems(
       baseSetsPerItem: accessoryProfile.aesthetic.setsPerItem,
       level: accessoryVolume,
       secondary: secondaryVolumeTilt(archetype.id, secondaryFocus),
+      // ADR 0040 — interference headroom composes additively, like the secondary
+      // tilt; floored against the archetype's own profile. 0 → unchanged ladder.
+      extraItemBonus: interferenceItemBonus,
     });
 
     // Build the accessory section for a given tilt magnitude WITHOUT touching
