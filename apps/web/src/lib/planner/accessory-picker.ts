@@ -720,6 +720,24 @@ export function pickAccessoriesForSession({
       const floor = FOCUS_LANDMARKS[m]?.building ?? 0;
       if (floor <= 0) continue;
       if ((directProgress.get(m) ?? 0) >= floor) continue;
+      // ADR 0043 — sub-patterns this focus muscle already covered this week (prior
+      // days + earlier passes this session), so a multi-day focus spans distinct
+      // functional patterns (flexion → extension → rotation) rather than stacking
+      // one. Resolved through the catalog so we classify by slug regardless of
+      // whether the history `movementId` is a slug or a DB id.
+      const focusSubPatternsUsed = new Set<string>();
+      const noteFocusSub = (slug: string | undefined | null) => {
+        const sub = focusSubPattern(slug);
+        if (sub) focusSubPatternsUsed.add(sub);
+      };
+      for (const item of weekAccessoryHistory) {
+        if (!item.primaryMuscles.includes(m)) continue;
+        noteFocusSub(workingCatalog.find((c) => c.id === item.movementId)?.slug);
+      }
+      for (const p of picks) {
+        const cand = workingCatalog.find((c) => c.id === p.movementId);
+        if (cand?.primaryMuscles.includes(m)) noteFocusSub(cand.slug);
+      }
       const candidate = findCandidate({
         catalog: workingCatalog,
         requiredMuscle: m,
@@ -735,6 +753,9 @@ export function pickAccessoriesForSession({
         // Within-week variety: a focus muscle hit on multiple days gets a
         // different movement each day (wrist curl, then reverse wrist curl).
         weekUsedMovementIds,
+        // ADR 0043 — and a different functional SUB-PATTERN where the focus
+        // muscle has one (forearms: flexion → extension → rotation → grip).
+        avoidFocusSubPatterns: focusSubPatternsUsed,
         variationSeed: seedFor(),
       });
       if (!candidate) continue;
@@ -910,6 +931,15 @@ type CandidateQuery = {
    * only on the `pull` functional requirement; ignored for non-pull candidates.
    */
   avoidPullPlanes?: Set<PullPlane>;
+  /**
+   * ADR 0043 — focus sub-pattern diversity. Sub-patterns a declared focus muscle
+   * already covered earlier this week (e.g. `forearm_flexion`). A focus candidate
+   * whose sub-pattern is in this set is demoted (`FOCUS_SUBPATTERN_VARIETY_PENALTY`),
+   * so a multi-day focus spans distinct patterns (flexion → extension → rotation)
+   * rather than stacking the same one. Soft — set only on the focus `findCandidate`
+   * call; movements with no sub-pattern taxonomy (most slugs) are unaffected.
+   */
+  avoidFocusSubPatterns?: Set<string>;
   filters: PickFilters;
   usedThisSession: Set<string>;
   preferSupported?: boolean;
@@ -1231,6 +1261,37 @@ function isPullMovement(m: CatalogMovement): boolean {
 // only option). heuristic CP-1 — a balance preference, not a hypertrophy target.
 const PULL_PLANE_DIVERSITY_PENALTY = 28;
 
+// ADR 0043 — focus-muscle sub-pattern diversity. A declared focus muscle must
+// span its distinct FUNCTIONAL patterns across the week rather than stacking the
+// same one (the review flagged a `forearms` focus that filled every slot with
+// wrist FLEXION, ignoring extension + rotation). The taxonomy is currently
+// meaningful only for the forearm, the one focus target with several genuinely
+// distinct sub-patterns in the catalogue; every other slug returns `null` →
+// no grouping → byte-identical (the existing movement-id variety still applies).
+// Inferred from the slug so it scales with the catalogue (no movement-id lists).
+function focusSubPattern(slug: string | undefined | null): string | null {
+  const s = (slug ?? "").toLowerCase();
+  if (!s) return null;
+  if (s.includes("pronation") || s.includes("supination") || s.includes("wrist-rotation"))
+    return "forearm_rotation";
+  if (s.includes("reverse-wrist")) return "forearm_extension";
+  if (s.includes("wrist-curl")) return "forearm_flexion";
+  if (
+    s.includes("pinch") ||
+    s.includes("crush") ||
+    s.includes("gripper") ||
+    s.includes("hang")
+  )
+    return "forearm_grip";
+  return null;
+}
+// Soft demotion for a focus pick whose sub-pattern the week already covered.
+// Sized at WEEKLY_VARIETY_PENALTY so a fresh sub-pattern beats merely a fresh
+// movement-id of the same pattern (two distinct wrist-flexion curls), while
+// staying a preference — a repeat sub-pattern still seats when it is the only
+// feasible option. CP-1 heuristic.
+const FOCUS_SUBPATTERN_VARIETY_PENALTY = 30;
+
 // Region-aware durability de-dup (review fix). Processing priority among
 // equal-deficit durability roles: HSR (modality/pattern-targeted tendon work)
 // and the symptomatic eccentric claim their region first; the flexible roles
@@ -1351,6 +1412,15 @@ function candidateScore(m: CatalogMovement, query: CandidateQuery): number {
     query.avoidPullPlanes.has(pullPlaneFromMuscles(m.primaryMuscles))
   ) {
     score += PULL_PLANE_DIVERSITY_PENALTY;
+  }
+  // ADR 0043 — focus sub-pattern diversity: demote a focus pick whose functional
+  // sub-pattern the week already covered, so a multi-day focus spans distinct
+  // patterns (e.g. wrist flexion → extension → rotation) instead of stacking one.
+  if (query.avoidFocusSubPatterns) {
+    const sub = focusSubPattern(m.slug);
+    if (sub && query.avoidFocusSubPatterns.has(sub)) {
+      score += FOCUS_SUBPATTERN_VARIETY_PENALTY;
+    }
   }
   if (m.stimToFatigueScore != null) score -= m.stimToFatigueScore; // higher SFR is better
   // ADR 0041 — advanced-tier loadable preference: favour the externally-loaded
