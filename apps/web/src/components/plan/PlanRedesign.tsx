@@ -31,6 +31,11 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { DragEvent } from "react";
 import { formatPrescriptionItem } from "@/lib/planner/archetypes";
+import {
+  FOCUS_MUSCLE_LABEL,
+  isFocusMuscle,
+  type FocusMuscle,
+} from "@/lib/planner/focus-muscles";
 import { isOverdue, overdueDays } from "@/lib/planner/overdue";
 import { LogNowDateForm } from "@/components/plan/LogNowDateForm";
 import { RailList } from "@/components/plan/ThisWeekRail";
@@ -75,6 +80,8 @@ export type PlanRedesignProps = {
   archetypeName: string;
   blockNumber: number; // 1-indexed
   blockTotal: number;
+  /** Per-block user-chosen focus muscles (0–2). Rendered as a badge in the plan header. */
+  focusMuscles?: readonly string[];
   startedOn: string; // YYYY-MM-DD
   endedOn: string; // YYYY-MM-DD (last calendar day in the block)
   weeks: number;
@@ -185,11 +192,46 @@ function passesFilter(s: PlanSessionInput, f: PlanFilter): boolean {
   return s.isCardio;
 }
 
+/**
+ * Plan-header focus-muscle badge. Surfaces the active block's user-chosen
+ * focus muscles next to the archetype eyebrow. (Moved here from the Today
+ * page — focus is a block-planning concept, not a per-day one.)
+ */
+function PlanFocusBadge({ muscles }: { muscles: readonly string[] }) {
+  const valid = muscles.filter(isFocusMuscle) as FocusMuscle[];
+  if (valid.length === 0) return null;
+  const label = valid.map((m) => FOCUS_MUSCLE_LABEL[m]).join(", ");
+  return (
+    <span
+      data-testid="plan-focus-badge"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        marginLeft: 8,
+        fontSize: 10,
+        fontWeight: 600,
+        letterSpacing: "0.04em",
+        padding: "2px 8px",
+        borderRadius: 999,
+        background: "var(--cp-accent-soft)",
+        color: "var(--cp-accent)",
+        border: "1px solid color-mix(in oklab, var(--cp-accent) 35%, transparent)",
+        textTransform: "none",
+      }}
+    >
+      <span aria-hidden="true">🎯</span>
+      <span>Focus: {label}</span>
+    </span>
+  );
+}
+
 export function PlanRedesign(props: PlanRedesignProps) {
   const {
     archetypeName,
     blockNumber,
     blockTotal,
+    focusMuscles = [],
     startedOn,
     endedOn,
     weeks,
@@ -421,6 +463,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
       <header className="plan-head">
         <div className="plan-eyebrow mono">
           {archetypeName} · {renderBlockOfTotal(blockNumber, blockTotal)}
+          <PlanFocusBadge muscles={focusMuscles} />
         </div>
         <div className="plan-head-row">
           <h1 className="plan-h1">Plan</h1>
