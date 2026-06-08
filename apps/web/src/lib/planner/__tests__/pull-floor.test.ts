@@ -96,3 +96,77 @@ describe("universal pull floor (ADR 0036)", () => {
     expect(picks.length).toBeGreaterThan(0);
   });
 });
+
+describe("pull scales to pressing volume (ADR 0037)", () => {
+  // Two distinct rows so a 2-press block can seat two DIFFERENT pulls.
+  const ROW2 = mv({ id: "row2", slug: "pull-up", pattern: "pull", functionalRoles: ["pull"], primaryMuscles: ["lats", "biceps"], primaryRegion: "shoulder_scapular" });
+  const CAT = [ROW, ROW2, HIP, LR];
+
+  function runPress(count: number, history: Parameters<typeof pickAccessoriesForSession>[0]["weekAccessoryHistory"] = []) {
+    return pickAccessoriesForSession({
+      profile: PROFILE,
+      weekDeloadScale: 1.0,
+      catalog: CAT,
+      weekAccessoryHistory: history,
+      filters: EMPTY_FILTERS,
+      perMuscleTargets: defaultMuscleTargets().targetsByMuscle,
+      maxItems: 8,
+      pressingMainLiftCount: count,
+    });
+  }
+  const pulls = (picks: ReturnType<typeof pickAccessoriesForSession>) =>
+    picks.filter((p) => p.reason === "functional" && (p.slug === "chest-supported-row" || p.slug === "pull-up"));
+
+  it("a block that presses twice requires two weekly pulls", () => {
+    // Day 1 seats some pulls; the rest carry over via week history to day 2.
+    const day1 = runPress(2);
+    const d1pulls = pulls(day1);
+    expect(d1pulls.length).toBeGreaterThanOrEqual(1);
+    // Simulate the weekly accrual: feed day-1 pulls as history into day 2.
+    const history = d1pulls.map((p) => ({
+      movementId: CAT.find((m) => m.slug === p.slug)!.id,
+      bulletproofRoles: [] as never[],
+      functionalRoles: ["pull"] as never[],
+      primaryMuscles: ["lats"],
+      sets: p.sets,
+    }));
+    const day2 = runPress(2, history);
+    const totalPulls = d1pulls.length + pulls(day2).length;
+    expect(totalPulls, "two presses → two weekly pulls").toBeGreaterThanOrEqual(2);
+  });
+
+  it("a non-pressing block keeps the single baseline pull", () => {
+    const picks = runPress(0);
+    expect(pulls(picks).length).toBe(1);
+  });
+});
+
+describe("within-week movement variety", () => {
+  const WC = mv({ id: "wc", slug: "wrist-curl", pattern: "isolation", primaryMuscles: ["forearms"], primaryRegion: "elbow_forearm" });
+  const RWC = mv({ id: "rwc", slug: "reverse-wrist-curl", pattern: "isolation", primaryMuscles: ["forearms"], primaryRegion: "elbow_forearm" });
+  const CAT = [WC, RWC, HIP];
+  const focusProfile: AccessoryProfile = {
+    aesthetic: { itemsPerSession: 0, setsPerItem: 2, repRange: { min: 12, max: 15 }, biasSupported: false },
+    functional: { weeklyRoleRequirements: {} },
+    durability: { extras: [] },
+  };
+
+  it("a focus muscle hit on a second day gets a DIFFERENT movement", () => {
+    // Day 1 used the wrist curl → day 2's focus pick should avoid it.
+    const history: Parameters<typeof pickAccessoriesForSession>[0]["weekAccessoryHistory"] = [
+      { movementId: "wc", bulletproofRoles: [], functionalRoles: [], primaryMuscles: ["forearms"], sets: 2 },
+    ];
+    const day2 = pickAccessoriesForSession({
+      profile: focusProfile,
+      weekDeloadScale: 1.0,
+      catalog: CAT,
+      weekAccessoryHistory: history,
+      filters: EMPTY_FILTERS,
+      perMuscleTargets: defaultMuscleTargets({ focusMuscles: ["forearms"] }).targetsByMuscle,
+      maxItems: 4,
+      focusMuscles: ["forearms"],
+    });
+    const forearmPick = day2.find((p) => p.slug.includes("wrist"));
+    expect(forearmPick?.slug, "day 2 should pick the fresh reverse wrist curl").toBe("reverse-wrist-curl");
+  });
+});
