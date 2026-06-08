@@ -54,6 +54,7 @@ import {
   daysForFrequency,
   daySlotKey,
   minDaysForArchetype,
+  deloadCardioPlan,
   requiredFixedSlugs,
   resolveCardioSlugForTier,
   STRENGTH_ROLE_LABELS,
@@ -980,6 +981,9 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       let movement: { id: string; slug: string; displayName: string };
       let finisherMovement: { id: string; slug: string; displayName: string } | undefined;
       let secondaryMovement: { id: string; slug: string; displayName: string } | undefined;
+      // ADR 0037 — on the deload week a maximal VO2 day is rendered as a
+      // downgraded effort; holds the effective cardio day for the assembler.
+      let cardioDayOverride: CardioDay | undefined;
 
       if (day.kind === "strength") {
         const resolvedMv = resolved.get(daySlotKey(day));
@@ -999,13 +1003,21 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
         // alternates, resolve to the user-tier-appropriate slug before
         // looking the movement up in the catalog. Falls back to the
         // default slug for tiers absent from the map.
-        const baseCardioSlug = resolveCardioSlugForTier(day, userTier);
+        //
+        // ADR 0037 — coherent deload: on the deload week downgrade the maximal
+        // VO2 session to a sub-maximal touch (easy Z2, or one threshold session
+        // at high frequency) and drop the alactic finisher, so the recovery week
+        // reduces intensity and not merely volume.
+        const dPlan = deloadCardioPlan(day, weekProfile, activeDays.length, userTier);
+        const effCardioKind = dPlan?.cardioKindOverride ?? day.cardioKind;
+        const baseCardioSlug =
+          dPlan?.slugOverride ?? resolveCardioSlugForTier(day, userTier);
         // ADR 0017 — substitute toward the user's preferred cardio modality
         // (intensity-preserving). No-op when no preference is set.
         const resolvedCardio = resolvePreferredCardioModality({
           defaultSlug: baseCardioSlug,
           cardioKind:
-            day.cardioKind === "cardio_external" ? "cardio_other" : day.cardioKind,
+            effCardioKind === "cardio_external" ? "cardio_other" : effCardioKind,
           preferred: preferredCardioModalities,
           ownedCardio: equipment.cardio,
           userTier,
@@ -1021,9 +1033,22 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
           if (!mv) continue;
           movement = { id: mv.id, slug: mv.slug, displayName: mv.display_name };
         }
-        if (day.finisher) {
+        if (day.finisher && !dPlan?.dropFinisher) {
           const fin = movementBySlug.get(day.finisher.movementSlug);
           if (fin) finisherMovement = { id: fin.id, slug: fin.slug, displayName: fin.display_name };
+        }
+        if (dPlan) {
+          cardioDayOverride = {
+            ...day,
+            cardioKind: effCardioKind,
+            finisher: dPlan.dropFinisher ? undefined : day.finisher,
+            // Clear the VO2-specific protocol / HR cap when converted: the
+            // easy-Z2 / threshold movement carries its own meaning and the label
+            // comes from cardioKind. `z2DurationMinOverride` still trims duration.
+            ...(dPlan.cardioKindOverride
+              ? { hrCap: undefined, protocolNote: undefined }
+              : {}),
+          };
         }
       } else {
         // tendon
@@ -1038,7 +1063,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
           : assemblePrescriptionItems(
               archetype,
               week,
-              day,
+              cardioDayOverride ?? day,
               movement,
               finisherMovement,
               movementBySlug,
@@ -1471,6 +1496,8 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
       let movement: { id: string; slug: string; displayName: string };
       let finisherMovement: { id: string; slug: string; displayName: string } | undefined;
       let secondaryMovement: { id: string; slug: string; displayName: string } | undefined;
+      // ADR 0037 — effective (deload-downgraded) cardio day for the assembler.
+      let cardioDayOverride: CardioDay | undefined;
 
       if (day.kind === "strength") {
         const resolvedMv = resolved.get(daySlotKey(day));
@@ -1487,12 +1514,18 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
         }
       } else if (day.kind === "cardio") {
         // PR W2 — surface D. Per-tier cardio resolution (custom block path).
-        const baseCardioSlug = resolveCardioSlugForTier(day, customTier);
+        // ADR 0037 — coherent deload: downgrade the maximal VO2 day to a
+        // sub-maximal touch and drop the alactic finisher on the deload week.
+        const cwProfile = archetype.weekProfiles.find((w) => w.weekIndex === week);
+        const dPlan = deloadCardioPlan(day, cwProfile, archetype.days.length, customTier);
+        const effCardioKind = dPlan?.cardioKindOverride ?? day.cardioKind;
+        const baseCardioSlug =
+          dPlan?.slugOverride ?? resolveCardioSlugForTier(day, customTier);
         // ADR 0017 — preferred-modality substitution (intensity-preserving).
         const resolvedCardio = resolvePreferredCardioModality({
           defaultSlug: baseCardioSlug,
           cardioKind:
-            day.cardioKind === "cardio_external" ? "cardio_other" : day.cardioKind,
+            effCardioKind === "cardio_external" ? "cardio_other" : effCardioKind,
           preferred: customPreferredCardioModalities,
           ownedCardio: customEquipment.cardio,
           userTier: customTier,
@@ -1508,9 +1541,19 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
           if (!mv) continue;
           movement = { id: mv.id, slug: mv.slug, displayName: mv.display_name };
         }
-        if (day.finisher) {
+        if (day.finisher && !dPlan?.dropFinisher) {
           const fin = movementBySlug.get(day.finisher.movementSlug);
           if (fin) finisherMovement = { id: fin.id, slug: fin.slug, displayName: fin.display_name };
+        }
+        if (dPlan) {
+          cardioDayOverride = {
+            ...day,
+            cardioKind: effCardioKind,
+            finisher: dPlan.dropFinisher ? undefined : day.finisher,
+            ...(dPlan.cardioKindOverride
+              ? { hrCap: undefined, protocolNote: undefined }
+              : {}),
+          };
         }
       } else {
         const mv = movementBySlug.get(day.movementSlug);
@@ -1521,7 +1564,7 @@ export async function createCustomBlock(formData: FormData): Promise<CreateBlock
       const items = assemblePrescriptionItems(
         archetype,
         week,
-        day,
+        cardioDayOverride ?? day,
         movement,
         finisherMovement,
         movementBySlug,
