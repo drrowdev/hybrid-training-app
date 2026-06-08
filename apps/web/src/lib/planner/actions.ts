@@ -952,6 +952,16 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       catalog: cardioCatalog,
     },
   );
+  // ADR 0035 — does this block press overhead/bench? Drives the conditional
+  // shoulder-stability (rotator-cuff) prehab requirement.
+  const pressingMainLift = activeDays.some(
+    (d) =>
+      d.kind === "strength" &&
+      (d.role === "vertical_press" ||
+        d.role === "horizontal_press" ||
+        d.secondaryRole === "vertical_press" ||
+        d.secondaryRole === "horizontal_press"),
+  );
   for (let week = 0; week < archetype.weeks; week++) {
     const weekProfile = archetype.weekProfiles.find((w) => w.weekIndex === week);
     const weekDeloadScale = weekProfile?.strengthVolumeScale ?? 1.0;
@@ -1045,6 +1055,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
               undefined, // aestheticTargetMask (planned-block path)
               undefined, // variationSeed (planned-block path)
               runningCardio,
+              pressingMainLift,
             );
 
       // ─── Bodyweight Phase 3 — prepend BW main + back_off items ───

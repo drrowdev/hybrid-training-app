@@ -273,6 +273,7 @@ export function pickAccessoriesForSession({
   focusMuscles = [],
   runningCardio = false,
   dayPrimaryRole,
+  pressingMainLift = false,
   variationSeed,
 }: {
   profile: AccessoryProfile;
@@ -350,6 +351,14 @@ export function pickAccessoriesForSession({
    * (hinge day → posterior, squat day → knee). Undefined → no pattern preference.
    */
   dayPrimaryRole?: string;
+  /**
+   * ADR 0035 — true when the block has a pressing main lift (vertical_press /
+   * horizontal_press as a primary or secondary). When set, the functional floor
+   * adds one weekly `shoulder_stability` (rotator-cuff) requirement so an
+   * overhead/bench presser carries guaranteed cuff prehab. Default false →
+   * byte-identical (the golden harness, custom blocks, and legacy callers omit it).
+   */
+  pressingMainLift?: boolean;
   /**
    * Quick-generate variation seed (quick-workout path only). Forwarded to each
    * `findCandidate` call (offset per slot so different gaps rotate
@@ -462,7 +471,17 @@ export function pickAccessoriesForSession({
   }
 
   // ─── 2. Functional deficits ───
-  for (const [role, required] of Object.entries(profile.functional.weeklyRoleRequirements) as [FunctionalRole, number][]) {
+  // ADR 0035 — when the block has a pressing main lift, add a weekly
+  // `shoulder_stability` (rotator-cuff) requirement on top of the archetype's
+  // own functional needs. Gated on `pressingMainLift` → omitted by default, so
+  // every legacy caller / golden stays byte-identical. The assembler grants a
+  // matching +1 to the total item cap so this seats in its own headroom rather
+  // than displacing an aesthetic slot.
+  const effectiveFunctionalReqs: [FunctionalRole, number][] = [
+    ...(Object.entries(profile.functional.weeklyRoleRequirements) as [FunctionalRole, number][]),
+    ...(pressingMainLift ? ([["shoulder_stability", 1]] as [FunctionalRole, number][]) : []),
+  ];
+  for (const [role, required] of effectiveFunctionalReqs) {
     if (picks.length >= maxItems) break;
     if (!required) continue;
     const current = functionalProgress.get(role) ?? 0;

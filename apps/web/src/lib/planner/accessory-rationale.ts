@@ -48,6 +48,8 @@ const FUNCTIONAL_WHY: Record<FunctionalRole, string> = {
     "Hip-stability work for steadier, healthier squats and runs.",
   ankle_foot:
     "Ankle and foot strength for a more stable base under load.",
+  shoulder_stability:
+    "Rotator-cuff and scapular work to keep your shoulders healthy under pressing volume.",
   power_olympic:
     "An explosive lift to build full-body power and rate of force.",
   power_plyometric:
