@@ -100,6 +100,7 @@ export type WizardAction =
   | { type: "toggle-focus-muscle"; muscle: string }
   | { type: "set-accessory-volume"; level: AccessoryVolumeLevel }
   | { type: "recommend-accessory-volume"; level: AccessoryVolumeLevel }
+  | { type: "clamp-accessory-volume"; level: AccessoryVolumeLevel }
   | { type: "maintenance-link" }
   | { type: "goto"; step: StepIndex }
   | { type: "next" }
@@ -135,6 +136,15 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
     case "recommend-accessory-volume":
       // Advisory pre-select: only applies while the user hasn't manually chosen.
       return state.accessoryVolumeTouched
+        ? state
+        : { ...state, accessoryVolume: action.level };
+    case "clamp-accessory-volume":
+      // Realized-aware correction: the live estimate showed the current level is
+      // redundant (identical session to a lower level), so move selection down to
+      // that equivalent. Always applies (even when touched — the chosen level is
+      // greyed out) but does NOT set `accessoryVolumeTouched`: it's a correctness
+      // clamp, not a user choice, so a later recommendation can still re-apply.
+      return state.accessoryVolume === action.level
         ? state
         : { ...state, accessoryVolume: action.level };
     case "toggle-power":
