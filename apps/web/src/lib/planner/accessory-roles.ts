@@ -32,6 +32,14 @@ export const FUNCTIONAL_ROLES = [
   "ankle_foot",
   /** Rotator-cuff / scapular-stability prehab for overhead & bench pressers (ADR 0035). */
   "shoulder_stability",
+  /**
+   * Horizontal / vertical PULL pattern (row, pulldown, pull-up, face-pull).
+   * The four main-lift patterns (squat / horizontal_press / deadlift /
+   * vertical_press) contain NO pull, so without a guaranteed pulling accessory
+   * a whole block can ship zero back/biceps volume. ADR 0036 makes one weekly
+   * pull a universal floor across every archetype for upper-body balance.
+   */
+  "pull",
   /** Olympic lift derivatives — triple-extension power. */
   "power_olympic",
   /** Jump-based stretch-shortening cycle work. */

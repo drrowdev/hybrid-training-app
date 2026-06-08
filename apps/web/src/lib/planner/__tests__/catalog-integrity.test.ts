@@ -218,6 +218,8 @@ describe("seed catalog — role-coverage floors", () => {
     expect(countFn("loaded_mobility"), "loaded_mobility").toBeGreaterThanOrEqual(1);
     // ADR 0035 — the conditional cuff-prehab requirement (1/wk for pressers).
     expect(countFn("shoulder_stability"), "shoulder_stability").toBeGreaterThanOrEqual(1);
+    // ADR 0036 — the universal weekly pull floor (1/wk, every archetype).
+    expect(countFn("pull"), "pull").toBeGreaterThanOrEqual(1);
   });
 
   // A user with no machines must still be able to seat the endurance_anchor
@@ -235,5 +237,8 @@ describe("seed catalog — role-coverage floors", () => {
     // ADR 0035 — a presser with no machines must still seat a cuff item
     // (band / DB / bar variants).
     expect(machineFree("shoulder_stability"), "shoulder_stability machine-free").toBeGreaterThanOrEqual(1);
+    // ADR 0036 — the universal pull floor must be satisfiable without machines
+    // (pull-ups / inverted rows / DB rows).
+    expect(machineFree("pull"), "pull machine-free").toBeGreaterThanOrEqual(2);
   });
 });
