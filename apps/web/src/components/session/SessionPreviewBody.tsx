@@ -20,6 +20,7 @@
 import Link from "next/link";
 import type { PrescriptionItem } from "@hta/db";
 import {
+  collapseIdenticalSetItems,
   groupByMovementThenKind,
   type PrescriptionMovementRow,
 } from "@/lib/plan/prescription-grouping";
@@ -538,7 +539,7 @@ function AccessoryRow({
         className="mono"
         style={{ fontSize: 13, color: "var(--cp-text-muted)", textAlign: "right" }}
       >
-        {row.items
+        {collapseIdenticalSetItems(row.items)
           .map((it) => formatPrescriptionItem(it))
           .filter(Boolean)
           .join(" · ")}

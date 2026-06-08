@@ -66,6 +66,27 @@ function renderCompact(items: PrescriptionItem[], over?: Partial<SessionPreviewI
 }
 
 describe("SessionPreviewBody (compact / Today hero)", () => {
+  const accessory = (over: Partial<PrescriptionItem> = {}): PrescriptionItem =>
+    ({
+      kind: "accessory",
+      movementId: over.movementId ?? "m-acc",
+      movementName: over.movementName ?? "Wrist Curl (BB)",
+      reps: 14,
+      sets: 1,
+      ...over,
+    }) as unknown as PrescriptionItem;
+
+  it("collapses set-expanded accessory items: two 1×14 entries render as one 2 × 14", () => {
+    const html = renderCompact([
+      main(),
+      accessory(),
+      accessory(),
+    ]);
+    expect(html).toContain("2 × 14");
+    // The confusing "1 × 14 · 1 × 14" must NOT appear.
+    expect(html).not.toContain("1 × 14 · 1 × 14");
+  });
+
   it("strips outer chrome: no back link, no outer header, no Start CTA", () => {
     const html = renderCompact([cardio()], { title: "VO2 intervals" });
     expect(html).not.toContain('data-testid="back-link"');
