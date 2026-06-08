@@ -111,12 +111,16 @@ describe("durability floor — modality & pattern HSR (ADR 0034)", () => {
     expect(hsrSlug(picks2)).toBe("slow-rdl");
   });
 
-  it("Phase 2 (no running): squat day prefers knee HSR, deadlift day prefers hinge HSR", () => {
+  it("Phase 2 (no running): squat day prefers knee HSR, deadlift day distributes to calf (ADR 0042 — no redundant axial-hinge RDL)", () => {
     const squatPicks = runDay({ history: [], runningCardio: false, dayPrimaryRole: "squat" });
     expect(hsrSlug(squatPicks)).toBe("slow-front-squat");
 
+    // ADR 0042 — the deadlift main already maxes the posterior chain, so its
+    // durability HSR distributes to a distinct tendon (calf/Achilles) instead of
+    // stacking a second axial hinge (RDL).
     const hingePicks = runDay({ history: [], runningCardio: false, dayPrimaryRole: "deadlift" });
-    expect(hsrSlug(hingePicks)).toBe("slow-rdl");
+    expect(hsrSlug(hingePicks)).toBe("hsr-calf-raise");
+    expect(hsrSlug(hingePicks)).not.toBe("slow-rdl");
   });
 
   it("soft preference: falls back to an in-role HSR when no region match exists (press day, no shoulder HSR)", () => {
