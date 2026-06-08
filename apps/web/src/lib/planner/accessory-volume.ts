@@ -142,12 +142,18 @@ export function accessoryVolumeCandidates(args: {
   baseSetsPerItem: number;
   level: AccessoryVolumeLevel;
   secondary: SecondaryVolumeTilt;
+  /**
+   * ADR 0040 — interference-aware extra aesthetic-item headroom, composed
+   * additively with the level + secondary tilt before flooring. Default 0
+   * reproduces the pre-ADR-0040 ladder exactly.
+   */
+  extraItemBonus?: number;
 }): VolumeBonus[] {
   const lvl = accessoryVolumeTilt(args.level);
   const full = floorBonus(
     args.aestheticBaseItems,
     args.baseSetsPerItem,
-    lvl.itemsPerSessionDelta + args.secondary.itemsPerSessionDelta,
+    lvl.itemsPerSessionDelta + args.secondary.itemsPerSessionDelta + (args.extraItemBonus ?? 0),
     lvl.setsPerItemDelta + args.secondary.setsPerItemDelta,
   );
 
