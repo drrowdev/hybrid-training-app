@@ -592,46 +592,84 @@ export function pickAccessoriesForSession({
 
   // ─── 4. Focus-muscle MEV floor (Finding #1) ───
   // When the user declared focus muscles, guarantee each reaches at least its
-  // MEV landmark (`FOCUS_LANDMARKS[m].building`) in direct sets/week. This is
-  // seated ABOVE the aesthetic trim: a low-volume base-1 archetype
-  // (endurance / rebuild), whose durability + functional floor can saturate the
-  // per-session `maxItems` cap and starve the aesthetic gap-fill entirely, would
-  // otherwise honour the elevated focus *target* nowhere (the gap-fill never
-  // runs). Runs AFTER the gap-fill so it is a TRUE NO-OP whenever the normal
-  // path already brought the muscle to MEV (healthy budgets). Entirely gated on
-  // `focusMuscles` — byte-identical for every user who hasn't picked one. Adds
-  // at most one pick per under-MEV focus muscle per session (<=2 total),
-  // accumulating toward the weekly floor across the block's strength days via
-  // `weekAccessoryHistory` (the assembler records every pick's sets).
-  for (const m of focusMuscles) {
-    const floor = FOCUS_LANDMARKS[m]?.building ?? 0;
-    if (floor <= 0) continue;
-    if ((muscleProgress.get(m) ?? 0) >= floor) continue;
-    const candidate = findCandidate({
-      catalog: workingCatalog,
-      requiredMuscle: m,
-      filters,
-      usedThisSession,
-      preferSupported:
-        profile.aesthetic.biasSupported && filters.concurrentStressActive,
-      demoteCompound: true,
-      aestheticEligibleOnly: true,
-      variationSeed: seedFor(),
-    });
-    if (!candidate) continue;
-    const pick = buildPick(
-      candidate,
-      profile,
-      weekDeloadScale,
-      "aesthetic",
-      accessoryRationale({ reason: "focus", gapMuscle: m }),
-    );
-    picks.push(pick);
-    usedThisSession.add(candidate.id);
-    bumpBulletproof(durabilityProgress, candidate.bulletproofRoles);
-    bumpFunctional(functionalProgress, candidate.functionalRoles);
-    for (const mm of candidate.primaryMuscles) {
-      muscleProgress.set(mm, (muscleProgress.get(mm) ?? 0) + pick.sets);
+  // MEV landmark (`FOCUS_LANDMARKS[m].building`) in DIRECT LOADED sets/week.
+  //
+  // "Direct" is load-bearing here (review fix): the MEV check must NOT count
+  // indirect grip/stabilisation work — loaded carries (grip is a secondary
+  // demand) and isometric holds (e.g. a dead hang) list the focus muscle as a
+  // `primaryMuscle` but are not a hypertrophy-class loaded stimulus. Counting
+  // them let two durability picks (dead hang + farmer carry = 4 sets) silently
+  // satisfy the forearm `building` floor on day 1, so the floor no-opped on day
+  // 2 and the user got ~40s of isometric work instead of real wrist work.
+  //
+  // Fix: (a) the MEV check is computed from a DIRECT-ONLY ledger (prior-day
+  // history + this session's picks, excluding carry / heavy_isometric /
+  // alfredson_eccentric roles); (b) the focus pick itself excludes those
+  // indirect candidates so it selects a genuine loaded isolation (wrist curl)
+  // over a dead hang. Seated AFTER the gap-fill → a TRUE NO-OP when the normal
+  // path already brought the muscle to MEV with direct work. Entirely gated on
+  // `focusMuscles` → byte-identical for every user who hasn't picked one.
+  if (focusMuscles.length > 0) {
+    const directProgress = new Map<string, number>();
+    const creditDirect = (
+      roles: readonly BulletproofRole[],
+      muscles: readonly string[],
+      sets: number,
+    ) => {
+      if (hasIndirectFocusRole(roles)) return;
+      for (const mu of muscles) {
+        directProgress.set(mu, (directProgress.get(mu) ?? 0) + sets);
+      }
+    };
+    // Prior days this week (the assembler appends this session's picks only
+    // AFTER we return, so `weekAccessoryHistory` is strictly earlier days).
+    for (const item of weekAccessoryHistory) {
+      creditDirect(
+        item.bulletproofRoles,
+        item.primaryMuscles,
+        item.sets ?? profile.aesthetic.setsPerItem,
+      );
+    }
+    // This session's picks so far (durability / functional / power / aesthetic).
+    for (const p of picks) {
+      const cand = workingCatalog.find((c) => c.id === p.movementId);
+      if (cand) creditDirect(cand.bulletproofRoles, cand.primaryMuscles, p.sets);
+    }
+
+    for (const m of focusMuscles) {
+      const floor = FOCUS_LANDMARKS[m]?.building ?? 0;
+      if (floor <= 0) continue;
+      if ((directProgress.get(m) ?? 0) >= floor) continue;
+      const candidate = findCandidate({
+        catalog: workingCatalog,
+        requiredMuscle: m,
+        filters,
+        usedThisSession,
+        preferSupported:
+          profile.aesthetic.biasSupported && filters.concurrentStressActive,
+        demoteCompound: true,
+        aestheticEligibleOnly: true,
+        // Real loaded isolation only — never a dead hang / carry to fill the
+        // focus floor.
+        excludeIndirectForFocus: true,
+        variationSeed: seedFor(),
+      });
+      if (!candidate) continue;
+      const pick = buildPick(
+        candidate,
+        profile,
+        weekDeloadScale,
+        "aesthetic",
+        accessoryRationale({ reason: "focus", gapMuscle: m }),
+      );
+      picks.push(pick);
+      usedThisSession.add(candidate.id);
+      bumpBulletproof(durabilityProgress, candidate.bulletproofRoles);
+      bumpFunctional(functionalProgress, candidate.functionalRoles);
+      for (const mm of candidate.primaryMuscles) {
+        muscleProgress.set(mm, (muscleProgress.get(mm) ?? 0) + pick.sets);
+        directProgress.set(mm, (directProgress.get(mm) ?? 0) + pick.sets);
+      }
     }
   }
 
@@ -745,6 +783,14 @@ type CandidateQuery = {
    * back to any in-role candidate when no matching-region movement is feasible.
    */
   preferRegion?: string;
+  /**
+   * Focus-floor only (review fix). When true, candidates carrying an indirect
+   * grip/isometric durability role (`carry` / `heavy_isometric` /
+   * `alfredson_eccentric`) are excluded, so a focus-muscle MEV top-up selects a
+   * genuine loaded isolation (e.g. a wrist curl) rather than a dead hang or a
+   * carry that merely lists the muscle as a `primaryMuscle`.
+   */
+  excludeIndirectForFocus?: boolean;
   filters: PickFilters;
   usedThisSession: Set<string>;
   preferSupported?: boolean;
@@ -799,6 +845,8 @@ function findCandidate(query: CandidateQuery): CatalogMovement | null {
       m.pattern != null &&
       !AESTHETIC_ELIGIBLE_PATTERNS.has(m.pattern)
     )
+      continue;
+    if (query.excludeIndirectForFocus && hasIndirectFocusRole(m.bulletproofRoles))
       continue;
     candidates.push(m);
   }
@@ -979,6 +1027,30 @@ const HSR_REGION_BY_ROLE: Record<string, string> = {
 /** ADR 0034 — the Achilles/calf tendon region a running-impact block prioritises. */
 const RUNNING_HSR_REGION = "foot_ankle_calf";
 
+// Plyometric / power reps. Behm & Sale 1993 — explosive work is a low-rep,
+// low-fatigue, maximal-intent stimulus (3–5 reps, full rest), NOT a hypertrophy
+// set. Pinned to 5 to match the power-emphasis pass's `repsOverride`. heuristic
+// CP-1 (Behm & Sale-grounded; the engine already cites 3–5 reps for plyo).
+const PLYOMETRIC_REPS = 5;
+
+// Review fix — bulletproof roles that mark INDIRECT grip / isometric work which
+// must NOT count toward a focus muscle's MEV (nor be selected to fill it): a
+// loaded carry trains grip only as a secondary demand, and an isometric hold
+// (e.g. a dead hang) or symptomatic eccentric is not a hypertrophy-class loaded
+// stimulus. Genuine loaded isolation (wrist curl) carries none of these, so it
+// remains both countable and selectable. HSR / plyometric are deliberately NOT
+// here — they are real loaded work.
+const INDIRECT_FOCUS_ROLES: ReadonlySet<BulletproofRole> = new Set<BulletproofRole>([
+  "carry",
+  "heavy_isometric",
+  "alfredson_eccentric",
+]);
+
+function hasIndirectFocusRole(roles: readonly BulletproofRole[]): boolean {
+  for (const r of roles) if (INDIRECT_FOCUS_ROLES.has(r)) return true;
+  return false;
+}
+
 /**
  * Movement staple-value, normalised to [0,1]. Compound + loadable = 1.0
  * (a sticky staple — e.g. weighted chin-up / dip / row); a redundant
@@ -1063,14 +1135,23 @@ function repsForBucket(
   // ADR 0022 — bias reps within the archetype's existing range by movement
   // type. heuristic, consistent with Schoenfeld 2017 (hypertrophy is largely
   // rep-range-insensitive at matched effort, so compound→low / isolation→high
-  // is a free joint-stress / practicality win). isometric / carry / plyometric
-  // / tendon buckets ignore the rep number downstream (holds / distance /
-  // explosive-intent overrides), so the midpoint there is harmless.
+  // is a free joint-stress / practicality win). isometric / carry / tendon
+  // buckets ignore the rep number downstream (holds / distance overrides), so
+  // the midpoint there is harmless.
   switch (bucket) {
     case "isolation":
       return repRange.max;
     case "compound":
       return repRange.min;
+    case "plyometric":
+      // Plyometric / power is a REACTIVE stimulus, not a hypertrophy one — it
+      // must NOT inherit the archetype's 12–15 hypertrophy rep range (that
+      // produced a fatiguing "Jump Squat 2×14 @ max intent", which is a
+      // metabolic set, not a crisp reactive one). Behm & Sale 1993: explosive
+      // work is 3–5 low-fatigue reps at maximal intent with full rest. Matches
+      // the power-emphasis pass's `repsOverride: 5`. The intensity path already
+      // attaches RPE 10 (max intent); only the rep COUNT was wrong.
+      return PLYOMETRIC_REPS;
     default:
       return Math.round((repRange.min + repRange.max) / 2);
   }
