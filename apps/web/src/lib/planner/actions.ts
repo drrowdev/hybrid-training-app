@@ -961,16 +961,17 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
             catalog: cardioCatalog,
           },
         );
-  // ADR 0035 — does this block press overhead/bench? Drives the conditional
-  // shoulder-stability (rotator-cuff) prehab requirement.
-  const pressingMainLift = activeDays.some(
-    (d) =>
-      d.kind === "strength" &&
-      (d.role === "vertical_press" ||
-        d.role === "horizontal_press" ||
-        d.secondaryRole === "vertical_press" ||
-        d.secondaryRole === "horizontal_press"),
-  );
+  // ADR 0035/0037 — count the block's weekly pressing main-lift exposures
+  // (vertical_press + horizontal_press, primary AND secondary, across every
+  // strength day). Drives the cuff floor (count > 0) and scales the pull
+  // requirement so push:pull stays balanced however many pressing patterns the
+  // structure programs. Scales with days/week, archetype, and dual-main folding.
+  const pressingMainLiftCount = activeDays.reduce((n, d) => {
+    if (d.kind !== "strength") return n;
+    const isPress = (r: string | undefined) =>
+      r === "vertical_press" || r === "horizontal_press";
+    return n + (isPress(d.role) ? 1 : 0) + (isPress(d.secondaryRole) ? 1 : 0);
+  }, 0);
   for (let week = 0; week < archetype.weeks; week++) {
     const weekProfile = archetype.weekProfiles.find((w) => w.weekIndex === week);
     const weekDeloadScale = weekProfile?.strengthVolumeScale ?? 1.0;
@@ -1064,7 +1065,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
               undefined, // aestheticTargetMask (planned-block path)
               undefined, // variationSeed (planned-block path)
               runningCardio,
-              pressingMainLift,
+              pressingMainLiftCount,
             );
 
       // ─── Bodyweight Phase 3 — prepend BW main + back_off items ───

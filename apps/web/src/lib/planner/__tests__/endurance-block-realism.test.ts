@@ -70,7 +70,7 @@ const PRIMARY = { id: "front-squat", slug: "front-squat", displayName: "Front Sq
 const SECONDARY = { id: "ohp-standing", slug: "ohp-standing", displayName: "Standing Overhead Press" };
 
 /** Materialise week 0's two endurance strength days through the real pipeline. */
-function weekZeroAccessories(): { items: PrescriptionItem[] } {
+function weekZeroAccessories(): { items: PrescriptionItem[]; byDay: PrescriptionItem[][] } {
   const activeDays = foldDualMainLifts(
     ENDURANCE_ANCHOR,
     daysForFrequency(ENDURANCE_ANCHOR, 6, false),
@@ -78,6 +78,7 @@ function weekZeroAccessories(): { items: PrescriptionItem[] } {
   const weekAccessoryHistory: unknown[] = [];
   const movementBySlug = new Map<string, { id: string; slug: string; display_name: string }>();
   const collected: PrescriptionItem[] = [];
+  const byDay: PrescriptionItem[][] = [];
 
   for (const day of activeDays) {
     if (day.kind !== "strength") continue;
@@ -109,23 +110,45 @@ function weekZeroAccessories(): { items: PrescriptionItem[] } {
       undefined, // aestheticTargetMask
       undefined, // variationSeed
       true, // runningCardio (external cardio = running)
-      true, // pressingMainLift (OHP + bench)
+      2, // pressingMainLiftCount (OHP + bench)
     );
     collected.push(...items);
+    byDay.push(items.filter((it) => it.kind === "accessory"));
   }
-  return { items: collected };
+  return { items: collected, byDay };
 }
 
-const accessories = weekZeroAccessories().items.filter((it) => it.kind === "accessory");
+const week = weekZeroAccessories();
+const accessories = week.items.filter((it) => it.kind === "accessory");
 const entry = (slug: string | undefined) => (slug ? BY_SLUG.get(slug) : undefined);
+const isPull = (it: PrescriptionItem) => {
+  const c = entry(it.movementSlug);
+  return !!c && (c.pattern === "pull" || (c.functionalRoles as string[]).includes("pull"));
+};
 
 describe("endurance / forearm-focus / running block — review-fix realism (end-to-end)", () => {
-  it("seats a PULL (ADR 0036 universal pull floor)", () => {
-    const pulls = accessories.filter((it) => {
-      const c = entry(it.movementSlug);
-      return !!c && (c.pattern === "pull" || (c.functionalRoles as string[]).includes("pull"));
-    });
-    expect(pulls.length, "expected at least one pulling accessory").toBeGreaterThan(0);
+  it("scales PULL volume to pressing (ADR 0037): 2 presses → ≥2 pulls", () => {
+    const pulls = accessories.filter(isPull);
+    // OHP + Bench = 2 pressing patterns → at least 2 weekly pulls.
+    expect(pulls.length, "expected pull volume to match pressing count").toBeGreaterThanOrEqual(2);
+  });
+
+  it("varies repeated weekly slots across days (within-week variety)", () => {
+    // The two pulls (one per pressing day) are DIFFERENT movements.
+    const pullSlugs = accessories.filter(isPull).map((it) => it.movementSlug);
+    expect(new Set(pullSlugs).size, "the weekly pulls should differ").toBe(pullSlugs.length);
+    // The forearm focus work on day 1 vs day 2 is a DIFFERENT movement.
+    const forearmSlugByDay = week.byDay.map((day) =>
+      day
+        .map((it) => entry(it.movementSlug))
+        .filter((c) => c && (c.primaryMuscles as string[]).includes("forearms") && !(c.bulletproofRoles as string[]).includes("carry") && !(c.bulletproofRoles as string[]).includes("heavy_isometric"))
+        .map((c) => c!.slug),
+    );
+    const d1 = forearmSlugByDay[0] ?? [];
+    const d2 = forearmSlugByDay[1] ?? [];
+    if (d1.length && d2.length) {
+      expect(d1[0], "forearm work should differ across days").not.toBe(d2[0]);
+    }
   });
 
   it("seats DIRECT loaded forearm work, not just a dead hang (focus MEV direct-only fix)", () => {
