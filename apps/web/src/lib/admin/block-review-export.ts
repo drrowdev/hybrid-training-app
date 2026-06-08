@@ -107,15 +107,27 @@ You are a strength-and-conditioning expert performing an **objective, critical r
 Please answer:
 
 1. **Goal fit.** Does the generated plan match the stated archetype intent and the athlete's goal / secondary focus? Where does it drift?
-2. **Movement selection.** Are the main lifts and accessories appropriate for the athlete's experience tier and available equipment? Any odd, redundant, or low-value picks?
+2. **Movement selection.** Are the main lifts, dual-main-lift secondaries, and accessories appropriate for the athlete's experience tier and the listed equipment? Cross-check every accessory against the **Equipment** line above before calling anything unavailable. Flag genuinely odd, redundant, or low-value picks — and, for any movement you'd swap, name the specific replacement and why.
 3. **Limitations & safety.** Cross-check every prescribed movement against the active limitations. Flag anything contraindicated or aggravating, and note whether the plan adequately works around each limitation.
 4. **Focus muscles.** Do the accessories meaningfully bias the declared focus muscles? Is the dose enough to matter (sets/week), without crowding out the main work?
-5. **Volume.** Estimate weekly hard-set volume per muscle group and compare to evidence-based landmarks (MEV/MAV/MRV). Flag under- or over-dosing.
-6. **Intensity & progression.** Is the week-to-week intensity/wave structure coherent? Is the deload placed and sized appropriately?
+5. **Volume.** Estimate weekly hard-set volume per muscle group and compare to evidence-based landmarks (MEV/MAV/MRV). Flag under- or over-dosing. Note: each loggable set is rendered as its own line — count line items as sets, not as separate movements.
+6. **Intensity & progression.** Is the week-to-week intensity/wave structure coherent? Is the deload placed and sized appropriately? See the design grounding below before judging within-block load progression.
 7. **Concurrent interference.** If the block mixes strength and cardio, is the interference managed (sequencing, dose, modality)?
 8. **Tendon / durability.** Is there an adequate connective-tissue / durability floor (isometrics, HSR, carries) for this athlete and modality mix?
-9. **Redundancy & junk volume.** Any duplicated stimulus or junk volume that could be trimmed without cost?
+9. **Redundancy & junk volume.** Any duplicated stimulus or junk volume that could be trimmed without cost? (Distinguish genuine redundancy from the deliberate durability/balance floor described below.)
 10. **Overall verdict.** A concise quality grade with the top 3 concrete changes you'd make.
+
+### Design grounding — what is intentional (challenge only with evidence)
+
+The engine is built on two canonical programming systems — Jim Wendler's **5/3/1 Forever** and K. Black's **Tactical Barbell**. The decisions below are deliberate and load-bearing. Treat them as the intended design, not defects. You may still challenge any of them — but only with a specific, cited rationale that it is wrong **for this athlete**, not merely different from another template.
+
+- **Load is held constant within a block; progression happens at the block boundary.** Tactical Barbell is explicit: *"the exact same weight every time, before adding more … a block is 6 weeks."* 5/3/1 increments the training max per cycle (not within it). So **repeated/identical loading weeks within one block are by design** — the app progresses the training max between blocks (informed by the AMRAP top set / estimated-1RM), it does not add linear weight mid-block. Do **not** flag "no within-wave TM bump" or "identical waves" as a defect unless you can cite evidence that within-block linear progression beats block-boundary progression for an athlete of this tier.
+- **The AMRAP / PR top set is the within-block progress signal — but only on strength-goal archetypes.** Strength and concurrent-hybrid blocks solicit a true AMRAP top set. Endurance / maintenance / rebuild / hypertrophy archetypes deliberately suppress it (submaximal, "rack before failure" per TB) to protect the shared cardio or recovery budget. A missing AMRAP on a cardio-led block is intentional.
+- **The deload is volume-led on strength and intensity-led on cardio.** Strength main sets keep the **heaviest** sets (e.g. 60/70% rather than 50/60% TM) to preserve neuromuscular calibration into the next block — a volume deload, by design. On the cardio side the deload now **reduces intensity**: a VO2 session is downgraded to easy Z2 (or one threshold touch at high frequency) and the alactic finisher is dropped (per 5/3/1's 7th-Week Protocol and TB's deload). Do not flag the retained moderate strength top set, and the high-intensity cardio should already be downgraded — flag it only if it is not.
+- **Several accessory slots are guaranteed floors, not gap-fill.** Every block guarantees: a weekly **pull** (scaled to the number of pressing main lifts, with vertical+horizontal plane coverage), a **rotator-cuff** item when the block presses, a **durability/HSR floor** steered to the athlete's running impact and main-lift pattern tendons, and **direct focus-muscle volume** when a focus is declared. These are deliberate balance/tissue coverage, not junk volume — judge them on whether the dose is right, not on whether they could be removed.
+
+### Terminology note
+Code/DB use "session"; user-facing copy uses "workout" — both refer to the same thing. AMRAP, TM%, training max and 1RM are general lifting vocabulary used legitimately throughout.
 
 ---
 `;
