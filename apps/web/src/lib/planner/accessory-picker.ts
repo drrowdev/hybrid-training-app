@@ -420,7 +420,11 @@ export function pickAccessoriesForSession({
   const seedFor = (): number | undefined =>
     variationSeed == null ? undefined : variationSeed + variationCursor++;
 
-  const durFloor = effectiveDurabilityFloor(profile, filters.tendinopathyActive);
+  const durFloor = effectiveDurabilityFloor(
+    profile,
+    filters.tendinopathyActive,
+    runningCardio,
+  );
   const durabilityProgress = countBulletproofRoles(weekAccessoryHistory);
   const functionalProgress = countFunctionalRoles(weekAccessoryHistory);
   const muscleProgress = countMusclesPrimary(weekAccessoryHistory, profile.aesthetic.setsPerItem);
