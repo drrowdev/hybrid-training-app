@@ -192,4 +192,19 @@ describe("endurance / forearm-focus / running block — review-fix realism (end-
     );
     expect(plyos.length, "running block should not seat a plyometric").toBe(0);
   });
+
+  it("covers BOTH pull planes across the week (ADR 0037 pull-plane diversity)", () => {
+    const HORIZONTAL_LEAD = ["mid_back", "rear_delts", "rhomboids", "traps", "upper_back"];
+    const pulls = accessories.filter(isPull);
+    if (pulls.length >= 2) {
+      const planes = new Set(
+        pulls.map((it) => {
+          const c = entry(it.movementSlug)!;
+          const lead = (c.primaryMuscles as string[])[0];
+          return HORIZONTAL_LEAD.includes(lead) ? "horizontal" : "vertical";
+        }),
+      );
+      expect(planes.size, "two weekly pulls should span vertical + horizontal").toBe(2);
+    }
+  });
 });
