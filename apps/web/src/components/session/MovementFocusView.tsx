@@ -243,7 +243,15 @@ export function MovementFocusView({
   const [externalLoadKg, setExternalLoadKg] = useState<number>(targetExternalLoad);
   const [rpe, setRpe] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  // Logging is now optimistic (the parent overlays the set instantly), so there
+  // is no blocking "submitting" window — the CTA never shows a "Logging…" spin.
+  // Kept as a const-false so the existing label / disabled reads still compile.
+  const submitting = false;
+  // Re-entrancy guard: a fast double-tap could fire two writes for the same
+  // slot before the optimistic overlay re-renders and advances the cursor.
+  // Track which prescription indices we've already fired this session so a
+  // repeat tap on the same slot is a no-op (cleared on write error to retry).
+  const firedIndicesRef = useRef<Set<number>>(new Set());
   const [prFlash, setPrFlash] = useState<PrFlash | null>(null);
   const [justLoggedAt, setJustLoggedAt] = useState<number | null>(null);
   const [restSeconds, setRestSeconds] = useState(0);
@@ -292,8 +300,8 @@ export function MovementFocusView({
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (submitting) return;
     if (!activeItem) return;
+    if (firedIndicesRef.current.has(activeItemIndex)) return;
     // Per-kind validation. Carries log weight + distance (the rep
     // stepper is hidden); isometric holds log weight (optional) +
     // duration; everything else logs weight + reps.
@@ -332,7 +340,7 @@ export function MovementFocusView({
       }
     }
     setError(null);
-    setSubmitting(true);
+    firedIndicesRef.current.add(activeItemIndex);
     const fd = new FormData();
     fd.set("sessionId", sessionId);
     fd.set("movementId", group.movementId);
@@ -383,44 +391,47 @@ export function MovementFocusView({
           })
         : null;
 
-    try {
-      const result = await addStrengthSet(fd);
-      if (result?.error) {
-        setError(result.error);
-        return;
-      }
-      hapticTick(hapticsEnabled);
-      // Reset manual cursor — auto will advance when the parent rerenders
-      // with the new loggedItemIndices.
-      setManualCursor(null);
-      setJustLoggedAt(Date.now());
-      if (flash && (flash.isWeightPr || flash.isE1rmPr || flash.isRepPr || flash.e1rmKg != null)) {
-        setPrFlash(flash);
-      }
-      // Inline rest timer — skipped after the final slot of this
-      // movement (B2). There is no "next set" to rest before, so a
-      // running countdown would mislabel itself "next <movement>" and
-      // its pill would linger over the Finish CTA at the exact moment
-      // the lifter wants to finish. We must also CLEAR any timer still
-      // running from the previous set (e.g. the rest-before-final-set
-      // countdown) — otherwise it lingers past completion.
-      const isLastSlot = cursor >= totalSlots - 1;
-      if (isLastSlot) {
-        setRestSeconds(0);
-      } else {
-        const secs = restSecondsForKind(SET_KIND_TO_LOG[activeItem.kind] ?? "main");
-        if (secs > 0) {
-          setRestSeconds(secs);
-          setRestToken((t) => t + 1);
-        }
-      }
-      onSaved?.({
-        itemIndex: activeItemIndex,
-        isLast: cursor >= totalSlots - 1,
-      });
-    } finally {
-      setSubmitting(false);
+    // Optimistic commit. The parent (`SessionWorkArea`) overlays this log
+    // immediately, so the cursor advances on the very next render — we do NOT
+    // await the server write before moving on. The write + revalidation settle
+    // in the background; a write error rolls the overlay back and surfaces here.
+    hapticTick(hapticsEnabled);
+    // Reset manual cursor — auto advances when the parent rerenders with the
+    // optimistic loggedItemIndices.
+    setManualCursor(null);
+    setJustLoggedAt(Date.now());
+    if (flash && (flash.isWeightPr || flash.isE1rmPr || flash.isRepPr || flash.e1rmKg != null)) {
+      setPrFlash(flash);
     }
+    // Inline rest timer — skipped after the final slot of this movement (B2).
+    // There is no "next set" to rest before, so a running countdown would
+    // mislabel itself "next <movement>" and linger over the Finish CTA. We also
+    // CLEAR any timer still running from the previous set.
+    const isLastSlot = cursor >= totalSlots - 1;
+    if (isLastSlot) {
+      setRestSeconds(0);
+    } else {
+      const secs = restSecondsForKind(SET_KIND_TO_LOG[activeItem.kind] ?? "main");
+      if (secs > 0) {
+        setRestSeconds(secs);
+        setRestToken((t) => t + 1);
+      }
+    }
+    onSaved?.({
+      itemIndex: activeItemIndex,
+      isLast: isLastSlot,
+    });
+    void addStrengthSet(fd)
+      .then((result) => {
+        if (result?.error) {
+          firedIndicesRef.current.delete(activeItemIndex);
+          setError(result.error);
+        }
+      })
+      .catch(() => {
+        firedIndicesRef.current.delete(activeItemIndex);
+        setError("Couldn't save that set — check your connection and retry.");
+      });
   };
 
   if (!activeItem) return null;

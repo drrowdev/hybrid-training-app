@@ -169,6 +169,8 @@ export default async function SessionDetailPage({
       rpe: s.rpe,
       skipped: s.skipped ?? false,
       skip_reason: (s.skip_reason as string | null) ?? null,
+      prescription_item_index:
+        (s.prescription_item_index as number | null) ?? null,
       movement: m ?? {
         id: "",
         slug: "",
@@ -666,57 +668,47 @@ export default async function SessionDetailPage({
   // CardioCard header. Load the movement metadata + slug for every
   // cardio prescription item in a single query so the chip can render
   // server-side without an extra round-trip per row.
-  const cardioMovementIds = Array.from(
-    new Set(
-      (plannedPrescription?.items ?? [])
-        .filter(
-          (it) => it.kind.startsWith("cardio_") && it.kind !== "cardio_external",
-        )
-        .map((it) => it.movementId)
-        .filter((m): m is string => !!m),
-    ),
+  // Cardio modality chips + bodyweight-capable strength ids are both derived
+  // from `movements` rows. Fetch BOTH in a single query (all prescription
+  // movement ids) so we don't pay two sequential round-trips — the per-set
+  // revalidation re-renders this page, so every saved round-trip here directly
+  // shaves logging latency.
+  const cardioMovementIds = new Set(
+    (plannedPrescription?.items ?? [])
+      .filter((it) => it.kind.startsWith("cardio_") && it.kind !== "cardio_external")
+      .map((it) => it.movementId)
+      .filter((m): m is string => !!m),
+  );
+  const strengthMovementIdSet = new Set(
+    (plannedPrescription?.items ?? [])
+      .filter((it) => !it.kind.startsWith("cardio_"))
+      .map((it) => it.movementId)
+      .filter((m): m is string => !!m),
+  );
+  const allMovementIds = Array.from(
+    new Set([...cardioMovementIds, ...strengthMovementIdSet]),
   );
   const cardioModalityByMovementId: Record<string, string | null> = {};
-  if (cardioMovementIds.length > 0) {
-    const { data: cardioMovements } = await supabase
+  const bodyweightMovementIds: string[] = [];
+  if (allMovementIds.length > 0) {
+    const { data: movementRows } = await supabase
       .from("movements")
-      .select("id, slug, metadata")
-      .in("id", cardioMovementIds);
-    for (const row of cardioMovements ?? []) {
-      const meta = (row as { metadata?: Record<string, unknown> | null })
-        .metadata;
-      const slug = (row as { slug?: string | null }).slug ?? null;
-      cardioModalityByMovementId[row.id as string] = cardioModalityLabel(
-        meta,
-        slug,
-      );
+      .select("id, slug, metadata, body_weight_loaded")
+      .in("id", allMovementIds);
+    for (const row of movementRows ?? []) {
+      const rowId = row.id as string;
+      if (cardioMovementIds.has(rowId)) {
+        const meta = (row as { metadata?: Record<string, unknown> | null }).metadata;
+        const slug = (row as { slug?: string | null }).slug ?? null;
+        cardioModalityByMovementId[rowId] = cardioModalityLabel(meta, slug);
+      }
+      if (
+        strengthMovementIdSet.has(rowId) &&
+        (row as { body_weight_loaded?: boolean }).body_weight_loaded
+      ) {
+        bodyweightMovementIds.push(rowId);
+      }
     }
-  }
-
-  // Issue: "couldn't log a pull-up without entering weight." Bodyweight-capable
-  // strength movements (pull-ups, dips, inverted rows, push-ups, …) carry
-  // `body_weight_loaded = true` in the catalog. We surface their ids so the
-  // focus view lets the user log them at 0 kg added load instead of demanding a
-  // weight. Strength items only — cardio is handled by the modality query above.
-  const strengthMovementIds = Array.from(
-    new Set(
-      (plannedPrescription?.items ?? [])
-        .filter((it) => !it.kind.startsWith("cardio_"))
-        .map((it) => it.movementId)
-        .filter((m): m is string => !!m),
-    ),
-  );
-  let bodyweightMovementIds: string[] = [];
-  if (strengthMovementIds.length > 0) {
-    const { data: bwMovements } = await supabase
-      .from("movements")
-      .select("id, body_weight_loaded")
-      .in("id", strengthMovementIds);
-    bodyweightMovementIds = (bwMovements ?? [])
-      .filter(
-        (row) => (row as { body_weight_loaded?: boolean }).body_weight_loaded,
-      )
-      .map((row) => row.id as string);
   }
 
   // Mirror ChatMount's server-side gate so the entry point matches the
