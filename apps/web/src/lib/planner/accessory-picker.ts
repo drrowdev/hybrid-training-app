@@ -468,12 +468,20 @@ export function pickAccessoriesForSession({
     let preferRegion: string | undefined;
     if (role === "hsr") {
       const hsrPickedThisWeek = current; // weekly count credited before this fill
-      preferRegion =
-        runningCardio && hsrPickedThisWeek === 0
-          ? RUNNING_HSR_REGION
-          : dayPrimaryRole
-            ? HSR_REGION_BY_ROLE[dayPrimaryRole]
-            : undefined;
+      if (runningCardio && hsrPickedThisWeek === 0) {
+        preferRegion = RUNNING_HSR_REGION;
+      } else if (dayPrimaryRole === "deadlift") {
+        // ADR 0042 — never stack a second axially-loaded hinge (the RDL the
+        // review flagged) on a deadlift day; the deadlift already maxes the
+        // posterior chain. Distribute the week's tendon work across two regions
+        // instead: pair the squat day's KNEE tendon with the deadlift day's
+        // CALF/Achilles (non-running). When a running block already claimed the
+        // calf on day 1, take KNEE here so the two strength days still cover
+        // distinct tendons. Either way no redundant axial hinge.
+        preferRegion = runningCardio ? "knee" : RUNNING_HSR_REGION;
+      } else if (dayPrimaryRole) {
+        preferRegion = HSR_REGION_BY_ROLE[dayPrimaryRole];
+      }
     }
     const candidate = findCandidate({
       catalog: workingCatalog,
@@ -561,6 +569,13 @@ export function pickAccessoriesForSession({
       weekDeloadScale,
       "functional",
       accessoryRationale({ reason: "functional", functionalRole: role }),
+      // ADR 0042 — a loaded pull/row (weighted pull-up, loaded row) selected for
+      // an advanced athlete is a STRENGTH stimulus, so dose it in a low rep range
+      // (8) rather than the hypertrophy-range default. Bodyweight floor picks keep
+      // their default reps.
+      role === "pull" && carriesExternalLoad(candidate)
+        ? { repsOverride: LOADED_FLOOR_REPS }
+        : undefined,
     );
     picks.push(pick);
     usedThisSession.add(candidate.id);
@@ -1132,7 +1147,9 @@ export const REGION_PREFERENCE_BONUS = 50;
 // (kept loose to avoid importing the archetype module).
 const HSR_REGION_BY_ROLE: Record<string, string> = {
   squat: "knee",
-  deadlift: "hamstring_posterior",
+  // NB: the deadlift (hinge) day is handled explicitly in the durability loop
+  // (ADR 0042) — it distributes to calf/knee rather than stacking a second axial
+  // hinge (RDL) — so it intentionally has no entry here.
   horizontal_press: "shoulder_scapular",
   vertical_press: "shoulder_scapular",
 };
@@ -1244,6 +1261,12 @@ const REGION_DEDUP_PENALTY = 40;
 // limitation filters, above the value/SFR spread) so the loaded sibling wins its
 // role when feasible, falling back to bodyweight when no loaded option is owned.
 const EXTERNAL_LOAD_PREFERENCE_BONUS = 40;
+
+// ADR 0042 — strength rep target for a loaded floor pull/row (weighted pull-up,
+// loaded row). When the advanced-tier preference seats an externally-loaded
+// variant, it's a strength stimulus, so dose it low-rep (≈ a heavy set of 8)
+// rather than the archetype's hypertrophy rep range. CP-1 heuristic.
+const LOADED_FLOOR_REPS = 8;
 
 // Equipment tags that denote PURE-bodyweight movements (no external load). Any
 // other equipment (belt, barbell, dumbbell, cable, machine, kettlebell …) scales
