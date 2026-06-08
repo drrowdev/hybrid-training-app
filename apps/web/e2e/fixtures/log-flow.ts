@@ -56,10 +56,9 @@ export async function finishAndCompleteSession(
     .getByRole("button", { name: /finish session/i })
     .click();
   await page.waitForURL(`**/app/sessions/${sessionId}`, { timeout: 30_000 });
-  // Completion is confirmed by the status banner flipping to "complete".
-  await expect(page.getByTestId("session-status-banner")).toHaveAttribute(
-    "data-state",
-    "complete",
-    { timeout: 30_000 },
-  );
+  // Completion is confirmed by the post-session summary card rendering (the
+  // in-progress "session in progress" banner was removed as redundant).
+  await expect(page.getByTestId("post-session-summary")).toBeVisible({
+    timeout: 30_000,
+  });
 }

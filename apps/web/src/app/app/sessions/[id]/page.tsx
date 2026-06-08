@@ -693,6 +693,32 @@ export default async function SessionDetailPage({
     }
   }
 
+  // Issue: "couldn't log a pull-up without entering weight." Bodyweight-capable
+  // strength movements (pull-ups, dips, inverted rows, push-ups, …) carry
+  // `body_weight_loaded = true` in the catalog. We surface their ids so the
+  // focus view lets the user log them at 0 kg added load instead of demanding a
+  // weight. Strength items only — cardio is handled by the modality query above.
+  const strengthMovementIds = Array.from(
+    new Set(
+      (plannedPrescription?.items ?? [])
+        .filter((it) => !it.kind.startsWith("cardio_"))
+        .map((it) => it.movementId)
+        .filter((m): m is string => !!m),
+    ),
+  );
+  let bodyweightMovementIds: string[] = [];
+  if (strengthMovementIds.length > 0) {
+    const { data: bwMovements } = await supabase
+      .from("movements")
+      .select("id, body_weight_loaded")
+      .in("id", strengthMovementIds);
+    bodyweightMovementIds = (bwMovements ?? [])
+      .filter(
+        (row) => (row as { body_weight_loaded?: boolean }).body_weight_loaded,
+      )
+      .map((row) => row.id as string);
+  }
+
   // Mirror ChatMount's server-side gate so the entry point matches the
   // chat surface's availability for this user.
   const aiAccess = hasAiAccess({
@@ -1156,6 +1182,7 @@ export default async function SessionDetailPage({
         bwGateStateByFamily={bwGateStateByFamily}
         resolvedFreestyle={resolvedFreestyle}
         supersetByMovementId={supersetByMovementId}
+        bodyweightMovementIds={bodyweightMovementIds}
       />
 
       {(() => {
