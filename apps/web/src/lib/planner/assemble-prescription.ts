@@ -299,6 +299,14 @@ export function assemblePrescriptionItems(
    * → byte-identical (every legacy caller and the golden harness omit it).
    */
   runningCardio: boolean = false,
+  /**
+   * ADR 0035 — true when the block has a pressing main lift (vertical_press /
+   * horizontal_press as a primary or secondary on any strength day), computed
+   * once by the caller. Adds the conditional weekly shoulder-stability (cuff)
+   * requirement. Default false → byte-identical (every legacy caller and the
+   * golden harness omit it).
+   */
+  pressingMainLift: boolean = false,
 ): PrescriptionItem[] {
   const items =
     day.kind === "strength" && omitMainStrength
@@ -478,7 +486,14 @@ export function assemblePrescriptionItems(
           applyScalarToMaxItems(
             accessoryProfile.aesthetic.itemsPerSession + itemBonus,
             ramp,
-          ) + FLOOR_FUNCTIONAL_RESERVE,
+          ) +
+          FLOOR_FUNCTIONAL_RESERVE +
+          // ADR 0035 — grant +1 total-cap headroom for the conditional
+          // shoulder-stability (cuff) requirement so it seats WITHOUT displacing
+          // an aesthetic slot. Added to the total ceiling only (NOT
+          // aestheticMaxItems below), so aesthetic volume is unchanged. Gated on
+          // the signal → byte-identical when no pressing main lift.
+          (pressingMainLift ? 1 : 0),
         aestheticMaxItems: applyScalarToMaxItems(
           accessoryProfile.aesthetic.itemsPerSession +
             itemBonus +
@@ -502,6 +517,8 @@ export function assemblePrescriptionItems(
         // Both default to no-op (false / undefined) → byte-identical.
         runningCardio,
         dayPrimaryRole: day.kind === "strength" ? day.role : undefined,
+        // ADR 0035 — cuff prehab requirement when the block presses overhead/bench.
+        pressingMainLift,
         variationSeed,
       });
       const accessoryItems: PrescriptionItem[] = [];

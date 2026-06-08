@@ -106,6 +106,11 @@ export function deriveAccessoryRoles(m: RoleDerivationInput): {
   if (m.primaryRegion === "foot_ankle_calf" && /tibialis|calf|dorsiflexion|short-foot|heel-walk/.test(slug)) {
     functional.add("ankle_foot");
   }
+  // shoulder_stability — rotator-cuff / scapular-control prehab (ADR 0035).
+  // The `cuff` pattern is the dedicated rotator-cuff/shoulder-care bucket
+  // (external/internal rotations, prone Y/T/W, scapular control); every entry
+  // is a shoulder-stability prehab movement.
+  if (m.pattern === "cuff") functional.add("shoulder_stability");
   // compound_assistance — non-main compound strength variants.
   if (
     m.isCompound &&
