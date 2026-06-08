@@ -41,6 +41,7 @@ export function Step3Secondary({
         {options.map((g) => {
           const selected = state.secondary === g;
           const data = GOALS[g];
+          const retentionNote = secondaryRetentionNote(state.goal, g);
           return (
             <button
               key={g}
@@ -54,6 +55,20 @@ export function Step3Secondary({
               <p style={{ fontSize: 12.5, color: "var(--cp-text-muted)", margin: 0, lineHeight: 1.45 }}>
                 {data.outcome}
               </p>
+              {retentionNote && (
+                <p
+                  style={{
+                    fontSize: 11.5,
+                    color: "var(--cp-text-muted)",
+                    margin: 0,
+                    marginTop: 2,
+                    lineHeight: 1.4,
+                    fontStyle: "italic",
+                  }}
+                >
+                  {retentionNote}
+                </p>
+              )}
             </button>
           );
         })}
@@ -159,6 +174,27 @@ const externalCardioNameInputStyle: React.CSSProperties = {
   textTransform: "none",
   letterSpacing: "normal",
 };
+
+/**
+ * Honesty caveat for a secondary focus whose dose, in this primary archetype,
+ * is a RETENTION (maintenance) stimulus rather than a development one. In a
+ * cardio-led block the lifting volume sits at/below MEV (the engine deliberately
+ * protects endurance recovery), so a `strength` or `muscle` secondary keeps the
+ * quality without progressing it — the wizard should say so up front rather than
+ * implying the "Get stronger / Build muscle" outcome will be realised. Returns
+ * null when the secondary genuinely develops (or there's no primary yet).
+ */
+export function secondaryRetentionNote(
+  primary: Goal | null | undefined,
+  card: Goal,
+): string | null {
+  if (primary !== "cardio") return null;
+  if (card === "strength")
+    return "In a cardio-led block this maintains strength — it keeps your numbers, it won't add to them.";
+  if (card === "muscle")
+    return "In a cardio-led block this maintains size — enough to hold muscle, not to grow it.";
+  return null;
+}
 
 function skipRowStyle(selected: boolean): React.CSSProperties {
   return {
