@@ -98,7 +98,7 @@ const TRICEPS: NewMovement[] = [
   triceps("kickback-db", "Tricep Kickback (DB)", { equipment: "dumbbell", bilateral: false }),
 ];
 
-// ─── forearm / grip (6) ───
+// ─── forearm / grip (7) ───
 const grip = (slug: string, name: string, opts: MoveOpts = {}): NewMovement =>
   m(slug, name, {
     pattern: "isolation",
@@ -113,6 +113,14 @@ const GRIP: NewMovement[] = [
   grip("wrist-curl-db", "Wrist Curl (DB)", { equipment: "dumbbells" }),
   grip("wrist-curl-bb", "Wrist Curl (BB)", { equipment: "barbell" }),
   grip("reverse-wrist-curl", "Reverse Wrist Curl", { equipment: "dumbbells-or-bb" }),
+  // ADR 0043 — forearm ROTATION (pronation/supination), the sub-pattern a
+  // forearms focus previously lacked so the engine could span flexion +
+  // extension + rotation instead of duplicating wrist flexion.
+  grip("db-pronation-supination", "Pronation / Supination (DB)", {
+    equipment: "dumbbell",
+    bilateral: false,
+    metadata: { emphasis: "forearm-rotation" },
+  }),
   grip("plate-pinch", "Plate Pinch", { equipment: "plates", metadata: { protocol: "isometric" } }),
   grip("captains-of-crush", "Captains of Crush", { equipment: "gripper", bilateral: false }),
   grip("dead-hang", "Dead Hang", { equipment: "bar", bodyWeightLoaded: true, metadata: { protocol: "isometric-tendon" } }),

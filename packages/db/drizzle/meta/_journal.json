@@ -666,6 +666,13 @@
       "when": 1783974600000,
       "tag": "0094_seed_machine_free_calf_hsr",
       "breakpoints": false
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1784061000000,
+      "tag": "0095_seed_forearm_rotation",
+      "breakpoints": false
     }
   ]
 }
