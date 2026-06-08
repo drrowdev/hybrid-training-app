@@ -81,6 +81,7 @@ export default async function PlanPage({
     view?: string;
     filter?: string;
     new?: string;
+    build?: string;
   }>;
 }) {
   const supabase = await createClient();
@@ -95,6 +96,14 @@ export default async function PlanPage({
   // the prior active block on submit (archive-after-insert), so this is
   // the safe replace path.
   const forceNew = sp?.new === "1";
+  // `?build=<archetype>` seeds the wizard from the next-block suggestion nudge:
+  // it pre-selects the focus combo (e.g. a hybrid → strength + cardio) and lands
+  // the user on the focus step. Validated against the wizard archetype set.
+  const seedArchetype = (WIZARD_ARCHETYPE_IDS as readonly string[]).includes(
+    sp?.build ?? "",
+  )
+    ? (sp!.build as ArchetypeId)
+    : null;
   const block = await getActiveBlock();
 
   if (!block || forceNew) {
@@ -183,6 +192,14 @@ export default async function PlanPage({
           <NextBlockSuggestionCard
             nudge={nudge}
             suggestionTail={"It\u2019s only a suggestion \u2014 pick any focus below."}
+            cta={
+              nudge.suggestion
+                ? {
+                    href: `/app/plan?new=1&build=${nudge.suggestion.archetypeId}`,
+                    label: `Build a ${ARCHETYPES[nudge.suggestion.archetypeId]?.name ?? "new"} block`,
+                  }
+                : undefined
+            }
           />
         )}
         <PlanNewSwitch
@@ -193,6 +210,7 @@ export default async function PlanPage({
           action={createBlock}
           initialMode={firstTime ? "wizard" : "home"}
           hideBuildCta={firstTime}
+          seedArchetype={seedArchetype}
           equipmentPreset={planEquipment.preset}
           serverDayPref={(prof?.wizard_day_pref ?? null) as WizardDayPrefValue | null}
           saveDayPrefAction={updateWizardDayPref}

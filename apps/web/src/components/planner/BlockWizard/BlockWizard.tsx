@@ -144,6 +144,15 @@ export type BlockWizardPrefill = {
     twoADay: boolean;
     placements?: Placement[];
   } | null;
+  /**
+   * True when the prefill comes from the next-block SUGGESTION nudge (not a
+   * "customize a recent block" action). The reverse-mapped focus combo (e.g.
+   * a hybrid → strength + cardio) is the same, but we land the user on the
+   * FOCUS step instead of jumping to day-layout — so they see which two
+   * focuses make up the suggested block (answering "where's the Hybrid
+   * option?") and can adjust everything from there.
+   */
+  fromSuggestion?: boolean;
 };
 
 export type BlockWizardProps = {
@@ -562,10 +571,14 @@ function prefilledArchetypeId(slug: string): PrefilledArchetype | null {
  * jump straight to step 4 to mirror that flow without forcing the
  * user to re-pick days they already selected.
  */
-function wizardStateFromPrefill(prefill: BlockWizardPrefill): WizardState {
+export function wizardStateFromPrefill(prefill: BlockWizardPrefill): WizardState {
   const id = prefilledArchetypeId(prefill.archetype);
   const days = prefill.daysPerWeek;
   const twoADay = prefill.dayIndexOverrides?.twoADay ?? false;
+  // Suggestion seeds land on the FOCUS step (2) so the user sees which two
+  // focuses make up the suggested block; the "customize a recent block" flow
+  // jumps to day-layout (4) since the focuses/days are already known.
+  const step = prefill.fromSuggestion ? 2 : 4;
 
   // Fall back to a clean step-1 start for archetypes the wizard can't
   // re-shape (custom blocks). Days still pre-fills so the user keeps
@@ -582,7 +595,7 @@ function wizardStateFromPrefill(prefill: BlockWizardPrefill): WizardState {
       secondary: "maintenance",
       twoADay: false,
       cameFromMaintenanceLink: true,
-      step: 4,
+      step,
     };
   }
 
@@ -593,7 +606,7 @@ function wizardStateFromPrefill(prefill: BlockWizardPrefill): WizardState {
       goal: "resilience",
       secondary: "skip",
       twoADay,
-      step: 4,
+      step,
     };
   }
 
@@ -604,7 +617,7 @@ function wizardStateFromPrefill(prefill: BlockWizardPrefill): WizardState {
       goal: "cardio",
       secondary: "skip",
       twoADay,
-      step: 4,
+      step,
     };
   }
 
@@ -615,7 +628,7 @@ function wizardStateFromPrefill(prefill: BlockWizardPrefill): WizardState {
       goal: "muscle",
       secondary: "skip",
       twoADay,
-      step: 4,
+      step,
     };
   }
 
@@ -626,7 +639,7 @@ function wizardStateFromPrefill(prefill: BlockWizardPrefill): WizardState {
       goal: "strength",
       secondary: "cardio",
       twoADay,
-      step: 4,
+      step,
     };
   }
 
@@ -637,6 +650,6 @@ function wizardStateFromPrefill(prefill: BlockWizardPrefill): WizardState {
     goal: "strength",
     secondary: "skip",
     twoADay,
-    step: 4,
+    step,
   };
 }
