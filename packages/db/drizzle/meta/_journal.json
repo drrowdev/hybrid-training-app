@@ -659,6 +659,13 @@
       "when": 1783888200000,
       "tag": "0093_tag_pull_roles",
       "breakpoints": false
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1783974600000,
+      "tag": "0094_seed_machine_free_calf_hsr",
+      "breakpoints": false
     }
   ]
 }
