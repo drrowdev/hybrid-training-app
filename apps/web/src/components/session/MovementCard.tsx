@@ -73,6 +73,12 @@ export type MovementCardProps = {
   plateInventory?: PlateInventoryItem[];
   /** Persistence key prefix — combined with movementId for localStorage. */
   persistKeyPrefix: string;
+  /**
+   * True when the movement is bodyweight-capable (`body_weight_loaded`):
+   * pull-ups, dips, inverted rows, etc. Forwarded to the focus view so the
+   * set can be logged at 0 kg added load instead of demanding a weight.
+   */
+  bodyweightCapable?: boolean;
   /** Phase 4 BW gate state — passed through verbatim to the focus view. */
   bwGateStateByFamily?: Readonly<
     Record<
@@ -88,7 +94,7 @@ export type MovementCardProps = {
   >;
 };
 
-const RECAP_DELAY_MS = 4500;
+const RECAP_DELAY_MS = 2500;
 
 export function MovementCard({
   sessionId,
@@ -112,6 +118,7 @@ export function MovementCard({
   plateInventory,
   persistKeyPrefix,
   bwGateStateByFamily,
+  bodyweightCapable,
 }: MovementCardProps) {
   const cardState = deriveCardState(group, loggedItemIndices);
   const complete = isMovementComplete(group, loggedItemIndices);
@@ -155,13 +162,17 @@ export function MovementCard({
   }, [storageKey, readOnly]);
 
   // Auto-collapse to recap once every set is logged. Latches via
-  // autoCollapsedRef so re-expanding doesn't snap the card shut again.
-  // No-op in read-only mode (the card is already collapsed).
+  // autoCollapsedRef so re-expanding AFTER the auto-collapse doesn't snap the
+  // card shut again. We deliberately do NOT gate on `userOverrodeRef` here:
+  // accessory cards start collapsed, so the user must tap to expand them in
+  // order to log — that manual expand should not prevent the card from
+  // collapsing once its final set is in. The `autoCollapsedRef` latch alone
+  // guarantees a single auto-collapse (a later re-expand sticks). No-op in
+  // read-only mode (the card is already collapsed).
   useEffect(() => {
     if (readOnly) return;
     if (!complete) return;
     if (autoCollapsedRef.current) return;
-    if (userOverrodeRef.current) return;
     const id = window.setTimeout(() => {
       autoCollapsedRef.current = true;
       setCollapsed(true);
@@ -485,6 +496,7 @@ export function MovementCard({
             initialCursor={pinnedCursor}
             onSaved={() => setPinnedCursor(null)}
             bwGateStateByFamily={bwGateStateByFamily}
+            bodyweightCapable={bodyweightCapable}
           />
         </div>
       )}

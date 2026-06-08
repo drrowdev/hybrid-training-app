@@ -97,6 +97,13 @@ export type FocusViewProps = {
   initialCursor?: number | null;
   /** Called after a successful save so the parent can run auto-collapse logic. */
   onSaved?: (info: { itemIndex: number; isLast: boolean }) => void;
+  /**
+   * True when the movement is bodyweight-capable (`body_weight_loaded`):
+   * pull-ups, dips, inverted rows, push-ups, etc. For these the weight field
+   * is OPTIONAL added load — logging at 0 kg (pure bodyweight) is valid — so
+   * the default-kind validation no longer demands a weight.
+   */
+  bodyweightCapable?: boolean;
 };
 
 const SET_KIND_TO_LOG: Record<string, "warmup" | "main" | "back_off" | "accessory" | "tendon"> = {
@@ -134,6 +141,7 @@ export function MovementFocusView({
   initialCursor = null,
   onSaved,
   bwGateStateByFamily,
+  bodyweightCapable = false,
 }: FocusViewProps) {
   // priorBest is no longer consumed for PR detection — the flash is now
   // anchored to the saved 1RM (see lib/engine/tm-anchored-pr.ts). The
@@ -306,7 +314,19 @@ export function MovementFocusView({
         return;
       }
     } else {
-      if (weight <= 0 || reps <= 0) {
+      // Bodyweight-capable movements (pull-up, dip, inverted row, push-up):
+      // the weight field is OPTIONAL added load, so 0 kg (pure bodyweight) is a
+      // valid log — only reps are required. Loaded movements still require a
+      // weight so an empty stepper can't log a meaningless 0 kg set.
+      if (reps <= 0) {
+        setError(
+          bodyweightCapable
+            ? "Enter reps before logging."
+            : "Enter weight and reps before logging.",
+        );
+        return;
+      }
+      if (!bodyweightCapable && weight <= 0) {
         setError("Enter weight and reps before logging.");
         return;
       }
@@ -583,6 +603,23 @@ export function MovementFocusView({
           >
             {renderBwHeadline(activeItem)}
           </div>
+        ) : bodyweightCapable ? (
+          <div
+            className="mono"
+            data-testid="bw-capable-headline"
+            style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.05 }}
+          >
+            {weight > 0 ? (
+              <>
+                +{weight}
+                <span style={{ fontSize: 15, color: "var(--cp-text-muted)", marginLeft: 6 }}>
+                  kg
+                </span>
+              </>
+            ) : (
+              "Bodyweight"
+            )}
+          </div>
         ) : (
           <div
             className="mono"
@@ -768,7 +805,7 @@ export function MovementFocusView({
         >
           {!isBwItem && (
             <Stepper
-              label="Weight (kg)"
+              label={bodyweightCapable ? "Added weight (kg)" : "Weight (kg)"}
               value={weight}
               step={2.5}
               integer={false}

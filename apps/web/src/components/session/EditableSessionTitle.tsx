@@ -78,7 +78,8 @@ export function EditableSessionTitle({
       <h1
         data-testid="session-title"
         style={{
-          fontSize: 26,
+          fontSize: "clamp(17px, 4.6vw, 26px)",
+          lineHeight: 1.2,
           margin: "4px 0 0",
           letterSpacing: "-0.01em",
           display: "inline-flex",

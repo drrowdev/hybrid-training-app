@@ -648,9 +648,18 @@ select option {
 }
 
 /* ── Movement card collapsed-header summary chip ── */
-/* Hide on narrow viewports — the user can expand the card for details. */
+/* On narrow viewports the header row is cramped, so instead of hiding the
+ * planned sets×reps (which left accessory cards with no dose info at all),
+ * drop the summary onto its own full-width line beneath the title row. */
 @media (max-width: 419px) {
-  .cp-mc-summary { display: none !important; }
+  .cp-mc-summary {
+    order: 1;
+    flex-basis: 100%;
+    max-width: 100% !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
 }
 
 /* ── Settings hub: tile grid + hover affordance ── */
