@@ -280,6 +280,11 @@ const TENDON: NewMovement[] = [
   tendon("iso-ohp-pin-press", "Isometric Pin OHP", { equipment: "rack-pins", primaryMuscles: ["front_delts", "triceps"], primaryRegion: "shoulder_scapular", metadata: { protocol: "isometric-max-tension" } }),
   tendon("hsr-rdl", "HSR RDL (3s tempo)", { equipment: "barbell", pattern: "hinge", primaryMuscles: ["hamstrings", "glutes"], primaryRegion: "hamstring_posterior", metadata: { protocol: "Kongsgaard-HSR-3s-3s", tempo: "3-0-3-0" } }),
   tendon("hsr-calf-raise", "HSR Calf Raise (3s tempo)", { equipment: "machine", primaryMuscles: ["calves"], primaryRegion: "foot_ankle_calf", metadata: { protocol: "Kongsgaard-HSR", tempo: "3-0-3-0", emphasis: "achilles" } }),
+  // Machine-free Achilles/calf HSR so the running-block Achilles guarantee
+  // (ADR 0034) can be satisfied without a calf machine (a runner with only a
+  // bar / dumbbells previously fell back to a knee HSR). Single-leg loaded calf
+  // raise at the Kongsgaard 3-0-3 tempo.
+  tendon("hsr-calf-raise-db", "HSR Calf Raise — DB/BW (3s tempo)", { equipment: "dumbbell-or-bw", bilateral: false, primaryMuscles: ["calves"], primaryRegion: "foot_ankle_calf", metadata: { protocol: "Kongsgaard-HSR", tempo: "3-0-3-0", emphasis: "achilles" } }),
   tendon("hsr-leg-press", "HSR Leg Press (3s tempo)", { equipment: "machine", primaryMuscles: ["quads", "glutes"], pattern: "squat", isCompound: true, stability: "fixed_path", metadata: { protocol: "Kongsgaard-HSR", tempo: "3-0-3-0" } }),
   tendon("hsr-front-squat", "Slow Front Squat (HSR)", { equipment: "barbell", pattern: "squat", primaryMuscles: ["quads"], isCompound: true, axialLoad: "high", metadata: { protocol: "HSR", tempo: "3-0-3-0" } }),
   tendon("eccentric-calf-alfredson", "Alfredson Eccentric Calf", { equipment: "step", primaryMuscles: ["calves"], primaryRegion: "foot_ankle_calf", metadata: { protocol: "Alfredson-1998", emphasis: "achilles-tendinopathy", tempo: "3s-eccentric" } }),

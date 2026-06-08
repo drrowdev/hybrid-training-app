@@ -184,13 +184,12 @@ describe("endurance / forearm-focus / running block — review-fix realism (end-
     expect(cuff.length, "expected a shoulder_stability (cuff) item").toBeGreaterThan(0);
   });
 
-  it("prescribes plyometrics at a low reactive rep count, not the hypertrophy range", () => {
+  it("suppresses the plyometric floor for a running block (review fix)", () => {
+    // A runner already gets abundant reactive ground-contact loading, so the
+    // low-impact plyometric floor (box jump) is dropped — no max-intent plyo.
     const plyos = accessories.filter(
       (it) => it.targetRpe && it.targetRpe.min === 10 && it.targetRpe.max === 10,
     );
-    // If a plyometric is seated, it must be ~5 reps (Behm & Sale), never ~14.
-    for (const p of plyos) {
-      expect(p.reps, `plyometric ${p.movementSlug} reps`).toBeLessThanOrEqual(6);
-    }
+    expect(plyos.length, "running block should not seat a plyometric").toBe(0);
   });
 });

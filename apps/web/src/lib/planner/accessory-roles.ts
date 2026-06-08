@@ -135,10 +135,16 @@ export const EMPTY_ACCESSORY_PROFILE: AccessoryProfile = {
 export function effectiveDurabilityFloor(
   profile: AccessoryProfile,
   tendinopathyActive: boolean,
+  runningCardio = false,
 ): Record<BulletproofRole, number> {
   const floor: Record<BulletproofRole, number> = { ...DC_O4_FLOOR };
-  if (tendinopathyActive) {
-    // Plyometrics suppressed when a tendinopathy flag is active for the loaded region.
+  if (tendinopathyActive || runningCardio) {
+    // Plyometrics suppressed when a tendinopathy flag is active for the loaded
+    // region, OR when the block's cardio is running-impact (review fix): a
+    // runner already accumulates abundant reactive ground-contact loading
+    // multiple sessions/week, so the low-impact plyometric floor is redundant
+    // impact volume where it is least needed. The reactive-tendon stimulus the
+    // floor exists to guarantee is already over-supplied by the running.
     floor.plyometric_low = 0;
     floor.plyometric_high = 0;
   }
