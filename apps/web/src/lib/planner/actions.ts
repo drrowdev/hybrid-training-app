@@ -56,8 +56,7 @@ import {
   minDaysForArchetype,
   deloadCardioPlan,
   cardioProgressionPlan,
-  requiredFixedSlugs,
-  resolveCardioSlugForTier,
+  requiredFixedSlugs,  resolveCardioSlugForTier,
   STRENGTH_ROLE_LABELS,
 } from "./archetypes";
 import { allAccessorySlugs } from "./accessories";
@@ -87,6 +86,11 @@ import {
   resolvePreferredCardioModality,
   sanitizePreferredModalities,
 } from "./preferred-cardio-modality";
+import {
+  resolveGoalModality,
+  modalityPreferenceForDay,
+  type GoalModality,
+} from "./cardio-modality-plan";
 import type { DeclaredExperience } from "@hta/engine";
 import { declaredExperienceToTier, tierInBand } from "./experience-tier";
 import {
@@ -579,8 +583,25 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   const preferredCardioModalities = sanitizePreferredModalities(
     profile?.preferred_cardio_modalities as readonly unknown[] | null,
   );
+  // ADR 0039 — specificity-aware modality plan. Resolve the block's GOAL cardio
+  // modality: an upcoming A-priority event wins, else the user's top preference,
+  // else running. Only an EVENT goal unlocks the specificity/diversification
+  // behaviour (so non-event blocks stay byte-identical). Cheap, user-scoped read.
+  const { data: upcomingEvent } = await supabase
+    .from("events")
+    .select("modality")
+    .eq("user_id", user.id)
+    .eq("priority", "A")
+    .gte("event_date", parsed.data.startedOn)
+    .order("event_date", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const goalModality: GoalModality = resolveGoalModality({
+    eventModality: (upcomingEvent?.modality as string | null) ?? null,
+    preferred: preferredCardioModalities,
+  });
   const cardioCatalog =
-    preferredCardioModalities.length > 0
+    preferredCardioModalities.length > 0 || goalModality.source === "event"
       ? await loadCardioCatalog(supabase)
       : [];
   const cardioCatalogBySlug = new Map(cardioCatalog.map((c) => [c.slug, c]));
@@ -974,6 +995,10 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
       r === "vertical_press" || r === "horizontal_press";
     return n + (isPress(d.role) ? 1 : 0) + (isPress(d.secondaryRole) ? 1 : 0);
   }, 0);
+  // ADR 0039 — the block's cardio days, for per-day specificity classification.
+  const cardioDays = activeDays.filter(
+    (d): d is CardioDay => d.kind === "cardio",
+  );
   for (let week = 0; week < archetype.weeks; week++) {
     const weekProfile = archetype.weekProfiles.find((w) => w.weekIndex === week);
     const weekDeloadScale = weekProfile?.strengthVolumeScale ?? 1.0;
@@ -1013,13 +1038,25 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
         const effCardioKind = dPlan?.cardioKindOverride ?? day.cardioKind;
         const baseCardioSlug =
           dPlan?.slugOverride ?? resolveCardioSlugForTier(day, userTier);
-        // ADR 0017 — substitute toward the user's preferred cardio modality
-        // (intensity-preserving). No-op when no preference is set.
+        // ADR 0017 + 0039 — substitute toward the per-day modality preference.
+        // ADR 0039 decides the ranking (goal-specific work → goal modality;
+        // diversifiable base → lower-interference modality on strength blocks),
+        // and reuses the ADR 0017 resolver for equipment/tier/kind feasibility.
+        // Returns the user's preference list unchanged when there is no event
+        // goal, so non-event blocks are byte-identical.
+        const dayPreferred = modalityPreferenceForDay({
+          day,
+          allCardioDays: cardioDays,
+          archetypeId: archetype.id,
+          secondaryFocus,
+          goal: goalModality,
+          userPreferred: preferredCardioModalities,
+        });
         const resolvedCardio = resolvePreferredCardioModality({
           defaultSlug: baseCardioSlug,
           cardioKind:
             effCardioKind === "cardio_external" ? "cardio_other" : effCardioKind,
-          preferred: preferredCardioModalities,
+          preferred: dayPreferred,
           ownedCardio: equipment.cardio,
           userTier,
           catalog: cardioCatalog,
