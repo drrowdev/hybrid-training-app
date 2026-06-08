@@ -1424,12 +1424,70 @@ export function allCandidateLiftSlugs(archetype: Archetype): string[] {
   return Array.from(set);
 }
 
+// ADR 0037 — coherent multi-modal deload. On the deload week the maximal VO2
+// session is downgraded to a sub-maximal touch and the alactic finisher is
+// dropped, so the recovery week reduces INTENSITY (5/3/1 "7th Week Protocol":
+// "use less intensive movements"; Tactical Barbell strength blocks) — not merely
+// volume. Substitutes are existing seeded running movements; the rendered
+// cardioKind is overridden so the UI label matches the downgraded effort.
+export const DELOAD_VO2_TO_Z2_SLUG = "run-easy-z2";
+export const DELOAD_VO2_TO_THRESHOLD_SLUG = "run-threshold";
+// CP-1 heuristics — keep at most ONE quality touch, and only for the cohort that
+// actually earns the real VO2 work, so a deload is never HARDER than a loading
+// week (a lower-tier user's VO2 day already resolves down to easy Z2 / tempo).
+export const DELOAD_THRESHOLD_MIN_FREQ = 5;
+export const DELOAD_THRESHOLD_MIN_TIER = 2;
+
+export type DeloadCardioPlan = {
+  /** When set, swap the resolved cardio movement to this slug. */
+  slugOverride?: string;
+  /** When set, render the day as this cardioKind (drives label + classification). */
+  cardioKindOverride?: CardioDay["cardioKind"];
+  /** Drop the alactic finisher on this day. */
+  dropFinisher: boolean;
+};
+
+/**
+ * ADR 0037 — how the deload week rewrites a cardio day. Pure (no I/O, no
+ * catalog). Returns `null` on every non-deload week — so loading weeks stay
+ * byte-identical — and on deload cardio days that need no change.
+ *
+ *   - `cardio_vo2` day → downgrade to easy Z2, or to ONE threshold touch when the
+ *     block runs `weeklyFrequency >= DELOAD_THRESHOLD_MIN_FREQ` AND the user tier
+ *     earns the real VO2 work (`>= DELOAD_THRESHOLD_MIN_TIER`).
+ *   - any day carrying a `finisher` → drop the alactic finisher.
+ */
+export function deloadCardioPlan(
+  day: CardioDay,
+  profile: WeekProfile | undefined,
+  weeklyFrequency: number,
+  userTier: number | null,
+): DeloadCardioPlan | null {
+  if (profile?.intensityLabel !== "Deload") return null;
+  const dropFinisher = day.finisher != null;
+  if (day.cardioKind === "cardio_vo2") {
+    const keepThreshold =
+      weeklyFrequency >= DELOAD_THRESHOLD_MIN_FREQ &&
+      (userTier ?? 0) >= DELOAD_THRESHOLD_MIN_TIER;
+    return {
+      slugOverride: keepThreshold
+        ? DELOAD_VO2_TO_THRESHOLD_SLUG
+        : DELOAD_VO2_TO_Z2_SLUG,
+      cardioKindOverride: keepThreshold ? "cardio_threshold" : "cardio_z2",
+      dropFinisher,
+    };
+  }
+  return dropFinisher ? { dropFinisher: true } : null;
+}
+
 export function requiredCardioSlugs(archetype: Archetype): string[] {
   const set = new Set<string>();
   const pool: DayTemplate[] = [...archetype.days, ...(archetype.twoADayDays ?? [])];
+  let hasVo2 = false;
   for (const d of pool) {
     if (d.kind === "cardio") {
       set.add(d.movementSlug);
+      if (d.cardioKind === "cardio_vo2") hasVo2 = true;
       // PR W2 — preload every per-tier alternate so the catalog
       // lookup in `actions.ts` picks them up. The tier-aware
       // resolution happens at materialization time, but the slug
@@ -1441,6 +1499,13 @@ export function requiredCardioSlugs(archetype: Archetype): string[] {
       }
       if (d.finisher) set.add(d.finisher.movementSlug);
     }
+  }
+  // ADR 0037 — the deload week downgrades a maximal VO2 day to a sub-maximal
+  // touch (easy Z2, or one threshold session at high frequency). Preload both
+  // substitute slugs so the materialization-time catalog lookup never misses.
+  if (hasVo2 && archetype.weekProfiles.some((w) => w.intensityLabel === "Deload")) {
+    set.add(DELOAD_VO2_TO_Z2_SLUG);
+    set.add(DELOAD_VO2_TO_THRESHOLD_SLUG);
   }
   return Array.from(set);
 }

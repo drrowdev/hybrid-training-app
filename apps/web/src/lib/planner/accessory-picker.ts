@@ -412,6 +412,14 @@ export function pickAccessoriesForSession({
   const weekUsedMovementIds = new Set<string>(
     weekAccessoryHistory.map((h) => h.movementId),
   );
+  // Pull-plane diversity (ADR 0037): planes already covered by pulls earlier
+  // this week, so a second weekly pull picks the complementary vector.
+  const weekUsedPullPlanes = new Set<PullPlane>();
+  for (const h of weekAccessoryHistory) {
+    if (h.functionalRoles.includes("pull")) {
+      weekUsedPullPlanes.add(pullPlaneFromMuscles(h.primaryMuscles));
+    }
+  }
 
   // Quick-generate variation: hand each `findCandidate` a distinct seed
   // (base + running cursor) so different slots rotate independently. Returns
@@ -534,6 +542,9 @@ export function pickAccessoriesForSession({
       // Within-week variety: don't repeat a functional movement already used
       // earlier this week (e.g. the same hip-abduction or row on both days).
       weekUsedMovementIds,
+      // Pull-plane diversity: a second weekly pull picks the complementary
+      // vector (a horizontal row after a vertical pull-up).
+      avoidPullPlanes: role === "pull" ? weekUsedPullPlanes : undefined,
       variationSeed: seedFor(),
     });
     if (!candidate) continue;
@@ -547,6 +558,9 @@ export function pickAccessoriesForSession({
     );
     picks.push(pick);
     usedThisSession.add(candidate.id);
+    if (role === "pull") {
+      weekUsedPullPlanes.add(pullPlaneFromMuscles(candidate.primaryMuscles));
+    }
     bumpBulletproof(durabilityProgress, candidate.bulletproofRoles);
     bumpFunctional(functionalProgress, candidate.functionalRoles);
     for (const m of candidate.primaryMuscles) {
@@ -867,6 +881,14 @@ type CandidateQuery = {
    * aesthetic / focus / functional passes; durability staples omit it.
    */
   weekUsedMovementIds?: Set<string>;
+  /**
+   * Pull-plane diversity (ADR 0037). Pull planes already covered earlier this
+   * week. A pull candidate whose plane is in this set is demoted
+   * (`PULL_PLANE_DIVERSITY_PENALTY`), so a second weekly pull picks the
+   * complementary vector (a horizontal row after a vertical pull-up). Soft — set
+   * only on the `pull` functional requirement; ignored for non-pull candidates.
+   */
+  avoidPullPlanes?: Set<PullPlane>;
   filters: PickFilters;
   usedThisSession: Set<string>;
   preferSupported?: boolean;
@@ -1141,6 +1163,32 @@ const BASELINE_PULL_REQUIREMENT = 1;
 // filter), so a repeat is still chosen when it's the only feasible candidate.
 const WEEKLY_VARIETY_PENALTY = 30;
 
+// Pull-plane diversity (ADR 0037). Classify a pull by movement plane so a block
+// that seats two weekly pulls covers BOTH back vectors — one vertical
+// (lats-dominant pull-up / pulldown) + one horizontal (mid-back / rear-delt row)
+// — instead of two verticals. The lead `primaryMuscle` is the signal; no
+// movement-id lists, so it stays data-driven and scales with the catalogue.
+export type PullPlane = "vertical" | "horizontal";
+const PULL_HORIZONTAL_LEAD_MUSCLES = new Set<string>([
+  "mid_back",
+  "rear_delts",
+  "rhomboids",
+  "traps",
+  "upper_back",
+]);
+function pullPlaneFromMuscles(primaryMuscles: readonly string[]): PullPlane {
+  const lead = primaryMuscles[0];
+  return lead && PULL_HORIZONTAL_LEAD_MUSCLES.has(lead) ? "horizontal" : "vertical";
+}
+function isPullMovement(m: CatalogMovement): boolean {
+  return m.functionalRoles?.includes("pull") ?? false;
+}
+// Soft demotion for a pull whose plane is already covered this week. Sized near
+// WEEKLY_VARIETY_PENALTY so a complementary-plane pull reliably wins when one is
+// feasible, while staying a preference (a repeat plane still seats if it is the
+// only option). heuristic CP-1 — a balance preference, not a hypertrophy target.
+const PULL_PLANE_DIVERSITY_PENALTY = 28;
+
 // Region-aware durability de-dup (review fix). Processing priority among
 // equal-deficit durability roles: HSR (modality/pattern-targeted tendon work)
 // and the symptomatic eccentric claim their region first; the flexible roles
@@ -1216,6 +1264,15 @@ function candidateScore(m: CatalogMovement, query: CandidateQuery): number {
   // Within-week variety — demote a movement already used earlier this week so a
   // muscle/role hit on multiple days gets a different movement each day.
   if (query.weekUsedMovementIds?.has(m.id)) score += WEEKLY_VARIETY_PENALTY;
+  // Pull-plane diversity — demote a pull whose plane is already covered this
+  // week so two weekly pulls span both vectors (vertical + horizontal).
+  if (
+    query.avoidPullPlanes &&
+    isPullMovement(m) &&
+    query.avoidPullPlanes.has(pullPlaneFromMuscles(m.primaryMuscles))
+  ) {
+    score += PULL_PLANE_DIVERSITY_PENALTY;
+  }
   if (m.stimToFatigueScore != null) score -= m.stimToFatigueScore; // higher SFR is better
   return score;
 }
