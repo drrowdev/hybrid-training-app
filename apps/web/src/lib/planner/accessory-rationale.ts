@@ -50,6 +50,8 @@ const FUNCTIONAL_WHY: Record<FunctionalRole, string> = {
     "Ankle and foot strength for a more stable base under load.",
   shoulder_stability:
     "Rotator-cuff and scapular work to keep your shoulders healthy under pressing volume.",
+  pull:
+    "A pulling movement to balance all the pressing — your main lifts never train the back directly, so this keeps it from falling behind.",
   power_olympic:
     "An explosive lift to build full-body power and rate of force.",
   power_plyometric:

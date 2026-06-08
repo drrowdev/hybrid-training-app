@@ -937,21 +937,30 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   // ADR 0034 — does this block run? Resolve the cardio modality of each cardio
   // day once (running unless the user substituted it away) so the durability
   // floor can prioritise Achilles/calf HSR for runners.
-  const runningCardio = blockUsesRunningCardio(
-    activeDays
-      .filter((d): d is CardioDay => d.kind === "cardio")
-      .map((d) => ({
-        cardioKind:
-          d.cardioKind === "cardio_external" ? "cardio_other" : d.cardioKind,
-        defaultSlug: resolveCardioSlugForTier(d, userTier),
-      })),
-    {
-      preferred: preferredCardioModalities,
-      ownedCardio: equipment.cardio,
-      userTier,
-      catalog: cardioCatalog,
-    },
-  );
+  //
+  // External cardio (`cardio_source = 'external'`, e.g. a Runna plan) carries no
+  // in-app modality signal, but it is overwhelmingly running — so treat an
+  // external-cardio block as running-impact by default. The cost of a wrong
+  // guess is a single calf/Achilles HSR slot; the cost of missing it for a real
+  // runner is the #1 overuse-injury gap.
+  const runningCardio =
+    parsed.data.cardioSource === "external"
+      ? true
+      : blockUsesRunningCardio(
+          activeDays
+            .filter((d): d is CardioDay => d.kind === "cardio")
+            .map((d) => ({
+              cardioKind:
+                d.cardioKind === "cardio_external" ? "cardio_other" : d.cardioKind,
+              defaultSlug: resolveCardioSlugForTier(d, userTier),
+            })),
+          {
+            preferred: preferredCardioModalities,
+            ownedCardio: equipment.cardio,
+            userTier,
+            catalog: cardioCatalog,
+          },
+        );
   // ADR 0035 — does this block press overhead/bench? Drives the conditional
   // shoulder-stability (rotator-cuff) prehab requirement.
   const pressingMainLift = activeDays.some(
