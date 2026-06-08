@@ -116,6 +116,11 @@ describe("buildBlockReviewMarkdown", () => {
     // Rubric
     expect(md).toContain("Reviewer brief");
     expect(md).toContain("Limitations & safety");
+    // Design grounding — the intentional-decisions section that keeps the
+    // reviewer from re-flagging settled TB/531-grounded choices.
+    expect(md).toContain("Design grounding");
+    expect(md).toContain("Load is held constant within a block");
+    expect(md).toContain("guaranteed floors");
     // Athlete + limitation
     expect(md).toContain("Experience tier");
     expect(md).toContain("knee · tendinopathy");
