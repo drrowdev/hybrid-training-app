@@ -652,6 +652,13 @@
       "when": 1783801800000,
       "tag": "0092_tag_shoulder_stability_roles",
       "breakpoints": false
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1783888200000,
+      "tag": "0093_tag_pull_roles",
+      "breakpoints": false
     }
   ]
 }

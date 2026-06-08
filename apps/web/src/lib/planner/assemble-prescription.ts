@@ -488,6 +488,11 @@ export function assemblePrescriptionItems(
             ramp,
           ) +
           FLOOR_FUNCTIONAL_RESERVE +
+          // ADR 0036 — grant +1 total-cap headroom for the UNIVERSAL weekly pull
+          // requirement so it seats WITHOUT displacing an aesthetic slot. Total
+          // ceiling only (NOT aestheticMaxItems below), so aesthetic volume is
+          // unchanged.
+          1 +
           // ADR 0035 — grant +1 total-cap headroom for the conditional
           // shoulder-stability (cuff) requirement so it seats WITHOUT displacing
           // an aesthetic slot. Added to the total ceiling only (NOT

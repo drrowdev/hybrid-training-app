@@ -111,6 +111,11 @@ export function deriveAccessoryRoles(m: RoleDerivationInput): {
   // (external/internal rotations, prone Y/T/W, scapular control); every entry
   // is a shoulder-stability prehab movement.
   if (m.pattern === "cuff") functional.add("shoulder_stability");
+  // pull — horizontal / vertical pulling pattern (ADR 0036). The `pull` pattern
+  // bucket (rows, pulldowns, pull-ups, face pulls) is the only source of pulling
+  // volume, since no main lift is a pull. Tagged so the picker can guarantee one
+  // weekly pull on every archetype.
+  if (m.pattern === "pull") functional.add("pull");
   // compound_assistance — non-main compound strength variants.
   if (
     m.isCompound &&
