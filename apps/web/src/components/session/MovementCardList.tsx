@@ -95,6 +95,12 @@ export type MovementCardListProps = {
    * Empty / omitted = no supersets (every card renders solo, as before).
    */
   supersetByMovementId?: ReadonlyMap<string, SupersetCardInfo>;
+  /**
+   * Movement ids whose movement is bodyweight-capable (`body_weight_loaded` in
+   * the catalog): pull-ups, dips, inverted rows, push-ups, etc. Forwarded to
+   * each card so the focus view can log them at 0 kg added load. Omitted ⇒ none.
+   */
+  bodyweightMovementIds?: ReadonlyArray<string>;
 };
 
 export function MovementCardList({
@@ -119,7 +125,12 @@ export function MovementCardList({
   bwGateStateByFamily,
   resolvedFreestyle,
   supersetByMovementId,
+  bodyweightMovementIds,
 }: MovementCardListProps) {
+  const bodyweightIdSet = useMemo(
+    () => new Set(bodyweightMovementIds ?? []),
+    [bodyweightMovementIds],
+  );
   const groups = useMemo(
     () => groupPrescriptionByMovement(prescription),
     [prescription],
@@ -302,6 +313,7 @@ export function MovementCardList({
         trapBarKg={trapBarKg}
         plateInventory={plateInventory}
         bwGateStateByFamily={bwGateStateByFamily}
+        bodyweightCapable={bodyweightIdSet.has(group.movementId)}
       />
     );
   };
@@ -394,6 +406,7 @@ function PrescribedCard(props: {
       }
     >
   >;
+  bodyweightCapable?: boolean;
 }) {
   const tmKg = props.group.movementSlug
     ? props.tmBySlug[props.group.movementSlug]
@@ -442,6 +455,7 @@ function PrescribedCard(props: {
       plateInventory={props.plateInventory}
       persistKeyPrefix={`mc:${props.sessionId}`}
       bwGateStateByFamily={props.bwGateStateByFamily}
+      bodyweightCapable={props.bodyweightCapable}
     />
   );
 }

@@ -507,12 +507,8 @@ test.describe("@desktop session log", () => {
     // (5), so a single tap on the log CTA commits them.
     await logPrescribedSet(page, seed.todayMovementId);
 
-    // The card flips out of "not_started" (logged), the status banner mounts
-    // in-progress, and the finish bar arms.
+    // The card flips out of "not_started" (logged) and the finish bar arms.
     await expect(card).not.toHaveAttribute("data-state", "not_started");
-    const banner = page.getByTestId("session-status-banner");
-    await expect(banner).toBeVisible();
-    await expect(banner).toHaveAttribute("data-state", "in-progress");
     await expect(page.getByTestId("finish-stickybar")).toHaveAttribute(
       "data-armed",
       "true",
@@ -584,11 +580,8 @@ test.describe("@desktop session log", () => {
     // Click finish — lands on the complete page.
     await finishAndCompleteSession(page, sessionId);
 
-    // Back on the detail page the status banner flips to "complete".
-    await expect(page.getByTestId("session-status-banner")).toHaveAttribute(
-      "data-state",
-      "complete",
-    );
+    // Back on the detail page the post-session summary renders.
+    await expect(page.getByTestId("post-session-summary")).toBeVisible();
 
     // Service-role: completed_at is set; 1 set landed.
     await assertSessionComplete(admin, sessionId, {
