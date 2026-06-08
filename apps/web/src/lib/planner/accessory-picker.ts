@@ -472,13 +472,16 @@ export function pickAccessoriesForSession({
 
   // ─── 2. Functional deficits ───
   // ADR 0035 — when the block has a pressing main lift, add a weekly
-  // `shoulder_stability` (rotator-cuff) requirement on top of the archetype's
-  // own functional needs. Gated on `pressingMainLift` → omitted by default, so
-  // every legacy caller / golden stays byte-identical. The assembler grants a
-  // matching +1 to the total item cap so this seats in its own headroom rather
-  // than displacing an aesthetic slot.
+  // `shoulder_stability` (rotator-cuff) requirement. Gated on `pressingMainLift`.
+  // ADR 0036 — a weekly `pull` is a UNIVERSAL floor on every archetype: the four
+  // main-lift patterns contain no pull, so without this a block can ship zero
+  // back/biceps volume. Unlike the cuff (signal-gated), the pull is always
+  // required — a deliberate global balance change. The assembler grants matching
+  // total-cap headroom (+1 for the pull, +1 for the cuff when active) so these
+  // seat without displacing an aesthetic slot.
   const effectiveFunctionalReqs: [FunctionalRole, number][] = [
     ...(Object.entries(profile.functional.weeklyRoleRequirements) as [FunctionalRole, number][]),
+    ["pull", BASELINE_PULL_REQUIREMENT],
     ...(pressingMainLift ? ([["shoulder_stability", 1]] as [FunctionalRole, number][]) : []),
   ];
   for (const [role, required] of effectiveFunctionalReqs) {
@@ -1050,6 +1053,12 @@ function hasIndirectFocusRole(roles: readonly BulletproofRole[]): boolean {
   for (const r of roles) if (INDIRECT_FOCUS_ROLES.has(r)) return true;
   return false;
 }
+
+// ADR 0036 — universal weekly pulling floor. One pull (row / pulldown / pull-up
+// / face-pull) per week on EVERY archetype, because no main-lift pattern is a
+// pull, so the back/biceps would otherwise get zero direct volume. heuristic
+// CP-1 — a minimum balance dose, not a hypertrophy target.
+const BASELINE_PULL_REQUIREMENT = 1;
 
 /**
  * Movement staple-value, normalised to [0,1]. Compound + loadable = 1.0
