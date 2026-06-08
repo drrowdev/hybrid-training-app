@@ -67,11 +67,6 @@ import {
   type ProfileForFormat,
 } from "@/lib/format/datetime";
 import {
-  FOCUS_MUSCLE_LABEL,
-  isFocusMuscle,
-  type FocusMuscle,
-} from "@/lib/planner/focus-muscles";
-import {
   movePlannedSession,
   skipPlannedSession,
   startSessionFromPlan,
@@ -658,11 +653,6 @@ export default async function TodayPage() {
                   WEEK {(computedWeekIndex ?? 0) + 1}
                   <span style={{ margin: "0 8px", opacity: 0.5 }}>·</span>
                   {eyebrowText}
-                  {activeBlock.focusMuscles.length > 0 && (
-                    <FocusBadge
-                      muscles={activeBlock.focusMuscles}
-                    />
-                  )}
                 </span>
                 <span className="cp-mobile-only" data-testid="today-eyebrow-mobile">
                   <span style={{ color: "var(--cp-accent)" }}>
@@ -672,11 +662,6 @@ export default async function TodayPage() {
                   W{(computedWeekIndex ?? 0) + 1}
                   <span style={{ margin: "0 6px", opacity: 0.5 }}>·</span>
                   {eyebrowText}
-                  {activeBlock.focusMuscles.length > 0 && (
-                    <FocusBadge
-                      muscles={activeBlock.focusMuscles}
-                    />
-                  )}
                 </span>
               </>
             ) : (
@@ -806,46 +791,6 @@ export default async function TodayPage() {
           </aside>
         </div>
     </div>
-  );
-}
-
-/**
- * Migration 0079 — Today hero focus-muscle badge. Pill-shape, rendered
- * after the eyebrow date when the active block has user-chosen focus
- * muscles.
- */
-function FocusBadge({
-  muscles,
-}: {
-  muscles: readonly string[];
-}) {
-  const valid = muscles.filter(isFocusMuscle) as FocusMuscle[];
-  if (valid.length === 0) return null;
-  const label = valid.map((m) => FOCUS_MUSCLE_LABEL[m]).join(", ");
-  return (
-    <>
-      <span style={{ margin: "0 8px", opacity: 0.5 }}>·</span>
-      <span
-        data-testid="today-focus-badge"
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 4,
-          fontSize: 10,
-          fontWeight: 600,
-          letterSpacing: "0.04em",
-          padding: "2px 8px",
-          borderRadius: 999,
-          background: "var(--cp-accent-soft)",
-          color: "var(--cp-accent)",
-          border: "1px solid color-mix(in oklab, var(--cp-accent) 35%, transparent)",
-          textTransform: "none",
-        }}
-      >
-        <span aria-hidden="true">🎯</span>
-        <span>Focus: {label}</span>
-      </span>
-    </>
   );
 }
 

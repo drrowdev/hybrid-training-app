@@ -326,6 +326,7 @@ export default async function PlanPage({
         archetypeName={archetypeName}
         blockNumber={blockNumbering.index}
         blockTotal={blockNumbering.total}
+        focusMuscles={block.focusMuscles}
         startedOn={block.startedOn}
         endedOn={endedOn}
         weeks={block.weeks}
