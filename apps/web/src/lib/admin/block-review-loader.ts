@@ -17,10 +17,11 @@ import { deloadWeekIndexFor } from "@/lib/planner/deload-skip";
 import { cleanPrescriptionNotes } from "@/lib/planner/clean-prescription-notes";
 import { FOCUS_MUSCLE_LABEL, type FocusMuscle } from "@/lib/planner/focus-muscles";
 import { isMaxIntentRpe, MAX_INTENT_LABEL } from "@/lib/sessions/effort-label";
-import type {
-  BlockReviewData,
-  ReviewItem,
-  ReviewSession,
+import {
+  summariseEquipment,
+  type BlockReviewData,
+  type ReviewItem,
+  type ReviewSession,
 } from "./block-review-export";
 
 type BlockRow = {
@@ -36,26 +37,9 @@ type BlockRow = {
   power_emphasis: boolean | null;
 };
 
-/** Compact equipment summary for the review doc (preset + populated groups). */
-function summariseEquipment(equipment: unknown): string[] {
-  if (!equipment || typeof equipment !== "object") return [];
-  const e = equipment as Record<string, unknown>;
-  const out: string[] = [];
-  if (typeof e.preset === "string") out.push(`preset: ${e.preset}`);
-  for (const key of [
-    "bars",
-    "plates",
-    "dumbbells",
-    "kettlebells",
-    "machines",
-    "cardio",
-  ]) {
-    const v = e[key];
-    if (Array.isArray(v) && v.length > 0) out.push(`${key} (${v.length})`);
-    else if (v && typeof v === "object") out.push(key);
-  }
-  return out;
-}
+/** Compact equipment summary for the review doc lives in the pure
+ * `block-review-export` module (`summariseEquipment`) so it stays unit-testable
+ * without pulling in this loader's server-only imports. */
 
 function fmtRange(r: { min: number; max: number } | undefined, prefix: string): string | null {
   if (!r) return null;
