@@ -30,6 +30,8 @@ export const FUNCTIONAL_ROLES = [
   "velocity_cued",
   "hip_stabilizer",
   "ankle_foot",
+  /** Rotator-cuff / scapular-stability prehab for overhead & bench pressers (ADR 0035). */
+  "shoulder_stability",
   /** Olympic lift derivatives — triple-extension power. */
   "power_olympic",
   /** Jump-based stretch-shortening cycle work. */
