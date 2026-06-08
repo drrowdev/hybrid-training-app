@@ -14,10 +14,12 @@
 import { describe, it, expect } from "vitest";
 import {
   accessoryVolumeApplicability,
+  accessoryVolumeRedundancy,
   recommendedAccessoryVolume,
   type RecommendableArchetypeId,
 } from "../accessory-volume-recommendation";
 import type { SecondaryFocus } from "../secondary-focus";
+import type { AccessoryVolumeLevel } from "../accessory-volume";
 
 const REAL_ARCHETYPES: RecommendableArchetypeId[] = [
   "strength_anchor",
@@ -101,5 +103,46 @@ describe("recommendedAccessoryVolume", () => {
       const rec = recommendedAccessoryVolume({ archetypeId: id, secondary: "none" });
       if (rec) expect(rec.reason.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("accessoryVolumeRedundancy", () => {
+  const m = (
+    low: number | null,
+    medium: number | null,
+    high: number | null,
+  ): Record<AccessoryVolumeLevel, number | null> => ({ low, medium, high });
+
+  it("returns nothing redundant for null / missing estimates", () => {
+    expect(accessoryVolumeRedundancy(null).redundant.size).toBe(0);
+    expect(accessoryVolumeRedundancy(undefined).redundant.size).toBe(0);
+  });
+
+  it("flags High when it equals Medium (the screenshot case 57/62/62)", () => {
+    const r = accessoryVolumeRedundancy(m(57, 62, 62));
+    expect([...r.redundant]).toEqual(["high"]);
+    expect(r.equivalentLevel.high).toBe("medium");
+  });
+
+  it("flags Medium AND High when all three are equal (lever fully inert)", () => {
+    const r = accessoryVolumeRedundancy(m(62, 62, 62));
+    expect(r.redundant.has("medium")).toBe(true);
+    expect(r.redundant.has("high")).toBe(true);
+    expect(r.redundant.has("low")).toBe(false);
+    // Both point at the leanest equivalent (Low).
+    expect(r.equivalentLevel.medium).toBe("low");
+    expect(r.equivalentLevel.high).toBe("low");
+  });
+
+  it("flags nothing when all three levels differ", () => {
+    expect(accessoryVolumeRedundancy(m(50, 60, 70)).redundant.size).toBe(0);
+  });
+
+  it("does not flag a level whose estimate is null", () => {
+    const r = accessoryVolumeRedundancy(m(60, null, 60));
+    // High equals Low → redundant; Medium is unknown → not flagged.
+    expect(r.redundant.has("high")).toBe(true);
+    expect(r.equivalentLevel.high).toBe("low");
+    expect(r.redundant.has("medium")).toBe(false);
   });
 });

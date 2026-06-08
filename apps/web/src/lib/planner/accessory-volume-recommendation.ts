@@ -24,7 +24,10 @@
  * PR #278 is untouched.
  */
 import { ARCHETYPES, type ArchetypeId } from "./archetypes";
-import type { AccessoryVolumeLevel } from "./accessory-volume";
+import {
+  ACCESSORY_VOLUME_VALUES,
+  type AccessoryVolumeLevel,
+} from "./accessory-volume";
 import type { SecondaryFocus } from "./secondary-focus";
 
 /** Archetype ids the wizard can resolve to (every real archetype, not custom). */
@@ -155,4 +158,53 @@ export function recommendedAccessoryVolume(args: {
     default:
       return null;
   }
+}
+
+/**
+ * Realized-aware redundancy for the Low/Medium/High lever.
+ *
+ * `accessoryVolumeApplicability` is derived from the archetype's STATIC
+ * aesthetic base, so it can't see that on a cardio-led block the mandatory
+ * durability / functional / focus-muscle FLOOR saturates the strength day and
+ * leaves the aesthetic lever nothing to grow — making two (or all three) levels
+ * produce an identical session. This helper detects that from the LIVE per-level
+ * duration estimate (the same number the user sees): a level is "redundant" when
+ * its estimate equals that of a lower level. The wizard greys those levels out
+ * with a tooltip and clamps the selection down to the equivalent lower level.
+ *
+ * Null / partial estimates ⇒ nothing redundant (the control stays fully
+ * interactive until the live estimate resolves).
+ */
+export interface AccessoryVolumeRedundancy {
+  /** Levels whose realized session duplicates a lower level. */
+  redundant: Set<AccessoryVolumeLevel>;
+  /** For each redundant level, the LOWEST level that yields the same session. */
+  equivalentLevel: Partial<Record<AccessoryVolumeLevel, AccessoryVolumeLevel>>;
+}
+
+export function accessoryVolumeRedundancy(
+  minutes: Record<AccessoryVolumeLevel, number | null> | null | undefined,
+): AccessoryVolumeRedundancy {
+  const redundant = new Set<AccessoryVolumeLevel>();
+  const equivalentLevel: Partial<
+    Record<AccessoryVolumeLevel, AccessoryVolumeLevel>
+  > = {};
+  if (!minutes) return { redundant, equivalentLevel };
+  const order = ACCESSORY_VOLUME_VALUES; // low → medium → high
+  for (let i = 1; i < order.length; i++) {
+    const cur = minutes[order[i]!];
+    if (cur == null) continue;
+    for (let j = 0; j < i; j++) {
+      const lo = minutes[order[j]!];
+      // Equal realized duration ⇒ the lever added nothing at this step. Match
+      // the LOWEST equal level (j ascending, break on first) so the tooltip and
+      // the selection clamp both point at the leanest equivalent.
+      if (lo != null && lo === cur) {
+        redundant.add(order[i]!);
+        equivalentLevel[order[i]!] = order[j]!;
+        break;
+      }
+    }
+  }
+  return { redundant, equivalentLevel };
 }
