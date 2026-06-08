@@ -67,7 +67,7 @@ function run(opts: { history?: Hist; pressingMainLift?: boolean }) {
     filters: EMPTY_FILTERS,
     perMuscleTargets: defaultMuscleTargets().targetsByMuscle,
     maxItems: 6,
-    pressingMainLift: opts.pressingMainLift,
+    pressingMainLiftCount: opts.pressingMainLift ? 1 : 0,
   });
 }
 
