@@ -436,6 +436,9 @@ export function pickAccessoriesForSession({
   }
 
   // ─── 1. Durability deficits first ───
+  // Regions already claimed by a durability pick this session — later flexible
+  // durability picks steer away from these (region-aware de-dup).
+  const durabilityRegions = new Set<string>();
   for (const role of orderedBulletproofRoles(durFloor, durabilityProgress)) {
     if (picks.length >= maxItems) break;
     const current = effectiveBulletproofCount(role, durabilityProgress);
@@ -461,6 +464,11 @@ export function pickAccessoriesForSession({
       catalog: workingCatalog,
       requiredBulletproofRole: role,
       preferRegion,
+      // Region-aware de-dup: a flexible durability item (isometric / plyo /
+      // carry) avoids a region the tendon work already claimed this session, so
+      // a squat day doesn't double the patellar load. HSR is seated first
+      // (empty set) so its pattern/modality region is never blocked.
+      avoidRegions: durabilityRegions,
       filters,
       usedThisSession,
       variationSeed: seedFor(),
@@ -477,6 +485,13 @@ export function pickAccessoriesForSession({
     );
     picks.push(pick);
     usedThisSession.add(candidate.id);
+    // Only the tendon work (HSR / symptomatic eccentric) seeds the avoid-set:
+    // the redundancy we prevent is a flexible isometric / plyo stacking on the
+    // TENDON region (e.g. a knee isometric on top of a knee HSR). Carries
+    // (trunk-grip staples) neither seed nor are meaningfully constrained by it.
+    if (candidate.bulletproofRoles.includes("hsr") || candidate.bulletproofRoles.includes("alfredson_eccentric")) {
+      durabilityRegions.add(candidate.primaryRegion);
+    }
     bumpBulletproof(durabilityProgress, candidate.bulletproofRoles);
     bumpFunctional(functionalProgress, candidate.functionalRoles);
     for (const m of candidate.primaryMuscles) {
@@ -761,7 +776,17 @@ function orderedBulletproofRoles(
       deficit: Math.max(0, effectiveBulletproofTarget(role, floor) - effectiveBulletproofCount(role, progress)),
     }))
     .filter((x) => x.deficit > 0)
-    .sort((a, b) => b.deficit - a.deficit);
+    // Primary: largest deficit first. Tiebreak: process roles with a STRONG
+    // intrinsic region intent (HSR — modality/pattern-targeted, then the
+    // symptomatic eccentric) BEFORE the flexible ones (isometric / plyo /
+    // carry), so the flexible picks can steer to a DIFFERENT region than the
+    // tendon work already claimed (region-aware de-dup below). See
+    // DURABILITY_ROLE_PRIORITY.
+    .sort(
+      (a, b) =>
+        b.deficit - a.deficit ||
+        DURABILITY_ROLE_PRIORITY[a.role] - DURABILITY_ROLE_PRIORITY[b.role],
+    );
   return rolesWithDeficit.map((x) => x.role);
 }
 
@@ -812,6 +837,15 @@ type CandidateQuery = {
    * back to any in-role candidate when no matching-region movement is feasible.
    */
   preferRegion?: string;
+  /**
+   * Region-aware durability de-dup. Regions already claimed by an earlier
+   * durability pick this session. A candidate whose `primaryRegion` is in this
+   * set is demoted (`REGION_DEDUP_PENALTY`), so a flexible isometric / plyo /
+   * carry steers to a different tissue than the tendon work already loaded
+   * (e.g. no knee isometric on top of a knee HSR). Soft — falls back when no
+   * fresh-region candidate is feasible.
+   */
+  avoidRegions?: Set<string>;
   /**
    * Focus-floor only (review fix). When true, candidates carrying an indirect
    * grip/isometric durability role (`carry` / `heavy_isometric` /
@@ -1103,6 +1137,28 @@ const BASELINE_PULL_REQUIREMENT = 1;
 // filter), so a repeat is still chosen when it's the only feasible candidate.
 const WEEKLY_VARIETY_PENALTY = 30;
 
+// Region-aware durability de-dup (review fix). Processing priority among
+// equal-deficit durability roles: HSR (modality/pattern-targeted tendon work)
+// and the symptomatic eccentric claim their region first; the flexible roles
+// (isometric / plyometric / carry) follow and steer to a DIFFERENT region so a
+// squat day doesn't stack a knee isometric (wall sit) on top of a knee HSR
+// (slow front squat). Lower = earlier.
+const DURABILITY_ROLE_PRIORITY: Record<BulletproofRole, number> = {
+  hsr: 0,
+  alfredson_eccentric: 1,
+  heavy_isometric: 2,
+  plyometric_low: 3,
+  plyometric_high: 3,
+  carry: 4,
+};
+
+// Penalty added when a durability candidate's primaryRegion was ALREADY taken by
+// an earlier durability pick this session. Soft (a repeat still wins with no
+// fresh-region alternative); strong enough to move a flexible isometric/plyo off
+// the tendon work's region, but BELOW the HSR's REGION_PREFERENCE_BONUS (50) so
+// an intentional pattern/modality HSR keeps its region even when seated later.
+const REGION_DEDUP_PENALTY = 40;
+
 /**
  * Movement staple-value, normalised to [0,1]. Compound + loadable = 1.0
  * (a sticky staple — e.g. weighted chin-up / dip / row); a redundant
@@ -1147,6 +1203,9 @@ function candidateScore(m: CatalogMovement, query: CandidateQuery): number {
   if (query.preferRegion && m.primaryRegion === query.preferRegion) {
     score -= REGION_PREFERENCE_BONUS;
   }
+  // Region-aware durability de-dup — demote a candidate whose region a prior
+  // durability pick already claimed this session.
+  if (query.avoidRegions?.has(m.primaryRegion)) score += REGION_DEDUP_PENALTY;
   if (query.filters.concurrentStressActive && (m.eccentricLoadScore ?? 3) >= 4) score += 20;
   // ADR 0027 Lever A — demote redundant compounds in the aesthetic slot only.
   if (query.demoteCompound && m.isCompound) score += AESTHETIC_COMPOUND_PENALTY;
