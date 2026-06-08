@@ -300,13 +300,15 @@ export function assemblePrescriptionItems(
    */
   runningCardio: boolean = false,
   /**
-   * ADR 0035 — true when the block has a pressing main lift (vertical_press /
-   * horizontal_press as a primary or secondary on any strength day), computed
-   * once by the caller. Adds the conditional weekly shoulder-stability (cuff)
-   * requirement. Default false → byte-identical (every legacy caller and the
-   * golden harness omit it).
+   * Count of weekly pressing main-lift exposures (vertical_press +
+   * horizontal_press across all strength days), computed once by the caller.
+   * Drives the ADR 0035 cuff floor (count > 0 → one weekly cuff item) and the
+   * ADR 0037 pull balance (the weekly pull requirement scales to this count, so
+   * push:pull stays balanced however many pressing patterns the structure
+   * programs). Default 0 → byte-identical (every legacy caller and the golden
+   * harness omit it).
    */
-  pressingMainLift: boolean = false,
+  pressingMainLiftCount: number = 0,
 ): PrescriptionItem[] {
   const items =
     day.kind === "strength" && omitMainStrength
@@ -488,17 +490,17 @@ export function assemblePrescriptionItems(
             ramp,
           ) +
           FLOOR_FUNCTIONAL_RESERVE +
-          // ADR 0036 — grant +1 total-cap headroom for the UNIVERSAL weekly pull
-          // requirement so it seats WITHOUT displacing an aesthetic slot. Total
-          // ceiling only (NOT aestheticMaxItems below), so aesthetic volume is
-          // unchanged.
-          1 +
+          // ADR 0036/0037 — grant total-cap headroom for the weekly pull
+          // requirement, which SCALES to the block's pressing exposures
+          // (Math.max(1, pressingMainLiftCount)), so the pulls seat WITHOUT
+          // displacing an aesthetic slot. Total ceiling only (NOT
+          // aestheticMaxItems below), so aesthetic volume is unchanged.
+          Math.max(1, pressingMainLiftCount) +
           // ADR 0035 — grant +1 total-cap headroom for the conditional
           // shoulder-stability (cuff) requirement so it seats WITHOUT displacing
-          // an aesthetic slot. Added to the total ceiling only (NOT
-          // aestheticMaxItems below), so aesthetic volume is unchanged. Gated on
-          // the signal → byte-identical when no pressing main lift.
-          (pressingMainLift ? 1 : 0),
+          // an aesthetic slot. Total ceiling only. Gated on the signal →
+          // byte-identical when the block does not press.
+          (pressingMainLiftCount > 0 ? 1 : 0),
         aestheticMaxItems: applyScalarToMaxItems(
           accessoryProfile.aesthetic.itemsPerSession +
             itemBonus +
@@ -522,8 +524,9 @@ export function assemblePrescriptionItems(
         // Both default to no-op (false / undefined) → byte-identical.
         runningCardio,
         dayPrimaryRole: day.kind === "strength" ? day.role : undefined,
-        // ADR 0035 — cuff prehab requirement when the block presses overhead/bench.
-        pressingMainLift,
+        // ADR 0035/0037 — cuff prehab (when pressing) + pull balance scale to
+        // the block's pressing-exposure count.
+        pressingMainLiftCount,
         variationSeed,
       });
       const accessoryItems: PrescriptionItem[] = [];

@@ -273,7 +273,7 @@ export function pickAccessoriesForSession({
   focusMuscles = [],
   runningCardio = false,
   dayPrimaryRole,
-  pressingMainLift = false,
+  pressingMainLiftCount = 0,
   variationSeed,
 }: {
   profile: AccessoryProfile;
@@ -352,13 +352,17 @@ export function pickAccessoriesForSession({
    */
   dayPrimaryRole?: string;
   /**
-   * ADR 0035 — true when the block has a pressing main lift (vertical_press /
-   * horizontal_press as a primary or secondary). When set, the functional floor
-   * adds one weekly `shoulder_stability` (rotator-cuff) requirement so an
-   * overhead/bench presser carries guaranteed cuff prehab. Default false →
-   * byte-identical (the golden harness, custom blocks, and legacy callers omit it).
+   * Count of weekly pressing main-lift exposures (vertical_press +
+   * horizontal_press across the block's strength days). Drives TWO floors:
+   *   • ADR 0035 cuff — any pressing (count > 0) adds one weekly
+   *     `shoulder_stability` (rotator-cuff) requirement.
+   *   • ADR 0036/0037 pull balance — the weekly `pull` requirement scales to
+   *     this count (a block that presses twice gets two pulls), so push:pull
+   *     stays balanced however many pressing patterns the structure programs.
+   * Default 0 → no cuff, baseline single pull → byte-identical for the golden
+   * harness, custom blocks, and legacy callers that omit it.
    */
-  pressingMainLift?: boolean;
+  pressingMainLiftCount?: number;
   /**
    * Quick-generate variation seed (quick-workout path only). Forwarded to each
    * `findCandidate` call (offset per slot so different gaps rotate
@@ -398,6 +402,16 @@ export function pickAccessoriesForSession({
   const workingCatalog = filterForExperienceTier(equipmentFiltered, experience);
   const picks: AccessoryPick[] = [];
   const usedThisSession = new Set<string>();
+  // Within-week movement variety: movements already prescribed EARLIER this
+  // week (the assembler appends this session's picks only after we return).
+  // The aesthetic / focus / functional passes demote these so a muscle or role
+  // hit on multiple days gets DIFFERENT movements (e.g. wrist curl then reverse
+  // wrist curl, hip abduction then a different glute-med drill) instead of the
+  // same top-ranked pick every session. Durability-floor staples (carries, HSR)
+  // legitimately repeat, so they do NOT opt into this.
+  const weekUsedMovementIds = new Set<string>(
+    weekAccessoryHistory.map((h) => h.movementId),
+  );
 
   // Quick-generate variation: hand each `findCandidate` a distinct seed
   // (base + running cursor) so different slots rotate independently. Returns
@@ -471,18 +485,22 @@ export function pickAccessoriesForSession({
   }
 
   // ─── 2. Functional deficits ───
-  // ADR 0035 — when the block has a pressing main lift, add a weekly
-  // `shoulder_stability` (rotator-cuff) requirement. Gated on `pressingMainLift`.
+  // ADR 0035 — when the block presses (count > 0), add a weekly
+  // `shoulder_stability` (rotator-cuff) requirement.
   // ADR 0036 — a weekly `pull` is a UNIVERSAL floor on every archetype: the four
   // main-lift patterns contain no pull, so without this a block can ship zero
-  // back/biceps volume. Unlike the cuff (signal-gated), the pull is always
-  // required — a deliberate global balance change. The assembler grants matching
-  // total-cap headroom (+1 for the pull, +1 for the cuff when active) so these
-  // seat without displacing an aesthetic slot.
+  // back/biceps volume. ADR 0037 — the pull requirement SCALES to the block's
+  // pressing exposures (a dual-main-lift block that presses twice gets two
+  // pulls), so push:pull stays balanced however many pressing patterns the
+  // structure programs — not a flat 1 that under-pulls a heavy-pressing block.
+  // The assembler grants matching total-cap headroom so these seat without
+  // displacing an aesthetic slot.
+  const pressing = pressingMainLiftCount > 0;
+  const pullRequirement = Math.max(BASELINE_PULL_REQUIREMENT, pressingMainLiftCount);
   const effectiveFunctionalReqs: [FunctionalRole, number][] = [
     ...(Object.entries(profile.functional.weeklyRoleRequirements) as [FunctionalRole, number][]),
-    ["pull", BASELINE_PULL_REQUIREMENT],
-    ...(pressingMainLift ? ([["shoulder_stability", 1]] as [FunctionalRole, number][]) : []),
+    ["pull", pullRequirement],
+    ...(pressing ? ([["shoulder_stability", 1]] as [FunctionalRole, number][]) : []),
   ];
   for (const [role, required] of effectiveFunctionalReqs) {
     if (picks.length >= maxItems) break;
@@ -494,6 +512,9 @@ export function pickAccessoriesForSession({
       requiredFunctionalRole: role,
       filters,
       usedThisSession,
+      // Within-week variety: don't repeat a functional movement already used
+      // earlier this week (e.g. the same hip-abduction or row on both days).
+      weekUsedMovementIds,
       variationSeed: seedFor(),
     });
     if (!candidate) continue;
@@ -569,6 +590,8 @@ export function pickAccessoriesForSession({
       // ADR 0027 Lever A — prefer targeted isolation over a redundant compound.
       demoteCompound: true,
       aestheticEligibleOnly: true,
+      // Within-week variety: a muscle hit on multiple days gets different fills.
+      weekUsedMovementIds,
       variationSeed: seedFor(),
     });
     if (!candidate) {
@@ -655,6 +678,9 @@ export function pickAccessoriesForSession({
         // Real loaded isolation only — never a dead hang / carry to fill the
         // focus floor.
         excludeIndirectForFocus: true,
+        // Within-week variety: a focus muscle hit on multiple days gets a
+        // different movement each day (wrist curl, then reverse wrist curl).
+        weekUsedMovementIds,
         variationSeed: seedFor(),
       });
       if (!candidate) continue;
@@ -794,6 +820,15 @@ type CandidateQuery = {
    * carry that merely lists the muscle as a `primaryMuscle`.
    */
   excludeIndirectForFocus?: boolean;
+  /**
+   * Within-week movement variety. Movement ids already prescribed earlier this
+   * week. When provided, a candidate whose id is in this set is demoted in the
+   * ranking (`WEEKLY_VARIETY_PENALTY`), so a muscle/role hit on multiple days
+   * gets a DIFFERENT movement each day rather than the same top-ranked pick.
+   * Soft — a repeat still wins when no fresh alternative is feasible. Set on the
+   * aesthetic / focus / functional passes; durability staples omit it.
+   */
+  weekUsedMovementIds?: Set<string>;
   filters: PickFilters;
   usedThisSession: Set<string>;
   preferSupported?: boolean;
@@ -1060,6 +1095,14 @@ function hasIndirectFocusRole(roles: readonly BulletproofRole[]): boolean {
 // CP-1 — a minimum balance dose, not a hypertrophy target.
 const BASELINE_PULL_REQUIREMENT = 1;
 
+// Within-week movement-variety penalty (review fix). Added to a candidate's
+// score when it was already prescribed earlier THIS week. Sized BELOW
+// `ROTATION_BASE` (40, the prev-block staleness penalty) so cross-block rotation
+// still dominates, but ABOVE the value/SFR bonuses so a fresh alternative
+// reliably wins when one exists — while staying a soft preference (never a hard
+// filter), so a repeat is still chosen when it's the only feasible candidate.
+const WEEKLY_VARIETY_PENALTY = 30;
+
 /**
  * Movement staple-value, normalised to [0,1]. Compound + loadable = 1.0
  * (a sticky staple — e.g. weighted chin-up / dip / row); a redundant
@@ -1107,6 +1150,9 @@ function candidateScore(m: CatalogMovement, query: CandidateQuery): number {
   if (query.filters.concurrentStressActive && (m.eccentricLoadScore ?? 3) >= 4) score += 20;
   // ADR 0027 Lever A — demote redundant compounds in the aesthetic slot only.
   if (query.demoteCompound && m.isCompound) score += AESTHETIC_COMPOUND_PENALTY;
+  // Within-week variety — demote a movement already used earlier this week so a
+  // muscle/role hit on multiple days gets a different movement each day.
+  if (query.weekUsedMovementIds?.has(m.id)) score += WEEKLY_VARIETY_PENALTY;
   if (m.stimToFatigueScore != null) score -= m.stimToFatigueScore; // higher SFR is better
   return score;
 }
