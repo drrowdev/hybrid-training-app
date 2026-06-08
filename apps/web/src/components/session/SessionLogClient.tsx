@@ -28,6 +28,12 @@ export type LoggedSet = {
   rpe: number | string | null;
   skipped?: boolean;
   skip_reason?: string | null;
+  /**
+   * Prescription slot this set was logged against (when linked). Optional so
+   * legacy callers/fixtures that don't project it stay valid; the optimistic
+   * overlay uses it to reconcile a pending client entry against the server row.
+   */
+  prescription_item_index?: number | null;
   movement: {
     id: string;
     slug: string;

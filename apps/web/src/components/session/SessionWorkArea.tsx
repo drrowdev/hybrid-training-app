@@ -10,6 +10,7 @@
  * with an inline focus view, dot strip, and per-set save flow.
  */
 
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Prescription } from "@hta/db";
 import type {
   LoggedSet,
@@ -22,6 +23,12 @@ import type {
   swapPrescriptionItem as swapPrescriptionItemAction,
 } from "@/lib/sessions/actions";
 import { MovementCardList } from "./MovementCardList";
+import {
+  mergeOptimisticSets,
+  optimisticLogFromFormData,
+  serverHasPendingLog,
+  type OptimisticLog,
+} from "@/lib/sessions/optimistic-log";
 import type { PlateInventoryItem } from "./plate-math";
 import type { ResolvedFreestyleMovement } from "@/lib/sessions/freestyle-resolver";
 import type { SupersetCardInfo } from "@/lib/sessions/superset-cards";
@@ -123,8 +130,73 @@ export function SessionWorkArea({
   void plannedSessionId;
   void swapAction;
   void performedAt;
-  const loggedSet = new Set<number>(loggedItemIndices);
-  const skippedSet = new Set<number>(skippedItemIndices ?? []);
+
+  // ── Optimistic logging overlay ────────────────────────────────────────────
+  // The set-log server action revalidates (and thus re-renders) this whole
+  // page before resolving. Awaiting that made every "Log set" tap stall for
+  // seconds before the cursor advanced. We keep a client overlay of pending
+  // logs so the UI advances the instant the user taps; the real write +
+  // revalidation settle in the background, and each pending entry is reconciled
+  // away once the refreshed server `sets` includes its row.
+  const [pendingLogs, setPendingLogs] = useState<OptimisticLog[]>([]);
+
+  // Reconcile: drop any pending entry the freshly-fetched server sets now
+  // represent. Runs whenever the server `sets` prop changes (after a
+  // revalidation lands).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reconcile the optimistic overlay against freshly-fetched server sets; functional updater no-ops when nothing changed
+    setPendingLogs((prev) => {
+      if (prev.length === 0) return prev;
+      const next = prev.filter((log) => !serverHasPendingLog(sets, log));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [sets]);
+
+  const logSet = useCallback(
+    async (fd: FormData): Promise<{ error?: string; ok?: true }> => {
+      const clientKey = `opt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const optimistic = optimisticLogFromFormData(fd, clientKey);
+      // Only overlay PRESCRIBED logs (those carry a prescriptionItemIndex we can
+      // reconcile against the server row). Freestyle/off-plan logs have no index
+      // — overlaying them would never reconcile and would double-show once the
+      // server catches up — so they take the plain (awaited) path.
+      const overlay = optimistic && optimistic.prescriptionItemIndex != null;
+      if (overlay) {
+        setPendingLogs((prev) => [...prev, optimistic]);
+      }
+      const result = await addStrengthSet(fd);
+      if (result?.error && overlay) {
+        // Roll the overlay back so the slot un-logs and the user can retry.
+        setPendingLogs((prev) => prev.filter((l) => l.clientKey !== clientKey));
+      }
+      return result;
+    },
+    [addStrengthSet],
+  );
+
+  const mergedSets = useMemo(
+    () => mergeOptimisticSets(sets, pendingLogs),
+    [sets, pendingLogs],
+  );
+
+  const loggedSet = useMemo(() => {
+    const s = new Set<number>(loggedItemIndices);
+    for (const log of pendingLogs) {
+      if (log.prescriptionItemIndex != null) s.add(log.prescriptionItemIndex);
+    }
+    return s;
+  }, [loggedItemIndices, pendingLogs]);
+
+  const skippedSet = useMemo(() => {
+    const s = new Set<number>(skippedItemIndices ?? []);
+    for (const log of pendingLogs) {
+      if (log.skipped && log.prescriptionItemIndex != null) {
+        s.add(log.prescriptionItemIndex);
+      }
+    }
+    return s;
+  }, [skippedItemIndices, pendingLogs]);
+
   const priorBestsForCards: Record<
     string,
     { heaviestWeight: number | null; bestE1rm: number | null }
@@ -135,7 +207,7 @@ export function SessionWorkArea({
       sessionId={sessionId}
       isComplete={isComplete}
       prescription={prescription}
-      sets={sets}
+      sets={mergedSets}
       tmBySlug={tmBySlug}
       oneRmBySlug={oneRmBySlug}
       loggedItemIndices={loggedSet}
@@ -143,7 +215,7 @@ export function SessionWorkArea({
       loggedSetIdByItemIndex={loggedSetIdByItemIndex}
       priorBests={priorBestsForCards}
       lastSetHints={lastSetHints}
-      addStrengthSet={addStrengthSet}
+      addStrengthSet={logSet}
       fillFromPlan={fillFromPlan}
       hapticsEnabled={hapticsEnabled}
       timerSoundEnabled={timerSoundEnabled}
