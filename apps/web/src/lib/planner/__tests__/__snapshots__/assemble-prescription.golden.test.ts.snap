@@ -96,7 +96,7 @@ exports[`assemblePrescriptionItems — golden master > concurrent_hybrid: week 0
     "movementName": "tempo-rdl",
     "movementSlug": "tempo-rdl",
     "notes": "Heavy, slow reps to make the tendon stronger and more resilient over time.",
-    "reps": 13,
+    "reps": 8,
     "sets": 3,
     "targetRir": {
       "max": 3,
@@ -313,7 +313,7 @@ exports[`assemblePrescriptionItems — golden master > hypertrophy_anchor: week 
     "movementName": "tempo-rdl",
     "movementSlug": "tempo-rdl",
     "notes": "Heavy, slow reps to make the tendon stronger and more resilient over time.",
-    "reps": 12,
+    "reps": 8,
     "sets": 3,
     "targetRir": {
       "max": 3,
@@ -477,7 +477,7 @@ exports[`assemblePrescriptionItems — golden master > hypertrophy_anchor: week 
     "movementName": "tempo-rdl",
     "movementSlug": "tempo-rdl",
     "notes": "Heavy, slow reps to make the tendon stronger and more resilient over time.",
-    "reps": 12,
+    "reps": 8,
     "sets": 3,
     "targetRir": {
       "max": 3,
@@ -591,7 +591,7 @@ exports[`assemblePrescriptionItems — golden master > hypertrophy_anchor: week 
     "movementName": "tempo-calf",
     "movementSlug": "tempo-calf",
     "notes": "Adds direct calves volume — your main lift trains it only lightly, so this tops it up.",
-    "reps": 12,
+    "reps": 8,
     "sets": 3,
     "targetRir": {
       "max": 3,
@@ -791,7 +791,7 @@ exports[`assemblePrescriptionItems — golden master > hypertrophy_anchor: week 
     "movementName": "tempo-rdl",
     "movementSlug": "tempo-rdl",
     "notes": "Heavy, slow reps to make the tendon stronger and more resilient over time.",
-    "reps": 12,
+    "reps": 8,
     "sets": 3,
     "targetRir": {
       "max": 2,
@@ -905,7 +905,7 @@ exports[`assemblePrescriptionItems — golden master > hypertrophy_anchor: week 
     "movementName": "tempo-calf",
     "movementSlug": "tempo-calf",
     "notes": "Adds direct calves volume — your main lift trains it only lightly, so this tops it up.",
-    "reps": 12,
+    "reps": 8,
     "sets": 3,
     "targetRir": {
       "max": 2,
@@ -1001,7 +1001,7 @@ exports[`assemblePrescriptionItems — golden master > maintenance: week 0, dyna
     "movementName": "tempo-rdl",
     "movementSlug": "tempo-rdl",
     "notes": "Heavy, slow reps to make the tendon stronger and more resilient over time.",
-    "reps": 13,
+    "reps": 8,
     "sets": 2,
     "targetRir": {
       "max": 4,
@@ -1146,7 +1146,7 @@ exports[`assemblePrescriptionItems — golden master > rebuild: week 0, dynamic 
     "movementName": "tempo-rdl",
     "movementSlug": "tempo-rdl",
     "notes": "Heavy, slow reps to make the tendon stronger and more resilient over time.",
-    "reps": 14,
+    "reps": 8,
     "sets": 2,
     "targetRir": {
       "max": 3,
@@ -1299,7 +1299,7 @@ exports[`assemblePrescriptionItems — golden master > strength_anchor: deload w
     "movementName": "tempo-rdl",
     "movementSlug": "tempo-rdl",
     "notes": "Heavy, slow reps to make the tendon stronger and more resilient over time.",
-    "reps": 10,
+    "reps": 8,
     "sets": 2,
     "targetRir": {
       "max": 4,
@@ -1488,7 +1488,7 @@ exports[`assemblePrescriptionItems — golden master > strength_anchor: omitMain
     "movementName": "tempo-rdl",
     "movementSlug": "tempo-rdl",
     "notes": "Heavy, slow reps to make the tendon stronger and more resilient over time.",
-    "reps": 10,
+    "reps": 8,
     "sets": 3,
     "targetRir": {
       "max": 3,
@@ -1672,7 +1672,7 @@ exports[`assemblePrescriptionItems — golden master > strength_anchor: week 0, 
     "movementName": "tempo-rdl",
     "movementSlug": "tempo-rdl",
     "notes": "Heavy, slow reps to make the tendon stronger and more resilient over time.",
-    "reps": 10,
+    "reps": 8,
     "sets": 3,
     "targetRir": {
       "max": 3,
@@ -1885,7 +1885,7 @@ exports[`assemblePrescriptionItems — golden master > strength_anchor: week 2 (
     "movementName": "tempo-rdl",
     "movementSlug": "tempo-rdl",
     "notes": "Heavy, slow reps to make the tendon stronger and more resilient over time.",
-    "reps": 10,
+    "reps": 8,
     "sets": 3,
     "targetRir": {
       "max": 2,

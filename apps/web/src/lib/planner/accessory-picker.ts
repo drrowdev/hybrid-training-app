@@ -400,6 +400,9 @@ export function pickAccessoriesForSession({
   // `experienceMin >= 2`, so beginner / novice runs land on the same
   // exclusions plus the new variations-of-variations gates.
   const workingCatalog = filterForExperienceTier(equipmentFiltered, experience);
+  // ADR 0041 — advanced tiers (5y+/10y+ → tier ≥ 3) prefer externally-loaded
+  // variants of floor picks (weighted pull-up, loaded row) over pure bodyweight.
+  const advancedTier = (declaredExperienceToTier(experience) ?? 0) >= 3;
   const picks: AccessoryPick[] = [];
   const usedThisSession = new Set<string>();
   // Within-week movement variety: movements already prescribed EARLIER this
@@ -545,6 +548,9 @@ export function pickAccessoriesForSession({
       // Pull-plane diversity: a second weekly pull picks the complementary
       // vector (a horizontal row after a vertical pull-up).
       avoidPullPlanes: role === "pull" ? weekUsedPullPlanes : undefined,
+      // ADR 0041 — advanced athletes get the loaded variant (weighted pull-up /
+      // loaded row) of a floor pick rather than bodyweight.
+      preferExternalLoad: advancedTier,
       variationSeed: seedFor(),
     });
     if (!candidate) continue;
@@ -902,6 +908,15 @@ type CandidateQuery = {
    */
   demoteCompound?: boolean;
   /**
+   * ADR 0041 — advanced-tier loadable preference. When true, an externally-loaded
+   * candidate (weighted pull-up, loaded row, dip, …) is boosted over a pure-
+   * bodyweight one so a 5y+/10y+ athlete who owns loading kit gets a real strength
+   * stimulus instead of bodyweight × 12 @ RIR 3–4. Soft — falls back to bodyweight
+   * when no loaded variant is feasible. Set on the functional / aesthetic / focus
+   * passes for advanced tiers; default unset → byte-identical.
+   */
+  preferExternalLoad?: boolean;
+  /**
    * AESTHETIC pass only. When true, candidates whose movement `pattern`
    * isn't a hypertrophy-eligible pattern (see `AESTHETIC_ELIGIBLE_PATTERNS`)
    * are excluded, so cardio / plyometric / Olympic / tendon / carry / drill
@@ -1131,6 +1146,16 @@ const RUNNING_HSR_REGION = "foot_ankle_calf";
 // CP-1 (Behm & Sale-grounded; the engine already cites 3–5 reps for plyo).
 const PLYOMETRIC_REPS = 5;
 
+// ADR 0041 — heavy-slow-resistance rep dose. HSR drives tendon adaptation only
+// at ≥~70% 1RM (Bohm 2014; Malliaras 2013), but at a slow tempo the achievable
+// load falls below that threshold past ~6 reps (Morrison & Cook 2022). The
+// durability-floor HSR previously inherited the archetype's hypertrophy rep
+// midpoint (~14), so the load was too light to be true HSR. Pin rep-based HSR to
+// 8 — matching the dedicated tendon-day HSR (3×8 @ 70–85% 1RM) — so the
+// self-selected load lands in the adaptation zone. Hold-based tendon items
+// (isometrics / Copenhagens) ignore this (they override with `holdSec`).
+const HSR_REPS = 8;
+
 // Review fix — bulletproof roles that mark INDIRECT grip / isometric work which
 // must NOT count toward a focus muscle's MEV (nor be selected to fill it): a
 // loaded carry trains grip only as a secondary demand, and an isometric hold
@@ -1211,6 +1236,37 @@ const DURABILITY_ROLE_PRIORITY: Record<BulletproofRole, number> = {
 // an intentional pattern/modality HSR keeps its region even when seated later.
 const REGION_DEDUP_PENALTY = 40;
 
+// ADR 0041 — advanced-tier loadable-variant preference. An advanced athlete who
+// owns loading kit (dip belt, plates, machines) should get the EXTERNALLY-LOADED
+// variant of a floor pick (weighted pull-up, loaded row, dip) rather than a
+// pure-bodyweight version that sits at RIR 3–4 — bodyweight × 12 is a weak
+// stimulus for a 5y+/10y+ trainee. A soft boost (below hard role/equipment/
+// limitation filters, above the value/SFR spread) so the loaded sibling wins its
+// role when feasible, falling back to bodyweight when no loaded option is owned.
+const EXTERNAL_LOAD_PREFERENCE_BONUS = 40;
+
+// Equipment tags that denote PURE-bodyweight movements (no external load). Any
+// other equipment (belt, barbell, dumbbell, cable, machine, kettlebell …) scales
+// load, so `carriesExternalLoad` treats it as loaded. Lowercased for matching.
+const BODYWEIGHT_ONLY_EQUIPMENT: ReadonlySet<string> = new Set([
+  "bar",
+  "bar-neutral",
+  "rings",
+  "bar-or-rings",
+  "bodyweight",
+  "floor",
+  "mat",
+  "wall",
+  "none",
+]);
+
+/** True when a movement carries external/added load (not pure bodyweight). */
+export function carriesExternalLoad(m: CatalogMovement): boolean {
+  const eq = (m.equipment ?? "").toLowerCase().trim();
+  if (eq === "") return false; // unknown/legacy equipment → treat as bodyweight
+  return !BODYWEIGHT_ONLY_EQUIPMENT.has(eq);
+}
+
 /**
  * Movement staple-value, normalised to [0,1]. Compound + loadable = 1.0
  * (a sticky staple — e.g. weighted chin-up / dip / row); a redundant
@@ -1274,6 +1330,11 @@ function candidateScore(m: CatalogMovement, query: CandidateQuery): number {
     score += PULL_PLANE_DIVERSITY_PENALTY;
   }
   if (m.stimToFatigueScore != null) score -= m.stimToFatigueScore; // higher SFR is better
+  // ADR 0041 — advanced-tier loadable preference: favour the externally-loaded
+  // variant of a floor pick (weighted pull-up / loaded row) over pure bodyweight.
+  if (query.preferExternalLoad && carriesExternalLoad(m)) {
+    score -= EXTERNAL_LOAD_PREFERENCE_BONUS;
+  }
   return score;
 }
 
@@ -1327,6 +1388,12 @@ function repsForBucket(
       // the power-emphasis pass's `repsOverride: 5`. The intensity path already
       // attaches RPE 10 (max intent); only the rep COUNT was wrong.
       return PLYOMETRIC_REPS;
+    case "tendon":
+      // ADR 0041 — rep-based HSR (calf raise, RDL, eccentric heel) needs a LOW
+      // rep count so the load can reach the ~70% 1RM tendon-adaptation threshold
+      // (Morrison & Cook 2022). Hold-based tendon items override reps downstream
+      // with `holdSec`, so this only changes the rep-based HSR variants.
+      return HSR_REPS;
     default:
       return Math.round((repRange.min + repRange.max) / 2);
   }
