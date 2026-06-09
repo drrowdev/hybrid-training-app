@@ -126,10 +126,10 @@ export async function applyBwSetSideEffects(args: {
    * can read the user's progression and bump load accordingly.
    */
   externalLoadKg?: number | null;
-}): Promise<void> {
-  if (args.skipped) return;
+}): Promise<{ family: string; tutAccumulated: number } | null> {
+  if (args.skipped) return null;
   const family = args.bw.family as MovementFamily | undefined;
-  if (!family) return;
+  if (!family) return null;
 
   const { data: rowRaw, error: readErr } = await args.supabase
     .from("bw_progress")
@@ -139,9 +139,9 @@ export async function applyBwSetSideEffects(args: {
     .maybeSingle();
   if (readErr) {
     console.error("bw_progress read failed:", readErr.message);
-    return;
+    return null;
   }
-  if (!rowRaw) return; // user isn't on the BW path for this family
+  if (!rowRaw) return null; // user isn't on the BW path for this family
 
   const row = rowRaw as {
     accumulated_tut_seconds: number;
@@ -175,16 +175,23 @@ export async function applyBwSetSideEffects(args: {
 
   const next = [...existing, entry].slice(-CLEAN_REP_HISTORY_CAP);
 
+  const nextTut = (row.accumulated_tut_seconds ?? 0) + delta;
   const { error: upErr } = await args.supabase
     .from("bw_progress")
     .update({
-      accumulated_tut_seconds: (row.accumulated_tut_seconds ?? 0) + delta,
+      accumulated_tut_seconds: nextTut,
       clean_rep_history: next,
       updated_at: new Date().toISOString(),
     })
     .eq("user_id", args.userId)
     .eq("family", family);
-  if (upErr) console.error("bw_progress update failed:", upErr.message);
+  if (upErr) {
+    console.error("bw_progress update failed:", upErr.message);
+    return null;
+  }
+  // Return the new TUT so the caller can hand it back to the client, which
+  // overlays the "Next:" chip counter without a per-set page revalidation.
+  return { family, tutAccumulated: nextTut };
 }
 
 // ── Per-session side effect ─────────────────────────────────────────
