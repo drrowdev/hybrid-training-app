@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { evaluateTmSuggestion, SUGGESTION_DELTA_KG } from "../suggestions";
+import { evaluateTmSuggestion, SUGGESTION_DELTA_KG, AMRAP_CONFIDENCE_REP_CAP } from "../suggestions";
 
 describe("evaluateTmSuggestion (≥2.5 kg gate, conservative)", () => {
   it("suggests when conservative e1RM beats current TM by ≥ 2.5 kg", () => {
@@ -71,5 +71,50 @@ describe("evaluateTmSuggestion (≥2.5 kg gate, conservative)", () => {
       amrapReps: 2,
     });
     expect(r.suggest).toBe(true);
+  });
+});
+
+describe("evaluateTmSuggestion — high-rep confidence gate", () => {
+  it("cap is 5 reps (high-confidence 1RM-estimate window)", () => {
+    expect(AMRAP_CONFIDENCE_REP_CAP).toBe(5);
+  });
+
+  it("suppresses the reported 60 kg × 8 banner case as low-confidence", () => {
+    // The exact banner: current TM 67.5, AMRAP 60 kg × 8. e1RM would clear the
+    // 2.5 kg delta, but 8 reps is past the confidence cap → no suggestion.
+    const r = evaluateTmSuggestion({
+      currentTmKg: 67.5,
+      amrapWeightKg: 60,
+      amrapReps: 8,
+    });
+    expect(r).toEqual({ suggest: false, reason: "low-confidence" });
+  });
+
+  it("suppresses just past the cap (6 reps)", () => {
+    const r = evaluateTmSuggestion({
+      currentTmKg: 100,
+      amrapWeightKg: 100,
+      amrapReps: 6,
+    });
+    expect(r).toEqual({ suggest: false, reason: "low-confidence" });
+  });
+
+  it("still fires at exactly the cap (5 reps) when the bump clears the delta", () => {
+    const r = evaluateTmSuggestion({
+      currentTmKg: 100,
+      amrapWeightKg: 100,
+      amrapReps: 5,
+    });
+    expect(r.suggest).toBe(true);
+  });
+
+  it("a high-rep set is suppressed even with an RPE (8 reps can't be high-confidence)", () => {
+    const r = evaluateTmSuggestion({
+      currentTmKg: 67.5,
+      amrapWeightKg: 60,
+      amrapReps: 8,
+      amrapRpe: 9,
+    });
+    expect(r).toEqual({ suggest: false, reason: "low-confidence" });
   });
 });
