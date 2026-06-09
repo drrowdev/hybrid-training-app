@@ -71,6 +71,7 @@ export function SessionWorkArea({
   supersetByMovementId,
   bodyweightMovementIds,
   accessoryMetaById,
+  customAccessoryOrder,
 }: {
   sessionId: string;
   isComplete: boolean;
@@ -126,6 +127,8 @@ export function SessionWorkArea({
   bodyweightMovementIds?: ReadonlyArray<string>;
   /** Equipment + region per movementId for smart accessory card ordering. */
   accessoryMetaById?: Readonly<Record<string, { equipment: string | null; region: string | null }>>;
+  /** User's saved per-session accessory order (movementIds); overrides the smart default. */
+  customAccessoryOrder?: ReadonlyArray<string> | null;
 }) {
   // `plannedSessionId` and the page-level swap server action aren't
   // surfaced by the card-list layout — they're accepted to preserve the
@@ -275,6 +278,7 @@ export function SessionWorkArea({
       supersetByMovementId={supersetByMovementId}
       bodyweightMovementIds={bodyweightMovementIds}
       accessoryMetaById={accessoryMetaById}
+      customAccessoryOrder={customAccessoryOrder}
     />
   );
 }

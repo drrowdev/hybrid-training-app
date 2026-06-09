@@ -66,3 +66,32 @@ export function smartAccessoryOrder<T>(
     })
     .map((x) => x.item);
 }
+
+/**
+ * Apply a user's saved custom order (a list of movementIds) over a baseline
+ * order. Items whose id appears in `customOrder` are placed first, in that
+ * order; any baseline item NOT in the custom list keeps its baseline position
+ * after the listed ones. This makes the override robust to swaps / freestyle
+ * additions / a prescription that changed since the order was saved — nothing
+ * is ever dropped. An empty / missing custom order returns the baseline as-is.
+ */
+export function applyCustomOrder<T>(
+  baseline: ReadonlyArray<T>,
+  movementIdOf: (item: T) => string,
+  customOrder: ReadonlyArray<string> | null | undefined,
+): T[] {
+  if (!customOrder || customOrder.length === 0) return baseline as T[];
+  const rank = new Map<string, number>();
+  customOrder.forEach((id, i) => {
+    if (!rank.has(id)) rank.set(id, i);
+  });
+  const UNRANKED = customOrder.length;
+  return baseline
+    .map((item, index) => ({
+      item,
+      index,
+      rank: rank.get(movementIdOf(item)) ?? UNRANKED,
+    }))
+    .sort((a, b) => (a.rank !== b.rank ? a.rank - b.rank : a.index - b.index))
+    .map((x) => x.item);
+}

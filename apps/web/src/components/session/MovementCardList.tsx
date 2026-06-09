@@ -12,7 +12,7 @@
  * path here, so the user always sees the same card-shaped UI.
  */
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { Prescription } from "@hta/db";
 import {
   groupPrescriptionByMovement,
@@ -33,8 +33,11 @@ import type {
   fillSessionFromPlan as fillSessionFromPlanAction,
 } from "@/lib/sessions/actions";
 import { removeSessionMovementAction } from "@/lib/sessions/session-movement-actions";
+import { reorderSessionAccessories } from "@/lib/sessions/reorder-actions";
+import { hapticTick } from "@/lib/feedback";
 import type { ResolvedFreestyleMovement } from "@/lib/sessions/freestyle-resolver";
 import {
+  applyCustomOrder,
   smartAccessoryOrder,
   type AccessoryMeta,
 } from "@/lib/sessions/accessory-order";
@@ -110,6 +113,11 @@ export type MovementCardListProps = {
    * "station" (smart ordering). Omitted ⇒ keep the engine's pass order.
    */
   accessoryMetaById?: Readonly<Record<string, AccessoryMeta>>;
+  /**
+   * User's saved per-session accessory order (movementIds). Applied OVER the
+   * smart default, so the user's manual reorder wins. Omitted ⇒ smart default.
+   */
+  customAccessoryOrder?: ReadonlyArray<string> | null;
 };
 
 export function MovementCardList({
@@ -136,11 +144,18 @@ export function MovementCardList({
   supersetByMovementId,
   bodyweightMovementIds,
   accessoryMetaById,
+  customAccessoryOrder,
 }: MovementCardListProps) {
   const bodyweightIdSet = useMemo(
     () => new Set(bodyweightMovementIds ?? []),
     [bodyweightMovementIds],
   );
+  // Optimistic local accessory order (movementIds). Set the instant the user
+  // taps move; the server write settles in the background. `null` = use the
+  // server-saved `customAccessoryOrder` (or the smart default when that's null).
+  const [localOrder, setLocalOrder] = useState<string[] | null>(null);
+  const effectiveOrder = localOrder ?? customAccessoryOrder ?? null;
+  const hasManualOrder = (effectiveOrder?.length ?? 0) > 0;
   const groups = useMemo(
     () => groupPrescriptionByMovement(prescription),
     [prescription],
@@ -265,12 +280,14 @@ export function MovementCardList({
     }
     // Smart ordering: cluster accessory cards by equipment "station" so they're
     // done back-to-back (and antagonist pairs land adjacent), instead of the
-    // engine's priority-pass order. Presentational only — item indices unchanged.
-    const orderedAccessory = accessoryMetaById
+    // engine's priority-pass order. Then apply the user's manual reorder OVER
+    // that default. Presentational only — item indices unchanged.
+    const smart = accessoryMetaById
       ? smartAccessoryOrder(accessory, (g) => g.movementId, accessoryMetaById)
       : accessory;
+    const orderedAccessory = applyCustomOrder(smart, (g) => g.movementId, effectiveOrder);
     return { mainGroups: main, accessoryGroups: orderedAccessory, otherGroups: other };
-  }, [groups, accessoryMetaById]);
+  }, [groups, accessoryMetaById, effectiveOrder]);
 
   // First prescribed card with no logged sets across the whole session
   // shows the session-level "Same as planned" button.
@@ -288,9 +305,36 @@ export function MovementCardList({
   // server-side from the unpaired prescription; the underlying items are NOT
   // reordered, so the index-based set matching is untouched. Empty map (pref
   // off / no pairs) => every entry is solo, original order preserved.
+  //
+  // Once the user MANUALLY reorders, we respect their literal order — the
+  // auto-superset re-clustering is suppressed so it can't fight their choice.
   const accessorySegments = useMemo(
-    () => segmentAccessoryGroups(accessoryGroups, supersetByMovementId ?? EMPTY_SUPERSET_MAP),
-    [accessoryGroups, supersetByMovementId],
+    () =>
+      segmentAccessoryGroups(
+        accessoryGroups,
+        hasManualOrder ? EMPTY_SUPERSET_MAP : supersetByMovementId ?? EMPTY_SUPERSET_MAP,
+      ),
+    [accessoryGroups, supersetByMovementId, hasManualOrder],
+  );
+
+  // Move an accessory card up/down. Recomputes the full movementId order from
+  // the current (possibly smart/custom) accessory order, swaps the neighbour,
+  // applies it optimistically, and persists in the background. Display-only.
+  const reorderEnabled = !isComplete && accessoryGroups.length > 1;
+  const moveAccessory = useCallback(
+    (movementId: string, dir: -1 | 1) => {
+      const ids = accessoryGroups.map((g) => g.movementId);
+      const from = ids.indexOf(movementId);
+      const to = from + dir;
+      if (from < 0 || to < 0 || to >= ids.length) return;
+      [ids[from], ids[to]] = [ids[to]!, ids[from]!];
+      setLocalOrder(ids);
+      void reorderSessionAccessories({ sessionId, movementIds: ids }).catch(() => {
+        // Best-effort persistence; the optimistic order still stands for the
+        // session even if the write fails (a reload would revert it).
+      });
+    },
+    [accessoryGroups, sessionId],
   );
 
   // Accessory movementIds — the only bucket that surfaces the
@@ -334,6 +378,24 @@ export function MovementCardList({
     );
   };
 
+  const renderAccessoryCard = (group: MovementGroup) => {
+    if (!reorderEnabled) return renderCard(group);
+    const ids = accessoryGroups.map((g) => g.movementId);
+    const pos = ids.indexOf(group.movementId);
+    return (
+      <ReorderableAccessory
+        key={group.movementId}
+        movementId={group.movementId}
+        canMoveUp={pos > 0}
+        canMoveDown={pos >= 0 && pos < ids.length - 1}
+        onMove={moveAccessory}
+        hapticsEnabled={hapticsEnabled}
+      >
+        {renderCard(group)}
+      </ReorderableAccessory>
+    );
+  };
+
   return (
     <div data-testid="movement-card-list" style={{ display: "grid", gap: 12 }}>
       {mainGroups.length > 0 && (
@@ -352,7 +414,7 @@ export function MovementCardList({
           />
           {accessorySegments.map((seg) =>
             seg.kind === "solo" ? (
-              renderCard(seg.group)
+              renderAccessoryCard(seg.group)
             ) : (
               <SupersetCardBracket key={seg.groupId} groupId={seg.groupId}>
                 {seg.groups.map(renderCard)}
@@ -386,6 +448,83 @@ export function MovementCardList({
         />
       ))}
 
+    </div>
+  );
+}
+
+/**
+ * Reorder wrapper for an accessory card. Mobile-first: up/down move buttons that
+ * work with a tap (HTML5 drag-and-drop does NOT fire from touch on iOS, so the
+ * buttons are the real interaction — same reason the block wizard pairs drag
+ * with a tap path). Desktop also gets native HTML5 drag as an augmentation,
+ * matching the existing Step5Schedule / PlanRedesign pattern (no library).
+ */
+function ReorderableAccessory({
+  movementId,
+  canMoveUp,
+  canMoveDown,
+  onMove,
+  hapticsEnabled,
+  children,
+}: {
+  movementId: string;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMove: (movementId: string, dir: -1 | 1) => void;
+  hapticsEnabled: boolean;
+  children: React.ReactNode;
+}) {
+  const move = (dir: -1 | 1) => {
+    hapticTick(hapticsEnabled);
+    onMove(movementId, dir);
+  };
+  const btnStyle: React.CSSProperties = {
+    all: "unset",
+    cursor: "pointer",
+    width: 28,
+    height: 24,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 6,
+    color: "var(--cp-text-muted)",
+    fontSize: 13,
+    lineHeight: 1,
+    border: "1px solid var(--cp-border)",
+    background: "var(--cp-surface)",
+  };
+  const disabledStyle: React.CSSProperties = { opacity: 0.3, cursor: "default" };
+  return (
+    <div
+      data-testid={`accessory-reorder-${movementId}`}
+      style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center" }}
+    >
+      <div style={{ minWidth: 0 }}>{children}</div>
+      <div
+        style={{ display: "flex", flexDirection: "column", gap: 4 }}
+        aria-label="Reorder accessory"
+      >
+        <button
+          type="button"
+          aria-label="Move up"
+          data-testid={`accessory-move-up-${movementId}`}
+          onClick={() => move(-1)}
+          disabled={!canMoveUp}
+          style={canMoveUp ? btnStyle : { ...btnStyle, ...disabledStyle }}
+        >
+          ↑
+        </button>
+        <button
+          type="button"
+          aria-label="Move down"
+          data-testid={`accessory-move-down-${movementId}`}
+          onClick={() => move(1)}
+          disabled={!canMoveDown}
+          style={canMoveDown ? btnStyle : { ...btnStyle, ...disabledStyle }}
+        >
+          ↓
+        </button>
+      </div>
     </div>
   );
 }
