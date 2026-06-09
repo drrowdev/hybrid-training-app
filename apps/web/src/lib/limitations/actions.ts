@@ -10,7 +10,7 @@ import {
   applyPrescriptionUpdates,
   getActiveBlockRemainingSessions,
 } from "@/lib/planner/remaining-sessions";
-import { buildLimitationResponse } from "./response";
+import { buildLimitationResponse, buildSelectedUpdates } from "./response";
 import { REGIONS, resolveRegion } from "./region";
 import {
   limitationFormSchema,
@@ -456,4 +456,72 @@ export async function applyLimitationResponseResult(): Promise<ApplyLimitationRe
     dropped: plan.drops.length,
     sessions: updated,
   };
+}
+
+/**
+ * Per-item variant of the apply action (ADR 0014 review UX). The review card
+ * sends the set of swap/drop keys the user kept checked. We RE-DERIVE the full
+ * plan from the user's current live state — never trusting the client for the
+ * content of any change — then `buildSelectedUpdates` narrows it to only the
+ * approved keys before persisting. Unknown / stale keys are ignored, so the
+ * client can only ever apply a subset of what the engine independently deemed
+ * safe. An empty / all-stale selection is a no-op.
+ */
+export async function applyLimitationResponseSelection(
+  selectedKeys: string[],
+): Promise<ApplyLimitationResult> {
+  const parsed = z
+    .array(z.string().min(1).max(120))
+    .max(1000)
+    .safeParse(selectedKeys);
+  if (!parsed.success) return { ok: false, error: "Invalid selection" };
+  const selected = new Set(parsed.data);
+  if (selected.size === 0) {
+    return { ok: true, swapped: 0, dropped: 0, sessions: 0 };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) redirect("/login");
+
+  const active = await getActiveBlockRemainingSessions(supabase, user.id);
+  if (!active || active.remaining.length === 0) {
+    return { ok: true, swapped: 0, dropped: 0, sessions: 0 };
+  }
+
+  const ctx = await readLimitationsContext(supabase, user.id);
+  const hasLimits =
+    ctx.blockedRegions.size > 0 ||
+    ctx.blockedMuscles.size > 0 ||
+    ctx.blockedMovementIds.size > 0;
+  if (!hasLimits) return { ok: true, swapped: 0, dropped: 0, sessions: 0 };
+
+  const catalog = await loadPickerCatalog(supabase);
+  const plan = buildLimitationResponse(active.remaining, catalog, ctx);
+  const { updates, swapped, dropped } = buildSelectedUpdates(
+    active.remaining,
+    plan,
+    selected,
+  );
+  if (updates.length === 0) {
+    return { ok: true, swapped: 0, dropped: 0, sessions: 0 };
+  }
+
+  const { updated, error } = await applyPrescriptionUpdates(
+    supabase,
+    user.id,
+    active.blockId,
+    updates,
+  );
+  if (error) return { ok: false, error };
+
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
+  revalidatePath("/app/sessions");
+  revalidatePath("/app/settings/limitations");
+  revalidatePath("/app/recovery/injuries");
+
+  return { ok: true, swapped, dropped, sessions: updated };
 }

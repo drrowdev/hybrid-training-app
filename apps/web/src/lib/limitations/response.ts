@@ -35,6 +35,7 @@ import {
 } from "@/lib/planner/accessory-picker";
 import type { LimitationsContext } from "@/lib/planner/limitations-context";
 import type { RemainingSession } from "@/lib/planner/remaining-sessions";
+import { limitationItemKey } from "./item-key";
 
 /** Discretionary kinds we will auto-swap or auto-drop. */
 const SWAPPABLE_KINDS: ReadonlySet<PrescriptionItemKind> = new Set([
@@ -65,6 +66,7 @@ export type LimitationSwap = {
   fromMovementId: string;
   fromName: string;
   toMovementId: string;
+  toMovementSlug: string;
   toName: string;
 };
 
@@ -257,6 +259,7 @@ export function buildLimitationResponse(
           fromMovementId: item.movementId,
           fromName,
           toMovementId: replacement.id,
+          toMovementSlug: replacement.slug,
           toName: replacement.displayName,
         });
         nextItems.push({
@@ -293,4 +296,97 @@ export function buildLimitationResponse(
   }
 
   return { swaps, drops, warns, updates };
+}
+
+/** Result of narrowing a full plan to a user-selected subset of items. */
+export type SelectedLimitationUpdates = {
+  updates: Array<{ id: string; prescription: Prescription }>;
+  swapped: number;
+  dropped: number;
+};
+
+/**
+ * Narrow a full remediation plan to the swaps/drops the user actually
+ * approved, and rebuild the affected sessions' prescriptions from their
+ * ORIGINAL items applying only those approved changes.
+ *
+ * Pure and deterministic. The server re-derives `plan` from live state
+ * (never trusting the client) and passes the user's checked keys here as a
+ * filter — unknown / stale keys are silently ignored, so a client can only
+ * ever ask for a SUBSET of what the engine independently decided is safe.
+ *
+ * Reconstruction is from `session.prescription.items` (the same array the
+ * plan's `itemIndex` values index into), so a deselected swap/drop simply
+ * leaves its original item in place. Replacements are always limitation-safe
+ * while every swapped/dropped offender is unsafe, so a kept offender can
+ * never collide with another row's chosen replacement.
+ */
+export function buildSelectedUpdates(
+  sessions: ReadonlyArray<RemainingSession>,
+  plan: LimitationResponsePlan,
+  selectedKeys: ReadonlySet<string>,
+): SelectedLimitationUpdates {
+  const sessionById = new Map(sessions.map((s) => [s.id, s]));
+  const swapsBySession = new Map<string, Map<number, LimitationSwap>>();
+  const dropsBySession = new Map<string, Set<number>>();
+  let swapped = 0;
+  let dropped = 0;
+
+  for (const s of plan.swaps) {
+    if (!selectedKeys.has(limitationItemKey(s.sessionId, s.itemIndex))) continue;
+    let perSession = swapsBySession.get(s.sessionId);
+    if (!perSession) {
+      perSession = new Map();
+      swapsBySession.set(s.sessionId, perSession);
+    }
+    perSession.set(s.itemIndex, s);
+    swapped += 1;
+  }
+  for (const d of plan.drops) {
+    if (!selectedKeys.has(limitationItemKey(d.sessionId, d.itemIndex))) continue;
+    let perSession = dropsBySession.get(d.sessionId);
+    if (!perSession) {
+      perSession = new Set();
+      dropsBySession.set(d.sessionId, perSession);
+    }
+    perSession.add(d.itemIndex);
+    dropped += 1;
+  }
+
+  const updates: Array<{ id: string; prescription: Prescription }> = [];
+  const touchedSessionIds = new Set<string>([
+    ...swapsBySession.keys(),
+    ...dropsBySession.keys(),
+  ]);
+
+  for (const sessionId of touchedSessionIds) {
+    const session = sessionById.get(sessionId);
+    if (!session) continue;
+    const sessionSwaps = swapsBySession.get(sessionId) ?? new Map();
+    const sessionDrops = dropsBySession.get(sessionId) ?? new Set<number>();
+    const items = session.prescription.items ?? [];
+    const nextItems: PrescriptionItem[] = [];
+
+    items.forEach((item, itemIndex) => {
+      if (sessionDrops.has(itemIndex)) return; // approved drop — remove it.
+      const swap = sessionSwaps.get(itemIndex);
+      if (swap) {
+        nextItems.push({
+          ...item,
+          movementId: swap.toMovementId,
+          movementSlug: swap.toMovementSlug,
+          movementName: swap.toName,
+        });
+        return;
+      }
+      nextItems.push(item);
+    });
+
+    updates.push({
+      id: sessionId,
+      prescription: { ...session.prescription, items: nextItems },
+    });
+  }
+
+  return { updates, swapped, dropped };
 }

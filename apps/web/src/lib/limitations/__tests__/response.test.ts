@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import type { CatalogMovement } from "@/lib/planner/accessory-picker";
 import type { LimitationsContext } from "@/lib/planner/limitations-context";
 import type { RemainingSession } from "@/lib/planner/remaining-sessions";
-import { buildLimitationResponse, deriveReplacement } from "../response";
+import { buildLimitationResponse, buildSelectedUpdates, deriveReplacement } from "../response";
+import { limitationItemKey } from "../item-key";
 
 function mv(
   over: Partial<CatalogMovement> & { id: string; slug: string },
@@ -220,5 +221,82 @@ describe("deriveReplacement", () => {
       new Set(["latpull", "row"]),
     );
     expect(repl).toBeNull();
+  });
+});
+
+describe("buildSelectedUpdates — per-item review (Option 2)", () => {
+  // One session with a swappable offender (chinup → lat alt) at index 0 and a
+  // drop-only offender (curl, no safe like-for-like) at index 1, under an
+  // elbow-region block.
+  const sessions: RemainingSession[] = [
+    session({
+      id: "s1",
+      items: [
+        { movementId: "chinup", kind: "accessory", sets: 4, reps: 8 },
+        { movementId: "curl", kind: "accessory", sets: 3, reps: 12 },
+      ],
+    }),
+  ];
+  const context = ctx({ blockedRegions: new Set(["elbow_forearm"]) });
+  const plan = buildLimitationResponse(sessions, CATALOG, context);
+  const swapKey = limitationItemKey("s1", 0);
+  const dropKey = limitationItemKey("s1", 1);
+
+  it("the full plan proposes a swap at 0 and a drop at 1", () => {
+    expect(plan.swaps.map((s) => s.itemIndex)).toEqual([0]);
+    expect(plan.drops.map((d) => d.itemIndex)).toEqual([1]);
+  });
+
+  it("applies only the checked swap, keeping the unchecked drop in place", () => {
+    const out = buildSelectedUpdates(sessions, plan, new Set([swapKey]));
+    expect(out.swapped).toBe(1);
+    expect(out.dropped).toBe(0);
+    expect(out.updates).toHaveLength(1);
+    const items = out.updates[0].prescription.items;
+    // curl (index 1) is untouched; chinup (index 0) is replaced.
+    expect(items).toHaveLength(2);
+    expect(items[0].movementId).toBe(plan.swaps[0].toMovementId);
+    expect(items[0].sets).toBe(4);
+    expect(items[1].movementId).toBe("curl");
+  });
+
+  it("applies only the checked drop, keeping the unchecked swap in place", () => {
+    const out = buildSelectedUpdates(sessions, plan, new Set([dropKey]));
+    expect(out.swapped).toBe(0);
+    expect(out.dropped).toBe(1);
+    const items = out.updates[0].prescription.items;
+    // chinup (index 0) stays as-is; curl (index 1) is removed.
+    expect(items).toHaveLength(1);
+    expect(items[0].movementId).toBe("chinup");
+  });
+
+  it("applies both when both are checked", () => {
+    const out = buildSelectedUpdates(sessions, plan, new Set([swapKey, dropKey]));
+    expect(out.swapped).toBe(1);
+    expect(out.dropped).toBe(1);
+    const items = out.updates[0].prescription.items;
+    expect(items).toHaveLength(1);
+    expect(items[0].movementId).toBe(plan.swaps[0].toMovementId);
+  });
+
+  it("is a no-op when nothing is checked", () => {
+    const out = buildSelectedUpdates(sessions, plan, new Set());
+    expect(out).toEqual({ updates: [], swapped: 0, dropped: 0 });
+  });
+
+  it("ignores unknown / stale keys", () => {
+    const out = buildSelectedUpdates(
+      sessions,
+      plan,
+      new Set([limitationItemKey("s1", 99), "garbage"]),
+    );
+    expect(out).toEqual({ updates: [], swapped: 0, dropped: 0 });
+  });
+
+  it("carries the replacement slug onto the rewritten item", () => {
+    const out = buildSelectedUpdates(sessions, plan, new Set([swapKey]));
+    const swapped = out.updates[0].prescription.items[0];
+    expect(swapped.movementSlug).toBe(plan.swaps[0].toMovementSlug);
+    expect(swapped.movementName).toBe(plan.swaps[0].toName);
   });
 });
