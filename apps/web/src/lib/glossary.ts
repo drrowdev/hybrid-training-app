@@ -131,7 +131,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   e1rm: {
     title: "Estimated 1RM (e1RM)",
     body:
-      "Predicted one-rep max from a top set. We take the smaller of the Epley and Brzycki formulas (and use the RPE chart when RPE is logged) to stay conservative. Used as your strength signal between true tests.",
+      "Predicted one-rep max from a top set. We take the more conservative of two standard rep-to-max estimates (and use an RPE-based chart when RPE is logged) to avoid over-stating it. Used as your strength signal between true tests.",
   },
   rpe: {
     title: "Rate of perceived exertion (RPE)",
