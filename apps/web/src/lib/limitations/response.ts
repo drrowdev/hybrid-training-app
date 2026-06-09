@@ -33,9 +33,17 @@ import {
   loadsBlockedMuscle,
   loadsBlockedRegion,
 } from "@/lib/planner/accessory-picker";
+import {
+  isEquipmentAvailable,
+  resolveRequiredEquipment,
+} from "@/lib/planner/equipment-requirements";
+import type { Equipment } from "@/lib/settings/equipment-schema";
 import type { LimitationsContext } from "@/lib/planner/limitations-context";
 import type { RemainingSession } from "@/lib/planner/remaining-sessions";
 import { limitationItemKey } from "./item-key";
+
+/** Max alternative swap targets offered per movement (the user picks one). */
+const MAX_ALTERNATIVES = 5;
 
 /** Discretionary kinds we will auto-swap or auto-drop. */
 const SWAPPABLE_KINDS: ReadonlySet<PrescriptionItemKind> = new Set([
@@ -56,6 +64,13 @@ export type LimitationOffenceReason =
   | "blocked_region"
   | "blocked_muscle";
 
+/** A candidate swap target the user can choose between. */
+export type LimitationSwapTarget = {
+  movementId: string;
+  movementSlug: string;
+  name: string;
+};
+
 export type LimitationSwap = {
   sessionId: string;
   weekIndex: number;
@@ -65,9 +80,16 @@ export type LimitationSwap = {
   reason: LimitationOffenceReason;
   fromMovementId: string;
   fromName: string;
+  /** Default (top-ranked) target. Also alternatives[0]. */
   toMovementId: string;
   toMovementSlug: string;
   toName: string;
+  /**
+   * Ranked, limitation-safe + equipment-available alternatives the user may
+   * pick from (default first). Session-agnostic, so every occurrence of the
+   * same offending movement offers the same choice.
+   */
+  alternatives: LimitationSwapTarget[];
 };
 
 export type LimitationDrop = {
@@ -148,31 +170,40 @@ const REPLACEMENT_EXCLUDED_PATTERNS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Choose a limitation-safe replacement for an offending discretionary
- * movement. Prefers movements that hit the same training target (shared
- * non-blocked primary muscles / roles), the same body region and movement
- * pattern, and never re-introduces a flagged tissue or a movement already in
- * the session. Deterministic: ties break on movement id.
+ * Rank limitation-safe replacements for an offending discretionary movement,
+ * best-first. Candidates must share a training target (muscle / role), be
+ * limitation-safe, be an accessory-appropriate pattern, and — when an equipment
+ * profile is supplied — be doable with the user's gear (so we never recommend a
+ * Leg Extension to someone with no machines). Same body region + pattern +
+ * supported variants score higher. Deterministic: ties break on movement id.
  *
- * Note: `isSupported` is a soft SCORING preference, NOT a hard filter. Most of
- * the catalog (all free-weight and bodyweight movements) is `isSupported=false`,
- * so gating on it eliminated every otherwise-perfect candidate and forced a drop
- * (e.g. an adductor flag dropped Spanish Squat even though Leg Extension / Front
- * Squat are safe, same-target swaps).
+ * `isSupported` is a soft SCORING preference, NOT a hard filter — most of the
+ * catalog (all free-weight + bodyweight movements) is `isSupported=false`, so
+ * gating on it eliminated every otherwise-perfect candidate.
  */
-export function deriveReplacement(
+export function deriveReplacements(
   offending: CatalogMovement,
   catalog: ReadonlyArray<CatalogMovement>,
   ctx: LimitationsContext,
-  sessionMovementIds: ReadonlySet<string>,
-): CatalogMovement | null {
-  let best: CatalogMovement | null = null;
-  let bestScore = -Infinity;
+  opts: {
+    equipment?: Equipment;
+    excludeMovementIds?: ReadonlySet<string>;
+    limit?: number;
+  } = {},
+): CatalogMovement[] {
+  const { equipment, excludeMovementIds, limit = MAX_ALTERNATIVES } = opts;
+  const scored: Array<{ mv: CatalogMovement; score: number }> = [];
   for (const cand of catalog) {
     if (cand.id === offending.id) continue;
-    if (sessionMovementIds.has(cand.id)) continue;
+    if (excludeMovementIds?.has(cand.id)) continue;
     if (cand.pattern && REPLACEMENT_EXCLUDED_PATTERNS.has(cand.pattern)) continue;
     if (!isSafe(cand, ctx)) continue;
+    if (
+      equipment &&
+      !isEquipmentAvailable(resolveRequiredEquipment(cand), equipment)
+    ) {
+      continue;
+    }
 
     const sharedMuscles = cand.primaryMuscles.filter((m) =>
       offending.primaryMuscles.includes(m),
@@ -200,12 +231,29 @@ export function deriveReplacement(
     // preferred (DC-O5) — a tie-breaker bonus, not a gate.
     if (cand.isSupported) score += 1;
 
-    if (score > bestScore || (score === bestScore && best && cand.id < best.id)) {
-      best = cand;
-      bestScore = score;
-    }
+    scored.push({ mv: cand, score });
   }
-  return best;
+  scored.sort((a, b) =>
+    b.score !== a.score ? b.score - a.score : a.mv.id < b.mv.id ? -1 : 1,
+  );
+  return scored.slice(0, limit).map((s) => s.mv);
+}
+
+/**
+ * Single best limitation-safe replacement (or null). Thin wrapper over
+ * `deriveReplacements` retained for the generation-time callers and tests.
+ */
+export function deriveReplacement(
+  offending: CatalogMovement,
+  catalog: ReadonlyArray<CatalogMovement>,
+  ctx: LimitationsContext,
+  sessionMovementIds: ReadonlySet<string>,
+): CatalogMovement | null {
+  return (
+    deriveReplacements(offending, catalog, ctx, {
+      excludeMovementIds: sessionMovementIds,
+    })[0] ?? null
+  );
 }
 
 /**
@@ -216,6 +264,7 @@ export function buildLimitationResponse(
   sessions: ReadonlyArray<RemainingSession>,
   catalog: ReadonlyArray<CatalogMovement>,
   ctx: LimitationsContext,
+  equipment?: Equipment,
 ): LimitationResponsePlan {
   const hasLimits =
     ctx.blockedRegions.size > 0 ||
@@ -231,9 +280,21 @@ export function buildLimitationResponse(
   const warns: LimitationWarn[] = [];
   const updates: Array<{ id: string; prescription: Prescription }> = [];
 
+  // Alternatives are session-agnostic + equipment-filtered, so every occurrence
+  // of the same offending movement offers the same ranked choice. Memoised.
+  const altCache = new Map<string, LimitationSwapTarget[]>();
+  const alternativesFor = (mv: CatalogMovement): LimitationSwapTarget[] => {
+    const cached = altCache.get(mv.id);
+    if (cached) return cached;
+    const ranked = deriveReplacements(mv, catalog, ctx, { equipment }).map(
+      (r) => ({ movementId: r.id, movementSlug: r.slug, name: r.displayName }),
+    );
+    altCache.set(mv.id, ranked);
+    return ranked;
+  };
+
   for (const session of sessions) {
     const items = session.prescription.items ?? [];
-    const sessionMovementIds = new Set(items.map((it) => it.movementId));
     let changed = false;
     const nextItems: PrescriptionItem[] = [];
 
@@ -269,13 +330,10 @@ export function buildLimitationResponse(
         return;
       }
 
-      const replacement = mv
-        ? deriveReplacement(mv, catalog, ctx, sessionMovementIds)
-        : null;
+      const alternatives = mv ? alternativesFor(mv) : [];
+      const top = alternatives[0];
 
-      if (replacement) {
-        sessionMovementIds.delete(item.movementId);
-        sessionMovementIds.add(replacement.id);
+      if (top) {
         swaps.push({
           sessionId: session.id,
           weekIndex: session.weekIndex,
@@ -285,15 +343,16 @@ export function buildLimitationResponse(
           reason,
           fromMovementId: item.movementId,
           fromName,
-          toMovementId: replacement.id,
-          toMovementSlug: replacement.slug,
-          toName: replacement.displayName,
+          toMovementId: top.movementId,
+          toMovementSlug: top.movementSlug,
+          toName: top.name,
+          alternatives,
         });
         nextItems.push({
           ...item,
-          movementId: replacement.id,
-          movementSlug: replacement.slug,
-          movementName: replacement.displayName,
+          movementId: top.movementId,
+          movementSlug: top.movementSlug,
+          movementName: top.name,
         });
         changed = true;
         return;
@@ -310,7 +369,6 @@ export function buildLimitationResponse(
         fromMovementId: item.movementId,
         fromName,
       });
-      sessionMovementIds.delete(item.movementId);
       changed = true;
     });
 
@@ -352,6 +410,14 @@ export function buildSelectedUpdates(
   sessions: ReadonlyArray<RemainingSession>,
   plan: LimitationResponsePlan,
   selectedKeys: ReadonlySet<string>,
+  /**
+   * Optional per-offending-movement target override (fromMovementId →
+   * chosen toMovementId). A choice is honoured ONLY when it appears in that
+   * swap's re-derived `alternatives` — so the client can never inject an
+   * unsafe / unavailable movement; it can only pick among what the engine
+   * independently offered. Unknown choices fall back to the default target.
+   */
+  choices: ReadonlyMap<string, string> = new Map(),
 ): SelectedLimitationUpdates {
   const sessionById = new Map(sessions.map((s) => [s.id, s]));
   const swapsBySession = new Map<string, Map<number, LimitationSwap>>();
@@ -389,8 +455,10 @@ export function buildSelectedUpdates(
   for (const sessionId of touchedSessionIds) {
     const session = sessionById.get(sessionId);
     if (!session) continue;
-    const sessionSwaps = swapsBySession.get(sessionId) ?? new Map();
-    const sessionDrops = dropsBySession.get(sessionId) ?? new Set<number>();
+    const sessionSwaps: Map<number, LimitationSwap> =
+      swapsBySession.get(sessionId) ?? new Map();
+    const sessionDrops: Set<number> =
+      dropsBySession.get(sessionId) ?? new Set<number>();
     const items = session.prescription.items ?? [];
     const nextItems: PrescriptionItem[] = [];
 
@@ -398,11 +466,23 @@ export function buildSelectedUpdates(
       if (sessionDrops.has(itemIndex)) return; // approved drop — remove it.
       const swap = sessionSwaps.get(itemIndex);
       if (swap) {
-        nextItems.push({
-          ...item,
+        // Resolve the target: a user choice is honoured only if it's one of the
+        // engine-offered alternatives for this offending movement.
+        const chosenId = choices.get(swap.fromMovementId);
+        const chosen =
+          chosenId != null
+            ? swap.alternatives.find((a) => a.movementId === chosenId)
+            : undefined;
+        const target = chosen ?? {
           movementId: swap.toMovementId,
           movementSlug: swap.toMovementSlug,
-          movementName: swap.toName,
+          name: swap.toName,
+        };
+        nextItems.push({
+          ...item,
+          movementId: target.movementId,
+          movementSlug: target.movementSlug,
+          movementName: target.name,
         });
         return;
       }
