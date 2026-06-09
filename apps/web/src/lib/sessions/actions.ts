@@ -97,6 +97,10 @@ const setSchema = z.object({
     .enum(["weighted_vest", "dip_belt", "ankle_weights", "band_assist"])
     .optional()
     .nullable(),
+  // Offline-logging idempotency key (migration 0097). Client-generated UUID set
+  // on the outbox path so a retried flush can't double-insert. Absent on the
+  // regular online path → byte-identical behaviour.
+  clientLogId: z.string().uuid().optional().nullable(),
 });
 
 export type AddStrengthSetResult = {
@@ -140,6 +144,7 @@ export async function addStrengthSet(
     skipReason: formData.get("skipReason") || undefined,
     externalLoadKg: formData.get("externalLoadKg") ?? undefined,
     loadSource: formData.get("loadSource") || undefined,
+    clientLogId: formData.get("clientLogId") || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
 
@@ -164,39 +169,68 @@ export async function addStrengthSet(
     .select("id", { count: "exact", head: true })
     .eq("session_id", parsed.data.sessionId);
 
+  const clientLogId = parsed.data.clientLogId ?? null;
+  const insertPayload = {
+    session_id: parsed.data.sessionId,
+    movement_id: parsed.data.movementId,
+    set_index: count ?? 0,
+    set_kind: parsed.data.setKind,
+    // Skipped rows always persist as 0 / 0 / null rpe — every engine
+    // helper either ignores them (.eq('skipped', false)) or treats
+    // the zero weight as a no-op.
+    weight_kg: isSkipped ? 0 : (parsed.data.weightKg ?? null),
+    reps: isSkipped ? 0 : (parsed.data.reps ?? null),
+    duration_sec: isSkipped ? null : (parsed.data.durationSec ?? null),
+    distance_m: isSkipped ? null : (parsed.data.distanceM ?? null),
+    rpe: isSkipped ? null : (parsed.data.rpe ?? null),
+    notes: parsed.data.notes ?? null,
+    prescription_item_index: parsed.data.prescriptionItemIndex ?? null,
+    skipped: isSkipped,
+    skip_reason: isSkipped ? (parsed.data.skipReason ?? null) : null,
+    client_log_id: clientLogId,
+  };
+
+  // Insert the row. When the client supplies a `client_log_id` (offline outbox
+  // replay), a retried flush of an already-persisted set must NOT double-insert
+  // or re-run the BW side-effects. We insert and treat a unique-violation on
+  // client_log_id (Postgres 23505) as an idempotent success, returning the
+  // existing row's id and skipping the side-effects.
   const { data: inserted, error } = await supabase
     .from("set_logs")
-    .insert({
-      session_id: parsed.data.sessionId,
-      movement_id: parsed.data.movementId,
-      set_index: count ?? 0,
-      set_kind: parsed.data.setKind,
-      // Skipped rows always persist as 0 / 0 / null rpe — every engine
-      // helper either ignores them (.eq('skipped', false)) or treats
-      // the zero weight as a no-op.
-      weight_kg: isSkipped ? 0 : (parsed.data.weightKg ?? null),
-      reps: isSkipped ? 0 : (parsed.data.reps ?? null),
-      duration_sec: isSkipped ? null : (parsed.data.durationSec ?? null),
-      distance_m: isSkipped ? null : (parsed.data.distanceM ?? null),
-      rpe: isSkipped ? null : (parsed.data.rpe ?? null),
-      notes: parsed.data.notes ?? null,
-      prescription_item_index: parsed.data.prescriptionItemIndex ?? null,
-      skipped: isSkipped,
-      skip_reason: isSkipped ? (parsed.data.skipReason ?? null) : null,
-    })
+    .insert(insertPayload)
     // Return the persisted id so the client overlay can hold the REAL set id
     // (for the edit link) without waiting on a full page revalidation.
     .select("id")
     .single();
 
-  if (error) return { error: error.message };
+  let isNewRow = true;
+  let rowId: string | undefined = inserted?.id as string | undefined;
+
+  if (error) {
+    if (clientLogId && (error as { code?: string }).code === "23505") {
+      // Duplicate replay — fetch the row already persisted under this key.
+      const { data: existing } = await supabase
+        .from("set_logs")
+        .select("id")
+        .eq("client_log_id", clientLogId)
+        .maybeSingle();
+      if (!existing) return { error: error.message };
+      rowId = existing.id as string;
+      isNewRow = false;
+    } else {
+      return { error: error.message };
+    }
+  }
+  if (!rowId) return { error: "Insert failed" };
 
   // Bodyweight Phase 4 — accumulate TUT + clean_rep_history when the
   // logged set was prescribed via a BW main-lift item. Failures here
-  // must never block the logging UI.
+  // must never block the logging UI. Skipped on a duplicate replay so the
+  // TUT counter isn't double-incremented.
   let bwTut: { family: string; tutAccumulated: number } | undefined;
   try {
     if (
+      isNewRow &&
       !isSkipped &&
       parsed.data.prescriptionItemIndex != null
     ) {
@@ -244,7 +278,7 @@ export async function addStrengthSet(
   return {
     ok: true,
     set: {
-      id: inserted.id as string,
+      id: rowId,
       movementId: parsed.data.movementId,
       prescriptionItemIndex: parsed.data.prescriptionItemIndex ?? null,
       setKind: parsed.data.setKind,
@@ -264,6 +298,7 @@ const cardioSchema = z.object({
   avgPaceSecPerKm: z.coerce.number().int().min(60).max(2000).optional().nullable(),
   rpe: z.coerce.number().min(0).max(10).optional().nullable(),
   notes: z.string().trim().max(400).optional().nullable(),
+  clientLogId: z.string().uuid().optional().nullable(),
 });
 
 export async function addCardioBlock(
@@ -279,6 +314,7 @@ export async function addCardioBlock(
     avgPaceSecPerKm: formData.get("avgPaceSecPerKm") || undefined,
     rpe: formData.get("rpe") || undefined,
     notes: formData.get("notes") || undefined,
+    clientLogId: formData.get("clientLogId") || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
 
@@ -293,6 +329,7 @@ export async function addCardioBlock(
     .select("id", { count: "exact", head: true })
     .eq("session_id", parsed.data.sessionId);
 
+  const clientLogId = parsed.data.clientLogId ?? null;
   const { error } = await supabase.from("cardio_logs").insert({
     session_id: parsed.data.sessionId,
     movement_id: parsed.data.movementId ?? null,
@@ -304,9 +341,14 @@ export async function addCardioBlock(
     avg_pace_sec_per_km: parsed.data.avgPaceSecPerKm ?? null,
     rpe: parsed.data.rpe ?? null,
     notes: parsed.data.notes ?? null,
+    client_log_id: clientLogId,
   });
 
-  if (error) return { error: error.message };
+  // Idempotent replay: a duplicate flush of an already-persisted block is a
+  // success, not an error (unique-violation on client_log_id, Postgres 23505).
+  if (error && !(clientLogId && (error as { code?: string }).code === "23505")) {
+    return { error: error.message };
+  }
 
   revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
   return { ok: true };
@@ -783,11 +825,34 @@ export async function completeSession(formData: FormData): Promise<void> {
     throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
   }
 
+  const res = await completeSessionResult(parsed.data.sessionId, parsed.data.notes ?? null);
+  if (res.error) {
+    if (res.error === "not-signed-in") redirect("/login");
+    throw new Error(res.error);
+  }
+  redirect(`/app/sessions/${parsed.data.sessionId}`);
+}
+
+/**
+ * Redirect-free core of session completion, shared by the form action
+ * (`completeSession`, which redirects to the summary) and the offline outbox
+ * flusher (which replays it in the background on reconnect and must NOT
+ * navigate). Returns a plain result; all the heavy recompute / side-effects are
+ * best-effort and never block the completed_at stamp. Re-runnable: a replay
+ * just re-stamps completed_at and recomputes, so duplicate flushes are safe.
+ */
+export async function completeSessionResult(
+  sessionId: string,
+  notes: string | null,
+): Promise<{ ok?: true; error?: string }> {
+  const idCheck = z.string().uuid().safeParse(sessionId);
+  if (!idCheck.success) return { error: "Invalid session id" };
+
   const supabase = await createClient();
   const {
     data: { user },
   } = await getAuthUser();
-  if (!user) redirect("/login");
+  if (!user) return { error: "not-signed-in" };
 
   // Auto-derive session RPE from per-set RPEs (volume-weighted).
   // Auto-derive duration from the gap between first and last set timestamps.
@@ -795,7 +860,7 @@ export async function completeSession(formData: FormData): Promise<void> {
   const { data: sets } = await supabase
     .from("set_logs")
     .select("weight_kg, reps, rpe, created_at")
-    .eq("session_id", parsed.data.sessionId)
+    .eq("session_id", sessionId)
     .eq("skipped", false);
   const setRows = sets ?? [];
 
@@ -813,12 +878,12 @@ export async function completeSession(formData: FormData): Promise<void> {
     .update({
       session_rpe: derivedRpe,
       duration_min: derivedDuration,
-      notes: parsed.data.notes ?? null,
+      notes: notes ?? null,
       completed_at: new Date().toISOString(),
     })
-    .eq("id", parsed.data.sessionId);
+    .eq("id", sessionId);
 
-  if (error) throw new Error(error.message);
+  if (error) return { error: error.message };
 
   // Finding 1 fix — recompute planned_sessions.effective_stress_load
   // from the logged set_logs + cardio_logs now that the session has
@@ -828,7 +893,7 @@ export async function completeSession(formData: FormData): Promise<void> {
   try {
     await recomputeActualSessionLoad({
       supabase,
-      sessionId: parsed.data.sessionId,
+      sessionId,
       requireCompleted: false,
     });
   } catch (e) {
@@ -853,7 +918,7 @@ export async function completeSession(formData: FormData): Promise<void> {
     const { data: linked } = await supabase
       .from("planned_sessions")
       .select("block_id")
-      .eq("completed_session_id", parsed.data.sessionId)
+      .eq("completed_session_id", sessionId)
       .maybeSingle();
     if (linked?.block_id) {
       await maybeCompleteBlock(supabase, linked.block_id as string);
@@ -870,7 +935,7 @@ export async function completeSession(formData: FormData): Promise<void> {
     const { generateTmSuggestionsForSession } = await import(
       "@/lib/training-maxes/actions"
     );
-    await generateTmSuggestionsForSession(parsed.data.sessionId);
+    await generateTmSuggestionsForSession(sessionId);
   } catch (e) {
     console.error("generateTmSuggestionsForSession failed:", e);
   }
@@ -885,7 +950,7 @@ export async function completeSession(formData: FormData): Promise<void> {
     await applyBwSessionCompletionSideEffects({
       supabase,
       userId: user.id,
-      sessionId: parsed.data.sessionId,
+      sessionId,
       timezone: await getUserTimezone(user.id),
     });
     revalidatePath("/app/settings/bodyweight-progression");
@@ -908,8 +973,8 @@ export async function completeSession(formData: FormData): Promise<void> {
   revalidatePath("/app");
   revalidatePath("/app/plan");
   revalidatePath("/app/stats");
-  revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
-  redirect(`/app/sessions/${parsed.data.sessionId}`);
+  revalidatePath(`/app/sessions/${sessionId}`);
+  return { ok: true };
 }
 
 export async function recomputeRegionStateAction(): Promise<void> {

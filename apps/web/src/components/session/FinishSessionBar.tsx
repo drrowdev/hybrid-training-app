@@ -19,8 +19,9 @@
  * users can't submit.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { completeSession } from "@/lib/sessions/actions";
+import { enqueue as outboxEnqueue } from "@/lib/offline/outbox";
 
 export function FinishSessionBar({
   sessionId,
@@ -50,6 +51,28 @@ export function FinishSessionBar({
     ? "Log at least 1 strength set to finish"
     : "Log at least 1 set to finish";
   const label = disabled ? disabledLabel : "Finish session →";
+
+  // Finish-while-offline: completeSession is heavy server work that redirects to
+  // the summary, so it can't run offline. When the network is down we instead
+  // enqueue a durable `complete` op (after the queued sets) and confirm in place;
+  // the outbox flusher on the session page replays it on reconnect. The ONLINE
+  // path is untouched — the native form action redirects as before.
+  const [savedOffline, setSavedOffline] = useState(false);
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      e.preventDefault();
+      const id =
+        globalThis.crypto?.randomUUID?.() ?? `complete-${Date.now()}`;
+      void outboxEnqueue({
+        id,
+        op: "complete",
+        sessionId,
+        payload: { sessionId },
+      }).catch(() => null);
+      setSavedOffline(true);
+    }
+    // Online: let the native form action submit (completeSession redirects).
+  };
 
   // The armed bottom bar overlaps the floating rest-timer's corner. Publish
   // the bar's live top-clearance (viewport-bottom → bar-top) as a CSS var so
@@ -113,9 +136,21 @@ export function FinishSessionBar({
         </span>
       );
     }
+    if (savedOffline) {
+      return (
+        <span
+          data-testid="finish-saved-offline"
+          className="cp-btn"
+          style={{ padding: "8px 14px", fontSize: 12, opacity: 0.8 }}
+        >
+          Saved offline — finishes when you reconnect
+        </span>
+      );
+    }
     return (
       <form
         action={completeSession}
+        onSubmit={handleSubmit}
         data-testid={testId}
         data-armed="true"
         style={{ display: "contents" }}
@@ -166,8 +201,20 @@ export function FinishSessionBar({
         >
           {label}
         </span>
+      ) : savedOffline ? (
+        <span
+          data-testid="finish-saved-offline"
+          className="cp-btn big"
+          style={{ flex: 1, textAlign: "center", opacity: 0.8 }}
+        >
+          Saved offline — finishes when you reconnect
+        </span>
       ) : (
-        <form action={completeSession} style={{ flex: 1, display: "flex" }}>
+        <form
+          action={completeSession}
+          onSubmit={handleSubmit}
+          style={{ flex: 1, display: "flex" }}
+        >
           <input type="hidden" name="sessionId" value={sessionId} />
           <button
             type="submit"

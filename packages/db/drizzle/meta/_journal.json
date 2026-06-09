@@ -680,6 +680,13 @@
       "when": 1784104800000,
       "tag": "0096_session_custom_accessory_order",
       "breakpoints": false
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1784191200000,
+      "tag": "0097_log_client_idempotency",
+      "breakpoints": false
     }
   ]
 }
