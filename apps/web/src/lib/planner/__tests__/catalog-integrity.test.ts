@@ -27,6 +27,7 @@ import {
   resolveRequiredEquipment,
   isEquipmentAvailable,
 } from "../equipment-requirements";
+import { ARCHETYPES, requiredFixedSlugs } from "../archetypes";
 import { COMMERCIAL_GYM_PRESET, CUSTOM_EMPTY_PRESET } from "@/lib/settings/equipment-presets";
 
 /** Patterns the seed catalog is allowed to use (typo guard). */
@@ -241,4 +242,22 @@ describe("seed catalog — role-coverage floors", () => {
     // (pull-ups / inverted rows / DB rows).
     expect(machineFree("pull"), "pull machine-free").toBeGreaterThanOrEqual(2);
   });
+});
+
+describe("seed catalog — archetype fixed-slug guard", () => {
+  // Every fixed (cardio / tendon) movementSlug an archetype hard-requires must
+  // exist in the seed catalog. `actions.ts` hard-errors at block creation when
+  // a fixed slug is missing ("Catalog is missing required movements …"), so a
+  // typo'd or renamed slug otherwise only surfaces when a user happens to build
+  // that exact archetype in prod (e.g. concurrent_hybrid's VO2 day once pointed
+  // at a non-existent "run-intervals-vo2").
+  for (const [id, archetype] of Object.entries(ARCHETYPES)) {
+    it(`${id}: every required fixed slug is seeded`, () => {
+      const missing = requiredFixedSlugs(archetype).filter((s) => !BY_SLUG.has(s));
+      expect(
+        missing,
+        `${id} references unseeded fixed movement slug(s): ${missing.join(", ")}`,
+      ).toEqual([]);
+    });
+  }
 });
