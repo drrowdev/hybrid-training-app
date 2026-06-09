@@ -358,8 +358,10 @@ const STRENGTH_DAYS: StrengthDay[] = [
  *     and Anchor phase — "not done every seventh week; it's just a name" — with
  *     "more than two cycles will burn you out" capping accumulation at ~6 weeks;
  *   - empirical surveys: Bell 2022 (~4-6 wk) and Rogerson 2024 (5.6 ± 2.3 wk).
- * The deload itself stays VOLUME-led (Mujika & Padilla 2003; Bell 2022;
- * Rogerson 2024) — `strengthVolumeScale` + `z2DurationMinOverride` unchanged.
+ * This cadence change does NOT alter the deload mechanism itself: the deload
+ * week remains a full deload that cuts BOTH intensity (materially lower %TM in
+ * its `setIntensities`) AND volume (`strengthVolumeScale` + `z2DurationMinOverride`)
+ * — Mujika & Padilla 2003; Bell 2022; Rogerson 2024.
  *
  * Calibration: `DELOAD_CADENCE_WAVES` is a CP-2 [DEF→cal] Stage-A heuristic.
  * Confidence is HIGH that 4 weeks is too short and ~6 is the cross-program
@@ -763,7 +765,7 @@ export const ENDURANCE_ANCHOR: Archetype = withExpandedCadence({
   ],
   weekProfiles: [
     { weekIndex: 0, setIntensities: [0.75, 0.85, 0.90], setReps: [5, 3, 3], intensityLabel: "Maintenance base" },
-    { weekIndex: 1, setIntensities: [0.75, 0.85, 0.90], setReps: [5, 3, 3], intensityLabel: "Maintenance build" },
+    { weekIndex: 1, setIntensities: [0.78, 0.85, 0.90], setReps: [5, 3, 3], intensityLabel: "Maintenance build" },
     { weekIndex: 2, setIntensities: [0.80, 0.85, 0.90], setReps: [3, 3, 3], intensityLabel: "Maintenance peak" },
     {
       weekIndex: 3,
@@ -1250,7 +1252,7 @@ export const MAINTENANCE: Archetype = {
   id: "maintenance",
   name: "Maintenance",
   oneLiner:
-    "Two-week keep-the-lights-on block for travel, illness, or busy stretches. Two short strength days (65–70% TM, 3 working sets per lift) and two short Z2 sessions hold the line on strength and aerobic base without spending recovery on adaptation.",
+    "Two-week keep-the-lights-on block for travel, illness, or busy stretches. Two short strength days (60–65% TM, 2 working sets per lift — deliberately sub-maintenance) and two short Z2 sessions hold the line on strength and aerobic base without spending recovery on adaptation.",
   weeks: 2,
   // ADR 0005 — Maintenance explicitly runs at sub-maintenance volume; a
   // folded secondary main lift would convert it into a normal training
