@@ -12,6 +12,7 @@ import {
   getActiveBlockRemainingSessions,
 } from "@/lib/planner/remaining-sessions";
 import { buildLimitationResponse, buildSelectedUpdates } from "./response";
+import { recordLimitationAdjustments } from "./record-adjustments";
 import { REGIONS, resolveRegion } from "./region";
 import {
   limitationFormSchema,
@@ -520,7 +521,7 @@ export async function applyLimitationResponseSelection(
     .maybeSingle();
   const equipment = resolveEquipment(profile ?? null);
   const plan = buildLimitationResponse(active.remaining, catalog, ctx, equipment);
-  const { updates, swapped, dropped } = buildSelectedUpdates(
+  const { updates, swapped, dropped, applied } = buildSelectedUpdates(
     active.remaining,
     plan,
     selected,
@@ -537,6 +538,15 @@ export async function applyLimitationResponseSelection(
     updates,
   );
   if (error) return { ok: false, error };
+
+  // Audit trail (migration 0101) — best-effort, never blocks the apply.
+  await recordLimitationAdjustments({
+    supabase,
+    userId: user.id,
+    blockId: active.blockId,
+    applied,
+    catalog,
+  });
 
   revalidatePath("/app");
   revalidatePath("/app/plan");
