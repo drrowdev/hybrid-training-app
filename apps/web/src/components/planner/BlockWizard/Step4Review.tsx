@@ -559,7 +559,7 @@ function AccessoryVolumeControl({
                 disabled={levelDisabled}
                 title={
                   levelRedundant && equivalentLabel
-                    ? `Same session as ${equivalentLabel} on a cardio-led block — accessory volume is capped here to protect recovery.`
+                    ? `Same workout as ${equivalentLabel} — no extra accessory work fits at this setting.`
                     : undefined
                 }
                 data-testid={`accessory-volume-${o.level}`}
@@ -646,10 +646,10 @@ function AccessoryVolumeControl({
             data-testid="accessory-volume-redundant-note"
             style={{ margin: "8px 0 0", fontSize: 11.5, color: "var(--cp-text-muted)", lineHeight: 1.5 }}
           >
-            Greyed-out levels would produce the same session. On a cardio-led
-            block the plan caps accessory volume — the mandatory durability,
-            balance and focus-muscle work already fills the strength day, so
-            adding more would only eat into your recovery for cardio.
+            Greyed-out levels would produce the same workout as a lower one —
+            either the session is already at its time limit, or there&apos;s no
+            extra accessory work to add at that setting. Pick a focus muscle to
+            target specific areas.
           </p>
         )}
         {!disabled && recommendation && recLabel && (

@@ -94,6 +94,14 @@ export type GoalWeightOpts = {
   secondaryMuscleHonored: boolean;
   /** User-chosen focus muscles (0–2). An explicit pick is never down-weighted. */
   focusMuscles?: readonly string[];
+  /**
+   * ADR 0045 — True when the block's accessory-volume level is `high`. High is
+   * an explicit "I want more aesthetic volume" opt-in, so the ADR 0028
+   * physique-triad (side delts / biceps / calves) down-weight is cancelled —
+   * the same way an honoured `muscle` secondary cancels it. Default `false` →
+   * the down-weight applies as before (Low / Medium / legacy callers).
+   */
+  highVolume?: boolean;
 };
 
 /**
@@ -103,7 +111,8 @@ export type GoalWeightOpts = {
  * Returns a NEW map. Pure — no I/O, no Date.now(). Identity (a verbatim
  * shallow copy) for:
  *   - any non-performance-primary archetype, OR
- *   - an honoured `muscle` secondary (`secondaryMuscleHonored === true`).
+ *   - an honoured `muscle` secondary (`secondaryMuscleHonored === true`), OR
+ *   - a `high` accessory-volume block (`highVolume === true`).
  * Otherwise each physique-triad muscle that is NOT an explicit focus
  * muscle is scaled by `AESTHETIC_GOAL_WEIGHT`, floored at
  * `GOAL_WEIGHT_TARGET_FLOOR` (positive targets only).
@@ -113,10 +122,12 @@ export function applyGoalWeightToTargets<T extends Record<string, number>>(
   opts: GoalWeightOpts,
 ): T {
   // Override hatch 1 + scope gate: only performance primaries whose
-  // `muscle` secondary is NOT an honoured tilt down-weight at all.
+  // `muscle` secondary is NOT an honoured tilt, and which are NOT an explicit
+  // high-volume opt-in, down-weight at all.
   if (
     !PERFORMANCE_PRIMARY_ARCHETYPES.has(opts.archetypeId) ||
-    opts.secondaryMuscleHonored
+    opts.secondaryMuscleHonored ||
+    opts.highVolume
   ) {
     return { ...targets };
   }

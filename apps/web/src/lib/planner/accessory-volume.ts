@@ -43,6 +43,19 @@ import type { SecondaryVolumeTilt } from "./secondary-focus";
 
 export type AccessoryVolumeLevel = "low" | "medium" | "high";
 
+/**
+ * ADR 0045 — how many EXTRA aesthetic items (above the archetype's own
+ * `aesthetic.itemsPerSession` base) the High level targets, seated ADDITIVELY
+ * on top of the durability + functional floor. The duration governor descends
+ * this target to fit the raised High session cap, so it's a ceiling, not a
+ * guarantee. High adds aesthetic ITEMS at the archetype's base set count — it
+ * deliberately does NOT raise sets-per-item, which would bleed into the
+ * durability/functional fills (those share the aesthetic `setsPerItem`).
+ * CP-1 [DEF→cal] — directionally grounded in the productive weekly-set zone
+ * (Baz-Valle 2022; Schoenfeld 2017), un-tuned against real data.
+ */
+export const HIGH_AESTHETIC_ITEM_BONUS = 2;
+
 export const ACCESSORY_VOLUME_VALUES: readonly AccessoryVolumeLevel[] = [
   "low",
   "medium",
