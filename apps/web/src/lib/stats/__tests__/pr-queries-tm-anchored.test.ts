@@ -55,13 +55,13 @@ describe("countSessionTmAnchoredPrs", () => {
     expect(n).toBe(2); // Weight PR + e1RM PR (Epley at reps=1 ≈ 149.8)
   });
 
-  it("counts Rep PR only on the top-set slot", () => {
+  it("does NOT count a Rep PR (rep overshoot is not a saved-1RM beat)", () => {
     const n = countSessionTmAnchoredPrs(
       [set({ weight_kg: 100, reps: 10 })],
       { back_squat: 140 },
       prescription5,
     );
-    expect(n).toBe(1); // Rep PR (10 > 5)
+    expect(n).toBe(0); // 100 kg is below the 140 TM → no Weight/e1RM PR; Rep PR suppressed
   });
 
   it("ignores warmup sets", () => {
@@ -108,5 +108,16 @@ describe("getSessionTmAnchoredPrSummaries", () => {
       null,
     );
     expect(out[0]!.bestSet.weight).toBe(145);
+  });
+
+  it("never emits a reps_at_weight hit (rep overshoot is not surfaced as a PR)", () => {
+    // 100 kg × 10 beats the prescribed 5 reps but is below the 140 TM, so the
+    // only candidate hit would be a Rep PR — which we now suppress entirely.
+    const out = getSessionTmAnchoredPrSummaries(
+      [set({ weight_kg: 100, reps: 10 })],
+      { back_squat: 140 },
+      prescription5,
+    );
+    expect(out).toEqual([]);
   });
 });
