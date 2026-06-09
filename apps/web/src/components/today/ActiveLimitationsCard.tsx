@@ -20,6 +20,10 @@ export type ActiveLimitationSummary = {
 
 export type ActiveLimitationsCardProps = {
   limitations: ReadonlyArray<ActiveLimitationSummary>;
+  /** Completed limitation-driven movement adjustments, per limitation id. */
+  adjustedById?: Readonly<Record<string, number>>;
+  /** Distinct movements with a still-pending suggested swap/drop (aggregate). */
+  pendingCount?: number;
 };
 
 const MAX_VISIBLE = 3;
@@ -44,6 +48,8 @@ function shortDateLabel(iso: string): string {
 
 export function ActiveLimitationsCard({
   limitations,
+  adjustedById = {},
+  pendingCount = 0,
 }: ActiveLimitationsCardProps) {
   if (limitations.length === 0) return null;
   const visible = limitations.slice(0, MAX_VISIBLE);
@@ -113,6 +119,15 @@ export function ActiveLimitationsCard({
             <span style={{ color: "var(--cp-text-muted)" }}>
               — {l.severity}, since {shortDateLabel(l.startedAt)}
             </span>
+            {(adjustedById[l.id] ?? 0) > 0 && (
+              <span
+                data-testid="active-limitations-adjusted"
+                style={{ color: "var(--cp-success)", fontWeight: 600 }}
+              >
+                ✓ {adjustedById[l.id]} movement
+                {adjustedById[l.id] === 1 ? "" : "s"} adjusted
+              </span>
+            )}
           </li>
         ))}
         {more > 0 && (
@@ -124,6 +139,21 @@ export function ActiveLimitationsCard({
           </li>
         )}
       </ul>
+      {pendingCount > 0 && (
+        <Link
+          href="/app/recovery/injuries"
+          data-testid="active-limitations-pending"
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: "var(--cp-warning)",
+            textDecoration: "none",
+          }}
+        >
+          ⚠ {pendingCount} suggested adjustment
+          {pendingCount === 1 ? "" : "s"} — review →
+        </Link>
+      )}
     </section>
   );
 }

@@ -36,6 +36,7 @@ import {
   updatePlannedSessionNotes,
 } from "@/lib/sessions/actions";
 import { getQuickRepeatCandidates } from "@/lib/sessions/queries";
+import { getLimitationTodaySummary } from "@/lib/limitations/today-summary";
 import { getNextBlockNudge } from "@/lib/planner/next-block-suggestion-server";
 import { NextBlockSuggestionCard } from "@/components/planner/NextBlockSuggestionCard";
 import {
@@ -116,7 +117,7 @@ export default async function TodayPage() {
 
   const todayIso = todayYmd(profile?.timezone ?? "UTC");
 
-  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness, activeBlock, tmDict, tmRows, regionSpikes, { data: activeLimitationsRaw }, quickRepeatRecent] = await Promise.all([
+  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness, activeBlock, tmDict, tmRows, regionSpikes, { data: activeLimitationsRaw }, quickRepeatRecent, limitationSummary] = await Promise.all([
     supabase
       .from("sessions")
       .select("id, title, slot, completed_at, performed_at")
@@ -146,6 +147,7 @@ export default async function TodayPage() {
       .order("started_at", { ascending: false })
       .limit(20),
     getQuickRepeatCandidates(supabase, userId, { limit: 3 }),
+    getLimitationTodaySummary(),
   ]);
 
   const activeLimitations: ActiveLimitationSummary[] = (
@@ -723,7 +725,11 @@ export default async function TodayPage() {
               dismissAction={dismissTmSuggestion}
             />
 
-            <ActiveLimitationsCard limitations={activeLimitations} />
+            <ActiveLimitationsCard
+              limitations={activeLimitations}
+              adjustedById={limitationSummary.adjustedById}
+              pendingCount={limitationSummary.pendingCount}
+            />
 
             {endingNudge && (endingNudge.suggestion || endingNudge.realization) && (
               <NextBlockSuggestionCard

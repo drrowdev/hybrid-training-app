@@ -708,6 +708,13 @@
       "when": 1784450400000,
       "tag": "0100_catalog_tagging_audit",
       "breakpoints": false
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1784536800000,
+      "tag": "0101_limitation_adjustments",
+      "breakpoints": false
     }
   ]
 }
