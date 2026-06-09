@@ -687,6 +687,13 @@
       "when": 1784191200000,
       "tag": "0097_log_client_idempotency",
       "breakpoints": false
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1784277600000,
+      "tag": "0098_movement_instructions",
+      "breakpoints": false
     }
   ]
 }
