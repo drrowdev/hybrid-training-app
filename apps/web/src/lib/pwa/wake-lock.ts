@@ -27,6 +27,36 @@ type WakeLockNavigator = Navigator & {
   };
 };
 
+/**
+ * Native keep-awake bridge (Capacitor `@capacitor-community/keep-awake`),
+ * called over the injected `window.Capacitor` bridge — same convention as
+ * `lib/feedback` and `lib/native/splash`. This is the ONLY path that keeps the
+ * screen on inside the iOS Capacitor shell: WKWebView does NOT implement the
+ * W3C Screen Wake Lock API, so `navigator.wakeLock` is undefined there and the
+ * web path below silently no-ops. On plain web (no native bridge) this returns
+ * false and we fall back to `navigator.wakeLock`.
+ */
+interface KeepAwakeBridge {
+  isNativePlatform?: () => boolean;
+  Plugins?: {
+    KeepAwake?: {
+      keepAwake?: () => unknown;
+      allowSleep?: () => unknown;
+    };
+  };
+}
+
+type KeepAwakePlugin = NonNullable<NonNullable<KeepAwakeBridge["Plugins"]>["KeepAwake"]>;
+
+function nativeKeepAwake(): KeepAwakePlugin | null {
+  if (typeof window === "undefined") return null;
+  const cap = (window as unknown as { Capacitor?: KeepAwakeBridge }).Capacitor;
+  if (!cap?.isNativePlatform?.()) return null;
+  const plugin = cap.Plugins?.KeepAwake;
+  if (!plugin || typeof plugin.keepAwake !== "function") return null;
+  return plugin;
+}
+
 export type WakeLockController = {
   /** Acquire the screen lock if supported and not already held. */
   acquire: () => Promise<void>;
@@ -37,15 +67,29 @@ export type WakeLockController = {
 };
 
 export function isWakeLockSupported(): boolean {
+  if (nativeKeepAwake()) return true;
   if (typeof navigator === "undefined") return false;
   return typeof (navigator as WakeLockNavigator).wakeLock?.request === "function";
 }
 
 export function createWakeLockController(): WakeLockController {
   let sentinel: WakeLockSentinelLike | null = null;
+  let nativeHeld = false;
   let acquiring = false;
 
   const acquire = async (): Promise<void> => {
+    // Native Capacitor shell (iOS WKWebView has no navigator.wakeLock) — prefer
+    // the KeepAwake plugin. Idempotent, so re-calling while held is harmless.
+    const native = nativeKeepAwake();
+    if (native) {
+      try {
+        await Promise.resolve(native.keepAwake!());
+        nativeHeld = true;
+      } catch {
+        nativeHeld = false;
+      }
+      return;
+    }
     if (!isWakeLockSupported()) return;
     // Already held, or an acquire is mid-flight — don't double-request.
     if (sentinel && !sentinel.released) return;
@@ -69,6 +113,16 @@ export function createWakeLockController(): WakeLockController {
   };
 
   const release = async (): Promise<void> => {
+    if (nativeHeld) {
+      nativeHeld = false;
+      const native = nativeKeepAwake();
+      try {
+        if (native?.allowSleep) await Promise.resolve(native.allowSleep());
+      } catch {
+        // Best-effort.
+      }
+      return;
+    }
     const current = sentinel;
     sentinel = null;
     if (!current || current.released) return;
@@ -79,7 +133,7 @@ export function createWakeLockController(): WakeLockController {
     }
   };
 
-  const isHeld = (): boolean => !!sentinel && !sentinel.released;
+  const isHeld = (): boolean => nativeHeld || (!!sentinel && !sentinel.released);
 
   return { acquire, release, isHeld };
 }
