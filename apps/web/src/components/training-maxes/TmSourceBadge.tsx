@@ -11,16 +11,12 @@
  */
 import type { TmFormula, TmSource } from "@hta/db";
 
-const FORMULA_LABEL: Record<TmFormula, string> = {
-  epley: "Epley",
-  brzycki: "Brzycki",
-  rpe_zourdos: "RPE",
-};
-
 export function tmBadgeText(source: TmSource, formula: TmFormula | null): string {
+  // `formula` is intentionally not surfaced — researcher / formula names are
+  // kept out of user-facing copy. A derived TM just reads as an estimate.
+  void formula;
   if (source === "entered") return "(entered)";
-  const f = formula ? FORMULA_LABEL[formula] : "estimate";
-  return `(e1RM · ${f})`;
+  return "(estimated)";
 }
 
 export function TmSourceBadge({

@@ -400,7 +400,7 @@ export function MovementFocusView({
     // optimistic loggedItemIndices.
     setManualCursor(null);
     setJustLoggedAt(Date.now());
-    if (flash && (flash.isWeightPr || flash.isE1rmPr || flash.isRepPr || flash.e1rmKg != null)) {
+    if (flash && (flash.isWeightPr || flash.isE1rmPr || flash.e1rmKg != null)) {
       setPrFlash(flash);
     }
     // Inline rest timer — skipped after the final slot of this movement (B2).
@@ -730,9 +730,6 @@ export function MovementFocusView({
           >
             {prFlash.isWeightPr && (
               <span style={badgeStyle("var(--cp-accent)")}>⭐ Weight PR</span>
-            )}
-            {prFlash.isRepPr && (
-              <span style={badgeStyle("var(--cp-accent)")}>⭐ Rep PR</span>
             )}
             {prFlash.isE1rmPr && (
               <span style={badgeStyle("var(--cp-accent)")}>⭐ e1RM PR</span>

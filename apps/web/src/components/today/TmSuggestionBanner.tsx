@@ -11,12 +11,6 @@
 import { useState, useTransition } from "react";
 import type { TmFormula } from "@hta/db";
 
-const FORMULA_LABEL: Record<TmFormula, string> = {
-  epley: "Epley",
-  brzycki: "Brzycki",
-  rpe_zourdos: "RPE",
-};
-
 export type TmSuggestionView = {
   id: string;
   movementName: string;
@@ -105,7 +99,6 @@ export function TmSuggestionBanner({
             ? `${fmtKg(s.setWeightKg)} kg × ${s.setReps}`
             : "your AMRAP";
         const when = relativeFromNow(s.sessionPerformedAt);
-        const formulaLabel = s.formula ? FORMULA_LABEL[s.formula] : "e1RM";
         return (
           <div
             key={s.id}
@@ -133,7 +126,6 @@ export function TmSuggestionBanner({
               <span style={{ color: "var(--cp-text-muted)" }}>
                 {" "}
                 · from your AMRAP <span className="mono">{setText}</span> · {when}
-                {" "}({formulaLabel})
               </span>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
