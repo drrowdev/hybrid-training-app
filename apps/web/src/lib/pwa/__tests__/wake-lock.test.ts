@@ -130,3 +130,65 @@ describe("createWakeLockController", () => {
     await expect(ctrl.release()).resolves.toBeUndefined();
   });
 });
+
+describe("native KeepAwake bridge (Capacitor shell)", () => {
+  afterEach(() => {
+    delete (globalThis as { Capacitor?: unknown }).Capacitor;
+    Object.defineProperty(globalThis, "window", {
+      value: globalThis,
+      configurable: true,
+    });
+  });
+
+  function installNativeBridge(plugin: {
+    keepAwake?: () => unknown;
+    allowSleep?: () => unknown;
+  }) {
+    (globalThis as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      Plugins: { KeepAwake: plugin },
+    };
+    Object.defineProperty(globalThis, "window", {
+      value: globalThis,
+      configurable: true,
+    });
+  }
+
+  it("reports supported when the KeepAwake plugin is present", () => {
+    installNativeBridge({ keepAwake: vi.fn(), allowSleep: vi.fn() });
+    // Even with no navigator.wakeLock, the native bridge satisfies support.
+    Object.defineProperty(globalThis, "navigator", { value: {}, configurable: true });
+    expect(isWakeLockSupported()).toBe(true);
+  });
+
+  it("acquires via keepAwake() and releases via allowSleep()", async () => {
+    const keepAwake = vi.fn().mockResolvedValue(undefined);
+    const allowSleep = vi.fn().mockResolvedValue(undefined);
+    installNativeBridge({ keepAwake, allowSleep });
+    Object.defineProperty(globalThis, "navigator", { value: {}, configurable: true });
+
+    const ctrl = createWakeLockController();
+    await ctrl.acquire();
+    expect(keepAwake).toHaveBeenCalledTimes(1);
+    expect(ctrl.isHeld()).toBe(true);
+
+    await ctrl.release();
+    expect(allowSleep).toHaveBeenCalledTimes(1);
+    expect(ctrl.isHeld()).toBe(false);
+  });
+
+  it("prefers the native path over navigator.wakeLock", async () => {
+    const keepAwake = vi.fn().mockResolvedValue(undefined);
+    installNativeBridge({ keepAwake, allowSleep: vi.fn() });
+    const request = vi.fn();
+    Object.defineProperty(globalThis, "navigator", {
+      value: { wakeLock: { request } },
+      configurable: true,
+    });
+
+    const ctrl = createWakeLockController();
+    await ctrl.acquire();
+    expect(keepAwake).toHaveBeenCalledTimes(1);
+    expect(request).not.toHaveBeenCalled();
+  });
+});

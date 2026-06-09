@@ -26,6 +26,9 @@ importers:
 
   apps/mobile:
     dependencies:
+      '@capacitor-community/keep-awake':
+        specifier: ^7.0.0
+        version: 7.1.0(@capacitor/core@7.6.5)
       '@capacitor/core':
         specifier: ^7.4.0
         version: 7.6.5
@@ -276,6 +279,11 @@ packages:
     resolution: {integrity: sha512-kuva8VQ6zM+uIKgHUJTP87IYbmGKhX7DZw62JYfGZ888h4Xr5zeN+UTR6KBRHQVrGBpzSfbv+6/HQVuHYa7W5A==}
     peerDependencies:
       '@capacitor/core': '>=3.0.0'
+
+  '@capacitor-community/keep-awake@7.1.0':
+    resolution: {integrity: sha512-4Hj6OKnBd/DAOeiMnqBy74tg1rwC+qLYWQbWJmysMZm2e2nptz43hxaKu22Xlyyw5O71CwwskLCM0skDFMPpQQ==}
+    peerDependencies:
+      '@capacitor/core': '>=7.0.0'
 
   '@capacitor/cli@7.6.5':
     resolution: {integrity: sha512-nlhNoWZIL7YcV1JgNP8+p7WAVIG+zwsY20ZQJ0zd+2lLeCx9MijfELLhLzMCq33c2pILwOvLww8HUqZ5uYCvHg==}
@@ -4937,6 +4945,10 @@ snapshots:
   '@bytecodealliance/preview2-shim@0.17.6': {}
 
   '@capacitor-community/background-geolocation@1.2.26(@capacitor/core@7.6.5)':
+    dependencies:
+      '@capacitor/core': 7.6.5
+
+  '@capacitor-community/keep-awake@7.1.0(@capacitor/core@7.6.5)':
     dependencies:
       '@capacitor/core': 7.6.5
 
