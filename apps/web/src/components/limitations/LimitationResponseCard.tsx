@@ -3,12 +3,14 @@
 /**
  * LimitationResponseCard — ADR 0014 mid-block limitation-response offer.
  *
- * Collapsed by default into a compact banner; "Review & adjust" opens a modal
- * where the proposed changes are grouped BY MOVEMENT (one row per movement, not
- * one per session-occurrence) so a single flagged accessory repeated across the
- * block reads as one line instead of dozens. Each row is all-or-nothing; the
- * apply action still receives the underlying per-item keys, and re-derives the
- * plan server-side, so the client only ever applies a SUBSET of what the engine
+ * Collapsed by default into a compact banner; "Review & adjust" opens a centered
+ * modal where the proposed changes are grouped BY OFFENDING MOVEMENT (one row
+ * per movement, not one per session-occurrence). Each swap row carries a
+ * dropdown of the engine's ranked, limitation-safe + equipment-available
+ * alternatives, so the user can pick which movement to swap in. Each row is
+ * all-or-nothing via a checkbox; the apply action re-derives the plan
+ * server-side and only honours a chosen target that is one of the offered
+ * alternatives, so the client can only ever apply a SUBSET of what the engine
  * independently decided is safe. Main-lift warnings are display-only.
  *
  * Shared between the active-block view on `/app/plan` and `/app/recovery/injuries`.
@@ -20,6 +22,7 @@ import type {
   LimitationDrop,
   LimitationOffenceReason,
   LimitationSwap,
+  LimitationSwapTarget,
 } from "@/lib/limitations/response";
 import type { ApplyLimitationResult } from "@/lib/limitations/actions";
 import { limitationItemKey } from "@/lib/limitations/item-key";
@@ -38,13 +41,14 @@ function reasonLabel(reason: LimitationOffenceReason): string {
 }
 
 type ChangeGroup = {
-  /** Stable group id (also the React key). */
   id: string;
   kind: "swap" | "drop";
+  fromMovementId: string;
   fromName: string;
-  toName?: string;
   reason: LimitationOffenceReason;
-  /** Underlying per-item keys this row controls (all toggled together). */
+  /** Ranked alternatives (swaps only); first is the engine default. */
+  alternatives: LimitationSwapTarget[];
+  /** Underlying per-item keys this row controls (toggled together). */
   keys: string[];
   sessionIds: Set<string>;
   weeks: number[];
@@ -75,14 +79,16 @@ function buildGroups(
     }
     return g;
   };
+  // Group by OFFENDING movement so all occurrences collapse to one row + one choice.
   for (const s of swaps) {
-    const id = `swap:${s.fromMovementId}->${s.toMovementId}`;
+    const id = `swap:${s.fromMovementId}`;
     const g = ensure(id, {
       id,
       kind: "swap",
+      fromMovementId: s.fromMovementId,
       fromName: s.fromName,
-      toName: s.toName,
       reason: s.reason,
+      alternatives: s.alternatives,
     });
     g.keys.push(limitationItemKey(s.sessionId, s.itemIndex));
     g.sessionIds.add(s.sessionId);
@@ -93,17 +99,28 @@ function buildGroups(
     const g = ensure(id, {
       id,
       kind: "drop",
+      fromMovementId: d.fromMovementId,
       fromName: d.fromName,
       reason: d.reason,
+      alternatives: [],
     });
     g.keys.push(limitationItemKey(d.sessionId, d.itemIndex));
     g.sessionIds.add(d.sessionId);
     g.weeks.push(d.weekIndex);
   }
-  // Swaps first (the actionable, reassuring ones), then drops.
+  // Swaps first (actionable), then drops.
   return order
     .map((id) => byId.get(id)!)
     .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "swap" ? -1 : 1));
+}
+
+/** Distinct main-lift movement names that load the flagged area (deduped). */
+function distinctWarnNames(offer: LimitationResponseOffer): string[] {
+  const seen = new Map<string, string>();
+  for (const w of offer.warns) {
+    if (!seen.has(w.fromMovementId)) seen.set(w.fromMovementId, w.fromName);
+  }
+  return [...seen.values()];
 }
 
 export function LimitationResponseCard({
@@ -111,7 +128,10 @@ export function LimitationResponseCard({
   applyAction,
 }: {
   offer: LimitationResponseOffer;
-  applyAction: (selectedKeys: string[]) => Promise<ApplyLimitationResult>;
+  applyAction: (
+    selectedKeys: string[],
+    choices: Record<string, string>,
+  ) => Promise<ApplyLimitationResult>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -125,6 +145,18 @@ export function LimitationResponseCard({
   );
   const allKeys = useMemo(() => groups.flatMap((g) => g.keys), [groups]);
   const [checked, setChecked] = useState<Set<string>>(() => new Set(allKeys));
+  // fromMovementId -> chosen toMovementId (defaults to each group's top pick).
+  const [choices, setChoices] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const g of groups) {
+      if (g.kind === "swap" && g.alternatives[0]) {
+        init[g.fromMovementId] = g.alternatives[0].movementId;
+      }
+    }
+    return init;
+  });
+
+  const warnNames = useMemo(() => distinctWarnNames(offer), [offer]);
 
   const sessionCount = useMemo(() => {
     const ids = new Set<string>();
@@ -150,8 +182,9 @@ export function LimitationResponseCard({
   const apply = () => {
     setError(null);
     const keys = [...checked];
+    const chosen = { ...choices };
     startTransition(async () => {
-      const res = await applyAction(keys);
+      const res = await applyAction(keys, chosen);
       if (!res.ok) {
         setError(res.error);
         return;
@@ -207,11 +240,11 @@ export function LimitationResponseCard({
             {sessionCount} upcoming {sessionWord}. The engine can adjust them to
             work around it.
           </div>
-          {offer.warns.length > 0 && (
+          {warnNames.length > 0 && (
             <div style={{ fontSize: 12, color: "var(--cp-warning)" }}>
-              ⚠ {offer.warns.length} main-lift movement
-              {offer.warns.length === 1 ? "" : "s"} also load this area and
-              aren&apos;t changed automatically — best decided with a clinician.
+              ⚠ {warnNames.length} main lift{warnNames.length === 1 ? "" : "s"}{" "}
+              also load this area and {warnNames.length === 1 ? "is" : "are"} left
+              unchanged — best decided with a clinician.
             </div>
           )}
           <button
@@ -247,7 +280,7 @@ export function LimitationResponseCard({
             onClick={(e) => e.stopPropagation()}
             className="cp-card"
             style={{
-              maxWidth: 480,
+              maxWidth: 500,
               width: "100%",
               maxHeight: "85vh",
               overflowY: "auto",
@@ -261,7 +294,8 @@ export function LimitationResponseCard({
                 Adjust remaining sessions
               </h2>
               <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
-                Uncheck anything you want to keep, then apply the rest.
+                Uncheck anything you want to keep. For each swap you can pick the
+                replacement.
               </p>
             </div>
 
@@ -286,12 +320,9 @@ export function LimitationResponseCard({
 
             <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 8 }}>
               {groups.map((g) => {
-                const count = g.keys.length;
                 const sessions = g.sessionIds.size;
-                const scope =
-                  sessions === count
-                    ? `${sessions} session${sessions === 1 ? "" : "s"}`
-                    : `${count}× across ${sessions} session${sessions === 1 ? "" : "s"}`;
+                const scope = `${sessions} session${sessions === 1 ? "" : "s"}`;
+                const checkedHere = isGroupChecked(g);
                 return (
                   <li
                     key={g.id}
@@ -300,22 +331,21 @@ export function LimitationResponseCard({
                       border: "1px solid var(--cp-border)",
                       borderRadius: 10,
                       padding: "10px 12px",
+                      display: "grid",
+                      gap: 8,
                     }}
                   >
                     <label style={{ display: "flex", gap: 10, alignItems: "start", cursor: "pointer" }}>
                       <input
                         type="checkbox"
-                        checked={isGroupChecked(g)}
+                        checked={checkedHere}
                         onChange={() => toggleGroup(g)}
                         style={{ marginTop: 3, accentColor: "var(--cp-accent)", flexShrink: 0 }}
                       />
                       <span style={{ display: "grid", gap: 2, minWidth: 0 }}>
                         <span style={{ fontSize: 13.5, color: "var(--cp-text)", lineHeight: 1.4 }}>
                           {g.kind === "swap" ? (
-                            <>
-                              Swap <strong>{g.fromName}</strong> →{" "}
-                              <strong>{g.toName}</strong>
-                            </>
+                            <>Swap <strong>{g.fromName}</strong></>
                           ) : (
                             <>
                               Remove <strong>{g.fromName}</strong>
@@ -328,18 +358,61 @@ export function LimitationResponseCard({
                         </span>
                       </span>
                     </label>
+
+                    {g.kind === "swap" && g.alternatives.length > 0 && (
+                      <label
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          marginLeft: 30,
+                          fontSize: 12.5,
+                          color: "var(--cp-text-muted)",
+                          opacity: checkedHere ? 1 : 0.5,
+                        }}
+                      >
+                        Replace with
+                        <select
+                          data-testid="limitation-response-target"
+                          value={choices[g.fromMovementId] ?? g.alternatives[0]?.movementId}
+                          disabled={!checkedHere}
+                          onChange={(e) =>
+                            setChoices((prev) => ({
+                              ...prev,
+                              [g.fromMovementId]: e.target.value,
+                            }))
+                          }
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            fontSize: 12.5,
+                            padding: "4px 6px",
+                            borderRadius: 6,
+                            border: "1px solid var(--cp-border)",
+                            background: "var(--cp-surface)",
+                            color: "var(--cp-text)",
+                          }}
+                        >
+                          {g.alternatives.map((alt) => (
+                            <option key={alt.movementId} value={alt.movementId}>
+                              {alt.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                   </li>
                 );
               })}
             </ul>
 
-            {offer.warns.length > 0 && (
+            {warnNames.length > 0 && (
               <div style={{ fontSize: 12, color: "var(--cp-warning)", lineHeight: 1.5 }}>
-                ⚠ {offer.warns.length} main-lift movement
-                {offer.warns.length === 1 ? "" : "s"} also load this area (
-                {offer.warns.slice(0, 3).map((w) => w.fromName).join(", ")}
-                {offer.warns.length > 3 ? "…" : ""}) — left unchanged; adjusting
-                load/ROM on a primary lift is best decided with a clinician.
+                ⚠ {warnNames.length} main lift{warnNames.length === 1 ? "" : "s"}{" "}
+                ({warnNames.slice(0, 3).join(", ")}
+                {warnNames.length > 3 ? ", …" : ""}) also load this area. These
+                are left unchanged — adjusting load or range of motion on a main
+                lift is best decided with a clinician.
               </div>
             )}
 
