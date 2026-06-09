@@ -23,6 +23,8 @@ export type SwapMovementCatalogRow = {
   slug: string;
   display_name: string;
   equipment: string | null;
+  /** Server similarity rank flag — the closest alternatives to the original. */
+  recommended?: boolean;
 };
 
 export type SwapMovementModalProps = {
@@ -113,6 +115,56 @@ export function SwapMovementModal({
       : candidates.filter((c) =>
           c.display_name.toLowerCase().includes(search.trim().toLowerCase()),
         );
+  const isSearching = search.trim().length > 0;
+  const recommended = filtered.filter((c) => c.recommended);
+  const others = filtered.filter((c) => !c.recommended);
+
+  const renderCandidate = (c: SwapMovementCatalogRow) => (
+    <button
+      key={c.id}
+      type="button"
+      onClick={() => confirm(c)}
+      disabled={pending}
+      data-testid={`swap-modal-candidate-${c.slug}`}
+      style={{
+        textAlign: "left",
+        padding: "10px 12px",
+        borderRadius: 8,
+        border: `1px solid ${c.recommended ? "color-mix(in oklab, var(--cp-accent) 45%, var(--cp-border))" : "var(--cp-border)"}`,
+        background: "var(--cp-surface-soft)",
+        color: "var(--cp-text)",
+        cursor: pending ? "wait" : "pointer",
+        fontSize: 13,
+        minHeight: 44,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 8,
+      }}
+    >
+      <span style={{ fontWeight: 500 }}>{c.display_name}</span>
+      {c.equipment && (
+        <span className="mono" style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
+          {c.equipment}
+        </span>
+      )}
+    </button>
+  );
+
+  const sectionLabel = (text: string) => (
+    <div
+      style={{
+        fontSize: 11,
+        textTransform: "uppercase",
+        letterSpacing: "0.06em",
+        color: "var(--cp-text-muted)",
+        marginTop: 4,
+        fontWeight: 600,
+      }}
+    >
+      {text}
+    </div>
+  );
 
   const confirm = (pick: SwapMovementCatalogRow) => {
     setError(null);
@@ -268,39 +320,26 @@ export function SwapMovementModal({
               No compatible alternatives in the catalog.
             </div>
           )}
-          {!loading &&
-            !error &&
-            filtered.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => confirm(c)}
-                disabled={pending}
-                data-testid={`swap-modal-candidate-${c.slug}`}
-                style={{
-                  textAlign: "left",
-                  padding: "10px 12px",
-                  borderRadius: 8,
-                  border: "1px solid var(--cp-border)",
-                  background: "var(--cp-surface-soft)",
-                  color: "var(--cp-text)",
-                  cursor: pending ? "wait" : "pointer",
-                  fontSize: 13,
-                  minHeight: 44,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                }}
-              >
-                <span style={{ fontWeight: 500 }}>{c.display_name}</span>
-                {c.equipment && (
-                  <span className="mono" style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-                    {c.equipment}
-                  </span>
+          {!loading && !error && filtered.length > 0 && (
+            isSearching ? (
+              filtered.map(renderCandidate)
+            ) : (
+              <>
+                {recommended.length > 0 && (
+                  <>
+                    {sectionLabel("Recommended")}
+                    {recommended.map(renderCandidate)}
+                  </>
                 )}
-              </button>
-            ))}
+                {others.length > 0 && (
+                  <>
+                    {recommended.length > 0 && sectionLabel("Other alternatives")}
+                    {others.map(renderCandidate)}
+                  </>
+                )}
+              </>
+            )
+          )}
         </div>
       </div>
     </div>
