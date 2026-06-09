@@ -228,7 +228,7 @@ const oly = (slug: string, name: string, opts: MoveOpts = {}): NewMovement =>
     primaryRegion: "hamstring_posterior",
     secondaryRegions: ["knee", "lumbar_trunk", "shoulder_scapular"],
     primaryMuscles: ["hamstrings", "glutes", "quads", "traps"],
-    secondaryMuscles: ["lower_back", "front_delts", "calves"],
+    secondaryMuscles: ["lower_back", "front_delts", "calves", "forearms"],
     isCompound: true,
     axialLoad: "high",
     highStrainTendon: true,
@@ -252,11 +252,11 @@ const OLYMPIC: NewMovement[] = [
   oly("snatch-pull", "Snatch Pull", { equipment: "barbell" }),
   oly("push-jerk", "Push Jerk", { equipment: "barbell", primaryMuscles: ["front_delts", "triceps", "quads"], primaryRegion: "shoulder_scapular", experienceMin: 3 }),
   // power_olympic additions (PR #22 follow-up — proposed slugs that didn't exist in the catalog).
-  oly("split-jerk", "Split Jerk", { equipment: "barbell", primaryMuscles: ["front_delts", "triceps"], secondaryMuscles: ["quads", "glutes", "abs", "side_delts"], primaryRegion: "shoulder_scapular", metadata: { emphasis: "split-stance-overhead-power" }, experienceMin: 3 }),
-  oly("dumbbell-snatch", "Dumbbell Snatch", { equipment: "dumbbell", primaryMuscles: ["hamstrings", "glutes", "front_delts", "traps"], secondaryMuscles: ["lower_back", "abs", "quads"], bilateral: false, axialLoad: "moderate" }),
-  oly("kettlebell-snatch", "Kettlebell Snatch", { equipment: "kettlebell", primaryMuscles: ["hamstrings", "glutes", "front_delts"], secondaryMuscles: ["lower_back", "abs", "traps"], bilateral: false, axialLoad: "moderate" }),
+  oly("split-jerk", "Split Jerk", { equipment: "barbell", primaryMuscles: ["front_delts", "triceps"], secondaryMuscles: ["quads", "glutes", "abs", "side_delts", "lower_back", "forearms"], primaryRegion: "shoulder_scapular", metadata: { emphasis: "split-stance-overhead-power" }, experienceMin: 3 }),
+  oly("dumbbell-snatch", "Dumbbell Snatch", { equipment: "dumbbell", primaryMuscles: ["hamstrings", "glutes", "front_delts", "traps"], secondaryMuscles: ["lower_back", "abs", "quads", "forearms"], bilateral: false, axialLoad: "moderate" }),
+  oly("kettlebell-snatch", "Kettlebell Snatch", { equipment: "kettlebell", primaryMuscles: ["hamstrings", "glutes", "front_delts"], secondaryMuscles: ["lower_back", "abs", "traps", "forearms"], bilateral: false, axialLoad: "moderate" }),
   // power_ballistic + olympic-derivative — KB clean into jerk.
-  oly("kb-clean-and-jerk", "Kettlebell Clean & Jerk", { equipment: "kettlebell", primaryMuscles: ["hamstrings", "glutes", "front_delts", "triceps"], secondaryMuscles: ["lower_back", "abs", "traps", "quads"], axialLoad: "moderate", functionalRoles: ["power_olympic", "power_ballistic"], metadata: { emphasis: "posterior-chain-into-overhead" } }),
+  oly("kb-clean-and-jerk", "Kettlebell Clean & Jerk", { equipment: "kettlebell", primaryMuscles: ["hamstrings", "glutes", "front_delts", "triceps"], secondaryMuscles: ["lower_back", "abs", "traps", "quads", "forearms"], axialLoad: "moderate", functionalRoles: ["power_olympic", "power_ballistic"], metadata: { emphasis: "posterior-chain-into-overhead" } }),
 ];
 
 // ─── tendon / resilience (15) — Baar 2017 HIGH protocols ───
@@ -278,7 +278,7 @@ const TENDON: NewMovement[] = [
   tendon("iso-wall-sit-heavy", "Heavy Wall Sit", { equipment: "wall-or-weighted", secondaryMuscles: ["adductors"], metadata: { protocol: "isometric-45-60s", emphasis: "patellar-tendon" } }),
   tendon("iso-mid-thigh-pull", "Isometric Mid-Thigh Pull", { equipment: "rack-pins", primaryMuscles: ["hamstrings", "glutes", "traps"], primaryRegion: "hamstring_posterior", metadata: { protocol: "isometric-max-tension" } }),
   tendon("iso-ohp-pin-press", "Isometric Pin OHP", { equipment: "rack-pins", primaryMuscles: ["front_delts", "triceps"], primaryRegion: "shoulder_scapular", metadata: { protocol: "isometric-max-tension" } }),
-  tendon("hsr-rdl", "HSR RDL (3s tempo)", { equipment: "barbell", pattern: "hinge", primaryMuscles: ["hamstrings", "glutes"], primaryRegion: "hamstring_posterior", metadata: { protocol: "Kongsgaard-HSR-3s-3s", tempo: "3-0-3-0" } }),
+  tendon("hsr-rdl", "HSR RDL (3s tempo)", { equipment: "barbell", pattern: "hinge", primaryMuscles: ["hamstrings", "glutes"], secondaryMuscles: ["lower_back"], primaryRegion: "hamstring_posterior", secondaryRegions: ["lumbar_trunk"], metadata: { protocol: "Kongsgaard-HSR-3s-3s", tempo: "3-0-3-0" } }),
   tendon("hsr-calf-raise", "HSR Calf Raise (3s tempo)", { equipment: "machine", primaryMuscles: ["calves"], primaryRegion: "foot_ankle_calf", metadata: { protocol: "Kongsgaard-HSR", tempo: "3-0-3-0", emphasis: "achilles" } }),
   // Machine-free Achilles/calf HSR so the running-block Achilles guarantee
   // (ADR 0034) can be satisfied without a calf machine (a runner with only a
@@ -286,12 +286,12 @@ const TENDON: NewMovement[] = [
   // raise at the Kongsgaard 3-0-3 tempo.
   tendon("hsr-calf-raise-db", "HSR Calf Raise — DB/BW (3s tempo)", { equipment: "dumbbell-or-bw", bilateral: false, primaryMuscles: ["calves"], primaryRegion: "foot_ankle_calf", metadata: { protocol: "Kongsgaard-HSR", tempo: "3-0-3-0", emphasis: "achilles" } }),
   tendon("hsr-leg-press", "HSR Leg Press (3s tempo)", { equipment: "machine", primaryMuscles: ["quads", "glutes"], secondaryMuscles: ["adductors"], pattern: "squat", isCompound: true, stability: "fixed_path", metadata: { protocol: "Kongsgaard-HSR", tempo: "3-0-3-0" } }),
-  tendon("hsr-front-squat", "Slow Front Squat (HSR)", { equipment: "barbell", pattern: "squat", primaryMuscles: ["quads"], secondaryMuscles: ["glutes", "adductors"], isCompound: true, axialLoad: "high", metadata: { protocol: "HSR", tempo: "3-0-3-0" } }),
+  tendon("hsr-front-squat", "Slow Front Squat (HSR)", { equipment: "barbell", pattern: "squat", primaryMuscles: ["quads"], secondaryMuscles: ["glutes", "adductors", "lower_back"], secondaryRegions: ["lumbar_trunk"], isCompound: true, axialLoad: "high", metadata: { protocol: "HSR", tempo: "3-0-3-0" } }),
   tendon("eccentric-calf-alfredson", "Alfredson Eccentric Calf", { equipment: "step", primaryMuscles: ["calves"], primaryRegion: "foot_ankle_calf", metadata: { protocol: "Alfredson-1998", emphasis: "achilles-tendinopathy", tempo: "3s-eccentric" } }),
-  tendon("eccentric-chin-up", "Eccentric Chin-Up", { equipment: "bar", pattern: "pull", primaryMuscles: ["lats", "biceps"], primaryRegion: "shoulder_scapular", bodyWeightLoaded: true, metadata: { tempo: "X-5-0-0" } }),
+  tendon("eccentric-chin-up", "Eccentric Chin-Up", { equipment: "bar", pattern: "pull", primaryMuscles: ["lats", "biceps"], secondaryMuscles: ["forearms"], primaryRegion: "shoulder_scapular", bodyWeightLoaded: true, metadata: { tempo: "X-5-0-0" } }),
   tendon("nordic-curl-eccentric", "Nordic Curl (eccentric-only)", { equipment: "anchor", primaryMuscles: ["hamstrings"], primaryRegion: "hamstring_posterior", metadata: { emphasis: "hamstring-strain-prevention", eccentric_cost: "very_high" } }),
   tendon("jefferson-curl", "Jefferson Curl", { equipment: "barbell-or-db", pattern: "hinge", primaryMuscles: ["lower_back", "hamstrings"], primaryRegion: "lumbar_trunk", metadata: { protocol: "loaded-mobility", emphasis: "spinal-flexion-tolerance" } }),
-  tendon("cossack-squat-loaded", "Loaded Cossack Squat", { equipment: "dumbbell-or-kb", pattern: "squat", bilateral: false, primaryMuscles: ["quads", "adductors", "glutes"], primaryRegion: "adductor_groin", metadata: { protocol: "loaded-mobility" } }),
+  tendon("cossack-squat-loaded", "Loaded Cossack Squat", { equipment: "dumbbell-or-kb", pattern: "squat", bilateral: false, primaryMuscles: ["quads", "adductors", "glutes"], primaryRegion: "adductor_groin", secondaryRegions: ["knee"], metadata: { protocol: "loaded-mobility" } }),
   tendon("copenhagen-side-plank", "Copenhagen Side Plank", { equipment: "bench", primaryMuscles: ["adductors", "obliques"], primaryRegion: "adductor_groin", metadata: { protocol: "isometric", emphasis: "adductor-prehab" } }),
 ];
 
@@ -315,7 +315,7 @@ const CUFF: NewMovement[] = [
   cuff("prone-y-raise", "Prone Y-Raise", { equipment: "bench-dumbbells", primaryMuscles: ["rear_delts", "traps"] }),
   cuff("prone-t-raise", "Prone T-Raise", { equipment: "bench-dumbbells", primaryMuscles: ["rear_delts", "mid_back"] }),
   cuff("prone-w-raise", "Prone W-Raise", { equipment: "bench-dumbbells", primaryMuscles: ["rear_delts", "mid_back"] }),
-  cuff("scapular-pull-up", "Scapular Pull-Up", { equipment: "bar", primaryMuscles: ["mid_back", "lats"], metadata: { emphasis: "scap-control" } }),
+  cuff("scapular-pull-up", "Scapular Pull-Up", { equipment: "bar", primaryMuscles: ["mid_back", "lats"], secondaryMuscles: ["forearms"], metadata: { emphasis: "scap-control" } }),
 ];
 
 // ─── run / sprint drills (6) ───
