@@ -273,9 +273,9 @@ const tendon = (slug: string, name: string, opts: MoveOpts = {}): NewMovement =>
   });
 
 const TENDON: NewMovement[] = [
-  tendon("iso-split-squat", "Heavy Isometric Split Squat", { equipment: "barbell-or-db", bilateral: false, metadata: { protocol: "Baar-isometric-70-80pct-30s-3sets", emphasis: "patellar-tendon" } }),
+  tendon("iso-split-squat", "Heavy Isometric Split Squat", { equipment: "barbell-or-db", bilateral: false, secondaryMuscles: ["glutes", "hamstrings", "adductors"], metadata: { protocol: "Baar-isometric-70-80pct-30s-3sets", emphasis: "patellar-tendon" } }),
   tendon("iso-calf-hold", "Heavy Isometric Calf Hold", { equipment: "machine", primaryMuscles: ["calves"], primaryRegion: "foot_ankle_calf", metadata: { protocol: "Baar-isometric-30s-3sets", emphasis: "achilles" } }),
-  tendon("iso-wall-sit-heavy", "Heavy Wall Sit", { equipment: "wall-or-weighted", metadata: { protocol: "isometric-45-60s", emphasis: "patellar-tendon" } }),
+  tendon("iso-wall-sit-heavy", "Heavy Wall Sit", { equipment: "wall-or-weighted", secondaryMuscles: ["adductors"], metadata: { protocol: "isometric-45-60s", emphasis: "patellar-tendon" } }),
   tendon("iso-mid-thigh-pull", "Isometric Mid-Thigh Pull", { equipment: "rack-pins", primaryMuscles: ["hamstrings", "glutes", "traps"], primaryRegion: "hamstring_posterior", metadata: { protocol: "isometric-max-tension" } }),
   tendon("iso-ohp-pin-press", "Isometric Pin OHP", { equipment: "rack-pins", primaryMuscles: ["front_delts", "triceps"], primaryRegion: "shoulder_scapular", metadata: { protocol: "isometric-max-tension" } }),
   tendon("hsr-rdl", "HSR RDL (3s tempo)", { equipment: "barbell", pattern: "hinge", primaryMuscles: ["hamstrings", "glutes"], primaryRegion: "hamstring_posterior", metadata: { protocol: "Kongsgaard-HSR-3s-3s", tempo: "3-0-3-0" } }),
@@ -285,8 +285,8 @@ const TENDON: NewMovement[] = [
   // bar / dumbbells previously fell back to a knee HSR). Single-leg loaded calf
   // raise at the Kongsgaard 3-0-3 tempo.
   tendon("hsr-calf-raise-db", "HSR Calf Raise — DB/BW (3s tempo)", { equipment: "dumbbell-or-bw", bilateral: false, primaryMuscles: ["calves"], primaryRegion: "foot_ankle_calf", metadata: { protocol: "Kongsgaard-HSR", tempo: "3-0-3-0", emphasis: "achilles" } }),
-  tendon("hsr-leg-press", "HSR Leg Press (3s tempo)", { equipment: "machine", primaryMuscles: ["quads", "glutes"], pattern: "squat", isCompound: true, stability: "fixed_path", metadata: { protocol: "Kongsgaard-HSR", tempo: "3-0-3-0" } }),
-  tendon("hsr-front-squat", "Slow Front Squat (HSR)", { equipment: "barbell", pattern: "squat", primaryMuscles: ["quads"], isCompound: true, axialLoad: "high", metadata: { protocol: "HSR", tempo: "3-0-3-0" } }),
+  tendon("hsr-leg-press", "HSR Leg Press (3s tempo)", { equipment: "machine", primaryMuscles: ["quads", "glutes"], secondaryMuscles: ["adductors"], pattern: "squat", isCompound: true, stability: "fixed_path", metadata: { protocol: "Kongsgaard-HSR", tempo: "3-0-3-0" } }),
+  tendon("hsr-front-squat", "Slow Front Squat (HSR)", { equipment: "barbell", pattern: "squat", primaryMuscles: ["quads"], secondaryMuscles: ["glutes", "adductors"], isCompound: true, axialLoad: "high", metadata: { protocol: "HSR", tempo: "3-0-3-0" } }),
   tendon("eccentric-calf-alfredson", "Alfredson Eccentric Calf", { equipment: "step", primaryMuscles: ["calves"], primaryRegion: "foot_ankle_calf", metadata: { protocol: "Alfredson-1998", emphasis: "achilles-tendinopathy", tempo: "3s-eccentric" } }),
   tendon("eccentric-chin-up", "Eccentric Chin-Up", { equipment: "bar", pattern: "pull", primaryMuscles: ["lats", "biceps"], primaryRegion: "shoulder_scapular", bodyWeightLoaded: true, metadata: { tempo: "X-5-0-0" } }),
   tendon("nordic-curl-eccentric", "Nordic Curl (eccentric-only)", { equipment: "anchor", primaryMuscles: ["hamstrings"], primaryRegion: "hamstring_posterior", metadata: { emphasis: "hamstring-strain-prevention", eccentric_cost: "very_high" } }),

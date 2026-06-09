@@ -80,9 +80,9 @@ const squat = (slug: string, name: string, opts: MoveOpts = {}): NewMovement =>
 const SQUAT: NewMovement[] = [
   squat("back-squat-high-bar", "Back Squat (high-bar)", { equipment: "barbell" }),
   squat("back-squat-low-bar", "Back Squat (low-bar)", { equipment: "barbell", primaryMuscles: ["quads", "glutes", "hamstrings"], metadata: { cns_cost: "high", emphasis: "posterior-chain" } }),
-  squat("front-squat", "Front Squat", { equipment: "barbell", primaryMuscles: ["quads", "upper_chest"], secondaryMuscles: ["glutes", "abs", "lower_back"], highStrainTendon: true }),
+  squat("front-squat", "Front Squat", { equipment: "barbell", primaryMuscles: ["quads", "upper_chest"], secondaryMuscles: ["glutes", "abs", "lower_back", "adductors"], highStrainTendon: true }),
   squat("ssb-squat", "Safety Bar Squat", { equipment: "barbell-ssb" }),
-  squat("zercher-squat", "Zercher Squat", { equipment: "barbell", primaryMuscles: ["quads", "glutes", "upper_chest"], secondaryMuscles: ["biceps", "lower_back"], experienceMin: 2 }),
+  squat("zercher-squat", "Zercher Squat", { equipment: "barbell", primaryMuscles: ["quads", "glutes", "upper_chest"], secondaryMuscles: ["biceps", "lower_back", "adductors"], experienceMin: 2 }),
   squat("box-squat", "Box Squat", { equipment: "barbell-box", metadata: { eccentric_cost: "low", emphasis: "concentric" } }),
   squat("paused-back-squat", "Paused Back Squat", { equipment: "barbell", metadata: { tempo: "1-3-X-0" }, experienceMin: 2 }),
   squat("tempo-back-squat", "Tempo Back Squat", { equipment: "barbell", metadata: { tempo: "3-0-X-0", eccentric_cost: "high" }, experienceMin: 2 }),
