@@ -6,7 +6,10 @@
  *     the expected reps (12/10/8) + targetRir ({2,2}/{2,2}/{1,1}) and a
  *     non-empty intensityCue. Non-final sets have NO targetRir/cue and
  *     their reps + percentTm are unchanged from the wave.
- *   - HYPERTROPHY_ANCHOR weekIndex 3 (Deload): NO targetRir on any item.
+ *   - HYPERTROPHY_ANCHOR weekIndex 3/4/5 (the SECOND cadence wave): the anchor
+ *     mirrors weekIndex 0/1/2 — the wave-position lookup must not leave the
+ *     second wave un-anchored (cadence-expansion regression).
+ *   - HYPERTROPHY_ANCHOR Deload week (resolved by label): NO targetRir on any item.
  *   - HYPERTROPHY_ANCHOR is excluded from the ADR 0007 AMRAP marker — its
  *     final set carries isAmrap:false (RIR-anchored, not open AMRAP).
  *   - Regression: STRENGTH_ANCHOR main sets carry NO RIR anchor
@@ -94,6 +97,26 @@ describe("ADR 0011 — hypertrophy compound effort anchor (final set)", () => {
       }
     });
   }
+
+  it("second cadence wave (weekIndex 3/4/5) mirrors the first wave's anchor", () => {
+    // Cadence expansion repeats the 3 build weeks; the anchor table is keyed by
+    // wave position (0,1,2), so weekIndex 3,4,5 must reproduce 0,1,2 exactly.
+    const day = firstHypertrophyStrengthDay();
+    const waveExpect = [
+      { wk: 3, reps: 12, rir: { min: 2, max: 2 } },
+      { wk: 4, reps: 10, rir: { min: 2, max: 2 } },
+      { wk: 5, reps: 8, rir: { min: 1, max: 1 } },
+    ];
+    for (const { wk, reps, rir } of waveExpect) {
+      const items = buildPrescription(HYPERTROPHY_ANCHOR, wk, day, PRIMARY);
+      const mains = items.filter((i) => i.kind === "main");
+      const last = mains[mains.length - 1]!;
+      expect(last.reps, `weekIndex ${wk} final reps`).toBe(reps);
+      expect(last.targetRir, `weekIndex ${wk} final RIR`).toEqual(rir);
+      expect(last.intensityCue).toBeTruthy();
+      expect(last.isAmrap).toBe(false);
+    }
+  });
 
   it("deload week: NO targetRir/intensityCue on any main item, reps unchanged", () => {
     const day = firstHypertrophyStrengthDay();

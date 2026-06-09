@@ -142,15 +142,20 @@ export function evaluateBumpGate(input: GateInput): GateResult {
     score += 1;
   }
 
-  // +2: heavy-week 1+ AMRAP beaten by ≥ 5 reps — strongest progression signal
-  if (input.weekIndex === 2 && input.target === 1 && repsOverTarget >= 5) {
+  // +2: heavy-week 1+ AMRAP beaten by ≥ 5 reps — strongest progression signal.
+  // The 1+ top set IS the heavy/peaking set of its wave, so key off the TARGET,
+  // not the absolute weekIndex. Cadence expansion puts the second wave's peak at
+  // weekIndex 5; the old `weekIndex === 2` check silently skipped it.
+  if (input.target === 1 && repsOverTarget >= 5) {
     reasons.push({ label: "Heavy-week (1+) top set beaten by 5+ reps — strongest progression signal.", points: 2 });
     score += 2;
   }
 
-  // +2: early-week AMRAP beaten by ≥ 7 reps — early-wave outlier
-  if ((input.weekIndex === 0 || input.weekIndex === 1) && repsOverTarget >= 7) {
-    reasons.push({ label: `Week ${input.weekIndex + 1} beaten by ${repsOverTarget} reps — early-wave outlier.`, points: 2 });
+  // +2: early-wave (5+/3+, sub-maximal higher-rep) AMRAP beaten by ≥ 7 reps —
+  // early-wave outlier. Keyed off the TARGET (5 or 3 = an early, non-peak week)
+  // so it fires on BOTH waves, not just absolute weekIndex 0/1.
+  if ((input.target === 5 || input.target === 3) && repsOverTarget >= 7) {
+    reasons.push({ label: `Early-wave ${input.target}+ set beaten by ${repsOverTarget} reps — early-wave outlier.`, points: 2 });
     score += 2;
   }
 
