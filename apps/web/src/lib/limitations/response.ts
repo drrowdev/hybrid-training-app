@@ -156,6 +156,24 @@ function isSafe(mv: CatalogMovement, ctx: LimitationsContext): boolean {
 }
 
 /**
+ * Attribute an applied adjustment to the specific limitation that caused it,
+ * for the audit trail. Given per-limitation contexts (build one per active
+ * `limitations` row), return the id of the first that the movement offends —
+ * or null when none/ambiguous (e.g. the offence came from an aggregate the
+ * single-row contexts don't reproduce). Pure.
+ */
+export function attributeLimitation(
+  mv: CatalogMovement | undefined,
+  movementId: string,
+  limitationContexts: ReadonlyArray<{ id: string; ctx: LimitationsContext }>,
+): string | null {
+  for (const { id, ctx } of limitationContexts) {
+    if (offenceFor(mv, movementId, ctx) !== null) return id;
+  }
+  return null;
+}
+
+/**
  * Patterns that are NEVER a like-for-like replacement for a discretionary
  * strength accessory: conditioning (cardio) and explosive/skill work
  * (plyometric / olympic / drill). Swapping a flagged accessory for "Spin Class"
@@ -389,11 +407,23 @@ export function buildLimitationResponse(
   return { swaps, drops, warns, updates };
 }
 
+/** A single change that was actually applied — for audit / display tracking. */
+export type AppliedAdjustment = {
+  sessionId: string;
+  kind: "swap" | "drop";
+  fromMovementId: string;
+  fromName: string;
+  toMovementId: string | null;
+  toName: string | null;
+};
+
 /** Result of narrowing a full plan to a user-selected subset of items. */
 export type SelectedLimitationUpdates = {
   updates: Array<{ id: string; prescription: Prescription }>;
   swapped: number;
   dropped: number;
+  /** The concrete changes applied (resolved targets), for adjustment tracking. */
+  applied: AppliedAdjustment[];
 };
 
 /**
@@ -453,6 +483,7 @@ export function buildSelectedUpdates(
   }
 
   const updates: Array<{ id: string; prescription: Prescription }> = [];
+  const applied: AppliedAdjustment[] = [];
   const touchedSessionIds = new Set<string>([
     ...swapsBySession.keys(),
     ...dropsBySession.keys(),
@@ -469,7 +500,21 @@ export function buildSelectedUpdates(
     const nextItems: PrescriptionItem[] = [];
 
     items.forEach((item, itemIndex) => {
-      if (sessionDrops.has(itemIndex)) return; // approved drop — remove it.
+      if (sessionDrops.has(itemIndex)) {
+        // approved drop — remove it, and record the adjustment.
+        const drop = plan.drops.find(
+          (d) => d.sessionId === sessionId && d.itemIndex === itemIndex,
+        );
+        applied.push({
+          sessionId,
+          kind: "drop",
+          fromMovementId: item.movementId,
+          fromName: drop?.fromName ?? item.movementName ?? item.movementId,
+          toMovementId: null,
+          toName: null,
+        });
+        return;
+      }
       const swap = sessionSwaps.get(itemIndex);
       if (swap) {
         // Resolve the target: a user choice is honoured only if it's one of the
@@ -490,6 +535,14 @@ export function buildSelectedUpdates(
           movementSlug: target.movementSlug,
           movementName: target.name,
         });
+        applied.push({
+          sessionId,
+          kind: "swap",
+          fromMovementId: swap.fromMovementId,
+          fromName: swap.fromName,
+          toMovementId: target.movementId,
+          toName: target.name,
+        });
         return;
       }
       nextItems.push(item);
@@ -501,5 +554,5 @@ export function buildSelectedUpdates(
     });
   }
 
-  return { updates, swapped, dropped };
+  return { updates, swapped, dropped, applied };
 }

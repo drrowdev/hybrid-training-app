@@ -71,4 +71,60 @@ describe("ActiveLimitationsCard", () => {
     );
     expect(html).toContain("Active limitations:");
   });
+
+  it("surfaces a per-limitation adjusted count when present", () => {
+    const html = renderToStaticMarkup(
+      <ActiveLimitationsCard
+        limitations={[sample({ id: "lim-1", kind: "knee" })]}
+        adjustedById={{ "lim-1": 2 }}
+      />,
+    );
+    expect(html).toContain('data-testid="active-limitations-adjusted"');
+    expect(html).toContain("2 movements adjusted");
+  });
+
+  it("uses singular wording for a single adjusted movement", () => {
+    const html = renderToStaticMarkup(
+      <ActiveLimitationsCard
+        limitations={[sample({ id: "lim-1" })]}
+        adjustedById={{ "lim-1": 1 }}
+      />,
+    );
+    expect(html).toContain("1 movement adjusted");
+    expect(html).not.toContain("1 movements adjusted");
+  });
+
+  it("omits the adjusted badge when the count is zero", () => {
+    const html = renderToStaticMarkup(
+      <ActiveLimitationsCard
+        limitations={[sample({ id: "lim-1" })]}
+        adjustedById={{ "lim-1": 0 }}
+      />,
+    );
+    expect(html).not.toContain('data-testid="active-limitations-adjusted"');
+  });
+
+  it("shows a pending-adjustment nudge linking to injuries when pending > 0", () => {
+    const html = renderToStaticMarkup(
+      <ActiveLimitationsCard limitations={[sample()]} pendingCount={3} />,
+    );
+    expect(html).toContain('data-testid="active-limitations-pending"');
+    expect(html).toContain("3 suggested adjustments");
+    expect(html).toContain('href="/app/recovery/injuries"');
+  });
+
+  it("uses singular wording for a single pending adjustment", () => {
+    const html = renderToStaticMarkup(
+      <ActiveLimitationsCard limitations={[sample()]} pendingCount={1} />,
+    );
+    expect(html).toContain("1 suggested adjustment");
+    expect(html).not.toContain("1 suggested adjustments");
+  });
+
+  it("omits the pending nudge when there is nothing pending", () => {
+    const html = renderToStaticMarkup(
+      <ActiveLimitationsCard limitations={[sample()]} pendingCount={0} />,
+    );
+    expect(html).not.toContain('data-testid="active-limitations-pending"');
+  });
 });
