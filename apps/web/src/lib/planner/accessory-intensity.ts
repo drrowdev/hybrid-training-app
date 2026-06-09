@@ -168,8 +168,8 @@ export function inferAccessoryBucket(
     input.reason === "power" ||
     bulletproof.has("plyometric_low") ||
     bulletproof.has("plyometric_high") ||
-    functional.has("ballistic") ||
-    functional.has("plyometric") ||
+    functional.has("power_ballistic") ||
+    functional.has("power_plyometric") ||
     slugHas(slug, PLYOMETRIC_KEYWORDS)
   ) {
     return "plyometric";
