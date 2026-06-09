@@ -329,6 +329,9 @@ export async function generateTmSuggestionsForSession(
     if (!current) continue; // no TM yet → don't auto-suggest, user should enter one
     const effectivePct = current.tmPercent ?? defaultPct;
     const currentTmKg = roundToPlate((current.oneRmKg * effectivePct) / 100);
+    // The gate suppresses high-rep sets (> AMRAP_CONFIDENCE_REP_CAP) as
+    // low-confidence, so a noisy 8-rep AMRAP no longer produces a TM banner —
+    // TM changes should be infrequent + high-confidence. See suggestions.ts.
     const result = evaluateTmSuggestion({
       currentTmKg,
       amrapWeightKg: top.weightKg,
