@@ -11,6 +11,7 @@ export * from "./schema/profiles";
 export * from "./schema/limitations";
 export * from "./schema/limitation-events";
 export * from "./schema/movements";
+export * from "./schema/movement-instructions";
 export * from "./schema/sessions";
 export * from "./schema/session-movements";
 export * from "./schema/set-logs";
