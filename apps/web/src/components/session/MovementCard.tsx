@@ -27,6 +27,7 @@ import { buildMovementRecap } from "@/lib/sessions/movement-recap";
 import { cleanPrescriptionNotes } from "@/lib/planner/clean-prescription-notes";
 import { MovementFocusView, type FocusLoggedSet } from "./MovementFocusView";
 import { SwapMovementModal } from "./SwapMovementModal";
+import { MovementHowToButton } from "./MovementHowToButton";
 import { DisclosureArrow } from "./DisclosureArrow";
 import { MetricHelp } from "@/components/ui/MetricHelp";
 import type { PlateInventoryItem } from "./plate-math";
@@ -316,6 +317,10 @@ export function MovementCard({
           <span style={{ fontWeight: 600, fontSize: 15 }}>
             {group.movementName}
           </span>
+          <MovementHowToButton
+            movementId={group.movementId}
+            displayName={group.movementName}
+          />
           {/Hsr|HSR|\(hsr\)/i.test(group.movementName) && (
             <MetricHelp term="hsr" variant="info" placement="bottom" />
           )}
