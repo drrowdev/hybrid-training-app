@@ -391,6 +391,18 @@ function withExpandedCadence(a: Archetype): Archetype {
   return { ...a, weekProfiles, weeks: weekProfiles.length };
 }
 
+/**
+ * Number of BUILD weeks in a single loading wave, after cadence expansion.
+ * `expandToTwoWaves` repeats the build block `DELOAD_CADENCE_WAVES` times, so a
+ * week's position WITHIN its wave is `weekIndex % buildWeeksPerWave`. Used by any
+ * logic that is keyed to a wave position (e.g. the hypertrophy final-set anchor)
+ * so it doesn't silently mis-fire on the second wave's higher absolute indices.
+ */
+export function buildWeeksPerWave(a: Archetype): number {
+  const buildCount = a.weekProfiles.filter((p) => p.intensityLabel !== "Deload").length;
+  return buildCount > 0 ? Math.max(1, Math.round(buildCount / DELOAD_CADENCE_WAVES)) : 1;
+}
+
 export const STRENGTH_ANCHOR: Archetype = withExpandedCadence({
   id: "strength_anchor",
   name: "Strength Focus",
@@ -1801,9 +1813,15 @@ function applyHypertrophyEffortAnchor(
   // prescribe training to failure on a concurrent-block compound. Always
   // isAmrap:false so the renderer shows the RIR chip (not a "+") and the AMRAP
   // detect/bump path leaves the high-rep set alone (ADR 0007 Decision 6).
+  //
+  // Wave-position lookup (bug fix): cadence expansion repeats the 3 build weeks
+  // into a second wave at weekIndex 3,4,5. The anchor table is keyed 0,1,2, so a
+  // raw `weekIndex` lookup left the ENTIRE second wave un-anchored. Map the
+  // absolute index back to its position within the wave.
+  const wavePos = profile.weekIndex % buildWeeksPerWave(archetype);
   const baseSpec = isDeload
     ? undefined
-    : HYPERTROPHY_FINAL_SET_BY_WEEK[profile.weekIndex];
+    : HYPERTROPHY_FINAL_SET_BY_WEEK[wavePos];
   let anchoredLast: PrescriptionItem;
   if (baseSpec) {
     const rir = Math.max(1, baseSpec.targetRir.max + cfg.finalRirDelta);

@@ -61,6 +61,31 @@ describe("evaluateBumpGate — soft signals", () => {
     if (r.passes) expect(r.score).toBeGreaterThanOrEqual(5);
   });
 
+  it("heavy-week signal fires on the SECOND wave (weekIndex 5, target 1+) — cadence-expansion regression", () => {
+    // After two-wave cadence expansion the second wave's 1+ peak is at weekIndex
+    // 5, not 2. The bonus must key off the target, not the absolute index.
+    const r = evaluateBumpGate({ ...baseline, weekIndex: 5, target: 1, performedReps: 6 });
+    expect(r.passes).toBe(true);
+    if (r.passes) {
+      const heavyReason = r.reasons.find((x) => /Heavy-week/.test(x.label));
+      expect(heavyReason?.points).toBe(2);
+    }
+  });
+
+  it("early-wave signal fires on the SECOND wave (weekIndex 3, target 5+)", () => {
+    const r = evaluateBumpGate({
+      ...baseline,
+      weekIndex: 3,
+      target: 5,
+      performedReps: 12,
+    });
+    expect(r.passes).toBe(true);
+    if (r.passes) {
+      const earlyReason = r.reasons.find((x) => /early-wave outlier/.test(x.label));
+      expect(earlyReason?.points).toBe(2);
+    }
+  });
+
   it("performance below threshold suppresses", () => {
     // Heavy-week index 2, target 1, performed 2. Epley 100*(1+2/30)=106.67 -> TM 96, -4%.
     // Signals: reps_over=1 (no points), no heavy-week 5+, no early_week, no
