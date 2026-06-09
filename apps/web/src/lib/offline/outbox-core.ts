@@ -1,0 +1,103 @@
+/**
+ * Offline outbox — pure core (no IndexedDB, no DOM).
+ *
+ * The durable queue that backs offline workout logging. Every mutating op (set
+ * log, cardio block, session finish) is recorded here BEFORE its network call
+ * so it survives signal loss and app kill, then replays FIFO when connectivity
+ * returns. This module holds only the pure data shapes + helpers so they can be
+ * unit-tested under the `node` vitest environment; the IndexedDB adapter that
+ * persists them lives in `./outbox` (browser-only).
+ *
+ * Idempotency: `set` / `cardio` entries use the server-side `client_log_id`
+ * (migration 0097) as their `id`, so a retried flush is a no-op insert. A
+ * `complete` op has no client key — `completeSession` is naturally re-runnable
+ * (it re-stamps + recomputes), so we just keep at most one per session.
+ */
+
+export type OutboxOp = "set" | "cardio" | "complete";
+
+export type OutboxEntry = {
+  /** Primary key. For set/cardio this is the `client_log_id` (uuid); for
+   * complete it's a generated uuid. */
+  id: string;
+  op: OutboxOp;
+  sessionId: string;
+  /** Monotonic FIFO ordering — replay must preserve set_index order. */
+  seq: number;
+  /** Server-action FormData as a plain string map (FormData isn't structured-
+   * cloneable into IndexedDB reliably across engines). */
+  payload: Record<string, string>;
+  createdAt: number;
+  attempts: number;
+  lastError?: string;
+};
+
+/** Next monotonic sequence number — strictly greater than any existing one and
+ * never below wall-clock ms, so ordering is stable across reloads. */
+export function nextSeq(existingSeqs: readonly number[], now: number): number {
+  let max = now;
+  for (const s of existingSeqs) if (s >= max) max = s + 1;
+  return max;
+}
+
+/** FIFO order. Stable on (seq, createdAt, id) so ties never reorder. */
+export function sortBySeq(entries: readonly OutboxEntry[]): OutboxEntry[] {
+  return [...entries].sort(
+    (a, b) =>
+      a.seq - b.seq || a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  );
+}
+
+/** Entries for one session, FIFO. */
+export function entriesForSession(
+  entries: readonly OutboxEntry[],
+  sessionId: string,
+): OutboxEntry[] {
+  return sortBySeq(entries.filter((e) => e.sessionId === sessionId));
+}
+
+/** How a failed flush attempt should be treated. A validation rejection from
+ * the server (a returned `{ error }`) is permanent — the payload will never be
+ * accepted, so drop it rather than loop forever. A thrown error (offline /
+ * network / 5xx) is transient — keep and retry. */
+export type FlushOutcome = "done" | "retry" | "drop";
+
+export function classifyActionResult(
+  result: { ok?: true; error?: string } | undefined,
+  threw: boolean,
+): FlushOutcome {
+  if (threw) return "retry"; // network/offline — keep queued
+  if (result && result.error) return "drop"; // server rejected the payload — permanent
+  return "done";
+}
+
+/** Exponential backoff (ms) with a ceiling, for spacing retried flushes while
+ * the session page stays open. The online/visibility triggers flush
+ * immediately; this only paces the in-page interval retries. */
+export function backoffMs(attempts: number): number {
+  const base = 2000;
+  const max = 60_000;
+  return Math.min(max, base * 2 ** Math.max(0, attempts - 1));
+}
+
+/** Build a FormData for a server action from a stored payload map. */
+export function payloadToFormData(payload: Record<string, string>): FormData {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(payload)) fd.append(k, v);
+  return fd;
+}
+
+/** Snapshot a FormData into a plain string map for durable storage. Non-string
+ * (File) parts are skipped — log payloads are all scalar fields. */
+export function formDataToPayload(fd: FormData): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of fd.entries()) {
+    if (typeof v === "string") out[k] = v;
+  }
+  return out;
+}
+
+/** Count of unsynced entries, for the status indicator. */
+export function pendingCount(entries: readonly OutboxEntry[]): number {
+  return entries.length;
+}

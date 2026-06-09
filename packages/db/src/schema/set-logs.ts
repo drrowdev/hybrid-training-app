@@ -19,6 +19,7 @@ import {
   smallint,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
@@ -60,6 +61,11 @@ export const setLogs = pgTable(
     // restricts the reason to the picker's chip allowlist.
     skipped: boolean("skipped").default(false).notNull(),
     skipReason: text("skip_reason"),
+    // Offline-logging idempotency key (migration 0097). Client-generated UUID
+    // set on the outbox path BEFORE the network write; the server upserts ON
+    // CONFLICT DO NOTHING so a retried flush can't double-insert. NULL on the
+    // regular online path and on legacy rows (partial-unique, NULLs coexist).
+    clientLogId: uuid("client_log_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .default(sql`now()`)
       .notNull(),
@@ -77,6 +83,9 @@ export const setLogs = pgTable(
       t.movementId,
       t.createdAt.desc(),
     ),
+    // Migration 0097 — unique idempotency key for offline replay (nullable;
+    // NULLs are distinct in Postgres so legacy/online rows coexist).
+    clientLogIdKey: uniqueIndex("set_logs_client_log_id_key").on(t.clientLogId),
   }),
 );
 
