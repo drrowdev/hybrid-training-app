@@ -8,6 +8,9 @@ import {
   pendingLogToLoggedSet,
   serverHasPendingLog,
   mergeOptimisticSets,
+  buildLoggedSetIdOverlay,
+  dropConfirmed,
+  isConfirmed,
   type OptimisticLog,
 } from "../optimistic-log";
 
@@ -198,4 +201,91 @@ describe("pendingLogToLoggedSet", () => {
     expect(ls.weight_kg).toBe(20);
     expect(ls.reps).toBe(12);
   });
+
+  it("uses the real server id once the entry is confirmed", () => {
+    const ls = pendingLogToLoggedSet(
+      {
+        clientKey: "opt-y",
+        serverId: "real-77",
+        movementId: "mv-7",
+        prescriptionItemIndex: 1,
+        setKind: "main",
+        weightKg: 60,
+        reps: 5,
+        durationSec: null,
+        distanceM: null,
+        rpe: null,
+        skipped: false,
+        skipReason: null,
+      },
+      0,
+    );
+    expect(ls.id).toBe("real-77");
+    expect(ls.prescription_item_index).toBe(1);
+  });
 });
+
+const baseLog: OptimisticLog = {
+  clientKey: "opt-1",
+  movementId: "mv-1",
+  prescriptionItemIndex: 2,
+  setKind: "main",
+  weightKg: 60,
+  reps: 5,
+  durationSec: null,
+  distanceM: null,
+  rpe: 8,
+  skipped: false,
+  skipReason: null,
+};
+
+describe("isConfirmed", () => {
+  it("is false in-flight and true once a serverId is attached", () => {
+    expect(isConfirmed(baseLog)).toBe(false);
+    expect(isConfirmed({ ...baseLog, serverId: "real-1" })).toBe(true);
+  });
+});
+
+describe("buildLoggedSetIdOverlay", () => {
+  it("returns the server map unchanged when nothing is confirmed", () => {
+    const server = { 0: "s0" };
+    expect(buildLoggedSetIdOverlay(server, [baseLog])).toBe(server);
+  });
+
+  it("fills the edit-link id for a confirmed entry the server map lacks", () => {
+    const overlay = buildLoggedSetIdOverlay(
+      { 0: "s0" },
+      [{ ...baseLog, serverId: "real-2" }],
+    );
+    expect(overlay).toEqual({ 0: "s0", 2: "real-2" });
+  });
+
+  it("lets the server map win where it already has the index", () => {
+    const overlay = buildLoggedSetIdOverlay(
+      { 2: "server-wins" },
+      [{ ...baseLog, serverId: "real-2" }],
+    );
+    expect(overlay[2]).toBe("server-wins");
+  });
+});
+
+describe("dropConfirmed", () => {
+  it("drops confirmed entries and keeps in-flight ones", () => {
+    const inFlight = { ...baseLog, clientKey: "a" };
+    const confirmed = { ...baseLog, clientKey: "b", serverId: "real-b" };
+    const next = dropConfirmed([inFlight, confirmed]);
+    expect(next).toEqual([inFlight]);
+  });
+
+  it("models the delete-after-log edge: a confirmed-then-deleted set un-logs", () => {
+    // Log set at index 2 (confirmed). Server snapshot later EXCLUDES it (deleted
+    // via the edit page). dropConfirmed removes the overlay entry, so the merged
+    // view reflects the server (no longer logged) — not a stale "logged" slot.
+    const confirmed = { ...baseLog, serverId: "real-x" };
+    const afterReconcile = dropConfirmed([confirmed]);
+    expect(afterReconcile).toHaveLength(0);
+    const serverAfterDelete: LoggedSet[] = []; // server no longer has it
+    expect(mergeOptimisticSets(serverAfterDelete, afterReconcile)).toHaveLength(0);
+  });
+});
+
