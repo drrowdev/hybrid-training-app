@@ -56,7 +56,7 @@ import { acceptEarlyDeload } from "@/lib/planner/early-deload-actions";
 import { EarlyDeloadCard } from "@/components/plan/EarlyDeloadCard";
 import { deloadWeekIndexFor } from "@/lib/planner/deload-skip";
 import { getLimitationResponseOffer } from "@/lib/limitations/offer";
-import { applyLimitationResponse } from "@/lib/limitations/actions";
+import { applyLimitationResponseSelection } from "@/lib/limitations/actions";
 import { LimitationResponseCard } from "@/components/limitations/LimitationResponseCard";
 import { NextBlockSuggestionCard } from "@/components/planner/NextBlockSuggestionCard";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -321,7 +321,7 @@ export default async function PlanPage({
       {limitationOffer && (
         <LimitationResponseCard
           offer={limitationOffer}
-          action={applyLimitationResponse}
+          applyAction={applyLimitationResponseSelection}
         />
       )}
       {autoregOffer && (
