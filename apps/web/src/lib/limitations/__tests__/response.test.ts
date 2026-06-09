@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { CatalogMovement } from "@/lib/planner/accessory-picker";
 import type { LimitationsContext } from "@/lib/planner/limitations-context";
 import type { RemainingSession } from "@/lib/planner/remaining-sessions";
-import { buildLimitationResponse, buildSelectedUpdates, deriveReplacement, deriveReplacements } from "../response";
+import { attributeLimitation, buildLimitationResponse, buildSelectedUpdates, deriveReplacement, deriveReplacements } from "../response";
 import { limitationItemKey } from "../item-key";
 
 function mv(
@@ -463,7 +463,7 @@ describe("buildSelectedUpdates — per-item review (Option 2)", () => {
 
   it("is a no-op when nothing is checked", () => {
     const out = buildSelectedUpdates(sessions, plan, new Set());
-    expect(out).toEqual({ updates: [], swapped: 0, dropped: 0 });
+    expect(out).toEqual({ updates: [], swapped: 0, dropped: 0, applied: [] });
   });
 
   it("ignores unknown / stale keys", () => {
@@ -472,7 +472,7 @@ describe("buildSelectedUpdates — per-item review (Option 2)", () => {
       plan,
       new Set([limitationItemKey("s1", 99), "garbage"]),
     );
-    expect(out).toEqual({ updates: [], swapped: 0, dropped: 0 });
+    expect(out).toEqual({ updates: [], swapped: 0, dropped: 0, applied: [] });
   });
 
   it("carries the replacement slug onto the rewritten item", () => {
@@ -506,5 +506,72 @@ describe("buildSelectedUpdates — per-item review (Option 2)", () => {
     );
     // Falls back to the engine default — never the injected id.
     expect(out.updates[0].prescription.items[0].movementId).toBe(swap.toMovementId);
+  });
+
+  it("records an applied swap entry with resolved from/to (for adjustment tracking)", () => {
+    const out = buildSelectedUpdates(sessions, plan, new Set([swapKey]));
+    expect(out.applied).toHaveLength(1);
+    const a = out.applied[0];
+    expect(a).toMatchObject({
+      sessionId: "s1",
+      kind: "swap",
+      fromMovementId: plan.swaps[0].fromMovementId,
+      toMovementId: plan.swaps[0].toMovementId,
+      toName: plan.swaps[0].toName,
+    });
+    expect(a.fromName).toBeTruthy();
+  });
+
+  it("records an applied drop entry with a null target", () => {
+    const out = buildSelectedUpdates(sessions, plan, new Set([dropKey]));
+    expect(out.applied).toHaveLength(1);
+    expect(out.applied[0]).toMatchObject({
+      sessionId: "s1",
+      kind: "drop",
+      fromMovementId: "curl",
+      toMovementId: null,
+      toName: null,
+    });
+  });
+
+  it("records one applied entry per approved change", () => {
+    const out = buildSelectedUpdates(sessions, plan, new Set([swapKey, dropKey]));
+    expect(out.applied).toHaveLength(2);
+    expect(out.applied.map((a) => a.kind).sort()).toEqual(["drop", "swap"]);
+  });
+});
+
+describe("attributeLimitation", () => {
+  const offender = mv({
+    id: "chinup",
+    slug: "chin-up",
+    primaryMuscles: ["lats"],
+    primaryRegion: "back",
+  });
+
+  it("returns the id of the single-row context the movement offends", () => {
+    const elbow = ctx({ blockedRegions: new Set(["back"]) });
+    const result = attributeLimitation(offender, "chinup", [
+      { id: "lim-elbow", ctx: elbow },
+    ]);
+    expect(result).toBe("lim-elbow");
+  });
+
+  it("returns the first matching limitation when several are present", () => {
+    const noMatch = ctx({ blockedRegions: new Set(["knee"]) });
+    const match = ctx({ blockedRegions: new Set(["back"]) });
+    const result = attributeLimitation(offender, "chinup", [
+      { id: "lim-knee", ctx: noMatch },
+      { id: "lim-back", ctx: match },
+    ]);
+    expect(result).toBe("lim-back");
+  });
+
+  it("returns null when the movement offends no single-row context", () => {
+    const noMatch = ctx({ blockedRegions: new Set(["knee"]) });
+    const result = attributeLimitation(offender, "chinup", [
+      { id: "lim-knee", ctx: noMatch },
+    ]);
+    expect(result).toBeNull();
   });
 });
