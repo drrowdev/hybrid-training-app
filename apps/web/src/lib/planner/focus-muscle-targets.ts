@@ -123,6 +123,22 @@ export type MuscleTargetsOpts = {
    * without history data short-circuit the gate cleanly.
    */
   elbowForearmAtlRatio?: number;
+  /**
+   * ADR 0045 — High accessory-volume baseline. When true, every aesthetic
+   * muscle's baseline target is raised from the MEV floor
+   * (`DEFAULT_MUSCLE_TARGET`) to its PRODUCTIVE-zone landmark
+   * (`FOCUS_LANDMARKS[m].productive`), so the picker's aesthetic gap-fill has
+   * genuine gaps to fill even on a performance-primary block whose main lifts
+   * already cover every muscle to MEV. This is what makes the Low/Med/High
+   * lever meaningful on a "cardio-safe" archetype (e.g. concurrent_hybrid)
+   * whose default seats zero aesthetic items. Default `false` → byte-identical
+   * MEV baseline (every Low/Medium/legacy caller). Bounded downstream by the
+   * per-session aesthetic item cap + the duration governor, so raising the
+   * target ceiling never blows the session budget. Grounded in the
+   * productive-zone weekly-set landmarks (Israetel 2017 RP; Schoenfeld 2017
+   * Sports Med 47; Baz-Valle 2022) — CP-1 [DEF→cal] Stage-A heuristic.
+   */
+  highVolume?: boolean;
 };
 
 /**
@@ -146,17 +162,26 @@ export function defaultMuscleTargets(opts: MuscleTargetsOpts = {}): MuscleTarget
     Number.isFinite(opts.elbowForearmAtlRatio) && (opts.elbowForearmAtlRatio as number) > 0
       ? (opts.elbowForearmAtlRatio as number)
       : 1.0;
+  const highVolume = opts.highVolume === true;
 
   // ── Baseline ────────────────────────────────────────────────────
-  // The legacy behaviour: every aesthetic muscle at DEFAULT_MUSCLE_TARGET.
+  // The legacy behaviour: every aesthetic muscle at DEFAULT_MUSCLE_TARGET
+  // (the MEV floor). ADR 0045 — when `highVolume`, the baseline is lifted to
+  // each muscle's PRODUCTIVE-zone landmark instead, so the picker's aesthetic
+  // gap-fill seats genuine hypertrophy volume on a block whose main lifts
+  // already satisfy the MEV floor (otherwise High is a no-op there).
   // Focus muscles outside that list (quads / glutes / front_delts /
-  // traps) are folded in at DEFAULT_MUSCLE_TARGET so the substitution
+  // traps) are folded in at the same baseline so the substitution
   // math has a consistent pre-bias accounting — and so a no-focus
-  // result is byte-identical to the pre-PR baseline.
+  // result is byte-identical to the pre-PR baseline when highVolume is off.
+  const baselineFor = (m: string): number =>
+    highVolume
+      ? FOCUS_LANDMARKS[m]?.productive ?? DEFAULT_MUSCLE_TARGET
+      : DEFAULT_MUSCLE_TARGET;
   const baseline: Record<string, number> = {};
-  for (const m of AESTHETIC_TARGET_MUSCLES) baseline[m] = DEFAULT_MUSCLE_TARGET;
+  for (const m of AESTHETIC_TARGET_MUSCLES) baseline[m] = baselineFor(m);
   for (const m of focusMuscles) {
-    if (baseline[m] == null) baseline[m] = DEFAULT_MUSCLE_TARGET;
+    if (baseline[m] == null) baseline[m] = baselineFor(m);
   }
 
   // Early-out: no focus muscles → return the baseline verbatim. This
