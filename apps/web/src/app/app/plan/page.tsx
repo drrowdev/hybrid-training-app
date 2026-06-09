@@ -188,20 +188,6 @@ export default async function PlanPage({
           }
         />
         {blockBump && <BlockCompleteCard bump={blockBump} />}
-        {(nudge.suggestion || nudge.realization) && (
-          <NextBlockSuggestionCard
-            nudge={nudge}
-            suggestionTail={"It\u2019s only a suggestion \u2014 pick any focus below."}
-            cta={
-              nudge.suggestion
-                ? {
-                    href: `/app/plan?new=1&build=${nudge.suggestion.archetypeId}`,
-                    label: `Build a ${ARCHETYPES[nudge.suggestion.archetypeId]?.name ?? "new"} block`,
-                  }
-                : undefined
-            }
-          />
-        )}
         <PlanNewSwitch
           recentBlocks={recentBlocks}
           tmReadinessByArchetype={tmReadinessByArchetype}
@@ -219,6 +205,22 @@ export default async function PlanPage({
           }
           preferredCardioSourceName={prof?.preferred_cardio_source_name ?? null}
           estimateAccessoryVolumeAction={estimateAccessoryVolumeMinutes}
+          suggestionCard={
+            nudge.suggestion || nudge.realization ? (
+              <NextBlockSuggestionCard
+                nudge={nudge}
+                suggestionTail={"It\u2019s only a suggestion \u2014 pick any focus below."}
+                cta={
+                  nudge.suggestion
+                    ? {
+                        href: `/app/plan?new=1&build=${nudge.suggestion.archetypeId}`,
+                        label: `Build a ${ARCHETYPES[nudge.suggestion.archetypeId]?.name ?? "new"} block`,
+                      }
+                    : undefined
+                }
+              />
+            ) : null
+          }
         />
         {recentBlocks.length > 0 && (
           <Link
