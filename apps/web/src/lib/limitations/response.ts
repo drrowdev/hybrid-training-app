@@ -134,11 +134,31 @@ function isSafe(mv: CatalogMovement, ctx: LimitationsContext): boolean {
 }
 
 /**
+ * Patterns that are NEVER a like-for-like replacement for a discretionary
+ * strength accessory: conditioning (cardio) and explosive/skill work
+ * (plyometric / olympic / drill). Swapping a flagged accessory for "Spin Class"
+ * or "Depth Jump" is nonsensical — especially when the user is working around an
+ * injury — so they're excluded from the candidate pool.
+ */
+const REPLACEMENT_EXCLUDED_PATTERNS: ReadonlySet<string> = new Set([
+  "cardio",
+  "plyometric",
+  "olympic",
+  "drill",
+]);
+
+/**
  * Choose a limitation-safe replacement for an offending discretionary
  * movement. Prefers movements that hit the same training target (shared
- * non-blocked primary muscles / roles) and are loadable compounds, and
- * never re-introduces a flagged tissue or a movement already in the
- * session. Deterministic: ties break on movement id.
+ * non-blocked primary muscles / roles), the same body region and movement
+ * pattern, and never re-introduces a flagged tissue or a movement already in
+ * the session. Deterministic: ties break on movement id.
+ *
+ * Note: `isSupported` is a soft SCORING preference, NOT a hard filter. Most of
+ * the catalog (all free-weight and bodyweight movements) is `isSupported=false`,
+ * so gating on it eliminated every otherwise-perfect candidate and forced a drop
+ * (e.g. an adductor flag dropped Spanish Squat even though Leg Extension / Front
+ * Squat are safe, same-target swaps).
  */
 export function deriveReplacement(
   offending: CatalogMovement,
@@ -151,7 +171,7 @@ export function deriveReplacement(
   for (const cand of catalog) {
     if (cand.id === offending.id) continue;
     if (sessionMovementIds.has(cand.id)) continue;
-    if (!cand.isSupported) continue;
+    if (cand.pattern && REPLACEMENT_EXCLUDED_PATTERNS.has(cand.pattern)) continue;
     if (!isSafe(cand, ctx)) continue;
 
     const sharedMuscles = cand.primaryMuscles.filter((m) =>
@@ -170,8 +190,15 @@ export function deriveReplacement(
     }
 
     let score = sharedMuscles * 3 + sharedBulletproof * 2 + sharedFunctional;
-    if (cand.isCompound) score += 1;
-    if (cand.isLoadable) score += 1;
+    // Same body region (e.g. knee→knee) and pattern (squat→squat) keep the swap
+    // mechanically similar to what was prescribed.
+    if (cand.primaryRegion === offending.primaryRegion) score += 2;
+    if (cand.pattern && offending.pattern && cand.pattern === offending.pattern) {
+      score += 1;
+    }
+    // Under concurrent stress a supported / fixed-path variant is mildly
+    // preferred (DC-O5) — a tie-breaker bonus, not a gate.
+    if (cand.isSupported) score += 1;
 
     if (score > bestScore || (score === bestScore && best && cand.id < best.id)) {
       best = cand;

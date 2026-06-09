@@ -24,6 +24,7 @@ function mv(
     eccentricLoadScore: over.eccentricLoadScore ?? null,
     stimToFatigueScore: over.stimToFatigueScore ?? null,
     highStrainTendon: over.highStrainTendon ?? false,
+    pattern: over.pattern ?? null,
   };
 }
 
@@ -221,6 +222,93 @@ describe("deriveReplacement", () => {
       new Set(["latpull", "row"]),
     );
     expect(repl).toBeNull();
+  });
+
+  it("picks an unsupported but safe same-target alternative (no isSupported gate)", () => {
+    // Regression: a quad accessory flagged via a blocked SECONDARY muscle used
+    // to drop because every safe quad candidate is isSupported=false. Now it
+    // swaps. Mirrors the real Spanish-Squat (loads adductors) → Leg-Extension case.
+    const cat: CatalogMovement[] = [
+      mv({
+        id: "spanishsquat",
+        slug: "spanish-squat",
+        primaryMuscles: ["quads"],
+        secondaryMuscles: ["adductors"],
+        primaryRegion: "knee",
+        pattern: "squat",
+        isSupported: false,
+      }),
+      mv({
+        id: "legext",
+        slug: "leg-extension",
+        primaryMuscles: ["quads"],
+        primaryRegion: "knee",
+        pattern: "isolation",
+        isSupported: false, // unsupported — would have been rejected before
+      }),
+    ];
+    const repl = deriveReplacement(
+      cat[0],
+      cat,
+      ctx({ blockedMuscles: new Set(["adductors"]) }),
+      new Set(["spanishsquat"]),
+    );
+    expect(repl?.id).toBe("legext");
+  });
+
+  it("never offers a cardio-pattern movement as a replacement", () => {
+    const cat: CatalogMovement[] = [
+      mv({
+        id: "spanishsquat",
+        slug: "spanish-squat",
+        primaryMuscles: ["quads"],
+        secondaryMuscles: ["adductors"],
+        primaryRegion: "knee",
+        pattern: "squat",
+      }),
+      mv({
+        id: "spinclass",
+        slug: "spin-class",
+        primaryMuscles: ["quads"],
+        primaryRegion: "knee",
+        pattern: "cardio",
+      }),
+    ];
+    const repl = deriveReplacement(
+      cat[0],
+      cat,
+      ctx({ blockedMuscles: new Set(["adductors"]) }),
+      new Set(["spanishsquat"]),
+    );
+    expect(repl).toBeNull(); // the only quad-sharing candidate is cardio → excluded
+  });
+
+  it("prefers a same-region, same-pattern alternative", () => {
+    const cat: CatalogMovement[] = [
+      mv({
+        id: "off",
+        slug: "off",
+        primaryMuscles: ["quads"],
+        primaryRegion: "knee",
+        pattern: "squat",
+      }),
+      mv({
+        id: "sameregionpattern",
+        slug: "same",
+        primaryMuscles: ["quads"],
+        primaryRegion: "knee",
+        pattern: "squat",
+      }),
+      mv({
+        id: "otherregion",
+        slug: "other",
+        primaryMuscles: ["quads"],
+        primaryRegion: "hip",
+        pattern: "isolation",
+      }),
+    ];
+    const repl = deriveReplacement(cat[0], cat, ctx({}), new Set(["off"]));
+    expect(repl?.id).toBe("sameregionpattern");
   });
 });
 
