@@ -192,8 +192,8 @@ const BACK_ISO: NewMovement[] = [
   backIso("pullover-cable", "Cable Pullover", { equipment: "cable", primaryMuscles: ["lats"] }),
   backIso("shrug-bb", "Barbell Shrug", { equipment: "barbell", primaryMuscles: ["traps"], secondaryMuscles: ["forearms"], axialLoad: "moderate" }),
   backIso("shrug-db", "DB Shrug", { equipment: "dumbbells", primaryMuscles: ["traps"], secondaryMuscles: ["forearms"] }),
-  backIso("shrug-trap-bar", "Trap Bar Shrug", { equipment: "trap-bar", primaryMuscles: ["traps"], axialLoad: "moderate" }),
-  backIso("kelso-shrug", "Kelso Shrug", { equipment: "dumbbells-incline-bench", primaryMuscles: ["mid_back", "traps"], stability: "supported" }),
+  backIso("shrug-trap-bar", "Trap Bar Shrug", { equipment: "trap-bar", primaryMuscles: ["traps"], secondaryMuscles: ["mid_back", "forearms"], axialLoad: "moderate" }),
+  backIso("kelso-shrug", "Kelso Shrug", { equipment: "dumbbells-incline-bench", primaryMuscles: ["mid_back", "traps"], secondaryMuscles: ["forearms"], stability: "supported" }),
   backIso("band-pull-apart", "Band Pull-Apart", { equipment: "band", primaryMuscles: ["rear_delts", "mid_back"] }),
 ];
 
