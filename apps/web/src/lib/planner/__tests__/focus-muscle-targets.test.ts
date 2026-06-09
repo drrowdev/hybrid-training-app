@@ -62,6 +62,31 @@ describe("defaultMuscleTargets — baseline regression guard", () => {
   });
 });
 
+describe("defaultMuscleTargets — ADR 0045 high-volume baseline", () => {
+  it("raises every aesthetic muscle to its productive landmark when highVolume", () => {
+    const out = defaultMuscleTargets({ highVolume: true });
+    for (const m of AESTHETIC_TARGET_MUSCLES) {
+      expect(out.targetsByMuscle[m]).toBe(
+        FOCUS_LANDMARKS[m]?.productive ?? DEFAULT_MUSCLE_TARGET,
+      );
+    }
+  });
+
+  it("highVolume baseline is strictly higher than the MEV baseline in aggregate", () => {
+    const mev = defaultMuscleTargets();
+    const high = defaultMuscleTargets({ highVolume: true });
+    const sumMev = sum(mev.targetsByMuscle);
+    const sumHigh = sum(high.targetsByMuscle);
+    expect(sumHigh).toBeGreaterThan(sumMev);
+  });
+
+  it("omitted highVolume is byte-identical to the MEV baseline (regression guard)", () => {
+    const omitted = defaultMuscleTargets();
+    const explicitFalse = defaultMuscleTargets({ highVolume: false });
+    expect(explicitFalse.targetsByMuscle).toEqual(omitted.targetsByMuscle);
+  });
+});
+
 describe("defaultMuscleTargets — substitution invariant", () => {
   // 1-of-1 focus
   for (const m of FOCUS_MUSCLE_ALLOWLIST) {

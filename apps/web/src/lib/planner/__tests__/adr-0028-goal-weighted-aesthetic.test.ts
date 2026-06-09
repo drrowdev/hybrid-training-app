@@ -115,6 +115,30 @@ describe("ADR 0028 — identity (no down-weight) cases", () => {
     });
     expect(out).toEqual(baseTargets());
   });
+
+  it("ADR 0045 — a high-volume block cancels the down-weight entirely", () => {
+    const out = applyGoalWeightToTargets(baseTargets(), {
+      archetypeId: "concurrent_hybrid",
+      secondaryMuscleHonored: false,
+      highVolume: true,
+    });
+    expect(out).toEqual(baseTargets());
+  });
+
+  it("ADR 0045 — omitted highVolume still down-weights (regression guard)", () => {
+    const withFlag = applyGoalWeightToTargets(baseTargets(), {
+      archetypeId: "strength_anchor",
+      secondaryMuscleHonored: false,
+      highVolume: false,
+    });
+    const without = applyGoalWeightToTargets(baseTargets(), {
+      archetypeId: "strength_anchor",
+      secondaryMuscleHonored: false,
+    });
+    expect(withFlag).toEqual(without);
+    // And the triad is genuinely halved (the down-weight really ran).
+    expect(withFlag.side_delts).toBeLessThan(baseTargets().side_delts);
+  });
 });
 
 describe("ADR 0028 — explicit focus pick override", () => {

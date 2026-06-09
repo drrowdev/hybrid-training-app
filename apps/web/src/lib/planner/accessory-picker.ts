@@ -275,6 +275,7 @@ export function pickAccessoriesForSession({
   dayPrimaryRole,
   pressingMainLiftCount = 0,
   variationSeed,
+  aestheticItemFloor,
 }: {
   profile: AccessoryProfile;
   /** Deload scalar from the week profile (e.g. 0.5 on deload weeks). */
@@ -370,6 +371,20 @@ export function pickAccessoriesForSession({
    * planned-block caller) keeps the deterministic best-pick — byte-identical.
    */
   variationSeed?: number;
+  /**
+   * ADR 0045 — additive aesthetic floor for the High accessory-volume level.
+   * When set (> 0), the aesthetic gap-fill seats UP TO this many aesthetic
+   * items measured by AESTHETIC-PICK COUNT (additive on top of the durability +
+   * functional fills), instead of stopping at the shared `aestheticMaxItems`
+   * ceiling. This is what makes High meaningful on a "cardio-safe" archetype
+   * (e.g. concurrent_hybrid) whose heavy durability + functional floor would
+   * otherwise saturate the shared cap and seat zero hypertrophy work. Still
+   * bounded by available per-muscle gaps + catalog candidates, and the caller's
+   * duration governor prices each candidate so the floor can never blow the
+   * session budget. `undefined` (Low / Medium / every legacy caller) → the
+   * shared-ceiling behaviour, byte-identical.
+   */
+  aestheticItemFloor?: number;
 }): AccessoryPick[] {
   // Cardio movements are conditioning, not strength accessories. They have
   // muscle tags (lats, quads, …) so the aesthetic gap-fill could otherwise
@@ -632,7 +647,21 @@ export function pickAccessoriesForSession({
   const aestheticCap = powerEmphasis
     ? Math.max(picks.length, aestheticBudget - (powerPickAdded ? 0 : 1) - 1)
     : aestheticBudget;
-  while (picks.length < aestheticCap) {
+  // ADR 0045 — High accessory volume makes the aesthetic budget ADDITIVE on top
+  // of the durability + functional fills (counting aesthetic picks) so a heavy
+  // tissue-prep floor can't saturate the shared ceiling and starve hypertrophy
+  // work. The OR keeps seating while EITHER the shared ceiling has room (so High
+  // is never LESS than the Medium gap-fill on an archetype with a roomy ceiling)
+  // OR the additive floor is unmet (so a ceiling-saturated archetype still gets
+  // real hypertrophy work). `null` → the shared-ceiling rule, byte-identical.
+  const additiveAestheticFloor =
+    aestheticItemFloor != null && aestheticItemFloor > 0 ? aestheticItemFloor : null;
+  let aestheticSeated = 0;
+  const canSeatAesthetic = (): boolean =>
+    additiveAestheticFloor != null
+      ? picks.length < aestheticCap || aestheticSeated < additiveAestheticFloor
+      : picks.length < aestheticCap;
+  while (canSeatAesthetic()) {
     const gapMuscle = pickLargestAestheticGap(perMuscleTargets, muscleProgress);
     if (!gapMuscle) break;
     const candidate = findCandidate({
@@ -662,6 +691,7 @@ export function pickAccessoriesForSession({
       accessoryRationale({ reason: "aesthetic", gapMuscle }),
     );
     picks.push(pick);
+    aestheticSeated += 1;
     usedThisSession.add(candidate.id);
     bumpBulletproof(durabilityProgress, candidate.bulletproofRoles);
     bumpFunctional(functionalProgress, candidate.functionalRoles);
