@@ -66,6 +66,7 @@ export function PlanNewSwitch({
   preferredCardioSourceName = null,
   estimateAccessoryVolumeAction,
   seedArchetype = null,
+  suggestionCard = null,
 }: {
   recentBlocks: RecentBlockCard[];
   tmReadinessByArchetype: TmReadinessByArchetype;
@@ -93,6 +94,13 @@ export function PlanNewSwitch({
    * step so the user sees which focuses make up the suggested block.
    */
   seedArchetype?: string | null;
+  /**
+   * Optional next-block suggestion card, rendered ONLY in home mode. Lives
+   * here (not as a server-page sibling) so it disappears the moment the user
+   * enters the wizard — a stale "consider a hybrid block" nudge above an
+   * open wizard was confusing.
+   */
+  suggestionCard?: React.ReactNode;
 }): React.ReactElement {
   const [mode, setMode] = useState<"home" | "wizard">(initialMode);
   const [wizardPrefill, setWizardPrefill] = useState<BlockWizardPrefill | null>(null);
@@ -231,6 +239,7 @@ export function PlanNewSwitch({
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
+      {suggestionCard}
       {!hideBuildCta && (
         <section style={{ display: "grid", gap: 8 }}>
           <button
