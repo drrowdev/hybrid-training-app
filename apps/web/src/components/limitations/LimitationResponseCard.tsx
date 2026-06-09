@@ -1,18 +1,17 @@
 "use client";
 
 /**
- * LimitationResponseCard — ADR 0014 mid-block limitation-response offer,
- * per-item review (Option 2).
+ * LimitationResponseCard — ADR 0014 mid-block limitation-response offer.
  *
- * Shared between the active-block view on `/app/plan` and the
- * `/app/recovery/injuries` page. The engine derives a remediation plan
- * (swap / drop / warn); this card lets the user review every proposed swap
- * and drop and uncheck any they want to keep, then applies only the checked
- * subset. Main-lift warnings are display-only — never auto-changed.
+ * Collapsed by default into a compact banner; "Review & adjust" opens a modal
+ * where the proposed changes are grouped BY MOVEMENT (one row per movement, not
+ * one per session-occurrence) so a single flagged accessory repeated across the
+ * block reads as one line instead of dozens. Each row is all-or-nothing; the
+ * apply action still receives the underlying per-item keys, and re-derives the
+ * plan server-side, so the client only ever applies a SUBSET of what the engine
+ * independently decided is safe. Main-lift warnings are display-only.
  *
- * The apply action re-derives the plan server-side and intersects it with the
- * checked keys, so the client only ever requests a SUBSET of what the engine
- * independently decided is safe.
+ * Shared between the active-block view on `/app/plan` and `/app/recovery/injuries`.
  */
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -30,7 +29,7 @@ type AppliedResult = Extract<ApplyLimitationResult, { ok: true }>;
 function reasonLabel(reason: LimitationOffenceReason): string {
   switch (reason) {
     case "movement_flagged":
-      return "you flagged this movement";
+      return "you flagged it";
     case "blocked_region":
       return "loads a flagged area";
     case "blocked_muscle":
@@ -38,48 +37,73 @@ function reasonLabel(reason: LimitationOffenceReason): string {
   }
 }
 
-type SessionGroup = {
-  sessionId: string;
-  title: string;
-  weekIndex: number;
-  dayIndex: number;
-  swaps: LimitationSwap[];
-  drops: LimitationDrop[];
+type ChangeGroup = {
+  /** Stable group id (also the React key). */
+  id: string;
+  kind: "swap" | "drop";
+  fromName: string;
+  toName?: string;
+  reason: LimitationOffenceReason;
+  /** Underlying per-item keys this row controls (all toggled together). */
+  keys: string[];
+  sessionIds: Set<string>;
+  weeks: number[];
 };
 
-function groupBySession(
+function weekRange(weeks: readonly number[]): string {
+  if (weeks.length === 0) return "";
+  const min = Math.min(...weeks) + 1;
+  const max = Math.max(...weeks) + 1;
+  return min === max ? `Week ${min}` : `Weeks ${min}–${max}`;
+}
+
+function buildGroups(
   swaps: readonly LimitationSwap[],
   drops: readonly LimitationDrop[],
-): SessionGroup[] {
+): ChangeGroup[] {
   const order: string[] = [];
-  const byId = new Map<string, SessionGroup>();
+  const byId = new Map<string, ChangeGroup>();
   const ensure = (
-    sessionId: string,
-    title: string,
-    weekIndex: number,
-    dayIndex: number,
-  ): SessionGroup => {
-    let g = byId.get(sessionId);
+    id: string,
+    seed: Omit<ChangeGroup, "keys" | "sessionIds" | "weeks">,
+  ): ChangeGroup => {
+    let g = byId.get(id);
     if (!g) {
-      g = { sessionId, title, weekIndex, dayIndex, swaps: [], drops: [] };
-      byId.set(sessionId, g);
-      order.push(sessionId);
+      g = { ...seed, keys: [], sessionIds: new Set(), weeks: [] };
+      byId.set(id, g);
+      order.push(id);
     }
     return g;
   };
   for (const s of swaps) {
-    ensure(s.sessionId, s.sessionTitle, s.weekIndex, s.dayIndex).swaps.push(s);
+    const id = `swap:${s.fromMovementId}->${s.toMovementId}`;
+    const g = ensure(id, {
+      id,
+      kind: "swap",
+      fromName: s.fromName,
+      toName: s.toName,
+      reason: s.reason,
+    });
+    g.keys.push(limitationItemKey(s.sessionId, s.itemIndex));
+    g.sessionIds.add(s.sessionId);
+    g.weeks.push(s.weekIndex);
   }
   for (const d of drops) {
-    ensure(d.sessionId, d.sessionTitle, d.weekIndex, d.dayIndex).drops.push(d);
+    const id = `drop:${d.fromMovementId}`;
+    const g = ensure(id, {
+      id,
+      kind: "drop",
+      fromName: d.fromName,
+      reason: d.reason,
+    });
+    g.keys.push(limitationItemKey(d.sessionId, d.itemIndex));
+    g.sessionIds.add(d.sessionId);
+    g.weeks.push(d.weekIndex);
   }
+  // Swaps first (the actionable, reassuring ones), then drops.
   return order
     .map((id) => byId.get(id)!)
-    .sort((a, b) =>
-      a.weekIndex !== b.weekIndex
-        ? a.weekIndex - b.weekIndex
-        : a.dayIndex - b.dayIndex,
-    );
+    .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "swap" ? -1 : 1));
 }
 
 export function LimitationResponseCard({
@@ -91,37 +115,38 @@ export function LimitationResponseCard({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<AppliedResult | null>(null);
 
   const groups = useMemo(
-    () => groupBySession(offer.swaps, offer.drops),
+    () => buildGroups(offer.swaps, offer.drops),
     [offer.swaps, offer.drops],
   );
-
-  const allKeys = useMemo(
-    () => [
-      ...offer.swaps.map((s) => limitationItemKey(s.sessionId, s.itemIndex)),
-      ...offer.drops.map((d) => limitationItemKey(d.sessionId, d.itemIndex)),
-    ],
-    [offer.swaps, offer.drops],
-  );
-
-  // Default: every proposed change checked (the old one-click "apply all").
+  const allKeys = useMemo(() => groups.flatMap((g) => g.keys), [groups]);
   const [checked, setChecked] = useState<Set<string>>(() => new Set(allKeys));
 
-  const toggle = (key: string) =>
+  const sessionCount = useMemo(() => {
+    const ids = new Set<string>();
+    for (const g of groups) for (const s of g.sessionIds) ids.add(s);
+    return ids.size;
+  }, [groups]);
+
+  const isGroupChecked = (g: ChangeGroup) => g.keys.every((k) => checked.has(k));
+  const toggleGroup = (g: ChangeGroup) =>
     setChecked((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (g.keys.every((k) => next.has(k))) {
+        for (const k of g.keys) next.delete(k);
+      } else {
+        for (const k of g.keys) next.add(k);
+      }
       return next;
     });
+  const setAll = (on: boolean) => setChecked(on ? new Set(allKeys) : new Set());
 
-  const setAll = (on: boolean) =>
-    setChecked(on ? new Set(allKeys) : new Set());
+  const selectedGroupCount = groups.filter(isGroupChecked).length;
 
-  const selectedCount = checked.size;
   const apply = () => {
     setError(null);
     const keys = [...checked];
@@ -132,9 +157,13 @@ export function LimitationResponseCard({
         return;
       }
       setDone(res);
+      setOpen(false);
       router.refresh();
     });
   };
+
+  const movementWord = groups.length === 1 ? "movement" : "movements";
+  const sessionWord = sessionCount === 1 ? "session" : "sessions";
 
   return (
     <section
@@ -168,196 +197,181 @@ export function LimitationResponseCard({
         >
           ✓ Applied {done.swapped} swap{done.swapped === 1 ? "" : "s"} and{" "}
           {done.dropped} removal{done.dropped === 1 ? "" : "s"} across{" "}
-          {done.sessions} session{done.sessions === 1 ? "" : "s"}. Any changes
-          you left unchecked were kept as-is.
+          {done.sessions} session{done.sessions === 1 ? "" : "s"}. Anything you
+          left unchecked was kept.
         </div>
       ) : (
         <>
           <div style={{ fontSize: 13, color: "var(--cp-text)", lineHeight: 1.5 }}>
-            A limitation you flagged still affects movements scheduled later in
-            this block. Review each proposed change below — uncheck anything you
-            want to keep — then apply the rest.
+            A limitation you flagged affects {groups.length} {movementWord} in{" "}
+            {sessionCount} upcoming {sessionWord}. The engine can adjust them to
+            work around it.
           </div>
-
-          {allKeys.length > 1 && (
-            <div style={{ display: "flex", gap: 14, fontSize: 12 }}>
-              <button
-                type="button"
-                onClick={() => setAll(true)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: 0,
-                  color: "var(--cp-text-muted)",
-                }}
-              >
-                Select all
-              </button>
-              <button
-                type="button"
-                onClick={() => setAll(false)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: 0,
-                  color: "var(--cp-text-muted)",
-                }}
-              >
-                Clear all
-              </button>
+          {offer.warns.length > 0 && (
+            <div style={{ fontSize: 12, color: "var(--cp-warning)" }}>
+              ⚠ {offer.warns.length} main-lift movement
+              {offer.warns.length === 1 ? "" : "s"} also load this area and
+              aren&apos;t changed automatically — best decided with a clinician.
             </div>
           )}
+          <button
+            type="button"
+            className="cp-btn"
+            data-testid="limitation-response-review"
+            onClick={() => setOpen(true)}
+            style={{ fontSize: 13, padding: "7px 14px", justifySelf: "start" }}
+          >
+            Review &amp; adjust →
+          </button>
+        </>
+      )}
 
-          <div style={{ display: "grid", gap: 10 }}>
-            {groups.map((g) => (
-              <div
-                key={g.sessionId}
-                data-testid="limitation-response-session"
-                style={{
-                  border: "1px solid var(--cp-border)",
-                  borderRadius: 10,
-                  padding: "10px 12px",
-                  display: "grid",
-                  gap: 8,
-                }}
-              >
-                <div style={{ display: "grid", gap: 1 }}>
-                  <div
+      {open && !done && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Review limitation adjustments"
+          data-testid="limitation-response-modal"
+          onClick={() => !pending && setOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            display: "grid",
+            placeItems: "center",
+            zIndex: 70,
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="cp-card"
+            style={{
+              maxWidth: 480,
+              width: "100%",
+              maxHeight: "85vh",
+              overflowY: "auto",
+              padding: 20,
+              display: "grid",
+              gap: 14,
+            }}
+          >
+            <div style={{ display: "grid", gap: 4 }}>
+              <h2 style={{ margin: 0, fontSize: 18, letterSpacing: "-0.01em" }}>
+                Adjust remaining sessions
+              </h2>
+              <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
+                Uncheck anything you want to keep, then apply the rest.
+              </p>
+            </div>
+
+            {groups.length > 1 && (
+              <div style={{ display: "flex", gap: 14, fontSize: 12 }}>
+                <button
+                  type="button"
+                  onClick={() => setAll(true)}
+                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--cp-text-muted)" }}
+                >
+                  Select all
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAll(false)}
+                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--cp-text-muted)" }}
+                >
+                  Clear all
+                </button>
+              </div>
+            )}
+
+            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 8 }}>
+              {groups.map((g) => {
+                const count = g.keys.length;
+                const sessions = g.sessionIds.size;
+                const scope =
+                  sessions === count
+                    ? `${sessions} session${sessions === 1 ? "" : "s"}`
+                    : `${count}× across ${sessions} session${sessions === 1 ? "" : "s"}`;
+                return (
+                  <li
+                    key={g.id}
+                    data-testid="limitation-response-group"
                     style={{
-                      fontSize: 13,
-                      fontWeight: 600,
-                      color: "var(--cp-text)",
+                      border: "1px solid var(--cp-border)",
+                      borderRadius: 10,
+                      padding: "10px 12px",
                     }}
                   >
-                    {g.title}
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-                    Week {g.weekIndex + 1} · Day {g.dayIndex + 1}
-                  </div>
-                </div>
+                    <label style={{ display: "flex", gap: 10, alignItems: "start", cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={isGroupChecked(g)}
+                        onChange={() => toggleGroup(g)}
+                        style={{ marginTop: 3, accentColor: "var(--cp-accent)", flexShrink: 0 }}
+                      />
+                      <span style={{ display: "grid", gap: 2, minWidth: 0 }}>
+                        <span style={{ fontSize: 13.5, color: "var(--cp-text)", lineHeight: 1.4 }}>
+                          {g.kind === "swap" ? (
+                            <>
+                              Swap <strong>{g.fromName}</strong> →{" "}
+                              <strong>{g.toName}</strong>
+                            </>
+                          ) : (
+                            <>
+                              Remove <strong>{g.fromName}</strong>
+                              <span style={{ color: "var(--cp-text-muted)" }}> (no safe alternative)</span>
+                            </>
+                          )}
+                        </span>
+                        <span style={{ fontSize: 11.5, color: "var(--cp-text-muted)" }}>
+                          {weekRange(g.weeks)} · {scope} · {reasonLabel(g.reason)}
+                        </span>
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
 
-                <ul
-                  style={{
-                    listStyle: "none",
-                    margin: 0,
-                    padding: 0,
-                    display: "grid",
-                    gap: 6,
-                  }}
-                >
-                  {g.swaps.map((s) => {
-                    const key = limitationItemKey(s.sessionId, s.itemIndex);
-                    return (
-                      <li key={key}>
-                        <label
-                          data-testid="limitation-response-item"
-                          style={{
-                            display: "flex",
-                            gap: 8,
-                            alignItems: "start",
-                            cursor: "pointer",
-                            fontSize: 12.5,
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked.has(key)}
-                            onChange={() => toggle(key)}
-                            style={{ marginTop: 2, accentColor: "var(--cp-accent)" }}
-                          />
-                          <span style={{ color: "var(--cp-text)", lineHeight: 1.4 }}>
-                            Swap <strong>{s.fromName}</strong> →{" "}
-                            <strong>{s.toName}</strong>
-                            <span style={{ color: "var(--cp-text-muted)" }}>
-                              {" "}
-                              — {reasonLabel(s.reason)}
-                            </span>
-                          </span>
-                        </label>
-                      </li>
-                    );
-                  })}
-                  {g.drops.map((d) => {
-                    const key = limitationItemKey(d.sessionId, d.itemIndex);
-                    return (
-                      <li key={key}>
-                        <label
-                          data-testid="limitation-response-item"
-                          style={{
-                            display: "flex",
-                            gap: 8,
-                            alignItems: "start",
-                            cursor: "pointer",
-                            fontSize: 12.5,
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked.has(key)}
-                            onChange={() => toggle(key)}
-                            style={{ marginTop: 2, accentColor: "var(--cp-accent)" }}
-                          />
-                          <span style={{ color: "var(--cp-text)", lineHeight: 1.4 }}>
-                            Remove <strong>{d.fromName}</strong>
-                            <span style={{ color: "var(--cp-text-muted)" }}>
-                              {" "}
-                              — no safe alternative; {reasonLabel(d.reason)}
-                            </span>
-                          </span>
-                        </label>
-                      </li>
-                    );
-                  })}
-                </ul>
+            {offer.warns.length > 0 && (
+              <div style={{ fontSize: 12, color: "var(--cp-warning)", lineHeight: 1.5 }}>
+                ⚠ {offer.warns.length} main-lift movement
+                {offer.warns.length === 1 ? "" : "s"} also load this area (
+                {offer.warns.slice(0, 3).map((w) => w.fromName).join(", ")}
+                {offer.warns.length > 3 ? "…" : ""}) — left unchanged; adjusting
+                load/ROM on a primary lift is best decided with a clinician.
               </div>
-            ))}
-          </div>
+            )}
 
-          {offer.warns.length > 0 && (
-            <div
-              style={{
-                fontSize: 12,
-                color: "var(--cp-warning)",
-                lineHeight: 1.5,
-              }}
-            >
-              ⚠ {offer.warns.length} main-lift movement
-              {offer.warns.length === 1 ? "" : "s"} also load this area (
-              {offer.warns.slice(0, 3).map((w) => w.fromName).join(", ")}
-              {offer.warns.length > 3 ? "…" : ""}). These aren&apos;t changed
-              automatically — adjusting load, range of motion, or grip on a
-              primary lift is best decided with a clinician.
+            {error && (
+              <div role="alert" style={{ fontSize: 12, color: "var(--cp-danger)" }}>
+                {error}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="cp-btn ghost"
+                onClick={() => setOpen(false)}
+                disabled={pending}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="cp-btn primary"
+                data-testid="limitation-response-apply"
+                onClick={apply}
+                disabled={pending || selectedGroupCount === 0}
+              >
+                {pending
+                  ? "Applying…"
+                  : `Apply ${selectedGroupCount} change${selectedGroupCount === 1 ? "" : "s"}`}
+              </button>
             </div>
-          )}
-
-          <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-            This is load management, not medical care. If symptoms persist or
-            worsen, see a qualified clinician.
           </div>
-
-          {error && (
-            <div role="alert" style={{ fontSize: 12, color: "var(--cp-danger)" }}>
-              {error}
-            </div>
-          )}
-
-          {allKeys.length > 0 && (
-            <button
-              type="button"
-              className="cp-btn"
-              data-testid="limitation-response-apply"
-              onClick={apply}
-              disabled={pending || selectedCount === 0}
-              style={{ fontSize: 13, padding: "7px 14px", justifySelf: "start" }}
-            >
-              {pending
-                ? "Applying…"
-                : `Apply ${selectedCount} change${selectedCount === 1 ? "" : "s"}`}
-            </button>
-          )}
-        </>
+        </div>
       )}
     </section>
   );
