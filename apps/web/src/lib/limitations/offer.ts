@@ -21,10 +21,16 @@ export type LimitationResponseOffer = LimitationResponsePlan & {
   blockId: string;
 };
 
+/**
+ * The banner is a "review & adjust" call to action, so it only surfaces when
+ * there is something ACTIONABLE — a swap or a drop. Warns alone (a main lift
+ * that also loads the flagged area) are advisory and would otherwise keep the
+ * banner up forever, since a main lift always loads the area and is never
+ * auto-changed. Once the user has accepted/declined every swap & drop, the
+ * offer goes away even though the warns persist.
+ */
 function hasOffending(plan: LimitationResponsePlan): boolean {
-  return (
-    plan.swaps.length > 0 || plan.drops.length > 0 || plan.warns.length > 0
-  );
+  return plan.swaps.length > 0 || plan.drops.length > 0;
 }
 
 export async function getLimitationResponseOffer(): Promise<LimitationResponseOffer | null> {
