@@ -130,6 +130,52 @@ describe("movement catalog seed", () => {
       );
     }
   });
+
+  it("injury-site tagging audit invariants (migration 0100)", () => {
+    const musclesOf = (slug: string): string[] => {
+      const m = SEED.find((x) => x.slug === slug);
+      expect(m, `${slug} missing from seed`).toBeTruthy();
+      return [
+        ...((m!.primaryMuscles as string[] | undefined) ?? []),
+        ...((m!.secondaryMuscles as string[] | undefined) ?? []),
+      ];
+    };
+    const regionsOf = (slug: string): string[] => {
+      const m = SEED.find((x) => x.slug === slug)!;
+      return [
+        m.primaryRegion as string,
+        ...((m.secondaryRegions as string[] | undefined) ?? []),
+      ];
+    };
+
+    // Unsupported spinal loaders must tag lower_back + lumbar_trunk so a
+    // lower-back flag avoids them. (Supported rows / hip thrusts are excluded.)
+    const spinalLoaders = [
+      "bb-row-overhand", "bb-row-underhand", "pendlay-row", "meadows-row", "t-bar-row",
+      "ohp-standing", "push-press", "db-shoulder-press-standing", "landmine-press-standing", "z-press",
+      "hsr-rdl", "rdl-db", "single-leg-rdl", "kb-swing-american", "hsr-front-squat", "split-jerk",
+    ];
+    for (const slug of spinalLoaders) {
+      expect(musclesOf(slug), `${slug} must tag lower_back`).toContain("lower_back");
+      expect(regionsOf(slug), `${slug} must tag lumbar_trunk region`).toContain("lumbar_trunk");
+    }
+
+    // Overhand/neutral bent-over + low-cable rows recruit the biceps.
+    for (const slug of ["bb-row-overhand", "pendlay-row", "meadows-row", "t-bar-row", "cable-row-low"]) {
+      expect(musclesOf(slug), `${slug} must tag biceps`).toContain("biceps");
+    }
+
+    // Every Olympic lift grips/pulls a loaded implement → forearms.
+    for (const m of SEED) {
+      if (m.pattern === "olympic") {
+        const mu = [
+          ...((m.primaryMuscles as string[] | undefined) ?? []),
+          ...((m.secondaryMuscles as string[] | undefined) ?? []),
+        ];
+        expect(mu, `${m.slug} (olympic) must tag forearms`).toContain("forearms");
+      }
+    }
+  });
 });
 
 describe("muscle taxonomy coverage", () => {
