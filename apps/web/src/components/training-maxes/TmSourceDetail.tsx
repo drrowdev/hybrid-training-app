@@ -10,15 +10,8 @@
  */
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import type { TmFormula } from "@hta/db";
 import type { TmRow, TmSourceSet } from "@/lib/training-maxes/queries";
 import { formatDate, type ProfileForFormat } from "@/lib/format/datetime";
-
-const FORMULA_LABEL: Record<TmFormula, string> = {
-  epley: "Epley (1985)",
-  brzycki: "Brzycki (1993)",
-  rpe_zourdos: "RPE (Zourdos 2016)",
-};
 
 function fmtNum(n: number | null): string {
   if (n == null) return "—";
@@ -89,9 +82,9 @@ export function TmSourceDetail({
           }}
         >
           <div>
-            <span style={{ color: "var(--cp-text-muted)" }}>Formula · </span>
+            <span style={{ color: "var(--cp-text-muted)" }}>Source · </span>
             <span style={{ color: "var(--cp-text)" }}>
-              {row.derivedFormula ? FORMULA_LABEL[row.derivedFormula] : "estimate"}
+              Estimated from your top set
             </span>
           </div>
           {sourceSet ? (

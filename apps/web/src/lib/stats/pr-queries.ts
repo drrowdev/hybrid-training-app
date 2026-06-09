@@ -236,7 +236,7 @@ export function countSessionTmAnchoredPrs(
     });
     if (flash.isWeightPr) count++;
     if (flash.isE1rmPr) count++;
-    if (flash.isRepPr) count++;
+    // Rep PR excluded — see getSessionTmAnchoredPrSummaries (not a saved-1RM beat).
   }
   return count;
 }
@@ -331,7 +331,12 @@ export function getSessionTmAnchoredPrSummaries(
     });
     const hits: TmAnchoredSessionPrHit[] = [];
     if (flash.isWeightPr) hits.push({ kind: "weight", value: best.weight });
-    if (flash.isRepPr) hits.push({ kind: "reps_at_weight", value: best.reps });
+    // NOTE: the Rep PR (reps > prescribed) is intentionally NOT surfaced here.
+    // It fires on essentially every AMRAP top set (which is designed to beat the
+    // minimum), and the callout's shared "beats your saved 1RM" subtext is false
+    // for it — beating a rep target is not a 1RM achievement. The post-session
+    // 🏆 callout is reserved for genuine saved-1RM beats (Weight / e1RM). The
+    // true "most reps ever at this weight" record still lives on /app/stats/prs.
     if (flash.isE1rmPr && flash.e1rmKg != null) {
       hits.push({ kind: "e1rm", value: Math.round(flash.e1rmKg * 10) / 10 });
     }

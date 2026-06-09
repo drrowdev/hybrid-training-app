@@ -437,17 +437,12 @@ export default async function SessionDetailPage({
   // Prescription gives us the rep target; fall back to logged reps when
   // the link isn't present.
   let progressionHints: ProgressionHint[] | undefined;
-  if (isComplete && sets.length > 0) {
-    const targetRepsByMovementId = new Map<string, number>();
-    for (const item of plannedPrescription?.items ?? []) {
-      if (item.kind === "main" && typeof item.reps === "number" && item.reps > 0) {
-        // First main entry wins per movement — multi-main prescriptions
-        // (top + back-off) share the same rep target by design.
-        if (!targetRepsByMovementId.has(item.movementId)) {
-          targetRepsByMovementId.set(item.movementId, item.reps);
-        }
-      }
-    }
+  // Only surface a "next time, try X" autoregulation hint on OFF-PLAN sessions
+  // (quick / freestyle / ad-hoc). For a prescription-linked block the next
+  // session's main-lift load is already determined by the program's wave
+  // (TM × week %), so a free-form linear-progression hint would contradict the
+  // plan. The plan owns the next prescription there.
+  if (isComplete && sets.length > 0 && !plannedPrescription) {
     const topByMovement = new Map<
       string,
       { weight: number; reps: number; rpe: number | null; displayName: string }
@@ -475,7 +470,9 @@ export default async function SessionDetailPage({
       const tmSlug = sets.find((s) => s.movement.id === movementId)?.movement.slug;
       const tm = tmSlug ? tmBySlug[tmSlug] : undefined;
       if (!tm) continue;
-      const targetReps = targetRepsByMovementId.get(movementId) ?? top.reps;
+      // Off-plan sessions have no prescribed rep target, so the performed reps
+      // are the reference point for the next-step suggestion.
+      const targetReps = top.reps;
       const e1rm = bestEstimateOneRm({ weight: top.weight, reps: top.reps, rpe: top.rpe });
       const sugg = suggestNextWeight({
         lastSet: { weightKg: top.weight, reps: top.reps, rpe: top.rpe },
