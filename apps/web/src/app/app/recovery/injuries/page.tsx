@@ -26,7 +26,7 @@ import { AddLimitationButton } from "@/components/limitations/AddLimitationButto
 import { HistorySection } from "@/components/limitations/HistorySection";
 import { LimitationResponseCard } from "@/components/limitations/LimitationResponseCard";
 import { getLimitationResponseOffer } from "@/lib/limitations/offer";
-import { applyLimitationResponse } from "@/lib/limitations/actions";
+import { applyLimitationResponseSelection } from "@/lib/limitations/actions";
 import { getFormatProfile } from "@/lib/format/profile";
 import type {
   LimitationRow,
@@ -148,7 +148,7 @@ export default async function InjuriesPage() {
       {limitationOffer && (
         <LimitationResponseCard
           offer={limitationOffer}
-          action={applyLimitationResponse}
+          applyAction={applyLimitationResponseSelection}
         />
       )}
 
