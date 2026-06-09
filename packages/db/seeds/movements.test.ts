@@ -93,6 +93,43 @@ describe("movement catalog seed", () => {
       }
     }
   });
+
+  it("groin-loading squat/split variants tag adductors (limitation safety, migration 0099)", () => {
+    // The limitation safety filter keys off muscle tags, so any movement that
+    // meaningfully loads the adductors must declare them — otherwise it slips
+    // past an adductor-injury flag (and was even recommended as a "safe" swap).
+    const mustTagAdductors = [
+      "spanish-squat",
+      "iso-split-squat",
+      "split-squat-bb",
+      "split-squat-db",
+      "bulgarian-split-squat-bb",
+      "bulgarian-split-squat-db",
+      "atg-split-squat",
+      "cossack-squat",
+      "cossack-squat-loaded",
+      "front-squat",
+      "hsr-front-squat",
+      "zercher-squat",
+      "hsr-leg-press",
+      "leg-press-45",
+      "leg-press-vertical",
+      "wall-sit",
+      "iso-wall-sit-heavy",
+      "sumo-deadlift",
+    ];
+    for (const slug of mustTagAdductors) {
+      const m = SEED.find((x) => x.slug === slug);
+      expect(m, `${slug} missing from seed`).toBeTruthy();
+      const muscles = [
+        ...((m!.primaryMuscles as string[] | undefined) ?? []),
+        ...((m!.secondaryMuscles as string[] | undefined) ?? []),
+      ];
+      expect(muscles, `${slug} must tag adductors (groin-loading)`).toContain(
+        "adductors",
+      );
+    }
+  });
 });
 
 describe("muscle taxonomy coverage", () => {

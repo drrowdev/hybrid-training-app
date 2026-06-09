@@ -694,6 +694,13 @@
       "when": 1784277600000,
       "tag": "0098_movement_instructions",
       "breakpoints": false
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1784364000000,
+      "tag": "0099_tag_adductor_loaders",
+      "breakpoints": false
     }
   ]
 }
