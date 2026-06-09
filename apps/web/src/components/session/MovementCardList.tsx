@@ -34,6 +34,10 @@ import type {
 } from "@/lib/sessions/actions";
 import { removeSessionMovementAction } from "@/lib/sessions/session-movement-actions";
 import type { ResolvedFreestyleMovement } from "@/lib/sessions/freestyle-resolver";
+import {
+  smartAccessoryOrder,
+  type AccessoryMeta,
+} from "@/lib/sessions/accessory-order";
 
 const EMPTY_SUPERSET_MAP: ReadonlyMap<string, SupersetCardInfo> = new Map();
 
@@ -101,6 +105,11 @@ export type MovementCardListProps = {
    * each card so the focus view can log them at 0 kg added load. Omitted ⇒ none.
    */
   bodyweightMovementIds?: ReadonlyArray<string>;
+  /**
+   * Equipment + region per movementId, used to cluster accessory cards by
+   * "station" (smart ordering). Omitted ⇒ keep the engine's pass order.
+   */
+  accessoryMetaById?: Readonly<Record<string, AccessoryMeta>>;
 };
 
 export function MovementCardList({
@@ -126,6 +135,7 @@ export function MovementCardList({
   resolvedFreestyle,
   supersetByMovementId,
   bodyweightMovementIds,
+  accessoryMetaById,
 }: MovementCardListProps) {
   const bodyweightIdSet = useMemo(
     () => new Set(bodyweightMovementIds ?? []),
@@ -253,8 +263,14 @@ export function MovementCardList({
       else if (b === "accessory") accessory.push(g);
       else other.push(g);
     }
-    return { mainGroups: main, accessoryGroups: accessory, otherGroups: other };
-  }, [groups]);
+    // Smart ordering: cluster accessory cards by equipment "station" so they're
+    // done back-to-back (and antagonist pairs land adjacent), instead of the
+    // engine's priority-pass order. Presentational only — item indices unchanged.
+    const orderedAccessory = accessoryMetaById
+      ? smartAccessoryOrder(accessory, (g) => g.movementId, accessoryMetaById)
+      : accessory;
+    return { mainGroups: main, accessoryGroups: orderedAccessory, otherGroups: other };
+  }, [groups, accessoryMetaById]);
 
   // First prescribed card with no logged sets across the whole session
   // shows the session-level "Same as planned" button.
