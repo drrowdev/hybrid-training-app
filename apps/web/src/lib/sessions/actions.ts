@@ -99,9 +99,32 @@ const setSchema = z.object({
     .nullable(),
 });
 
+export type AddStrengthSetResult = {
+  error?: string;
+  ok?: true;
+  /**
+   * The persisted row, returned so the client optimistic overlay can hold the
+   * REAL id (for the edit link) without waiting for a full page revalidation.
+   * Present only on a successful insert.
+   */
+  set?: {
+    id: string;
+    movementId: string;
+    prescriptionItemIndex: number | null;
+    setKind: string;
+    skipped: boolean;
+  };
+  /**
+   * Updated bodyweight TUT for the affected family (when the logged set was a BW
+   * prescription). Lets the client refresh the "Next:" chip counter without a
+   * full revalidation.
+   */
+  bwTut?: { family: string; tutAccumulated: number };
+};
+
 export async function addStrengthSet(
   formData: FormData,
-): Promise<{ error?: string; ok?: true }> {
+): Promise<AddStrengthSetResult> {
   const parsed = setSchema.safeParse({
     sessionId: formData.get("sessionId"),
     movementId: formData.get("movementId"),
@@ -141,30 +164,37 @@ export async function addStrengthSet(
     .select("id", { count: "exact", head: true })
     .eq("session_id", parsed.data.sessionId);
 
-  const { error } = await supabase.from("set_logs").insert({
-    session_id: parsed.data.sessionId,
-    movement_id: parsed.data.movementId,
-    set_index: count ?? 0,
-    set_kind: parsed.data.setKind,
-    // Skipped rows always persist as 0 / 0 / null rpe — every engine
-    // helper either ignores them (.eq('skipped', false)) or treats
-    // the zero weight as a no-op.
-    weight_kg: isSkipped ? 0 : (parsed.data.weightKg ?? null),
-    reps: isSkipped ? 0 : (parsed.data.reps ?? null),
-    duration_sec: isSkipped ? null : (parsed.data.durationSec ?? null),
-    distance_m: isSkipped ? null : (parsed.data.distanceM ?? null),
-    rpe: isSkipped ? null : (parsed.data.rpe ?? null),
-    notes: parsed.data.notes ?? null,
-    prescription_item_index: parsed.data.prescriptionItemIndex ?? null,
-    skipped: isSkipped,
-    skip_reason: isSkipped ? (parsed.data.skipReason ?? null) : null,
-  });
+  const { data: inserted, error } = await supabase
+    .from("set_logs")
+    .insert({
+      session_id: parsed.data.sessionId,
+      movement_id: parsed.data.movementId,
+      set_index: count ?? 0,
+      set_kind: parsed.data.setKind,
+      // Skipped rows always persist as 0 / 0 / null rpe — every engine
+      // helper either ignores them (.eq('skipped', false)) or treats
+      // the zero weight as a no-op.
+      weight_kg: isSkipped ? 0 : (parsed.data.weightKg ?? null),
+      reps: isSkipped ? 0 : (parsed.data.reps ?? null),
+      duration_sec: isSkipped ? null : (parsed.data.durationSec ?? null),
+      distance_m: isSkipped ? null : (parsed.data.distanceM ?? null),
+      rpe: isSkipped ? null : (parsed.data.rpe ?? null),
+      notes: parsed.data.notes ?? null,
+      prescription_item_index: parsed.data.prescriptionItemIndex ?? null,
+      skipped: isSkipped,
+      skip_reason: isSkipped ? (parsed.data.skipReason ?? null) : null,
+    })
+    // Return the persisted id so the client overlay can hold the REAL set id
+    // (for the edit link) without waiting on a full page revalidation.
+    .select("id")
+    .single();
 
   if (error) return { error: error.message };
 
   // Bodyweight Phase 4 — accumulate TUT + clean_rep_history when the
   // logged set was prescribed via a BW main-lift item. Failures here
   // must never block the logging UI.
+  let bwTut: { family: string; tutAccumulated: number } | undefined;
   try {
     if (
       !isSkipped &&
@@ -185,7 +215,7 @@ export async function addStrengthSet(
         );
         const rpe = parsed.data.rpe ?? null;
         const rir = rpe != null ? Math.max(0, 10 - rpe) : 2;
-        await applyBwSetSideEffects({
+        const tutResult = await applyBwSetSideEffects({
           supabase,
           userId: user.id,
           bw: item.bw,
@@ -197,14 +227,31 @@ export async function addStrengthSet(
           skipped: false,
           externalLoadKg: parsed.data.externalLoadKg ?? null,
         });
+        bwTut = tutResult ?? undefined;
       }
     }
   } catch (e) {
     console.error("applyBwSetSideEffects failed:", e);
   }
 
-  revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
-  return { ok: true };
+  // NOTE: intentionally NO `revalidatePath` here. The client holds an optimistic
+  // overlay of the session's logged sets (with the real id returned below), so a
+  // per-set full-page rebuild is wasted work — it re-ran ~15 queries just to
+  // record one row. The overlay is the source of truth during the session; the
+  // server snapshot refreshes (and the overlay reconciles) at the meaningful
+  // points that still revalidate: finish, fill-from-plan, swap, edit, delete, or
+  // a navigation/reload. See lib/sessions/optimistic-log.ts + SessionWorkArea.
+  return {
+    ok: true,
+    set: {
+      id: inserted.id as string,
+      movementId: parsed.data.movementId,
+      prescriptionItemIndex: parsed.data.prescriptionItemIndex ?? null,
+      setKind: parsed.data.setKind,
+      skipped: isSkipped,
+    },
+    ...(bwTut ? { bwTut } : {}),
+  };
 }
 
 const cardioSchema = z.object({

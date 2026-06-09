@@ -15,7 +15,7 @@
 import type { LoggedSet } from "@/components/session/SessionLogClient";
 
 export type OptimisticLog = {
-  /** Stable client id for this pending entry (also the overlay LoggedSet id). */
+  /** Stable client id for this pending entry (overlay LoggedSet id until confirmed). */
   clientKey: string;
   movementId: string;
   prescriptionItemIndex: number | null;
@@ -27,7 +27,19 @@ export type OptimisticLog = {
   rpe: number | null;
   skipped: boolean;
   skipReason: string | null;
+  /**
+   * Real DB id, set once the server write resolves. Its presence means the entry
+   * is "confirmed" (persisted) — at which point the overlay can surface the real
+   * id for the edit link and the entry survives until the next server refresh
+   * (rather than depending on a per-set revalidation).
+   */
+  serverId?: string;
 };
+
+/** True once the server write has persisted and returned a real id. */
+export function isConfirmed(log: OptimisticLog): boolean {
+  return log.serverId != null;
+}
 
 function numOrNull(v: FormDataEntryValue | null): number | null {
   if (v == null) return null;
@@ -80,7 +92,8 @@ export function pendingLogToLoggedSet(
   setIndex: number,
 ): LoggedSet {
   return {
-    id: log.clientKey,
+    // Use the real DB id once confirmed so any id-keyed logic gets the true id.
+    id: log.serverId ?? log.clientKey,
     set_index: setIndex,
     set_kind: log.setKind,
     weight_kg: log.weightKg,
@@ -90,8 +103,49 @@ export function pendingLogToLoggedSet(
     rpe: log.rpe,
     skipped: log.skipped,
     skip_reason: log.skipReason,
+    prescription_item_index: log.prescriptionItemIndex,
     movement: { id: log.movementId, slug: "", display_name: "", primary_region: "" },
   };
+}
+
+/**
+ * Overlay the server's prescription-index -> real-set-id map with confirmed
+ * pending entries, so the "Edit set" link works mid-session WITHOUT a per-set
+ * page revalidation. The server map wins where it already has an index (it's
+ * authoritative once the refresh that populated it has landed); confirmed
+ * overlay entries fill the gaps for sets the server snapshot predates.
+ */
+export function buildLoggedSetIdOverlay(
+  serverMap: Readonly<Record<number, string>>,
+  pending: ReadonlyArray<OptimisticLog>,
+): Record<number, string> {
+  let out: Record<number, string> = serverMap as Record<number, string>;
+  let copied = false;
+  for (const log of pending) {
+    if (log.serverId == null) continue; // confirmed only — needs the real id
+    if (log.prescriptionItemIndex == null) continue;
+    if (out[log.prescriptionItemIndex] != null) continue; // server wins
+    if (!copied) {
+      out = { ...serverMap };
+      copied = true;
+    }
+    out[log.prescriptionItemIndex] = log.serverId;
+  }
+  return out;
+}
+
+/**
+ * Reconcile the overlay against a freshly-fetched server snapshot. Drops every
+ * CONFIRMED entry: any server refresh re-queries set_logs, so its snapshot
+ * already reflects every persisted write up to that point — the server becomes
+ * authoritative for those rows (and a set deleted via the edit page is then
+ * correctly absent, instead of lingering as a stale "logged" slot). In-flight
+ * entries (no serverId yet) are kept until their own write resolves.
+ */
+export function dropConfirmed(
+  pending: ReadonlyArray<OptimisticLog>,
+): OptimisticLog[] {
+  return pending.filter((log) => log.serverId == null);
 }
 
 /**

@@ -21,12 +21,14 @@ import type {
   addStrengthSet as addStrengthSetAction,
   fillSessionFromPlan as fillSessionFromPlanAction,
   swapPrescriptionItem as swapPrescriptionItemAction,
+  AddStrengthSetResult,
 } from "@/lib/sessions/actions";
 import { MovementCardList } from "./MovementCardList";
 import {
+  buildLoggedSetIdOverlay,
+  dropConfirmed,
   mergeOptimisticSets,
   optimisticLogFromFormData,
-  serverHasPendingLog,
   type OptimisticLog,
 } from "@/lib/sessions/optimistic-log";
 import type { PlateInventoryItem } from "./plate-math";
@@ -139,21 +141,31 @@ export function SessionWorkArea({
   // revalidation settle in the background, and each pending entry is reconciled
   // away once the refreshed server `sets` includes its row.
   const [pendingLogs, setPendingLogs] = useState<OptimisticLog[]>([]);
+  // Phase 4 — per-family bodyweight TUT overrides. The BW "Next:" chip counter
+  // ticks up as you log BW sets; with no per-set revalidation we refresh just
+  // that number from the value the action returns, until the next server
+  // snapshot makes the gate state authoritative again.
+  const [bwTutOverrides, setBwTutOverrides] = useState<Record<string, number>>({});
 
-  // Reconcile: drop any pending entry the freshly-fetched server sets now
-  // represent. Runs whenever the server `sets` prop changes (after a
-  // revalidation lands).
+  // Reconcile: whenever a fresh server snapshot lands (any revalidating action —
+  // finish / delete / edit / fill / swap — or a reload changes the `sets` prop),
+  // drop every CONFIRMED overlay entry. That snapshot already reflects all
+  // persisted writes, so the server becomes authoritative for them (and a set
+  // deleted via the edit page is then correctly absent). In-flight entries (write
+  // not yet resolved) are kept until their own write settles.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reconcile the optimistic overlay against freshly-fetched server sets; functional updater no-ops when nothing changed
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reconcile the optimistic overlay against a fresh server snapshot; functional updater no-ops when nothing changed
     setPendingLogs((prev) => {
       if (prev.length === 0) return prev;
-      const next = prev.filter((log) => !serverHasPendingLog(sets, log));
+      const next = dropConfirmed(prev);
       return next.length === prev.length ? prev : next;
     });
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the fresh server bwGateStateByFamily supersedes our TUT overrides
+    setBwTutOverrides((prev) => (Object.keys(prev).length === 0 ? prev : {}));
   }, [sets]);
 
   const logSet = useCallback(
-    async (fd: FormData): Promise<{ error?: string; ok?: true }> => {
+    async (fd: FormData): Promise<AddStrengthSetResult> => {
       const clientKey = `opt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const optimistic = optimisticLogFromFormData(fd, clientKey);
       // Only overlay PRESCRIBED logs (those carry a prescriptionItemIndex we can
@@ -165,9 +177,22 @@ export function SessionWorkArea({
         setPendingLogs((prev) => [...prev, optimistic]);
       }
       const result = await addStrengthSet(fd);
-      if (result?.error && overlay) {
+      if (!overlay) return result;
+      if (result?.error) {
         // Roll the overlay back so the slot un-logs and the user can retry.
         setPendingLogs((prev) => prev.filter((l) => l.clientKey !== clientKey));
+      } else if (result?.set?.id) {
+        // Mark confirmed with the REAL id, so the edit link works mid-session
+        // without a per-set page revalidation. The entry survives until the next
+        // server snapshot reconciles it away.
+        const realId = result.set.id;
+        setPendingLogs((prev) =>
+          prev.map((l) => (l.clientKey === clientKey ? { ...l, serverId: realId } : l)),
+        );
+        if (result.bwTut) {
+          const { family, tutAccumulated } = result.bwTut;
+          setBwTutOverrides((prev) => ({ ...prev, [family]: tutAccumulated }));
+        }
       }
       return result;
     },
@@ -197,10 +222,30 @@ export function SessionWorkArea({
     return s;
   }, [skippedItemIndices, pendingLogs]);
 
+  // Overlay the real set id for confirmed pending entries so the "Edit set" link
+  // works mid-session without a revalidation.
+  const mergedLoggedSetIdByItemIndex = useMemo(
+    () => buildLoggedSetIdOverlay(loggedSetIdByItemIndex, pendingLogs),
+    [loggedSetIdByItemIndex, pendingLogs],
+  );
+
   const priorBestsForCards: Record<
     string,
     { heaviestWeight: number | null; bestE1rm: number | null }
   > = priorBests;
+
+  // Overlay the per-family TUT counter onto the gate state (Phase 4).
+  const mergedBwGateStateByFamily = useMemo(() => {
+    if (!bwGateStateByFamily || Object.keys(bwTutOverrides).length === 0) {
+      return bwGateStateByFamily;
+    }
+    const out = { ...bwGateStateByFamily };
+    for (const [family, tut] of Object.entries(bwTutOverrides)) {
+      const cur = out[family];
+      if (cur) out[family] = { ...cur, tutAccumulated: tut };
+    }
+    return out;
+  }, [bwGateStateByFamily, bwTutOverrides]);
 
   return (
     <MovementCardList
@@ -212,7 +257,7 @@ export function SessionWorkArea({
       oneRmBySlug={oneRmBySlug}
       loggedItemIndices={loggedSet}
       skippedItemIndices={skippedSet}
-      loggedSetIdByItemIndex={loggedSetIdByItemIndex}
+      loggedSetIdByItemIndex={mergedLoggedSetIdByItemIndex}
       priorBests={priorBestsForCards}
       lastSetHints={lastSetHints}
       addStrengthSet={logSet}
@@ -222,7 +267,7 @@ export function SessionWorkArea({
       barbellKg={barbellKg}
       trapBarKg={trapBarKg}
       plateInventory={plateInventory}
-      bwGateStateByFamily={bwGateStateByFamily}
+      bwGateStateByFamily={mergedBwGateStateByFamily}
       resolvedFreestyle={resolvedFreestyle}
       supersetByMovementId={supersetByMovementId}
       bodyweightMovementIds={bodyweightMovementIds}
