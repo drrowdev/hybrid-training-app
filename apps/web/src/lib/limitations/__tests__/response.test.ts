@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { CatalogMovement } from "@/lib/planner/accessory-picker";
 import type { LimitationsContext } from "@/lib/planner/limitations-context";
 import type { RemainingSession } from "@/lib/planner/remaining-sessions";
-import { buildLimitationResponse, buildSelectedUpdates, deriveReplacement } from "../response";
+import { buildLimitationResponse, buildSelectedUpdates, deriveReplacement, deriveReplacements } from "../response";
 import { limitationItemKey } from "../item-key";
 
 function mv(
@@ -25,6 +25,7 @@ function mv(
     stimToFatigueScore: over.stimToFatigueScore ?? null,
     highStrainTendon: over.highStrainTendon ?? false,
     pattern: over.pattern ?? null,
+    equipment: over.equipment ?? null,
   };
 }
 
@@ -312,6 +313,72 @@ describe("deriveReplacement", () => {
   });
 });
 
+function emptyEquipment(over: Partial<import("@/lib/settings/equipment-schema").Equipment> = {}) {
+  return {
+    preset: "custom" as const,
+    bars: { barbellKg: 20, trapBarKg: null, safetyBarKg: null },
+    plates: [],
+    dumbbells: null,
+    kettlebells: [],
+    machines: [],
+    cardio: [],
+    accessories: {
+      weightedVest: [],
+      sandbag: [],
+      bands: false,
+      dipBelt: false,
+      pullUpBar: false,
+      rings: false,
+    },
+    ...over,
+  };
+}
+
+describe("deriveReplacements — ranked alternatives + equipment", () => {
+  const cat: CatalogMovement[] = [
+    mv({ id: "spanishsquat", slug: "spanish-squat", primaryMuscles: ["quads"], secondaryMuscles: ["adductors"], primaryRegion: "knee", pattern: "squat" }),
+    mv({ id: "legext", slug: "leg-extension", primaryMuscles: ["quads"], primaryRegion: "knee", pattern: "isolation", equipment: "machine-leg-ext" }),
+    mv({ id: "frontsquat", slug: "front-squat", primaryMuscles: ["quads"], primaryRegion: "knee", pattern: "squat", equipment: "barbell" }),
+    mv({ id: "revnordic", slug: "reverse-nordic-curl", primaryMuscles: ["quads"], primaryRegion: "knee", pattern: "isolation", equipment: "bodyweight" }),
+  ];
+  const context = ctx({ blockedMuscles: new Set(["adductors"]) });
+
+  it("returns a ranked list, best first", () => {
+    const ranked = deriveReplacements(cat[0], cat, context, {});
+    expect(ranked.length).toBeGreaterThan(1);
+    // front-squat shares region+pattern → outranks the isolations.
+    expect(ranked[0].id).toBe("frontsquat");
+  });
+
+  it("excludes movements the user has no equipment for (no machines → no leg extension)", () => {
+    const ranked = deriveReplacements(cat[0], cat, context, {
+      equipment: emptyEquipment(),
+    });
+    expect(ranked.map((r) => r.id)).not.toContain("legext");
+    // bodyweight + barbell candidates remain.
+    expect(ranked.map((r) => r.id)).toContain("revnordic");
+    expect(ranked.map((r) => r.id)).toContain("frontsquat");
+  });
+
+  it("includes a machine candidate when the user owns that machine", () => {
+    const ranked = deriveReplacements(cat[0], cat, context, {
+      equipment: emptyEquipment({ machines: ["leg_extension"] }),
+    });
+    expect(ranked.map((r) => r.id)).toContain("legext");
+  });
+
+  it("attaches alternatives to each swap in buildLimitationResponse", () => {
+    const plan = buildLimitationResponse(
+      [session({ id: "s1", items: [{ movementId: "spanishsquat", kind: "accessory", sets: 3, reps: 10 }] })],
+      cat,
+      context,
+    );
+    expect(plan.swaps).toHaveLength(1);
+    expect(plan.swaps[0].alternatives.length).toBeGreaterThan(1);
+    expect(plan.swaps[0].toMovementId).toBe(plan.swaps[0].alternatives[0].movementId);
+  });
+});
+
 describe("buildSelectedUpdates — per-item review (Option 2)", () => {
   // One session with a swappable offender (chinup → lat alt) at index 0 and a
   // drop-only offender (curl, no safe like-for-like) at index 1, under an
@@ -386,5 +453,31 @@ describe("buildSelectedUpdates — per-item review (Option 2)", () => {
     const swapped = out.updates[0].prescription.items[0];
     expect(swapped.movementSlug).toBe(plan.swaps[0].toMovementSlug);
     expect(swapped.movementName).toBe(plan.swaps[0].toName);
+  });
+
+  it("honours a chosen target that is one of the offered alternatives", () => {
+    const swap = plan.swaps[0];
+    // Pick a non-default alternative if one exists; else the default.
+    const alt = swap.alternatives.find((a) => a.movementId !== swap.toMovementId)
+      ?? swap.alternatives[0];
+    const out = buildSelectedUpdates(
+      sessions,
+      plan,
+      new Set([swapKey]),
+      new Map([[swap.fromMovementId, alt.movementId]]),
+    );
+    expect(out.updates[0].prescription.items[0].movementId).toBe(alt.movementId);
+  });
+
+  it("ignores a chosen target that is NOT an offered alternative (falls back to default)", () => {
+    const swap = plan.swaps[0];
+    const out = buildSelectedUpdates(
+      sessions,
+      plan,
+      new Set([swapKey]),
+      new Map([[swap.fromMovementId, "totally-unsafe-injected-id"]]),
+    );
+    // Falls back to the engine default — never the injected id.
+    expect(out.updates[0].prescription.items[0].movementId).toBe(swap.toMovementId);
   });
 });

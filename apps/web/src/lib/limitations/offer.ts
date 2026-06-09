@@ -11,6 +11,7 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { loadPickerCatalog } from "@/lib/planner/picker-catalog";
 import { readLimitationsContext } from "@/lib/planner/limitations-context";
 import { getActiveBlockRemainingSessions } from "@/lib/planner/remaining-sessions";
+import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import {
   buildLimitationResponse,
   type LimitationResponsePlan,
@@ -44,7 +45,13 @@ export async function getLimitationResponseOffer(): Promise<LimitationResponseOf
   if (!hasLimits) return null;
 
   const catalog = await loadPickerCatalog(supabase);
-  const plan = buildLimitationResponse(active.remaining, catalog, ctx);
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", user.id)
+    .maybeSingle();
+  const equipment = resolveEquipment(profile ?? null);
+  const plan = buildLimitationResponse(active.remaining, catalog, ctx, equipment);
   if (!hasOffending(plan)) return null;
 
   return { ...plan, blockId: active.blockId };

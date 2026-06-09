@@ -6,6 +6,7 @@ import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { loadPickerCatalog } from "@/lib/planner/picker-catalog";
 import { readLimitationsContext } from "@/lib/planner/limitations-context";
+import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import {
   applyPrescriptionUpdates,
   getActiveBlockRemainingSessions,
@@ -431,7 +432,13 @@ export async function applyLimitationResponseResult(): Promise<ApplyLimitationRe
   if (!hasLimits) return { ok: true, swapped: 0, dropped: 0, sessions: 0 };
 
   const catalog = await loadPickerCatalog(supabase);
-  const plan = buildLimitationResponse(active.remaining, catalog, ctx);
+  const { data: legacyProfile } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", user.id)
+    .maybeSingle();
+  const legacyEquipment = resolveEquipment(legacyProfile ?? null);
+  const plan = buildLimitationResponse(active.remaining, catalog, ctx, legacyEquipment);
   if (plan.updates.length === 0) {
     return { ok: true, swapped: 0, dropped: 0, sessions: 0 };
   }
@@ -460,22 +467,29 @@ export async function applyLimitationResponseResult(): Promise<ApplyLimitationRe
 
 /**
  * Per-item variant of the apply action (ADR 0014 review UX). The review card
- * sends the set of swap/drop keys the user kept checked. We RE-DERIVE the full
- * plan from the user's current live state — never trusting the client for the
- * content of any change — then `buildSelectedUpdates` narrows it to only the
- * approved keys before persisting. Unknown / stale keys are ignored, so the
- * client can only ever apply a subset of what the engine independently deemed
- * safe. An empty / all-stale selection is a no-op.
+ * sends the set of swap/drop keys the user kept checked, plus an optional map of
+ * per-movement target choices. We RE-DERIVE the full plan from the user's
+ * current live state — never trusting the client for the content of any change —
+ * then `buildSelectedUpdates` narrows it to the approved keys and honours a
+ * chosen target only when it's one of the engine-offered alternatives. Unknown
+ * keys / choices are ignored, so the client can only ever apply a subset of what
+ * the engine independently deemed safe. An empty selection is a no-op.
  */
 export async function applyLimitationResponseSelection(
   selectedKeys: string[],
+  choices: Record<string, string> = {},
 ): Promise<ApplyLimitationResult> {
   const parsed = z
     .array(z.string().min(1).max(120))
     .max(1000)
     .safeParse(selectedKeys);
   if (!parsed.success) return { ok: false, error: "Invalid selection" };
+  const parsedChoices = z
+    .record(z.string().min(1).max(80), z.string().min(1).max(80))
+    .safeParse(choices);
+  if (!parsedChoices.success) return { ok: false, error: "Invalid choices" };
   const selected = new Set(parsed.data);
+  const choiceMap = new Map(Object.entries(parsedChoices.data));
   if (selected.size === 0) {
     return { ok: true, swapped: 0, dropped: 0, sessions: 0 };
   }
@@ -499,11 +513,18 @@ export async function applyLimitationResponseSelection(
   if (!hasLimits) return { ok: true, swapped: 0, dropped: 0, sessions: 0 };
 
   const catalog = await loadPickerCatalog(supabase);
-  const plan = buildLimitationResponse(active.remaining, catalog, ctx);
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", user.id)
+    .maybeSingle();
+  const equipment = resolveEquipment(profile ?? null);
+  const plan = buildLimitationResponse(active.remaining, catalog, ctx, equipment);
   const { updates, swapped, dropped } = buildSelectedUpdates(
     active.remaining,
     plan,
     selected,
+    choiceMap,
   );
   if (updates.length === 0) {
     return { ok: true, swapped: 0, dropped: 0, sessions: 0 };
