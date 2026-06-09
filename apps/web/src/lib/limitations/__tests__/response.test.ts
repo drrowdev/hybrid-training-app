@@ -377,6 +377,33 @@ describe("deriveReplacements — ranked alternatives + equipment", () => {
     expect(plan.swaps[0].alternatives.length).toBeGreaterThan(1);
     expect(plan.swaps[0].toMovementId).toBe(plan.swaps[0].alternatives[0].movementId);
   });
+
+  it("rejects role-only matches and cross-region/pattern compounds (the RKC-Plank / Trap-Bar-DL problem)", () => {
+    const offending = mv({
+      id: "spanishsquat",
+      slug: "spanish-squat",
+      primaryMuscles: ["quads"],
+      primaryRegion: "knee",
+      pattern: "squat",
+      bulletproofRoles: ["heavy_isometric"],
+    });
+    const pool: CatalogMovement[] = [
+      offending,
+      // Good: same muscle + same region.
+      mv({ id: "revnordic", slug: "reverse-nordic-curl", primaryMuscles: ["quads"], primaryRegion: "knee", pattern: "isolation" }),
+      // Role-only match, different muscle/region (RKC Plank).
+      mv({ id: "rkcplank", slug: "rkc-plank", primaryMuscles: ["abs"], primaryRegion: "lumbar_trunk", pattern: "isolation", bulletproofRoles: ["heavy_isometric"] }),
+      // Role-only match (Isometric Pin OHP).
+      mv({ id: "isoohp", slug: "iso-ohp-pin-press", primaryMuscles: ["front_delts", "triceps"], primaryRegion: "shoulder_scapular", pattern: "tendon", bulletproofRoles: ["heavy_isometric"] }),
+      // Shares quads but wrong region AND pattern (Trap Bar Deadlift).
+      mv({ id: "trapdl", slug: "trap-bar-deadlift", primaryMuscles: ["quads", "glutes", "hamstrings", "lower_back"], primaryRegion: "hamstring_posterior", pattern: "hinge" }),
+    ];
+    const ids = deriveReplacements(offending, pool, ctx({ blockedMuscles: new Set(["adductors"]) }), {}).map((r) => r.id);
+    expect(ids).toContain("revnordic");
+    expect(ids).not.toContain("rkcplank");
+    expect(ids).not.toContain("isoohp");
+    expect(ids).not.toContain("trapdl");
+  });
 });
 
 describe("buildSelectedUpdates — per-item review (Option 2)", () => {

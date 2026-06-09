@@ -215,18 +215,24 @@ export function deriveReplacements(
       offending.functionalRoles.includes(r),
     ).length;
 
-    // A meaningful like-for-like must share at least one muscle or role.
-    if (sharedMuscles === 0 && sharedBulletproof === 0 && sharedFunctional === 0) {
-      continue;
-    }
+    const sameRegion = cand.primaryRegion === offending.primaryRegion;
+    const samePattern =
+      !!cand.pattern && !!offending.pattern && cand.pattern === offending.pattern;
+
+    // A like-for-like swap must (a) train the SAME primary muscle — a shared
+    // generic role like "heavy isometric" is NOT enough (that let an ab plank,
+    // an overhead-press isometric and a mid-thigh pull be offered for a quad
+    // movement) — AND (b) be mechanically similar via the same body region or
+    // movement pattern, so a heavy posterior-chain deadlift isn't offered for a
+    // quad/knee accessory. Roles only refine the RANKING below, never qualify.
+    if (sharedMuscles === 0) continue;
+    if (!sameRegion && !samePattern) continue;
 
     let score = sharedMuscles * 3 + sharedBulletproof * 2 + sharedFunctional;
     // Same body region (e.g. knee→knee) and pattern (squat→squat) keep the swap
     // mechanically similar to what was prescribed.
-    if (cand.primaryRegion === offending.primaryRegion) score += 2;
-    if (cand.pattern && offending.pattern && cand.pattern === offending.pattern) {
-      score += 1;
-    }
+    if (sameRegion) score += 2;
+    if (samePattern) score += 1;
     // Under concurrent stress a supported / fixed-path variant is mildly
     // preferred (DC-O5) — a tie-breaker bonus, not a gate.
     if (cand.isSupported) score += 1;
