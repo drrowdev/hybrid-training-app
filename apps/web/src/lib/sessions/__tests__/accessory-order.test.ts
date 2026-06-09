@@ -5,6 +5,7 @@ import { describe, it, expect } from "vitest";
 import {
   stationRank,
   smartAccessoryOrder,
+  applyCustomOrder,
   type AccessoryMeta,
 } from "../accessory-order";
 
@@ -74,5 +75,36 @@ describe("smartAccessoryOrder", () => {
 
   it("leaves an empty list untouched", () => {
     expect(smartAccessoryOrder([], (i: Item) => i.movementId, meta)).toEqual([]);
+  });
+});
+
+describe("applyCustomOrder", () => {
+  const items: Item[] = [
+    { movementId: "a", label: "a" },
+    { movementId: "b", label: "b" },
+    { movementId: "c", label: "c" },
+  ];
+  const idOf = (i: Item) => i.movementId;
+
+  it("returns the baseline unchanged for an empty/missing custom order", () => {
+    expect(applyCustomOrder(items, idOf, null)).toBe(items);
+    expect(applyCustomOrder(items, idOf, [])).toBe(items);
+  });
+
+  it("reorders to the user's saved sequence", () => {
+    const result = applyCustomOrder(items, idOf, ["c", "a", "b"]).map(idOf);
+    expect(result).toEqual(["c", "a", "b"]);
+  });
+
+  it("places listed items first and keeps un-listed ones in baseline order after", () => {
+    // Only 'c' is in the custom order (e.g. the others were swapped/added since).
+    const result = applyCustomOrder(items, idOf, ["c"]).map(idOf);
+    expect(result).toEqual(["c", "a", "b"]);
+  });
+
+  it("never drops or duplicates an item", () => {
+    const result = applyCustomOrder(items, idOf, ["b", "zzz-not-present"]).map(idOf);
+    expect([...result].sort()).toEqual(["a", "b", "c"]);
+    expect(result[0]).toBe("b");
   });
 });

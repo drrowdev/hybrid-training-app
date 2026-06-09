@@ -82,6 +82,15 @@ export const sessions = pgTable("sessions", {
    * on every planned / freestyle session.
    */
   prescription: jsonb("prescription"),
+  /**
+   * Per-session user override of the accessory card ORDER (drag/tap reorder).
+   * An array of accessory `movementId`s in the user's chosen sequence; the
+   * session UI applies it over the smart equipment-station default. Display-only
+   * — set logging still matches by prescription item index. NULL = use the
+   * default order. Movement ids not present fall back to the default order
+   * after the listed ones (robust to swaps / freestyle adds).
+   */
+  customAccessoryOrder: jsonb("custom_accessory_order").$type<string[]>(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),

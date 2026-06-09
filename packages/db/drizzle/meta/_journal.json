@@ -673,6 +673,13 @@
       "when": 1784061000000,
       "tag": "0095_seed_forearm_rotation",
       "breakpoints": false
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1784104800000,
+      "tag": "0096_session_custom_accessory_order",
+      "breakpoints": false
     }
   ]
 }

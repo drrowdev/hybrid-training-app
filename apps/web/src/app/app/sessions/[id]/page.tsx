@@ -103,7 +103,7 @@ export default async function SessionDetailPage({
     supabase
       .from("sessions")
       .select(
-        "id, performed_at, title, fatigue, soreness, session_rpe, duration_min, notes, completed_at, quick_cardio_modality, quick_cardio_duration_sec, prescription",
+        "id, performed_at, title, fatigue, soreness, session_rpe, duration_min, notes, completed_at, quick_cardio_modality, quick_cardio_duration_sec, prescription, custom_accessory_order",
       )
       .eq("id", id)
       .is("deleted_at", null)
@@ -1183,6 +1183,9 @@ export default async function SessionDetailPage({
         supersetByMovementId={supersetByMovementId}
         bodyweightMovementIds={bodyweightMovementIds}
         accessoryMetaById={accessoryMetaById}
+        customAccessoryOrder={
+          (session.custom_accessory_order as string[] | null) ?? null
+        }
       />
 
       {(() => {
