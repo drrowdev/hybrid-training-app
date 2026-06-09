@@ -58,10 +58,12 @@ import {
   isActiveTilt,
   secondaryVolumeTilt,
   sessionDurationCapMinutes,
+  HIGH_VOLUME_SESSION_CAP_MIN,
   type SecondaryFocus,
 } from "./secondary-focus";
 import {
   accessoryVolumeCandidates,
+  HIGH_AESTHETIC_ITEM_BONUS,
   type AccessoryVolumeLevel,
 } from "./accessory-volume";
 import { FLOOR_FUNCTIONAL_RESERVE } from "./accessory-roles";
@@ -396,6 +398,11 @@ export function assemblePrescriptionItems(
         defaultMuscleTargets({
           focusMuscles,
           elbowForearmAtlRatio,
+          // ADR 0045 — High lifts the aesthetic baseline to the productive zone
+          // so the gap-fill seats real hypertrophy volume even on a block whose
+          // main lifts already cover MEV (e.g. concurrent_hybrid). Medium/Low →
+          // byte-identical MEV baseline.
+          highVolume: accessoryVolume === "high",
         }).targetsByMuscle,
         {
           archetypeId: archetype.id,
@@ -403,6 +410,9 @@ export function assemblePrescriptionItems(
             secondaryVolumeTilt(archetype.id, secondaryFocus),
           ),
           focusMuscles,
+          // ADR 0045 — High is an explicit aesthetic-volume opt-in, so it
+          // cancels the ADR 0028 physique-triad down-weight.
+          highVolume: accessoryVolume === "high",
         },
       ),
       ramp,
@@ -453,6 +463,7 @@ export function assemblePrescriptionItems(
     const buildAccessorySection = (
       setBonus: number,
       itemBonus: number,
+      aestheticFloor?: number,
     ): {
       accessoryItems: PrescriptionItem[];
       historyDelta: WeekAccessoryHistoryItem[];
@@ -523,6 +534,14 @@ export function assemblePrescriptionItems(
         powerEmphasis,
         equipment,
         experience,
+        // ADR 0045 — High accessory volume seats its aesthetic items ADDITIVELY
+        // on top of the durability + functional floor (rather than within the
+        // shared ceiling), so a cardio-safe archetype with a heavy tissue-prep
+        // floor still delivers real hypertrophy work. The governor descends this
+        // floor candidate-by-candidate and prices each against the (raised) High
+        // duration cap, so it can never blow the session budget. `undefined` for
+        // Low/Medium → byte-identical shared ceiling.
+        aestheticItemFloor: aestheticFloor,
         // ADR 0027 Lever B — credit the week's main-lift synergist coverage so
         // the aesthetic gap-fill redirects to genuinely under-trained muscles.
         compoundCoverageCredit: computeWeeklyCompoundCredit(archetype),
@@ -614,30 +633,54 @@ export function assemblePrescriptionItems(
       if (pick) primerItem = buildPotentiationItem(pick.movement);
     }
 
-    // Duration governor (ADR 0020/0024): keep the FULLEST tilt whose estimated
-    // session stays within the duration cap. The candidate ladder descends from
-    // the full composed tilt (level + secondary) → drop the extra movement →
-    // drop the extra set → the floored identity. The estimate prices the main
-    // lifts + warmups already in `items` plus the candidate accessories +
-    // primer. A net-≤-identity tilt (medium, low, or a mix) is a single
-    // candidate, so the picker runs exactly once and this branch is
-    // byte-identical to the pre-tilt path.
-    const candidates = tiltCandidates;
+    // Duration governor (ADR 0020/0024/0044): keep the FULLEST tilt whose
+    // estimated session stays within the duration cap. The candidate ladder
+    // descends from the full composed tilt (level + secondary) → drop the extra
+    // movement → drop the extra set → the floored identity. For HIGH accessory
+    // volume (ADR 0045) the ladder is extended with descending ADDITIVE
+    // aesthetic floors (so the gap-fill seats real hypertrophy work on top of a
+    // heavy durability/functional floor), priced against a RAISED cap — High is
+    // an explicit opt-in to a longer, higher-volume session. The governor still
+    // trims the floor down if even the raised cap is exceeded, so it remains the
+    // hard safety bound. A net-≤-identity tilt (medium, low) is a single
+    // candidate → the picker runs once and this branch is byte-identical.
+    type GovCandidate = { setBonus: number; itemBonus: number; aestheticFloor?: number };
+    let candidates: GovCandidate[];
+    let capSec: number;
+    if (accessoryVolume === "high") {
+      const ips = accessoryProfile.aesthetic.itemsPerSession;
+      const maxFloor = applyScalarToMaxItems(ips + HIGH_AESTHETIC_ITEM_BONUS, ramp);
+      // Fullest-first: descend the additive aesthetic floor from its max down to
+      // 1, then a final rung with NO additive floor (the shared-ceiling
+      // identity) so a duration-bound block still falls back cleanly. setBonus /
+      // itemBonus are held at 0 — High adds aesthetic ITEMS at the base set
+      // count, never extra sets (a set bump would bleed into the durability /
+      // functional fills, which share `aesthetic.setsPerItem`).
+      candidates = [];
+      for (let f = maxFloor; f >= 1; f--) {
+        candidates.push({ setBonus: 0, itemBonus: 0, aestheticFloor: f });
+      }
+      candidates.push({ setBonus: 0, itemBonus: 0 });
+      capSec = HIGH_VOLUME_SESSION_CAP_MIN * 60;
+    } else {
+      candidates = tiltCandidates.map((c) => ({ setBonus: c.setBonus, itemBonus: c.itemBonus }));
+      capSec = sessionDurationCapMinutes(archetype.id, secondaryFocus) * 60;
+    }
 
     let chosen = buildAccessorySection(
-      candidates[0].setBonus,
-      candidates[0].itemBonus,
+      candidates[0]!.setBonus,
+      candidates[0]!.itemBonus,
+      candidates[0]!.aestheticFloor,
     );
     if (candidates.length > 1) {
-      const capSec =
-        sessionDurationCapMinutes(archetype.id, secondaryFocus) * 60;
       for (let i = 0; i < candidates.length; i++) {
         const trial =
           i === 0
             ? chosen
             : buildAccessorySection(
-                candidates[i].setBonus,
-                candidates[i].itemBonus,
+                candidates[i]!.setBonus,
+                candidates[i]!.itemBonus,
+                candidates[i]!.aestheticFloor,
               );
         const sec = estimateSessionSeconds([
           ...items,

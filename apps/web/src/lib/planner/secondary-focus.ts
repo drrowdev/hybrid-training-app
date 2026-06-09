@@ -143,6 +143,17 @@ export function isActiveTilt(tilt: SecondaryVolumeTilt): boolean {
  */
 export const SESSION_TARGET_MIN = 60; // heuristic, no calibration data
 export const SESSION_HARD_CAP_MIN = 75; // heuristic, no calibration data
+/**
+ * ADR 0045 — duration cap for a HIGH accessory-volume strength day. High is an
+ * explicit user opt-in to a longer, higher-volume session, so its governor cap
+ * is raised above the default `SESSION_HARD_CAP_MIN` (the comfort default for
+ * Low/Medium). The governor still trims High's additive aesthetic floor to fit
+ * THIS cap, so it remains the hard bound — High just buys ~15 more minutes of
+ * accessory headroom. Heuristic, no calibration data (CP-1 [DEF→cal]); still
+ * within typical serious-lifter session lengths (Schoenfeld 2021 high-volume
+ * protocols routinely run 75–90 min).
+ */
+export const HIGH_VOLUME_SESSION_CAP_MIN = 90; // heuristic, no calibration data
 
 /**
  * Hard duration ceiling (minutes) the tilt governor trims a strength day to,
