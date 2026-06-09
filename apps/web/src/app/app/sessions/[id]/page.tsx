@@ -690,10 +690,14 @@ export default async function SessionDetailPage({
   );
   const cardioModalityByMovementId: Record<string, string | null> = {};
   const bodyweightMovementIds: string[] = [];
+  // Smart accessory ordering (render-side): equipment + region per movement so
+  // the card list can cluster accessories by "station" (don't run back and
+  // forth) without changing the stored prescription. See accessory-order.ts.
+  const accessoryMetaById: Record<string, { equipment: string | null; region: string | null }> = {};
   if (allMovementIds.length > 0) {
     const { data: movementRows } = await supabase
       .from("movements")
-      .select("id, slug, metadata, body_weight_loaded")
+      .select("id, slug, metadata, body_weight_loaded, equipment, primary_region")
       .in("id", allMovementIds);
     for (const row of movementRows ?? []) {
       const rowId = row.id as string;
@@ -702,11 +706,14 @@ export default async function SessionDetailPage({
         const slug = (row as { slug?: string | null }).slug ?? null;
         cardioModalityByMovementId[rowId] = cardioModalityLabel(meta, slug);
       }
-      if (
-        strengthMovementIdSet.has(rowId) &&
-        (row as { body_weight_loaded?: boolean }).body_weight_loaded
-      ) {
-        bodyweightMovementIds.push(rowId);
+      if (strengthMovementIdSet.has(rowId)) {
+        if ((row as { body_weight_loaded?: boolean }).body_weight_loaded) {
+          bodyweightMovementIds.push(rowId);
+        }
+        accessoryMetaById[rowId] = {
+          equipment: (row as { equipment?: string | null }).equipment ?? null,
+          region: (row as { primary_region?: string | null }).primary_region ?? null,
+        };
       }
     }
   }
@@ -1175,6 +1182,7 @@ export default async function SessionDetailPage({
         resolvedFreestyle={resolvedFreestyle}
         supersetByMovementId={supersetByMovementId}
         bodyweightMovementIds={bodyweightMovementIds}
+        accessoryMetaById={accessoryMetaById}
       />
 
       {(() => {

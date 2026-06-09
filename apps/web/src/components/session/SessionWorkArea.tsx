@@ -70,6 +70,7 @@ export function SessionWorkArea({
   resolvedFreestyle,
   supersetByMovementId,
   bodyweightMovementIds,
+  accessoryMetaById,
 }: {
   sessionId: string;
   isComplete: boolean;
@@ -123,6 +124,8 @@ export function SessionWorkArea({
    * added load (bodyweight) instead of demanding a weight. Omitted ⇒ none.
    */
   bodyweightMovementIds?: ReadonlyArray<string>;
+  /** Equipment + region per movementId for smart accessory card ordering. */
+  accessoryMetaById?: Readonly<Record<string, { equipment: string | null; region: string | null }>>;
 }) {
   // `plannedSessionId` and the page-level swap server action aren't
   // surfaced by the card-list layout — they're accepted to preserve the
@@ -271,6 +274,7 @@ export function SessionWorkArea({
       resolvedFreestyle={resolvedFreestyle}
       supersetByMovementId={supersetByMovementId}
       bodyweightMovementIds={bodyweightMovementIds}
+      accessoryMetaById={accessoryMetaById}
     />
   );
 }
