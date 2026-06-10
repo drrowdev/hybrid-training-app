@@ -18,3 +18,4 @@ export {
 } from "./templates";
 export { roundToIncrement } from "./rounding";
 export { tacticalBarbellEngine, type TbInstance, type TbClusterLift } from "./program";
+export { zuluHtEngine, type ZuluHtInstance } from "./zulu-ht";
