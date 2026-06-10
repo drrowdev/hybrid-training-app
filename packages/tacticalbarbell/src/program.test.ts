@@ -147,6 +147,27 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
     expect(p.items.every((i) => !i.isAmrap)).toBe(true);
     expect(p.items.every((i) => /submaximal/.test(i.note ?? ""))).toBe(true);
   });
+
+  it("Zulu I/A prescribes a 3–5 set range and a heavier week-4 than Standard", () => {
+    const ia = setup({ templateId: "zulu-ia" });
+    const std = setup({ templateId: "zulu" });
+    // Week 4 split A (squat/press): I/A = 75%, Standard Pass-1 = 70%.
+    const iaW4 = tb.prescribe(ia, "b0-w4-p1a", ctx);
+    const stdW4 = tb.prescribe(std, "b0-w4-p1a", ctx);
+    expect(iaW4.items.map((i) => i.percentOfTm)).toEqual([0.75, 0.75]);
+    expect(stdW4.items.map((i) => i.percentOfTm)).toEqual([0.7, 0.7]);
+    // Squat week 4: I/A round(200×0.75)=150 vs Standard 140.
+    expect(iaW4.items[0]).toMatchObject({ name: "Squat", weightKg: 150 });
+    expect(stdW4.items[0]).toMatchObject({ name: "Squat", weightKg: 140 });
+    // The prescribed floor is 3 sets, surfaced as an autoregulated 3–5 range.
+    expect(iaW4.items.every((i) => i.sets === 3)).toBe(true);
+    expect(iaW4.items.every((i) => /3–5 sets/.test(i.note ?? ""))).toBe(true);
+  });
+
+  it("Zulu I/A peaks at 1–2 reps @ 95% in week 6", () => {
+    const p = tb.prescribe(setup({ templateId: "zulu-ia" }), "b0-w6-p1a", ctx);
+    expect(p.items[0]).toMatchObject({ name: "Squat", repsLabel: "1–2", percentOfTm: 0.95, weightKg: 190 });
+  });
 });
 
 describe("TB engine — onSessionLogged (program-owned recommendations)", () => {

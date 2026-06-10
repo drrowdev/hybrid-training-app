@@ -345,10 +345,57 @@ const ZULU: TbTemplate = {
   ],
 };
 
+// ── Zulu I/A — intermediate/advanced: 3–5 sets, heavier back-half ────────────
+// Same A/B split structure as Zulu Standard, but autoregulated set ranges
+// (3–5 per lift) and heavier loads in weeks 4–6 (0.75/0.85/0.95 on both passes),
+// peaking at 1–2 reps. Source: TB1 "Zulu I/A" table + the Template Collection
+// xlsx (Zulu sheet, I/A branch of the Standard/I/A selector formulas).
+const ZULU_IA: TbTemplate = {
+  id: "zulu-ia",
+  name: "Zulu I/A",
+  structure: "split",
+  summary: "The intermediate/advanced Zulu: the same A/B split, but you autoregulate 3–5 sets per lift and load heavier through the back half, peaking at 1–2 reps.",
+  blockWeeks: 6,
+  setsReps: [
+    w("3–5", 3, 5, "5", 5),
+    w("3–5", 3, 5, "5", 5),
+    w("3–5", 3, 5, "3", 3),
+    w("3–5", 3, 5, "5", 5),
+    w("3–5", 3, 5, "3", 3),
+    w("3–5", 3, 5, "1–2", 2),
+  ],
+  waves: [
+    { id: "one", label: "Pass 1", percents: [0.7, 0.8, 0.9, 0.75, 0.85, 0.95] },
+    { id: "two", label: "Pass 2", percents: [0.7, 0.8, 0.9, 0.75, 0.85, 0.95] },
+  ],
+  weeklySessions: [
+    { id: "p1a", label: "Session A (Pass 1)", waveId: "one", split: "A" },
+    { id: "p1b", label: "Session B (Pass 1)", waveId: "one", split: "B" },
+    { id: "p2a", label: "Session A (Pass 2)", waveId: "two", split: "A" },
+    { id: "p2b", label: "Session B (Pass 2)", waveId: "two", split: "B" },
+  ],
+  defaultCluster: [
+    { movement: "squat", split: "A" },
+    { movement: "press", split: "A" },
+    { movement: "bench", split: "B" },
+    { movement: "deadlift", split: "B" },
+  ],
+  clusterMin: 4,
+  clusterMax: 8,
+  notes: [
+    "For intermediate/advanced lifters who want to autoregulate volume.",
+    "Choose 3–5 sets per lift: fewer when conditioning is hard the next day, more (4–5) when chasing hypertrophy.",
+    "Both passes load the same; weeks 4–6 are heavier than Standard.",
+    "Complete all 4 sessions within 7 days; one rest day, never back-to-back.",
+    "Submaximal — never to failure. Retest your 1RMs every 6 or 12 weeks.",
+  ],
+};
+
 export const TB_TEMPLATES: TbTemplate[] = [
   OPERATOR,
   FIGHTER,
   ZULU,
+  ZULU_IA,
   GLADIATOR,
   MASS,
   GREY_MAN,
