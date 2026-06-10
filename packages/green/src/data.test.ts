@@ -5,7 +5,6 @@
 import { describe, it, expect } from "vitest";
 import { CONDITIONING_SESSIONS, getConditioningSession } from "./conditioning";
 import { GREEN_PHASES } from "./phases";
-
 describe("conditioning vocabulary", () => {
   it("has unique ids", () => {
     const ids = CONDITIONING_SESSIONS.map((s) => s.id);
@@ -17,6 +16,26 @@ describe("conditioning vocabulary", () => {
       expect(["minutes", "miles", "rounds"]).toContain(s.unit);
       expect(["recovery", "aerobic", "threshold", "anaerobic", "mixed"]).toContain(s.zone);
     }
+  });
+
+  it("carries real Green Protocol definitions — no leftover placeholders", () => {
+    for (const s of CONDITIONING_SESSIONS) {
+      expect(s.note.length).toBeGreaterThan(20);
+      expect(s.note.toLowerCase()).not.toContain("pending");
+    }
+  });
+
+  it("defines Peggy's Hills as a loaded, continuous (non-sprint) hill session", () => {
+    const peggy = getConditioningSession("peggy")!;
+    expect(peggy.loaded).toBe(true);
+    expect(peggy.note).toMatch(/NOT a sprint/i);
+  });
+
+  it("flags continuous runs/rucks as Strava-trackable and circuits as not", () => {
+    expect(getConditioningSession("lss")!.trackable).toBe(true);
+    expect(getConditioningSession("ruck")!.trackable).toBe(true);
+    // Strength-endurance circuits aren't a GPS activity → manual completion.
+    expect(getConditioningSession("se")!.trackable).toBeUndefined();
   });
 });
 
