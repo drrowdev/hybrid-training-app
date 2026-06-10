@@ -28,3 +28,6 @@ export * from "./pr-detection";
 // Periodization model
 export * from "./blocks";
 export * from "./seventh-week";
+
+// Named program templates (the 5/3/1 Forever catalog)
+export * from "./wendler-templates";
