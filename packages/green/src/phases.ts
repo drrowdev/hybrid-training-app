@@ -70,6 +70,7 @@ const rest: DayCell = { kind: "rest" };
 const deload: DayCell = { kind: "deload" };
 const op: DayCell = { kind: "strength", strength: "OP" };
 const ft: DayCell = { kind: "strength", strength: "FT" };
+const zulu: DayCell = { kind: "strength", strength: "ZULU_HT" };
 function cond(session: string, min?: number, max?: number, unit?: ConditioningUnit): DayCell {
   return {
     kind: "conditioning",
@@ -337,7 +338,43 @@ const CCAT: GreenPhase = {
   ],
 };
 
-export const GREEN_PHASES: GreenPhase[] = [HYBRID, HYBRID_OP_50, CAPACITY, VELOCITY, OUTCOME, CCAT];
+// ── Integrated / Combat-Arms Template — I/CAT (Continuation, 15 weeks) ────────
+// A compressed Capacity/Velocity/Outcome that repeats indefinitely, following the
+// 'ideal' order of operations: hypertrophy (Zulu/HT) → max-strength (Operator) →
+// running-led Fighter → specificity (Strength-Endurance). Deload every 4th week.
+const ICAT_ZULU: GreenWeek = { days: [zulu, zulu, rest, zulu, zulu, rest, rest] };
+
+const ICAT: GreenPhase = {
+  id: "icat",
+  name: "Integrated / Combat-Arms Template",
+  category: "continuation",
+  summary:
+    "I/CAT — Capacity, Velocity and Outcome compressed into one repeatable template that covers all domains. Hypertrophy (Zulu/HT) → max-strength (Operator) → running-led Fighter → Strength-Endurance specificity.",
+  weeks: [
+    ICAT_ZULU,
+    ICAT_ZULU,
+    ICAT_ZULU,
+    deloadWeek,
+    { days: [op, cond("speed"), op, cond("lss"), op, cond("long-run"), rest] },
+    { days: [op, cond("hill", 30, 120), op, cond("lss"), op, cond("ruck"), rest] },
+    { days: [op, cond("speed"), op, cond("lss"), op, cond("long-run"), rest] },
+    deloadWeek,
+    { days: [ft, cond("hill", 30, 120), cond("lss"), ft, cond("lss"), cond("long-run"), rest] },
+    { days: [ft, cond("speed"), cond("lss"), ft, cond("lss"), cond("ruck"), rest] },
+    { days: [ft, cond("hill", 30, 120), cond("lss"), ft, rest, cond("long-run"), rest] },
+    deloadWeek,
+    { days: [cond("se"), cond("speed"), cond("se"), cond("lss"), cond("se"), cond("long-run"), rest] },
+    { days: [cond("se"), cond("hill", 30, 120), cond("se"), cond("lss"), cond("se"), cond("ruck"), rest] },
+    { days: [cond("se"), cond("speed"), cond("se"), cond("lss"), cond("se"), cond("long-run"), rest] },
+  ],
+  notes: [
+    "Loose linear/block periodization: a hypertrophy Zulu/HT block, then max-strength Operator, then running-led Fighter, then Strength-Endurance specificity.",
+    "Keep conditioning minimal during the Zulu/HT hypertrophy block (2–3 brief HIIT/HIC or 20–30 min easy LSS).",
+    "Rucks are substitutable (Long Run, swim, SE/GC/HIC, weight-vest run) as needed. A good fit for reservists/guard with a predictable schedule.",
+  ],
+};
+
+export const GREEN_PHASES: GreenPhase[] = [HYBRID, HYBRID_OP_50, CAPACITY, VELOCITY, OUTCOME, CCAT, ICAT];
 
 export function getGreenPhase(id: string): GreenPhase | undefined {
   return GREEN_PHASES.find((p) => p.id === id);
