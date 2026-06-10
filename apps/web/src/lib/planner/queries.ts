@@ -34,9 +34,14 @@ import {
  * crash the planner UI.
  */
 export function archetypeDisplayName(
-  archetype: string,
+  archetype: string | null,
   notes?: string | null,
 ): string {
+  // Platform-program blocks leave archetype NULL (migration 0103) and carry a
+  // brand-neutral label in notes; archetype blocks keep their slug.
+  if (archetype == null || archetype.startsWith("program:")) {
+    return notes?.trim() || "Training block";
+  }
   if (archetype === "custom") return notes?.trim() || "Custom block";
   const a = ARCHETYPES[archetype as Exclude<ArchetypeId, "custom">];
   return a?.name ?? archetype;
