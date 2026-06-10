@@ -32,7 +32,16 @@ export const trainingBlockStatus = pgEnum("training_block_status", [
 export const trainingBlocks = pgTable("training_blocks", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: uuid("user_id").notNull(),
-  archetype: text("archetype").notNull(),
+  /**
+   * Legacy archetype slug (strength_anchor, etc.). NULLABLE since migration
+   * 0103 — platform-program blocks leave this NULL and carry their identity in
+   * program_id / program_family instead. Archetype blocks still set it.
+   */
+  archetype: text("archetype"),
+  /** Stable program engine id for platform blocks (e.g. "wendler-531"). NULL for archetype blocks. */
+  programId: text("program_id"),
+  /** Program family for platform blocks (e.g. "531"). NULL for archetype blocks. */
+  programFamily: text("program_family"),
   startedOn: date("started_on").notNull(),
   weeks: smallint("weeks").notNull(),
   status: trainingBlockStatus("status").default("active").notNull(),

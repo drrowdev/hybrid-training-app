@@ -722,6 +722,13 @@
       "when": 1784623200000,
       "tag": "0102_program_instances",
       "breakpoints": false
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1784709600000,
+      "tag": "0103_training_block_program_columns",
+      "breakpoints": false
     }
   ]
 }
