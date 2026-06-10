@@ -29,6 +29,7 @@ export * from "./types";
 export * from "./schema/tm-history";
 export * from "./schema/tm-suggestions";
 export * from "./schema/planner";
+export * from "./schema/program-instances";
 export * from "./client";
 export * from "./schema/strava-connections";
 export * from "./schema/priority-events";
