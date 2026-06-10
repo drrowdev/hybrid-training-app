@@ -27,8 +27,10 @@ import type {
 } from "@hta/program-core";
 import {
   tacticalBarbellEngine,
+  zuluHtEngine,
   type TbInstance,
   type TbClusterLift,
+  type ZuluHtInstance,
 } from "@hta/tacticalbarbell";
 import {
   GREEN_PHASES,
@@ -43,11 +45,18 @@ import { getConditioningSession } from "./conditioning";
 const MILES_TO_M = 1609.34;
 const DAY_LABELS = ["Day 1", "Day 2", "Day 3", "Day 4", "Day 5", "Day 6", "Day 7"];
 
-/** Map a Green strength token to its Tactical Barbell template id. */
-const TB_TEMPLATE_OF: Record<GreenStrength, string> = {
+/** Map a Green strength token to its strength-engine key. */
+const STRENGTH_KEY: Record<GreenStrength, string> = {
   OP: "operator",
   FT: "fighter",
   ZULU_HT: "zulu-ht",
+};
+
+/** The wave length (weeks) each strength engine cycles over — drives the week wrap. */
+const WAVE_WEEKS: Record<string, number> = {
+  operator: 6,
+  fighter: 6,
+  "zulu-ht": 3,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -61,10 +70,12 @@ export interface GreenInstance {
   /** The shared strength cluster passed through to the TB engine. */
   cluster: TbClusterLift[];
   /**
-   * Embedded Tactical Barbell instances, keyed by TB template id. Seeded at
-   * setup from the shared 1RMs; the GP engine delegates strength days to these.
+   * Embedded strength-program instances, keyed by strength-engine key
+   * ("operator"/"fighter" → Tactical Barbell engine; "zulu-ht" → Zulu/HT engine).
+   * Seeded at setup from the shared 1RMs; the GP engine delegates strength days
+   * to these.
    */
-  strength: Record<string, TbInstance>;
+  strength: Record<string, TbInstance | ZuluHtInstance>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -116,8 +127,8 @@ function buildPlan(instance: GreenInstance): PlanEntry[] {
       const templatesThisWeek = new Set<GreenStrength>();
       for (const c of week.days) if (c.kind === "strength") templatesThisWeek.add(c.strength);
       for (const t of templatesThisWeek) {
-        const tbId = TB_TEMPLATE_OF[t];
-        tmplWeekCounter[tbId] = (tmplWeekCounter[tbId] ?? 0) + 1;
+        const key = STRENGTH_KEY[t];
+        tmplWeekCounter[key] = (tmplWeekCounter[key] ?? 0) + 1;
       }
 
       // Per-template session index within this week (→ TB session s1, s2, …).
@@ -143,12 +154,14 @@ function buildPlan(instance: GreenInstance): PlanEntry[] {
         let tbRef: string | undefined;
 
         if (cell.kind === "strength") {
-          const tbId = TB_TEMPLATE_OF[cell.strength];
-          const n = (sessionInWeek[tbId] = (sessionInWeek[tbId] ?? 0) + 1);
-          const counter = tmplWeekCounter[tbId] ?? 1;
-          // TB prescribe is block-agnostic; week wraps onto the TB 6-week wave.
-          const tbWeek = ((counter - 1) % 6) + 1;
-          tbTemplateId = tbId;
+          const key = STRENGTH_KEY[cell.strength];
+          const n = (sessionInWeek[key] = (sessionInWeek[key] ?? 0) + 1);
+          const counter = tmplWeekCounter[key] ?? 1;
+          // Each strength engine is block-agnostic in prescribe; the week wraps
+          // onto its own wave length (TB = 6, Zulu/HT = 3).
+          const waveWeeks = WAVE_WEEKS[key] ?? 6;
+          const tbWeek = ((counter - 1) % waveWeeks) + 1;
+          tbTemplateId = key;
           tbRef = `b0-w${tbWeek}-s${n}`;
           tags.push("modality:strength", `session:${cell.strength}`);
           label = `${weekLabel} · ${DAY_LABELS[di]} · ${cell.strength}`;
@@ -245,21 +258,28 @@ export const greenProtocolEngine: ProgramEngine<GreenInstance> = {
     const picked = asMovementList(v.cluster);
     const cluster = picked.length > 0 ? picked.map((movement) => ({ movement })) : DEFAULT_CLUSTER.map((c) => ({ ...c }));
 
-    const strength: Record<string, TbInstance> = {};
+    const strength: Record<string, TbInstance | ZuluHtInstance> = {};
+    const useTrainingMax = v.useTrainingMax === true;
+    const tmPercent = Number(v.tmPercent ?? 0.9) || 0.9;
     for (const t of strengthTemplatesInPhase(phase)) {
-      const tbId = TB_TEMPLATE_OF[t];
-      strength[tbId] = tacticalBarbellEngine.setup(
-        {
-          values: {
-            templateId: tbId,
-            blocks: 1,
-            cluster: cluster.map((c) => c.movement),
-            useTrainingMax: v.useTrainingMax === true,
-            tmPercent: Number(v.tmPercent ?? 0.9) || 0.9,
+      const key = STRENGTH_KEY[t];
+      if (key === "zulu-ht") {
+        // Zulu/HT uses its own standard 4-lift cluster (Press/Squat/Bench/Deadlift).
+        strength[key] = zuluHtEngine.setup({ values: { blocks: 1, useTrainingMax, tmPercent } }, ctx);
+      } else {
+        strength[key] = tacticalBarbellEngine.setup(
+          {
+            values: {
+              templateId: key,
+              blocks: 1,
+              cluster: cluster.map((c) => c.movement),
+              useTrainingMax,
+              tmPercent,
+            },
           },
-        },
-        ctx,
-      );
+          ctx,
+        );
+      }
     }
 
     return { phaseId: phase.id, blocks, cluster, strength };
@@ -290,10 +310,12 @@ export const greenProtocolEngine: ProgramEngine<GreenInstance> = {
 
     if (cell.kind === "strength") {
       if (!entry.tbTemplateId || !entry.tbRef) return { items: [] };
-      const tbInstance = instance.strength[entry.tbTemplateId];
-      if (!tbInstance) return { items: [] };
-      // Compose: the Tactical Barbell engine owns the actual strength prescription.
-      return tacticalBarbellEngine.prescribe(tbInstance, entry.tbRef, ctx);
+      const inst = instance.strength[entry.tbTemplateId];
+      if (!inst) return { items: [] };
+      // Compose: delegate to the owning strength engine (TB cluster or Zulu/HT).
+      return entry.tbTemplateId === "zulu-ht"
+        ? zuluHtEngine.prescribe(inst as ZuluHtInstance, entry.tbRef, ctx)
+        : tacticalBarbellEngine.prescribe(inst as TbInstance, entry.tbRef, ctx);
     }
 
     if (cell.kind === "conditioning" || cell.kind === "test") {
