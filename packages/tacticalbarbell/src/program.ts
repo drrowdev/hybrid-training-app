@@ -32,6 +32,8 @@ import {
   TB_MOVEMENT_LABEL,
   getTbTemplate,
   type TbTemplate,
+  type TbLiftKind,
+  type TbClusterEntry,
 } from "./templates";
 import { roundToIncrement } from "./rounding";
 
@@ -43,6 +45,8 @@ export interface TbClusterLift {
   movement: string;
   /** Zulu only: which split (A/B) this lift belongs to. */
   split?: "A" | "B";
+  /** How the lift is loaded (default "barbell"). Bodyweight loads off max reps. */
+  kind?: TbLiftKind;
 }
 
 export interface TbInstance {
@@ -97,24 +101,65 @@ function movementLabel(movement: string): string {
 
 function resolveCluster(template: TbTemplate, values: Record<string, unknown>): TbClusterLift[] {
   if (template.structure === "split") {
-    const splitA = asMovementList(values.splitA);
-    const splitB = asMovementList(values.splitB);
+    const splitA = entriesFromValue(values.splitA).map((l) => ({ ...l, split: "A" as const }));
+    const splitB = entriesFromValue(values.splitB).map((l) => ({ ...l, split: "B" as const }));
     if (splitA.length > 0 || splitB.length > 0) {
-      return [
-        ...splitA.map((movement) => ({ movement, split: "A" as const })),
-        ...splitB.map((movement) => ({ movement, split: "B" as const })),
-      ];
+      return [...splitA, ...splitB];
     }
-    return template.defaultCluster.map((c) => ({ ...c }));
+    return template.defaultCluster.map((c) => cloneEntry(c));
   }
-  const picked = asMovementList(values.cluster);
-  const base = picked.length > 0 ? picked.map((movement) => ({ movement })) : template.defaultCluster.map((c) => ({ ...c }));
-  return template.maxMainLifts != null ? base.slice(0, template.maxMainLifts) : base;
+  const picked = entriesFromValue(values.cluster);
+  if (picked.length === 0) {
+    return template.defaultCluster.map((c) => cloneEntry(c));
+  }
+  return clampCluster(template, picked);
 }
 
-function asMovementList(v: unknown): string[] {
+/** Copy a template cluster entry into an instance lift, omitting undefined optionals. */
+function cloneEntry(c: TbClusterEntry): TbClusterLift {
+  const lift: TbClusterLift = { movement: c.movement };
+  if (c.split === "A" || c.split === "B") lift.split = c.split;
+  if (c.kind) lift.kind = c.kind;
+  return lift;
+}
+
+/**
+ * Trim a user-supplied cluster to the template's ceiling. For Operator (and any
+ * template allowing an optional bodyweight movement) a single bodyweight lift is
+ * exempt from the count and preserved on top of the capped barbell lifts.
+ */
+function clampCluster(template: TbTemplate, lifts: TbClusterLift[]): TbClusterLift[] {
+  if (template.allowsBodyweightFourth) {
+    const counting = lifts.filter((l) => l.kind !== "bodyweight");
+    const bodyweight = lifts.filter((l) => l.kind === "bodyweight");
+    const kept = counting.slice(0, template.clusterMax);
+    if (bodyweight.length > 0) kept.push(bodyweight[0]!);
+    return kept;
+  }
+  const cap = template.maxMainLifts ?? template.clusterMax;
+  return lifts.slice(0, cap);
+}
+
+/** Parse a setup value (string[] of movements, or richer {movement,kind,split}[]). */
+function entriesFromValue(v: unknown): TbClusterLift[] {
   if (!Array.isArray(v)) return [];
-  return v.filter((x): x is string => typeof x === "string" && x.length > 0);
+  const out: TbClusterLift[] = [];
+  for (const x of v) {
+    if (typeof x === "string" && x.length > 0) {
+      out.push({ movement: x });
+    } else if (x && typeof x === "object") {
+      const o = x as Record<string, unknown>;
+      if (typeof o.movement === "string" && o.movement.length > 0) {
+        const lift: TbClusterLift = { movement: o.movement };
+        if (o.kind === "barbell" || o.kind === "weighted-bw" || o.kind === "bodyweight") {
+          lift.kind = o.kind;
+        }
+        if (o.split === "A" || o.split === "B") lift.split = o.split;
+        out.push(lift);
+      }
+    }
+  }
+  return out;
 }
 
 export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
@@ -223,16 +268,34 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
 
     const items: PrescribedItem[] = [];
     for (const lift of lifts) {
-      const oneRm = ctx.oneRepMaxes[lift.movement];
-      if (oneRm == null || oneRm <= 0) continue;
-      const basis = instance.useTrainingMax
-        ? roundToIncrement(oneRm * instance.tmPercent, ctx.roundingKg)
-        : oneRm;
-      const weightKg = roundToIncrement(basis * pct, ctx.roundingKg);
+      const anchor = ctx.oneRepMaxes[lift.movement];
+      if (anchor == null || anchor <= 0) continue;
       const rangeNote =
         scheme.setsMin !== scheme.setsMax
           ? `${scheme.setsMin}–${scheme.setsMax} sets — submaximal, stop short of failure`
           : "submaximal, stop short of failure";
+
+      // Bodyweight movements (e.g. pull-ups) are anchored on MAX CLEAN REPS and
+      // prescribed as a % of that rep ceiling — never a weight (TB1).
+      if (lift.kind === "bodyweight") {
+        const targetReps = Math.max(1, Math.round(anchor * pct));
+        items.push({
+          kind: "main",
+          name: movementLabel(lift.movement),
+          movementId: lift.movement,
+          sets: scheme.setsMin,
+          reps: targetReps,
+          repsLabel: `${targetReps}`,
+          percentOfTm: pct,
+          note: `bodyweight — ${Math.round(pct * 100)}% of max reps; ${rangeNote}`,
+        });
+        continue;
+      }
+
+      const basis = instance.useTrainingMax
+        ? roundToIncrement(anchor * instance.tmPercent, ctx.roundingKg)
+        : anchor;
+      const weightKg = roundToIncrement(basis * pct, ctx.roundingKg);
       items.push({
         kind: "main",
         name: movementLabel(lift.movement),

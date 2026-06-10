@@ -14,8 +14,11 @@ export {
   type TbPercentWave,
   type TbWeeklySession,
   type TbStructure,
+  type TbLiftKind,
+  type TbClusterEntry,
   type TbMovement,
 } from "./templates";
 export { roundToIncrement } from "./rounding";
 export { tacticalBarbellEngine, type TbInstance, type TbClusterLift } from "./program";
+export { validateCluster, countingLifts, type ClusterValidation } from "./validate";
 export { zuluHtEngine, type ZuluHtInstance } from "./zulu-ht";
