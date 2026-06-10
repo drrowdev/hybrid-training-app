@@ -17,11 +17,9 @@
  * Guardrails: explicit auth check, Zod `.strict()` on input, user-scoped client,
  * and best-effort cleanup so a partial failure never leaves an orphan block.
  *
- * NOTE (transitional): `training_blocks.archetype` is NOT NULL today, so a
- * platform block stores a `program:<family>` placeholder there. The real program
- * identity lives on `program_instances` (program_id / program_family / block_id).
- * A later PR adds dedicated `program_id` / `program_family` columns to
- * training_blocks + makes `archetype` nullable + guards the read side.
+ * A platform block stores its identity in `training_blocks.program_id` /
+ * `program_family` (archetype is left NULL); `program_instances` links to it via
+ * `block_id` and holds the serialised engine instance.
  */
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -100,18 +98,20 @@ export async function createProgramInstance(
     return { ok: false, error: "This program produced no sessions — check your training maxes." };
   }
 
-  // 1) training_blocks (transitional archetype placeholder; real identity on the instance).
+  // 1) training_blocks — platform block: archetype NULL, identity in program_* columns.
   const { data: block, error: blockErr } = await supabase
     .from("training_blocks")
     .insert({
       user_id: user.id,
-      archetype: `program:${engine.meta.family}`,
+      archetype: null,
+      program_id: programId,
+      program_family: engine.meta.family,
       started_on: startedOn,
       weeks: write.weeks,
       status: "active",
       days_per_week: write.daysPerWeek,
       day_index_overrides: write.dayIndexOverrides,
-      notes: `${engine.meta.name} — platform program`,
+      notes: engine.meta.name,
     })
     .select("id")
     .single();
