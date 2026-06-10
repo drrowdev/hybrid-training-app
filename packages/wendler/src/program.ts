@@ -8,9 +8,11 @@
  *   - This engine OWNS the methodology: the Leader/Anchor timeline, the
  *     per-session prescription, and the program-owned recommendations (7th-week
  *     TM test result + AMRAP-driven TM bumps).
- *   - The platform OWNS the strength state: training maxes arrive via
- *     `ctx.trainingMaxes` (shared across programs) and are never mutated here —
- *     TM changes are SURFACED as recommendations for the user to accept.
+ *   - The platform OWNS the canonical strength state: one-rep maxes arrive via
+ *     `ctx.oneRepMaxes` (shared across programs). At setup this engine derives
+ *     each lift's Training Max (TM = round(1RM × tmPercent)) and stores it on
+ *     the instance, where it is then owned + advanced by the program. The shared
+ *     1RM is never mutated here — TM changes are SURFACED as recommendations.
  */
 import type {
   ProgramEngine,
@@ -31,6 +33,7 @@ import { buildMainSets } from "./waves";
 import { buildWarmupSets } from "./warmup";
 import { buildSupplementalSets, type SupplementalTemplateId } from "./supplemental";
 import { suggestNewTrainingMax } from "./e1rm";
+import { computeTrainingMax } from "./training-max";
 import { roundToIncrement } from "./rounding";
 import { getTemplateById } from "./wendler-templates";
 
@@ -69,8 +72,15 @@ export interface WendlerInstance {
   segments: WendlerSegment[];
   /** Which main lift is trained on each day of the rotation. */
   dayOrder: MainLift[];
-  /** TM% used to derive any TMs the platform asks this engine to seed. */
+  /** TM% used to derive the Training Maxes from the shared 1RMs. */
   tmPercent: number;
+  /**
+   * Per-lift Training Max (kg), DERIVED from the shared 1RMs at setup and then
+   * OWNED by this instance (advanced by 5/3/1's own rules — the 7th-week test /
+   * AMRAP bump). The platform's canonical strength state stays the 1RM; this is
+   * 5/3/1's working number.
+   */
+  trainingMaxes: Partial<Record<MainLift, number>>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -179,10 +189,6 @@ export const wendler531Engine: ProgramEngine<WendlerInstance> = {
   describeSetup(): SetupSchema {
     return {
       fields: [
-        { key: "press", label: "Overhead Press TM (kg)", type: "training-max", required: true },
-        { key: "bench", label: "Bench Press TM (kg)", type: "training-max", required: true },
-        { key: "squat", label: "Squat TM (kg)", type: "training-max", required: true },
-        { key: "deadlift", label: "Deadlift TM (kg)", type: "training-max", required: true },
         {
           key: "templateId",
           label: "Template",
@@ -201,7 +207,7 @@ export const wendler531Engine: ProgramEngine<WendlerInstance> = {
     };
   },
 
-  setup(input: ProgramSetupInput): WendlerInstance {
+  setup(input: ProgramSetupInput, ctx: PlatformContext): WendlerInstance {
     const v = input.values;
     const templateId = typeof v.templateId === "string" ? v.templateId : "5spro-fsl";
     const tpl = getTemplateById(templateId);
@@ -222,7 +228,18 @@ export const wendler531Engine: ProgramEngine<WendlerInstance> = {
       { type: "seventh-week", mode: "tm-test" },
     ];
 
-    return { templateId, segments, dayOrder: [...DEFAULT_DAY_ORDER], tmPercent };
+    // Derive the per-lift Training Max from the shared 1RMs (canonical platform
+    // strength state). The TM is then owned + advanced by this instance.
+    const dayOrder: MainLift[] = [...DEFAULT_DAY_ORDER];
+    const trainingMaxes: Partial<Record<MainLift, number>> = {};
+    for (const lift of dayOrder) {
+      const oneRm = ctx.oneRepMaxes[lift];
+      if (oneRm != null && oneRm > 0) {
+        trainingMaxes[lift] = computeTrainingMax(oneRm, { tmPercent, roundingKg: ctx.roundingKg });
+      }
+    }
+
+    return { templateId, segments, dayOrder, tmPercent, trainingMaxes };
   },
 
   timeline(instance: WendlerInstance): PlannedSessionSpec[] {
@@ -266,7 +283,7 @@ export const wendler531Engine: ProgramEngine<WendlerInstance> = {
     if (!parsed) return { items: [] };
     const seg = instance.segments[parsed.seg];
     if (!seg) return { items: [] };
-    const tm = ctx.trainingMaxes[parsed.lift];
+    const tm = instance.trainingMaxes[parsed.lift];
     if (tm == null) return { items: [] };
     const name = LIFT_DISPLAY[parsed.lift];
     const r = ctx.roundingKg;
@@ -361,7 +378,7 @@ export const wendler531Engine: ProgramEngine<WendlerInstance> = {
 
     // Normal AMRAP top set: a strong PR set suggests a TM bump (surfaced, not applied).
     if (top.isAmrap && top.reps >= 8) {
-      const currentTm = ctx.trainingMaxes[parsed.lift];
+      const currentTm = instance.trainingMaxes[parsed.lift];
       const suggested = roundToIncrement(suggestNewTrainingMax(top.weightKg, top.reps, instance.tmPercent), ctx.roundingKg);
       if (currentTm != null && suggested > currentTm) {
         recommendations.push({
