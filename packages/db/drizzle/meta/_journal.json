@@ -715,6 +715,13 @@
       "when": 1784536800000,
       "tag": "0101_limitation_adjustments",
       "breakpoints": false
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1784623200000,
+      "tag": "0102_program_instances",
+      "breakpoints": false
     }
   ]
 }
