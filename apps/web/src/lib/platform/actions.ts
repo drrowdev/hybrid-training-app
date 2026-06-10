@@ -140,6 +140,42 @@ export async function createProgramInstance(
   }
 
   // 3) seed training_maxes.tm_percent so the engine's % render correct weights.
+  //    tm_percent lives on the SHARED training_maxes (per user+movement, not
+  //    block-scoped), so capture the prior values first and restore them on any
+  //    later failure — a half-applied seed would corrupt the user's strength
+  //    state for future programs.
+  const movementIds = write.tmPercents.map((s) => s.movementId);
+  const priorTmPercent = new Map<string, number | string | null>();
+  if (movementIds.length > 0) {
+    const { data: priorRows, error: priorErr } = await supabase
+      .from("training_maxes")
+      .select("movement_id, tm_percent")
+      .eq("user_id", user.id)
+      .in("movement_id", movementIds);
+    if (priorErr) {
+      await supabase.from("planned_sessions").delete().eq("block_id", blockId);
+      await supabase.from("training_blocks").delete().eq("id", blockId);
+      return { ok: false, error: `Couldn't read training maxes: ${priorErr.message}` };
+    }
+    for (const r of priorRows ?? []) {
+      priorTmPercent.set(r.movement_id as string, (r.tm_percent as number | string | null) ?? null);
+    }
+  }
+  const restoreTmPercents = async () => {
+    for (const seed of write.tmPercents) {
+      await supabase
+        .from("training_maxes")
+        .update({ tm_percent: priorTmPercent.get(seed.movementId) ?? null })
+        .eq("user_id", user.id)
+        .eq("movement_id", seed.movementId);
+    }
+  };
+  const rollbackBlock = async () => {
+    await restoreTmPercents();
+    await supabase.from("planned_sessions").delete().eq("block_id", blockId);
+    await supabase.from("training_blocks").delete().eq("id", blockId);
+  };
+
   for (const seed of write.tmPercents) {
     const { error: tmErr } = await supabase
       .from("training_maxes")
@@ -147,8 +183,7 @@ export async function createProgramInstance(
       .eq("user_id", user.id)
       .eq("movement_id", seed.movementId);
     if (tmErr) {
-      await supabase.from("planned_sessions").delete().eq("block_id", blockId);
-      await supabase.from("training_blocks").delete().eq("id", blockId);
+      await rollbackBlock();
       return { ok: false, error: `Couldn't align training maxes: ${tmErr.message}` };
     }
   }
@@ -168,8 +203,7 @@ export async function createProgramInstance(
     .select("id")
     .single();
   if (piErr || !pi) {
-    await supabase.from("planned_sessions").delete().eq("block_id", blockId);
-    await supabase.from("training_blocks").delete().eq("id", blockId);
+    await rollbackBlock();
     return { ok: false, error: piErr?.message ?? "Failed to create program instance" };
   }
 
