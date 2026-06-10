@@ -259,3 +259,38 @@ describe("Green engine — C/CAT (continuation)", () => {
     expect(recommendations.map((r) => r.kind)).toEqual(["next-block"]);
   });
 });
+
+describe("Green engine — I/CAT (Zulu/HT + Operator + Fighter + SE)", () => {
+  it("seeds all three strength engines it uses", () => {
+    const inst = setup({ phaseId: "icat" });
+    expect(Object.keys(inst.strength).sort()).toEqual(["fighter", "operator", "zulu-ht"]);
+  });
+
+  it("the hypertrophy block delegates to Zulu/HT (heavy + back-off + assistance)", () => {
+    const inst = setup({ phaseId: "icat" });
+    const p = gp.prescribe(inst, "gp-b0-w1-d0", ctx); // Zulu day 1
+    expect(p.items.map((i) => i.kind)).toEqual(["main", "supplemental", "assistance"]);
+    expect(p.items[0]).toMatchObject({ name: "Overhead Press (heavy)", weightKg: 75 });
+  });
+
+  it("the four Zulu days in a week map to Zulu/HT sessions s1–s4", () => {
+    const inst = setup({ phaseId: "icat" });
+    const heavies = ["gp-b0-w1-d0", "gp-b0-w1-d1", "gp-b0-w1-d3", "gp-b0-w1-d4"].map(
+      (r) => gp.prescribe(inst, r, ctx).items.find((i) => i.kind === "main")!.movementId,
+    );
+    expect(heavies.sort()).toEqual(["bench", "deadlift", "press", "squat"]);
+  });
+
+  it("Zulu/HT weeks 1–3 advance the 3-week mass wave (75% → 80% → 85%)", () => {
+    const inst = setup({ phaseId: "icat" });
+    const heavyPct = (ref: string) => gp.prescribe(inst, ref, ctx).items.find((i) => i.kind === "main")!.percentOfTm;
+    expect([heavyPct("gp-b0-w1-d0"), heavyPct("gp-b0-w2-d0"), heavyPct("gp-b0-w3-d0")]).toEqual([0.75, 0.8, 0.85]);
+  });
+
+  it("the max-strength block (wk5) delegates to TB Operator", () => {
+    const inst = setup({ phaseId: "icat" });
+    const p = gp.prescribe(inst, "gp-b0-w5-d0", ctx);
+    expect(p.items.map((i) => i.name)).toEqual(["Squat", "Bench Press", "Deadlift"]);
+    expect(p.items[0]).toMatchObject({ weightKg: 140, percentOfTm: 0.7 });
+  });
+});
