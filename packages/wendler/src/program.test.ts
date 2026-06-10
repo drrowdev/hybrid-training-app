@@ -12,7 +12,7 @@ import { totalPrescribedSets, itemsOfKind } from "@hta/program-core";
 import { wendler531Engine, type WendlerInstance } from "./program";
 
 const ctx: PlatformContext = {
-  trainingMaxes: { squat: 140, bench: 100, deadlift: 180, press: 60 },
+  oneRepMaxes: { squat: 165, bench: 118, deadlift: 212, press: 71 },
   roundingKg: 2.5,
 };
 
@@ -29,9 +29,16 @@ describe("5/3/1 engine — meta + setup", () => {
     expect(wendler531Engine.meta.family).toBe("531");
   });
 
-  it("describeSetup asks for the four training maxes", () => {
+  it("describeSetup asks for the template + cycle structure (not raw TMs — TMs derive from shared 1RMs)", () => {
     const keys = wendler531Engine.describeSetup().fields.map((f) => f.key);
-    expect(keys).toEqual(expect.arrayContaining(["press", "bench", "squat", "deadlift"]));
+    expect(keys).toEqual(expect.arrayContaining(["templateId", "leaderCycles", "anchorCycles", "tmPercent"]));
+    expect(keys).not.toContain("squat");
+  });
+
+  it("setup derives each lift's Training Max from the shared 1RMs (TM = round(1RM × tmPercent))", () => {
+    const inst = setup();
+    // 165×0.85=140.25→140, 118×0.85=100.3→100, 212×0.85=180.2→180, 71×0.85=60.35→60
+    expect(inst.trainingMaxes).toEqual({ squat: 140, bench: 100, deadlift: 180, press: 60 });
   });
 
   it("setup builds the default Leader(5s-pro)+deload+Anchor(classic)+TM-test sequence", () => {
@@ -120,12 +127,19 @@ describe("5/3/1 engine — prescribe", () => {
     expect(tmSet.repsLabel).toBe("3–5");
   });
 
-  it("prescribe is empty for an unknown lift TM", () => {
-    const inst = setup();
+  it("prescribe is empty when the instance has no TM for that lift (1RM was missing at setup)", () => {
+    const noPressCtx: PlatformContext = {
+      oneRepMaxes: { squat: 165, bench: 118, deadlift: 212 },
+      roundingKg: 2.5,
+    };
+    const inst = wendler531Engine.setup(
+      { values: { templateId: "5spro-fsl", leaderCycles: 2, anchorCycles: 1, tmPercent: 0.85 } },
+      noPressCtx,
+    );
+    expect(inst.trainingMaxes.press).toBeUndefined();
     const tl = wendler531Engine.timeline(inst);
     const ref = tl.find((s) => s.tags?.includes("lift:press"))!.ref;
-    const noTm: PlatformContext = { trainingMaxes: {}, roundingKg: 2.5 };
-    expect(wendler531Engine.prescribe(inst, ref, noTm).items).toEqual([]);
+    expect(wendler531Engine.prescribe(inst, ref, noPressCtx).items).toEqual([]);
   });
 });
 
@@ -142,7 +156,8 @@ describe("5/3/1 engine — onSessionLogged (program-owned recommendations)", () 
     };
     const { recommendations } = wendler531Engine.onSessionLogged(inst, log, ctx);
     expect(recommendations[0]?.kind).toBe("tm-bump");
-    expect(ctx.trainingMaxes.squat).toBe(140); // unchanged — surfaced, not applied
+    expect(inst.trainingMaxes.squat).toBe(140); // instance TM unchanged — surfaced, not applied
+    expect(ctx.oneRepMaxes.squat).toBe(165); // shared 1RM untouched
   });
 
   it("a 7th-week TM test below 3 reps recommends lowering the TM", () => {
