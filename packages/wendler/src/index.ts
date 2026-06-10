@@ -31,3 +31,6 @@ export * from "./seventh-week";
 
 // Named program templates (the 5/3/1 Forever catalog)
 export * from "./wendler-templates";
+
+// Assistance model (Push / Pull / Single-leg-Core categories + prescriptions)
+export * from "./assistance";
