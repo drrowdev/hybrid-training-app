@@ -198,6 +198,9 @@ importers:
       '@hta/tacticalbarbell':
         specifier: workspace:*
         version: link:../tacticalbarbell
+      '@hta/tb-conditioning':
+        specifier: workspace:*
+        version: link:../tb-conditioning
     devDependencies:
       typescript:
         specifier: ^5.9.3
