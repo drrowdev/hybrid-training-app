@@ -40,8 +40,8 @@ describe("conditioning vocabulary", () => {
 });
 
 describe("phase grids", () => {
-  it("ships the two Continuation baselines and the two Foundation builders", () => {
-    expect(GREEN_PHASES.map((p) => p.id)).toEqual(["hybrid", "hybrid-op", "capacity", "velocity", "outcome", "ccat"]);
+  it("ships the Continuation baselines and the Foundation builders", () => {
+    expect(GREEN_PHASES.map((p) => p.id)).toEqual(["hybrid", "hybrid-op", "capacity", "velocity", "outcome", "ccat", "icat"]);
   });
 
   it("Foundation phases are benchmark-gated with exactly one test cell", () => {
