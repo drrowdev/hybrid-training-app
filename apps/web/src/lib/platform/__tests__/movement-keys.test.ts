@@ -1,0 +1,40 @@
+import { describe, it, expect } from "vitest";
+import {
+  ENGINE_KEY_TO_ROLE,
+  ROLE_TO_ENGINE_KEY,
+  roleForSlug,
+  engineKeyForSlug,
+  STRENGTH_KIND_MAP,
+  TM_BASIS_PERCENT_BY_FAMILY,
+} from "../movement-keys";
+
+describe("movement-key mapping", () => {
+  it("maps engine keys to strength roles and back", () => {
+    expect(ENGINE_KEY_TO_ROLE.bench).toBe("horizontal_press");
+    expect(ENGINE_KEY_TO_ROLE.press).toBe("vertical_press");
+    expect(ROLE_TO_ENGINE_KEY.horizontal_press).toBe("bench");
+    expect(ROLE_TO_ENGINE_KEY.vertical_press).toBe("press");
+  });
+
+  it("resolves a movement slug to its role and engine key", () => {
+    expect(roleForSlug("bench-press-flat")).toBe("horizontal_press");
+    expect(roleForSlug("trap-bar-deadlift")).toBe("deadlift");
+    expect(roleForSlug("ohp-standing")).toBe("vertical_press");
+    expect(engineKeyForSlug("bench-press-flat")).toBe("bench");
+    expect(engineKeyForSlug("front-squat")).toBe("squat");
+    expect(engineKeyForSlug("not-a-lift")).toBeUndefined();
+  });
+
+  it("maps the strength item kinds the platform materialises", () => {
+    expect(STRENGTH_KIND_MAP.main).toBe("main");
+    expect(STRENGTH_KIND_MAP.amrap).toBe("main");
+    expect(STRENGTH_KIND_MAP.supplemental).toBe("back_off");
+    expect(STRENGTH_KIND_MAP.assistance).toBe("accessory");
+    expect(STRENGTH_KIND_MAP.cardio).toBeUndefined();
+  });
+
+  it("records the Option-A TM basis per program family", () => {
+    expect(TM_BASIS_PERCENT_BY_FAMILY["531"]).toBe(85);
+    expect(TM_BASIS_PERCENT_BY_FAMILY["tactical-barbell"]).toBe(100);
+  });
+});
