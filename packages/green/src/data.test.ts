@@ -40,8 +40,21 @@ describe("conditioning vocabulary", () => {
 });
 
 describe("phase grids", () => {
-  it("ships the two Continuation baselines", () => {
-    expect(GREEN_PHASES.map((p) => p.id)).toEqual(["hybrid", "hybrid-op"]);
+  it("ships the two Continuation baselines and the two Foundation builders", () => {
+    expect(GREEN_PHASES.map((p) => p.id)).toEqual(["hybrid", "hybrid-op", "capacity", "velocity"]);
+  });
+
+  it("Foundation phases are benchmark-gated with exactly one test cell", () => {
+    for (const phase of GREEN_PHASES.filter((p) => p.category === "foundation")) {
+      expect(phase.benchmark).toBeDefined();
+      const tests = phase.weeks.flatMap((w) => w.days).filter((c) => c.kind === "test");
+      expect(tests).toHaveLength(1);
+    }
+  });
+
+  it("Capacity is 12 weeks (Operator) and Velocity is 17 weeks (Fighter→SE)", () => {
+    expect(GREEN_PHASES.find((p) => p.id === "capacity")!.weeks).toHaveLength(12);
+    expect(GREEN_PHASES.find((p) => p.id === "velocity")!.weeks).toHaveLength(17);
   });
 
   for (const phase of GREEN_PHASES) {
@@ -53,7 +66,7 @@ describe("phase grids", () => {
       it("every conditioning cell references a known session", () => {
         for (const w of phase.weeks) {
           for (const c of w.days) {
-            if (c.kind === "conditioning") {
+            if (c.kind === "conditioning" || c.kind === "test") {
               expect(getConditioningSession(c.session), `unknown session ${c.session}`).toBeDefined();
             }
           }
