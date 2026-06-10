@@ -206,6 +206,10 @@ importers:
         version: 5.9.3
 
   packages/wendler:
+    dependencies:
+      '@hta/program-core':
+        specifier: workspace:*
+        version: link:../program-core
     devDependencies:
       typescript:
         specifier: ^5.9.3

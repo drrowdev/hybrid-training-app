@@ -5,6 +5,9 @@
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "dependencies": {
+    "@hta/program-core": "workspace:*"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
