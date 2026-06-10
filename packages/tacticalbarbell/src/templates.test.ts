@@ -6,9 +6,9 @@ import { describe, it, expect } from "vitest";
 import { TB_TEMPLATES, getTbTemplate } from "./templates";
 
 describe("TB templates — structural integrity", () => {
-  it("ships the six canonical templates", () => {
+  it("ships the seven canonical templates", () => {
     expect(TB_TEMPLATES.map((t) => t.id).sort()).toEqual(
-      ["fighter", "gladiator", "grey-man", "mass", "operator", "zulu"],
+      ["fighter", "gladiator", "grey-man", "mass", "operator", "zulu", "zulu-ia"],
     );
   });
 
@@ -63,6 +63,24 @@ describe("TB templates — structural integrity", () => {
     expect(two.percents).toEqual([0.75, 0.8, 0.9, 0.75, 0.8, 0.9]);
     // Pass 2 opens heavier than Pass 1 in week 1, identical thereafter.
     expect(two.percents[0]).toBeGreaterThan(one.percents[0]!);
+  });
+
+  it("Zulu I/A shares the split but autoregulates 3–5 sets and loads heavier in the back half", () => {
+    const z = getTbTemplate("zulu-ia")!;
+    expect(z.structure).toBe("split");
+    expect(z.clusterMin).toBe(4);
+    expect(z.clusterMax).toBe(8);
+    // 3–5 set ranges every week.
+    expect(z.setsReps.map((s) => [s.setsMin, s.setsMax])).toEqual([
+      [3, 5], [3, 5], [3, 5], [3, 5], [3, 5], [3, 5],
+    ]);
+    // Reps peak harder than Standard (wk5 = 3, wk6 = 1–2).
+    expect(z.setsReps.map((s) => s.repsLabel)).toEqual(["5", "5", "3", "5", "3", "1–2"]);
+    // Both passes load identically; weeks 4–6 are heavier than Standard.
+    const one = z.waves.find((w) => w.id === "one")!;
+    const two = z.waves.find((w) => w.id === "two")!;
+    expect(one.percents).toEqual([0.7, 0.8, 0.9, 0.75, 0.85, 0.95]);
+    expect(two.percents).toEqual(one.percents);
   });
 
   it("Grey Man is a 12-week double-wave block", () => {
