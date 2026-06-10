@@ -63,6 +63,23 @@ export interface TbWeeklySession {
 
 export type TbStructure = "cluster" | "split";
 
+/**
+ * How a cluster lift is loaded/anchored:
+ *   - "barbell"     · a kg 1RM (squat, bench, deadlift, press, weighted carries…).
+ *   - "weighted-bw" · a weighted bodyweight movement anchored on a kg 1RM that
+ *     INCLUDES bodyweight (e.g. weighted pull-ups — GP/TB1).
+ *   - "bodyweight"  · a pure bodyweight movement anchored on MAX CLEAN REPS;
+ *     prescribed as a % of that max-reps number, not a weight.
+ */
+export type TbLiftKind = "barbell" | "weighted-bw" | "bodyweight";
+
+/** A cluster lift with its loading kind and (for split templates) its A/B group. */
+export interface TbClusterEntry {
+  movement: TbMovement;
+  split?: "A" | "B";
+  kind?: TbLiftKind;
+}
+
 export interface TbTemplate {
   id: string;
   name: string;
@@ -77,10 +94,19 @@ export interface TbTemplate {
   waves: TbPercentWave[];
   /** The recurring weekly sessions (length === sessions per week). */
   weeklySessions: TbWeeklySession[];
-  /** Hard cap on main lifts (Operator = 3). Undefined = no fixed cap. */
+  /** Minimum number of COUNTING main lifts (TB1 cluster taxonomy). */
+  clusterMin: number;
+  /** Maximum number of COUNTING main lifts. */
+  clusterMax: number;
+  /**
+   * Operator-only: a single bodyweight movement (e.g. pull-ups) may be added as
+   * an optional extra that does NOT count toward clusterMax (TB1 / xlsx note).
+   */
+  allowsBodyweightFourth?: boolean;
+  /** @deprecated use clusterMax. Kept as an alias for the Operator cap. */
   maxMainLifts?: number;
   /** Default cluster (movement keys); for "split" each lift carries a split letter. */
-  defaultCluster: { movement: TbMovement; split?: "A" | "B" }[];
+  defaultCluster: TbClusterEntry[];
   notes: string[];
 }
 
@@ -93,10 +119,16 @@ const w = (
   reps: number,
 ): TbWeekScheme => ({ setsLabel, setsMin, setsMax, repsLabel, reps });
 
-const CLUSTER_DEFAULT: { movement: TbMovement }[] = [
+const CLUSTER_DEFAULT: TbClusterEntry[] = [
   { movement: "squat" },
   { movement: "bench" },
   { movement: "deadlift" },
+];
+
+// Gladiator only allows a minimalist (exactly-two-lift) cluster (TB1 L1271).
+const GLADIATOR_DEFAULT: TbClusterEntry[] = [
+  { movement: "deadlift" },
+  { movement: "bench" },
 ];
 
 // ── Operator — 3 lifts, 3×/week, every other day ─────────────────────────────
@@ -121,6 +153,9 @@ const OPERATOR: TbTemplate = {
     { id: "s3", label: "Session 3", waveId: "main" },
   ],
   maxMainLifts: 3,
+  clusterMin: 2,
+  clusterMax: 3,
+  allowsBodyweightFourth: true,
   defaultCluster: CLUSTER_DEFAULT,
   notes: [
     "Train every other day, 3 times per week.",
@@ -151,6 +186,8 @@ const FIGHTER: TbTemplate = {
     { id: "s2", label: "Session 2", waveId: "main" },
   ],
   defaultCluster: CLUSTER_DEFAULT,
+  clusterMin: 2,
+  clusterMax: 3,
   notes: [
     "Lift 2 days a week, spread as evenly as possible.",
     "Do not lift on back-to-back days.",
@@ -180,9 +217,12 @@ const GLADIATOR: TbTemplate = {
     { id: "s2", label: "Session 2", waveId: "main" },
     { id: "s3", label: "Session 3", waveId: "main" },
   ],
-  defaultCluster: CLUSTER_DEFAULT,
+  defaultCluster: GLADIATOR_DEFAULT,
+  clusterMin: 2,
+  clusterMax: 2,
   notes: [
     "Lift 3 times per week.",
+    "Use exactly 2 main lifts — Gladiator only allows a minimalist cluster.",
     "Submaximal — never to failure.",
     "Retest your 1RMs every 6 or 12 weeks.",
   ],
@@ -210,6 +250,8 @@ const MASS: TbTemplate = {
     { id: "s3", label: "Session 3", waveId: "main" },
   ],
   defaultCluster: CLUSTER_DEFAULT,
+  clusterMin: 3,
+  clusterMax: 3,
   notes: [
     "Lift 3 times per week.",
     "No rest minimums — keep rest short to drive hypertrophy.",
@@ -252,6 +294,8 @@ const GREY_MAN: TbTemplate = {
     { id: "s3", label: "Session 3", waveId: "main" },
   ],
   defaultCluster: CLUSTER_DEFAULT,
+  clusterMin: 3,
+  clusterMax: 3,
   notes: [
     "Lift 3 times per week.",
     "Submaximal — never to failure.",
@@ -290,6 +334,8 @@ const ZULU: TbTemplate = {
     { movement: "bench", split: "B" },
     { movement: "deadlift", split: "B" },
   ],
+  clusterMin: 4,
+  clusterMax: 8,
   notes: [
     "Complete all 4 sessions within 7 days.",
     "At least one day of rest between sessions; never train on back-to-back days.",
