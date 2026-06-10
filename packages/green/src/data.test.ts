@@ -41,7 +41,7 @@ describe("conditioning vocabulary", () => {
 
 describe("phase grids", () => {
   it("ships the two Continuation baselines and the two Foundation builders", () => {
-    expect(GREEN_PHASES.map((p) => p.id)).toEqual(["hybrid", "hybrid-op", "capacity", "velocity"]);
+    expect(GREEN_PHASES.map((p) => p.id)).toEqual(["hybrid", "hybrid-op", "capacity", "velocity", "outcome", "ccat"]);
   });
 
   it("Foundation phases are benchmark-gated with exactly one test cell", () => {
@@ -52,9 +52,10 @@ describe("phase grids", () => {
     }
   });
 
-  it("Capacity is 12 weeks (Operator) and Velocity is 17 weeks (Fighter→SE)", () => {
+  it("Capacity is 12 weeks, Velocity 17, Outcome 17", () => {
     expect(GREEN_PHASES.find((p) => p.id === "capacity")!.weeks).toHaveLength(12);
     expect(GREEN_PHASES.find((p) => p.id === "velocity")!.weeks).toHaveLength(17);
+    expect(GREEN_PHASES.find((p) => p.id === "outcome")!.weeks).toHaveLength(17);
   });
 
   for (const phase of GREEN_PHASES) {

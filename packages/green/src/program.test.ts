@@ -206,3 +206,56 @@ describe("Green engine — Foundation phases (Capacity, Velocity)", () => {
     expect(p.items[0]).toMatchObject({ name: "20-Mile Off-Road Run", distanceM: Math.round(20 * 1609.34) });
   });
 });
+
+describe("Green engine — Outcome (two-a-days, rucks, benchmark)", () => {
+  it("seeds a Fighter instance and is benchmark-gated", () => {
+    const inst = setup({ phaseId: "outcome" });
+    expect(Object.keys(inst.strength)).toEqual(["fighter"]);
+  });
+
+  it("Part-1 prescribes Fighter lifts and a Speed Ruck in miles", () => {
+    const inst = setup({ phaseId: "outcome" });
+    const ft = gp.prescribe(inst, "gp-b0-w1-d0", ctx);
+    expect(ft.items.map((i) => i.name)).toEqual(["Squat", "Bench Press", "Deadlift"]);
+    const sruck = gp.prescribe(inst, "gp-b0-w1-d1", ctx);
+    expect(sruck.items[0]).toMatchObject({ name: "Speed Ruck", distanceM: Math.round(2 * 1609.34) });
+  });
+
+  it("Peak two-a-days prescribe BOTH the SE circuit and an LSS run", () => {
+    const inst = setup({ phaseId: "outcome" });
+    const day = gp.prescribe(inst, "gp-b0-w9-d0", ctx); // SE (LSS)
+    expect(day.items.map((i) => i.name)).toEqual([
+      "Strength-Endurance Training",
+      "Low Intensity Steady State Run",
+    ]);
+    expect(day.items[1]!.durationSec).toBe(30 * 60);
+    const tl = gp.timeline(inst);
+    expect(tl.find((s) => s.ref === "gp-b0-w9-d0")!.tags).toContain("two-a-day");
+  });
+
+  it("ends on the 20-mile ruck benchmark", () => {
+    const inst = setup({ phaseId: "outcome" });
+    const tl = gp.timeline(inst);
+    const testSpec = tl.find((s) => s.kind === "test")!;
+    const p = gp.prescribe(inst, testSpec.ref, ctx);
+    expect(p.items[0]).toMatchObject({ name: "20-Mile Ruck (50 lb)", distanceM: Math.round(20 * 1609.34) });
+  });
+});
+
+describe("Green engine — C/CAT (continuation)", () => {
+  it("is a continuation baseline that alternates Fighter and SE halves", () => {
+    const inst = setup({ phaseId: "ccat" });
+    expect(Object.keys(inst.strength)).toEqual(["fighter"]);
+    const ft = gp.prescribe(inst, "gp-b0-w1-d0", ctx);
+    expect(ft.items[0]).toMatchObject({ name: "Squat", weightKg: 150 });
+    const se = gp.prescribe(inst, "gp-b0-w8-d0", ctx);
+    expect(se.items[0]).toMatchObject({ name: "Strength-Endurance Training" });
+  });
+
+  it("finishing C/CAT recommends continuing the baseline (no benchmark)", () => {
+    const inst = setup({ phaseId: "ccat" });
+    const tl = gp.timeline(inst);
+    const { recommendations } = gp.onSessionLogged(inst, log(tl[tl.length - 1]!.ref), ctx);
+    expect(recommendations.map((r) => r.kind)).toEqual(["next-block"]);
+  });
+});

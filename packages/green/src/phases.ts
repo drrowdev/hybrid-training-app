@@ -30,6 +30,8 @@ export type DayCell =
       max?: number;
       /** Override the session's default unit if the grid prescribes another. */
       unit?: ConditioningUnit;
+      /** A second session performed the same day (a two-a-day, e.g. SE + LSS). */
+      plus?: { session: string; min?: number; max?: number; unit?: ConditioningUnit };
     }
   | {
       /** A benchmark field test (Foundation phases) — gates progression. */
@@ -84,6 +86,19 @@ function condMi(session: string, min?: number, max?: number): DayCell {
 /** A benchmark field test cell (Foundation phases). */
 function test(session: string, min: number, unit: ConditioningUnit): DayCell {
   return { kind: "test", session, min, unit };
+}
+/** A two-a-day: a primary conditioning session plus a second session the same day. */
+function twoADay(primary: string, plusSession: string, plusMin?: number, plusMax?: number, plusUnit?: ConditioningUnit): DayCell {
+  return {
+    kind: "conditioning",
+    session: primary,
+    plus: {
+      session: plusSession,
+      ...(plusMin !== undefined ? { min: plusMin } : {}),
+      ...(plusMax !== undefined ? { max: plusMax } : {}),
+      ...(plusUnit !== undefined ? { unit: plusUnit } : {}),
+    },
+  };
 }
 /** A full deload week (one marker, the rest is recovery / optional light work). */
 const deloadWeek: GreenWeek = { days: [deload, rest, rest, rest, rest, rest, rest] };
@@ -234,7 +249,95 @@ const VELOCITY: GreenPhase = {
   ],
 };
 
-export const GREEN_PHASES: GreenPhase[] = [HYBRID, HYBRID_OP_50, CAPACITY, VELOCITY];
+// ── Outcome (Foundation, 17 weeks) ───────────────────────────────────────────
+// Part 1 (wk 1–8): Fighter strength + ruck-focused work capacity. Part 2 / Peak
+// (wk 9–17): two-a-days (SE + LSS), escalating rucks, speedwork; Fighter swapped
+// for Strength-Endurance; built-in taper. Benchmark: 20-mile ruck @ 50 lb.
+const seLss = (): DayCell => twoADay("se", "lss", 30, 90, "minutes");
+const OUT_DELOAD: GreenWeek = {
+  days: [deload, cond("lss", 30, 45), rest, cond("lss", 30, 45), rest, cond("lss", 30, 45), rest],
+};
+
+const OUTCOME: GreenPhase = {
+  id: "outcome",
+  name: "Outcome",
+  category: "foundation",
+  summary:
+    "The Foundation peaking builder: a ruck-focused work-capacity block (Fighter) then a Peak block of two-a-days, Strength-Endurance, escalating rucks and a taper. Benchmark: a 20-mile ruck with 50 lb.",
+  weeks: [
+    { days: [ft, condMi("speed-ruck", 2), cond("lss", 60, 120), ft, condMi("fartlek", 5), condMi("ruck", 4), rest] },
+    { days: [ft, condMi("speed-ruck", 2), cond("lss", 60, 120), ft, cond("peggy", 30, 120), condMi("ruck", 5), rest] },
+    { days: [ft, condMi("speed-ruck", 2), cond("lss", 60, 120), ft, rest, condMi("ruck", 6), condMi("ruck", 4)] },
+    OUT_DELOAD,
+    { days: [ft, condMi("speed-ruck", 4), cond("lss", 60, 120), ft, condMi("fartlek", 5), condMi("ruck", 8), rest] },
+    { days: [ft, condMi("speed-ruck", 4), cond("lss", 60, 120), ft, cond("peggy", 30, 120), condMi("ruck", 9), rest] },
+    { days: [ft, condMi("speed-ruck", 4), cond("lss", 60, 120), ft, rest, condMi("ruck", 10), condMi("ruck", 6)] },
+    OUT_DELOAD,
+    // Peak
+    { days: [seLss(), condMi("speed-ruck", 6), seLss(), cond("mile-repeats", 3, 5), seLss(), condMi("ruck", 12), rest] },
+    { days: [seLss(), condMi("speed-ruck", 6), seLss(), cond("hill", 30, 120), seLss(), condMi("ruck", 13), rest] },
+    { days: [seLss(), condMi("speed-ruck", 6), seLss(), rest, cond("se"), condMi("ruck", 14), condMi("ruck", 8)] },
+    OUT_DELOAD,
+    { days: [seLss(), condMi("speed-ruck", 8), seLss(), cond("mile-repeats", 3, 5), seLss(), condMi("ruck", 16), rest] },
+    { days: [seLss(), condMi("speed-ruck", 8), seLss(), cond("hill", 30, 120), seLss(), condMi("ruck", 17), rest] },
+    { days: [seLss(), condMi("speed-ruck", 8), seLss(), rest, cond("se"), condMi("ruck", 18), condMi("ruck", 10)] },
+    { days: [deload, cond("lss", 30), rest, cond("lss", 30), rest, cond("lss", 30), rest] },
+    { days: [rest, cond("lss", 30), rest, cond("lss", 30), rest, test("ruck", 20, "miles"), rest] },
+  ],
+  benchmark: {
+    id: "outcome-20mileruck",
+    name: "20-Mile Ruck (50 lb)",
+    target: "20 miles with 50 lb at target pace on hilly terrain (challenge: drop the ruck and run 10 miles for time)",
+  },
+  notes: [
+    "Ruck load progresses: ~30 lb (wk 1–3), 35 (5–7), 40 (9–11), 45 (13–15), 50 (benchmark). Start lighter if struggling.",
+    "Peak weeks are two-a-days: Strength-Endurance + 30–90 min LSS, together or AM/PM.",
+    "Weeks 3/7/11/15 finish with back-to-back rucks. During Peak, speedwork may replace the Hill session.",
+    "The first 8 weeks can stand alone (benchmark a 12–15 mile / 35 lb ruck); Peak can be used standalone as a pre-event block.",
+  ],
+};
+
+// ── Concurrent / Combat-Arms Template — C/CAT (Continuation, ~10 weeks) ───────
+// A concurrent baseline: Fighter then Strength-Endurance, with speed/hill, LSS,
+// rucking, and a weekly Long Run / Fartlek. Pairs well with Capacity blocks.
+const CCAT_FT = (dayTwo: DayCell, daySeven: DayCell): GreenWeek => ({
+  days: [ft, dayTwo, cond("lss"), ft, rest, cond("ruck"), daySeven],
+});
+const CCAT_SE = (dayTwo: DayCell, daySeven: DayCell): GreenWeek => ({
+  days: [cond("se"), dayTwo, cond("lss"), cond("se"), rest, cond("ruck"), daySeven],
+});
+const speed = (): DayCell => cond("speed");
+const hill = (): DayCell => cond("hill", 30, 120);
+const lr = (): DayCell => cond("long-run");
+const fk = (): DayCell => cond("fartlek");
+
+const CCAT: GreenPhase = {
+  id: "ccat",
+  name: "Concurrent / Combat-Arms Template",
+  category: "continuation",
+  summary:
+    "C/CAT — a concurrent Green Protocol baseline that channels general fitness into combat-specific conditioning. Pairs best with Capacity blocks (Capacity = base, C/CAT = specificity).",
+  weeks: [
+    CCAT_FT(speed(), lr()),
+    CCAT_FT(hill(), fk()),
+    CCAT_FT(speed(), lr()),
+    CCAT_FT(hill(), fk()),
+    CCAT_FT(speed(), lr()),
+    CCAT_FT(hill(), fk()),
+    deloadWeek,
+    CCAT_SE(speed(), lr()),
+    CCAT_SE(hill(), fk()),
+    CCAT_SE(speed(), lr()),
+    deloadWeek,
+  ],
+  notes: [
+    "The written grid is 6 days/week — drop sessions to run it 4–5 days as needed (alternate which you drop), but never drop the Long Run, Fighter, or SE.",
+    "Ruck may be a Ruck or Speed Ruck, or substituted (swim, LSS) — or used as an extra rest day.",
+    "Best practice: alternate C/CAT with 8-week Capacity blocks; adjust the ratio to taste.",
+  ],
+};
+
+export const GREEN_PHASES: GreenPhase[] = [HYBRID, HYBRID_OP_50, CAPACITY, VELOCITY, OUTCOME, CCAT];
 
 export function getGreenPhase(id: string): GreenPhase | undefined {
   return GREEN_PHASES.find((p) => p.id === id);
