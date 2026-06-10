@@ -138,12 +138,16 @@ export interface LoggedSession {
 /**
  * Read-only view of shared platform state the engine needs to prescribe and to
  * reason about progression. The platform builds this; the engine never mutates
- * it. Strength state (training maxes) is PLATFORM-shared — a 5/3/1 program and a
- * future TB program read/advise the same numbers.
+ * it. The canonical shared STRENGTH STATE is the **1RM** (estimated or tested) —
+ * a program-agnostic "how strong is the user" number that persists across
+ * program switches. Each program DERIVES its own working basis from it
+ * (5/3/1: a Training Max = round(1RM × tmPercent); Tactical Barbell: % of 1RM
+ * directly, or an optional derived TM). A program's evolving working max lives
+ * in its own instance, seeded from these 1RMs at setup.
  */
 export interface PlatformContext {
-  /** Current training maxes by movement key (kg). */
-  trainingMaxes: Record<string, number>;
+  /** Current best 1RM (estimated or tested) by movement key (kg) — shared. */
+  oneRepMaxes: Record<string, number>;
   /** Plate increment for rounding working weights (kg). */
   roundingKg: number;
   /** Recent logged sessions, most recent first (for progression heuristics). */
@@ -256,7 +260,7 @@ export function itemsOfKind(p: SessionPrescription, kind: PrescribedItemKind): P
   return p.items.filter((it) => it.kind === kind);
 }
 
-/** Look up a training max by movement key, or undefined. */
-export function trainingMaxFor(ctx: PlatformContext, movement: string): number | undefined {
-  return ctx.trainingMaxes[movement];
+/** Look up a shared 1RM by movement key, or undefined. */
+export function oneRepMaxFor(ctx: PlatformContext, movement: string): number | undefined {
+  return ctx.oneRepMaxes[movement];
 }

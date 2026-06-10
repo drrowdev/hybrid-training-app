@@ -11,7 +11,7 @@ import {
   type SessionPrescription,
   totalPrescribedSets,
   itemsOfKind,
-  trainingMaxFor,
+  oneRepMaxFor,
 } from "./index";
 
 // A minimal 2-session "program": one squat day, then a deload, driven entirely
@@ -49,7 +49,7 @@ const mockEngine: ProgramEngine<MockInstance> = {
   },
 
   prescribe(instance, ref, ctx): SessionPrescription {
-    const tm = trainingMaxFor(ctx, instance.movement) ?? 100;
+    const tm = oneRepMaxFor(ctx, instance.movement) ?? 100;
     const isDeload = ref === `d${instance.days - 1}`;
     const pct = isDeload ? 0.6 : 0.85;
     return {
@@ -84,7 +84,7 @@ const mockEngine: ProgramEngine<MockInstance> = {
   },
 };
 
-const ctx: PlatformContext = { trainingMaxes: { squat: 140 }, roundingKg: 2.5 };
+const ctx: PlatformContext = { oneRepMaxes: { squat: 140 }, roundingKg: 2.5 };
 
 describe("ProgramEngine contract — mock implementation", () => {
   it("setup → timeline produces an ordered plan", () => {
@@ -112,7 +112,7 @@ describe("ProgramEngine contract — mock implementation", () => {
     );
     expect(strong.recommendations[0]?.kind).toBe("tm-bump");
     // The TM in ctx is unchanged — recommendations are surfaced, not applied.
-    expect(ctx.trainingMaxes.squat).toBe(140);
+    expect(ctx.oneRepMaxes.squat).toBe(140);
 
     const weak = mockEngine.onSessionLogged(
       inst,
