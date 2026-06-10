@@ -1,0 +1,102 @@
+/**
+ * Prescription adapter — `@hta/program-core` `SessionPrescription` → the app's
+ * `Prescription` JSON (the shape stored in `planned_sessions.prescription` and
+ * rendered by Today / the session logger).
+ *
+ * Pure: the caller injects a `resolveMovement` function (engine movement key →
+ * the user's anchored movement) so this module needs no DB. Weights follow
+ * Option A — the engine's `percentOfTm` is passed straight through as the app's
+ * integer `percentTm`; the platform seeds the user's `tm_percent` to the
+ * program's basis at creation so the existing "% of TM" renderer shows the right
+ * load (see movement-keys.ts `TM_BASIS_PERCENT_BY_FAMILY`).
+ *
+ * Strength kinds (warmup / main / amrap / supplemental / assistance) are mapped
+ * today. Conditioning / cardio items and standalone notes are reported back as
+ * `skipped` (Green Protocol's cardio materialisation is a separate follow-up).
+ */
+import type { SessionPrescription, PrescribedItem } from "@hta/program-core";
+import type { Prescription, PrescriptionItem } from "@hta/db";
+import { STRENGTH_KIND_MAP } from "./movement-keys";
+
+/** The user's anchored movement for an engine key. */
+export interface ResolvedMovement {
+  movementId: string;
+  slug: string;
+  displayName: string;
+}
+
+/** Resolve an engine movement key ("squat", "bench", …) to the user's movement. */
+export type MovementResolver = (engineKey: string) => ResolvedMovement | undefined;
+
+export interface SkippedItem {
+  kind: PrescribedItem["kind"];
+  name: string;
+  reason: string;
+}
+
+export interface AdaptResult {
+  prescription: Prescription;
+  skipped: SkippedItem[];
+}
+
+function composeNotes(item: PrescribedItem): string | undefined {
+  const parts: string[] = [];
+  // Preserve a rep range that the app's single `reps` field can't express.
+  if (item.repsLabel && item.repsLabel !== String(item.reps)) parts.push(item.repsLabel);
+  if (item.note) parts.push(item.note);
+  return parts.length > 0 ? parts.join(" · ") : undefined;
+}
+
+/**
+ * Adapt one engine `SessionPrescription` into an app `Prescription`. Items whose
+ * movement key can't be resolved, and non-strength items, are returned in
+ * `skipped` rather than silently dropped.
+ */
+export function adaptSessionPrescription(
+  prescription: SessionPrescription,
+  resolveMovement: MovementResolver,
+): AdaptResult {
+  const items: PrescriptionItem[] = [];
+  const skipped: SkippedItem[] = [];
+
+  for (const it of prescription.items) {
+    const appKind = STRENGTH_KIND_MAP[it.kind];
+    if (!appKind) {
+      // Fold a standalone note into the previous item; otherwise skip-report.
+      if (it.kind === "note" && items.length > 0 && it.note) {
+        const prev = items[items.length - 1]!;
+        prev.notes = prev.notes ? `${prev.notes} · ${it.note}` : it.note;
+      } else {
+        skipped.push({ kind: it.kind, name: it.name, reason: `unsupported kind '${it.kind}'` });
+      }
+      continue;
+    }
+
+    const engineKey = it.movementId;
+    const resolved = engineKey ? resolveMovement(engineKey) : undefined;
+    if (!resolved) {
+      skipped.push({
+        kind: it.kind,
+        name: it.name,
+        reason: engineKey ? `no anchored movement for key '${engineKey}'` : "item has no movement key",
+      });
+      continue;
+    }
+
+    const notes = composeNotes(it);
+    const appItem: PrescriptionItem = {
+      movementId: resolved.movementId,
+      movementSlug: resolved.slug,
+      movementName: resolved.displayName,
+      kind: appKind,
+      sets: it.sets ?? 1,
+      ...(it.reps !== undefined ? { reps: it.reps } : {}),
+      ...(it.percentOfTm !== undefined ? { percentTm: Math.round(it.percentOfTm * 100) } : {}),
+      ...(it.kind === "amrap" || it.isAmrap ? { isAmrap: true } : {}),
+      ...(notes ? { notes } : {}),
+    };
+    items.push(appItem);
+  }
+
+  return { prescription: { items }, skipped };
+}

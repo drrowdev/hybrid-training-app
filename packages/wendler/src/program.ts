@@ -333,7 +333,7 @@ export const wendler531Engine: ProgramEngine<WendlerInstance> = {
       }
     }
 
-    return { items: collapse(raw) };
+    return { items: collapse(raw).map((it) => ({ ...it, movementId: parsed.lift })) };
   },
 
   onSessionLogged(
