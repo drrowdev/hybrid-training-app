@@ -92,7 +92,7 @@ const META: ProgramMeta = {
   name: "Tactical Barbell",
   family: "tactical-barbell",
   summary:
-    "K. Black's Tactical Barbell — submaximal, percentage-based strength run in 6-week blocks (Operator, Fighter, Zulu, Gladiator, Mass, Grey Man), built to coexist with conditioning.",
+    "K. Black's Tactical Barbell — submaximal, percentage-based strength run in 6-week blocks (Operator, Fighter, Zulu Standard/I/A, Gladiator, Mass, Grey Man), built to coexist with conditioning.",
 };
 
 function movementLabel(movement: string): string {
@@ -174,7 +174,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
           type: "select",
           options: TB_TEMPLATES.map((t) => ({ value: t.id, label: t.name })),
           defaultValue: "operator",
-          help: "Operator (3×/wk, ≤3 lifts), Fighter (2×/wk), Zulu (A/B split), Gladiator (5×5), Mass (hypertrophy), Grey Man (12-wk).",
+          help: "Operator (3×/wk, ≤3 lifts), Fighter (2×/wk), Zulu (A/B split), Zulu I/A (3–5 sets, heavier), Gladiator (5×5), Mass (hypertrophy), Grey Man (12-wk).",
         },
         {
           key: "blocks",
