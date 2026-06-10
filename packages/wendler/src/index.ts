@@ -24,3 +24,7 @@ export * from "./waves";
 export * from "./warmup";
 export * from "./supplemental";
 export * from "./pr-detection";
+
+// Periodization model
+export * from "./blocks";
+export * from "./seventh-week";
