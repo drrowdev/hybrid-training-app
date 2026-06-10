@@ -23,3 +23,4 @@ export {
   type GreenStrength,
 } from "./phases";
 export { greenProtocolEngine, type GreenInstance } from "./program";
+export { suggestTbSessions, isGenericSlot } from "./tb-suggestions";

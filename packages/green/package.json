@@ -7,7 +7,8 @@
   "types": "./src/index.ts",
   "dependencies": {
     "@hta/program-core": "workspace:*",
-    "@hta/tacticalbarbell": "workspace:*"
+    "@hta/tacticalbarbell": "workspace:*",
+    "@hta/tb-conditioning": "workspace:*"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
