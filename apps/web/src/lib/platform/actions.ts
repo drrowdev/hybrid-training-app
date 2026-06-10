@@ -111,7 +111,7 @@ export async function createProgramInstance(
       status: "active",
       days_per_week: write.daysPerWeek,
       day_index_overrides: write.dayIndexOverrides,
-      notes: `${engine.meta.name} — platform program`,
+      notes: engine.meta.name,
     })
     .select("id")
     .single();

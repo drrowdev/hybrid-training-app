@@ -20,10 +20,8 @@ describe("archetypeDisplayName", () => {
   it("falls back to a brand-neutral label for a platform block (null archetype)", () => {
     expect(archetypeDisplayName(null)).toBe("Training block");
     expect(archetypeDisplayName(null, "  ")).toBe("Training block");
-    // a platform block's notes label is surfaced when present
-    expect(archetypeDisplayName(null, "5/3/1 — platform program")).toBe(
-      "5/3/1 — platform program",
-    );
+    // a platform block stores its program name in notes, surfaced as the label
+    expect(archetypeDisplayName(null, "5/3/1")).toBe("5/3/1");
   });
 
   it("treats a legacy 'program:' placeholder like a platform block", () => {
