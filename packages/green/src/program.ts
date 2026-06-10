@@ -129,7 +129,8 @@ function buildPlan(instance: GreenInstance): PlanEntry[] {
 
         const ref = greenRef(block, wi + 1, di);
         const weekLabel = `${phase.name} · Block ${block + 1} · Wk ${wi + 1}`;
-        const isDeload = cell.kind === "deload";
+        const sessionKind: PlannedSessionSpec["kind"] =
+          cell.kind === "deload" ? "deload" : cell.kind === "test" ? "test" : "training";
         const tags = [
           `phase:${phase.id}`,
           `block:${block + 1}`,
@@ -151,11 +152,13 @@ function buildPlan(instance: GreenInstance): PlanEntry[] {
           tbRef = `b0-w${tbWeek}-s${n}`;
           tags.push("modality:strength", `session:${cell.strength}`);
           label = `${weekLabel} · ${DAY_LABELS[di]} · ${cell.strength}`;
-        } else if (cell.kind === "conditioning") {
+        } else if (cell.kind === "conditioning" || cell.kind === "test") {
           const sess = getConditioningSession(cell.session);
           tags.push("modality:conditioning", `session:${cell.session}`);
           if (sess) tags.push(`zone:${sess.zone}`);
-          label = `${weekLabel} · ${DAY_LABELS[di]} · ${sess?.name ?? cell.session}`;
+          if (cell.kind === "test") tags.push("benchmark");
+          const prefix = cell.kind === "test" ? "Benchmark: " : "";
+          label = `${weekLabel} · ${DAY_LABELS[di]} · ${prefix}${sess?.name ?? cell.session}`;
         } else {
           tags.push("deload");
         }
@@ -164,7 +167,7 @@ function buildPlan(instance: GreenInstance): PlanEntry[] {
           ref,
           index: index++,
           label,
-          kind: isDeload ? "deload" : "training",
+          kind: sessionKind,
           weekLabel,
           weekday: di,
           tags,
@@ -291,15 +294,20 @@ export const greenProtocolEngine: ProgramEngine<GreenInstance> = {
       return tacticalBarbellEngine.prescribe(tbInstance, entry.tbRef, ctx);
     }
 
-    if (cell.kind === "conditioning") {
+    if (cell.kind === "conditioning" || cell.kind === "test") {
       const sess = getConditioningSession(cell.session);
       if (!sess) return { items: [] };
       const unit = cell.unit ?? sess.unit;
+      const phase = getGreenPhase(instance.phaseId);
+      const baseNote =
+        cell.kind === "test" && phase?.benchmark
+          ? `Benchmark field test — ${phase.benchmark.target}. ${sess.note}`
+          : sess.note;
       const item: PrescribedItem = {
         kind: "cardio",
-        name: sess.name,
+        name: cell.kind === "test" && phase?.benchmark ? phase.benchmark.name : sess.name,
         movementId: sess.id,
-        note: buildConditioningNote(sess.note, cell.min, cell.max, unit),
+        note: buildConditioningNote(baseNote, cell.min, cell.max, unit),
       };
       if (unit === "minutes" && cell.min !== undefined) {
         item.durationSec = Math.round(cell.min * 60);
@@ -356,7 +364,7 @@ function phaseCompleteRecommendations(phase: GreenPhase): ProgramRecommendation[
     recs.push({
       kind: "tm-test",
       title: `Benchmark: ${phase.benchmark.name}`,
-      detail: `${phase.name} is complete. Test the benchmark (${phase.benchmark.target}) before advancing.`,
+      detail: `${phase.name} is complete. Did you pass the field test (${phase.benchmark.target})? Pass → advance to the next phase. If not, repeat from an earlier week before re-testing.`,
       data: { benchmark: phase.benchmark.id, target: phase.benchmark.target },
     });
   }
@@ -366,7 +374,9 @@ function phaseCompleteRecommendations(phase: GreenPhase): ProgramRecommendation[
     detail:
       phase.category === "continuation"
         ? `${phase.name} is your baseline. Repeat it, or take a training detour (mass block, event prep, PFT peak) and return to baseline after.`
-        : `${phase.name} is complete — move on to the next Foundation phase.`,
+        : phase.id === "capacity"
+          ? "Capacity is complete — progress to Velocity."
+          : `${phase.name} is complete — move on to the next Foundation phase.`,
   });
   return recs;
 }

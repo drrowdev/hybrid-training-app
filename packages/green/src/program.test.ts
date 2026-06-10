@@ -137,3 +137,72 @@ describe("Green engine — onSessionLogged (recommendations)", () => {
     expect(recommendations[0]!.detail).toMatch(/baseline|detour/i);
   });
 });
+
+describe("Green engine — Foundation phases (Capacity, Velocity)", () => {
+  it("Capacity seeds only an Operator instance and is benchmark-gated", () => {
+    const inst = setup({ phaseId: "capacity" });
+    expect(Object.keys(inst.strength)).toEqual(["operator"]);
+  });
+
+  it("Capacity strength days delegate to TB Operator; LSS days yield duration cardio", () => {
+    const inst = setup({ phaseId: "capacity" });
+    const strength = gp.prescribe(inst, "gp-b0-w1-d0", ctx);
+    expect(strength.items.map((i) => [i.name, i.weightKg])).toEqual([
+      ["Squat", 140],
+      ["Bench Press", 70],
+      ["Deadlift", 175],
+    ]);
+    const lss = gp.prescribe(inst, "gp-b0-w1-d1", ctx);
+    expect(lss.items[0]).toMatchObject({ kind: "cardio", name: "Low Intensity Steady State Run", durationSec: 1800 });
+  });
+
+  it("Capacity's final week is the 6-mile benchmark test (distance cardio, kind=test)", () => {
+    const inst = setup({ phaseId: "capacity" });
+    const tl = gp.timeline(inst);
+    const testSpec = tl.find((s) => s.kind === "test")!;
+    expect(testSpec.tags).toContain("benchmark");
+    const p = gp.prescribe(inst, testSpec.ref, ctx);
+    expect(p.items[0]).toMatchObject({ kind: "cardio", name: "6-Mile Run", distanceM: Math.round(6 * 1609.34) });
+    expect(p.items[0]!.note).toMatch(/Benchmark/i);
+  });
+
+  it("finishing Capacity surfaces the benchmark + advance-to-Velocity recs", () => {
+    const inst = setup({ phaseId: "capacity" });
+    const tl = gp.timeline(inst);
+    const last = tl[tl.length - 1]!;
+    const { recommendations } = gp.onSessionLogged(inst, log(last.ref), ctx);
+    expect(recommendations.map((r) => r.kind)).toEqual(["tm-test", "next-block"]);
+    expect(recommendations[1]!.detail).toMatch(/Velocity/i);
+  });
+
+  it("Velocity seeds only a Fighter instance (SE is conditioning, not strength)", () => {
+    const inst = setup({ phaseId: "velocity" });
+    expect(Object.keys(inst.strength)).toEqual(["fighter"]);
+  });
+
+  it("Velocity wk1 lifts TB Fighter wk1 (75%) and prescribes its runs in miles", () => {
+    const inst = setup({ phaseId: "velocity" });
+    const ft = gp.prescribe(inst, "gp-b0-w1-d0", ctx);
+    expect(ft.items.map((i) => [i.name, i.weightKg])).toEqual([
+      ["Squat", 150],
+      ["Bench Press", 75],
+      ["Deadlift", 187.5],
+    ]);
+    const lr = gp.prescribe(inst, "gp-b0-w1-d5", ctx); // Long Run 8 miles
+    expect(lr.items[0]).toMatchObject({ kind: "cardio", name: "Long Run", distanceM: Math.round(8 * 1609.34) });
+  });
+
+  it("Velocity's SE block days prescribe strength-endurance conditioning, not a TB lift", () => {
+    const inst = setup({ phaseId: "velocity" });
+    const se = gp.prescribe(inst, "gp-b0-w13-d0", ctx);
+    expect(se.items[0]).toMatchObject({ kind: "cardio", name: "Strength-Endurance Training" });
+  });
+
+  it("Velocity ends on the 20-mile off-road benchmark", () => {
+    const inst = setup({ phaseId: "velocity" });
+    const tl = gp.timeline(inst);
+    const testSpec = tl.find((s) => s.kind === "test")!;
+    const p = gp.prescribe(inst, testSpec.ref, ctx);
+    expect(p.items[0]).toMatchObject({ name: "20-Mile Off-Road Run", distanceM: Math.round(20 * 1609.34) });
+  });
+});
