@@ -157,8 +157,10 @@ function buildPlan(instance: GreenInstance): PlanEntry[] {
           tags.push("modality:conditioning", `session:${cell.session}`);
           if (sess) tags.push(`zone:${sess.zone}`);
           if (cell.kind === "test") tags.push("benchmark");
+          if (cell.kind === "conditioning" && cell.plus) tags.push("two-a-day");
           const prefix = cell.kind === "test" ? "Benchmark: " : "";
-          label = `${weekLabel} · ${DAY_LABELS[di]} · ${prefix}${sess?.name ?? cell.session}`;
+          const suffix = cell.kind === "conditioning" && cell.plus ? " (two-a-day)" : "";
+          label = `${weekLabel} · ${DAY_LABELS[di]} · ${prefix}${sess?.name ?? cell.session}${suffix}`;
         } else {
           tags.push("deload");
         }
@@ -297,24 +299,32 @@ export const greenProtocolEngine: ProgramEngine<GreenInstance> = {
     if (cell.kind === "conditioning" || cell.kind === "test") {
       const sess = getConditioningSession(cell.session);
       if (!sess) return { items: [] };
-      const unit = cell.unit ?? sess.unit;
       const phase = getGreenPhase(instance.phaseId);
-      const baseNote =
-        cell.kind === "test" && phase?.benchmark
-          ? `Benchmark field test — ${phase.benchmark.target}. ${sess.note}`
-          : sess.note;
-      const item: PrescribedItem = {
-        kind: "cardio",
-        name: cell.kind === "test" && phase?.benchmark ? phase.benchmark.name : sess.name,
-        movementId: sess.id,
-        note: buildConditioningNote(baseNote, cell.min, cell.max, unit),
-      };
-      if (unit === "minutes" && cell.min !== undefined) {
-        item.durationSec = Math.round(cell.min * 60);
-      } else if (unit === "miles" && cell.min !== undefined) {
-        item.distanceM = Math.round(cell.min * MILES_TO_M);
+      const isBenchmark = cell.kind === "test" && !!phase?.benchmark;
+      const primaryName = isBenchmark ? phase!.benchmark!.name : sess.name;
+      const primaryBaseNote = isBenchmark
+        ? `Benchmark field test — ${phase!.benchmark!.target}. ${sess.note}`
+        : sess.note;
+      const items: PrescribedItem[] = [
+        buildCardioItem(sess.id, primaryName, primaryBaseNote, cell.min, cell.max, cell.unit ?? sess.unit),
+      ];
+      // Two-a-day: a second session performed the same day.
+      if (cell.kind === "conditioning" && cell.plus) {
+        const plusSess = getConditioningSession(cell.plus.session);
+        if (plusSess) {
+          items.push(
+            buildCardioItem(
+              plusSess.id,
+              plusSess.name,
+              `Two-a-day (with ${sess.name}) — ${plusSess.note}`,
+              cell.plus.min,
+              cell.plus.max,
+              cell.plus.unit ?? plusSess.unit,
+            ),
+          );
+        }
       }
-      return { items: [item] };
+      return { items };
     }
 
     return { items: [] };
@@ -386,4 +396,26 @@ function buildConditioningNote(base: string, min: number | undefined, max: numbe
   const unitLabel = unit === "minutes" ? "min" : unit === "miles" ? "mi" : unit;
   const range = max !== undefined && max !== min ? `${min}–${max} ${unitLabel}` : `${min} ${unitLabel}`;
   return `Target ${range}. ${base}`;
+}
+
+function buildCardioItem(
+  movementId: string,
+  name: string,
+  baseNote: string,
+  min: number | undefined,
+  max: number | undefined,
+  unit: string,
+): PrescribedItem {
+  const item: PrescribedItem = {
+    kind: "cardio",
+    name,
+    movementId,
+    note: buildConditioningNote(baseNote, min, max, unit),
+  };
+  if (unit === "minutes" && min !== undefined) {
+    item.durationSec = Math.round(min * 60);
+  } else if (unit === "miles" && min !== undefined) {
+    item.distanceM = Math.round(min * MILES_TO_M);
+  }
+  return item;
 }
