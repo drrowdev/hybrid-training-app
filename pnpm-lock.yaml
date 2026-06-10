@@ -69,9 +69,21 @@ importers:
       '@hta/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      '@hta/green':
+        specifier: workspace:*
+        version: link:../../packages/green
+      '@hta/program-core':
+        specifier: workspace:*
+        version: link:../../packages/program-core
+      '@hta/tacticalbarbell':
+        specifier: workspace:*
+        version: link:../../packages/tacticalbarbell
       '@hta/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@hta/wendler':
+        specifier: workspace:*
+        version: link:../../packages/wendler
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@3.25.76)
