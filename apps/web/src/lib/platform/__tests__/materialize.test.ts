@@ -10,6 +10,7 @@
 import { describe, it, expect } from "vitest";
 import type { PlatformContext } from "@hta/program-core";
 import { wendler531Engine, type WendlerInstance } from "@hta/wendler";
+import { greenProtocolEngine } from "@hta/green";
 import { materializeProgram } from "../materialize";
 import type { MovementResolver } from "../adapter";
 
@@ -119,5 +120,33 @@ describe("materializeProgram — scheduling", () => {
       r.sessions.some((s) => s.prescription.items.some((i) => i.movementId === "mv-squat")),
     ).toBe(true);
     expect(r.skipped.some((s) => s.reason.includes("bench"))).toBe(true);
+  });
+});
+
+describe("materializeProgram — Green Protocol (concurrent strength + cardio)", () => {
+  it("seats sessions on the engine's own weekdays and materialises cardio days", () => {
+    const inst = greenProtocolEngine.setup(
+      { values: { phaseId: "hybrid", blocks: 1, useTrainingMax: false, tmPercent: 0.9 } },
+      ctx,
+    );
+    // weekdays here are ignored — GP sets an explicit weekday on every spec.
+    const r = materializeProgram(greenProtocolEngine, inst, ctx, resolve, { weekdays: [0] });
+    expect(r.sessions.length).toBeGreaterThan(0);
+
+    // Strength days resolve to the user's anchored movements (delegated to TB).
+    const strengthDay = r.sessions.find((s) =>
+      s.prescription.items.some((i) => i.kind === "main"),
+    );
+    expect(strengthDay, "GP has strength days").toBeTruthy();
+
+    // Cardio days materialise as display-only cardio_external items (not empty).
+    const cardioDay = r.sessions.find((s) =>
+      s.prescription.items.some((i) => i.kind === "cardio_external"),
+    );
+    expect(cardioDay, "GP has cardio days").toBeTruthy();
+    expect(cardioDay!.prescription.items[0]!.movementId).toBe("");
+
+    // Every session carries its engine-assigned weekday (0=Mon).
+    expect(r.sessions.every((s) => s.dayIndex >= 0 && s.dayIndex <= 6)).toBe(true);
   });
 });
