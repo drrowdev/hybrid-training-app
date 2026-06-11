@@ -14,10 +14,15 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { PlatformContext, ProgramEngine, PlannedSessionSpec } from "@hta/program-core";
+import { TB_TEMPLATES } from "@hta/tacticalbarbell";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { selectablePrograms, getProgramEngine } from "@/lib/platform/registry";
 import { buildPlatformContext } from "@/lib/platform/context";
-import { ProgramPicker, type PickerProgram } from "@/components/program/ProgramPicker";
+import {
+  ProgramPicker,
+  type PickerProgram,
+  type PickerTbTemplate,
+} from "@/components/program/ProgramPicker";
 
 // Programs whose deploy path is validated end-to-end. Others render disabled.
 const ENABLED_PROGRAM_IDS = new Set<string>(["wendler-531", "tactical-barbell"]);
@@ -78,6 +83,24 @@ export default async function ProgramPickerPage() {
     };
   });
 
+  // Plain-data projection of TB templates for the client picker. Only the
+  // cluster-shape fields cross the server→client boundary; the engine objects
+  // (waves, sessions, validators) are not serialisable as props.
+  const tbTemplates: PickerTbTemplate[] = TB_TEMPLATES.map((t) => ({
+    id: t.id,
+    name: t.name,
+    structure: t.structure,
+    clusterMin: t.clusterMin,
+    clusterMax: t.clusterMax,
+    ...(t.allowsBodyweightFourth ? { allowsBodyweightFourth: true } : {}),
+    sessionsPerWeek: t.weeklySessions.length,
+    defaultCluster: t.defaultCluster.map((c) => ({
+      movement: c.movement,
+      ...(c.split ? { split: c.split } : {}),
+      ...(c.kind ? { kind: c.kind } : {}),
+    })),
+  }));
+
   return (
     <div style={{ display: "grid", gap: 20 }}>
       <header>
@@ -94,7 +117,7 @@ export default async function ProgramPickerPage() {
         </p>
       </header>
 
-      <ProgramPicker programs={programs} anchoredKeys={anchoredKeys} />
+      <ProgramPicker programs={programs} anchoredKeys={anchoredKeys} tbTemplates={tbTemplates} />
     </div>
   );
 }

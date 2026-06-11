@@ -62,7 +62,7 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
 
     // The 5/3/1 program card should be present + enabled.
     await expect(page.getByRole("heading", { name: "Start a program" })).toBeVisible();
-    await page.getByRole("button", { name: /5\/3\/1/ }).click();
+    await page.getByTestId("program-card-wendler-531").click();
 
     // Deploy.
     const deploy = page.getByRole("button", { name: /Deploy program/ });
@@ -148,7 +148,7 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     await page.waitForLoadState("networkidle");
 
     // Select the Tactical Barbell card (defaults to Operator → 3 days auto-picked).
-    await page.getByRole("button", { name: /Tactical Barbell/ }).click();
+    await page.getByTestId("program-card-tactical-barbell").click();
 
     const deploy = page.getByRole("button", { name: /Deploy program/ });
     await expect(deploy).toBeEnabled();
@@ -183,5 +183,71 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     expect(pi, "active program_instance must exist").toBeTruthy();
     expect(pi!.program_id).toBe("tactical-barbell");
     expect(pi!.block_id).toBe(block!.id);
+  });
+
+  test("picker deploys TB Zulu with a custom A/B split cluster", async ({
+    page,
+    context,
+    freshUser,
+    seedConfig,
+    admin,
+    baseURL,
+  }) => {
+    await markOnboarded(admin, freshUser.userId);
+    for (const tm of STRENGTH_TMS) {
+      const { data: mv } = await admin
+        .from("movements")
+        .select("id")
+        .eq("slug", tm.slug)
+        .is("user_id", null)
+        .maybeSingle();
+      const { error } = await admin.from("training_maxes").upsert(
+        { user_id: freshUser.userId, movement_id: mv!.id, one_rm_kg: tm.oneRmKg, source: "entered" },
+        { onConflict: "user_id,movement_id" },
+      );
+      expect(error).toBeNull();
+    }
+
+    await signInAs(context, freshUser, seedConfig, baseURL ?? "http://localhost:3000");
+    await page.goto("/app/program");
+    await page.waitForLoadState("networkidle");
+
+    await page.getByTestId("program-card-tactical-barbell").click();
+    // Switch the template to Zulu (split A/B, 4 sessions/week). The picker resets
+    // the cluster to Zulu's default split and the weekday count to 4.
+    await page.locator("select").first().selectOption("zulu");
+
+    const deploy = page.getByRole("button", { name: /Deploy program/ });
+    await expect(deploy).toBeEnabled();
+    await deploy.click();
+    await page.waitForURL("**/app", { timeout: 15_000 });
+
+    const { data: block } = await admin
+      .from("training_blocks")
+      .select("id, program_id, weeks")
+      .eq("user_id", freshUser.userId)
+      .eq("status", "active")
+      .maybeSingle();
+    expect(block!.program_id).toBe("tactical-barbell");
+    expect(block!.weeks).toBe(6);
+
+    // Zulu = 6 weeks × 4 sessions/week = 24 planned sessions.
+    const { count: psCount } = await admin
+      .from("planned_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("block_id", block!.id);
+    expect(psCount).toBe(24);
+
+    // The instance cluster carries the A/B split.
+    const { data: pi } = await admin
+      .from("program_instances")
+      .select("instance")
+      .eq("user_id", freshUser.userId)
+      .eq("status", "active")
+      .maybeSingle();
+    const cluster = (pi!.instance as { cluster?: { split?: string }[] }).cluster ?? [];
+    expect(cluster.length).toBe(4);
+    expect(cluster.some((c) => c.split === "A")).toBe(true);
+    expect(cluster.some((c) => c.split === "B")).toBe(true);
   });
 });
