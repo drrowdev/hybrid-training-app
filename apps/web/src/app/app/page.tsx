@@ -27,6 +27,9 @@ import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner"
 import { dismissBwBanner } from "@/lib/profile/actions";
 import { OverdueNotice } from "@/components/today/OverdueNotice";
 import { RegionSpikeBanner } from "@/components/today/RegionSpikeBanner";
+import { ProgramRecommendationsBanner } from "@/components/today/ProgramRecommendationsBanner";
+import { getPendingProgramRecommendations, type PendingProgramRecommendation } from "@/lib/platform/recommendations-queries";
+import { dismissProgramRecommendation } from "@/lib/platform/actions";
 import { SessionPreviewBody } from "@/components/session/SessionPreviewBody";
 import { QuickWorkoutCard } from "@/components/today/QuickWorkoutCard";
 import {
@@ -117,7 +120,7 @@ export default async function TodayPage() {
 
   const todayIso = todayYmd(profile?.timezone ?? "UTC");
 
-  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness, activeBlock, tmDict, tmRows, regionSpikes, { data: activeLimitationsRaw }, quickRepeatRecent, limitationSummary] = await Promise.all([
+  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness, activeBlock, tmDict, tmRows, regionSpikes, { data: activeLimitationsRaw }, quickRepeatRecent, limitationSummary, programRecs] = await Promise.all([
     supabase
       .from("sessions")
       .select("id, title, slot, completed_at, performed_at")
@@ -148,6 +151,7 @@ export default async function TodayPage() {
       .limit(20),
     getQuickRepeatCandidates(supabase, userId, { limit: 3 }),
     getLimitationTodaySummary(),
+    getPendingProgramRecommendations(supabase, userId),
   ]);
 
   const activeLimitations: ActiveLimitationSummary[] = (
@@ -759,6 +763,7 @@ export default async function TodayPage() {
               formatProfile={formatProfile}
               overdueCount={overdueSummary.count}
               regionSpikes={regionSpikes}
+              programRecs={programRecs}
               aiAccess={aiAccess}
             />
 
@@ -980,6 +985,7 @@ function TodaySessionCard({
   formatProfile,
   overdueCount,
   regionSpikes,
+  programRecs,
   aiAccess,
 }: {
   openSession: { id: string; title: string | null } | null;
@@ -1005,6 +1011,7 @@ function TodaySessionCard({
   formatProfile: ProfileForFormat;
   overdueCount: number;
   regionSpikes: ReadonlyArray<RegionSpike>;
+  programRecs: PendingProgramRecommendation[];
   aiAccess: boolean;
 }) {
   // Secondary, non-blocking notice rendered above the day's primary
@@ -1018,11 +1025,17 @@ function TodaySessionCard({
   // overdue notice and above the day's primary card. Does not gate
   // any prescription or planner action — purely informational.
   const spikeBanner = <RegionSpikeBanner spikes={regionSpikes} />;
+  // Platform programs: program-owned nudges (retest maxes, next block, 7th-week
+  // verdict). Informational; dismiss-only. No-op for archetype blocks.
+  const programRecsBanner = (
+    <ProgramRecommendationsBanner recommendations={programRecs} dismissAction={dismissProgramRecommendation} />
+  );
   if (openSession) {
     return (
       <>
         {overdueNotice}
         {spikeBanner}
+        {programRecsBanner}
         <section className="cp-card" style={{ padding: 20, display: "grid", gap: 12 }}>
           <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
             Resume today&apos;s workout
@@ -1047,6 +1060,7 @@ function TodaySessionCard({
       <>
         {overdueNotice}
         {spikeBanner}
+        {programRecsBanner}
         <section
           className="cp-card"
           data-testid="today-logged"
@@ -1079,6 +1093,7 @@ function TodaySessionCard({
       <>
         {overdueNotice}
         {spikeBanner}
+        {programRecsBanner}
         <section
           data-testid="today-rest"
           style={{
@@ -1255,6 +1270,7 @@ function TodaySessionCard({
     <div style={{ display: "grid", gap: 10 }}>
       {overdueNotice}
       {spikeBanner}
+      {programRecsBanner}
       {isTwoADay && (
         <div
           role="note"

@@ -227,3 +227,32 @@ export async function createProgramInstance(
 
   return { ok: true, blockId, programInstanceId: pi.id as string, skipped: write.skipped.length };
 }
+
+/**
+ * Dismiss a pending program recommendation (the Today banner's "Got it"). RLS
+ * scopes the update to the signed-in user; the explicit user_id match is
+ * belt-and-suspenders.
+ */
+export async function dismissProgramRecommendation(
+  id: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = z.string().uuid().safeParse(id);
+  if (!parsed.success) return { ok: false, error: "Invalid id" };
+
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("program_recommendations")
+    .update({ status: "dismissed", resolved_at: new Date().toISOString() })
+    .eq("id", parsed.data)
+    .eq("user_id", user.id)
+    .eq("status", "pending");
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/app");
+  return { ok: true };
+}
