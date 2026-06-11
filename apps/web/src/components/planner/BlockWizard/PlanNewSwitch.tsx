@@ -242,18 +242,9 @@ export function PlanNewSwitch({
       {suggestionCard}
       {!hideBuildCta && (
         <section style={{ display: "grid", gap: 8 }}>
-          <button
-            type="button"
-            onClick={() => {
-              setError(null);
-              setWizardPrefill(null);
-              setMode("wizard");
-            }}
-            className="pn-cta"
-            style={bigCtaStyle}
-          >
-            Build a new block →
-          </button>
+          <Link href="/app/program" className="pn-cta" style={{ ...bigCtaStyle, textDecoration: "none", display: "block" }}>
+            Start a program →
+          </Link>
           <Link
             href="/app/plan/new/custom"
             style={{
