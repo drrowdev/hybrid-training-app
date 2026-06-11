@@ -46,15 +46,13 @@ import type {
   NativeMaterializeResult,
 } from "@/lib/platform/native-engine";
 
-/** The 6 archetype goal presets, in wizard display order. */
-const HYBRID_ARCHETYPE_IDS = [
-  "strength_anchor",
-  "endurance_anchor",
-  "rebuild",
-  "hypertrophy_anchor",
-  "concurrent_hybrid",
-  "maintenance",
-] as const satisfies readonly ArchetypeId[];
+/**
+ * Hybrid is a single, fixed generator: a personalised BALANCED strength + cardio
+ * plan. It always runs the balanced concurrent engine — there is deliberately NO
+ * goal-preset / archetype picker (the legacy six archetypes are not surfaced).
+ * The user personalises only the simple knobs in `describeHybridSetup`.
+ */
+const HYBRID_ARCHETYPE: ArchetypeId = "concurrent_hybrid";
 
 /**
  * The Hybrid program instance. It is EXACTLY the
@@ -73,32 +71,17 @@ export const hybridMeta: ProgramMeta = {
 };
 
 /**
- * The wizard fields Hybrid collects. These mirror `createBlockSchema`'s
- * non-FormData fields (the authoritative validation still runs in `setup` via
- * the shared `parseCreateBlockInput`).
+ * Hybrid's UNIQUE setup input (wizard step 2 "Loadout"). Hybrid has no template
+ * "flavour" to choose like 5/3/1 or TB, so the Loadout step collects its only
+ * personalisation: focus muscles (optionally bias accessory volume toward up to
+ * two groups). The COMMON inputs — training days/week + start date — are owned by
+ * the shared wizard Schedule step (the weekday picker) and must NOT be re-collected
+ * here. `daysPerWeek` is supplied to `setup` by the deploy path from the chosen
+ * weekdays.
  */
 export function describeHybridSetup(): SetupSchema {
   return {
     fields: [
-      {
-        key: "archetypeId",
-        label: "Goal preset",
-        type: "select",
-        required: true,
-        options: HYBRID_ARCHETYPE_IDS.map((id) => ({
-          value: id,
-          label: ARCHETYPES[id].name,
-        })),
-        help: "The training emphasis to build your block around.",
-      },
-      {
-        key: "daysPerWeek",
-        label: "Training days per week",
-        type: "number",
-        required: true,
-        defaultValue: 4,
-        help: "How many days a week you can train (1–7).",
-      },
       {
         key: "focusMuscles",
         label: "Focus muscles",
@@ -109,40 +92,6 @@ export function describeHybridSetup(): SetupSchema {
           label: FOCUS_MUSCLE_LABEL[m],
         })),
         help: "Optionally bias accessory volume toward up to two muscle groups.",
-      },
-      {
-        key: "secondaryFocus",
-        label: "Secondary focus",
-        type: "select",
-        options: [
-          { value: "strength", label: "Strength" },
-          { value: "muscle", label: "Muscle" },
-          { value: "cardio", label: "Cardio" },
-          { value: "resilience", label: "Resilience" },
-          { value: "maintenance", label: "Maintenance" },
-          { value: "skip", label: "Skip" },
-          { value: "none", label: "None" },
-        ],
-        help: "An optional secondary channel that tilts accessory volume.",
-      },
-      {
-        key: "accessoryVolume",
-        label: "Accessory volume",
-        type: "select",
-        defaultValue: "medium",
-        options: [
-          { value: "low", label: "Low" },
-          { value: "medium", label: "Medium" },
-          { value: "high", label: "High" },
-        ],
-        help: "Per-block accessory volume level.",
-      },
-      {
-        key: "powerEmphasis",
-        label: "Add power emphasis",
-        type: "boolean",
-        defaultValue: false,
-        help: "Bias the main-lift waves toward explosive/power work.",
       },
     ],
   };
@@ -160,12 +109,13 @@ export function toContextInput(instance: HybridInstance): BuildBlockAssemblyCont
 /**
  * Validate + normalise the wizard values into a {@link HybridInstance}.
  *
- * The wizard collects values under hybrid-native keys (`archetypeId`, a parsed
- * `focusMuscles` array, an optional `dayIndexOverrides` object OR JSON string).
- * To guarantee BYTE-IDENTICAL field normalisation with `createBlock`, we adapt
- * those values into the `createBlock` raw shape and run the SHARED
- * `parseCreateBlockInput` — so `createBlockSchema` is literally Hybrid's
- * validation schema. Throws on invalid input (the platform catches).
+ * Hybrid hardwires the balanced concurrent engine (`concurrent_hybrid`) — there
+ * is no goal-preset choice. Its only unique input is `focusMuscles` (wizard step
+ * 2). `daysPerWeek` is injected by the deploy path from the chosen weekdays
+ * (wizard step 4, the shared Schedule step) — it is NOT a Hybrid setup field.
+ * We adapt the values into the `createBlock` raw shape and run the SHARED
+ * `parseCreateBlockInput` so `createBlockSchema` is literally Hybrid's validation
+ * schema. Throws on invalid input (the platform catches).
  */
 export function setupHybrid(
   input: ProgramSetupInput,
@@ -185,17 +135,11 @@ export function setupHybrid(
   }
 
   const parsed = parseCreateBlockInput({
-    archetype: v.archetypeId,
+    archetype: HYBRID_ARCHETYPE,
     startedOn: v.startedOn,
     daysPerWeek: v.daysPerWeek,
     dayIndexOverrides,
-    powerEmphasis: v.powerEmphasis,
-    cardioSource: v.cardioSource,
-    cardioSourceName: v.cardioSourceName,
     focusMuscles: v.focusMuscles,
-    goal: v.goal,
-    secondaryFocus: v.secondaryFocus,
-    accessoryVolume: v.accessoryVolume,
   });
 
   if (!parsed.ok) {
