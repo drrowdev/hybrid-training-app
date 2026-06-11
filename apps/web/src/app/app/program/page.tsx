@@ -18,10 +18,14 @@ import { TB_TEMPLATES } from "@hta/tacticalbarbell";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { selectablePrograms, getProgramEngine, getNativeProgramEngine } from "@/lib/platform/registry";
 import { buildPlatformContext } from "@/lib/platform/context";
+import { getTrainingMaxContext } from "@/lib/training-maxes/queries";
+import { STRENGTH_ROLE_CANDIDATES, type StrengthRole } from "@/lib/planner/archetypes";
+import { ENGINE_KEY_TO_ROLE } from "@/lib/platform/movement-keys";
 import {
   ProgramPicker,
   type PickerProgram,
   type PickerTbTemplate,
+  type PickerBenchRole,
 } from "@/components/program/ProgramPicker";
 
 // Sage program-wizard type scale — scoped to this route via CSS variables on
@@ -81,6 +85,12 @@ export default async function ProgramPickerPage() {
 
   const { anchoredKeys } = await buildPlatformContext(supabase, user.id);
 
+  // Benchmark catalogue for the picker's "Benchmarks" step: each main-lift role
+  // (squat / horizontal_press / deadlift / vertical_press) with its selectable
+  // movement variants (resolved to catalog movement ids so the picker can write
+  // 1-rep maxes on deploy) plus the user's currently-anchored variant + 1RM.
+  const benchRoles: PickerBenchRole[] = await buildBenchRoles(supabase);
+
   const programs: PickerProgram[] = selectablePrograms().map((meta) => {
     // A program is owned by EITHER a foreign per-session engine or a native
     // (block-level) engine — both expose `describeSetup()`. Native programs are
@@ -129,7 +139,82 @@ export default async function ProgramPickerPage() {
 
   return (
     <div className={`${archivo.variable} ${oswald.variable} ${saira.variable} ${jetbrains.variable}`}>
-      <ProgramPicker programs={programs} anchoredKeys={anchoredKeys} tbTemplates={tbTemplates} />
+      <ProgramPicker
+        programs={programs}
+        anchoredKeys={anchoredKeys}
+        tbTemplates={tbTemplates}
+        benchRoles={benchRoles}
+      />
     </div>
   );
+}
+
+/** Engine main-lift keys, in display order (squat → bench → deadlift → press). */
+const BENCH_ENGINE_KEYS = ["squat", "bench", "deadlift", "press"] as const;
+
+/**
+ * Resolve every main-lift role to its catalog movement variants and the user's
+ * current anchored variant + 1RM. Catalog movements are the shared (user_id NULL)
+ * rows; variant ids let the picker persist entered 1-rep maxes via
+ * `upsertTrainingMax` on deploy.
+ */
+async function buildBenchRoles(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<PickerBenchRole[]> {
+  const allSlugs = Array.from(
+    new Set(Object.values(STRENGTH_ROLE_CANDIDATES).flat()),
+  );
+  const { data: catalog } = await supabase
+    .from("movements")
+    .select("id, slug, display_name")
+    .is("user_id", null)
+    .in("slug", allSlugs);
+  const bySlug = new Map<string, { id: string; displayName: string }>();
+  for (const m of catalog ?? []) {
+    bySlug.set(m.slug as string, {
+      id: m.id as string,
+      displayName: (m.display_name as string) ?? (m.slug as string),
+    });
+  }
+
+  // The user's currently anchored 1RMs (slug-keyed), to pre-fill the inputs.
+  const tm = await getTrainingMaxContext();
+  const oneRmBySlug = new Map<string, number>();
+  for (const r of tm.rows) {
+    if (r.movementSlug) oneRmBySlug.set(r.movementSlug, r.oneRmKg);
+  }
+
+  const roles: PickerBenchRole[] = [];
+  for (const engineKey of BENCH_ENGINE_KEYS) {
+    const role = ENGINE_KEY_TO_ROLE[engineKey] as StrengthRole | undefined;
+    if (!role) continue;
+    const candidateSlugs = STRENGTH_ROLE_CANDIDATES[role] ?? [];
+    const variants = candidateSlugs
+      .map((slug) => {
+        const hit = bySlug.get(slug);
+        return hit ? { slug, label: hit.displayName, movementId: hit.id } : null;
+      })
+      .filter((v): v is { slug: string; label: string; movementId: string } => v !== null);
+    if (variants.length === 0) continue;
+
+    let currentSlug: string | null = null;
+    let currentOneRmKg: number | null = null;
+    for (const v of variants) {
+      const rm = oneRmBySlug.get(v.slug);
+      if (rm != null && rm > 0) {
+        currentSlug = v.slug;
+        currentOneRmKg = rm;
+        break;
+      }
+    }
+
+    roles.push({
+      engineKey,
+      role,
+      variants,
+      ...(currentSlug ? { currentSlug } : {}),
+      ...(currentOneRmKg != null ? { currentOneRmKg } : {}),
+    });
+  }
+  return roles;
 }

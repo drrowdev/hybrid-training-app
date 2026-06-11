@@ -9,6 +9,10 @@ vi.mock("@/lib/platform/actions", () => ({
   createProgramInstance: vi.fn(),
 }));
 
+vi.mock("@/lib/training-maxes/actions", () => ({
+  upsertTrainingMax: vi.fn(),
+}));
+
 import {
   ProgramPicker,
   defaultClusterFor,

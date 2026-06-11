@@ -227,10 +227,11 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     await page.getByTestId("program-card-tactical-barbell").click();
 
     // Loadout step: switch the template to Zulu (split A/B, 4 sessions/week). The
-    // picker resets the cluster to Zulu's default split and the weekday count to 4.
+    // picker resets the cluster to Zulu's default split and the weekly grid to 4
+    // strength days.
     const next = page.getByRole("button", { name: "Continue" });
     await next.click(); // Program → Loadout
-    await page.locator("select").first().selectOption("zulu");
+    await page.getByTestId("loadout-opt-zulu").click();
     await next.click(); // Loadout → Benchmarks
     await next.click(); // Benchmarks → Schedule
 
