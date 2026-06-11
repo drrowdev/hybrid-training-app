@@ -49,6 +49,11 @@ function fakeSupabase(canned: Canned, rec: Recorded) {
       rec.inserts.push({ table, rows });
       return chain();
     };
+    b.upsert = (rows: unknown) => {
+      mode = "insert";
+      rec.inserts.push({ table, rows });
+      return chain();
+    };
     b.update = (values: unknown) => {
       mode = "update";
       rec.updates.push({ table, values });

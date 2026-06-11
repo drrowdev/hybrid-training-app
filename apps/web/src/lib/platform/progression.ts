@@ -146,7 +146,11 @@ export async function applyProgramProgression(args: {
       status: "pending",
     }));
   if (rows.length > 0) {
-    await supabase.from("program_recommendations").insert(rows);
+    // Idempotent: the unique (user_id, block_id, kind) index (migration 0105)
+    // makes a concurrent re-completion a no-op rather than a duplicate insert.
+    await supabase
+      .from("program_recommendations")
+      .upsert(rows, { onConflict: "user_id,block_id,kind", ignoreDuplicates: true });
   }
 }
 

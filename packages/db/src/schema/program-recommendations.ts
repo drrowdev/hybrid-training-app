@@ -9,7 +9,7 @@
  * through `tm_suggestions`.
  */
 import { sql } from "drizzle-orm";
-import { jsonb, pgTable, text, timestamp, uuid, index } from "drizzle-orm/pg-core";
+import { jsonb, pgTable, text, timestamp, uuid, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { programInstances } from "./program-instances";
 import { trainingBlocks } from "./planner";
@@ -46,6 +46,13 @@ export const programRecommendations = pgTable(
       t.userId,
       t.status,
       t.createdAt,
+    ),
+    // Idempotency guard (migration 0105) — one recommendation of each kind per
+    // block; makes the completion hook's upsert a safe no-op under races.
+    userBlockKindUnique: uniqueIndex("program_recommendations_user_block_kind_unique").on(
+      t.userId,
+      t.blockId,
+      t.kind,
     ),
   }),
 );
