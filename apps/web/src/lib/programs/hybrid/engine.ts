@@ -102,7 +102,8 @@ export function describeHybridSetup(): SetupSchema {
       {
         key: "focusMuscles",
         label: "Focus muscles",
-        type: "select",
+        type: "multi-select",
+        maxSelections: 2,
         options: FOCUS_MUSCLE_ALLOWLIST.map((m) => ({
           value: m,
           label: FOCUS_MUSCLE_LABEL[m],

@@ -89,14 +89,22 @@ export interface ProgramMeta {
 }
 
 /** A field the setup wizard must collect for a program. */
-export type SetupFieldType = "training-max" | "number" | "select" | "boolean" | "days";
+export type SetupFieldType =
+  | "training-max"
+  | "number"
+  | "select"
+  | "multi-select"
+  | "boolean"
+  | "days";
 
 export interface SetupField {
   key: string;
   label: string;
   type: SetupFieldType;
-  /** For `select` fields. */
+  /** For `select` / `multi-select` fields. */
   options?: { value: string; label: string }[];
+  /** For `multi-select` fields: the maximum number of options the user may pick. */
+  maxSelections?: number;
   /** Default value used to seed the control. */
   defaultValue?: unknown;
   help?: string;
