@@ -13,6 +13,7 @@ export const STATIC_PAGES: PaletteItem[] = [
   { id: "page-plan", kind: "page", title: "Plan", subtitle: "Calendar / Timeline / List", href: "/app/plan", icon: "▦" },
   { id: "page-plan-history", kind: "page", title: "Plan — History", subtitle: "Past + archived blocks", href: "/app/plan/history", icon: "▦" },
   { id: "page-plan-new", kind: "page", title: "Plan — New block", subtitle: "Run the block wizard", href: "/app/plan/new", icon: "＋" },
+  { id: "page-program", kind: "page", title: "Start a program", subtitle: "Pick a program (5/3/1, …) and deploy", href: "/app/program", icon: "＋" },
   { id: "page-sessions", kind: "page", title: "Sessions", subtitle: "Logged sessions", href: "/app/sessions", icon: "▮" },
   { id: "page-sessions-new", kind: "page", title: "Sessions — New", subtitle: "Log a freestyle session", href: "/app/sessions/new", icon: "＋" },
   { id: "page-stats", kind: "page", title: "Stats — Overview", subtitle: "Cross-system summary", href: "/app/stats", icon: "▲" },
