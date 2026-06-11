@@ -1,0 +1,120 @@
+import { test, expect } from "./fixtures/seed";
+import { signInAs } from "./fixtures/auth";
+import { markOnboarded } from "./fixtures/seed-blocks";
+
+/**
+ * Platform program picker — end-to-end deploy of 5/3/1 (cutover validation).
+ *
+ * Proves the platform loop works against a real user: seed the four canonical
+ * strength 1RMs, sign in, open /app/program, deploy 5/3/1, and verify the
+ * deploy actually wrote a platform block (archetype NULL, program_id set) with
+ * materialised planned_sessions and an active program_instance — then confirm
+ * the user is routed to Today.
+ *
+ * Slugs chosen so each anchors a 5/3/1 engine key via its StrengthRole
+ * (squat / horizontal_press / deadlift / vertical_press → squat/bench/deadlift/press).
+ */
+
+const STRENGTH_TMS: { slug: string; oneRmKg: number }[] = [
+  { slug: "back-squat-high-bar", oneRmKg: 165 },
+  { slug: "bench-press-flat", oneRmKg: 118 },
+  { slug: "conventional-deadlift", oneRmKg: 212 },
+  { slug: "ohp-standing", oneRmKg: 71 },
+];
+
+test.describe("@desktop /app/program · deploy 5/3/1", () => {
+  test.skip(({ browserName }) => browserName !== "chromium", "Chromium-only");
+
+  test("picker deploys a 5/3/1 platform block end-to-end", async ({
+    page,
+    context,
+    freshUser,
+    seedConfig,
+    admin,
+    baseURL,
+  }) => {
+    await markOnboarded(admin, freshUser.userId);
+
+    // Seed the four canonical strength 1RMs so the engine can prescribe.
+    for (const tm of STRENGTH_TMS) {
+      const { data: mv } = await admin
+        .from("movements")
+        .select("id")
+        .eq("slug", tm.slug)
+        .is("user_id", null)
+        .maybeSingle();
+      expect(mv, `catalog must have ${tm.slug}`).toBeTruthy();
+      const { error } = await admin.from("training_maxes").upsert(
+        {
+          user_id: freshUser.userId,
+          movement_id: mv!.id,
+          one_rm_kg: tm.oneRmKg,
+          source: "entered",
+        },
+        { onConflict: "user_id,movement_id" },
+      );
+      expect(error).toBeNull();
+    }
+
+    await signInAs(context, freshUser, seedConfig, baseURL ?? "http://localhost:3000");
+    await page.goto("/app/program");
+    await page.waitForLoadState("networkidle");
+
+    // The 5/3/1 program card should be present + enabled.
+    await expect(page.getByRole("heading", { name: "Start a program" })).toBeVisible();
+    await page.getByRole("button", { name: /5\/3\/1/ }).click();
+
+    // Deploy.
+    const deploy = page.getByRole("button", { name: /Deploy program/ });
+    await expect(deploy).toBeEnabled();
+    await deploy.click();
+
+    // On success the picker routes to Today.
+    await page.waitForURL("**/app", { timeout: 15_000 });
+
+    // Verify the write landed: an active platform block for this user.
+    const { data: block, error: blockErr } = await admin
+      .from("training_blocks")
+      .select("id, archetype, program_id, program_family, status, weeks")
+      .eq("user_id", freshUser.userId)
+      .eq("status", "active")
+      .maybeSingle();
+    expect(blockErr).toBeNull();
+    expect(block, "an active block must exist").toBeTruthy();
+    expect(block!.archetype).toBeNull();
+    expect(block!.program_id).toBe("wendler-531");
+    expect(block!.program_family).toBe("531");
+    expect(block!.weeks).toBe(11);
+
+    // Materialised planned_sessions exist for the block.
+    const { count: psCount } = await admin
+      .from("planned_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("block_id", block!.id);
+    expect(psCount, "planned_sessions materialised").toBe(44);
+
+    // An active program_instance links to the block.
+    const { data: pi } = await admin
+      .from("program_instances")
+      .select("id, program_id, status, block_id")
+      .eq("user_id", freshUser.userId)
+      .eq("status", "active")
+      .maybeSingle();
+    expect(pi, "active program_instance must exist").toBeTruthy();
+    expect(pi!.program_id).toBe("wendler-531");
+    expect(pi!.block_id).toBe(block!.id);
+
+    // tm_percent seeded on training_maxes (Option A alignment) — ~85% of 1RM.
+    const { data: tmRows } = await admin
+      .from("training_maxes")
+      .select("tm_percent")
+      .eq("user_id", freshUser.userId)
+      .not("tm_percent", "is", null);
+    expect(tmRows && tmRows.length).toBeGreaterThan(0);
+    for (const r of tmRows!) {
+      const pct = Number(r.tm_percent);
+      expect(pct).toBeGreaterThan(80);
+      expect(pct).toBeLessThan(90);
+    }
+  });
+});
