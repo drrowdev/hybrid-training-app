@@ -10,11 +10,11 @@ import { signInAs } from "./fixtures/auth";
  *   - the wizard renders without horizontal scroll at 375px wide
  *
  * SKIPPED for first-pass: the wizard's per-step selectors (Step 2
- * units radio, Step 3 "I don't know yet" repeated button, Step 4
- * inline BlockWizard, Step 5 confirmation) need a direct read of the
- * current onboarding component tree to be reliable — and several of
- * those steps don't yet expose stable accessible names. Tracked as a
- * follow-up alongside the onboarding selector audit.
+ * units radio, Step 3 "I don't know yet" repeated button, Training
+ * maxes inputs) need a direct read of the current onboarding
+ * component tree to be reliable — and several of those steps don't yet
+ * expose stable accessible names. Tracked as a follow-up alongside the
+ * onboarding selector audit.
  *
  * The skipped block below documents the intended shape so the follow-up
  * can drop the skip and fill in the real selectors. Auth is already
@@ -43,12 +43,12 @@ test.describe("@mobile onboarding", () => {
     expect(docWidth).toBeLessThanOrEqual(375);
   });
 
-  // TODO(follow-up): walk all 5 onboarding steps and assert landing on
-  // /app. Blocked on stable accessible names for: Step 2 units toggle,
-  // Step 3 "I don't know yet" per-lift buttons, Step 4 BlockWizard
-  // (which doesn't yet expose its inline-mode buttons by role+name in
-  // a way Playwright can disambiguate from the outer wizard chrome).
-  // Add a dedicated `data-testid` pass before unblocking.
+  // TODO(follow-up): walk all onboarding steps and assert landing on
+  // /app/program. Blocked on stable accessible names for: Step 2 units
+  // toggle, Step 3 "I don't know yet" per-lift buttons, and the
+  // bodyweight-assessment sub-pages. Onboarding no longer creates a
+  // block — the final "Start training" step hands off to the platform
+  // program picker. Add a dedicated `data-testid` pass before unblocking.
   test.skip("fresh user completes onboarding on mobile viewport", async () => {
     // intentionally empty — see TODO above
   });

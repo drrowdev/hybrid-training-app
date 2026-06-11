@@ -6,12 +6,11 @@ import { STEPS } from "../OnboardingWizard";
  *
  * The order matters because:
  *  - Profile (identity) → Equipment (environment) → Training maxes
- *    (skill-specific numbers) → Build your block (synthesis) →
- *    Connect Strava (optional value-add) → Confirm.
- *  - The block builder downstream consumes both the equipment and the
- *    TMs collected here; reshuffling these steps would mean the picker
- *    runs without equipment context or the BlockWizard runs without
- *    TM readiness signals.
+ *    (skill-specific numbers) → Connect Strava (optional value-add) →
+ *    Start training (hand-off to the platform program picker).
+ *  - Onboarding no longer builds a block; the final step marks
+ *    onboarding complete and routes the user to /app/program to pick
+ *    their first program (ADR 0046 Phase 2 — clean handoff to picker).
  *  - Connect Strava sits second-to-last so the user has already
  *    invested time before being asked to OAuth out to a third party;
  *    earlier placement risks dropoff when the Strava credentials
@@ -24,9 +23,8 @@ describe("OnboardingWizard step machine", () => {
       "Profile",
       "Equipment",
       "Training maxes",
-      "Build your block",
       "Connect Strava",
-      "Confirm",
+      "Start training",
     ]);
   });
 
@@ -39,15 +37,16 @@ describe("OnboardingWizard step machine", () => {
     expect(tms).toBe(equipment + 1);
   });
 
-  it("places Equipment before block creation", () => {
-    expect(STEPS.indexOf("Equipment")).toBeLessThan(STEPS.indexOf("Build your block"));
+  it("no longer includes the retired block-building steps", () => {
+    expect(STEPS).not.toContain("Build your block");
+    expect(STEPS).not.toContain("Confirm");
   });
 
-  it("places Connect Strava immediately before Confirm", () => {
+  it("places Connect Strava immediately before the final Start training step", () => {
     const strava = STEPS.indexOf("Connect Strava");
-    const confirm = STEPS.indexOf("Confirm");
-    const build = STEPS.indexOf("Build your block");
-    expect(strava).toBe(build + 1);
-    expect(confirm).toBe(strava + 1);
+    const start = STEPS.indexOf("Start training");
+    expect(strava).toBe(STEPS.length - 2);
+    expect(start).toBe(strava + 1);
+    expect(start).toBe(STEPS.length - 1);
   });
 });

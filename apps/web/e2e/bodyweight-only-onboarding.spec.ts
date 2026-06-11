@@ -2,22 +2,24 @@ import { test, expect } from "./fixtures/seed";
 import { signInAs } from "./fixtures/auth";
 
 /**
- * Onboarding wizard — Bodyweight-only path (feat/bodyweight-only-path).
+ * Onboarding wizard — Bodyweight-only path.
  *
- * Verifies:
- *  - The fifth equipment preset card ("Bodyweight only") renders in the
+ * Verifies (ADR 0046 Phase 2 — clean handoff to picker):
+ *  - The "Bodyweight only" equipment preset card renders in the
  *    onboarding equipment step.
- *  - Selecting it skips the Training Maxes step entirely on Continue —
- *    the wizard lands directly on "Build your first block".
- *  - After completing onboarding the Today page surfaces the soft
- *    "Bodyweight programming is in early support" banner.
- *  - The /app/plan page renders an active block whose prescription
- *    contains no `kind === "main"` items (accessory-only).
+ *  - Selecting it swaps the Training Maxes step for the bodyweight
+ *    assessment (no "your main-lift maxes" copy) — the bw-routing
+ *    intent is preserved.
+ *  - Onboarding no longer creates a block. After the bodyweight
+ *    assessment + Connect Strava, the final "Start training" step
+ *    marks onboarding complete and hands the user off to the platform
+ *    program picker at /app/program — with NO training_blocks row
+ *    created during onboarding.
  */
 test.describe("@desktop onboarding · bodyweight-only path", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "Chromium-only");
 
-  test("fresh user with Bodyweight-only preset skips TM step and lands on accessory-only block", async ({
+  test("fresh user with Bodyweight-only preset reaches the program picker without a block", async ({
     page,
     context,
     freshUser,
@@ -32,18 +34,18 @@ test.describe("@desktop onboarding · bodyweight-only path", () => {
 
     // Welcome → Profile.
     await page.getByRole("button", { name: /continue|next/i }).first().click();
-    await page.getByTestId("onboarding-experience-1_3y").click();
+    await page.getByTestId("onboarding-experience-novice_6m_2y").click();
     await page.getByRole("button", { name: /continue|next/i }).first().click();
 
-    // The fifth preset card is visible.
+    // The Bodyweight-only preset card is visible.
     const bw = page.getByTestId("onboarding-equipment-preset-bodyweight_only");
     await expect(bw).toBeVisible();
     await bw.click();
     await expect(bw).toHaveAttribute("data-selected", "true");
 
-    // Continue → should JUMP straight to the Build step (no TM step).
+    // Continue → bodyweight assessment renders in place of the TM step.
     await page.getByRole("button", { name: /continue|next/i }).first().click();
-    await expect(page.getByText(/build your first block/i)).toBeVisible();
+    await expect(page.getByTestId("bw-assessment-step")).toBeVisible();
     await expect(page.getByText(/your main-lift maxes/i)).not.toBeVisible();
 
     // Persistence check: equipment row reflects bodyweight-only.
@@ -55,30 +57,39 @@ test.describe("@desktop onboarding · bodyweight-only path", () => {
     const eq = prof?.equipment as { preset?: string } | null;
     expect(eq?.preset).toBe("bodyweight_only");
 
-    // Block-creation: there should be no main-lift items in any planned
-    // session created by createBlock for this user.
+    // Walk the 3-page bodyweight assessment (rep tests → skill chips →
+    // hinge acknowledgement → submit). The same "next" button advances
+    // each page; the third click submits and fires onComplete.
+    await page.getByTestId("bw-assessment-next").click();
+    await page.getByTestId("bw-assessment-next").click();
+    await page.getByTestId("bw-assessment-next").click();
+
+    // Connect Strava → Start training (final step).
+    await expect(
+      page.getByRole("button", { name: /continue|next/i }).first(),
+    ).toBeVisible();
+    await page.getByRole("button", { name: /continue|next/i }).first().click();
+
+    // Final step: hand off to the platform program picker.
+    const choose = page.getByRole("button", { name: /choose your program/i });
+    await expect(choose).toBeVisible();
+    await choose.click();
+
+    // Lands on /app/program; onboarding is marked complete.
+    await expect(page).toHaveURL(/\/app\/program/);
+    const { data: done } = await admin
+      .from("profiles")
+      .select("onboarded_at")
+      .eq("id", freshUser.userId)
+      .maybeSingle();
+    expect(done?.onboarded_at).toBeTruthy();
+
+    // Onboarding must NOT have created a block — that now happens only
+    // when the user deploys a program from /app/program.
     const { data: blocks } = await admin
       .from("training_blocks")
-      .select("id, notes")
-      .eq("user_id", freshUser.userId)
-      .eq("status", "active");
-    if (blocks && blocks.length > 0) {
-      const blockIds = blocks.map((b) => b.id);
-      const { data: planned } = await admin
-        .from("planned_sessions")
-        .select("prescription")
-        .in("block_id", blockIds);
-      for (const row of planned ?? []) {
-        const items = (row.prescription as { items?: Array<{ kind: string }> })
-          ?.items ?? [];
-        const mains = items.filter((it) => it.kind === "main");
-        expect(mains.length).toBe(0);
-      }
-    }
-
-    // Today page surfaces the bodyweight banner.
-    await page.goto("/app");
-    await page.waitForLoadState("networkidle");
-    await expect(page.getByTestId("bodyweight-only-banner")).toBeVisible();
+      .select("id")
+      .eq("user_id", freshUser.userId);
+    expect(blocks ?? []).toHaveLength(0);
   });
 });
