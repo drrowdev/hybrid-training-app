@@ -13,6 +13,7 @@ import {
   ProgramPicker,
   defaultClusterFor,
   validateClusterClient,
+  toggleMultiSelect,
   type PickerProgram,
   type PickerTbTemplate,
 } from "./ProgramPicker";
@@ -56,6 +57,27 @@ const ZULU: PickerTbTemplate = {
     { movement: "deadlift", split: "B" },
   ],
 };
+
+describe("toggleMultiSelect", () => {
+  it("adds a value when absent", () => {
+    expect(toggleMultiSelect([], "biceps", 2)).toEqual(["biceps"]);
+    expect(toggleMultiSelect(["biceps"], "triceps", 2)).toEqual(["biceps", "triceps"]);
+  });
+
+  it("removes a value when already selected (order preserved)", () => {
+    expect(toggleMultiSelect(["biceps", "triceps"], "biceps", 2)).toEqual(["triceps"]);
+  });
+
+  it("refuses to add beyond max but still allows removal", () => {
+    expect(toggleMultiSelect(["biceps", "triceps"], "calves", 2)).toEqual(["biceps", "triceps"]);
+    // removing an existing one is always allowed even at the cap
+    expect(toggleMultiSelect(["biceps", "triceps"], "triceps", 2)).toEqual(["biceps"]);
+  });
+
+  it("treats max as unbounded when omitted", () => {
+    expect(toggleMultiSelect(["a", "b", "c"], "d")).toEqual(["a", "b", "c", "d"]);
+  });
+});
 
 describe("validateClusterClient", () => {
   it("accepts the Operator default 3-lift cluster", () => {

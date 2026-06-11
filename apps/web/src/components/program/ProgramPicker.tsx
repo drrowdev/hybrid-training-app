@@ -16,8 +16,10 @@ import { createProgramInstance, type CreateProgramInstanceResult } from "@/lib/p
 export interface PickerField {
   key: string;
   label: string;
-  type: "training-max" | "number" | "select" | "boolean" | "days";
+  type: "training-max" | "number" | "select" | "multi-select" | "boolean" | "days";
   options?: { value: string; label: string }[];
+  /** For `multi-select`: the maximum number of options the user may pick. */
+  maxSelections?: number;
   defaultValue?: unknown;
   help?: string;
 }
@@ -31,6 +33,9 @@ export interface PickerProgram {
   enabled: boolean;
   /** Program prescribes its own weekly calendar — hide the weekday chooser. */
   fixedSchedule?: boolean;
+  /** Goal-driven program (the engine builds the plan from the user's goals) —
+   *  the setup section is framed as "build for your goals" rather than a recipe config. */
+  goalDriven?: boolean;
   /** Training sessions per program-week under default setup → weekdays to pick. */
   sessionsPerWeek?: number;
   fields: PickerField[];
@@ -195,9 +200,25 @@ function defaultValuesFor(fields: PickerField[]): Record<string, unknown> {
     if (f.type === "boolean") out[f.key] = f.defaultValue ?? false;
     else if (f.type === "number") out[f.key] = f.defaultValue ?? 0;
     else if (f.type === "select") out[f.key] = f.defaultValue ?? f.options?.[0]?.value ?? "";
+    else if (f.type === "multi-select") out[f.key] = f.defaultValue ?? [];
     else out[f.key] = f.defaultValue ?? "";
   }
   return out;
+}
+
+/**
+ * Pure selection toggle for a `multi-select` field. Adds `value` if absent
+ * (unless `max` is already reached), removes it if present. Order-preserving.
+ * Exported for unit testing.
+ */
+export function toggleMultiSelect(
+  current: readonly string[],
+  value: string,
+  max?: number,
+): string[] {
+  if (current.includes(value)) return current.filter((v) => v !== value);
+  if (max != null && current.length >= max) return [...current];
+  return [...current, value];
 }
 
 function todayYmd(): string {
@@ -427,8 +448,14 @@ export function ProgramPicker({
         <>
           <section style={{ display: "grid", gap: 12 }}>
             <h2 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: "0.08em", margin: 0, color: "var(--cp-text-muted, #999)" }}>
-              Setup
+              {selected.goalDriven ? "Build for your goals" : "Setup"}
             </h2>
+            {selected.goalDriven ? (
+              <p style={{ fontSize: 12, color: "var(--cp-text-muted, #999)", margin: 0, lineHeight: 1.5, maxWidth: 420 }}>
+                Tell us what you&apos;re training for and we build a personalised concurrent
+                plan around it — the more you set, the more it&apos;s tailored to you.
+              </p>
+            ) : null}
             <div style={{ display: "grid", gap: 14, maxWidth: 420 }}>
               {selected.fields.map((f) => (
                 <SetupFieldControl key={f.key} field={f} value={values[f.key]} onChange={(v) => setField(f.key, v)} />
@@ -844,6 +871,49 @@ function SetupFieldControl({
           ))}
         </select>
       </label>
+    );
+  }
+  if (field.type === "multi-select") {
+    const selected: string[] = Array.isArray(value) ? (value as string[]) : [];
+    const max = field.maxSelections;
+    const atMax = max != null && selected.length >= max;
+    return (
+      <div style={{ display: "grid", gap: 6 }}>
+        {labelEl}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {(field.options ?? []).map((o) => {
+            const on = selected.includes(o.value);
+            const disabled = !on && atMax;
+            return (
+              <button
+                key={o.value}
+                type="button"
+                aria-pressed={on}
+                disabled={disabled}
+                onClick={() => onChange(toggleMultiSelect(selected, o.value, max))}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 999,
+                  cursor: disabled ? "not-allowed" : "pointer",
+                  background: on ? "var(--cp-accent, #6aa0ff)" : "transparent",
+                  color: on ? "#0b0c0e" : "inherit",
+                  border: `1px solid ${on ? "var(--cp-accent, #6aa0ff)" : "var(--cp-border, rgba(255,255,255,0.14))"}`,
+                  fontWeight: on ? 600 : 400,
+                  fontSize: 12,
+                  opacity: disabled ? 0.45 : 1,
+                }}
+              >
+                {o.label}
+              </button>
+            );
+          })}
+        </div>
+        {max != null ? (
+          <span style={{ fontSize: 11, color: "var(--cp-text-muted, #999)" }}>
+            {selected.length}/{max} selected
+          </span>
+        ) : null}
+      </div>
     );
   }
   if (field.type === "boolean") {
