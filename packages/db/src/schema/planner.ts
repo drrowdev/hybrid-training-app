@@ -360,6 +360,14 @@ export type Prescription = {
    * fallback); Phase 2 will offer to skip it if the user has since recovered.
    */
   earlyDeload?: boolean;
+  /**
+   * Platform cutover — the program engine's stable session ref (e.g.
+   * "leader1-w1-squat" / "b0-w1-s1") for sessions materialised from a
+   * `program_instances` engine. Lets the completion hook call the engine's
+   * `onSessionLogged(instance, { ref, … })` to advance program state + surface
+   * program-owned recommendations. Absent on archetype-generated sessions.
+   */
+  programRef?: string;
 };
 
 export const plannedSessions = pgTable(
