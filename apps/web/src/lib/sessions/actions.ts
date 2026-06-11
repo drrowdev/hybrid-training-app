@@ -922,6 +922,19 @@ export async function completeSessionResult(
       .maybeSingle();
     if (linked?.block_id) {
       await maybeCompleteBlock(supabase, linked.block_id as string);
+      // Platform programs: advance the engine instance + surface its
+      // program-owned recommendations. No-op for archetype blocks.
+      try {
+        const { applyProgramProgression } = await import("@/lib/platform/progression");
+        await applyProgramProgression({
+          supabase,
+          userId: user.id,
+          sessionId,
+          blockId: linked.block_id as string,
+        });
+      } catch (e) {
+        console.error("applyProgramProgression failed:", e);
+      }
     }
   } catch (e) {
     console.error("maybeCompleteBlock failed:", e);
