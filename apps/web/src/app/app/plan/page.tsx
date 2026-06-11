@@ -194,8 +194,8 @@ export default async function PlanPage({
           allowsTwoADays={allowsTwoADays}
           todayYmd={todayYmd(tz)}
           action={createBlock}
-          initialMode={firstTime ? "wizard" : "home"}
-          hideBuildCta={firstTime}
+          initialMode="home"
+          hideBuildCta={false}
           seedArchetype={seedArchetype}
           equipmentPreset={planEquipment.preset}
           serverDayPref={(prof?.wizard_day_pref ?? null) as WizardDayPrefValue | null}
