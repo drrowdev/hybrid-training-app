@@ -137,9 +137,28 @@ export async function saveOnboardingTms(formData: FormData): Promise<OnboardingR
   return { ok: true };
 }
 
-// ── Step 5: finish & create the first block ──────────────────────────────
+// ── Step 5: finish (clean handoff to the program picker) ─────────────────
 
 /**
+ * Mark onboarding complete WITHOUT creating a block. The user picks their
+ * first program from /app/program (the platform picker) right after.
+ */
+export async function finishOnboardingNoBlock(): Promise<OnboardingResult> {
+  const { supabase, user } = await requireUser();
+  const { error } = await supabase
+    .from("profiles")
+    .update({ onboarded_at: new Date().toISOString() })
+    .eq("id", user.id);
+  if (error) return { ok: false, error: `Onboarding save failed: ${error.message}` };
+  revalidatePath("/app");
+  return { ok: true };
+}
+
+// ── Retired: block creation is no longer coupled to onboarding ───────────
+
+/**
+ * RETIRED — kept temporarily but UNUSED in favour of
+ * `finishOnboardingNoBlock`; onboarding no longer creates the first block.
  * Mark onboarding complete and create the user's first block. Delegates
  * block creation to the canonical `createBlock` server action so all the
  * planner invariants (DC-* gates, RLS, archetype validation) apply.

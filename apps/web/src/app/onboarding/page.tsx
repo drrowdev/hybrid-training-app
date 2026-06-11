@@ -3,7 +3,7 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   saveOnboardingProfile,
   saveOnboardingTms,
-  finishOnboarding,
+  finishOnboardingNoBlock,
   skipOnboarding,
 } from "@/lib/onboarding/actions";
 import { submitBwAssessment } from "@/lib/onboarding/bw-assessment";
@@ -99,11 +99,8 @@ export default async function OnboardingPage({
   // When the OAuth callback bounces back here it appends
   // `?strava_connected=1`. Jump the wizard straight to the Strava
   // step so the import UI is the first thing the user sees on
-  // return — their block setup is preserved in the DB by prior
-  // steps, but the in-memory `wizardSubmit` is gone, so we still
-  // need to walk back through "Build your block" before Confirm.
-  // Landing on the Strava step keeps the UX continuous and avoids
-  // dumping the user back at Welcome.
+  // return, instead of dumping them back at Welcome. From there a
+  // single Continue lands them on the final "Start training" step.
   const justConnectedStrava = params.strava_connected === "1";
   const initialStep = justConnectedStrava ? STEPS.indexOf("Connect Strava") : undefined;
 
@@ -125,7 +122,7 @@ export default async function OnboardingPage({
       submitBwAssessmentAction={submitBwAssessment}
       connectStravaAction={connectStrava}
       importStravaHistoryAction={importStravaHistoryAction}
-      finishAction={finishOnboarding}
+      finishAction={finishOnboardingNoBlock}
       skipAction={skipOnboarding}
     />
   );
