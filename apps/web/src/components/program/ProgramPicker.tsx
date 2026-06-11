@@ -534,11 +534,13 @@ export function ProgramPicker({
   anchoredKeys,
   tbTemplates = [],
   benchRoles = [],
+  pullupMovement,
 }: {
   programs: PickerProgram[];
   anchoredKeys: string[];
   tbTemplates?: PickerTbTemplate[];
   benchRoles?: PickerBenchRole[];
+  pullupMovement?: { movementId: string; currentMaxReps?: number };
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -565,6 +567,10 @@ export function ProgramPicker({
   const [benchVals, setBenchVals] = useState<Record<string, { slug: string; valueStr: string }>>({});
   const [benchTouched, setBenchTouched] = useState<Set<string>>(new Set());
   const [estimate, setEstimate] = useState<{ key: string; weight: string; reps: string } | null>(null);
+  // Operator's optional bodyweight pull-up: max clean reps the engine prescribes off.
+  const [pullupReps, setPullupReps] = useState<string>(
+    pullupMovement?.currentMaxReps != null ? String(pullupMovement.currentMaxReps) : "10",
+  );
 
   const benchRoleByKey = useMemo(() => {
     const m = new Map<string, PickerBenchRole>();
@@ -667,6 +673,26 @@ export function ProgramPicker({
     } else {
       setCluster([...cluster, { movement: next }]);
     }
+  }
+
+  // Operator's optional bodyweight pull-up: a 4th lift exempt from the barbell
+  // cap, prescribed off max reps. Only offered when the template + a resolvable
+  // catalog movement both allow it.
+  const bodyweightEntry = cluster.find((c) => c.kind === "bodyweight");
+  const canAddBodyweight =
+    !!activeTbTemplate && !!activeTbTemplate.allowsBodyweightFourth && !!pullupMovement && !bodyweightEntry;
+  function addBodyweightLift() {
+    if (!canAddBodyweight) return;
+    const split =
+      activeTbTemplate!.structure === "split"
+        ? cluster.filter((c) => c.split === "A").length <= cluster.filter((c) => c.split === "B").length
+          ? "A"
+          : "B"
+        : undefined;
+    setCluster([...cluster, { movement: "pullup", kind: "bodyweight", ...(split ? { split } : {}) }]);
+  }
+  function setPullupRepsValue(v: string) {
+    setPullupReps(v);
   }
 
   // Which main-lift roles the Benchmarks step shows. Cluster programs (TB) show
@@ -833,6 +859,17 @@ export function ProgramPicker({
       if (!variant) continue;
       const kg = Math.round(displayToKg(n, unit) * 2) / 2;
       saves.push({ movementId: variant.movementId, oneRmKg: kg, label: movementLabel(key) });
+    }
+
+    // Operator's optional bodyweight pull-up: persist its max-reps as the pullup
+    // anchor (stored in the 1RM column; the engine reads bodyweight anchors as
+    // max reps). The anchor MUST exist for the engine to prescribe the lift, so
+    // we write it whenever the cluster carries a pull-up — not only when touched.
+    if (bodyweightEntry && pullupMovement) {
+      const reps = Math.round(Number(pullupReps));
+      if (Number.isFinite(reps) && reps > 0) {
+        saves.push({ movementId: pullupMovement.movementId, oneRmKg: reps, label: "Pull-ups" });
+      }
     }
 
     startTransition(async () => {
@@ -1266,6 +1303,51 @@ export function ProgramPicker({
     );
   }
 
+  function renderPullupRow() {
+    const split = bodyweightEntry?.split;
+    return (
+      <div className={styles.lift}>
+        <div className={styles.linfo}>
+          <div className={styles.ln}>
+            Pull-ups
+            <span className={styles.bwtag}>max reps</span>
+            {split ? (
+              <button
+                type="button"
+                className={styles.schip}
+                onClick={() => cycleClusterSplit("pullup")}
+                aria-label={`Pull-ups are in session ${split} \u2014 tap to switch`}
+              >
+                {split}
+              </button>
+            ) : null}
+          </div>
+        </div>
+        <div className={styles.right}>
+          <button
+            type="button"
+            className={styles.rm}
+            onClick={() => removeClusterLift("pullup")}
+            aria-label="Remove Pull-ups"
+            title="Remove"
+          >
+            {"\u2715"}
+          </button>
+          <span className={styles.inp}>
+            <input
+              type="number"
+              step="1"
+              value={pullupReps}
+              onChange={(e) => setPullupRepsValue(e.target.value)}
+              aria-label="Pull-up max reps"
+            />
+            <span className={styles.u}>reps</span>
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   function renderBenchmarksStep() {
     if (!selected) return null;
     const isCluster = !!activeTbTemplate;
@@ -1291,7 +1373,11 @@ export function ProgramPicker({
         ? "Your Training Max is set to 85% of each 1RM \u2014 the 5/3/1 standard. All working percentages run off that TM."
         : isCluster && activeTbTemplate!.structure === "split"
           ? "Tactical Barbell loads a submaximal % of your 1RM \u2014 no Training Max required (you can optionally load off a TM in settings). Each lift sits in an A or B session; you train each session twice a week. Tap the A/B chip to move a lift."
-          : "Tactical Barbell loads a submaximal % of your 1RM \u2014 no Training Max required (you can optionally load off a TM in settings). Switch a lift\u2019s variant from its dropdown.";
+          : `Tactical Barbell loads a submaximal % of your 1RM \u2014 no Training Max required (you can optionally load off a TM in settings).${
+              bodyweightEntry
+                ? " An optional bodyweight movement (e.g. pull-ups) doesn\u2019t count toward the cap and is prescribed as a % of your max reps, not a weight."
+                : " Switch a lift\u2019s variant from its dropdown."
+            }`;
 
     const lockHint =
       selected.id === "wendler-531"
@@ -1334,18 +1420,32 @@ export function ProgramPicker({
           </p>
         )}
 
-        <div className={styles.lifts}>{relevantBenchKeys.map((k) => renderBenchRow(k))}</div>
+        <div className={styles.lifts}>
+          {relevantBenchKeys.map((k) => renderBenchRow(k))}
+          {isCluster && bodyweightEntry ? renderPullupRow() : null}
+        </div>
 
-        {isCluster && clusterEditable && (
+        {isCluster && (clusterEditable || canAddBodyweight || bodyweightEntry) && (
           <div className={styles.addwrap}>
-            <button
-              type="button"
-              className={styles.addlift}
-              onClick={addClusterLift}
-              disabled={!canAddCluster}
-            >
-              {"\uFF0B Add lift"}
-            </button>
+            {clusterEditable && (
+              <button
+                type="button"
+                className={styles.addlift}
+                onClick={addClusterLift}
+                disabled={!canAddCluster}
+              >
+                {"\uFF0B Add lift"}
+              </button>
+            )}
+            {canAddBodyweight && (
+              <button
+                type="button"
+                className={`${styles.addlift} ${styles.addliftBw}`}
+                onClick={addBodyweightLift}
+              >
+                {"\uFF0B Optional bodyweight (pull-ups)"}
+              </button>
+            )}
           </div>
         )}
 
