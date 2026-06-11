@@ -73,13 +73,40 @@ Product positioning makes the program catalog a coherent two-mode story:
 The six archetypes become **goal presets / input values inside the Hybrid setup**,
 not separate picker cards.
 
+### Hybrid is the app's NATIVE engine (not adapter-routed)
+
+The platform has two prescription "languages": `@hta/program-core`'s lean
+`PrescribedItem` (sets / reps / %TM) — what the foreign methodologies (5/3/1, TB,
+GP) emit and which the adapter translates into the app's stored shape — and the
+app's own rich `PrescriptionItem` (`@hta/db`), which carries the fields the
+concurrent science actually lives in: `targetRir`/`targetRpe`, `tempoEccentricSec`,
+`holdSec`, `distanceM` (loaded carries), `intensityCue`, `bw` (bodyweight
+progressions), `isAmrap`, and the fine-grained tendon / power / cardio-zone kinds.
+program-core's lean shape **cannot carry these**, so routing Hybrid through the
+adapter would be lossy and break parity.
+
+Resolution (chosen over enriching program-core): **the adapter exists to translate
+FOREIGN methodologies into the app's language; Hybrid is not foreign — it is the
+app's native engine and emits the app's full `Prescription` directly**, reusing the
+existing `buildPrescription` pipeline. The materialize layer accepts either a
+program-core prescription (adapter path, foreign engines) or a native app
+prescription (Hybrid). program-core stays lean and free of persistence concepts; no
+speculative fields are added for methodologies that don't use them.
+
+(Note: GP cardio is currently flattened to "display-only" partly because the lean
+contract can't carry cardio zones — evidence that bloating program-core to fit the
+rich cases is the wrong direction. GP cardio fidelity is a separate follow-up.)
+
 ## Migration (phased; each phase is independently shippable + reversible)
 
 - **Phase 0 — Port the science first.** Build `@hta/hybrid` as a `ProgramEngine`
-  that wraps the existing concurrent engine, BEFORE deleting any archetype code.
-  Pin prescription parity with **golden tests** against the current archetype
-  output (same inputs → byte-identical `planned_sessions.prescription`) so the
-  science transfers intact, not approximately.
+  (app-level, in `apps/web/src/lib/` since it imports `lib/planner`) that wraps the
+  existing concurrent engine and emits the app's NATIVE `Prescription` directly
+  (not via the program-core adapter — see "Hybrid is the app's NATIVE engine"
+  above). Register it in the platform registry. Pin prescription parity with
+  **golden tests** against the current archetype output (same inputs → byte-identical
+  `planned_sessions.prescription`) so the science transfers intact, not
+  approximately.
 - **Phase 1 — Extract shared infrastructure.** Lift the genuinely reusable,
   program-agnostic pieces out of `lib/planner/` into a shared platform lib/package
   (movement catalog/resolution, TM/1RM math, plate rounding, cardio catalog, load
