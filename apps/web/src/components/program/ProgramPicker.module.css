@@ -34,7 +34,7 @@
   --cp-success: var(--accent);
   --cp-surface: var(--panel);
 
-  max-width: 880px;
+  max-width: 938px;
   margin: 0 auto;
   padding: 28px 28px 44px;
   border: 1px solid var(--line);
@@ -650,6 +650,14 @@
 .optSel {
   border-color: var(--sel);
   background: var(--panel2);
+}
+.optLocked {
+  cursor: default;
+  opacity: 0.55;
+  border-style: dashed;
+}
+.optLocked:hover {
+  border-color: var(--line2);
 }
 .optOn {
   font-family: var(--font-oswald), sans-serif;

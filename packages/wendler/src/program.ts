@@ -196,6 +196,7 @@ export const wendler531Engine: ProgramEngine<WendlerInstance> = {
           options: [
             { value: "5spro-fsl", label: "5's PRO + FSL (Leader → Anchor)" },
             { value: "bbb-leader", label: "Boring But Big (Leader → Anchor)" },
+            { value: "original-531-fsl", label: "5/3/1 + FSL (Leader → Anchor)" },
           ],
           defaultValue: "5spro-fsl",
           help: "Seeds the Leader's main scheme + supplemental; the Anchor runs classic 5/3/1 + FSL.",

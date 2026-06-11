@@ -225,6 +225,10 @@ const TEMPLATE_COPY: Record<string, Record<string, TemplateCopy>> = {
       desc: "5\u00D710 supplemental at 50\u201360%. High-volume hypertrophy on the main work.",
       long: "After your main 5/3/1 work, do 5 sets of 10 reps of the same lift at 50\u201360% of your Training Max. It\u2019s brutally simple and one of the most effective mass-builders in the program \u2014 the high rep volume drives hypertrophy while the main work keeps strength progressing. Best run when recovery and calories are good.",
     },
+    "original-531-fsl": {
+      desc: "Classic 5/3/1 main with AMRAP top sets plus a First-Set-Last back-off.",
+      long: "The original 5/3/1: each week the top set is taken for As-Many-Reps-As-Possible (stopping shy of failure), and those reps drive your estimated 1RM and Training-Max progression. FSL back-off sets add supplemental volume. More autoregulated and intense than 5\u2019s PRO \u2014 a good next step once you\u2019re comfortable with the system.",
+    },
   },
   [TB_PROGRAM_ID]: {
     operator: {
@@ -1057,6 +1061,17 @@ export function ProgramPicker({
             </button>
           );
         })}
+        {selected.id === "wendler-531" && (
+          <div className={`${styles.opt} ${styles.optLocked}`} aria-disabled="true">
+            <div className={styles.optOn}>
+              <span className={styles.optNm}>Krypteia</span>
+              <span className={styles.pill}>Coming soon</span>
+            </div>
+            <div className={styles.optDesc}>
+              Advanced leader/anchor with jumps, throws and a tight assistance cap.
+            </div>
+          </div>
+        )}
       </div>
     );
   }
