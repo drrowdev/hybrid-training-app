@@ -12,6 +12,68 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  identity-guard:
+    name: author identity guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Need full history to inspect every commit a PR introduces.
+          fetch-depth: 0
+
+      - name: Reject non-allowlisted commit identities
+        # The repo's GitHub contributors graph must only ever resolve to
+        # drrowdev (or the Copilot bot / GitHub web-flow committer). Stray
+        # identities (seed scripts, local agents committing as
+        # mlagus@…/agent@local/…) have repeatedly polluted the graph and
+        # required a history rewrite to undo. This guard blocks them at the
+        # PR before they can reach main. Allowlist by EMAIL (author + committer
+        # of every commit the PR/push introduces).
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          ALLOWED="280348738+drrowdev@users.noreply.github.com 223556219+Copilot@users.noreply.github.com noreply@github.com"
+          if [ "$EVENT" = "pull_request" ]; then
+            git fetch --no-tags origin "$BASE_REF"
+            RANGE="origin/${BASE_REF}..HEAD"
+          else
+            # push: inspect the most recent commit on the ref (squash-merge
+            # lands a single commit). Fall back to HEAD if there is no parent.
+            RANGE="HEAD^..HEAD"
+            git rev-parse HEAD^ >/dev/null 2>&1 || RANGE="HEAD"
+          fi
+          echo "Inspecting commit range: $RANGE"
+          BAD=0
+          while IFS='|' read -r sha ae ce; do
+            [ -z "$sha" ] && continue
+            ok_a=0; ok_c=0
+            for e in $ALLOWED; do
+              [ "$ae" = "$e" ] && ok_a=1
+              [ "$ce" = "$e" ] && ok_c=1
+            done
+            if [ "$ok_a" -ne 1 ] || [ "$ok_c" -ne 1 ]; then
+              echo "::error::Commit $sha has a non-allowlisted identity (author=<$ae> committer=<$ce>). Commits must be authored by drrowdev/Copilot."
+              BAD=1
+            fi
+          done < <(git log --no-merges --pretty=format:'%H|%ae|%ce' $RANGE)
+          if [ "$BAD" -ne 0 ]; then
+            {
+              echo "## ❌ Disallowed commit identity"
+              echo ""
+              echo "Every commit must have author AND committer email in the allowlist:"
+              echo "- \`280348738+drrowdev@users.noreply.github.com\` (drrowdev)"
+              echo "- \`223556219+Copilot@users.noreply.github.com\` (Copilot)"
+              echo "- \`noreply@github.com\` (GitHub web-flow)"
+              echo ""
+              echo "Fix with: \`git rebase --exec 'git commit --amend --reset-author --no-edit' origin/${BASE_REF}\` after setting \`git config user.email\` to the drrowdev no-reply address."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "All commit identities are allowlisted."
+
   ci:
     name: lint + typecheck + test + build
     runs-on: ubuntu-latest
