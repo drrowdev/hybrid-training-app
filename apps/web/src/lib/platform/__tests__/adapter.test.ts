@@ -88,22 +88,46 @@ describe("adaptSessionPrescription — strength", () => {
     expect(prescription.items[1]).toMatchObject({ movementId: "m-squat", percentTm: 65, sets: 4, reps: 10 });
   });
 
-  it("reports unresolved movements and unsupported (cardio) kinds in `skipped`", () => {
+  it("maps conditioning/cardio → a display-only cardio_external item; still reports unresolved strength", () => {
     const { prescription, skipped } = adaptSessionPrescription(
       {
         items: [
           { kind: "main", name: "Squat", movementId: "squat", sets: 1, reps: 5, percentOfTm: 0.8 },
-          { kind: "cardio", name: "Long Run", movementId: "long-run", distanceM: 8000 },
+          { kind: "cardio", name: "Long Run", movementId: "long-run", durationSec: 2700, note: "Z2 — conversational." },
           { kind: "main", name: "Mystery", movementId: "bicep-curl", sets: 1, reps: 5 },
         ],
       },
       resolve,
     );
+    // squat resolves; cardio becomes a cardio_external display item; the
+    // unresolved strength main is the only skip.
+    expect(prescription.items.map((i) => i.kind)).toEqual(["main", "cardio_external"]);
+    const cardio = prescription.items[1]!;
+    expect(cardio.movementId).toBe("");
+    expect(cardio.movementName).toBe("Long Run");
+    expect(cardio.durationMin).toBe(45);
+    expect(cardio.notes).toMatch(/conversational/i);
+    expect(cardio.protocolNote).toMatch(/Strava|external/i);
+    expect(skipped.map((s) => s.reason)).toEqual(["no anchored movement for key 'bicep-curl'"]);
+  });
+
+  it("maps a Green Protocol conditioning day to cardio_external items", () => {
+    const { prescription, skipped } = adaptSessionPrescription(
+      {
+        items: [
+          { kind: "conditioning", name: "Long Slow Distance", movementId: "lss", durationSec: 3000, note: "Aerobic base — 50 min easy." },
+        ],
+      },
+      resolve,
+    );
+    expect(skipped).toEqual([]);
     expect(prescription.items).toHaveLength(1);
-    expect(skipped.map((s) => s.reason)).toEqual([
-      "unsupported kind 'cardio'",
-      "no anchored movement for key 'bicep-curl'",
-    ]);
+    expect(prescription.items[0]).toMatchObject({
+      kind: "cardio_external",
+      movementId: "",
+      movementName: "Long Slow Distance",
+      durationMin: 50,
+    });
   });
 
   it("folds a standalone note into the preceding item", () => {

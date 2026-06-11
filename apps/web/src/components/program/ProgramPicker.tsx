@@ -29,6 +29,8 @@ export interface PickerProgram {
   summary: string;
   /** Whether this program's deploy path is wired (5/3/1 + TB today). */
   enabled: boolean;
+  /** Program prescribes its own weekly calendar — hide the weekday chooser. */
+  fixedSchedule?: boolean;
   /** Training sessions per program-week under default setup → weekdays to pick. */
   sessionsPerWeek?: number;
   fields: PickerField[];
@@ -274,11 +276,14 @@ export function ProgramPicker({
     setValues((prev) => ({ ...prev, [key]: raw }));
   }
 
+  const fixedSchedule = !!selected?.fixedSchedule;
+
   // The program dictates how many training days a week it needs. For TB the
   // active TEMPLATE owns the frequency (Operator 3, Fighter 2, Zulu 4, …);
-  // otherwise it's the program-level default.
+  // otherwise it's the program-level default. Fixed-schedule programs (Green
+  // Protocol) prescribe their own calendar, so the weekday count is irrelevant.
   const requiredDays = activeTbTemplate?.sessionsPerWeek ?? selected?.sessionsPerWeek;
-  const daysMatch = requiredDays == null || weekdays.length === requiredDays;
+  const daysMatch = fixedSchedule || requiredDays == null || weekdays.length === requiredDays;
 
   const clusterValidation = useMemo<ClusterValidationLite | null>(() => {
     if (!activeTbTemplate) return null;
@@ -288,8 +293,8 @@ export function ProgramPicker({
   const clusterOk = !activeTbTemplate || (clusterValidation?.ok ?? false);
 
   const canDeploy = useMemo(
-    () => !!selected?.enabled && weekdays.length > 0 && daysMatch && !hasNoTms && clusterOk && !pending,
-    [selected, weekdays, daysMatch, hasNoTms, clusterOk, pending],
+    () => !!selected?.enabled && (fixedSchedule || weekdays.length > 0) && daysMatch && !hasNoTms && clusterOk && !pending,
+    [selected, fixedSchedule, weekdays, daysMatch, hasNoTms, clusterOk, pending],
   );
 
   function deploy() {
@@ -446,38 +451,47 @@ export function ProgramPicker({
               Schedule
             </h2>
             <div>
-              <div style={{ fontSize: 12, color: "var(--cp-text-muted, #999)", marginBottom: 6 }}>Training days</div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {WD.map((label, i) => {
-                  const on = weekdays.includes(i);
-                  return (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => toggleDay(i)}
-                      style={{
-                        padding: "8px 12px",
-                        borderRadius: 8,
-                        cursor: "pointer",
-                        background: on ? "var(--cp-accent, #6aa0ff)" : "transparent",
-                        color: on ? "#0b0c0e" : "inherit",
-                        border: `1px solid ${on ? "var(--cp-accent, #6aa0ff)" : "var(--cp-border, rgba(255,255,255,0.14))"}`,
-                        fontWeight: on ? 600 : 400,
-                        fontSize: 13,
-                      }}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-              <div style={{ fontSize: 11, color: daysMatch ? "var(--cp-text-muted, #999)" : "var(--cp-danger, #e06c75)", marginTop: 6 }}>
-                {requiredDays != null
-                  ? daysMatch
-                    ? `${selected.name} trains ${requiredDays} day${requiredDays === 1 ? "" : "s"} a week — pick ${requiredDays}.`
-                    : `${selected.name} needs exactly ${requiredDays} training day${requiredDays === 1 ? "" : "s"} a week — you have ${weekdays.length} selected.`
-                  : "Pick one weekday per session in a program week."}
-              </div>
+              {fixedSchedule ? (
+                <div style={{ fontSize: 12, color: "var(--cp-text-muted, #999)", lineHeight: 1.5 }}>
+                  {selected.name} sets its own weekly schedule (strength and conditioning days are
+                  prescribed by the program). Pick a start date below.
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 12, color: "var(--cp-text-muted, #999)", marginBottom: 6 }}>Training days</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {WD.map((label, i) => {
+                      const on = weekdays.includes(i);
+                      return (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => toggleDay(i)}
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: 8,
+                            cursor: "pointer",
+                            background: on ? "var(--cp-accent, #6aa0ff)" : "transparent",
+                            color: on ? "#0b0c0e" : "inherit",
+                            border: `1px solid ${on ? "var(--cp-accent, #6aa0ff)" : "var(--cp-border, rgba(255,255,255,0.14))"}`,
+                            fontWeight: on ? 600 : 400,
+                            fontSize: 13,
+                          }}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize: 11, color: daysMatch ? "var(--cp-text-muted, #999)" : "var(--cp-danger, #e06c75)", marginTop: 6 }}>
+                    {requiredDays != null
+                      ? daysMatch
+                        ? `${selected.name} trains ${requiredDays} day${requiredDays === 1 ? "" : "s"} a week — pick ${requiredDays}.`
+                        : `${selected.name} needs exactly ${requiredDays} training day${requiredDays === 1 ? "" : "s"} a week — you have ${weekdays.length} selected.`
+                      : "Pick one weekday per session in a program week."}
+                  </div>
+                </>
+              )}
             </div>
             <label style={{ display: "grid", gap: 6, maxWidth: 220 }}>
               <span style={{ fontSize: 12, color: "var(--cp-text-muted, #999)" }}>Start date</span>
