@@ -24,6 +24,20 @@ const CARD_META: Record<string, { kick: string; code: string }> = {
   "green-protocol": { kick: "Tactical Barbell", code: "GP" },
 };
 
+/**
+ * Short, high-level card descriptor (a few words). The long description lives in
+ * the info modal (PROG_INFO), not on the tile.
+ */
+const CARD_TAGLINE: Record<string, string> = {
+  "wendler-531": "Percentage strength",
+  "tactical-barbell": "Operator · Fighter · Zulu",
+  "green-protocol": "Strength + endurance",
+  hybrid: "Personalised strength × cardio",
+};
+
+/** Display order of the program cards (5/3/1 → TB → GP → Build-your-own). */
+const CARD_ORDER = ["wendler-531", "tactical-barbell", "green-protocol", "hybrid"];
+
 const STEP_LABELS = ["Program", "Loadout", "Benchmarks", "Schedule"] as const;
 
 export interface PickerField {
@@ -139,6 +153,15 @@ const PROG_INFO: Record<string, ProgInfo> = {
     meta: ["Strength + cardio", "Adapts to your goals"],
   },
 };
+
+/**
+ * The engine appends a "(Leader \u2192 Anchor)" structural note to 5/3/1 template
+ * labels. The accepted mockup shows the bare template name (the cycle structure
+ * already appears in the spec strip and summary), so strip it for display.
+ */
+function templateDisplayLabel(label: string): string {
+  return label.replace(/\s*\(Leader\s*\u2192\s*Anchor\)$/u, "");
+}
 
 // ── Step-2 loadout content (ported from the mockup LOADOUTS) ────────────────
 
@@ -816,11 +839,18 @@ export function ProgramPicker({
           {"Pick the methodology you\u2019ll run. Your strength numbers, history and stats stay with you if you switch later."}
         </p>
         <div className={styles.grid}>
-          {programs.map((p) => {
+          {[...programs]
+            .sort((a, b) => {
+              const ai = CARD_ORDER.indexOf(a.id);
+              const bi = CARD_ORDER.indexOf(b.id);
+              return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+            })
+            .map((p) => {
             const meta = CARD_META[p.id] ?? { kick: "", code: p.name };
             const wrap = meta.code.includes(" ");
             const codeCls = `${styles.code}${wrap ? ` ${styles.codeWrap}` : ""}`;
             const codeStyle = !wrap && meta.code.length > 4 ? { fontSize: 20 } : undefined;
+            const tagline = CARD_TAGLINE[p.id] ?? p.summary;
             const isSel = p.id === selectedId;
             return (
               <div key={p.id} style={{ position: "relative", display: "flex" }}>
@@ -835,7 +865,7 @@ export function ProgramPicker({
                   <div className={codeCls} style={codeStyle}>
                     {meta.code}
                   </div>
-                  <div className={styles.pdesc}>{p.summary}</div>
+                  <div className={styles.pdesc}>{tagline}</div>
                 </button>
                 <button
                   type="button"
@@ -880,6 +910,7 @@ export function ProgramPicker({
             const header =
               group !== lastGroup ? ((lastGroup = group), GP_GROUPS[group]) : null;
             const on = o.value === selectedLoadoutValue;
+            const dispLabel = templateDisplayLabel(o.label);
             return (
               <div key={o.value} style={{ display: "contents" }}>
                 {header && (
@@ -900,7 +931,7 @@ export function ProgramPicker({
                   <div className={styles.optOn}>
                     <span className={styles.optNm}>
                       {c?.seq ? <span className={styles.seq}>{c.seq}</span> : null}
-                      {o.label}
+                      {dispLabel}
                     </span>
                     {c?.badge ? (
                       <span className={`${styles.pill}${c.badge === "Start here" ? ` ${styles.pillStart}` : ""}`}>
@@ -909,18 +940,18 @@ export function ProgramPicker({
                     ) : null}
                   </div>
                   <div className={styles.optDesc}>
-                    {c?.desc ?? o.label}
+                    {c?.desc ?? dispLabel}
                     {c?.long ? (
                       <span
                         role="button"
                         tabIndex={0}
-                        aria-label={`More about ${o.label}`}
+                        aria-label={`More about ${dispLabel}`}
                         className={styles.optInfo}
                         onClick={(e) => {
                           e.stopPropagation();
                           setModalInfo({
                             kick: PROG_INFO[selected.id]?.kick ?? selected.family,
-                            title: o.label,
+                            title: dispLabel,
                             body: c.long,
                             meta: [c.freq, c.len].filter((x): x is string => !!x),
                           });
@@ -944,6 +975,7 @@ export function ProgramPicker({
           const c = copy[o.value];
           const on = o.value === selectedLoadoutValue;
           const badge = c?.badge ?? (i === 0 ? "Recommended" : undefined);
+          const dispLabel = templateDisplayLabel(o.label);
           return (
             <button
               key={o.value}
@@ -953,22 +985,22 @@ export function ProgramPicker({
               className={`${styles.opt}${on ? ` ${styles.optSel}` : ""}`}
             >
               <div className={styles.optOn}>
-                <span className={styles.optNm}>{o.label}</span>
+                <span className={styles.optNm}>{dispLabel}</span>
                 {badge ? <span className={styles.pill}>{badge}</span> : null}
               </div>
               <div className={styles.optDesc}>
-                {c?.desc ?? o.label}
+                {c?.desc ?? dispLabel}
                 {c?.long ? (
                   <span
                     role="button"
                     tabIndex={0}
-                    aria-label={`More about ${o.label}`}
+                    aria-label={`More about ${dispLabel}`}
                     className={styles.optInfo}
                     onClick={(e) => {
                       e.stopPropagation();
                       setModalInfo({
                         kick: PROG_INFO[selected.id]?.kick ?? selected.family,
-                        title: o.label,
+                        title: dispLabel,
                         body: c.long,
                         meta: [c.freq, c.len].filter((x): x is string => !!x),
                       });
@@ -1302,7 +1334,9 @@ export function ProgramPicker({
         .map((k) => `${ABBR[k] ?? k.slice(0, 2).toUpperCase()} ${benchVals[k]?.valueStr || "\u2014"}`)
         .join(" \u00B7 ") || "\u2014";
     const tmplLabel = loadoutKey
-      ? loadoutOptions.find((o) => o.value === selectedLoadoutValue)?.label ?? "\u2014"
+      ? templateDisplayLabel(
+          loadoutOptions.find((o) => o.value === selectedLoadoutValue)?.label ?? "\u2014",
+        )
       : "Custom";
     const weekText = `${dayCounts.strength} strength \u00B7 ${dayCounts.cardio} cardio \u00B7 ${dayCounts.rest} rest`;
     return (

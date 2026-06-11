@@ -36,11 +36,16 @@
 
   max-width: 880px;
   margin: 0 auto;
-  padding: 8px 4px 32px;
+  padding: 28px 28px 44px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
   color: var(--text);
   font-family: var(--font-archivo), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
-  background: radial-gradient(900px 500px at 50% -15%, #18211a 0%, transparent 60%);
+  /* Solid dark sage surface (the glow layered on top) so the wizard reads as a
+     dark panel on the app's light shell — light sage text needs a dark backdrop.
+     App-wide theming is a separate effort. */
+  background: radial-gradient(900px 500px at 50% -15%, #1b2519 0%, transparent 60%), var(--bg);
 }
 
 /* page heading (kept for a11y + e2e: "Start a program") */
@@ -255,6 +260,14 @@
   line-height: 1;
   color: var(--text);
   letter-spacing: 1px;
+  /* Fixed-height, centered block so single-line codes (5/3/1, TB, GP) and the
+     wrapped "Build your own" occupy the same vertical space — keeps the kicker
+     and tagline aligned across every tile. */
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 .pdesc {
   font-size: 11px;
