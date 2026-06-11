@@ -2,21 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
-import {
-  BlockWizard,
-  type TmReadinessByArchetype,
-  type WizardSubmit,
-} from "@/components/planner/BlockWizard";
-import {
-  ARCHETYPES,
-  STRENGTH_ROLE_LABELS,
-  effectiveDays,
-  type ArchetypeId,
-  type StrengthRole,
-} from "@/lib/planner/archetypes";
+import { useMemo, useState, useTransition } from "react";
+import { type StrengthRole } from "@/lib/planner/archetypes";
 import { seedDefaultOneRm } from "@/lib/training-maxes/defaults";
-import { addDaysToYmd, isoWeekdayYmd, todayYmd } from "@/lib/dates";
 import { EquipmentStep } from "@/components/onboarding/EquipmentStep";
 import { CardioModalitySettings } from "@/components/settings/CardioModalitySettings";
 import type { PreferredCardioModality } from "@/lib/planner/preferred-cardio-modality";
@@ -90,9 +78,8 @@ export const STEPS = [
   "Profile",
   "Equipment",
   "Training maxes",
-  "Build your block",
   "Connect Strava",
-  "Confirm",
+  "Start training",
 ] as const;
 type StepLabel = (typeof STEPS)[number];
 
@@ -153,7 +140,7 @@ export function OnboardingWizard({
     | { ok: true; summary: ImportSummary }
     | { ok: false; error: string }
   >;
-  finishAction: (fd: FormData) => Promise<OnboardingResult>;
+  finishAction: () => Promise<OnboardingResult>;
   skipAction: () => Promise<void>;
 }) {
   const router = useRouter();
@@ -198,60 +185,7 @@ export function OnboardingWizard({
     return init;
   });
 
-  // ── OAuth round-trip persistence ──────────────────────────────────────
-  // The Strava connect step bounces the user out to strava.com and
-  // back; on return all React state is fresh. To avoid the user
-  // having to re-run the block wizard, we mirror `wizardSubmit` +
-  // `startedOn` into sessionStorage whenever they change, and read
-  // them back via lazy `useState` initializers on first mount.
-  // sessionStorage (not localStorage) is intentional — onboarding is
-  // a single-tab flow and the data should disappear when the tab does.
-  const STORAGE_KEY = "hta.onboarding.wizardSubmit.v1";
-  const readPersisted = (): {
-    wizardSubmit: WizardSubmit | null;
-    startedOn: string | null;
-  } => {
-    if (typeof window === "undefined") return { wizardSubmit: null, startedOn: null };
-    try {
-      const raw = window.sessionStorage.getItem(STORAGE_KEY);
-      if (!raw) return { wizardSubmit: null, startedOn: null };
-      const parsed = JSON.parse(raw) as {
-        wizardSubmit?: WizardSubmit;
-        startedOn?: string;
-      };
-      return {
-        wizardSubmit: parsed.wizardSubmit ?? null,
-        startedOn: parsed.startedOn ?? null,
-      };
-    } catch {
-      return { wizardSubmit: null, startedOn: null };
-    }
-  };
-
-  // Step 4 state — the BlockWizard fills this in on its "Start" click.
-  const [wizardSubmit, setWizardSubmit] = useState<WizardSubmit | null>(
-    () => readPersisted().wizardSubmit,
-  );
-
-  // Step 5 state — start date.
-  const [startedOn, setStartedOn] = useState<string>(
-    () => readPersisted().startedOn ?? tomorrowYmd(),
-  );
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!wizardSubmit) return;
-    try {
-      window.sessionStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ wizardSubmit, startedOn }),
-      );
-    } catch {
-      // Quota / private-mode failure — non-fatal.
-    }
-  }, [wizardSubmit, startedOn]);
-
-  // ── Derived: role → ready (used by BlockWizard TM gate) ───────────────
+  // ── Derived: role → ready (TM step gating) ────────────────────────────
   // A role is "ready" if either the user entered/seeded a 1RM for one of
   // its candidate slugs.
   const readyRoles = useMemo<Set<StrengthRole>>(() => {
@@ -269,33 +203,6 @@ export function OnboardingWizard({
     }
     return ready;
   }, [modeByRole, oneRmBySlug, roleCandidates]);
-
-  const tmReadinessByArchetype = useMemo<TmReadinessByArchetype>(() => {
-    const ids: Exclude<ArchetypeId, "custom">[] = [
-      "strength_anchor",
-      "endurance_anchor",
-      "concurrent_hybrid",
-      "hypertrophy_anchor",
-      "maintenance",
-      "rebuild",
-    ];
-    return Object.fromEntries(
-      ids.map((id) => {
-        const archetype = ARCHETYPES[id];
-        const pool = effectiveDays(archetype, false);
-        const rolesSeen = new Set<StrengthRole>();
-        for (const day of pool) {
-          if (day.kind !== "strength") continue;
-          rolesSeen.add(day.role);
-        }
-        const missingRoles: string[] = [];
-        for (const r of rolesSeen) {
-          if (!readyRoles.has(r)) missingRoles.push(STRENGTH_ROLE_LABELS[r]);
-        }
-        return [id, { ready: missingRoles.length === 0, missingRoles }];
-      }),
-    ) as TmReadinessByArchetype;
-  }, [readyRoles]);
 
   // ── Step gating ───────────────────────────────────────────────────────
 
@@ -369,15 +276,12 @@ export function OnboardingWizard({
           return "Enter or seed a 1RM for at least one lift, or skip them all.";
         return null;
       }
-      case "Build your block":
-        if (!wizardSubmit) return "Finish the block wizard to continue.";
-        return null;
       case "Connect Strava":
         // Optional step: always advanceable. Connect/import are
         // value-add opt-ins; the wizard's Continue button doesn't gate
         // on either.
         return null;
-      case "Confirm":
+      case "Start training":
         return null;
     }
     return null;
@@ -514,33 +418,16 @@ export function OnboardingWizard({
     });
   };
 
-  // BlockWizard's onComplete: capture the submit and advance to the
-  // Connect Strava step (next visible step). After PR #211's onboarding
-  // wiring this slot was Confirm; the new Strava step sits in between.
-  const onWizardComplete = async (submit: WizardSubmit): Promise<OnboardingResult> => {
-    setWizardSubmit(submit);
-    setStep(STEPS.indexOf("Connect Strava"));
-    return { ok: true };
-  };
-
-  const onConfirm = () => {
-    if (!wizardSubmit) {
-      setError("Block details missing — go back and re-run the block wizard.");
-      return;
-    }
-    const fd = new FormData();
-    fd.set("archetype", wizardSubmit.archetypeId);
-    fd.set("startedOn", startedOn);
-    fd.set("daysPerWeek", String(wizardSubmit.daysPerWeek));
-    fd.set("dayIndexOverrides", JSON.stringify(wizardSubmit.dayIndexOverrides));
+  // Final step: mark onboarding complete (no block created) and hand the
+  // user off to the platform program picker to choose their first program.
+  const onStartTraining = () => {
     startTransition(async () => {
-      const r = await finishAction(fd);
+      const r = await finishAction();
       if (!r.ok) {
         setError(r.error);
         return;
       }
-      router.push("/app");
-      router.refresh();
+      router.push("/app/program");
     });
   };
 
@@ -653,39 +540,24 @@ export function OnboardingWizard({
           />
         )}
 
-        {currentLabel === "Build your block" && (
-          <div style={{ display: "grid", gap: 12 }}>
-            <Heading kicker="Step 5" title="Build your first block" />
-            <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.55 }}>
-              The wizard below shapes a week from your goals and your TMs. Start with 3 or 4
-              days/week if you&apos;re unsure — you can rebuild any time. The &quot;Why this match?&quot;
-              section explains the science behind each suggestion.
-            </p>
-            <BlockWizard
-              onComplete={onWizardComplete}
-              tmReadinessByArchetype={tmReadinessByArchetype}
-              allowsTwoADays={false}
-              equipmentPreset={equipmentPreset}
-            />
-          </div>
-        )}
-
         {currentLabel === "Connect Strava" && (
           <StravaConnectStep
             connected={initialStravaConnected}
             connectAction={connectStravaAction}
             importAction={importStravaHistoryAction}
             isConfigured={stravaIsConfigured}
-            kicker="Step 6"
+            kicker="Step 5"
           />
         )}
 
-        {currentLabel === "Confirm" && wizardSubmit && (
-          <ConfirmStep
-            startedOn={startedOn}
-            setStartedOn={setStartedOn}
-            wizardSubmit={wizardSubmit}
-          />
+        {currentLabel === "Start training" && (
+          <div style={{ display: "grid", gap: 12 }}>
+            <Heading kicker="Step 6" title="You're all set" />
+            <p style={{ margin: 0, fontSize: 14, color: "var(--cp-text-muted)", lineHeight: 1.6 }}>
+              Pick your first program and we&apos;ll build your plan. You can
+              switch or rebuild any time from the program picker.
+            </p>
+          </div>
         )}
 
         {error && (
@@ -694,8 +566,7 @@ export function OnboardingWizard({
           </div>
         )}
 
-        {currentLabel !== "Build your block" &&
-          !(currentLabel === "Training maxes" && useBwAssessment) && (
+        {!(currentLabel === "Training maxes" && useBwAssessment) && (
           <div className="ob-nav" style={navRowStyle}>
             <button
               type="button"
@@ -706,14 +577,14 @@ export function OnboardingWizard({
             >
               ← Back
             </button>
-            {currentLabel === "Confirm" ? (
+            {currentLabel === "Start training" ? (
               <button
                 type="button"
-                onClick={onConfirm}
+                onClick={onStartTraining}
                 className="cp-btn primary"
                 disabled={pending}
               >
-                {pending ? "Creating block…" : "Start training →"}
+                {pending ? "Saving…" : "Choose your program →"}
               </button>
             ) : (
               <button
@@ -750,9 +621,9 @@ function WelcomeStep() {
         </h1>
       </div>
       <p style={{ margin: 0, fontSize: 14, color: "var(--cp-text-muted)", lineHeight: 1.6 }}>
-        We&apos;ll capture a bit about you, your main-lift maxes, then walk through a block-shaping
-        wizard that fits strength + cardio into the days you have. Takes about three minutes.
-        Skip any step you&apos;re not ready for — your progress is saved as you go.
+        We&apos;ll capture a bit about you, your equipment, and your main-lift maxes, then hand
+        you off to pick your first program. Takes about three minutes. Skip any step
+        you&apos;re not ready for — your progress is saved as you go.
       </p>
     </>
   );
@@ -1011,59 +882,6 @@ function TmStep({
   );
 }
 
-function ConfirmStep({
-  startedOn,
-  setStartedOn,
-  wizardSubmit,
-}: {
-  startedOn: string;
-  setStartedOn: (s: string) => void;
-  wizardSubmit: WizardSubmit;
-}) {
-  const today = todayYmd();
-  const tomorrow = tomorrowYmd();
-  const nextMonday = nextMondayYmd();
-
-  const presets: { id: string; label: string; date: string }[] = [
-    { id: "today", label: "Today", date: today },
-    { id: "tomorrow", label: "Tomorrow", date: tomorrow },
-    { id: "next_monday", label: "Next Monday", date: nextMonday },
-  ];
-
-  return (
-    <>
-      <Heading kicker="Step 7" title="When does your first block start?" />
-      <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.55 }}>
-        Your first <strong>{wizardSubmit.daysPerWeek}-day</strong> block is ready. Pick a start
-        date and we&apos;ll create the calendar.
-      </p>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-        {presets.map((p) => (
-          <button
-            type="button"
-            key={p.id}
-            onClick={() => setStartedOn(p.date)}
-            aria-pressed={p.date === startedOn}
-            style={pillStyle(p.date === startedOn)}
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
-      <div>
-        <Label>Or pick a custom date</Label>
-        <input
-          type="date"
-          value={startedOn}
-          min={today}
-          onChange={(e) => setStartedOn(e.target.value)}
-          style={{ ...inputStyle, marginTop: 4, width: 220 }}
-        />
-      </div>
-    </>
-  );
-}
-
 // ── Shared bits ───────────────────────────────────────────────────────────
 
 function ProgressPills({
@@ -1222,19 +1040,4 @@ function tmCardStyle(mode: "enter" | "seed" | "skip"): React.CSSProperties {
     background: mode === "skip" ? "transparent" : "var(--cp-surface-soft)",
     opacity: mode === "skip" ? 0.7 : 1,
   };
-}
-
-function tomorrowYmd(): string {
-  // Client-only: relies on the browser's local wall clock, which is
-  // what the user actually sees. Same reasoning as the no-arg todayYmd()
-  // fallback in @/lib/dates.
-  return addDaysToYmd(todayYmd(), 1);
-}
-
-function nextMondayYmd(): string {
-  const today = todayYmd();
-  // Days until next Monday — never zero (the picker should always
-  // surface the *following* Monday even if today already is one).
-  const delta = (7 - isoWeekdayYmd(today)) || 7;
-  return addDaysToYmd(today, delta);
 }
