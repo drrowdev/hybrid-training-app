@@ -293,15 +293,20 @@ async function createNativeProgramInstance(
 ): Promise<CreateProgramInstanceResult> {
   const engine = getNativeProgramEngine(programId)!;
 
-  // Setup → instance. `setupHybrid` reads `values.startedOn`, so inject it.
+  // Setup → instance. `setupHybrid` reads `values.startedOn` + `values.daysPerWeek`,
+  // so inject both: Hybrid's training days/week come from the shared Schedule step's
+  // chosen weekdays (NOT a Hybrid setup field), matching every other program.
   // ctx is built uniformly with the foreign path (Hybrid's setup ignores it).
   // The native registry is generic (`unknown` instance); this branch owns the
   // Hybrid contract, so we read the instance as a `HybridInstance`.
   //
-  // `focusMuscles` is a 0–2 array, but the generic picker renders it as a
-  // single-select and sends a bare string — coerce so deploy doesn't throw in
-  // the array schema (rich multi-select UX is a later step).
-  const values: Record<string, unknown> = { ...setupValues, startedOn };
+  // `focusMuscles` arrives from the picker's multi-select as a string[]; the
+  // legacy single-string coercion is kept as a harmless guard.
+  const values: Record<string, unknown> = {
+    ...setupValues,
+    startedOn,
+    daysPerWeek: weekdays.length,
+  };
   if (typeof values.focusMuscles === "string") {
     const fm = values.focusMuscles.trim();
     values.focusMuscles = fm ? [fm] : [];
@@ -316,10 +321,10 @@ async function createNativeProgramInstance(
     return { ok: false, error: e instanceof Error ? e.message : "Setup failed" };
   }
 
-  // Derive the block shape from the instance (Hybrid owns its own calendar).
+  // Derive the block shape from the instance.
   const archetypeId = instance.archetypeId as keyof typeof ARCHETYPES;
   const archetype = ARCHETYPES[archetypeId];
-  if (!archetype) return { ok: false, error: `Unknown goal preset '${String(archetypeId)}'.` };
+  if (!archetype) return { ok: false, error: `Unknown program configuration.` };
   const weeks = archetype.weeks;
   const daysPerWeek = instance.daysPerWeek;
   const dayIndexOverrides = instance.dayIndexOverrides;

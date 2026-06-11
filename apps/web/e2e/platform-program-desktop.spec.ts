@@ -298,13 +298,13 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     await page.goto("/app/program");
     await page.waitForLoadState("networkidle");
 
-    // Select the Hybrid card. Hybrid is a fixed-schedule program (it owns its
-    // weekly calendar from archetype + daysPerWeek), so there is no weekday
-    // chooser — the default goal preset (Strength anchor) + 4 days deploy as-is.
+    // Select the Hybrid card. Hybrid is the balanced concurrent generator; like
+    // 5/3/1 and TB the user picks training weekdays on the shared Schedule step
+    // (pre-filled with a 4-day spread by default), and that count drives days/week.
     await page.getByTestId("program-card-hybrid").click();
 
-    // Hybrid is fixed-schedule (it owns its weekly calendar), so there is no
-    // weekday chooser — advance through the wizard and deploy as-is.
+    // Advance Program -> Loadout (focus muscles, optional) -> Benchmarks ->
+    // Schedule (weekday picker, 4 days pre-selected) and deploy as-is.
     const next = page.getByRole("button", { name: "Continue" });
     await next.click();
     await next.click();
@@ -337,7 +337,8 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
       .eq("block_id", block!.id);
     expect(psCount, "planned_sessions materialised").toBeGreaterThan(0);
 
-    // An active program_instance links to the block and carries the goal preset.
+    // An active program_instance links to the block; Hybrid always runs the
+    // balanced concurrent engine.
     const { data: pi } = await admin
       .from("program_instances")
       .select("program_id, program_family, status, block_id, instance")
@@ -347,7 +348,7 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     expect(pi, "active program_instance must exist").toBeTruthy();
     expect(pi!.program_id).toBe("hybrid");
     expect(pi!.block_id).toBe(block!.id);
-    expect((pi!.instance as { archetypeId?: string }).archetypeId).toBe("strength_anchor");
+    expect((pi!.instance as { archetypeId?: string }).archetypeId).toBe("concurrent_hybrid");
 
     // Hybrid does NOT seed training_maxes.tm_percent (it renders off real TMs).
     const { data: tmRows } = await admin
