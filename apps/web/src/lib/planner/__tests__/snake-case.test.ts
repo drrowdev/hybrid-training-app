@@ -27,6 +27,13 @@ import { describe, it, expect } from "vitest";
 const ACTIONS_PATH = join(__dirname, "..", "actions.ts");
 const SOURCE = readFileSync(ACTIONS_PATH, "utf8");
 
+// `createBlock`'s per-session assembly (the block-level derivations + the
+// week×day `rows.push({…})` loop) was extracted into this pure module, so
+// the `rows.push` regression scan must cover it too. `createCustomBlock`'s
+// push-site still lives in actions.ts.
+const ASSEMBLE_PATH = join(__dirname, "..", "assemble-block-sessions.ts");
+const ASSEMBLE_SOURCE = readFileSync(ASSEMBLE_PATH, "utf8");
+
 // Columns that previously drifted to camelCase. If anyone reintroduces
 // one of these spellings in actions.ts we want the test to fail loudly.
 const FORBIDDEN_CAMEL_KEYS = [
@@ -166,26 +173,30 @@ describe("planner/actions.ts — Supabase column casing (regression for PGRST204
   });
 
   it("every rows.push({…}) into planned_sessions uses snake_case columns", () => {
-    // Both createBlock and createCustomBlock build a `rows` array then
-    // call `.from("planned_sessions").insert(rows)`. The compiler can't
-    // catch a drift back to camelCase (the row type lives in this file),
-    // so we lint the literals directly.
+    // Both createBlock (now via assemble-block-sessions.ts) and
+    // createCustomBlock build a `rows` array then call
+    // `.from("planned_sessions").insert(rows)`. The compiler can't catch a
+    // drift back to camelCase (the row type lives alongside these literals),
+    // so we lint the literals directly across both source files.
     const re = /rows\.push\(\s*\{/g;
     const literals: string[] = [];
-    let match: RegExpExecArray | null;
-    while ((match = re.exec(SOURCE)) !== null) {
-      const start = match.index + match[0].length - 1;
-      let depth = 0;
-      let i = start;
-      for (; i < SOURCE.length; i++) {
-        const c = SOURCE[i];
-        if (c === "{") depth++;
-        else if (c === "}") {
-          depth--;
-          if (depth === 0) break;
+    for (const src of [SOURCE, ASSEMBLE_SOURCE]) {
+      let match: RegExpExecArray | null;
+      re.lastIndex = 0;
+      while ((match = re.exec(src)) !== null) {
+        const start = match.index + match[0].length - 1;
+        let depth = 0;
+        let i = start;
+        for (; i < src.length; i++) {
+          const c = src[i];
+          if (c === "{") depth++;
+          else if (c === "}") {
+            depth--;
+            if (depth === 0) break;
+          }
         }
+        if (depth === 0) literals.push(src.slice(start + 1, i));
       }
-      if (depth === 0) literals.push(SOURCE.slice(start + 1, i));
     }
 
     // We expect at least 2 push-sites (createBlock + createCustomBlock).
