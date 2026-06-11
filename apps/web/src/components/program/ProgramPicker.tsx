@@ -27,12 +27,30 @@ export interface PickerProgram {
   name: string;
   family: string;
   summary: string;
-  /** Whether this program's deploy path is wired (only 5/3/1 for now). */
+  /** Whether this program's deploy path is wired (5/3/1 + TB today). */
   enabled: boolean;
+  /** Training sessions per program-week under default setup → weekdays to pick. */
+  sessionsPerWeek?: number;
   fields: PickerField[];
 }
 
 const WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/** Sensible default weekday spread for a given sessions-per-week count (0=Mon). */
+const DAY_SPREADS: Record<number, number[]> = {
+  1: [0],
+  2: [0, 3],
+  3: [0, 2, 4],
+  4: [0, 1, 3, 4],
+  5: [0, 1, 2, 4, 5],
+  6: [0, 1, 2, 3, 4, 5],
+  7: [0, 1, 2, 3, 4, 5, 6],
+};
+
+function defaultDaysFor(sessionsPerWeek: number | undefined): number[] {
+  const n = sessionsPerWeek && sessionsPerWeek >= 1 && sessionsPerWeek <= 7 ? sessionsPerWeek : 4;
+  return [...(DAY_SPREADS[n] ?? DAY_SPREADS[4]!)];
+}
 
 function defaultValuesFor(fields: PickerField[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -68,8 +86,7 @@ export function ProgramPicker({
   const [values, setValues] = useState<Record<string, unknown>>(() =>
     defaultValuesFor(firstEnabled?.fields ?? []),
   );
-  // Mon/Tue/Thu/Fri default — the conventional 4-day split.
-  const [weekdays, setWeekdays] = useState<number[]>([0, 1, 3, 4]);
+  const [weekdays, setWeekdays] = useState<number[]>(() => defaultDaysFor(firstEnabled?.sessionsPerWeek));
   const [startedOn, setStartedOn] = useState<string>(todayYmd());
 
   const hasNoTms = anchoredKeys.length === 0;
@@ -78,6 +95,7 @@ export function ProgramPicker({
     if (!p.enabled) return;
     setSelectedId(p.id);
     setValues(defaultValuesFor(p.fields));
+    setWeekdays(defaultDaysFor(p.sessionsPerWeek));
     setResult(null);
   }
 
@@ -89,9 +107,13 @@ export function ProgramPicker({
     setValues((prev) => ({ ...prev, [key]: raw }));
   }
 
+  // The program dictates how many training days a week it needs.
+  const requiredDays = selected?.sessionsPerWeek;
+  const daysMatch = requiredDays == null || weekdays.length === requiredDays;
+
   const canDeploy = useMemo(
-    () => !!selected?.enabled && weekdays.length > 0 && !hasNoTms && !pending,
-    [selected, weekdays, hasNoTms, pending],
+    () => !!selected?.enabled && weekdays.length > 0 && daysMatch && !hasNoTms && !pending,
+    [selected, weekdays, daysMatch, hasNoTms, pending],
   );
 
   function deploy() {
@@ -204,8 +226,12 @@ export function ProgramPicker({
                   );
                 })}
               </div>
-              <div style={{ fontSize: 11, color: "var(--cp-text-muted, #999)", marginTop: 6 }}>
-                Pick one weekday per session in a program week (5/3/1 trains 4 lifts → 4 days).
+              <div style={{ fontSize: 11, color: daysMatch ? "var(--cp-text-muted, #999)" : "var(--cp-danger, #e06c75)", marginTop: 6 }}>
+                {requiredDays != null
+                  ? daysMatch
+                    ? `${selected.name} trains ${requiredDays} day${requiredDays === 1 ? "" : "s"} a week — pick ${requiredDays}.`
+                    : `${selected.name} needs exactly ${requiredDays} training day${requiredDays === 1 ? "" : "s"} a week — you have ${weekdays.length} selected.`
+                  : "Pick one weekday per session in a program week."}
               </div>
             </div>
             <label style={{ display: "grid", gap: 6, maxWidth: 220 }}>

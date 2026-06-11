@@ -117,4 +117,71 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
       expect(pct).toBeLessThan(90);
     }
   });
+
+  test("picker deploys a Tactical Barbell (Operator) platform block", async ({
+    page,
+    context,
+    freshUser,
+    seedConfig,
+    admin,
+    baseURL,
+  }) => {
+    await markOnboarded(admin, freshUser.userId);
+
+    for (const tm of STRENGTH_TMS) {
+      const { data: mv } = await admin
+        .from("movements")
+        .select("id")
+        .eq("slug", tm.slug)
+        .is("user_id", null)
+        .maybeSingle();
+      expect(mv, `catalog must have ${tm.slug}`).toBeTruthy();
+      const { error } = await admin.from("training_maxes").upsert(
+        { user_id: freshUser.userId, movement_id: mv!.id, one_rm_kg: tm.oneRmKg, source: "entered" },
+        { onConflict: "user_id,movement_id" },
+      );
+      expect(error).toBeNull();
+    }
+
+    await signInAs(context, freshUser, seedConfig, baseURL ?? "http://localhost:3000");
+    await page.goto("/app/program");
+    await page.waitForLoadState("networkidle");
+
+    // Select the Tactical Barbell card (defaults to Operator → 3 days auto-picked).
+    await page.getByRole("button", { name: /Tactical Barbell/ }).click();
+
+    const deploy = page.getByRole("button", { name: /Deploy program/ });
+    await expect(deploy).toBeEnabled();
+    await deploy.click();
+    await page.waitForURL("**/app", { timeout: 15_000 });
+
+    const { data: block } = await admin
+      .from("training_blocks")
+      .select("id, archetype, program_id, program_family, status, weeks")
+      .eq("user_id", freshUser.userId)
+      .eq("status", "active")
+      .maybeSingle();
+    expect(block, "an active block must exist").toBeTruthy();
+    expect(block!.archetype).toBeNull();
+    expect(block!.program_id).toBe("tactical-barbell");
+    expect(block!.program_family).toBe("tactical-barbell");
+    expect(block!.weeks).toBe(6); // Operator block = 6 weeks
+
+    // Operator default cluster trains 3 lifts × 3 sessions/week × 6 weeks = 18.
+    const { count: psCount } = await admin
+      .from("planned_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("block_id", block!.id);
+    expect(psCount).toBe(18);
+
+    const { data: pi } = await admin
+      .from("program_instances")
+      .select("program_id, status, block_id")
+      .eq("user_id", freshUser.userId)
+      .eq("status", "active")
+      .maybeSingle();
+    expect(pi, "active program_instance must exist").toBeTruthy();
+    expect(pi!.program_id).toBe("tactical-barbell");
+    expect(pi!.block_id).toBe(block!.id);
+  });
 });
