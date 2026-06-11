@@ -12,6 +12,17 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createProgramInstance, type CreateProgramInstanceResult } from "@/lib/platform/actions";
+import styles from "./ProgramPicker.module.css";
+
+/** Stencil "code" + Oswald kicker shown on each program card (step 1). */
+const CARD_META: Record<string, { kick: string; code: string }> = {
+  hybrid: { kick: "Concurrent", code: "HYBRID" },
+  "wendler-531": { kick: "Wendler", code: "5/3/1" },
+  "tactical-barbell": { kick: "Tactical Barbell", code: "TB" },
+  "green-protocol": { kick: "Tactical Barbell", code: "GP" },
+};
+
+const STEP_LABELS = ["Program", "Loadout", "Benchmarks", "Schedule"] as const;
 
 export interface PickerField {
   key: string;
@@ -240,14 +251,15 @@ export function ProgramPicker({
   const [result, setResult] = useState<CreateProgramInstanceResult | null>(null);
   const [infoProgramId, setInfoProgramId] = useState<string | null>(null);
 
-  const firstEnabled = programs.find((p) => p.enabled) ?? programs[0];
-  const [selectedId, setSelectedId] = useState<string>(firstEnabled?.id ?? "");
+  // Wizard step (0 Program · 1 Loadout · 2 Benchmarks · 3 Schedule).
+  const [step, setStep] = useState<number>(0);
+
+  // No pre-selection: the user must pick a program on step 1 before continuing.
+  const [selectedId, setSelectedId] = useState<string>("");
   const selected = programs.find((p) => p.id === selectedId) ?? null;
 
-  const [values, setValues] = useState<Record<string, unknown>>(() =>
-    defaultValuesFor(firstEnabled?.fields ?? []),
-  );
-  const [weekdays, setWeekdays] = useState<number[]>(() => defaultDaysFor(firstEnabled?.sessionsPerWeek));
+  const [values, setValues] = useState<Record<string, unknown>>({});
+  const [weekdays, setWeekdays] = useState<number[]>([]);
   const [startedOn, setStartedOn] = useState<string>(todayYmd());
 
   const isTb = selected?.id === TB_PROGRAM_ID;
@@ -353,87 +365,65 @@ export function ProgramPicker({
   const infoText = infoProgram
     ? PROGRAM_BLURBS[infoProgram.id] ?? infoProgram.summary
     : "";
+  const infoKick = infoProgram ? CARD_META[infoProgram.id]?.kick ?? infoProgram.family : "";
 
-  return (
-    <div style={{ display: "grid", gap: 24 }}>
-      {hasNoTms && (
-        <p
-          style={{
-            margin: 0,
-            padding: "10px 14px",
-            borderRadius: 8,
-            border: "1px solid var(--cp-border, rgba(255,255,255,0.12))",
-            fontSize: 13,
-            color: "var(--cp-text-muted, #999)",
-          }}
-        >
-          Set your 1-rep maxes first (Settings → Training maxes) so the program can
-          prescribe weights.
+  const canContinue = step !== 0 || !!selected;
+
+  function goBack() {
+    setStep((s) => Math.max(0, s - 1));
+  }
+  function goNext() {
+    setStep((s) => Math.min(3, s + 1));
+  }
+
+  // ── Step renderers ─────────────────────────────────────────────────────────
+  function renderProgramStep() {
+    return (
+      <div className={styles.step}>
+        <h2 className={styles.h1}>Choose your program</h2>
+        <p className={styles.sub}>
+          {"Pick the methodology you\u2019ll run. Your strength numbers, history and stats stay with you if you switch later."}
         </p>
-      )}
-
-      <section style={{ display: "grid", gap: 12 }}>
-        <h2 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: "0.08em", margin: 0, color: "var(--cp-text-muted, #999)" }}>
-          Program
-        </h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
+        <div className={styles.grid}>
           {programs.map((p) => {
+            const meta = CARD_META[p.id] ?? { kick: "", code: p.name };
+            const codeStyle = meta.code.length > 4 ? { fontSize: 20 } : undefined;
+            if (!p.enabled) {
+              return (
+                <div key={p.id} className={`${styles.pcard} ${styles.locked}`} aria-disabled="true">
+                  <Ticks />
+                  <div className={styles.kick}>{"\u00A0"}</div>
+                  <div className={styles.code} style={codeStyle}>
+                    {meta.code}
+                  </div>
+                  <div className={styles.pdesc}>Coming soon</div>
+                </div>
+              );
+            }
             const isSel = p.id === selectedId;
             return (
-              <div
-                key={p.id}
-                style={{ position: "relative" }}
-              >
+              <div key={p.id} style={{ position: "relative", display: "flex" }}>
                 <button
                   type="button"
                   data-testid={`program-card-${p.id}`}
                   onClick={() => selectProgram(p)}
-                  disabled={!p.enabled}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    padding: 14,
-                    paddingRight: 38,
-                    borderRadius: 10,
-                    cursor: p.enabled ? "pointer" : "not-allowed",
-                    opacity: p.enabled ? 1 : 0.45,
-                    background: isSel ? "var(--cp-accent-soft, rgba(120,170,255,0.12))" : "transparent",
-                    border: `1px solid ${isSel ? "var(--cp-accent, #6aa0ff)" : "var(--cp-border, rgba(255,255,255,0.14))"}`,
-                    color: "inherit",
-                  }}
+                  className={`${styles.pcard}${isSel ? ` ${styles.sel}` : ""}`}
                 >
-                  <div style={{ fontWeight: 600, fontSize: 15 }}>{p.name}</div>
-                  <div style={{ fontSize: 12, color: "var(--cp-text-muted, #999)", marginTop: 4, lineHeight: 1.4 }}>
-                    {p.enabled ? p.summary : "Coming soon"}
+                  <Ticks />
+                  <div className={styles.kick}>{meta.kick}</div>
+                  <div className={styles.code} style={codeStyle}>
+                    {meta.code}
                   </div>
+                  <div className={styles.pdesc}>{p.summary}</div>
                 </button>
                 <button
                   type="button"
                   aria-label={`About ${p.name}`}
                   title={`About ${p.name}`}
+                  className={styles.pinfo}
                   onClick={(e) => {
                     e.stopPropagation();
                     setInfoProgramId(p.id);
-                  }}
-                  style={{
-                    position: "absolute",
-                    top: 8,
-                    right: 8,
-                    width: 22,
-                    height: 22,
-                    borderRadius: "50%",
-                    border: "1px solid var(--cp-border, rgba(255,255,255,0.24))",
-                    background: "transparent",
-                    color: "var(--cp-text-muted, #999)",
-                    cursor: "pointer",
-                    fontSize: 12,
-                    fontStyle: "italic",
-                    fontFamily: "serif",
-                    lineHeight: 1,
-                    padding: 0,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
                   }}
                 >
                   i
@@ -442,129 +432,234 @@ export function ProgramPicker({
             );
           })}
         </div>
-      </section>
+      </div>
+    );
+  }
 
-      {selected?.enabled && (
-        <>
-          <section style={{ display: "grid", gap: 12 }}>
-            <h2 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: "0.08em", margin: 0, color: "var(--cp-text-muted, #999)" }}>
-              {selected.goalDriven ? "Build for your goals" : "Setup"}
-            </h2>
-            {selected.goalDriven ? (
-              <p style={{ fontSize: 12, color: "var(--cp-text-muted, #999)", margin: 0, lineHeight: 1.5, maxWidth: 420 }}>
-                Tell us what you&apos;re training for and we build a personalised concurrent
-                plan around it — the more you set, the more it&apos;s tailored to you.
-              </p>
-            ) : null}
-            <div style={{ display: "grid", gap: 14, maxWidth: 420 }}>
-              {selected.fields.map((f) => (
-                <SetupFieldControl key={f.key} field={f} value={values[f.key]} onChange={(v) => setField(f.key, v)} />
-              ))}
+  function renderLoadoutStep() {
+    if (!selected) return null;
+    const freqText =
+      requiredDays != null ? `${requiredDays} / WEEK` : fixedSchedule ? "PRESCRIBED" : "FLEXIBLE";
+    const schedText = fixedSchedule ? "Set by program" : "You choose the days";
+    return (
+      <div className={styles.step}>
+        <h2 className={styles.h1}>{selected.goalDriven ? "Build for your goals" : "Configure your block"}</h2>
+        <p className={styles.sub}>
+          {selected.goalDriven
+            ? "Tell us what you\u2019re training for and we build a personalised concurrent plan around it \u2014 the more you set, the more it\u2019s tailored to you."
+            : "Choose how you\u2019ll run it. The defaults are a solid starting point."}
+        </p>
+        <div className={styles.label}>{selected.goalDriven ? "Your goals" : "Setup"}</div>
+        <div style={{ display: "grid", gap: 14, maxWidth: 460 }}>
+          {selected.fields.map((f) => (
+            <SetupFieldControl key={f.key} field={f} value={values[f.key]} onChange={(v) => setField(f.key, v)} />
+          ))}
+        </div>
+        <div className={styles.specwrap}>
+          <div className={styles.label}>Your block</div>
+          <div className={styles.spec}>
+            <div className={styles.cell}>
+              <div className={styles.cl}>Frequency</div>
+              <div className={styles.cv}>{freqText}</div>
             </div>
-          </section>
-
-          {activeTbTemplate && (
-            <ClusterEditor
-              template={activeTbTemplate}
-              anchoredKeys={anchoredKeys}
-              cluster={cluster}
-              onChange={setCluster}
-              validation={clusterValidation}
-            />
-          )}
-
-          <section style={{ display: "grid", gap: 12 }}>
-            <h2 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: "0.08em", margin: 0, color: "var(--cp-text-muted, #999)" }}>
-              Schedule
-            </h2>
-            <div>
-              {fixedSchedule ? (
-                <div style={{ fontSize: 12, color: "var(--cp-text-muted, #999)", lineHeight: 1.5 }}>
-                  {selected.name} sets its own weekly schedule (strength and conditioning days are
-                  prescribed by the program). Pick a start date below.
-                </div>
-              ) : (
-                <>
-                  <div style={{ fontSize: 12, color: "var(--cp-text-muted, #999)", marginBottom: 6 }}>Training days</div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {WD.map((label, i) => {
-                      const on = weekdays.includes(i);
-                      return (
-                        <button
-                          key={i}
-                          type="button"
-                          onClick={() => toggleDay(i)}
-                          style={{
-                            padding: "8px 12px",
-                            borderRadius: 8,
-                            cursor: "pointer",
-                            background: on ? "var(--cp-accent, #6aa0ff)" : "transparent",
-                            color: on ? "#0b0c0e" : "inherit",
-                            border: `1px solid ${on ? "var(--cp-accent, #6aa0ff)" : "var(--cp-border, rgba(255,255,255,0.14))"}`,
-                            fontWeight: on ? 600 : 400,
-                            fontSize: 13,
-                          }}
-                        >
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div style={{ fontSize: 11, color: daysMatch ? "var(--cp-text-muted, #999)" : "var(--cp-danger, #e06c75)", marginTop: 6 }}>
-                    {requiredDays != null
-                      ? daysMatch
-                        ? `${selected.name} trains ${requiredDays} day${requiredDays === 1 ? "" : "s"} a week — pick ${requiredDays}.`
-                        : `${selected.name} needs exactly ${requiredDays} training day${requiredDays === 1 ? "" : "s"} a week — you have ${weekdays.length} selected.`
-                      : "Pick one weekday per session in a program week."}
-                  </div>
-                </>
-              )}
+            <div className={styles.cell}>
+              <div className={styles.cl}>Schedule</div>
+              <div className={`${styles.cv} ${styles.cvSm}`}>{schedText}</div>
             </div>
-            <label style={{ display: "grid", gap: 6, maxWidth: 220 }}>
-              <span style={{ fontSize: 12, color: "var(--cp-text-muted, #999)" }}>Start date</span>
-              <input
-                type="date"
-                value={startedOn}
-                onChange={(e) => setStartedOn(e.target.value)}
-                style={{
-                  padding: "8px 10px",
-                  borderRadius: 8,
-                  background: "transparent",
-                  border: "1px solid var(--cp-border, rgba(255,255,255,0.14))",
-                  color: "inherit",
-                }}
-              />
-            </label>
-          </section>
+            <div className={`${styles.cell} ${styles.wide}`}>
+              <div className={styles.cl}>About</div>
+              <div className={`${styles.cv} ${styles.cvSm}`}>{selected.summary}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+  function renderBenchmarksStep() {
+    if (!selected) return null;
+    const benchTitle = activeTbTemplate
+      ? activeTbTemplate.structure === "split"
+        ? "Your cluster"
+        : "Your strength cluster"
+      : "Your benchmarks";
+    const anchoredList = anchoredKeys.map(movementLabel).join(" \u00B7 ");
+    return (
+      <div className={styles.step}>
+        <h2 className={styles.h1}>{benchTitle}</h2>
+        <p className={styles.sub}>
+          {activeTbTemplate
+            ? "Pick the main lifts for your cluster \u2014 each one loads off the 1-rep maxes saved to your profile."
+            : "Your program trains off the 1-rep maxes saved to your profile."}
+        </p>
+        {hasNoTms && (
+          <p className={styles.banner}>
+            {"Set your 1-rep maxes first (Settings \u2192 Training maxes) so the program can prescribe weights."}
+          </p>
+        )}
+        {activeTbTemplate ? (
+          <ClusterEditor
+            template={activeTbTemplate}
+            anchoredKeys={anchoredKeys}
+            cluster={cluster}
+            onChange={setCluster}
+            validation={clusterValidation}
+          />
+        ) : (
+          !hasNoTms && (
+            <p className={styles.note}>
+              {`Training off your saved 1-rep maxes: ${anchoredList || "your lifts"}.`}
+            </p>
+          )
+        )}
+      </div>
+    );
+  }
+
+  function renderScheduleStep() {
+    if (!selected) return null;
+    return (
+      <div className={styles.step}>
+        <h2 className={styles.h1}>Set your schedule</h2>
+        <p className={styles.sub}>
+          {fixedSchedule
+            ? `${selected.name} prescribes both your lifting and conditioning days \u2014 just pick a start date.`
+            : "Your strength days come from your program \u2014 pick which weekdays, then choose a start date."}
+        </p>
+        {fixedSchedule ? (
+          <p className={styles.note}>
+            {`${selected.name} sets its own weekly schedule (strength and conditioning days are prescribed by the program). Pick a start date below.`}
+          </p>
+        ) : (
+          <>
+            <div className={styles.label}>Training days</div>
+            <div className={styles.week}>
+              {WD.map((label, i) => {
+                const on = weekdays.includes(i);
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => toggleDay(i)}
+                    className={`${styles.wd}${on ? ` ${styles.on}` : ""}`}
+                  >
+                    <span className={styles.wn}>{label}</span>
+                    <span className={styles.wt}>{on ? "Strength" : "Rest"}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div
+              className={styles.note}
+              style={daysMatch ? undefined : { color: "var(--warn)" }}
+            >
+              {requiredDays != null
+                ? daysMatch
+                  ? `${selected.name} trains ${requiredDays} day${requiredDays === 1 ? "" : "s"} a week \u2014 pick ${requiredDays}.`
+                  : `${selected.name} needs exactly ${requiredDays} training day${requiredDays === 1 ? "" : "s"} a week \u2014 you have ${weekdays.length} selected.`
+                : "Pick one weekday per session in a program week."}
+            </div>
+          </>
+        )}
+        <div style={{ marginTop: 18 }}>
+          <div className={styles.label}>Start date</div>
+          <input
+            type="date"
+            value={startedOn}
+            onChange={(e) => setStartedOn(e.target.value)}
+            style={{
+              padding: "11px 15px",
+              borderRadius: "var(--wradius)",
+              background: "var(--bg)",
+              border: "1px solid var(--line2)",
+              color: "var(--text)",
+              fontFamily: "var(--font-mono-wizard), monospace",
+              colorScheme: "dark",
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  const isFinalStep = step === 3;
+
+  return (
+    <div className={styles.wizard}>
+      <h1 className={styles.pageTitle}>Start a program</h1>
+
+      <div className={styles.top}>
+        <div className={styles.mark}>
+          <div className={styles.diamond}>
+            <span>{"S\u00D7C"}</span>
+          </div>
+          <b>{"Strength \u00D7 Cardio"}</b>
+        </div>
+        <div className={styles.stepcount}>
+          STEP <b>{step + 1}</b> / 4
+        </div>
+      </div>
+
+      <div className={styles.rail}>
+        {STEP_LABELS.map((label, i) => (
+          <div
+            key={label}
+            className={`${styles.seg}${i === step ? ` ${styles.segActive}` : i < step ? ` ${styles.segDone}` : ""}`}
+          >
+            <i />
+          </div>
+        ))}
+      </div>
+      <div className={styles.raillabels}>
+        {STEP_LABELS.map((label, i) => (
+          <span key={label} className={i === step ? styles.rlActive : undefined}>
+            {label}
+          </span>
+        ))}
+      </div>
+
+      {step === 0 && renderProgramStep()}
+      {step === 1 && renderLoadoutStep()}
+      {step === 2 && renderBenchmarksStep()}
+      {step === 3 && renderScheduleStep()}
+
+      <div className={styles.nav}>
+        {step > 0 ? (
+          <button type="button" className={`${styles.btn} ${styles.ghost}`} onClick={goBack}>
+            Back
+          </button>
+        ) : (
+          <span />
+        )}
+        {isFinalStep ? (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 14 }}>
+            {result && !result.ok && (
+              <span style={{ fontSize: 13, color: "var(--warn)" }}>{result.error}</span>
+            )}
             <button
               type="button"
+              className={`${styles.btn} ${styles.deploy}`}
               onClick={deploy}
               disabled={!canDeploy}
-              style={{
-                padding: "10px 20px",
-                borderRadius: 8,
-                border: "none",
-                cursor: canDeploy ? "pointer" : "not-allowed",
-                opacity: canDeploy ? 1 : 0.5,
-                background: "var(--cp-accent, #6aa0ff)",
-                color: "#0b0c0e",
-                fontWeight: 600,
-                fontSize: 14,
-              }}
             >
               {pending ? "Deploying…" : "Deploy program"}
             </button>
-            {result && !result.ok && (
-              <span style={{ fontSize: 13, color: "var(--cp-danger, #e06c75)" }}>{result.error}</span>
-            )}
-          </div>
-        </>
-      )}
+          </span>
+        ) : (
+          <button
+            type="button"
+            className={`${styles.btn} ${styles.primary}`}
+            onClick={goNext}
+            disabled={!canContinue}
+          >
+            Continue
+          </button>
+        )}
+      </div>
 
       {infoProgram && (
         <InfoModal
+          kicker={infoKick}
           title={infoProgram.name}
           body={infoText}
           onClose={() => setInfoProgramId(null)}
@@ -574,11 +669,25 @@ export function ProgramPicker({
   );
 }
 
+/** The four L-shaped corner ticks on a program card. */
+function Ticks() {
+  return (
+    <>
+      <span className={`${styles.tick} ${styles.tl}`} />
+      <span className={`${styles.tick} ${styles.tr}`} />
+      <span className={`${styles.tick} ${styles.bl}`} />
+      <span className={`${styles.tick} ${styles.br}`} />
+    </>
+  );
+}
+
 function InfoModal({
+  kicker,
   title,
   body,
   onClose,
 }: {
+  kicker: string;
   title: string;
   body: string;
   onClose: () => void;
@@ -589,49 +698,15 @@ function InfoModal({
       aria-modal="true"
       aria-label={title}
       onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.55)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 20,
-        zIndex: 50,
-      }}
+      className={styles.modal}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          maxWidth: 480,
-          width: "100%",
-          background: "var(--cp-surface, #16181c)",
-          border: "1px solid var(--cp-border, rgba(255,255,255,0.14))",
-          borderRadius: 12,
-          padding: 20,
-          color: "inherit",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>{title}</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "var(--cp-text-muted, #999)",
-              fontSize: 20,
-              cursor: "pointer",
-              lineHeight: 1,
-              padding: 4,
-            }}
-          >
-            ×
-          </button>
-        </div>
-        <p style={{ margin: 0, fontSize: 13, lineHeight: 1.55, color: "var(--cp-text, inherit)" }}>{body}</p>
+      <div onClick={(e) => e.stopPropagation()} className={styles.box}>
+        <button type="button" onClick={onClose} aria-label="Close" className={styles.modalX}>
+          {"\u2715"}
+        </button>
+        {kicker ? <div className={styles.modalKick}>{kicker}</div> : null}
+        <h3 className={styles.modalH3}>{title}</h3>
+        <p className={styles.modalP}>{body}</p>
       </div>
     </div>
   );

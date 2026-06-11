@@ -64,7 +64,13 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     await expect(page.getByRole("heading", { name: "Start a program" })).toBeVisible();
     await page.getByTestId("program-card-wendler-531").click();
 
-    // Deploy.
+    // Advance through the 4-step wizard: Program → Loadout → Benchmarks → Schedule.
+    const next = page.getByRole("button", { name: "Continue" });
+    await next.click();
+    await next.click();
+    await next.click();
+
+    // Deploy from the final (Schedule) step.
     const deploy = page.getByRole("button", { name: /Deploy program/ });
     await expect(deploy).toBeEnabled();
     await deploy.click();
@@ -150,6 +156,12 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     // Select the Tactical Barbell card (defaults to Operator → 3 days auto-picked).
     await page.getByTestId("program-card-tactical-barbell").click();
 
+    // Advance through the 4-step wizard to the Schedule step.
+    const next = page.getByRole("button", { name: "Continue" });
+    await next.click();
+    await next.click();
+    await next.click();
+
     const deploy = page.getByRole("button", { name: /Deploy program/ });
     await expect(deploy).toBeEnabled();
     await deploy.click();
@@ -213,9 +225,14 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     await page.waitForLoadState("networkidle");
 
     await page.getByTestId("program-card-tactical-barbell").click();
-    // Switch the template to Zulu (split A/B, 4 sessions/week). The picker resets
-    // the cluster to Zulu's default split and the weekday count to 4.
+
+    // Loadout step: switch the template to Zulu (split A/B, 4 sessions/week). The
+    // picker resets the cluster to Zulu's default split and the weekday count to 4.
+    const next = page.getByRole("button", { name: "Continue" });
+    await next.click(); // Program → Loadout
     await page.locator("select").first().selectOption("zulu");
+    await next.click(); // Loadout → Benchmarks
+    await next.click(); // Benchmarks → Schedule
 
     const deploy = page.getByRole("button", { name: /Deploy program/ });
     await expect(deploy).toBeEnabled();
@@ -285,6 +302,13 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     // weekly calendar from archetype + daysPerWeek), so there is no weekday
     // chooser — the default goal preset (Strength anchor) + 4 days deploy as-is.
     await page.getByTestId("program-card-hybrid").click();
+
+    // Hybrid is fixed-schedule (it owns its weekly calendar), so there is no
+    // weekday chooser — advance through the wizard and deploy as-is.
+    const next = page.getByRole("button", { name: "Continue" });
+    await next.click();
+    await next.click();
+    await next.click();
 
     const deploy = page.getByRole("button", { name: /Deploy program/ });
     await expect(deploy).toBeEnabled();
