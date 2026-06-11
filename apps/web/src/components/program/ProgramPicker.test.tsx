@@ -227,4 +227,20 @@ describe("ProgramPicker rendering", () => {
     );
     expect(html).toContain("Program");
   });
+
+  it("starts with no program pre-selected (step 1, no Deploy button)", () => {
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={programs}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[OPERATOR]}
+      />,
+    );
+    // The wizard opens on the Program step with the Continue (not Deploy) CTA,
+    // so the deploy CTA is absent until the user advances through the wizard.
+    expect(html).not.toContain("Deploy program");
+    expect(html).toContain("Continue");
+    // Program cards are present so the user can make a selection.
+    expect(html).toContain('data-testid="program-card-wendler-531"');
+  });
 });

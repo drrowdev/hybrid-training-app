@@ -1,0 +1,605 @@
+/*
+ * Sage program-wizard skin — scoped to /app/program.
+ *
+ * Palette + type lifted from the v3 "sage" mockup. All tokens live on `.wizard`
+ * (the page wrapper) so nothing leaks app-wide; app-wide theming is a separate
+ * effort. The wrapper also aliases the legacy `--cp-*` control vars to the sage
+ * palette so the reused setup/cluster/schedule controls inherit the skin
+ * without per-element edits.
+ */
+.wizard {
+  --bg: #0f1310;
+  --bg2: #141813;
+  --panel: #191e18;
+  --panel2: #1f251d;
+  --line: #28301f;
+  --line2: #384230;
+  --muted2: #5d6753;
+  --text: #e6ebe2;
+  --dim: #afb8a8;
+  --muted: #79836f;
+  --accent: #8fb39b;
+  --accent-dim: #5c7a66;
+  --sel: #bfd3c2;
+  --warn: #c99a5b;
+  --wradius: 6px;
+
+  /* Alias the reused controls' legacy vars onto the sage palette. */
+  --cp-accent: var(--accent);
+  --cp-accent-soft: rgba(143, 179, 155, 0.14);
+  --cp-border: var(--line2);
+  --cp-text: var(--text);
+  --cp-text-muted: var(--muted);
+  --cp-danger: var(--warn);
+  --cp-success: var(--accent);
+  --cp-surface: var(--panel);
+
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 8px 4px 32px;
+  color: var(--text);
+  font-family: var(--font-archivo), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background: radial-gradient(900px 500px at 50% -15%, #18211a 0%, transparent 60%);
+}
+
+/* page heading (kept for a11y + e2e: "Start a program") */
+.pageTitle {
+  font-family: var(--font-oswald), sans-serif;
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 18px;
+}
+
+/* slim top bar */
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 26px;
+}
+.mark {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.diamond {
+  width: 32px;
+  height: 32px;
+  border: 1.5px solid var(--accent);
+  transform: rotate(45deg);
+  display: grid;
+  place-items: center;
+}
+.diamond span {
+  transform: rotate(-45deg);
+  font-family: var(--font-mono-wizard), monospace;
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--accent);
+}
+.mark b {
+  font-family: var(--font-oswald), sans-serif;
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.stepcount {
+  font-family: var(--font-mono-wizard), monospace;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 1px;
+}
+.stepcount b {
+  color: var(--text);
+}
+
+/* progress rail + labels */
+.rail {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.seg {
+  flex: 1;
+  height: 3px;
+  background: var(--line);
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+.seg i {
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: 0.3s;
+}
+.segDone i {
+  transform: scaleX(1);
+}
+.segActive i {
+  transform: scaleX(1);
+  background: var(--sel);
+}
+.raillabels {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 30px;
+}
+.raillabels span {
+  flex: 1;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.3px;
+}
+.raillabels span.rlActive {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.step {
+  animation: sageFade 0.22s ease;
+}
+@keyframes sageFade {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.h1 {
+  font-family: var(--font-oswald), sans-serif;
+  font-weight: 600;
+  font-size: 28px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin: 0 0 8px;
+  line-height: 1.1;
+}
+.sub {
+  color: var(--dim);
+  font-size: 13.5px;
+  line-height: 1.55;
+  margin: 0 0 26px;
+  max-width: 520px;
+}
+
+/* program cards */
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  max-width: 560px;
+  margin: 0 auto;
+}
+.pcard {
+  position: relative;
+  width: 172px;
+  height: 172px;
+  border: 1px solid var(--line2);
+  border-radius: var(--wradius);
+  background: linear-gradient(165deg, var(--panel2), var(--panel));
+  padding: 16px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: inherit;
+  transition: border-color 0.16s, transform 0.16s, background 0.16s;
+}
+.pcard:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+.tick {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--muted2);
+  transition: 0.16s;
+}
+.tl {
+  left: 8px;
+  top: 8px;
+  border-right: 0;
+  border-bottom: 0;
+}
+.tr {
+  right: 8px;
+  top: 8px;
+  border-left: 0;
+  border-bottom: 0;
+}
+.bl {
+  left: 8px;
+  bottom: 8px;
+  border-right: 0;
+  border-top: 0;
+}
+.br {
+  right: 8px;
+  bottom: 8px;
+  border-left: 0;
+  border-top: 0;
+}
+.pcard:hover .tick,
+.pcard.sel .tick {
+  border-color: var(--accent);
+}
+.kick {
+  font-family: var(--font-oswald), sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.8px;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: 9px;
+  min-height: 13px;
+}
+.code {
+  font-family: var(--font-saira), sans-serif;
+  font-size: 30px;
+  line-height: 1;
+  color: var(--text);
+  letter-spacing: 1px;
+}
+.pdesc {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+  margin-top: 12px;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+}
+.pcard.sel {
+  border-color: var(--sel);
+  background: linear-gradient(165deg, #23272b, #191c1f);
+}
+.pcard.sel .tick {
+  border-color: var(--sel);
+}
+.pcard.sel .code {
+  color: #fff;
+}
+.pcard.locked {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-style: dashed;
+}
+.pcard.locked:hover {
+  transform: none;
+  border-color: var(--line2);
+}
+.pcard.locked .code {
+  color: var(--muted);
+  font-size: 24px;
+}
+.pinfo {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--line2);
+  background: var(--bg);
+  color: var(--accent);
+  font-family: var(--font-archivo), sans-serif;
+  font-weight: 700;
+  font-size: 10px;
+  font-style: italic;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  z-index: 2;
+  padding: 0;
+  transition: 0.14s;
+}
+.pinfo:hover {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #12150f;
+}
+
+.label {
+  font-family: var(--font-oswald), sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+/* horizontal spec strip */
+.specwrap {
+  margin-top: 22px;
+}
+.spec {
+  display: flex;
+  border: 1px solid var(--line2);
+  border-radius: var(--wradius);
+  background: linear-gradient(160deg, var(--panel2), var(--panel));
+  overflow: hidden;
+}
+.cell {
+  padding: 15px 20px;
+  border-left: 1px solid var(--line);
+  flex: 1;
+  min-width: 0;
+}
+.cell:first-child {
+  border-left: 0;
+}
+.cell.wide {
+  flex: 1.7;
+}
+.cl {
+  font-family: var(--font-oswald), sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 9px;
+}
+.cv {
+  font-family: var(--font-oswald), sans-serif;
+  font-weight: 600;
+  font-size: 19px;
+  letter-spacing: 0.5px;
+  color: var(--text);
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+.cv.cvSm {
+  font-family: var(--font-archivo), sans-serif;
+  font-weight: 500;
+  font-size: 13px;
+  letter-spacing: 0.2px;
+  text-transform: none;
+  color: var(--dim);
+  line-height: 1.4;
+}
+@media (max-width: 560px) {
+  .spec {
+    flex-wrap: wrap;
+  }
+  .cell {
+    flex: 1 1 50%;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+  .cell:first-child,
+  .cell:nth-child(2) {
+    border-top: 0;
+  }
+  .cell.wide {
+    flex: 1 1 100%;
+  }
+}
+
+/* schedule week builder */
+.week {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.wd {
+  flex: 1;
+  min-width: 62px;
+  height: 78px;
+  border: 1px solid var(--line2);
+  border-radius: var(--wradius);
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  cursor: pointer;
+  color: inherit;
+  transition: 0.14s;
+}
+.wd:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+}
+.wn {
+  font-family: var(--font-oswald), sans-serif;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.wt {
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+}
+.wd.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.wd.on .wn,
+.wd.on .wt {
+  color: #12150f;
+}
+@media (max-width: 560px) {
+  .wd {
+    flex: 1 1 calc(25% - 6px);
+    min-width: 0;
+  }
+}
+
+/* nav row */
+.nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 30px;
+}
+.btn {
+  font-family: var(--font-archivo), sans-serif;
+  font-weight: 600;
+  font-size: 13.5px;
+  padding: 12px 24px;
+  border-radius: var(--wradius);
+  cursor: pointer;
+  border: 1px solid var(--line2);
+  background: var(--panel);
+  color: var(--dim);
+  transition: 0.15s;
+}
+.btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.btn:disabled:hover {
+  color: var(--dim);
+  border-color: var(--line2);
+}
+.ghost {
+  background: none;
+  border-color: transparent;
+  color: var(--muted);
+}
+.ghost:hover {
+  color: var(--text);
+  border-color: transparent;
+}
+.primary {
+  background: var(--text);
+  color: #0b0c0e;
+  border-color: var(--text);
+}
+.primary:hover {
+  filter: brightness(0.93);
+  color: #0b0c0e;
+}
+.primary:disabled:hover {
+  filter: none;
+}
+.deploy {
+  background: var(--accent);
+  color: #0b0c0e;
+  border-color: var(--accent);
+}
+.deploy:hover {
+  color: #0b0c0e;
+  border-color: var(--accent);
+  filter: brightness(0.95);
+}
+
+/* info modal */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(8, 11, 9, 0.72);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 22px;
+  animation: sageFade 0.18s ease;
+}
+.box {
+  width: 100%;
+  max-width: 460px;
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  background: linear-gradient(165deg, var(--panel2), var(--panel));
+  padding: 24px;
+  position: relative;
+}
+.modalX {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: 20px;
+  cursor: pointer;
+  line-height: 1;
+}
+.modalX:hover {
+  color: var(--text);
+}
+.modalKick {
+  font-family: var(--font-oswald), sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.modalH3 {
+  font-family: var(--font-oswald), sans-serif;
+  font-weight: 600;
+  font-size: 24px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin: 0 0 14px;
+}
+.modalP {
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--dim);
+  margin: 0;
+}
+
+/* shared note + warning banner */
+.note {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 16px;
+  line-height: 1.5;
+}
+.banner {
+  margin: 0 0 6px;
+  padding: 10px 14px;
+  border-radius: var(--wradius);
+  border: 1px dashed var(--accent-dim);
+  font-size: 13px;
+  color: var(--dim);
+  line-height: 1.5;
+}
+
+@media (max-width: 560px) {
+  .raillabels {
+    display: none;
+  }
+  .h1 {
+    font-size: 21px;
+  }
+  .grid {
+    max-width: none;
+  }
+  .pcard {
+    width: calc(50% - 6px);
+    height: 158px;
+  }
+}

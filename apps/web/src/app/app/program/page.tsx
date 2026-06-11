@@ -11,8 +11,8 @@
  * Only programs with a wired deploy path are enabled (5/3/1 + Tactical Barbell
  * today); the rest are shown as "coming soon".
  */
-import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Archivo, Oswald, Saira_Stencil_One, JetBrains_Mono } from "next/font/google";
 import type { PlatformContext, ProgramEngine, PlannedSessionSpec } from "@hta/program-core";
 import { TB_TEMPLATES } from "@hta/tacticalbarbell";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
@@ -23,6 +23,13 @@ import {
   type PickerProgram,
   type PickerTbTemplate,
 } from "@/components/program/ProgramPicker";
+
+// Sage program-wizard type scale — scoped to this route via CSS variables on
+// the wrapper below (see ProgramPicker.module.css). Not loaded app-wide.
+const archivo = Archivo({ subsets: ["latin"], display: "swap", weight: ["400", "500", "600", "700"], variable: "--font-archivo" });
+const oswald = Oswald({ subsets: ["latin"], display: "swap", weight: ["400", "500", "600", "700"], variable: "--font-oswald" });
+const saira = Saira_Stencil_One({ subsets: ["latin"], display: "swap", weight: "400", variable: "--font-saira" });
+const jetbrains = JetBrains_Mono({ subsets: ["latin"], display: "swap", weight: ["500", "700"], variable: "--font-mono-wizard" });
 
 // Programs whose deploy path is validated end-to-end. Others render disabled.
 const ENABLED_PROGRAM_IDS = new Set<string>([
@@ -119,21 +126,7 @@ export default async function ProgramPickerPage() {
   }));
 
   return (
-    <div style={{ display: "grid", gap: 20 }}>
-      <header>
-        <Link
-          href="/app"
-          style={{ fontSize: 12, color: "var(--cp-text-muted, #999)", textDecoration: "none" }}
-        >
-          ← back to today
-        </Link>
-        <h1 style={{ fontSize: 26, margin: "8px 0 0", letterSpacing: "-0.01em" }}>Start a program</h1>
-        <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--cp-text-muted, #999)", maxWidth: 560, lineHeight: 1.5 }}>
-          Pick a training program and we build your schedule. Your strength numbers,
-          history and stats stay with you — switching programs later keeps them all.
-        </p>
-      </header>
-
+    <div className={`${archivo.variable} ${oswald.variable} ${saira.variable} ${jetbrains.variable}`}>
       <ProgramPicker programs={programs} anchoredKeys={anchoredKeys} tbTemplates={tbTemplates} />
     </div>
   );
