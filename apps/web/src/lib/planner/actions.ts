@@ -8,7 +8,6 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { todayYmd, ymdToUtc, daysBetweenYmd } from "@/lib/dates";
 import { getUserTimezone } from "./queries";
 import {
-  type ArchetypeId,
   type CardioDay,
   allCandidateLiftSlugs,
   daySlotKey,
@@ -21,10 +20,6 @@ import { allAccessorySlugs } from "./accessories";
 import { foldDualMainLifts } from "./main-lift-folding";
 import { assemblePrescriptionItems } from "./assemble-prescription";
 import { expandPrescriptionSetItems } from "./expand-prescription-sets";
-import {
-  dayIndexOverridesSchema,
-  type DayIndexOverrides,
-} from "./wizard/placements";
 import { swapPlannedSessions } from "./swap";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
 import {
@@ -68,93 +63,13 @@ import {
   pickSecondaryStrengthMovement,
   resolveDeclaredExperience,
 } from "./build-block-assembly-context";
-
-
-const createBlockSchema = z.object({
-  archetype: z.enum([
-    "strength_anchor",
-    "endurance_anchor",
-    "rebuild",
-    "hypertrophy_anchor",
-    "concurrent_hybrid",
-    "maintenance",
-  ] satisfies [ArchetypeId, ...ArchetypeId[]]),
-  startedOn: z.string().date(),
-  daysPerWeek: z.coerce.number().int().min(1).max(7),
-  /**
-   * Optional JSON-stringified ``DayIndexOverrides`` from the block wizard's
-   * "Lay out your week" step. Persisted on the block row so re-runs honour
-   * the user's calendar layout. Shape: ``{ days, twoADay, placements? }``
-   * — see ``wizard/placements.ts`` for the canonical schema. The
-   * `placements` field is optional during the rollout transition; absent
-   * payloads (legacy / mid-flight submissions) fall back to canonical
-   * day-template ordering.
-   */
-  dayIndexOverrides: z.string().optional(),
-  /**
-   * Wizard "Add power emphasis" toggle (step 2). Optional + coerced from
-   * FormData ("true" / "false" / "on" / undefined). When omitted or
-   * falsy the block is created with power_emphasis = false.
-   */
-  powerEmphasis: z
-    .union([z.literal("true"), z.literal("false"), z.literal("on"), z.boolean()])
-    .optional()
-    .transform((v) => v === true || v === "true" || v === "on"),
-  /**
-   * Phase 1 "external cardio". 'external' tells the materialiser to
-   * emit a single placeholder `cardio_external` item per cardio day
-   * instead of the archetype's prescribed run. Default 'internal'
-   * keeps every legacy + new internal block on the existing path.
-   */
-  cardioSource: z
-    .enum(["internal", "external"])
-    .optional()
-    .transform((v) => v ?? "internal"),
-  /**
-   * Free-text label for the external program (e.g. "Runna"). Trimmed
-   * and capped at 80 chars; empty strings normalise to null at write
-   * time so the DB column stays distinguishable.
-   */
-  cardioSourceName: z
-    .string()
-    .trim()
-    .max(80)
-    .optional()
-    .transform((v) => (v && v.length > 0 ? v : null)),
-  /**
-   * Migration 0079 — per-block focus muscle groups (0–2). Submitted as
-   * repeated `focusMuscles` fields (FormData.getAll). Server-side
-   * validation mirrors the DB CHECK constraints; the DB is the final
-   * guard. See `lib/planner/focus-muscles.ts`.
-   */
-  focusMuscles: focusMusclesSchema,
-  /**
-   * ADR 0020 — wizard PRIMARY goal + SECONDARY focus. Optional: the legacy /
-   * custom-builder paths and any pre-0082 client omit them, in which case the
-   * block is created with NULL goal/secondary and the engine produces the
-   * pre-ADR-0020 baseline (no tilt). Raw wizard channel values are stored
-   * verbatim; `resolveSecondaryFocus` collapses non-tiltable values to `none`.
-   */
-  goal: z.enum(["strength", "muscle", "cardio", "resilience"]).optional(),
-  secondaryFocus: z
-    .enum([
-      "strength",
-      "muscle",
-      "cardio",
-      "resilience",
-      "skip",
-      "maintenance",
-      "none",
-    ])
-    .optional(),
-  /**
-   * ADR 0024 — per-block accessory volume level. Optional: legacy /
-   * custom-builder paths and any pre-0083 client omit it, in which case the
-   * block is created with the DB default `'medium'` (the byte-identical
-   * pre-ADR-0024 baseline). Bounded enum is the write guard.
-   */
-  accessoryVolume: z.enum(["low", "medium", "high"]).optional(),
-});
+// ─── Block wizard input parsing ─────────────────────────────────────
+// `createBlockSchema` + the wizard-input → `BuildBlockAssemblyContextInput`
+// mapping live in a dedicated DB-free module (a `"use server"` file may only
+// export async functions, so the schema/helper can't live here). Both
+// `createBlock` and the hybrid program engine import the SAME mapper so they
+// stay parity-identical by construction (ADR 0046 Phase 0).
+import { parseCreateBlockInput } from "./create-block-input";
 
 export type CreateBlockResult =
   | { ok: true }
@@ -166,7 +81,7 @@ export type CreateBlockResult =
  * the whole page.
  */
 export async function createBlock(formData: FormData): Promise<CreateBlockResult> {
-  const parsed = createBlockSchema.safeParse({
+  const parsedInput = parseCreateBlockInput({
     archetype: formData.get("archetype"),
     startedOn: formData.get("startedOn"),
     daysPerWeek: formData.get("daysPerWeek"),
@@ -184,26 +99,10 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
     secondaryFocus: (formData.get("secondaryFocus") as string | null) || undefined,
     accessoryVolume: (formData.get("accessoryVolume") as string | null) || undefined,
   });
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  if (!parsedInput.ok) {
+    return { ok: false, error: parsedInput.error };
   }
-
-  // Parse + validate the dayIndexOverrides JSON payload (wizard step 5).
-  // Accepts both the legacy `{ days, twoADay }` shape and the post-fix
-  // `{ days, twoADay, placements }` shape — Zod's optional `placements`
-  // makes the transition safe for any submission that races the deploy.
-  let dayIndexOverrides: DayIndexOverrides | null = null;
-  if (parsed.data.dayIndexOverrides) {
-    try {
-      const raw: unknown = JSON.parse(parsed.data.dayIndexOverrides);
-      const result = dayIndexOverridesSchema.safeParse(raw);
-      if (result.success) {
-        dayIndexOverrides = result.data;
-      }
-    } catch {
-      // Bad JSON — silently drop; the block can still be created without overrides.
-    }
-  }
+  const { input, parsed, dayIndexOverrides } = parsedInput;
 
   const supabase = await createClient();
   const {
@@ -211,19 +110,7 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
   } = await getAuthUser();
   if (!user) redirect("/login");
 
-  const built = await buildBlockAssemblyContext(supabase, user.id, {
-    archetypeId: parsed.data.archetype,
-    startedOn: parsed.data.startedOn,
-    daysPerWeek: parsed.data.daysPerWeek,
-    dayIndexOverrides,
-    powerEmphasis: parsed.data.powerEmphasis,
-    focusMuscles: parsed.data.focusMuscles,
-    goal: parsed.data.goal,
-    secondaryFocus: parsed.data.secondaryFocus,
-    accessoryVolume: parsed.data.accessoryVolume,
-    cardioSource: parsed.data.cardioSource,
-    cardioSourceName: parsed.data.cardioSourceName,
-  });
+  const built = await buildBlockAssemblyContext(supabase, user.id, input);
   if (!built.ok) return built;
   const { ctx, meta } = built;
 
@@ -235,18 +122,18 @@ export async function createBlock(formData: FormData): Promise<CreateBlockResult
     .insert({
       user_id: user.id,
       archetype: ctx.archetype.id,
-      started_on: parsed.data.startedOn,
+      started_on: parsed.startedOn,
       weeks: ctx.archetype.weeks,
       status: "active",
-      days_per_week: parsed.data.daysPerWeek,
+      days_per_week: parsed.daysPerWeek,
       day_index_overrides: dayIndexOverrides,
-      power_emphasis: parsed.data.powerEmphasis,
-      focus_muscles: parsed.data.focusMuscles,
-      goal: parsed.data.goal ?? null,
-      secondary_focus: parsed.data.secondaryFocus ?? null,
-      accessory_volume: parsed.data.accessoryVolume ?? "medium",
-      cardio_source: parsed.data.cardioSource,
-      cardio_source_name: parsed.data.cardioSourceName,
+      power_emphasis: parsed.powerEmphasis,
+      focus_muscles: parsed.focusMuscles,
+      goal: parsed.goal ?? null,
+      secondary_focus: parsed.secondaryFocus ?? null,
+      accessory_volume: parsed.accessoryVolume ?? "medium",
+      cardio_source: parsed.cardioSource,
+      cardio_source_name: parsed.cardioSourceName,
       notes: meta.hasAnyTm
         ? null
         : meta.bwHasAnyFamily
