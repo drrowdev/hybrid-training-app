@@ -23,9 +23,12 @@
  */
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
+import { ARCHETYPES } from "@/lib/planner/archetypes";
+import type { HybridInstance } from "@/lib/programs/hybrid/engine";
 import { buildPlatformContext } from "./context";
-import { getProgramEngine } from "./registry";
+import { getProgramEngine, getNativeProgramEngine, isNativeProgram } from "./registry";
 import { buildProgramInstanceWrite } from "./program-instance";
 
 const WEEKDAY = z.number().int().min(0).max(6);
@@ -60,19 +63,58 @@ export async function createProgramInstance(
   const { programId, setupValues, weekdays, startedOn, roundingKg } = parsed.data;
 
   // Reject duplicate weekdays — they'd collide on the (week, day, slot) unique key.
+  // (Native programs own their own calendar and ignore `weekdays`, but the check
+  // is harmless and keeps the input contract uniform.)
   if (new Set(weekdays).size !== weekdays.length) {
     return { ok: false, error: "Training weekdays must be distinct." };
   }
-
-  const engine = getProgramEngine(programId);
-  if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
 
   const {
     data: { user },
   } = await getAuthUser();
   if (!user) return { ok: false, error: "Not signed in." };
 
+  // Same user-scoped client (RLS) for BOTH paths — never the service role.
   const supabase = await createClient();
+
+  if (isNativeProgram(programId)) {
+    return createNativeProgramInstance(supabase, user, {
+      programId,
+      setupValues,
+      weekdays,
+      startedOn,
+      ...(roundingKg != null ? { roundingKg } : {}),
+    });
+  }
+  return createForeignProgramInstance(supabase, user, {
+    programId,
+    setupValues,
+    weekdays,
+    startedOn,
+    ...(roundingKg != null ? { roundingKg } : {}),
+  });
+}
+
+/** Parsed, validated deploy input shared by both write paths. */
+interface DeployArgs {
+  programId: string;
+  setupValues: Record<string, unknown>;
+  weekdays: number[];
+  startedOn: string;
+  roundingKg?: number;
+}
+
+/**
+ * Foreign per-session engine deploy (5/3/1, Tactical Barbell, Green Protocol).
+ * Behaviour is byte-identical to the pre-refactor inline flow.
+ */
+async function createForeignProgramInstance(
+  supabase: SupabaseClient,
+  user: User,
+  { programId, setupValues, weekdays, startedOn, roundingKg }: DeployArgs,
+): Promise<CreateProgramInstanceResult> {
+  const engine = getProgramEngine(programId);
+  if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
 
   // Shared strength state → engine setup → materialised plan + TM alignment.
   let write;
@@ -226,6 +268,150 @@ export async function createProgramInstance(
   revalidatePath("/app/stats");
 
   return { ok: true, blockId, programInstanceId: pi.id as string, skipped: write.skipped.length };
+}
+
+/**
+ * Native (block-level) engine deploy — Hybrid (ADR 0046 Phase 2).
+ *
+ * Mirrors the foreign path's guardrails EXACTLY: same user-scoped client, the
+ * same explicit `user_id` ownership match on every query, and complete rollback
+ * on every failure path. The differences are structural, not security:
+ *   - the engine materialises the WHOLE block at once (`materializeNative`),
+ *     reusing the shared `assembleBlockSessions` rows directly, and
+ *   - it does NOT seed `training_maxes.tm_percent`: Hybrid renders %TM off the
+ *     user's real training maxes (exactly like the legacy archetype path), so
+ *     there is no engine-derived TM basis to seed.
+ *
+ * `weekdays` is ignored here — Hybrid owns its weekly calendar (archetype +
+ * daysPerWeek), like Green Protocol. The block's `weeks`, `days_per_week` and
+ * `day_index_overrides` come from the engine instance.
+ */
+async function createNativeProgramInstance(
+  supabase: SupabaseClient,
+  user: User,
+  { programId, setupValues, weekdays, startedOn, roundingKg }: DeployArgs,
+): Promise<CreateProgramInstanceResult> {
+  const engine = getNativeProgramEngine(programId)!;
+
+  // Setup → instance. `setupHybrid` reads `values.startedOn`, so inject it.
+  // ctx is built uniformly with the foreign path (Hybrid's setup ignores it).
+  // The native registry is generic (`unknown` instance); this branch owns the
+  // Hybrid contract, so we read the instance as a `HybridInstance`.
+  //
+  // `focusMuscles` is a 0–2 array, but the generic picker renders it as a
+  // single-select and sends a bare string — coerce so deploy doesn't throw in
+  // the array schema (rich multi-select UX is a later step).
+  const values: Record<string, unknown> = { ...setupValues, startedOn };
+  if (typeof values.focusMuscles === "string") {
+    const fm = values.focusMuscles.trim();
+    values.focusMuscles = fm ? [fm] : [];
+  }
+  let instance: HybridInstance;
+  try {
+    const { ctx } = await buildPlatformContext(supabase, user.id, {
+      ...(roundingKg != null ? { roundingKg } : {}),
+    });
+    instance = engine.setup({ values }, ctx) as HybridInstance;
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Setup failed" };
+  }
+
+  // Derive the block shape from the instance (Hybrid owns its own calendar).
+  const archetypeId = instance.archetypeId as keyof typeof ARCHETYPES;
+  const archetype = ARCHETYPES[archetypeId];
+  if (!archetype) return { ok: false, error: `Unknown goal preset '${String(archetypeId)}'.` };
+  const weeks = archetype.weeks;
+  const daysPerWeek = instance.daysPerWeek;
+  const dayIndexOverrides = instance.dayIndexOverrides;
+
+  // 1) training_blocks — platform block: archetype NULL, identity in program_* columns.
+  const { data: block, error: blockErr } = await supabase
+    .from("training_blocks")
+    .insert({
+      user_id: user.id,
+      archetype: null,
+      program_id: programId,
+      program_family: engine.meta.family,
+      started_on: startedOn,
+      weeks,
+      status: "active",
+      days_per_week: daysPerWeek,
+      day_index_overrides: dayIndexOverrides,
+      notes: engine.meta.name,
+    })
+    .select("id")
+    .single();
+  if (blockErr || !block) {
+    return { ok: false, error: blockErr?.message ?? "Failed to create block" };
+  }
+  const blockId = block.id as string;
+
+  const deleteBlock = async () => {
+    await supabase.from("training_blocks").delete().eq("id", blockId).eq("user_id", user.id);
+  };
+  const rollbackBlock = async () => {
+    await supabase.from("planned_sessions").delete().eq("block_id", blockId).eq("user_id", user.id);
+    await deleteBlock();
+  };
+
+  // 2) materialise the WHOLE block via the shared assembly path.
+  const mat = await engine.materializeNative(instance, supabase, user.id, blockId);
+  if (!mat.ok) {
+    await deleteBlock();
+    return { ok: false, error: mat.error };
+  }
+  if (mat.rows.length === 0) {
+    await deleteBlock();
+    return { ok: false, error: "This program produced no sessions — check your training maxes." };
+  }
+
+  // 3) planned_sessions — rows already carry block_id/user_id/snake_case columns.
+  const { error: psErr } = await supabase.from("planned_sessions").insert(mat.rows);
+  if (psErr) {
+    await deleteBlock();
+    return { ok: false, error: `Couldn't create planned sessions: ${psErr.message}` };
+  }
+
+  // NOTE: no training_maxes.tm_percent seed — Hybrid reads the user's real TMs.
+
+  // 4) program_instances (the source of truth for program identity).
+  const { data: pi, error: piErr } = await supabase
+    .from("program_instances")
+    .insert({
+      user_id: user.id,
+      program_id: programId,
+      program_family: engine.meta.family,
+      instance,
+      setup_input: { values: setupValues, weekdays, startedOn },
+      block_id: blockId,
+      status: "active",
+    })
+    .select("id")
+    .single();
+  if (piErr || !pi) {
+    await rollbackBlock();
+    return { ok: false, error: piErr?.message ?? "Failed to create program instance" };
+  }
+
+  // 5) archive any prior active block + program instance (one active at a time).
+  await supabase
+    .from("training_blocks")
+    .update({ status: "archived", archived_at: new Date().toISOString() })
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .neq("id", blockId);
+  await supabase
+    .from("program_instances")
+    .update({ status: "archived", updated_at: new Date().toISOString() })
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .neq("id", pi.id);
+
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
+  revalidatePath("/app/stats");
+
+  return { ok: true, blockId, programInstanceId: pi.id as string, skipped: 0 };
 }
 
 /**

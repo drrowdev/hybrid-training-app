@@ -250,4 +250,87 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     expect(cluster.some((c) => c.split === "A")).toBe(true);
     expect(cluster.some((c) => c.split === "B")).toBe(true);
   });
+
+  test("picker deploys a Hybrid (native) platform block end-to-end", async ({
+    page,
+    context,
+    freshUser,
+    seedConfig,
+    admin,
+    baseURL,
+  }) => {
+    await markOnboarded(admin, freshUser.userId);
+
+    // Seed the four canonical strength 1RMs so Hybrid can prescribe %TM work.
+    for (const tm of STRENGTH_TMS) {
+      const { data: mv } = await admin
+        .from("movements")
+        .select("id")
+        .eq("slug", tm.slug)
+        .is("user_id", null)
+        .maybeSingle();
+      expect(mv, `catalog must have ${tm.slug}`).toBeTruthy();
+      const { error } = await admin.from("training_maxes").upsert(
+        { user_id: freshUser.userId, movement_id: mv!.id, one_rm_kg: tm.oneRmKg, source: "entered" },
+        { onConflict: "user_id,movement_id" },
+      );
+      expect(error).toBeNull();
+    }
+
+    await signInAs(context, freshUser, seedConfig, baseURL ?? "http://localhost:3000");
+    await page.goto("/app/program");
+    await page.waitForLoadState("networkidle");
+
+    // Select the Hybrid card. Hybrid is a fixed-schedule program (it owns its
+    // weekly calendar from archetype + daysPerWeek), so there is no weekday
+    // chooser — the default goal preset (Strength anchor) + 4 days deploy as-is.
+    await page.getByTestId("program-card-hybrid").click();
+
+    const deploy = page.getByRole("button", { name: /Deploy program/ });
+    await expect(deploy).toBeEnabled();
+    await deploy.click();
+    await page.waitForURL("**/app", { timeout: 15_000 });
+
+    // Verify the write landed: an active native platform block (archetype NULL).
+    const { data: block, error: blockErr } = await admin
+      .from("training_blocks")
+      .select("id, archetype, program_id, program_family, status, weeks, days_per_week")
+      .eq("user_id", freshUser.userId)
+      .eq("status", "active")
+      .maybeSingle();
+    expect(blockErr).toBeNull();
+    expect(block, "an active block must exist").toBeTruthy();
+    expect(block!.archetype).toBeNull();
+    expect(block!.program_id).toBe("hybrid");
+    expect(block!.program_family).toBe("hybrid");
+    expect(Number(block!.weeks)).toBeGreaterThan(0);
+    expect(Number(block!.days_per_week)).toBe(4);
+
+    // Materialised planned_sessions exist for the block.
+    const { count: psCount } = await admin
+      .from("planned_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("block_id", block!.id);
+    expect(psCount, "planned_sessions materialised").toBeGreaterThan(0);
+
+    // An active program_instance links to the block and carries the goal preset.
+    const { data: pi } = await admin
+      .from("program_instances")
+      .select("program_id, program_family, status, block_id, instance")
+      .eq("user_id", freshUser.userId)
+      .eq("status", "active")
+      .maybeSingle();
+    expect(pi, "active program_instance must exist").toBeTruthy();
+    expect(pi!.program_id).toBe("hybrid");
+    expect(pi!.block_id).toBe(block!.id);
+    expect((pi!.instance as { archetypeId?: string }).archetypeId).toBe("strength_anchor");
+
+    // Hybrid does NOT seed training_maxes.tm_percent (it renders off real TMs).
+    const { data: tmRows } = await admin
+      .from("training_maxes")
+      .select("tm_percent")
+      .eq("user_id", freshUser.userId)
+      .not("tm_percent", "is", null);
+    expect(tmRows && tmRows.length).toBe(0);
+  });
 });
