@@ -16,7 +16,7 @@ import { redirect } from "next/navigation";
 import type { PlatformContext, ProgramEngine, PlannedSessionSpec } from "@hta/program-core";
 import { TB_TEMPLATES } from "@hta/tacticalbarbell";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
-import { selectablePrograms, getProgramEngine } from "@/lib/platform/registry";
+import { selectablePrograms, getProgramEngine, getNativeProgramEngine } from "@/lib/platform/registry";
 import { buildPlatformContext } from "@/lib/platform/context";
 import {
   ProgramPicker,
@@ -25,11 +25,17 @@ import {
 } from "@/components/program/ProgramPicker";
 
 // Programs whose deploy path is validated end-to-end. Others render disabled.
-const ENABLED_PROGRAM_IDS = new Set<string>(["wendler-531", "tactical-barbell", "green-protocol"]);
+const ENABLED_PROGRAM_IDS = new Set<string>([
+  "hybrid",
+  "wendler-531",
+  "tactical-barbell",
+  "green-protocol",
+]);
 
 // Programs that prescribe their own weekly calendar (every session carries an
-// explicit weekday) — the picker hides its weekday chooser for these.
-const FIXED_SCHEDULE_PROGRAM_IDS = new Set<string>(["green-protocol"]);
+// explicit weekday) — the picker hides its weekday chooser for these. Hybrid
+// owns its calendar from the archetype + daysPerWeek (like Green Protocol).
+const FIXED_SCHEDULE_PROGRAM_IDS = new Set<string>(["hybrid", "green-protocol"]);
 
 /**
  * Sessions a single program-week contains under the engine's DEFAULT setup —
@@ -67,8 +73,12 @@ export default async function ProgramPickerPage() {
   const { anchoredKeys } = await buildPlatformContext(supabase, user.id);
 
   const programs: PickerProgram[] = selectablePrograms().map((meta) => {
-    const engine = getProgramEngine(meta.id);
-    const fields = engine?.describeSetup().fields ?? [];
+    // A program is owned by EITHER a foreign per-session engine or a native
+    // (block-level) engine — both expose `describeSetup()`. Native programs are
+    // fixed-schedule, so they don't need a `sessionsPerWeek` weekday hint.
+    const foreignEngine = getProgramEngine(meta.id);
+    const nativeEngine = getNativeProgramEngine(meta.id);
+    const fields = (foreignEngine ?? nativeEngine)?.describeSetup().fields ?? [];
     return {
       id: meta.id,
       name: meta.name,
@@ -76,7 +86,7 @@ export default async function ProgramPickerPage() {
       summary: meta.summary,
       enabled: ENABLED_PROGRAM_IDS.has(meta.id),
       ...(FIXED_SCHEDULE_PROGRAM_IDS.has(meta.id) ? { fixedSchedule: true } : {}),
-      sessionsPerWeek: engine ? defaultSessionsPerWeek(engine) : undefined,
+      sessionsPerWeek: foreignEngine ? defaultSessionsPerWeek(foreignEngine) : undefined,
       fields: fields.map((f) => ({
         key: f.key,
         label: f.label,
