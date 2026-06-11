@@ -166,7 +166,8 @@ export function materializeProgram<I>(
 
     const engineRx = engine.prescribe(instance, spec.ref, ctx);
     const { prescription, skipped } = adaptSessionPrescription(engineRx, resolveMovement);
-    const { modality, load } = stampModality(prescription);
+    const prescriptionWithRef: Prescription = { ...prescription, programRef: spec.ref };
+    const { modality, load } = stampModality(prescriptionWithRef);
     if (skipped.length > 0) allSkipped.push(...skipped);
 
     sessions.push({
@@ -176,7 +177,7 @@ export function materializeProgram<I>(
       slot: "single",
       title: spec.label,
       role: roleForKind(spec.kind),
-      prescription,
+      prescription: prescriptionWithRef,
       sessionModality: modality,
       effectiveStressLoad: load,
       skipped,

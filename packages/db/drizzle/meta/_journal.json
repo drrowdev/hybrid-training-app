@@ -729,6 +729,13 @@
       "when": 1784709600000,
       "tag": "0103_training_block_program_columns",
       "breakpoints": false
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1784796000000,
+      "tag": "0104_program_recommendations",
+      "breakpoints": false
     }
   ]
 }

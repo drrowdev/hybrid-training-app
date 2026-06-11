@@ -82,6 +82,12 @@ describe("materializeProgram — 5/3/1 default block", () => {
     expect(main!.movementName).toBeTruthy();
   });
 
+  it("stamps the engine ref on each prescription for the progression hook", () => {
+    for (const s of result.sessions) {
+      expect(s.prescription.programRef).toBe(s.ref);
+    }
+  });
+
   it("stamps a modality + non-negative effective load on every session", () => {
     for (const s of result.sessions) {
       expect(s.sessionModality).toBeTruthy();
