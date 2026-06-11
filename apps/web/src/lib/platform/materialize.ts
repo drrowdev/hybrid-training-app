@@ -94,6 +94,17 @@ function toClassifierMovements(items: PrescriptionItem[]): ClassifierMovement[] 
     if (it.kind === "warmup") {
       return { kind: "warmup", estimatedHardSets: 0 };
     }
+    // Cardio items carry no strength hard-sets — classify as conditioning so a
+    // Green Protocol cardio day isn't miscounted as strength volume.
+    if (it.kind.startsWith("cardio_")) {
+      return {
+        kind: "conditioning",
+        estimatedHardSets: 0,
+        ...(it.durationMin != null && it.durationMin > 0
+          ? { cardioBlock: { mode: "mixed" as const, durationMinutes: it.durationMin } }
+          : {}),
+      };
+    }
     // app kinds after adaptation are warmup | main | back_off | accessory
     const bucket = it.kind === "main" || it.kind === "back_off" ? it.kind : "accessory";
     const kind = it.kind === "main" || it.kind === "back_off" || it.kind === "accessory"

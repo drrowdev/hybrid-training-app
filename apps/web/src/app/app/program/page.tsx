@@ -25,7 +25,11 @@ import {
 } from "@/components/program/ProgramPicker";
 
 // Programs whose deploy path is validated end-to-end. Others render disabled.
-const ENABLED_PROGRAM_IDS = new Set<string>(["wendler-531", "tactical-barbell"]);
+const ENABLED_PROGRAM_IDS = new Set<string>(["wendler-531", "tactical-barbell", "green-protocol"]);
+
+// Programs that prescribe their own weekly calendar (every session carries an
+// explicit weekday) — the picker hides its weekday chooser for these.
+const FIXED_SCHEDULE_PROGRAM_IDS = new Set<string>(["green-protocol"]);
 
 /**
  * Sessions a single program-week contains under the engine's DEFAULT setup —
@@ -71,6 +75,7 @@ export default async function ProgramPickerPage() {
       family: meta.family,
       summary: meta.summary,
       enabled: ENABLED_PROGRAM_IDS.has(meta.id),
+      ...(FIXED_SCHEDULE_PROGRAM_IDS.has(meta.id) ? { fixedSchedule: true } : {}),
       sessionsPerWeek: engine ? defaultSessionsPerWeek(engine) : undefined,
       fields: fields.map((f) => ({
         key: f.key,
