@@ -1,22 +1,24 @@
 "use client";
 
 /**
- * Minimal program picker (platform cutover PR4).
+ * Program picker — the sage v3 four-step wizard (Program → Loadout →
+ * Benchmarks → Schedule).
  *
  * Lets a signed-in user deploy a platform program end-to-end: pick a program,
- * fill its engine-described setup fields, choose training weekdays + a start
- * date, and deploy via `createProgramInstance`. Intentionally minimal — it
- * validates the deploy → Today → log → stats loop on 5/3/1. The richer wizard
- * (cluster/benchmark step, GP multi-block roadmap) is a follow-up.
+ * choose a template/loadout, confirm or edit their 1-rep maxes (which are
+ * persisted to `training_maxes` on deploy), pick a weekly schedule + start
+ * date, and deploy via `createProgramInstance`. Visual + content target is the
+ * accepted mockup `program-wizard-v3-sage.html`.
  */
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createProgramInstance, type CreateProgramInstanceResult } from "@/lib/platform/actions";
+import { upsertTrainingMax } from "@/lib/training-maxes/actions";
 import styles from "./ProgramPicker.module.css";
 
 /** Stencil "code" + Oswald kicker shown on each program card (step 1). */
 const CARD_META: Record<string, { kick: string; code: string }> = {
-  hybrid: { kick: "Concurrent", code: "HYBRID" },
+  hybrid: { kick: "Hybrid", code: "Build your own" },
   "wendler-531": { kick: "Wendler", code: "5/3/1" },
   "tactical-barbell": { kick: "Tactical Barbell", code: "TB" },
   "green-protocol": { kick: "Tactical Barbell", code: "GP" },
@@ -82,13 +84,255 @@ export interface PickerTbTemplate {
 /** TB program id (matches the engine's program family / id). */
 const TB_PROGRAM_ID = "tactical-barbell";
 
-/** Plain-language program explainers for the info tooltip. */
-const PROGRAM_BLURBS: Record<string, string> = {
-  "wendler-531":
-    "The most trusted get-strong-slowly barbell plan. Start lighter than you think, add a little each cycle, focus on the big lifts — squat, bench, deadlift and overhead press — and beat your old numbers by a rep or two rather than maxing out. Sessions feel manageable and you almost never miss. Best if your main goal is raw barbell strength.",
-  [TB_PROGRAM_ID]:
-    "Strength training for people who also run, ruck, or fight. Short sessions (often 20-30 min) at controlled submaximal weights, never grinding to failure — so it leaves energy for conditioning. You pick a small cluster of main lifts and train them often. Templates (Operator, Fighter, Zulu, …) change how many days a week you lift and how many lifts you carry. Best if you want to be strong and keep doing cardio.",
+/** A selectable movement variant for a main-lift role (resolved to a catalog id). */
+export interface PickerBenchVariant {
+  slug: string;
+  label: string;
+  movementId: string;
+}
+
+/**
+ * A main-lift role for the Benchmarks step — its selectable variants plus the
+ * user's currently-anchored variant/1RM (used to pre-fill the inputs and to
+ * decide which lifts changed on deploy).
+ */
+export interface PickerBenchRole {
+  /** Engine movement key (squat / bench / deadlift / press). */
+  engineKey: string;
+  /** App StrengthRole the key anchors on (squat / horizontal_press / …). */
+  role: string;
+  variants: PickerBenchVariant[];
+  currentSlug?: string;
+  currentOneRmKg?: number;
+}
+
+/** Rich program explainers + meta chips for the step-1 info modal (mockup PROG_INFO). */
+interface ProgInfo {
+  kick: string;
+  title: string;
+  body: string;
+  meta: string[];
+}
+const PROG_INFO: Record<string, ProgInfo> = {
+  "wendler-531": {
+    kick: "Wendler 5/3/1",
+    title: "5/3/1",
+    body: "The most trusted \u201Cget strong slowly\u201D barbell plan. It\u2019s built on a simple idea: start lighter than you think, add a little weight every few weeks, focus on the big lifts \u2014 squat, bench, deadlift and overhead press \u2014 and aim to beat your old numbers by a rep or two rather than maxing out. You train off a conservative working weight, so sessions feel manageable and you almost never miss. Each block pushes for a few weeks, then eases off to let you recover. Patience is the whole point: it\u2019s designed to keep you progressing for years, not weeks. Best if your main goal is raw barbell strength and you want a proven, low-stress routine.",
+    meta: ["4 main lifts", "Slow, steady strength"],
+  },
+  [TB_PROGRAM_ID]: {
+    kick: "Tactical Barbell",
+    title: "Tactical Barbell",
+    body: "Strength training for people who also have to run, ruck, fight \u2014 or just have a life outside the gym. It was written by a tactical operator who needed to stay very strong without living under the barbell, so the sessions are short (often 20\u201330 minutes) and you lift at controlled, submaximal weights: hard work, but never grinding to failure. That leaves plenty of energy for conditioning and sport. You pick a small handful of main lifts and train them often, following a percentage plan that climbs over a 6-week block before you retest your maxes. Templates like Operator, Fighter and Zulu simply change how many days a week you lift and how many lifts you carry. Best if you want to be strong and keep doing cardio or hybrid training.",
+    meta: ["Strength + conditioning", "Short 20\u201330 min sessions"],
+  },
+  "green-protocol": {
+    kick: "Tactical Barbell \u00B7 Green Protocol",
+    title: "Green Protocol",
+    body: "Tactical Barbell\u2019s bigger sibling, for people who need serious endurance on top of strength \u2014 think military selection, tactical roles, or any hybrid athlete chasing an ultra-runner\u2019s engine with real barbell strength. Instead of just programming your lifts, it programs your running and rucking too: you build a wide aerobic base first, then ramp up intensity toward a goal. It runs in longer phases \u2014 Hybrid is the everyday baseline you can stay on indefinitely, while blocks like Capacity, Velocity and Outcome peak you for a specific event. The guiding idea is to build the foundation gradually: the wider the base, the higher the peak. Your lifting is prescribed here in the app; your runs and rucks are tracked through Strava. Best when endurance matters as much as strength.",
+    meta: ["Strength + endurance", "Event & selection prep"],
+  },
+  hybrid: {
+    kick: "Hybrid",
+    title: "Build your own",
+    body: "The do-it-all option: tell us roughly what you want \u2014 how many days a week you can train and which muscles to bias \u2014 and the app builds a balanced concurrent plan that trains strength and conditioning side by side. It runs off the same four main lifts as everything else, so your numbers and history carry straight over, and it quietly keeps strength and cardio in balance so neither crowds the other out. There\u2019s no fixed recipe to follow: the plan adapts to the days you give it. Best if you want a bit of everything \u2014 strength, muscle and an engine \u2014 without committing to a single named methodology.",
+    meta: ["Strength + cardio", "Adapts to your goals"],
+  },
 };
+
+// ── Step-2 loadout content (ported from the mockup LOADOUTS) ────────────────
+
+interface ProgramLoadoutMeta {
+  title: string;
+  sub: string;
+  /** Label for the wide spec cell: Cycle (5/3/1) / Loading (TB) / Conditioning (GP). */
+  structLabel: string;
+  struct: string;
+  /** Fixed program length shown when the frequency is user-chosen (5/3/1). */
+  lenNote?: string;
+  /** Whether the user picks training frequency (5/3/1 stepper). */
+  freqChoice?: boolean;
+  /** Whether templates are grouped into sections (Green Protocol). */
+  grouped?: boolean;
+}
+
+const PROGRAM_LOADOUT: Record<string, ProgramLoadoutMeta> = {
+  "wendler-531": {
+    title: "Configure your 5/3/1 block",
+    sub: "Choose a template and how often you\u2019ll train. The defaults are the recommended starting point.",
+    structLabel: "Cycle",
+    struct: "2\u00D7 Leader \u2192 7th week \u2192 1\u00D7 Anchor",
+    lenNote: "11 weeks",
+    freqChoice: true,
+  },
+  [TB_PROGRAM_ID]: {
+    title: "Configure your Tactical Barbell block",
+    sub: "Pick a TB template \u2014 each one sets its own training frequency and block length. Operator is the recommended starting point.",
+    structLabel: "Loading",
+    struct: "Submaximal % of 1RM \u00B7 retest every 6\u201312 weeks",
+  },
+  "green-protocol": {
+    title: "Configure your Green Protocol block",
+    sub: "Green Protocol runs in two phases. Foundation builds your base from the ground up; Continuation is your flexible long-term baseline once that base is in place. New to this? Start with Capacity.",
+    structLabel: "Conditioning",
+    struct: "Prescribed in-app \u00B7 runs & rucks logged via Strava",
+    grouped: true,
+  },
+};
+
+interface TemplateCopy {
+  badge?: string;
+  desc: string;
+  long: string;
+  freq?: string;
+  len?: string;
+  group?: "foundation" | "continuation";
+  seq?: number;
+}
+
+/** Per-template marketing copy keyed by the engine's option value. */
+const TEMPLATE_COPY: Record<string, Record<string, TemplateCopy>> = {
+  "wendler-531": {
+    "5spro-fsl": {
+      badge: "Recommended",
+      desc: "Fixed 5s leader with First-Set-Last supplemental. Low fatigue, steady gains.",
+      long: "5\u2019s PRO replaces the AMRAP top sets with straight sets of 5 across all three main-work weeks, keeping fatigue low so you can recover and add volume. First-Set-Last (FSL) takes the first work-set percentage and repeats it for 3\u20135 back-off sets \u2014 simple, scalable supplemental volume. Run as a Leader (build volume) \u2192 7th-week deload/test \u2192 Anchor (express strength). The most sustainable way to start 5/3/1.",
+    },
+    "bbb-leader": {
+      desc: "5\u00D710 supplemental at 50\u201360%. High-volume hypertrophy on the main work.",
+      long: "After your main 5/3/1 work, do 5 sets of 10 reps of the same lift at 50\u201360% of your Training Max. It\u2019s brutally simple and one of the most effective mass-builders in the program \u2014 the high rep volume drives hypertrophy while the main work keeps strength progressing. Best run when recovery and calories are good.",
+    },
+  },
+  [TB_PROGRAM_ID]: {
+    operator: {
+      badge: "Recommended",
+      desc: "3 lifts, trained 3\u00D7/week. The flagship low-frequency strength template.",
+      freq: "3 sessions / week",
+      len: "6-week block",
+      long: "Operator is Tactical Barbell\u2019s signature template: pick up to 3 main lifts (a \u2018cluster\u2019) and train all of them, 3 times a week, every other day. Loads are a submaximal percentage of your 1RM that waves up over a 6-week block. Because it\u2019s low-frequency and never taken to failure, it leaves plenty in the tank for heavy conditioning \u2014 which is the whole point of TB.",
+    },
+    fighter: {
+      desc: "2\u00D7/week strength built to sit under heavy conditioning.",
+      freq: "2 sessions / week",
+      len: "6-week block",
+      long: "Fighter is the 2-day-a-week minimum-effective-dose strength template. Same submaximal percentage waves as Operator, but only twice a week \u2014 freeing up the calendar for high volumes of running, rucking or sport practice. The go-to when conditioning is your priority and strength just needs to be maintained or slowly built.",
+    },
+    zulu: {
+      desc: "A/B split, 4 lifts trained twice each across the week.",
+      freq: "4 sessions / week",
+      len: "6-week block",
+      long: "Zulu splits 4 main lifts into two pairs (A and B) and trains each pair twice across 4 sessions a week. It lets you carry more lifts than Operator\u2019s 3-lift cap while staying submaximal. A good fit when you want broader barbell coverage and can give strength 4 days.",
+    },
+    "zulu-ia": {
+      desc: "Zulu, autoregulated: 3\u20135 sets, heavier weeks 4\u20136.",
+      freq: "4 sessions / week",
+      len: "6-week block",
+      long: "The Individualised/Advanced Zulu variant. Same A/B split, but you autoregulate 3\u20135 sets per lift and the back half of the block runs heavier, peaking at 1\u20132 reps. For intermediate-to-advanced lifters who want more intensity than standard Zulu.",
+    },
+    gladiator: {
+      desc: "Higher-volume 5\u00D75 for when conditioning load is low.",
+      freq: "3 sessions / week",
+      len: "6-week block",
+      long: "Gladiator runs higher-volume 5\u00D75 main work, 3 days a week. More hypertrophy and work capacity than Operator, but it costs more recovery \u2014 best used in phases when your conditioning load is light.",
+    },
+    mass: {
+      desc: "Hypertrophy-leaning 4\u00D76\u21924\u00D73 wave.",
+      freq: "3 sessions / week",
+      len: "6-week block",
+      long: "Mass biases the template toward size: higher-rep 4\u00D76 work that waves down to 4\u00D73 over the block, 3 days a week, with short rest. Use it for a dedicated muscle-building phase while keeping conditioning minimal.",
+    },
+    "grey-man": {
+      desc: "A generalist double-wave block.",
+      freq: "3 sessions / week",
+      len: "12-week block",
+      long: "Grey Man is a 12-week generalist block that double-waves volume and then intensity \u2014 a longer, balanced run for steady all-round progress when you don\u2019t want to commit to a single specific goal.",
+    },
+  },
+  "green-protocol": {
+    capacity: {
+      group: "foundation",
+      seq: 1,
+      badge: "Start here",
+      desc: "Strength + an easy aerobic base. The starting block \u2014 ends in a 6-mile / 60-min run.",
+      freq: "6 sessions / week",
+      len: "12-week block",
+      long: "Capacity is where everyone starts. It\u2019s a concentrated block of building muscle, strength and a basic aerobic base, lifting paired with easy steady-state running over about 12 weeks. Clear its 6-mile / 60-minute benchmark and you\u2019re ready for Velocity.",
+    },
+    velocity: {
+      group: "foundation",
+      seq: 2,
+      desc: "Picks up where Capacity ends \u2014 builds your run engine to a 20-mile off-road benchmark.",
+      freq: "6 sessions / week",
+      len: "17-week block",
+      long: "Velocity turns the aerobic base from Capacity into real endurance: easy mileage, speedwork, hills and an escalating long run, with lifting dialled back to support it. Benchmark: a 20-mile off-road run. Do this after Capacity.",
+    },
+    outcome: {
+      group: "foundation",
+      seq: 3,
+      desc: "Ruck-focused peaking \u2014 channels it all into a 20-mile / 50 lb ruck.",
+      freq: "6 sessions / week",
+      len: "17-week block",
+      long: "Outcome channels your strength and conditioning into rucking, work capacity and muscular endurance, finishing with a challenging peaking phase. Benchmark: a 20-mile / 50 lb ruck. Skippable if your role isn\u2019t ruck-heavy.",
+    },
+    hybrid: {
+      group: "continuation",
+      badge: "Baseline",
+      desc: "Lifting + running in two phases. The simple everyday baseline.",
+      freq: "5\u20136 sessions / week",
+      len: "14-week cycle",
+      long: "Hybrid is the everyday Continuation baseline: lifting and running in a simple two-phase approach \u2014 the first half emphasises strength, the second prioritises conditioning. Simple, flexible and sustainable \u2014 you can run it indefinitely.",
+    },
+    "hybrid-op": {
+      group: "continuation",
+      desc: "A 50/50 strength-and-conditioning variant of Hybrid.",
+      freq: "6 sessions / week",
+      len: "6-week cycle",
+      long: "Hybrid/Op is a 50/50 variant of standard Hybrid \u2014 strength and conditioning weighted evenly rather than split into two phases. A fit for roles with a lighter endurance demand that still want both qualities trained continuously.",
+    },
+    ccat: {
+      group: "continuation",
+      desc: "Concurrent \u2014 trains every domain every week.",
+      freq: "6 sessions / week",
+      len: "10-week cycle",
+      long: "C/CAT (Concurrent / Combat-Arms Template) trains all the major domains every week: a strength component, rucking, speedwork, elevation work and long runs. It keeps your fingers in every pie at a sustainable tempo.",
+    },
+    icat: {
+      group: "continuation",
+      desc: "Intermittent concurrent \u2014 a lighter-touch C/CAT.",
+      freq: "5 sessions / week",
+      len: "10-week cycle",
+      long: "I/CAT is the intermittent variant of C/CAT: the same all-domain concurrent approach at a slightly reduced weekly volume, for when life or recovery calls for a lighter touch.",
+    },
+  },
+};
+
+const GP_GROUPS: Record<"foundation" | "continuation", { name: string; tag: string; blurb: string }> = {
+  foundation: {
+    name: "Foundation",
+    tag: "Build your base",
+    blurb: "The entry path \u2014 work through these in order. Each ends in a benchmark that unlocks the next. Start here if you\u2019re building your engine from the ground up.",
+  },
+  continuation: {
+    name: "Continuation",
+    tag: "Long-term baseline",
+    blurb: "For once your base is in place. Flexible, sustainable everyday programming you can run indefinitely and customise around life.",
+  },
+};
+
+/** Program → human label used in the summary table + info modal kicker. */
+const PROGRAM_LABEL: Record<string, string> = {
+  "wendler-531": "Wendler 5/3/1",
+  [TB_PROGRAM_ID]: "Tactical Barbell",
+  "green-protocol": "Green Protocol",
+  hybrid: "Hybrid",
+};
+
+/** The setup field the loadout step writes into (templateId or GP phaseId). */
+function loadoutFieldKey(programId: string): "templateId" | "phaseId" | null {
+  if (programId === "green-protocol") return "phaseId";
+  if (programId === "wendler-531" || programId === TB_PROGRAM_ID) return "templateId";
+  return null;
+}
 
 const MOVEMENT_LABEL: Record<string, string> = {
   squat: "Squat",
@@ -102,7 +346,33 @@ function movementLabel(key: string): string {
   return MOVEMENT_LABEL[key] ?? key;
 }
 
+// ── Units + 1RM estimate helpers ────────────────────────────────────────────
+const KG_PER_LB = 0.45359237;
+type Unit = "kg" | "lb";
+function kgToDisplay(kg: number, unit: Unit): number {
+  return unit === "lb" ? Math.round(kg / KG_PER_LB) : Math.round(kg * 2) / 2;
+}
+function displayToKg(value: number, unit: Unit): number {
+  return unit === "lb" ? value * KG_PER_LB : value;
+}
+/** Epley estimated 1RM: weight × (1 + reps/30). */
+function epley1rm(weight: number, reps: number): number {
+  if (!(weight > 0) || !(reps > 0)) return 0;
+  return weight * (1 + reps / 30);
+}
+
 const WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+type DayType = "strength" | "cardio" | "rest";
+
+/** Build a default week: `n` strength days on the canonical spread, rest elsewhere. */
+function buildWeek(n: number): DayType[] {
+  const clamped = Math.max(1, Math.min(7, n));
+  const spread = DAY_SPREADS[clamped] ?? DAY_SPREADS[4]!;
+  const w: DayType[] = Array.from({ length: 7 }, () => "rest");
+  for (const d of spread) w[d] = "strength";
+  return w;
+}
 
 /** Sensible default weekday spread for a given sessions-per-week count (0=Mon). */
 const DAY_SPREADS: Record<number, number[]> = {
@@ -114,11 +384,6 @@ const DAY_SPREADS: Record<number, number[]> = {
   6: [0, 1, 2, 3, 4, 5],
   7: [0, 1, 2, 3, 4, 5, 6],
 };
-
-function defaultDaysFor(sessionsPerWeek: number | undefined): number[] {
-  const n = sessionsPerWeek && sessionsPerWeek >= 1 && sessionsPerWeek <= 7 ? sessionsPerWeek : 4;
-  return [...(DAY_SPREADS[n] ?? DAY_SPREADS[4]!)];
-}
 
 /** Clone the template's defaultCluster, dropping unknown movement keys. */
 export function defaultClusterFor(
@@ -241,15 +506,17 @@ export function ProgramPicker({
   programs,
   anchoredKeys,
   tbTemplates = [],
+  benchRoles = [],
 }: {
   programs: PickerProgram[];
   anchoredKeys: string[];
   tbTemplates?: PickerTbTemplate[];
+  benchRoles?: PickerBenchRole[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<CreateProgramInstanceResult | null>(null);
-  const [infoProgramId, setInfoProgramId] = useState<string | null>(null);
+  const [modalInfo, setModalInfo] = useState<ProgInfo | null>(null);
 
   // Wizard step (0 Program · 1 Loadout · 2 Benchmarks · 3 Schedule).
   const [step, setStep] = useState<number>(0);
@@ -259,8 +526,24 @@ export function ProgramPicker({
   const selected = programs.find((p) => p.id === selectedId) ?? null;
 
   const [values, setValues] = useState<Record<string, unknown>>({});
-  const [weekdays, setWeekdays] = useState<number[]>([]);
   const [startedOn, setStartedOn] = useState<string>(todayYmd());
+
+  // Weekly schedule grid: 7 day cells. The strength days become deploy `weekdays`.
+  const [week, setWeek] = useState<DayType[]>(() => buildWeek(4));
+  // 5/3/1 lets the user pick strength frequency; other programs derive it.
+  const [freq531, setFreq531] = useState<number>(4);
+  const [unit, setUnit] = useState<Unit>("kg");
+
+  // Per-lift 1RM entry: a display-unit string + chosen variant slug, keyed by engine key.
+  const [benchVals, setBenchVals] = useState<Record<string, { slug: string; valueStr: string }>>({});
+  const [benchTouched, setBenchTouched] = useState<Set<string>>(new Set());
+  const [estimate, setEstimate] = useState<{ key: string; weight: string; reps: string } | null>(null);
+
+  const benchRoleByKey = useMemo(() => {
+    const m = new Map<string, PickerBenchRole>();
+    for (const r of benchRoles) m.set(r.engineKey, r);
+    return m;
+  }, [benchRoles]);
 
   const isTb = selected?.id === TB_PROGRAM_ID;
   const tbTemplateById = useMemo(() => {
@@ -275,10 +558,8 @@ export function ProgramPicker({
   const [cluster, setCluster] = useState<PickerClusterEntry[]>(() =>
     activeTbTemplate ? defaultClusterFor(activeTbTemplate, anchoredKeys) : [],
   );
-  // Reset the cluster to the template default whenever the selected template
-  // changes — using React's "store-prev-prop-and-adjust-during-render" pattern
-  // (https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes)
-  // so we avoid a cascading-render effect.
+  // Reset the cluster + week to the template default whenever the selected
+  // template changes — React's "store-prev-prop-and-adjust-during-render" pattern.
   const [lastTbTemplateId, setLastTbTemplateId] = useState<string | null>(
     activeTbTemplate?.id ?? null,
   );
@@ -286,49 +567,165 @@ export function ProgramPicker({
   if (currentTbId !== lastTbTemplateId) {
     setLastTbTemplateId(currentTbId);
     setCluster(activeTbTemplate ? defaultClusterFor(activeTbTemplate, anchoredKeys) : []);
-    // A TB template sets its own weekly frequency (Operator 3, Fighter 2, Zulu
-    // 4, …) — reset the weekday spread to match when the template changes.
-    if (activeTbTemplate) setWeekdays(defaultDaysFor(activeTbTemplate.sessionsPerWeek));
-  }
-
-  const hasNoTms = anchoredKeys.length === 0;
-
-  function selectProgram(p: PickerProgram) {
-    if (!p.enabled) return;
-    setSelectedId(p.id);
-    setValues(defaultValuesFor(p.fields));
-    setWeekdays(defaultDaysFor(p.sessionsPerWeek));
-    setResult(null);
-  }
-
-  function toggleDay(i: number) {
-    setWeekdays((prev) => (prev.includes(i) ? prev.filter((d) => d !== i) : [...prev, i].sort((a, b) => a - b)));
-  }
-
-  function setField(key: string, raw: unknown) {
-    setValues((prev) => ({ ...prev, [key]: raw }));
+    if (activeTbTemplate) setWeek(buildWeek(activeTbTemplate.sessionsPerWeek));
   }
 
   const fixedSchedule = !!selected?.fixedSchedule;
 
-  // The program dictates how many training days a week it needs. For TB the
-  // active TEMPLATE owns the frequency (Operator 3, Fighter 2, Zulu 4, …);
-  // otherwise it's the program-level default. Fixed-schedule programs (Green
-  // Protocol) prescribe their own calendar, so the weekday count is irrelevant.
-  const requiredDays = activeTbTemplate?.sessionsPerWeek ?? selected?.sessionsPerWeek;
+  // The program dictates how many strength days a week it needs. TB's active
+  // TEMPLATE owns the frequency; 5/3/1 lets the user choose it; fixed-schedule
+  // programs (Green Protocol) prescribe their own calendar; Hybrid is open.
+  const requiredDays: number | null = fixedSchedule
+    ? null
+    : isTb
+      ? activeTbTemplate?.sessionsPerWeek ?? null
+      : selected?.id === "wendler-531"
+        ? freq531
+        : selected?.sessionsPerWeek ?? null;
+
+  const weekdays = useMemo(
+    () => week.flatMap((t, i) => (t === "strength" ? [i] : [])),
+    [week],
+  );
+  const dayCounts = useMemo(() => {
+    const c = { strength: 0, cardio: 0, rest: 0 };
+    for (const t of week) c[t] += 1;
+    return c;
+  }, [week]);
   const daysMatch = fixedSchedule || requiredDays == null || weekdays.length === requiredDays;
 
   const clusterValidation = useMemo<ClusterValidationLite | null>(() => {
     if (!activeTbTemplate) return null;
     return validateClusterClient(activeTbTemplate, cluster);
   }, [activeTbTemplate, cluster]);
-
   const clusterOk = !activeTbTemplate || (clusterValidation?.ok ?? false);
 
-  const canDeploy = useMemo(
-    () => !!selected?.enabled && (fixedSchedule || weekdays.length > 0) && daysMatch && !hasNoTms && clusterOk && !pending,
-    [selected, fixedSchedule, weekdays, daysMatch, hasNoTms, clusterOk, pending],
+  // Which main-lift roles the Benchmarks step shows. Cluster programs (TB) show
+  // the barbell lifts in their chosen cluster; everyone else shows all four mains.
+  const relevantBenchKeys = useMemo<string[]>(() => {
+    if (activeTbTemplate) {
+      return cluster
+        .filter((c) => c.kind !== "bodyweight" && benchRoleByKey.has(c.movement))
+        .map((c) => c.movement);
+    }
+    return benchRoles.map((r) => r.engineKey);
+  }, [activeTbTemplate, cluster, benchRoles, benchRoleByKey]);
+
+  const enteredAnyTm = useMemo(
+    () => Object.values(benchVals).some((b) => Number(b.valueStr) > 0),
+    [benchVals],
   );
+  const hasUsableTms = anchoredKeys.length > 0 || enteredAnyTm;
+
+  const canDeploy =
+    !!selected?.enabled &&
+    (fixedSchedule || weekdays.length > 0) &&
+    daysMatch &&
+    hasUsableTms &&
+    clusterOk &&
+    !pending;
+
+  // Loadout step derivations (the setup field the template/phase choice writes to).
+  const loadoutKey = selected ? loadoutFieldKey(selected.id) : null;
+  const loadoutField = loadoutKey ? selected?.fields.find((f) => f.key === loadoutKey) : undefined;
+  const loadoutOptions = loadoutField?.options ?? [];
+  const selectedLoadoutValue = loadoutKey ? String(values[loadoutKey] ?? "") : "";
+  const loadoutMeta = selected ? PROGRAM_LOADOUT[selected.id] : undefined;
+
+  function initBenchVals(u: Unit): Record<string, { slug: string; valueStr: string }> {
+    const out: Record<string, { slug: string; valueStr: string }> = {};
+    for (const r of benchRoles) {
+      const slug = r.currentSlug ?? r.variants[0]?.slug ?? "";
+      const valueStr = r.currentOneRmKg != null ? String(kgToDisplay(r.currentOneRmKg, u)) : "";
+      out[r.engineKey] = { slug, valueStr };
+    }
+    return out;
+  }
+
+  function selectProgram(p: PickerProgram) {
+    if (!p.enabled) return;
+    setSelectedId(p.id);
+    const defaults = defaultValuesFor(p.fields);
+    setValues(defaults);
+    setResult(null);
+    setEstimate(null);
+    setBenchVals(initBenchVals(unit));
+    setBenchTouched(new Set());
+
+    if (p.id === TB_PROGRAM_ID) {
+      const t = tbTemplateById.get(String(defaults.templateId ?? ""));
+      setCluster(t ? defaultClusterFor(t, anchoredKeys) : []);
+      setLastTbTemplateId(String(defaults.templateId ?? "") || null);
+      setWeek(buildWeek(t?.sessionsPerWeek ?? p.sessionsPerWeek ?? 3));
+    } else {
+      setCluster([]);
+      setLastTbTemplateId(null);
+      setWeek(buildWeek(p.sessionsPerWeek ?? 4));
+    }
+    setFreq531(p.id === "wendler-531" ? (p.sessionsPerWeek ?? 4) : 4);
+  }
+
+  function setField(key: string, raw: unknown) {
+    setValues((prev) => ({ ...prev, [key]: raw }));
+  }
+
+  function setBenchValue(key: string, valueStr: string) {
+    setBenchVals((prev) => ({ ...prev, [key]: { slug: prev[key]?.slug ?? "", valueStr } }));
+    setBenchTouched((prev) => new Set(prev).add(key));
+  }
+  function setBenchVariant(key: string, slug: string) {
+    setBenchVals((prev) => ({ ...prev, [key]: { slug, valueStr: prev[key]?.valueStr ?? "" } }));
+    setBenchTouched((prev) => new Set(prev).add(key));
+  }
+  function toggleUnit(next: Unit) {
+    if (next === unit) return;
+    setBenchVals((prev) => {
+      const out: Record<string, { slug: string; valueStr: string }> = {};
+      for (const [k, v] of Object.entries(prev)) {
+        const n = Number(v.valueStr);
+        if (v.valueStr === "" || !Number.isFinite(n)) {
+          out[k] = v;
+          continue;
+        }
+        const kg = displayToKg(n, unit);
+        out[k] = { slug: v.slug, valueStr: String(kgToDisplay(kg, next)) };
+      }
+      return out;
+    });
+    setUnit(next);
+  }
+
+  function cycleDay(i: number) {
+    setWeek((prev) => {
+      const cur = prev[i];
+      const next: DayType = cur === "strength" ? "cardio" : cur === "cardio" ? "rest" : "strength";
+      const w = [...prev];
+      w[i] = next;
+      return w;
+    });
+  }
+  function resetWeek() {
+    setWeek(buildWeek(requiredDays ?? freq531));
+  }
+  function bumpFreq(delta: number) {
+    if (selected?.id !== "wendler-531") return;
+    const floor = selected.sessionsPerWeek ?? 4;
+    const next = Math.max(floor, Math.min(7, freq531 + delta));
+    setFreq531(next);
+    setWeek(buildWeek(next));
+  }
+
+  function applyEstimate() {
+    if (!estimate) return;
+    const w = Number(estimate.weight);
+    const r = Number(estimate.reps);
+    const est = epley1rm(w, r);
+    if (est > 0) {
+      const display = unit === "lb" ? Math.round(est) : Math.round(est * 2) / 2;
+      setBenchValue(estimate.key, String(display));
+    }
+    setEstimate(null);
+  }
 
   function deploy() {
     if (!selected) return;
@@ -349,7 +746,35 @@ export function ProgramPicker({
         }));
       }
     }
+
+    // Lifts the user set or changed → persist as entered 1RMs before deploy. We
+    // only write touched rows so an untouched, pre-filled value is never re-saved
+    // (this keeps programs that render off real TMs from gaining a tm_percent).
+    const saves: { movementId: string; oneRmKg: number; label: string }[] = [];
+    for (const key of relevantBenchKeys) {
+      if (!benchTouched.has(key)) continue;
+      const role = benchRoleByKey.get(key);
+      const bv = benchVals[key];
+      if (!role || !bv) continue;
+      const n = Number(bv.valueStr);
+      if (!Number.isFinite(n) || n <= 0) continue;
+      const variant = role.variants.find((v) => v.slug === bv.slug);
+      if (!variant) continue;
+      const kg = Math.round(displayToKg(n, unit) * 2) / 2;
+      saves.push({ movementId: variant.movementId, oneRmKg: kg, label: movementLabel(key) });
+    }
+
     startTransition(async () => {
+      for (const s of saves) {
+        const fd = new FormData();
+        fd.set("movementId", s.movementId);
+        fd.set("oneRmKg", String(s.oneRmKg));
+        const tmRes = await upsertTrainingMax(fd);
+        if (!tmRes.ok) {
+          setResult({ ok: false, error: `Couldn\u2019t save your ${s.label} 1-rep max: ${tmRes.error}` });
+          return;
+        }
+      }
       const res = await createProgramInstance({
         programId: selected.id,
         setupValues,
@@ -361,11 +786,17 @@ export function ProgramPicker({
     });
   }
 
-  const infoProgram = infoProgramId ? programs.find((p) => p.id === infoProgramId) ?? null : null;
-  const infoText = infoProgram
-    ? PROGRAM_BLURBS[infoProgram.id] ?? infoProgram.summary
-    : "";
-  const infoKick = infoProgram ? CARD_META[infoProgram.id]?.kick ?? infoProgram.family : "";
+  function openProgramInfo(p: PickerProgram) {
+    const info = PROG_INFO[p.id];
+    setModalInfo(
+      info ?? {
+        kick: CARD_META[p.id]?.kick ?? p.family,
+        title: p.name,
+        body: p.summary,
+        meta: [],
+      },
+    );
+  }
 
   const canContinue = step !== 0 || !!selected;
 
@@ -387,19 +818,9 @@ export function ProgramPicker({
         <div className={styles.grid}>
           {programs.map((p) => {
             const meta = CARD_META[p.id] ?? { kick: "", code: p.name };
-            const codeStyle = meta.code.length > 4 ? { fontSize: 20 } : undefined;
-            if (!p.enabled) {
-              return (
-                <div key={p.id} className={`${styles.pcard} ${styles.locked}`} aria-disabled="true">
-                  <Ticks />
-                  <div className={styles.kick}>{"\u00A0"}</div>
-                  <div className={styles.code} style={codeStyle}>
-                    {meta.code}
-                  </div>
-                  <div className={styles.pdesc}>Coming soon</div>
-                </div>
-              );
-            }
+            const wrap = meta.code.includes(" ");
+            const codeCls = `${styles.code}${wrap ? ` ${styles.codeWrap}` : ""}`;
+            const codeStyle = !wrap && meta.code.length > 4 ? { fontSize: 20 } : undefined;
             const isSel = p.id === selectedId;
             return (
               <div key={p.id} style={{ position: "relative", display: "flex" }}>
@@ -411,7 +832,7 @@ export function ProgramPicker({
                 >
                   <Ticks />
                   <div className={styles.kick}>{meta.kick}</div>
-                  <div className={styles.code} style={codeStyle}>
+                  <div className={codeCls} style={codeStyle}>
                     {meta.code}
                   </div>
                   <div className={styles.pdesc}>{p.summary}</div>
@@ -423,11 +844,230 @@ export function ProgramPicker({
                   className={styles.pinfo}
                   onClick={(e) => {
                     e.stopPropagation();
-                    setInfoProgramId(p.id);
+                    openProgramInfo(p);
                   }}
                 >
                   i
                 </button>
+              </div>
+            );
+          })}
+          {/* Coming-soon teaser — not yet wired to an engine. */}
+          <div className={`${styles.pcard} ${styles.locked}`} aria-disabled="true">
+            <Ticks />
+            <div className={styles.kick}>{"\u00A0"}</div>
+            <div className={styles.code} style={{ fontSize: 24 }}>
+              HYROX
+            </div>
+            <div className={styles.pdesc}>Coming soon</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderLoadoutOptions() {
+    if (!selected || !loadoutKey) return null;
+    const copy = TEMPLATE_COPY[selected.id] ?? {};
+    if (loadoutMeta?.grouped) {
+      // Green Protocol — grouped into Foundation / Continuation sections.
+      let lastGroup: string | null = null;
+      return (
+        <div className={`${styles.opts} ${styles.optsGrouped}`}>
+          {loadoutOptions.map((o) => {
+            const c = copy[o.value];
+            const group = c?.group ?? "continuation";
+            const header =
+              group !== lastGroup ? ((lastGroup = group), GP_GROUPS[group]) : null;
+            const on = o.value === selectedLoadoutValue;
+            return (
+              <div key={o.value} style={{ display: "contents" }}>
+                {header && (
+                  <div className={styles.optsec}>
+                    <div className={styles.sh}>
+                      {header.name}
+                      <span className={styles.shTag}>{header.tag}</span>
+                    </div>
+                    <div className={styles.sx}>{header.blurb}</div>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  data-testid={`loadout-opt-${o.value}`}
+                  onClick={() => setField(loadoutKey, o.value)}
+                  className={`${styles.opt}${on ? ` ${styles.optSel}` : ""}`}
+                >
+                  <div className={styles.optOn}>
+                    <span className={styles.optNm}>
+                      {c?.seq ? <span className={styles.seq}>{c.seq}</span> : null}
+                      {o.label}
+                    </span>
+                    {c?.badge ? (
+                      <span className={`${styles.pill}${c.badge === "Start here" ? ` ${styles.pillStart}` : ""}`}>
+                        {c.badge}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className={styles.optDesc}>
+                    {c?.desc ?? o.label}
+                    {c?.long ? (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`More about ${o.label}`}
+                        className={styles.optInfo}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setModalInfo({
+                            kick: PROG_INFO[selected.id]?.kick ?? selected.family,
+                            title: o.label,
+                            body: c.long,
+                            meta: [c.freq, c.len].filter((x): x is string => !!x),
+                          });
+                        }}
+                      >
+                        i
+                      </span>
+                    ) : null}
+                  </div>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+    // 5/3/1 + TB — two-column option cards.
+    return (
+      <div className={styles.opts}>
+        {loadoutOptions.map((o, i) => {
+          const c = copy[o.value];
+          const on = o.value === selectedLoadoutValue;
+          const badge = c?.badge ?? (i === 0 ? "Recommended" : undefined);
+          return (
+            <button
+              key={o.value}
+              type="button"
+              data-testid={`loadout-opt-${o.value}`}
+              onClick={() => setField(loadoutKey, o.value)}
+              className={`${styles.opt}${on ? ` ${styles.optSel}` : ""}`}
+            >
+              <div className={styles.optOn}>
+                <span className={styles.optNm}>{o.label}</span>
+                {badge ? <span className={styles.pill}>{badge}</span> : null}
+              </div>
+              <div className={styles.optDesc}>
+                {c?.desc ?? o.label}
+                {c?.long ? (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`More about ${o.label}`}
+                    className={styles.optInfo}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setModalInfo({
+                        kick: PROG_INFO[selected.id]?.kick ?? selected.family,
+                        title: o.label,
+                        body: c.long,
+                        meta: [c.freq, c.len].filter((x): x is string => !!x),
+                      });
+                    }}
+                  >
+                    i
+                  </span>
+                ) : null}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  function renderSpecStrip() {
+    if (!selected || !loadoutMeta) return null;
+    const copy = TEMPLATE_COPY[selected.id]?.[selectedLoadoutValue];
+    const freqText = copy?.freq
+      ? copy.freq.toUpperCase()
+      : requiredDays != null
+        ? `${requiredDays} / WEEK`
+        : "\u2014";
+    const lenText = loadoutMeta.freqChoice
+      ? (loadoutMeta.lenNote ?? "\u2014").toUpperCase()
+      : (copy?.len ?? "\u2014").toUpperCase();
+    return (
+      <div className={styles.specwrap}>
+        <div className={styles.label}>Your block</div>
+        <div className={styles.spec}>
+          <div className={styles.cell}>
+            <div className={styles.cl}>Frequency</div>
+            <div className={styles.cv}>
+              {loadoutMeta.freqChoice ? (
+                <span className={styles.ministep}>
+                  <button type="button" onClick={() => bumpFreq(-1)} aria-label="Fewer days">
+                    {"\u2013"}
+                  </button>
+                  <span className={styles.ministepV}>{freq531}</span>
+                  <button type="button" onClick={() => bumpFreq(1)} aria-label="More days">
+                    +
+                  </button>
+                  <span className={styles.daysHint}>days / week</span>
+                </span>
+              ) : (
+                freqText
+              )}
+            </div>
+          </div>
+          <div className={styles.cell}>
+            <div className={styles.cl}>Length</div>
+            <div className={styles.cv}>{lenText}</div>
+          </div>
+          <div className={`${styles.cell} ${styles.wide}`}>
+            <div className={styles.cl}>{loadoutMeta.structLabel}</div>
+            <div className={`${styles.cv} ${styles.cvSm}`}>{loadoutMeta.struct}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderGpPlan() {
+    if (!selected || selected.id !== "green-protocol") return null;
+    const plan = GP_FOUNDATION.includes(selectedLoadoutValue)
+      ? GP_FOUNDATION.slice(GP_FOUNDATION.indexOf(selectedLoadoutValue))
+      : [selectedLoadoutValue];
+    const labelFor = (v: string) =>
+      loadoutOptions.find((o) => o.value === v)?.label ?? v;
+    const copy = TEMPLATE_COPY["green-protocol"] ?? {};
+    return (
+      <div className={styles.planwrap}>
+        <div className={styles.planhead}>
+          <div className={styles.label} style={{ margin: 0 }}>
+            Your Green Protocol
+          </div>
+        </div>
+        <p className={styles.plannote}>
+          {"Foundation blocks run back-to-back, each unlocked by hitting its benchmark. You\u2019ll fine-tune each block when you reach it."}
+        </p>
+        <div className={styles.plan}>
+          {plan.map((v, i) => {
+            const c = copy[v];
+            const cont = c?.group === "continuation";
+            return (
+              <div key={v}>
+                {i > 0 && <div className={styles.pconn} />}
+                <div className={`${styles.pblock}${cont ? ` ${styles.pcont}` : ""}`}>
+                  <span className={styles.pnum}>{cont ? "\u221E" : i + 1}</span>
+                  <div className={styles.pbody}>
+                    <div className={styles.pselName}>{labelFor(v)}</div>
+                    <div className={styles.pmeta}>
+                      {(c?.len ?? "").toUpperCase()}
+                      {c?.len && !cont ? " \u00B7 " : ""}
+                      {cont ? "Ongoing baseline" : "Ends in a benchmark"}
+                    </div>
+                  </div>
+                </div>
               </div>
             );
           })}
@@ -438,39 +1078,78 @@ export function ProgramPicker({
 
   function renderLoadoutStep() {
     if (!selected) return null;
-    const freqText =
-      requiredDays != null ? `${requiredDays} / WEEK` : fixedSchedule ? "PRESCRIBED" : "FLEXIBLE";
-    const schedText = fixedSchedule ? "Set by program" : "You choose the days";
+    // Hybrid (goal-driven) — focus-muscle chips, no template list.
+    if (!loadoutKey) {
+      return (
+        <div className={styles.step}>
+          <h2 className={styles.h1}>Build for your goals</h2>
+          <p className={styles.sub}>
+            {"Tell us what you\u2019re training for and we build a balanced concurrent plan around it \u2014 the more you set, the more it\u2019s tailored to you."}
+          </p>
+          <div className={styles.label}>Your goals</div>
+          <div style={{ display: "grid", gap: 14, maxWidth: 460 }}>
+            {selected.fields.map((f) => (
+              <SetupFieldControl key={f.key} field={f} value={values[f.key]} onChange={(v) => setField(f.key, v)} />
+            ))}
+          </div>
+        </div>
+      );
+    }
     return (
       <div className={styles.step}>
-        <h2 className={styles.h1}>{selected.goalDriven ? "Build for your goals" : "Configure your block"}</h2>
-        <p className={styles.sub}>
-          {selected.goalDriven
-            ? "Tell us what you\u2019re training for and we build a personalised concurrent plan around it \u2014 the more you set, the more it\u2019s tailored to you."
-            : "Choose how you\u2019ll run it. The defaults are a solid starting point."}
-        </p>
-        <div className={styles.label}>{selected.goalDriven ? "Your goals" : "Setup"}</div>
-        <div style={{ display: "grid", gap: 14, maxWidth: 460 }}>
-          {selected.fields.map((f) => (
-            <SetupFieldControl key={f.key} field={f} value={values[f.key]} onChange={(v) => setField(f.key, v)} />
-          ))}
-        </div>
-        <div className={styles.specwrap}>
-          <div className={styles.label}>Your block</div>
-          <div className={styles.spec}>
-            <div className={styles.cell}>
-              <div className={styles.cl}>Frequency</div>
-              <div className={styles.cv}>{freqText}</div>
-            </div>
-            <div className={styles.cell}>
-              <div className={styles.cl}>Schedule</div>
-              <div className={`${styles.cv} ${styles.cvSm}`}>{schedText}</div>
-            </div>
-            <div className={`${styles.cell} ${styles.wide}`}>
-              <div className={styles.cl}>About</div>
-              <div className={`${styles.cv} ${styles.cvSm}`}>{selected.summary}</div>
-            </div>
+        <h2 className={styles.h1}>{loadoutMeta?.title ?? "Configure your block"}</h2>
+        <p className={styles.sub}>{loadoutMeta?.sub ?? "Choose how you\u2019ll run it."}</p>
+        <div className={styles.label}>{loadoutMeta?.grouped ? "Choose a block" : "Template"}</div>
+        {renderLoadoutOptions()}
+        {renderSpecStrip()}
+        {renderGpPlan()}
+      </div>
+    );
+  }
+
+  function renderBenchRow(key: string) {
+    const role = benchRoleByKey.get(key);
+    const bv = benchVals[key];
+    if (!role || !bv) return null;
+    const clusterEntry = activeTbTemplate ? cluster.find((c) => c.movement === key) : undefined;
+    return (
+      <div key={key} className={styles.lift}>
+        <div className={styles.linfo}>
+          <div className={styles.ln}>
+            {movementLabel(key)}
+            {clusterEntry?.split ? <span className={styles.schip}>{clusterEntry.split}</span> : null}
           </div>
+          <select
+            className={styles.variantSel}
+            value={bv.slug}
+            onChange={(e) => setBenchVariant(key, e.target.value)}
+            aria-label={`${movementLabel(key)} variant`}
+          >
+            {role.variants.map((v) => (
+              <option key={v.slug} value={v.slug}>
+                {v.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className={styles.right}>
+          <button
+            type="button"
+            className={styles.est}
+            onClick={() => setEstimate({ key, weight: "", reps: "5" })}
+          >
+            Estimate
+          </button>
+          <span className={styles.inp}>
+            <input
+              type="number"
+              step="any"
+              value={bv.valueStr}
+              onChange={(e) => setBenchValue(key, e.target.value)}
+              aria-label={`${movementLabel(key)} 1-rep max`}
+            />
+            <span className={styles.u}>{unit}</span>
+          </span>
         </div>
       </div>
     );
@@ -478,106 +1157,253 @@ export function ProgramPicker({
 
   function renderBenchmarksStep() {
     if (!selected) return null;
-    const benchTitle = activeTbTemplate
-      ? activeTbTemplate.structure === "split"
+    const isCluster = !!activeTbTemplate;
+    const title = isCluster
+      ? activeTbTemplate!.structure === "split"
         ? "Your cluster"
         : "Your strength cluster"
       : "Your benchmarks";
-    const anchoredList = anchoredKeys.map(movementLabel).join(" \u00B7 ");
+    const sub = isCluster
+      ? "Pick the main lifts for your cluster. Enter a 1-rep max for each, or estimate it from a recent set."
+      : "Enter a 1-rep max for each lift, switch the variant, or estimate from a recent set.";
+
+    const pillText = isCluster
+      ? `${clusterValidation?.ok ? "\u2713" : "\u26A0"} ${
+          clusterValidation?.ok
+            ? `${clusterValidation.countingLifts} main lift${clusterValidation.countingLifts === 1 ? "" : "s"}`
+            : clusterValidation?.errors[0] ?? "Adjust your cluster"
+        }`
+      : `\u2713 ${relevantBenchKeys.length} main lift${relevantBenchKeys.length === 1 ? "" : "s"}`;
+
+    const note =
+      selected.id === "wendler-531"
+        ? "Your Training Max is set to 85% of each 1RM \u2014 the 5/3/1 standard. All working percentages run off that TM."
+        : "Tactical Barbell loads a submaximal % of your 1RM \u2014 no Training Max required. Switch a lift\u2019s variant from its dropdown.";
+
+    const lockHint =
+      selected.id === "wendler-531"
+        ? "\uD83D\uDD12 5/3/1 always trains the four main lifts \u2014 squat, bench, deadlift and press."
+        : isCluster && activeTbTemplate!.clusterMin === activeTbTemplate!.clusterMax
+          ? `\uD83D\uDD12 ${activeTbTemplate!.name} uses a fixed cluster of exactly ${activeTbTemplate!.clusterMax} lifts. Swap a lift by changing its variant.`
+          : null;
+
     return (
-      <div className={styles.step}>
-        <h2 className={styles.h1}>{benchTitle}</h2>
-        <p className={styles.sub}>
-          {activeTbTemplate
-            ? "Pick the main lifts for your cluster \u2014 each one loads off the 1-rep maxes saved to your profile."
-            : "Your program trains off the 1-rep maxes saved to your profile."}
-        </p>
-        {hasNoTms && (
+      <div className={styles.step} style={{ position: "relative" }}>
+        <h2 className={styles.h1}>{title}</h2>
+        <p className={styles.sub}>{sub}</p>
+
+        {!hasUsableTms && (
           <p className={styles.banner}>
-            {"Set your 1-rep maxes first (Settings \u2192 Training maxes) so the program can prescribe weights."}
+            {"Enter a 1-rep max for each lift below so the program can prescribe weights."}
           </p>
         )}
-        {activeTbTemplate ? (
-          <ClusterEditor
-            template={activeTbTemplate}
-            anchoredKeys={anchoredKeys}
-            cluster={cluster}
-            onChange={setCluster}
-            validation={clusterValidation}
-          />
-        ) : (
-          !hasNoTms && (
-            <p className={styles.note}>
-              {`Training off your saved 1-rep maxes: ${anchoredList || "your lifts"}.`}
-            </p>
-          )
+
+        <div className={styles.benchhead}>
+          <div className={styles.label} style={{ margin: 0 }}>
+            Units
+          </div>
+          <div className={styles.toggle}>
+            <button type="button" className={unit === "kg" ? styles.toggleOn : undefined} onClick={() => toggleUnit("kg")}>
+              KG
+            </button>
+            <button type="button" className={unit === "lb" ? styles.toggleOn : undefined} onClick={() => toggleUnit("lb")}>
+              LB
+            </button>
+          </div>
+          <span className={`${styles.clusterpill}${isCluster && !clusterOk ? ` ${styles.clusterpillWarn}` : ""}`}>
+            {pillText}
+          </span>
+        </div>
+
+        {isCluster && (
+          <div style={{ marginBottom: 16 }}>
+            <ClusterEditor
+              template={activeTbTemplate!}
+              anchoredKeys={anchoredKeys}
+              cluster={cluster}
+              onChange={setCluster}
+              validation={clusterValidation}
+            />
+          </div>
         )}
+
+        <div className={styles.lifts}>{relevantBenchKeys.map((k) => renderBenchRow(k))}</div>
+
+        {lockHint && <div className={styles.lockhint}>{lockHint}</div>}
+        <p className={styles.note}>{note}</p>
+
+        {estimate && (
+          <div className={styles.pop}>
+            <h4 className={styles.popH4}>Estimate from a set</h4>
+            <p className={styles.popP}>{"Enter a recent hard set and we\u2019ll work out your 1-rep max."}</p>
+            <div className={styles.popfields}>
+              <div className={styles.pf}>
+                <label>WEIGHT</label>
+                <span className={styles.pin}>
+                  <input
+                    type="number"
+                    step="any"
+                    value={estimate.weight}
+                    onChange={(e) => setEstimate({ ...estimate, weight: e.target.value })}
+                    aria-label="Estimate weight"
+                  />
+                  <span className={styles.u}>{unit}</span>
+                </span>
+              </div>
+              <div className={styles.popx}>{"\u00D7"}</div>
+              <div className={styles.pf}>
+                <label>REPS</label>
+                <span className={styles.pin}>
+                  <input
+                    type="number"
+                    step="1"
+                    value={estimate.reps}
+                    onChange={(e) => setEstimate({ ...estimate, reps: e.target.value })}
+                    aria-label="Estimate reps"
+                  />
+                </span>
+              </div>
+            </div>
+            <div className={styles.popres}>
+              <span className={styles.popresL}>Estimated 1RM</span>
+              <span className={styles.popresV}>
+                {(() => {
+                  const est = epley1rm(Number(estimate.weight), Number(estimate.reps));
+                  const d = unit === "lb" ? Math.round(est) : Math.round(est * 2) / 2;
+                  return est > 0 ? `${d} ${unit}` : `\u2014`;
+                })()}
+              </span>
+            </div>
+            <div className={styles.popbtns}>
+              <button type="button" onClick={() => setEstimate(null)}>
+                Cancel
+              </button>
+              <button type="button" className={styles.popApply} onClick={applyEstimate}>
+                Apply
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function renderSummary() {
+    if (!selected) return null;
+    const ABBR: Record<string, string> = {
+      squat: "SQ",
+      bench: "BN",
+      deadlift: "DL",
+      press: "OHP",
+      pullup: "PU",
+    };
+    const tmRow =
+      relevantBenchKeys
+        .map((k) => `${ABBR[k] ?? k.slice(0, 2).toUpperCase()} ${benchVals[k]?.valueStr || "\u2014"}`)
+        .join(" \u00B7 ") || "\u2014";
+    const tmplLabel = loadoutKey
+      ? loadoutOptions.find((o) => o.value === selectedLoadoutValue)?.label ?? "\u2014"
+      : "Custom";
+    const weekText = `${dayCounts.strength} strength \u00B7 ${dayCounts.cardio} cardio \u00B7 ${dayCounts.rest} rest`;
+    return (
+      <div className={styles.summary}>
+        <div className={styles.srow}>
+          <span className={styles.sk}>Program</span>
+          <span className={styles.sv}>
+            <b>{PROGRAM_LABEL[selected.id] ?? selected.name}</b>
+          </span>
+        </div>
+        <div className={styles.srow}>
+          <span className={styles.sk}>Template</span>
+          <span className={styles.sv}>{tmplLabel}</span>
+        </div>
+        <div className={styles.srow}>
+          <span className={styles.sk}>{loadoutMeta?.structLabel ?? "Structure"}</span>
+          <span className={styles.sv}>{loadoutMeta?.struct ?? "\u2014"}</span>
+        </div>
+        <div className={styles.srow}>
+          <span className={styles.sk}>Week</span>
+          <span className={styles.sv}>{weekText}</span>
+        </div>
+        <div className={styles.srow}>
+          <span className={styles.sk}>1-rep maxes</span>
+          <span className={styles.sv}>{tmRow}</span>
+        </div>
       </div>
     );
   }
 
   function renderScheduleStep() {
     if (!selected) return null;
+    const countWarn = !fixedSchedule && requiredDays != null && dayCounts.strength !== requiredDays;
+    const countText = countWarn
+      ? `\u26A0 ${dayCounts.strength}/${requiredDays} strength days \u2014 pick ${requiredDays}`
+      : `${dayCounts.strength} strength \u00B7 ${dayCounts.cardio} cardio \u00B7 ${dayCounts.rest} rest`;
+    const dirty = week.some((t, i) => t !== buildWeek(requiredDays ?? freq531)[i]);
+    const schednote =
+      selected.id === "wendler-531"
+        ? `5/3/1 gives you ${dayCounts.strength} strength days. Tap any day to make it strength, cardio or rest \u2014 keep ${requiredDays} strength days, and the rest are yours.`
+        : isTb
+          ? `${activeTbTemplate?.name ?? "This template"} prescribes ${requiredDays} strength days a week \u2014 you choose which. Tap the open days to add cardio or leave them as rest.`
+          : "Tap any day to make it strength, cardio or rest. Your strength-day count sets how many days a week the plan trains.";
+
     return (
       <div className={styles.step}>
         <h2 className={styles.h1}>Set your schedule</h2>
         <p className={styles.sub}>
           {fixedSchedule
             ? `${selected.name} prescribes both your lifting and conditioning days \u2014 just pick a start date.`
-            : "Your strength days come from your program \u2014 pick which weekdays, then choose a start date."}
+            : "Your strength days come from your program. Tap any day to add cardio or leave it as rest, then pick a start date."}
         </p>
+
+        <div style={{ marginBottom: 18 }}>
+          <div className={styles.label}>Start date</div>
+          <input
+            type="date"
+            className={styles.datein}
+            value={startedOn}
+            onChange={(e) => setStartedOn(e.target.value)}
+          />
+        </div>
+
         {fixedSchedule ? (
           <p className={styles.note}>
-            {`${selected.name} sets its own weekly schedule (strength and conditioning days are prescribed by the program). Pick a start date below.`}
+            {`${selected.name} sets its own weekly schedule (strength and conditioning days are prescribed by the program). It owns your calendar \u2014 you just pick the start date.`}
           </p>
         ) : (
           <>
-            <div className={styles.label}>Training days</div>
+            <div className={styles.legend}>
+              <span className={`${styles.lg} ${styles.lgS}`}>Strength</span>
+              <span className={`${styles.lg} ${styles.lgC}`}>Cardio</span>
+              <span className={`${styles.lg} ${styles.lgR}`}>Rest</span>
+              <span className={`${styles.lgCount}${countWarn ? ` ${styles.lgCountWarn}` : ""}`}>{countText}</span>
+            </div>
             <div className={styles.week}>
               {WD.map((label, i) => {
-                const on = weekdays.includes(i);
+                const t = week[i] ?? "rest";
+                const cls =
+                  t === "strength" ? styles.wdStrength : t === "cardio" ? styles.wdCardio : styles.wdRest;
+                const wtLabel = t === "strength" ? "Strength" : t === "cardio" ? "Cardio" : "Rest";
                 return (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => toggleDay(i)}
-                    className={`${styles.wd}${on ? ` ${styles.on}` : ""}`}
-                  >
+                  <button key={i} type="button" onClick={() => cycleDay(i)} className={`${styles.wd} ${cls}`}>
                     <span className={styles.wn}>{label}</span>
-                    <span className={styles.wt}>{on ? "Strength" : "Rest"}</span>
+                    <span className={styles.wt}>{wtLabel}</span>
                   </button>
                 );
               })}
             </div>
-            <div
-              className={styles.note}
-              style={daysMatch ? undefined : { color: "var(--warn)" }}
-            >
-              {requiredDays != null
-                ? daysMatch
-                  ? `${selected.name} trains ${requiredDays} day${requiredDays === 1 ? "" : "s"} a week \u2014 pick ${requiredDays}.`
-                  : `${selected.name} needs exactly ${requiredDays} training day${requiredDays === 1 ? "" : "s"} a week \u2014 you have ${weekdays.length} selected.`
-                : "Pick one weekday per session in a program week."}
-            </div>
+            {dirty && (
+              <div style={{ marginTop: 12 }}>
+                <button type="button" className={styles.resetbtn} onClick={resetWeek}>
+                  {"\u21BA Reset to default"}
+                </button>
+              </div>
+            )}
+            <p className={styles.note}>{schednote}</p>
           </>
         )}
-        <div style={{ marginTop: 18 }}>
-          <div className={styles.label}>Start date</div>
-          <input
-            type="date"
-            value={startedOn}
-            onChange={(e) => setStartedOn(e.target.value)}
-            style={{
-              padding: "11px 15px",
-              borderRadius: "var(--wradius)",
-              background: "var(--bg)",
-              border: "1px solid var(--line2)",
-              color: "var(--text)",
-              fontFamily: "var(--font-mono-wizard), monospace",
-              colorScheme: "dark",
-            }}
-          />
-        </div>
+
+        {renderSummary()}
       </div>
     );
   }
@@ -657,17 +1483,21 @@ export function ProgramPicker({
         )}
       </div>
 
-      {infoProgram && (
+      {modalInfo && (
         <InfoModal
-          kicker={infoKick}
-          title={infoProgram.name}
-          body={infoText}
-          onClose={() => setInfoProgramId(null)}
+          kicker={modalInfo.kick}
+          title={modalInfo.title}
+          body={modalInfo.body}
+          meta={modalInfo.meta}
+          onClose={() => setModalInfo(null)}
         />
       )}
     </div>
   );
 }
+
+/** Foundation block order for the GP plan summary. */
+const GP_FOUNDATION = ["capacity", "velocity", "outcome"];
 
 /** The four L-shaped corner ticks on a program card. */
 function Ticks() {
@@ -685,11 +1515,13 @@ function InfoModal({
   kicker,
   title,
   body,
+  meta = [],
   onClose,
 }: {
   kicker: string;
   title: string;
   body: string;
+  meta?: string[];
   onClose: () => void;
 }) {
   return (
@@ -707,6 +1539,13 @@ function InfoModal({
         {kicker ? <div className={styles.modalKick}>{kicker}</div> : null}
         <h3 className={styles.modalH3}>{title}</h3>
         <p className={styles.modalP}>{body}</p>
+        {meta.length > 0 && (
+          <div className={styles.modalMeta}>
+            {meta.map((m) => (
+              <span key={m}>{m}</span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
