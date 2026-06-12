@@ -205,3 +205,62 @@ describe("prescription is well-formed", () => {
     expect(totalPrescribedSets(wendler531Engine.prescribe(inst, ref, ctx))).toBeGreaterThan(0);
   });
 });
+
+describe("5/3/1 engine — variable training frequency", () => {
+  it("setup defaults to 4 days (one main lift per session)", () => {
+    expect(setup().daysPerWeek).toBe(4);
+  });
+
+  it("clamps an unsupported frequency to 4 (only 2 and 4 are allowed)", () => {
+    expect(setup({ daysPerWeek: 3 }).daysPerWeek).toBe(4);
+    expect(setup({ daysPerWeek: 5 }).daysPerWeek).toBe(4);
+    expect(setup({ daysPerWeek: 2 }).daysPerWeek).toBe(2);
+  });
+
+  it("at 2 days/week the timeline emits half as many sessions, each training two lifts", () => {
+    const inst = setup({ daysPerWeek: 2 });
+    const tl = wendler531Engine.timeline(inst);
+    // 2 groups/week instead of 4: leader 2×3×2=12; deload 2; anchor 1×3×2=6; tm-test 2 → 22
+    expect(tl).toHaveLength(12 + 2 + 6 + 2);
+    const first = tl[0]!;
+    expect(first.label).toContain(" + ");
+    expect(first.tags?.filter((t) => t.startsWith("lift:"))).toHaveLength(2);
+  });
+
+  it("a 2-lift session prescribes both lifts' work (main sets for each)", () => {
+    const inst = setup({ daysPerWeek: 2 });
+    const tl = wendler531Engine.timeline(inst);
+    // default order Press, Deadlift, Bench, Squat → day 1 = Press + Deadlift.
+    const day1 = tl.find((s) => s.tags?.includes("phase:leader") && s.tags?.includes("week:1"))!;
+    const p = wendler531Engine.prescribe(inst, day1.ref, ctx);
+    const movements = new Set(p.items.map((i) => i.movementId));
+    expect(movements).toEqual(new Set(["press", "deadlift"]));
+    expect(p.items.filter((i) => i.movementId === "press" && i.kind === "main").length).toBeGreaterThan(0);
+    expect(p.items.filter((i) => i.movementId === "deadlift" && i.kind === "main").length).toBeGreaterThan(0);
+  });
+
+  it("onSessionLogged evaluates each lift in a shared session independently", () => {
+    const inst = setup({ daysPerWeek: 2 });
+    const tl = wendler531Engine.timeline(inst);
+    const anchorW3 = tl.find((s) => s.tags?.includes("phase:anchor") && s.tags?.includes("week:3"))!;
+    const log: LoggedSession = {
+      ref: anchorW3.ref,
+      performedAt: "2026-04-01",
+      sets: [
+        { movement: "press", weightKg: 57, reps: 9, isAmrap: true },
+        { movement: "deadlift", weightKg: 171, reps: 10, isAmrap: true },
+      ],
+    };
+    const { recommendations } = wendler531Engine.onSessionLogged(inst, log, ctx);
+    const movements = recommendations.map((r) => (r.data as { movement?: string }).movement);
+    expect(movements).toContain("press");
+    expect(movements).toContain("deadlift");
+  });
+
+  it("still resolves a LEGACY per-lift ref (instances created before variable frequency)", () => {
+    const inst = setup(); // 4-day
+    const legacy = wendler531Engine.prescribe(inst, "s0-c1-w1-squat", ctx);
+    expect(legacy.items.length).toBeGreaterThan(0);
+    expect(new Set(legacy.items.map((i) => i.movementId))).toEqual(new Set(["squat"]));
+  });
+});

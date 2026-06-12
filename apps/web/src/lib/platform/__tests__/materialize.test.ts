@@ -111,6 +111,19 @@ describe("materializeProgram — scheduling", () => {
     ).toThrow(/more sessions than/);
   });
 
+  it("seats a 2-day 5/3/1 block as two sessions/week, each training two main lifts", () => {
+    const inst = setup({ daysPerWeek: 2 });
+    const r = materializeProgram(wendler531Engine, inst, ctx, resolve, { weekdays: [0, 3] });
+    const wk0 = r.sessions.filter((s) => s.weekIndex === 0);
+    expect(wk0).toHaveLength(2);
+    expect(wk0.map((s) => s.dayIndex)).toEqual([0, 3]);
+    // each session prescribes two distinct main lifts
+    const mains = wk0[0]!.prescription.items.filter((i) => i.kind === "main");
+    expect(new Set(mains.map((m) => m.movementId)).size).toBe(2);
+    // total sessions: leader 2×3×2 + deload 2 + anchor 1×3×2 + tm-test 2 = 22
+    expect(r.sessions).toHaveLength(22);
+  });
+
   it("reports unresolved movements in skipped rather than dropping silently", () => {
     const onlySquat: MovementResolver = (k) => (k === "squat" ? resolve(k) : undefined);
     const r = materializeProgram(wendler531Engine, setup(), ctx, onlySquat, { weekdays });
