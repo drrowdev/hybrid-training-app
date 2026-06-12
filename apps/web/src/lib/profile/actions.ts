@@ -147,40 +147,6 @@ export async function updatePreferences(
 // User-meaningful state that previously lived only in localStorage.
 // See `hybrid-sync-audit.md` §2a + §3 and migration 0055.
 
-const daySlotSchema = z.object({
-  days: z.array(z.number().int().min(0).max(6)).max(7),
-  twoADay: z.boolean(),
-});
-
-const wizardDayPrefSchema = z.object({
-  byArchetype: z.record(z.string(), z.record(z.string(), daySlotSchema)),
-});
-
-export type WizardDayPref = z.infer<typeof wizardDayPrefSchema>;
-
-/**
- * Persist the block-wizard's per-archetype × per-session-count day
- * pattern. The wizard mirrors this to localStorage for fast-paint;
- * Postgres is the cross-device source of truth on hydration.
- */
-export async function updateWizardDayPref(
-  pref: WizardDayPref,
-): Promise<ActionResult> {
-  const parsed = wizardDayPrefSchema.safeParse(pref);
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid day pref" };
-  }
-
-  const { supabase, userId } = await getUserOrRedirect();
-  const { error } = await supabase
-    .from("profiles")
-    .update({ wizard_day_pref: parsed.data })
-    .eq("id", userId);
-  if (error) return { ok: false, error: error.message };
-
-  return { ok: true };
-}
-
 const isoTimestampSchema = z
   .string()
   .refine((v) => !Number.isNaN(Date.parse(v)), { message: "Invalid timestamp" });
