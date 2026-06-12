@@ -642,11 +642,12 @@ export default async function TodayPage() {
           <div
             data-testid="today-eyebrow"
             style={{
+              fontFamily: "var(--cp-font-mono)",
               fontSize: 11,
               color: "var(--cp-text-muted)",
               textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              fontWeight: 600,
+              letterSpacing: "0.12em",
+              fontWeight: 500,
             }}
           >
             {activeBlock && archetypeName ? (
@@ -688,10 +689,13 @@ export default async function TodayPage() {
           >
             <h1
               style={{
+                fontFamily: "var(--cp-font-display)",
                 fontSize: 36,
                 margin: 0,
-                letterSpacing: "-0.02em",
-                fontWeight: 700,
+                letterSpacing: "0.01em",
+                textTransform: "uppercase",
+                lineHeight: 1.05,
+                fontWeight: 600,
               }}
             >
               Today
@@ -1096,6 +1100,7 @@ function TodaySessionCard({
         {programRecsBanner}
         <section
           data-testid="today-rest"
+          className="cp-card--bracket"
           style={{
             display: "grid",
             gap: 14,
@@ -1103,7 +1108,7 @@ function TodaySessionCard({
             background:
               "linear-gradient(180deg, var(--cp-bg-elevated), var(--cp-surface))",
             border: "1px solid var(--cp-border)",
-            borderRadius: 16,
+            borderRadius: 10,
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
@@ -1113,14 +1118,26 @@ function TodaySessionCard({
                 flex: "0 0 auto",
                 width: 38,
                 height: 38,
-                borderRadius: 11,
+                borderRadius: 9,
                 display: "grid",
                 placeItems: "center",
-                fontSize: 20,
-                background: "var(--cp-surface-soft)",
+                background: "var(--cp-accent-soft)",
+                color: "var(--cp-accent)",
               }}
             >
-              ☕
+              <svg
+                width={20}
+                height={20}
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+              </svg>
             </span>
             <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
               <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.01em" }}>

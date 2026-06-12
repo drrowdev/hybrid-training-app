@@ -380,19 +380,22 @@ function SummaryStat({
     >
       <div
         style={{
+          fontFamily: "var(--cp-font-mono)",
           fontSize: 10,
           color: "var(--cp-text-muted)",
           textTransform: "uppercase",
-          letterSpacing: "0.06em",
-          fontWeight: 600,
+          letterSpacing: "0.1em",
+          fontWeight: 500,
         }}
       >
         {label}
       </div>
       <div
         style={{
-          fontSize: 20,
-          fontWeight: 700,
+          fontFamily: "var(--cp-font-display)",
+          fontSize: 24,
+          fontWeight: 600,
+          letterSpacing: "0.01em",
           marginTop: 2,
           color: highlight ? "var(--cp-accent)" : "var(--cp-text)",
         }}

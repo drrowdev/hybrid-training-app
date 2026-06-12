@@ -46,6 +46,11 @@
 
   --cp-font-sans: var(--font-sans), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --cp-font-mono: var(--font-mono), Consolas, "Courier New", Courier, monospace;
+  /* Display (Oswald condensed) — page/section headings, used UPPERCASE with
+     tight tracking. Stencil (Saira) — big instrument-panel numerals + program
+     glyphs. Both lifted app-wide from the program wizard's type scale. */
+  --cp-font-display: var(--font-display), "Oswald", var(--cp-font-sans);
+  --cp-font-stencil: var(--font-stencil), "Saira Stencil One", var(--cp-font-display);
 
   /* Height of the fixed mobile BottomTabBar (links row, excl. safe-area
      inset which is added separately). Bottom-pinned overlays — the
@@ -185,8 +190,45 @@ select option {
 .cp-card {
   background: var(--cp-surface);
   border: 1px solid var(--cp-border);
-  border-radius: 16px;
-  box-shadow: 0 0 2px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.08);
+  border-radius: 10px;
+}
+
+/* Tactical corner-bracket frame — the program wizard's selectable-card motif.
+   Adds top-left + bottom-right L-ticks that warm to the accent on hover/focus.
+   Opt-in: add `cp-card--bracket` to a `.cp-card` (or any positioned box) for
+   hero / selectable surfaces. Decorative only (pointer-events: none). */
+.cp-card--bracket {
+  position: relative;
+}
+.cp-card--bracket::before,
+.cp-card--bracket::after {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+  border-color: var(--cp-border-strong);
+  border-style: solid;
+  border-width: 0;
+  transition: border-color 0.16s;
+}
+.cp-card--bracket::before {
+  top: 7px;
+  left: 7px;
+  border-top-width: 1.5px;
+  border-left-width: 1.5px;
+}
+.cp-card--bracket::after {
+  bottom: 7px;
+  right: 7px;
+  border-bottom-width: 1.5px;
+  border-right-width: 1.5px;
+}
+.cp-card--bracket:hover::before,
+.cp-card--bracket:hover::after,
+.cp-card--bracket:focus-within::before,
+.cp-card--bracket:focus-within::after {
+  border-color: var(--cp-accent);
 }
 
 /* Skeleton pulse used by route-level `loading.tsx` placeholders.

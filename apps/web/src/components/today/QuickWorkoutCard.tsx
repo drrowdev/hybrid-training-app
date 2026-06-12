@@ -62,7 +62,7 @@ export function QuickWorkoutCard({
           padding: 12,
           background: "transparent",
           border: "1px dashed var(--cp-border-strong)",
-          borderRadius: 14,
+          borderRadius: 10,
           cursor: "pointer",
           color: "var(--cp-text)",
           font: "inherit",

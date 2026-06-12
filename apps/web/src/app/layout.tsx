@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Archivo } from "next/font/google";
+import { Geist, JetBrains_Mono, Archivo, Oswald, Saira_Stencil_One } from "next/font/google";
 import { ServiceWorkerRegister } from "@/components/shell/ServiceWorkerRegister";
 import { InstallPrompt } from "@/components/shell/InstallPrompt";
 import { SplashScreenController } from "@/components/shell/SplashScreenController";
@@ -12,7 +12,9 @@ const geist = Geist({
   variable: "--font-sans",
 });
 
-const geistMono = Geist_Mono({
+// Mono face — JetBrains Mono app-wide (matches the program wizard's mono
+// labels) for every --cp-font-mono kicker, stat label and code-ish numeral.
+const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-mono",
@@ -24,6 +26,24 @@ const archivo = Archivo({
   display: "swap",
   weight: "700",
   variable: "--font-brand",
+});
+
+// Display face — Oswald condensed, used uppercase for page/section headings
+// (the wizard's signature). Exposed app-wide as --cp-font-display.
+const oswald = Oswald({
+  subsets: ["latin"],
+  display: "swap",
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-display",
+});
+
+// Stencil face — Saira Stencil One, for big "instrument-panel" numerals and
+// program glyphs. Exposed app-wide as --cp-font-stencil.
+const sairaStencil = Saira_Stencil_One({
+  subsets: ["latin"],
+  display: "swap",
+  weight: "400",
+  variable: "--font-stencil",
 });
 
 export const metadata: Metadata = {
@@ -100,7 +120,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${geist.variable} ${geistMono.variable} ${archivo.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`${geist.variable} ${jetbrainsMono.variable} ${archivo.variable} ${oswald.variable} ${sairaStencil.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
       </head>

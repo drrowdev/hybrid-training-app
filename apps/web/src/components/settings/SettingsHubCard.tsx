@@ -1,8 +1,9 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 type Props = {
   href: string;
-  icon: string;
+  icon: ReactNode;
   title: string;
   description: string;
   badge?: string | null;
@@ -37,7 +38,20 @@ export function SettingsHubCard({
           "background 150ms ease-out, border-color 150ms ease-out",
       }}
     >
-      <span style={{ fontSize: 24, lineHeight: 1 }} aria-hidden="true">
+      <span
+        aria-hidden="true"
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 8,
+          background: "var(--cp-accent-soft)",
+          color: "var(--cp-accent)",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flex: "0 0 auto",
+        }}
+      >
         {icon}
       </span>
       <span style={{ display: "grid", gap: 2, minWidth: 0 }}>

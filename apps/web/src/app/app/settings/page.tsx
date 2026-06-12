@@ -12,6 +12,7 @@ import { QuickSearchRow } from "@/components/profile/QuickSearchRow";
 import { markAuditRead } from "@/lib/profile/actions";
 import { getNotificationsData } from "@/lib/profile/queries";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { SettingsIcon } from "@/components/settings/SettingsIcons";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -100,14 +101,14 @@ export default async function SettingsPage() {
       <div className="settings-hub-grid">
         <SettingsHubCard
           href="/app/settings/profile"
-          icon="🧭"
+          icon={<SettingsIcon name="profile" />}
           title="Training profile"
           description="Name, experience, phase, training frequency."
           testId="settings-hub-profile"
         />
         <SettingsHubCard
           href="/app/settings/bodyweight"
-          icon="⚖️"
+          icon={<SettingsIcon name="bodyweight" />}
           title="Bodyweight"
           description="Log weight and review history."
           badge={bwBadge}
@@ -115,7 +116,7 @@ export default async function SettingsPage() {
         />
         <SettingsHubCard
           href="/app/settings/equipment"
-          icon="🏋️"
+          icon={<SettingsIcon name="equipment" />}
           title="Equipment"
           description="Bars, plates, accessories."
           badge={PRESET_LABEL[equipment.preset]}
@@ -123,7 +124,7 @@ export default async function SettingsPage() {
         />
         <SettingsHubCard
           href="/app/settings/training-maxes"
-          icon="💪"
+          icon={<SettingsIcon name="training-maxes" />}
           title="Training maxes"
           description="Per-lift TMs the planner uses."
           badge={`${trainingMaxesSet} lift${trainingMaxesSet === 1 ? "" : "s"} set`}
@@ -132,7 +133,7 @@ export default async function SettingsPage() {
         {isBodyweightOnly && (
           <SettingsHubCard
             href="/app/settings/bodyweight-progression"
-            icon="🌳"
+            icon={<SettingsIcon name="bw-progression" />}
             title="Bodyweight progression"
             description="Per-family progression nodes."
             testId="settings-hub-bw-progression"
@@ -140,7 +141,7 @@ export default async function SettingsPage() {
         )}
         <SettingsHubCard
           href="/app/recovery/injuries"
-          icon="🩹"
+          icon={<SettingsIcon name="limitations" />}
           title="Limitations"
           description="Active limitations + history."
           badge={`${activeLimCount} active`}
@@ -148,7 +149,7 @@ export default async function SettingsPage() {
         />
         <SettingsHubCard
           href="/app/settings/events"
-          icon="🏁"
+          icon={<SettingsIcon name="events" />}
           title="Events"
           description="Races, comps, taper plans."
           badge={`${upcomingEventsCount} upcoming`}
@@ -156,21 +157,21 @@ export default async function SettingsPage() {
         />
         <SettingsHubCard
           href="/app/settings/preferences"
-          icon="⚙️"
+          icon={<SettingsIcon name="preferences" />}
           title="Preferences"
           description="Time, feedback, warmups, connections."
           testId="settings-hub-preferences"
         />
         <SettingsHubCard
           href="/app/settings/integrations"
-          icon="🔌"
+          icon={<SettingsIcon name="integrations" />}
           title="Integrations"
           description="Strava and AI providers"
           testId="settings-hub-integrations"
         />
         <SettingsHubCard
           href="/app/settings/hr-zones"
-          icon="💓"
+          icon={<SettingsIcon name="hr-zones" />}
           title="Heart-rate zones"
           description="Define your heart rate training zones so the app can categorize cardio intensity."
           testId="settings-hub-hr-zones"
