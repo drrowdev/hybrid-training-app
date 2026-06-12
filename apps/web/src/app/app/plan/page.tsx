@@ -1,33 +1,20 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
-import { acceptTmBump, declineTmBump } from "@/lib/engine/tm-bump-actions";
-import { findBlockCompleteBump } from "@/lib/engine/block-complete";
 import {
   endBlock,
   movePlannedSession,
   skipPlannedSession,
   startSessionFromPlan,
   unskipPlannedSession,
-  createBlock,
 } from "@/lib/planner/actions";
 import { updatePlannedSessionNotes } from "@/lib/sessions/actions";
 import { estimateSessionMinutes } from "@/lib/sessions/estimate-duration";
-import { updateWizardDayPref } from "@/lib/profile/actions";
-import { estimateAccessoryVolumeMinutes } from "@/lib/planner/estimate-actions";
-import type { WizardDayPrefValue } from "@/lib/planner/wizard/day-pref";
-import {
-  ARCHETYPES,
-  STRENGTH_ROLE_LABELS,
-  effectiveDays,
-} from "@/lib/planner/archetypes";
-import type { ArchetypeId } from "@/lib/planner/archetypes";
-import { getNextBlockNudge } from "@/lib/planner/next-block-suggestion-server";
+import { ARCHETYPES } from "@/lib/planner/archetypes";
 import {
   getActiveBlock,
   getBlockNumberAndTotal,
   getPlannedDays,
-  getRecentBlocks,
   todayYmd,
 } from "@/lib/planner/queries";
 import { getTrainingMaxContext } from "@/lib/training-maxes/queries";
@@ -40,11 +27,6 @@ import {
   hasLoadableMainLift,
   resolveEquipment,
 } from "@/lib/settings/equipment-presets";
-import {
-  PlanNewSwitch,
-  type RecentBlockCard,
-  type TmReadinessByArchetype,
-} from "@/components/planner/BlockWizard";
 import { getVolumeAutoregOffer } from "@/lib/planner/autoreg-offer";
 import { acceptVolumeAutoregResult } from "@/lib/planner/autoreg-actions";
 import { VolumeAutoregCard } from "@/components/plan/VolumeAutoregCard";
@@ -58,21 +40,8 @@ import { deloadWeekIndexFor } from "@/lib/planner/deload-skip";
 import { getLimitationResponseOffer } from "@/lib/limitations/offer";
 import { applyLimitationResponseSelection } from "@/lib/limitations/actions";
 import { LimitationResponseCard } from "@/components/limitations/LimitationResponseCard";
-import { NextBlockSuggestionCard } from "@/components/planner/NextBlockSuggestionCard";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { addDaysToYmd } from "@/lib/dates";
 import { hasAiAccess } from "@/lib/ai/access";
-
-// Six wizard-resolvable archetype ids — must stay in sync with
-// `ResolvedArchetype["id"]` in lib/planner/wizard/wizard-mapping.ts.
-const WIZARD_ARCHETYPE_IDS = [
-  "strength_anchor",
-  "endurance_anchor",
-  "concurrent_hybrid",
-  "hypertrophy_anchor",
-  "maintenance",
-  "rebuild",
-] as const;
 
 export default async function PlanPage({
   searchParams,
@@ -91,147 +60,16 @@ export default async function PlanPage({
   if (!user) redirect("/login");
 
   const sp = await searchParams;
-  // `?new=1` forces the block-creation wizard even when an active block
-  // exists, so "Start a new block" works mid-block. createBlock archives
-  // the prior active block on submit (archive-after-insert), so this is
-  // the safe replace path.
+  // `?new=1` requests a fresh block mid-stream; like the empty state it routes
+  // to the program wizard, which archives any prior active block on deploy.
   const forceNew = sp?.new === "1";
-  // `?build=<archetype>` seeds the wizard from the next-block suggestion nudge:
-  // it pre-selects the focus combo (e.g. a hybrid → strength + cardio) and lands
-  // the user on the focus step. Validated against the wizard archetype set.
-  const seedArchetype = (WIZARD_ARCHETYPE_IDS as readonly string[]).includes(
-    sp?.build ?? "",
-  )
-    ? (sp!.build as ArchetypeId)
-    : null;
   const block = await getActiveBlock();
 
   if (!block || forceNew) {
-    // No active block — render the wizard inline with optional "Run it
-    // again" cards above. Previously the user had to:
-    //   /app/plan → click "Start a block" → /app/plan/new → click
-    //   "Build a new block" → wizard.
-    // Four clicks for an empty state. Now the wizard is right here.
-    const blockBump = await findBlockCompleteBump(supabase, user.id);
-
-    const [tmCtx, { data: prof }, recent] = await Promise.all([
-      getTrainingMaxContext(),
-      supabase
-        .from("profiles")
-        .select(
-          "allows_two_a_days, timezone, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bodyweight_kg, wizard_day_pref, preferred_cardio_source, preferred_cardio_source_name",
-        )
-        .eq("id", user.id)
-        .maybeSingle(),
-      getRecentBlocks(3),
-    ]);
-    const allowsTwoADays = Boolean(prof?.allows_two_a_days ?? false);
-    const tz = prof?.timezone ?? "UTC";
-    const planEquipment = resolveEquipment(prof ?? null);
-
-    // ADR 0010 — next-block suggestion nudge. Read-only, advice-only,
-    // user-scoped. Derived from the recent archetype sequence + the next
-    // A-event modality; null when no rule fires confidently.
-    const nudge = await getNextBlockNudge(
-      supabase,
-      user.id,
-      recent.map((b) => b.archetype as ArchetypeId),
-      todayYmd(tz),
-      recent.length > 0 ? recent[recent.length - 1].startedOn : null,
-    );
-
-    const tmReadinessByArchetype = Object.fromEntries(
-      WIZARD_ARCHETYPE_IDS.map((id) => {
-        const a = ARCHETYPES[id];
-        const pool = effectiveDays(a, allowsTwoADays);
-        const missingRoles: string[] = [];
-        const rolesSeen = new Map<string, boolean>();
-        for (const day of pool) {
-          if (day.kind !== "strength") continue;
-          const existing = rolesSeen.get(day.role);
-          const hasTm = day.candidateSlugs.some((s) => tmCtx.bySlug.has(s));
-          if (existing === undefined) rolesSeen.set(day.role, hasTm);
-          else if (hasTm) rolesSeen.set(day.role, true);
-        }
-        for (const [role, ready] of rolesSeen.entries()) {
-          if (!ready) {
-            missingRoles.push(STRENGTH_ROLE_LABELS[role as keyof typeof STRENGTH_ROLE_LABELS]);
-          }
-        }
-        return [id, { ready: missingRoles.length === 0, missingRoles }];
-      }),
-    ) as TmReadinessByArchetype;
-
-    const recentBlocks: RecentBlockCard[] = recent.map((b) => ({
-      id: b.id,
-      archetype: b.archetype,
-      archetypeName: b.archetypeName,
-      startedOn: b.startedOn,
-      daysPerWeek: b.daysPerWeek,
-      status: b.status,
-      dayIndexOverrides: b.dayIndexOverrides,
-    }));
-
-    const firstTime = recentBlocks.length === 0;
-
-    return (
-      <div style={{ display: "grid", gap: 20 }}>
-        <PageHeader
-          back={block ? { href: "/app/plan", label: "Plan" } : undefined}
-          title="Plan"
-          subtitle={
-            block
-              ? "Starting a new block archives your current one. You keep all logged sessions."
-              : firstTime
-                ? "Let's shape your first block. The engine picks the days, weights, and weekly wave — you log what actually happens."
-                : "Start a new block, or run a recent one again."
-          }
-        />
-        {blockBump && <BlockCompleteCard bump={blockBump} />}
-        <PlanNewSwitch
-          recentBlocks={recentBlocks}
-          tmReadinessByArchetype={tmReadinessByArchetype}
-          allowsTwoADays={allowsTwoADays}
-          todayYmd={todayYmd(tz)}
-          action={createBlock}
-          initialMode="home"
-          hideBuildCta={false}
-          seedArchetype={seedArchetype}
-          equipmentPreset={planEquipment.preset}
-          serverDayPref={(prof?.wizard_day_pref ?? null) as WizardDayPrefValue | null}
-          saveDayPrefAction={updateWizardDayPref}
-          preferredCardioSource={
-            (prof?.preferred_cardio_source as "internal" | "external" | undefined) ?? null
-          }
-          preferredCardioSourceName={prof?.preferred_cardio_source_name ?? null}
-          estimateAccessoryVolumeAction={estimateAccessoryVolumeMinutes}
-          suggestionCard={
-            nudge.suggestion || nudge.realization ? (
-              <NextBlockSuggestionCard
-                nudge={nudge}
-                suggestionTail={"It\u2019s only a suggestion \u2014 pick any focus below."}
-                cta={
-                  nudge.suggestion
-                    ? {
-                        href: `/app/plan?new=1&build=${nudge.suggestion.archetypeId}`,
-                        label: `Build a ${ARCHETYPES[nudge.suggestion.archetypeId]?.name ?? "new"} block`,
-                      }
-                    : undefined
-                }
-              />
-            ) : null
-          }
-        />
-        {recentBlocks.length > 0 && (
-          <Link
-            href="/app/plan/history"
-            className="plan-nav-link"
-          >
-            View full history →
-          </Link>
-        )}
-      </div>
-    );
+    // Legacy archetype BlockWizard retired — block creation now flows through
+    // the program wizard (/app/program). createProgramInstance archives any
+    // prior active block on deploy, covering the mid-block "start new" (?new=1).
+    redirect("/app/program");
   }
 
   // ── Active block ─────────────────────────────────────────────────
@@ -420,98 +258,6 @@ export default async function PlanPage({
   );
 }
 
-function BlockCompleteCard({
-  bump,
-}: {
-  bump: Awaited<ReturnType<typeof findBlockCompleteBump>>;
-}) {
-  if (!bump) return null;
-  return (
-    <section
-      className="cp-card"
-      style={{
-        padding: 20,
-        display: "grid",
-        gap: 12,
-        borderColor: "var(--cp-success)",
-        background: "color-mix(in oklab, var(--cp-success) 6%, transparent)",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-        <div style={{ fontSize: 22, lineHeight: 1 }} aria-hidden="true">✓</div>
-        <div style={{ display: "grid", gap: 4, flex: 1 }}>
-          <div
-            style={{
-              fontSize: 11,
-              color: "var(--cp-success)",
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              fontWeight: 600,
-            }}
-          >
-            Last block ended clean
-          </div>
-          <h2 style={{ fontSize: 18, margin: 0, letterSpacing: "-0.01em" }}>
-            Bump your TMs before the next block?
-          </h2>
-          <p style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 13, lineHeight: 1.5 }}>
-            Standard small-progression defaults: <strong>+5 kg</strong> on squat / deadlift,{" "}
-            <strong>+2.5 kg</strong> on bench / overhead. Accept any subset; the rest stay where
-            they are.
-          </p>
-        </div>
-      </div>
-      <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
-        {bump.lifts.map((lift) => (
-          <li
-            key={lift.movementId}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: "10px 12px",
-              background: "var(--cp-surface)",
-              border: "1px solid var(--cp-border)",
-              borderRadius: 10,
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
-            <div style={{ display: "grid", gap: 2, flex: 1, minWidth: 180 }}>
-              <span style={{ fontSize: 14, fontWeight: 500 }}>{lift.movementDisplayName}</span>
-              <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-                <span className="mono">{lift.currentTm.toFixed(1)} kg</span>{" "}
-                →{" "}
-                <span className="mono" style={{ color: "var(--cp-success)" }}>
-                  {lift.proposedTm.toFixed(1)} kg
-                </span>{" "}
-                <span style={{ marginLeft: 4 }}>(+{lift.increment} kg)</span>
-              </span>
-            </div>
-            <div style={{ display: "flex", gap: 6 }}>
-              <form action={acceptTmBump}>
-                <input type="hidden" name="movementId" value={lift.movementId} />
-                <input type="hidden" name="newTmKg" value={String(lift.proposedTm)} />
-                <input type="hidden" name="reason" value="block_complete" />
-                <input type="hidden" name="triggerKey" value={lift.triggerKey} />
-                <button type="submit" className="cp-btn primary" style={{ fontSize: 12 }}>
-                  Accept
-                </button>
-              </form>
-              <form action={declineTmBump}>
-                <input type="hidden" name="movementId" value={lift.movementId} />
-                <input type="hidden" name="triggerKey" value={lift.triggerKey} />
-                <button type="submit" className="cp-btn ghost" style={{ fontSize: 12 }}>
-                  Skip
-                </button>
-              </form>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
 
 function TissueStackCard({ gaps }: { gaps: TissueStackGap[] }) {
   return (

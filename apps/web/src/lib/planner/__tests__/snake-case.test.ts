@@ -173,11 +173,13 @@ describe("planner/actions.ts — Supabase column casing (regression for PGRST204
   });
 
   it("every rows.push({…}) into planned_sessions uses snake_case columns", () => {
-    // Both createBlock (now via assemble-block-sessions.ts) and
-    // createCustomBlock build a `rows` array then call
-    // `.from("planned_sessions").insert(rows)`. The compiler can't catch a
-    // drift back to camelCase (the row type lives alongside these literals),
-    // so we lint the literals directly across both source files.
+    // The shared `assembleBlockSessions` (assemble-block-sessions.ts) builds the
+    // `rows` array that both the platform program engines and the materialiser
+    // insert into `planned_sessions`. The compiler can't catch a drift back to
+    // camelCase (the row type lives alongside these literals), so we lint the
+    // literals directly across the planner source files. (The legacy
+    // createBlock/createCustomBlock push-sites were retired with the archetype
+    // block wizard; the shared module is now the single push-site.)
     const re = /rows\.push\(\s*\{/g;
     const literals: string[] = [];
     for (const src of [SOURCE, ASSEMBLE_SOURCE]) {
@@ -199,8 +201,8 @@ describe("planner/actions.ts — Supabase column casing (regression for PGRST204
       }
     }
 
-    // We expect at least 2 push-sites (createBlock + createCustomBlock).
-    expect(literals.length).toBeGreaterThanOrEqual(2);
+    // At least the shared assemble-block-sessions.ts push-site must be present.
+    expect(literals.length).toBeGreaterThanOrEqual(1);
 
     // Required snake_case columns we know the table demands.
     const required = [

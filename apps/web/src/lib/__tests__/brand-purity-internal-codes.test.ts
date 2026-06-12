@@ -22,7 +22,6 @@ const SRC_ROOT = resolve(__dirname, "..", "..");
 const USER_FACING_FILES = [
   "app/app/plan/page.tsx",
   "app/app/stats/engine/page.tsx",
-  "components/planner/CustomBlockBuilder.tsx",
   "lib/stats/engine.ts",
   "lib/stats/tissue-stack-queries.ts",
 ];
