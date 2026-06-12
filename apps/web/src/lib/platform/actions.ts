@@ -123,7 +123,18 @@ async function createForeignProgramInstance(
     const { ctx, resolveMovement } = await buildPlatformContext(supabase, user.id, {
       ...(roundingKg != null ? { roundingKg } : {}),
     });
-    instance = engine.setup({ values: setupValues }, ctx);
+    instance = engine.setup(
+      {
+        values: {
+          ...setupValues,
+          // 5/3/1 packs its 4 main lifts across the chosen strength days
+          // (4 = one lift/day, 2 = two/day). The frequency is the weekday count
+          // picked in the Schedule step, mirrored into setup like Hybrid does.
+          ...(programId === "wendler-531" ? { daysPerWeek: weekdays.length } : {}),
+        },
+      },
+      ctx,
+    );
     write = buildProgramInstanceWrite({
       engine,
       instance,

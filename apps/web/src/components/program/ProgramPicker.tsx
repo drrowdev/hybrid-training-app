@@ -806,8 +806,13 @@ export function ProgramPicker({
   }
   function bumpFreq(delta: number) {
     if (selected?.id !== "wendler-531") return;
-    const floor = selected.sessionsPerWeek ?? 4;
-    const next = Math.max(floor, Math.min(7, freq531 + delta));
+    // 5/3/1 has 4 main lifts; only frequencies that split them evenly are
+    // offered: 4 (one lift/day) or 2 (two lifts/day).
+    const ALLOWED = [2, 4];
+    const curIdx = ALLOWED.indexOf(freq531);
+    const baseIdx = curIdx === -1 ? ALLOWED.length - 1 : curIdx;
+    const nextIdx = Math.max(0, Math.min(ALLOWED.length - 1, baseIdx + (delta > 0 ? 1 : -1)));
+    const next = ALLOWED[nextIdx]!;
     setFreq531(next);
     setWeek(buildWeek(next));
   }
@@ -1132,17 +1137,22 @@ export function ProgramPicker({
             <div className={styles.cl}>Frequency</div>
             <div className={styles.cv}>
               {loadoutMeta.freqChoice ? (
-                <span className={styles.freqControl}>
-                  <span className={styles.ministep}>
-                    <button type="button" onClick={() => bumpFreq(-1)} aria-label="Fewer days">
-                      {"\u2013"}
-                    </button>
-                    <span className={styles.ministepV}>{freq531}</span>
-                    <button type="button" onClick={() => bumpFreq(1)} aria-label="More days">
-                      +
-                    </button>
+                <span className={styles.freqWrap}>
+                  <span className={styles.freqControl}>
+                    <span className={styles.ministep}>
+                      <button type="button" onClick={() => bumpFreq(-1)} aria-label="Fewer days">
+                        {"\u2013"}
+                      </button>
+                      <span className={styles.ministepV}>{freq531}</span>
+                      <button type="button" onClick={() => bumpFreq(1)} aria-label="More days">
+                        +
+                      </button>
+                    </span>
+                    <span className={styles.daysHint}>days / week</span>
                   </span>
-                  <span className={styles.daysHint}>days / week</span>
+                  {freq531 < 4 ? (
+                    <span className={styles.liftsHint}>{Math.ceil(4 / freq531)} main lifts / day</span>
+                  ) : null}
                 </span>
               ) : (
                 freqText
