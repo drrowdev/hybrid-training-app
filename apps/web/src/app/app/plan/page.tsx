@@ -208,7 +208,7 @@ export default async function PlanPage({
         data-testid="block-controls"
         style={{ padding: 16, display: "grid", gap: 14 }}
       >
-        <div style={{ fontSize: 13, fontWeight: 600 }}>Block controls</div>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>Program controls</div>
 
         <div
           style={{
@@ -220,7 +220,7 @@ export default async function PlanPage({
           }}
         >
           <div style={{ minWidth: 200 }}>
-            <div style={{ fontSize: 13, fontWeight: 500 }}>Start a new block</div>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>Start a new program</div>
             <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
               Builds a fresh schedule and archives this one. You keep all logged sessions.
             </div>
@@ -230,7 +230,7 @@ export default async function PlanPage({
             className="cp-btn primary"
             data-testid="start-new-block"
           >
-            Start a new block
+            Start a new program
           </Link>
         </div>
 
@@ -246,7 +246,7 @@ export default async function PlanPage({
           }}
         >
           <div style={{ minWidth: 200 }}>
-            <div style={{ fontSize: 13, fontWeight: 500 }}>End current block</div>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>End current program</div>
             <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
               Archives the schedule without starting a new one. You keep all logged sessions.
             </div>
