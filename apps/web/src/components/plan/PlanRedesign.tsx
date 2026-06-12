@@ -78,6 +78,9 @@ export type PlanSessionInput = {
 
 export type PlanRedesignProps = {
   archetypeName: string;
+  /** Program-aware noun for a training block — "cycle" (5/3/1) or "block"
+   * (Tactical Barbell / Green Protocol / default). */
+  cycleNoun?: "cycle" | "block";
   blockNumber: number; // 1-indexed
   blockTotal: number;
   /** Per-block user-chosen focus muscles (0–2). Rendered as a badge in the plan header. */
@@ -160,8 +163,10 @@ function longDate(ymd: string): string {
 function renderBlockOfTotal(
   blockNumber: number,
   blockTotal: number,
+  noun: "cycle" | "block" = "block",
 ): React.ReactNode {
-  return `Block ${blockNumber} of ${blockTotal}`;
+  const label = noun === "cycle" ? "Cycle" : "Block";
+  return `${label} ${blockNumber} of ${blockTotal}`;
 }
 
 function pillTitle(s: PlanSessionInput): string {
@@ -229,6 +234,7 @@ function PlanFocusBadge({ muscles }: { muscles: readonly string[] }) {
 export function PlanRedesign(props: PlanRedesignProps) {
   const {
     archetypeName,
+    cycleNoun = "block",
     blockNumber,
     blockTotal,
     focusMuscles = [],
@@ -462,7 +468,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
     <div data-testid="plan-redesign" style={{ display: "grid", gap: 24 }}>
       <header className="plan-head">
         <div className="plan-eyebrow mono">
-          {archetypeName} · {renderBlockOfTotal(blockNumber, blockTotal)}
+          {archetypeName} · {renderBlockOfTotal(blockNumber, blockTotal, cycleNoun)}
           <PlanFocusBadge muscles={focusMuscles} />
         </div>
         <div className="plan-head-row">
@@ -554,7 +560,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
             <section
               className="plan-timeline"
               data-testid="plan-timeline"
-              aria-label="Block timeline"
+              aria-label={`${cycleNoun === "cycle" ? "Cycle" : "Block"} timeline`}
             >
               {Array.from({ length: weeks }, (_, w) => (
                 <div
