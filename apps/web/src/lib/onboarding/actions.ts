@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
-import { createBlock, type CreateBlockResult } from "@/lib/planner/actions";
 import { buildProfileUpdate } from "@/lib/onboarding/gate";
 
 // ── Schemas ────────────────────────────────────────────────────────────────
@@ -26,20 +25,6 @@ const profileSchema = z.object({
 
 const tmsSchema = z.object({
   oneRmBySlug: z.record(z.string(), z.coerce.number().positive().lte(1000)).optional(),
-});
-
-const finishSchema = z.object({
-  archetype: z.enum([
-    "strength_anchor",
-    "endurance_anchor",
-    "rebuild",
-    "hypertrophy_anchor",
-    "concurrent_hybrid",
-    "maintenance",
-  ]),
-  startedOn: z.string().date(),
-  daysPerWeek: z.coerce.number().int().min(1).max(7),
-  dayIndexOverrides: z.string().optional(),
 });
 
 // ── Result types ───────────────────────────────────────────────────────────
@@ -150,50 +135,6 @@ export async function finishOnboardingNoBlock(): Promise<OnboardingResult> {
     .update({ onboarded_at: new Date().toISOString() })
     .eq("id", user.id);
   if (error) return { ok: false, error: `Onboarding save failed: ${error.message}` };
-  revalidatePath("/app");
-  return { ok: true };
-}
-
-// ── Retired: block creation is no longer coupled to onboarding ───────────
-
-/**
- * RETIRED — kept temporarily but UNUSED in favour of
- * `finishOnboardingNoBlock`; onboarding no longer creates the first block.
- * Mark onboarding complete and create the user's first block. Delegates
- * block creation to the canonical `createBlock` server action so all the
- * planner invariants (DC-* gates, RLS, archetype validation) apply.
- */
-export async function finishOnboarding(formData: FormData): Promise<CreateBlockResult> {
-  const parsed = finishSchema.safeParse({
-    archetype: formData.get("archetype"),
-    startedOn: formData.get("startedOn"),
-    daysPerWeek: formData.get("daysPerWeek"),
-    dayIndexOverrides: formData.get("dayIndexOverrides") ?? undefined,
-  });
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
-  }
-
-  // Create the block first — if planner-side validation fails (e.g. min
-  // days), surface the error before flipping the onboarded_at flag.
-  const blockFd = new FormData();
-  blockFd.set("archetype", parsed.data.archetype);
-  blockFd.set("startedOn", parsed.data.startedOn);
-  blockFd.set("daysPerWeek", String(parsed.data.daysPerWeek));
-  if (parsed.data.dayIndexOverrides) {
-    blockFd.set("dayIndexOverrides", parsed.data.dayIndexOverrides);
-  }
-  const blockResult = await createBlock(blockFd);
-  if (!blockResult.ok) return blockResult;
-
-  // Mark the user as onboarded only after the block exists.
-  const { supabase, user } = await requireUser();
-  const { error } = await supabase
-    .from("profiles")
-    .update({ onboarded_at: new Date().toISOString() })
-    .eq("id", user.id);
-  if (error) return { ok: false, error: `Onboarding save failed: ${error.message}` };
-
   revalidatePath("/app");
   return { ok: true };
 }
