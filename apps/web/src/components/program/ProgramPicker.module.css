@@ -132,18 +132,39 @@
   transform: scaleX(1);
   background: var(--sel);
 }
+.segNav {
+  cursor: pointer;
+}
+.segNav:hover {
+  background: var(--line2);
+}
 .raillabels {
   display: flex;
   gap: 6px;
   margin: 0 0 30px;
 }
-.raillabels span {
+.raillabels span,
+.raillabels .rlBtn {
   flex: 1;
   font-size: 11px;
   color: var(--muted);
   letter-spacing: 0.3px;
 }
-.raillabels span.rlActive {
+.rlBtn {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.14s;
+}
+.rlBtn:hover {
+  color: var(--text);
+}
+.raillabels span.rlActive,
+.raillabels .rlBtn.rlActive {
   color: var(--text);
   font-weight: 500;
 }
@@ -407,6 +428,11 @@
   color: var(--text);
   text-transform: uppercase;
   line-height: 1.1;
+  /* Center every value to a common row height so the frequency stepper lines up
+     with the Length/Cycle text. */
+  display: flex;
+  align-items: center;
+  min-height: 38px;
 }
 .cv.cvSm {
   font-family: var(--font-archivo), sans-serif;
@@ -805,10 +831,6 @@
 }
 
 /* spec strip frequency stepper */
-.freqControl {
-  display: inline-flex;
-  align-items: center;
-}
 .freqWrap {
   display: inline-flex;
   flex-direction: column;
@@ -854,11 +876,11 @@
   border-right: 1px solid var(--line2);
   line-height: 36px;
 }
-.daysHint {
-  font-size: 11px;
-  color: var(--muted);
-  margin-left: 10px;
-  white-space: nowrap;
+.schedFreq {
+  margin-bottom: 18px;
+}
+.schedFreq .label {
+  margin-bottom: 8px;
 }
 
 /* GP plan roadmap (static summary) */
@@ -1149,6 +1171,21 @@
   display: flex;
   align-items: center;
   gap: 7px;
+}
+.basisRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.basisLabel {
+  font-family: var(--font-oswald), sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 /* estimate popover */
