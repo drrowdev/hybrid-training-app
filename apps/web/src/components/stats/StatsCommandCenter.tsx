@@ -1699,7 +1699,7 @@ function ThisWeek({ streak }: { streak: Streak }) {
               placeItems: "center",
               fontSize: 11,
               background: d === "done" ? "var(--cp-accent)" : "transparent",
-              color: d === "done" ? "#1a1a1a" : "var(--cp-text-muted)",
+              color: d === "done" ? "var(--cp-accent-fg)" : "var(--cp-text-muted)",
               border: d === "done" ? undefined : "1.5px dashed var(--cp-border)",
             }}
           >

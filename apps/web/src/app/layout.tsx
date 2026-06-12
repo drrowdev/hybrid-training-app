@@ -80,8 +80,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f4f3f1" },
-    { media: "(prefers-color-scheme: dark)", color: "#1a1a1a" },
+    { media: "(prefers-color-scheme: light)", color: "#0f1310" },
+    { media: "(prefers-color-scheme: dark)", color: "#0f1310" },
   ],
   width: "device-width",
   initialScale: 1,
@@ -89,16 +89,11 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-// Inline theme detector — runs before paint to avoid FOUC.
+// Dark-only sage theme — always render dark regardless of OS/stored pref.
 const themeBootstrap = `(() => {
   try {
-    const stored = localStorage.getItem("cp-theme");
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const theme = stored || (prefersDark ? "dark" : "light");
-    document.documentElement.setAttribute("data-theme", theme);
-  } catch (_) {
-    document.documentElement.setAttribute("data-theme", "light");
-  }
+    document.documentElement.setAttribute("data-theme", "dark");
+  } catch (_) {}
 })();`;
 
 export default function RootLayout({
