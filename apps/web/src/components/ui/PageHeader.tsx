@@ -53,9 +53,10 @@ export function PageHeader({
           {eyebrow != null && (
             <div
               style={{
+                fontFamily: "var(--cp-font-mono)",
                 fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: "0.08em",
+                fontWeight: 500,
+                letterSpacing: "0.12em",
                 textTransform: "uppercase",
                 color: "var(--cp-text-muted)",
               }}
@@ -67,9 +68,12 @@ export function PageHeader({
             data-testid={titleTestId}
             style={{
               margin: 0,
-              fontSize: 28,
-              fontWeight: 700,
-              letterSpacing: "-0.01em",
+              fontFamily: "var(--cp-font-display)",
+              fontSize: 30,
+              fontWeight: 600,
+              letterSpacing: "0.01em",
+              textTransform: "uppercase",
+              lineHeight: 1.05,
               color: "var(--cp-text)",
             }}
           >

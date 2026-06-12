@@ -126,16 +126,34 @@ export function TopNav({
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            fontFamily: "var(--font-brand), system-ui, sans-serif",
-            fontWeight: 700,
-            fontSize: 22,
-            lineHeight: 1,
-            letterSpacing: "-0.02em",
-            color: "var(--cp-text)",
             height: 32,
           }}
         >
-          S<span style={{ color: "var(--cp-accent)", margin: "0 1px" }}>×</span>C
+          <span
+            aria-hidden
+            style={{
+              width: 30,
+              height: 30,
+              border: "1.5px solid var(--cp-accent)",
+              borderRadius: 3,
+              transform: "rotate(45deg)",
+              display: "grid",
+              placeItems: "center",
+            }}
+          >
+            <span
+              style={{
+                transform: "rotate(-45deg)",
+                fontFamily: "var(--cp-font-mono)",
+                fontWeight: 700,
+                fontSize: 11,
+                lineHeight: 1,
+                color: "var(--cp-text)",
+              }}
+            >
+              S<span style={{ color: "var(--cp-accent)" }}>×</span>C
+            </span>
+          </span>
         </Link>
 
       <nav
@@ -164,8 +182,11 @@ export function TopNav({
                 alignItems: "center",
                 padding: "6px 14px",
                 borderRadius: 999,
-                fontSize: 14,
+                fontFamily: "var(--cp-font-mono)",
+                fontSize: 12.5,
                 fontWeight: active ? 600 : 500,
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
                 color: active ? "var(--cp-accent)" : "var(--cp-text-muted)",
                 background: active ? "var(--cp-accent-soft)" : "transparent",
                 transition: "color 0.12s, background 0.12s",

@@ -193,7 +193,7 @@ export function BottomTabBar({ auditCount = 0 }: { auditCount?: number } = {}) {
                     width: 8,
                     height: 8,
                     borderRadius: "50%",
-                    background: "#d33",
+                    background: "var(--cp-danger)",
                     boxShadow: "0 0 0 2px var(--cp-bg-elevated)",
                   }}
                 />
@@ -201,10 +201,11 @@ export function BottomTabBar({ auditCount = 0 }: { auditCount?: number } = {}) {
             </span>
             <span
               style={{
+                fontFamily: "var(--cp-font-mono)",
                 fontSize: 10,
-                fontWeight: 600,
+                fontWeight: 500,
                 textTransform: "uppercase",
-                letterSpacing: "0.04em",
+                letterSpacing: "0.08em",
               }}
             >
               {t.label}

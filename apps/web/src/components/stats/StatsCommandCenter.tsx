@@ -176,9 +176,8 @@ function round1(n: number): number {
 const CARD: CSSProperties = {
   background: "var(--cp-surface)",
   border: "1px solid var(--cp-border)",
-  borderRadius: 16,
+  borderRadius: 10,
   padding: "16px 18px",
-  boxShadow: "0 1px 2px rgba(0,0,0,.18)",
 };
 
 function TileHead({

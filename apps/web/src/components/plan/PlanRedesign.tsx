@@ -729,9 +729,12 @@ export function PlanRedesign(props: PlanRedesignProps) {
         }
         .plan-h1 {
           margin: 0;
-          font-size: 30px;
-          font-weight: 700;
-          letter-spacing: -0.02em;
+          font-family: var(--cp-font-display);
+          font-size: 32px;
+          font-weight: 600;
+          letter-spacing: 0.01em;
+          text-transform: uppercase;
+          line-height: 1.05;
         }
         .plan-nav-link {
           /* Defined globally in globals.css — declared here too so
