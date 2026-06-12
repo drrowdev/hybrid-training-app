@@ -734,9 +734,22 @@ export default async function SessionDetailPage({
             chip eyebrow and a stand-alone metadata strip. */}
         {(() => {
           const datePart = formatDate(session.performed_at, feedbackPrefs);
-          const modalityPart = sessionModality
-            ? MODALITY_LABEL[sessionModality].toUpperCase()
-            : null;
+          // The session-modality classification is an engine concept (it drives
+          // the concurrent-load model), not a label the methodologies use. For
+          // strength sessions it's redundant with the title ("Leader 1 · Squat")
+          // and was misclassifying 5/3/1 5's-PRO days as "PURE HYPERTROPHY", so
+          // we only surface it when it tells the user something the title
+          // doesn't — i.e. cardio / mixed days (Z2, HIIT, Mixed). Pure strength
+          // / hypertrophy sessions show no focus tag (5/3/1 Forever uses none).
+          const SHOW_MODALITY_TAG: ReadonlySet<string> = new Set([
+            "pure_z2_aerobic",
+            "pure_hiit",
+            "mixed_modal",
+          ]);
+          const modalityPart =
+            sessionModality && SHOW_MODALITY_TAG.has(sessionModality)
+              ? MODALITY_LABEL[sessionModality].toUpperCase()
+              : null;
           const weekIdx = (planned?.week_index as number | null | undefined) ?? null;
           const weekPart = weekIdx != null ? `WK ${weekIdx + 1}` : null;
           const crumb = [datePart.toUpperCase(), modalityPart, weekPart]

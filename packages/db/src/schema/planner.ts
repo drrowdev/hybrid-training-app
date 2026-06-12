@@ -214,6 +214,14 @@ export type PrescriptionItem = {
   reps?: number;
   /** Strength: % of TM. */
   percentTm?: number;
+  /**
+   * Strength: absolute target load in kg, when the engine prescribes a concrete
+   * weight rather than a % of TM. Used for warm-up sets (e.g. 5/3/1's 40/50/60%
+   * ramp resolves to fixed kg) so the logger shows the target instead of "—kg".
+   * Main/supplemental sets carry `percentTm` instead so they recompute if the
+   * training max changes.
+   */
+  targetWeightKg?: number;
   /** Cardio: planned duration in minutes. */
   durationMin?: number;
   /** Cardio: optional plain-language HR cap or pace target (e.g. "≤ 70% HRR", "conversational"). */
