@@ -10,7 +10,7 @@
  * with an inline focus view, dot strip, and per-set save flow.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Prescription } from "@hta/db";
 import type {
@@ -149,12 +149,12 @@ export function SessionWorkArea({
   void performedAt;
 
   // ── Optimistic logging overlay ────────────────────────────────────────────
-  // The set-log server action revalidates (and thus re-renders) this whole
-  // page before resolving. Awaiting that made every "Log set" tap stall for
-  // seconds before the cursor advanced. We keep a client overlay of pending
-  // logs so the UI advances the instant the user taps; the real write +
-  // revalidation settle in the background, and each pending entry is reconciled
-  // away once the refreshed server `sets` includes its row.
+  // The set-log server action intentionally does NOT revalidate (a per-set
+  // full-page rebuild re-ran ~15 queries just to record one row). We keep a
+  // client overlay of pending logs so the UI advances the instant the user taps;
+  // the real write settles in the background. A fresh server snapshot (finish,
+  // edit, offline-flush, the one-shot first-set refresh below, or a reload)
+  // reconciles confirmed entries away.
   const [pendingLogs, setPendingLogs] = useState<OptimisticLog[]>([]);
   // Phase 4 — per-family bodyweight TUT overrides. The BW "Next:" chip counter
   // ticks up as you log BW sets; with no per-set revalidation we refresh just
@@ -166,6 +166,20 @@ export function SessionWorkArea({
   // server snapshot so the overlay reconciles the now-persisted rows away.
   const router = useRouter();
   const [outboxPending, setOutboxPending] = useState(0);
+  // Finish-gate sync. `addStrengthSet` intentionally skips revalidatePath (a
+  // ~15-query rebuild per set), so the server-rendered FinishSessionBar — whose
+  // `disabled` is `sets.length === 0` — stayed stuck on "Log at least 1 set to
+  // finish" until a manual reload, even after sets were logged. The optimistic
+  // overlay keeps the cards reactive but can't reach that sibling. We instead
+  // fire ONE background `router.refresh()` the first time a set lands in an
+  // empty session: the server snapshot then shows ≥1 set, the gate flips to
+  // "Finish session →" and stays armed. Self-limiting — once `sets` is non-empty
+  // the ref is already true, so no further refreshes (later sets ride the
+  // overlay). Sessions that already had sets at mount never trigger it.
+  const gateSyncedRef = useRef(sets.length > 0);
+  useEffect(() => {
+    if (sets.length > 0) gateSyncedRef.current = true;
+  }, [sets.length]);
 
   // Reconcile: whenever a fresh server snapshot lands (any revalidating action —
   // finish / delete / edit / fill / swap — or a reload changes the `sets` prop),
@@ -252,10 +266,17 @@ export function SessionWorkArea({
           const { family, tutAccumulated } = result.bwTut;
           setBwTutOverrides((prev) => ({ ...prev, [family]: tutAccumulated }));
         }
+        // First set of an empty session — pull one fresh server snapshot so the
+        // finish gate (server-rendered FinishSessionBar) flips to armed. Fires
+        // at most once per mount (see gateSyncedRef note above).
+        if (!gateSyncedRef.current) {
+          gateSyncedRef.current = true;
+          router.refresh();
+        }
       }
       return result ?? { ok: true };
     },
-    [addStrengthSet, sessionId],
+    [addStrengthSet, sessionId, router],
   );
 
   // Seed the overlay from a durable outbox (relaunch with unsynced sets) and
