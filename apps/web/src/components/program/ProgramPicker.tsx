@@ -131,25 +131,25 @@ const PROG_INFO: Record<string, ProgInfo> = {
   "wendler-531": {
     kick: "Wendler 5/3/1",
     title: "5/3/1",
-    body: "The most trusted \u201Cget strong slowly\u201D barbell plan. It\u2019s built on a simple idea: start lighter than you think, add a little weight every few weeks, focus on the big lifts \u2014 squat, bench, deadlift and overhead press \u2014 and aim to beat your old numbers by a rep or two rather than maxing out. You train off a conservative working weight, so sessions feel manageable and you almost never miss. Each block pushes for a few weeks, then eases off to let you recover. Patience is the whole point: it\u2019s designed to keep you progressing for years, not weeks. Best if your main goal is raw barbell strength and you want a proven, low-stress routine.",
+    body: "The most trusted \u201Cget strong slowly\u201D barbell plan. It\u2019s built on a simple idea: start lighter than you think, add a little weight every few weeks, focus on the big lifts \u2014 squat, bench, deadlift and overhead press \u2014 and aim to beat your old numbers by a rep or two rather than maxing out.\n\nYou train off a conservative working weight, so sessions feel manageable and you almost never miss. Each block pushes for a few weeks, then eases off to let you recover.\n\nPatience is the whole point: it\u2019s designed to keep you progressing for years, not weeks. Best if your main goal is raw barbell strength and you want a proven, low-stress routine.",
     meta: ["4 main lifts", "Slow, steady strength"],
   },
   [TB_PROGRAM_ID]: {
     kick: "Tactical Barbell",
     title: "Tactical Barbell",
-    body: "Strength training for people who also have to run, ruck, fight \u2014 or just have a life outside the gym. It was written by a tactical operator who needed to stay very strong without living under the barbell, so the sessions are short (often 20\u201330 minutes) and you lift at controlled, submaximal weights: hard work, but never grinding to failure. That leaves plenty of energy for conditioning and sport. You pick a small handful of main lifts and train them often, following a percentage plan that climbs over a 6-week block before you retest your maxes. Templates like Operator, Fighter and Zulu simply change how many days a week you lift and how many lifts you carry. Best if you want to be strong and keep doing cardio or hybrid training.",
+    body: "Strength training for people who also have to run, ruck, fight \u2014 or just have a life outside the gym. It was written by a tactical operator who needed to stay very strong without living under the barbell, so the sessions are short (often 20\u201330 minutes) and you lift at controlled, submaximal weights: hard work, but never grinding to failure.\n\nThat leaves plenty of energy for conditioning and sport. You pick a small handful of main lifts and train them often, following a percentage plan that climbs over a 6-week block before you retest your maxes.\n\nTemplates like Operator, Fighter and Zulu simply change how many days a week you lift and how many lifts you carry. Best if you want to be strong and keep doing cardio or hybrid training.",
     meta: ["Strength + conditioning", "Short 20\u201330 min sessions"],
   },
   "green-protocol": {
     kick: "Tactical Barbell \u00B7 Green Protocol",
     title: "Green Protocol",
-    body: "Tactical Barbell\u2019s bigger sibling, for people who need serious endurance on top of strength \u2014 think military selection, tactical roles, or any hybrid athlete chasing an ultra-runner\u2019s engine with real barbell strength. Instead of just programming your lifts, it programs your running and rucking too: you build a wide aerobic base first, then ramp up intensity toward a goal. It runs in longer phases \u2014 Hybrid is the everyday baseline you can stay on indefinitely, while blocks like Capacity, Velocity and Outcome peak you for a specific event. The guiding idea is to build the foundation gradually: the wider the base, the higher the peak. Your lifting is prescribed here in the app; your runs and rucks are tracked through Strava. Best when endurance matters as much as strength.",
+    body: "Tactical Barbell\u2019s bigger sibling, for people who need serious endurance on top of strength \u2014 think military selection, tactical roles, or any hybrid athlete chasing an ultra-runner\u2019s engine with real barbell strength.\n\nInstead of just programming your lifts, it programs your running and rucking too: you build a wide aerobic base first, then ramp up intensity toward a goal. It runs in longer phases \u2014 Hybrid is the everyday baseline you can stay on indefinitely, while blocks like Capacity, Velocity and Outcome peak you for a specific event.\n\nThe guiding idea is to build the foundation gradually: the wider the base, the higher the peak. Your lifting is prescribed here in the app; your runs and rucks are tracked through Strava. Best when endurance matters as much as strength.",
     meta: ["Strength + endurance", "Event & selection prep"],
   },
   hybrid: {
     kick: "Hybrid",
     title: "Build your own",
-    body: "The do-it-all option: tell us roughly what you want \u2014 how many days a week you can train and which muscles to bias \u2014 and the app builds a balanced concurrent plan that trains strength and conditioning side by side. It runs off the same four main lifts as everything else, so your numbers and history carry straight over, and it quietly keeps strength and cardio in balance so neither crowds the other out. There\u2019s no fixed recipe to follow: the plan adapts to the days you give it. Best if you want a bit of everything \u2014 strength, muscle and an engine \u2014 without committing to a single named methodology.",
+    body: "The do-it-all option: tell us roughly what you want \u2014 how many days a week you can train and which muscles to bias \u2014 and the app builds a balanced concurrent plan that trains strength and conditioning side by side.\n\nIt runs off the same four main lifts as everything else, so your numbers and history carry straight over, and it quietly keeps strength and cardio in balance so neither crowds the other out.\n\nThere\u2019s no fixed recipe to follow: the plan adapts to the days you give it. Best if you want a bit of everything \u2014 strength, muscle and an engine \u2014 without committing to a single named methodology.",
     meta: ["Strength + cardio", "Adapts to your goals"],
   },
 };
@@ -1132,14 +1132,16 @@ export function ProgramPicker({
             <div className={styles.cl}>Frequency</div>
             <div className={styles.cv}>
               {loadoutMeta.freqChoice ? (
-                <span className={styles.ministep}>
-                  <button type="button" onClick={() => bumpFreq(-1)} aria-label="Fewer days">
-                    {"\u2013"}
-                  </button>
-                  <span className={styles.ministepV}>{freq531}</span>
-                  <button type="button" onClick={() => bumpFreq(1)} aria-label="More days">
-                    +
-                  </button>
+                <span className={styles.freqControl}>
+                  <span className={styles.ministep}>
+                    <button type="button" onClick={() => bumpFreq(-1)} aria-label="Fewer days">
+                      {"\u2013"}
+                    </button>
+                    <span className={styles.ministepV}>{freq531}</span>
+                    <button type="button" onClick={() => bumpFreq(1)} aria-label="More days">
+                      +
+                    </button>
+                  </span>
                   <span className={styles.daysHint}>days / week</span>
                 </span>
               ) : (
@@ -1152,7 +1154,27 @@ export function ProgramPicker({
             <div className={styles.cv}>{lenText}</div>
           </div>
           <div className={`${styles.cell} ${styles.wide}`}>
-            <div className={styles.cl}>{loadoutMeta.structLabel}</div>
+            <div className={styles.cl}>
+              {loadoutMeta.structLabel}
+              {selected.id === "wendler-531" && (
+                <button
+                  type="button"
+                  className={styles.clInfo}
+                  aria-label="What do Leader, 7th week and Anchor mean?"
+                  onClick={() =>
+                    setModalInfo({
+                      kick: "Wendler 5/3/1",
+                      title: "How a 5/3/1 cycle is built",
+                      body:
+                        "A 5/3/1 cycle is made of short blocks that each do a different job. You run a couple of Leaders, take a lighter 7th week, then finish with an Anchor.\n\nLEADER \u2014 the volume-building blocks. You train at submaximal weights with extra supplemental sets to bank work and drive size, without grinding. You typically run two Leaders back to back.\n\n7TH WEEK \u2014 a single lighter week between phases. It either deloads you (easy, to recover) or tests your training max so the app knows whether to nudge your numbers up. It\u2019s the built-in checkpoint that keeps the plan honest.\n\nANCHOR \u2014 the block where you express the strength you built. Volume drops, intensity rises, and you push your top sets for new rep records. One Anchor caps the cycle before you start the next.",
+                      meta: ["2\u00D7 Leader", "7th week", "1\u00D7 Anchor"],
+                    })
+                  }
+                >
+                  i
+                </button>
+              )}
+            </div>
             <div className={`${styles.cv} ${styles.cvSm}`}>{loadoutMeta.struct}</div>
           </div>
         </div>
@@ -1760,7 +1782,11 @@ function InfoModal({
         </button>
         {kicker ? <div className={styles.modalKick}>{kicker}</div> : null}
         <h3 className={styles.modalH3}>{title}</h3>
-        <p className={styles.modalP}>{body}</p>
+        {body.split("\n\n").map((para, i) => (
+          <p key={i} className={styles.modalP}>
+            {para}
+          </p>
+        ))}
         {meta.length > 0 && (
           <div className={styles.modalMeta}>
             {meta.map((m) => (
