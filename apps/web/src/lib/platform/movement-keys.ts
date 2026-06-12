@@ -36,8 +36,23 @@ export function roleForSlug(slug: string): StrengthRole | undefined {
   return undefined;
 }
 
+/**
+ * Bodyweight movement slug → engine movement key. These are NOT StrengthRoles
+ * (they're prescribed off max reps, not a barbell 1RM), so they live outside the
+ * archetype role system and outside ENGINE_KEY_TO_ROLE — keeping them out of the
+ * 5/3/1 main-lift set and out of `computeTmAlignment` (no spurious tm_percent).
+ * A movement only resolves here once the user has explicitly anchored it (e.g.
+ * the Tactical Barbell Operator optional pull-up), so programs the user isn't
+ * running are unaffected.
+ */
+export const BODYWEIGHT_ENGINE_KEY_BY_SLUG: Record<string, string> = {
+  "pull-up-overhand": "pullup",
+};
+
 /** The engine movement key a given movement slug maps to (via its role), or undefined. */
 export function engineKeyForSlug(slug: string): string | undefined {
+  const bw = BODYWEIGHT_ENGINE_KEY_BY_SLUG[slug];
+  if (bw) return bw;
   const role = roleForSlug(slug);
   return role ? ROLE_TO_ENGINE_KEY[role] : undefined;
 }

@@ -91,6 +91,11 @@ export default async function ProgramPickerPage() {
   // 1-rep maxes on deploy) plus the user's currently-anchored variant + 1RM.
   const benchRoles: PickerBenchRole[] = await buildBenchRoles(supabase);
 
+  // The optional bodyweight movement (Tactical Barbell Operator's pull-up 4th).
+  // Resolved to its catalog id so the picker can persist a max-reps anchor on
+  // deploy; the engine prescribes it as a % of max reps.
+  const pullupMovement = await buildPullupMovement(supabase);
+
   const programs: PickerProgram[] = selectablePrograms().map((meta) => {
     // A program is owned by EITHER a foreign per-session engine or a native
     // (block-level) engine — both expose `describeSetup()`. Native programs are
@@ -144,6 +149,7 @@ export default async function ProgramPickerPage() {
         anchoredKeys={anchoredKeys}
         tbTemplates={tbTemplates}
         benchRoles={benchRoles}
+        {...(pullupMovement ? { pullupMovement } : {})}
       />
     </div>
   );
@@ -217,4 +223,31 @@ async function buildBenchRoles(
     });
   }
   return roles;
+}
+
+/** The slug behind the Operator optional bodyweight pull-up (see BODYWEIGHT_ENGINE_KEY_BY_SLUG). */
+const PULLUP_SLUG = "pull-up-overhand";
+
+/**
+ * Resolve the pull-up catalog movement + the user's current max-reps anchor (if
+ * any) for the Tactical Barbell Operator optional bodyweight 4th. Returns null if
+ * the catalog row is missing so the picker simply hides the option.
+ */
+async function buildPullupMovement(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<{ movementId: string; currentMaxReps?: number } | null> {
+  const { data } = await supabase
+    .from("movements")
+    .select("id")
+    .is("user_id", null)
+    .eq("slug", PULLUP_SLUG)
+    .maybeSingle();
+  if (!data?.id) return null;
+
+  const tm = await getTrainingMaxContext();
+  const reps = tm.rows.find((r) => r.movementSlug === PULLUP_SLUG)?.oneRmKg;
+  return {
+    movementId: data.id as string,
+    ...(reps != null && reps > 0 ? { currentMaxReps: reps } : {}),
+  };
 }

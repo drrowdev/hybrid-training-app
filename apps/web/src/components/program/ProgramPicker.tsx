@@ -24,6 +24,20 @@ const CARD_META: Record<string, { kick: string; code: string }> = {
   "green-protocol": { kick: "Tactical Barbell", code: "GP" },
 };
 
+/**
+ * Short, high-level card descriptor (a few words). The long description lives in
+ * the info modal (PROG_INFO), not on the tile.
+ */
+const CARD_TAGLINE: Record<string, string> = {
+  "wendler-531": "Percentage strength",
+  "tactical-barbell": "Operator · Fighter · Zulu",
+  "green-protocol": "Strength + endurance",
+  hybrid: "Personalised strength × cardio",
+};
+
+/** Display order of the program cards (5/3/1 → TB → GP → Build-your-own). */
+const CARD_ORDER = ["wendler-531", "tactical-barbell", "green-protocol", "hybrid"];
+
 const STEP_LABELS = ["Program", "Loadout", "Benchmarks", "Schedule"] as const;
 
 export interface PickerField {
@@ -140,6 +154,15 @@ const PROG_INFO: Record<string, ProgInfo> = {
   },
 };
 
+/**
+ * The engine appends a "(Leader \u2192 Anchor)" structural note to 5/3/1 template
+ * labels. The accepted mockup shows the bare template name (the cycle structure
+ * already appears in the spec strip and summary), so strip it for display.
+ */
+function templateDisplayLabel(label: string): string {
+  return label.replace(/\s*\(Leader\s*\u2192\s*Anchor\)$/u, "");
+}
+
 // ── Step-2 loadout content (ported from the mockup LOADOUTS) ────────────────
 
 interface ProgramLoadoutMeta {
@@ -201,6 +224,10 @@ const TEMPLATE_COPY: Record<string, Record<string, TemplateCopy>> = {
     "bbb-leader": {
       desc: "5\u00D710 supplemental at 50\u201360%. High-volume hypertrophy on the main work.",
       long: "After your main 5/3/1 work, do 5 sets of 10 reps of the same lift at 50\u201360% of your Training Max. It\u2019s brutally simple and one of the most effective mass-builders in the program \u2014 the high rep volume drives hypertrophy while the main work keeps strength progressing. Best run when recovery and calories are good.",
+    },
+    "original-531-fsl": {
+      desc: "Classic 5/3/1 main with AMRAP top sets plus a First-Set-Last back-off.",
+      long: "The original 5/3/1: each week the top set is taken for As-Many-Reps-As-Possible (stopping shy of failure), and those reps drive your estimated 1RM and Training-Max progression. FSL back-off sets add supplemental volume. More autoregulated and intense than 5\u2019s PRO \u2014 a good next step once you\u2019re comfortable with the system.",
     },
   },
   [TB_PROGRAM_ID]: {
@@ -507,11 +534,13 @@ export function ProgramPicker({
   anchoredKeys,
   tbTemplates = [],
   benchRoles = [],
+  pullupMovement,
 }: {
   programs: PickerProgram[];
   anchoredKeys: string[];
   tbTemplates?: PickerTbTemplate[];
   benchRoles?: PickerBenchRole[];
+  pullupMovement?: { movementId: string; currentMaxReps?: number };
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -538,6 +567,10 @@ export function ProgramPicker({
   const [benchVals, setBenchVals] = useState<Record<string, { slug: string; valueStr: string }>>({});
   const [benchTouched, setBenchTouched] = useState<Set<string>>(new Set());
   const [estimate, setEstimate] = useState<{ key: string; weight: string; reps: string } | null>(null);
+  // Operator's optional bodyweight pull-up: max clean reps the engine prescribes off.
+  const [pullupReps, setPullupReps] = useState<string>(
+    pullupMovement?.currentMaxReps != null ? String(pullupMovement.currentMaxReps) : "10",
+  );
 
   const benchRoleByKey = useMemo(() => {
     const m = new Map<string, PickerBenchRole>();
@@ -600,13 +633,77 @@ export function ProgramPicker({
   }, [activeTbTemplate, cluster]);
   const clusterOk = !activeTbTemplate || (clusterValidation?.ok ?? false);
 
+  // Cluster editing (TB). The mockup edits the cluster inline on the benchmarks
+  // step: add/remove a lift, and (for split templates) move a lift between the A
+  // and B sessions. Editable only when the template allows a variable lift count.
+  const clusterEditable =
+    !!activeTbTemplate && activeTbTemplate.clusterMin !== activeTbTemplate.clusterMax;
+  const countingLifts = clusterValidation?.countingLifts ?? cluster.length;
+  const canAddCluster =
+    clusterEditable &&
+    countingLifts < (activeTbTemplate?.clusterMax ?? 0) &&
+    benchRoles.some((r) => !cluster.some((c) => c.movement === r.engineKey));
+
+  function canRemoveCluster(movement: string): boolean {
+    if (!activeTbTemplate || !clusterEditable) return false;
+    const entry = cluster.find((c) => c.movement === movement);
+    if (!entry) return false;
+    if (entry.kind === "bodyweight") return true;
+    return countingLifts - 1 >= activeTbTemplate.clusterMin;
+  }
+  function removeClusterLift(movement: string) {
+    setCluster(cluster.filter((c) => c.movement !== movement));
+  }
+  function cycleClusterSplit(movement: string) {
+    setCluster(
+      cluster.map((c) =>
+        c.movement === movement ? { ...c, split: c.split === "A" ? "B" : "A" } : c,
+      ),
+    );
+  }
+  function addClusterLift() {
+    if (!activeTbTemplate || countingLifts >= activeTbTemplate.clusterMax) return;
+    const used = new Set(cluster.map((c) => c.movement));
+    const next = benchRoles.map((r) => r.engineKey).find((k) => !used.has(k));
+    if (!next) return;
+    if (activeTbTemplate.structure === "split") {
+      const a = cluster.filter((c) => c.split === "A").length;
+      const b = cluster.filter((c) => c.split === "B").length;
+      setCluster([...cluster, { movement: next, split: a <= b ? "A" : "B" }]);
+    } else {
+      setCluster([...cluster, { movement: next }]);
+    }
+  }
+
+  // Operator's optional bodyweight pull-up: a 4th lift exempt from the barbell
+  // cap, prescribed off max reps. Only offered when the template + a resolvable
+  // catalog movement both allow it.
+  const bodyweightEntry = cluster.find((c) => c.kind === "bodyweight");
+  const canAddBodyweight =
+    !!activeTbTemplate && !!activeTbTemplate.allowsBodyweightFourth && !!pullupMovement && !bodyweightEntry;
+  function addBodyweightLift() {
+    if (!canAddBodyweight) return;
+    const split =
+      activeTbTemplate!.structure === "split"
+        ? cluster.filter((c) => c.split === "A").length <= cluster.filter((c) => c.split === "B").length
+          ? "A"
+          : "B"
+        : undefined;
+    setCluster([...cluster, { movement: "pullup", kind: "bodyweight", ...(split ? { split } : {}) }]);
+  }
+  function setPullupRepsValue(v: string) {
+    setPullupReps(v);
+  }
+
   // Which main-lift roles the Benchmarks step shows. Cluster programs (TB) show
   // the barbell lifts in their chosen cluster; everyone else shows all four mains.
   const relevantBenchKeys = useMemo<string[]>(() => {
     if (activeTbTemplate) {
+      const order = benchRoles.map((r) => r.engineKey);
       return cluster
         .filter((c) => c.kind !== "bodyweight" && benchRoleByKey.has(c.movement))
-        .map((c) => c.movement);
+        .map((c) => c.movement)
+        .sort((a, b) => order.indexOf(a) - order.indexOf(b));
     }
     return benchRoles.map((r) => r.engineKey);
   }, [activeTbTemplate, cluster, benchRoles, benchRoleByKey]);
@@ -764,6 +861,17 @@ export function ProgramPicker({
       saves.push({ movementId: variant.movementId, oneRmKg: kg, label: movementLabel(key) });
     }
 
+    // Operator's optional bodyweight pull-up: persist its max-reps as the pullup
+    // anchor (stored in the 1RM column; the engine reads bodyweight anchors as
+    // max reps). The anchor MUST exist for the engine to prescribe the lift, so
+    // we write it whenever the cluster carries a pull-up — not only when touched.
+    if (bodyweightEntry && pullupMovement) {
+      const reps = Math.round(Number(pullupReps));
+      if (Number.isFinite(reps) && reps > 0) {
+        saves.push({ movementId: pullupMovement.movementId, oneRmKg: reps, label: "Pull-ups" });
+      }
+    }
+
     startTransition(async () => {
       for (const s of saves) {
         const fd = new FormData();
@@ -816,11 +924,18 @@ export function ProgramPicker({
           {"Pick the methodology you\u2019ll run. Your strength numbers, history and stats stay with you if you switch later."}
         </p>
         <div className={styles.grid}>
-          {programs.map((p) => {
+          {[...programs]
+            .sort((a, b) => {
+              const ai = CARD_ORDER.indexOf(a.id);
+              const bi = CARD_ORDER.indexOf(b.id);
+              return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+            })
+            .map((p) => {
             const meta = CARD_META[p.id] ?? { kick: "", code: p.name };
             const wrap = meta.code.includes(" ");
             const codeCls = `${styles.code}${wrap ? ` ${styles.codeWrap}` : ""}`;
             const codeStyle = !wrap && meta.code.length > 4 ? { fontSize: 20 } : undefined;
+            const tagline = CARD_TAGLINE[p.id] ?? p.summary;
             const isSel = p.id === selectedId;
             return (
               <div key={p.id} style={{ position: "relative", display: "flex" }}>
@@ -835,7 +950,7 @@ export function ProgramPicker({
                   <div className={codeCls} style={codeStyle}>
                     {meta.code}
                   </div>
-                  <div className={styles.pdesc}>{p.summary}</div>
+                  <div className={styles.pdesc}>{tagline}</div>
                 </button>
                 <button
                   type="button"
@@ -880,6 +995,7 @@ export function ProgramPicker({
             const header =
               group !== lastGroup ? ((lastGroup = group), GP_GROUPS[group]) : null;
             const on = o.value === selectedLoadoutValue;
+            const dispLabel = templateDisplayLabel(o.label);
             return (
               <div key={o.value} style={{ display: "contents" }}>
                 {header && (
@@ -900,7 +1016,7 @@ export function ProgramPicker({
                   <div className={styles.optOn}>
                     <span className={styles.optNm}>
                       {c?.seq ? <span className={styles.seq}>{c.seq}</span> : null}
-                      {o.label}
+                      {dispLabel}
                     </span>
                     {c?.badge ? (
                       <span className={`${styles.pill}${c.badge === "Start here" ? ` ${styles.pillStart}` : ""}`}>
@@ -909,18 +1025,18 @@ export function ProgramPicker({
                     ) : null}
                   </div>
                   <div className={styles.optDesc}>
-                    {c?.desc ?? o.label}
+                    {c?.desc ?? dispLabel}
                     {c?.long ? (
                       <span
                         role="button"
                         tabIndex={0}
-                        aria-label={`More about ${o.label}`}
+                        aria-label={`More about ${dispLabel}`}
                         className={styles.optInfo}
                         onClick={(e) => {
                           e.stopPropagation();
                           setModalInfo({
                             kick: PROG_INFO[selected.id]?.kick ?? selected.family,
-                            title: o.label,
+                            title: dispLabel,
                             body: c.long,
                             meta: [c.freq, c.len].filter((x): x is string => !!x),
                           });
@@ -944,6 +1060,7 @@ export function ProgramPicker({
           const c = copy[o.value];
           const on = o.value === selectedLoadoutValue;
           const badge = c?.badge ?? (i === 0 ? "Recommended" : undefined);
+          const dispLabel = templateDisplayLabel(o.label);
           return (
             <button
               key={o.value}
@@ -953,22 +1070,22 @@ export function ProgramPicker({
               className={`${styles.opt}${on ? ` ${styles.optSel}` : ""}`}
             >
               <div className={styles.optOn}>
-                <span className={styles.optNm}>{o.label}</span>
+                <span className={styles.optNm}>{dispLabel}</span>
                 {badge ? <span className={styles.pill}>{badge}</span> : null}
               </div>
               <div className={styles.optDesc}>
-                {c?.desc ?? o.label}
+                {c?.desc ?? dispLabel}
                 {c?.long ? (
                   <span
                     role="button"
                     tabIndex={0}
-                    aria-label={`More about ${o.label}`}
+                    aria-label={`More about ${dispLabel}`}
                     className={styles.optInfo}
                     onClick={(e) => {
                       e.stopPropagation();
                       setModalInfo({
                         kick: PROG_INFO[selected.id]?.kick ?? selected.family,
-                        title: o.label,
+                        title: dispLabel,
                         body: c.long,
                         meta: [c.freq, c.len].filter((x): x is string => !!x),
                       });
@@ -981,6 +1098,17 @@ export function ProgramPicker({
             </button>
           );
         })}
+        {selected.id === "wendler-531" && (
+          <div className={`${styles.opt} ${styles.optLocked}`} aria-disabled="true">
+            <div className={styles.optOn}>
+              <span className={styles.optNm}>Krypteia</span>
+              <span className={styles.pill}>Coming soon</span>
+            </div>
+            <div className={styles.optDesc}>
+              Advanced leader/anchor with jumps, throws and a tight assistance cap.
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1117,7 +1245,16 @@ export function ProgramPicker({
         <div className={styles.linfo}>
           <div className={styles.ln}>
             {movementLabel(key)}
-            {clusterEntry?.split ? <span className={styles.schip}>{clusterEntry.split}</span> : null}
+            {clusterEntry?.split ? (
+              <button
+                type="button"
+                className={styles.schip}
+                onClick={() => cycleClusterSplit(key)}
+                aria-label={`${movementLabel(key)} is in session ${clusterEntry.split} \u2014 tap to switch`}
+              >
+                {clusterEntry.split}
+              </button>
+            ) : null}
           </div>
           <select
             className={styles.variantSel}
@@ -1133,6 +1270,17 @@ export function ProgramPicker({
           </select>
         </div>
         <div className={styles.right}>
+          {canRemoveCluster(key) ? (
+            <button
+              type="button"
+              className={styles.rm}
+              onClick={() => removeClusterLift(key)}
+              aria-label={`Remove ${movementLabel(key)}`}
+              title="Remove"
+            >
+              {"\u2715"}
+            </button>
+          ) : null}
           <button
             type="button"
             className={styles.est}
@@ -1149,6 +1297,51 @@ export function ProgramPicker({
               aria-label={`${movementLabel(key)} 1-rep max`}
             />
             <span className={styles.u}>{unit}</span>
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  function renderPullupRow() {
+    const split = bodyweightEntry?.split;
+    return (
+      <div className={styles.lift}>
+        <div className={styles.linfo}>
+          <div className={styles.ln}>
+            Pull-ups
+            <span className={styles.bwtag}>max reps</span>
+            {split ? (
+              <button
+                type="button"
+                className={styles.schip}
+                onClick={() => cycleClusterSplit("pullup")}
+                aria-label={`Pull-ups are in session ${split} \u2014 tap to switch`}
+              >
+                {split}
+              </button>
+            ) : null}
+          </div>
+        </div>
+        <div className={styles.right}>
+          <button
+            type="button"
+            className={styles.rm}
+            onClick={() => removeClusterLift("pullup")}
+            aria-label="Remove Pull-ups"
+            title="Remove"
+          >
+            {"\u2715"}
+          </button>
+          <span className={styles.inp}>
+            <input
+              type="number"
+              step="1"
+              value={pullupReps}
+              onChange={(e) => setPullupRepsValue(e.target.value)}
+              aria-label="Pull-up max reps"
+            />
+            <span className={styles.u}>reps</span>
           </span>
         </div>
       </div>
@@ -1178,7 +1371,13 @@ export function ProgramPicker({
     const note =
       selected.id === "wendler-531"
         ? "Your Training Max is set to 85% of each 1RM \u2014 the 5/3/1 standard. All working percentages run off that TM."
-        : "Tactical Barbell loads a submaximal % of your 1RM \u2014 no Training Max required. Switch a lift\u2019s variant from its dropdown.";
+        : isCluster && activeTbTemplate!.structure === "split"
+          ? "Tactical Barbell loads a submaximal % of your 1RM \u2014 no Training Max required (you can optionally load off a TM in settings). Each lift sits in an A or B session; you train each session twice a week. Tap the A/B chip to move a lift."
+          : `Tactical Barbell loads a submaximal % of your 1RM \u2014 no Training Max required (you can optionally load off a TM in settings).${
+              bodyweightEntry
+                ? " An optional bodyweight movement (e.g. pull-ups) doesn\u2019t count toward the cap and is prescribed as a % of your max reps, not a weight."
+                : " Switch a lift\u2019s variant from its dropdown."
+            }`;
 
     const lockHint =
       selected.id === "wendler-531"
@@ -1215,19 +1414,40 @@ export function ProgramPicker({
           </span>
         </div>
 
-        {isCluster && (
-          <div style={{ marginBottom: 16 }}>
-            <ClusterEditor
-              template={activeTbTemplate!}
-              anchoredKeys={anchoredKeys}
-              cluster={cluster}
-              onChange={setCluster}
-              validation={clusterValidation}
-            />
-          </div>
+        {isCluster && activeTbTemplate!.structure === "split" && (
+          <p className={styles.note} style={{ marginTop: 0, marginBottom: 12 }}>
+            {activeTbTemplate!.name} splits your lifts across an A and a B session.
+          </p>
         )}
 
-        <div className={styles.lifts}>{relevantBenchKeys.map((k) => renderBenchRow(k))}</div>
+        <div className={styles.lifts}>
+          {relevantBenchKeys.map((k) => renderBenchRow(k))}
+          {isCluster && bodyweightEntry ? renderPullupRow() : null}
+        </div>
+
+        {isCluster && (clusterEditable || canAddBodyweight || bodyweightEntry) && (
+          <div className={styles.addwrap}>
+            {clusterEditable && (
+              <button
+                type="button"
+                className={styles.addlift}
+                onClick={addClusterLift}
+                disabled={!canAddCluster}
+              >
+                {"\uFF0B Add lift"}
+              </button>
+            )}
+            {canAddBodyweight && (
+              <button
+                type="button"
+                className={`${styles.addlift} ${styles.addliftBw}`}
+                onClick={addBodyweightLift}
+              >
+                {"\uFF0B Optional bodyweight (pull-ups)"}
+              </button>
+            )}
+          </div>
+        )}
 
         {lockHint && <div className={styles.lockhint}>{lockHint}</div>}
         <p className={styles.note}>{note}</p>
@@ -1302,7 +1522,9 @@ export function ProgramPicker({
         .map((k) => `${ABBR[k] ?? k.slice(0, 2).toUpperCase()} ${benchVals[k]?.valueStr || "\u2014"}`)
         .join(" \u00B7 ") || "\u2014";
     const tmplLabel = loadoutKey
-      ? loadoutOptions.find((o) => o.value === selectedLoadoutValue)?.label ?? "\u2014"
+      ? templateDisplayLabel(
+          loadoutOptions.find((o) => o.value === selectedLoadoutValue)?.label ?? "\u2014",
+        )
       : "Custom";
     const weekText = `${dayCounts.strength} strength \u00B7 ${dayCounts.cardio} cardio \u00B7 ${dayCounts.rest} rest`;
     return (
@@ -1548,205 +1770,6 @@ function InfoModal({
         )}
       </div>
     </div>
-  );
-}
-
-function ClusterEditor({
-  template,
-  anchoredKeys,
-  cluster,
-  onChange,
-  validation,
-}: {
-  template: PickerTbTemplate;
-  anchoredKeys: string[];
-  cluster: PickerClusterEntry[];
-  onChange: (next: PickerClusterEntry[]) => void;
-  validation: ClusterValidationLite | null;
-}) {
-  const isSplit = template.structure === "split";
-  const counting = validation?.countingLifts ?? cluster.length;
-  const ok = validation?.ok ?? false;
-
-  function getEntry(movement: string): PickerClusterEntry | undefined {
-    return cluster.find((c) => c.movement === movement);
-  }
-
-  function toggleClusterLift(movement: string) {
-    const existing = getEntry(movement);
-    if (existing) {
-      onChange(cluster.filter((c) => c.movement !== movement));
-      return;
-    }
-    if (counting >= template.clusterMax) return;
-    onChange([...cluster, { movement }]);
-  }
-
-  function toggleBodyweightFourth() {
-    const existing = cluster.find((c) => c.kind === "bodyweight");
-    if (existing) {
-      onChange(cluster.filter((c) => c !== existing));
-      return;
-    }
-    onChange([...cluster, { movement: "pullup", kind: "bodyweight" }]);
-  }
-
-  function setSplit(movement: string, next: "A" | "B" | null) {
-    const existing = getEntry(movement);
-    if (next === null) {
-      if (!existing) return;
-      onChange(cluster.filter((c) => c.movement !== movement));
-      return;
-    }
-    if (existing) {
-      onChange(cluster.map((c) => (c.movement === movement ? { ...c, split: next } : c)));
-      return;
-    }
-    onChange([...cluster, { movement, split: next }]);
-  }
-
-  const headline = isSplit
-    ? `${template.name} splits ${template.clusterMin}+ lifts across an A and a B session.`
-    : template.clusterMin === template.clusterMax
-      ? `${template.name} uses exactly ${template.clusterMin} main lifts.`
-      : `${template.name} uses ${template.clusterMin}-${template.clusterMax} main lifts.`;
-
-  const summaryLine = isSplit
-    ? (() => {
-        const a = cluster.filter((c) => c.split === "A").map((c) => movementLabel(c.movement));
-        const b = cluster.filter((c) => c.split === "B").map((c) => movementLabel(c.movement));
-        return `A: ${a.length ? a.join(", ") : "—"} · B: ${b.length ? b.join(", ") : "—"}`;
-      })()
-    : `${counting} of ${template.clusterMax} lifts`;
-
-  return (
-    <section style={{ display: "grid", gap: 12 }}>
-      <h2 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: "0.08em", margin: 0, color: "var(--cp-text-muted, #999)" }}>
-        Cluster
-      </h2>
-      <div style={{ fontSize: 12, color: "var(--cp-text-muted, #999)", lineHeight: 1.5 }}>{headline}</div>
-
-      {isSplit ? (
-        <div style={{ display: "grid", gap: 8 }}>
-          {anchoredKeys.map((mv) => {
-            const entry = getEntry(mv);
-            const onA = entry?.split === "A";
-            const onB = entry?.split === "B";
-            return (
-              <div
-                key={mv}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  border: "1px solid var(--cp-border, rgba(255,255,255,0.14))",
-                }}
-              >
-                <span style={{ fontSize: 13 }}>{movementLabel(mv)}</span>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <SplitChip label="Off" active={!onA && !onB} onClick={() => setSplit(mv, null)} />
-                  <SplitChip label="A" active={onA} onClick={() => setSplit(mv, "A")} />
-                  <SplitChip label="B" active={onB} onClick={() => setSplit(mv, "B")} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {anchoredKeys.map((mv) => {
-            const entry = getEntry(mv);
-            const on = !!entry;
-            const atCap = !on && counting >= template.clusterMax;
-            return (
-              <button
-                key={mv}
-                type="button"
-                onClick={() => toggleClusterLift(mv)}
-                disabled={atCap}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  cursor: atCap ? "not-allowed" : "pointer",
-                  opacity: atCap ? 0.45 : 1,
-                  background: on ? "var(--cp-accent, #6aa0ff)" : "transparent",
-                  color: on ? "#0b0c0e" : "inherit",
-                  border: `1px solid ${on ? "var(--cp-accent, #6aa0ff)" : "var(--cp-border, rgba(255,255,255,0.14))"}`,
-                  fontWeight: on ? 600 : 400,
-                  fontSize: 13,
-                }}
-              >
-                {movementLabel(mv)}
-              </button>
-            );
-          })}
-          {template.allowsBodyweightFourth && (() => {
-            const on = cluster.some((c) => c.kind === "bodyweight");
-            return (
-              <button
-                type="button"
-                onClick={toggleBodyweightFourth}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  background: on ? "var(--cp-accent, #6aa0ff)" : "transparent",
-                  color: on ? "#0b0c0e" : "inherit",
-                  border: `1px solid ${on ? "var(--cp-accent, #6aa0ff)" : "var(--cp-border, rgba(255,255,255,0.14))"}`,
-                  fontWeight: on ? 600 : 400,
-                  fontSize: 13,
-                }}
-                title="Optional bodyweight movement (does not count toward the lift cap)"
-              >
-                Pull-ups (bodyweight)
-              </button>
-            );
-          })()}
-        </div>
-      )}
-
-      <div
-        style={{
-          fontSize: 11,
-          color: ok ? "var(--cp-success, #6dbf7b)" : "var(--cp-danger, #e06c75)",
-        }}
-      >
-        {ok ? `✓ ${summaryLine}` : validation?.errors[0] ?? summaryLine}
-      </div>
-    </section>
-  );
-}
-
-function SplitChip({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        padding: "4px 10px",
-        borderRadius: 6,
-        cursor: "pointer",
-        background: active ? "var(--cp-accent, #6aa0ff)" : "transparent",
-        color: active ? "#0b0c0e" : "inherit",
-        border: `1px solid ${active ? "var(--cp-accent, #6aa0ff)" : "var(--cp-border, rgba(255,255,255,0.14))"}`,
-        fontWeight: active ? 600 : 400,
-        fontSize: 12,
-        minWidth: 36,
-      }}
-    >
-      {label}
-    </button>
   );
 }
 
