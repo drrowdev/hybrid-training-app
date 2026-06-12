@@ -10,9 +10,26 @@
  * start your next block, 7th-week verdict, …).
  */
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import type { PendingProgramRecommendation } from "@/lib/platform/recommendations-queries";
 
 type DismissAction = (id: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+
+/** A "set up the next phase" target derived from a next-block recommendation's data. */
+function advanceTarget(
+  r: PendingProgramRecommendation,
+): { href: string; label: string } | null {
+  const d = r.data;
+  if (r.kind !== "next-block" || !d) return null;
+  const programId = typeof d.programId === "string" ? d.programId : null;
+  const nextPhaseId = typeof d.nextPhaseId === "string" ? d.nextPhaseId : null;
+  const nextPhaseName = typeof d.nextPhaseName === "string" ? d.nextPhaseName : null;
+  if (!programId || !nextPhaseId) return null;
+  return {
+    href: `/app/program?program=${encodeURIComponent(programId)}&phase=${encodeURIComponent(nextPhaseId)}`,
+    label: nextPhaseName ? `Set up ${nextPhaseName} \u2192` : "Set up next phase \u2192",
+  };
+}
 
 export function ProgramRecommendationsBanner({
   recommendations,
@@ -36,7 +53,9 @@ export function ProgramRecommendationsBanner({
 
   return (
     <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
-      {visible.map((r) => (
+      {visible.map((r) => {
+        const advance = advanceTarget(r);
+        return (
         <div
           key={r.id}
           style={{
@@ -55,26 +74,47 @@ export function ProgramRecommendationsBanner({
               {r.detail}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => dismiss(r.id)}
-            disabled={pending}
-            style={{
-              flex: "none",
-              padding: "6px 12px",
-              borderRadius: 7,
-              cursor: pending ? "default" : "pointer",
-              background: "transparent",
-              border: "1px solid var(--cp-border, rgba(255,255,255,0.18))",
-              color: "inherit",
-              fontSize: 12,
-              fontWeight: 500,
-            }}
-          >
-            Got it
-          </button>
+          <div style={{ flex: "none", display: "flex", gap: 8 }}>
+            {advance && (
+              <Link
+                href={advance.href}
+                onClick={() => dismiss(r.id)}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 7,
+                  textDecoration: "none",
+                  background: "var(--cp-accent, #78aaff)",
+                  border: "1px solid var(--cp-accent, #78aaff)",
+                  color: "var(--cp-on-accent, #0b0b0b)",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {advance.label}
+              </Link>
+            )}
+            <button
+              type="button"
+              onClick={() => dismiss(r.id)}
+              disabled={pending}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 7,
+                cursor: pending ? "default" : "pointer",
+                background: "transparent",
+                border: "1px solid var(--cp-border, rgba(255,255,255,0.18))",
+                color: "inherit",
+                fontSize: 12,
+                fontWeight: 500,
+              }}
+            >
+              {advance ? "Not yet" : "Got it"}
+            </button>
+          </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

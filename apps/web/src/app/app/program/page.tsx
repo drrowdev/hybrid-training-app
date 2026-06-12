@@ -76,7 +76,11 @@ function defaultSessionsPerWeek(engine: ProgramEngine): number | undefined {
   }
 }
 
-export default async function ProgramPickerPage() {
+export default async function ProgramPickerPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ program?: string; phase?: string }>;
+}) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -142,6 +146,14 @@ export default async function ProgramPickerPage() {
     })),
   }));
 
+  // Optional deep-link preselect (e.g. the Today "Set up Velocity →" guided
+  // advance). Only honour a program whose deploy path is enabled; the phase is
+  // passed through as the program's loadout value (Green Protocol's phaseId).
+  const sp = await searchParams;
+  const initialProgramId =
+    sp.program && ENABLED_PROGRAM_IDS.has(sp.program) ? sp.program : undefined;
+  const initialLoadoutValue = initialProgramId && sp.phase ? sp.phase : undefined;
+
   return (
     <div className={`${archivo.variable} ${oswald.variable} ${saira.variable} ${jetbrains.variable}`}>
       <ProgramPicker
@@ -150,6 +162,8 @@ export default async function ProgramPickerPage() {
         tbTemplates={tbTemplates}
         benchRoles={benchRoles}
         {...(pullupMovement ? { pullupMovement } : {})}
+        {...(initialProgramId ? { initialProgramId } : {})}
+        {...(initialLoadoutValue ? { initialLoadoutValue } : {})}
       />
     </div>
   );

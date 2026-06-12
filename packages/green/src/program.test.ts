@@ -173,6 +173,22 @@ describe("Green engine — Foundation phases (Capacity, Velocity)", () => {
     const { recommendations } = gp.onSessionLogged(inst, log(last.ref), ctx);
     expect(recommendations.map((r) => r.kind)).toEqual(["tm-test", "next-block"]);
     expect(recommendations[1]!.detail).toMatch(/Velocity/i);
+    // Guided advance: the next-block rec carries the next Foundation phase so the
+    // Today banner can deep-link the user into the wizard pre-set on Velocity.
+    expect(recommendations[1]!.data).toMatchObject({
+      programId: "green-protocol",
+      nextPhaseId: "velocity",
+      nextPhaseName: "Velocity",
+    });
+  });
+
+  it("finishing Outcome (last Foundation phase) has no next-phase advance target", () => {
+    const inst = setup({ phaseId: "outcome" });
+    const tl = gp.timeline(inst);
+    const last = tl[tl.length - 1]!;
+    const { recommendations } = gp.onSessionLogged(inst, log(last.ref), ctx);
+    const nextBlock = recommendations.find((r) => r.kind === "next-block")!;
+    expect(nextBlock.data?.nextPhaseId).toBeUndefined();
   });
 
   it("Velocity seeds only a Fighter instance (SE is conditioning, not strength)", () => {
