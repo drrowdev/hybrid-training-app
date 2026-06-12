@@ -55,7 +55,7 @@ test.describe("@desktop /plan/history", () => {
     await page.goto("/app/plan/history");
     await page.waitForLoadState("networkidle");
 
-    await expect(page.getByRole("heading", { name: /plan history/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /program history/i })).toBeVisible();
 
     const list = page.getByTestId("plan-history-list");
     await expect(list).toBeVisible();

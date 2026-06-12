@@ -53,7 +53,7 @@ export function DeleteBlockMenu({
       dispatchUndoBanner({
         kind: "block",
         id: result.blockId,
-        label: `${archetypeName} block`,
+        label: `${archetypeName} program`,
       });
       router.refresh();
     });
@@ -65,7 +65,7 @@ export function DeleteBlockMenu({
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="Block actions"
+        aria-label="Program actions"
         data-testid="block-actions-trigger"
         onClick={(e) => {
           e.preventDefault();
@@ -126,7 +126,7 @@ export function DeleteBlockMenu({
               }}
             >
               <span aria-hidden>🗑️</span>
-              <span>{pending ? "Deleting…" : "Delete this block"}</span>
+              <span>{pending ? "Deleting…" : "Delete this program"}</span>
             </button>
           </form>
           {error && (

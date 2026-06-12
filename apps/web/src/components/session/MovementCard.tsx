@@ -290,9 +290,16 @@ export function MovementCard({
               : "var(--cp-border)",
       }}
     >
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={toggleCollapsed}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggleCollapsed();
+          }
+        }}
         data-testid={`movement-card-header-${group.movementId}`}
         aria-expanded={!collapsed}
         style={{
@@ -389,7 +396,7 @@ export function MovementCard({
         >
           <DisclosureArrow open={!collapsed} />
         </span>
-      </button>
+      </div>
 
       {collapsed && cardState === "completed" && recapLines.length > 0 && (
         <div

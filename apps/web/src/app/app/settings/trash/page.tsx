@@ -61,14 +61,14 @@ export default async function TrashPage() {
 
       <section style={{ display: "grid", gap: 8 }}>
         <h2 style={{ fontSize: 16, margin: "0 0 4px" }}>
-          Deleted blocks{" "}
+          Deleted programs{" "}
           <span style={{ fontSize: 13, color: "var(--cp-text-muted)", fontWeight: 400 }}>
             ({blocks.length})
           </span>
         </h2>
         {blocks.length === 0 ? (
           <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: 0 }}>
-            No deleted blocks.
+            No deleted programs.
           </p>
         ) : (
           <ul

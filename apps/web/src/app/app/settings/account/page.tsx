@@ -42,7 +42,7 @@ export default async function AccountSettingsPage() {
         {/* Trash */}
         <div className="space-y-2">
           <p className="text-xs text-foreground/60">
-            Recover or permanently remove soft-deleted blocks and sessions.
+            Recover or permanently remove soft-deleted programs and sessions.
           </p>
           <Link
             href="/app/settings/trash"

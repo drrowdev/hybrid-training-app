@@ -90,8 +90,8 @@ export default async function PlanHistoryPage({
     <div style={{ display: "grid", gap: 20 }}>
       <PageHeader
         back={{ href: "/app/plan", label: "Plan" }}
-        title="Plan history"
-        subtitle="Every block you've run — most recent first. Expand a row to see the planned sessions and jump into anything you logged."
+        title="Program history"
+        subtitle="Every program you've run — most recent first. Expand a row to see the planned sessions and jump into anything you logged."
       />
 
       {pageBlocks.length === 0 ? (
@@ -99,13 +99,13 @@ export default async function PlanHistoryPage({
           className="cp-card"
           style={{ padding: 24, display: "grid", gap: 10, justifyItems: "start" }}
         >
-          <h2 style={{ margin: 0, fontSize: 16 }}>No blocks yet</h2>
+          <h2 style={{ margin: 0, fontSize: 16 }}>No programs yet</h2>
           <p style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 13 }}>
-            Once you start your first block, it&apos;ll show up here with a per-session completion
+            Once you start your first program, it&apos;ll show up here with a per-session completion
             ratio.
           </p>
           <Link href="/app/plan/new" className="cp-btn primary">
-            Start your first block →
+            Start your first program →
           </Link>
         </section>
       ) : (
@@ -221,7 +221,7 @@ function BlockHistoryRow({
 
         {sessions.length === 0 ? (
           <div style={{ padding: "12px 18px", fontSize: 13, color: "var(--cp-text-muted)" }}>
-            No planned sessions recorded for this block.
+            No planned sessions recorded for this program.
           </div>
         ) : (
           <div data-testid="block-history-sessions" style={{ padding: "4px 0 12px" }}>
@@ -423,7 +423,7 @@ function Pagination({
   if (page === 1 && !hasNext) return null;
   return (
     <nav
-      aria-label="Block history pagination"
+      aria-label="Program history pagination"
       style={{
         display: "flex",
         justifyContent: "space-between",
