@@ -390,7 +390,7 @@ function epley1rm(weight: number, reps: number): number {
 
 const WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-type DayType = "strength" | "cardio" | "rest";
+type DayType = "strength" | "rest";
 
 /** Build a default week: `n` strength days on the canonical spread, rest elsewhere. */
 function buildWeek(n: number): DayType[] {
@@ -529,6 +529,23 @@ function todayYmd(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/**
+ * The upcoming Monday (YYYY-MM-DD) on or after `ymd` — `ymd` itself when it is
+ * already a Monday. Programs lay out as full Mon–Sun weeks (the read side
+ * anchors week 1 to the Monday of `started_on`), so defaulting a fresh program
+ * to the upcoming Monday gives a clean week 1 with no past days — otherwise a
+ * mid-week start strands the earlier weekdays as instantly-overdue sessions.
+ */
+function upcomingMondayYmd(ymd: string): string {
+  // Parse as a local calendar date (no TZ shift) and find ISO weekday (Mon=0).
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(y!, (m ?? 1) - 1, d ?? 1);
+  const isoWeekday = (dt.getDay() + 6) % 7; // JS Sun=0 → Mon=0…Sun=6
+  if (isoWeekday === 0) return ymd;
+  dt.setDate(dt.getDate() + (7 - isoWeekday));
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
+
 export function ProgramPicker({
   programs,
   anchoredKeys,
@@ -578,7 +595,7 @@ export function ProgramPicker({
   const selected = programs.find((p) => p.id === selectedId) ?? null;
 
   const [values, setValues] = useState<Record<string, unknown>>(preselectValues);
-  const [startedOn, setStartedOn] = useState<string>(todayYmd());
+  const [startedOn, setStartedOn] = useState<string>(upcomingMondayYmd(todayYmd()));
 
   // Weekly schedule grid: 7 day cells. The strength days become deploy `weekdays`.
   const [week, setWeek] = useState<DayType[]>(() => buildWeek(preselectProgram?.sessionsPerWeek ?? 4));
@@ -649,7 +666,7 @@ export function ProgramPicker({
     [week],
   );
   const dayCounts = useMemo(() => {
-    const c = { strength: 0, cardio: 0, rest: 0 };
+    const c = { strength: 0, rest: 0 };
     for (const t of week) c[t] += 1;
     return c;
   }, [week]);
@@ -826,7 +843,7 @@ export function ProgramPicker({
   function cycleDay(i: number) {
     setWeek((prev) => {
       const cur = prev[i];
-      const next: DayType = cur === "strength" ? "cardio" : cur === "cardio" ? "rest" : "strength";
+      const next: DayType = cur === "strength" ? "rest" : "strength";
       const w = [...prev];
       w[i] = next;
       return w;
@@ -1647,7 +1664,7 @@ export function ProgramPicker({
           loadoutOptions.find((o) => o.value === selectedLoadoutValue)?.label ?? "\u2014",
         )
       : "Custom";
-    const weekText = `${dayCounts.strength} strength \u00B7 ${dayCounts.cardio} cardio \u00B7 ${dayCounts.rest} rest`;
+    const weekText = `${dayCounts.strength} strength \u00B7 ${dayCounts.rest} rest`;
     return (
       <div className={styles.summary}>
         <div className={styles.srow}>
@@ -1681,14 +1698,14 @@ export function ProgramPicker({
     const countWarn = !fixedSchedule && requiredDays != null && dayCounts.strength !== requiredDays;
     const countText = countWarn
       ? `\u26A0 ${dayCounts.strength}/${requiredDays} strength days \u2014 pick ${requiredDays}`
-      : `${dayCounts.strength} strength \u00B7 ${dayCounts.cardio} cardio \u00B7 ${dayCounts.rest} rest`;
+      : `${dayCounts.strength} strength \u00B7 ${dayCounts.rest} rest`;
     const dirty = week.some((t, i) => t !== buildWeek(requiredDays ?? freq531)[i]);
     const schednote =
       selected.id === "wendler-531"
-        ? `5/3/1 gives you ${dayCounts.strength} strength days. Tap any day to make it strength, cardio or rest \u2014 keep ${requiredDays} strength days, and the rest are yours.`
+        ? `5/3/1 trains ${requiredDays} strength days a week. Pick which days you'll train \u2014 the rest stay as rest.`
         : isTb
-          ? `${activeTbTemplate?.name ?? "This template"} prescribes ${requiredDays} strength days a week \u2014 you choose which. Tap the open days to add cardio or leave them as rest.`
-          : "Tap any day to make it strength, cardio or rest. Your strength-day count sets how many days a week the plan trains.";
+          ? `${activeTbTemplate?.name ?? "This template"} trains ${requiredDays} strength days a week \u2014 you choose which. The rest stay as rest.`
+          : "Pick which days you'll train. Your training-day count sets how many days a week the plan runs.";
 
     return (
       <div className={styles.step}>
@@ -1696,7 +1713,7 @@ export function ProgramPicker({
         <p className={styles.sub}>
           {fixedSchedule
             ? `${selected.name} prescribes both your lifting and conditioning days \u2014 just pick a start date.`
-            : "Your strength days come from your program. Tap any day to add cardio or leave it as rest, then pick a start date."}
+            : "Your training days come from your program. Pick which weekdays you'll train, then pick a start date."}
         </p>
 
         <div style={{ marginBottom: 18 }}>
@@ -1707,6 +1724,9 @@ export function ProgramPicker({
             value={startedOn}
             onChange={(e) => setStartedOn(e.target.value)}
           />
+          <div className={styles.note} style={{ marginTop: 6 }}>
+            Programs run in full weeks, so we start on a Monday by default.
+          </div>
         </div>
 
         {fixedSchedule ? (
@@ -1736,16 +1756,14 @@ export function ProgramPicker({
             ) : null}
             <div className={styles.legend}>
               <span className={`${styles.lg} ${styles.lgS}`}>Strength</span>
-              <span className={`${styles.lg} ${styles.lgC}`}>Cardio</span>
               <span className={`${styles.lg} ${styles.lgR}`}>Rest</span>
               <span className={`${styles.lgCount}${countWarn ? ` ${styles.lgCountWarn}` : ""}`}>{countText}</span>
             </div>
             <div className={styles.week}>
               {WD.map((label, i) => {
                 const t = week[i] ?? "rest";
-                const cls =
-                  t === "strength" ? styles.wdStrength : t === "cardio" ? styles.wdCardio : styles.wdRest;
-                const wtLabel = t === "strength" ? "Strength" : t === "cardio" ? "Cardio" : "Rest";
+                const cls = t === "strength" ? styles.wdStrength : styles.wdRest;
+                const wtLabel = t === "strength" ? "Strength" : "Rest";
                 return (
                   <button key={i} type="button" onClick={() => cycleDay(i)} className={`${styles.wd} ${cls}`}>
                     <span className={styles.wn}>{label}</span>
