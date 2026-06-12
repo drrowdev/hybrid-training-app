@@ -400,6 +400,7 @@ function phaseCompleteRecommendations(phase: GreenPhase): ProgramRecommendation[
       data: { benchmark: phase.benchmark.id, target: phase.benchmark.target },
     });
   }
+  const next = nextFoundationPhase(phase.id);
   recs.push({
     kind: "next-block",
     title: phase.category === "continuation" ? "Continue or take a detour" : "Advance to the next phase",
@@ -409,8 +410,25 @@ function phaseCompleteRecommendations(phase: GreenPhase): ProgramRecommendation[
         : phase.id === "capacity"
           ? "Capacity is complete — progress to Velocity."
           : `${phase.name} is complete — move on to the next Foundation phase.`,
+    ...(next
+      ? { data: { programId: "green-protocol", nextPhaseId: next.id, nextPhaseName: next.name } }
+      : {}),
   });
   return recs;
+}
+
+/**
+ * The next Foundation phase in the canonical Capacity → Velocity → Outcome
+ * sequence (TB Green Protocol, §Foundation: "Each has a recommended benchmark to
+ * meet before proceeding to the next"). Returns undefined after Outcome (the
+ * athlete graduates to a Continuation model of their choosing) and for any
+ * Continuation phase.
+ */
+const FOUNDATION_ORDER = ["capacity", "velocity", "outcome"] as const;
+function nextFoundationPhase(phaseId: string): GreenPhase | undefined {
+  const i = FOUNDATION_ORDER.indexOf(phaseId as (typeof FOUNDATION_ORDER)[number]);
+  if (i < 0 || i + 1 >= FOUNDATION_ORDER.length) return undefined;
+  return getGreenPhase(FOUNDATION_ORDER[i + 1]!);
 }
 
 function buildConditioningNote(base: string, min: number | undefined, max: number | undefined, unit: string): string {

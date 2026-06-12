@@ -535,38 +535,63 @@ export function ProgramPicker({
   tbTemplates = [],
   benchRoles = [],
   pullupMovement,
+  initialProgramId,
+  initialLoadoutValue,
 }: {
   programs: PickerProgram[];
   anchoredKeys: string[];
   tbTemplates?: PickerTbTemplate[];
   benchRoles?: PickerBenchRole[];
   pullupMovement?: { movementId: string; currentMaxReps?: number };
+  /** Deep-link preselect: a program id to open the wizard on (e.g. guided advance). */
+  initialProgramId?: string;
+  /** Deep-link preselect: the loadout value for that program (Green Protocol phaseId). */
+  initialLoadoutValue?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<CreateProgramInstanceResult | null>(null);
   const [modalInfo, setModalInfo] = useState<ProgInfo | null>(null);
 
-  // Wizard step (0 Program · 1 Loadout · 2 Benchmarks · 3 Schedule).
-  const [step, setStep] = useState<number>(0);
-  // Furthest step reached — the progress rail lets you jump back to any visited step.
-  const [maxStep, setMaxStep] = useState<number>(0);
+  // Deep-link preselect (guided advance): when the route carries ?program=&phase=
+  // (e.g. the Today "Set up Velocity →" nudge), open the wizard already on that
+  // enabled program with the next phase pre-chosen, landing on the Loadout step so
+  // the user can fine-tune (cluster, schedule) before deploying. Derived from props
+  // straight into the initial state below — no effects, no render-phase mutation.
+  const preselectProgram =
+    initialProgramId ? programs.find((p) => p.id === initialProgramId && p.enabled) ?? null : null;
+  function preselectValues(): Record<string, unknown> {
+    if (!preselectProgram) return {};
+    const base = defaultValuesFor(preselectProgram.fields);
+    const key = loadoutFieldKey(preselectProgram.id);
+    if (key && initialLoadoutValue) base[key] = initialLoadoutValue;
+    return base;
+  }
 
-  // No pre-selection: the user must pick a program on step 1 before continuing.
-  const [selectedId, setSelectedId] = useState<string>("");
+  // Wizard step (0 Program · 1 Loadout · 2 Benchmarks · 3 Schedule).
+  const [step, setStep] = useState<number>(preselectProgram ? 1 : 0);
+  // Furthest step reached — the progress rail lets you jump back to any visited step.
+  const [maxStep, setMaxStep] = useState<number>(preselectProgram ? 1 : 0);
+
+  // No pre-selection unless deep-linked: the user picks a program on step 1.
+  const [selectedId, setSelectedId] = useState<string>(preselectProgram?.id ?? "");
   const selected = programs.find((p) => p.id === selectedId) ?? null;
 
-  const [values, setValues] = useState<Record<string, unknown>>({});
+  const [values, setValues] = useState<Record<string, unknown>>(preselectValues);
   const [startedOn, setStartedOn] = useState<string>(todayYmd());
 
   // Weekly schedule grid: 7 day cells. The strength days become deploy `weekdays`.
-  const [week, setWeek] = useState<DayType[]>(() => buildWeek(4));
+  const [week, setWeek] = useState<DayType[]>(() => buildWeek(preselectProgram?.sessionsPerWeek ?? 4));
   // 5/3/1 lets the user pick strength frequency; other programs derive it.
-  const [freq531, setFreq531] = useState<number>(4);
+  const [freq531, setFreq531] = useState<number>(
+    preselectProgram?.id === "wendler-531" ? (preselectProgram.sessionsPerWeek ?? 4) : 4,
+  );
   const [unit, setUnit] = useState<Unit>("kg");
 
   // Per-lift 1RM entry: a display-unit string + chosen variant slug, keyed by engine key.
-  const [benchVals, setBenchVals] = useState<Record<string, { slug: string; valueStr: string }>>({});
+  const [benchVals, setBenchVals] = useState<Record<string, { slug: string; valueStr: string }>>(
+    () => (preselectProgram ? initBenchVals("kg") : {}),
+  );
   const [benchTouched, setBenchTouched] = useState<Set<string>>(new Set());
   const [estimate, setEstimate] = useState<{ key: string; weight: string; reps: string } | null>(null);
   // Operator's optional bodyweight pull-up: max clean reps the engine prescribes off.
@@ -606,6 +631,7 @@ export function ProgramPicker({
   }
 
   const fixedSchedule = !!selected?.fixedSchedule;
+
 
   // The program dictates how many strength days a week it needs. TB's active
   // TEMPLATE owns the frequency; 5/3/1 lets the user choose it; fixed-schedule
@@ -1228,7 +1254,7 @@ export function ProgramPicker({
                     <div className={styles.pselName}>{labelFor(v)}</div>
                     <div className={styles.pmeta}>
                       {(c?.len ?? "").toUpperCase()}
-                      {c?.len && !cont ? " \u00B7 " : ""}
+                      {c?.len ? " \u00B7 " : ""}
                       {cont ? "Ongoing baseline" : "Ends in a benchmark"}
                     </div>
                   </div>
