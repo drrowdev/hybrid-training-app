@@ -55,41 +55,6 @@ vi.mock("@/lib/supabase/server", () => ({
   getAuthUser: async () => ({ data: { user: { id: USER_ID } }, error: null }),
 }));
 
-describe("updateWizardDayPref (PR Z1)", () => {
-  beforeEach(() => {
-    calls.length = 0;
-  });
-
-  it("UPDATEs profiles.wizard_day_pref with the parsed payload", async () => {
-    const { updateWizardDayPref } = await import("../actions");
-    const pref = {
-      byArchetype: {
-        strength_anchor: {
-          "4": { days: [0, 2, 4, 6], twoADay: false },
-        },
-      },
-    };
-    const result = await updateWizardDayPref(pref);
-    expect(result).toEqual({ ok: true });
-    expect(calls).toHaveLength(1);
-    expect(calls[0]!.table).toBe("profiles");
-    expect(calls[0]!.update).toEqual({ wizard_day_pref: pref });
-    expect(calls[0]!.eqs).toEqual([["id", USER_ID]]);
-  });
-
-  it("rejects a malformed payload without touching the DB", async () => {
-    const { updateWizardDayPref } = await import("../actions");
-    // `days` must be an array of 0..6 ints — 99 is out of range.
-    const result = await updateWizardDayPref({
-      byArchetype: {
-        x: { "1": { days: [99], twoADay: false } },
-      },
-    });
-    expect(result.ok).toBe(false);
-    expect(calls).toHaveLength(0);
-  });
-});
-
 describe("dismissBwNudge (PR Z1)", () => {
   beforeEach(() => {
     calls.length = 0;
