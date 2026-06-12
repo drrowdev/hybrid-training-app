@@ -549,6 +549,8 @@ export function ProgramPicker({
 
   // Wizard step (0 Program · 1 Loadout · 2 Benchmarks · 3 Schedule).
   const [step, setStep] = useState<number>(0);
+  // Furthest step reached — the progress rail lets you jump back to any visited step.
+  const [maxStep, setMaxStep] = useState<number>(0);
 
   // No pre-selection: the user must pick a program on step 1 before continuing.
   const [selectedId, setSelectedId] = useState<string>("");
@@ -741,6 +743,7 @@ export function ProgramPicker({
 
   function selectProgram(p: PickerProgram) {
     if (!p.enabled) return;
+    const changed = p.id !== selectedId;
     setSelectedId(p.id);
     const defaults = defaultValuesFor(p.fields);
     setValues(defaults);
@@ -748,6 +751,8 @@ export function ProgramPicker({
     setEstimate(null);
     setBenchVals(initBenchVals(unit));
     setBenchTouched(new Set());
+    // Picking a different program invalidates the downstream steps — re-walk them.
+    if (changed) setMaxStep(0);
 
     if (p.id === TB_PROGRAM_ID) {
       const t = tbTemplateById.get(String(defaults.templateId ?? ""));
@@ -917,7 +922,15 @@ export function ProgramPicker({
     setStep((s) => Math.max(0, s - 1));
   }
   function goNext() {
-    setStep((s) => Math.min(3, s + 1));
+    setStep((s) => {
+      const next = Math.min(3, s + 1);
+      setMaxStep((m) => Math.max(m, next));
+      return next;
+    });
+  }
+  /** Jump straight to an already-visited step via the progress rail. */
+  function goToStep(i: number) {
+    if (i <= maxStep && i !== step) setStep(i);
   }
 
   // ── Step renderers ─────────────────────────────────────────────────────────
@@ -991,10 +1004,22 @@ export function ProgramPicker({
     const copy = TEMPLATE_COPY[selected.id] ?? {};
     if (loadoutMeta?.grouped) {
       // Green Protocol — grouped into Foundation / Continuation sections.
+      // Order Foundation first (by sequence), then Continuation, so the section
+      // headers render once each and match the mockup (the engine's option order
+      // isn't grouped). JS sort is stable, so ties keep the engine order.
+      const GROUP_RANK: Record<string, number> = { foundation: 0, continuation: 1 };
+      const orderedOptions = [...loadoutOptions].sort((a, b) => {
+        const ca = copy[a.value];
+        const cb = copy[b.value];
+        const ga = GROUP_RANK[ca?.group ?? "continuation"] ?? 1;
+        const gb = GROUP_RANK[cb?.group ?? "continuation"] ?? 1;
+        if (ga !== gb) return ga - gb;
+        return (ca?.seq ?? 99) - (cb?.seq ?? 99);
+      });
       let lastGroup: string | null = null;
       return (
         <div className={`${styles.opts} ${styles.optsGrouped}`}>
-          {loadoutOptions.map((o) => {
+          {orderedOptions.map((o) => {
             const c = copy[o.value];
             const group = c?.group ?? "continuation";
             const header =
@@ -1136,27 +1161,7 @@ export function ProgramPicker({
           <div className={styles.cell}>
             <div className={styles.cl}>Frequency</div>
             <div className={styles.cv}>
-              {loadoutMeta.freqChoice ? (
-                <span className={styles.freqWrap}>
-                  <span className={styles.freqControl}>
-                    <span className={styles.ministep}>
-                      <button type="button" onClick={() => bumpFreq(-1)} aria-label="Fewer days">
-                        {"\u2013"}
-                      </button>
-                      <span className={styles.ministepV}>{freq531}</span>
-                      <button type="button" onClick={() => bumpFreq(1)} aria-label="More days">
-                        +
-                      </button>
-                    </span>
-                    <span className={styles.daysHint}>days / week</span>
-                  </span>
-                  {freq531 < 4 ? (
-                    <span className={styles.liftsHint}>{Math.ceil(4 / freq531)} main lifts / day</span>
-                  ) : null}
-                </span>
-              ) : (
-                freqText
-              )}
+              {loadoutMeta.freqChoice ? `${freq531} / WEEK` : freqText}
             </div>
           </div>
           <div className={styles.cell}>
@@ -1400,16 +1405,21 @@ export function ProgramPicker({
         }`
       : `\u2713 ${relevantBenchKeys.length} main lift${relevantBenchKeys.length === 1 ? "" : "s"}`;
 
-    const note =
-      selected.id === "wendler-531"
-        ? "Your Training Max is set to 85% of each 1RM \u2014 the 5/3/1 standard. All working percentages run off that TM."
-        : isCluster && activeTbTemplate!.structure === "split"
-          ? "Tactical Barbell loads a submaximal % of your 1RM \u2014 no Training Max required (you can optionally load off a TM in settings). Each lift sits in an A or B session; you train each session twice a week. Tap the A/B chip to move a lift."
-          : `Tactical Barbell loads a submaximal % of your 1RM \u2014 no Training Max required (you can optionally load off a TM in settings).${
-              bodyweightEntry
-                ? " An optional bodyweight movement (e.g. pull-ups) doesn\u2019t count toward the cap and is prescribed as a % of your max reps, not a weight."
-                : " Switch a lift\u2019s variant from its dropdown."
-            }`;
+    const is531 = selected.id === "wendler-531";
+    // Load basis controls: 5/3/1 always uses a TM (user picks the %); TB loads
+    // off the raw 1RM by default but can optionally derive a TM.
+    const tmPct = Math.round(Number(values.tmPercent ?? (is531 ? 0.85 : 0.9)) * 100);
+    const useTm = values.useTrainingMax === true;
+
+    const note = is531
+      ? `Your Training Max is ${tmPct}% of each 1RM${tmPct === 85 ? " \u2014 the 5/3/1 standard" : ""}. All working percentages run off that TM.`
+      : isCluster && activeTbTemplate!.structure === "split"
+        ? `Tactical Barbell loads ${useTm ? `off a Training Max (${tmPct}% of your 1RM)` : "a submaximal % of your 1RM"}. Each lift sits in an A or B session; you train each session twice a week. Tap the A/B chip to move a lift.`
+        : `Tactical Barbell loads ${useTm ? `off a Training Max (${tmPct}% of your 1RM)` : "a submaximal % of your 1RM \u2014 no Training Max required"}.${
+            bodyweightEntry
+              ? " An optional bodyweight movement (e.g. pull-ups) doesn\u2019t count toward the cap and is prescribed as a % of your max reps, not a weight."
+              : " Switch a lift\u2019s variant from its dropdown."
+          }`;
 
     const lockHint =
       selected.id === "wendler-531"
@@ -1482,6 +1492,59 @@ export function ProgramPicker({
         )}
 
         {lockHint && <div className={styles.lockhint}>{lockHint}</div>}
+
+        {is531 ? (
+          <div className={styles.basisRow}>
+            <span className={styles.basisLabel}>Training Max</span>
+            <div className={styles.toggle}>
+              {[80, 85, 90].map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  className={tmPct === p ? styles.toggleOn : undefined}
+                  onClick={() => setField("tmPercent", p / 100)}
+                >
+                  {p}%
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : isCluster ? (
+          <div className={styles.basisRow}>
+            <span className={styles.basisLabel}>Load off</span>
+            <div className={styles.toggle}>
+              <button
+                type="button"
+                className={!useTm ? styles.toggleOn : undefined}
+                onClick={() => setField("useTrainingMax", false)}
+              >
+                1RM
+              </button>
+              <button
+                type="button"
+                className={useTm ? styles.toggleOn : undefined}
+                onClick={() => setField("useTrainingMax", true)}
+              >
+                Training Max
+              </button>
+            </div>
+            {useTm && (
+              <div className={styles.toggle}>
+                {[85, 90, 95].map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    className={tmPct === p ? styles.toggleOn : undefined}
+                    onClick={() => setField("tmPercent", p / 100)}
+                  >
+                    {p}%
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
+
         <p className={styles.note}>{note}</p>
 
         {estimate && (
@@ -1626,6 +1689,25 @@ export function ProgramPicker({
           </p>
         ) : (
           <>
+            {loadoutMeta?.freqChoice ? (
+              <div className={styles.schedFreq}>
+                <div className={styles.label}>Days / week</div>
+                <span className={styles.freqWrap}>
+                  <span className={styles.ministep}>
+                    <button type="button" onClick={() => bumpFreq(-1)} aria-label="Fewer days">
+                      {"\u2013"}
+                    </button>
+                    <span className={styles.ministepV}>{freq531}</span>
+                    <button type="button" onClick={() => bumpFreq(1)} aria-label="More days">
+                      +
+                    </button>
+                  </span>
+                  {freq531 < 4 ? (
+                    <span className={styles.liftsHint}>{Math.ceil(4 / freq531)} main lifts / day</span>
+                  ) : null}
+                </span>
+              </div>
+            ) : null}
             <div className={styles.legend}>
               <span className={`${styles.lg} ${styles.lgS}`}>Strength</span>
               <span className={`${styles.lg} ${styles.lgC}`}>Cardio</span>
@@ -1673,7 +1755,6 @@ export function ProgramPicker({
           <div className={styles.diamond}>
             <span>{"S\u00D7C"}</span>
           </div>
-          <b>{"Strength \u00D7 Cardio"}</b>
         </div>
         <div className={styles.stepcount}>
           STEP <b>{step + 1}</b> / 4
@@ -1681,21 +1762,50 @@ export function ProgramPicker({
       </div>
 
       <div className={styles.rail}>
-        {STEP_LABELS.map((label, i) => (
-          <div
-            key={label}
-            className={`${styles.seg}${i === step ? ` ${styles.segActive}` : i < step ? ` ${styles.segDone}` : ""}`}
-          >
-            <i />
-          </div>
-        ))}
+        {STEP_LABELS.map((label, i) => {
+          const navigable = i <= maxStep && i !== step;
+          return (
+            <div
+              key={label}
+              role={navigable ? "button" : undefined}
+              tabIndex={navigable ? 0 : undefined}
+              aria-label={navigable ? `Go to ${label}` : undefined}
+              onClick={navigable ? () => goToStep(i) : undefined}
+              onKeyDown={
+                navigable
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        goToStep(i);
+                      }
+                    }
+                  : undefined
+              }
+              className={`${styles.seg}${i === step ? ` ${styles.segActive}` : i < step ? ` ${styles.segDone}` : ""}${navigable ? ` ${styles.segNav}` : ""}`}
+            >
+              <i />
+            </div>
+          );
+        })}
       </div>
       <div className={styles.raillabels}>
-        {STEP_LABELS.map((label, i) => (
-          <span key={label} className={i === step ? styles.rlActive : undefined}>
-            {label}
-          </span>
-        ))}
+        {STEP_LABELS.map((label, i) => {
+          const navigable = i <= maxStep && i !== step;
+          return navigable ? (
+            <button
+              key={label}
+              type="button"
+              onClick={() => goToStep(i)}
+              className={`${styles.rlBtn}${i === step ? ` ${styles.rlActive}` : ""}`}
+            >
+              {label}
+            </button>
+          ) : (
+            <span key={label} className={i === step ? styles.rlActive : undefined}>
+              {label}
+            </span>
+          );
+        })}
       </div>
 
       {step === 0 && renderProgramStep()}
