@@ -105,12 +105,13 @@ export function adaptSessionPrescription(
     }
 
     const notes = composeNotes(it);
+    const setCount = it.sets ?? 1;
     const appItem: PrescriptionItem = {
       movementId: resolved.movementId,
       movementSlug: resolved.slug,
       movementName: resolved.displayName,
       kind: appKind,
-      sets: it.sets ?? 1,
+      sets: setCount,
       ...(it.reps !== undefined ? { reps: it.reps } : {}),
       ...(it.percentOfTm !== undefined ? { percentTm: Math.round(it.percentOfTm * 100) } : {}),
       // Warm-ups resolve to a concrete kg (the engine ramps off the top working
@@ -122,7 +123,24 @@ export function adaptSessionPrescription(
       ...(it.kind === "amrap" || it.isAmrap ? { isAmrap: true } : {}),
       ...(notes ? { notes } : {}),
     };
-    items.push(appItem);
+
+    // The logger renders ONE loggable slot per prescription item. Engines that
+    // emit a working lift as a single item with `sets > 1` (e.g. Tactical
+    // Barbell's 3–5×5, or a same-weight 5×10 supplemental) therefore collapsed
+    // to a single loggable set. Expand those into one single-set item per set so
+    // every prescribed working set is loggable — matching how 5/3/1 already
+    // emits its (different-weight) main sets one-per-item. Hard-set count is
+    // preserved (N items × 1 = 1 item × N), so load/modality classification is
+    // unchanged. Warm-ups and accessories keep their single-item `sets` shape.
+    const isWorkingMulti =
+      (appKind === "main" || appKind === "back_off") && setCount > 1;
+    if (isWorkingMulti) {
+      for (let s = 0; s < setCount; s++) {
+        items.push({ ...appItem, sets: 1 });
+      }
+    } else {
+      items.push(appItem);
+    }
   }
 
   return { prescription: { items }, skipped };

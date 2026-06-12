@@ -15,7 +15,6 @@ import {
   bucketForKind,
   bucketPositionForSlot,
   effectiveCursor,
-  lastMainSlot,
   bucketLabelForKind,
   roundToPlate,
   type MovementGroup,
@@ -177,18 +176,11 @@ export function MovementFocusView({
     [group, cursor],
   );
 
-  const lastMain = lastMainSlot(group);
-  // ADR 0007 — honour the explicit AMRAP marker when present (new blocks).
-  // Legacy stored prescriptions (no flag) fall back to the positional
-  // last-main heuristic, but never treat an RIR-anchored set (targetRir) as
-  // an open AMRAP, so ADR 0011 hypertrophy sets don't show a misleading "+".
-  const isTopSetSlot =
-    activeItem?.kind === "main" && lastMain != null && cursor === lastMain;
-  const isAmrap =
-    activeItem?.isAmrap === true ||
-    (activeItem?.isAmrap == null &&
-      isTopSetSlot &&
-      activeItem?.targetRir == null);
+  // AMRAP detection. Platform programs (5/3/1, Tactical Barbell, …) always mark
+  // an AMRAP set explicitly via `isAmrap`, so we trust that flag alone. (The old
+  // positional "last main set is an open AMRAP" fallback mis-fired for straight-
+  // set programs like Tactical Barbell and fixed-5s, showing a bogus "5 reps+".)
+  const isAmrap = activeItem?.isAmrap === true;
 
   // Target weight / reps derived from the prescription + TM.
   const targetWeight = useMemo(() => {

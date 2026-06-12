@@ -62,12 +62,14 @@ describe("adaptSessionPrescription — strength", () => {
       resolve,
     );
     expect(skipped).toEqual([]);
-    expect(prescription.items.map((i) => i.movementSlug)).toEqual([
-      "back-squat-high-bar",
-      "bench-press-flat",
-      "conventional-deadlift",
-    ]);
+    // Operator wk1 prescribes 3 sets/lift; each working set is now its own
+    // loggable item, so the three cluster lifts expand to 3 items each.
+    const slugs = prescription.items.map((i) => i.movementSlug);
+    expect(new Set(slugs)).toEqual(
+      new Set(["back-squat-high-bar", "bench-press-flat", "conventional-deadlift"]),
+    );
     expect(prescription.items.every((i) => i.kind === "main")).toBe(true);
+    expect(prescription.items.every((i) => i.sets === 1)).toBe(true);
     expect(prescription.items[0]!.notes).toMatch(/submaximal/i);
   });
 
@@ -83,9 +85,19 @@ describe("adaptSessionPrescription — strength", () => {
       },
       resolve,
     );
-    // pullup has no resolved movement → assistance item is skipped, others map.
-    expect(prescription.items.map((i) => i.kind)).toEqual(["main", "back_off"]);
-    expect(prescription.items[1]).toMatchObject({ movementId: "m-squat", percentTm: 65, sets: 4, reps: 10 });
+    // pullup has no resolved movement → assistance item is skipped. The main
+    // (4×5) and supplemental→back_off (4×10) each expand to one item per set.
+    expect(prescription.items.map((i) => i.kind)).toEqual([
+      "main",
+      "main",
+      "main",
+      "main",
+      "back_off",
+      "back_off",
+      "back_off",
+      "back_off",
+    ]);
+    expect(prescription.items[4]).toMatchObject({ movementId: "m-squat", percentTm: 65, sets: 1, reps: 10 });
   });
 
   it("maps conditioning/cardio → a display-only cardio_external item; still reports unresolved strength", () => {
