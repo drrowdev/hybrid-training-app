@@ -196,6 +196,12 @@ export function MovementFocusView({
     if (activeItem.percentTm != null && tmKg) {
       return roundToPlate((tmKg * activeItem.percentTm) / 100);
     }
+    // Warm-ups carry a concrete target weight (e.g. 5/3/1's 40/50/60% ramp
+    // resolved to kg at deploy) but no % of TM — prefer it so the logger
+    // prescribes the warm-up load instead of defaulting to bar-only.
+    if (activeItem.targetWeightKg != null && activeItem.targetWeightKg > 0) {
+      return roundToPlate(activeItem.targetWeightKg);
+    }
     // Fall back to the most recent logged weight for this movement.
     return loggedSets[loggedSets.length - 1]?.weightKg ?? 0;
   }, [activeItem, tmKg, loggedSets]);
@@ -476,7 +482,9 @@ export function MovementFocusView({
   const nextWeight =
     nextItem && nextItem.percentTm != null && tmKg
       ? roundToPlate((tmKg * nextItem.percentTm) / 100)
-      : null;
+      : nextItem && nextItem.targetWeightKg != null && nextItem.targetWeightKg > 0
+        ? roundToPlate(nextItem.targetWeightKg)
+        : null;
 
   return (
     <div

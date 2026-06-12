@@ -113,6 +113,12 @@ export function adaptSessionPrescription(
       sets: it.sets ?? 1,
       ...(it.reps !== undefined ? { reps: it.reps } : {}),
       ...(it.percentOfTm !== undefined ? { percentTm: Math.round(it.percentOfTm * 100) } : {}),
+      // Warm-ups resolve to a concrete kg (the engine ramps off the top working
+      // weight) but carry no % of TM, so without this they rendered "—kg".
+      // Surface the absolute target so the logger prescribes a real warm-up load.
+      ...(appKind === "warmup" && it.weightKg != null && it.weightKg > 0
+        ? { targetWeightKg: it.weightKg }
+        : {}),
       ...(it.kind === "amrap" || it.isAmrap ? { isAmrap: true } : {}),
       ...(notes ? { notes } : {}),
     };
