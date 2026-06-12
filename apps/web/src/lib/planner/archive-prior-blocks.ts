@@ -43,3 +43,48 @@ export async function archivePriorActiveBlocks(
     .neq("id", exceptBlockId);
   return { error: error ? error.message : null };
 }
+
+/**
+ * Soft-delete the user's ABANDONED in-progress sessions — started but never
+ * logged into (zero set_logs and zero cardio_logs) and never completed.
+ *
+ * Called when a new program is deployed: starting fresh abandons any half-opened
+ * session from the program you just replaced, so leaving it around surfaces a
+ * stale "Resume today's workout" card pointing at the archived program's work.
+ * Sessions with ANY logged work are left untouched (the user did something worth
+ * keeping); only truly-empty shells are cleared. Best-effort and non-fatal — a
+ * failure here never blocks the deploy.
+ *
+ * RLS: user-scoped client + explicit `user_id` filter; a user only ever touches
+ * their own sessions.
+ */
+export async function discardAbandonedInProgressSessions(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<void> {
+  const { data: open } = await supabase
+    .from("sessions")
+    .select("id")
+    .eq("user_id", userId)
+    .is("completed_at", null)
+    .is("deleted_at", null);
+  const ids = (open ?? []).map((s) => s.id as string);
+  if (ids.length === 0) return;
+
+  const [{ data: setRows }, { data: cardioRows }] = await Promise.all([
+    supabase.from("set_logs").select("session_id").in("session_id", ids),
+    supabase.from("cardio_logs").select("session_id").in("session_id", ids),
+  ]);
+  const logged = new Set<string>([
+    ...(setRows ?? []).map((r) => r.session_id as string),
+    ...(cardioRows ?? []).map((r) => r.session_id as string),
+  ]);
+  const abandoned = ids.filter((id) => !logged.has(id));
+  if (abandoned.length === 0) return;
+
+  await supabase
+    .from("sessions")
+    .update({ deleted_at: new Date().toISOString() })
+    .in("id", abandoned)
+    .eq("user_id", userId);
+}

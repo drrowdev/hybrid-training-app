@@ -68,7 +68,7 @@ function strengthItems(items: PrescriptionItem[]): PrescriptionItem[] {
   );
 }
 
-function summarisePlanned(items: PrescriptionItem[]): string {
+function summarisePlanned(items: PrescriptionItem[], tmLabel: "TM" | "1RM" = "TM"): string {
   const work = strengthItems(items);
   if (work.length === 0) return "";
 
@@ -84,14 +84,14 @@ function summarisePlanned(items: PrescriptionItem[]): string {
   );
 
   const parts: string[] = [];
-  if (mainish.length > 0) parts.push(summariseStrengthBlock(mainish));
-  if (backOff.length > 0) parts.push(summariseStrengthBlock(backOff));
+  if (mainish.length > 0) parts.push(summariseStrengthBlock(mainish, tmLabel));
+  if (backOff.length > 0) parts.push(summariseStrengthBlock(backOff, tmLabel));
   if (accessory.length > 0) parts.push(summariseAccessoryBlock(accessory));
 
   return truncate(parts.join(" + "));
 }
 
-function summariseStrengthBlock(items: PrescriptionItem[]): string {
+function summariseStrengthBlock(items: PrescriptionItem[], tmLabel: "TM" | "1RM" = "TM"): string {
   const reps = items.map((it) => it.reps ?? 0);
   const pcts = items.map((it) => it.percentTm).filter((p): p is number => p != null);
   const sameReps = reps.every((r) => r === reps[0]);
@@ -100,17 +100,17 @@ function summariseStrengthBlock(items: PrescriptionItem[]): string {
   // Uniform across the block: `3×5 @ 80% TM`.
   if (sameReps && samePct) {
     const head = `${items.length}×${reps[0]}`;
-    return pcts.length > 0 ? `${head} @ ${pcts[0]}% TM` : head;
+    return pcts.length > 0 ? `${head} @ ${pcts[0]}% ${tmLabel}` : head;
   }
   // Same reps, varying intensity: `5·5·5 @ 65/75/85% TM`.
   if (sameReps) {
     const head = items.map(() => reps[0]).join("·");
-    if (pcts.length > 0) return `${head} @ ${pcts.join("/")}% TM`;
+    if (pcts.length > 0) return `${head} @ ${pcts.join("/")}% ${tmLabel}`;
     return head;
   }
   // Varying reps: list each rep count.
   const head = reps.join("/");
-  if (pcts.length > 0) return `${head} @ ${pcts.join("/")}% TM`;
+  if (pcts.length > 0) return `${head} @ ${pcts.join("/")}% ${tmLabel}`;
   return head;
 }
 
@@ -261,6 +261,9 @@ export function summariseGroupForHeader(
   loggedSets: ReadonlyArray<FocusLoggedSet>,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _tmKg?: number,
+  // Loading-basis noun for the "% X" suffix — "1RM" when the program loads
+  // straight off the 1RM (e.g. Tactical Barbell off 1RM), else "TM".
+  tmLabel: "TM" | "1RM" = "TM",
 ): string {
   const warmupCount = group.items.filter((it) => it.kind === "warmup").length;
   const workingItems = group.items.filter((it) => it.kind !== "warmup");
@@ -281,7 +284,7 @@ export function summariseGroupForHeader(
   if (total === 0 && workingLogged.length === 0) return "";
 
   if (total > 0 && covered === 0) {
-    return summarisePlanned(workingItems);
+    return summarisePlanned(workingItems, tmLabel);
   }
   if (total > 0 && covered < total) {
     const lastRep = work.length > 0 ? work[work.length - 1]! : null;

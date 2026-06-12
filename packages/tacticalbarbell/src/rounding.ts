@@ -6,3 +6,12 @@ export function roundToIncrement(weightKg: number, incrementKg: number): number 
   if (incrementKg <= 0) throw new Error("incrementKg must be > 0");
   return Math.round(weightKg / incrementKg) * incrementKg;
 }
+
+/**
+ * Floor to a plate increment — used for warm-up loads so a warm-up never rounds
+ * UP past the working weight it ramps toward.
+ */
+export function floorToIncrement(weightKg: number, incrementKg: number): number {
+  if (incrementKg <= 0) throw new Error("incrementKg must be > 0");
+  return Math.max(0, Math.floor(weightKg / incrementKg) * incrementKg);
+}

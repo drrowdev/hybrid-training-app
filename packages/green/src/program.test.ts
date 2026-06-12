@@ -70,7 +70,7 @@ describe("Green engine — timeline", () => {
 describe("Green engine — prescribe delegates strength to Tactical Barbell", () => {
   it("Hybrid wk1 Operator day = TB Operator wk1 (3×5 @70%)", () => {
     const p = gp.prescribe(setup(), "gp-b0-w1-d0", ctx);
-    expect(p.items.map((i) => [i.name, i.weightKg, i.percentOfTm])).toEqual([
+    expect(itemsOfKind(p, "main").map((i) => [i.name, i.weightKg, i.percentOfTm])).toEqual([
       ["Squat", 140, 0.7],
       ["Bench Press", 70, 0.7],
       ["Deadlift", 175, 0.7],
@@ -79,12 +79,12 @@ describe("Green engine — prescribe delegates strength to Tactical Barbell", ()
 
   it("Hybrid wk2 Operator day advances the TB wave to 80%", () => {
     const p = gp.prescribe(setup(), "gp-b0-w2-d0", ctx);
-    expect(p.items.map((i) => i.weightKg)).toEqual([160, 80, 200]);
+    expect(itemsOfKind(p, "main").map((i) => i.weightKg)).toEqual([160, 80, 200]);
   });
 
   it("the Fighter half maps to TB Fighter week 1 (75%) even though it starts at GP week 8", () => {
     const p = gp.prescribe(setup(), "gp-b0-w8-d0", ctx);
-    expect(p.items.map((i) => [i.name, i.weightKg, i.percentOfTm])).toEqual([
+    expect(itemsOfKind(p, "main").map((i) => [i.name, i.weightKg, i.percentOfTm])).toEqual([
       ["Squat", 150, 0.75],
       ["Bench Press", 75, 0.75],
       ["Deadlift", 187.5, 0.75],
@@ -93,8 +93,8 @@ describe("Green engine — prescribe delegates strength to Tactical Barbell", ()
 
   it("three Operator days in a week map to TB sessions s1/s2/s3 (same % in Operator)", () => {
     const inst = setup();
-    const d0 = gp.prescribe(inst, "gp-b0-w1-d0", ctx).items[0];
-    const d4 = gp.prescribe(inst, "gp-b0-w1-d4", ctx).items[0];
+    const d0 = itemsOfKind(gp.prescribe(inst, "gp-b0-w1-d0", ctx), "main")[0];
+    const d4 = itemsOfKind(gp.prescribe(inst, "gp-b0-w1-d4", ctx), "main")[0];
     expect(d0).toMatchObject({ name: "Squat", weightKg: 140 });
     expect(d4).toMatchObject({ name: "Squat", weightKg: 140 });
   });
@@ -147,7 +147,7 @@ describe("Green engine — Foundation phases (Capacity, Velocity)", () => {
   it("Capacity strength days delegate to TB Operator; LSS days yield duration cardio", () => {
     const inst = setup({ phaseId: "capacity" });
     const strength = gp.prescribe(inst, "gp-b0-w1-d0", ctx);
-    expect(strength.items.map((i) => [i.name, i.weightKg])).toEqual([
+    expect(itemsOfKind(strength, "main").map((i) => [i.name, i.weightKg])).toEqual([
       ["Squat", 140],
       ["Bench Press", 70],
       ["Deadlift", 175],
@@ -199,7 +199,7 @@ describe("Green engine — Foundation phases (Capacity, Velocity)", () => {
   it("Velocity wk1 lifts TB Fighter wk1 (75%) and prescribes its runs in miles", () => {
     const inst = setup({ phaseId: "velocity" });
     const ft = gp.prescribe(inst, "gp-b0-w1-d0", ctx);
-    expect(ft.items.map((i) => [i.name, i.weightKg])).toEqual([
+    expect(itemsOfKind(ft, "main").map((i) => [i.name, i.weightKg])).toEqual([
       ["Squat", 150],
       ["Bench Press", 75],
       ["Deadlift", 187.5],
@@ -232,7 +232,7 @@ describe("Green engine — Outcome (two-a-days, rucks, benchmark)", () => {
   it("Part-1 prescribes Fighter lifts and a Speed Ruck in miles", () => {
     const inst = setup({ phaseId: "outcome" });
     const ft = gp.prescribe(inst, "gp-b0-w1-d0", ctx);
-    expect(ft.items.map((i) => i.name)).toEqual(["Squat", "Bench Press", "Deadlift"]);
+    expect(itemsOfKind(ft, "main").map((i) => i.name)).toEqual(["Squat", "Bench Press", "Deadlift"]);
     const sruck = gp.prescribe(inst, "gp-b0-w1-d1", ctx);
     expect(sruck.items[0]).toMatchObject({ name: "Speed Ruck", distanceM: Math.round(2 * 1609.34) });
   });
@@ -263,7 +263,7 @@ describe("Green engine — C/CAT (continuation)", () => {
     const inst = setup({ phaseId: "ccat" });
     expect(Object.keys(inst.strength)).toEqual(["fighter"]);
     const ft = gp.prescribe(inst, "gp-b0-w1-d0", ctx);
-    expect(ft.items[0]).toMatchObject({ name: "Squat", weightKg: 150 });
+    expect(itemsOfKind(ft, "main")[0]).toMatchObject({ name: "Squat", weightKg: 150 });
     const se = gp.prescribe(inst, "gp-b0-w8-d0", ctx);
     expect(se.items[0]).toMatchObject({ name: "Strength-Endurance Training" });
   });
@@ -306,7 +306,7 @@ describe("Green engine — I/CAT (Zulu/HT + Operator + Fighter + SE)", () => {
   it("the max-strength block (wk5) delegates to TB Operator", () => {
     const inst = setup({ phaseId: "icat" });
     const p = gp.prescribe(inst, "gp-b0-w5-d0", ctx);
-    expect(p.items.map((i) => i.name)).toEqual(["Squat", "Bench Press", "Deadlift"]);
-    expect(p.items[0]).toMatchObject({ weightKg: 140, percentOfTm: 0.7 });
+    expect(itemsOfKind(p, "main").map((i) => i.name)).toEqual(["Squat", "Bench Press", "Deadlift"]);
+    expect(itemsOfKind(p, "main")[0]).toMatchObject({ weightKg: 140, percentOfTm: 0.7 });
   });
 });

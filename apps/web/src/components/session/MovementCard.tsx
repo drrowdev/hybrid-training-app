@@ -251,8 +251,14 @@ export function MovementCard({
   // One-line summary for the collapsed header chip. Hidden on narrow
   // viewports via the `cp-mc-summary` class (see globals.css).
   const headerSummary = useMemo(
-    () => summariseGroupForHeader(group, loggedSets, tmKg),
-    [group, loggedSets, tmKg],
+    () =>
+      summariseGroupForHeader(
+        group,
+        loggedSets,
+        tmKg,
+        oneRmKg != null && tmKg != null && Math.abs(tmKg - oneRmKg) < 0.001 ? "1RM" : "TM",
+      ),
+    [group, loggedSets, tmKg, oneRmKg],
   );
 
   // Per-movement "why" for accessory cards — the engine's own deterministic
@@ -353,7 +359,7 @@ export function MovementCard({
                 border: "1px solid var(--cp-border)",
               }}
             >
-              TM {tmKg} kg
+              {oneRmKg != null && Math.abs(tmKg - oneRmKg) < 0.001 ? "1RM" : "TM"} {tmKg} kg
             </span>
           </span>
         )}

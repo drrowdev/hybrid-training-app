@@ -35,7 +35,7 @@ import {
   type TbLiftKind,
   type TbClusterEntry,
 } from "./templates";
-import { roundToIncrement } from "./rounding";
+import { roundToIncrement, floorToIncrement } from "./rounding";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Instance shape (serialisable — persisted by the platform)
@@ -94,6 +94,11 @@ const META: ProgramMeta = {
   summary:
     "K. Black's Tactical Barbell — submaximal, percentage-based strength run in 6-week blocks (Operator, Fighter, Zulu Standard/I/A, Gladiator, Mass, Grey Man), built to coexist with conditioning.",
 };
+
+// Warm-up ramp to the working weight — mirrors 5/3/1's default (40/60/80% of
+// the work set × 5/5/3 reps). Floored so a warm-up never exceeds the work set.
+const TB_WARMUP_PERCENTS = [0.4, 0.6, 0.8] as const;
+const TB_WARMUP_REPS = [5, 5, 3] as const;
 
 function movementLabel(movement: string): string {
   return TB_MOVEMENT_LABEL[movement] ?? movement;
@@ -296,6 +301,21 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
         ? roundToIncrement(anchor * instance.tmPercent, ctx.roundingKg)
         : anchor;
       const weightKg = roundToIncrement(basis * pct, ctx.roundingKg);
+      // Warm-up ramp to the working weight — same 40/60/80% × 5/5/3 scheme as
+      // 5/3/1, floored so a warm-up never rounds up past the work set. Submaximal
+      // TB work still benefits from a couple of ramp sets to groove the lift.
+      for (let i = 0; i < TB_WARMUP_PERCENTS.length; i++) {
+        const wWeight = floorToIncrement(weightKg * TB_WARMUP_PERCENTS[i]!, ctx.roundingKg);
+        if (wWeight <= 0) continue;
+        items.push({
+          kind: "warmup",
+          name: movementLabel(lift.movement),
+          movementId: lift.movement,
+          sets: 1,
+          reps: TB_WARMUP_REPS[i]!,
+          weightKg: wWeight,
+        });
+      }
       items.push({
         kind: "main",
         name: movementLabel(lift.movement),

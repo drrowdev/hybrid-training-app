@@ -7,6 +7,7 @@
  */
 import { describe, it, expect } from "vitest";
 import type { PlatformContext } from "@hta/program-core";
+import { itemsOfKind } from "@hta/program-core";
 import { tacticalBarbellEngine as tb, type TbInstance } from "./program";
 import { validateCluster, countingLifts } from "./validate";
 import { getTbTemplate } from "./templates";
@@ -100,8 +101,8 @@ describe("Operator — optional bodyweight 4th", () => {
     expect(pull.reps).toBe(14);
     expect(pull.repsLabel).toBe("14");
     expect(pull.note).toContain("max reps");
-    // the barbell lift is still weight-loaded.
-    const squat = p.items.find((i) => i.movementId === "squat")!;
+    // the barbell lift is still weight-loaded (the work set, past its warm-ups).
+    const squat = p.items.find((i) => i.movementId === "squat" && i.kind === "main")!;
     expect(squat.weightKg).toBe(140);
   });
 });
@@ -116,8 +117,8 @@ describe("Zulu — variable-size A/B clusters", () => {
     expect(inst.cluster).toHaveLength(5);
     const a = tb.prescribe(inst, "b0-w1-p1a", ctx);
     const b = tb.prescribe(inst, "b0-w1-p1b", ctx);
-    expect(a.items.map((i) => i.movementId)).toEqual(["squat", "press", "row"]);
-    expect(b.items.map((i) => i.movementId)).toEqual(["bench", "deadlift"]);
+    expect(itemsOfKind(a, "main").map((i) => i.movementId)).toEqual(["squat", "press", "row"]);
+    expect(itemsOfKind(b, "main").map((i) => i.movementId)).toEqual(["bench", "deadlift"]);
   });
 
   it("supports a 6-lift cluster (A:3 / B:3)", () => {
@@ -135,8 +136,8 @@ describe("Zulu — variable-size A/B clusters", () => {
     const inst = setup({ templateId: "zulu", splitA: ["squat", "row"], splitB: ["deadlift", "bench"] });
     const pass1 = tb.prescribe(inst, "b0-w1-p1a", ctx);
     const pass2 = tb.prescribe(inst, "b0-w1-p2a", ctx);
-    expect(pass1.items.map((i) => i.percentOfTm)).toEqual([0.7, 0.7]);
-    expect(pass2.items.map((i) => i.percentOfTm)).toEqual([0.75, 0.75]);
+    expect(itemsOfKind(pass1, "main").map((i) => i.percentOfTm)).toEqual([0.7, 0.7]);
+    expect(itemsOfKind(pass2, "main").map((i) => i.percentOfTm)).toEqual([0.75, 0.75]);
   });
 });
 

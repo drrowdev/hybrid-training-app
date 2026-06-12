@@ -569,7 +569,7 @@ export function MovementFocusView({
                 fontSize: 10,
               }}
             >
-              {activeItem.percentTm}% TM
+              {activeItem.percentTm}% {tmKg != null && oneRmKg != null && Math.abs(tmKg - oneRmKg) < 0.001 ? "1RM" : "TM"}
             </span>
           )}
           {activeItem.percentTm != null && activeItem.targetRir && (
