@@ -30,6 +30,7 @@ import type { HybridInstance } from "@/lib/programs/hybrid/engine";
 import { buildPlatformContext } from "./context";
 import { getProgramEngine, getNativeProgramEngine, isNativeProgram } from "./registry";
 import { buildProgramInstanceWrite } from "./program-instance";
+import { discardAbandonedInProgressSessions } from "@/lib/planner/archive-prior-blocks";
 
 const WEEKDAY = z.number().int().min(0).max(6);
 
@@ -274,6 +275,10 @@ async function createForeignProgramInstance(
     .eq("status", "active")
     .neq("id", pi.id);
 
+  // Clear any half-opened, zero-logged session from the program we just
+  // replaced so Today doesn't surface a stale "Resume today's workout".
+  await discardAbandonedInProgressSessions(supabase, user.id).catch(() => {});
+
   revalidatePath("/app");
   revalidatePath("/app/plan");
   revalidatePath("/app/stats");
@@ -422,6 +427,10 @@ async function createNativeProgramInstance(
     .eq("user_id", user.id)
     .eq("status", "active")
     .neq("id", pi.id);
+
+  // Clear any half-opened, zero-logged session from the program we just
+  // replaced so Today doesn't surface a stale "Resume today's workout".
+  await discardAbandonedInProgressSessions(supabase, user.id).catch(() => {});
 
   revalidatePath("/app");
   revalidatePath("/app/plan");

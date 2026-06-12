@@ -84,18 +84,21 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
   it("Operator week 1 = 3×5 @ 70% across the cluster", () => {
     const inst = setup();
     const p = tb.prescribe(inst, "b0-w1-s1", ctx);
-    expect(p.items.map((i) => [i.name, i.weightKg, i.sets, i.repsLabel, i.percentOfTm])).toEqual([
+    const mains = itemsOfKind(p, "main");
+    expect(mains.map((i) => [i.name, i.weightKg, i.sets, i.repsLabel, i.percentOfTm])).toEqual([
       ["Squat", 140, 3, "5", 0.7],
       ["Bench Press", 70, 3, "5", 0.7],
       ["Deadlift", 175, 3, "5", 0.7],
     ]);
-    expect(itemsOfKind(p, "main")).toHaveLength(3);
-    expect(totalPrescribedSets(p)).toBe(9);
+    expect(mains).toHaveLength(3);
+    // Each lift carries a 3-set warm-up ramp ahead of its work sets.
+    expect(itemsOfKind(p, "warmup")).toHaveLength(9);
+    expect(totalPrescribedSets(p)).toBe(18); // 9 warm-up + 9 working
   });
 
   it("Operator week 3 intensifies to 3×3 @ 90%", () => {
     const p = tb.prescribe(setup(), "b0-w3-s1", ctx);
-    expect(p.items.map((i) => [i.weightKg, i.reps, i.percentOfTm])).toEqual([
+    expect(itemsOfKind(p, "main").map((i) => [i.weightKg, i.reps, i.percentOfTm])).toEqual([
       [180, 3, 0.9],
       [90, 3, 0.9],
       [225, 3, 0.9],
@@ -104,18 +107,18 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
 
   it("Operator week 6 peaks at 1–2 reps @ 95%", () => {
     const p = tb.prescribe(setup(), "b0-w6-s1", ctx);
-    expect(p.items[0]).toMatchObject({ name: "Squat", weightKg: 190, repsLabel: "1–2", percentOfTm: 0.95 });
+    expect(itemsOfKind(p, "main")[0]).toMatchObject({ name: "Squat", weightKg: 190, repsLabel: "1–2", percentOfTm: 0.95 });
   });
 
   it("Zulu Pass 1 opens at 70% and Pass 2 at 75% for the same week-1 lift", () => {
     const inst = setup({ templateId: "zulu" });
     const pass1 = tb.prescribe(inst, "b0-w1-p1a", ctx); // split A: squat, press
     const pass2 = tb.prescribe(inst, "b0-w1-p2a", ctx);
-    expect(pass1.items.map((i) => [i.name, i.weightKg, i.percentOfTm])).toEqual([
+    expect(itemsOfKind(pass1, "main").map((i) => [i.name, i.weightKg, i.percentOfTm])).toEqual([
       ["Squat", 140, 0.7],
       ["Overhead Press", 70, 0.7],
     ]);
-    expect(pass2.items.map((i) => [i.name, i.weightKg, i.percentOfTm])).toEqual([
+    expect(itemsOfKind(pass2, "main").map((i) => [i.name, i.weightKg, i.percentOfTm])).toEqual([
       ["Squat", 150, 0.75],
       ["Overhead Press", 75, 0.75],
     ]);
@@ -124,20 +127,20 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
   it("a split session only prescribes that split's lifts", () => {
     const inst = setup({ templateId: "zulu" });
     const bDay = tb.prescribe(inst, "b0-w1-p1b", ctx); // split B: bench, deadlift
-    expect(bDay.items.map((i) => i.name)).toEqual(["Bench Press", "Deadlift"]);
+    expect(itemsOfKind(bDay, "main").map((i) => i.name)).toEqual(["Bench Press", "Deadlift"]);
   });
 
   it("optionally loads off a derived Training Max instead of the raw 1RM", () => {
     const inst = setup({ useTrainingMax: true, tmPercent: 0.9 });
     // squat TM = round(200×0.9)=180; week1 70% → round(180×0.7)=126→125 @2.5kg
     const p = tb.prescribe(inst, "b0-w1-s1", ctx);
-    expect(p.items[0]).toMatchObject({ name: "Squat", weightKg: 125 });
+    expect(itemsOfKind(p, "main")[0]).toMatchObject({ name: "Squat", weightKg: 125 });
   });
 
   it("skips a lift with no 1RM (and yields no items when none are known)", () => {
     const inst = setup();
     const partial: PlatformContext = { oneRepMaxes: { squat: 200, bench: 100 }, roundingKg: 2.5 };
-    expect(tb.prescribe(inst, "b0-w1-s1", partial).items.map((i) => i.name)).toEqual(["Squat", "Bench Press"]);
+    expect(itemsOfKind(tb.prescribe(inst, "b0-w1-s1", partial), "main").map((i) => i.name)).toEqual(["Squat", "Bench Press"]);
     const none: PlatformContext = { oneRepMaxes: {}, roundingKg: 2.5 };
     expect(tb.prescribe(inst, "b0-w1-s1", none).items).toEqual([]);
   });
@@ -145,7 +148,7 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
   it("never marks a working set as AMRAP (TB is strictly submaximal)", () => {
     const p = tb.prescribe(setup(), "b0-w2-s1", ctx);
     expect(p.items.every((i) => !i.isAmrap)).toBe(true);
-    expect(p.items.every((i) => /submaximal/.test(i.note ?? ""))).toBe(true);
+    expect(itemsOfKind(p, "main").every((i) => /submaximal/.test(i.note ?? ""))).toBe(true);
   });
 
   it("Zulu I/A prescribes a 3–5 set range and a heavier week-4 than Standard", () => {
@@ -154,19 +157,19 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
     // Week 4 split A (squat/press): I/A = 75%, Standard Pass-1 = 70%.
     const iaW4 = tb.prescribe(ia, "b0-w4-p1a", ctx);
     const stdW4 = tb.prescribe(std, "b0-w4-p1a", ctx);
-    expect(iaW4.items.map((i) => i.percentOfTm)).toEqual([0.75, 0.75]);
-    expect(stdW4.items.map((i) => i.percentOfTm)).toEqual([0.7, 0.7]);
+    expect(itemsOfKind(iaW4, "main").map((i) => i.percentOfTm)).toEqual([0.75, 0.75]);
+    expect(itemsOfKind(stdW4, "main").map((i) => i.percentOfTm)).toEqual([0.7, 0.7]);
     // Squat week 4: I/A round(200×0.75)=150 vs Standard 140.
-    expect(iaW4.items[0]).toMatchObject({ name: "Squat", weightKg: 150 });
-    expect(stdW4.items[0]).toMatchObject({ name: "Squat", weightKg: 140 });
+    expect(itemsOfKind(iaW4, "main")[0]).toMatchObject({ name: "Squat", weightKg: 150 });
+    expect(itemsOfKind(stdW4, "main")[0]).toMatchObject({ name: "Squat", weightKg: 140 });
     // The prescribed floor is 3 sets, surfaced as an autoregulated 3–5 range.
-    expect(iaW4.items.every((i) => i.sets === 3)).toBe(true);
-    expect(iaW4.items.every((i) => /3–5 sets/.test(i.note ?? ""))).toBe(true);
+    expect(itemsOfKind(iaW4, "main").every((i) => i.sets === 3)).toBe(true);
+    expect(itemsOfKind(iaW4, "main").every((i) => /3–5 sets/.test(i.note ?? ""))).toBe(true);
   });
 
   it("Zulu I/A peaks at 1–2 reps @ 95% in week 6", () => {
     const p = tb.prescribe(setup({ templateId: "zulu-ia" }), "b0-w6-p1a", ctx);
-    expect(p.items[0]).toMatchObject({ name: "Squat", repsLabel: "1–2", percentOfTm: 0.95, weightKg: 190 });
+    expect(itemsOfKind(p, "main")[0]).toMatchObject({ name: "Squat", repsLabel: "1–2", percentOfTm: 0.95, weightKg: 190 });
   });
 });
 
