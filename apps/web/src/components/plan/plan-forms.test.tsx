@@ -49,6 +49,6 @@ describe("plan audit-log forms — consistent prompt", () => {
     const html = renderToStaticMarkup(
       <EndBlockForm blockId="b1" action={async () => {}} />,
     );
-    expect(html).toContain("End block");
+    expect(html).toContain("End program");
   });
 });

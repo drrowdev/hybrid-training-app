@@ -36,16 +36,13 @@
 
   max-width: 938px;
   margin: 0 auto;
-  padding: 28px 28px 44px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  padding: 0 0 44px;
   color: var(--text);
   font-family: var(--font-archivo), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
-  /* Solid dark sage surface (the glow layered on top) so the wizard reads as a
-     dark panel on the app's light shell — light sage text needs a dark backdrop.
-     App-wide theming is a separate effort. */
-  background: radial-gradient(900px 500px at 50% -15%, #1b2519 0%, transparent 60%), var(--bg);
+  /* Flush on the app's dark-sage shell — no bordered panel or glow backdrop
+     (the app is now dark-sage app-wide, so the wizard inherits the page bg). */
+  background: transparent;
 }
 
 /* page heading (kept for a11y + e2e: "Start a program") */

@@ -38,7 +38,7 @@ export function EndBlockForm({
         data-testid="end-block-button"
         onClick={() => setOpen(true)}
       >
-        End block
+        End program
       </button>
     );
   }
@@ -47,7 +47,7 @@ export function EndBlockForm({
     <div
       data-testid="end-block-form"
       role="dialog"
-      aria-label="End block"
+      aria-label="End program"
       style={{
         display: "grid",
         gap: 10,
@@ -59,10 +59,10 @@ export function EndBlockForm({
       }}
     >
       <div>
-        <div style={{ fontSize: 14, fontWeight: 600 }}>End this block?</div>
+        <div style={{ fontSize: 14, fontWeight: 600 }}>End this program?</div>
         <div style={{ fontSize: 12, color: "var(--cp-text-muted)", marginTop: 4 }}>
           Archives the schedule. You keep all logged sessions and can
-          start a new block immediately.
+          start a new program immediately.
         </div>
       </div>
       <label style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
@@ -117,7 +117,7 @@ export function EndBlockForm({
             });
           }}
         >
-          End block
+          End program
         </button>
       </div>
     </div>
