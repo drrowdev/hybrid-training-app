@@ -4,6 +4,7 @@ import {
   ROLE_TO_ENGINE_KEY,
   roleForSlug,
   engineKeyForSlug,
+  BODYWEIGHT_ENGINE_KEY_BY_SLUG,
   STRENGTH_KIND_MAP,
   TM_BASIS_PERCENT_BY_FAMILY,
 } from "../movement-keys";
@@ -23,6 +24,16 @@ describe("movement-key mapping", () => {
     expect(engineKeyForSlug("bench-press-flat")).toBe("bench");
     expect(engineKeyForSlug("front-squat")).toBe("squat");
     expect(engineKeyForSlug("not-a-lift")).toBeUndefined();
+  });
+
+  it("maps the optional bodyweight pull-up slug to the engine pullup key", () => {
+    // The pull-up rides outside the StrengthRole system (it's prescribed off max
+    // reps, not a barbell 1RM) and must NOT appear in ENGINE_KEY_TO_ROLE — that
+    // keeps it out of the 5/3/1 main-lift set and computeTmAlignment.
+    expect(BODYWEIGHT_ENGINE_KEY_BY_SLUG["pull-up-overhand"]).toBe("pullup");
+    expect(engineKeyForSlug("pull-up-overhand")).toBe("pullup");
+    expect(roleForSlug("pull-up-overhand")).toBeUndefined();
+    expect(Object.values(ENGINE_KEY_TO_ROLE)).not.toContain("pullup");
   });
 
   it("maps the strength item kinds the platform materialises", () => {
