@@ -79,9 +79,16 @@ export default async function PlanPage({
   // component; this server function just shapes the data.
   const archetype = ARCHETYPES[block.archetype as keyof typeof ARCHETYPES];
   const isCustom = block.archetype === "custom";
+  // Platform programs (5/3/1, Tactical Barbell, Green Protocol) don't set a
+  // known `archetype`; their display name is stored in `notes` (engine.meta.name)
+  // at deploy. Fall back to it so the Plan header shows the program, not a blank.
   const archetypeName = isCustom
-    ? block.notes?.trim() || "Custom block"
-    : archetype?.name ?? block.archetype;
+    ? block.notes?.trim() || "Custom program"
+    : archetype?.name ?? block.notes?.trim() ?? block.archetype ?? "Program";
+  // Program-aware noun for a training block: 5/3/1 (family "531") calls it a
+  // "cycle"; Tactical Barbell / Green Protocol (and the generic default) call
+  // it a "block" — matching each methodology's own book terminology.
+  const cycleNoun = block.programFamily === "531" ? "cycle" : "block";
 
   const [all, { data: profile }, blockNumbering] = await Promise.all([
     getPlannedDays(block.id, block.startedOn),
@@ -182,6 +189,7 @@ export default async function PlanPage({
 
       <PlanRedesign
         archetypeName={archetypeName}
+        cycleNoun={cycleNoun}
         blockNumber={blockNumbering.index}
         blockTotal={blockNumbering.total}
         focusMuscles={block.focusMuscles}

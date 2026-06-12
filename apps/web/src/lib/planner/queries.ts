@@ -59,6 +59,10 @@ export type ActiveBlock = {
   weeks: number;
   status: "active" | "completed" | "archived";
   notes: string | null;
+  /** Engine family (e.g. "531", "tactical-barbell", "tactical-barbell-green",
+   * "hybrid"). Drives program-aware copy — 5/3/1 calls a training block a
+   * "cycle"; Tactical Barbell / Green Protocol call it a "block". */
+  programFamily: string | null;
   /** Migration 0079 — per-block focus muscle groups (0–2). */
   focusMuscles: string[];
   /** Wizard step-2 power emphasis toggle (already on the row). */
@@ -137,7 +141,7 @@ export async function getActiveBlock(): Promise<ActiveBlock | null> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("training_blocks")
-    .select("id, archetype, started_on, weeks, status, notes, focus_muscles, power_emphasis")
+    .select("id, archetype, started_on, weeks, status, notes, program_family, focus_muscles, power_emphasis")
     .eq("status", "active")
     .is("deleted_at", null)
     .order("started_on", { ascending: false })
@@ -151,6 +155,7 @@ export async function getActiveBlock(): Promise<ActiveBlock | null> {
     weeks: data.weeks,
     status: data.status,
     notes: data.notes ?? null,
+    programFamily: (data as { program_family?: string | null }).program_family ?? null,
     focusMuscles: Array.isArray(data.focus_muscles)
       ? (data.focus_muscles as string[])
       : [],

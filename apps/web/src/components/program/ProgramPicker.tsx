@@ -181,7 +181,7 @@ interface ProgramLoadoutMeta {
 
 const PROGRAM_LOADOUT: Record<string, ProgramLoadoutMeta> = {
   "wendler-531": {
-    title: "Configure your 5/3/1 block",
+    title: "Configure your 5/3/1 cycle",
     sub: "Choose a template and how often you\u2019ll train. The defaults are the recommended starting point.",
     structLabel: "Cycle",
     struct: "2\u00D7 Leader \u2192 7th week \u2192 1\u00D7 Anchor",
@@ -1199,7 +1199,7 @@ export function ProgramPicker({
       : (copy?.len ?? "\u2014").toUpperCase();
     return (
       <div className={styles.specwrap}>
-        <div className={styles.label}>Your block</div>
+        <div className={styles.label}>{selected?.id === "wendler-531" ? "Your cycle" : "Your block"}</div>
         <div className={styles.spec}>
           <div className={styles.cell}>
             <div className={styles.cl}>Frequency</div>
