@@ -562,10 +562,17 @@ export default async function TodayPage() {
   const endingNudge = inFinalWeek
     ? await (async () => {
         const recent = await getRecentBlocks(3);
+        // The next-block nudge is an archetype/Hybrid goal-strategy suggestion
+        // (ADR 0010). Foreign programs (5/3/1/TB/GP) store `archetype` NULL and
+        // aren't part of that strategy space, so drop them rather than feed the
+        // suggestion rules a null cast to ArchetypeId.
+        const recentArchetypes = recent
+          .map((b) => b.archetype)
+          .filter((a): a is ArchetypeId => a != null);
         return getNextBlockNudge(
           supabase,
           userId,
-          recent.map((b) => b.archetype as ArchetypeId),
+          recentArchetypes,
           todayIso,
           recent.length > 0 ? recent[recent.length - 1].startedOn : null,
         );
