@@ -124,6 +124,24 @@ describe("buildTbAccessoryInjector", () => {
     expect(inject("ref-A")).toEqual(inject("ref-A"));
   });
 
+  it("only selects isolation movements — excludes compounds, carries, tendon/cardio work", () => {
+    const catalog: CatalogMovement[] = [
+      mv({ id: "iso", slug: "curl", pattern: "isolation", primaryMuscles: ["biceps"] }),
+      mv({ id: "compound", slug: "chinup", pattern: "pull", primaryMuscles: ["biceps", "lats"] }),
+      mv({ id: "carry", slug: "farmer-carry", pattern: "carry", primaryMuscles: ["biceps"] }),
+      mv({ id: "tendon", slug: "alfredson", pattern: "tendon", primaryMuscles: ["biceps"] }),
+    ];
+    const inject = buildTbAccessoryInjector({
+      catalog,
+      filters: noFilters,
+      muscles: ["biceps"],
+      maxItems: 3,
+      setsPerItem: 3,
+    });
+    // Only the isolation curl is eligible; the compound/carry/tendon are dropped.
+    expect(new Set(["a", "b", "c"].map((r) => inject(r)[0]?.movementId))).toEqual(new Set(["iso"]));
+  });
+
   it("never selects a conditioning movement", () => {
     const inject = buildTbAccessoryInjector({
       catalog: CATALOG,

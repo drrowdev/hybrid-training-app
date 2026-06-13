@@ -35,8 +35,13 @@ export {
 } from "./tb-accessories-config";
 export type { TbAccessoryMuscle, TbAccessoryPlan } from "./tb-accessories-config";
 
-// Conditioning / power / drill patterns are never accessory hypertrophy work.
-const EXCLUDED_PATTERNS = new Set(["cardio", "olympic", "plyometric", "drill"]);
+// TB accessories are bodybuilder-style ISOLATION work (curls, extensions, raises,
+// flyes, calf raises, ab work). Restricting to the `isolation` pattern keeps the
+// pool aesthetic and, crucially, avoids (a) compound presses/rows/chins that
+// double up on the cluster's main lifts, (b) carries — which can't honour a
+// rep-based 3×12 prescription, and (c) tendon-rehab protocols. Users who want a
+// compound accessory (dips, weighted chin-ups) can swap one in per session.
+const ACCESSORY_PATTERN = "isolation";
 
 // CP-1 — TB accessory dose. Bodybuilder-style hypertrophy (8-15 reps, ~50-70% RM,
 // near failure) per the book; the % isn't a TM prescription so it rides in a note.
@@ -94,7 +99,7 @@ export function buildTbAccessoryInjector(args: BuildTbAccessoryInjectorArgs): Tb
   for (const mu of muscles) if (!byMuscle.has(mu)) byMuscle.set(mu, []);
 
   for (const m of catalog) {
-    if (EXCLUDED_PATTERNS.has(m.pattern ?? "")) continue;
+    if ((m.pattern ?? "") !== ACCESSORY_PATTERN) continue;
     if (excludeMovementIds?.has(m.id)) continue;
     if (filters.blockedMovementIds?.has(m.id)) continue;
     if (loadsBlockedRegion(m, filters.blockedRegions)) continue;
