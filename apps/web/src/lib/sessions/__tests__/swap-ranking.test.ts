@@ -70,6 +70,26 @@ describe("scoreSwapCandidate", () => {
 });
 
 describe("rankSwapCandidates", () => {
+  it("surfaces same-muscle candidates in the top slice even when they trail in input order (rank-before-slice)", () => {
+    // Regression: the swap-candidates route must rank the WHOLE pattern bucket and
+    // THEN slice to the limit. If the same-muscle alternatives sit at the end of an
+    // arbitrary DB ordering, a naive slice-before-rank would drop them entirely.
+    const orig = mv({ id: "dragon-flag", primary_muscles: ["abs"], primary_region: "lumbar_trunk" });
+    const unrelated = Array.from({ length: 30 }, (_, i) =>
+      mv({ id: `iso-${i}`, display_name: `Iso ${String(i).padStart(2, "0")}`, primary_muscles: ["biceps"] }),
+    );
+    const abCandidates = [
+      mv({ id: "plank", display_name: "Plank", primary_muscles: ["abs"], primary_region: "lumbar_trunk" }),
+      mv({ id: "ab-wheel", display_name: "Ab Wheel", primary_muscles: ["abs"], primary_region: "lumbar_trunk" }),
+    ];
+    // ab movements LAST, as an arbitrary DB order might return them.
+    const ranked = rankSwapCandidates(orig, [...unrelated, ...abCandidates]).slice(0, 5);
+    const topIds = ranked.map((c) => c.id);
+    expect(topIds).toContain("plank");
+    expect(topIds).toContain("ab-wheel");
+    expect(ranked.filter((c) => c.recommended).map((c) => c.id).sort()).toEqual(["ab-wheel", "plank"]);
+  });
+
   it("orders best-first and flags the closest matches as recommended", () => {
     const candidates = [
       mv({ id: "leg-extension", display_name: "Leg Extension", primary_muscles: ["quads"], primary_region: "knee", is_compound: false }),

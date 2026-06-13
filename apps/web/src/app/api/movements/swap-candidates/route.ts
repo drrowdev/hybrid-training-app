@@ -44,18 +44,23 @@ export async function GET(request: NextRequest) {
   if (oErr) return NextResponse.json({ error: oErr.message }, { status: 500 });
   if (!orig) return NextResponse.json({ error: "Movement not found" }, { status: 404 });
 
+  // Fetch the WHOLE same-pattern bucket (bounded; the largest bucket — isolation —
+  // is well under this cap) and rank it, THEN slice to `limit`. Truncating at the
+  // DB before ranking would hand the ranker an arbitrary subset, so for a big
+  // bucket the genuinely-similar alternatives (e.g. other ab movements when
+  // swapping a Dragon Flag) could be cut entirely and never surface.
   const { data, error } = await supabase
     .from("movements")
     .select(MOVEMENT_FIELDS)
     .eq("pattern", orig.pattern as string)
     .neq("id", originalId)
-    .limit(limit);
+    .limit(500);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const ranked = rankSwapCandidates(
     orig as unknown as SwapMovementFields,
     (data ?? []) as unknown as SwapMovementFields[],
-  );
+  ).slice(0, limit);
 
   return NextResponse.json({
     pattern: orig.pattern,
