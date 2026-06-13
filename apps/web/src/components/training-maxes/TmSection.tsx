@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useRef, useState, useTransition } from "react";
 import type { TmRow, TmSourceSet } from "@/lib/training-maxes/queries";
 import { TmAutoForm } from "./TmAutoForm";
 import { TmSourceBadge } from "./TmSourceBadge";
@@ -16,21 +16,15 @@ export type RoleGroupInput = {
 };
 export type PickerGroup = { label: string; items: { id: string; display_name: string }[] };
 
-function roundToPlate(kg: number, increment = 2.5): number {
-  return Math.round(kg / increment) * increment;
-}
-
 /**
- * Client-side wrapper around the Training Maxes UI.
+ * Client-side wrapper around the 1-rep-max settings UI.
  *
- * Each lift's working training max is derived from the user's 1RM × the loading
- * percentage their ACTIVE PROGRAM seeded onto `training_maxes.tm_percent` (5/3/1
- * and TB on the wizard's template/basis choice, Hybrid on its Loadout intensity).
- * This page no longer lets the user set a TM% directly — it's a program concern —
- * so it only collects the 1RM and shows the resulting TM read-only.
+ * The page collects only the user's 1RM per lift. The working weights a program
+ * trains at are a PROGRAM concern (5/3/1 / TB from the wizard template, Hybrid
+ * from its Loadout intensity), seeded onto `training_maxes.tm_percent` at deploy
+ * — so this page never asks for or shows a training-max %.
  */
 export function TmSection({
-  defaultPercent,
   requiredGroups,
   otherRows,
   otherRowSourceSets,
@@ -40,8 +34,6 @@ export function TmSection({
   deleteAction,
   lockAction,
 }: {
-  /** Fallback loading % used only to render a TM for a lift no program has seeded yet. */
-  defaultPercent: number;
   requiredGroups: RoleGroupInput[];
   otherRows: TmRow[];
   otherRowSourceSets?: Record<string, TmSourceSet | null>;
@@ -70,7 +62,6 @@ export function TmSection({
               candidates={group.candidates}
               currentRow={group.setRow}
               currentRowSourceSet={group.setRowSourceSet ?? null}
-              defaultPercent={defaultPercent}
               upsertAction={upsertAction}
               deleteAction={deleteAction}
               lockAction={lockAction}
@@ -91,7 +82,6 @@ export function TmSection({
                 key={r.id}
                 row={r}
                 sourceSet={otherRowSourceSets?.[r.id] ?? null}
-                defaultPercent={defaultPercent}
                 upsertAction={upsertAction}
                 deleteAction={deleteAction}
                 lockAction={lockAction}
@@ -121,7 +111,6 @@ function RoleGroupCard({
   candidates,
   currentRow,
   currentRowSourceSet,
-  defaultPercent,
   upsertAction,
   deleteAction,
   lockAction,
@@ -130,7 +119,6 @@ function RoleGroupCard({
   candidates: Candidate[];
   currentRow?: TmRow;
   currentRowSourceSet?: TmSourceSet | null;
-  defaultPercent: number;
   upsertAction: (fd: FormData) => Promise<unknown>;
   deleteAction: (fd: FormData) => Promise<void>;
   lockAction: (fd: FormData) => Promise<unknown>;
@@ -142,7 +130,6 @@ function RoleGroupCard({
         <TmCard
           row={currentRow}
           sourceSet={currentRowSourceSet ?? null}
-          defaultPercent={defaultPercent}
           upsertAction={upsertAction}
           deleteAction={deleteAction}
           lockAction={lockAction}
@@ -186,7 +173,113 @@ function RoleHeader({ label, status }: { label: string; status: "set" | "missing
           borderColor: status === "set" ? "var(--cp-success)" : "var(--cp-danger)",
         }}
       >
-        {status === "set" ? "✓ set" : "needs a TM"}
+        {status === "set" ? "✓ set" : "needs a 1RM"}
+      </span>
+    </div>
+  );
+}
+
+type SaveStatus = "idle" | "saving" | "saved" | "error";
+
+/**
+ * The lift's 1RM rendered as the prominent, directly-editable number on the
+ * right of the card. Autosaves (debounced) via `upsertTrainingMax`; the program
+ * owns the working-weight %, so there's nothing else to edit here.
+ */
+function InlineOneRm({
+  movementId,
+  movementName,
+  initialKg,
+  action,
+}: {
+  movementId: string;
+  movementName: string;
+  initialKg: number;
+  action: (fd: FormData) => Promise<unknown>;
+}) {
+  const [val, setVal] = useState<string>(String(initialKg));
+  const [status, setStatus] = useState<SaveStatus>("idle");
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSaved = useRef<number>(initialKg);
+  const [, startTransition] = useTransition();
+
+  const save = (raw: string) => {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0 || n > 1000) return;
+    if (n === lastSaved.current) return;
+    const fd = new FormData();
+    fd.set("movementId", movementId);
+    fd.set("oneRmKg", raw);
+    setStatus("saving");
+    startTransition(async () => {
+      try {
+        const result = (await action(fd)) as
+          | undefined
+          | void
+          | { ok: true }
+          | { ok: false; error: string };
+        if (result && typeof result === "object" && "ok" in result && result.ok === false) {
+          setStatus("error");
+          return;
+        }
+        lastSaved.current = n;
+        setStatus("saved");
+        window.setTimeout(() => setStatus((s) => (s === "saved" ? "idle" : s)), 1600);
+      } catch {
+        setStatus("error");
+      }
+    });
+  };
+
+  const onChange = (v: string) => {
+    setVal(v);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => save(v), 600);
+  };
+
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 6, justifyContent: "flex-end" }}>
+      <input
+        type="number"
+        step="0.5"
+        min="1"
+        max="1000"
+        value={val}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={() => {
+          if (timer.current) clearTimeout(timer.current);
+          save(val);
+        }}
+        inputMode="decimal"
+        aria-label={`${movementName} 1RM in kg`}
+        className="mono"
+        style={{
+          width: "5ch",
+          padding: "2px 4px",
+          fontSize: 18,
+          fontWeight: 600,
+          textAlign: "right",
+          color: "var(--cp-accent)",
+          background: "transparent",
+          border: "none",
+          borderBottom: "1px solid var(--cp-border-strong, var(--cp-border))",
+        }}
+      />
+      <span style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>kg</span>
+      <span
+        aria-hidden
+        style={{
+          fontSize: 11,
+          width: 10,
+          color:
+            status === "saved"
+              ? "var(--cp-success)"
+              : status === "error"
+                ? "var(--cp-danger)"
+                : "var(--cp-text-muted)",
+        }}
+      >
+        {status === "saving" ? "…" : status === "saved" ? "✓" : status === "error" ? "✗" : ""}
       </span>
     </div>
   );
@@ -195,28 +288,16 @@ function RoleHeader({ label, status }: { label: string; status: "set" | "missing
 function TmCard({
   row,
   sourceSet,
-  defaultPercent,
   upsertAction,
   deleteAction,
   lockAction,
 }: {
   row: TmRow;
   sourceSet: TmSourceSet | null;
-  defaultPercent: number;
   upsertAction: (fd: FormData) => Promise<unknown>;
   deleteAction: (fd: FormData) => Promise<void>;
   lockAction: (fd: FormData) => Promise<unknown>;
 }) {
-  // Live-compute the displayed TM from the user's stored 1RM × the live default %
-  // (or the per-movement override if set). This is what makes preset clicks feel snappy.
-  const { displayTmKg, displayPercent } = useMemo(() => {
-    const pct = row.tmPercentOverride ?? defaultPercent;
-    return {
-      displayPercent: pct,
-      displayTmKg: roundToPlate((row.oneRmKg * pct) / 100),
-    };
-  }, [row.oneRmKg, row.tmPercentOverride, defaultPercent]);
-
   return (
     <li
       data-testid={`tm-card-${row.id}`}
@@ -226,48 +307,42 @@ function TmCard({
         borderRadius: 12,
         padding: 14,
         display: "grid",
-        gap: 10,
+        gap: 8,
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
           <div style={{ fontSize: 15, fontWeight: 600 }}>{row.movementName}</div>
-          <TmSourceBadge source={row.source} formula={row.derivedFormula} />
+          {/* Provenance is only worth surfacing for ESTIMATED rows — an entered
+              1RM is the default and shouldn't add noise. */}
+          {row.source !== "entered" && (
+            <TmSourceBadge source={row.source} formula={row.derivedFormula} />
+          )}
         </div>
-        <div style={{ textAlign: "right" }}>
-          <div className="mono" style={{ fontSize: 18, fontWeight: 600, color: "var(--cp-accent)" }}>
-            {displayTmKg} kg
-          </div>
-          <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-            TM ({displayPercent}% × {row.oneRmKg} kg)
-          </div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+          <InlineOneRm
+            movementId={row.movementId}
+            movementName={row.movementName}
+            initialKg={row.oneRmKg}
+            action={upsertAction}
+          />
+          <form action={deleteAction}>
+            <input type="hidden" name="id" value={row.id} />
+            <button
+              type="submit"
+              className="cp-btn ghost"
+              style={{ fontSize: 11, color: "var(--cp-text-muted)", padding: "2px 6px" }}
+              aria-label={`Remove ${row.movementName} 1RM`}
+            >
+              × remove
+            </button>
+          </form>
         </div>
       </div>
 
+      {/* Derived-only "where did this estimate come from?" expander (returns null
+          for entered rows). Lets the user lock an estimate as a deliberate 1RM. */}
       <TmSourceDetail row={row} sourceSet={sourceSet} lockAction={lockAction} />
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "end" }}>
-        <TmAutoForm
-          mode="edit"
-          initial={{
-            movementId: row.movementId,
-            movementName: row.movementName,
-            oneRmKg: row.oneRmKg,
-          }}
-          action={upsertAction}
-        />
-        <form action={deleteAction}>
-          <input type="hidden" name="id" value={row.id} />
-          <button
-            type="submit"
-            className="cp-btn ghost"
-            style={{ fontSize: 11, color: "var(--cp-text-muted)", padding: "6px 10px" }}
-            aria-label={`Remove ${row.movementName} training max`}
-          >
-            × remove
-          </button>
-        </form>
-      </div>
     </li>
   );
 }

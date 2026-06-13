@@ -20,33 +20,33 @@ function render(props: { isBodyweightOnly: boolean; hasBwProgress: boolean }): s
 }
 
 describe("TrainingProgressionCards", () => {
-  it("bodyweight_only: shows BW card, hides Training maxes", () => {
+  it("bodyweight_only: shows BW card, hides 1-rep maxes", () => {
     const html = render({ isBodyweightOnly: true, hasBwProgress: false });
     expect(html).toContain("Bodyweight progression");
     expect(html).toContain("/app/settings/bodyweight-progression");
-    expect(html).not.toContain("Training maxes");
+    expect(html).not.toContain("1-rep maxes");
     expect(html).not.toContain("/app/settings/training-maxes");
   });
 
   it("non-BW preset + bw_progress rows: shows BOTH cards", () => {
     const html = render({ isBodyweightOnly: false, hasBwProgress: true });
-    expect(html).toContain("Training maxes");
+    expect(html).toContain("1-rep maxes");
     expect(html).toContain("/app/settings/training-maxes");
     expect(html).toContain("Bodyweight progression");
     expect(html).toContain("/app/settings/bodyweight-progression");
   });
 
-  it("default user (non-BW, no bw_progress): Training maxes only, no BW card", () => {
+  it("default user (non-BW, no bw_progress): 1-rep maxes only, no BW card", () => {
     const html = render({ isBodyweightOnly: false, hasBwProgress: false });
-    expect(html).toContain("Training maxes");
+    expect(html).toContain("1-rep maxes");
     expect(html).toContain("/app/settings/training-maxes");
     expect(html).not.toContain("Bodyweight progression");
     expect(html).not.toContain("/app/settings/bodyweight-progression");
   });
 
-  it("bodyweight_only with stale bw_progress rows still suppresses Training maxes", () => {
+  it("bodyweight_only with stale bw_progress rows still suppresses 1-rep maxes", () => {
     const html = render({ isBodyweightOnly: true, hasBwProgress: true });
     expect(html).toContain("Bodyweight progression");
-    expect(html).not.toContain("Training maxes");
+    expect(html).not.toContain("1-rep maxes");
   });
 });

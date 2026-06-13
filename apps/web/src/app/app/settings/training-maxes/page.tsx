@@ -18,7 +18,6 @@ import {
 } from "@/lib/settings/equipment-presets";
 import { TmSection, type PickerGroup, type RoleGroupInput } from "@/components/training-maxes/TmSection";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { MetricHelp } from "@/components/ui/MetricHelp";
 import Link from "next/link";
 export default async function TrainingMaxesPage() {
   const supabase = await createClient();
@@ -121,35 +120,31 @@ export default async function TrainingMaxesPage() {
     <div style={{ display: "grid", gap: 20 }}>
       <PageHeader
         back={{ href: "/app/settings", label: "Settings" }}
-        title="Training maxes"
+        title="1-rep maxes"
       />
       {bodyweightOnly ? (
         <p
           data-testid="training-maxes-bodyweight-note"
           style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 14, lineHeight: 1.55 }}
         >
-          Training maxes are 1-rep estimates for your main lifts. You&apos;re on a
-          bodyweight-only setup, so there&apos;s no main lift to attach a number to yet.
-          If you add a barbell or dumbbells in{" "}
+          Your 1-rep maxes are the best single-rep estimate for each main lift.
+          You&apos;re on a bodyweight-only setup, so there&apos;s no loaded main lift to
+          attach a number to yet. If you add a barbell or dumbbells in{" "}
           <Link href="/app/settings/equipment" style={{ color: "var(--cp-accent)" }}>
             Settings → Equipment
           </Link>{" "}
           later, this page becomes useful again.
         </p>
       ) : (
-        <p style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 14 }}>
-          Enter your 1RM for each main lift. Your active program sets the working{" "}
-          <em>training max</em>
-          <MetricHelp term="training_max" variant="why" placement="bottom" />{" "}
-          it trains at (5/3/1 and Tactical Barbell from your template, Hybrid from its
-          intensity setting). Pick whichever variant of squat, bench, deadlift, or
-          overhead press you actually train — back squat, front squat, trap-bar
-          deadlift, push press, etc. are all valid.
+        <p style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 14, lineHeight: 1.55 }}>
+          Enter your 1-rep max for each main lift — your active program turns these into
+          the working weights it trains at. Pick whichever variant of squat, bench,
+          deadlift, or overhead press you actually train; back squat, front squat,
+          trap-bar deadlift, push press, etc. are all valid.
         </p>
       )}
 
       <TmSection
-        defaultPercent={ctx.defaultPercent}
         requiredGroups={requiredGroups}
         otherRows={otherRows}
         otherRowSourceSets={otherRowSourceSets}
