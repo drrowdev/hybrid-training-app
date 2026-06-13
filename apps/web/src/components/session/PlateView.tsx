@@ -27,6 +27,10 @@ export type PlateViewProps = {
   barWeightKg: number;
   inventory: PlateInventoryItem[];
   units?: WeightUnit;
+  /** When imperial and false, build the lb plate set from the user's
+   *  actual inventory (converted to lb) instead of the standard US set.
+   *  Defaults to true (standard US set for preset users). */
+  preferStandardLbPlates?: boolean;
 };
 
 // Standard US lb plate set + Olympic bar — used when the user is imperial so
@@ -90,7 +94,7 @@ function fmtPlate(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, "");
 }
 
-export function PlateView({ targetWeightKg, barWeightKg, inventory, units = "metric" }: PlateViewProps) {
+export function PlateView({ targetWeightKg, barWeightKg, inventory, units = "metric", preferStandardLbPlates = true }: PlateViewProps) {
   const isImperial = units === "imperial";
   const unitLabel = weightUnitLabel(units);
 
@@ -100,9 +104,28 @@ export function PlateView({ targetWeightKg, barWeightKg, inventory, units = "met
     ? Math.max(0, Math.round(displayWeight(barWeightKg, units) / 5) * 5)
     : roundDisplayWeight(barWeightKg, units);
 
-  const calcPlates = isImperial
-    ? LB_PLATE_SET.map((w) => ({ weightKg: w }))
-    : inventory.map((p) => ({ weightKg: p.weightKg }));
+  let calcPlates: { weightKg: number }[];
+  if (isImperial) {
+    if (preferStandardLbPlates) {
+      calcPlates = LB_PLATE_SET.map((w) => ({ weightKg: w }));
+    } else {
+      // Build from user's real inventory (kg→lb, rounded, dedupe, desc, drop ≤0)
+      const lbSet = Array.from(
+        new Set(
+          inventory.map((p) =>
+            roundDisplayWeight(displayWeight(p.weightKg, "imperial"), "imperial"),
+          ),
+        ),
+      )
+        .filter((v) => v > 0)
+        .sort((a, b) => b - a);
+      calcPlates = lbSet.length > 0
+        ? lbSet.map((w) => ({ weightKg: w }))
+        : LB_PLATE_SET.map((w) => ({ weightKg: w }));
+    }
+  } else {
+    calcPlates = inventory.map((p) => ({ weightKg: p.weightKg }));
+  }
 
   // `computePlateBreakdown` is unit-agnostic numeric maths; we feed it values
   // already in the plate unit. The kg-only 25 kg gate is disabled for lb (its

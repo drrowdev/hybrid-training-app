@@ -75,6 +75,7 @@ export function SessionWorkArea({
   barbellKg,
   trapBarKg,
   plateInventory,
+  preferStandardLbPlates,
   bwGateStateByFamily,
   resolvedFreestyle,
   supersetByMovementId,
@@ -103,6 +104,7 @@ export function SessionWorkArea({
   barbellKg?: number;
   trapBarKg?: number;
   plateInventory?: PlateInventoryItem[];
+  preferStandardLbPlates?: boolean;
   bwGateStateByFamily?: Readonly<
     Record<
       string,
@@ -381,6 +383,7 @@ export function SessionWorkArea({
         barbellKg={barbellKg}
         trapBarKg={trapBarKg}
         plateInventory={plateInventory}
+        preferStandardLbPlates={preferStandardLbPlates}
         bwGateStateByFamily={mergedBwGateStateByFamily}
         resolvedFreestyle={resolvedFreestyle}
         supersetByMovementId={supersetByMovementId}

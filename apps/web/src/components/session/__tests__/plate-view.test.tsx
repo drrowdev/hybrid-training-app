@@ -152,4 +152,43 @@ describe("PlateView", () => {
     expect(html).toContain(">45<");
     expect(html).not.toContain(" kg");
   });
+
+  it("uses the user's REAL plates when imperial + preferStandardLbPlates=false", () => {
+    // Custom inventory: only 20 kg and 10 kg plates.
+    // 20 kg → 44 lb, 10 kg → 22 lb.
+    // 100 kg ≈ 220 lb on a 20 kg (→ 45 lb) bar: (220-45)/2 = 87.5 per side
+    // Available: 44, 22 → 44 + 22 + 22 = 88? No: greedy 44 first then 22+22=44, total 88 > 87.5
+    // Actually: 44 fits (87.5-44=43.5 left), 22 fits (43.5-22=21.5), 22 fits again? no 21.5 < 22.
+    // So per side: [44, 22], remainder = 87.5-44-22 = 21.5 lb (short)
+    const customInv = [{ weightKg: 20 }, { weightKg: 10 }];
+    const html = renderToStaticMarkup(
+      <PlateView
+        targetWeightKg={100}
+        barWeightKg={20}
+        inventory={customInv}
+        units="imperial"
+        preferStandardLbPlates={false}
+      />,
+    );
+    // Should use converted plates (44, 22) not standard (45, 35, 25, 10, 5, 2.5)
+    expect(html).toContain(">44<");
+    expect(html).toContain(">22<");
+    // Standard 45 lb plate should NOT appear
+    expect(html).not.toContain(">45<");
+  });
+
+  it("falls back to standard LB_PLATE_SET when preferStandardLbPlates=true (default)", () => {
+    const customInv = [{ weightKg: 20 }, { weightKg: 10 }];
+    const html = renderToStaticMarkup(
+      <PlateView
+        targetWeightKg={100}
+        barWeightKg={20}
+        inventory={customInv}
+        units="imperial"
+        preferStandardLbPlates={true}
+      />,
+    );
+    // Should use the standard 45 lb plate
+    expect(html).toContain(">45<");
+  });
 });
