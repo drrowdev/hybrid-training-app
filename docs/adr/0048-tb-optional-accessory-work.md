@@ -1,6 +1,6 @@
 # ADR 0048 — Tactical Barbell optional accessory work
 
-Status: Proposed (2026-06-13)
+Status: Accepted (2026-06-13) — platform layer implemented in #496
 Supersedes: none
 Related: ADR 0047 (5/3/1 assistance generation — the *contrasting* model), the
 platform pivot (5/3/1 + TB as foreign engines), the prescription adapter
@@ -149,3 +149,29 @@ not the 5/3/1 assistance resolver.** Specifically:
    items) keeps the read side uniform.
 3. **Mass template.** Reuse its existing accessory day vs unify under this system —
    needs a look at how Mass is currently materialised before deciding.
+
+## Implementation note (addendum, 2026-06-13)
+
+Refinement to Option B after reading the code: the full Hybrid
+`pickAccessoriesForSession` requires an `AccessoryProfile` + DC-O4 durability floor
++ MEV per-muscle targets + synergist credit — Hybrid science TB explicitly rejects.
+Forcing TB through it would fabricate floors TB does not prescribe. So the platform
+layer instead **reuses the shared accessory PRIMITIVES** — `loadPickerCatalog`,
+`resolveRequiredEquipment` / `isEquipmentAvailable`, `loadsBlockedRegion` /
+`loadsBlockedMuscle`, the `CatalogMovement` shape, and a seeded rotation — in a
+focused `apps/web/src/lib/platform/tb-accessories.ts` selector (the same shape as
+the 5/3/1 `assistance-resolver.ts`). This honours Option B's intent (build on the
+existing accessory machinery) without the ill-fitting profile engine.
+
+Shipped (platform layer, #496): muscle-driven selection over an allowlist (default
+biceps/triceps/side_delts/abs/calves), template gating + caps via
+`tbAccessoryPlanForTemplate` (Zulu/Zulu-IA cap 3, Operator/Fighter cap 2, others
+disabled), equipment + limitation filtering, per-session rotation, items emitted as
+`accessory` (3×12, "8–15 reps · ~50–70%, near failure" note), injected at
+`materializeProgram` on TRAINING sessions only, behind a deploy-time
+`accessories: { enabled, muscles }` param (default off → byte-identical). The TB
+engine is untouched and still emits only main work.
+
+Still to do (wizard UI): surface the opt-in toggle + muscle multiselect in the TB
+loadout step, template-gated, sending the `accessories` param. Until then the
+feature is wired but not user-reachable.

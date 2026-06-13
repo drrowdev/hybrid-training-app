@@ -30,6 +30,7 @@ import type {
 import type { Prescription, PrescriptionItem } from "@hta/db";
 import { adaptSessionPrescription, type MovementResolver, type SkippedItem } from "./adapter";
 import type { AssistancePlanner } from "./assistance-resolver";
+import type { TbAccessoryInjector } from "./tb-accessories";
 import {
   classifySessionModality,
   effectiveStressLoad,
@@ -52,6 +53,12 @@ export interface MaterializeOptions {
    * when omitted, assistance intent items are reported in `skipped`.
    */
   assistance?: AssistancePlanner;
+  /**
+   * Optional Tactical Barbell accessory injector (ADR 0048). When supplied, each
+   * TRAINING session gets a small opt-in set of aesthetic accessory items appended
+   * after the main work. Omitted ⇒ no accessories (the TB default).
+   */
+  accessories?: TbAccessoryInjector;
 }
 
 export interface MaterializedSession {
@@ -190,6 +197,14 @@ export function materializeProgram<I>(
       sessionAssistance,
     );
     const prescriptionWithRef: Prescription = { ...prescription, programRef: spec.ref };
+    // ADR 0048 — optional TB accessories: appended after the main work on training
+    // sessions only, and counted toward modality/load below.
+    if (opts.accessories && spec.kind === "training") {
+      const extra = opts.accessories(spec.ref);
+      if (extra.length > 0) {
+        prescriptionWithRef.items = [...prescriptionWithRef.items, ...extra];
+      }
+    }
     const { modality, load } = stampModality(prescriptionWithRef);
     if (skipped.length > 0) allSkipped.push(...skipped);
 
