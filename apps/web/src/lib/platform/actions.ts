@@ -31,6 +31,11 @@ import { resolveHybridTmPercent } from "@/lib/programs/hybrid/engine";
 import { buildPlatformContext } from "./context";
 import { getProgramEngine, getNativeProgramEngine, isNativeProgram } from "./registry";
 import { buildProgramInstanceWrite } from "./program-instance";
+import { buildAssistancePlanner, type AssistancePlanner } from "./assistance-resolver";
+import { loadPickerCatalog } from "@/lib/planner/picker-catalog";
+import { readLimitationsContext } from "@/lib/planner/limitations-context";
+import { resolveEquipment } from "@/lib/settings/equipment-presets";
+import type { MovementResolver } from "./adapter";
 import { discardAbandonedInProgressSessions } from "@/lib/planner/archive-prior-blocks";
 
 const WEEKDAY = z.number().int().min(0).max(6);
@@ -107,6 +112,49 @@ interface DeployArgs {
 }
 
 /**
+ * Build the 5/3/1 assistance planner (ADR 0047) for the foreign deploy path:
+ * load the global movement catalog, the user's equipment + active limitations,
+ * and exclude the user's anchored main lifts (you don't program bench as bench
+ * assistance). Returns `undefined` when the catalog can't be loaded so the deploy
+ * still succeeds (assistance intent simply stays unresolved / skipped).
+ */
+async function buildForeignAssistancePlanner(
+  supabase: SupabaseClient,
+  userId: string,
+  resolveMovement: MovementResolver,
+): Promise<AssistancePlanner | undefined> {
+  const catalog = await loadPickerCatalog(supabase);
+  if (catalog.length === 0) return undefined;
+
+  const limitations = await readLimitationsContext(supabase, userId);
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("equipment, barbell_kg, trap_bar_kg, plate_inventory_kg")
+    .eq("id", userId)
+    .maybeSingle();
+  const equipment = resolveEquipment(profile);
+
+  // Never resolve assistance to one of the program's own main lifts.
+  const excludeMovementIds = new Set<string>();
+  for (const key of ["squat", "bench", "deadlift", "press"]) {
+    const resolved = resolveMovement(key);
+    if (resolved) excludeMovementIds.add(resolved.movementId);
+  }
+
+  return buildAssistancePlanner({
+    catalog,
+    equipment,
+    filters: {
+      blockedRegions: limitations.blockedRegions,
+      blockedMuscles: limitations.blockedMuscles,
+      blockedMovementIds: limitations.blockedMovementIds,
+      allowedMovementIds: limitations.allowedMovementIds,
+    },
+    excludeMovementIds,
+  });
+}
+
+/**
  * Foreign per-session engine deploy (5/3/1, Tactical Barbell, Green Protocol).
  * Behaviour is byte-identical to the pre-refactor inline flow.
  */
@@ -137,6 +185,13 @@ async function createForeignProgramInstance(
       },
       ctx,
     );
+    // ADR 0047 — only 5/3/1 emits assistance intent, so only it needs the
+    // (catalog + equipment + limitation) resolver. TB / Green Protocol skip the
+    // extra loads and stay byte-identical.
+    const assistance =
+      programId === "wendler-531"
+        ? await buildForeignAssistancePlanner(supabase, user.id, resolveMovement)
+        : undefined;
     write = buildProgramInstanceWrite({
       engine,
       instance,
@@ -144,6 +199,7 @@ async function createForeignProgramInstance(
       resolveMovement,
       weekdays,
       startedOn,
+      ...(assistance ? { assistance } : {}),
     });
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Setup failed" };

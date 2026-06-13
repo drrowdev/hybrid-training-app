@@ -28,6 +28,16 @@ export interface ResolvedMovement {
 /** Resolve an engine movement key ("squat", "bench", …) to the user's movement. */
 export type MovementResolver = (engineKey: string) => ResolvedMovement | undefined;
 
+/**
+ * Resolve a category-tagged assistance INTENT slot (5/3/1, ADR 0047) to a
+ * concrete movement. `slotIndex` keeps the session's slots independent so they
+ * rotate to different movements. Absent ⇒ assistance intent items are skipped.
+ */
+export type AssistanceResolver = (
+  category: string,
+  slotIndex: number,
+) => ResolvedMovement | undefined;
+
 export interface SkippedItem {
   kind: PrescribedItem["kind"];
   name: string;
@@ -55,11 +65,42 @@ function composeNotes(item: PrescribedItem): string | undefined {
 export function adaptSessionPrescription(
   prescription: SessionPrescription,
   resolveMovement: MovementResolver,
+  resolveAssistance?: AssistanceResolver,
 ): AdaptResult {
   const items: PrescriptionItem[] = [];
   const skipped: SkippedItem[] = [];
+  let assistanceSlot = 0;
 
   for (const it of prescription.items) {
+    // ADR 0047 — a 5/3/1 assistance INTENT slot (category-tagged, no movementId).
+    // Resolve it to a concrete accessory when a resolver is supplied; otherwise
+    // skip it (the engine-only PR ships before the resolver is wired).
+    if (it.kind === "assistance" && it.movementId == null && it.assistanceCategory) {
+      const resolved = resolveAssistance?.(it.assistanceCategory, assistanceSlot++);
+      if (!resolved) {
+        skipped.push({
+          kind: it.kind,
+          name: it.name,
+          reason: resolveAssistance
+            ? `no assistance movement for category '${it.assistanceCategory}'`
+            : "item has no movement key",
+        });
+        continue;
+      }
+      const range =
+        it.repsMax != null && it.repsMax !== it.reps ? `${it.reps}\u2013${it.repsMax}` : undefined;
+      items.push({
+        movementId: resolved.movementId,
+        movementSlug: resolved.slug,
+        movementName: resolved.displayName,
+        kind: "accessory",
+        sets: it.sets ?? 1,
+        ...(it.reps !== undefined ? { reps: it.reps } : {}),
+        ...(range ? { notes: range } : {}),
+      });
+      continue;
+    }
+
     const appKind = STRENGTH_KIND_MAP[it.kind];
     if (!appKind) {
       // Conditioning / cardio → a display-only external cardio item. Green

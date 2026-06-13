@@ -29,6 +29,7 @@ import type {
 } from "@hta/program-core";
 import type { Prescription, PrescriptionItem } from "@hta/db";
 import { adaptSessionPrescription, type MovementResolver, type SkippedItem } from "./adapter";
+import type { AssistancePlanner } from "./assistance-resolver";
 import {
   classifySessionModality,
   effectiveStressLoad,
@@ -45,6 +46,12 @@ export interface MaterializeOptions {
    * carries an explicit `weekday`.
    */
   weekdays: number[];
+  /**
+   * Optional 5/3/1 assistance planner (ADR 0047). When supplied, each session's
+   * category-tagged assistance intent is resolved to concrete catalog movements;
+   * when omitted, assistance intent items are reported in `skipped`.
+   */
+  assistance?: AssistancePlanner;
 }
 
 export interface MaterializedSession {
@@ -176,7 +183,12 @@ export function materializeProgram<I>(
     }
 
     const engineRx = engine.prescribe(instance, spec.ref, ctx);
-    const { prescription, skipped } = adaptSessionPrescription(engineRx, resolveMovement);
+    const sessionAssistance = opts.assistance?.(spec.ref);
+    const { prescription, skipped } = adaptSessionPrescription(
+      engineRx,
+      resolveMovement,
+      sessionAssistance,
+    );
     const prescriptionWithRef: Prescription = { ...prescription, programRef: spec.ref };
     const { modality, load } = stampModality(prescriptionWithRef);
     if (skipped.length > 0) allSkipped.push(...skipped);

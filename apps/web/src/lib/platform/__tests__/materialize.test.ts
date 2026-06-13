@@ -12,6 +12,8 @@ import type { PlatformContext } from "@hta/program-core";
 import { wendler531Engine, type WendlerInstance } from "@hta/wendler";
 import { greenProtocolEngine } from "@hta/green";
 import { materializeProgram } from "../materialize";
+import { buildAssistancePlanner } from "../assistance-resolver";
+import type { CatalogMovement } from "@/lib/planner/accessory-picker";
 import type { MovementResolver } from "../adapter";
 
 const ctx: PlatformContext = {
@@ -43,10 +45,10 @@ describe("materializeProgram — 5/3/1 default block", () => {
   it("materialises one row per non-rest timeline session", () => {
     // 2 leader cycles × 3 wk × 4 lifts (24) + deload 4 + anchor 1 × 3 × 4 (12) + TM-test 4 = 44
     expect(result.sessions).toHaveLength(44);
-    // ADR 0047 PR A: each training session emits 3 assistance INTENT slots that
-    // have no movementId, so they're skipped until the platform resolver ships
-    // (PR B). The 36 training sessions (24 leader + 12 anchor) × 3 = 108 skips;
-    // the 8 deload / TM-test sessions emit none. Every skip is an assistance slot.
+    // ADR 0047: with NO assistance planner passed, each training session's 3
+    // assistance INTENT slots have no movementId, so they're skipped. The 36
+    // training sessions (24 leader + 12 anchor) × 3 = 108 skips; the 8 deload /
+    // TM-test sessions emit none. Every skip is an assistance slot.
     expect(result.skipped).toHaveLength(108);
     expect(result.skipped.every((s) => s.kind === "assistance")).toBe(true);
   });
@@ -101,6 +103,66 @@ describe("materializeProgram — 5/3/1 default block", () => {
     }
     // strength-only 5/3/1 (no archetype tag, no cardio) → pure_hypertrophy default
     expect(result.sessions[0]!.sessionModality).toBe("pure_hypertrophy");
+  });
+});
+
+describe("materializeProgram — 5/3/1 with assistance planner (ADR 0047)", () => {
+  // Small catalog: one candidate per category, plus a cardio item that must
+  // never be selected as assistance.
+  const catalog: CatalogMovement[] = [
+    { id: "dip", slug: "dip", displayName: "Dip", pattern: "press" },
+    { id: "row", slug: "row-db", displayName: "DB Row", pattern: "pull" },
+    { id: "plank", slug: "plank", displayName: "Plank", pattern: "isolation", primaryRegion: "lumbar_trunk" },
+    { id: "run", slug: "run", displayName: "Run", pattern: "cardio" },
+  ].map((m) => ({
+    primaryMuscles: [],
+    secondaryMuscles: [],
+    secondaryRegions: [],
+    primaryRegion: "",
+    bulletproofRoles: [],
+    functionalRoles: [],
+    isSupported: true,
+    isCompound: false,
+    isLoadable: false,
+    eccentricLoadScore: null,
+    stimToFatigueScore: null,
+    highStrainTendon: false,
+    experienceMin: 0,
+    experienceMax: 4,
+    equipment: "bodyweight",
+    ...m,
+  })) as CatalogMovement[];
+
+  const planner = buildAssistancePlanner({ catalog, filters: { blockedRegions: new Set() } });
+  const result = materializeProgram(wendler531Engine, setup(), ctx, resolve, {
+    weekdays,
+    assistance: planner,
+  });
+
+  it("resolves every assistance intent — no assistance is left skipped", () => {
+    expect(result.skipped).toHaveLength(0);
+  });
+
+  it("adds three resolved accessory items to each training session", () => {
+    const training = result.sessions.filter((s) => s.role === "strength");
+    expect(training.length).toBeGreaterThan(0);
+    for (const s of training) {
+      const accessories = s.prescription.items.filter((i) => i.kind === "accessory");
+      expect(accessories).toHaveLength(3);
+      expect(accessories.map((a) => a.movementId).sort()).toEqual(["dip", "plank", "row"]);
+    }
+  });
+
+  it("never resolves assistance to a cardio movement", () => {
+    const all = result.sessions.flatMap((s) => s.prescription.items);
+    expect(all.every((i) => i.movementId !== "run")).toBe(true);
+  });
+
+  it("leaves deload / TM-test sessions without assistance accessories", () => {
+    const nonTraining = result.sessions.filter((s) => s.role !== "strength");
+    for (const s of nonTraining) {
+      expect(s.prescription.items.filter((i) => i.kind === "accessory")).toHaveLength(0);
+    }
   });
 });
 

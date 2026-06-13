@@ -48,6 +48,37 @@ describe("adaptSessionPrescription — strength", () => {
     expect(main.percentTm).toBeGreaterThan(50);
   });
 
+  it("resolves 5/3/1 assistance INTENT to accessory items when a resolver is supplied (ADR 0047)", () => {
+    const inst = wendler531Engine.setup(
+      { values: { templateId: "5spro-fsl", leaderCycles: 2, anchorCycles: 1, tmPercent: 0.85 } },
+      ctx,
+    );
+    const tl = wendler531Engine.timeline(inst);
+    const sq = tl.find((s) => s.tags?.includes("lift:squat") && s.tags?.includes("phase:anchor"))!;
+    const p = wendler531Engine.prescribe(inst, sq.ref, ctx);
+
+    // Stub resolver: echo the category back as a concrete movement.
+    const resolveAssist = (category: string, slotIndex: number) => ({
+      movementId: `m-${category}-${slotIndex}`,
+      slug: `${category}-${slotIndex}`,
+      displayName: `${category} #${slotIndex}`,
+    });
+    const { prescription, skipped } = adaptSessionPrescription(p, resolve, resolveAssist);
+
+    // No assistance is skipped now; three accessory items were produced.
+    expect(skipped).toEqual([]);
+    const accessories = prescription.items.filter((i) => i.kind === "accessory");
+    expect(accessories).toHaveLength(3);
+    expect(accessories.map((a) => a.movementId)).toEqual([
+      "m-push-0",
+      "m-pull-1",
+      "m-single_leg_or_core-2",
+    ]);
+    // Standard volume → 3 sets, 10 reps, "10–15" range carried in notes.
+    expect(accessories.every((a) => a.sets === 3 && a.reps === 10)).toBe(true);
+    expect(accessories.every((a) => a.notes === "10\u201315")).toBe(true);
+  });
+
   it("flags the AMRAP top set as isAmrap", () => {
     const inst = wendler531Engine.setup(
       { values: { templateId: "5spro-fsl", leaderCycles: 2, anchorCycles: 1, tmPercent: 0.85 } },
