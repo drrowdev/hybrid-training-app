@@ -48,6 +48,15 @@ export function computePlateBreakdown(
   targetWeightKg: number,
   barWeightKg: number,
   inventory: PlateInventoryItem[],
+  opts: {
+    /**
+     * Disable the kg-specific "unlock 25 kg plates only past 80 kg/side" gate.
+     * Pass `true` when computing in a non-kg unit (e.g. an lb plate set, where
+     * the largest plate — 45 lb — is always available). Default `false` keeps
+     * the metric behaviour byte-identical.
+     */
+    disableHeavyGate?: boolean;
+  } = {},
 ): PlateBreakdown {
   if (!(targetWeightKg > 0)) {
     return { perSide: [], remainderKg: 0 };
@@ -63,8 +72,9 @@ export function computePlateBreakdown(
   // 25 kg plates only enter the sorted pool when the per-side load
   // crosses HEAVY_THRESHOLD_KG. The threshold is per-side, so a
   // 220 kg total / 100 kg per-side load brings the 25s in; a
-  // 140 kg total / 60 kg per-side load uses 20s + smaller.
-  const include25 = perSideTarget >= HEAVY_THRESHOLD_KG;
+  // 140 kg total / 60 kg per-side load uses 20s + smaller. Skipped
+  // entirely for non-kg unit sets (disableHeavyGate).
+  const include25 = opts.disableHeavyGate || perSideTarget >= HEAVY_THRESHOLD_KG;
 
   const sorted = [...inventory]
     .filter((p) => p.weightKg > 0)

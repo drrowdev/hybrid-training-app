@@ -5,11 +5,13 @@
  * inside `<MovementFocusView>`. Pure render — the maths lives in
  * `plate-math.ts` so it's directly testable.
  *
- * Each plate weight gets its real-world IWF / Rogue calibrated colour
- * (25 = red, 20 = blue, 15 = yellow, 10 = green, 5 = white) so the
- * stack reads like an actual loaded bar and the user builds an
- * associative memory ("the blue ones are 20s") across sessions. These
- * are physical-standard colours, intentionally theme-independent.
+ * Plates are computed and shown in the user's unit against a REAL plate set:
+ *   - metric → the user's kg inventory + kg bar (IWF colours: 25 red, 20 blue,
+ *     15 yellow, 10 green, 5 white).
+ *   - imperial → a standard US lb set (45/35/25/10/5/2.5 lb) on a ~45 lb bar,
+ *     so a US lifter sees the actual plates they'd load (not lb-converted kg
+ *     plates). Colours mirror the IWF weight classes.
+ * Colours are fixed real-world hues, intentionally theme-independent.
  */
 
 import { computePlateBreakdown, type PlateInventoryItem } from "./plate-math";
@@ -27,10 +29,14 @@ export type PlateViewProps = {
   units?: WeightUnit;
 };
 
-// IWF / Rogue calibrated plate colours. Fixed real-world hues (not theme
-// tokens) so a 20 always reads blue, a 15 yellow, etc. The change plates
-// (5 = white, 2.5 = red, 1.25 = chrome) follow the same IWF convention.
-const PLATE_COLORS: Array<{ max: number; bg: string; fg: string }> = [
+// Standard US lb plate set + Olympic bar — used when the user is imperial so
+// the breakdown reflects real pounds, not lb-converted kg plates.
+const LB_PLATE_SET = [45, 35, 25, 10, 5, 2.5];
+
+type PlateColor = { max: number; bg: string; fg: string };
+
+// IWF / Rogue calibrated kg plate colours.
+const PLATE_COLORS_KG: PlateColor[] = [
   { max: 25, bg: "#ce1126", fg: "#fff" },
   { max: 20, bg: "#0a5fb4", fg: "#fff" },
   { max: 15, bg: "#f4c20d", fg: "#111" },
@@ -41,51 +47,82 @@ const PLATE_COLORS: Array<{ max: number; bg: string; fg: string }> = [
   { max: 1.25, bg: "#aeb4bc", fg: "#111" },
 ];
 
-function plateStyle(weightKg: number): { bg: string; fg: string } {
-  // Pick the first colour whose anchor matches the plate weight.
-  // Anything heavier than 25 falls back to the heavy red.
-  if (weightKg >= 25) return PLATE_COLORS[0]!;
-  for (const c of PLATE_COLORS) {
-    if (Math.abs(weightKg - c.max) < 0.01) return c;
+// US lb plate colours — mirror the IWF weight-class hues (55≈25kg red,
+// 45≈20kg blue, 35≈15kg yellow, 25≈10kg green, 10≈5kg white). The small
+// change plates (5 / 2.5 lb) are iron / chrome.
+const PLATE_COLORS_LB: PlateColor[] = [
+  { max: 55, bg: "#ce1126", fg: "#fff" },
+  { max: 45, bg: "#0a5fb4", fg: "#fff" },
+  { max: 35, bg: "#f4c20d", fg: "#111" },
+  { max: 25, bg: "#1aa64b", fg: "#fff" },
+  { max: 10, bg: "#ececec", fg: "#111" },
+  { max: 5, bg: "#3a3f45", fg: "#fff" },
+  { max: 2.5, bg: "#aeb4bc", fg: "#111" },
+];
+
+function plateStyle(value: number, units: WeightUnit): { bg: string; fg: string } {
+  const palette = units === "imperial" ? PLATE_COLORS_LB : PLATE_COLORS_KG;
+  // Anything at/above the heaviest anchor falls back to the heaviest colour.
+  if (value >= palette[0]!.max) return palette[0]!;
+  for (const c of palette) {
+    if (Math.abs(value - c.max) < 0.01) return c;
   }
-  // Unknown intermediate (e.g., 0.5) — reuse the lightest wedge.
-  return PLATE_COLORS[PLATE_COLORS.length - 1]!;
+  return palette[palette.length - 1]!;
 }
 
-function plateSize(weightKg: number): { width: number; height: number } {
-  // Visual ramp: heavier plates render wider AND taller so the stack
-  // reads like a real bar from a distance. Minimum width is 16 px so
-  // even the smallest plate ("2.5", "1.25") can fit its label legibly.
-  if (weightKg >= 25) return { width: 22, height: 64 };
-  if (weightKg >= 20) return { width: 20, height: 58 };
-  if (weightKg >= 15) return { width: 18, height: 50 };
-  if (weightKg >= 10) return { width: 17, height: 42 };
-  if (weightKg >= 5) return { width: 16, height: 34 };
-  if (weightKg >= 2.5) return { width: 16, height: 26 };
+function plateSize(value: number, units: WeightUnit): { width: number; height: number } {
+  // Visual ramp: heavier plates render wider AND taller. Thresholds are scaled
+  // per unit so the lb set ramps like the kg set.
+  const t = units === "imperial"
+    ? [55, 45, 35, 25, 10, 5]
+    : [25, 20, 15, 10, 5, 2.5];
+  if (value >= t[0]!) return { width: 22, height: 64 };
+  if (value >= t[1]!) return { width: 20, height: 58 };
+  if (value >= t[2]!) return { width: 18, height: 50 };
+  if (value >= t[3]!) return { width: 17, height: 42 };
+  if (value >= t[4]!) return { width: 16, height: 34 };
+  if (value >= t[5]!) return { width: 16, height: 26 };
   return { width: 16, height: 20 };
 }
 
-function formatPlateLabel(weightKg: number, units: WeightUnit): string {
-  return `${roundDisplayWeight(displayWeight(weightKg, units), units)}`;
+function fmtPlate(value: number): string {
+  // Plate values are already exact in their unit; trim a trailing .0.
+  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, "");
 }
 
 export function PlateView({ targetWeightKg, barWeightKg, inventory, units = "metric" }: PlateViewProps) {
+  const isImperial = units === "imperial";
   const unitLabel = weightUnitLabel(units);
-  const dispBar = roundDisplayWeight(displayWeight(barWeightKg, units), units);
+
+  // Everything below is computed in the user's PLATE unit (kg or lb).
   const dispTarget = roundDisplayWeight(displayWeight(targetWeightKg, units), units);
+  const dispBar = isImperial
+    ? Math.max(0, Math.round(displayWeight(barWeightKg, units) / 5) * 5)
+    : roundDisplayWeight(barWeightKg, units);
+
+  const calcPlates = isImperial
+    ? LB_PLATE_SET.map((w) => ({ weightKg: w }))
+    : inventory.map((p) => ({ weightKg: p.weightKg }));
+
+  // `computePlateBreakdown` is unit-agnostic numeric maths; we feed it values
+  // already in the plate unit. The kg-only 25 kg gate is disabled for lb (its
+  // 45 lb top plate is always available).
   const { perSide, remainderKg } = computePlateBreakdown(
-    targetWeightKg,
-    barWeightKg,
-    inventory.map((p) => ({ weightKg: p.weightKg })),
+    isImperial ? dispTarget : targetWeightKg,
+    isImperial ? dispBar : barWeightKg,
+    calcPlates,
+    { disableHeavyGate: isImperial },
   );
-  const dispRemainder = roundDisplayWeight(displayWeight(remainderKg, units), units);
+  const dispRemainder = isImperial
+    ? Math.round(remainderKg)
+    : roundDisplayWeight(displayWeight(remainderKg, units), units);
   // perSide is ordered heaviest → lightest; render heaviest closest
   // to the bar (centre) and lighter ones outward.
   const leftStack = [...perSide].reverse();
   const rightStack = [...perSide];
 
   const empty = perSide.length === 0;
-  const perSideDisplay = perSide.map((p) => formatPlateLabel(p, units));
+  const perSideDisplay = perSide.map((p) => fmtPlate(p));
 
   return (
     <div
@@ -115,8 +152,8 @@ export function PlateView({ targetWeightKg, barWeightKg, inventory, units = "met
         }}
       >
         {leftStack.map((p, i) => {
-          const { bg, fg } = plateStyle(p);
-          const { width, height } = plateSize(p);
+          const { bg, fg } = plateStyle(p, units);
+          const { width, height } = plateSize(p, units);
           // Tiny labels (2.5, 1.25) need smaller text to fit; bigger
           // plates take a bolder readable size.
           const fontSize = p < 5 ? 8 : 10;
@@ -140,7 +177,7 @@ export function PlateView({ targetWeightKg, barWeightKg, inventory, units = "met
                 lineHeight: 1,
               }}
             >
-              {formatPlateLabel(p, units)}
+              {fmtPlate(p)}
             </span>
           );
         })}
@@ -158,8 +195,8 @@ export function PlateView({ targetWeightKg, barWeightKg, inventory, units = "met
           }}
         />
         {rightStack.map((p, i) => {
-          const { bg, fg } = plateStyle(p);
-          const { width, height } = plateSize(p);
+          const { bg, fg } = plateStyle(p, units);
+          const { width, height } = plateSize(p, units);
           const fontSize = p < 5 ? 8 : 10;
           return (
             <span
@@ -181,7 +218,7 @@ export function PlateView({ targetWeightKg, barWeightKg, inventory, units = "met
                 lineHeight: 1,
               }}
             >
-              {formatPlateLabel(p, units)}
+              {fmtPlate(p)}
             </span>
           );
         })}
