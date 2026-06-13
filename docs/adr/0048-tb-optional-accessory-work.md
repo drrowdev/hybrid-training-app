@@ -175,3 +175,12 @@ engine is untouched and still emits only main work.
 Still to do (wizard UI): surface the opt-in toggle + muscle multiselect in the TB
 loadout step, template-gated, sending the `accessories` param. Until then the
 feature is wired but not user-reachable.
+
+Update (#497): the wizard UI shipped — the TB loadout step (`ProgramPicker`) now
+shows an "Add accessory work (optional)" toggle (only for accessory-eligible
+templates via `tbAccessoryPlanForTemplate`) + a muscle-emphasis multiselect, and
+sends `accessories: { enabled, muscles }` to `createProgramInstance`. The pure
+config (muscle allowlist, labels, template gating) lives in
+`tb-accessories-config.ts` so the client bundle doesn't pull the server selector.
+Live-verified: a TB Operator deploy with accessories on materialises 2 accessory
+items (Operator cap) at 3×12.
