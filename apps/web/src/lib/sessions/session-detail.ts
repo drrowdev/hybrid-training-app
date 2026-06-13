@@ -186,14 +186,19 @@ function computePhase(
   weekIndex: number | null,
   deloadSkipped: boolean,
   earlyDeload: boolean,
+  role: string | null,
 ): string {
-  if (weekIndex == null || archetype == null) return OFF_PLAN_PHASE;
-  const deloadIdx = safeSync(
-    () => deloadWeekIndexFor(archetype, weeksTotal ?? 0),
-    null as number | null,
-  );
+  if (weekIndex == null) return OFF_PLAN_PHASE;
+  // Archetype config gives the deload week for native blocks; foreign programs
+  // (archetype NULL) have no config, so we rely on the materialised role below.
+  const deloadIdx =
+    archetype != null
+      ? safeSync(() => deloadWeekIndexFor(archetype, weeksTotal ?? 0), null as number | null)
+      : null;
 
-  let isDeload = deloadIdx != null && weekIndex === deloadIdx;
+  // Producer-agnostic: a session materialised with role="deload" IS a deload week
+  // (5/3/1 7th week, TB deload, …), regardless of archetype.
+  let isDeload = role === "deload" || (deloadIdx != null && weekIndex === deloadIdx);
   if (deloadSkipped) isDeload = false; // a deload week converted to loading
   if (earlyDeload) isDeload = true; // a loading week converted to deload
 
@@ -692,6 +697,7 @@ export async function loadSessionDetail(
         weekIndex,
         prescription?.deloadSkipped ?? false,
         prescription?.earlyDeload ?? false,
+        planned?.role ?? null,
       )
     : OFF_PLAN_PHASE;
 
