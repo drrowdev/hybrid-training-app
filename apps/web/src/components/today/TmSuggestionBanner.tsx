@@ -10,6 +10,12 @@
  */
 import { useState, useTransition } from "react";
 import type { TmFormula } from "@hta/db";
+import {
+  type WeightUnit,
+  displayWeight,
+  roundDisplayWeight,
+  weightUnitLabel,
+} from "@/lib/stats/units";
 
 export type TmSuggestionView = {
   id: string;
@@ -21,11 +27,6 @@ export type TmSuggestionView = {
   setReps: number | null;
   sessionPerformedAt: string | null;
 };
-
-function fmtKg(n: number | null): string {
-  if (n == null) return "—";
-  return Number.isInteger(n) ? n.toString() : n.toFixed(1).replace(/\.0$/, "");
-}
 
 function relativeFromNow(iso: string | null): string {
   if (!iso) return "recently";
@@ -45,11 +46,16 @@ export function TmSuggestionBanner({
   suggestions,
   acceptAction,
   dismissAction,
+  units = "metric",
 }: {
   suggestions: TmSuggestionView[];
   acceptAction: (fd: FormData) => Promise<unknown>;
   dismissAction: (fd: FormData) => Promise<unknown>;
+  units?: WeightUnit;
 }) {
+  const fmtW = (n: number | null): string =>
+    n == null ? "—" : `${roundDisplayWeight(displayWeight(n, units), units)}`;
+  const unitLabel = weightUnitLabel(units);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
@@ -96,7 +102,7 @@ export function TmSuggestionBanner({
         const isBusy = pendingId === s.id;
         const setText =
           s.setWeightKg != null && s.setReps != null
-            ? `${fmtKg(s.setWeightKg)} kg × ${s.setReps}`
+            ? `${fmtW(s.setWeightKg)} ${unitLabel} × ${s.setReps}`
             : "your AMRAP";
         const when = relativeFromNow(s.sessionPerformedAt);
         return (
@@ -114,13 +120,13 @@ export function TmSuggestionBanner({
             <div style={{ fontSize: 13, color: "var(--cp-text)", lineHeight: 1.4 }}>
               <strong>{s.movementName}</strong>{" "}
               <span className="mono" style={{ fontWeight: 600 }}>
-                {fmtKg(s.suggestedTmKg)} kg
+                {fmtW(s.suggestedTmKg)} {unitLabel}
               </span>
               {s.currentTmKg != null && (
                 <span style={{ color: "var(--cp-text-muted)" }}>
                   {" "}
                   (from{" "}
-                  <span className="mono">{fmtKg(s.currentTmKg)} kg</span>)
+                  <span className="mono">{fmtW(s.currentTmKg)} {unitLabel}</span>)
                 </span>
               )}
               <span style={{ color: "var(--cp-text-muted)" }}>

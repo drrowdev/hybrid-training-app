@@ -50,3 +50,41 @@ export function epleyOneRm(weight: number, reps: number): number {
   return weight * (1 + reps / 30);
 }
 
+/**
+ * Format a kg value for display in the user's unit, e.g. `87.5 kg` / `193 lb`.
+ * Pass `withUnit: false` for just the number (when the caller renders its own
+ * unit label). Used across the session logger so weights read consistently.
+ */
+export function formatWeight(
+  kg: number,
+  units: WeightUnit,
+  opts: { withUnit?: boolean } = {},
+): string {
+  const n = roundDisplayWeight(displayWeight(kg, units), units);
+  return opts.withUnit === false ? `${n}` : `${n} ${weightUnitLabel(units)}`;
+}
+
+/** The weight-stepper increment in the DISPLAY unit: 2.5 kg / 5 lb. */
+export function weightStepDisplay(units: WeightUnit): number {
+  return units === "imperial" ? 5 : 2.5;
+}
+
+/**
+ * Step a kg weight up/down by `deltaSteps` display-unit increments and return the
+ * new kg value. Works in the display unit so the user sees clean 2.5 kg / 5 lb
+ * jumps, then snaps back to kg for storage. `floorAtZero` clamps to ≥ 0.
+ */
+export function stepWeightKg(
+  kg: number,
+  units: WeightUnit,
+  deltaSteps: number,
+  opts: { floorAtZero?: boolean } = {},
+): number {
+  const stepD = weightStepDisplay(units);
+  const currentD = roundDisplayWeight(displayWeight(kg, units), units);
+  let nextD = currentD + deltaSteps * stepD;
+  if (opts.floorAtZero !== false) nextD = Math.max(0, nextD);
+  return toKg(nextD, units);
+}
+
+

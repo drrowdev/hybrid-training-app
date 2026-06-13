@@ -8,8 +8,14 @@
 import Link from "next/link";
 import type { TmRow } from "@/lib/training-maxes/queries";
 import { TmSourceBadge } from "@/components/training-maxes/TmSourceBadge";
+import {
+  type WeightUnit,
+  displayWeight,
+  roundDisplayWeight,
+  weightUnitLabel,
+} from "@/lib/stats/units";
 
-export function TrainingMaxesCard({ rows }: { rows: TmRow[] }) {
+export function TrainingMaxesCard({ rows, units = "metric" }: { rows: TmRow[]; units?: WeightUnit }) {
   const sorted = [...rows].sort((a, b) =>
     a.movementName.localeCompare(b.movementName),
   );
@@ -91,7 +97,7 @@ export function TrainingMaxesCard({ rows }: { rows: TmRow[] }) {
                   fontVariantNumeric: "tabular-nums",
                 }}
               >
-                {formatKg(r.tmKg)}&nbsp;kg
+                {roundDisplayWeight(displayWeight(r.tmKg, units), units)}&nbsp;{weightUnitLabel(units)}
               </span>
             </div>
           ))}
@@ -99,9 +105,4 @@ export function TrainingMaxesCard({ rows }: { rows: TmRow[] }) {
       )}
     </section>
   );
-}
-
-function formatKg(n: number): string {
-  // Trim trailing zeros so 100 → "100", 102.5 → "102.5".
-  return Number.isInteger(n) ? n.toString() : n.toFixed(1).replace(/\.0$/, "");
 }

@@ -33,6 +33,8 @@ import { MetricHelp } from "@/components/ui/MetricHelp";
 import type { PlateInventoryItem } from "./plate-math";
 import type { LastSetHint } from "./SessionLogClient";
 import { formatHintDate } from "@/lib/sessions/format-hint-date";
+import { useUnits } from "@/lib/units/context";
+import { type WeightUnit, formatWeight } from "@/lib/stats/units";
 import type { fillSessionFromPlan } from "@/lib/sessions/actions";
 
 export type MovementCardProps = {
@@ -121,6 +123,7 @@ export function MovementCard({
   bwGateStateByFamily,
   bodyweightCapable,
 }: MovementCardProps) {
+  const units = useUnits();
   const cardState = deriveCardState(group, loggedItemIndices);
   const complete = isMovementComplete(group, loggedItemIndices);
 
@@ -359,7 +362,7 @@ export function MovementCard({
                 border: "1px solid var(--cp-border)",
               }}
             >
-              {oneRmKg != null && Math.abs(tmKg - oneRmKg) < 0.001 ? "1RM" : "TM"} {tmKg} kg
+              {oneRmKg != null && Math.abs(tmKg - oneRmKg) < 0.001 ? "1RM" : "TM"} {formatWeight(tmKg, units)}
             </span>
           </span>
         )}
@@ -550,6 +553,7 @@ export function ReadOnlySetList({
   group: MovementGroup;
   loggedSets: FocusLoggedSet[];
 }) {
+  const units = useUnits();
   if (loggedSets.length === 0) {
     return (
       <div
@@ -590,7 +594,7 @@ export function ReadOnlySetList({
               textDecoration: s.skipped ? "line-through" : "none",
             }}
           >
-            {s.skipped ? `Skipped${s.skipReason ? ` (${s.skipReason})` : ""}` : formatReadOnlySet(s)}
+            {s.skipped ? `Skipped${s.skipReason ? ` (${s.skipReason})` : ""}` : formatReadOnlySet(s, units)}
           </span>
           {!s.skipped && s.rpe != null && (
             <span className="mono" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
@@ -605,18 +609,18 @@ export function ReadOnlySetList({
 
 /** One-line value for a logged set: weight × reps, a loaded carry's
  * distance, or a timed effort's duration. */
-function formatReadOnlySet(s: FocusLoggedSet): string {
+function formatReadOnlySet(s: FocusLoggedSet, units: WeightUnit): string {
   if (s.distanceM != null && s.distanceM > 0) {
-    const load = s.weightKg != null && s.weightKg > 0 ? ` @ ${s.weightKg} kg` : "";
+    const load = s.weightKg != null && s.weightKg > 0 ? ` @ ${formatWeight(s.weightKg, units)}` : "";
     return `${s.distanceM} m${load}`;
   }
   if ((s.reps == null || s.reps <= 0) && s.durationSec != null && s.durationSec > 0) {
     const mins = Math.floor(s.durationSec / 60);
     const secs = s.durationSec % 60;
     const t = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-    return s.weightKg != null && s.weightKg > 0 ? `${t} @ ${s.weightKg} kg` : t;
+    return s.weightKg != null && s.weightKg > 0 ? `${t} @ ${formatWeight(s.weightKg, units)}` : t;
   }
-  const w = s.weightKg != null && s.weightKg > 0 ? `${s.weightKg} kg` : "BW";
+  const w = s.weightKg != null && s.weightKg > 0 ? formatWeight(s.weightKg, units) : "BW";
   const reps = s.reps ?? 0;
   return `${w} × ${reps}`;
 }
@@ -637,6 +641,7 @@ export function LastSetHintRow({
   hint?: LastSetHint | null;
   label: string;
 }) {
+  const units = useUnits();
   if (!hint) return null;
   return (
     <div
@@ -645,7 +650,7 @@ export function LastSetHintRow({
     >
       Last {label.toLowerCase()}:{" "}
       <span style={{ color: "var(--cp-text)", fontWeight: 500 }} className="mono">
-        {hint.weightKg} kg × {hint.reps}
+        {formatWeight(hint.weightKg, units)} × {hint.reps}
       </span>
       <span style={{ marginLeft: 6, color: "var(--cp-text-muted)" }}>
         ({formatHintDate(hint.performedAt)})

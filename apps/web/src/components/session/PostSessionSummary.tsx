@@ -19,6 +19,8 @@ import type { SessionSummary } from "@/lib/sessions/queries";
 import { updateSessionNotes } from "@/lib/sessions/actions";
 import type { ProgressionKind } from "@/lib/progression/suggest-next";
 import type { DiagnosticResult } from "@/lib/planner/bw-diagnostics";
+import { useUnits } from "@/lib/units/context";
+import { displayWeight, weightUnitLabel } from "@/lib/stats/units";
 
 /**
  * Phase 2 D2 — "Next time" suggestion shown for each main lift in the
@@ -62,6 +64,7 @@ export function PostSessionSummary({
    */
   bwDiagnostics?: DiagnosticResult[];
 }) {
+  const units = useUnits();
   const [showNote, setShowNote] = useState(false);
   const [savedNote, setSavedNote] = useState<string | null>(initialNotes);
   const [error, setError] = useState<string | null>(null);
@@ -126,7 +129,7 @@ export function PostSessionSummary({
       >
         <SummaryStat
           label="Tonnage"
-          value={summary.totalTonnageKg > 0 ? `${formatKg(summary.totalTonnageKg)} kg` : "—"}
+          value={summary.totalTonnageKg > 0 ? `${formatKg(displayWeight(summary.totalTonnageKg, units))} ${weightUnitLabel(units)}` : "—"}
           testId="summary-tonnage"
         />
         <SummaryStat

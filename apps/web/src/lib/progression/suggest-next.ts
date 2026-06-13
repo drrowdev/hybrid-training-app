@@ -17,6 +17,8 @@
  * accessory volume is the lever; absolute load is secondary).
  */
 
+import { type WeightUnit, formatWeight } from "@/lib/stats/units";
+
 export type ProgressionKind = "increase" | "hold" | "retry" | "reset";
 
 export type ProgressionSuggestion = {
@@ -56,6 +58,8 @@ export type SuggestNextInput = {
    * lifts use rep-progression: same weight, +1 rep target rather than +2.5 kg.
    */
   isMainLift: boolean;
+  /** Display unit for the rationale string. Defaults to metric (kg). */
+  units?: WeightUnit;
 };
 
 /**
@@ -84,6 +88,7 @@ const RESET_MARGIN_REPS = 3;
  */
 export function suggestNextWeight(input: SuggestNextInput): ProgressionSuggestion {
   const plate = input.plateIncrement ?? 2.5;
+  const units = input.units ?? "metric";
   const { weightKg, reps } = input.lastSet;
   const target = Math.max(1, input.targetReps);
   const diff = reps - target;
@@ -95,14 +100,14 @@ export function suggestNextWeight(input: SuggestNextInput): ProgressionSuggestio
         kind: "retry",
         nextWeightKg: weightKg,
         nextReps: target,
-        rationale: `${weightKg} kg × ${target} again — close it out before adding reps.`,
+        rationale: `${formatWeight(weightKg, units)} × ${target} again — close it out before adding reps.`,
       };
     }
     return {
       kind: "hold",
       nextWeightKg: weightKg,
       nextReps: reps + 1,
-      rationale: `Stay at ${weightKg} kg — try for ${reps + 1} reps next time.`,
+      rationale: `Stay at ${formatWeight(weightKg, units)} — try for ${reps + 1} reps next time.`,
     };
   }
 
@@ -115,7 +120,7 @@ export function suggestNextWeight(input: SuggestNextInput): ProgressionSuggestio
       kind: "reset",
       nextWeightKg: next,
       nextReps: target,
-      rationale: `Drop to ${formatKg(next)} kg × ${target} to reset and rebuild.`,
+      rationale: `Drop to ${formatWeight(next, units)} × ${target} to reset and rebuild.`,
     };
   }
   if (diff < 0) {
@@ -123,7 +128,7 @@ export function suggestNextWeight(input: SuggestNextInput): ProgressionSuggestio
       kind: "retry",
       nextWeightKg: weightKg,
       nextReps: target,
-      rationale: `Stay at ${formatKg(weightKg)} kg × ${target} — try again next session.`,
+      rationale: `Stay at ${formatWeight(weightKg, units)} × ${target} — try again next session.`,
     };
   }
 
@@ -135,7 +140,7 @@ export function suggestNextWeight(input: SuggestNextInput): ProgressionSuggestio
       kind: "increase",
       nextWeightKg: next,
       nextReps: target,
-      rationale: `Try ${formatKg(next)} kg × ${target} next time.`,
+      rationale: `Try ${formatWeight(next, units)} × ${target} next time.`,
     };
   }
   // Hit the reps but e1RM still under TM — keep the weight, chase one more rep.
@@ -143,11 +148,6 @@ export function suggestNextWeight(input: SuggestNextInput): ProgressionSuggestio
     kind: "hold",
     nextWeightKg: weightKg,
     nextReps: reps + 1,
-    rationale: `Stay at ${formatKg(weightKg)} kg — go for ${reps + 1} reps next time.`,
+    rationale: `Stay at ${formatWeight(weightKg, units)} — go for ${reps + 1} reps next time.`,
   };
-}
-
-function formatKg(n: number): string {
-  if (Math.abs(n - Math.round(n)) < 0.05) return String(Math.round(n));
-  return n.toFixed(1);
 }

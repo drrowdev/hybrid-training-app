@@ -29,6 +29,17 @@ import { bestEstimateOneRm } from "@/lib/engine/one-rm";
 import { detectTmAnchoredPr } from "@/lib/engine/tm-anchored-pr";
 import { restSecondsForKind } from "@/lib/sessions/rest";
 import { hapticTick } from "@/lib/feedback";
+import { useUnits } from "@/lib/units/context";
+import {
+  type WeightUnit,
+  displayWeight,
+  roundDisplayWeight,
+  toKg,
+  weightUnitLabel,
+  weightStepDisplay,
+  stepWeightKg,
+  formatWeight,
+} from "@/lib/stats/units";
 import { RestTimer } from "./RestTimer";
 import {
   SET_KINDS,
@@ -112,6 +123,8 @@ export function FreestyleMovementCard({
   // now anchored to the saved 1RM (see lib/engine/tm-anchored-pr.ts).
   // The prop is retained for back-compat with the parent prop chain.
   void priorBest;
+  const units = useUnits();
+  const unitLabel = weightUnitLabel(units);
   const [collapsed, setCollapsed] = useState(readOnly);
   const last = loggedSets[loggedSets.length - 1];
   const [weight, setWeight] = useState<number>(
@@ -489,13 +502,13 @@ export function FreestyleMovementCard({
           >
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <FreestyleStepper
-                label="Weight (kg)"
-                value={weight}
-                step={2.5}
+                label={`Weight (${unitLabel})`}
+                value={roundDisplayWeight(displayWeight(weight, units), units)}
+                step={weightStepDisplay(units)}
                 integer={false}
-                onMinus={() => setWeight((v) => Math.max(0, Math.round((v - 2.5) * 10) / 10))}
-                onPlus={() => setWeight((v) => Math.round((v + 2.5) * 10) / 10)}
-                onSet={setWeight}
+                onMinus={() => setWeight((v) => stepWeightKg(v, units, -1))}
+                onPlus={() => setWeight((v) => stepWeightKg(v, units, 1))}
+                onSet={(displayVal) => setWeight(toKg(displayVal, units))}
               />
               <FreestyleStepper
                 label="Reps"
@@ -509,7 +522,7 @@ export function FreestyleMovementCard({
             </div>
             {tmKg != null && weight > 0 && (
               <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-                {Math.round((weight / tmKg) * 100)}% of TM ({tmKg} kg)
+                {Math.round((weight / tmKg) * 100)}% of TM ({formatWeight(tmKg, units)})
               </div>
             )}
             {prFlash && (
@@ -531,7 +544,7 @@ export function FreestyleMovementCard({
                       color: "var(--cp-text-muted)",
                     }}
                   >
-                    e1RM {Math.round(prFlash.e1rmKg * 10) / 10} kg
+                    e1RM {formatWeight(prFlash.e1rmKg, units)}
                   </span>
                 )}
               </div>
@@ -546,7 +559,7 @@ export function FreestyleMovementCard({
               className="cp-btn primary big"
               disabled={submitting}
             >
-              {submitting ? "Logging…" : `Log set · ${weight} kg × ${reps}`}
+              {submitting ? "Logging…" : `Log set · ${formatWeight(weight, units)} × ${reps}`}
             </button>
           </form>
 
@@ -588,6 +601,7 @@ function FreestyleReadOnlySets({
   movementId: string;
   loggedSets: LoggedSet[];
 }) {
+  const units = useUnits();
   if (loggedSets.length === 0) {
     return (
       <div
@@ -633,7 +647,7 @@ function FreestyleReadOnlySets({
             >
               {skipped
                 ? `Skipped${s.skip_reason ? ` (${s.skip_reason})` : ""}`
-                : formatFreestyleSet(s)}
+                : formatFreestyleSet(s, units)}
             </span>
             {!skipped && rpe != null && Number.isFinite(rpe) && (
               <span className="mono" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
@@ -647,19 +661,19 @@ function FreestyleReadOnlySets({
   );
 }
 
-function formatFreestyleSet(s: LoggedSet): string {
+function formatFreestyleSet(s: LoggedSet, units: WeightUnit): string {
   const weight = s.weight_kg == null ? null : Number(s.weight_kg);
   const hasWeight = weight != null && Number.isFinite(weight) && weight > 0;
   if (s.distance_m != null && s.distance_m > 0) {
-    return `${s.distance_m} m${hasWeight ? ` @ ${weight} kg` : ""}`;
+    return `${s.distance_m} m${hasWeight ? ` @ ${formatWeight(weight, units)}` : ""}`;
   }
   if ((s.reps == null || s.reps <= 0) && s.duration_sec != null && s.duration_sec > 0) {
     const mins = Math.floor(s.duration_sec / 60);
     const secs = s.duration_sec % 60;
     const t = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-    return hasWeight ? `${t} @ ${weight} kg` : t;
+    return hasWeight ? `${t} @ ${formatWeight(weight, units)}` : t;
   }
-  const w = hasWeight ? `${weight} kg` : "BW";
+  const w = hasWeight ? formatWeight(weight, units) : "BW";
   return `${w} × ${s.reps ?? 0}`;
 }
 
