@@ -272,9 +272,22 @@ describe("requirementFromEquipmentTag — DB equipment column mapping", () => {
     expect(requirementFromEquipmentTag("bodyweight")).toBeNull();
   });
 
-  it("returns null for non-machine implements (slug heuristic handles those)", () => {
-    expect(requirementFromEquipmentTag("barbell")).toBeNull();
-    expect(requirementFromEquipmentTag("dumbbells")).toBeNull();
+  it("maps free-weight & specialty-bar tags to a hard requirement (DB tag is authoritative)", () => {
+    expect(requirementFromEquipmentTag("barbell")).toEqual({ kind: "barbell" });
+    expect(requirementFromEquipmentTag("barbell-bench")).toEqual({ kind: "barbell" });
+    expect(requirementFromEquipmentTag("dumbbells")).toEqual({ kind: "dumbbells" });
+    expect(requirementFromEquipmentTag("dumbbells-incline-bench")).toEqual({ kind: "dumbbells" });
+    expect(requirementFromEquipmentTag("kettlebell")).toEqual({ kind: "kettlebells" });
+    expect(requirementFromEquipmentTag("trap-bar")).toEqual({ kind: "trap_bar" });
+    expect(requirementFromEquipmentTag("preacher-ez")).toEqual({ kind: "barbell" });
+    expect(requirementFromEquipmentTag("band-anchor")).toEqual({ kind: "bands" });
+    // either/or with no bodyweight option → require the first-listed implement
+    expect(requirementFromEquipmentTag("dumbbell-or-kb")).toEqual({ kind: "dumbbells" });
+  });
+
+  it("returns null for untracked implements and missing tags", () => {
+    expect(requirementFromEquipmentTag("plate")).toBeNull();
+    expect(requirementFromEquipmentTag("gripper")).toBeNull();
     expect(requirementFromEquipmentTag("erg")).toBeNull();
     expect(requirementFromEquipmentTag(null)).toBeNull();
     expect(requirementFromEquipmentTag(undefined)).toBeNull();
@@ -290,7 +303,17 @@ describe("resolveRequiredEquipment — DB tag precedence over slug", () => {
     ).toEqual({ kind: "machine_generic" });
   });
 
-  it("falls back to slug inference when the DB tag is absent or non-machine", () => {
+  it("uses the DB equipment tag when the slug hides the implement (leak fix)", () => {
+    // `hammer-curl` names no implement, so the slug heuristic returned
+    // bodyweight_or_generic and offered it to bodyweight-only users. The
+    // `dumbbells` tag now pins it correctly.
+    expect(resolveRequiredEquipment({ slug: "hammer-curl" })).toEqual({ kind: "bodyweight_or_generic" });
+    expect(
+      resolveRequiredEquipment({ slug: "hammer-curl", equipment: "dumbbells" }),
+    ).toEqual({ kind: "dumbbells" });
+  });
+
+  it("falls back to slug inference when the DB tag is absent", () => {
     expect(resolveRequiredEquipment({ slug: "lateral-raise-db" })).toEqual({ kind: "dumbbells" });
     expect(
       resolveRequiredEquipment({ slug: "lateral-raise-db", equipment: "dumbbells" }),

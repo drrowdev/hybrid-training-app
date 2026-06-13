@@ -197,9 +197,14 @@ export function inferRequiredEquipment(movement: {
  *   - any tag offering a non-machine alternative (`*-or-bw`,
  *     `*-or-bodyweight`, `bodyweight-or-*`) — those movements have a
  *     free/bodyweight option and must stay broadly available,
- *   - any non-machine, non-cable implement (barbell / dumbbell / band /
- *     bodyweight / cardio gear …), which the slug heuristic already
- *     handles well.
+ *   - any implement we don't track against the user's inventory
+ *     (plate / gripper / erg / sled …).
+ *
+ * Machine, cable AND free-weight implements (barbell / dumbbell / kettlebell /
+ * specialty bars / bands / vest / sandbag / dip-belt) all map to a hard
+ * requirement here: the DB tag is authoritative, so a movement whose slug hides
+ * its implement (e.g. `hammer-curl` tagged `dumbbells`) is no longer wrongly
+ * offered to a user who lacks the kit.
  */
 export function requirementFromEquipmentTag(
   tag: string | null | undefined,
@@ -239,6 +244,24 @@ export function requirementFromEquipmentTag(
   if (t === "machine" || t.startsWith("machine-") || t.includes("-machine")) {
     return { kind: "machine_generic" };
   }
+
+  // Free-weight & specialty-bar implements. The DB `equipment` tag is the
+  // authoritative source of what a movement needs — even when the slug doesn't
+  // name the implement (e.g. `hammer-curl` tagged `dumbbells`, which the slug
+  // heuristic would otherwise pass through as bodyweight and wrongly offer to a
+  // bodyweight-only user). For an either/or tag with no bodyweight option (e.g.
+  // `dumbbell-or-kb`) we require the first-listed implement.
+  const base = t.includes("-or-") ? (t.split("-or-")[0] ?? t) : t;
+  if (base.includes("trap-bar") || base.includes("hex-bar")) return { kind: "trap_bar" };
+  if (base.includes("safety-squat") || base.includes("ssb")) return { kind: "safety_squat_bar" };
+  if (base.includes("kettlebell")) return { kind: "kettlebells" };
+  if (base.includes("dumbbell")) return { kind: "dumbbells" };
+  if (base.includes("-ez") || base.includes("ez-") || base === "ez") return { kind: "barbell" };
+  if (base.includes("barbell")) return { kind: "barbell" };
+  if (base.includes("band")) return { kind: "bands" };
+  if (base.includes("weighted-vest") || base.includes("vest")) return { kind: "weighted_vest" };
+  if (base.includes("sandbag")) return { kind: "sandbag" };
+  if (base.includes("dip-belt")) return { kind: "dip_belt" };
 
   return null;
 }
