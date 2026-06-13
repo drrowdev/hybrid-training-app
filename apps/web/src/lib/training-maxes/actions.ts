@@ -74,6 +74,74 @@ export async function deleteTrainingMax(formData: FormData): Promise<void> {
   revalidatePath("/app/settings/training-maxes");
 }
 
+const moveSchema = z.object({
+  fromMovementId: z.string().uuid(),
+  toMovementId: z.string().uuid(),
+});
+
+/**
+ * Switch which VARIANT a role's 1RM is attached to (e.g. Back Squat → Front
+ * Squat) when the user changes the variant dropdown on the 1-rep-maxes page.
+ *
+ * Moves the stored 1RM (and the program-seeded tm_percent, for continuity) onto
+ * the new movement and removes the old row, so a role keeps exactly one 1RM. If
+ * the target variant already had a 1RM, it's overwritten — switching the
+ * dropdown is an explicit "this is my squat now" action.
+ */
+export async function moveTrainingMaxVariant(formData: FormData): Promise<UpsertResult> {
+  const parsed = moveSchema.safeParse({
+    fromMovementId: formData.get("fromMovementId"),
+    toMovementId: formData.get("toMovementId"),
+  });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  if (parsed.data.fromMovementId === parsed.data.toMovementId) return { ok: true };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) redirect("/login");
+
+  const { data: source, error: readErr } = await supabase
+    .from("training_maxes")
+    .select("one_rm_kg, tm_percent")
+    .eq("user_id", user.id)
+    .eq("movement_id", parsed.data.fromMovementId)
+    .maybeSingle();
+  if (readErr) return { ok: false, error: readErr.message };
+  if (!source) return { ok: false, error: "No 1RM to move." };
+
+  const { error: upsertErr } = await supabase.from("training_maxes").upsert(
+    {
+      user_id: user.id,
+      movement_id: parsed.data.toMovementId,
+      one_rm_kg: source.one_rm_kg,
+      tm_percent: source.tm_percent ?? null,
+      source: "entered",
+      derived_from_session_id: null,
+      derived_from_set_log_id: null,
+      derived_formula: null,
+      derived_at: null,
+    },
+    { onConflict: "user_id,movement_id" },
+  );
+  if (upsertErr) return { ok: false, error: upsertErr.message };
+
+  const { error: delErr } = await supabase
+    .from("training_maxes")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("movement_id", parsed.data.fromMovementId);
+  if (delErr) return { ok: false, error: delErr.message };
+
+  revalidatePath("/app/settings/training-maxes");
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
+  return { ok: true };
+}
+
 /**
  * Lock a derived TM as an entered 1RM. Clears the provenance columns so the
  * row reads as the user's deliberate value going forward. Does not change

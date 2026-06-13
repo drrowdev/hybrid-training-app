@@ -33,16 +33,16 @@ export function TrainingProgressionCards({
     <>
       {showTrainingMaxes && (
         <section className="space-y-3" data-testid="settings-training-maxes-card">
-          <h2 className="text-lg font-medium">Training maxes</h2>
+          <h2 className="text-lg font-medium">1-rep maxes</h2>
           <p className="text-xs text-foreground/60">
-            Reference numbers for percentage-based prescription. Set one per main lift —
-            the Log shows &quot;% of TM&quot; next to the weight.
+            Your 1RM per main lift. Your active program turns these into the working
+            weights it prescribes.
           </p>
           <Link
             href="/app/settings/training-maxes"
             className="inline-flex items-center justify-between gap-3 rounded-lg border border-foreground/10 p-4 w-full hover:bg-foreground/5"
           >
-            <span className="text-sm">Manage training maxes</span>
+            <span className="text-sm">Manage 1-rep maxes</span>
             <span className="text-xs text-foreground/60">→</span>
           </Link>
         </section>

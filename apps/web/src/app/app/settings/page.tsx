@@ -125,8 +125,8 @@ export default async function SettingsPage() {
         <SettingsHubCard
           href="/app/settings/training-maxes"
           icon={<SettingsIcon name="training-maxes" />}
-          title="Training maxes"
-          description="Per-lift TMs the planner uses."
+          title="1-rep maxes"
+          description="Your 1RM per main lift."
           badge={`${trainingMaxesSet} lift${trainingMaxesSet === 1 ? "" : "s"} set`}
           testId="settings-hub-training-maxes"
         />
