@@ -2,6 +2,7 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   upsertTrainingMax,
   deleteTrainingMax,
+  moveTrainingMaxVariant,
   lockTrainingMaxAsEntered,
 } from "@/lib/training-maxes/actions";
 import { getTmSourceSet, getTrainingMaxContext, type TmSourceSet } from "@/lib/training-maxes/queries";
@@ -151,6 +152,7 @@ export default async function TrainingMaxesPage() {
         pickerGroups={pickerGroups}
         hasActiveBlock={!!archetype}
         upsertAction={upsertTrainingMax}
+        moveAction={moveTrainingMaxVariant}
         deleteAction={deleteTrainingMax}
         lockAction={lockTrainingMaxAsEntered}
       />
