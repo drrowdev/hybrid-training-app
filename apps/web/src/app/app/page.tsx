@@ -107,7 +107,7 @@ export default async function TodayPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "display_name, timezone, am_window_start, pm_window_start, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, time_format, date_format, bw_nudge_hidden_until, bw_banner_dismissed_at, byoai_provider, byoai_key_vault_id, byoai_unlocked_at",
+      "display_name, timezone, am_window_start, pm_window_start, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, time_format, date_format, bw_nudge_hidden_until, bw_banner_dismissed_at, byoai_provider, byoai_key_vault_id, byoai_unlocked_at, units",
     )
     .eq("id", userId)
     .maybeSingle();
@@ -731,6 +731,7 @@ export default async function TodayPage() {
               suggestions={pendingSuggestions}
               acceptAction={acceptTmSuggestion}
               dismissAction={dismissTmSuggestion}
+              units={profile?.units === "imperial" ? "imperial" : "metric"}
             />
 
             <ActiveLimitationsCard

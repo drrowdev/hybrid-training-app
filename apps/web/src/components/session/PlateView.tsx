@@ -13,11 +13,18 @@
  */
 
 import { computePlateBreakdown, type PlateInventoryItem } from "./plate-math";
+import {
+  type WeightUnit,
+  displayWeight,
+  roundDisplayWeight,
+  weightUnitLabel,
+} from "@/lib/stats/units";
 
 export type PlateViewProps = {
   targetWeightKg: number;
   barWeightKg: number;
   inventory: PlateInventoryItem[];
+  units?: WeightUnit;
 };
 
 // IWF / Rogue calibrated plate colours. Fixed real-world hues (not theme
@@ -58,23 +65,27 @@ function plateSize(weightKg: number): { width: number; height: number } {
   return { width: 16, height: 20 };
 }
 
-function formatPlateLabel(weightKg: number): string {
-  // Strip a trailing .0 so 20 renders as "20", but keep 2.5 / 1.25.
-  return weightKg % 1 === 0 ? String(weightKg) : String(weightKg);
+function formatPlateLabel(weightKg: number, units: WeightUnit): string {
+  return `${roundDisplayWeight(displayWeight(weightKg, units), units)}`;
 }
 
-export function PlateView({ targetWeightKg, barWeightKg, inventory }: PlateViewProps) {
+export function PlateView({ targetWeightKg, barWeightKg, inventory, units = "metric" }: PlateViewProps) {
+  const unitLabel = weightUnitLabel(units);
+  const dispBar = roundDisplayWeight(displayWeight(barWeightKg, units), units);
+  const dispTarget = roundDisplayWeight(displayWeight(targetWeightKg, units), units);
   const { perSide, remainderKg } = computePlateBreakdown(
     targetWeightKg,
     barWeightKg,
     inventory.map((p) => ({ weightKg: p.weightKg })),
   );
+  const dispRemainder = roundDisplayWeight(displayWeight(remainderKg, units), units);
   // perSide is ordered heaviest → lightest; render heaviest closest
   // to the bar (centre) and lighter ones outward.
   const leftStack = [...perSide].reverse();
   const rightStack = [...perSide];
 
   const empty = perSide.length === 0;
+  const perSideDisplay = perSide.map((p) => formatPlateLabel(p, units));
 
   return (
     <div
@@ -83,9 +94,9 @@ export function PlateView({ targetWeightKg, barWeightKg, inventory }: PlateViewP
       aria-label={
         empty
           ? remainderKg > 0
-            ? `Plate breakdown — target ${targetWeightKg} kg is below bar weight ${barWeightKg} kg`
-            : `Plate breakdown — bar only, ${barWeightKg} kg`
-          : `Plate breakdown — per side ${perSide.join(", ")} kg`
+            ? `Plate breakdown — target ${dispTarget} ${unitLabel} is below bar weight ${dispBar} ${unitLabel}`
+            : `Plate breakdown — bar only, ${dispBar} ${unitLabel}`
+          : `Plate breakdown — per side ${perSideDisplay.join(", ")} ${unitLabel}`
       }
       style={{
         display: "grid",
@@ -129,7 +140,7 @@ export function PlateView({ targetWeightKg, barWeightKg, inventory }: PlateViewP
                 lineHeight: 1,
               }}
             >
-              {formatPlateLabel(p)}
+              {formatPlateLabel(p, units)}
             </span>
           );
         })}
@@ -170,7 +181,7 @@ export function PlateView({ targetWeightKg, barWeightKg, inventory }: PlateViewP
                 lineHeight: 1,
               }}
             >
-              {formatPlateLabel(p)}
+              {formatPlateLabel(p, units)}
             </span>
           );
         })}
@@ -186,19 +197,19 @@ export function PlateView({ targetWeightKg, barWeightKg, inventory }: PlateViewP
       >
         {empty ? (
           remainderKg > 0 ? (
-            <>target below bar ({barWeightKg} kg)</>
+            <>target below bar ({dispBar} {unitLabel})</>
           ) : (
-            <>bar only · {barWeightKg} kg</>
+            <>bar only · {dispBar} {unitLabel}</>
           )
         ) : (
           <>
-            per side: {perSide.join(" + ")} kg
+            per side: {perSideDisplay.join(" + ")} {unitLabel}
             {remainderKg > 0 && (
               <span
                 data-testid="plate-view-remainder"
                 style={{ marginLeft: 6, color: "var(--cp-warning)" }}
               >
-                · short {remainderKg} kg
+                · short {dispRemainder} {unitLabel}
               </span>
             )}
           </>

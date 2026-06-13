@@ -7,6 +7,7 @@
  */
 
 import type { TmRow } from "@/lib/training-maxes/queries";
+import type { WeightUnit } from "@/lib/stats/units";
 import { WeekDotsCard, type WeekDayCell } from "./WeekDotsCard";
 import { TrainingMaxesCard } from "./TrainingMaxesCard";
 import { GoalsCard } from "./GoalsCard";
@@ -15,15 +16,17 @@ export function DataRail({
   weekDays,
   doneCount,
   tmRows,
+  units = "metric",
 }: {
   weekDays: WeekDayCell[];
   doneCount: number;
   tmRows: TmRow[];
+  units?: WeightUnit;
 }) {
   return (
     <aside style={{ display: "grid", gap: 16, alignContent: "start" }}>
       <WeekDotsCard days={weekDays} doneCount={doneCount} />
-      <TrainingMaxesCard rows={tmRows} />
+      <TrainingMaxesCard rows={tmRows} units={units} />
       <GoalsCard />
     </aside>
   );

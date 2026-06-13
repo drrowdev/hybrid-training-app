@@ -582,7 +582,7 @@ export default async function TrainingProfilePage() {
                 {pendingTmCount} new TM suggested — review on Today →
               </Link>
             )}
-            <TrainingMaxesCard rows={tmRows} />
+            <TrainingMaxesCard rows={tmRows} units={units} />
             <Link
               href="/app/settings"
               data-testid="profile-tm-manage-link"

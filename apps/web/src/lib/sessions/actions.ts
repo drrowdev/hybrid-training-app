@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
+import { type WeightUnit, toKg } from "@/lib/stats/units";
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
 import { recomputeActualSessionLoad } from "@/lib/engine/recompute-actual-session-load";
 import { maybeCompleteBlock } from "@/lib/planner/completion";
@@ -687,13 +688,19 @@ export async function editSet(formData: FormData): Promise<void> {
     throw new Error("Log at least reps, a hold duration, or a distance.");
   }
 
+  // The weight field is entered in the user's display unit; convert to kg for
+  // storage. `units` is a hidden field on the edit form (defaults metric).
+  const editUnits: WeightUnit = formData.get("units") === "imperial" ? "imperial" : "metric";
+  const weightKgStored =
+    parsed.data.weightKg == null ? null : toKg(parsed.data.weightKg, editUnits);
+
   const sessionId = String(formData.get("sessionId") ?? "");
   const supabase = await createClient();
   const { error } = await supabase
     .from("set_logs")
     .update({
       set_kind: parsed.data.setKind,
-      weight_kg: parsed.data.weightKg ?? null,
+      weight_kg: weightKgStored,
       reps: parsed.data.reps ?? null,
       duration_sec: parsed.data.durationSec ?? null,
       distance_m: parsed.data.distanceM ?? null,

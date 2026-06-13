@@ -35,6 +35,7 @@ import {
 import { FinishSessionBar } from "@/components/session/FinishSessionBar";
 import { SessionWakeLock } from "@/components/session/SessionWakeLock";
 import { PostSessionSummary } from "@/components/session/PostSessionSummary";
+import { UnitsProvider } from "@/lib/units/context";
 import { StravaAutofillBanner, type StravaAutofillMatch } from "@/components/session/StravaAutofillBanner";
 import { MODALITY_LABEL } from "@/lib/planner/session-modality";
 import { findMatchingStravaActivity } from "@/lib/integrations/strava/match";
@@ -148,6 +149,8 @@ export default async function SessionDetailPage({
 
   const hapticsEnabled = feedbackPrefs?.haptics_enabled ?? true;
   const timerSoundEnabled = feedbackPrefs?.timer_sound_enabled ?? true;
+  const userUnits: "metric" | "imperial" =
+    feedbackPrefs?.units === "imperial" ? "imperial" : "metric";
   // Resolve via the same canonical helper the settings page uses, so
   // a profile written through the new editor and a legacy profile
   // both surface a fully-typed Equipment blob here.
@@ -481,6 +484,7 @@ export default async function SessionDetailPage({
         trainingMaxKg: tm,
         plateIncrement: 2.5,
         isMainLift: true,
+        units: userUnits,
       });
       hints.push({
         movementId,
@@ -657,8 +661,6 @@ export default async function SessionDetailPage({
   const isHybridSession = hasCardio && hasStrengthPrescription;
   const showCardioLogForm =
     hasCardio && !isComplete && !hasLoggedCardioRow;
-  const userUnits: "metric" | "imperial" =
-    feedbackPrefs?.units === "imperial" ? "imperial" : "metric";
 
   // Fix 4 — surface the planned cardio implementing modality (Run /
   // Bike / Row / Ski erg / …) next to the movement title in the
@@ -727,6 +729,7 @@ export default async function SessionDetailPage({
   });
 
   return (
+    <UnitsProvider units={userUnits}>
     <div style={{ display: "grid", gap: 18 }}>
       <header>
         {/* Single crumb row — e.g. "29 MAY · ENDURANCE · WK 1". Replaces
@@ -1503,5 +1506,6 @@ export default async function SessionDetailPage({
         </section>
       )}
     </div>
+    </UnitsProvider>
   );
 }

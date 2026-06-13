@@ -23,6 +23,17 @@ import { detectTmAnchoredPr } from "@/lib/engine/tm-anchored-pr";
 import { restSecondsForKind } from "@/lib/sessions/rest";
 import { resolveBarKind } from "@/lib/sessions/bar-kind";
 import { hapticTick } from "@/lib/feedback";
+import { useUnits } from "@/lib/units/context";
+import {
+  type WeightUnit,
+  displayWeight,
+  roundDisplayWeight,
+  toKg,
+  weightUnitLabel,
+  weightStepDisplay,
+  stepWeightKg,
+  formatWeight,
+} from "@/lib/stats/units";
 import { RestTimer } from "./RestTimer";
 import { RpeZonePicker } from "./RpeZonePicker";
 import { SkipSetMenu } from "./SkipSetMenu";
@@ -142,6 +153,8 @@ export function MovementFocusView({
   bwGateStateByFamily,
   bodyweightCapable = false,
 }: FocusViewProps) {
+  const units = useUnits();
+  const unitLabel = weightUnitLabel(units);
   // priorBest is no longer consumed for PR detection — the flash is now
   // anchored to the saved 1RM (see lib/engine/tm-anchored-pr.ts). The
   // prop is preserved on the public type to keep the parent prop chain
@@ -612,7 +625,7 @@ export function MovementFocusView({
             data-testid="bw-prescription-headline"
             style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1 }}
           >
-            {renderBwHeadline(activeItem)}
+            {renderBwHeadline(activeItem, units)}
           </div>
         ) : bodyweightCapable ? (
           <div
@@ -622,9 +635,9 @@ export function MovementFocusView({
           >
             {weight > 0 ? (
               <>
-                +{weight}
+                +{roundDisplayWeight(displayWeight(weight, units), units)}
                 <span style={{ fontSize: 15, color: "var(--cp-text-muted)", marginLeft: 6 }}>
-                  kg
+                  {unitLabel}
                 </span>
               </>
             ) : (
@@ -636,9 +649,9 @@ export function MovementFocusView({
             className="mono"
             style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.05 }}
           >
-            {weight > 0 ? `${weight}` : "—"}
+            {weight > 0 ? `${roundDisplayWeight(displayWeight(weight, units), units)}` : "—"}
             <span style={{ fontSize: 15, color: "var(--cp-text-muted)", marginLeft: 6 }}>
-              kg
+              {unitLabel}
             </span>
           </div>
         )}
@@ -657,6 +670,7 @@ export function MovementFocusView({
             bw={activeItem.bw}
             value={externalLoadKg}
             onChange={setExternalLoadKg}
+            units={units}
           />
         )}
         {!isBwItem && (
@@ -745,7 +759,7 @@ export function MovementFocusView({
                   color: "var(--cp-text-muted)",
                 }}
               >
-                e1RM {Math.round(prFlash.e1rmKg * 10) / 10} kg
+                e1RM {formatWeight(prFlash.e1rmKg, units)}
               </span>
             )}
           </div>
@@ -795,6 +809,7 @@ export function MovementFocusView({
             targetWeightKg={weight}
             barWeightKg={barWeightKg}
             inventory={inv}
+            units={units}
           />
         );
       })()}
@@ -813,13 +828,13 @@ export function MovementFocusView({
         >
           {!isBwItem && (
             <Stepper
-              label={bodyweightCapable ? "Added weight (kg)" : "Weight (kg)"}
-              value={weight}
-              step={2.5}
+              label={bodyweightCapable ? `Added weight (${unitLabel})` : `Weight (${unitLabel})`}
+              value={roundDisplayWeight(displayWeight(weight, units), units)}
+              step={weightStepDisplay(units)}
               integer={false}
-              onMinus={() => setWeight((v) => Math.max(0, Math.round((v - 2.5) * 10) / 10))}
-              onPlus={() => setWeight((v) => Math.round((v + 2.5) * 10) / 10)}
-              onSet={setWeight}
+              onMinus={() => setWeight((v) => stepWeightKg(v, units, -1))}
+              onPlus={() => setWeight((v) => stepWeightKg(v, units, 1))}
+              onSet={(displayVal) => setWeight(toKg(displayVal, units))}
             />
           )}
           {itemKind === "carry" ? (
@@ -900,14 +915,14 @@ export function MovementFocusView({
                   {" · "}
                   <span className="mono">
                     {itemKind === "carry"
-                      ? `${weight} kg × ${distanceM} m`
+                      ? `${formatWeight(weight, units)} × ${distanceM} m`
                       : itemKind === "isometric"
                         ? isBwHold
                           ? `${durationSec} s`
-                          : `${weight} kg × ${durationSec} s`
+                          : `${formatWeight(weight, units)} × ${durationSec} s`
                         : itemKind === "bw_reps"
                           ? `× ${reps}`
-                          : `${weight} kg × ${reps}`}
+                          : `${formatWeight(weight, units)} × ${reps}`}
                   </span>
                 </>
               )}
@@ -962,7 +977,7 @@ export function MovementFocusView({
             {" · "}
             <span className="mono">
               {nextWeight != null
-                ? `${nextWeight} kg × ${nextItem.reps ?? targetReps}`
+                ? `${formatWeight(nextWeight, units)} × ${nextItem.reps ?? targetReps}`
                 : renderTargetLine(nextItem, nextItem.reps ?? targetReps, false)}
             </span>
           </div>
@@ -992,11 +1007,11 @@ function badgeStyle(color: string): React.CSSProperties {
  * Source: bodyweight progression plan Phase 3 — main-lift focus card
  * copy contract. Plain English, no methodology names (DC-Q6).
  */
-function renderBwHeadline(item: PrescriptionItem): string {
+function renderBwHeadline(item: PrescriptionItem, units: WeightUnit): string {
   const bw = item.bw;
   if (!bw) return "";
   const rir = `RIR ${bw.targetRir}`;
-  const loadSuffix = renderBwLoadSuffix(bw);
+  const loadSuffix = renderBwLoadSuffix(bw, units);
   if (bw.prescriptionType === "isometric_hold" && bw.holdSeconds != null) {
     return `${bw.sets} sets × ${bw.holdSeconds}s hold · ${rir}${loadSuffix}`;
   }
@@ -1015,13 +1030,13 @@ function renderBwHeadline(item: PrescriptionItem): string {
  * readiness state — zero externalLoadKg with a defined loadSource —
  * is surfaced via the soft info chip below the headline, not here).
  */
-function renderBwLoadSuffix(bw: NonNullable<PrescriptionItem["bw"]>): string {
+function renderBwLoadSuffix(bw: NonNullable<PrescriptionItem["bw"]>, units: WeightUnit): string {
   if (bw.externalLoadKg == null || bw.externalLoadKg === 0) return "";
   const label = loadSourceLabel(bw.loadSource);
   if (bw.externalLoadKg < 0) {
-    return ` · −${Math.abs(bw.externalLoadKg)} kg ${label}`;
+    return ` · −${formatWeight(Math.abs(bw.externalLoadKg), units)} ${label}`;
   }
-  return ` · +${bw.externalLoadKg} kg ${label}`;
+  return ` · +${formatWeight(bw.externalLoadKg, units)} ${label}`;
 }
 
 function loadSourceLabel(src: NonNullable<PrescriptionItem["bw"]>["loadSource"]): string {
@@ -1160,10 +1175,12 @@ function BwLoadControl({
   bw,
   value,
   onChange,
+  units,
 }: {
   bw: NonNullable<PrescriptionItem["bw"]>;
   value: number;
   onChange: (next: number) => void;
+  units: WeightUnit;
 }) {
   const source = bw.loadSource;
   if (!source) return null;
@@ -1197,13 +1214,13 @@ function BwLoadControl({
           lineHeight: 1.2,
         }}
       >
-        Ready for external load — try +2.5 kg next session
+        Ready for external load — try +{weightStepDisplay(units)} {weightUnitLabel(units)} next session
       </div>
     );
   }
   const display = isAssist
-    ? `−${Math.abs(value)} kg ${label}`
-    : `+${value} kg ${label}`;
+    ? `−${formatWeight(Math.abs(value), units)} ${label}`
+    : `+${formatWeight(value, units)} ${label}`;
   return (
     <div
       data-testid="bw-load-control"
@@ -1219,7 +1236,7 @@ function BwLoadControl({
         type="button"
         aria-label="decrease external load"
         data-testid="bw-load-down"
-        onClick={() => onChange(roundHalfPlate(value - 2.5))}
+        onClick={() => onChange(stepWeightKg(value, units, -1, { floorAtZero: false }))}
         style={loadStepperBtn}
       >
         −
@@ -1243,17 +1260,13 @@ function BwLoadControl({
         type="button"
         aria-label="increase external load"
         data-testid="bw-load-up"
-        onClick={() => onChange(roundHalfPlate(value + 2.5))}
+        onClick={() => onChange(stepWeightKg(value, units, 1, { floorAtZero: false }))}
         style={loadStepperBtn}
       >
         +
       </button>
     </div>
   );
-}
-
-function roundHalfPlate(kg: number): number {
-  return Math.round(kg / 2.5) * 2.5;
 }
 
 const loadStepperBtn: React.CSSProperties = {

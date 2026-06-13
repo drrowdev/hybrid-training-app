@@ -3,6 +3,11 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { editSet } from "@/lib/sessions/actions";
 import { SET_KIND_LABELS } from "@/lib/sessions/set-kind-labels";
 import { PageHeader } from "@/components/ui/PageHeader";
+import {
+  displayWeight,
+  roundDisplayWeight,
+  weightUnitLabel,
+} from "@/lib/stats/units";
 
 const SET_KINDS = ["warmup", "main", "back_off", "accessory", "tendon"] as const;
 
@@ -31,6 +36,19 @@ export default async function EditSetPage({
   if (!set) notFound();
   const movement = Array.isArray(set.movement) ? set.movement[0] : set.movement;
 
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("units")
+    .eq("id", user.id)
+    .maybeSingle();
+  const units: "metric" | "imperial" =
+    profile?.units === "imperial" ? "imperial" : "metric";
+  const unitLabel = weightUnitLabel(units);
+  const weightDisplay =
+    set.weight_kg != null
+      ? roundDisplayWeight(displayWeight(Number(set.weight_kg), units), units)
+      : null;
+
   return (
     <main className="min-h-screen px-6 py-8 max-w-md mx-auto space-y-6">
       <PageHeader
@@ -49,6 +67,7 @@ export default async function EditSetPage({
       <form action={editSet} className="space-y-4 rounded-lg border border-foreground/10 p-4">
         <input type="hidden" name="id" value={set.id} />
         <input type="hidden" name="sessionId" value={id} />
+        <input type="hidden" name="units" value={units} />
 
         <div className="space-y-1">
           <label className="text-xs text-foreground/60" htmlFor="setKind">Set kind</label>
@@ -60,7 +79,7 @@ export default async function EditSetPage({
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field name="weightKg" label="Weight (kg)" type="number" step="0.5" inputMode="decimal" defaultValue={set.weight_kg} />
+          <Field name="weightKg" label={`Weight (${unitLabel})`} type="number" step={units === "imperial" ? "1" : "0.5"} inputMode="decimal" defaultValue={weightDisplay ?? undefined} />
           <Field name="reps" label="Reps" type="number" inputMode="numeric" defaultValue={set.reps} />
           <Field name="rpe" label="RPE" type="number" step="0.5" min="0" max="10" inputMode="decimal" defaultValue={set.rpe} />
           <Field name="durationSec" label="Hold (s)" type="number" inputMode="numeric" defaultValue={set.duration_sec} />
