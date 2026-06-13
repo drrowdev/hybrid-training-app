@@ -4,6 +4,8 @@
 import { describe, it, expect } from "vitest";
 import {
   deloadWeekIndexFor,
+  deloadWeekIndexFromRoles,
+  resolveDeloadWeekIndex,
   isDeloadSkipEligible,
   DELOAD_SKIP_RECOVERED_WEEKS,
 } from "../deload-skip";
@@ -27,6 +29,69 @@ describe("deloadWeekIndexFor", () => {
 
   it("returns null for an unknown non-custom archetype", () => {
     expect(deloadWeekIndexFor("nonsense", 7)).toBeNull();
+  });
+});
+
+describe("deloadWeekIndexFromRoles (ADR 0046 Phase 3)", () => {
+  it("returns the earliest week with a deload-role session", () => {
+    expect(
+      deloadWeekIndexFromRoles([
+        { weekIndex: 0, role: "primary" },
+        { weekIndex: 6, role: "deload" },
+        { weekIndex: 6, role: "deload" },
+      ]),
+    ).toBe(6);
+  });
+
+  it("returns the MIN deload week when several exist (e.g. 5/3/1 7th weeks)", () => {
+    expect(
+      deloadWeekIndexFromRoles([
+        { weekIndex: 3, role: "deload" },
+        { weekIndex: 7, role: "deload" },
+      ]),
+    ).toBe(3);
+  });
+
+  it("returns null when no session is a deload", () => {
+    expect(deloadWeekIndexFromRoles([{ weekIndex: 0, role: "primary" }, { weekIndex: 1, role: null }])).toBeNull();
+    expect(deloadWeekIndexFromRoles([])).toBeNull();
+  });
+});
+
+describe("resolveDeloadWeekIndex (role-derived with archetype fallback)", () => {
+  it("prefers the materialised plan's deload week (foreign programs, archetype NULL)", () => {
+    expect(
+      resolveDeloadWeekIndex({
+        archetype: null,
+        weeks: 8,
+        sessions: [{ weekIndex: 3, role: "deload" }],
+      }),
+    ).toBe(3);
+  });
+
+  it("matches the archetype config for a Hybrid block (role-derived == config)", () => {
+    // strength_anchor's deload is week 6; a Hybrid block tags week 6 role=deload.
+    expect(
+      resolveDeloadWeekIndex({
+        archetype: "strength_anchor",
+        weeks: 7,
+        sessions: [{ weekIndex: 6, role: "deload" }],
+      }),
+    ).toBe(6);
+  });
+
+  it("falls back to the archetype config when no session carries a deload role (legacy)", () => {
+    expect(
+      resolveDeloadWeekIndex({
+        archetype: "strength_anchor",
+        weeks: 7,
+        sessions: [{ weekIndex: 0, role: "primary" }],
+      }),
+    ).toBe(6);
+    // custom fallback → last week
+    expect(resolveDeloadWeekIndex({ archetype: "custom", weeks: 5, sessions: [] })).toBe(4);
+    // foreign with no deload session and no archetype → null
+    expect(resolveDeloadWeekIndex({ archetype: null, weeks: 6, sessions: [] })).toBeNull();
   });
 });
 
