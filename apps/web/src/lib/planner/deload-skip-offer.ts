@@ -21,7 +21,7 @@ import { getWeeklyRecoveryRollup } from "@/lib/engine/recovered-weeks";
 import { getUserTimezone } from "@/lib/planner/queries";
 import {
   DELOAD_SKIP_RECOVERED_WEEKS,
-  deloadWeekIndexFor,
+  resolveDeloadWeekIndex,
   isDeloadSkipEligible,
 } from "@/lib/planner/deload-skip";
 import type { Prescription } from "@hta/db";
@@ -47,7 +47,21 @@ export async function getDeloadSkipOffer(): Promise<DeloadSkipOffer | null> {
 
   const archetype = block.archetype as string;
   const weeks = block.weeks as number;
-  const deloadWeekIndex = deloadWeekIndexFor(archetype, weeks);
+  // Resolve the deload week from the materialised plan (role="deload"), falling
+  // back to the archetype config for legacy blocks (ADR 0046 Phase 3). This makes
+  // the skip offer work for foreign programs (5/3/1 7th week, TB deload, …) whose
+  // archetype is NULL; byte-identical for native (Hybrid tags the same week).
+  const { data: deloadWeekRows } = await supabase
+    .from("planned_sessions")
+    .select("week_index")
+    .eq("user_id", user.id)
+    .eq("block_id", block.id)
+    .eq("role", "deload");
+  const deloadSessions = ((deloadWeekRows ?? []) as Array<{ week_index: number }>).map((r) => ({
+    weekIndex: r.week_index,
+    role: "deload" as const,
+  }));
+  const deloadWeekIndex = resolveDeloadWeekIndex({ archetype, weeks, sessions: deloadSessions });
   if (deloadWeekIndex == null) return null; // maintenance / no-deload block
 
   const startedOn = new Date(block.started_on + "T00:00:00");
