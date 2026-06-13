@@ -1,6 +1,6 @@
 # ADR 0047 — 5/3/1 assistance generation (Push / Pull / Single-leg-or-Core)
 
-Status: Proposed (2026-06-13)
+Status: Accepted (2026-06-13) — implemented in #490 (engine intent) + #491 (platform resolver)
 Supersedes: none
 Related: the platform pivot (5/3/1 + TB as foreign engines), the prescription
 adapter (`apps/web/src/lib/platform/adapter.ts`, `movement-keys.ts` —
