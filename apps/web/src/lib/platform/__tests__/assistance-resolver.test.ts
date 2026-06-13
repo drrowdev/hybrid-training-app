@@ -44,6 +44,19 @@ describe("classifyAssistanceCandidate", () => {
     ).toBe("pull");
   });
 
+  it("does not slot a grip-only (forearms) isolation as pull", () => {
+    // Captains of Crush etc. give no back/biceps stimulus → unclassified, not pull.
+    expect(
+      classifyAssistanceCandidate(mv({ id: "1", slug: "gripper", pattern: "isolation", primaryMuscles: ["forearms"] })),
+    ).toBeNull();
+    // a hammer curl is still pull via its biceps primary
+    expect(
+      classifyAssistanceCandidate(
+        mv({ id: "2", slug: "hammer-curl", pattern: "isolation", primaryMuscles: ["biceps", "forearms"] }),
+      ),
+    ).toBe("pull");
+  });
+
   it("classifies pull pattern and pull-tagged movements as pull", () => {
     expect(classifyAssistanceCandidate(mv({ id: "1", slug: "row", pattern: "pull" }))).toBe("pull");
     expect(
