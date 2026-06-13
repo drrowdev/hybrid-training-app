@@ -48,6 +48,32 @@ describe("computePlateBreakdown", () => {
     expect(out.perSide.includes(25)).toBe(false);
   });
 
+  it("disableHeavyGate unlocks the heaviest plate regardless of per-side load", () => {
+    // With the gate off, a light load can still use 25 kg plates — the flag is
+    // for non-kg sets (e.g. lb) where the top plate is always available.
+    const out = computePlateBreakdown(110, 20, FULL_INVENTORY, { disableHeavyGate: true });
+    // (110-20)/2 = 45 per side → 25 + 20 (greedy, 25s now allowed).
+    expect(out.perSide[0]).toBe(25);
+    expect(out.remainderKg).toBe(0);
+  });
+
+  it("computes a real US lb plate breakdown (185 lb on a 45 lb bar → 45+25 per side)", () => {
+    // Standard US set on a 45 lb bar: (185-45)/2 = 70 per side → 45 + 25.
+    const LB_SET = [45, 35, 25, 10, 5, 2.5].map((w) => ({ weightKg: w }));
+    const out = computePlateBreakdown(185, 45, LB_SET, { disableHeavyGate: true });
+    expect(out.perSide).toEqual([45, 25]);
+    expect(out.remainderKg).toBe(0);
+  });
+
+  it("reports a real-pounds remainder when the lb target isn't loadable (193 lb)", () => {
+    // 193 lb (≈87.5 kg converted) on a 45 lb bar: 74 per side → 45+25+2.5 = 72.5,
+    // 1.5 lb short per side → 3 lb total. The US lifter just rounds to 185/195.
+    const LB_SET = [45, 35, 25, 10, 5, 2.5].map((w) => ({ weightKg: w }));
+    const out = computePlateBreakdown(193, 45, LB_SET, { disableHeavyGate: true });
+    expect(out.perSide).toEqual([45, 25, 2.5]);
+    expect(out.remainderKg).toBeCloseTo(3, 5);
+  });
+
   it("returns an empty stack when the target is below the bar weight", () => {
     const out = computePlateBreakdown(15, 20, FULL_INVENTORY);
     expect(out.perSide).toEqual([]);
@@ -108,5 +134,22 @@ describe("PlateView", () => {
     );
     expect(html).toContain("bar only");
     expect(html).not.toContain('data-testid="plate-left-0"');
+  });
+
+  it("renders a REAL US lb plate breakdown for imperial users (not lb-converted kg)", () => {
+    // 100 kg ≈ 220 lb on a 20 kg bar (→ 45 lb bar): (220-45)/2 = 87.5 →
+    // 45 + 35 + 5 + 2.5 = 87.5 per side. Real US plates, not "44 / 33".
+    const html = renderToStaticMarkup(
+      <PlateView
+        targetWeightKg={100}
+        barWeightKg={20}
+        inventory={FULL_INVENTORY}
+        units="imperial"
+      />,
+    );
+    expect(html).toContain("per side: 45 + 35 + 5 + 2.5 lb");
+    // Real lb plate labels appear; the metric per-side "kg" suffix does not.
+    expect(html).toContain(">45<");
+    expect(html).not.toContain(" kg");
   });
 });
