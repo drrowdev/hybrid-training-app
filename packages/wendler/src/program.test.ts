@@ -143,6 +143,41 @@ describe("5/3/1 engine — prescribe", () => {
   });
 });
 
+describe("5/3/1 engine — assistance intent (ADR 0047)", () => {
+  function findRef(inst: WendlerInstance, ...tags: string[]) {
+    const tl = wendler531Engine.timeline(inst);
+    return tl.find((s) => tags.every((t) => s.tags?.includes(t)))!.ref;
+  }
+
+  it("a standard (FSL) training session emits 3 assistance slots — push, pull, single-leg-or-core — at 3 sets each", () => {
+    const inst = setup();
+    const ref = findRef(inst, "lift:squat", "week:1", "phase:leader");
+    const assist = itemsOfKind(wendler531Engine.prescribe(inst, ref, ctx), "assistance");
+    expect(assist).toHaveLength(3);
+    expect(assist.map((a) => a.assistanceCategory)).toEqual(["push", "pull", "single_leg_or_core"]);
+    expect(assist.every((a) => a.sets === 3 && a.reps === 10 && a.repsMax === 15)).toBe(true);
+    // intent only — the engine never resolves a concrete movement
+    expect(assist.every((a) => a.movementId === undefined)).toBe(true);
+  });
+
+  it("a BBB (volume-heavy) leader session drops assistance to light — 2 sets per slot", () => {
+    const inst = setup({ templateId: "bbb-leader" });
+    const ref = findRef(inst, "lift:squat", "week:1", "phase:leader");
+    const assist = itemsOfKind(wendler531Engine.prescribe(inst, ref, ctx), "assistance");
+    expect(assist).toHaveLength(3);
+    expect(assist.every((a) => a.sets === 2)).toBe(true);
+  });
+
+  it("a 7th-week (deload / TM-test) session emits NO assistance", () => {
+    const inst = setup();
+    const tl = wendler531Engine.timeline(inst);
+    const deloadRef = tl.find((s) => s.kind === "deload" && s.tags?.includes("lift:squat"))!.ref;
+    expect(itemsOfKind(wendler531Engine.prescribe(inst, deloadRef, ctx), "assistance")).toHaveLength(0);
+    const testRef = tl.find((s) => s.kind === "test" && s.tags?.includes("lift:squat"))!.ref;
+    expect(itemsOfKind(wendler531Engine.prescribe(inst, testRef, ctx), "assistance")).toHaveLength(0);
+  });
+});
+
 describe("5/3/1 engine — onSessionLogged (program-owned recommendations)", () => {
   const inst = setup();
   const tl = wendler531Engine.timeline(inst);
@@ -233,7 +268,7 @@ describe("5/3/1 engine — variable training frequency", () => {
     // default order Press, Deadlift, Bench, Squat → day 1 = Press + Deadlift.
     const day1 = tl.find((s) => s.tags?.includes("phase:leader") && s.tags?.includes("week:1"))!;
     const p = wendler531Engine.prescribe(inst, day1.ref, ctx);
-    const movements = new Set(p.items.map((i) => i.movementId));
+    const movements = new Set(p.items.filter((i) => i.kind !== "assistance").map((i) => i.movementId));
     expect(movements).toEqual(new Set(["press", "deadlift"]));
     expect(p.items.filter((i) => i.movementId === "press" && i.kind === "main").length).toBeGreaterThan(0);
     expect(p.items.filter((i) => i.movementId === "deadlift" && i.kind === "main").length).toBeGreaterThan(0);
@@ -261,6 +296,6 @@ describe("5/3/1 engine — variable training frequency", () => {
     const inst = setup(); // 4-day
     const legacy = wendler531Engine.prescribe(inst, "s0-c1-w1-squat", ctx);
     expect(legacy.items.length).toBeGreaterThan(0);
-    expect(new Set(legacy.items.map((i) => i.movementId))).toEqual(new Set(["squat"]));
+    expect(new Set(legacy.items.filter((i) => i.kind !== "assistance").map((i) => i.movementId))).toEqual(new Set(["squat"]));
   });
 });
