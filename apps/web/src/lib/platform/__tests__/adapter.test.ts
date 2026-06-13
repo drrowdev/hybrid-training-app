@@ -31,8 +31,12 @@ describe("adaptSessionPrescription — strength", () => {
     const { prescription, skipped } = adaptSessionPrescription(p, resolve);
 
     expect(prescription.items.length).toBeGreaterThan(0);
-    expect(skipped).toEqual([]);
-    // Every item resolved to the user's squat movement + a valid app kind.
+    // ADR 0047 PR A: assistance INTENT items carry no movementId, so the adapter
+    // skips them gracefully (the platform resolver lands in a later PR). The only
+    // skipped items are the three assistance category slots.
+    expect(skipped).toHaveLength(3);
+    expect(skipped.every((s) => s.kind === "assistance" && s.reason === "item has no movement key")).toBe(true);
+    // Every emitted item resolved to the user's squat movement + a valid app kind.
     for (const it of prescription.items) {
       expect(it.movementId).toBe("m-squat");
       expect(it.movementSlug).toBe("back-squat-high-bar");

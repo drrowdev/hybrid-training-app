@@ -43,7 +43,12 @@ describe("materializeProgram — 5/3/1 default block", () => {
   it("materialises one row per non-rest timeline session", () => {
     // 2 leader cycles × 3 wk × 4 lifts (24) + deload 4 + anchor 1 × 3 × 4 (12) + TM-test 4 = 44
     expect(result.sessions).toHaveLength(44);
-    expect(result.skipped).toHaveLength(0);
+    // ADR 0047 PR A: each training session emits 3 assistance INTENT slots that
+    // have no movementId, so they're skipped until the platform resolver ships
+    // (PR B). The 36 training sessions (24 leader + 12 anchor) × 3 = 108 skips;
+    // the 8 deload / TM-test sessions emit none. Every skip is an assistance slot.
+    expect(result.skipped).toHaveLength(108);
+    expect(result.skipped.every((s) => s.kind === "assistance")).toBe(true);
   });
 
   it("groups the timeline into 11 program-weeks", () => {

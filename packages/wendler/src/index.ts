@@ -34,6 +34,7 @@ export * from "./wendler-templates";
 
 // Assistance model (Push / Pull / Single-leg-Core categories + prescriptions)
 export * from "./assistance";
+export * from "./assistance-spec";
 
 // Platform ProgramEngine adapter (5/3/1 implements @hta/program-core)
 export * from "./program";

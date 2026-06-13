@@ -66,6 +66,14 @@ export interface PrescribedItem {
   distanceM?: number;
   /** Free-text cue / load hint ("heavy", "bodyweight", "leave 1 in reserve"). */
   note?: string;
+  /**
+   * Category hint for a platform-RESOLVED assistance slot — e.g. 5/3/1's
+   * "push" / "pull" / "single-leg-or-core". When set on an `assistance` item
+   * with no `movementId`, the platform picks a concrete catalog movement of
+   * this category (equipment/limitation/rotation-filtered). Engines that name
+   * their own assistance movement (e.g. TB Zulu/HT pull-ups) leave this unset.
+   */
+  assistanceCategory?: string;
 }
 
 /** The full ordered prescription for one session. */

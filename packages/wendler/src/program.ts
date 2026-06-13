@@ -32,6 +32,7 @@ import type { MainScheme } from "./waves";
 import { buildMainSets } from "./waves";
 import { buildWarmupSets } from "./warmup";
 import { buildSupplementalSets, type SupplementalTemplateId } from "./supplemental";
+import { assistanceLevelForSupplemental, buildAssistanceIntent } from "./assistance-spec";
 import { suggestNewTrainingMax } from "./e1rm";
 import { computeTrainingMax } from "./training-max";
 import { roundToIncrement } from "./rounding";
@@ -396,6 +397,18 @@ export const wendler531Engine: ProgramEngine<WendlerInstance> = {
       }
 
       for (const it of collapse(raw)) items.push({ ...it, movementId: lift });
+    }
+
+    // ADR 0047 — per-session assistance intent (Push / Pull / Single-leg-or-Core).
+    // Training phases only, and only when the session actually prescribed main
+    // work (a lift with no TM yields an empty session — no assistance). Volume
+    // drops to "light" for volume-heavy supplementals (BBB / Widowmaker); deload
+    // / 7th-week sessions emit none. The platform resolves each category slot to a
+    // concrete catalog movement.
+    if (seg.type === "phase" && items.length > 0) {
+      for (const slot of buildAssistanceIntent(assistanceLevelForSupplemental(seg.supplemental))) {
+        items.push(slot);
+      }
     }
 
     return { items };
