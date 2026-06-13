@@ -16,6 +16,7 @@
 import type { ProgramEngine, PlatformContext } from "@hta/program-core";
 import { materializeProgram, type MaterializedSession } from "./materialize";
 import type { MovementResolver, SkippedItem } from "./adapter";
+import type { AssistancePlanner } from "./assistance-resolver";
 import { computeTmAlignment } from "./tm-alignment";
 
 export interface BuildProgramInstanceArgs<I> {
@@ -27,6 +28,8 @@ export interface BuildProgramInstanceArgs<I> {
   weekdays: number[];
   /** Block start date (YYYY-MM-DD). */
   startedOn: string;
+  /** Optional 5/3/1 assistance planner (ADR 0047) threaded to materialisation. */
+  assistance?: AssistancePlanner;
 }
 
 /** A `training_maxes.tm_percent` seed for one anchored movement. */
@@ -58,14 +61,14 @@ export interface ProgramInstanceWrite {
 export function buildProgramInstanceWrite<I>(
   args: BuildProgramInstanceArgs<I>,
 ): ProgramInstanceWrite {
-  const { engine, instance, ctx, resolveMovement, weekdays } = args;
+  const { engine, instance, ctx, resolveMovement, weekdays, assistance } = args;
 
   const { sessions, weeks, skipped } = materializeProgram(
     engine,
     instance,
     ctx,
     resolveMovement,
-    { weekdays },
+    { weekdays, ...(assistance ? { assistance } : {}) },
   );
 
   // Seed tm_percent so the engine's percentOfTm renders the right load (Option A).
