@@ -9,7 +9,17 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PlannedSessionInsertRow } from "@/lib/planner/assemble-block-sessions";
 
 export type NativeMaterializeResult =
-  | { ok: true; rows: PlannedSessionInsertRow[]; meta: { hasAnyTm: boolean; bwHasAnyFamily: boolean } }
+  | {
+      ok: true;
+      rows: PlannedSessionInsertRow[];
+      meta: { hasAnyTm: boolean; bwHasAnyFamily: boolean };
+      /**
+       * Distinct movement ids of the block's resolved MAIN lifts (primary +
+       * dual-main secondary). The deploy path seeds `training_maxes.tm_percent`
+       * for these so the program's chosen loading basis renders correctly.
+       */
+      mainMovementIds: string[];
+    }
   | { ok: false; error: string };
 
 /** A platform program whose sessions are inter-dependent within a block (e.g. cross-day

@@ -2,7 +2,6 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   upsertTrainingMax,
   deleteTrainingMax,
-  setDefaultTmPercent,
   lockTrainingMaxAsEntered,
 } from "@/lib/training-maxes/actions";
 import { getTmSourceSet, getTrainingMaxContext, type TmSourceSet } from "@/lib/training-maxes/queries";
@@ -139,24 +138,24 @@ export default async function TrainingMaxesPage() {
         </p>
       ) : (
         <p style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 14 }}>
-          Enter your 1RM for each main lift. The app applies a default TM% to compute the
-          working <em>training max</em>
+          Enter your 1RM for each main lift. Your active program sets the working{" "}
+          <em>training max</em>
           <MetricHelp term="training_max" variant="why" placement="bottom" />{" "}
-          used by the planner. Pick whichever variant of squat,
-          bench, deadlift, or overhead press you actually train — back squat, front squat,
-          trap-bar deadlift, push press, etc. are all valid.
+          it trains at (5/3/1 and Tactical Barbell from your template, Hybrid from its
+          intensity setting). Pick whichever variant of squat, bench, deadlift, or
+          overhead press you actually train — back squat, front squat, trap-bar
+          deadlift, push press, etc. are all valid.
         </p>
       )}
 
       <TmSection
-        initialDefaultPercent={ctx.defaultPercent}
+        defaultPercent={ctx.defaultPercent}
         requiredGroups={requiredGroups}
         otherRows={otherRows}
         otherRowSourceSets={otherRowSourceSets}
         pickerGroups={pickerGroups}
         hasActiveBlock={!!archetype}
         upsertAction={upsertTrainingMax}
-        setDefaultAction={setDefaultTmPercent}
         deleteAction={deleteTrainingMax}
         lockAction={lockTrainingMaxAsEntered}
       />

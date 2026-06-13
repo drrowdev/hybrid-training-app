@@ -13,12 +13,11 @@ export function TmAutoForm({
   candidates,
   candidateGroups,
   initial,
-  defaultPercent,
   action,
 }: {
   /**
-   * "new" — show a variant picker + inputs; saves auto when a movement is selected and a positive 1RM is entered.
-   * "edit" — fixed movement; saves auto when 1RM or TM% changes.
+   * "new" — show a variant picker + input; saves auto when a movement is selected and a positive 1RM is entered.
+   * "edit" — fixed movement; saves auto when the 1RM changes.
    */
   mode: "new" | "edit";
   /** Flat candidate list (when mode="new" and no groups). */
@@ -30,18 +29,13 @@ export function TmAutoForm({
     movementId?: string;
     movementName?: string;
     oneRmKg?: number;
-    tmPercent?: number | null;
   };
-  defaultPercent: number;
   /** Bound server action upsertTrainingMax. Returns either void or {ok, error?} */
   action: (fd: FormData) => Promise<unknown>;
 }) {
   const [movementId, setMovementId] = useState<string>(initial?.movementId ?? "");
   const [oneRmKg, setOneRmKg] = useState<string>(
     initial?.oneRmKg != null ? String(initial.oneRmKg) : "",
-  );
-  const [tmPercent, setTmPercent] = useState<string>(
-    initial?.tmPercent != null ? String(initial.tmPercent) : "",
   );
 
   const [status, setStatus] = useState<Status>("idle");
@@ -50,19 +44,18 @@ export function TmAutoForm({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSerialised = useRef<string | null>(null);
 
-  const scheduleSave = (mid: string, rm: string, pct: string) => {
+  const scheduleSave = (mid: string, rm: string) => {
     if (!mid) return;
     const rmNum = Number(rm);
     if (!Number.isFinite(rmNum) || rmNum <= 0) return;
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
-      const serialised = `${mid}|${rmNum}|${pct.trim()}`;
+      const serialised = `${mid}|${rmNum}`;
       if (lastSerialised.current === serialised) return;
       lastSerialised.current = serialised;
       const fd = new FormData();
       fd.set("movementId", mid);
       fd.set("oneRmKg", rm);
-      if (pct.trim() !== "") fd.set("tmPercent", pct);
       setStatus("saving");
       setErrorMsg(null);
       startTransition(async () => {
@@ -89,15 +82,11 @@ export function TmAutoForm({
 
   const onMovement = (v: string) => {
     setMovementId(v);
-    scheduleSave(v, oneRmKg, tmPercent);
+    scheduleSave(v, oneRmKg);
   };
   const onOneRm = (v: string) => {
     setOneRmKg(v);
-    scheduleSave(movementId, v, tmPercent);
-  };
-  const onTmPct = (v: string) => {
-    setTmPercent(v);
-    scheduleSave(movementId, oneRmKg, v);
+    scheduleSave(movementId, v);
   };
 
   return (
@@ -107,8 +96,8 @@ export function TmAutoForm({
           display: "grid",
           gridTemplateColumns:
             mode === "new"
-              ? "minmax(0, 1.4fr) 110px 110px auto"
-              : "110px 110px auto",
+              ? "minmax(0, 1.4fr) 110px auto"
+              : "110px auto",
           gap: 8,
           alignItems: "end",
           ...(mode === "new"
@@ -155,22 +144,6 @@ export function TmAutoForm({
           onChange={(e) => onOneRm(e.target.value)}
           inputMode="decimal"
           aria-label="One rep max"
-          className="mono"
-          style={{ width: "100%", padding: "8px 10px", fontSize: 14, textAlign: "right" }}
-        />
-      </div>
-      <div style={{ display: "grid", gap: 2 }}>
-        <Label>TM% (optional)</Label>
-        <input
-          type="number"
-          step="0.5"
-          min="50"
-          max="100"
-          value={tmPercent}
-          onChange={(e) => onTmPct(e.target.value)}
-          placeholder={`${defaultPercent}`}
-          inputMode="decimal"
-          aria-label="TM% override"
           className="mono"
           style={{ width: "100%", padding: "8px 10px", fontSize: 14, textAlign: "right" }}
         />

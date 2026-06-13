@@ -27,6 +27,7 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { ARCHETYPES } from "@/lib/planner/archetypes";
 import type { HybridInstance } from "@/lib/programs/hybrid/engine";
+import { resolveHybridTmPercent } from "@/lib/programs/hybrid/engine";
 import { buildPlatformContext } from "./context";
 import { getProgramEngine, getNativeProgramEngine, isNativeProgram } from "./registry";
 import { buildProgramInstanceWrite } from "./program-instance";
@@ -367,10 +368,27 @@ async function createNativeProgramInstance(
   }
   const blockId = block.id as string;
 
+  // Hybrid's chosen training-max % (wizard Loadout step). Seeded onto
+  // training_maxes.tm_percent for the block's main lifts (3b) so every "% of TM"
+  // render uses the program's loading basis — exactly like the foreign path does
+  // for 5/3/1 / TB. Captured priors are restored on any later failure.
+  const hybridTmPercent = resolveHybridTmPercent(setupValues.tmPercent);
+  const priorTmPercent = new Map<string, number | string | null>();
+  const restoreTmPercents = async () => {
+    for (const [movementId, prior] of priorTmPercent) {
+      await supabase
+        .from("training_maxes")
+        .update({ tm_percent: prior ?? null })
+        .eq("user_id", user.id)
+        .eq("movement_id", movementId);
+    }
+  };
+
   const deleteBlock = async () => {
     await supabase.from("training_blocks").delete().eq("id", blockId).eq("user_id", user.id);
   };
   const rollbackBlock = async () => {
+    await restoreTmPercents();
     await supabase.from("planned_sessions").delete().eq("block_id", blockId).eq("user_id", user.id);
     await deleteBlock();
   };
@@ -393,7 +411,33 @@ async function createNativeProgramInstance(
     return { ok: false, error: `Couldn't create planned sessions: ${psErr.message}` };
   }
 
-  // NOTE: no training_maxes.tm_percent seed — Hybrid reads the user's real TMs.
+  // 3b) seed training_maxes.tm_percent for the block's resolved main lifts so
+  //     Hybrid's chosen intensity drives every %-of-TM render. Capture priors
+  //     first so a later failure restores the user's strength state.
+  const seedMovementIds = mat.mainMovementIds;
+  if (seedMovementIds.length > 0) {
+    const { data: priorRows, error: priorErr } = await supabase
+      .from("training_maxes")
+      .select("movement_id, tm_percent")
+      .eq("user_id", user.id)
+      .in("movement_id", seedMovementIds);
+    if (priorErr) {
+      await rollbackBlock();
+      return { ok: false, error: `Couldn't read training maxes: ${priorErr.message}` };
+    }
+    for (const r of priorRows ?? []) {
+      priorTmPercent.set(r.movement_id as string, (r.tm_percent as number | string | null) ?? null);
+    }
+    const { error: seedErr } = await supabase
+      .from("training_maxes")
+      .update({ tm_percent: hybridTmPercent })
+      .eq("user_id", user.id)
+      .in("movement_id", seedMovementIds);
+    if (seedErr) {
+      await rollbackBlock();
+      return { ok: false, error: `Couldn't align training maxes: ${seedErr.message}` };
+    }
+  }
 
   // 4) program_instances (the source of truth for program identity).
   const { data: pi, error: piErr } = await supabase

@@ -10,20 +10,14 @@ import { evaluateTmSuggestion } from "./suggestions";
 const upsertSchema = z.object({
   movementId: z.string().uuid(),
   oneRmKg: z.coerce.number().positive().lte(1000),
-  tmPercent: z.coerce.number().positive().lte(100).optional().nullable(),
 });
 
 export type UpsertResult = { ok: true } | { ok: false; error: string };
 
 export async function upsertTrainingMax(formData: FormData): Promise<UpsertResult> {
-  const tmPercentRaw = formData.get("tmPercent");
-  const tmPercentInput =
-    tmPercentRaw == null || String(tmPercentRaw).trim() === "" ? null : tmPercentRaw;
-
   const parsed = upsertSchema.safeParse({
     movementId: formData.get("movementId"),
     oneRmKg: formData.get("oneRmKg"),
-    tmPercent: tmPercentInput,
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -35,6 +29,16 @@ export async function upsertTrainingMax(formData: FormData): Promise<UpsertResul
   } = await getAuthUser();
   if (!user) redirect("/login");
 
+  // The loading basis (tm_percent) is owned by the active PROGRAM — it's seeded
+  // on deploy (5/3/1 / TB / Hybrid), not edited here. So preserve whatever the
+  // program already set rather than clobbering it when the user edits a 1RM.
+  const { data: existing } = await supabase
+    .from("training_maxes")
+    .select("tm_percent")
+    .eq("user_id", user.id)
+    .eq("movement_id", parsed.data.movementId)
+    .maybeSingle();
+
   // Manual upsert is always 'entered' — typing a value into the form is an
   // explicit user action. Any prior derived provenance is cleared so the row
   // stops claiming it came from an AMRAP.
@@ -43,7 +47,7 @@ export async function upsertTrainingMax(formData: FormData): Promise<UpsertResul
       user_id: user.id,
       movement_id: parsed.data.movementId,
       one_rm_kg: parsed.data.oneRmKg,
-      tm_percent: parsed.data.tmPercent ?? null,
+      tm_percent: existing?.tm_percent ?? null,
       source: "entered",
       derived_from_session_id: null,
       derived_from_set_log_id: null,
@@ -68,36 +72,6 @@ export async function deleteTrainingMax(formData: FormData): Promise<void> {
   const supabase = await createClient();
   await supabase.from("training_maxes").delete().eq("id", id);
   revalidatePath("/app/settings/training-maxes");
-}
-
-const defaultPercentSchema = z.object({
-  percent: z.coerce.number().positive().lte(100),
-});
-
-export async function setDefaultTmPercent(formData: FormData): Promise<UpsertResult> {
-  const parsed = defaultPercentSchema.safeParse({ percent: formData.get("percent") });
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid percent" };
-  }
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await getAuthUser();
-  if (!user) redirect("/login");
-
-  const { error } = await supabase
-    .from("profiles")
-    .update({ tm_percent_default: parsed.data.percent })
-    .eq("id", user.id);
-  if (error) {
-    return { ok: false, error: error.message };
-  }
-
-  revalidatePath("/app/settings/training-maxes");
-  revalidatePath("/app");
-  revalidatePath("/app/plan");
-  return { ok: true };
 }
 
 /**
