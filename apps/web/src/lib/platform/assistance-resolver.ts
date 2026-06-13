@@ -24,11 +24,13 @@ export type AssistanceSlot = "push" | "pull" | "single_leg_or_core";
 // alone ("isolation") doesn't say push vs pull. Compound presses/pulls are caught
 // earlier by their `press` / `pull` pattern, so these only disambiguate isolations.
 const PUSH_MUSCLES = new Set(["chest", "upper_chest", "triceps", "front_delts", "side_delts"]);
-// `forearms` is intentionally excluded: a grip-only isolation (gripper, wrist curl)
-// gives no back/biceps stimulus, so it must not masquerade as a "pull" slot — it
-// falls through to `null` instead. Biceps/forearm movements like hammer curls still
-// classify as pull via their `biceps` primary.
-const PULL_MUSCLES = new Set(["lats", "mid_back", "traps", "biceps", "rear_delts"]);
+// A real "pull" slot must train the lats or biceps — back width/thickness or arm
+// flexion. This is the single source of "what counts as pull": it keeps every row /
+// pulldown / chin / pull-up / curl (all carry lats or biceps) while excluding
+// rear-delt / scapular PREHAB (face pulls, band pull-aparts, Y-raises, rear-delt
+// flies) and grip work, which Wendler treats as shoulder-health detail, not the
+// primary pull assistance.
+const PULL_MUSCLES = new Set(["lats", "biceps"]);
 const CORE_MUSCLES = new Set(["abs", "obliques"]);
 
 // Name keywords that mark a movement as single-leg even when its pattern is a
@@ -56,8 +58,13 @@ const EXCLUDED_PATTERNS = new Set(["cardio", "olympic", "plyometric", "drill", "
 
 /**
  * Classify a catalog movement into the 5/3/1 assistance slot it best serves, or
- * `null` when it isn't suitable assistance. Single-leg/core is tested first (most
- * specific), then pull, then push.
+ * `null` when it isn't suitable assistance.
+ *
+ * Order matters: a compound `pull` / `press` PATTERN wins first — a single-arm row
+ * is a pull even though it carries the `anti_rotation` role, and a half-kneeling
+ * landmine press is a push even though it loads the trunk. Pull additionally
+ * requires real back/biceps involvement so rear-delt prehab doesn't qualify. Only
+ * then do we test for single-leg / core, and finally disambiguate isolations.
  */
 export function classifyAssistanceCandidate(m: CatalogMovement): AssistanceSlot | null {
   const pattern = m.pattern ?? "";
@@ -65,21 +72,25 @@ export function classifyAssistanceCandidate(m: CatalogMovement): AssistanceSlot 
   const name = m.displayName.toLowerCase();
   const roles = new Set<string>(m.functionalRoles as unknown as string[]);
   const primary = m.primaryMuscles;
+  const trainsPull = primary.some((mu) => PULL_MUSCLES.has(mu));
 
-  // Single-leg or core (most specific).
-  if (roles.has("single_leg") || roles.has("anti_extension") || roles.has("anti_rotation")) {
-    return "single_leg_or_core";
-  }
+  // Compound pattern wins — keeps unilateral rows/presses in the right slot. Pull
+  // must train lats/biceps so rear-delt prehab (face pull, band pull-apart) is not
+  // treated as primary pull assistance.
+  if ((pattern === "pull" || roles.has("pull")) && trainsPull) return "pull";
+  if (pattern === "press") return "push";
+
+  // Single-leg or core. `anti_rotation` is intentionally NOT a trigger: it tags
+  // every unilateral press/pull/carry, which would wrongly pull single-arm rows
+  // into core. Genuine anti-rotation core (Pallof, bird-dog, suitcase carry) is
+  // already caught by its abs/obliques muscles or lumbar_trunk region below.
+  if (roles.has("single_leg") || roles.has("anti_extension")) return "single_leg_or_core";
   if (m.primaryRegion === "lumbar_trunk") return "single_leg_or_core";
   if (primary.some((mu) => CORE_MUSCLES.has(mu))) return "single_leg_or_core";
   if (SINGLE_LEG_KEYWORDS.some((kw) => name.includes(kw))) return "single_leg_or_core";
 
-  // Pull (back / biceps / rear delts).
-  if (pattern === "pull" || roles.has("pull")) return "pull";
-  if (pattern === "isolation" && primary.some((mu) => PULL_MUSCLES.has(mu))) return "pull";
-
-  // Push (chest / shoulders / triceps).
-  if (pattern === "press") return "push";
+  // Isolation disambiguation (compounds were already handled by pattern above).
+  if (pattern === "isolation" && trainsPull) return "pull";
   if (pattern === "isolation" && primary.some((mu) => PUSH_MUSCLES.has(mu))) return "push";
 
   return null;

@@ -58,10 +58,48 @@ describe("classifyAssistanceCandidate", () => {
   });
 
   it("classifies pull pattern and pull-tagged movements as pull", () => {
-    expect(classifyAssistanceCandidate(mv({ id: "1", slug: "row", pattern: "pull" }))).toBe("pull");
+    expect(classifyAssistanceCandidate(mv({ id: "1", slug: "row", pattern: "pull", primaryMuscles: ["lats"] }))).toBe("pull");
     expect(
-      classifyAssistanceCandidate(mv({ id: "2", slug: "chinup", pattern: "squat", functionalRoles: ["pull"] as never })),
+      classifyAssistanceCandidate(
+        mv({ id: "2", slug: "chinup", pattern: "squat", primaryMuscles: ["lats"], functionalRoles: ["pull"] as never }),
+      ),
     ).toBe("pull");
+  });
+
+  it("keeps a unilateral row in pull, not core (anti_rotation role must not win)", () => {
+    // deriveAccessoryRoles tags every unilateral press/pull/carry as anti_rotation;
+    // a single-arm row is still a PULL.
+    expect(
+      classifyAssistanceCandidate(
+        mv({
+          id: "1",
+          slug: "single-arm-db-row",
+          displayName: "Single-Arm DB Row",
+          pattern: "pull",
+          primaryMuscles: ["lats", "mid_back", "biceps"],
+          functionalRoles: ["anti_rotation"] as never,
+        }),
+      ),
+    ).toBe("pull");
+  });
+
+  it("does NOT treat rear-delt / scapular prehab as a pull (face pull, band pull-apart)", () => {
+    // Face Pull is `pull` pattern but trains only rear delts → not primary pull.
+    expect(
+      classifyAssistanceCandidate(
+        mv({ id: "1", slug: "face-pull", displayName: "Face Pull", pattern: "pull", primaryMuscles: ["rear_delts", "mid_back"] }),
+      ),
+    ).toBeNull();
+    // Band Pull-Apart is a rear-delt isolation → not pull.
+    expect(
+      classifyAssistanceCandidate(
+        mv({ id: "2", slug: "band-pull-apart", displayName: "Band Pull-Apart", pattern: "isolation", primaryMuscles: ["rear_delts", "mid_back"] }),
+      ),
+    ).toBeNull();
+    // Shrug (traps only) → not pull.
+    expect(
+      classifyAssistanceCandidate(mv({ id: "3", slug: "shrug", displayName: "Barbell Shrug", pattern: "isolation", primaryMuscles: ["traps"] })),
+    ).toBeNull();
   });
 
   it("classifies single-leg + core as single_leg_or_core", () => {
@@ -94,9 +132,9 @@ const POOL: CatalogMovement[] = [
   mv({ id: "p1", slug: "dip", pattern: "press" }),
   mv({ id: "p2", slug: "incline-db-press", pattern: "press" }),
   mv({ id: "p3", slug: "pushup", pattern: "press" }),
-  mv({ id: "l1", slug: "chinup", pattern: "pull" }),
-  mv({ id: "l2", slug: "row-db", pattern: "pull" }),
-  mv({ id: "l3", slug: "facepull", pattern: "pull" }),
+  mv({ id: "l1", slug: "chinup", pattern: "pull", primaryMuscles: ["lats", "biceps"] }),
+  mv({ id: "l2", slug: "row-db", pattern: "pull", primaryMuscles: ["lats", "mid_back"] }),
+  mv({ id: "l3", slug: "curl", pattern: "isolation", primaryMuscles: ["biceps"] }),
   mv({ id: "s1", slug: "bss", pattern: "squat", functionalRoles: ["single_leg"] as never }),
   mv({ id: "s2", slug: "plank", pattern: "isolation", functionalRoles: ["anti_extension"] as never }),
   mv({ id: "s3", slug: "hanging-leg-raise", pattern: "isolation", primaryMuscles: ["abs"] }),
@@ -160,8 +198,8 @@ describe("buildAssistancePlanner", () => {
 
   it("respects equipment availability (bodyweight-only drops a cable movement)", () => {
     const catalog: CatalogMovement[] = [
-      mv({ id: "cab", slug: "cable-row", pattern: "pull", equipment: "cable" }),
-      mv({ id: "bw", slug: "pullup", pattern: "pull", equipment: "bodyweight" }),
+      mv({ id: "cab", slug: "cable-row", pattern: "pull", primaryMuscles: ["lats"], equipment: "cable" }),
+      mv({ id: "bw", slug: "pullup", pattern: "pull", primaryMuscles: ["lats", "biceps"], equipment: "bodyweight" }),
     ];
     const planner = buildAssistancePlanner({
       catalog,

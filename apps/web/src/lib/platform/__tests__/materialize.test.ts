@@ -111,7 +111,7 @@ describe("materializeProgram — 5/3/1 with assistance planner (ADR 0047)", () =
   // never be selected as assistance.
   const catalog: CatalogMovement[] = [
     { id: "dip", slug: "dip", displayName: "Dip", pattern: "press" },
-    { id: "row", slug: "row-db", displayName: "DB Row", pattern: "pull" },
+    { id: "row", slug: "row-db", displayName: "DB Row", pattern: "pull", primaryMuscles: ["lats", "biceps"] },
     { id: "plank", slug: "plank", displayName: "Plank", pattern: "isolation", primaryRegion: "lumbar_trunk" },
     { id: "run", slug: "run", displayName: "Run", pattern: "cardio" },
   ].map((m) => ({
