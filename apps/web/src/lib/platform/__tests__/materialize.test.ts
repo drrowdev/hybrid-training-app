@@ -10,9 +10,11 @@
 import { describe, it, expect } from "vitest";
 import type { PlatformContext } from "@hta/program-core";
 import { wendler531Engine, type WendlerInstance } from "@hta/wendler";
+import { tacticalBarbellEngine } from "@hta/tacticalbarbell";
 import { greenProtocolEngine } from "@hta/green";
 import { materializeProgram } from "../materialize";
 import { buildAssistancePlanner } from "../assistance-resolver";
+import { buildTbAccessoryInjector } from "../tb-accessories";
 import type { CatalogMovement } from "@/lib/planner/accessory-picker";
 import type { MovementResolver } from "../adapter";
 
@@ -200,6 +202,64 @@ describe("materializeProgram — scheduling", () => {
       r.sessions.some((s) => s.prescription.items.some((i) => i.movementId === "mv-squat")),
     ).toBe(true);
     expect(r.skipped.some((s) => s.reason.includes("bench"))).toBe(true);
+  });
+});
+
+describe("materializeProgram — TB optional accessories (ADR 0048)", () => {
+  const accessoryCatalog: CatalogMovement[] = [
+    { id: "curl", slug: "barbell-curl", displayName: "Barbell Curl", pattern: "isolation", primaryMuscles: ["biceps"] },
+    { id: "calf", slug: "calf-raise", displayName: "Calf Raise", pattern: "isolation", primaryMuscles: ["calves"] },
+    { id: "plank", slug: "plank", displayName: "Plank", pattern: "isolation", primaryMuscles: ["abs"] },
+  ].map((m) => ({
+    secondaryMuscles: [],
+    primaryRegion: "",
+    secondaryRegions: [],
+    bulletproofRoles: [],
+    functionalRoles: [],
+    isSupported: true,
+    isCompound: false,
+    isLoadable: false,
+    eccentricLoadScore: null,
+    stimToFatigueScore: null,
+    highStrainTendon: false,
+    experienceMin: 0,
+    experienceMax: 4,
+    equipment: "bodyweight",
+    ...m,
+  })) as CatalogMovement[];
+
+  function tbInstance() {
+    return tacticalBarbellEngine.setup({ values: { templateId: "operator" } }, ctx);
+  }
+
+  it("appends accessory items to TB training sessions when an injector is supplied", () => {
+    const injector = buildTbAccessoryInjector({
+      catalog: accessoryCatalog,
+      filters: { blockedRegions: new Set() },
+      muscles: ["biceps", "calves", "abs"],
+      maxItems: 2,
+      setsPerItem: 3,
+    });
+    const r = materializeProgram(tacticalBarbellEngine, tbInstance(), ctx, resolve, {
+      weekdays: [0, 2, 4],
+      accessories: injector,
+    });
+    const training = r.sessions.filter((s) => s.role === "strength");
+    expect(training.length).toBeGreaterThan(0);
+    for (const s of training) {
+      const acc = s.prescription.items.filter((i) => i.kind === "accessory");
+      expect(acc).toHaveLength(2);
+      expect(acc.every((a) => a.sets === 3 && a.reps === 12)).toBe(true);
+      expect(acc.every((a) => ["curl", "calf", "plank"].includes(a.movementId))).toBe(true);
+    }
+  });
+
+  it("adds NO accessories when no injector is supplied (TB default)", () => {
+    const r = materializeProgram(tacticalBarbellEngine, tbInstance(), ctx, resolve, {
+      weekdays: [0, 2, 4],
+    });
+    const acc = r.sessions.flatMap((s) => s.prescription.items).filter((i) => i.kind === "accessory");
+    expect(acc).toHaveLength(0);
   });
 });
 

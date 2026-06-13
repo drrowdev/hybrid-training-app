@@ -36,6 +36,12 @@ import { loadPickerCatalog } from "@/lib/planner/picker-catalog";
 import { readLimitationsContext } from "@/lib/planner/limitations-context";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import type { MovementResolver } from "./adapter";
+import {
+  buildTbAccessoryInjector,
+  tbAccessoryPlanForTemplate,
+  resolveTbAccessoryMuscles,
+  type TbAccessoryInjector,
+} from "./tb-accessories";
 import { discardAbandonedInProgressSessions } from "@/lib/planner/archive-prior-blocks";
 
 const WEEKDAY = z.number().int().min(0).max(6);
@@ -51,6 +57,14 @@ const createProgramInstanceSchema = z
     startedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "startedOn must be YYYY-MM-DD"),
     /** Plate rounding override (kg); defaults to 2.5. */
     roundingKg: z.number().positive().optional(),
+    /** Optional TB accessory work (ADR 0048) — opt-in, ignored by other programs. */
+    accessories: z
+      .object({
+        enabled: z.boolean(),
+        muscles: z.array(z.string()).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -67,7 +81,7 @@ export async function createProgramInstance(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { programId, setupValues, weekdays, startedOn, roundingKg } = parsed.data;
+  const { programId, setupValues, weekdays, startedOn, roundingKg, accessories } = parsed.data;
 
   // Reject duplicate weekdays — they'd collide on the (week, day, slot) unique key.
   // (Native programs own their own calendar and ignore `weekdays`, but the check
@@ -99,6 +113,7 @@ export async function createProgramInstance(
     weekdays,
     startedOn,
     ...(roundingKg != null ? { roundingKg } : {}),
+    ...(accessories ? { accessories } : {}),
   });
 }
 
@@ -109,6 +124,7 @@ interface DeployArgs {
   weekdays: number[];
   startedOn: string;
   roundingKg?: number;
+  accessories?: { enabled: boolean; muscles?: string[] };
 }
 
 /**
@@ -155,13 +171,64 @@ async function buildForeignAssistancePlanner(
 }
 
 /**
+ * Build the optional TB accessory injector (ADR 0048) for the foreign deploy path.
+ * Returns `undefined` when accessories aren't enabled, the template isn't eligible
+ * (Zulu/Operator/Fighter only), or the catalog can't be loaded — so the TB default
+ * (no accessories) is preserved.
+ */
+async function buildForeignTbAccessoryInjector(
+  supabase: SupabaseClient,
+  userId: string,
+  resolveMovement: MovementResolver,
+  templateId: string,
+  accessories: { enabled: boolean; muscles?: string[] } | undefined,
+): Promise<TbAccessoryInjector | undefined> {
+  if (!accessories?.enabled) return undefined;
+  const plan = tbAccessoryPlanForTemplate(templateId);
+  if (!plan) return undefined;
+
+  const catalog = await loadPickerCatalog(supabase);
+  if (catalog.length === 0) return undefined;
+
+  const limitations = await readLimitationsContext(supabase, userId);
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("equipment, barbell_kg, trap_bar_kg, plate_inventory_kg")
+    .eq("id", userId)
+    .maybeSingle();
+  const equipment = resolveEquipment(profile);
+
+  // Don't resolve an accessory to one of the cluster's main lifts.
+  const excludeMovementIds = new Set<string>();
+  for (const key of ["squat", "bench", "deadlift", "press", "row", "chinup", "pullup"]) {
+    const resolved = resolveMovement(key);
+    if (resolved) excludeMovementIds.add(resolved.movementId);
+  }
+
+  return buildTbAccessoryInjector({
+    catalog,
+    equipment,
+    filters: {
+      blockedRegions: limitations.blockedRegions,
+      blockedMuscles: limitations.blockedMuscles,
+      blockedMovementIds: limitations.blockedMovementIds,
+      allowedMovementIds: limitations.allowedMovementIds,
+    },
+    muscles: resolveTbAccessoryMuscles(accessories.muscles),
+    maxItems: plan.maxItems,
+    setsPerItem: plan.setsPerItem,
+    excludeMovementIds,
+  });
+}
+
+/**
  * Foreign per-session engine deploy (5/3/1, Tactical Barbell, Green Protocol).
  * Behaviour is byte-identical to the pre-refactor inline flow.
  */
 async function createForeignProgramInstance(
   supabase: SupabaseClient,
   user: User,
-  { programId, setupValues, weekdays, startedOn, roundingKg }: DeployArgs,
+  { programId, setupValues, weekdays, startedOn, roundingKg, accessories }: DeployArgs,
 ): Promise<CreateProgramInstanceResult> {
   const engine = getProgramEngine(programId);
   if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
@@ -192,6 +259,17 @@ async function createForeignProgramInstance(
       programId === "wendler-531"
         ? await buildForeignAssistancePlanner(supabase, user.id, resolveMovement)
         : undefined;
+    // ADR 0048 — optional, opt-in TB accessory work (Zulu/Operator/Fighter only).
+    const tbAccessories =
+      programId === "tactical-barbell"
+        ? await buildForeignTbAccessoryInjector(
+            supabase,
+            user.id,
+            resolveMovement,
+            typeof setupValues.templateId === "string" ? setupValues.templateId : "",
+            accessories,
+          )
+        : undefined;
     write = buildProgramInstanceWrite({
       engine,
       instance,
@@ -200,6 +278,7 @@ async function createForeignProgramInstance(
       weekdays,
       startedOn,
       ...(assistance ? { assistance } : {}),
+      ...(tbAccessories ? { accessories: tbAccessories } : {}),
     });
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Setup failed" };
