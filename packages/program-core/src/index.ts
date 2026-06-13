@@ -272,3 +272,48 @@ export function itemsOfKind(p: SessionPrescription, kind: PrescribedItemKind): P
 export function oneRepMaxFor(ctx: PlatformContext, movement: string): number | undefined {
   return ctx.oneRepMaxes[movement];
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Global warm-up ramp — the single source of truth for every strength program
+// that ramps to a top working set (5/3/1, Tactical Barbell, Zulu/HT…). 40/60/80%
+// of the work set × 5/5/3 reps, mirroring 5/3/1's classic default. Programs that
+// need warm-ups should call `buildGlobalWarmupItems` rather than redefining the
+// ramp, so the routine stays consistent app-wide.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const GLOBAL_WARMUP_PERCENTS = [0.4, 0.6, 0.8] as const;
+export const GLOBAL_WARMUP_REPS = [5, 5, 3] as const;
+
+function floorTo(value: number, increment: number): number {
+  if (increment <= 0) return value;
+  return Math.floor(value / increment) * increment;
+}
+
+/**
+ * Build the warm-up ramp items for a loaded movement working up to
+ * `workingWeightKg`. Each warm-up is floored to `roundingKg` so it never rounds
+ * up past the work set, and any zero-weight ramp set is dropped (e.g. a very
+ * light first lift). Returns one single-rep-scheme item per ramp step.
+ */
+export function buildGlobalWarmupItems(args: {
+  name: string;
+  movementId?: string;
+  workingWeightKg: number;
+  roundingKg: number;
+}): PrescribedItem[] {
+  const { name, movementId, workingWeightKg, roundingKg } = args;
+  const items: PrescribedItem[] = [];
+  for (let i = 0; i < GLOBAL_WARMUP_PERCENTS.length; i++) {
+    const w = floorTo(workingWeightKg * GLOBAL_WARMUP_PERCENTS[i]!, roundingKg);
+    if (w <= 0) continue;
+    items.push({
+      kind: "warmup",
+      name,
+      ...(movementId != null ? { movementId } : {}),
+      sets: 1,
+      reps: GLOBAL_WARMUP_REPS[i]!,
+      weightKg: w,
+    });
+  }
+  return items;
+}

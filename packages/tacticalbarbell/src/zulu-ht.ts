@@ -25,6 +25,7 @@ import type {
   LoggedSession,
   ProgramRecommendation,
 } from "@hta/program-core";
+import { buildGlobalWarmupItems } from "@hta/program-core";
 import { TB_MOVEMENT_LABEL } from "./templates";
 import { roundToIncrement } from "./rounding";
 
@@ -178,13 +179,23 @@ export const zuluHtEngine: ProgramEngine<ZuluHtInstance> = {
 
     const heavyBasis = basisFor(heavyMv);
     if (heavyBasis != null) {
+      const heavyWeight = roundToIncrement(heavyBasis * wave.heavyPct, ctx.roundingKg);
+      // Warm-up ramp to the heavy work weight — shared global routine.
+      items.push(
+        ...buildGlobalWarmupItems({
+          name: `${label(heavyMv)} (heavy)`,
+          movementId: heavyMv,
+          workingWeightKg: heavyWeight,
+          roundingKg: ctx.roundingKg,
+        }),
+      );
       items.push({
         kind: "main",
         name: `${label(heavyMv)} (heavy)`,
         movementId: heavyMv,
         sets: 4,
         reps: wave.heavyReps,
-        weightKg: roundToIncrement(heavyBasis * wave.heavyPct, ctx.roundingKg),
+        weightKg: heavyWeight,
         percentOfTm: wave.heavyPct,
         ...(parsed.week === BLOCK_WEEKS
           ? { note: "Peaking (optional): work up to a heavy triple, then rep out singles/doubles, or AMRAP the last set." }
@@ -194,13 +205,24 @@ export const zuluHtEngine: ProgramEngine<ZuluHtInstance> = {
 
     const suppBasis = basisFor(suppMv);
     if (suppBasis != null) {
+      const suppWeight = roundToIncrement(suppBasis * wave.suppPct, ctx.roundingKg);
+      // Warm-up ramp for the back-off lift — it's a DIFFERENT movement from the
+      // heavy main, so it gets its own ramp to the (lighter) work weight.
+      items.push(
+        ...buildGlobalWarmupItems({
+          name: `${label(suppMv)} (back-off)`,
+          movementId: suppMv,
+          workingWeightKg: suppWeight,
+          roundingKg: ctx.roundingKg,
+        }),
+      );
       items.push({
         kind: "supplemental",
         name: `${label(suppMv)} (back-off)`,
         movementId: suppMv,
         sets: 4,
         reps: wave.suppReps,
-        weightKg: roundToIncrement(suppBasis * wave.suppPct, ctx.roundingKg),
+        weightKg: suppWeight,
         percentOfTm: wave.suppPct,
       });
     }

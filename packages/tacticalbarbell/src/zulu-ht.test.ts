@@ -45,10 +45,22 @@ describe("Zulu/HT — timeline", () => {
 describe("Zulu/HT — prescribe (heavy + back-off + assistance)", () => {
   it("week 1, session 1 = heavy Press 4×5 @75% + back-off Squat 4×10 @65% + pull-ups 3×12 @60%", () => {
     const p = z.prescribe(setup(), "b0-w1-s1", ctx);
-    expect(p.items).toHaveLength(3);
     expect(itemsOfKind(p, "main")[0]).toMatchObject({ name: "Overhead Press (heavy)", sets: 4, reps: 5, weightKg: 75, percentOfTm: 0.75 });
     expect(itemsOfKind(p, "supplemental")[0]).toMatchObject({ name: "Squat (back-off)", sets: 4, reps: 10, weightKg: 130, percentOfTm: 0.65 });
     expect(itemsOfKind(p, "assistance")[0]).toMatchObject({ name: "Pull-Ups (Assistance A)", sets: 3, reps: 12, percentOfTm: 0.6 });
+  });
+
+  it("ramps the heavy and back-off barbell lifts with the global warm-up (40/60/80% × 5/5/3), but not bodyweight pull-ups", () => {
+    const p = z.prescribe(setup(), "b0-w1-s1", ctx);
+    const warmups = itemsOfKind(p, "warmup");
+    // 3 ramp steps for the heavy lift + 3 for the back-off lift = 6.
+    expect(warmups).toHaveLength(6);
+    // Heavy = Press @75 → ramp floored at 2.5kg: 0.4→30, 0.6→45, 0.8→60.
+    const pressWarmups = warmups.filter((w) => w.movementId === "press");
+    expect(pressWarmups.map((w) => w.weightKg)).toEqual([30, 45, 60]);
+    expect(pressWarmups.map((w) => w.reps)).toEqual([5, 5, 3]);
+    // No warm-up should target the bodyweight pull-up assistance.
+    expect(warmups.some((w) => w.movementId === "pullup")).toBe(false);
   });
 
   it("rotates lifts so each is heavy once and a back-off once across the week", () => {
