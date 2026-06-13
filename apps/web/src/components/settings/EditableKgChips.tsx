@@ -6,13 +6,26 @@
  * Enter or blur. Used wherever the user has a small set of named
  * weights (weighted vests, sandbags, kettlebells) and we don't want to
  * model a min/max/step range.
+ *
+ * When `units` is passed, chip labels display converted values and
+ * user input is converted back to kg before being added to the array.
+ * The `values` array always stays in kg.
  */
 import { useState } from "react";
+import {
+  type WeightUnit,
+  displayWeight,
+  roundDisplayWeight,
+  weightUnitLabel,
+  toKg,
+} from "@/lib/stats/units";
 
 type Props = {
   values: number[];
   onChange: (next: number[]) => void;
+  /** @deprecated Prefer passing `units` instead. Kept for back-compat. */
   unit?: string;
+  units?: WeightUnit;
   addLabel?: string;
   step?: number;
   min?: number;
@@ -23,7 +36,8 @@ type Props = {
 export function EditableKgChips({
   values,
   onChange,
-  unit = "kg",
+  unit,
+  units,
   addLabel = "+ Add",
   step = 1,
   min = 1,
@@ -32,13 +46,24 @@ export function EditableKgChips({
 }: Props) {
   const [draft, setDraft] = useState<string>("");
 
+  // Derive the display label: prefer `units` prop, fall back to `unit` string.
+  const label = units ? weightUnitLabel(units) : unit ?? "kg";
+
+  /** Convert a kg value to display (rounded in user's unit). */
+  const toDisplay = (kg: number): number =>
+    units ? roundDisplayWeight(displayWeight(kg, units), units) : kg;
+
+  /** Convert a user-typed display value to kg for storage. */
+  const fromDisplay = (v: number): number => (units ? toKg(v, units) : v);
+
   const commitDraft = () => {
     const n = Number(draft);
     if (!Number.isFinite(n) || n < min || n > max) {
       setDraft("");
       return;
     }
-    const next = Array.from(new Set([...values, n])).sort((a, b) => a - b);
+    const kgValue = fromDisplay(n);
+    const next = Array.from(new Set([...values, kgValue])).sort((a, b) => a - b);
     onChange(next);
     setDraft("");
   };
@@ -66,11 +91,11 @@ export function EditableKgChips({
           }}
         >
           <span className="mono">
-            {v} {unit}
+            {toDisplay(v)} {label}
           </span>
           <button
             type="button"
-            aria-label={`Remove ${v} ${unit}`}
+            aria-label={`Remove ${toDisplay(v)} ${label}`}
             data-testid={testIdPrefix ? `${testIdPrefix}-chip-${v}-remove` : undefined}
             onClick={() => onChange(values.filter((x) => x !== v))}
             style={{

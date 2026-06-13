@@ -71,6 +71,7 @@ export type MovementCardListProps = {
   barbellKg?: number;
   trapBarKg?: number;
   plateInventory?: PlateInventoryItem[];
+  preferStandardLbPlates?: boolean;
   /**
    * Phase 4 BW gate state, keyed by movement family. Forwarded verbatim
    * to each prescribed `<MovementCard>` so the focus view can render the
@@ -139,6 +140,7 @@ export function MovementCardList({
   barbellKg,
   trapBarKg,
   plateInventory,
+  preferStandardLbPlates,
   bwGateStateByFamily,
   resolvedFreestyle,
   supersetByMovementId,
@@ -372,6 +374,7 @@ export function MovementCardList({
         barbellKg={barbellKg}
         trapBarKg={trapBarKg}
         plateInventory={plateInventory}
+        preferStandardLbPlates={preferStandardLbPlates}
         bwGateStateByFamily={bwGateStateByFamily}
         bodyweightCapable={bodyweightIdSet.has(group.movementId)}
       />
@@ -549,6 +552,7 @@ function PrescribedCard(props: {
   barbellKg?: number;
   trapBarKg?: number;
   plateInventory?: PlateInventoryItem[];
+  preferStandardLbPlates?: boolean;
   bwGateStateByFamily?: Readonly<
     Record<
       string,
@@ -608,6 +612,7 @@ function PrescribedCard(props: {
       barbellKg={props.barbellKg}
       trapBarKg={props.trapBarKg}
       plateInventory={props.plateInventory}
+      preferStandardLbPlates={props.preferStandardLbPlates}
       persistKeyPrefix={`mc:${props.sessionId}`}
       bwGateStateByFamily={props.bwGateStateByFamily}
       bodyweightCapable={props.bodyweightCapable}

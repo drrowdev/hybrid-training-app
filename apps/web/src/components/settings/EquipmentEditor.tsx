@@ -35,10 +35,17 @@ import {
 import { useAutoSave } from "@/lib/settings/use-auto-save";
 import { AutoSaveStatus } from "./AutoSaveStatus";
 import { EditableKgChips } from "./EditableKgChips";
+import {
+  type WeightUnit,
+  displayWeight,
+  roundDisplayWeight,
+  weightUnitLabel,
+  toKg,
+} from "@/lib/stats/units";
 
 type Props = {
   initial: Equipment;
-  units: "metric" | "imperial";
+  units: WeightUnit;
 };
 
 const PRESET_ORDER: EquipmentPreset[] = [
@@ -55,7 +62,7 @@ function clonePreset(preset: EquipmentPreset): Equipment {
 }
 
 export function EquipmentEditor({ initial, units }: Props) {
-  const suffix = units === "imperial" ? "lb" : "kg";
+  const suffix = weightUnitLabel(units);
 
   // Auto-save closure: serialise the entire Equipment blob and call
   // the existing server action (which validates via `parseEquipment`
@@ -138,24 +145,28 @@ export function EquipmentEditor({ initial, units }: Props) {
       <BarsSection
         bars={equipment.bars}
         suffix={suffix}
+        units={units}
         onChange={(bars) => mutate((d) => ({ ...d, bars }))}
       />
 
       <PlatesSection
         plates={equipment.plates}
         suffix={suffix}
+        units={units}
         onChange={(plates) => mutate((d) => ({ ...d, plates }))}
       />
 
       <DumbbellsSection
         dumbbells={equipment.dumbbells}
         suffix={suffix}
+        units={units}
         onChange={(dumbbells) => mutate((d) => ({ ...d, dumbbells }))}
       />
 
       <KettlebellsSection
         kettlebells={equipment.kettlebells}
         suffix={suffix}
+        units={units}
         onChange={(kettlebells) => mutate((d) => ({ ...d, kettlebells }))}
       />
 
@@ -172,6 +183,7 @@ export function EquipmentEditor({ initial, units }: Props) {
       <AccessoriesSection
         accessories={equipment.accessories}
         suffix={suffix}
+        units={units}
         onChange={(accessories) => mutate((d) => ({ ...d, accessories }))}
       />
 
@@ -262,10 +274,12 @@ function PresetRow({
 function BarsSection({
   bars,
   suffix,
+  units,
   onChange,
 }: {
   bars: Equipment["bars"];
   suffix: string;
+  units: WeightUnit;
   onChange: (next: Equipment["bars"]) => void;
 }) {
   return (
@@ -275,6 +289,7 @@ function BarsSection({
         label="Olympic barbell"
         valueKg={bars.barbellKg}
         suffix={suffix}
+        units={units}
         testIdRoot="equipment-bar-olympic"
         onChange={(v) => onChange({ ...bars, barbellKg: v ?? 0 })}
         allowDisable={false}
@@ -283,6 +298,7 @@ function BarsSection({
         label="Trap / hex bar"
         valueKg={bars.trapBarKg}
         suffix={suffix}
+        units={units}
         testIdRoot="equipment-bar-trap"
         onChange={(v) => onChange({ ...bars, trapBarKg: v })}
         allowDisable
@@ -291,6 +307,7 @@ function BarsSection({
         label="Safety squat bar"
         valueKg={bars.safetyBarKg}
         suffix={suffix}
+        units={units}
         testIdRoot="equipment-bar-safety"
         onChange={(v) => onChange({ ...bars, safetyBarKg: v })}
         allowDisable
@@ -303,6 +320,7 @@ function BarKgRow({
   label,
   valueKg,
   suffix,
+  units,
   testIdRoot,
   onChange,
   allowDisable,
@@ -310,11 +328,21 @@ function BarKgRow({
   label: string;
   valueKg: number | null;
   suffix: string;
+  units: WeightUnit;
   testIdRoot: string;
   onChange: (next: number | null) => void;
   allowDisable: boolean;
 }) {
   const present = valueKg != null;
+  // Display-unit converted value for the input
+  const displayVal = present
+    ? roundDisplayWeight(displayWeight(valueKg, units), units)
+    : 0;
+  // Input constraints in display units
+  const maxDisplay = units === "imperial" ? 132 : 60;
+  const stepDisplay = units === "imperial" ? 1 : 0.5;
+  // Default when "Add" is clicked: 45 lb for imperial, 25 kg for metric
+  const defaultKg = units === "imperial" ? toKg(45, "imperial") : 25;
   return (
     <div
       data-testid={testIdRoot}
@@ -332,13 +360,13 @@ function BarKgRow({
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <input
               type="number"
-              step="0.5"
+              step={stepDisplay}
               min="0"
-              max="60"
+              max={maxDisplay}
               inputMode="decimal"
-              value={valueKg ?? 0}
+              value={displayVal}
               data-testid={`${testIdRoot}-kg`}
-              onChange={(e) => onChange(Number(e.target.value))}
+              onChange={(e) => onChange(toKg(Number(e.target.value), units))}
               style={{ ...inputStyle, width: 80 }}
             />
             <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>{suffix}</span>
@@ -365,7 +393,7 @@ function BarKgRow({
           </span>
           <button
             type="button"
-            onClick={() => onChange(25)}
+            onClick={() => onChange(defaultKg)}
             data-testid={`${testIdRoot}-add`}
             className="cp-btn"
             style={{ padding: "6px 8px", fontSize: 11 }}
@@ -380,64 +408,98 @@ function BarKgRow({
 
 // ─── Plates ───────────────────────────────────────────────────────
 
-const COMMON_PLATES = [25, 20, 15, 10, 5, 2.5, 1.25, 0.5];
+const COMMON_PLATES_KG = [25, 20, 15, 10, 5, 2.5, 1.25, 0.5];
+const COMMON_PLATES_LB = [45, 35, 25, 10, 5, 2.5];
 
 function PlatesSection({
   plates,
   suffix,
+  units,
   onChange,
 }: {
   plates: number[];
   suffix: string;
+  units: WeightUnit;
   onChange: (next: number[]) => void;
 }) {
   const [customWeight, setCustomWeight] = useState("");
-  const toggle = (w: number) => {
-    const present = plates.includes(w);
-    if (present) {
-      onChange(plates.filter((p) => p !== w));
+  const commonList = units === "imperial" ? COMMON_PLATES_LB : COMMON_PLATES_KG;
+
+  // Check if a common display value V is active in the kg plates array
+  const isCommonActive = (displayVal: number): boolean =>
+    plates.some(
+      (kg) => roundDisplayWeight(displayWeight(kg, units), units) === displayVal,
+    );
+
+  // Find the kg entry matching a common display value
+  const findKgForDisplay = (displayVal: number): number | undefined =>
+    plates.find(
+      (kg) => roundDisplayWeight(displayWeight(kg, units), units) === displayVal,
+    );
+
+  const toggleCommon = (displayVal: number) => {
+    if (isCommonActive(displayVal)) {
+      // Remove the matching kg entry
+      const matchKg = findKgForDisplay(displayVal);
+      if (matchKg != null) {
+        onChange(plates.filter((p) => p !== matchKg));
+      }
     } else {
-      onChange([...plates, w].sort((a, b) => b - a));
+      // Add: convert display value → kg
+      const kgVal = toKg(displayVal, units);
+      onChange([...plates, kgVal].sort((a, b) => b - a));
     }
   };
+
+  // "Extra" plates: kg entries that don't match any common display value
+  const extraPlates = plates.filter(
+    (kg) =>
+      !commonList.some(
+        (cv) => roundDisplayWeight(displayWeight(kg, units), units) === cv,
+      ),
+  );
+
   const addCustom = () => {
     const n = Number(customWeight);
-    if (!Number.isFinite(n) || n <= 0 || n > 100) return;
-    if (plates.includes(n)) return;
-    onChange([...plates, n].sort((a, b) => b - a));
+    const maxDisplay = units === "imperial" ? 220 : 100;
+    if (!Number.isFinite(n) || n <= 0 || n > maxDisplay) return;
+    const kgVal = toKg(n, units);
+    if (plates.some((p) => Math.abs(p - kgVal) < 0.01)) return;
+    onChange([...plates, kgVal].sort((a, b) => b - a));
     setCustomWeight("");
   };
+
+  const maxDisplay = units === "imperial" ? 220 : 100;
+
   return (
     <fieldset style={fieldsetStyle} data-testid="equipment-plates">
       <Legend>Plates</Legend>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-        {COMMON_PLATES.map((w) => (
+        {commonList.map((w) => (
           <ToggleChip
             key={w}
             label={`${w} ${suffix}`}
-            active={plates.includes(w)}
-            onToggle={() => toggle(w)}
+            active={isCommonActive(w)}
+            onToggle={() => toggleCommon(w)}
             testId={`equipment-plate-${String(w).replace(".", "_")}`}
           />
         ))}
-        {plates
-          .filter((p) => !COMMON_PLATES.includes(p))
-          .map((p) => (
-            <ToggleChip
-              key={`extra-${p}`}
-              label={`${p} ${suffix}`}
-              active
-              onToggle={() => toggle(p)}
-              testId={`equipment-plate-extra-${String(p).replace(".", "_")}`}
-            />
-          ))}
+        {extraPlates.map((p) => (
+          <ToggleChip
+            key={`extra-${p}`}
+            label={`${roundDisplayWeight(displayWeight(p, units), units)} ${suffix}`}
+            active
+            onToggle={() => onChange(plates.filter((x) => x !== p))}
+            testId={`equipment-plate-extra-${String(p).replace(".", "_")}`}
+          />
+        ))}
       </div>
       <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8 }}>
         <input
           type="number"
           step="0.25"
           min="0.25"
-          max="100"
+          max={maxDisplay}
           inputMode="decimal"
           placeholder={`Other (${suffix})`}
           value={customWeight}
@@ -464,10 +526,12 @@ function PlatesSection({
 function DumbbellsSection({
   dumbbells,
   suffix,
+  units,
   onChange,
 }: {
   dumbbells: Equipment["dumbbells"];
   suffix: string;
+  units: WeightUnit;
   onChange: (next: Equipment["dumbbells"]) => void;
 }) {
   const available = dumbbells != null;
@@ -495,22 +559,25 @@ function DumbbellsSection({
         >
           <RangeInput
             label="From"
-            value={dumbbells.minKg}
+            valueKg={dumbbells.minKg}
             suffix={suffix}
+            units={units}
             testId="equipment-dumbbells-min"
             onChange={(v) => onChange({ ...dumbbells, minKg: v })}
           />
           <RangeInput
             label="to"
-            value={dumbbells.maxKg}
+            valueKg={dumbbells.maxKg}
             suffix={suffix}
+            units={units}
             testId="equipment-dumbbells-max"
             onChange={(v) => onChange({ ...dumbbells, maxKg: v })}
           />
           <RangeInput
             label="in"
-            value={dumbbells.stepKg}
+            valueKg={dumbbells.stepKg}
             suffix={`${suffix} steps`}
+            units={units}
             testId="equipment-dumbbells-step"
             onChange={(v) => onChange({ ...dumbbells, stepKg: v })}
           />
@@ -522,63 +589,90 @@ function DumbbellsSection({
 
 // ─── Kettlebells ──────────────────────────────────────────────────
 
-const COMMON_KBS = [8, 12, 16, 20, 24, 28, 32, 40];
+const COMMON_KBS_KG = [8, 12, 16, 20, 24, 28, 32, 40];
+const COMMON_KBS_LB = [18, 26, 35, 44, 53, 62, 70];
 
 function KettlebellsSection({
   kettlebells,
   suffix,
+  units,
   onChange,
 }: {
   kettlebells: number[];
   suffix: string;
+  units: WeightUnit;
   onChange: (next: number[]) => void;
 }) {
   const [customWeight, setCustomWeight] = useState("");
-  const toggle = (w: number) => {
-    if (kettlebells.includes(w)) {
-      onChange(kettlebells.filter((k) => k !== w));
+  const commonList = units === "imperial" ? COMMON_KBS_LB : COMMON_KBS_KG;
+
+  const isCommonActive = (displayVal: number): boolean =>
+    kettlebells.some(
+      (kg) => roundDisplayWeight(displayWeight(kg, units), units) === displayVal,
+    );
+
+  const findKgForDisplay = (displayVal: number): number | undefined =>
+    kettlebells.find(
+      (kg) => roundDisplayWeight(displayWeight(kg, units), units) === displayVal,
+    );
+
+  const toggleCommon = (displayVal: number) => {
+    if (isCommonActive(displayVal)) {
+      const matchKg = findKgForDisplay(displayVal);
+      if (matchKg != null) {
+        onChange(kettlebells.filter((k) => k !== matchKg));
+      }
     } else {
-      onChange([...kettlebells, w].sort((a, b) => a - b));
+      const kgVal = toKg(displayVal, units);
+      onChange([...kettlebells, kgVal].sort((a, b) => a - b));
     }
   };
+
+  const extraKbs = kettlebells.filter(
+    (kg) =>
+      !commonList.some(
+        (cv) => roundDisplayWeight(displayWeight(kg, units), units) === cv,
+      ),
+  );
+
   const addCustom = () => {
     const n = Number(customWeight);
-    if (!Number.isFinite(n) || n <= 0 || n > 100) return;
-    if (kettlebells.includes(n)) return;
-    onChange([...kettlebells, n].sort((a, b) => a - b));
+    if (!Number.isFinite(n) || n <= 0 || n > (units === "imperial" ? 220 : 100)) return;
+    const kgVal = toKg(n, units);
+    if (kettlebells.some((k) => Math.abs(k - kgVal) < 0.01)) return;
+    onChange([...kettlebells, kgVal].sort((a, b) => a - b));
     setCustomWeight("");
   };
+
   return (
     <fieldset style={fieldsetStyle} data-testid="equipment-kettlebells">
       <Legend>Kettlebells</Legend>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-        {COMMON_KBS.map((w) => (
+        {commonList.map((w) => (
           <ToggleChip
             key={w}
             label={`${w} ${suffix}`}
-            active={kettlebells.includes(w)}
-            onToggle={() => toggle(w)}
+            active={isCommonActive(w)}
+            onToggle={() => toggleCommon(w)}
             testId={`equipment-kb-${w}`}
           />
         ))}
-        {kettlebells
-          .filter((k) => !COMMON_KBS.includes(k))
-          .map((k) => (
-            <ToggleChip
-              key={`extra-${k}`}
-              label={`${k} ${suffix}`}
-              active
-              onToggle={() => toggle(k)}
-              testId={`equipment-kb-extra-${k}`}
-            />
-          ))}
+        {extraKbs.map((k) => (
+          <ToggleChip
+            key={`extra-${k}`}
+            label={`${roundDisplayWeight(displayWeight(k, units), units)} ${suffix}`}
+            active
+            onToggle={() => onChange(kettlebells.filter((x) => x !== k))}
+            testId={`equipment-kb-extra-${k}`}
+          />
+        ))}
       </div>
       <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8 }}>
         <input
           type="number"
           step="0.5"
           min="1"
-          max="100"
+          max={units === "imperial" ? 220 : 100}
           inputMode="decimal"
           placeholder={`Other (${suffix})`}
           value={customWeight}
@@ -681,10 +775,12 @@ function CardioSection({
 function AccessoriesSection({
   accessories,
   suffix,
+  units,
   onChange,
 }: {
   accessories: Equipment["accessories"];
   suffix: string;
+  units: WeightUnit;
   onChange: (next: Equipment["accessories"]) => void;
 }) {
   const toggleAnkle = () => {
@@ -694,7 +790,6 @@ function AccessoriesSection({
       onChange({ ...accessories, ankleWeights: { kg: 2.5 } });
     }
   };
-  void suffix;
   return (
     <fieldset style={fieldsetStyle} data-testid="equipment-accessories">
       <Legend>Accessories</Legend>
@@ -703,6 +798,7 @@ function AccessoriesSection({
           label="Weighted vest"
           values={accessories.weightedVest}
           testIdRoot="equipment-accessory-vest"
+          units={units}
           onChange={(next) =>
             onChange({ ...accessories, weightedVest: next })
           }
@@ -712,6 +808,7 @@ function AccessoriesSection({
           label="Sandbag"
           values={accessories.sandbag}
           testIdRoot="equipment-accessory-sandbag"
+          units={units}
           onChange={(next) => onChange({ ...accessories, sandbag: next })}
           defaultKg={25}
         />
@@ -742,6 +839,8 @@ function AccessoriesSection({
         <AnkleWeightRow
           present={Boolean(accessories.ankleWeights)}
           kg={accessories.ankleWeights ? accessories.ankleWeights.kg : 2.5}
+          units={units}
+          suffix={suffix}
           onToggle={toggleAnkle}
           onChangeKg={(v) =>
             onChange({ ...accessories, ankleWeights: { kg: v } })
@@ -809,12 +908,14 @@ function ChipAccessoryRow({
   label,
   values,
   testIdRoot,
+  units,
   onChange,
   defaultKg,
 }: {
   label: string;
   values: number[];
   testIdRoot: string;
+  units: WeightUnit;
   onChange: (next: number[]) => void;
   defaultKg: number;
 }) {
@@ -844,9 +945,10 @@ function ChipAccessoryRow({
         <EditableKgChips
           values={values}
           onChange={onChange}
+          units={units}
           min={1}
-          max={200}
-          step={0.5}
+          max={units === "imperial" ? 440 : 200}
+          step={units === "imperial" ? 1 : 0.5}
           testIdPrefix={testIdRoot}
         />
       )}
@@ -857,14 +959,21 @@ function ChipAccessoryRow({
 function AnkleWeightRow({
   present,
   kg,
+  units,
+  suffix,
   onToggle,
   onChangeKg,
 }: {
   present: boolean;
   kg: number;
+  units: WeightUnit;
+  suffix: string;
   onToggle: () => void;
   onChangeKg: (v: number) => void;
 }) {
+  const displayVal = roundDisplayWeight(displayWeight(kg, units), units);
+  const maxDisplay = units === "imperial" ? 66 : 30;
+  const stepDisplay = units === "imperial" ? 1 : 0.5;
   return (
     <div
       data-testid="equipment-accessory-ankle"
@@ -887,16 +996,16 @@ function AnkleWeightRow({
         <>
           <input
             type="number"
-            step="0.5"
+            step={stepDisplay}
             min="0"
-            max="30"
+            max={maxDisplay}
             inputMode="decimal"
-            value={kg}
+            value={displayVal}
             data-testid="equipment-accessory-ankle-kg"
-            onChange={(e) => onChangeKg(Number(e.target.value))}
+            onChange={(e) => onChangeKg(toKg(Number(e.target.value), units))}
             style={{ ...inputStyle, width: 80 }}
           />
-          <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>kg</span>
+          <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>{suffix}</span>
         </>
       )}
     </div>
@@ -1019,29 +1128,34 @@ function RadioPill({
 
 function RangeInput({
   label,
-  value,
+  valueKg,
   suffix,
+  units,
   testId,
   onChange,
 }: {
   label: string;
-  value: number;
+  valueKg: number;
   suffix: string;
+  units: WeightUnit;
   testId: string;
   onChange: (v: number) => void;
 }) {
+  const displayVal = roundDisplayWeight(displayWeight(valueKg, units), units);
+  const maxDisplay = units === "imperial" ? 440 : 200;
+  const stepDisplay = units === "imperial" ? 1 : 0.5;
   return (
     <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
       <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>{label}</span>
       <input
         type="number"
-        step="0.5"
+        step={stepDisplay}
         min="0"
-        max="200"
+        max={maxDisplay}
         inputMode="decimal"
-        value={value}
+        value={displayVal}
         data-testid={testId}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={(e) => onChange(toKg(Number(e.target.value), units))}
         style={{ ...inputStyle, width: 80 }}
       />
       <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>{suffix}</span>

@@ -74,6 +74,7 @@ export type MovementCardProps = {
   barbellKg?: number;
   trapBarKg?: number;
   plateInventory?: PlateInventoryItem[];
+  preferStandardLbPlates?: boolean;
   /** Persistence key prefix — combined with movementId for localStorage. */
   persistKeyPrefix: string;
   /**
@@ -119,6 +120,7 @@ export function MovementCard({
   barbellKg,
   trapBarKg,
   plateInventory,
+  preferStandardLbPlates,
   persistKeyPrefix,
   bwGateStateByFamily,
   bodyweightCapable,
@@ -514,6 +516,7 @@ export function MovementCard({
             barbellKg={barbellKg}
             trapBarKg={trapBarKg}
             plateInventory={plateInventory}
+            preferStandardLbPlates={preferStandardLbPlates}
             initialCursor={pinnedCursor}
             onSaved={() => setPinnedCursor(null)}
             bwGateStateByFamily={bwGateStateByFamily}

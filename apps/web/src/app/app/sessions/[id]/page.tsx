@@ -158,6 +158,7 @@ export default async function SessionDetailPage({
   const barbellKg = equipment.bars.barbellKg || 20;
   const trapBarKg = equipment.bars.trapBarKg ?? 25;
   const plateInventory = equipment.plates.map((weightKg) => ({ weightKg }));
+  const preferStandardLbPlates = equipment.preset !== "custom";
 
   const sets: LoggedSet[] = (setsRaw ?? []).map((s) => {
     const m = Array.isArray(s.movement) ? s.movement[0] : s.movement;
@@ -1191,6 +1192,7 @@ export default async function SessionDetailPage({
         barbellKg={barbellKg}
         trapBarKg={trapBarKg}
         plateInventory={plateInventory}
+        preferStandardLbPlates={preferStandardLbPlates}
         bwGateStateByFamily={bwGateStateByFamily}
         resolvedFreestyle={resolvedFreestyle}
         supersetByMovementId={supersetByMovementId}

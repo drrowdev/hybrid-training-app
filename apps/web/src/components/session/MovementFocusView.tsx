@@ -99,6 +99,7 @@ export type FocusViewProps = {
   barbellKg?: number;
   trapBarKg?: number;
   plateInventory?: PlateInventoryItem[];
+  preferStandardLbPlates?: boolean;
   /**
    * Optional manual cursor pinned by the parent — e.g. clicking
    * "Edit sets" on a recap-row opens the focus view at the last
@@ -148,6 +149,7 @@ export function MovementFocusView({
   barbellKg = 20,
   trapBarKg = 25,
   plateInventory,
+  preferStandardLbPlates = true,
   initialCursor = null,
   onSaved,
   bwGateStateByFamily,
@@ -810,6 +812,7 @@ export function MovementFocusView({
             barWeightKg={barWeightKg}
             inventory={inv}
             units={units}
+            preferStandardLbPlates={preferStandardLbPlates}
           />
         );
       })()}
