@@ -36,7 +36,7 @@ import { DeloadSkipCard } from "@/components/plan/DeloadSkipCard";
 import { getEarlyDeloadRecommendation } from "@/lib/planner/early-deload-offer";
 import { acceptEarlyDeload } from "@/lib/planner/early-deload-actions";
 import { EarlyDeloadCard } from "@/components/plan/EarlyDeloadCard";
-import { deloadWeekIndexFor } from "@/lib/planner/deload-skip";
+import { resolveDeloadWeekIndex } from "@/lib/planner/deload-skip";
 import { getLimitationResponseOffer } from "@/lib/limitations/offer";
 import { applyLimitationResponseSelection } from "@/lib/limitations/actions";
 import { LimitationResponseCard } from "@/components/limitations/LimitationResponseCard";
@@ -198,7 +198,7 @@ export default async function PlanPage({
         weeks={block.weeks}
         today={today}
         currentWeekIndex={todayWeek}
-        deloadWeekIndex={deloadWeekIndexFor(block.archetype, block.weeks)}
+        deloadWeekIndex={resolveDeloadWeekIndex({ archetype: block.archetype, weeks: block.weeks, sessions: all })}
         sessions={sessions}
         view={view}
         filter={filter}

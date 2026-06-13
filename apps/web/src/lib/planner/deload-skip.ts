@@ -34,6 +34,41 @@ export function deloadWeekIndexFor(archetype: string, weeks: number): number | n
 }
 
 /**
+ * Deload week index derived from the MATERIALISED plan — the earliest week that
+ * contains a `deload`-role session. Producer-agnostic (ADR 0046 Phase 3): every
+ * program tags its deload this way — Hybrid sets `role="deload"` on its Deload
+ * week, and 5/3/1 / Tactical Barbell / Green Protocol materialise their deload /
+ * 7th-week with `role="deload"`. Returns null when no deload session exists.
+ */
+export function deloadWeekIndexFromRoles(
+  sessions: ReadonlyArray<{ weekIndex: number; role: string | null }>,
+): number | null {
+  let min: number | null = null;
+  for (const s of sessions) {
+    if (s.role === "deload" && (min == null || s.weekIndex < min)) min = s.weekIndex;
+  }
+  return min;
+}
+
+/**
+ * Resolve a block's deload week, preferring the materialised plan (`role="deload"`)
+ * and falling back to the archetype config for legacy archetype blocks whose
+ * sessions predate role tagging. De-archetypes the read seam without regressing
+ * native blocks: Hybrid's role-derived week equals its archetype-config week by
+ * construction (same `intensityLabel === "Deload"` condition), and foreign
+ * programs — previously `null` — are now detected.
+ */
+export function resolveDeloadWeekIndex(args: {
+  archetype: string | null | undefined;
+  weeks: number;
+  sessions: ReadonlyArray<{ weekIndex: number; role: string | null }>;
+}): number | null {
+  const fromRoles = deloadWeekIndexFromRoles(args.sessions);
+  if (fromRoles != null) return fromRoles;
+  return deloadWeekIndexFor(args.archetype ?? "", args.weeks);
+}
+
+/**
  * Pure eligibility gate — the offer surfaces iff all hold:
  *   - the block has a deload week;
  *   - the user is in it or the week before;
