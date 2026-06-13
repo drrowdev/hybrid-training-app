@@ -13,6 +13,12 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createProgramInstance, type CreateProgramInstanceResult } from "@/lib/platform/actions";
+import {
+  TB_ACCESSORY_MUSCLES,
+  TB_ACCESSORY_MUSCLE_LABELS,
+  TB_DEFAULT_ACCESSORY_MUSCLES,
+  tbAccessoryPlanForTemplate,
+} from "@/lib/platform/tb-accessories-config";
 import { upsertTrainingMax } from "@/lib/training-maxes/actions";
 import styles from "./ProgramPicker.module.css";
 
@@ -631,6 +637,10 @@ export function ProgramPicker({
 
   const tbTemplateId = isTb ? String(values.templateId ?? "") : "";
   const activeTbTemplate = isTb ? tbTemplateById.get(tbTemplateId) ?? null : null;
+  // ADR 0048 — optional TB accessories (opt-in, template-gated).
+  const tbAccessoryPlan = isTb ? tbAccessoryPlanForTemplate(tbTemplateId) : null;
+  const [accessoriesOn, setAccessoriesOn] = useState<boolean>(false);
+  const [accessoryMuscles, setAccessoryMuscles] = useState<string[]>([...TB_DEFAULT_ACCESSORY_MUSCLES]);
 
   const [cluster, setCluster] = useState<PickerClusterEntry[]>(() =>
     activeTbTemplate ? defaultClusterFor(activeTbTemplate, anchoredKeys) : [],
@@ -941,6 +951,9 @@ export function ProgramPicker({
         setupValues,
         weekdays,
         startedOn,
+        ...(isTb && tbAccessoryPlan && accessoriesOn
+          ? { accessories: { enabled: true, muscles: accessoryMuscles } }
+          : {}),
       });
       setResult(res);
       if (res.ok) router.push("/app");
@@ -1284,6 +1297,71 @@ export function ProgramPicker({
     );
   }
 
+  function renderTbAccessories() {
+    if (!isTb || !tbAccessoryPlan) return null;
+    const toggleMuscle = (m: string) =>
+      setAccessoryMuscles((prev) =>
+        prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m],
+      );
+    return (
+      <div style={{ marginTop: 24, maxWidth: 560 }} data-testid="tb-accessories">
+        <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={accessoriesOn}
+            data-testid="tb-accessories-toggle"
+            onChange={(e) => setAccessoriesOn(e.target.checked)}
+          />
+          <span className={styles.label} style={{ margin: 0 }}>
+            Add accessory work (optional)
+          </span>
+        </label>
+        <p className={styles.sub} style={{ marginTop: 6 }}>
+          {"Tactical Barbell doesn\u2019t prescribe accessories \u2014 your main lifts and conditioning do the heavy lifting. Turn this on only if you want a little aesthetic work (arms, abs, calves) after your main lifts. Up to "}
+          {tbAccessoryPlan.maxItems}
+          {" per session, kept light so it never compromises your strength work."}
+        </p>
+        {accessoriesOn ? (
+          <>
+            <div className={styles.label} style={{ marginTop: 12 }}>
+              Emphasis
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {TB_ACCESSORY_MUSCLES.map((m) => {
+                const on = accessoryMuscles.includes(m);
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    data-testid={`tb-accessory-muscle-${m}`}
+                    aria-pressed={on}
+                    onClick={() => toggleMuscle(m)}
+                    className={styles.chip}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 999,
+                      border: "1px solid var(--line, #2a2f2b)",
+                      background: on ? "var(--accent, #8fb39b)" : "transparent",
+                      color: on ? "#0f1310" : "inherit",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {TB_ACCESSORY_MUSCLE_LABELS[m]}
+                  </button>
+                );
+              })}
+            </div>
+            {accessoryMuscles.length === 0 ? (
+              <p className={styles.sub} style={{ marginTop: 8 }}>
+                {"Pick at least one muscle, or we\u2019ll use a balanced default (arms, abs, calves)."}
+              </p>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    );
+  }
+
   function renderLoadoutStep() {
     if (!selected) return null;
     // Hybrid (goal-driven) — focus-muscle chips, no template list.
@@ -1311,6 +1389,7 @@ export function ProgramPicker({
         {renderLoadoutOptions()}
         {renderSpecStrip()}
         {renderGpPlan()}
+        {renderTbAccessories()}
       </div>
     );
   }
