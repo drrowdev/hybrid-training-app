@@ -259,7 +259,6 @@ function summariseCompleted(
 export function summariseGroupForHeader(
   group: MovementGroup,
   loggedSets: ReadonlyArray<FocusLoggedSet>,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _tmKg?: number,
   // Loading-basis noun for the "% X" suffix — "1RM" when the program loads
   // straight off the 1RM (e.g. Tactical Barbell off 1RM), else "TM".

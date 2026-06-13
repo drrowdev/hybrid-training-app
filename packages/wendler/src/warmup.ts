@@ -1,9 +1,12 @@
+import { GLOBAL_WARMUP_PERCENTS, GLOBAL_WARMUP_REPS } from '@hta/program-core';
 import { floorToIncrement } from './rounding';
 import type { PrescribedSet, WarmupConfig } from './types';
 
+// Mirrors the app-wide global warm-up ramp (single source of truth lives in
+// @hta/program-core) so 5/3/1 stays in lockstep with every other program.
 export const DEFAULT_WARMUP: WarmupConfig = {
-  percents: [0.4, 0.6, 0.8],
-  reps: [5, 5, 3],
+  percents: [...GLOBAL_WARMUP_PERCENTS],
+  reps: [...GLOBAL_WARMUP_REPS],
 };
 
 /**

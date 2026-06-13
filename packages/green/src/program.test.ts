@@ -282,11 +282,14 @@ describe("Green engine — I/CAT (Zulu/HT + Operator + Fighter + SE)", () => {
     expect(Object.keys(inst.strength).sort()).toEqual(["fighter", "operator", "zulu-ht"]);
   });
 
-  it("the hypertrophy block delegates to Zulu/HT (heavy + back-off + assistance)", () => {
+  it("the hypertrophy block delegates to Zulu/HT (warm-ups + heavy + back-off + assistance)", () => {
     const inst = setup({ phaseId: "icat" });
     const p = gp.prescribe(inst, "gp-b0-w1-d0", ctx); // Zulu day 1
-    expect(p.items.map((i) => i.kind)).toEqual(["main", "supplemental", "assistance"]);
-    expect(p.items[0]).toMatchObject({ name: "Overhead Press (heavy)", weightKg: 75 });
+    expect(itemsOfKind(p, "main")[0]).toMatchObject({ name: "Overhead Press (heavy)", weightKg: 75 });
+    expect(itemsOfKind(p, "supplemental")[0]).toMatchObject({ name: "Squat (back-off)" });
+    expect(itemsOfKind(p, "assistance")).toHaveLength(1);
+    // Heavy + back-off barbell lifts each get the global warm-up ramp.
+    expect(itemsOfKind(p, "warmup")).toHaveLength(6);
   });
 
   it("the four Zulu days in a week map to Zulu/HT sessions s1–s4", () => {
