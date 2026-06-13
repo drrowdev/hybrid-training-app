@@ -3,7 +3,11 @@ import { redirect } from "next/navigation";
 
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { DateTimeFormatCard } from "@/components/settings/DateTimeFormatCard";
-import { FeedbackAutoSave, SupersetAutoSave } from "@/components/settings/SettingsAutoSaveSections";
+import {
+  FeedbackAutoSave,
+  SupersetAutoSave,
+  UnitsAutoSave,
+} from "@/components/settings/SettingsAutoSaveSections";
 import {
   isDateFormat,
   isTimeFormat,
@@ -22,7 +26,7 @@ export default async function PreferencesSettingsPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "haptics_enabled, timer_sound_enabled, superset_accessories, time_format, date_format, timezone",
+      "haptics_enabled, timer_sound_enabled, superset_accessories, time_format, date_format, timezone, units",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -36,6 +40,18 @@ export default async function PreferencesSettingsPage() {
       />
 
       <div className="space-y-6">
+        {/* Units */}
+        <div className="space-y-3" data-testid="settings-units">
+          <p className="text-xs text-foreground/60">
+            Whether weights and distances show in kilograms / kilometres or
+            pounds / miles. Everything is stored in metric and converted for
+            display — switching never changes your logged numbers.
+          </p>
+          <UnitsAutoSave
+            initialUnits={profile?.units === "imperial" ? "imperial" : "metric"}
+          />
+        </div>
+
         {/* Time & date format */}
         <div className="space-y-3" data-testid="settings-datetime-format">
           <p className="text-xs text-foreground/60">

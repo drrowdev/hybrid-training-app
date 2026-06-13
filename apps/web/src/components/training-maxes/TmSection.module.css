@@ -109,6 +109,120 @@
   gap: 12px;
 }
 
+.est {
+  background: none;
+  border: 0;
+  font-size: 11px;
+  color: var(--cp-accent);
+  cursor: pointer;
+  padding: 0;
+  white-space: nowrap;
+}
+.est:hover {
+  color: var(--cp-accent-hover, var(--cp-accent));
+}
+
+/* Estimate-from-a-set popover. */
+.pop {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 12px;
+  width: min(320px, calc(100vw - 40px));
+  background: var(--cp-bg-elevated);
+  border: 1px solid var(--cp-border-strong, var(--cp-border));
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+  display: grid;
+  gap: 10px;
+}
+
+.popH {
+  font-family: var(--cp-font-display), sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cp-text);
+}
+
+.popP {
+  font-size: 11.5px;
+  color: var(--cp-text-muted);
+  line-height: 1.45;
+  margin: -4px 0 2px;
+}
+
+.popFields {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.popField {
+  display: grid;
+  gap: 4px;
+}
+
+.popField label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--cp-text-muted);
+}
+
+.popX {
+  align-self: center;
+  color: var(--cp-text-muted);
+  padding-bottom: 8px;
+}
+
+.popRes {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-top: 1px solid var(--cp-border);
+  padding-top: 10px;
+}
+.popResL {
+  font-size: 11px;
+  color: var(--cp-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.popResV {
+  font-family: var(--cp-font-mono), monospace;
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--cp-accent);
+}
+
+.popBtns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.popBtns button {
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--cp-border);
+  color: var(--cp-text-muted);
+}
+.popApply {
+  background: var(--cp-accent) !important;
+  color: var(--cp-accent-fg, #0f1310) !important;
+  border-color: var(--cp-accent) !important;
+  font-weight: 600;
+}
+.popApply:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .inp {
   display: flex;
   align-items: center;
