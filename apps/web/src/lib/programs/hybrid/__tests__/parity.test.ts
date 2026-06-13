@@ -17,7 +17,11 @@
  *   (b) the pure `timeline` enumeration.
  */
 import { describe, it, expect } from "vitest";
-import { hybridProgramEngine, toContextInput } from "../engine";
+import {
+  hybridProgramEngine,
+  toContextInput,
+  resolveHybridTmPercent,
+} from "../engine";
 import { parseCreateBlockInput } from "@/lib/planner/create-block-input";
 import { ARCHETYPES, daysForFrequency } from "@/lib/planner/archetypes";
 import { foldDualMainLifts } from "@/lib/planner/main-lift-folding";
@@ -27,6 +31,42 @@ const CTX: PlatformContext = { oneRepMaxes: {}, roundingKg: 2.5 };
 const HYBRID_ARCHETYPE = "concurrent_hybrid";
 
 describe("Hybrid engine — setup shape", () => {
+  it("exposes focus muscles + a training-intensity (TM%) select, defaulting to 90", () => {
+    const fields = hybridProgramEngine.describeSetup().fields;
+    const tm = fields.find((f) => f.key === "tmPercent");
+    expect(tm).toBeDefined();
+    expect(tm?.type).toBe("select");
+    expect(tm?.defaultValue).toBe("90");
+    expect(fields.some((f) => f.key === "focusMuscles")).toBe(true);
+  });
+
+  it("keeps tmPercent OUT of the instance/context input (parity is preserved)", () => {
+    // tmPercent is read at DEPLOY time (to seed training_maxes.tm_percent), not
+    // threaded through the shared assembly input — so the instance is identical
+    // whether or not the user picked an intensity.
+    const withTm = hybridProgramEngine.setup(
+      { values: { daysPerWeek: 4, startedOn: "2026-01-05", tmPercent: "95" } },
+      CTX,
+    );
+    const withoutTm = hybridProgramEngine.setup(
+      { values: { daysPerWeek: 4, startedOn: "2026-01-05" } },
+      CTX,
+    );
+    expect(toContextInput(withTm)).toEqual(toContextInput(withoutTm));
+    expect("tmPercent" in (withTm as Record<string, unknown>)).toBe(false);
+  });
+
+  it("resolveHybridTmPercent clamps + defaults out-of-range / junk to 90", () => {
+    expect(resolveHybridTmPercent("85")).toBe(85);
+    expect(resolveHybridTmPercent("92.5")).toBe(92.5);
+    expect(resolveHybridTmPercent(95)).toBe(95);
+    expect(resolveHybridTmPercent(undefined)).toBe(90);
+    expect(resolveHybridTmPercent("")).toBe(90);
+    expect(resolveHybridTmPercent("nope")).toBe(90);
+    expect(resolveHybridTmPercent(40)).toBe(90); // below floor
+    expect(resolveHybridTmPercent(120)).toBe(90); // above ceiling
+  });
+
   it("always hardwires the concurrent_hybrid archetype, ignoring any stray input", () => {
     const instance = hybridProgramEngine.setup(
       // Even if a legacy `archetypeId` leaks in, it must be ignored.

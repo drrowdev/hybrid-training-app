@@ -93,6 +93,25 @@ export function describeHybridSetup(): SetupSchema {
         })),
         help: "Optionally bias accessory volume toward up to two muscle groups.",
       },
+      {
+        // Hybrid's loading basis. Unlike 5/3/1 (fixed template TM) or TB (off the
+        // raw 1RM), Hybrid lets the user pick how hard the main lifts train as a
+        // % of their 1RM — the "training max". Seeded onto training_maxes.tm_percent
+        // at deploy so every %-of-TM render uses it. Default 90% (top set ≈ 85.5%
+        // of 1RM — right at the strength-maintenance floor).
+        key: "tmPercent",
+        label: "Training intensity (TM%)",
+        type: "select",
+        defaultValue: "90",
+        options: [
+          { value: "85", label: "85% — lighter, more reps in reserve" },
+          { value: "87.5", label: "87.5%" },
+          { value: "90", label: "90% — balanced (recommended)" },
+          { value: "92.5", label: "92.5%" },
+          { value: "95", label: "95% — heavier, peaking" },
+        ],
+        help: "Sets your training max as a % of your 1RM. Higher = heavier main lifts.",
+      },
     ],
   };
 }
@@ -204,7 +223,28 @@ export async function materializeHybridNative(
   const built = await buildBlockAssemblyContext(supabase, userId, toContextInput(instance));
   if (!built.ok) return { ok: false, error: built.error };
   const rows = assembleBlockSessions(built.ctx, blockId, userId);
-  return { ok: true, rows, meta: built.meta };
+  // Distinct resolved MAIN-lift movement ids (primary + dual-main secondary) —
+  // the deploy path seeds tm_percent for exactly these.
+  const mainMovementIds = Array.from(
+    new Set(
+      [...built.ctx.resolved.values(), ...built.ctx.resolvedSecondary.values()].map(
+        (m) => m.movementId,
+      ),
+    ),
+  );
+  return { ok: true, rows, meta: built.meta, mainMovementIds };
+}
+
+/**
+ * Resolve the Hybrid wizard's chosen training-max percentage into a clamped
+ * integer-or-half percentage. Hybrid's loading basis is a % of the user's 1RM
+ * (the "training max"); the deploy path seeds it onto `training_maxes.tm_percent`.
+ * Unknown / out-of-range input falls back to the 90% default.
+ */
+export function resolveHybridTmPercent(raw: unknown): number {
+  const n = typeof raw === "string" ? Number(raw) : typeof raw === "number" ? raw : NaN;
+  if (!Number.isFinite(n) || n < 50 || n > 100) return 90;
+  return n;
 }
 
 export const hybridProgramEngine: NativeProgramEngine<HybridInstance> = {
