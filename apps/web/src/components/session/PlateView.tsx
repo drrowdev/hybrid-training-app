@@ -5,9 +5,11 @@
  * inside `<MovementFocusView>`. Pure render — the maths lives in
  * `plate-math.ts` so it's directly testable.
  *
- * Each plate weight gets a stable colour token from the Clawpilot
- * palette so the user builds an associative memory ("the orange ones
- * are 20s") across sessions.
+ * Each plate weight gets its real-world IWF / Rogue calibrated colour
+ * (25 = red, 20 = blue, 15 = yellow, 10 = green, 5 = white) so the
+ * stack reads like an actual loaded bar and the user builds an
+ * associative memory ("the blue ones are 20s") across sessions. These
+ * are physical-standard colours, intentionally theme-independent.
  */
 
 import { computePlateBreakdown, type PlateInventoryItem } from "./plate-math";
@@ -18,15 +20,18 @@ export type PlateViewProps = {
   inventory: PlateInventoryItem[];
 };
 
+// IWF / Rogue calibrated plate colours. Fixed real-world hues (not theme
+// tokens) so a 20 always reads blue, a 15 yellow, etc. The change plates
+// (5 = white, 2.5 = red, 1.25 = chrome) follow the same IWF convention.
 const PLATE_COLORS: Array<{ max: number; bg: string; fg: string }> = [
-  { max: 25, bg: "var(--cp-danger)", fg: "var(--cp-accent-fg, #fff)" },
-  { max: 20, bg: "var(--cp-warning)", fg: "var(--cp-accent-fg, #111)" },
-  { max: 15, bg: "var(--cp-cardio)", fg: "var(--cp-accent-fg, #fff)" },
-  { max: 10, bg: "var(--cp-success)", fg: "var(--cp-accent-fg, #fff)" },
-  { max: 5, bg: "var(--cp-accent-soft)", fg: "var(--cp-accent)" },
-  { max: 2.5, bg: "var(--cp-text-muted)", fg: "var(--cp-bg-elevated)" },
-  // Lighter wedge for sub-2.5 micros (1.25, 0.5).
-  { max: 1.25, bg: "color-mix(in oklab, var(--cp-text-muted) 60%, transparent)", fg: "var(--cp-bg-elevated)" },
+  { max: 25, bg: "#ce1126", fg: "#fff" },
+  { max: 20, bg: "#0a5fb4", fg: "#fff" },
+  { max: 15, bg: "#f4c20d", fg: "#111" },
+  { max: 10, bg: "#1aa64b", fg: "#fff" },
+  { max: 5, bg: "#ececec", fg: "#111" },
+  { max: 2.5, bg: "#ce1126", fg: "#fff" },
+  // Chrome wedge for sub-2.5 micros (1.25, 0.5).
+  { max: 1.25, bg: "#aeb4bc", fg: "#111" },
 ];
 
 function plateStyle(weightKg: number): { bg: string; fg: string } {
