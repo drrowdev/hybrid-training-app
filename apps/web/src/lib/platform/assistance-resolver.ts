@@ -24,7 +24,11 @@ export type AssistanceSlot = "push" | "pull" | "single_leg_or_core";
 // alone ("isolation") doesn't say push vs pull. Compound presses/pulls are caught
 // earlier by their `press` / `pull` pattern, so these only disambiguate isolations.
 const PUSH_MUSCLES = new Set(["chest", "upper_chest", "triceps", "front_delts", "side_delts"]);
-const PULL_MUSCLES = new Set(["lats", "mid_back", "traps", "biceps", "rear_delts", "forearms"]);
+// `forearms` is intentionally excluded: a grip-only isolation (gripper, wrist curl)
+// gives no back/biceps stimulus, so it must not masquerade as a "pull" slot — it
+// falls through to `null` instead. Biceps/forearm movements like hammer curls still
+// classify as pull via their `biceps` primary.
+const PULL_MUSCLES = new Set(["lats", "mid_back", "traps", "biceps", "rear_delts"]);
 const CORE_MUSCLES = new Set(["abs", "obliques"]);
 
 // Name keywords that mark a movement as single-leg even when its pattern is a
