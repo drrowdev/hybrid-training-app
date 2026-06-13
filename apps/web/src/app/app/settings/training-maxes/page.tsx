@@ -31,12 +31,14 @@ export default async function TrainingMaxesPage() {
   const { data: profile } = user
     ? await supabase
         .from("profiles")
-        .select("equipment, barbell_kg, trap_bar_kg, plate_inventory_kg")
+        .select("equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, units")
         .eq("id", user.id)
         .maybeSingle()
     : { data: null };
   const equipment = resolveEquipment(profile);
   const bodyweightOnly = !hasLoadableMainLift(equipment);
+  const units: "metric" | "imperial" =
+    profile?.units === "imperial" ? "imperial" : "metric";
 
   const block = await getActiveBlock();
   const archetype = block ? ARCHETYPES[block.archetype as keyof typeof ARCHETYPES] : undefined;
@@ -146,6 +148,7 @@ export default async function TrainingMaxesPage() {
       )}
 
       <TmSection
+        units={units}
         requiredGroups={requiredGroups}
         otherRows={otherRows}
         otherRowSourceSets={otherRowSourceSets}

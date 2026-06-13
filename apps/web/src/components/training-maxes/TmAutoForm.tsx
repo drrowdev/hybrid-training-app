@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { type WeightUnit, toKg, weightUnitLabel } from "@/lib/stats/units";
 
 type Status = "idle" | "saving" | "saved" | "error";
 
@@ -13,6 +14,7 @@ export function TmAutoForm({
   candidates,
   candidateGroups,
   initial,
+  units,
   action,
 }: {
   /**
@@ -30,11 +32,14 @@ export function TmAutoForm({
     movementName?: string;
     oneRmKg?: number;
   };
+  /** Display/entry unit; values are converted to kg before saving. */
+  units: WeightUnit;
   /** Bound server action upsertTrainingMax. Returns either void or {ok, error?} */
   action: (fd: FormData) => Promise<unknown>;
 }) {
+  const unitLabel = weightUnitLabel(units);
   const [movementId, setMovementId] = useState<string>(initial?.movementId ?? "");
-  const [oneRmKg, setOneRmKg] = useState<string>(
+  const [oneRm, setOneRm] = useState<string>(
     initial?.oneRmKg != null ? String(initial.oneRmKg) : "",
   );
 
@@ -44,18 +49,20 @@ export function TmAutoForm({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSerialised = useRef<string | null>(null);
 
-  const scheduleSave = (mid: string, rm: string) => {
+  const scheduleSave = (mid: string, displayRm: string) => {
     if (!mid) return;
-    const rmNum = Number(rm);
-    if (!Number.isFinite(rmNum) || rmNum <= 0) return;
+    const display = Number(displayRm);
+    if (!Number.isFinite(display) || display <= 0) return;
+    const kg = toKg(display, units);
+    if (kg <= 0 || kg > 1000) return;
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
-      const serialised = `${mid}|${rmNum}`;
+      const serialised = `${mid}|${kg}`;
       if (lastSerialised.current === serialised) return;
       lastSerialised.current = serialised;
       const fd = new FormData();
       fd.set("movementId", mid);
-      fd.set("oneRmKg", rm);
+      fd.set("oneRmKg", String(kg));
       setStatus("saving");
       setErrorMsg(null);
       startTransition(async () => {
@@ -82,10 +89,10 @@ export function TmAutoForm({
 
   const onMovement = (v: string) => {
     setMovementId(v);
-    scheduleSave(v, oneRmKg);
+    scheduleSave(v, oneRm);
   };
   const onOneRm = (v: string) => {
-    setOneRmKg(v);
+    setOneRm(v);
     scheduleSave(movementId, v);
   };
 
@@ -134,13 +141,12 @@ export function TmAutoForm({
         </div>
       )}
       <div style={{ display: "grid", gap: 2 }}>
-        <Label>1RM (kg)</Label>
+        <Label>1RM ({unitLabel})</Label>
         <input
           type="number"
-          step="0.5"
+          step={units === "imperial" ? "1" : "0.5"}
           min="1"
-          max="1000"
-          value={oneRmKg}
+          value={oneRm}
           onChange={(e) => onOneRm(e.target.value)}
           inputMode="decimal"
           aria-label="One rep max"

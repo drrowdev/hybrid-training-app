@@ -115,7 +115,6 @@ export default async function ProfileSettingsPage() {
         >
           <ProfileBasicsAutoSave
             initialDisplayName={profile?.display_name ?? ""}
-            initialUnits={profile?.units === "imperial" ? "imperial" : "metric"}
           />
         </SettingsGroup>
 

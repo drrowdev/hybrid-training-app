@@ -62,16 +62,13 @@ const UNIT_OPTIONS = [
 
 export function ProfileBasicsAutoSave({
   initialDisplayName,
-  initialUnits,
 }: {
   initialDisplayName: string;
-  initialUnits: "metric" | "imperial";
 }) {
   const saveDisplayName = useCallback(
     (v: string) => saveField("displayName", v),
     [],
   );
-  const saveUnits = useCallback((v: string) => saveField("units", v), []);
   return (
     <div
       className="space-y-3 rounded-lg border border-foreground/10 p-4"
@@ -84,6 +81,23 @@ export function ProfileBasicsAutoSave({
         testId="settings-display-name-input"
         inputProps={{ maxLength: 60, placeholder: "What should we call you?" }}
       />
+    </div>
+  );
+}
+
+// ─── Units (kg / lb · km / mi) ───────────────────────────────────────
+
+export function UnitsAutoSave({
+  initialUnits,
+}: {
+  initialUnits: "metric" | "imperial";
+}) {
+  const saveUnits = useCallback((v: string) => saveField("units", v), []);
+  return (
+    <div
+      className="space-y-3 rounded-lg border border-foreground/10 p-4"
+      data-testid="settings-units-form"
+    >
       <AutoSaveSelect
         label="Units"
         initial={initialUnits}
