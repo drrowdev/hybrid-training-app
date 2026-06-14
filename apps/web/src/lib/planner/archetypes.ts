@@ -1125,7 +1125,13 @@ export const HYPERTROPHY_ANCHOR: Archetype = withExpandedCadence({
 });
 
 /**
- * Concurrent / Hybrid Focus — the intended default for most users.
+ * Concurrent / Hybrid Focus — **the live engine config for the native Hybrid
+ * program** (`lib/programs/hybrid/engine.ts` resolves itself through
+ * `ARCHETYPES["concurrent_hybrid"]` via the `HYBRID_ARCHETYPE` constant). This
+ * is NOT a legacy archetype: it is load-bearing for the current app and is
+ * guarded by the Hybrid golden parity tests. Edit with the same care as live
+ * engine code. (The other five entries in `ARCHETYPES` are legacy-only — see the
+ * registry comment below.)
  *
  * Balanced concurrent program: 4 strength days (same patterns as Strength
  * Focus) at moderate intensity + 2 substantive cardio sessions per week
@@ -1327,7 +1333,22 @@ export const MAINTENANCE: Archetype = {
   ],
 };
 
-/** Curated archetypes. "custom" is not here — custom blocks are built ad-hoc. */
+/**
+ * Archetype registry. "custom" is not here — custom blocks are built ad-hoc.
+ *
+ * IMPORTANT — load-bearing vs legacy (ADR 0046 de-archetype):
+ *   • `concurrent_hybrid` is LIVE. It is the engine config the native **Hybrid**
+ *     program resolves through (`lib/programs/hybrid/engine.ts`). It cannot be
+ *     removed and is guarded by the Hybrid golden parity tests.
+ *   • The other five (`strength_anchor`, `endurance_anchor`, `rebuild`,
+ *     `hypertrophy_anchor`, `maintenance`) are LEGACY-ONLY. New blocks store
+ *     `archetype = NULL` (identity lives in `program_id`/`program_family`), so
+ *     these are reached only by pre-pivot archetype blocks and by graceful
+ *     fallbacks (display labels via `archetypeDisplayName`, the off-plan
+ *     quick-generate `strength_anchor` default). They are retained — not dead —
+ *     until those legacy reads are removed; see ADR 0046 Phase 4. Do NOT assume
+ *     they are unused.
+ */
 export const ARCHETYPES: Record<Exclude<ArchetypeId, "custom">, Archetype> = {
   strength_anchor: STRENGTH_ANCHOR,
   endurance_anchor: ENDURANCE_ANCHOR,
