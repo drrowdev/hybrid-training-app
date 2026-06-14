@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { ARCHETYPES } from "@/lib/planner/archetypes";
 import type { NextBlockSuggestion } from "@/lib/planner/next-block-suggestion";
 
 /**
@@ -36,7 +35,7 @@ export function NextBlockSuggestionCard({
 }) {
   const { suggestion, realization } = nudge;
   if (!suggestion && !realization) return null;
-  const suggestedName = suggestion ? ARCHETYPES[suggestion.archetypeId]?.name : null;
+  const suggestedName = suggestion ? suggestion.programName : null;
   return (
     <section
       className="cp-card"

@@ -9,7 +9,6 @@ import React from "react";
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NextBlockSuggestionCard } from "../NextBlockSuggestionCard";
-import { ARCHETYPES } from "@/lib/planner/archetypes";
 
 describe("NextBlockSuggestionCard", () => {
   it("renders nothing when both suggestion and realization are null", () => {
@@ -24,15 +23,16 @@ describe("NextBlockSuggestionCard", () => {
       <NextBlockSuggestionCard
         nudge={{
           suggestion: {
-            archetypeId: "strength_anchor",
-            reason: "You stacked hypertrophy blocks.",
+            programId: "wendler-531",
+            programName: "5/3/1",
+            reason: "You stacked balanced blocks.",
           },
           realization: null,
         }}
       />,
     );
-    expect(html).toContain(`Consider a ${ARCHETYPES.strength_anchor.name} block next`);
-    expect(html).toContain("You stacked hypertrophy blocks.");
+    expect(html).toContain("Consider a 5/3/1 block next");
+    expect(html).toContain("You stacked balanced blocks.");
     expect(html).toContain("only a suggestion");
     // Default eyebrow.
     expect(html).toContain("Suggested next focus");
@@ -43,19 +43,20 @@ describe("NextBlockSuggestionCard", () => {
       <NextBlockSuggestionCard
         nudge={{
           suggestion: {
-            archetypeId: "hypertrophy_anchor",
+            programId: "hybrid",
+            programName: "Hybrid",
             reason: "Change the stimulus.",
           },
           realization: null,
         }}
         eyebrow="Final week"
-        cta={{ href: "/app/plan", label: "Plan your next block" }}
+        cta={{ href: "/app/program?program=hybrid", label: "Plan your next block" }}
         testId="block-ending-nudge"
       />,
     );
     expect(html).toContain("Final week");
     expect(html).not.toContain("Suggested next focus");
-    expect(html).toContain('href="/app/plan"');
+    expect(html).toContain('href="/app/program?program=hybrid"');
     expect(html).toContain("Plan your next block");
     expect(html).toContain('data-testid="block-ending-nudge"');
   });

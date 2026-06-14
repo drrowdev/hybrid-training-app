@@ -173,6 +173,36 @@ Files touched:
    null-window skip, null-`session_id` fallback to row id, event mapping, and
    recovery-outranks-event priority).
 
+## Amendment — de-archetype the suggestion (ADR 0046, 2026-06-14)
+
+When the program platform shipped (ADR 0046), blocks stopped being created from the
+six archetypes: the program picker (5/3/1, Tactical Barbell, Green Protocol, Hybrid)
+became the only creation path, and platform blocks store `archetype = NULL`. The nudge
+still emitted **archetype** suggestions, so the live card read *"Consider an Endurance
+Anchor block next"* and its CTA dropped the user on the program picker — which has no
+such option. A genuine user-facing dead-end.
+
+The nudge now speaks the **program** lineup instead of archetypes:
+
+- **Output** is a `{ programId, programName, reason }` where `programId` is one of the
+  four selectable programs and `programName` is resolved from the program **registry**
+  (single source of truth — the nudge can never drift from the picker's display name).
+- **Input** is re-based on the user's recent **programs** (`training_blocks.program_id`,
+  filtered to the known lineup) instead of recent archetypes, so the staleness /
+  sequencing rules fire for real platform users (they were dead under the archetype
+  input, which is always empty for platform blocks).
+- **CTA** deep-links the matching picker card: `/app/program?program=<programId>`.
+- **Rule re-map (all heuristic, unchanged thresholds):** recovery → Hybrid (the
+  user-tunable block you can dial back); strength event → 5/3/1; endurance event →
+  Green Protocol; mixed event → Hybrid; anti-staleness → a complementary program
+  (a pure-strength run earns conditioning via Hybrid; an endurance-led or balanced run
+  earns a focused strength cycle via 5/3/1). The old hypertrophy→strength *consolidation*
+  rule was dropped — there is no hypertrophy program in the lineup. Realization-week
+  advice is re-based on a run of 5/3/1 (the strength program) and stays advice-only.
+
+The reverse-map follow-up from open-item 1 is now moot — the picker accepts a `?program=`
+deep-link directly, so the suggestion both recommends **and** pre-selects.
+
 ### Heuristic constants (all CP-1, practitioner-consensus — NOT RCT-calibrated)
 
 In `next-block-suggestion.ts`, tagged `// heuristic — periodization sequencing thresholds

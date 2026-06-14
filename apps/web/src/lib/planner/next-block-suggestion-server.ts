@@ -1,11 +1,11 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ArchetypeId } from "./archetypes";
 import { taperModalityForEvent } from "./taper";
 import {
-  suggestNextArchetype,
+  suggestNextProgram,
   suggestRealizationWeek,
   type NextBlockSuggestion,
+  type SuggestProgramId,
 } from "./next-block-suggestion";
 
 /**
@@ -16,7 +16,7 @@ import {
  * user-scoped: the caller passes a request-scoped (RLS-enforced) Supabase
  * client, and every query is explicitly filtered to `userId`.
  *
- * The recent archetype history is passed in (the plan page already loads
+ * The recent program history is passed in (the plan page already loads
  * `getRecentBlocks`) to avoid a duplicate query; this helper adds the cheap
  * "next A-event" lookup and the recent reactive-deload count.
  */
@@ -28,7 +28,7 @@ export type NextBlockNudge = {
 export async function getNextBlockNudge(
   supabase: SupabaseClient,
   userId: string,
-  recentArchetypes: ArchetypeId[],
+  recentPrograms: SuggestProgramId[],
   todayYmd: string,
   /**
    * Start of the "recent" window for the reactive-deload count — typically
@@ -70,13 +70,13 @@ export async function getNextBlockNudge(
   }
 
   const input = {
-    recentArchetypes,
+    recentPrograms,
     upcomingEventModality,
     recentReactiveDeloads,
   };
 
   return {
-    suggestion: suggestNextArchetype(input),
-    realization: suggestRealizationWeek({ recentArchetypes, upcomingEventModality }),
+    suggestion: suggestNextProgram(input),
+    realization: suggestRealizationWeek({ recentPrograms, upcomingEventModality }),
   };
 }
