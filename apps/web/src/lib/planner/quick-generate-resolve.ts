@@ -73,18 +73,77 @@ export type QuickPlanResult =
     }
   | { ok: false; error: string };
 
-/** Off-plan archetype context resolved from the active (or most recent) block. */
-type BlockContext = {
+/** Off-plan archetype context resolved from the active program instance or block. */
+export type BlockContext = {
   archetypeId: Exclude<ArchetypeId, "custom">;
   focusMuscles: readonly FocusMuscle[];
   secondaryFocusRaw: string | null;
   accessoryVolumeRaw: string | null;
 };
 
+/** The Hybrid program's fixed archetype (its serialised instance carries it). */
+const HYBRID_QUICK_ARCHETYPE: Exclude<ArchetypeId, "custom"> = "concurrent_hybrid";
+
+/**
+ * Derive quick-generate context from an ACTIVE program instance when the program
+ * is the native Hybrid generator. Hybrid's serialised instance IS the
+ * block-assembly input, so it carries the real archetype (`concurrent_hybrid`)
+ * and the focus muscles the user picked in the wizard — NEITHER of which lives on
+ * `training_blocks` for platform blocks (archetype is NULL, focus_muscles is the
+ * empty default). Reading the block row would silently drop both, so a Hybrid
+ * user's Quick Workout would ignore their focus muscles and run as
+ * `strength_anchor`. Returns null for any other program (5/3/1 / TB / GP) so the
+ * caller falls back to the block row — those are strength-centric and the
+ * `strength_anchor` default is a sensible off-plan strength session.
+ *
+ * Pure + exported for unit testing.
+ */
+export function hybridQuickContextFromInstance(
+  programId: string | null | undefined,
+  instance: unknown,
+): BlockContext | null {
+  if (programId !== "hybrid" || !instance || typeof instance !== "object") return null;
+  const inst = instance as Record<string, unknown>;
+  const rawArchetype =
+    typeof inst.archetypeId === "string" ? inst.archetypeId : HYBRID_QUICK_ARCHETYPE;
+  const archetypeId: Exclude<ArchetypeId, "custom"> =
+    rawArchetype !== "custom" && rawArchetype in ARCHETYPES
+      ? (rawArchetype as Exclude<ArchetypeId, "custom">)
+      : HYBRID_QUICK_ARCHETYPE;
+  return {
+    archetypeId,
+    focusMuscles: Array.isArray(inst.focusMuscles)
+      ? (inst.focusMuscles as FocusMuscle[])
+      : [],
+    secondaryFocusRaw:
+      typeof inst.secondaryFocus === "string" ? inst.secondaryFocus : null,
+    accessoryVolumeRaw:
+      typeof inst.accessoryVolume === "string" ? inst.accessoryVolume : null,
+  };
+}
+
 async function resolveBlockContext(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<BlockContext> {
+  // Prefer the active program instance. For the native Hybrid program the
+  // serialised instance carries the real archetype + focus muscles, which are
+  // NOT on the (platform) training_blocks row — see
+  // `hybridQuickContextFromInstance`. Other programs return null here and fall
+  // through to the block-row resolution below (byte-identical to the pre-fix path).
+  const { data: pi } = await supabase
+    .from("program_instances")
+    .select("program_id, instance")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .maybeSingle();
+  const hybridCtx = hybridQuickContextFromInstance(
+    pi?.program_id as string | null | undefined,
+    pi?.instance,
+  );
+  if (hybridCtx) return hybridCtx;
+
   // Active block first; if the user is between blocks, fall back to their most
   // recent block (any status) so "archetype priorities" stay honest off-plan.
   const { data: rows } = await supabase
