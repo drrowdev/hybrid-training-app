@@ -33,6 +33,9 @@ import { VolumeAutoregCard } from "@/components/plan/VolumeAutoregCard";
 import { getDeloadSkipOffer } from "@/lib/planner/deload-skip-offer";
 import { acceptDeloadSkip } from "@/lib/planner/deload-skip-actions";
 import { DeloadSkipCard } from "@/components/plan/DeloadSkipCard";
+import { getDeloadWeekPreview } from "@/lib/planner/deload-week-preview";
+import { insertDeloadWeekAction } from "@/lib/planner/deload-week-actions";
+import { DeloadWeekCard } from "@/components/plan/DeloadWeekCard";
 import { getEarlyDeloadRecommendation } from "@/lib/planner/early-deload-offer";
 import { acceptEarlyDeload } from "@/lib/planner/early-deload-actions";
 import { EarlyDeloadCard } from "@/components/plan/EarlyDeloadCard";
@@ -155,11 +158,12 @@ export default async function PlanPage({
   // ADR 0013 / 0014 — mid-block adaptive offers. Both read-only here;
   // the accept actions re-derive server-side before writing. Null when
   // nothing applies (no over-budget signal / no offending limitation).
-  const [autoregOffer, limitationOffer, deloadSkipOffer, earlyDeloadReco] = await Promise.all([
+  const [autoregOffer, limitationOffer, deloadSkipOffer, earlyDeloadReco, deloadWeekPreview] = await Promise.all([
     getVolumeAutoregOffer(),
     getLimitationResponseOffer(),
     getDeloadSkipOffer(),
     getEarlyDeloadRecommendation(),
+    getDeloadWeekPreview(supabase, user.id),
   ]);
 
   return (
@@ -179,6 +183,9 @@ export default async function PlanPage({
       )}
       {deloadSkipOffer && (
         <DeloadSkipCard offer={deloadSkipOffer} applyAction={acceptDeloadSkip} />
+      )}
+      {deloadWeekPreview && !deloadSkipOffer && (
+        <DeloadWeekCard preview={deloadWeekPreview} insertAction={insertDeloadWeekAction} />
       )}
       {showBodyweightBanner && (
         <BodyweightOnlyBanner
