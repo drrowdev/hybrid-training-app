@@ -6,9 +6,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 vi.mock("server-only", () => ({}));
 
 import {
-  suggestNextArchetype,
+  suggestNextProgram,
   suggestRealizationWeek,
-  type SuggestNextArchetypeInput,
+  KNOWN_SUGGEST_PROGRAMS,
+  type SuggestNextProgramInput,
 } from "../next-block-suggestion";
 import { getNextBlockNudge } from "../next-block-suggestion-server";
 
@@ -46,214 +47,177 @@ function makeSupabase(opts: {
 const TODAY = "2026-05-30";
 const WINDOW_START = "2026-03-01";
 
-const base: SuggestNextArchetypeInput = {
-  recentArchetypes: [],
+const base: SuggestNextProgramInput = {
+  recentPrograms: [],
   upcomingEventModality: null,
   recentReactiveDeloads: 0,
 };
 
-describe("suggestNextArchetype — null when no rule fires", () => {
+describe("suggestNextProgram — null when no rule fires", () => {
   it("returns null with no history, no event, no deloads", () => {
-    expect(suggestNextArchetype(base)).toBeNull();
+    expect(suggestNextProgram(base)).toBeNull();
   });
 
-  it("returns null for a single block of any archetype", () => {
-    expect(
-      suggestNextArchetype({ ...base, recentArchetypes: ["strength_anchor"] }),
-    ).toBeNull();
-    expect(
-      suggestNextArchetype({ ...base, recentArchetypes: ["maintenance"] }),
-    ).toBeNull();
+  it("returns null for a single block of any program", () => {
+    expect(suggestNextProgram({ ...base, recentPrograms: ["wendler-531"] })).toBeNull();
+    expect(suggestNextProgram({ ...base, recentPrograms: ["hybrid"] })).toBeNull();
   });
 
-  it("returns null for two strength blocks (below staleness, not accumulation)", () => {
+  it("returns null for two same-program blocks (below staleness)", () => {
     expect(
-      suggestNextArchetype({
-        ...base,
-        recentArchetypes: ["strength_anchor", "strength_anchor"],
-      }),
+      suggestNextProgram({ ...base, recentPrograms: ["wendler-531", "wendler-531"] }),
     ).toBeNull();
   });
 
   it("returns null for a mixed, non-repeating history", () => {
     expect(
-      suggestNextArchetype({
+      suggestNextProgram({
         ...base,
-        recentArchetypes: ["strength_anchor", "endurance_anchor", "hypertrophy_anchor"],
+        recentPrograms: ["wendler-531", "green-protocol", "hybrid"],
       }),
     ).toBeNull();
   });
 });
 
-describe("suggestNextArchetype — rule 1: recovery-aware (highest priority)", () => {
-  it("suggests rebuild when reactive deloads hit the threshold", () => {
-    const out = suggestNextArchetype({ ...base, recentReactiveDeloads: 2 });
-    expect(out?.archetypeId).toBe("rebuild");
+describe("suggestNextProgram — rule 1: recovery-aware (highest priority)", () => {
+  it("suggests Hybrid (dial-back) when reactive deloads hit the threshold", () => {
+    const out = suggestNextProgram({ ...base, recentReactiveDeloads: 2 });
+    expect(out?.programId).toBe("hybrid");
     expect(out?.reason).toMatch(/reactive deload/i);
   });
 
   it("recovery overrides an upcoming event", () => {
-    const out = suggestNextArchetype({
+    const out = suggestNextProgram({
       ...base,
       recentReactiveDeloads: 3,
       upcomingEventModality: "strength",
     });
-    expect(out?.archetypeId).toBe("rebuild");
-  });
-
-  it("recovery overrides a hypertrophy accumulation run", () => {
-    const out = suggestNextArchetype({
-      ...base,
-      recentReactiveDeloads: 2,
-      recentArchetypes: ["hypertrophy_anchor", "hypertrophy_anchor"],
-    });
-    expect(out?.archetypeId).toBe("rebuild");
+    expect(out?.programId).toBe("hybrid");
   });
 
   it("does not fire below threshold", () => {
-    expect(suggestNextArchetype({ ...base, recentReactiveDeloads: 1 })).toBeNull();
+    expect(suggestNextProgram({ ...base, recentReactiveDeloads: 1 })).toBeNull();
   });
 });
 
-describe("suggestNextArchetype — rule 2: event-aware", () => {
-  it("strength event ⇒ strength_anchor", () => {
-    const out = suggestNextArchetype({ ...base, upcomingEventModality: "strength" });
-    expect(out?.archetypeId).toBe("strength_anchor");
+describe("suggestNextProgram — rule 2: event-aware", () => {
+  it("strength event ⇒ 5/3/1", () => {
+    const out = suggestNextProgram({ ...base, upcomingEventModality: "strength" });
+    expect(out?.programId).toBe("wendler-531");
   });
 
-  it("endurance event ⇒ endurance_anchor", () => {
-    const out = suggestNextArchetype({ ...base, upcomingEventModality: "endurance" });
-    expect(out?.archetypeId).toBe("endurance_anchor");
+  it("endurance event ⇒ Green Protocol", () => {
+    const out = suggestNextProgram({ ...base, upcomingEventModality: "endurance" });
+    expect(out?.programId).toBe("green-protocol");
   });
 
-  it("mixed event ⇒ concurrent_hybrid", () => {
-    const out = suggestNextArchetype({ ...base, upcomingEventModality: "mixed" });
-    expect(out?.archetypeId).toBe("concurrent_hybrid");
+  it("mixed event ⇒ Hybrid", () => {
+    const out = suggestNextProgram({ ...base, upcomingEventModality: "mixed" });
+    expect(out?.programId).toBe("hybrid");
   });
 
-  it("event overrides a hypertrophy accumulation run", () => {
-    const out = suggestNextArchetype({
+  it("event overrides a same-program run", () => {
+    const out = suggestNextProgram({
       ...base,
       upcomingEventModality: "endurance",
-      recentArchetypes: ["hypertrophy_anchor", "hypertrophy_anchor"],
+      recentPrograms: ["wendler-531", "wendler-531", "wendler-531"],
     });
-    expect(out?.archetypeId).toBe("endurance_anchor");
+    expect(out?.programId).toBe("green-protocol");
   });
 });
 
-describe("suggestNextArchetype — rule 3: phase sequence (accumulation → strength)", () => {
-  it("two hypertrophy blocks ⇒ strength_anchor", () => {
-    const out = suggestNextArchetype({
+describe("suggestNextProgram — rule 3: anti-staleness (complementary emphasis)", () => {
+  it("three 5/3/1 cycles ⇒ Hybrid (add conditioning)", () => {
+    const out = suggestNextProgram({
       ...base,
-      recentArchetypes: ["hypertrophy_anchor", "hypertrophy_anchor"],
+      recentPrograms: ["wendler-531", "wendler-531", "wendler-531"],
     });
-    expect(out?.archetypeId).toBe("strength_anchor");
-    expect(out?.reason).toMatch(/consolidate/i);
+    expect(out?.programId).toBe("hybrid");
   });
 
-  it("three hypertrophy blocks still ⇒ strength_anchor (consolidation wins over staleness)", () => {
-    const out = suggestNextArchetype({
+  it("three Hybrid blocks ⇒ 5/3/1 (let one quality lead)", () => {
+    const out = suggestNextProgram({
       ...base,
-      recentArchetypes: ["hypertrophy_anchor", "hypertrophy_anchor", "hypertrophy_anchor"],
+      recentPrograms: ["hybrid", "hybrid", "hybrid"],
     });
-    expect(out?.archetypeId).toBe("strength_anchor");
+    expect(out?.programId).toBe("wendler-531");
   });
 
-  it("a single hypertrophy block does not fire consolidation", () => {
-    expect(
-      suggestNextArchetype({ ...base, recentArchetypes: ["hypertrophy_anchor"] }),
-    ).toBeNull();
+  it("three Green Protocol blocks ⇒ 5/3/1 (rebuild strength)", () => {
+    const out = suggestNextProgram({
+      ...base,
+      recentPrograms: ["green-protocol", "green-protocol", "green-protocol"],
+    });
+    expect(out?.programId).toBe("wendler-531");
   });
 
-  it("hypertrophy run broken by a recent different block does not fire", () => {
+  it("three Tactical Barbell blocks ⇒ Hybrid (change stimulus)", () => {
+    const out = suggestNextProgram({
+      ...base,
+      recentPrograms: ["tactical-barbell", "tactical-barbell", "tactical-barbell"],
+    });
+    expect(out?.programId).toBe("hybrid");
+  });
+
+  it("a run broken by a different recent program does not fire", () => {
     expect(
-      suggestNextArchetype({
+      suggestNextProgram({
         ...base,
-        recentArchetypes: ["strength_anchor", "hypertrophy_anchor", "hypertrophy_anchor"],
-      }),
-    ).toBeNull();
-  });
-});
-
-describe("suggestNextArchetype — rule 4: anti-staleness", () => {
-  it("three strength blocks ⇒ hypertrophy_anchor", () => {
-    const out = suggestNextArchetype({
-      ...base,
-      recentArchetypes: ["strength_anchor", "strength_anchor", "strength_anchor"],
-    });
-    expect(out?.archetypeId).toBe("hypertrophy_anchor");
-  });
-
-  it("three endurance blocks ⇒ concurrent_hybrid", () => {
-    const out = suggestNextArchetype({
-      ...base,
-      recentArchetypes: ["endurance_anchor", "endurance_anchor", "endurance_anchor"],
-    });
-    expect(out?.archetypeId).toBe("concurrent_hybrid");
-  });
-
-  it("three hybrid blocks ⇒ strength_anchor", () => {
-    const out = suggestNextArchetype({
-      ...base,
-      recentArchetypes: ["concurrent_hybrid", "concurrent_hybrid", "concurrent_hybrid"],
-    });
-    expect(out?.archetypeId).toBe("strength_anchor");
-  });
-
-  it("three maintenance blocks do NOT nudge (repeatable by design)", () => {
-    expect(
-      suggestNextArchetype({
-        ...base,
-        recentArchetypes: ["maintenance", "maintenance", "maintenance"],
+        recentPrograms: ["hybrid", "wendler-531", "wendler-531"],
       }),
     ).toBeNull();
   });
 
-  it("three rebuild blocks do NOT nudge (repeatable by design)", () => {
+  it("two of the same program (below staleness) does not fire", () => {
     expect(
-      suggestNextArchetype({
-        ...base,
-        recentArchetypes: ["rebuild", "rebuild", "rebuild"],
-      }),
-    ).toBeNull();
-  });
-
-  it("a run of custom blocks does NOT nudge", () => {
-    expect(
-      suggestNextArchetype({
-        ...base,
-        recentArchetypes: ["custom", "custom", "custom"],
-      }),
+      suggestNextProgram({ ...base, recentPrograms: ["hybrid", "hybrid"] }),
     ).toBeNull();
   });
 });
 
-describe("suggestNextArchetype — purity", () => {
+describe("suggestNextProgram — every suggestion carries a registry display name", () => {
+  it("resolves a non-empty programName for each rule output", () => {
+    const strength = suggestNextProgram({ ...base, upcomingEventModality: "strength" });
+    expect(strength?.programName).toBeTruthy();
+    const recovery = suggestNextProgram({ ...base, recentReactiveDeloads: 2 });
+    expect(recovery?.programName).toBeTruthy();
+  });
+});
+
+describe("suggestNextProgram — purity", () => {
   it("does not mutate its input array", () => {
-    const recentArchetypes: SuggestNextArchetypeInput["recentArchetypes"] = [
-      "hypertrophy_anchor",
-      "hypertrophy_anchor",
+    const recentPrograms: SuggestNextProgramInput["recentPrograms"] = [
+      "wendler-531",
+      "wendler-531",
     ];
-    const snapshot = [...recentArchetypes];
-    suggestNextArchetype({ ...base, recentArchetypes });
-    expect(recentArchetypes).toEqual(snapshot);
+    const snapshot = [...recentPrograms];
+    suggestNextProgram({ ...base, recentPrograms });
+    expect(recentPrograms).toEqual(snapshot);
+  });
+});
+
+describe("KNOWN_SUGGEST_PROGRAMS", () => {
+  it("contains exactly the four selectable programs", () => {
+    expect([...KNOWN_SUGGEST_PROGRAMS].sort()).toEqual(
+      ["green-protocol", "hybrid", "tactical-barbell", "wendler-531"].sort(),
+    );
   });
 });
 
 describe("suggestRealizationWeek — Decision 6 (opt-in, accumulation-gated)", () => {
-  it("two consecutive strength blocks, no event ⇒ realization suggested", () => {
+  it("two consecutive 5/3/1 cycles, no event ⇒ realization suggested", () => {
     const out = suggestRealizationWeek({
-      recentArchetypes: ["strength_anchor", "strength_anchor"],
+      recentPrograms: ["wendler-531", "wendler-531"],
       upcomingEventModality: null,
     });
     expect(out).not.toBeNull();
     expect(out?.reason).toMatch(/heavy singles/i);
   });
 
-  it("a single strength block does NOT earn a realization week", () => {
+  it("a single 5/3/1 cycle does NOT earn a realization week", () => {
     expect(
       suggestRealizationWeek({
-        recentArchetypes: ["strength_anchor"],
+        recentPrograms: ["wendler-531"],
         upcomingEventModality: null,
       }),
     ).toBeNull();
@@ -262,7 +226,7 @@ describe("suggestRealizationWeek — Decision 6 (opt-in, accumulation-gated)", (
   it("an upcoming event suppresses the realization nudge (real taper handles it)", () => {
     expect(
       suggestRealizationWeek({
-        recentArchetypes: ["strength_anchor", "strength_anchor"],
+        recentPrograms: ["wendler-531", "wendler-531"],
         upcomingEventModality: "strength",
       }),
     ).toBeNull();
@@ -271,7 +235,7 @@ describe("suggestRealizationWeek — Decision 6 (opt-in, accumulation-gated)", (
   it("a broken strength run does NOT earn a realization week", () => {
     expect(
       suggestRealizationWeek({
-        recentArchetypes: ["strength_anchor", "hypertrophy_anchor", "strength_anchor"],
+        recentPrograms: ["wendler-531", "hybrid", "wendler-531"],
         upcomingEventModality: null,
       }),
     ).toBeNull();
@@ -280,7 +244,7 @@ describe("suggestRealizationWeek — Decision 6 (opt-in, accumulation-gated)", (
   it("a non-strength run does NOT earn a realization week", () => {
     expect(
       suggestRealizationWeek({
-        recentArchetypes: ["hypertrophy_anchor", "hypertrophy_anchor"],
+        recentPrograms: ["hybrid", "hybrid"],
         upcomingEventModality: null,
       }),
     ).toBeNull();
@@ -288,28 +252,21 @@ describe("suggestRealizationWeek — Decision 6 (opt-in, accumulation-gated)", (
 });
 
 describe("getNextBlockNudge (server glue)", () => {
-  it("counts distinct deload SESSIONS in the window and trips the rebuild rule at the threshold", async () => {
+  it("counts distinct deload SESSIONS in the window and trips the recovery rule at the threshold", async () => {
     const supabase = makeSupabase({
       event: null,
       deloadRows: [
-        // Two lifts deloaded in one episode (session A) + one in episode B
-        // ⇒ 2 distinct sessions ⇒ at the REACTIVE_DELOAD_BACKOFF threshold.
         { id: "h1", session_id: "sess-A" },
         { id: "h2", session_id: "sess-A" },
         { id: "h3", session_id: "sess-B" },
       ],
     });
-    const nudge = await getNextBlockNudge(
-      supabase,
-      "user-1",
-      ["hypertrophy_anchor"],
-      TODAY,
-      WINDOW_START,
-    );
-    expect(nudge.suggestion?.archetypeId).toBe("rebuild");
+    const nudge = await getNextBlockNudge(supabase, "user-1", ["hybrid"], TODAY, WINDOW_START);
+    expect(nudge.suggestion?.programId).toBe("hybrid");
+    expect(nudge.suggestion?.reason).toMatch(/reactive deload/i);
   });
 
-  it("a single deload episode (rows sharing one session) does NOT trip rebuild", async () => {
+  it("a single deload episode (rows sharing one session) does NOT trip recovery", async () => {
     const supabase = makeSupabase({
       event: null,
       deloadRows: [
@@ -320,11 +277,10 @@ describe("getNextBlockNudge (server glue)", () => {
     const nudge = await getNextBlockNudge(
       supabase,
       "user-1",
-      ["endurance_anchor"],
+      ["green-protocol"],
       TODAY,
       WINDOW_START,
     );
-    // One episode < threshold, no other rule fires for a lone endurance block.
     expect(nudge.suggestion).toBeNull();
   });
 
@@ -336,36 +292,23 @@ describe("getNextBlockNudge (server glue)", () => {
         { id: "h2", session_id: null },
       ],
     });
-    const nudge = await getNextBlockNudge(
-      supabase,
-      "user-1",
-      ["hypertrophy_anchor"],
-      TODAY,
-      WINDOW_START,
-    );
-    expect(nudge.suggestion?.archetypeId).toBe("rebuild");
+    const nudge = await getNextBlockNudge(supabase, "user-1", ["hybrid"], TODAY, WINDOW_START);
+    expect(nudge.suggestion?.programId).toBe("hybrid");
   });
 
   it("skips the deload query entirely when windowStartYmd is null", async () => {
     const supabase = makeSupabase({
       event: null,
-      // These rows would trip rebuild IF queried — but a null window must skip them.
       deloadRows: [
         { id: "h1", session_id: "sess-A" },
         { id: "h2", session_id: "sess-B" },
       ],
     });
-    const nudge = await getNextBlockNudge(
-      supabase,
-      "user-1",
-      ["hypertrophy_anchor"],
-      TODAY,
-      null,
-    );
+    const nudge = await getNextBlockNudge(supabase, "user-1", ["hybrid"], TODAY, null);
     expect(nudge.suggestion).toBeNull();
   });
 
-  it("maps an upcoming A-event modality to the matching archetype when no deload backoff", async () => {
+  it("maps an upcoming A-event modality to the matching program when no deload backoff", async () => {
     const supabase = makeSupabase({
       event: { event_date: "2026-07-01", priority: "A", modality: "running" },
       deloadRows: [],
@@ -373,11 +316,11 @@ describe("getNextBlockNudge (server glue)", () => {
     const nudge = await getNextBlockNudge(
       supabase,
       "user-1",
-      ["strength_anchor"],
+      ["wendler-531"],
       TODAY,
       WINDOW_START,
     );
-    expect(nudge.suggestion?.archetypeId).toBe("endurance_anchor");
+    expect(nudge.suggestion?.programId).toBe("green-protocol");
   });
 
   it("recovery backoff outranks an upcoming event (safety first)", async () => {
@@ -391,10 +334,10 @@ describe("getNextBlockNudge (server glue)", () => {
     const nudge = await getNextBlockNudge(
       supabase,
       "user-1",
-      ["strength_anchor"],
+      ["wendler-531"],
       TODAY,
       WINDOW_START,
     );
-    expect(nudge.suggestion?.archetypeId).toBe("rebuild");
+    expect(nudge.suggestion?.programId).toBe("hybrid");
   });
 });

@@ -2,7 +2,6 @@ import Link from "next/link";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   roundToPlate,
-  type ArchetypeId,
 } from "@/lib/planner/archetypes";
 import {
   archetypeDisplayName,
@@ -42,6 +41,8 @@ import { getQuickRepeatCandidates } from "@/lib/sessions/queries";
 import { getLimitationTodaySummary } from "@/lib/limitations/today-summary";
 import { getNextBlockNudge } from "@/lib/planner/next-block-suggestion-server";
 import { NextBlockSuggestionCard } from "@/components/planner/NextBlockSuggestionCard";
+import type { SuggestProgramId } from "@/lib/planner/next-block-suggestion";
+import { KNOWN_SUGGEST_PROGRAMS } from "@/lib/planner/next-block-suggestion";
 import {
   ActiveLimitationsCard,
   type ActiveLimitationSummary,
@@ -562,17 +563,20 @@ export default async function TodayPage() {
   const endingNudge = inFinalWeek
     ? await (async () => {
         const recent = await getRecentBlocks(3);
-        // The next-block nudge is an archetype/Hybrid goal-strategy suggestion
-        // (ADR 0010). Foreign programs (5/3/1/TB/GP) store `archetype` NULL and
-        // aren't part of that strategy space, so drop them rather than feed the
-        // suggestion rules a null cast to ArchetypeId.
-        const recentArchetypes = recent
-          .map((b) => b.archetype)
-          .filter((a): a is ArchetypeId => a != null);
+        // The next-block nudge suggests which PROGRAM to run next (ADR 0010,
+        // de-archetyped per ADR 0046). Map recent blocks to their platform
+        // program id, keeping only the known selectable lineup so a run of the
+        // same program can be detected; legacy archetype blocks (program_id
+        // NULL) drop out.
+        const recentPrograms = recent
+          .map((b) => b.programId)
+          .filter((p): p is SuggestProgramId =>
+            p != null && KNOWN_SUGGEST_PROGRAMS.has(p),
+          );
         return getNextBlockNudge(
           supabase,
           userId,
-          recentArchetypes,
+          recentPrograms,
           todayIso,
           recent.length > 0 ? recent[recent.length - 1].startedOn : null,
         );
@@ -751,7 +755,12 @@ export default async function TodayPage() {
               <NextBlockSuggestionCard
                 nudge={endingNudge}
                 eyebrow={"Final week \u00b7 what\u2019s next"}
-                cta={{ href: "/app/plan?new=1", label: "Plan your next block" }}
+                cta={{
+                  href: endingNudge.suggestion
+                    ? `/app/program?program=${endingNudge.suggestion.programId}`
+                    : "/app/program",
+                  label: "Plan your next block",
+                }}
                 testId="block-ending-nudge"
               />
             )}

@@ -394,6 +394,10 @@ export type RecentBlock = {
   id: string;
   archetype: string;
   archetypeName: string;
+  /** Platform program id (e.g. "wendler-531"); NULL on legacy archetype blocks. */
+  programId: string | null;
+  /** Platform program family (e.g. "531"); NULL on legacy archetype blocks. */
+  programFamily: string | null;
   startedOn: string;
   daysPerWeek: number | null;
   status: "active" | "completed" | "archived";
@@ -461,7 +465,7 @@ export async function getRecentBlocks(limit = 3): Promise<RecentBlock[]> {
   if (!user) return [];
   const { data } = await supabase
     .from("training_blocks")
-    .select("id, archetype, started_on, days_per_week, status, day_index_overrides, notes")
+    .select("id, archetype, program_id, program_family, started_on, days_per_week, status, day_index_overrides, notes")
     .eq("user_id", user.id)
     .is("deleted_at", null)
     .order("started_on", { ascending: false })
@@ -480,6 +484,8 @@ export async function getRecentBlocks(limit = 3): Promise<RecentBlock[]> {
         id: d.id,
         archetype: d.archetype,
         archetypeName: archetypeDisplayName(d.archetype, d.notes),
+        programId: (d.program_id as string | null) ?? null,
+        programFamily: (d.program_family as string | null) ?? null,
         startedOn: d.started_on,
         daysPerWeek,
         status: d.status as "active" | "completed" | "archived",
@@ -529,7 +535,7 @@ export async function getAllBlocksWithCompletionStats(
   const { data } = await supabase
     .from("training_blocks")
     .select(
-      "id, archetype, started_on, updated_at, ended_at, weeks, days_per_week, status, day_index_overrides, notes, planned_sessions(id, completed_session_id, skipped_at, week_index, day_index)",
+      "id, archetype, program_id, program_family, started_on, updated_at, ended_at, weeks, days_per_week, status, day_index_overrides, notes, planned_sessions(id, completed_session_id, skipped_at, week_index, day_index)",
     )
     .eq("user_id", user.id)
     .is("deleted_at", null)
@@ -568,6 +574,8 @@ export async function getAllBlocksWithCompletionStats(
         id: d.id,
         archetype: d.archetype,
         archetypeName: archetypeDisplayName(d.archetype, d.notes),
+        programId: (d.program_id as string | null) ?? null,
+        programFamily: (d.program_family as string | null) ?? null,
         startedOn: d.started_on,
         endedOn:
           d.status === "active"

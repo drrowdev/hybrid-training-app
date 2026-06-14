@@ -40,6 +40,8 @@ vi.mock("@/lib/supabase/server", () => ({
             {
               id: "b3",
               archetype: "strength_anchor",
+              program_id: "wendler-531",
+              program_family: "531",
               started_on: "2026-05-01",
               days_per_week: 4,
               status: "active",
@@ -128,13 +130,15 @@ describe("getRecentBlocks", () => {
     expect(rows).toHaveLength(4);
   });
 
-  it("projects archetype + daysPerWeek + dayIndexOverrides + status + archetypeName", async () => {
+  it("projects archetype + program ids + daysPerWeek + dayIndexOverrides + status + archetypeName", async () => {
     const { getRecentBlocks } = await import("../queries");
     const rows = await getRecentBlocks(3);
     expect(rows[0]).toEqual({
       id: "b3",
       archetype: "strength_anchor",
       archetypeName: "Strength Focus",
+      programId: "wendler-531",
+      programFamily: "531",
       startedOn: "2026-05-01",
       daysPerWeek: 4,
       status: "active",
@@ -142,6 +146,8 @@ describe("getRecentBlocks", () => {
     });
     expect(rows[1]?.dayIndexOverrides).toBeNull();
     expect(rows[1]?.archetypeName).toBe("Endurance Focus");
+    // Legacy archetype block with no platform program id maps to null.
+    expect(rows[1]?.programId).toBeNull();
   });
 
   it("derives daysPerWeek from planned_sessions when the column is null", async () => {
