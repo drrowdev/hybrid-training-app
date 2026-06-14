@@ -13,7 +13,9 @@
  *   >=130% -> "Way over"       — high injury / regression risk
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Prescription } from "@hta/db";
 import { ARCHETYPES, type ArchetypeId } from "@/lib/planner/archetypes";
+import { archetypeDisplayName } from "@/lib/planner/queries";
 
 export type CeilingBand = "under" | "on-budget" | "at-line" | "over" | "way-over";
 
@@ -55,29 +57,119 @@ function prescribedCountsForWeek(
   return { strengthSets, cardioSessions };
 }
 
+/** Strength-item kinds that count as a prescribed working set (excludes warmup). */
+const STRENGTH_WORKING_KINDS = new Set([
+  "main",
+  "back_off",
+  "accessory",
+  "tendon",
+  "power_potentiation",
+]);
+
+/**
+ * Pure tally of a week's planned sessions → prescribed working sets + cardio
+ * session count. Exported for unit testing without a Supabase round-trip.
+ */
+export function tallyPlannedWeek(
+  rows: Array<{ prescription: Prescription | null; role?: string | null }>,
+): {
+  counts: { strengthSets: number; cardioSessions: number };
+  isDeload: boolean;
+} {
+  let strengthSets = 0;
+  let cardioSessions = 0;
+  let isDeload = false;
+  for (const r of rows) {
+    if (r.role === "deload") isDeload = true;
+    const items = r.prescription?.items ?? [];
+    let hasCardio = false;
+    for (const it of items) {
+      if (STRENGTH_WORKING_KINDS.has(it.kind)) {
+        strengthSets += it.sets ?? 1;
+      } else if (it.kind.startsWith("cardio")) {
+        hasCardio = true;
+      }
+    }
+    if (hasCardio) cardioSessions += 1;
+  }
+  return { counts: { strengthSets, cardioSessions }, isDeload };
+}
+
+/**
+ * Program-agnostic prescribed counts for platform blocks (archetype NULL).
+ *
+ * Archetype config is unavailable for platform programs (5/3/1 / TB / GP /
+ * Hybrid), so the prescribed weekly volume is read straight from the
+ * materialised `planned_sessions` of the current week: sum the working sets
+ * across all strength items, and count the sessions that carry any cardio item.
+ * This mirrors the "actual" side (set_logs rows + cardio_logs) so the
+ * utilisation ratio is apples-to-apples. Returns null when the week has no
+ * planned sessions.
+ */
+async function prescribedCountsFromPlannedSessions(
+  supabase: SupabaseClient,
+  userId: string,
+  blockId: string,
+  weekIndex: number,
+): Promise<{
+  counts: { strengthSets: number; cardioSessions: number };
+  isDeload: boolean;
+} | null> {
+  const { data: rows } = await supabase
+    .from("planned_sessions")
+    .select("prescription, role")
+    .eq("user_id", userId)
+    .eq("block_id", blockId)
+    .eq("week_index", weekIndex);
+  if (!rows || rows.length === 0) return null;
+  return tallyPlannedWeek(
+    rows as Array<{ prescription: Prescription | null; role?: string | null }>,
+  );
+}
+
 export async function getCeilingUtilization(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<CeilingUtilization | null> {
-  // Active block determines archetype + week index.
+  // Active block determines week index + prescribed-volume source.
   const { data: block } = await supabase
     .from("training_blocks")
-    .select("id, archetype, started_on, weeks")
+    .select("id, archetype, started_on, weeks, notes, program_family")
     .eq("user_id", userId)
     .eq("status", "active")
     .is("deleted_at", null)
     .maybeSingle();
   if (!block) return null;
 
-  const archetype = ARCHETYPES[block.archetype as Exclude<ArchetypeId, "custom">];
-  if (!archetype) return null;
-
   const startedOn = new Date(block.started_on + "T00:00:00");
   const daysSinceStart = Math.floor((Date.now() - startedOn.getTime()) / 86_400_000);
   const weekIndex = Math.max(0, Math.min(block.weeks - 1, Math.floor(daysSinceStart / 7)));
-  const weekProfile = archetype.weekProfiles[weekIndex] ?? archetype.weekProfiles[archetype.weekProfiles.length - 1];
 
-  const prescribed = prescribedCountsForWeek(block.archetype, weekIndex);
+  // Prescribed counts + labels: archetype config for legacy archetype blocks
+  // (byte-identical), else read from the materialised planned_sessions for
+  // platform programs (archetype NULL).
+  const archetype = ARCHETYPES[block.archetype as Exclude<ArchetypeId, "custom">];
+  let prescribed: { strengthSets: number; cardioSessions: number } | null;
+  let archetypeName: string;
+  let weekLabel: string;
+  if (archetype) {
+    prescribed = prescribedCountsForWeek(block.archetype, weekIndex);
+    const weekProfile =
+      archetype.weekProfiles[weekIndex] ??
+      archetype.weekProfiles[archetype.weekProfiles.length - 1];
+    archetypeName = archetype.name;
+    weekLabel = weekProfile?.intensityLabel ?? `Week ${weekIndex + 1}`;
+  } else {
+    const wk = await prescribedCountsFromPlannedSessions(
+      supabase,
+      userId,
+      block.id,
+      weekIndex,
+    );
+    prescribed = wk?.counts ?? null;
+    archetypeName = archetypeDisplayName(block.archetype, block.notes);
+    weekLabel = wk?.isDeload ? "Deload" : `Week ${weekIndex + 1}`;
+  }
   if (!prescribed) return null;
 
   // Week window: last 7 days (rolling) instead of strict calendar week —
@@ -118,9 +210,9 @@ export async function getCeilingUtilization(
   const cBand = bandFor(cardioPct);
 
   return {
-    archetypeName: archetype.name,
+    archetypeName,
     weekIndex,
-    weekLabel: weekProfile?.intensityLabel ?? `Week ${weekIndex + 1}`,
+    weekLabel,
     strength: {
       actual: actualStrength,
       prescribed: prescribed.strengthSets,

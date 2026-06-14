@@ -53,6 +53,8 @@ export type BlockMeta = {
   id: string;
   archetype: string;
   archetypeName: string;
+  /** Platform program family (e.g. "531"); NULL on legacy archetype blocks. */
+  programFamily: string | null;
   status: "active" | "completed" | "archived";
   startedOn: string;
   endedOn: string | null;
@@ -326,7 +328,7 @@ async function fetchBlockMeta(
   const { data } = await supabase
     .from("training_blocks")
     .select(
-      "id, archetype, status, started_on, ended_at, weeks, days_per_week, power_emphasis, notes",
+      "id, archetype, program_family, status, started_on, ended_at, weeks, days_per_week, power_emphasis, notes",
     )
     .eq("id", blockId)
     .eq("user_id", userId)
@@ -337,6 +339,7 @@ async function fetchBlockMeta(
     id: data.id,
     archetype: data.archetype,
     archetypeName: archetypeDisplayName(data.archetype, data.notes ?? null),
+    programFamily: (data.program_family as string | null) ?? null,
     status: data.status as BlockMeta["status"],
     startedOn: data.started_on,
     endedOn:
@@ -1171,7 +1174,14 @@ export async function compareBlocks(
     getBlockSummary(supabase, blockIdB, userId, today),
   ]);
   if (!a || !b) return null;
-  return { a, b, sameArchetype: a.block.archetype === b.block.archetype };
+  // Compare program identity: program family for platform blocks (both NULL
+  // archetype), archetype slug for legacy blocks. Without this, two different
+  // platform programs (e.g. 5/3/1 vs TB) would both read archetype=NULL and be
+  // wrongly flagged as the "same" program, suppressing the apples-to-oranges
+  // warning.
+  const idA = a.block.programFamily ?? a.block.archetype;
+  const idB = b.block.programFamily ?? b.block.archetype;
+  return { a, b, sameArchetype: idA === idB };
 }
 
 // ──────────────────────────────────────────────────────────────────────
