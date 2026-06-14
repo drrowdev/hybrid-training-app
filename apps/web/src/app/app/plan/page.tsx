@@ -33,7 +33,7 @@ import { VolumeAutoregCard } from "@/components/plan/VolumeAutoregCard";
 import { getDeloadSkipOffer } from "@/lib/planner/deload-skip-offer";
 import { acceptDeloadSkip } from "@/lib/planner/deload-skip-actions";
 import { DeloadSkipCard } from "@/components/plan/DeloadSkipCard";
-import { getDeloadWeekPreview } from "@/lib/planner/deload-week-preview";
+import { getDeloadWeekPreview, getDeloadWeekFatigueSignal } from "@/lib/planner/deload-week-preview";
 import { insertDeloadWeekAction } from "@/lib/planner/deload-week-actions";
 import { DeloadWeekCard } from "@/components/plan/DeloadWeekCard";
 import { getEarlyDeloadRecommendation } from "@/lib/planner/early-deload-offer";
@@ -159,13 +159,25 @@ export default async function PlanPage({
   // ADR 0013 / 0014 — mid-block adaptive offers. Both read-only here;
   // the accept actions re-derive server-side before writing. Null when
   // nothing applies (no over-budget signal / no offending limitation).
-  const [autoregOffer, limitationOffer, deloadSkipOffer, earlyDeloadReco, deloadWeekPreview] = await Promise.all([
+  const [autoregOffer, limitationOffer, deloadSkipOffer, earlyDeloadReco, deloadWeekPreview, deloadFatigued] = await Promise.all([
     getVolumeAutoregOffer(),
     getLimitationResponseOffer(),
     getDeloadSkipOffer(),
     getEarlyDeloadRecommendation(),
     getDeloadWeekPreview(supabase, user.id),
+    getDeloadWeekFatigueSignal(),
   ]);
+
+  // Recovery-week entry. The QUIET control is always available (program
+  // controls). The PROMINENT banner only surfaces on a real fatigue signal — or
+  // when deep-linked from the TB deload advisory (?deload=1) — and never when a
+  // programmed deload offer is already handling fatigue.
+  const deloadDeepLink = sp.deload === "1";
+  const showDeloadBanner =
+    !!deloadWeekPreview &&
+    !deloadSkipOffer &&
+    !earlyDeloadReco &&
+    (deloadFatigued || deloadDeepLink);
 
   return (
     <div style={{ display: "grid", gap: 24 }}>
@@ -185,11 +197,12 @@ export default async function PlanPage({
       {deloadSkipOffer && (
         <DeloadSkipCard offer={deloadSkipOffer} applyAction={acceptDeloadSkip} />
       )}
-      {deloadWeekPreview && !deloadSkipOffer && (
+      {showDeloadBanner && deloadWeekPreview && (
         <DeloadWeekCard
           preview={deloadWeekPreview}
           insertAction={insertDeloadWeekAction}
-          autoOpen={sp.deload === "1"}
+          variant="banner"
+          autoOpen={deloadDeepLink}
         />
       )}
       {showBodyweightBanner && (
@@ -229,6 +242,19 @@ export default async function PlanPage({
         style={{ padding: 16, display: "grid", gap: 14 }}
       >
         <div style={{ fontSize: 13, fontWeight: 600 }}>Program controls</div>
+
+        {deloadWeekPreview && !showDeloadBanner && (
+          <>
+            <DeloadWeekCard
+              preview={deloadWeekPreview}
+              insertAction={insertDeloadWeekAction}
+              variant="quiet"
+              autoOpen={deloadDeepLink}
+            />
+            <div style={{ borderTop: "1px solid var(--cp-border)" }} />
+          </>
+        )}
+
 
         <div
           style={{

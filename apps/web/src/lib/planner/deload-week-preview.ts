@@ -12,6 +12,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Prescription } from "@hta/db";
 import { buildDeloadWeek, type DeloadSessionSpec } from "./deload-week";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
+import { getUserTimezone } from "@/lib/planner/queries";
+import { computeActiveBlockFatigue } from "@/lib/planner/block-fatigue";
+import { EARLY_DELOAD_THRESHOLD } from "@/lib/planner/fatigue-proxy";
 
 export type DeloadWeekPreview = {
   blockId: string;
@@ -89,4 +93,48 @@ export async function getDeloadWeekPreview(
     sessions,
     eventWarning: !!evt,
   };
+}
+
+/**
+ * Whether to PROACTIVELY surface the recovery-week nudge (vs. the always-present
+ * quiet control). Fires only when the user shows real accumulated fatigue, using
+ * the SAME proxy + threshold as the early-deload recommendation
+ * (`EARLY_DELOAD_THRESHOLD`). `dataSufficient` (≥3 logged weeks) gates out fresh
+ * blocks, so a brand-new block never nags. Suppressed right after a deload.
+ *
+ * Self-contained server read; returns false when there's no active block.
+ */
+export async function getDeloadWeekFatigueSignal(): Promise<boolean> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) return false;
+
+  const { data: block } = await supabase
+    .from("training_blocks")
+    .select("id, archetype, started_on, weeks")
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!block) return false;
+
+  const tz = await getUserTimezone();
+  const fatigue = await computeActiveBlockFatigue(
+    supabase,
+    user.id,
+    {
+      id: block.id as string,
+      archetype: (block.archetype as string | null) ?? null,
+      started_on: block.started_on as string,
+      weeks: block.weeks as number,
+    },
+    tz,
+  );
+  return (
+    fatigue.dataSufficient &&
+    !fatigue.recentDeloadThisBlock &&
+    fatigue.proxy >= EARLY_DELOAD_THRESHOLD
+  );
 }

@@ -38,11 +38,17 @@ export function DeloadWeekCard({
   preview,
   insertAction,
   autoOpen = false,
+  variant = "banner",
 }: {
   preview: DeloadWeekPreview;
   insertAction: () => Promise<InsertDeloadResult>;
   /** Open the preview modal on mount (e.g. deep-linked from the TB deload banner). */
   autoOpen?: boolean;
+  /**
+   * "banner" — prominent fatigue nudge (shown only when fatigue signals fire).
+   * "quiet" — always-available compact control in the program-controls section.
+   */
+  variant?: "banner" | "quiet";
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(autoOpen);
@@ -67,30 +73,70 @@ export function DeloadWeekCard({
 
   if (dismissed) return null;
 
+  const quiet = variant === "quiet";
+
   return (
     <section
       className="cp-card"
       role="status"
-      data-testid="deload-week-card"
-      style={{
-        padding: "14px 18px",
-        display: "grid",
-        gap: 8,
-        borderColor: "var(--cp-accent)",
-        background: "color-mix(in oklab, var(--cp-accent) 6%, transparent)",
-      }}
+      data-testid={quiet ? "deload-week-quiet" : "deload-week-card"}
+      style={
+        quiet
+          ? {
+              padding: "12px 16px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+            }
+          : {
+              padding: "14px 18px",
+              display: "grid",
+              gap: 8,
+              borderColor: "var(--cp-accent)",
+              background: "color-mix(in oklab, var(--cp-accent) 6%, transparent)",
+            }
+      }
     >
-      <div
-        style={{
-          fontSize: 11,
-          color: "var(--cp-accent)",
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-          fontWeight: 600,
-        }}
-      >
-        Recovery — your call
-      </div>
+      {quiet ? (
+        done ? (
+          <div style={{ fontSize: 13, color: "var(--cp-text)" }} data-testid="deload-week-done">
+            ✓ Recovery week added — it&apos;s next, then your block resumes.
+          </div>
+        ) : (
+          <>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--cp-text)" }}>
+                Take a recovery week
+              </div>
+              <div style={{ fontSize: 12, color: "var(--cp-text-muted)", marginTop: 2 }}>
+                Insert a lighter week whenever you need to back off — nothing is skipped.
+              </div>
+            </div>
+            <button
+              type="button"
+              className="cp-btn"
+              data-testid="deload-week-review"
+              onClick={() => setOpen(true)}
+              style={{ fontSize: 13, padding: "7px 14px", flex: "none" }}
+            >
+              Review…
+            </button>
+          </>
+        )
+      ) : (
+        <>
+          <div
+            style={{
+              fontSize: 11,
+              color: "var(--cp-accent)",
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              fontWeight: 600,
+            }}
+          >
+            Recovery — your call
+          </div>
 
       {done ? (
         <div style={{ fontSize: 13, color: "var(--cp-text)" }} data-testid="deload-week-done">
@@ -125,6 +171,8 @@ export function DeloadWeekCard({
               Not now
             </button>
           </div>
+        </>
+      )}
         </>
       )}
 
