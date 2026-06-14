@@ -4,6 +4,8 @@
 import { describe, it, expect } from "vitest";
 import {
   fatigueArchetypeKey,
+  fatigueKeyFromMix,
+  resolveFatigueKey,
   loadRampTerm,
   cardioInterferenceTerm,
   subjectiveTerm,
@@ -21,6 +23,39 @@ describe("fatigueArchetypeKey", () => {
     expect(fatigueArchetypeKey("rebuild")).toBe("low");
     expect(fatigueArchetypeKey("maintenance")).toBe("low");
     expect(fatigueArchetypeKey("custom")).toBe("balanced");
+  });
+});
+
+describe("fatigueKeyFromMix (ADR 0046 Phase 3 — data-driven character)", () => {
+  it("mostly-strength mix → strength", () => {
+    expect(fatigueKeyFromMix(4, 0)).toBe("strength");
+    expect(fatigueKeyFromMix(4, 1)).toBe("strength"); // 0.2 cardio frac
+  });
+  it("cardio-heavy mix → endurance", () => {
+    expect(fatigueKeyFromMix(2, 5)).toBe("endurance"); // 0.71
+    expect(fatigueKeyFromMix(1, 4)).toBe("endurance"); // 0.8
+  });
+  it("even-ish mix → balanced", () => {
+    expect(fatigueKeyFromMix(3, 3)).toBe("balanced"); // 0.5
+    expect(fatigueKeyFromMix(4, 2)).toBe("balanced"); // 0.33
+  });
+  it("barely training → low", () => {
+    expect(fatigueKeyFromMix(1, 0)).toBe("low");
+    expect(fatigueKeyFromMix(0, 0)).toBe("low");
+  });
+});
+
+describe("resolveFatigueKey", () => {
+  it("keeps the archetype-tuned key for native/Hybrid blocks (byte-identical)", () => {
+    expect(resolveFatigueKey("strength_anchor", { strengthDays: 1, cardioDays: 9 })).toBe("strength");
+    expect(resolveFatigueKey("endurance_anchor")).toBe("endurance");
+  });
+  it("derives from the mix for foreign programs (unknown archetype)", () => {
+    expect(resolveFatigueKey("", { strengthDays: 4, cardioDays: 0 })).toBe("strength");
+    expect(resolveFatigueKey("wendler-531", { strengthDays: 3, cardioDays: 5 })).toBe("endurance");
+  });
+  it("falls back to the archetype map when no mix is given", () => {
+    expect(resolveFatigueKey("")).toBe("balanced"); // unknown → balanced
   });
 });
 
