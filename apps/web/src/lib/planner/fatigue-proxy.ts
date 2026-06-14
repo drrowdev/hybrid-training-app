@@ -37,6 +37,49 @@ export function fatigueArchetypeKey(archetype: string): FatigueArchetypeKey {
   }
 }
 
+/** The archetypes whose load character is known up-front (native/Hybrid blocks). */
+const KNOWN_FATIGUE_ARCHETYPES = new Set([
+  "strength_anchor",
+  "hypertrophy_anchor",
+  "endurance_anchor",
+  "concurrent_hybrid",
+  "rebuild",
+  "maintenance",
+]);
+
+/**
+ * Derive the load character from the user's ACTUAL strength-vs-cardio day mix
+ * (ADR 0046 Phase 3). Foreign programs (5/3/1, Tactical Barbell) prescribe a
+ * fixed number of strength days but the user adds however much cardio they want,
+ * so a hardcoded per-program "strength / endurance / mixed" label is wrong — the
+ * character is whatever the user is actually doing. Mostly strength → tonnage-
+ * weighted; lots of cardio → interference-weighted; little training → low.
+ * [DEF→cal] CP-1 — heuristic fractions.
+ */
+export function fatigueKeyFromMix(strengthDays: number, cardioDays: number): FatigueArchetypeKey {
+  const total = strengthDays + cardioDays;
+  if (total < 2) return "low"; // barely training — the proxy rarely matters
+  const cardioFrac = cardioDays / total;
+  if (cardioFrac < 0.25) return "strength";
+  if (cardioFrac > 0.6) return "endurance";
+  return "balanced";
+}
+
+/**
+ * Resolve the fatigue load character. Native/Hybrid blocks keep their archetype-
+ * tuned key (byte-identical). Foreign programs (no known archetype) derive it
+ * from the actual strength:cardio day mix when available, else fall back to the
+ * archetype map (which yields "balanced" for an unknown id).
+ */
+export function resolveFatigueKey(
+  archetype: string,
+  mix?: { strengthDays: number; cardioDays: number },
+): FatigueArchetypeKey {
+  if (KNOWN_FATIGUE_ARCHETYPES.has(archetype)) return fatigueArchetypeKey(archetype);
+  if (mix) return fatigueKeyFromMix(mix.strengthDays, mix.cardioDays);
+  return fatigueArchetypeKey(archetype);
+}
+
 /**
  * Per-character term weights {loadRamp, cardio, subjective}, summing to 1.
  * This is where Phase 3 earns the archetype differentiation ADR 0030 / Phase 1
@@ -97,6 +140,12 @@ export function subjectiveTerm(args: {
 
 export type FatigueProxyInput = {
   archetype: string;
+  /**
+   * The user's actual strength-vs-cardio day mix, used to derive the load
+   * character for foreign programs (no known archetype). Omitted by native/Hybrid
+   * callers — they key off the archetype as before.
+   */
+  loadMix?: { strengthDays: number; cardioDays: number };
   acuteTonnage: number;
   chronicTonnage: number;
   concurrentScalar: number;
@@ -112,9 +161,9 @@ export type FatigueProxy = {
   key: FatigueArchetypeKey;
 };
 
-/** Combine the three normalised terms with the archetype's weights. */
+/** Combine the three normalised terms with the resolved load character's weights. */
 export function computeFatigueProxy(input: FatigueProxyInput): FatigueProxy {
-  const key = fatigueArchetypeKey(input.archetype);
+  const key = resolveFatigueKey(input.archetype, input.loadMix);
   const weights = FATIGUE_WEIGHTS[key];
   const load = loadRampTerm(input.acuteTonnage, input.chronicTonnage);
   const cardio = cardioInterferenceTerm(input.concurrentScalar);
