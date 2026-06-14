@@ -15,10 +15,18 @@ import type { PendingProgramRecommendation } from "@/lib/platform/recommendation
 
 type DismissAction = (id: string) => Promise<{ ok: true } | { ok: false; error: string }>;
 
-/** A "set up the next phase" target derived from a next-block recommendation's data. */
+/**
+ * A CTA target derived from a recommendation. `next-block` routes to the program
+ * picker's next phase; `deload` routes to the Plan page's existing recovery-week
+ * card (deep-linked to auto-open its preview) so the deload nudge reuses the one
+ * deload workflow rather than spawning a parallel one.
+ */
 function advanceTarget(
   r: PendingProgramRecommendation,
 ): { href: string; label: string } | null {
+  if (r.kind === "deload") {
+    return { href: "/app/plan?deload=1", label: "Take a recovery week \u2192" };
+  }
   const d = r.data;
   if (r.kind !== "next-block" || !d) return null;
   const programId = typeof d.programId === "string" ? d.programId : null;
