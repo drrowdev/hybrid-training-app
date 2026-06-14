@@ -22,6 +22,7 @@ import {
   trainingBlocks,
   plannedSessions,
   sessions,
+  programInstances,
 } from "@hta/db";
 import { TM_RESOLUTION_COLUMNS } from "@/lib/training-maxes/columns";
 
@@ -95,6 +96,13 @@ const CONTRACTS: Contract[] = [
       "started_on",
       "deleted_at",
     ],
+  },
+  {
+    // quick-generate-resolve program-aware context (Hybrid focus muscles live on
+    // the serialised instance, not training_blocks).
+    name: "program_instances quick-generate context",
+    table: programInstances,
+    columns: ["user_id", "program_id", "instance", "status", "deleted_at"],
   },
 ];
 
