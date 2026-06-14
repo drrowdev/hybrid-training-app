@@ -25,6 +25,7 @@ import type {
 
 import { ARCHETYPES } from "@/lib/planner/archetypes";
 import type { ArchetypeId } from "@/lib/planner/archetypes";
+import { archetypeDisplayName } from "@/lib/planner/queries";
 import { deloadWeekIndexFor } from "@/lib/planner/deload-skip";
 import { isMaxIntentRpe, MAX_INTENT_LABEL } from "@/lib/sessions/effort-label";
 
@@ -312,6 +313,8 @@ type PlannedRow = {
 type BlockRow = {
   id: string;
   archetype: string | null;
+  program_family: string | null;
+  notes: string | null;
   started_on: string | null;
   weeks: number | null;
   focus_muscles: string[] | null;
@@ -367,7 +370,12 @@ async function loadGenerationContext(
         archetype: block.archetype ?? null,
         archetypeFocus: safeSync(() => {
           const a = ARCHETYPES[block.archetype as Exclude<ArchetypeId, "custom">];
-          return a?.oneLiner ?? block.archetype ?? null;
+          // Legacy archetype → its one-liner; platform block (archetype NULL) →
+          // the program name from notes so the AI recap keeps program context.
+          return (
+            a?.oneLiner ??
+            archetypeDisplayName(block.archetype ?? null, block.notes ?? null)
+          );
         }, block.archetype ?? null),
         focusMuscles: Array.isArray(block.focus_muscles)
           ? block.focus_muscles
@@ -666,7 +674,7 @@ export async function loadSessionDetail(
     const { data: blockData } = await supabase
       .from("training_blocks")
       .select(
-        "id, archetype, started_on, weeks, focus_muscles, secondary_focus, accessory_volume, power_emphasis",
+        "id, archetype, program_family, notes, started_on, weeks, focus_muscles, secondary_focus, accessory_volume, power_emphasis",
       )
       .eq("id", planned.block_id)
       .eq("user_id", userId)
@@ -677,7 +685,7 @@ export async function loadSessionDetail(
     const { data: activeBlock } = await supabase
       .from("training_blocks")
       .select(
-        "id, archetype, started_on, weeks, focus_muscles, secondary_focus, accessory_volume, power_emphasis",
+        "id, archetype, program_family, notes, started_on, weeks, focus_muscles, secondary_focus, accessory_volume, power_emphasis",
       )
       .eq("user_id", userId)
       .eq("status", "active")

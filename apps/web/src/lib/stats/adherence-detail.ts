@@ -71,9 +71,11 @@ export type { AdherenceRange };
 export type PlannedRow = {
   plannedId: string;
   blockId: string;
-  archetype: string;
+  archetype: string | null;
   /** Free-form notes column on the block (resolves the archetype display name for `custom` blocks). */
   blockNotes: string | null;
+  /** Platform program family (e.g. "531"); NULL on legacy archetype blocks. */
+  programFamily: string | null;
   blockStartedOn: string;
   weekIndex: number;
   dayIndex: number;
@@ -154,7 +156,7 @@ export type SkippedNote = {
   plannedId: string;
   blockId: string;
   date: string;
-  archetype: string;
+  archetype: string | null;
   archetypeDisplayName: string;
   title: string;
   note: string | null;
@@ -323,20 +325,25 @@ export function computeArchetypeAdherence(
     if (rangeStart && date < rangeStart) continue;
     if (date > today) continue;
 
-    let entry = map.get(row.archetype);
+    // Group key: archetype slug for legacy blocks, else the platform program
+    // family (5/3/1 / TB / GP / Hybrid). Without this, every platform block has
+    // archetype=NULL and would collapse into a single mislabelled bucket.
+    const groupKey = row.archetype ?? `program:${row.programFamily ?? "unknown"}`;
+    let entry = map.get(groupKey);
     if (!entry) {
       entry = {
-        archetypeId: row.archetype,
+        archetypeId: groupKey,
         // Defensive fallback to the slug when the archetype registry
         // doesn't recognise the id (e.g. a future archetype landed in
-        // the DB before the UI shipped its label).
+        // the DB before the UI shipped its label). For platform blocks this
+        // resolves to the program name via the block's notes.
         displayName: archetypeDisplayName(row.archetype, row.blockNotes),
         blocks: new Set(),
         logged: 0,
         skipped: 0,
         missed: 0,
       };
-      map.set(row.archetype, entry);
+      map.set(groupKey, entry);
     }
     entry.blocks.add(row.blockId);
     if (status === "logged") entry.logged++;
@@ -477,8 +484,8 @@ type PlannedRowDbShape = {
   completed_session_id: string | null;
   skipped_at: string | null;
   training_blocks:
-    | { id: string; archetype: string; notes: string | null; started_on: string; deleted_at: string | null }
-    | Array<{ id: string; archetype: string; notes: string | null; started_on: string; deleted_at: string | null }>
+    | { id: string; archetype: string | null; program_family: string | null; notes: string | null; started_on: string; deleted_at: string | null }
+    | Array<{ id: string; archetype: string | null; program_family: string | null; notes: string | null; started_on: string; deleted_at: string | null }>
     | null;
 };
 
@@ -490,7 +497,7 @@ async function readAllPlanned(
   const { data, error } = await supabase
     .from("planned_sessions")
     .select(
-      "id, block_id, week_index, day_index, title, completed_session_id, skipped_at, training_blocks!inner(id, archetype, notes, started_on, deleted_at, user_id)",
+      "id, block_id, week_index, day_index, title, completed_session_id, skipped_at, training_blocks!inner(id, archetype, program_family, notes, started_on, deleted_at, user_id)",
     )
     .eq("training_blocks.user_id", userId)
     .is("training_blocks.deleted_at", null);
@@ -506,6 +513,7 @@ async function readAllPlanned(
       blockId: r.block_id,
       archetype: blk.archetype,
       blockNotes: blk.notes,
+      programFamily: blk.program_family ?? null,
       blockStartedOn: blk.started_on,
       weekIndex: r.week_index,
       dayIndex: r.day_index,

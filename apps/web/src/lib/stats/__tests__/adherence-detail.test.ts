@@ -42,6 +42,7 @@ function row(
     blockId: "B1",
     archetype: "strength_anchor",
     blockNotes: null,
+    programFamily: null,
     blockStartedOn: "2026-05-04", // Mon
     title: "Squat day",
     completedSessionId: null,
@@ -284,6 +285,37 @@ describe("computeArchetypeAdherence", () => {
     ];
     const out = computeArchetypeAdherence(rows, TODAY, null);
     expect(out[0].displayName).toBe("My bespoke plan");
+  });
+
+  it("buckets platform blocks (archetype NULL) by program family, not into one collapsed bucket", () => {
+    const rows: PlannedRow[] = [
+      row({
+        plannedId: "p1",
+        weekIndex: 0,
+        dayIndex: 0,
+        completedSessionId: "s",
+        archetype: null,
+        programFamily: "531",
+        blockNotes: "5/3/1",
+        blockId: "B531",
+      }),
+      row({
+        plannedId: "p2",
+        weekIndex: 0,
+        dayIndex: 2,
+        completedSessionId: "s",
+        archetype: null,
+        programFamily: "tactical-barbell",
+        blockNotes: "Tactical Barbell",
+        blockId: "BTB",
+      }),
+    ];
+    const out = computeArchetypeAdherence(rows, TODAY, null);
+    // Two distinct program families → two buckets, each labelled by its program.
+    expect(out).toHaveLength(2);
+    const names = out.map((b) => b.displayName).sort();
+    expect(names).toEqual(["5/3/1", "Tactical Barbell"]);
+    expect(out.every((b) => b.blockCount === 1)).toBe(true);
   });
 });
 
