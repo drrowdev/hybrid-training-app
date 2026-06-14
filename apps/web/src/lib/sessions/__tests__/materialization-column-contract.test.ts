@@ -104,6 +104,24 @@ const CONTRACTS: Contract[] = [
     table: programInstances,
     columns: ["user_id", "program_id", "instance", "status", "deleted_at"],
   },
+  {
+    // insert_deload_week RPC (0106) writes these planned_sessions columns via raw
+    // SQL — not typechecked, so pin them here. A rename must break CI.
+    name: "deload-week RPC insert",
+    table: plannedSessions,
+    columns: [
+      "block_id",
+      "user_id",
+      "week_index",
+      "day_index",
+      "slot",
+      "title",
+      "role",
+      "prescription",
+      "session_modality",
+      "completed_session_id",
+    ],
+  },
 ];
 
 describe("session materialisation — column contract", () => {
