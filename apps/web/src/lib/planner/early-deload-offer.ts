@@ -15,13 +15,10 @@
  * `fatigue-proxy.ts`.
  */
 import { createClient, getAuthUser } from "@/lib/supabase/server";
-import { computeConcurrentScalarFromBlocks } from "@/lib/engine/concurrent-scalar";
-import { cardioBlocksFromLogs } from "@/lib/stats/muscle-volume";
-import { getWeeklyRecoveryRollup } from "@/lib/engine/recovered-weeks";
 import { getUserTimezone } from "@/lib/planner/queries";
 import { resolveDeloadWeekIndex } from "@/lib/planner/deload-skip";
+import { computeActiveBlockFatigue } from "@/lib/planner/block-fatigue";
 import {
-  computeFatigueProxy,
   shouldRecommendEarlyDeload,
   type FatigueArchetypeKey,
 } from "@/lib/planner/fatigue-proxy";
@@ -37,9 +34,6 @@ export type EarlyDeloadRecommendation = {
   /** Un-started current-week sessions that would convert to a deload. */
   sessionCount: number;
 };
-
-/** Min logged weeks of history before the proxy is trusted (fixed fallback). */
-const MIN_WEEKS_FOR_PROXY = 3;
 
 export async function getEarlyDeloadRecommendation(): Promise<EarlyDeloadRecommendation | null> {
   const supabase = await createClient();
@@ -74,9 +68,14 @@ export async function getEarlyDeloadRecommendation(): Promise<EarlyDeloadRecomme
   const deloadWeekIndex = resolveDeloadWeekIndex({ archetype, weeks, sessions: deloadSessions });
   if (deloadWeekIndex == null) return null; // maintenance / no-deload block
 
-  const startedOn = new Date(block.started_on + "T00:00:00");
-  const daysSinceStart = Math.floor((Date.now() - startedOn.getTime()) / 86_400_000);
-  const currentWeekIndex = Math.max(0, Math.min(weeks - 1, Math.floor(daysSinceStart / 7)));
+  const tz = await getUserTimezone();
+  const fatigue = await computeActiveBlockFatigue(
+    supabase,
+    user.id,
+    { id: block.id, archetype, started_on: block.started_on as string, weeks },
+    tz,
+  );
+  const { currentWeekIndex } = fatigue;
   const loadingWeeksLeft = deloadWeekIndex - currentWeekIndex;
   if (loadingWeeksLeft < 2) return null; // basically at the scheduled deload already
 
@@ -94,91 +93,22 @@ export async function getEarlyDeloadRecommendation(): Promise<EarlyDeloadRecomme
   );
   if (convertible.length === 0) return null;
 
-  // A deload (reactive OR earlier early-deload) already this block → don't stack.
-  const { count: reactiveDeloads } = await supabase
-    .from("tm_history")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", user.id)
-    .eq("reason", "deload")
-    .gte("created_at", `${block.started_on}T00:00:00Z`);
-
-  // ── Fatigue-proxy inputs ──────────────────────────────────────────
-  const tz = await getUserTimezone();
-  const rollup = await getWeeklyRecoveryRollup(supabase, user.id, { weeks: 8, tz });
-  const logged = rollup.filter((w) => w.loggedSessions > 0); // most-recent-first
-  const dataSufficient = logged.length >= MIN_WEEKS_FOR_PROXY;
-
-  const acuteTonnage = logged[0]?.weeklyTonnageKg ?? 0;
-  const chronicWeeks = logged.slice(1, 4);
-  const chronicTonnage =
-    chronicWeeks.length > 0
-      ? chronicWeeks.reduce((a, w) => a + w.weeklyTonnageKg, 0) / chronicWeeks.length
-      : 0;
-  const recent = logged[0];
-
-  // Cardio interference over the trailing 14 days.
-  const sinceIso = new Date(Date.now() - 14 * 86_400_000).toISOString();
-  const { data: recentSessions } = await supabase
-    .from("sessions")
-    .select("id")
-    .eq("user_id", user.id)
-    .is("deleted_at", null)
-    .gte("performed_at", sinceIso);
-  const sessionIds = ((recentSessions ?? []) as Array<{ id: string }>).map((s) => s.id);
-  let concurrentScalar = 1.0;
-  let cardioSessionCount = 0;
-  if (sessionIds.length > 0) {
-    const { data: cardio } = await supabase
-      .from("cardio_logs")
-      .select("session_id, duration_sec, modality, hr_zones, rpe")
-      .in("session_id", sessionIds);
-    const cardioRows = (cardio ?? []) as Array<{
-      session_id: string | null;
-      modality: string | null;
-      duration_sec: number | null;
-      hr_zones?: unknown;
-      rpe?: number | null;
-    }>;
-    cardioSessionCount = new Set(cardioRows.map((c) => c.session_id).filter(Boolean)).size;
-    const blocks = cardioBlocksFromLogs(cardioRows);
-    concurrentScalar = computeConcurrentScalarFromBlocks(blocks);
-  }
-  // Strength vs cardio day mix over the recent window — drives the fatigue load
-  // character for foreign programs (their strength days are fixed but the user
-  // adds however much cardio). A session with cardio counts as cardio; the rest
-  // are strength.
-  const loadMix = {
-    strengthDays: Math.max(0, sessionIds.length - cardioSessionCount),
-    cardioDays: cardioSessionCount,
-  };
-
-  const { proxy, terms, key } = computeFatigueProxy({
-    archetype,
-    loadMix,
-    acuteTonnage,
-    chronicTonnage,
-    concurrentScalar,
-    avgFatigue: recent?.avgFatigue ?? null,
-    avgSoreness: recent?.avgSoreness ?? null,
-    maxSrpe: recent?.maxSrpe ?? null,
-  });
-
   const recommend = shouldRecommendEarlyDeload({
-    proxy,
-    dataSufficient,
+    proxy: fatigue.proxy,
+    dataSufficient: fatigue.dataSufficient,
     loadingWeeksLeft,
-    recentDeloadAlready: (reactiveDeloads ?? 0) > 0,
+    recentDeloadAlready: fatigue.recentDeloadThisBlock,
   });
   if (!recommend) return null;
 
   return {
     blockId: block.id,
     archetype,
-    archetypeKey: key,
+    archetypeKey: fatigue.key,
     currentWeekIndex,
     deloadWeekIndex,
-    proxy,
-    terms,
+    proxy: fatigue.proxy,
+    terms: fatigue.terms,
     sessionCount: convertible.length,
   };
 }
