@@ -37,12 +37,15 @@ function summariseSession(s: DeloadSessionSpec): string {
 export function DeloadWeekCard({
   preview,
   insertAction,
+  autoOpen = false,
 }: {
   preview: DeloadWeekPreview;
   insertAction: () => Promise<InsertDeloadResult>;
+  /** Open the preview modal on mount (e.g. deep-linked from the TB deload banner). */
+  autoOpen?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(autoOpen);
   const [done, setDone] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [error, setError] = useState<string | null>(null);

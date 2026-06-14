@@ -54,6 +54,7 @@ export default async function PlanPage({
     filter?: string;
     new?: string;
     build?: string;
+    deload?: string;
   }>;
 }) {
   const supabase = await createClient();
@@ -185,7 +186,11 @@ export default async function PlanPage({
         <DeloadSkipCard offer={deloadSkipOffer} applyAction={acceptDeloadSkip} />
       )}
       {deloadWeekPreview && !deloadSkipOffer && (
-        <DeloadWeekCard preview={deloadWeekPreview} insertAction={insertDeloadWeekAction} />
+        <DeloadWeekCard
+          preview={deloadWeekPreview}
+          insertAction={insertDeloadWeekAction}
+          autoOpen={sp.deload === "1"}
+        />
       )}
       {showBodyweightBanner && (
         <BodyweightOnlyBanner
