@@ -413,3 +413,24 @@ describe("shouldDismissSwipe — pointer-release threshold", () => {
     expect(shouldDismissSwipe({ finalDy: 0, velocity: 0 })).toBe(false);
   });
 });
+
+describe("pressStartsOnInteractive — drag-vs-control guard", () => {
+  // A minimal element-like whose `closest` mimics matching an ancestor selector.
+  const el = (matches: boolean) => ({ closest: () => (matches ? {} : null) });
+
+  it("returns true when the press lands on an interactive control (e.g. the × close button)", async () => {
+    const { pressStartsOnInteractive } = await import("./PlanRedesign");
+    expect(pressStartsOnInteractive(el(true))).toBe(true);
+  });
+
+  it("returns false on the bare drag region (no interactive ancestor)", async () => {
+    const { pressStartsOnInteractive } = await import("./PlanRedesign");
+    expect(pressStartsOnInteractive(el(false))).toBe(false);
+  });
+
+  it("is null-safe", async () => {
+    const { pressStartsOnInteractive } = await import("./PlanRedesign");
+    expect(pressStartsOnInteractive(null)).toBe(false);
+    expect(pressStartsOnInteractive({})).toBe(false);
+  });
+});

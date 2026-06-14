@@ -1480,6 +1480,25 @@ export function shouldDismissSwipe(input: {
   return input.finalDy > 100 || input.velocity > 0.5;
 }
 
+/**
+ * Pure helper: does this pointer-down originate on an interactive control
+ * (button / link / form field) rather than the bare drag region?
+ *
+ * The drawer header doubles as the swipe-to-dismiss grip, so its pointer-down
+ * handler calls `setPointerCapture`. If the press lands on the × close button
+ * (which lives inside the header), capturing the pointer swallows the button's
+ * synthesized `click`, so the close never fires. We bail out of the drag in
+ * that case so interactive children behave normally. Accepts any object with a
+ * `closest` method so it's unit-testable without a real DOM.
+ */
+export function pressStartsOnInteractive(
+  target: { closest?: (selector: string) => unknown } | null,
+): boolean {
+  return !!target?.closest?.(
+    "button, a, input, textarea, select, [role='button']",
+  );
+}
+
 export function SessionDrawer({
   session,
   today,
@@ -1538,6 +1557,12 @@ export function SessionDrawer({
   const onDragPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     // Only react to primary (touch / left mouse / pen) inputs.
     if (e.button !== 0 && e.pointerType === "mouse") return;
+    // Don't start a drag (and capture the pointer) when the press lands on an
+    // interactive control inside the header — e.g. the × close button.
+    // Capturing would swallow that control's click. See pressStartsOnInteractive.
+    if (pressStartsOnInteractive(e.target as unknown as { closest?: (s: string) => unknown })) {
+      return;
+    }
     dragStateRef.current = {
       startY: e.clientY,
       pointerId: e.pointerId,
