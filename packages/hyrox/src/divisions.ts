@@ -3,15 +3,19 @@
  *
  * This is PUBLISHED FACT, not calibration: the 8 stations, their order, distances
  * and rep counts, and the Open / Pro / Doubles loads are HYROX competition-rule
- * standards (hyrox.com rulebook; en.wikipedia.org/wiki/Hyrox for format). They are
- * data, not engine coefficients — CP-1…CP-5 do not apply.
+ * standards. They are data, not engine coefficients — CP-1…CP-5 do not apply.
  *
- * ⚠️ VERIFY BEFORE COMPETITION USE: the kg figures below are the widely-published,
- * long-standing standards, but HYROX occasionally revises them and they vary by
- * gender. They are surfaced to the athlete as a reference to CONFIRM at logging
- * time (the logging model is "confirm/adjust prescribed weights"), never as a
- * silently-authoritative number. Doubles uses Open loads with the work shared
- * between two athletes.
+ * VERIFIED against the official HYROX 2025/26 Singles Rulebook §9 (Movement
+ * Standards, Distances and Weights), maintain.hyrox.com/rulebooks/
+ * HYROX_RulebookSingles_EN.pdf (retrieved 2026-06-15). The rulebook's three
+ * singles weight tiers map onto our open/pro × men/women matrix exactly:
+ *   - "Women"            → Open women
+ *   - "Women Pro / Men"  → Open men  AND  Pro women   (the shared middle tier)
+ *   - "Men Pro"          → Pro men
+ * Loads are still surfaced to the athlete as a reference to CONFIRM at logging
+ * time (HYROX can revise standards season to season), never as a silently-
+ * authoritative number. Doubles uses Open loads with the work shared between two
+ * athletes.
  */
 
 import type { HyroxDivision } from "./types";
