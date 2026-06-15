@@ -26,16 +26,21 @@ import type {
   ProgramSetupInput,
   PlatformContext,
   PlannedSessionSpec,
+  PlannedSessionKind,
   SessionPrescription,
   LoggedSession,
   ProgramRecommendation,
 } from "@hta/program-core";
+import {
+  buildHyroxGrid,
+  PHASE_NAME,
+  type HyroxDayCell,
+  type HyroxWeekPlan,
+} from "./phases";
+import { getHyroxSession, modalityOf } from "./sessions";
+import type { HyroxExperience, HyroxDivision } from "./types";
 
-/** Athlete experience tier — drives default block length + session volume. */
-export type HyroxExperience = "beginner" | "intermediate" | "advanced";
-
-/** Race division — drives station weights / rep standards. */
-export type HyroxDivision = "open" | "pro" | "doubles";
+export type { HyroxExperience, HyroxDivision } from "./types";
 
 /**
  * Default block length (weeks) by experience. `[DEF]` programming schedule, NOT
@@ -96,6 +101,98 @@ function clampSessions(v: unknown, fallback: number): number {
   const n = typeof v === "number" ? v : Number(v);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(MIN_SESSIONS_PER_WEEK, Math.min(MAX_SESSIONS_PER_WEEK, Math.round(n)));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Timeline — ref scheme `hx-w{week}-d{weekday}` (one ref per non-rest day).
+// A HYROX block is a single event build (no repeats), so there is no block index.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DAY_LABELS = ["Day 1", "Day 2", "Day 3", "Day 4", "Day 5", "Day 6", "Day 7"];
+
+export function hyroxRef(week: number, weekday: number): string {
+  return `hx-w${week}-d${weekday}`;
+}
+
+export function parseHyroxRef(ref: string): { week: number; weekday: number } | null {
+  const m = ref.match(/^hx-w(\d+)-d(\d+)$/);
+  if (!m) return null;
+  return { week: Number(m[1]), weekday: Number(m[2]) };
+}
+
+function kindForCell(cell: HyroxDayCell, isDeload: boolean): PlannedSessionKind {
+  if (cell.kind === "deload") return "deload";
+  if (cell.kind === "sim") return "test";
+  // Light aerobic inside a deload week is still part of the deload.
+  return isDeload ? "deload" : "training";
+}
+
+function specForCell(
+  week: HyroxWeekPlan,
+  weekday: number,
+  cell: HyroxDayCell,
+  index: number,
+): PlannedSessionSpec {
+  const phaseName = PHASE_NAME[week.phase];
+  const weekLabel = `HYROX · Wk ${week.week} · ${phaseName}`;
+  const tags: string[] = [
+    `phase:${week.phase}`,
+    `week:${week.week}`,
+    `day:${weekday + 1}`,
+  ];
+  if (week.isDeload) tags.push("deload-week");
+  if (week.phase === "taper") tags.push("taper");
+
+  let label = `${weekLabel} · ${DAY_LABELS[weekday]}`;
+
+  if (cell.kind === "deload") {
+    tags.push("deload");
+    label = `${weekLabel} · ${DAY_LABELS[weekday]} · Deload`;
+  } else if (cell.kind === "session" || cell.kind === "sim") {
+    const sess = getHyroxSession(cell.session);
+    const name = sess?.name ?? cell.session;
+    tags.push(`session:${cell.session}`);
+    if (sess) {
+      tags.push(`zone:${sess.zone}`, `modality:${modalityOf(sess.category)}`);
+      if (sess.perMovementLog) tags.push("per-movement-log");
+    }
+    if (cell.kind === "sim") tags.push("benchmark", "simulation");
+    let suffix = "";
+    if (cell.kind === "session" && cell.plus) {
+      tags.push("two-a-day");
+      const plusSess = getHyroxSession(cell.plus.session);
+      suffix = ` + ${plusSess?.name ?? cell.plus.session} (two-a-day)`;
+    }
+    label = `${weekLabel} · ${DAY_LABELS[weekday]} · ${name}${suffix}`;
+  }
+
+  return {
+    ref: hyroxRef(week.week, weekday),
+    index,
+    label,
+    kind: kindForCell(cell, week.isDeload),
+    weekLabel,
+    weekday,
+    tags,
+  };
+}
+
+function buildTimeline(instance: HyroxInstance): PlannedSessionSpec[] {
+  const plan = buildHyroxGrid({
+    weeks: instance.weeks,
+    sessionsPerWeek: instance.sessionsPerWeek,
+    experience: instance.experience,
+  });
+  const specs: PlannedSessionSpec[] = [];
+  let index = 0;
+  for (const week of plan) {
+    for (let d = 0; d < week.days.length; d++) {
+      const cell = week.days[d]!;
+      if (cell.kind === "rest") continue;
+      specs.push(specForCell(week, d, cell, index++));
+    }
+  }
+  return specs;
 }
 
 export const hyroxEngine: ProgramEngine<HyroxInstance> = {
@@ -163,11 +260,11 @@ export const hyroxEngine: ProgramEngine<HyroxInstance> = {
     };
   },
 
-  // ── Stubs filled in ADR 0050 steps 4–5 (phase grid + prescriptions). ──
-  // The engine is not registered/enabled until step 9, so these are not reached
-  // by the platform yet.
-  timeline(_instance: HyroxInstance): PlannedSessionSpec[] {
-    return [];
+  // ── timeline: walk the periodized grid (ADR 0050 step 4). prescribe()/
+  // onSessionLogged() are filled in step 5; the engine is not registered/enabled
+  // until step 9, so those stubs are not reached by the platform yet. ──
+  timeline(instance: HyroxInstance): PlannedSessionSpec[] {
+    return buildTimeline(instance);
   },
 
   prescribe(

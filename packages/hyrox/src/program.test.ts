@@ -6,9 +6,13 @@ import { describe, it, expect } from "vitest";
 import type { PlatformContext } from "@hta/program-core";
 import {
   hyroxEngine,
+  hyroxRef,
+  parseHyroxRef,
   WEEKS_BY_EXPERIENCE,
   DEFAULT_SESSIONS_BY_EXPERIENCE,
 } from "./program";
+import { buildHyroxGrid, gridSessionsResolve, type HyroxExperience } from "./index";
+import { getHyroxSession } from "./sessions";
 
 const ctx: PlatformContext = { oneRepMaxes: {}, roundingKg: 2.5 };
 
@@ -80,11 +84,175 @@ describe("HYROX engine — setup", () => {
 });
 
 describe("HYROX engine — timeline/prescribe stubs (filled steps 4–5)", () => {
-  it("timeline is empty in the step-3 skeleton", () => {
-    expect(hyroxEngine.timeline(setup())).toEqual([]);
+  it("prescribe returns an empty session in the step-4 skeleton", () => {
+    expect(hyroxEngine.prescribe(setup(), "anything", ctx)).toEqual({ items: [] });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Step 4 — phase grid + timeline
+// ─────────────────────────────────────────────────────────────────────────────
+
+const EXPERIENCES: HyroxExperience[] = ["beginner", "intermediate", "advanced"];
+
+describe("HYROX grid — periodization", () => {
+  it("produces exactly `weeks` weeks of 7 cells each, for every level", () => {
+    for (const experience of EXPERIENCES) {
+      const inst = setup({ experience });
+      const grid = buildHyroxGrid({
+        weeks: inst.weeks,
+        sessionsPerWeek: inst.sessionsPerWeek,
+        experience,
+      });
+      expect(grid).toHaveLength(WEEKS_BY_EXPERIENCE[experience]);
+      expect(grid.every((w) => w.days.length === 7)).toBe(true);
+    }
   });
 
-  it("prescribe returns an empty session in the step-3 skeleton", () => {
-    expect(hyroxEngine.prescribe(setup(), "anything", ctx)).toEqual({ items: [] });
+  it("walks Base → Build → Specific → Taper in order with no gaps", () => {
+    const grid = buildHyroxGrid({ weeks: 12, sessionsPerWeek: 5, experience: "intermediate" });
+    const order = ["base", "build", "specific", "taper"];
+    let cursor = 0;
+    for (const week of grid) {
+      const pos = order.indexOf(week.phase);
+      expect(pos).toBeGreaterThanOrEqual(cursor);
+      cursor = pos;
+    }
+    expect(grid[0]!.phase).toBe("base");
+    expect(grid[grid.length - 1]!.phase).toBe("taper");
+  });
+
+  it("ends in a taper of the level-defined length", () => {
+    const grid = buildHyroxGrid({ weeks: 16, sessionsPerWeek: 8, experience: "advanced" });
+    const taperWeeks = grid.filter((w) => w.phase === "taper");
+    expect(taperWeeks).toHaveLength(2);
+    // the taper is the tail, not the middle
+    expect(grid.slice(-2).every((w) => w.phase === "taper")).toBe(true);
+  });
+
+  it("inserts deloads on 4th work weeks, only in Base/Build (never Specific or Taper)", () => {
+    const grid = buildHyroxGrid({ weeks: 16, sessionsPerWeek: 5, experience: "advanced" });
+    expect(grid.find((w) => w.week === 4)!.isDeload).toBe(true);
+    expect(grid.find((w) => w.week === 8)!.isDeload).toBe(true);
+    for (const w of grid) {
+      if (w.isDeload) expect(["base", "build"]).toContain(w.phase);
+    }
+    expect(grid.find((w) => w.week === 1)!.isDeload).toBe(false);
+  });
+
+  it("gives every level at least one real (non-sim) race-prep week", () => {
+    for (const experience of EXPERIENCES) {
+      const inst = setup({ experience });
+      const grid = buildHyroxGrid({
+        weeks: inst.weeks,
+        sessionsPerWeek: inst.sessionsPerWeek,
+        experience,
+      });
+      const realRacePrep = grid.filter(
+        (w) =>
+          w.phase === "specific" &&
+          !w.isDeload &&
+          !w.days.some((c) => c.kind === "sim"),
+      );
+      expect(realRacePrep.length).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it("references only sessions that resolve in the vocabulary, at every level", () => {
+    for (const experience of EXPERIENCES) {
+      const inst = setup({ experience });
+      const grid = buildHyroxGrid({
+        weeks: inst.weeks,
+        sessionsPerWeek: inst.sessionsPerWeek,
+        experience,
+      });
+      expect(gridSessionsResolve(grid)).toBe(true);
+    }
+  });
+
+  it("schedules `sessionsPerWeek` sessions in a normal week, fewer in deload/taper", () => {
+    const grid = buildHyroxGrid({ weeks: 12, sessionsPerWeek: 5, experience: "intermediate" });
+    const countSessions = (w: (typeof grid)[number]) =>
+      w.days.filter((c) => c.kind !== "rest").length;
+
+    const normal = grid.find((w) => !w.isDeload && w.phase !== "taper")!;
+    expect(countSessions(normal)).toBe(5);
+
+    const deload = grid.find((w) => w.isDeload)!;
+    expect(countSessions(deload)).toBeLessThanOrEqual(3);
+
+    const taper = grid.find((w) => w.phase === "taper")!;
+    expect(countSessions(taper)).toBeLessThanOrEqual(4);
+  });
+
+  it("includes at least one strength session in every non-deload work week", () => {
+    const grid = buildHyroxGrid({ weeks: 12, sessionsPerWeek: 4, experience: "intermediate" });
+    for (const week of grid) {
+      if (week.isDeload || week.phase === "taper") continue;
+      const hasStrength = week.days.some(
+        (c) => c.kind === "session" && getHyroxSession(c.session)?.category === "strength",
+      );
+      expect(hasStrength).toBe(true);
+    }
+  });
+
+  it("places at least one race simulation in the Specific phase", () => {
+    const grid = buildHyroxGrid({ weeks: 12, sessionsPerWeek: 5, experience: "intermediate" });
+    const sims = grid.flatMap((w) => w.days).filter((c) => c.kind === "sim");
+    expect(sims.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("adds a two-a-day for an 8-sessions/week block", () => {
+    const grid = buildHyroxGrid({ weeks: 16, sessionsPerWeek: 8, experience: "advanced" });
+    const hasPlus = grid
+      .filter((w) => !w.isDeload && w.phase !== "taper")
+      .some((w) => w.days.some((c) => c.kind === "session" && c.plus));
+    expect(hasPlus).toBe(true);
+  });
+});
+
+describe("HYROX timeline — specs", () => {
+  it("emits one spec per non-rest cell, with 0-based contiguous indices", () => {
+    const inst = setup({ experience: "intermediate" });
+    const grid = buildHyroxGrid({
+      weeks: inst.weeks,
+      sessionsPerWeek: inst.sessionsPerWeek,
+      experience: "intermediate",
+    });
+    const nonRest = grid.flatMap((w) => w.days).filter((c) => c.kind !== "rest").length;
+    const tl = hyroxEngine.timeline(inst);
+    expect(tl).toHaveLength(nonRest);
+    expect(tl.map((s) => s.index)).toEqual(tl.map((_, i) => i));
+  });
+
+  it("assigns a weekday and a round-trippable ref to every spec", () => {
+    const tl = hyroxEngine.timeline(setup());
+    for (const spec of tl) {
+      expect(spec.weekday).toBeGreaterThanOrEqual(0);
+      expect(spec.weekday).toBeLessThanOrEqual(6);
+      const parsed = parseHyroxRef(spec.ref);
+      expect(parsed).not.toBeNull();
+      expect(hyroxRef(parsed!.week, parsed!.weekday)).toBe(spec.ref);
+    }
+  });
+
+  it("maps sims to `test` kind and deload markers to `deload` kind", () => {
+    const tl = hyroxEngine.timeline(setup({ experience: "advanced" }));
+    expect(tl.some((s) => s.kind === "test" && s.tags?.includes("simulation"))).toBe(true);
+    expect(tl.some((s) => s.kind === "deload")).toBe(true);
+    expect(tl.some((s) => s.kind === "training")).toBe(true);
+  });
+
+  it("tags strength sessions for per-movement logging", () => {
+    const tl = hyroxEngine.timeline(setup());
+    const strength = tl.filter((s) => s.tags?.includes("modality:strength"));
+    expect(strength.length).toBeGreaterThan(0);
+    expect(strength.every((s) => s.tags?.includes("per-movement-log"))).toBe(true);
+  });
+
+  it("has unique refs across the whole timeline", () => {
+    const tl = hyroxEngine.timeline(setup({ experience: "advanced" }));
+    const refs = tl.map((s) => s.ref);
+    expect(new Set(refs).size).toBe(refs.length);
   });
 });
