@@ -333,49 +333,91 @@ export function MovementCardList({
     },
     [sessionId],
   );
-  const moveAccessory = useCallback(
-    (movementId: string, dir: -1 | 1) => {
-      const ids = accessoryGroups.map((g) => g.movementId);
-      const from = ids.indexOf(movementId);
-      const to = from + dir;
-      if (from < 0 || to < 0 || to >= ids.length) return;
-      [ids[from], ids[to]] = [ids[to]!, ids[from]!];
-      persistOrder(ids);
-    },
-    [accessoryGroups, persistOrder],
-  );
-  // Drag-and-drop reorder (native HTML5, no library — mirrors PlanRedesign /
-  // Step5Schedule). The dragged accessory is dropped ONTO a target accessory and
-  // inserted at the target's position. Arrows remain the touch / a11y path.
-  const dragFromRef = useRef<string | null>(null);
+  // Drag-to-reorder built on POINTER events (not HTML5 drag), so it works with
+  // both touch and mouse — native HTML5 drag never fires from touch on iOS, and
+  // this is a phone-first app, so pointer events are the only way to offer drag
+  // as the sole reorder affordance (no arrows). Pointer capture on the grip routes
+  // every move/up to the handle; we hit-test the live accessory rects by clientY
+  // to find the card under the finger and insert the dragged item there.
+  const wrapperRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const registerWrapper = useCallback((movementId: string, el: HTMLDivElement | null) => {
+    if (el) wrapperRefs.current.set(movementId, el);
+    else wrapperRefs.current.delete(movementId);
+  }, []);
+  const draggingRef = useRef<string | null>(null);
+  const dragOverRef = useRef<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
-  const onAccessoryDragStart = useCallback((movementId: string) => {
-    dragFromRef.current = movementId;
-  }, []);
-  const onAccessoryDragOver = useCallback((movementId: string) => {
-    if (!dragFromRef.current) return;
-    setDragOverId(movementId);
-  }, []);
-  const onAccessoryDragEnd = useCallback(() => {
-    dragFromRef.current = null;
-    setDragOverId(null);
-  }, []);
-  const onAccessoryDrop = useCallback(
-    (targetMovementId: string) => {
-      const fromId = dragFromRef.current;
-      dragFromRef.current = null;
-      setDragOverId(null);
-      if (!fromId || fromId === targetMovementId) return;
-      const ids = accessoryGroups.map((g) => g.movementId);
-      const from = ids.indexOf(fromId);
-      const to = ids.indexOf(targetMovementId);
-      if (from < 0 || to < 0) return;
-      ids.splice(from, 1);
-      ids.splice(to, 0, fromId);
-      persistOrder(ids);
-    },
-    [accessoryGroups, persistOrder],
+
+  const accessoryIdOrder = useMemo(
+    () => accessoryGroups.map((g) => g.movementId),
+    [accessoryGroups],
   );
+
+  // The accessory whose row currently contains the pointer's Y (live rects).
+  const hitTestAccessory = useCallback((clientY: number): string | null => {
+    for (const id of wrapperRefs.current.keys()) {
+      const el = wrapperRefs.current.get(id);
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      if (clientY >= r.top && clientY <= r.bottom) return id;
+    }
+    return null;
+  }, []);
+
+  const onGripPointerDown = useCallback(
+    (movementId: string) => (e: React.PointerEvent<HTMLSpanElement>) => {
+      // Left mouse button only; any touch / pen starts the drag.
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      draggingRef.current = movementId;
+      dragOverRef.current = movementId;
+      setDraggingId(movementId);
+      setDragOverId(movementId);
+      hapticTick(hapticsEnabled);
+      try {
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      } catch {
+        /* setPointerCapture can throw if the pointer is already gone — ignore. */
+      }
+    },
+    [hapticsEnabled],
+  );
+
+  const onGripPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLSpanElement>) => {
+      if (!draggingRef.current) return;
+      e.preventDefault();
+      const over = hitTestAccessory(e.clientY);
+      if (over) {
+        dragOverRef.current = over;
+        setDragOverId(over);
+      }
+    },
+    [hitTestAccessory],
+  );
+
+  const finishDrag = useCallback(() => {
+    const fromId = draggingRef.current;
+    const overId = dragOverRef.current;
+    draggingRef.current = null;
+    dragOverRef.current = null;
+    setDraggingId(null);
+    setDragOverId(null);
+    if (!fromId || !overId || fromId === overId) return;
+    const ids = [...accessoryIdOrder];
+    const from = ids.indexOf(fromId);
+    const to = ids.indexOf(overId);
+    if (from < 0 || to < 0) return;
+    ids.splice(from, 1);
+    ids.splice(to, 0, fromId);
+    persistOrder(ids);
+  }, [accessoryIdOrder, persistOrder]);
+
+  const onGripPointerUp = useCallback(() => {
+    finishDrag();
+  }, [finishDrag]);
 
   // Accessory movementIds — the only bucket that surfaces the
   // prior-session "last time" hint (mains use a TM-derived target).
@@ -421,21 +463,16 @@ export function MovementCardList({
 
   const renderAccessoryCard = (group: MovementGroup) => {
     if (!reorderEnabled) return renderCard(group);
-    const ids = accessoryGroups.map((g) => g.movementId);
-    const pos = ids.indexOf(group.movementId);
     return (
       <ReorderableAccessory
         key={group.movementId}
         movementId={group.movementId}
-        canMoveUp={pos > 0}
-        canMoveDown={pos >= 0 && pos < ids.length - 1}
-        onMove={moveAccessory}
-        hapticsEnabled={hapticsEnabled}
-        onDragStartId={onAccessoryDragStart}
-        onDragOverId={onAccessoryDragOver}
-        onDropId={onAccessoryDrop}
-        onDragEndAccessory={onAccessoryDragEnd}
-        isDragOver={dragOverId === group.movementId}
+        registerWrapper={registerWrapper}
+        onGripPointerDown={onGripPointerDown(group.movementId)}
+        onGripPointerMove={onGripPointerMove}
+        onGripPointerUp={onGripPointerUp}
+        isDragging={draggingId === group.movementId}
+        isDragOver={dragOverId === group.movementId && draggingId !== group.movementId}
       >
         {renderCard(group)}
       </ReorderableAccessory>
@@ -499,129 +536,78 @@ export function MovementCardList({
 }
 
 /**
- * Reorder wrapper for an accessory card. Two interaction paths, no library:
- *   - up/down move buttons — the touch / a11y path (HTML5 drag does NOT fire
- *     from touch on iOS, so the buttons are the real mobile interaction).
- *   - a draggable grip handle + drop target — native HTML5 drag-and-drop for
- *     pointer users, mirroring the PlanRedesign / Step5Schedule pattern (drop a
- *     card ONTO another to insert it at that position).
+ * Reorder wrapper for an accessory card. Drag-only: a grip handle the user drags
+ * (or swipes, on touch) to reorder. Built on POINTER events — not HTML5 drag —
+ * so it works with finger and mouse alike (native drag never fires from touch on
+ * iOS, and this is a phone-first app). The wrapper registers itself so the parent
+ * can hit-test which card the pointer is over.
  */
 function ReorderableAccessory({
   movementId,
-  canMoveUp,
-  canMoveDown,
-  onMove,
-  hapticsEnabled,
-  onDragStartId,
-  onDragOverId,
-  onDropId,
-  onDragEndAccessory,
+  registerWrapper,
+  onGripPointerDown,
+  onGripPointerMove,
+  onGripPointerUp,
+  isDragging,
   isDragOver,
   children,
 }: {
   movementId: string;
-  canMoveUp: boolean;
-  canMoveDown: boolean;
-  onMove: (movementId: string, dir: -1 | 1) => void;
-  hapticsEnabled: boolean;
-  onDragStartId: (movementId: string) => void;
-  onDragOverId: (movementId: string) => void;
-  onDropId: (movementId: string) => void;
-  onDragEndAccessory: () => void;
+  registerWrapper: (movementId: string, el: HTMLDivElement | null) => void;
+  onGripPointerDown: (e: React.PointerEvent<HTMLSpanElement>) => void;
+  onGripPointerMove: (e: React.PointerEvent<HTMLSpanElement>) => void;
+  onGripPointerUp: (e: React.PointerEvent<HTMLSpanElement>) => void;
+  isDragging: boolean;
   isDragOver: boolean;
   children: React.ReactNode;
 }) {
-  const move = (dir: -1 | 1) => {
-    hapticTick(hapticsEnabled);
-    onMove(movementId, dir);
-  };
-  const btnStyle: React.CSSProperties = {
-    all: "unset",
-    cursor: "pointer",
-    width: 28,
-    height: 24,
+  const gripStyle: React.CSSProperties = {
+    width: 30,
+    height: 44,
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 6,
+    borderRadius: 8,
     color: "var(--cp-text-muted)",
-    fontSize: 13,
+    fontSize: 16,
     lineHeight: 1,
     border: "1px solid var(--cp-border)",
     background: "var(--cp-surface)",
+    cursor: "grab",
+    // Stop the browser from scrolling/selecting when the drag starts on touch.
+    touchAction: "none",
+    userSelect: "none",
   };
-  const disabledStyle: React.CSSProperties = { opacity: 0.3, cursor: "default" };
   return (
     <div
+      ref={(el) => registerWrapper(movementId, el)}
       data-testid={`accessory-reorder-${movementId}`}
-      onDragOver={(e) => {
-        // Allow a drop; preventDefault is required for onDrop to fire.
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        onDragOverId(movementId);
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        onDropId(movementId);
-      }}
       style={{
         display: "grid",
         gridTemplateColumns: "1fr auto",
         gap: 8,
         alignItems: "center",
+        opacity: isDragging ? 0.5 : 1,
         borderTop: isDragOver ? "2px solid var(--cp-accent)" : "2px solid transparent",
         borderRadius: 4,
+        transition: "opacity 0.12s",
       }}
     >
       <div style={{ minWidth: 0 }}>{children}</div>
-      <div
-        style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "center" }}
-        aria-label="Reorder accessory"
+      <span
+        data-testid={`accessory-drag-${movementId}`}
+        role="button"
+        tabIndex={0}
+        aria-label="Drag to reorder"
+        title="Drag to reorder"
+        onPointerDown={onGripPointerDown}
+        onPointerMove={onGripPointerMove}
+        onPointerUp={onGripPointerUp}
+        onPointerCancel={onGripPointerUp}
+        style={gripStyle}
       >
-        <button
-          type="button"
-          aria-label="Move up"
-          data-testid={`accessory-move-up-${movementId}`}
-          onClick={() => move(-1)}
-          disabled={!canMoveUp}
-          style={canMoveUp ? btnStyle : { ...btnStyle, ...disabledStyle }}
-        >
-          ↑
-        </button>
-        {/* Drag handle — native HTML5 draggable; pointer DnD only (touch uses
-            the arrows). The handle, not the whole card, starts the drag so the
-            card's inputs / steppers stay usable. */}
-        <span
-          data-testid={`accessory-drag-${movementId}`}
-          draggable
-          onDragStart={(e) => {
-            e.dataTransfer.effectAllowed = "move";
-            e.dataTransfer.setData("text/plain", movementId);
-            onDragStartId(movementId);
-          }}
-          onDragEnd={onDragEndAccessory}
-          aria-label="Drag to reorder"
-          title="Drag to reorder"
-          style={{
-            ...btnStyle,
-            cursor: "grab",
-            fontSize: 12,
-            touchAction: "none",
-          }}
-        >
-          ⠿
-        </span>
-        <button
-          type="button"
-          aria-label="Move down"
-          data-testid={`accessory-move-down-${movementId}`}
-          onClick={() => move(1)}
-          disabled={!canMoveDown}
-          style={canMoveDown ? btnStyle : { ...btnStyle, ...disabledStyle }}
-        >
-          ↓
-        </button>
-      </div>
+        ⠿
+      </span>
     </div>
   );
 }
