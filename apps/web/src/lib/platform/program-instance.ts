@@ -35,6 +35,8 @@ export interface BuildProgramInstanceArgs<I> {
   accessories?: TbAccessoryInjector;
   /** Optional 0-based program-week to begin from (start-point feature). */
   startWeekIndex?: number;
+  /** Optional open-cardio weekdays (0 = Mon … 6 = Sun) for strength-only programs. */
+  cardioWeekdays?: number[];
 }
 
 /** A `training_maxes.tm_percent` seed for one anchored movement. */
@@ -66,7 +68,7 @@ export interface ProgramInstanceWrite {
 export function buildProgramInstanceWrite<I>(
   args: BuildProgramInstanceArgs<I>,
 ): ProgramInstanceWrite {
-  const { engine, instance, ctx, resolveMovement, weekdays, assistance, accessories, startWeekIndex } = args;
+  const { engine, instance, ctx, resolveMovement, weekdays, assistance, accessories, startWeekIndex, cardioWeekdays } = args;
 
   const { sessions, weeks, skipped } = materializeProgram(
     engine,
@@ -78,6 +80,7 @@ export function buildProgramInstanceWrite<I>(
       ...(assistance ? { assistance } : {}),
       ...(accessories ? { accessories } : {}),
       ...(startWeekIndex != null ? { startWeekIndex } : {}),
+      ...(cardioWeekdays && cardioWeekdays.length > 0 ? { cardioWeekdays } : {}),
     },
   );
 

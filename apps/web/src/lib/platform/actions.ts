@@ -47,6 +47,14 @@ import { discardAbandonedInProgressSessions } from "@/lib/planner/archive-prior-
 
 const WEEKDAY = z.number().int().min(0).max(6);
 
+/**
+ * Strength-only foreign programs whose cardio isn't engine-owned, so the wizard
+ * may add OPEN cardio days (a reserved cardio_external placeholder per day). The
+ * concurrent programs (Hybrid native, Green Protocol / HYROX fixed-schedule)
+ * derive their own cardio and never accept wizard cardio days.
+ */
+const STRENGTH_ONLY_PROGRAM_IDS = new Set<string>(["wendler-531", "tactical-barbell"]);
+
 /** Whole weeks from `startIso` to `endIso` (YYYY-MM-DD), min 1. Drives HYROX weeks-to-race. */
 function wholeWeeksBetween(startIso: string, endIso: string): number {
   const start = Date.parse(`${startIso}T00:00:00Z`);
@@ -63,6 +71,8 @@ const createProgramInstanceSchema = z
     setupValues: z.record(z.unknown()).default({}),
     /** Strength weekdays (0 = Mon … 6 = Sun), one per session in a program-week. */
     weekdays: z.array(WEEKDAY).min(1).max(7),
+    /** Optional open-cardio weekdays (0 = Mon … 6 = Sun) for strength-only programs. */
+    cardioWeekdays: z.array(WEEKDAY).max(7).optional(),
     /** Block start date, YYYY-MM-DD. */
     startedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "startedOn must be YYYY-MM-DD"),
     /** Optional target race date (YYYY-MM-DD) — HYROX derives weeks-to-race + an A-event. */
@@ -95,7 +105,7 @@ export async function createProgramInstance(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { programId, setupValues, weekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories } = parsed.data;
+  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories } = parsed.data;
 
   // Reject duplicate weekdays — they'd collide on the (week, day, slot) unique key.
   // (Native programs own their own calendar and ignore `weekdays`, but the check
@@ -103,6 +113,11 @@ export async function createProgramInstance(
   if (new Set(weekdays).size !== weekdays.length) {
     return { ok: false, error: "Training weekdays must be distinct." };
   }
+
+  // Open cardio days only apply to strength-only foreign programs (5/3/1, TB),
+  // where cardio isn't engine-owned. They must not double up on a strength day.
+  const cardioDays = (cardioWeekdays ?? []).filter((d) => !weekdays.includes(d));
+  const cardioForProgram = STRENGTH_ONLY_PROGRAM_IDS.has(programId) ? cardioDays : [];
 
   const {
     data: { user },
@@ -126,6 +141,7 @@ export async function createProgramInstance(
     setupValues,
     weekdays,
     startedOn,
+    ...(cardioForProgram.length > 0 ? { cardioWeekdays: cardioForProgram } : {}),
     ...(raceDate ? { raceDate } : {}),
     ...(startWeekIndex != null ? { startWeekIndex } : {}),
     ...(roundingKg != null ? { roundingKg } : {}),
@@ -216,6 +232,7 @@ interface DeployArgs {
   programId: string;
   setupValues: Record<string, unknown>;
   weekdays: number[];
+  cardioWeekdays?: number[];
   startedOn: string;
   raceDate?: string;
   startWeekIndex?: number;
@@ -324,7 +341,7 @@ async function buildForeignTbAccessoryInjector(
 async function createForeignProgramInstance(
   supabase: SupabaseClient,
   user: User,
-  { programId, setupValues, weekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories }: DeployArgs,
+  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories }: DeployArgs,
 ): Promise<CreateProgramInstanceResult> {
   const engine = getProgramEngine(programId);
   if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
@@ -383,6 +400,7 @@ async function createForeignProgramInstance(
       ...(assistance ? { assistance } : {}),
       ...(tbAccessories ? { accessories: tbAccessories } : {}),
       ...(startWeekIndex != null ? { startWeekIndex } : {}),
+      ...(cardioWeekdays && cardioWeekdays.length > 0 ? { cardioWeekdays } : {}),
     });
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Setup failed" };
@@ -405,6 +423,9 @@ async function createForeignProgramInstance(
       status: "active",
       days_per_week: write.daysPerWeek,
       day_index_overrides: write.dayIndexOverrides,
+      // Open cardio days are external-logged (Strava auto-link), so flag the block
+      // external when any are present; otherwise keep the strength-only default.
+      cardio_source: cardioWeekdays && cardioWeekdays.length > 0 ? "external" : "internal",
       notes: engine.meta.name,
     })
     .select("id")
