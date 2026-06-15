@@ -411,6 +411,19 @@ const WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 type DayType = "strength" | "rest";
 
+/**
+ * 5/3/1 two-day lift pairings. With 2 training days the engine pairs the four
+ * main lifts into two sessions by chunking `dayOrder` into twos — so each preset
+ * is just the day order that yields that pairing. These three partitions are the
+ * ONLY ways to split four lifts into two pairs, so they fully cover the space.
+ */
+type PairingId = "default" | "press-squat" | "upper-lower";
+const PAIRINGS: { id: PairingId; dayOrder: string[]; label: string }[] = [
+  { id: "default", dayOrder: ["press", "deadlift", "bench", "squat"], label: "Overhead Press + Deadlift · Bench + Squat" },
+  { id: "press-squat", dayOrder: ["press", "squat", "deadlift", "bench"], label: "Overhead Press + Squat · Deadlift + Bench" },
+  { id: "upper-lower", dayOrder: ["bench", "press", "squat", "deadlift"], label: "Upper (Bench + Press) · Lower (Squat + Deadlift)" },
+];
+
 /** Build a default week: `n` strength days on the canonical spread, rest elsewhere. */
 function buildWeek(n: number): DayType[] {
   const clamped = Math.max(1, Math.min(7, n));
@@ -661,6 +674,9 @@ export function ProgramPicker({
   const [freq531, setFreq531] = useState<number>(
     preselectProgram?.id === "wendler-531" ? (preselectProgram.sessionsPerWeek ?? 4) : 4,
   );
+  // 5/3/1 2-day lift pairing (which two lifts share each session). Only used when
+  // 5/3/1 runs at 2 days/week; ignored otherwise.
+  const [pairing, setPairing] = useState<PairingId>("default");
   const [unit, setUnit] = useState<Unit>("kg");
 
   // Per-lift 1RM entry: a display-unit string + chosen variant slug, keyed by engine key.
@@ -957,6 +973,13 @@ export function ProgramPicker({
           ...(c.kind ? { kind: c.kind } : {}),
         }));
       }
+    }
+
+    // 5/3/1 two-day lift pairing → the engine's day order (chunked into pairs).
+    // Only meaningful at 2 days/week; the engine ignores it at 4 (one lift/day).
+    if (selected.id === "wendler-531" && freq531 === 2) {
+      const chosen = PAIRINGS.find((p) => p.id === pairing) ?? PAIRINGS[0]!;
+      setupValues.dayOrder = chosen.dayOrder;
     }
 
     // Lifts the user set or changed → persist as entered 1RMs before deploy. We
@@ -1923,6 +1946,25 @@ export function ProgramPicker({
                     <span className={styles.liftsHint}>{Math.ceil(4 / freq531)} main lifts / day</span>
                   ) : null}
                 </span>
+              </div>
+            ) : null}
+            {selected.id === "wendler-531" && freq531 === 2 ? (
+              <div style={{ marginBottom: 18 }}>
+                <div className={styles.label}>Lift pairing</div>
+                <select
+                  className={styles.datein}
+                  value={pairing}
+                  onChange={(e) => setPairing(e.target.value as PairingId)}
+                >
+                  {PAIRINGS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+                <div className={styles.note} style={{ marginTop: 6 }}>
+                  With two training days, each session trains two main lifts. Choose which lifts pair up.
+                </div>
               </div>
             ) : null}
             <div className={styles.legend}>

@@ -62,6 +62,26 @@ describe("5/3/1 engine — meta + setup", () => {
     const inst = setup();
     expect(JSON.parse(JSON.stringify(inst))).toEqual(inst);
   });
+
+  it("defaults the day order (press/deadlift/bench/squat) and ignores an invalid override", () => {
+    expect(setup().dayOrder).toEqual(["press", "deadlift", "bench", "squat"]);
+    // Not a full permutation of the four lifts → falls back to the default.
+    expect(setup({ dayOrder: ["press", "squat"] }).dayOrder).toEqual(["press", "deadlift", "bench", "squat"]);
+    expect(setup({ dayOrder: ["press", "press", "bench", "squat"] }).dayOrder).toEqual(["press", "deadlift", "bench", "squat"]);
+    expect(setup({ dayOrder: "nonsense" }).dayOrder).toEqual(["press", "deadlift", "bench", "squat"]);
+  });
+
+  it("accepts a valid day-order permutation — driving 2-day lift pairing", () => {
+    // Press+Squat / Deadlift+Bench, the user's chosen pairing.
+    const inst = setup({ dayOrder: ["press", "squat", "deadlift", "bench"], daysPerWeek: 2 });
+    expect(inst.dayOrder).toEqual(["press", "squat", "deadlift", "bench"]);
+    // 2-day mode pairs the order into twos: (press, squat) then (deadlift, bench).
+    const tl = wendler531Engine.timeline(inst);
+    const wk1 = tl.filter((s) => s.weekLabel === "leader1-w1");
+    expect(wk1).toHaveLength(2);
+    expect(wk1[0]!.tags).toEqual(expect.arrayContaining(["lift:press", "lift:squat"]));
+    expect(wk1[1]!.tags).toEqual(expect.arrayContaining(["lift:deadlift", "lift:bench"]));
+  });
 });
 
 describe("5/3/1 engine — timeline", () => {
