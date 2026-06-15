@@ -155,20 +155,6 @@ function longDate(ymd: string): string {
   return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
 }
 
-/**
- * Render `Block N of M` as plain text. Adaptation-horizon guidance
- * used to surface here as a research-citation tooltip but was removed
- * for visual quiet on the plan header.
- */
-function renderBlockOfTotal(
-  blockNumber: number,
-  blockTotal: number,
-  noun: "cycle" | "block" = "block",
-): React.ReactNode {
-  const label = noun === "cycle" ? "Cycle" : "Block";
-  return `${label} ${blockNumber} of ${blockTotal}`;
-}
-
 function pillTitle(s: PlanSessionInput): string {
   // The timeline pill is narrow — keep titles under ~14 chars.
   if (s.title.length <= 14) return s.title;
@@ -235,8 +221,6 @@ export function PlanRedesign(props: PlanRedesignProps) {
   const {
     archetypeName,
     cycleNoun = "block",
-    blockNumber,
-    blockTotal,
     focusMuscles = [],
     startedOn,
     endedOn,
@@ -468,7 +452,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
     <div data-testid="plan-redesign" style={{ display: "grid", gap: 24 }}>
       <header className="plan-head">
         <div className="plan-eyebrow mono">
-          {archetypeName} · {renderBlockOfTotal(blockNumber, blockTotal, cycleNoun)}
+          {archetypeName}
           <PlanFocusBadge muscles={focusMuscles} />
         </div>
         <div className="plan-head-row">

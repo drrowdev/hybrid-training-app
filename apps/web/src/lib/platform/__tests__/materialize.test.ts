@@ -73,9 +73,13 @@ describe("materializeProgram — 5/3/1 default block", () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  it("carries the engine label as the title and maps kind → role", () => {
+  it("derives a clean content title (lifts, not the breadcrumb) and maps kind → role", () => {
     const first = result.sessions[0]!;
-    expect(first.title).toContain("Leader 1 · Wk 1");
+    // Day 1 of the default order is the Press — the title names the lift(s), not
+    // the old "Leader 1 · Wk 1 · …" breadcrumb (that context is in the chrome).
+    expect(first.title).toContain("Overhead Press");
+    expect(first.title).not.toContain("Wk 1");
+    expect(first.title).not.toContain("Leader");
     expect(first.role).toBe("strength");
     // the deload 7th week materialises as role 'deload'
     expect(result.sessions.some((s) => s.role === "deload")).toBe(true);

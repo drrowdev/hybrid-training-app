@@ -26,6 +26,8 @@ import type {
   ProgramEngine,
   PlatformContext,
   PlannedSessionSpec,
+  SessionPrescription,
+  PrescribedItemKind,
 } from "@hta/program-core";
 import type { Prescription, PrescriptionItem } from "@hta/db";
 import { adaptSessionPrescription, type MovementResolver, type SkippedItem } from "./adapter";
@@ -100,6 +102,46 @@ function roleForKind(kind: PlannedSessionSpec["kind"]): string {
     default:
       return "strength";
   }
+}
+
+/**
+ * Derive a clean, content-first session title from the engine's prescription.
+ * Strength days name the working lifts ("Squat · Bench · Deadlift"); conditioning
+ * days name the activity ("Easy Run"); a note-only session uses the note name
+ * ("Deload"). The engine's `SessionPrescription` already carries GENERIC movement
+ * names (e.g. "Squat", not the user's "Front Squat" variant), so the title stays
+ * short. Returns undefined when nothing nameable is present (caller falls back).
+ */
+const TITLE_MAIN_KINDS: ReadonlySet<PrescribedItemKind> = new Set([
+  "main",
+  "amrap",
+  "supplemental",
+]);
+const TITLE_CARDIO_KINDS: ReadonlySet<PrescribedItemKind> = new Set([
+  "cardio",
+  "conditioning",
+]);
+
+function distinctNames(rx: SessionPrescription, kinds: ReadonlySet<PrescribedItemKind>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const it of rx.items) {
+    if (!kinds.has(it.kind)) continue;
+    const name = it.name?.trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
+}
+
+export function deriveSessionTitle(rx: SessionPrescription): string | undefined {
+  const lifts = distinctNames(rx, TITLE_MAIN_KINDS);
+  if (lifts.length > 0) return lifts.join(" · ");
+  const cardio = distinctNames(rx, TITLE_CARDIO_KINDS);
+  if (cardio.length > 0) return cardio.join(" · ");
+  const note = rx.items.find((it) => it.kind === "note" && it.name?.trim());
+  return note?.name?.trim() || undefined;
 }
 
 /** Build the minimal classifier shape from an adapted prescription. */
@@ -213,7 +255,11 @@ export function materializeProgram<I>(
       weekIndex,
       dayIndex,
       slot: "single",
-      title: spec.label,
+      // Clean, content-first title: the program / week / day context already
+      // lives in the page chrome, so the session name describes only WHAT you do.
+      // Prefer an engine-supplied `title`, then derive from the prescription's
+      // main lifts / activity, and only fall back to the verbose label.
+      title: spec.title ?? deriveSessionTitle(engineRx) ?? spec.label,
       role: roleForKind(spec.kind),
       prescription: prescriptionWithRef,
       sessionModality: modality,
