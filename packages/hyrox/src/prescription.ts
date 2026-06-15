@@ -188,18 +188,15 @@ function buildCircuit(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[]
 function buildSimulation(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[] {
   const half = sess.id === "sim-half";
   const stations = HYROX_STATIONS.slice(0, half ? 4 : 8);
-  const items: PrescribedItem[] = [
-    {
-      kind: "note",
-      name: sess.name,
-      note: half
-        ? "Half simulation — 4 runs (1 km each) alternating with the first 4 stations, at race effort. Rehearse pacing, transitions and fuelling."
-        : "Full simulation — all 8 runs + 8 stations in race order, at race effort. A costly stimulus; use rarely and not close to the event.",
-    },
-  ];
-  for (const st of stations) {
+  const intro = half
+    ? "Half simulation — 4 runs (1 km each) alternating with the first 4 stations, at race effort. Rehearse pacing, transitions and fuelling."
+    : "Full simulation — all 8 runs + 8 stations in race order, at race effort. A costly stimulus; use rarely and not close to the event.";
+  const items: PrescribedItem[] = [];
+  stations.forEach((st, idx) => {
     const loadRef = stationLoadLabel(st, args.division);
-    const note = [st.note, loadRef].filter(Boolean).join(" ");
+    // Fold the simulation intro into the FIRST station's note (a standalone
+    // leading note would be dropped by the adapter, losing the guidance).
+    const note = [idx === 0 ? intro : "", st.note, loadRef].filter(Boolean).join(" ");
     items.push({
       kind: "conditioning",
       name: st.name,
@@ -208,17 +205,39 @@ function buildSimulation(sess: HyroxSession, args: PrescribeArgs): PrescribedIte
       ...(st.reps != null ? { reps: st.reps } : {}),
       ...(note ? { note } : {}),
     });
-  }
+  });
   return items;
 }
 
-/** Strength → per-movement warm-up + working sets off the shared 1RM. */
+/** Display label for a role-anchored main-lift engine key. */
+const MAIN_LIFT_LABEL: Record<string, string> = {
+  squat: "Squat",
+  deadlift: "Deadlift",
+  press: "Overhead Press",
+  bench: "Bench Press",
+};
+
+/** Display label for an assistance category slot. */
+const ASSIST_LABEL: Record<string, string> = {
+  push: "Push assistance",
+  pull: "Pull assistance",
+  single_leg_or_core: "Single-leg / core assistance",
+};
+
+/**
+ * Strength → role-anchored main lifts (warm-up ramp + working sets off the shared
+ * 1RM, like Tactical Barbell / 5/3/1) plus station-specific accessories emitted as
+ * category-tagged assistance INTENT (no movementId) the platform resolves to real
+ * catalog movements via the shared ADR-0047 resolver.
+ */
 function buildStrength(sess: HyroxSession, ctx: PlatformContext, args: PrescribeArgs): PrescribedItem[] {
   const scheme = STRENGTH_SCHEME[args.phase];
   const items: PrescribedItem[] = [];
+
+  // Main lifts — anchored on the user's 1RM via the role key.
   for (const movement of sess.movements) {
     const oneRm = ctx.oneRepMaxes[movement];
-    const name = movementLabel(movement);
+    const name = MAIN_LIFT_LABEL[movement] ?? movementLabel(movement);
     if (oneRm != null && oneRm > 0) {
       const weightKg = roundTo(oneRm * scheme.pct, ctx.roundingKg);
       items.push(
@@ -240,7 +259,7 @@ function buildStrength(sess: HyroxSession, ctx: PlatformContext, args: Prescribe
         note: `${Math.round(scheme.pct * 100)}% — station-specific strength; leave 1-2 reps in reserve.`,
       });
     } else {
-      // No 1RM on file — prescribe by effort (many HYROX accessory lifts have none).
+      // No 1RM on file — prescribe by effort; the user logs the working weight.
       items.push({
         kind: "main",
         name,
@@ -251,6 +270,21 @@ function buildStrength(sess: HyroxSession, ctx: PlatformContext, args: Prescribe
       });
     }
   }
+
+  // Station-specific accessories — assistance INTENT (the platform resolves the
+  // concrete movement). Trimmed in the taper to shed accumulated fatigue.
+  const assistSets = args.phase === "taper" ? 2 : 3;
+  for (const slot of sess.assist ?? []) {
+    items.push({
+      kind: "assistance",
+      name: ASSIST_LABEL[slot] ?? slot,
+      assistanceCategory: slot,
+      sets: assistSets,
+      reps: 8,
+      repsMax: 12,
+    });
+  }
+
   return items;
 }
 
@@ -285,14 +319,16 @@ export function prescribeSession(
   }
 }
 
-/** The deload-marker prescription (mirrors GP). */
+/** The deload-marker prescription — a light optional recovery session. */
 export function deloadPrescription(): SessionPrescription {
   return {
     items: [
       {
-        kind: "note",
-        name: "Deload",
-        note: "Recovery week — drop volume and intensity. Light optional Zone-2 aerobic only; let fatigue clear and adaptations land.",
+        kind: "cardio",
+        name: "Recovery (optional Z2)",
+        movementId: "run",
+        durationSec: 20 * 60,
+        note: "Deload — drop volume and intensity this week. Optional easy Zone-2 movement only (run/ski/row/bike); let fatigue clear and adaptations land.",
       },
     ],
   };

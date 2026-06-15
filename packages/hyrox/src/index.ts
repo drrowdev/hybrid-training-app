@@ -34,6 +34,7 @@ export {
   type HyroxCategory,
   type HyroxZone,
   type HyroxUnit,
+  type HyroxAssistSlot,
 } from "./sessions";
 
 export {

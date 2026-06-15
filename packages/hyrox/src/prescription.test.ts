@@ -8,7 +8,7 @@ import { stationLoadLabel, getStation } from "./divisions";
 
 const ctxNoMaxes: PlatformContext = { oneRepMaxes: {}, roundingKg: 2.5 };
 const ctxWithMaxes: PlatformContext = {
-  oneRepMaxes: { "back-squat": 140, deadlift: 180, "overhead-press": 70, "bent-row": 90 },
+  oneRepMaxes: { squat: 140, deadlift: 180, press: 70, bench: 100 },
   roundingKg: 2.5,
 };
 
@@ -41,14 +41,18 @@ describe("HYROX prescribe — coverage", () => {
     }
   });
 
-  it("emits a Deload note for the deload-marker cell", () => {
+  it("prescribes a light recovery item for the deload-marker cell", () => {
     const i = inst();
     const deloadRef = hyroxEngine
       .timeline(i)
       .find((s) => s.tags?.includes("deload"))?.ref;
     expect(deloadRef).toBeDefined();
     const p = hyroxEngine.prescribe(i, deloadRef!, ctxWithMaxes);
-    expect(p.items.some((it) => it.name === "Deload")).toBe(true);
+    // A single light Zone-2 cardio item (renders + survives adaptation, unlike a
+    // standalone leading note which the platform adapter drops).
+    expect(p.items).toHaveLength(1);
+    expect(p.items[0]!.kind).toBe("cardio");
+    expect(p.items[0]!.note).toMatch(/deload/i);
   });
 
   it("returns an empty prescription for an unknown ref", () => {
@@ -69,21 +73,40 @@ describe("HYROX prescribe — strength", () => {
   it("loads working sets off the shared 1RM with a warm-up ramp", () => {
     const i = inst();
     const p = hyroxEngine.prescribe(i, strengthRef(i), ctxWithMaxes);
-    const squatMain = p.items.find((it) => it.kind === "main" && it.movementId === "back-squat");
+    const squatMain = p.items.find((it) => it.kind === "main" && it.movementId === "squat");
     expect(squatMain).toBeDefined();
     expect(squatMain!.weightKg).toBeGreaterThan(0);
     // base phase scheme is 75% → 140 × 0.75 = 105
     expect(squatMain!.weightKg).toBe(105);
-    expect(p.items.some((it) => it.kind === "warmup" && it.movementId === "back-squat")).toBe(true);
+    expect(p.items.some((it) => it.kind === "warmup" && it.movementId === "squat")).toBe(true);
+  });
+
+  it("anchors mains on the platform StrengthRole keys (squat/deadlift/press)", () => {
+    const i = inst();
+    const p = hyroxEngine.prescribe(i, strengthRef(i), ctxWithMaxes);
+    const mainKeys = p.items.filter((it) => it.kind === "main").map((it) => it.movementId);
+    expect(mainKeys).toContain("squat");
+    expect(mainKeys.every((k) => ["squat", "deadlift", "press", "bench"].includes(k!))).toBe(true);
+  });
+
+  it("emits station accessories as category-tagged assistance intent (no movementId)", () => {
+    const i = inst();
+    const p = hyroxEngine.prescribe(i, strengthRef(i), ctxWithMaxes);
+    const assist = p.items.filter((it) => it.kind === "assistance");
+    expect(assist.length).toBeGreaterThan(0);
+    for (const a of assist) {
+      expect(a.movementId).toBeUndefined();
+      expect(["push", "pull", "single_leg_or_core"]).toContain(a.assistanceCategory);
+    }
   });
 
   it("rounds working weight to the platform increment", () => {
     const i = inst();
     const p = hyroxEngine.prescribe(i, strengthRef(i), {
-      oneRepMaxes: { "back-squat": 143 },
+      oneRepMaxes: { squat: 143 },
       roundingKg: 5,
     });
-    const main = p.items.find((it) => it.kind === "main" && it.movementId === "back-squat");
+    const main = p.items.find((it) => it.kind === "main" && it.movementId === "squat");
     // 143 × 0.75 = 107.25 → rounds to nearest 5 = 105
     expect(main!.weightKg! % 5).toBe(0);
   });
