@@ -14,10 +14,11 @@
  * conservative and user-overridable, NOT calibrated physiology. All actual load math
  * (interference, freshness, deload, taper) is the existing platform engine.
  *
- * This file is the STEP-3 skeleton (ADR 0050 build order): meta + describeSetup +
- * setup + the instance type. `timeline` / `prescribe` / `onSessionLogged` are stubbed
- * and filled in steps 4–5. The engine is NOT yet registered in the platform registry
- * (step 9), so it is invisible to users until enabled.
+ * `timeline` walks the generated phase grid (step 4); `prescribe` renders each
+ * ref via the per-category builders in `prescription.ts` (step 5). `onSessionLogged`
+ * remains a light stub until the completion/recommendation surface (steps 7+). The
+ * engine is NOT yet registered in the platform registry (step 9), so it is invisible
+ * to users until enabled.
  */
 import type {
   ProgramEngine,
@@ -38,6 +39,7 @@ import {
   type HyroxWeekPlan,
 } from "./phases";
 import { getHyroxSession, modalityOf } from "./sessions";
+import { prescribeSession, deloadPrescription } from "./prescription";
 import type { HyroxExperience, HyroxDivision } from "./types";
 
 export type { HyroxExperience, HyroxDivision } from "./types";
@@ -195,6 +197,66 @@ function buildTimeline(instance: HyroxInstance): PlannedSessionSpec[] {
   return specs;
 }
 
+/** Find the grid cell a ref points to, with its owning week (for prescribe). */
+function locateCell(
+  instance: HyroxInstance,
+  ref: string,
+): { week: HyroxWeekPlan; cell: HyroxDayCell } | null {
+  const parsed = parseHyroxRef(ref);
+  if (!parsed) return null;
+  const plan = buildHyroxGrid({
+    weeks: instance.weeks,
+    sessionsPerWeek: instance.sessionsPerWeek,
+    experience: instance.experience,
+  });
+  const week = plan.find((w) => w.week === parsed.week);
+  if (!week) return null;
+  const cell = week.days[parsed.weekday];
+  if (!cell || cell.kind === "rest") return null;
+  return { week, cell };
+}
+
+function prescribeRef(
+  instance: HyroxInstance,
+  ref: string,
+  ctx: PlatformContext,
+): SessionPrescription {
+  const located = locateCell(instance, ref);
+  if (!located) return { items: [] };
+  const { week, cell } = located;
+
+  if (cell.kind === "deload") return deloadPrescription();
+
+  const args = {
+    experience: instance.experience,
+    division: instance.division,
+    phase: week.phase,
+    isDeload: week.isDeload,
+  };
+
+  if (cell.kind === "sim") {
+    return { items: prescribeSession(cell.session, ctx, args) };
+  }
+
+  if (cell.kind !== "session") return { items: [] };
+
+  // The primary session, plus an optional two-a-day.
+  const items = prescribeSession(cell.session, ctx, args);
+  if (cell.plus) {
+    const plusItems = prescribeSession(cell.plus.session, ctx, args);
+    const plusSess = getHyroxSession(cell.plus.session);
+    if (plusItems.length > 0) {
+      items.push({
+        kind: "note",
+        name: `Two-a-day — ${plusSess?.name ?? cell.plus.session}`,
+        note: "A second, easy session performed the same day (AM/PM split recommended).",
+      });
+      items.push(...plusItems);
+    }
+  }
+  return { items };
+}
+
 export const hyroxEngine: ProgramEngine<HyroxInstance> = {
   meta: hyroxMeta,
 
@@ -268,11 +330,11 @@ export const hyroxEngine: ProgramEngine<HyroxInstance> = {
   },
 
   prescribe(
-    _instance: HyroxInstance,
-    _ref: string,
-    _ctx: PlatformContext,
+    instance: HyroxInstance,
+    ref: string,
+    ctx: PlatformContext,
   ): SessionPrescription {
-    return { items: [] };
+    return prescribeRef(instance, ref, ctx);
   },
 
   onSessionLogged(

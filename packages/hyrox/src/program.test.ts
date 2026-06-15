@@ -83,9 +83,12 @@ describe("HYROX engine — setup", () => {
   });
 });
 
-describe("HYROX engine — timeline/prescribe stubs (filled steps 4–5)", () => {
-  it("prescribe returns an empty session in the step-4 skeleton", () => {
-    expect(hyroxEngine.prescribe(setup(), "anything", ctx)).toEqual({ items: [] });
+describe("HYROX engine — prescribe is wired (step 5)", () => {
+  it("returns items for a real ref and empty for an unknown ref", () => {
+    const i = setup();
+    const firstRef = hyroxEngine.timeline(i)[0]!.ref;
+    expect(hyroxEngine.prescribe(i, firstRef, ctx).items.length).toBeGreaterThan(0);
+    expect(hyroxEngine.prescribe(i, "nope", ctx)).toEqual({ items: [] });
   });
 });
 
