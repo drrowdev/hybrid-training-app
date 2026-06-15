@@ -615,7 +615,9 @@ export function PlanRedesign(props: PlanRedesignProps) {
                         ) : (
                           shown.map((s) => {
                             const kind = s.isCardio ? "cardio" : "strength";
-                            const muted = s.done || isPast;
+                            // "done" gets its own clear treatment; only
+                            // past-AND-incomplete sessions are faded ("muted").
+                            const muted = isPast && !s.done;
                             const overdue = isOverdue(
                               sessionToOverdueCandidate(s),
                               today,
@@ -623,7 +625,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
                             return (
                               <div
                                 key={s.id}
-                                className={`session-pill ${kind}${muted ? " muted" : ""}${overdue ? " overdue" : ""}`}
+                                className={`session-pill ${kind}${s.done ? " done" : ""}${muted ? " muted" : ""}${overdue ? " overdue" : ""}`}
                                 role="button"
                                 tabIndex={0}
                                 draggable={!s.done && !s.skipped}
@@ -639,6 +641,11 @@ export function PlanRedesign(props: PlanRedesignProps) {
                                 onDragEnd={handleDragEnd}
                                 title={s.title}
                               >
+                                {s.done && (
+                                  <span className="done-check" aria-hidden="true">
+                                    {"\u2713 "}
+                                  </span>
+                                )}
                                 {pillTitle(s)}
                                 {overdue && (
                                   <span
@@ -979,6 +986,24 @@ export function PlanRedesign(props: PlanRedesignProps) {
           border-left-color: var(--cp-cardio);
         }
         .session-pill.muted { opacity: 0.5; text-decoration: line-through; }
+        /* Completed sessions read clearly at a glance: a bold check, full-
+           strength left border and solid text (no fade / strikethrough) so
+           "done" is obvious against incomplete/past pills. Stays non-green —
+           green is reserved for today. */
+        .session-pill.done {
+          opacity: 1;
+          border-left-width: 3px;
+          font-weight: 600;
+          text-decoration: none;
+          color: var(--cp-text);
+        }
+        .session-pill.done .done-check {
+          font-weight: 800;
+          color: var(--cp-strength);
+        }
+        .session-pill.cardio.done .done-check {
+          color: var(--cp-cardio);
+        }
         .session-pill.rest {
           color: var(--cp-text-soft);
           border-left-color: var(--cp-border-strong);
@@ -1369,12 +1394,12 @@ function MonthAlternate({
               </span>
               {items.map((s) => {
                 const kind = s.isCardio ? "cardio" : "strength";
-                const muted = s.done || isPast;
+                const muted = isPast && !s.done;
                 const overdue = isOverdue(sessionToOverdueCandidate(s), today);
                 return (
                   <div
                     key={s.id}
-                    className={`session-pill ${kind}${muted ? " muted" : ""}${overdue ? " overdue" : ""}`}
+                    className={`session-pill ${kind}${s.done ? " done" : ""}${muted ? " muted" : ""}${overdue ? " overdue" : ""}`}
                     role="button"
                     tabIndex={0}
                     onClick={() => onOpen(s.id)}
@@ -1385,6 +1410,11 @@ function MonthAlternate({
                       }
                     }}
                   >
+                    {s.done && (
+                      <span className="done-check" aria-hidden="true">
+                        {"\u2713 "}
+                      </span>
+                    )}
                     {pillTitle(s)}
                     {overdue && (
                       <span
