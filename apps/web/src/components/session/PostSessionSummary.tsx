@@ -39,6 +39,7 @@ export type ProgressionHint = {
 export function PostSessionSummary({
   sessionId,
   summary,
+  programmedSets,
   sessionRpe,
   initialNotes,
   progressionHints,
@@ -46,6 +47,13 @@ export function PostSessionSummary({
 }: {
   sessionId: string;
   summary: SessionSummary;
+  /**
+   * Total programmed WORKING sets for this session (warm-ups excluded), so the
+   * card can show "X of Y sets logged" — making it obvious whether every
+   * prescribed set was completed. Omitted / 0 for off-plan sessions with no
+   * prescription, where only the logged count is shown.
+   */
+  programmedSets?: number;
   /**
    * Session RPE (the "how hard overall, 1-10" rating captured at
    * finish). Surfaced here as a friendly "Effort" stat so the
@@ -139,7 +147,11 @@ export function PostSessionSummary({
         />
         <SummaryStat
           label="Sets"
-          value={`${summary.workingSetCount}`}
+          value={
+            programmedSets && programmedSets > 0
+              ? `${summary.workingSetCount} / ${programmedSets}`
+              : `${summary.workingSetCount}`
+          }
           testId="summary-sets"
         />
         <SummaryStat

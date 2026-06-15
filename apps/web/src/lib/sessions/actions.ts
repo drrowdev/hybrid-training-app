@@ -837,7 +837,14 @@ export async function completeSession(formData: FormData): Promise<void> {
     if (res.error === "not-signed-in") redirect("/login");
     throw new Error(res.error);
   }
-  redirect(`/app/sessions/${parsed.data.sessionId}`);
+  // Redirect to the session with `?completed=1` rather than the bare URL. The
+  // Finish button sits at the END of the (long) logging page, so a redirect to
+  // the identical URL left the user scrolled at the bottom with the read-only
+  // cards still looking like the logging view — the "Session complete!" summary
+  // up top went unseen and the finish felt like a no-op. A changed URL forces a
+  // real top-of-page navigation so the summary is the first thing they see.
+  revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
+  redirect(`/app/sessions/${parsed.data.sessionId}?completed=1`);
 }
 
 /**
