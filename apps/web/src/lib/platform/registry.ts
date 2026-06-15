@@ -12,6 +12,7 @@ import type { ProgramEngine, ProgramMeta } from "@hta/program-core";
 import { wendler531Engine } from "@hta/wendler";
 import { tacticalBarbellEngine, zuluHtEngine } from "@hta/tacticalbarbell";
 import { greenProtocolEngine } from "@hta/green";
+import { hyroxEngine } from "@hta/hyrox";
 import type { NativeProgramEngine } from "./native-engine";
 import { hybridProgramEngine } from "@/lib/programs/hybrid/engine";
 
@@ -26,6 +27,7 @@ const ENGINES: ProgramEngine[] = [
   wendler531Engine as ProgramEngine,
   tacticalBarbellEngine as ProgramEngine,
   greenProtocolEngine as ProgramEngine,
+  hyroxEngine as ProgramEngine,
   zuluHtEngine as ProgramEngine,
 ];
 

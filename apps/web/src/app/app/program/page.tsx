@@ -41,6 +41,7 @@ const ENABLED_PROGRAM_IDS = new Set<string>([
   "wendler-531",
   "tactical-barbell",
   "green-protocol",
+  "hyrox",
 ]);
 
 // Programs that prescribe their own weekly calendar (every session carries an
@@ -48,7 +49,7 @@ const ENABLED_PROGRAM_IDS = new Set<string>([
 // Protocol owns its own calendar. Hybrid does NOT: like 5/3/1 and TB, the user
 // picks training weekdays on the shared Schedule step, and that count drives the
 // concurrent generator's days/week.
-const FIXED_SCHEDULE_PROGRAM_IDS = new Set<string>(["green-protocol"]);
+const FIXED_SCHEDULE_PROGRAM_IDS = new Set<string>(["green-protocol", "hyrox"]);
 
 /**
  * Sessions a single program-week contains under the engine's DEFAULT setup —
