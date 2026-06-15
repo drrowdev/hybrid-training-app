@@ -750,6 +750,13 @@
       "when": 1784968800000,
       "tag": "0106_deload_week_rpcs",
       "breakpoints": false
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1785055200000,
+      "tag": "0107_seed_hyrox_stations",
+      "breakpoints": false
     }
   ]
 }
