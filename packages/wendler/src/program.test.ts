@@ -188,6 +188,20 @@ describe("5/3/1 engine — assistance intent (ADR 0047)", () => {
     expect(assist.every((a) => a.sets === 2)).toBe(true);
   });
 
+  it("the global accessory-volume preference scales assistance (Easier→2, Balanced→3, Harder→4 sets)", () => {
+    const ref = (inst: WendlerInstance) => findRef(inst, "lift:squat", "week:1", "phase:leader");
+    const setsFor = (pref?: string) => {
+      const inst = setup(pref ? { assistanceVolume: pref } : {});
+      const assist = itemsOfKind(wendler531Engine.prescribe(inst, ref(inst), ctx), "assistance");
+      return assist.map((a) => a.sets);
+    };
+    // FSL base is standard (3). Easier → light (2), Harder → high (4), Balanced/default → 3.
+    expect(setsFor("low")).toEqual([2, 2, 2]);
+    expect(setsFor()).toEqual([3, 3, 3]);
+    expect(setsFor("standard")).toEqual([3, 3, 3]);
+    expect(setsFor("high")).toEqual([4, 4, 4]);
+  });
+
   it("a 7th-week (deload / TM-test) session emits LIGHT assistance — 2 sets per slot", () => {
     // 5/3/1 Forever prescribes Push/Pull/Single-leg-or-Core during the 7th Week
     // Protocol (all variants), at a reduced dose. The engine emits the three
