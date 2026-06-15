@@ -84,15 +84,15 @@ describe("materializeProgram — HYROX (no assistance planner)", () => {
     expect(result.sessions.some((s) => s.role === "strength")).toBe(true);
   });
 
-  it("gives sessions clean content-first titles (no breadcrumb)", () => {
+  it("gives sessions clean content-first titles with a load cue", () => {
     for (const s of result.sessions) {
       expect(s.title).toBeTruthy();
       expect(s.title).not.toContain("HYROX · Wk");
       expect(s.title).not.toMatch(/·\s*Day \d/);
     }
-    // strength → the lifts; a run → the activity (no "(Z2)" qualifier)
-    expect(result.sessions.some((s) => s.title === "Squat · Deadlift · Overhead Press")).toBe(true);
-    expect(result.sessions.some((s) => s.title === "Easy Run")).toBe(true);
+    // strength → the lifts + the working % ; a run → the activity + duration
+    expect(result.sessions.some((s) => s.title === "Squat · Deadlift · Overhead Press · 75%")).toBe(true);
+    expect(result.sessions.some((s) => /^Easy Run · \d+ min$/.test(s.title))).toBe(true);
   });
 
   it("resolves strength mains off the 1RM (warm-up ramp + working main)", () => {
