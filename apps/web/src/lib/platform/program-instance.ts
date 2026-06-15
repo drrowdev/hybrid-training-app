@@ -33,6 +33,8 @@ export interface BuildProgramInstanceArgs<I> {
   assistance?: AssistancePlanner;
   /** Optional TB accessory injector (ADR 0048) threaded to materialisation. */
   accessories?: TbAccessoryInjector;
+  /** Optional 0-based program-week to begin from (start-point feature). */
+  startWeekIndex?: number;
 }
 
 /** A `training_maxes.tm_percent` seed for one anchored movement. */
@@ -64,14 +66,19 @@ export interface ProgramInstanceWrite {
 export function buildProgramInstanceWrite<I>(
   args: BuildProgramInstanceArgs<I>,
 ): ProgramInstanceWrite {
-  const { engine, instance, ctx, resolveMovement, weekdays, assistance, accessories } = args;
+  const { engine, instance, ctx, resolveMovement, weekdays, assistance, accessories, startWeekIndex } = args;
 
   const { sessions, weeks, skipped } = materializeProgram(
     engine,
     instance,
     ctx,
     resolveMovement,
-    { weekdays, ...(assistance ? { assistance } : {}), ...(accessories ? { accessories } : {}) },
+    {
+      weekdays,
+      ...(assistance ? { assistance } : {}),
+      ...(accessories ? { accessories } : {}),
+      ...(startWeekIndex != null ? { startWeekIndex } : {}),
+    },
   );
 
   // Seed tm_percent so the engine's percentOfTm renders the right load (Option A).

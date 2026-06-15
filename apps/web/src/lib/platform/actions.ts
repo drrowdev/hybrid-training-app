@@ -24,6 +24,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
+import { programSegments, type PlatformContext } from "@hta/program-core";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { ARCHETYPES } from "@/lib/planner/archetypes";
 import type { HybridInstance } from "@/lib/programs/hybrid/engine";
@@ -66,6 +67,8 @@ const createProgramInstanceSchema = z
     startedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "startedOn must be YYYY-MM-DD"),
     /** Optional target race date (YYYY-MM-DD) — HYROX derives weeks-to-race + an A-event. */
     raceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "raceDate must be YYYY-MM-DD").optional(),
+    /** Optional 0-based program-week to begin from (start-point feature). */
+    startWeekIndex: z.number().int().nonnegative().optional(),
     /** Plate rounding override (kg); defaults to 2.5. */
     roundingKg: z.number().positive().optional(),
     /** Optional TB accessory work (ADR 0048) — opt-in, ignored by other programs. */
@@ -92,7 +95,7 @@ export async function createProgramInstance(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { programId, setupValues, weekdays, startedOn, raceDate, roundingKg, accessories } = parsed.data;
+  const { programId, setupValues, weekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories } = parsed.data;
 
   // Reject duplicate weekdays — they'd collide on the (week, day, slot) unique key.
   // (Native programs own their own calendar and ignore `weekdays`, but the check
@@ -124,9 +127,88 @@ export async function createProgramInstance(
     weekdays,
     startedOn,
     ...(raceDate ? { raceDate } : {}),
+    ...(startWeekIndex != null ? { startWeekIndex } : {}),
     ...(roundingKg != null ? { roundingKg } : {}),
     ...(accessories ? { accessories } : {}),
   });
+}
+
+/** A selectable program start point for the picker (a phase/block boundary). */
+export type ProgramSegmentOption = {
+  startWeekIndex: number;
+  label: string;
+  kind?: string;
+};
+
+const programSegmentsSchema = z
+  .object({
+    programId: z.string().min(1),
+    setupValues: z.record(z.unknown()).default({}),
+    startedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    raceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  })
+  .strict();
+
+export type GetProgramSegmentsInput = z.input<typeof programSegmentsSchema>;
+
+export type GetProgramSegmentsResult =
+  | { ok: true; segments: ProgramSegmentOption[] }
+  | { ok: false; error: string };
+
+/**
+ * Read the structural start points (phases / blocks) for a program, given the
+ * loadout the user has picked so far. Powers the Schedule-step "Start point"
+ * dropdown. Read-only: builds the engine instance from the setup values (segments
+ * are config-driven and don't depend on the user's strength state, so a stub
+ * context is sufficient) and returns the engine's typed segments. Native programs
+ * (Hybrid) don't expose start points yet, so they return just the beginning.
+ */
+export async function getProgramSegments(
+  input: GetProgramSegmentsInput,
+): Promise<GetProgramSegmentsResult> {
+  const parsed = programSegmentsSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  const { programId, setupValues, startedOn, raceDate } = parsed.data;
+
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const beginning: ProgramSegmentOption = { startWeekIndex: 0, label: "From the beginning", kind: "phase" };
+  if (isNativeProgram(programId)) {
+    return { ok: true, segments: [beginning] };
+  }
+  const engine = getProgramEngine(programId);
+  if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
+
+  // HYROX shifts its phase boundaries when a race date overrides the week count,
+  // so mirror the deploy-time weeks-to-race override before reading segments.
+  const hyroxWeeksToRace =
+    programId === "hyrox" && raceDate && startedOn ? wholeWeeksBetween(startedOn, raceDate) : null;
+
+  try {
+    const ctx: PlatformContext = { oneRepMaxes: {}, roundingKg: 2.5 };
+    const instance = engine.setup(
+      {
+        values: {
+          ...setupValues,
+          ...(hyroxWeeksToRace != null ? { weeks: hyroxWeeksToRace } : {}),
+        },
+      },
+      ctx,
+    );
+    const segments = programSegments(engine, instance).map((s) => ({
+      startWeekIndex: s.startWeekIndex,
+      label: s.label,
+      ...(s.kind ? { kind: s.kind } : {}),
+    }));
+    return { ok: true, segments };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to compute start points" };
+  }
 }
 
 /** Parsed, validated deploy input shared by both write paths. */
@@ -136,6 +218,7 @@ interface DeployArgs {
   weekdays: number[];
   startedOn: string;
   raceDate?: string;
+  startWeekIndex?: number;
   roundingKg?: number;
   accessories?: { enabled: boolean; muscles?: string[] };
 }
@@ -241,7 +324,7 @@ async function buildForeignTbAccessoryInjector(
 async function createForeignProgramInstance(
   supabase: SupabaseClient,
   user: User,
-  { programId, setupValues, weekdays, startedOn, raceDate, roundingKg, accessories }: DeployArgs,
+  { programId, setupValues, weekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories }: DeployArgs,
 ): Promise<CreateProgramInstanceResult> {
   const engine = getProgramEngine(programId);
   if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
@@ -299,6 +382,7 @@ async function createForeignProgramInstance(
       startedOn,
       ...(assistance ? { assistance } : {}),
       ...(tbAccessories ? { accessories: tbAccessories } : {}),
+      ...(startWeekIndex != null ? { startWeekIndex } : {}),
     });
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Setup failed" };

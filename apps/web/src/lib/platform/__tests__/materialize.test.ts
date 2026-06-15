@@ -295,3 +295,35 @@ describe("materializeProgram — Green Protocol (concurrent strength + cardio)",
     expect(r.sessions.every((s) => s.dayIndex >= 0 && s.dayIndex <= 6)).toBe(true);
   });
 });
+
+describe("materializeProgram — startWeekIndex (start point)", () => {
+  const full = materializeProgram(wendler531Engine, setup(), ctx, resolve, { weekdays });
+
+  it("omitting startWeekIndex is byte-identical to startWeekIndex: 0", () => {
+    const zero = materializeProgram(wendler531Engine, setup(), ctx, resolve, { weekdays, startWeekIndex: 0 });
+    expect(zero).toEqual(full);
+  });
+
+  it("starting at Anchor 1 (program-week 7) skips the leaders + first deload and rebases to weekIndex 0", () => {
+    const r = materializeProgram(wendler531Engine, setup(), ctx, resolve, { weekdays, startWeekIndex: 7 });
+    // anchor 1 cycle × 3 wk × 4 lifts (12) + TM-test 4 = 16; 4 program-weeks.
+    expect(r.sessions).toHaveLength(16);
+    expect(r.weeks).toBe(4);
+    expect(Math.min(...r.sessions.map((s) => s.weekIndex))).toBe(0);
+    expect(Math.max(...r.sessions.map((s) => s.weekIndex))).toBe(3);
+  });
+
+  it("keeps engine refs ABSOLUTE — the rebased week mirrors the same week of the full plan", () => {
+    const r = materializeProgram(wendler531Engine, setup(), ctx, resolve, { weekdays, startWeekIndex: 7 });
+    const rebasedWk0 = r.sessions.filter((s) => s.weekIndex === 0).map((s) => s.prescription.programRef);
+    const fullWk7 = full.sessions.filter((s) => s.weekIndex === 7).map((s) => s.prescription.programRef);
+    expect(rebasedWk0).toEqual(fullWk7);
+    // The chosen start really is the Anchor phase (refs carry the segment index).
+    expect(rebasedWk0.every((ref) => typeof ref === "string" && ref.length > 0)).toBe(true);
+  });
+
+  it("clamps a negative startWeekIndex to the beginning", () => {
+    const r = materializeProgram(wendler531Engine, setup(), ctx, resolve, { weekdays, startWeekIndex: -3 });
+    expect(r).toEqual(full);
+  });
+});

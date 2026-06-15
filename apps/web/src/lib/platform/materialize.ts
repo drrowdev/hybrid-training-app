@@ -61,6 +61,16 @@ export interface MaterializeOptions {
    * after the main work. Omitted ⇒ no accessories (the TB default).
    */
   accessories?: TbAccessoryInjector;
+  /**
+   * Optional 0-based program-week to begin materialising from (the "start point"
+   * feature). Program-weeks with an index < `startWeekIndex` are skipped, and the
+   * emitted `weekIndex` is rebased so the chosen week lands on `startedOn`
+   * (weekIndex 0). Omitted / 0 ⇒ the whole program from the beginning
+   * (byte-identical to the prior behaviour). Engine refs are NOT rebased — they
+   * stay absolute to the engine timeline, so position-independent progression
+   * (e.g. 5/3/1 TM-test / Anchor recs) is preserved when starting mid-program.
+   */
+  startWeekIndex?: number;
 }
 
 export interface MaterializedSession {
@@ -245,23 +255,31 @@ export function materializeProgram<I>(
   const sessions: MaterializedSession[] = [];
   const allSkipped: SkippedItem[] = [];
 
-  let weekIndex = -1;
+  const startWeek = Math.max(0, Math.trunc(opts.startWeekIndex ?? 0));
+  let programWeekIndex = -1;
   let positionInWeek = 0;
   let prevWeekLabel: string | undefined;
   let started = false;
+  let maxEmittedWeek = -1;
 
   for (const spec of timeline) {
     if (spec.kind === "rest") continue;
 
     const weekKey = spec.weekLabel ?? `__idx${spec.index}`;
     if (!started || weekKey !== prevWeekLabel) {
-      weekIndex += 1;
+      programWeekIndex += 1;
       positionInWeek = 0;
       prevWeekLabel = weekKey;
       started = true;
     } else {
       positionInWeek += 1;
     }
+
+    // Start-point: skip whole program-weeks before the chosen start, and rebase
+    // the emitted week so the chosen week is weekIndex 0 (lands on startedOn).
+    if (programWeekIndex < startWeek) continue;
+    const weekIndex = programWeekIndex - startWeek;
+    if (weekIndex > maxEmittedWeek) maxEmittedWeek = weekIndex;
 
     let dayIndex: number;
     if (spec.weekday != null) {
@@ -311,5 +329,5 @@ export function materializeProgram<I>(
     });
   }
 
-  return { sessions, weeks: weekIndex + 1, skipped: allSkipped };
+  return { sessions, weeks: maxEmittedWeek + 1, skipped: allSkipped };
 }
