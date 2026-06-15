@@ -89,10 +89,12 @@ function render(overrides: Partial<Parameters<typeof PlanRedesign>[0]> = {}) {
 }
 
 describe("PlanRedesign — header", () => {
-  it("renders archetype + block-of-N eyebrow", () => {
+  it("renders the program name but not the block counter", () => {
     const html = render();
     expect(html).toContain("Endurance Focus");
-    expect(html).toContain("Block 1 of 3");
+    // The lifetime "Block N of M" counter was removed from the plan header
+    // (it reads like in-program progress and belongs on Stats instead).
+    expect(html).not.toContain("Block 1 of 3");
   });
 
   it("does NOT render the research-citation info icon on the eyebrow", () => {

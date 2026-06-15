@@ -215,6 +215,14 @@ export interface PlannedSessionSpec {
   index: number;
   /** Human label (e.g. "Leader 1 · Wk 1 · Squat"). */
   label: string;
+  /**
+   * Optional CLEAN session title for display (e.g. "Squat · Bench · Deadlift",
+   * "Easy Run"). When set, the platform persists this as the session title instead
+   * of `label`; otherwise it derives one from the prescription content. The point
+   * is that the program / week / day context already lives in the page chrome, so
+   * the per-session name should describe only WHAT you do that day.
+   */
+  title?: string;
   kind: PlannedSessionKind;
   /** Program-native week scope (opaque to the platform; for grouping/labels). */
   weekLabel?: string;

@@ -84,6 +84,17 @@ describe("materializeProgram — HYROX (no assistance planner)", () => {
     expect(result.sessions.some((s) => s.role === "strength")).toBe(true);
   });
 
+  it("gives sessions clean content-first titles (no breadcrumb)", () => {
+    for (const s of result.sessions) {
+      expect(s.title).toBeTruthy();
+      expect(s.title).not.toContain("HYROX · Wk");
+      expect(s.title).not.toMatch(/·\s*Day \d/);
+    }
+    // strength → the lifts; a run → the activity (no "(Z2)" qualifier)
+    expect(result.sessions.some((s) => s.title === "Squat · Deadlift · Overhead Press")).toBe(true);
+    expect(result.sessions.some((s) => s.title === "Easy Run")).toBe(true);
+  });
+
   it("resolves strength mains off the 1RM (warm-up ramp + working main)", () => {
     const strength = result.sessions.find((s) =>
       s.prescription.items.some((it) => it.kind === "main" && it.movementId === "mv-squat"),

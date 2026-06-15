@@ -123,6 +123,25 @@ function clampWeeks(v: unknown, fallback: number): number {
 
 const DAY_LABELS = ["Day 1", "Day 2", "Day 3", "Day 4", "Day 5", "Day 6", "Day 7"];
 
+/** Display label for a role-anchored main-lift engine key (e.g. "squat" → "Squat"). */
+const MAIN_LIFT_TITLE: Record<string, string> = {
+  squat: "Squat",
+  deadlift: "Deadlift",
+  press: "Overhead Press",
+  bench: "Bench Press",
+};
+function mainLiftLabel(key: string): string {
+  return (
+    MAIN_LIFT_TITLE[key] ??
+    key.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
+  );
+}
+
+/** Strip a trailing "(Z2)" / "(4+4)" qualifier so the title stays concise. */
+function cleanSessionName(name: string): string {
+  return name.replace(/\s*\([^)]*\)\s*$/, "").trim();
+}
+
 export function hyroxRef(week: number, weekday: number): string {
   return `hx-w${week}-d${weekday}`;
 }
@@ -157,10 +176,13 @@ function specForCell(
   if (week.phase === "taper") tags.push("taper");
 
   let label = `${weekLabel} · ${DAY_LABELS[weekday]}`;
+  // Clean, content-first title (the breadcrumb lives in the page chrome).
+  let title = "";
 
   if (cell.kind === "deload") {
     tags.push("deload");
     label = `${weekLabel} · ${DAY_LABELS[weekday]} · Deload`;
+    title = "Recovery";
   } else if (cell.kind === "session" || cell.kind === "sim") {
     const sess = getHyroxSession(cell.session);
     const name = sess?.name ?? cell.session;
@@ -177,12 +199,22 @@ function specForCell(
       suffix = ` + ${plusSess?.name ?? cell.plus.session} (two-a-day)`;
     }
     label = `${weekLabel} · ${DAY_LABELS[weekday]} · ${name}${suffix}`;
+    // Strength → the working lifts (what you actually do); everything else → the
+    // session name with its "(Z2)/(4+4)" qualifier stripped.
+    if (sess?.category === "strength") {
+      title = sess.movements.map(mainLiftLabel).join(" · ");
+    } else if (sess) {
+      title = cleanSessionName(sess.name);
+    } else {
+      title = name;
+    }
   }
 
   return {
     ref: hyroxRef(week.week, weekday),
     index,
     label,
+    title,
     kind: kindForCell(cell, week.isDeload),
     weekLabel,
     weekday,
