@@ -1,15 +1,21 @@
 "use client";
 
 /**
- * Floating rest-timer button (Phase 1 B4 auto rest-timer).
+ * Rest-timer bar (Phase 1 B4 auto rest-timer).
  *
- * Renders a fixed bottom-right pill that counts down mm:ss. Tap to
- * dismiss. Optional Web Vibration buzz + ~200ms 600Hz Web Audio chirp
- * when the timer hits zero — gracefully no-op on browsers that don't
- * expose the APIs (or when the user has disabled either in Settings).
+ * Renders a slim FULL-WIDTH bar pinned just above the bottom nav while a rest
+ * countdown is active — it shows the remaining mm:ss, a progress bar, the
+ * "next <movement>" context and ±30s controls. Unlike the old floating pill it
+ * never overlaps the weight/reps steppers. It is present ONLY while a rest is in
+ * progress (the parent passes `seconds=0` → renders nothing) plus a brief
+ * "Ready ✓" completion state the lifter taps to dismiss.
  *
- * Owns no domain state — the parent passes a `key` so each new set
- * remounts the component and resets the countdown.
+ * Optional Web Vibration buzz + ~200ms 600Hz Web Audio chirp when the timer
+ * hits zero — gracefully no-op where the APIs are unavailable (or disabled in
+ * Settings).
+ *
+ * Owns no domain state — the parent passes a `key` so each new set remounts the
+ * component and resets the countdown.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -44,6 +50,34 @@ function fmt(secs: number): string {
   const r = s % 60;
   return `${m}:${String(r).padStart(2, "0")}`;
 }
+
+// Full-width slim bar pinned above the bottom nav (respecting the safe-area
+// inset). Shared by the active + done states so the timer never shifts.
+const BAR_WRAP_STYLE: React.CSSProperties = {
+  position: "fixed",
+  left: 0,
+  right: 0,
+  bottom: "calc(var(--cp-bottomnav-h, 0px) + env(safe-area-inset-bottom))",
+  zIndex: 39,
+  padding: "8px 12px",
+  background: "var(--cp-bg-elevated)",
+  borderTop: "1px solid var(--cp-border-strong)",
+  boxShadow: "0 -6px 18px rgba(0,0,0,0.18)",
+};
+
+const ADJ_BTN_STYLE: React.CSSProperties = {
+  minWidth: 44,
+  minHeight: 36,
+  padding: "6px 10px",
+  borderRadius: 9,
+  border: "1px solid var(--cp-border-strong)",
+  background: "transparent",
+  color: "var(--cp-text)",
+  fontFamily: "var(--cp-font-mono)",
+  fontWeight: 700,
+  fontSize: 12,
+  cursor: "pointer",
+};
 
 export function RestTimer({
   seconds,
@@ -93,49 +127,41 @@ export function RestTimer({
 
   if (done) {
     return (
-      <button
-        type="button"
-        data-testid="rest-timer-done"
-        onClick={dismiss}
-        aria-label="Rest complete — tap to dismiss"
-        style={{
-          position: "fixed",
-          right: 16,
-          bottom:
-            "calc(var(--cp-finishbar-clearance, calc(var(--cp-bottomnav-h, 0px) + env(safe-area-inset-bottom) + 96px)) + 12px)",
-          zIndex: 39,
-          minWidth: 96,
-          minHeight: 56,
-          padding: "12px 18px",
-          borderRadius: 999,
-          border: "1px solid var(--cp-success)",
-          background: "var(--cp-success)",
-          color: "var(--cp-accent-fg)",
-          fontWeight: 700,
-          fontSize: 14,
-          letterSpacing: "0.04em",
-          cursor: "pointer",
-          boxShadow: "0 10px 24px rgba(0,0,0,0.18)",
-        }}
-      >
-        Ready ✓
-      </button>
+      <div data-testid="rest-timer-shell" style={BAR_WRAP_STYLE}>
+        <button
+          type="button"
+          data-testid="rest-timer-done"
+          onClick={dismiss}
+          aria-label="Rest complete — tap to dismiss"
+          style={{
+            width: "100%",
+            minHeight: 40,
+            padding: "8px 14px",
+            borderRadius: 10,
+            border: "1px solid var(--cp-success)",
+            background: "var(--cp-success)",
+            color: "var(--cp-accent-fg)",
+            fontWeight: 700,
+            fontSize: 14,
+            letterSpacing: "0.04em",
+            cursor: "pointer",
+          }}
+        >
+          Ready ✓ — tap to dismiss
+        </button>
+      </div>
     );
   }
+
+  const pct =
+    effectiveSeconds > 0
+      ? Math.max(0, Math.min(100, (remaining / effectiveSeconds) * 100))
+      : 0;
 
   return (
     <div
       data-testid="rest-timer-shell"
-      style={{
-        position: "fixed",
-        right: 16,
-        bottom:
-          "calc(var(--cp-finishbar-clearance, calc(var(--cp-bottomnav-h, 0px) + env(safe-area-inset-bottom) + 96px)) + 12px)",
-        zIndex: 39,
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-      }}
+      style={{ ...BAR_WRAP_STYLE, display: "flex", alignItems: "center", gap: 10 }}
     >
       <button
         type="button"
@@ -145,23 +171,11 @@ export function RestTimer({
           setAdjustSec((v) => v - 30);
         }}
         aria-label="Subtract 30 seconds from rest timer"
-        style={{
-          minWidth: 40,
-          minHeight: 40,
-          padding: "6px 8px",
-          borderRadius: 999,
-          border: "1px solid var(--cp-border-strong)",
-          background: "var(--cp-bg-elevated)",
-          color: "var(--cp-text)",
-          fontFamily: "var(--cp-font-mono)",
-          fontWeight: 700,
-          fontSize: 12,
-          cursor: "pointer",
-          boxShadow: "0 6px 14px rgba(0,0,0,0.12)",
-        }}
+        style={ADJ_BTN_STYLE}
       >
         −30s
       </button>
+
       <button
         type="button"
         data-testid="rest-timer"
@@ -173,44 +187,77 @@ export function RestTimer({
             : `Rest timer ${fmt(remaining)} — tap to dismiss`
         }
         style={{
-          minWidth: 96,
-          minHeight: 56,
-          padding: "10px 18px",
-          borderRadius: 999,
-          border: "1px solid var(--cp-border-strong)",
-          background: "var(--cp-bg-elevated)",
+          flex: 1,
+          minHeight: 40,
+          padding: "4px 10px",
+          borderRadius: 10,
+          border: "1px solid var(--cp-border)",
+          background: "transparent",
           color: "var(--cp-text)",
-          fontFamily: "var(--cp-font-mono)",
-          fontWeight: 700,
-          fontSize: 18,
           cursor: "pointer",
-          boxShadow: "0 10px 24px rgba(0,0,0,0.18)",
-          display: "inline-flex",
+          display: "flex",
           flexDirection: "column",
-          alignItems: "center",
-          gap: 2,
-          lineHeight: 1.1,
+          alignItems: "stretch",
+          gap: 4,
+          textAlign: "left",
         }}
       >
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <span aria-hidden style={{ fontSize: 14 }}>⏱</span>
-          <span>{fmt(remaining)}</span>
-        </span>
-        {movementName && (
+        <span
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "space-between",
+            gap: 8,
+          }}
+        >
           <span
-            data-testid="rest-timer-context"
             style={{
-              fontFamily: "var(--cp-font)",
-              fontWeight: 500,
-              fontSize: 11,
-              color: "var(--cp-text-muted)",
-              letterSpacing: "0.02em",
+              fontFamily: "var(--cp-font-mono)",
+              fontWeight: 800,
+              fontSize: 18,
+              color: "var(--cp-success)",
             }}
           >
-            next {movementName}
+            <span aria-hidden style={{ fontSize: 13, marginRight: 5 }}>⏱</span>
+            {fmt(remaining)}
           </span>
-        )}
+          {movementName && (
+            <span
+              data-testid="rest-timer-context"
+              style={{
+                fontWeight: 500,
+                fontSize: 11,
+                color: "var(--cp-text-muted)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              next {movementName}
+            </span>
+          )}
+        </span>
+        <span
+          aria-hidden
+          style={{
+            height: 5,
+            borderRadius: 999,
+            background: "var(--cp-border-strong)",
+            overflow: "hidden",
+          }}
+        >
+          <span
+            style={{
+              display: "block",
+              height: "100%",
+              width: `${pct}%`,
+              background: "var(--cp-success)",
+              transition: "width 0.25s linear",
+            }}
+          />
+        </span>
       </button>
+
       <button
         type="button"
         data-testid="rest-timer-plus-30"
@@ -219,20 +266,7 @@ export function RestTimer({
           setAdjustSec((v) => v + 30);
         }}
         aria-label="Add 30 seconds to rest timer"
-        style={{
-          minWidth: 40,
-          minHeight: 40,
-          padding: "6px 8px",
-          borderRadius: 999,
-          border: "1px solid var(--cp-border-strong)",
-          background: "var(--cp-bg-elevated)",
-          color: "var(--cp-text)",
-          fontFamily: "var(--cp-font-mono)",
-          fontWeight: 700,
-          fontSize: 12,
-          cursor: "pointer",
-          boxShadow: "0 6px 14px rgba(0,0,0,0.12)",
-        }}
+        style={ADJ_BTN_STYLE}
       >
         +30s
       </button>
