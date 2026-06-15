@@ -49,6 +49,26 @@ const LIFT_DISPLAY: Record<MainLift, string> = {
 
 const DEFAULT_DAY_ORDER: MainLift[] = ["press", "deadlift", "bench", "squat"];
 
+/**
+ * Validate a user-supplied day order: it must be a permutation of the four main
+ * lifts (each exactly once). Returns the cleaned order, or `null` when the input
+ * isn't a valid full permutation — callers then fall back to DEFAULT_DAY_ORDER.
+ * The day order controls how lifts pair into sessions in 2-day mode (groupDays
+ * chunks it); a partial / duplicated list would silently drop or double a lift.
+ */
+function parseDayOrder(value: unknown): MainLift[] | null {
+  if (!Array.isArray(value)) return null;
+  const valid: MainLift[] = ["squat", "bench", "deadlift", "press"];
+  const seen = new Set<string>();
+  const out: MainLift[] = [];
+  for (const v of value) {
+    if (typeof v !== "string" || !valid.includes(v as MainLift) || seen.has(v)) return null;
+    seen.add(v);
+    out.push(v as MainLift);
+  }
+  return out.length === valid.length ? out : null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Instance shape (serialisable — persisted by the platform)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -281,7 +301,9 @@ export const wendler531Engine: ProgramEngine<WendlerInstance> = {
 
     // Derive the per-lift Training Max from the shared 1RMs (canonical platform
     // strength state). The TM is then owned + advanced by this instance.
-    const dayOrder: MainLift[] = [...DEFAULT_DAY_ORDER];
+    // The day order controls 2-day lift pairing (groupDays chunks it); a valid
+    // user permutation overrides the default, anything else falls back.
+    const dayOrder: MainLift[] = parseDayOrder(v.dayOrder) ?? [...DEFAULT_DAY_ORDER];
     const trainingMaxes: Partial<Record<MainLift, number>> = {};
     for (const lift of dayOrder) {
       const oneRm = ctx.oneRepMaxes[lift];
