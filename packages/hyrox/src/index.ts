@@ -6,6 +6,7 @@ export {
   hyroxMeta,
   hyroxRef,
   parseHyroxRef,
+  hyroxSessionIdForRef,
   WEEKS_BY_EXPERIENCE,
   DEFAULT_SESSIONS_BY_EXPERIENCE,
   MIN_SESSIONS_PER_WEEK,

@@ -13,10 +13,10 @@
  * the existing actuals shapes):
  *
  *   1. One `cardio_logs` row capturing the whole-session conditioning load:
- *      duration = total time, rpe = session RPE, modality = a best-fit key from
- *      the existing CARDIO_MODALITY_MAP (so the muscle fanout + sRPE×duration load
- *      — Foster 2001 — fire through the existing engine). HR-zone data from a
- *      Strava import overrides RPE intensity downstream.
+ *      duration = total time, rpe = session RPE, modality = a raw MODALITY_REGION
+ *      key (run/ski/row/bike/other_cardio) so the region-ledger + 2-factor
+ *      load/interference engine (sRPE×duration — Foster 2001) attribute it. HR-zone
+ *      data from a Strava import sharpens the intensity downstream.
  *   2. One `set_logs` row per LOADED station physically performed (sled push/pull,
  *      farmers carry, sandbag lunge, wall ball) at the confirmed weight + the
  *      station's standardized reps/distance + the session RPE. These add the
@@ -72,24 +72,28 @@ export interface HyroxActuals {
 }
 
 /**
- * Per-session conditioning modality → an existing CARDIO_MODALITY_MAP key, so the
- * cardio muscle fanout works. Mixed circuits map to `interval_run` (leg-dominant:
- * lunges, wall-ball squats, sled drive) — defensible because their upper-body /
- * grip specificity is added by the loaded-station set_logs below. `[DEF]` routing.
+ * Per-session conditioning modality → a raw `MODALITY_REGION` key (run / ski / row
+ * / bike / other_cardio), so the region-ledger (and the 2-factor load/interference
+ * engine that reads it) attributes the aerobic load correctly. This matches how
+ * the app stores `cardio_logs.modality` everywhere else (Strava → run/bike/row).
+ *
+ * Muscle-grid specificity comes from the loaded-station set_logs below (their
+ * movement muscle tags), not from this cardio modality — consistent with the
+ * app's existing cardio behaviour. Mixed circuits use `other_cardio`. `[DEF]`.
  */
 const SESSION_CARDIO_MODALITY: Record<string, string> = {
-  "easy-run": "easy_run",
-  "long-run": "long_run",
-  "threshold-run": "interval_run",
-  "vo2-intervals": "interval_run",
-  "easy-ski": "ski_erg",
+  "easy-run": "run",
+  "long-run": "run",
+  "threshold-run": "run",
+  "vo2-intervals": "run",
+  "easy-ski": "ski",
   "easy-row": "row",
-  "easy-bike": "ride_z2",
-  "compromised-run": "interval_run",
-  "station-intervals": "interval_run",
-  "se-circuit": "interval_run",
-  "sim-half": "interval_run",
-  "sim-full": "interval_run",
+  "easy-bike": "bike",
+  "compromised-run": "run",
+  "station-intervals": "other_cardio",
+  "se-circuit": "other_cardio",
+  "sim-half": "run",
+  "sim-full": "run",
 };
 
 /** Loaded-station engine key → catalog slug for the materialized set_logs. */

@@ -216,6 +216,19 @@ function locateCell(
   return { week, cell };
 }
 
+/**
+ * The HYROX session id (e.g. "sim-half", "compromised-run") a planned-session ref
+ * resolves to — used by the platform completion flow to materialize actuals.
+ * Returns null for deload/rest/unknown refs (nothing to session-materialize).
+ */
+export function hyroxSessionIdForRef(instance: HyroxInstance, ref: string): string | null {
+  const located = locateCell(instance, ref);
+  if (!located) return null;
+  const { cell } = located;
+  if (cell.kind === "session" || cell.kind === "sim") return cell.session;
+  return null;
+}
+
 function prescribeRef(
   instance: HyroxInstance,
   ref: string,

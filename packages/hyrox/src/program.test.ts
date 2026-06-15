@@ -8,6 +8,7 @@ import {
   hyroxEngine,
   hyroxRef,
   parseHyroxRef,
+  hyroxSessionIdForRef,
   WEEKS_BY_EXPERIENCE,
   DEFAULT_SESSIONS_BY_EXPERIENCE,
 } from "./program";
@@ -257,5 +258,24 @@ describe("HYROX timeline — specs", () => {
     const tl = hyroxEngine.timeline(setup({ experience: "advanced" }));
     const refs = tl.map((s) => s.ref);
     expect(new Set(refs).size).toBe(refs.length);
+  });
+});
+
+describe("hyroxSessionIdForRef", () => {
+  it("resolves a ref to its session id for session + sim cells", () => {
+    const i = setup({ experience: "intermediate" });
+    const tl = hyroxEngine.timeline(i);
+    const sim = tl.find((s) => s.tags?.includes("simulation"))!;
+    expect(hyroxSessionIdForRef(i, sim.ref)).toBe("sim-half");
+    const training = tl.find((s) => s.kind === "training")!;
+    expect(typeof hyroxSessionIdForRef(i, training.ref)).toBe("string");
+  });
+
+  it("returns null for a deload ref and an unknown ref", () => {
+    const i = setup({ experience: "intermediate" });
+    const deload = hyroxEngine.timeline(i).find((s) => s.kind === "deload");
+    if (deload) expect(hyroxSessionIdForRef(i, deload.ref)).toBeNull();
+    expect(hyroxSessionIdForRef(i, "hx-w99-d9")).toBeNull();
+    expect(hyroxSessionIdForRef(i, "garbage")).toBeNull();
   });
 });
