@@ -71,6 +71,17 @@ export interface MaterializeOptions {
    * (e.g. 5/3/1 TM-test / Anchor recs) is preserved when starting mid-program.
    */
   startWeekIndex?: number;
+  /**
+   * Optional weekdays (0 = Monday … 6 = Sunday) on which to add an OPEN cardio
+   * day — a reserved `cardio_external` placeholder the user fills by logging any
+   * cardio (or which auto-links a Strava activity when the block is
+   * `cardio_source='external'`). One placeholder is emitted per listed weekday in
+   * every materialised program-week. Used by strength-only programs (5/3/1, TB)
+   * where cardio isn't engine-owned; the concurrent programs (Hybrid, Green
+   * Protocol) derive their own cardio and never pass this. A cardio weekday that
+   * collides with a strength session in the same week is skipped.
+   */
+  cardioWeekdays?: number[];
 }
 
 export interface MaterializedSession {
@@ -329,5 +340,54 @@ export function materializeProgram<I>(
     });
   }
 
+  // Open cardio days (strength-only programs): one reserved cardio_external
+  // placeholder per requested weekday, in every materialised program-week. Skips
+  // any weekday already occupied by a strength session that week so the
+  // (week, day, slot) grid stays collision-free.
+  const cardioDays = [...new Set((opts.cardioWeekdays ?? []).map((d) => Math.trunc(d)))]
+    .filter((d) => d >= 0 && d <= 6)
+    .sort((a, b) => a - b);
+  if (cardioDays.length > 0 && maxEmittedWeek >= 0) {
+    const taken = new Set(sessions.map((s) => `${s.weekIndex}-${s.dayIndex}`));
+    for (let wk = 0; wk <= maxEmittedWeek; wk++) {
+      for (const day of cardioDays) {
+        if (taken.has(`${wk}-${day}`)) continue;
+        const ref = `cardio-w${wk}-d${day}`;
+        const prescription: Prescription = {
+          items: [openCardioItem()],
+          programRef: ref,
+        };
+        const { modality, load } = stampModality(prescription);
+        sessions.push({
+          ref,
+          weekIndex: wk,
+          dayIndex: day,
+          slot: "single",
+          title: "Cardio",
+          role: "cardio",
+          prescription,
+          sessionModality: modality,
+          effectiveStressLoad: load,
+          skipped: [],
+        });
+      }
+    }
+  }
+
   return { sessions, weeks: maxEmittedWeek + 1, skipped: allSkipped };
+}
+
+/**
+ * The single placeholder item for an OPEN cardio day. `movementId: ""` is the
+ * app's `cardio_external` sentinel; the read side classifies a session as cardio
+ * when every item is `cardio_*`, and the Strava matcher links a same-day activity
+ * to a `cardio_external` placeholder (block `cardio_source='external'`).
+ */
+function openCardioItem(): PrescriptionItem {
+  return {
+    movementId: "",
+    kind: "cardio_external",
+    intensityLabel: "Cardio",
+    protocolNote: "Open cardio — log any run, row, ride or other cardio. Auto-fills from Strava if connected.",
+  };
 }

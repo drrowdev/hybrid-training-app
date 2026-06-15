@@ -333,3 +333,47 @@ describe("materializeProgram — startWeekIndex (start point)", () => {
     expect(r).toEqual(full);
   });
 });
+
+describe("materializeProgram — cardioWeekdays (open cardio days)", () => {
+  const base = materializeProgram(wendler531Engine, setup(), ctx, resolve, { weekdays });
+
+  it("omitting cardioWeekdays is byte-identical to an empty list", () => {
+    const empty = materializeProgram(wendler531Engine, setup(), ctx, resolve, { weekdays, cardioWeekdays: [] });
+    expect(empty).toEqual(base);
+  });
+
+  it("adds one cardio_external placeholder per listed weekday in every program-week", () => {
+    // Sat (5) + Sun (6) are open; 11 program-weeks → 22 cardio placeholders.
+    const r = materializeProgram(wendler531Engine, setup(), ctx, resolve, { weekdays, cardioWeekdays: [5, 6] });
+    const cardio = r.sessions.filter((s) =>
+      s.prescription.items.length > 0 && s.prescription.items.every((i) => i.kind === "cardio_external"),
+    );
+    expect(cardio).toHaveLength(22);
+    // One on each of Sat/Sun for every week 0..10.
+    for (let wk = 0; wk <= 10; wk++) {
+      expect(cardio.filter((s) => s.weekIndex === wk).map((s) => s.dayIndex).sort()).toEqual([5, 6]);
+    }
+    // Shape: role cardio, the cardio_external sentinel, classified as cardio modality.
+    expect(cardio.every((s) => s.role === "cardio")).toBe(true);
+    expect(cardio.every((s) => s.prescription.items[0]!.movementId === "")).toBe(true);
+    expect(cardio.every((s) => s.prescription.programRef === s.ref)).toBe(true);
+    // The strength sessions are unchanged from the no-cardio plan.
+    const strength = r.sessions.filter((s) => s.role !== "cardio");
+    expect(strength).toEqual(base.sessions);
+    expect(r.weeks).toBe(base.weeks);
+  });
+
+  it("skips a cardio weekday that collides with a strength session that week", () => {
+    // Mon (0) is already a strength day → no cardio placeholder is added there.
+    const r = materializeProgram(wendler531Engine, setup(), ctx, resolve, { weekdays, cardioWeekdays: [0] });
+    const cardio = r.sessions.filter((s) => s.role === "cardio");
+    expect(cardio).toHaveLength(0);
+    expect(r.sessions).toEqual(base.sessions);
+  });
+
+  it("keeps the (week, day, slot) grid collision-free with cardio added", () => {
+    const r = materializeProgram(wendler531Engine, setup(), ctx, resolve, { weekdays, cardioWeekdays: [5, 6] });
+    const keys = r.sessions.map((s) => `${s.weekIndex}-${s.dayIndex}-${s.slot}`);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+});

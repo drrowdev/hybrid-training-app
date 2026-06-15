@@ -409,7 +409,7 @@ function epley1rm(weight: number, reps: number): number {
 
 const WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-type DayType = "strength" | "rest";
+type DayType = "strength" | "cardio" | "rest";
 
 /**
  * 5/3/1 two-day lift pairings. With 2 training days the engine pairs the four
@@ -726,6 +726,9 @@ export function ProgramPicker({
   }
 
   const fixedSchedule = !!selected?.fixedSchedule;
+  // Strength-only programs (5/3/1, TB) let the user add OPEN cardio days; the
+  // concurrent programs (Hybrid, Green Protocol) own their own cardio.
+  const supportsCardioDays = selected?.id === "wendler-531" || isTb;
 
 
   // The program dictates how many strength days a week it needs. TB's active
@@ -743,8 +746,12 @@ export function ProgramPicker({
     () => week.flatMap((t, i) => (t === "strength" ? [i] : [])),
     [week],
   );
+  const cardioWeekdays = useMemo(
+    () => week.flatMap((t, i) => (t === "cardio" ? [i] : [])),
+    [week],
+  );
   const dayCounts = useMemo(() => {
-    const c = { strength: 0, rest: 0 };
+    const c = { strength: 0, cardio: 0, rest: 0 };
     for (const t of week) c[t] += 1;
     return c;
   }, [week]);
@@ -921,7 +928,17 @@ export function ProgramPicker({
   function cycleDay(i: number) {
     setWeek((prev) => {
       const cur = prev[i];
-      const next: DayType = cur === "strength" ? "rest" : "strength";
+      // Strength-only programs cycle Strength → Cardio → Rest; others toggle
+      // Strength ↔ Rest (cardio is engine-owned, not a wizard choice).
+      const next: DayType = supportsCardioDays
+        ? cur === "strength"
+          ? "cardio"
+          : cur === "cardio"
+            ? "rest"
+            : "strength"
+        : cur === "strength"
+          ? "rest"
+          : "strength";
       const w = [...prev];
       w[i] = next;
       return w;
@@ -1026,6 +1043,7 @@ export function ProgramPicker({
         setupValues,
         weekdays,
         startedOn,
+        ...(supportsCardioDays && cardioWeekdays.length > 0 ? { cardioWeekdays } : {}),
         ...(selected.id === "hyrox" && raceDate ? { raceDate } : {}),
         ...(startWeekIndex > 0 ? { startWeekIndex } : {}),
         ...(isTb && tbAccessoryPlan && accessoriesOn
@@ -1818,7 +1836,9 @@ export function ProgramPicker({
           loadoutOptions.find((o) => o.value === selectedLoadoutValue)?.label ?? "\u2014",
         )
       : "Custom";
-    const weekText = `${dayCounts.strength} strength \u00B7 ${dayCounts.rest} rest`;
+    const weekText = supportsCardioDays
+      ? `${dayCounts.strength} strength \u00B7 ${dayCounts.cardio} cardio \u00B7 ${dayCounts.rest} rest`
+      : `${dayCounts.strength} strength \u00B7 ${dayCounts.rest} rest`;
     return (
       <div className={styles.summary}>
         <div className={styles.srow}>
@@ -1852,13 +1872,15 @@ export function ProgramPicker({
     const countWarn = !fixedSchedule && requiredDays != null && dayCounts.strength !== requiredDays;
     const countText = countWarn
       ? `\u26A0 ${dayCounts.strength}/${requiredDays} strength days \u2014 pick ${requiredDays}`
-      : `${dayCounts.strength} strength \u00B7 ${dayCounts.rest} rest`;
+      : supportsCardioDays
+        ? `${dayCounts.strength} strength \u00B7 ${dayCounts.cardio} cardio \u00B7 ${dayCounts.rest} rest`
+        : `${dayCounts.strength} strength \u00B7 ${dayCounts.rest} rest`;
     const dirty = week.some((t, i) => t !== buildWeek(requiredDays ?? freq531)[i]);
     const schednote =
       selected.id === "wendler-531"
-        ? `5/3/1 trains ${requiredDays} strength days a week. Pick which days you'll train \u2014 the rest stay as rest.`
+        ? `5/3/1 trains ${requiredDays} strength days a week. Tap a day to cycle strength \u2192 cardio \u2192 rest \u2014 keep ${requiredDays} strength days; cardio days are optional open sessions.`
         : isTb
-          ? `${activeTbTemplate?.name ?? "This template"} trains ${requiredDays} strength days a week \u2014 you choose which. The rest stay as rest.`
+          ? `${activeTbTemplate?.name ?? "This template"} trains ${requiredDays} strength days a week \u2014 you choose which. Tap an open day to add optional cardio, or leave it as rest.`
           : "Pick which days you'll train. Your training-day count sets how many days a week the plan runs.";
 
     return (
@@ -1969,14 +1991,16 @@ export function ProgramPicker({
             ) : null}
             <div className={styles.legend}>
               <span className={`${styles.lg} ${styles.lgS}`}>Strength</span>
+              {supportsCardioDays ? <span className={`${styles.lg} ${styles.lgC}`}>Cardio</span> : null}
               <span className={`${styles.lg} ${styles.lgR}`}>Rest</span>
               <span className={`${styles.lgCount}${countWarn ? ` ${styles.lgCountWarn}` : ""}`}>{countText}</span>
             </div>
             <div className={styles.week}>
               {WD.map((label, i) => {
                 const t = week[i] ?? "rest";
-                const cls = t === "strength" ? styles.wdStrength : styles.wdRest;
-                const wtLabel = t === "strength" ? "Strength" : "Rest";
+                const cls =
+                  t === "strength" ? styles.wdStrength : t === "cardio" ? styles.wdCardio : styles.wdRest;
+                const wtLabel = t === "strength" ? "Strength" : t === "cardio" ? "Cardio" : "Rest";
                 return (
                   <button key={i} type="button" onClick={() => cycleDay(i)} className={`${styles.wd} ${cls}`}>
                     <span className={styles.wn}>{label}</span>
