@@ -10,9 +10,14 @@
  * date, and deploy via `createProgramInstance`. Visual + content target is the
  * accepted mockup `program-wizard-v3-sage.html`.
  */
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createProgramInstance, type CreateProgramInstanceResult } from "@/lib/platform/actions";
+import {
+  createProgramInstance,
+  getProgramSegments,
+  type CreateProgramInstanceResult,
+  type ProgramSegmentOption,
+} from "@/lib/platform/actions";
 import {
   TB_ACCESSORY_MUSCLES,
   TB_ACCESSORY_MUSCLE_LABELS,
@@ -611,6 +616,44 @@ export function ProgramPicker({
   const [values, setValues] = useState<Record<string, unknown>>(preselectValues);
   const [startedOn, setStartedOn] = useState<string>(upcomingMondayYmd(todayYmd()));
   const [raceDate, setRaceDate] = useState<string>("");
+  // Start point (the program phase/block to begin from). Default 0 = beginning.
+  const [segments, setSegments] = useState<ProgramSegmentOption[]>([]);
+  const [startWeekIndex, setStartWeekIndex] = useState<number>(0);
+  const [segmentsLoading, setSegmentsLoading] = useState<boolean>(false);
+
+  // Load the program's structural start points (phases/blocks) once the user
+  // reaches the Schedule step, refreshing if the loadout or race date changes.
+  const valuesKey = JSON.stringify(values);
+  useEffect(() => {
+    if (step !== 3 || !selectedId) {
+      return;
+    }
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSegmentsLoading(true);
+    void getProgramSegments({
+      programId: selectedId,
+      setupValues: values,
+      startedOn,
+      ...(selectedId === "hyrox" && raceDate ? { raceDate } : {}),
+    })
+      .then((res) => {
+        if (cancelled) return;
+        const segs = res.ok ? res.segments : [];
+        setSegments(segs);
+        // Keep the current choice only if it's still a valid boundary.
+        setStartWeekIndex((prev) =>
+          segs.some((s) => s.startWeekIndex === prev) ? prev : 0,
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setSegmentsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, selectedId, startedOn, raceDate, valuesKey]);
 
   // Weekly schedule grid: 7 day cells. The strength days become deploy `weekdays`.
   const [week, setWeek] = useState<DayType[]>(() => buildWeek(preselectProgram?.sessionsPerWeek ?? 4));
@@ -961,6 +1004,7 @@ export function ProgramPicker({
         weekdays,
         startedOn,
         ...(selected.id === "hyrox" && raceDate ? { raceDate } : {}),
+        ...(startWeekIndex > 0 ? { startWeekIndex } : {}),
         ...(isTb && tbAccessoryPlan && accessoriesOn
           ? { accessories: { enabled: true, muscles: accessoryMuscles } }
           : {}),
@@ -1832,6 +1876,29 @@ export function ProgramPicker({
             </div>
           ) : null}
         </div>
+
+        {segments.length > 1 ? (
+          <div style={{ marginBottom: 18 }}>
+            <div className={styles.label}>Start point</div>
+            <select
+              className={styles.datein}
+              value={startWeekIndex}
+              disabled={segmentsLoading}
+              onChange={(e) => setStartWeekIndex(Number(e.target.value))}
+            >
+              {segments.map((s) => (
+                <option key={s.startWeekIndex} value={s.startWeekIndex}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+            <div className={styles.note} style={{ marginTop: 6 }}>
+              {startWeekIndex === 0
+                ? "Begin at the start of the program."
+                : "Already done some of this program elsewhere? Jump in at a later phase \u2014 your plan starts there and runs to the end."}
+            </div>
+          </div>
+        ) : null}
 
         {fixedSchedule ? (
           <p className={styles.note}>
