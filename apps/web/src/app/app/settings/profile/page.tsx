@@ -173,19 +173,21 @@ export default async function ProfileSettingsPage() {
           />
         </SettingsGroup>
 
-        {/* Effort / volume dial (ADR 0016) — hypertrophy-archetype lever.
+        {/* Accessory volume (ADR 0016 effort_preference) — a GLOBAL dial that
+            scales the optional accessory / assistance work across programs.
             Collapsed by default. New blocks only. */}
         <SettingsGroup
           id="effort-preference"
-          title="Effort &amp; volume"
+          title="Accessory volume"
           summary={effortSummary}
           testId="settings-group-effort-preference"
         >
           <p className="text-xs text-foreground/60">
-            How hard and high-volume your muscle-building work should be. This
-            tunes the muscle-building focus only — your strength and endurance
-            work is unchanged. Applies to new blocks; existing blocks keep what
-            they were built with.
+            How much optional accessory &amp; assistance work your strength days
+            carry. <strong>Applies to every program you run</strong> (5/3/1
+            assistance, Hybrid &amp; archetype accessories) — Balanced is the
+            standard. Your main lifts, supplemental and cardio are unchanged.
+            Applies to new blocks; existing blocks keep what they were built with.
           </p>
           <EffortPreferenceAutoSave initial={effortPreference} />
         </SettingsGroup>

@@ -359,6 +359,19 @@ async function createForeignProgramInstance(
     const { ctx, resolveMovement } = await buildPlatformContext(supabase, user.id, {
       ...(roundingKg != null ? { roundingKg } : {}),
     });
+    // Global accessory-volume preference (profiles.effort_preference:
+    // low=Easier / standard=Balanced / high=Harder). 5/3/1 scales its assistance
+    // volume by this single global control. Read best-effort; default standard.
+    let assistanceVolumePref: "low" | "standard" | "high" = "standard";
+    if (programId === "wendler-531") {
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("effort_preference")
+        .eq("id", user.id)
+        .maybeSingle();
+      const raw = prof?.effort_preference;
+      if (raw === "low" || raw === "high") assistanceVolumePref = raw;
+    }
     instance = engine.setup(
       {
         values: {
@@ -367,6 +380,7 @@ async function createForeignProgramInstance(
           // (4 = one lift/day, 2 = two/day). The frequency is the weekday count
           // picked in the Schedule step, mirrored into setup like Hybrid does.
           ...(programId === "wendler-531" ? { daysPerWeek: weekdays.length } : {}),
+          ...(programId === "wendler-531" ? { assistanceVolume: assistanceVolumePref } : {}),
           ...(hyroxWeeksToRace != null ? { weeks: hyroxWeeksToRace } : {}),
         },
       },

@@ -16,7 +16,7 @@
 import type { PrescribedItem } from "@hta/program-core";
 import type { SupplementalTemplateId } from "./supplemental";
 
-export type AssistanceLevel = "none" | "light" | "standard";
+export type AssistanceLevel = "none" | "light" | "standard" | "high";
 
 /** The three 5/3/1 assistance categories (resolved to movements by the platform). */
 export const ASSISTANCE_SLOT_CATEGORIES = ["push", "pull", "single_leg_or_core"] as const;
@@ -48,7 +48,45 @@ export function assistanceLevelForSupplemental(id: SupplementalTemplateId): Assi
 const SETS_BY_VOLUME: Record<Exclude<AssistanceLevel, "none">, number> = {
   light: 2,
   standard: 3,
+  high: 4,
 };
+
+/**
+ * The user's GLOBAL accessory-volume preference (the same axis as
+ * `profiles.effort_preference`: low = "Easier", standard = "Balanced", high =
+ * "Harder"). Applied on top of the template-derived base assistance level so the
+ * one global control scales 5/3/1 assistance volume too. `standard` is the
+ * identity — Balanced users get byte-identical prescriptions.
+ */
+export type AssistanceVolumePref = "low" | "standard" | "high";
+
+// Ordered assistance ladder used to shift a base level up/down one notch. `none`
+// is intentionally OUTSIDE the ladder — a template that ships no assistance
+// (jack-shit) stays at none regardless of the global preference, and the global
+// preference never trims a real dose all the way to none (Easier floors at light,
+// per the book always prescribing some assistance).
+const ASSISTANCE_LADDER: readonly Exclude<AssistanceLevel, "none">[] = [
+  "light",
+  "standard",
+  "high",
+];
+
+/**
+ * Shift a template-derived base assistance level by the user's global accessory-
+ * volume preference. Easier → one notch lighter (floored at light), Harder → one
+ * notch heavier (capped at high), Balanced → unchanged. `none` is preserved.
+ */
+export function shiftAssistanceLevel(
+  base: AssistanceLevel,
+  pref: AssistanceVolumePref,
+): AssistanceLevel {
+  if (base === "none") return "none";
+  const idx = ASSISTANCE_LADDER.indexOf(base);
+  if (idx < 0) return base;
+  const delta = pref === "low" ? -1 : pref === "high" ? 1 : 0;
+  const next = Math.max(0, Math.min(ASSISTANCE_LADDER.length - 1, idx + delta));
+  return ASSISTANCE_LADDER[next]!;
+}
 
 /**
  * Build the per-session assistance intent: one category-tagged slot for each of

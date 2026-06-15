@@ -33,7 +33,12 @@ import type { MainScheme } from "./waves";
 import { buildMainSets } from "./waves";
 import { buildWarmupSets } from "./warmup";
 import { buildSupplementalSets, type SupplementalTemplateId } from "./supplemental";
-import { assistanceLevelForSupplemental, buildAssistanceIntent } from "./assistance-spec";
+import {
+  assistanceLevelForSupplemental,
+  buildAssistanceIntent,
+  shiftAssistanceLevel,
+  type AssistanceVolumePref,
+} from "./assistance-spec";
 import { suggestNewTrainingMax } from "./e1rm";
 import { computeTrainingMax } from "./training-max";
 import { roundToIncrement } from "./rounding";
@@ -111,6 +116,13 @@ export interface WendlerInstance {
    * preserving their original per-lift session layout.
    */
   daysPerWeek?: number;
+  /**
+   * The user's global accessory-volume preference (low = Easier, standard =
+   * Balanced, high = Harder). Shifts the template-derived assistance level up or
+   * down one notch. Optional / omitted ⇒ `standard` (byte-identical) for
+   * back-compat with instances stored before this field.
+   */
+  assistanceVolume?: AssistanceVolumePref;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -318,7 +330,22 @@ export const wendler531Engine: ProgramEngine<WendlerInstance> = {
     const rawDays = Number(v.daysPerWeek ?? dayOrder.length);
     const daysPerWeek = rawDays === 2 ? 2 : dayOrder.length;
 
-    return { templateId, segments, dayOrder, tmPercent, trainingMaxes, daysPerWeek };
+    // Global accessory-volume preference (low/standard/high). Anything else
+    // (null, legacy, undefined) collapses to "standard" → byte-identical.
+    const assistanceVolume: AssistanceVolumePref =
+      v.assistanceVolume === "low" || v.assistanceVolume === "high"
+        ? v.assistanceVolume
+        : "standard";
+
+    return {
+      templateId,
+      segments,
+      dayOrder,
+      tmPercent,
+      trainingMaxes,
+      daysPerWeek,
+      assistanceVolume,
+    };
   },
 
   timeline(instance: WendlerInstance): PlannedSessionSpec[] {
@@ -432,8 +459,11 @@ export const wendler531Engine: ProgramEngine<WendlerInstance> = {
     // carries a reduced dose rather than none. The platform resolves each category
     // slot to a concrete catalog movement.
     if (items.length > 0) {
-      const level =
+      const base =
         seg.type === "seventh-week" ? "light" : assistanceLevelForSupplemental(seg.supplemental);
+      // Apply the user's global accessory-volume preference (Easier / Balanced /
+      // Harder) on top of the template-derived base. Balanced = identity.
+      const level = shiftAssistanceLevel(base, instance.assistanceVolume ?? "standard");
       for (const slot of buildAssistanceIntent(level)) {
         items.push(slot);
       }
