@@ -12,7 +12,7 @@
  * path here, so the user always sees the same card-shaped UI.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { Prescription } from "@hta/db";
 import {
   groupPrescriptionByMovement,
@@ -323,6 +323,16 @@ export function MovementCardList({
   // the current (possibly smart/custom) accessory order, swaps the neighbour,
   // applies it optimistically, and persists in the background. Display-only.
   const reorderEnabled = !isComplete && accessoryGroups.length > 1;
+  const persistOrder = useCallback(
+    (ids: string[]) => {
+      setLocalOrder(ids);
+      void reorderSessionAccessories({ sessionId, movementIds: ids }).catch(() => {
+        // Best-effort persistence; the optimistic order still stands for the
+        // session even if the write fails (a reload would revert it).
+      });
+    },
+    [sessionId],
+  );
   const moveAccessory = useCallback(
     (movementId: string, dir: -1 | 1) => {
       const ids = accessoryGroups.map((g) => g.movementId);
@@ -330,13 +340,41 @@ export function MovementCardList({
       const to = from + dir;
       if (from < 0 || to < 0 || to >= ids.length) return;
       [ids[from], ids[to]] = [ids[to]!, ids[from]!];
-      setLocalOrder(ids);
-      void reorderSessionAccessories({ sessionId, movementIds: ids }).catch(() => {
-        // Best-effort persistence; the optimistic order still stands for the
-        // session even if the write fails (a reload would revert it).
-      });
+      persistOrder(ids);
     },
-    [accessoryGroups, sessionId],
+    [accessoryGroups, persistOrder],
+  );
+  // Drag-and-drop reorder (native HTML5, no library — mirrors PlanRedesign /
+  // Step5Schedule). The dragged accessory is dropped ONTO a target accessory and
+  // inserted at the target's position. Arrows remain the touch / a11y path.
+  const dragFromRef = useRef<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const onAccessoryDragStart = useCallback((movementId: string) => {
+    dragFromRef.current = movementId;
+  }, []);
+  const onAccessoryDragOver = useCallback((movementId: string) => {
+    if (!dragFromRef.current) return;
+    setDragOverId(movementId);
+  }, []);
+  const onAccessoryDragEnd = useCallback(() => {
+    dragFromRef.current = null;
+    setDragOverId(null);
+  }, []);
+  const onAccessoryDrop = useCallback(
+    (targetMovementId: string) => {
+      const fromId = dragFromRef.current;
+      dragFromRef.current = null;
+      setDragOverId(null);
+      if (!fromId || fromId === targetMovementId) return;
+      const ids = accessoryGroups.map((g) => g.movementId);
+      const from = ids.indexOf(fromId);
+      const to = ids.indexOf(targetMovementId);
+      if (from < 0 || to < 0) return;
+      ids.splice(from, 1);
+      ids.splice(to, 0, fromId);
+      persistOrder(ids);
+    },
+    [accessoryGroups, persistOrder],
   );
 
   // Accessory movementIds — the only bucket that surfaces the
@@ -393,6 +431,11 @@ export function MovementCardList({
         canMoveDown={pos >= 0 && pos < ids.length - 1}
         onMove={moveAccessory}
         hapticsEnabled={hapticsEnabled}
+        onDragStartId={onAccessoryDragStart}
+        onDragOverId={onAccessoryDragOver}
+        onDropId={onAccessoryDrop}
+        onDragEndAccessory={onAccessoryDragEnd}
+        isDragOver={dragOverId === group.movementId}
       >
         {renderCard(group)}
       </ReorderableAccessory>
@@ -456,11 +499,12 @@ export function MovementCardList({
 }
 
 /**
- * Reorder wrapper for an accessory card. Mobile-first: up/down move buttons that
- * work with a tap (HTML5 drag-and-drop does NOT fire from touch on iOS, so the
- * buttons are the real interaction — same reason the block wizard pairs drag
- * with a tap path). Desktop also gets native HTML5 drag as an augmentation,
- * matching the existing Step5Schedule / PlanRedesign pattern (no library).
+ * Reorder wrapper for an accessory card. Two interaction paths, no library:
+ *   - up/down move buttons — the touch / a11y path (HTML5 drag does NOT fire
+ *     from touch on iOS, so the buttons are the real mobile interaction).
+ *   - a draggable grip handle + drop target — native HTML5 drag-and-drop for
+ *     pointer users, mirroring the PlanRedesign / Step5Schedule pattern (drop a
+ *     card ONTO another to insert it at that position).
  */
 function ReorderableAccessory({
   movementId,
@@ -468,6 +512,11 @@ function ReorderableAccessory({
   canMoveDown,
   onMove,
   hapticsEnabled,
+  onDragStartId,
+  onDragOverId,
+  onDropId,
+  onDragEndAccessory,
+  isDragOver,
   children,
 }: {
   movementId: string;
@@ -475,6 +524,11 @@ function ReorderableAccessory({
   canMoveDown: boolean;
   onMove: (movementId: string, dir: -1 | 1) => void;
   hapticsEnabled: boolean;
+  onDragStartId: (movementId: string) => void;
+  onDragOverId: (movementId: string) => void;
+  onDropId: (movementId: string) => void;
+  onDragEndAccessory: () => void;
+  isDragOver: boolean;
   children: React.ReactNode;
 }) {
   const move = (dir: -1 | 1) => {
@@ -500,11 +554,28 @@ function ReorderableAccessory({
   return (
     <div
       data-testid={`accessory-reorder-${movementId}`}
-      style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center" }}
+      onDragOver={(e) => {
+        // Allow a drop; preventDefault is required for onDrop to fire.
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        onDragOverId(movementId);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        onDropId(movementId);
+      }}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr auto",
+        gap: 8,
+        alignItems: "center",
+        borderTop: isDragOver ? "2px solid var(--cp-accent)" : "2px solid transparent",
+        borderRadius: 4,
+      }}
     >
       <div style={{ minWidth: 0 }}>{children}</div>
       <div
-        style={{ display: "flex", flexDirection: "column", gap: 4 }}
+        style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "center" }}
         aria-label="Reorder accessory"
       >
         <button
@@ -517,6 +588,29 @@ function ReorderableAccessory({
         >
           ↑
         </button>
+        {/* Drag handle — native HTML5 draggable; pointer DnD only (touch uses
+            the arrows). The handle, not the whole card, starts the drag so the
+            card's inputs / steppers stay usable. */}
+        <span
+          data-testid={`accessory-drag-${movementId}`}
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", movementId);
+            onDragStartId(movementId);
+          }}
+          onDragEnd={onDragEndAccessory}
+          aria-label="Drag to reorder"
+          title="Drag to reorder"
+          style={{
+            ...btnStyle,
+            cursor: "grab",
+            fontSize: 12,
+            touchAction: "none",
+          }}
+        >
+          ⠿
+        </span>
         <button
           type="button"
           aria-label="Move down"
