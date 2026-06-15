@@ -313,3 +313,27 @@ describe("Green engine — I/CAT (Zulu/HT + Operator + Fighter + SE)", () => {
     expect(itemsOfKind(p, "main")[0]).toMatchObject({ weightKg: 140, percentOfTm: 0.7 });
   });
 });
+
+describe("Green engine — segments (start points)", () => {
+  it("splits the Hybrid phase into its Operator/Fighter halves and deloads", () => {
+    const segs = gp.segments!(setup());
+    expect(segs).toEqual([
+      { startWeekIndex: 0, label: "Operator", kind: "block" },
+      { startWeekIndex: 6, label: "Deload 1", kind: "deload" },
+      { startWeekIndex: 7, label: "Fighter", kind: "block" },
+      { startWeekIndex: 13, label: "Deload 2", kind: "deload" },
+    ]);
+  });
+
+  it("prefixes the block number when more than one block is scheduled", () => {
+    const segs = gp.segments!(setup({ blocks: 2 }));
+    expect(segs.slice(0, 5).map((s) => s.label)).toEqual([
+      "Block 1 · Operator",
+      "Block 1 · Deload 1",
+      "Block 1 · Fighter",
+      "Block 1 · Deload 2",
+      "Block 2 · Operator",
+    ]);
+    expect(segs[4]!.startWeekIndex).toBe(14);
+  });
+});

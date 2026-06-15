@@ -26,6 +26,7 @@ import type {
   PrescribedItem,
   LoggedSession,
   ProgramRecommendation,
+  ProgramSegment,
 } from "@hta/program-core";
 import { buildGlobalWarmupItems } from "@hta/program-core";
 import {
@@ -371,5 +372,17 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
     }
 
     return { instance, recommendations };
+  },
+
+  segments(instance: TbInstance): ProgramSegment[] {
+    const out: ProgramSegment[] = [];
+    for (let block = 0; block < instance.blocks; block++) {
+      out.push({
+        startWeekIndex: block * instance.blockWeeks,
+        label: `Block ${block + 1}`,
+        kind: "block",
+      });
+    }
+    return out;
   },
 };

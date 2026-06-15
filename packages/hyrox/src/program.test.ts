@@ -289,3 +289,15 @@ describe("hyroxSessionIdForRef", () => {
     expect(hyroxSessionIdForRef(i, "garbage")).toBeNull();
   });
 });
+
+describe("HYROX engine — segments (start points)", () => {
+  it("emits a boundary at each periodization phase, in order, starting at week 0", () => {
+    const segs = hyroxEngine.segments!(setup({ experience: "intermediate" }));
+    expect(segs[0]!.startWeekIndex).toBe(0);
+    expect(segs.map((s) => s.label)).toEqual(["Base", "Build", "Race-prep", "Taper"]);
+    expect(segs[segs.length - 1]!.kind).toBe("test");
+    const idx = segs.map((s) => s.startWeekIndex);
+    expect([...idx].sort((a, b) => a - b)).toEqual(idx);
+    expect(new Set(idx).size).toBe(idx.length);
+  });
+});

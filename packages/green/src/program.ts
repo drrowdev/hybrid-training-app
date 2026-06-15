@@ -24,6 +24,8 @@ import type {
   PrescribedItem,
   LoggedSession,
   ProgramRecommendation,
+  ProgramSegment,
+  ProgramSegmentKind,
 } from "@hta/program-core";
 import {
   tacticalBarbellEngine,
@@ -38,6 +40,7 @@ import {
   strengthTemplatesInPhase,
   type GreenPhase,
   type GreenStrength,
+  type GreenWeek,
   type DayCell,
 } from "./phases";
 import { getConditioningSession } from "./conditioning";
@@ -57,6 +60,13 @@ const WAVE_WEEKS: Record<string, number> = {
   operator: 6,
   fighter: 6,
   "zulu-ht": 3,
+};
+
+/** Display name for each delegated strength template (segment labels). */
+const GREEN_STRENGTH_DISPLAY: Record<GreenStrength, string> = {
+  OP: "Operator",
+  FT: "Fighter",
+  ZULU_HT: "Zulu-HT",
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -197,6 +207,83 @@ function buildPlan(instance: GreenInstance): PlanEntry[] {
     }
   }
   return entries;
+}
+
+/** Classify a phase week for segmentation: deload / benchmark / strength / cardio. */
+function greenWeekMeta(week: GreenWeek): {
+  isDeload: boolean;
+  isTest: boolean;
+  strength: GreenStrength | null;
+} {
+  let isDeload = false;
+  let isTest = false;
+  let strength: GreenStrength | null = null;
+  for (const c of week.days) {
+    if (c.kind === "deload") isDeload = true;
+    else if (c.kind === "test") isTest = true;
+    else if (c.kind === "strength" && strength == null) strength = c.strength;
+  }
+  return { isDeload, isTest, strength };
+}
+
+/**
+ * Structural start points for a Green Protocol instance — derived generically
+ * from the phase grid (no per-phase hardcoding). A new segment starts whenever
+ * the week's character changes (strength template, deload, benchmark, or a new
+ * block). Recurring labels within the instance are numbered (e.g. a phase with
+ * three Operator mesocycles → "Operator 1/2/3").
+ */
+function buildGreenSegments(instance: GreenInstance): ProgramSegment[] {
+  const phase = getGreenPhase(instance.phaseId);
+  if (!phase) return [];
+  type Raw = { startWeekIndex: number; base: string; kind: ProgramSegmentKind };
+  const raw: Raw[] = [];
+  let pw = 0;
+  let prevSig: string | null = null;
+  let prevBlock = -1;
+  for (let block = 0; block < instance.blocks; block++) {
+    for (let wi = 0; wi < phase.weeks.length; wi++) {
+      const meta = greenWeekMeta(phase.weeks[wi]!);
+      let sig: string;
+      let base: string;
+      let kind: ProgramSegmentKind;
+      if (meta.isDeload) {
+        sig = "deload";
+        base = "Deload";
+        kind = "deload";
+      } else if (meta.isTest) {
+        sig = "test";
+        base = "Benchmark";
+        kind = "test";
+      } else if (meta.strength) {
+        sig = `s:${meta.strength}`;
+        base = GREEN_STRENGTH_DISPLAY[meta.strength];
+        kind = "block";
+      } else {
+        sig = "cardio";
+        base = phase.name;
+        kind = "block";
+      }
+      if (sig !== prevSig || block !== prevBlock) {
+        const label = instance.blocks > 1 ? `Block ${block + 1} · ${base}` : base;
+        raw.push({ startWeekIndex: pw, base: label, kind });
+        prevSig = sig;
+        prevBlock = block;
+      }
+      pw += 1;
+    }
+  }
+  const counts = new Map<string, number>();
+  for (const r of raw) counts.set(r.base, (counts.get(r.base) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  return raw.map((r) => {
+    if ((counts.get(r.base) ?? 0) > 1) {
+      const n = (seen.get(r.base) ?? 0) + 1;
+      seen.set(r.base, n);
+      return { startWeekIndex: r.startWeekIndex, label: `${r.base} ${n}`, kind: r.kind };
+    }
+    return { startWeekIndex: r.startWeekIndex, label: r.base, kind: r.kind };
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -387,6 +474,10 @@ export const greenProtocolEngine: ProgramEngine<GreenInstance> = {
     }
 
     return { instance, recommendations };
+  },
+
+  segments(instance: GreenInstance): ProgramSegment[] {
+    return buildGreenSegments(instance);
   },
 };
 

@@ -233,6 +233,31 @@ export interface PlannedSessionSpec {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Structural segments — the program's own phase/block model, in ONE uniform
+// shape so the platform never has to parse a program's bespoke week strings.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** What kind of structural boundary a segment marks (for an icon / styling hint). */
+export type ProgramSegmentKind = "phase" | "block" | "deload" | "test";
+
+/**
+ * One structural entry point of a program (a phase or block boundary) — e.g.
+ * 5/3/1 "Leader 1", "7th Week (TM test)", "Anchor 1"; HYROX "Base", "Race-prep",
+ * "Taper". Each engine declares these with a CLEAN label and the 0-based
+ * program-week index where the segment starts. The platform uses them to let a
+ * user begin a block partway through (carrying over progress from elsewhere) and
+ * as the single source of human phase labels — no per-program string parsing.
+ */
+export interface ProgramSegment {
+  /** 0-based program-week index where the segment starts (maps to materialize). */
+  startWeekIndex: number;
+  /** Clean human label, e.g. "Leader 2", "7th Week (TM test)", "Race-prep". */
+  label: string;
+  kind?: ProgramSegmentKind;
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
 // The contract
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -268,6 +293,35 @@ export interface ProgramEngine<Instance = unknown> {
     log: LoggedSession,
     ctx: PlatformContext,
   ): { instance: Instance; recommendations: ProgramRecommendation[] };
+
+  /**
+   * The program's structural entry points (phase / block boundaries), so a user
+   * can begin a block partway through — e.g. carrying over from another app. Each
+   * entry's `startWeekIndex` is a 0-based program-week the platform can start
+   * materialising from. Optional: engines that don't implement it offer only a
+   * "from the beginning" start.
+   */
+  segments?(instance: Instance): ProgramSegment[];
+}
+
+/**
+ * Read an engine's structural segments, always including a leading
+ * "from the beginning" entry and de-duplicated/sorted by `startWeekIndex`.
+ * Engines without `segments()` yield just the single beginning entry.
+ */
+export function programSegments<I>(
+  engine: ProgramEngine<I>,
+  instance: I,
+): ProgramSegment[] {
+  const raw = engine.segments?.(instance) ?? [];
+  const byIndex = new Map<number, ProgramSegment>();
+  byIndex.set(0, { startWeekIndex: 0, label: "From the beginning", kind: "phase" });
+  for (const s of raw) {
+    if (!Number.isFinite(s.startWeekIndex) || s.startWeekIndex < 0) continue;
+    // The first real segment replaces the generic "beginning" label.
+    byIndex.set(s.startWeekIndex, s);
+  }
+  return [...byIndex.values()].sort((a, b) => a.startWeekIndex - b.startWeekIndex);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
