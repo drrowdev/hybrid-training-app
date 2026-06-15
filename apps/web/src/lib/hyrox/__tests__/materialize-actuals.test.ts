@@ -3,7 +3,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { HYROX_SESSIONS, getHyroxSession } from "@hta/hyrox";
-import { CARDIO_MODALITY_MAP } from "@/lib/muscle/movement-muscle-map";
+import { MODALITY_REGION } from "@/lib/integrations/strava/mapping";
 import {
   buildHyroxActuals,
   buildHyroxActualsById,
@@ -36,19 +36,20 @@ describe("HYROX actuals — cardio log", () => {
     }
   });
 
-  it("uses a real CARDIO_MODALITY_MAP key for every mapped session (fanout fires)", () => {
+  it("uses a real MODALITY_REGION key for every session (region attribution fires)", () => {
     for (const s of nonStrength) {
       const modality = sessionCardioModality(s.id);
-      expect(CARDIO_MODALITY_MAP[modality], `modality '${modality}' for ${s.id}`).toBeDefined();
+      expect(MODALITY_REGION[modality], `modality '${modality}' for ${s.id}`).toBeDefined();
     }
   });
 
-  it("maps runs / ergs to their specific modality", () => {
-    expect(sessionCardioModality("easy-run")).toBe("easy_run");
-    expect(sessionCardioModality("long-run")).toBe("long_run");
-    expect(sessionCardioModality("easy-ski")).toBe("ski_erg");
+  it("maps runs / ergs to their raw modality", () => {
+    expect(sessionCardioModality("easy-run")).toBe("run");
+    expect(sessionCardioModality("long-run")).toBe("run");
+    expect(sessionCardioModality("easy-ski")).toBe("ski");
     expect(sessionCardioModality("easy-row")).toBe("row");
-    expect(sessionCardioModality("vo2-intervals")).toBe("interval_run");
+    expect(sessionCardioModality("vo2-intervals")).toBe("run");
+    expect(sessionCardioModality("se-circuit")).toBe("other_cardio");
   });
 
   it("carries HR data when supplied (Strava import path)", () => {
