@@ -33,6 +33,8 @@ import {
   type PersistedFreestyle,
 } from "@/lib/sessions/freestyle-resolver";
 import { FinishSessionBar } from "@/components/session/FinishSessionBar";
+import { HyroxCompletionForm } from "@/components/session/HyroxCompletionForm";
+import { resolveHyroxCompletionView } from "@/lib/hyrox/resolve-completion-view";
 import { SessionWakeLock } from "@/components/session/SessionWakeLock";
 import { PostSessionSummary } from "@/components/session/PostSessionSummary";
 import { UnitsProvider } from "@/lib/units/context";
@@ -140,7 +142,7 @@ export default async function SessionDetailPage({
     getTrainingMaxDict(),
     supabase
       .from("planned_sessions")
-      .select("id, prescription, session_modality, effective_stress_load, week_index")
+      .select("id, block_id, prescription, session_modality, effective_stress_load, week_index")
       .eq("completed_session_id", id)
       .maybeSingle(),
   ]);
@@ -245,6 +247,24 @@ export default async function SessionDetailPage({
   const plannedPrescription =
     (planned?.prescription as Prescription | null) ??
     ((session as { prescription?: Prescription | null }).prescription ?? null);
+
+  // ADR 0050 — HYROX structured sessions (run/erg/interval/circuit/compromised/
+  // simulation) use a dedicated session-level completion form: confirm station
+  // weights + one time + one RPE, materialized into actuals by completeHyroxSession.
+  // Resolved from the program instance for the block; null for strength HYROX
+  // sessions (normal per-movement logger) and every non-HYROX program.
+  const programRef =
+    (plannedPrescription as (Prescription & { programRef?: string }) | null)?.programRef ?? null;
+  let hyroxView: Awaited<ReturnType<typeof resolveHyroxCompletionView>> = null;
+  if (!isComplete && programRef?.startsWith("hx-") && planned?.block_id) {
+    hyroxView = await resolveHyroxCompletionView(
+      supabase,
+      user.id,
+      planned.block_id as string,
+      programRef,
+      session.performed_at as string | null,
+    );
+  }
 
   // ADR 0026 P5b — when the lifter has opted into antagonist supersets, derive
   // accessory pairing from the (unpaired) stored prescription so the logger can
@@ -1170,7 +1190,21 @@ export default async function SessionDetailPage({
         </section>
       )}
 
-      <SessionWorkArea
+      {hyroxView && (
+        <HyroxCompletionForm
+          sessionId={id}
+          title={hyroxView.title}
+          weekLabel={session.title ?? undefined}
+          structure={hyroxView.structure}
+          loadedStations={hyroxView.loadedStations}
+          isBenchmark={hyroxView.isBenchmark}
+          divisionLabel={hyroxView.divisionLabel}
+          stravaMatch={hyroxView.stravaMatch}
+        />
+      )}
+
+      {!hyroxView && (
+        <SessionWorkArea
         sessionId={id}
         isComplete={isComplete}
         performedAt={session.performed_at as string}
@@ -1202,8 +1236,9 @@ export default async function SessionDetailPage({
           (session.custom_accessory_order as string[] | null) ?? null
         }
       />
+      )}
 
-      {(() => {
+      {!hyroxView && (() => {
         // Cardio prescription items live in the same `prescription.items`
         // array as strength items but are filtered out of the per-movement
         // card grid (see `movement-grouping.ts`). Surface them here so
@@ -1463,7 +1498,7 @@ export default async function SessionDetailPage({
         />
       )}
 
-      {!isComplete && !isPureCardio && (() => {
+      {!isComplete && !isPureCardio && !hyroxView && (() => {
         // feat/logging-works — relaxed finish gate. The user can finish
         // the session as soon as ≥1 set has been logged; partial
         // sessions are explicitly allowed (call-outs flagged the strict
