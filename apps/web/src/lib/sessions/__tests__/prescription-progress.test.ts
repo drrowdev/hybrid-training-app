@@ -3,6 +3,7 @@ import type { Prescription } from "@hta/db";
 import {
   matchPrescriptionItems,
   countStrengthPrescriptionItems,
+  countProgrammedWorkingSets,
 } from "../prescription-progress";
 
 function makePrescription(items: Prescription["items"]): Prescription {
@@ -150,3 +151,36 @@ describe("matchPrescriptionItemsDetailed — skipped flagging", () => {
 });
 
 
+
+describe("countProgrammedWorkingSets", () => {
+  it("returns 0 for a null / empty prescription", () => {
+    expect(countProgrammedWorkingSets(null)).toBe(0);
+    expect(countProgrammedWorkingSets({ items: [] })).toBe(0);
+  });
+
+  it("counts working strength sets and excludes warm-ups + cardio", () => {
+    const p = {
+      items: [
+        { movementId: "sq", kind: "warmup", sets: 1, reps: 5 },
+        { movementId: "sq", kind: "warmup", sets: 1, reps: 5 },
+        { movementId: "sq", kind: "main", sets: 1, reps: 5 },
+        { movementId: "sq", kind: "main", sets: 1, reps: 5 },
+        { movementId: "sq", kind: "main", sets: 1, reps: 5 },
+        { movementId: "curl", kind: "accessory", sets: 1, reps: 12 },
+        { movementId: "", kind: "cardio_external" },
+      ],
+    } as const;
+    // 3 main + 1 accessory = 4 working sets; warm-ups + cardio excluded.
+    expect(countProgrammedWorkingSets(p as never)).toBe(4);
+  });
+
+  it("respects an item's multi-set count (sets > 1)", () => {
+    const p = {
+      items: [
+        { movementId: "sq", kind: "main", sets: 1, reps: 5 },
+        { movementId: "sq", kind: "back_off", sets: 5, reps: 10 },
+      ],
+    } as const;
+    expect(countProgrammedWorkingSets(p as never)).toBe(6);
+  });
+});

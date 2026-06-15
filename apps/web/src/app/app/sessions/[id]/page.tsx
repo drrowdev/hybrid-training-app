@@ -56,6 +56,7 @@ import { suggestNextWeight } from "@/lib/progression/suggest-next";
 import {
   matchPrescriptionItemsDetailed,
   countStrengthPrescriptionItems,
+  countProgrammedWorkingSets,
 } from "@/lib/sessions/prescription-progress";
 import type { ProgressionHint } from "@/components/session/PostSessionSummary";
 import type { Prescription } from "@hta/db";
@@ -899,6 +900,7 @@ export default async function SessionDetailPage({
         <PostSessionSummary
           sessionId={id}
           summary={summary}
+          programmedSets={countProgrammedWorkingSets(plannedPrescription)}
           sessionRpe={(session.session_rpe as number | string | null) ?? null}
           initialNotes={session.notes ?? null}
           progressionHints={progressionHints}

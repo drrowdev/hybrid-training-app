@@ -116,3 +116,31 @@ export function countStrengthPrescriptionItems(
 }
 
 export const PRESCRIPTION_STRENGTH_KINDS = STRENGTH_ITEM_KINDS;
+
+// Working strength sets the user actually logs — warm-ups are excluded (they
+// don't count toward the logged `workingSetCount` either), so a "logged of
+// programmed" comparison stays apples-to-apples.
+const WORKING_STRENGTH_ITEM_KINDS = new Set([
+  "main",
+  "back_off",
+  "accessory",
+  "tendon",
+  "power_potentiation",
+]);
+
+/**
+ * Total programmed WORKING strength sets in a prescription (warm-ups excluded).
+ * Each strength item is typically one working set (`sets` defaults to 1; the
+ * planner repeats items across a wave), so this sums `sets ?? 1` over the working
+ * items. Used to show "X of Y sets logged" on the post-session summary.
+ */
+export function countProgrammedWorkingSets(prescription: Prescription | null): number {
+  if (!prescription?.items?.length) return 0;
+  let n = 0;
+  for (const it of prescription.items) {
+    if (WORKING_STRENGTH_ITEM_KINDS.has(it.kind)) {
+      n += Math.max(1, Math.trunc(it.sets ?? 1));
+    }
+  }
+  return n;
+}
