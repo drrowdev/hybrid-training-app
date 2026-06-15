@@ -168,13 +168,20 @@ describe("5/3/1 engine — assistance intent (ADR 0047)", () => {
     expect(assist.every((a) => a.sets === 2)).toBe(true);
   });
 
-  it("a 7th-week (deload / TM-test) session emits NO assistance", () => {
+  it("a 7th-week (deload / TM-test) session emits LIGHT assistance — 2 sets per slot", () => {
+    // 5/3/1 Forever prescribes Push/Pull/Single-leg-or-Core during the 7th Week
+    // Protocol (all variants), at a reduced dose. The engine emits the three
+    // categories at the LIGHT (2-set) volume.
     const inst = setup();
     const tl = wendler531Engine.timeline(inst);
-    const deloadRef = tl.find((s) => s.kind === "deload" && s.tags?.includes("lift:squat"))!.ref;
-    expect(itemsOfKind(wendler531Engine.prescribe(inst, deloadRef, ctx), "assistance")).toHaveLength(0);
-    const testRef = tl.find((s) => s.kind === "test" && s.tags?.includes("lift:squat"))!.ref;
-    expect(itemsOfKind(wendler531Engine.prescribe(inst, testRef, ctx), "assistance")).toHaveLength(0);
+    for (const kind of ["deload", "test"] as const) {
+      const ref = tl.find((s) => s.kind === kind && s.tags?.includes("lift:squat"))!.ref;
+      const assist = itemsOfKind(wendler531Engine.prescribe(inst, ref, ctx), "assistance");
+      expect(assist).toHaveLength(3);
+      expect(assist.map((a) => a.assistanceCategory)).toEqual(["push", "pull", "single_leg_or_core"]);
+      expect(assist.every((a) => a.sets === 2)).toBe(true);
+      expect(assist.every((a) => a.movementId === undefined)).toBe(true);
+    }
   });
 });
 
