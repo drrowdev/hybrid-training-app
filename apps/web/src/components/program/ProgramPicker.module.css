@@ -199,17 +199,24 @@
 
 /* program cards */
 .grid {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  /* Fluid: auto-fits 3 across on the desktop card (≤560px wrap), 2 across on a
+     phone — each card fills its cell instead of collapsing to a tiny square. */
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   justify-content: center;
   gap: 12px;
   max-width: 560px;
   margin: 0 auto;
 }
+/* The per-card wrapper (relative + flex) must stretch to fill its grid cell so
+   the card inside can be full-width. */
+.grid > div {
+  width: 100%;
+}
 .pcard {
   position: relative;
-  width: 172px;
-  height: 172px;
+  width: 100%;
+  min-height: 168px;
   border: 1px solid var(--line2);
   border-radius: var(--wradius);
   background: linear-gradient(165deg, var(--panel2), var(--panel));
@@ -667,8 +674,7 @@
     max-width: none;
   }
   .pcard {
-    width: calc(50% - 6px);
-    height: 158px;
+    min-height: 150px;
   }
 }
 

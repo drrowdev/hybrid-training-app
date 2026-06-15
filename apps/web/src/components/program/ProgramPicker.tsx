@@ -1107,7 +1107,7 @@ export function ProgramPicker({
             const tagline = CARD_TAGLINE[p.id] ?? p.summary;
             const isSel = p.id === selectedId;
             return (
-              <div key={p.id} style={{ position: "relative", display: "flex" }}>
+              <div key={p.id} style={{ position: "relative", width: "100%" }}>
                 <button
                   type="button"
                   data-testid={`program-card-${p.id}`}
