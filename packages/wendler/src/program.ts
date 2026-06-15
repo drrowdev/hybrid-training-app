@@ -26,6 +26,7 @@ import type {
   PrescribedItemKind,
   LoggedSession,
   ProgramRecommendation,
+  ProgramSegment,
 } from "@hta/program-core";
 import type { MainLift, SeventhWeekKind, WendlerWeek } from "./types";
 import type { MainScheme } from "./waves";
@@ -483,5 +484,33 @@ export const wendler531Engine: ProgramEngine<WendlerInstance> = {
     }
 
     return { instance, recommendations };
+  },
+
+  segments(instance: WendlerInstance): ProgramSegment[] {
+    const out: ProgramSegment[] = [];
+    let pw = 0;
+    for (const seg of instance.segments) {
+      if (seg.type === "seventh-week") {
+        const label =
+          seg.mode === "deload"
+            ? "7th Week (Deload)"
+            : seg.mode === "tm-test"
+              ? "7th Week (TM Test)"
+              : "7th Week (PR Test)";
+        out.push({
+          startWeekIndex: pw,
+          label,
+          kind: seg.mode === "deload" ? "deload" : "test",
+        });
+        pw += 1;
+        continue;
+      }
+      const phaseLabel = seg.kind === "leader" ? "Leader" : "Anchor";
+      for (let cycle = 1; cycle <= seg.cycles; cycle++) {
+        out.push({ startWeekIndex: pw, label: `${phaseLabel} ${cycle}`, kind: "block" });
+        pw += 3;
+      }
+    }
+    return out;
   },
 };

@@ -203,3 +203,19 @@ describe("TB engine — onSessionLogged (program-owned recommendations)", () => 
     expect(recommendations.map((r) => r.kind)).toEqual(["tm-test", "deload"]);
   });
 });
+
+describe("TB engine — segments (start points)", () => {
+  it("emits one block boundary per scheduled block at block-week multiples", () => {
+    const segs = tb.segments!(setup({ blocks: 3 }));
+    expect(segs).toEqual([
+      { startWeekIndex: 0, label: "Block 1", kind: "block" },
+      { startWeekIndex: 6, label: "Block 2", kind: "block" },
+      { startWeekIndex: 12, label: "Block 3", kind: "block" },
+    ]);
+  });
+
+  it("a 12-week Grey Man block spaces boundaries by its longer wave", () => {
+    const segs = tb.segments!(setup({ templateId: "grey-man", blocks: 2 }));
+    expect(segs.map((s) => s.startWeekIndex)).toEqual([0, 12]);
+  });
+});

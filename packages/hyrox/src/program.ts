@@ -31,6 +31,7 @@ import type {
   SessionPrescription,
   LoggedSession,
   ProgramRecommendation,
+  ProgramSegment,
 } from "@hta/program-core";
 import {
   buildHyroxGrid,
@@ -403,5 +404,29 @@ export const hyroxEngine: ProgramEngine<HyroxInstance> = {
     _ctx: PlatformContext,
   ): { instance: HyroxInstance; recommendations: ProgramRecommendation[] } {
     return { instance, recommendations: [] };
+  },
+
+  segments(instance: HyroxInstance): ProgramSegment[] {
+    const plan = buildHyroxGrid({
+      weeks: instance.weeks,
+      sessionsPerWeek: instance.sessionsPerWeek,
+      experience: instance.experience,
+    });
+    const out: ProgramSegment[] = [];
+    let lastPhase: string | null = null;
+    for (let i = 0; i < plan.length; i++) {
+      const w = plan[i]!;
+      // One entry at the first week of each periodization phase. (Deload weeks
+      // sit inside a phase and aren't separate start points.)
+      if (w.phase !== lastPhase) {
+        out.push({
+          startWeekIndex: i,
+          label: PHASE_NAME[w.phase],
+          kind: w.phase === "taper" ? "test" : "phase",
+        });
+        lastPhase = w.phase;
+      }
+    }
+    return out;
   },
 };

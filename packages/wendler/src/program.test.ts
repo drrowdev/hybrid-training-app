@@ -299,3 +299,27 @@ describe("5/3/1 engine — variable training frequency", () => {
     expect(new Set(legacy.items.filter((i) => i.kind !== "assistance").map((i) => i.movementId))).toEqual(new Set(["squat"]));
   });
 });
+
+describe("5/3/1 engine — segments (start points)", () => {
+  it("emits per-cycle Leader/Anchor + 7th-week boundaries at the right program-weeks", () => {
+    const segs = wendler531Engine.segments!(setup());
+    expect(segs).toEqual([
+      { startWeekIndex: 0, label: "Leader 1", kind: "block" },
+      { startWeekIndex: 3, label: "Leader 2", kind: "block" },
+      { startWeekIndex: 6, label: "7th Week (Deload)", kind: "deload" },
+      { startWeekIndex: 7, label: "Anchor 1", kind: "block" },
+      { startWeekIndex: 10, label: "7th Week (TM Test)", kind: "test" },
+    ]);
+  });
+
+  it("a single-leader single-anchor build collapses to one cycle each", () => {
+    const segs = wendler531Engine.segments!(setup({ leaderCycles: 1, anchorCycles: 1 }));
+    expect(segs.map((s) => s.label)).toEqual([
+      "Leader 1",
+      "7th Week (Deload)",
+      "Anchor 1",
+      "7th Week (TM Test)",
+    ]);
+    expect(segs.map((s) => s.startWeekIndex)).toEqual([0, 3, 4, 7]);
+  });
+});

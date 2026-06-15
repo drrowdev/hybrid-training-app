@@ -12,6 +12,7 @@ import {
   totalPrescribedSets,
   itemsOfKind,
   oneRepMaxFor,
+  programSegments,
 } from "./index";
 
 // A minimal 2-session "program": one squat day, then a deload, driven entirely
@@ -145,5 +146,42 @@ describe("prescription helpers", () => {
   it("itemsOfKind filters in order", () => {
     expect(itemsOfKind(p, "supplemental").map((i) => i.name)).toEqual(["Squat"]);
     expect(itemsOfKind(p, "main")).toHaveLength(1);
+  });
+});
+
+describe("programSegments helper", () => {
+  const engineWith = (segs: { startWeekIndex: number; label: string }[]) =>
+    ({ segments: () => segs }) as unknown as ProgramEngine<MockInstance>;
+
+  it("yields just a 'from the beginning' entry when the engine has no segments()", () => {
+    const inst: MockInstance = { movement: "squat", days: 2 };
+    expect(programSegments(mockEngine, inst)).toEqual([
+      { startWeekIndex: 0, label: "From the beginning", kind: "phase" },
+    ]);
+  });
+
+  it("lets a real segment at index 0 replace the generic beginning label", () => {
+    const segs = programSegments(engineWith([{ startWeekIndex: 0, label: "Leader 1" }]), {
+      movement: "squat",
+      days: 2,
+    });
+    expect(segs).toEqual([{ startWeekIndex: 0, label: "Leader 1" }]);
+  });
+
+  it("prepends the beginning, de-dupes by index, sorts, and drops negatives", () => {
+    const segs = programSegments(
+      engineWith([
+        { startWeekIndex: 6, label: "B" },
+        { startWeekIndex: 3, label: "A" },
+        { startWeekIndex: 3, label: "A-dup" },
+        { startWeekIndex: -1, label: "bad" },
+      ]),
+      { movement: "squat", days: 2 },
+    );
+    expect(segs.map((s) => [s.startWeekIndex, s.label])).toEqual([
+      [0, "From the beginning"],
+      [3, "A-dup"],
+      [6, "B"],
+    ]);
   });
 });
