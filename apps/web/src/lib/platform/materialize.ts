@@ -144,6 +144,50 @@ export function deriveSessionTitle(rx: SessionPrescription): string | undefined 
   return note?.name?.trim() || undefined;
 }
 
+/**
+ * Append a glanceable load cue to a session title:
+ *   - strength days → the top working-set intensity ("Squat · Deadlift · OHP · 75%").
+ *     This is the program's own basis — % of Training Max for 5/3/1, % of 1RM for
+ *     Tactical Barbell / Green Protocol / HYROX — so it reads as "how heavy today".
+ *     Percentage (not absolute kg) keeps it short and unit-preference-safe.
+ *   - cardio days with a duration target → the minutes ("Easy Run · 40 min").
+ * Interval/circuit/compromised cardio (prescribed in rounds, no single duration)
+ * and effort-based lifts (no 1RM on file, no %) get nothing.
+ */
+function topWorkingPercent(rx: SessionPrescription): number | undefined {
+  let max: number | undefined;
+  for (const it of rx.items) {
+    if ((it.kind === "main" || it.kind === "amrap") && typeof it.percentOfTm === "number") {
+      max = max == null ? it.percentOfTm : Math.max(max, it.percentOfTm);
+    }
+  }
+  return max;
+}
+
+function primaryDurationMin(rx: SessionPrescription): number | undefined {
+  let best: number | undefined;
+  for (const it of rx.items) {
+    if (
+      (it.kind === "cardio" || it.kind === "conditioning") &&
+      typeof it.durationSec === "number" &&
+      it.durationSec > 0
+    ) {
+      best = best == null ? it.durationSec : Math.max(best, it.durationSec);
+    }
+  }
+  return best == null ? undefined : Math.round(best / 60);
+}
+
+function enrichTitle(base: string, rx: SessionPrescription): string {
+  const hasMain = rx.items.some((it) => it.kind === "main" || it.kind === "amrap");
+  if (hasMain) {
+    const pct = topWorkingPercent(rx);
+    return pct != null ? `${base} · ${Math.round(pct * 100)}%` : base;
+  }
+  const min = primaryDurationMin(rx);
+  return min != null ? `${base} · ${min} min` : base;
+}
+
 /** Build the minimal classifier shape from an adapted prescription. */
 function toClassifierMovements(items: PrescriptionItem[]): ClassifierMovement[] {
   return items.map((it): ClassifierMovement => {
@@ -255,11 +299,10 @@ export function materializeProgram<I>(
       weekIndex,
       dayIndex,
       slot: "single",
-      // Clean, content-first title: the program / week / day context already
-      // lives in the page chrome, so the session name describes only WHAT you do.
-      // Prefer an engine-supplied `title`, then derive from the prescription's
-      // main lifts / activity, and only fall back to the verbose label.
-      title: spec.title ?? deriveSessionTitle(engineRx) ?? spec.label,
+      // Clean, content-first title (the program / week / day context lives in the
+      // page chrome) plus a glanceable load cue — the working % for strength, the
+      // duration for timed cardio.
+      title: enrichTitle(spec.title ?? deriveSessionTitle(engineRx) ?? spec.label, engineRx),
       role: roleForKind(spec.kind),
       prescription: prescriptionWithRef,
       sessionModality: modality,

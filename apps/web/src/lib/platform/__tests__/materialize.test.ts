@@ -73,11 +73,12 @@ describe("materializeProgram — 5/3/1 default block", () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  it("derives a clean content title (lifts, not the breadcrumb) and maps kind → role", () => {
+  it("derives a clean content title (lifts + working %) and maps kind → role", () => {
     const first = result.sessions[0]!;
-    // Day 1 of the default order is the Press — the title names the lift(s), not
-    // the old "Leader 1 · Wk 1 · …" breadcrumb (that context is in the chrome).
+    // Day 1 of the default order is the Press — the title names the lift(s) plus
+    // the top working % (5/3/1 = % of TM), not the old "Leader 1 · Wk 1 · …".
     expect(first.title).toContain("Overhead Press");
+    expect(first.title).toMatch(/·\s*\d+%$/);
     expect(first.title).not.toContain("Wk 1");
     expect(first.title).not.toContain("Leader");
     expect(first.role).toBe("strength");
