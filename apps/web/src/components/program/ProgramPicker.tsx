@@ -610,6 +610,7 @@ export function ProgramPicker({
 
   const [values, setValues] = useState<Record<string, unknown>>(preselectValues);
   const [startedOn, setStartedOn] = useState<string>(upcomingMondayYmd(todayYmd()));
+  const [raceDate, setRaceDate] = useState<string>("");
 
   // Weekly schedule grid: 7 day cells. The strength days become deploy `weekdays`.
   const [week, setWeek] = useState<DayType[]>(() => buildWeek(preselectProgram?.sessionsPerWeek ?? 4));
@@ -959,6 +960,7 @@ export function ProgramPicker({
         setupValues,
         weekdays,
         startedOn,
+        ...(selected.id === "hyrox" && raceDate ? { raceDate } : {}),
         ...(isTb && tbAccessoryPlan && accessoriesOn
           ? { accessories: { enabled: true, muscles: accessoryMuscles } }
           : {}),
@@ -1812,6 +1814,23 @@ export function ProgramPicker({
           <div className={styles.note} style={{ marginTop: 6 }}>
             Programs run in full weeks, so we start on a Monday by default.
           </div>
+          {selected?.id === "hyrox" ? (
+            <div style={{ marginTop: 16 }}>
+              <div className={styles.label}>Race date (optional)</div>
+              <input
+                type="date"
+                className={styles.datein}
+                value={raceDate}
+                min={startedOn}
+                onChange={(e) => setRaceDate(e.target.value)}
+              />
+              <div className={styles.note} style={{ marginTop: 6 }}>
+                {raceDate
+                  ? "Your build runs from the start date to race week, ending on a taper. We'll also add it to your races."
+                  : "Leave blank for a standard build with a fixed end-taper. Add a date to peak for a specific race."}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {fixedSchedule ? (

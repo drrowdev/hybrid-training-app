@@ -82,6 +82,16 @@ describe("HYROX engine — setup", () => {
     const inst = setup({ experience: "advanced", division: "pro", sessionsPerWeek: "7" });
     expect(JSON.parse(JSON.stringify(inst))).toEqual(inst);
   });
+
+  it("honours a race-date `weeks` override, clamped to [4, 24]", () => {
+    // beginner default is 10; an override wins.
+    expect(setup({ experience: "beginner", weeks: 8 }).weeks).toBe(8);
+    expect(setup({ experience: "beginner", weeks: 2 }).weeks).toBe(4); // clamp low
+    expect(setup({ experience: "beginner", weeks: 40 }).weeks).toBe(24); // clamp high
+    // absent / invalid → experience default.
+    expect(setup({ experience: "advanced" }).weeks).toBe(16);
+    expect(setup({ experience: "advanced", weeks: "" }).weeks).toBe(16);
+  });
 });
 
 describe("HYROX engine — prescribe is wired (step 5)", () => {
