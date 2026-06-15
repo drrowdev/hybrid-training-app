@@ -199,10 +199,14 @@ describe("PlanRedesign — timeline grid", () => {
     expect(html).toContain("TODAY");
   });
 
-  it("mutes past + done sessions (line-through via 'muted' modifier)", () => {
+  it("marks done sessions with the 'done' modifier + a check, not the faded 'muted' style", () => {
     const html = render();
-    // s3 is on 2026-05-25 (before today) AND done → muted modifier
-    expect(html).toMatch(/session-pill strength muted[^"]*"[^>]*>Bench/);
+    // s3 is on 2026-05-25 (before today) AND done → 'done' modifier (clear,
+    // not faded). A past-AND-incomplete session would get 'muted' instead.
+    expect(html).toMatch(/session-pill strength done[^"]*"[^>]*>/);
+    expect(html).toMatch(/done-check[^>]*>\s*\u2713/);
+    // A done session is NOT muted (no fade/line-through).
+    expect(html).not.toMatch(/session-pill strength done muted/);
   });
 
   it("renders 'Rest' pills on empty day cells", () => {
