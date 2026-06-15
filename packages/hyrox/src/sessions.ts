@@ -30,6 +30,9 @@ export type HyroxCategory =
   | "strength" // HYROX-owned station-specific compound strength
   | "sim"; // partial / full race simulation (benchmark-like)
 
+/** Platform assistance categories HYROX strength accessories resolve through (ADR 0047). */
+export type HyroxAssistSlot = "push" | "pull" | "single_leg_or_core";
+
 export interface HyroxSession {
   /** Stable id used by the phase grid and prescriptions. */
   id: string;
@@ -40,11 +43,21 @@ export interface HyroxSession {
   /** Default unit the session is programmed in. */
   unit: HyroxUnit;
   /**
-   * Movement keys this session materializes into at completion (ADR 0050). For
-   * runs/ergs this is the single ergo/locomotion key; for circuits/strength it is
-   * the station/lift list. Resolved against the movement catalog in build steps 5–6.
+   * Movement keys this session involves.
+   *   - Cardio/erg/station sessions: the catalog/locomotion keys, materialized at
+   *     completion (ADR 0050 step 7) and shown for display.
+   *   - Strength sessions: the ROLE-anchored main-lift engine keys (squat / deadlift
+   *     / press / bench) the platform resolves to the user's chosen variant and
+   *     loads off their 1RM (like Tactical Barbell / 5/3/1).
    */
   movements: string[];
+  /**
+   * Strength only: station-specific accessory slots, emitted as category-tagged
+   * assistance INTENT (no concrete movement). The platform resolves each to a
+   * catalog movement (equipment / limitation / rotation filtered) via the shared
+   * ADR-0047 assistance resolver — the same machinery 5/3/1 uses.
+   */
+  assist?: HyroxAssistSlot[];
   /**
    * Strength sessions log PER-MOVEMENT (existing strength logger); every other
    * HYROX session logs at the SESSION level (time + RPE + confirm weights).
@@ -210,17 +223,23 @@ export const HYROX_SESSIONS: HyroxSession[] = [
     note: "The full race, rehearsed: 8 runs + all 8 stations in order. A potent, costly stimulus — use rarely (deep in race-prep), never close to the event.",
   },
 
-  // ── HYROX-owned strength (station-specific; logged per-movement) ──────────
+  // ── HYROX-owned strength (role-anchored mains + station-specific assistance) ──
+  // Mains use the platform StrengthRole keys (squat / deadlift / press / bench) so
+  // they load off the user's 1RM and resolve to their chosen variant. Station-
+  // specific accessories are emitted as assistance INTENT (push / pull / single-leg
+  // or core) and resolved by the shared ADR-0047 planner. HYROX has no horizontal
+  // press in the race, so bench is omitted — the presses are overhead (wall balls).
   {
     id: "strength-full",
     name: "Strength — Full Body",
     category: "strength",
     zone: "anaerobic",
     unit: "rounds",
-    movements: ["back-squat", "deadlift", "overhead-press", "bent-row"],
+    movements: ["squat", "deadlift", "press"],
+    assist: ["pull", "single_leg_or_core"],
     perMovementLog: true,
     trackable: false,
-    note: "Station-specific compound strength, full-body — low reps (3-6), higher load. Squat/deadlift drive the sleds; press feeds the wall balls; row feeds the sled pull.",
+    note: "Station-specific compound strength, full body — low reps (3-6), higher load. Squat drives the sleds/lunges/wall balls; deadlift the sled pull; overhead press the wall balls. Pull + single-leg/core accessories round out the stations.",
   },
   {
     id: "strength-lower",
@@ -228,10 +247,11 @@ export const HYROX_SESSIONS: HyroxSession[] = [
     category: "strength",
     zone: "anaerobic",
     unit: "rounds",
-    movements: ["split-squat", "romanian-deadlift", "reverse-lunge", "front-rack-carry"],
+    movements: ["squat", "deadlift"],
+    assist: ["single_leg_or_core"],
     perMovementLog: true,
     trackable: false,
-    note: "Single-leg drive (sled push) + posterior chain (sled pull, farmers carry) emphasis. Split squats, RDLs, reverse lunges, loaded carries — 3-6 reps, heavy.",
+    note: "Single-leg drive (sled push) + posterior chain (sled pull, farmers carry) emphasis. Heavy squat + deadlift, 3-6 reps, plus a single-leg/core accessory (split squats, lunges, loaded carries).",
   },
   {
     id: "strength-upper",
@@ -239,10 +259,11 @@ export const HYROX_SESSIONS: HyroxSession[] = [
     category: "strength",
     zone: "anaerobic",
     unit: "rounds",
-    movements: ["push-press", "pull-up", "bent-row", "farmers-carry"],
+    movements: ["press"],
+    assist: ["pull", "push"],
     perMovementLog: true,
     trackable: false,
-    note: "Press (wall balls) + pull (sled pull, row) emphasis. Push press, pull-ups, rows, grip-intensive carries — 3-6 reps, heavy.",
+    note: "Press (wall balls) + pull (sled pull, row) emphasis. Heavy overhead press, 3-6 reps, plus pull (rows, pull-ups, carries) and push accessories.",
   },
 ];
 

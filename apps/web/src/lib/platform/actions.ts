@@ -252,11 +252,11 @@ async function createForeignProgramInstance(
       },
       ctx,
     );
-    // ADR 0047 — only 5/3/1 emits assistance intent, so only it needs the
-    // (catalog + equipment + limitation) resolver. TB / Green Protocol skip the
-    // extra loads and stay byte-identical.
+    // ADR 0047 — 5/3/1 and HYROX both emit category-tagged assistance intent, so
+    // both need the (catalog + equipment + limitation) resolver. TB / Green Protocol
+    // emit none and stay byte-identical.
     const assistance =
-      programId === "wendler-531"
+      programId === "wendler-531" || programId === "hyrox"
         ? await buildForeignAssistancePlanner(supabase, user.id, resolveMovement)
         : undefined;
     // ADR 0048 — optional, opt-in TB accessory work (Zulu/Operator/Fighter only).

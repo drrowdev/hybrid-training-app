@@ -25,6 +25,7 @@
     "@hta/domain": "workspace:*",
     "@hta/engine": "workspace:*",
     "@hta/green": "workspace:*",
+    "@hta/hyrox": "workspace:*",
     "@hta/program-core": "workspace:*",
     "@hta/tacticalbarbell": "workspace:*",
     "@hta/ui": "workspace:*",

@@ -72,6 +72,9 @@ importers:
       '@hta/green':
         specifier: workspace:*
         version: link:../../packages/green
+      '@hta/hyrox':
+        specifier: workspace:*
+        version: link:../../packages/hyrox
       '@hta/program-core':
         specifier: workspace:*
         version: link:../../packages/program-core
