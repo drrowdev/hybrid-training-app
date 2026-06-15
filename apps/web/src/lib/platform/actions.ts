@@ -46,6 +46,15 @@ import { discardAbandonedInProgressSessions } from "@/lib/planner/archive-prior-
 
 const WEEKDAY = z.number().int().min(0).max(6);
 
+/** Whole weeks from `startIso` to `endIso` (YYYY-MM-DD), min 1. Drives HYROX weeks-to-race. */
+function wholeWeeksBetween(startIso: string, endIso: string): number {
+  const start = Date.parse(`${startIso}T00:00:00Z`);
+  const end = Date.parse(`${endIso}T00:00:00Z`);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 1;
+  const days = Math.round((end - start) / 86_400_000);
+  return Math.max(1, Math.ceil(days / 7));
+}
+
 const createProgramInstanceSchema = z
   .object({
     programId: z.string().min(1),
@@ -55,6 +64,8 @@ const createProgramInstanceSchema = z
     weekdays: z.array(WEEKDAY).min(1).max(7),
     /** Block start date, YYYY-MM-DD. */
     startedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "startedOn must be YYYY-MM-DD"),
+    /** Optional target race date (YYYY-MM-DD) — HYROX derives weeks-to-race + an A-event. */
+    raceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "raceDate must be YYYY-MM-DD").optional(),
     /** Plate rounding override (kg); defaults to 2.5. */
     roundingKg: z.number().positive().optional(),
     /** Optional TB accessory work (ADR 0048) — opt-in, ignored by other programs. */
@@ -81,7 +92,7 @@ export async function createProgramInstance(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { programId, setupValues, weekdays, startedOn, roundingKg, accessories } = parsed.data;
+  const { programId, setupValues, weekdays, startedOn, raceDate, roundingKg, accessories } = parsed.data;
 
   // Reject duplicate weekdays — they'd collide on the (week, day, slot) unique key.
   // (Native programs own their own calendar and ignore `weekdays`, but the check
@@ -112,6 +123,7 @@ export async function createProgramInstance(
     setupValues,
     weekdays,
     startedOn,
+    ...(raceDate ? { raceDate } : {}),
     ...(roundingKg != null ? { roundingKg } : {}),
     ...(accessories ? { accessories } : {}),
   });
@@ -123,6 +135,7 @@ interface DeployArgs {
   setupValues: Record<string, unknown>;
   weekdays: number[];
   startedOn: string;
+  raceDate?: string;
   roundingKg?: number;
   accessories?: { enabled: boolean; muscles?: string[] };
 }
@@ -228,10 +241,16 @@ async function buildForeignTbAccessoryInjector(
 async function createForeignProgramInstance(
   supabase: SupabaseClient,
   user: User,
-  { programId, setupValues, weekdays, startedOn, roundingKg, accessories }: DeployArgs,
+  { programId, setupValues, weekdays, startedOn, raceDate, roundingKg, accessories }: DeployArgs,
 ): Promise<CreateProgramInstanceResult> {
   const engine = getProgramEngine(programId);
   if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
+
+  // HYROX: a supplied race date overrides the experience block length with the
+  // whole weeks from start to race, so the program's end-taper lands on race week
+  // (ADR 0050 step 10). Clamping happens in the engine setup.
+  const hyroxWeeksToRace =
+    programId === "hyrox" && raceDate ? wholeWeeksBetween(startedOn, raceDate) : null;
 
   // Shared strength state → engine setup → materialised plan + TM alignment.
   let write;
@@ -248,6 +267,7 @@ async function createForeignProgramInstance(
           // (4 = one lift/day, 2 = two/day). The frequency is the weekday count
           // picked in the Schedule step, mirrored into setup like Hybrid does.
           ...(programId === "wendler-531" ? { daysPerWeek: weekdays.length } : {}),
+          ...(hyroxWeeksToRace != null ? { weeks: hyroxWeeksToRace } : {}),
         },
       },
       ctx,
@@ -414,6 +434,24 @@ async function createForeignProgramInstance(
   // Clear any half-opened, zero-logged session from the program we just
   // replaced so Today doesn't surface a stale "Resume today's workout".
   await discardAbandonedInProgressSessions(supabase, user.id).catch(() => {});
+
+  // ADR 0050 step 10 — a HYROX race date becomes an A-priority event so the
+  // existing event-taper (ADR 0008) + next-block nudge align to race day. The
+  // block's end-taper already lands on race week via the weeks-to-race override.
+  // Best-effort: a failure here must not undo a valid deploy.
+  if (programId === "hyrox" && raceDate) {
+    try {
+      await supabase.from("priority_events").insert({
+        user_id: user.id,
+        name: "HYROX race",
+        event_date: raceDate,
+        priority: "A",
+        modality: "hybrid",
+      });
+    } catch (e) {
+      console.error("hyrox race-event create failed:", e);
+    }
+  }
 
   revalidatePath("/app");
   revalidatePath("/app/plan");

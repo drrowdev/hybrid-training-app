@@ -105,6 +105,17 @@ function clampSessions(v: unknown, fallback: number): number {
   return Math.max(MIN_SESSIONS_PER_WEEK, Math.min(MAX_SESSIONS_PER_WEEK, Math.round(n)));
 }
 
+/** Minimum / maximum HYROX block length (weeks) — a race-date override is clamped here. */
+export const MIN_WEEKS = 4;
+export const MAX_WEEKS = 24;
+
+function clampWeeks(v: unknown, fallback: number): number {
+  if (v == null || v === "") return fallback;
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.max(MIN_WEEKS, Math.min(MAX_WEEKS, Math.round(n)));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Timeline — ref scheme `hx-w{week}-d{weekday}` (one ref per non-rest day).
 // A HYROX block is a single event build (no repeats), so there is no block index.
@@ -327,10 +338,14 @@ export const hyroxEngine: ProgramEngine<HyroxInstance> = {
       v.sessionsPerWeek,
       DEFAULT_SESSIONS_BY_EXPERIENCE[experience],
     );
+    // A supplied race date overrides the experience default block length with the
+    // weeks-to-race (ADR 0050 step 10). The platform computes it and passes `weeks`;
+    // clamp to a sane build window so the taper still fits.
+    const weeks = clampWeeks(v.weeks, WEEKS_BY_EXPERIENCE[experience]);
     return {
       experience,
       division,
-      weeks: WEEKS_BY_EXPERIENCE[experience],
+      weeks,
       sessionsPerWeek,
     };
   },
