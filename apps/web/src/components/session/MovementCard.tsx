@@ -98,7 +98,10 @@ export type MovementCardProps = {
   >;
 };
 
-const RECAP_DELAY_MS = 2500;
+// Delay before a movement card auto-collapses to its recap once the final set is
+// logged. Long enough to register the last entry (and any PR flash) but short so
+// the card gets out of the way quickly — the user asked for a snappier close.
+const RECAP_DELAY_MS = 700;
 
 export function MovementCard({
   sessionId,

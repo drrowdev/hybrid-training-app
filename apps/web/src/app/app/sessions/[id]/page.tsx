@@ -72,6 +72,7 @@ import {
 import { loadBwGateStatesForPrescription } from "@/lib/planner/bw-gate-state-loader";
 import { cardioModalityLabel } from "@/lib/session/cardio-modality-label";
 import { isEmptyInProgressSession, shouldShowStrengthEmptyState } from "@/lib/sessions/empty-state";
+import { isBodyweightCapableEquipment } from "@/lib/sessions/bodyweight-equipment";
 
 export default async function SessionDetailPage({
   params,
@@ -727,11 +728,20 @@ export default async function SessionDetailPage({
         cardioModalityByMovementId[rowId] = cardioModalityLabel(meta, slug);
       }
       if (strengthMovementIdSet.has(rowId)) {
-        if ((row as { body_weight_loaded?: boolean }).body_weight_loaded) {
+        const equipment = (row as { equipment?: string | null }).equipment ?? null;
+        // A movement is bodyweight-CAPABLE (added weight is optional, 0 kg logs
+        // fine) when it's flagged body_weight_loaded OR its equipment offers a
+        // bodyweight option (e.g. "bodyweight", "bodyweight-or-loaded",
+        // "dumbbell-or-bw"). Only movements that REQUIRE external load (barbell,
+        // dumbbells, machine, …) still demand a weight.
+        if (
+          (row as { body_weight_loaded?: boolean }).body_weight_loaded ||
+          isBodyweightCapableEquipment(equipment)
+        ) {
           bodyweightMovementIds.push(rowId);
         }
         accessoryMetaById[rowId] = {
-          equipment: (row as { equipment?: string | null }).equipment ?? null,
+          equipment,
           region: (row as { primary_region?: string | null }).primary_region ?? null,
         };
       }
