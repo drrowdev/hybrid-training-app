@@ -28,6 +28,7 @@ const CARD_META: Record<string, { kick: string; code: string }> = {
   "wendler-531": { kick: "Wendler", code: "5/3/1" },
   "tactical-barbell": { kick: "Tactical Barbell", code: "TB" },
   "green-protocol": { kick: "Tactical Barbell", code: "GP" },
+  hyrox: { kick: "HYROX", code: "Race day" },
 };
 
 /**
@@ -39,10 +40,11 @@ const CARD_TAGLINE: Record<string, string> = {
   "tactical-barbell": "Operator · Fighter · Zulu",
   "green-protocol": "Strength + endurance",
   hybrid: "Personalised strength × cardio",
+  hyrox: "Run + functional stations",
 };
 
-/** Display order of the program cards (5/3/1 → TB → GP → Build-your-own). */
-const CARD_ORDER = ["wendler-531", "tactical-barbell", "green-protocol", "hybrid"];
+/** Display order of the program cards (5/3/1 → TB → GP → HYROX → Build-your-own). */
+const CARD_ORDER = ["wendler-531", "tactical-barbell", "green-protocol", "hyrox", "hybrid"];
 
 const STEP_LABELS = ["Program", "Loadout", "Benchmarks", "Schedule"] as const;
 
@@ -157,6 +159,12 @@ const PROG_INFO: Record<string, ProgInfo> = {
     title: "Build your own",
     body: "The do-it-all option: tell us roughly what you want \u2014 how many days a week you can train and which muscles to bias \u2014 and the app builds a balanced concurrent plan that trains strength and conditioning side by side.\n\nIt runs off the same four main lifts as everything else, so your numbers and history carry straight over, and it quietly keeps strength and cardio in balance so neither crowds the other out.\n\nThere\u2019s no fixed recipe to follow: the plan adapts to the days you give it. Best if you want a bit of everything \u2014 strength, muscle and an engine \u2014 without committing to a single named methodology.",
     meta: ["Strength + cardio", "Adapts to your goals"],
+  },
+  hyrox: {
+    kick: "HYROX",
+    title: "HYROX",
+    body: "Race-specific training for HYROX \u2014 the standardised fitness race of eight 1 km runs alternating with eight functional stations (ski erg, sled push & pull, burpee broad jumps, row, farmers carry, sandbag lunges and wall balls).\n\nThe plan periodises toward race day: a Base block builds your aerobic engine and a strength foundation, Build adds heavy strength and threshold running, Race-prep sharpens the signature \u201Ccompromised running\u201D (running hard on legs pre-fatigued by the stations) plus station circuits and a simulation or two, then a Taper leaves you fresh for the start line.\n\nYour running and ergs are tracked through Strava; the loaded stations log against the standardised division weights. Pick your experience level (it sets a 10\u201316 week build), your division (Open / Pro / Doubles) and how many days a week you can train. Best if you\u2019re targeting a HYROX event.",
+    meta: ["Run + stations", "Event-targeted \u00B7 10\u201316 weeks"],
   },
 };
 
@@ -1041,15 +1049,6 @@ export function ProgramPicker({
               </div>
             );
           })}
-          {/* Coming-soon teaser — not yet wired to an engine. */}
-          <div className={`${styles.pcard} ${styles.locked}`} aria-disabled="true">
-            <Ticks />
-            <div className={styles.kick}>{"\u00A0"}</div>
-            <div className={styles.code} style={{ fontSize: 24 }}>
-              HYROX
-            </div>
-            <div className={styles.pdesc}>Coming soon</div>
-          </div>
         </div>
       </div>
     );
@@ -1364,15 +1363,19 @@ export function ProgramPicker({
 
   function renderLoadoutStep() {
     if (!selected) return null;
-    // Hybrid (goal-driven) — focus-muscle chips, no template list.
+    // Setup-field programs (Hybrid goal chips / HYROX experience+division) — no
+    // template list, just the engine's describeSetup fields.
     if (!loadoutKey) {
+      const isHyrox = selected.id === "hyrox";
       return (
         <div className={styles.step}>
-          <h2 className={styles.h1}>Build for your goals</h2>
+          <h2 className={styles.h1}>{isHyrox ? "Set up your race build" : "Build for your goals"}</h2>
           <p className={styles.sub}>
-            {"Tell us what you\u2019re training for and we build a balanced concurrent plan around it \u2014 the more you set, the more it\u2019s tailored to you."}
+            {isHyrox
+              ? "Pick your experience level (it sets a 10\u201316 week build), your division, and how many days a week you can train. You\u2019ll set your strength numbers next."
+              : "Tell us what you\u2019re training for and we build a balanced concurrent plan around it \u2014 the more you set, the more it\u2019s tailored to you."}
           </p>
-          <div className={styles.label}>Your goals</div>
+          <div className={styles.label}>{isHyrox ? "Your race" : "Your goals"}</div>
           <div style={{ display: "grid", gap: 14, maxWidth: 460 }}>
             {selected.fields.map((f) => (
               <SetupFieldControl key={f.key} field={f} value={values[f.key]} onChange={(v) => setField(f.key, v)} />
@@ -1528,6 +1531,7 @@ export function ProgramPicker({
       : `\u2713 ${relevantBenchKeys.length} main lift${relevantBenchKeys.length === 1 ? "" : "s"}`;
 
     const is531 = selected.id === "wendler-531";
+    const isHyrox = selected.id === "hyrox";
     // Load basis controls: 5/3/1 always uses a TM (user picks the %); TB loads
     // off the raw 1RM by default but can optionally derive a TM.
     const tmPct = Math.round(Number(values.tmPercent ?? (is531 ? 0.85 : 0.9)) * 100);
@@ -1535,13 +1539,15 @@ export function ProgramPicker({
 
     const note = is531
       ? `Your Training Max is ${tmPct}% of each 1RM${tmPct === 85 ? " \u2014 the 5/3/1 standard" : ""}. All working percentages run off that TM.`
-      : isCluster && activeTbTemplate!.structure === "split"
-        ? `Tactical Barbell loads ${useTm ? `off a Training Max (${tmPct}% of your 1RM)` : "a submaximal % of your 1RM"}. Each lift sits in an A or B session; you train each session twice a week. Tap the A/B chip to move a lift.`
-        : `Tactical Barbell loads ${useTm ? `off a Training Max (${tmPct}% of your 1RM)` : "a submaximal % of your 1RM \u2014 no Training Max required"}.${
-            bodyweightEntry
-              ? " An optional bodyweight movement (e.g. pull-ups) doesn\u2019t count toward the cap and is prescribed as a % of your max reps, not a weight."
-              : " Switch a lift\u2019s variant from its dropdown."
-          }`;
+      : isHyrox
+        ? "HYROX prescribes your strength sessions off a submaximal % of these 1RMs (no Training Max needed). Your run paces and station weights come from your division standard \u2014 you'll confirm them when you log. Enter the lifts you train; you can skip any you don't."
+        : isCluster && activeTbTemplate!.structure === "split"
+          ? `Tactical Barbell loads ${useTm ? `off a Training Max (${tmPct}% of your 1RM)` : "a submaximal % of your 1RM"}. Each lift sits in an A or B session; you train each session twice a week. Tap the A/B chip to move a lift.`
+          : `Tactical Barbell loads ${useTm ? `off a Training Max (${tmPct}% of your 1RM)` : "a submaximal % of your 1RM \u2014 no Training Max required"}.${
+              bodyweightEntry
+                ? " An optional bodyweight movement (e.g. pull-ups) doesn\u2019t count toward the cap and is prescribed as a % of your max reps, not a weight."
+                : " Switch a lift\u2019s variant from its dropdown."
+            }`;
 
     const lockHint =
       selected.id === "wendler-531"

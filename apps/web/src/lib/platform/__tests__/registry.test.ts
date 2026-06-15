@@ -38,6 +38,7 @@ describe("program registry", () => {
     expect(ids).toEqual([
       "green-protocol",
       "hybrid",
+      "hyrox",
       "tactical-barbell",
       "tactical-barbell-zulu-ht",
       "wendler-531",
@@ -51,7 +52,7 @@ describe("program registry", () => {
 
   it("Zulu/HT is a building block — not a headline selectable program", () => {
     const ids = selectablePrograms().map((p) => p.id).sort();
-    expect(ids).toEqual(["green-protocol", "hybrid", "tactical-barbell", "wendler-531"]);
+    expect(ids).toEqual(["green-protocol", "hybrid", "hyrox", "tactical-barbell", "wendler-531"]);
     expect(ids).not.toContain("tactical-barbell-zulu-ht");
   });
 
