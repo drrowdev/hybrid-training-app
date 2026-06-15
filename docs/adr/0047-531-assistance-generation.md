@@ -2,6 +2,20 @@
 
 Status: Accepted (2026-06-13) — implemented in #490 (engine intent) + #491 (platform resolver)
 Supersedes: none
+
+> **Amendment (2026-06-15):** The original decision emitted **no** assistance on
+> 7th-week (deload / TM-test / PR-test) sessions, reasoning by analogy to the
+> skipped supplemental. That was a misreading of the book. 5/3/1 Forever has a
+> dedicated "ASSISTANCE, 7TH WEEK PROTOCOL" section (p. 23) prescribing
+> Push / Pull / Single-leg-or-Core at **25–50 reps each per workout** during the
+> 7th week (all three variants), with the *option* to "decrease the total amount
+> of reps and/or use less intensive movements" — a reduction, not a removal. The
+> per-day 7th-week templates (4/3/2-day) likewise list "Assistance" on every
+> lifting day. The engine now emits the three categories at the **light** dose on
+> 7th-week sessions. The exact level (light vs standard) is a deload-spirit
+> judgement (MEDIUM confidence); that assistance *belongs* there is HIGH
+> confidence (book-explicit).
+
 Related: the platform pivot (5/3/1 + TB as foreign engines), the prescription
 adapter (`apps/web/src/lib/platform/adapter.ts`, `movement-keys.ts` —
 `assistance → accessory`), the wendler assistance model
@@ -85,11 +99,11 @@ read from the book's own template guidance:
   default)
 
 A volume level maps to `(sets × reps)` per category (e.g. standard ≈ `3×15` or
-`5×10` per category ≈ 45–50 reps; light ≈ `2×12`). Deload / 7th-week / TM-test
-weeks emit **no** assistance (consistent with how supplemental is already
-skipped). This keeps the entire "how much, which categories, per template"
-decision as book-grounded methodology inside the package, fully unit-testable
-with no DB.
+`5×10` per category ≈ 45–50 reps; light ≈ `2×12`). 7th-week (deload / TM-test /
+PR-test) sessions emit assistance at the **light** dose (see the 2026-06-15
+amendment below). This keeps the entire "how much, which categories, per
+template" decision as book-grounded methodology inside the package, fully
+unit-testable with no DB.
 
 ### 2. Platform resolves each intent to a concrete movement (app layer)
 
@@ -131,15 +145,17 @@ that feature is additive.
 
 - A deployed 5/3/1 program becomes **book-complete**: main + supplemental + warm-
   ups + Push/Pull/Single-leg-or-Core assistance, scaled per template, on every
-  training session (none on deload/7th-week).
+  training session, plus a reduced (light) dose on 7th-week sessions (see the
+  2026-06-15 amendment).
 - **Engine-regression guard:** assistance is purely *additive* — the existing
   main / supplemental / warm-up items and their ordering are byte-identical, so
   the wendler golden tests and the platform adapter tests stay green except for
   the new assistance assertions. Users not on 5/3/1 see no change.
 - **TB / GP unchanged** — the resolver is gated to the 5/3/1 family.
 - The split keeps methodology testable without a DB (package units cover "BBB →
-  light, Triumvirate → standard, deload → none") and selection testable with a
-  fake catalog (app units cover equipment/limitation filtering + rotation).
+  light, Triumvirate → standard, Jack Shit → none, 7th-week → light") and
+  selection testable with a fake catalog (app units cover equipment/limitation
+  filtering + rotation).
 - Interference awareness: because 5/3/1 here is a strength-only program (no
   concurrent cardio modelling on the foreign path), the assistance does not need
   the durability/HSR floor the Hybrid picker imposes — keeping the block simple

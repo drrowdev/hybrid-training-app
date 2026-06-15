@@ -52,10 +52,10 @@ const SETS_BY_VOLUME: Record<Exclude<AssistanceLevel, "none">, number> = {
 
 /**
  * Build the per-session assistance intent: one category-tagged slot for each of
- * Push / Pull / Single-leg-or-Core at the given volume. Returns `[]` for
- * `volume === "none"` (e.g. deload / 7th-week sessions). Items carry NO
- * `movementId` — the platform resolves each `assistanceCategory` to a concrete
- * movement. Reps are a 10–15 hypertrophy range.
+ * Push / Pull / Single-leg-or-Core at the given volume. Returns `[]` only for
+ * `volume === "none"` (an explicit opt-out). Items carry NO `movementId` — the
+ * platform resolves each `assistanceCategory` to a concrete movement. Reps are a
+ * 10–15 hypertrophy range.
  */
 export function buildAssistanceIntent(volume: AssistanceLevel): PrescribedItem[] {
   if (volume === "none") return [];

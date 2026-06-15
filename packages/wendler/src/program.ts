@@ -401,13 +401,18 @@ export const wendler531Engine: ProgramEngine<WendlerInstance> = {
     }
 
     // ADR 0047 — per-session assistance intent (Push / Pull / Single-leg-or-Core).
-    // Training phases only, and only when the session actually prescribed main
-    // work (a lift with no TM yields an empty session — no assistance). Volume
-    // drops to "light" for volume-heavy supplementals (BBB / Widowmaker); deload
-    // / 7th-week sessions emit none. The platform resolves each category slot to a
-    // concrete catalog movement.
-    if (seg.type === "phase" && items.length > 0) {
-      for (const slot of buildAssistanceIntent(assistanceLevelForSupplemental(seg.supplemental))) {
+    // Emitted whenever the session actually prescribed main work (a lift with no
+    // TM yields an empty session — no assistance). Volume: training phases use the
+    // supplemental-derived level (LIGHT for volume-heavy BBB / Widowmaker, else
+    // STANDARD); 7th-week sessions (deload / TM-test / PR-test) use LIGHT — 5/3/1
+    // Forever still prescribes Push/Pull/Single-leg-or-Core during the 7th Week
+    // Protocol ("25–50 reps each", with the option to decrease), so the deload
+    // carries a reduced dose rather than none. The platform resolves each category
+    // slot to a concrete catalog movement.
+    if (items.length > 0) {
+      const level =
+        seg.type === "seventh-week" ? "light" : assistanceLevelForSupplemental(seg.supplemental);
+      for (const slot of buildAssistanceIntent(level)) {
         items.push(slot);
       }
     }

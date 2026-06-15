@@ -47,11 +47,12 @@ describe("materializeProgram — 5/3/1 default block", () => {
   it("materialises one row per non-rest timeline session", () => {
     // 2 leader cycles × 3 wk × 4 lifts (24) + deload 4 + anchor 1 × 3 × 4 (12) + TM-test 4 = 44
     expect(result.sessions).toHaveLength(44);
-    // ADR 0047: with NO assistance planner passed, each training session's 3
-    // assistance INTENT slots have no movementId, so they're skipped. The 36
-    // training sessions (24 leader + 12 anchor) × 3 = 108 skips; the 8 deload /
-    // TM-test sessions emit none. Every skip is an assistance slot.
-    expect(result.skipped).toHaveLength(108);
+    // ADR 0047: with NO assistance planner passed, each session's 3 assistance
+    // INTENT slots have no movementId, so they're skipped. All 44 sessions emit
+    // assistance now — the 36 training sessions at their supplemental dose and the
+    // 8 deload / TM-test sessions at the 7th-week LIGHT dose — so 44 × 3 = 132
+    // skips. Every skip is an assistance slot.
+    expect(result.skipped).toHaveLength(132);
     expect(result.skipped.every((s) => s.kind === "assistance")).toBe(true);
   });
 
@@ -165,10 +166,15 @@ describe("materializeProgram — 5/3/1 with assistance planner (ADR 0047)", () =
     expect(all.every((i) => i.movementId !== "run")).toBe(true);
   });
 
-  it("leaves deload / TM-test sessions without assistance accessories", () => {
+  it("adds three LIGHT (2-set) accessories to deload / TM-test sessions too (7th Week Protocol)", () => {
     const nonTraining = result.sessions.filter((s) => s.role !== "strength");
+    expect(nonTraining.length).toBeGreaterThan(0);
     for (const s of nonTraining) {
-      expect(s.prescription.items.filter((i) => i.kind === "accessory")).toHaveLength(0);
+      const accessories = s.prescription.items.filter((i) => i.kind === "accessory");
+      expect(accessories).toHaveLength(3);
+      expect(accessories.map((a) => a.movementId).sort()).toEqual(["dip", "plank", "row"]);
+      // 5/3/1 Forever keeps assistance during the 7th week but at a reduced dose.
+      expect(accessories.every((a) => a.sets === 2)).toBe(true);
     }
   });
 });
