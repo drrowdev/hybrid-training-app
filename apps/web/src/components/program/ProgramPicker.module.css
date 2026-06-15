@@ -1448,6 +1448,12 @@
     width: auto;
   }
   .lift {
-    flex-wrap: wrap;
+    /* Stack every row the SAME way (label + variant on top, Estimate + input
+       below) regardless of the variant name's length. The old `flex-wrap: wrap`
+       let a short variant ("Front Squat") keep the input beside it while a long
+       one ("Bench Press (flat)") pushed it below — inconsistent, cramped rows. */
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
   }
 }
