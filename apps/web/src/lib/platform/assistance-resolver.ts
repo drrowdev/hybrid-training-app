@@ -13,6 +13,8 @@
  */
 import type { CatalogMovement } from "@/lib/planner/accessory-picker";
 import { loadsBlockedRegion, loadsBlockedMuscle } from "@/lib/planner/accessory-picker";
+import { declaredExperienceToTier } from "@/lib/planner/experience-tier";
+import type { DeclaredExperience } from "@hta/engine";
 import { resolveRequiredEquipment, isEquipmentAvailable } from "@/lib/planner/equipment-requirements";
 import type { Equipment } from "@/lib/settings/equipment-schema";
 import type { ResolvedMovement } from "./adapter";
@@ -110,6 +112,17 @@ export interface BuildAssistancePlannerArgs {
   filters: AssistanceCatalogFilters;
   /** Movement ids never to use as assistance (the user's anchored main lifts). */
   excludeMovementIds?: Set<string>;
+  /**
+   * Declared training experience (`profiles.training_experience`). Applies an
+   * UNLOCK FLOOR only: a movement is dropped when the user's tier is BELOW its
+   * `experienceMin` (beginners don't get skill/Olympic/plyo/advanced-unilateral
+   * variants they can't yet perform). The upper band (`experienceMax`) is
+   * deliberately IGNORED here — because this resolver is unranked (uniform
+   * rotation), honouring it would STRIP staples from advanced athletes, which
+   * the design forbids (experience-tier-foreign-programs-design.md §0/§3 Part B).
+   * `null` → no gate (byte-identical to the pre-gate behaviour).
+   */
+  experience?: DeclaredExperience | null;
 }
 
 /** Resolve one assistance slot for a session. `slotIndex` keeps slots independent. */
@@ -142,7 +155,12 @@ function hashString(s: string): number {
  * stable, rotating, duplicate-free pick per session.
  */
 export function buildAssistancePlanner(args: BuildAssistancePlannerArgs): AssistancePlanner {
-  const { catalog, equipment, filters, excludeMovementIds } = args;
+  const { catalog, equipment, filters, excludeMovementIds, experience } = args;
+
+  // Unlock floor: drop a candidate only when the user's tier is BELOW its
+  // `experienceMin`. `null` tier → no gate. Never honours `experienceMax`, so
+  // no staple is ever stripped from an advanced athlete (design §3 Part B).
+  const tier = declaredExperienceToTier(experience ?? null);
 
   const byCategory: Record<AssistanceSlot, CatalogMovement[]> = {
     push: [],
@@ -156,6 +174,7 @@ export function buildAssistancePlanner(args: BuildAssistancePlannerArgs): Assist
     if (loadsBlockedRegion(m, filters.blockedRegions)) continue;
     if (loadsBlockedMuscle(m, filters.blockedMuscles, filters.allowedMovementIds)) continue;
     if (equipment && !isEquipmentAvailable(resolveRequiredEquipment(m), equipment)) continue;
+    if (tier != null && tier < (m.experienceMin ?? 0)) continue;
     const slot = classifyAssistanceCandidate(m);
     if (slot) byCategory[slot].push(m);
   }

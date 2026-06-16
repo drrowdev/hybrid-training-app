@@ -221,6 +221,56 @@ describe("buildAssistancePlanner", () => {
   });
 });
 
+describe("buildAssistancePlanner — experience unlock floor", () => {
+  // A pull slot with a universal staple (tier 0-4), an intermediate-only
+  // variant (min 2) and an advanced-only variant (min 3). The staple must
+  // survive at EVERY tier; skill variants only unlock as the tier rises.
+  const TIERED_PULL: CatalogMovement[] = [
+    mv({ id: "staple", slug: "db-row-single-arm", pattern: "pull", primaryMuscles: ["lats"], experienceMin: 0 }),
+    mv({ id: "skill2", slug: "meadows-row", pattern: "pull", primaryMuscles: ["lats"], experienceMin: 2 }),
+    mv({ id: "skill3", slug: "archer-pull-up", pattern: "pull", primaryMuscles: ["lats"], experienceMin: 3 }),
+  ];
+
+  function pullPicks(experience: Parameters<typeof buildAssistancePlanner>[0]["experience"]): Set<string> {
+    const planner = buildAssistancePlanner({
+      catalog: TIERED_PULL,
+      filters: { blockedRegions: new Set() },
+      experience,
+    });
+    // Sample many refs so the uniform rotation surfaces the whole eligible pool.
+    return new Set(
+      Array.from({ length: 40 }, (_, i) => planner(`ref-${i}`)("pull", 0)?.movementId).filter(Boolean) as string[],
+    );
+  }
+
+  it("beginner (tier 0) sees only the universal staple — no skill variants", () => {
+    expect(pullPicks("beginner_lt_6m")).toEqual(new Set(["staple"]));
+  });
+
+  it("novice (tier 1) still excludes the min-2 and min-3 variants", () => {
+    expect(pullPicks("novice_6m_2y")).toEqual(new Set(["staple"]));
+  });
+
+  it("intermediate (tier 2) unlocks the min-2 variant but not min-3", () => {
+    expect(pullPicks("intermediate_2y_5y")).toEqual(new Set(["staple", "skill2"]));
+  });
+
+  it("advanced (tier 3) keeps the staple AND unlocks every variant", () => {
+    const picks = pullPicks("advanced_5y_10y");
+    expect(picks.has("staple")).toBe(true); // north-star: staple never stripped
+    expect(picks).toEqual(new Set(["staple", "skill2", "skill3"]));
+  });
+
+  it("highly-advanced (tier 4) never strips the staple", () => {
+    expect(pullPicks("highly_advanced_10y_plus").has("staple")).toBe(true);
+  });
+
+  it("null experience is byte-identical to no gate (full pool, no filtering)", () => {
+    expect(pullPicks(null)).toEqual(new Set(["staple", "skill2", "skill3"]));
+    expect(pullPicks(undefined)).toEqual(new Set(["staple", "skill2", "skill3"]));
+  });
+});
+
 // Guard against accidental enum drift.
 const _slots: AssistanceSlot[] = ["push", "pull", "single_leg_or_core"];
 void _slots;

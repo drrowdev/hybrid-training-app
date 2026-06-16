@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Training experience → foreign-program assistance (5/3/1, TB, GP)
+- The declared training-experience tier (`profiles.training_experience`) now
+  gates assistance/accessory selection on the foreign deploy path, where it was
+  previously ignored. An **unlock floor** only: beginners/novices no longer get
+  skill movements (paused/Olympic/plyometric/advanced-unilateral) they can't yet
+  perform; higher tiers unlock them as variety. Selection never honours the
+  upper band, so **no universal staple is ever stripped from an advanced
+  athlete** (design principle: tier unlocks complexity, never removes staples).
+  Applies to 5/3/1 assistance and the opt-in Tactical Barbell / Green Protocol
+  accessories. HYROX is intentionally decoupled (it collects its own per-block
+  experience in the wizard). Undeclared tier (`null`) is byte-identical.
+- Fixed four universal staples — Single-Arm DB Row, DB Bench Press, Russian KB
+  Swing, Goblet Squat — that PR W2's curated bands wrongly capped at
+  `experience_max = 2`, dropping them for Advanced / Highly-advanced users.
+  Migration `0108_uncap_staple_experience_bands.sql` + seed.
+
 
 Cycle covering PRs #178 → #222 (2026-05-26 → 2026-05-30). Doc refresh on
 2026-05-30. The previous starting-point block is preserved below for history.

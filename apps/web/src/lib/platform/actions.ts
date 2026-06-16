@@ -35,6 +35,7 @@ import { buildProgramInstanceWrite } from "./program-instance";
 import { buildAssistancePlanner, type AssistancePlanner } from "./assistance-resolver";
 import { loadPickerCatalog } from "@/lib/planner/picker-catalog";
 import { readLimitationsContext } from "@/lib/planner/limitations-context";
+import { resolveDeclaredExperience } from "@/lib/planner/build-block-assembly-context";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import type { MovementResolver } from "./adapter";
 import {
@@ -251,6 +252,7 @@ async function buildForeignAssistancePlanner(
   supabase: SupabaseClient,
   userId: string,
   resolveMovement: MovementResolver,
+  applyExperienceGate: boolean,
 ): Promise<AssistancePlanner | undefined> {
   const catalog = await loadPickerCatalog(supabase);
   if (catalog.length === 0) return undefined;
@@ -258,10 +260,16 @@ async function buildForeignAssistancePlanner(
   const limitations = await readLimitationsContext(supabase, userId);
   const { data: profile } = await supabase
     .from("profiles")
-    .select("equipment, barbell_kg, trap_bar_kg, plate_inventory_kg")
+    .select("equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, training_experience")
     .eq("id", userId)
     .maybeSingle();
   const equipment = resolveEquipment(profile);
+  // Experience unlock floor — gated only for programs that should honour the
+  // user's declared tier (5/3/1). HYROX passes `applyExperienceGate = false`
+  // because it collects its own per-block experience in the wizard (design N1).
+  const experience = applyExperienceGate
+    ? resolveDeclaredExperience(profile?.training_experience)
+    : null;
 
   // Never resolve assistance to one of the program's own main lifts.
   const excludeMovementIds = new Set<string>();
@@ -280,6 +288,7 @@ async function buildForeignAssistancePlanner(
       allowedMovementIds: limitations.allowedMovementIds,
     },
     excludeMovementIds,
+    experience,
   });
 }
 
@@ -306,10 +315,11 @@ async function buildForeignTbAccessoryInjector(
   const limitations = await readLimitationsContext(supabase, userId);
   const { data: profile } = await supabase
     .from("profiles")
-    .select("equipment, barbell_kg, trap_bar_kg, plate_inventory_kg")
+    .select("equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, training_experience")
     .eq("id", userId)
     .maybeSingle();
   const equipment = resolveEquipment(profile);
+  const experience = resolveDeclaredExperience(profile?.training_experience);
 
   // Don't resolve an accessory to one of the cluster's main lifts.
   const excludeMovementIds = new Set<string>();
@@ -331,6 +341,7 @@ async function buildForeignTbAccessoryInjector(
     maxItems: plan.maxItems,
     setsPerItem: plan.setsPerItem,
     excludeMovementIds,
+    experience,
   });
 }
 
@@ -391,7 +402,14 @@ async function createForeignProgramInstance(
     // emit none and stay byte-identical.
     const assistance =
       programId === "wendler-531" || programId === "hyrox"
-        ? await buildForeignAssistancePlanner(supabase, user.id, resolveMovement)
+        ? await buildForeignAssistancePlanner(
+            supabase,
+            user.id,
+            resolveMovement,
+            // 5/3/1 honours the declared experience tier; HYROX is decoupled
+            // (it collects its own per-block experience in the wizard).
+            programId === "wendler-531",
+          )
         : undefined;
     // ADR 0048 — optional, opt-in TB accessory work (Zulu/Operator/Fighter only).
     const tbAccessories =
