@@ -22,6 +22,8 @@
  */
 import type { CatalogMovement } from "@/lib/planner/accessory-picker";
 import { loadsBlockedRegion, loadsBlockedMuscle } from "@/lib/planner/accessory-picker";
+import { declaredExperienceToTier } from "@/lib/planner/experience-tier";
+import type { DeclaredExperience } from "@hta/engine";
 import { resolveRequiredEquipment, isEquipmentAvailable } from "@/lib/planner/equipment-requirements";
 import type { Equipment } from "@/lib/settings/equipment-schema";
 import type { PrescriptionItem } from "@hta/db";
@@ -67,6 +69,14 @@ export interface BuildTbAccessoryInjectorArgs {
   setsPerItem: number;
   /** Movement ids never to use (the user's anchored main lifts). */
   excludeMovementIds?: Set<string>;
+  /**
+   * Declared training experience (`profiles.training_experience`). Unlock floor
+   * only — drops a candidate when the user's tier is below its `experienceMin`
+   * (a beginner who opts into TB accessories doesn't get skill variants).
+   * `experienceMax` is ignored so no staple is stripped from advanced athletes.
+   * `null` → no gate. See experience-tier-foreign-programs-design.md §3 (O2).
+   */
+  experience?: DeclaredExperience | null;
 }
 
 /** Produce the accessory items for one session (keyed by engine ref for rotation). */
@@ -93,7 +103,12 @@ function hashString(s: string): number {
  * is smaller than the chosen-muscle count, every muscle still gets hit over time.
  */
 export function buildTbAccessoryInjector(args: BuildTbAccessoryInjectorArgs): TbAccessoryInjector {
-  const { catalog, equipment, filters, muscles, maxItems, setsPerItem, excludeMovementIds } = args;
+  const { catalog, equipment, filters, muscles, maxItems, setsPerItem, excludeMovementIds, experience } = args;
+
+  // Unlock floor (design §3 O2): drop a candidate only when the user's tier is
+  // below its `experienceMin`. `experienceMax` is never honoured here, so no
+  // staple is stripped from advanced athletes. `null` tier → no gate.
+  const tier = declaredExperienceToTier(experience ?? null);
 
   const byMuscle = new Map<string, CatalogMovement[]>();
   for (const mu of muscles) if (!byMuscle.has(mu)) byMuscle.set(mu, []);
@@ -105,6 +120,7 @@ export function buildTbAccessoryInjector(args: BuildTbAccessoryInjectorArgs): Tb
     if (loadsBlockedRegion(m, filters.blockedRegions)) continue;
     if (loadsBlockedMuscle(m, filters.blockedMuscles, filters.allowedMovementIds)) continue;
     if (equipment && !isEquipmentAvailable(resolveRequiredEquipment(m), equipment)) continue;
+    if (tier != null && tier < (m.experienceMin ?? 0)) continue;
     for (const mu of m.primaryMuscles) {
       if (byMuscle.has(mu)) byMuscle.get(mu)!.push(m);
     }

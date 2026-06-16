@@ -193,3 +193,40 @@ describe("buildTbAccessoryInjector", () => {
     expect(new Set(["a", "b", "c"].map((r) => inject(r)[0]?.movementId))).toEqual(new Set(["bw"]));
   });
 });
+
+describe("buildTbAccessoryInjector — experience unlock floor (O2)", () => {
+  // Biceps pool: a universal staple (any tier) + an advanced-only variant.
+  const TIERED: CatalogMovement[] = [
+    mv({ id: "staple", slug: "db-curl", pattern: "isolation", primaryMuscles: ["biceps"], experienceMin: 0 }),
+    mv({ id: "skill", slug: "fancy-curl", pattern: "isolation", primaryMuscles: ["biceps"], experienceMin: 3 }),
+  ];
+
+  function picks(experience: Parameters<typeof buildTbAccessoryInjector>[0]["experience"]): Set<string> {
+    const inject = buildTbAccessoryInjector({
+      catalog: TIERED,
+      filters: { blockedRegions: new Set() },
+      muscles: ["biceps"],
+      maxItems: 1,
+      setsPerItem: 3,
+      experience,
+    });
+    return new Set(
+      Array.from({ length: 40 }, (_, i) => inject(`ref-${i}`)[0]?.movementId).filter(Boolean) as string[],
+    );
+  }
+
+  it("beginner sees only the staple, never the advanced variant", () => {
+    expect(picks("beginner_lt_6m")).toEqual(new Set(["staple"]));
+  });
+
+  it("advanced keeps the staple AND unlocks the advanced variant", () => {
+    const p = picks("advanced_5y_10y");
+    expect(p.has("staple")).toBe(true); // never stripped
+    expect(p).toEqual(new Set(["staple", "skill"]));
+  });
+
+  it("null experience is byte-identical (no gate)", () => {
+    expect(picks(null)).toEqual(new Set(["staple", "skill"]));
+    expect(picks(undefined)).toEqual(new Set(["staple", "skill"]));
+  });
+});

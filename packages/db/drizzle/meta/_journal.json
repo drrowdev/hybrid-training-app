@@ -757,6 +757,13 @@
       "when": 1785055200000,
       "tag": "0107_seed_hyrox_stations",
       "breakpoints": false
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1785141600000,
+      "tag": "0108_uncap_staple_experience_bands",
+      "breakpoints": false
     }
   ]
 }
