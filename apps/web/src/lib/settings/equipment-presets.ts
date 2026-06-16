@@ -56,6 +56,8 @@ export const COMMERCIAL_GYM_PRESET: Equipment = {
     ankleWeights: false,
     pullUpBar: true,
     rings: false,
+    sled: false,
+    wallBall: false,
   },
 };
 
@@ -83,6 +85,8 @@ export const FUNCTIONAL_GYM_PRESET: Equipment = {
     ankleWeights: false,
     pullUpBar: true,
     rings: true,
+    sled: true,
+    wallBall: true,
   },
 };
 
@@ -104,6 +108,8 @@ export const HOME_GYM_PRESET: Equipment = {
     ankleWeights: false,
     pullUpBar: true,
     rings: false,
+    sled: false,
+    wallBall: false,
   },
 };
 
@@ -133,6 +139,8 @@ export const BODYWEIGHT_ONLY_PRESET: Equipment = {
     ankleWeights: false,
     pullUpBar: true,
     rings: false,
+    sled: false,
+    wallBall: false,
   },
 };
 
@@ -156,6 +164,8 @@ export const TRAVEL_HOTEL_PRESET: Equipment = {
     ankleWeights: false,
     pullUpBar: false,
     rings: false,
+    sled: false,
+    wallBall: false,
   },
 };
 
@@ -177,6 +187,8 @@ export const CUSTOM_EMPTY_PRESET: Equipment = {
     ankleWeights: false,
     pullUpBar: false,
     rings: false,
+    sled: false,
+    wallBall: false,
   },
 };
 

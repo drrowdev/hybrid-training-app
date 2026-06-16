@@ -329,6 +329,8 @@ function emptyEquipment(over: Partial<import("@/lib/settings/equipment-schema").
       dipBelt: false,
       pullUpBar: false,
       rings: false,
+      sled: false,
+      wallBall: false,
     },
     ...over,
   };

@@ -99,6 +99,8 @@ describe("Functional gym preset", () => {
         ankleWeights: false,
         pullUpBar: true,
         rings: true,
+        sled: true,
+        wallBall: true,
       },
     });
   });
@@ -153,6 +155,32 @@ describe("parseEquipment — legacy weighted-vest / sandbag coercion", () => {
     );
     expect(out.accessories.weightedVest).toEqual([9, 20]);
     expect(out.accessories.sandbag).toEqual([25, 50]);
+  });
+
+  it("sled / wallBall default to false when absent (pre-existing equipment)", () => {
+    const out = parseEquipment(blob({}));
+    expect(out.accessories.sled).toBe(false);
+    expect(out.accessories.wallBall).toBe(false);
+  });
+
+  it("sled / wallBall round-trip when present", () => {
+    const out = parseEquipment(blob({ sled: true, wallBall: true }));
+    expect(out.accessories.sled).toBe(true);
+    expect(out.accessories.wallBall).toBe(true);
+  });
+});
+
+describe("HYROX equipment presets — sled / wall ball", () => {
+  it("functional gym ships a sled + wall ball (HYROX-ready)", () => {
+    expect(FUNCTIONAL_GYM_PRESET.accessories.sled).toBe(true);
+    expect(FUNCTIONAL_GYM_PRESET.accessories.wallBall).toBe(true);
+  });
+
+  it("commercial / home / bodyweight default them off", () => {
+    expect(COMMERCIAL_GYM_PRESET.accessories.sled).toBe(false);
+    expect(COMMERCIAL_GYM_PRESET.accessories.wallBall).toBe(false);
+    expect(BODYWEIGHT_ONLY_PRESET.accessories.sled).toBe(false);
+    expect(BODYWEIGHT_ONLY_PRESET.accessories.wallBall).toBe(false);
   });
 });
 

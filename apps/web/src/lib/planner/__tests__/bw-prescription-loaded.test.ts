@@ -39,6 +39,8 @@ const BASE_EQUIPMENT: Equipment = {
     ankleWeights: false,
     pullUpBar: true,
     rings: false,
+    sled: false,
+    wallBall: false,
   },
 };
 
