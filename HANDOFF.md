@@ -2,25 +2,33 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
-**Last updated:** 2026-05-31 (post engine-methodology + conservativeness-hardening cycle + cardio-modality preference + daily wellness check-in retirement + readiness composite stats card + **/app/stats Direction-C2 command-center redesign, Phase 2** — ADRs 0007–0019; test count 2893)
+**Last updated:** 2026-06-16 (post settings-review + cardio/HR-zone fidelity cycle — ADRs 0007–0050; migrations through 0109; test count 3945 web)
 
 ## Where we are
 
-**Phase:** Production. Beyond Phase 1. The app is live, multi-user, has
-a full mobile UX, end-to-end Strava integration (OAuth + webhook +
-history import), a first AI surface (Explain v1) plus an MCP server for
-external clients, and a rebalanced engine across all five archetypes.
+**Phase:** Production. Beyond Phase 1. The app (consumer brand **S×C**,
+live at <https://getsxc.app>) is multi-user, has a full mobile UX,
+end-to-end Strava integration (OAuth + webhook + history import), a first
+AI surface (Explain v1) plus an MCP server for external clients, and a
+science-grounded prescription engine. **Programs, not archetypes:** the
+user picks a program — 5/3/1, Tactical Barbell, Green Protocol, HYROX, or
+**Hybrid** (the build-your-own concurrent generator) — via the program
+wizard (ADR 0046 retired the five standalone archetypes; Hybrid is now
+just one program among equals). The wizard owns block-scoped inputs
+(training days/week, start date, per-program loadout + benchmarks).
 
 **Live URLs:**
 
-- Production: <https://hybrid-training-app-web.vercel.app>
-- Health check: <https://hybrid-training-app-web.vercel.app/api/health>
-- Login: <https://hybrid-training-app-web.vercel.app/login>
+- Production: <https://getsxc.app>
+- Health check: <https://getsxc.app/api/health>
+- Login: <https://getsxc.app/login>
 - App shell: `/app` (Today), `/app/plan`, `/app/sessions`,
-  `/app/stats`, `/app/recovery`, `/app/races`, `/app/profile`
-- Settings hub: `/app/settings` — 8 route tiles including
+  `/app/stats`, `/app/recovery` (Limitations live at
+  `/app/recovery/injuries`), `/app/races`, `/app/profile`
+- Settings hub: `/app/settings` — route tiles including
   `/app/settings/integrations` (Strava + AI), `/app/settings/equipment`,
-  `/app/settings/zones`, `/app/settings/limitations`, …
+  `/app/settings/hr-zones`, `/app/settings/profile`, `/app/settings/events`,
+  `/app/settings/preferences`, `/app/settings/training`, …
 - MCP endpoint: `/mcp` (Streamable HTTP, OAuth 2.1 bridge)
 - Strava webhook: `/api/integrations/strava/webhook`
 - Privacy / Terms: `/privacy`, `/terms`
@@ -32,7 +40,7 @@ external clients, and a rebalanced engine across all five archetypes.
   `drrowdevs-projects`. Auto-deploys on push to `main`. Deployment
   Protection disabled.
 - Supabase: project URL + keys in `apps/web/.env.local` (gitignored).
-  Region `eu-west-1`. Schema currently at migration 0081 (82 files in
+  Region `eu-west-1`. Schema currently at migration **0109** (110 files in
   `packages/db/drizzle/`).
 - Strava: app registered; one push-subscription per environment.
   Subscription ID is stored in `STRAVA_WEBHOOK_SUBSCRIPTION_ID` (env
@@ -148,18 +156,68 @@ A methodology review of the prescription engine produced ADRs 0007–0017
   heuristics; archetype refinements C (upper-body resumption), D (novice
   linear track), E (deload depth).
 
+## Since 2026-05-31 — ADRs 0020–0050, S×C rebrand, cardio/HR fidelity
+
+A large run of engine ADRs plus a consumer rebrand and a settings/cardio
+polish cycle. See `CHANGELOG.md` `[Unreleased]` for the bullet-level
+breakdown and `docs/adr/0020`–`0050` for decisions. Highlights:
+
+- **Engine ADRs 0020–0045.** Secondary-focus volume/intensity tilt
+  (0020/0021); accessory volume units + level (0022/0024); adaptive
+  vs pre-generated posture (0023); intensity-aware interference (0025);
+  antagonist-superset accessories (0026); aesthetic anti-redundancy +
+  goal-weighted profile (0027/0028); quick-generate freshness (0029);
+  deload cadence / skippable / coherent multimodal (0030/0031/0037);
+  combined load-fatigue proxy (0032); Explain-this-workout AI (0033);
+  durability + shoulder-stability + universal-pull floors
+  (0034/0035/0036); cardio mesocycle progression + modality specificity
+  (0038/0039); interference-aware accessory headroom (0040); HSR dose +
+  loadable preference (0041); hinge dedup (0042); focus-subpattern
+  diversity (0043); high-accessory-volume hypertrophy (0045).
+- **ADR 0046 — archetypes retired, Hybrid is a program.** The five
+  standalone archetypes were de-surfaced; the picker shows four live
+  programs (5/3/1, TB, GP, Hybrid) + a dimmed HYROX "coming soon", all
+  equal peers. Hybrid hardwires the concurrent generator.
+- **ADR 0047/0048/0049/0050.** 5/3/1 assistance generation; TB optional
+  accessory work; user-initiated deload week; **HYROX program** package
+  (scaffolding → quick-generate).
+- **S×C rebrand (#544).** App renamed to "S×C", lime → sage palette,
+  brand SVGs/icons/splash regenerated; production domain `getsxc.app`.
+- **Foreign-program experience gating + staples-first ranking (F1).**
+  Assistance/accessory injectors gate foreign movements by an experience
+  unlock-floor and rank staples-first (`experienceMin`), so niche
+  variants (Meadows/Kroc/archer rows) drop out for advanced lifters.
+  Selection-only, **loading-neutral** — a higher tier unlocks movements,
+  never makes a session heavier (the Hybrid generator's ADR-0041
+  loaded-variant preference is deliberately NOT ported).
+- **Cardio / HR-zone fidelity cycle (#556–#564).** Strava history import
+  now fetches per-second HR streams (true time-in-zone, not the leak
+  model); a new band-independent `cardio_logs.hr_histogram` (migration
+  0109) lets HR-zone edits re-bucket all past activities **locally** and
+  refresh the region ledger with no Strava re-fetch; an activity-aware
+  post-session summary card surfaces distance/HR/pace/time-in-zone for
+  cardio. Extends ADR 0009 (see its 2026-06-16 addendum).
+- **Settings review.** Removed redundant controls (training-days,
+  Preferences→Strava link); de-jargoned HR-zone copy + fixed dropdown
+  clipping; consolidated limitations onto `/app/recovery/injuries`
+  (deleted the orphaned `/app/settings/limitations` route + its parallel
+  toggle write path; added a "Quickly block a region" control).
+- **Migrations 0082 → 0109 applied to prod.** Through `hr_histogram`
+  (0109); includes HYROX station seeds (0107), experience-band tweaks
+  (0108), and the ADR-0025–0045 schema additions.
+
+
 ## Verified live
 
-- `pnpm --filter @hta/web test --run` → **2805 / 2805 passing**
-  after the ADR-0018 wellness-retirement merge (was 2815 before the
-  deleted wellness-recovery / wellness-stats / engine-multiplier tests).
+- `pnpm --filter @hta/web exec vitest run` → **3945 / 3945 passing**
+  (376 test files) as of the 2026-06-16 settings/cardio cycle.
 - `pnpm --filter @hta/web build` → clean.
 - `pnpm --filter @hta/web lint` → clean.
 - `pnpm -r typecheck` → clean across all workspaces.
 - `node packages/db/integration-tests/rls.mjs` → still green for the
   RLS contract; new tables (MCP, `strava_event_log`) carry RLS +
   service-role grants as per their migrations.
-- `curl https://hybrid-training-app-web.vercel.app/api/health` returns
+- `curl https://getsxc.app/api/health` returns
   `{"ok":true, ...}`.
 - Strava webhook reachable + verified end-to-end (webhook event →
   `strava_event_log` row → activity sync → autofill banner on the
