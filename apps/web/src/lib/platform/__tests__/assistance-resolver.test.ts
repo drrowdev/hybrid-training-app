@@ -231,43 +231,91 @@ describe("buildAssistancePlanner — experience unlock floor", () => {
     mv({ id: "skill3", slug: "archer-pull-up", pattern: "pull", primaryMuscles: ["lats"], experienceMin: 3 }),
   ];
 
-  function pullPicks(experience: Parameters<typeof buildAssistancePlanner>[0]["experience"]): Set<string> {
-    const planner = buildAssistancePlanner({
-      catalog: TIERED_PULL,
-      filters: { blockedRegions: new Set() },
-      experience,
-    });
-    // Sample many refs so the uniform rotation surfaces the whole eligible pool.
-    return new Set(
-      Array.from({ length: 40 }, (_, i) => planner(`ref-${i}`)("pull", 0)?.movementId).filter(Boolean) as string[],
-    );
+  // Isolate the GATE from F1 ranking: test each movement ALONE so selection
+  // ranking can't suppress it — if it's eligible it's the only pick, otherwise
+  // the slot is empty.
+  function eligibleAlone(
+    id: string,
+    experience: Parameters<typeof buildAssistancePlanner>[0]["experience"],
+  ): boolean {
+    const only = TIERED_PULL.filter((m) => m.id === id);
+    const planner = buildAssistancePlanner({ catalog: only, filters: { blockedRegions: new Set() }, experience });
+    return planner("ref")("pull", 0)?.movementId === id;
   }
 
-  it("beginner (tier 0) sees only the universal staple — no skill variants", () => {
-    expect(pullPicks("beginner_lt_6m")).toEqual(new Set(["staple"]));
+  it("beginner (tier 0): only the staple is eligible; both skill variants gated out", () => {
+    expect(eligibleAlone("staple", "beginner_lt_6m")).toBe(true);
+    expect(eligibleAlone("skill2", "beginner_lt_6m")).toBe(false);
+    expect(eligibleAlone("skill3", "beginner_lt_6m")).toBe(false);
   });
 
-  it("novice (tier 1) still excludes the min-2 and min-3 variants", () => {
-    expect(pullPicks("novice_6m_2y")).toEqual(new Set(["staple"]));
+  it("novice (tier 1) still gates out the min-2 and min-3 variants", () => {
+    expect(eligibleAlone("skill2", "novice_6m_2y")).toBe(false);
+    expect(eligibleAlone("skill3", "novice_6m_2y")).toBe(false);
   });
 
   it("intermediate (tier 2) unlocks the min-2 variant but not min-3", () => {
-    expect(pullPicks("intermediate_2y_5y")).toEqual(new Set(["staple", "skill2"]));
+    expect(eligibleAlone("skill2", "intermediate_2y_5y")).toBe(true);
+    expect(eligibleAlone("skill3", "intermediate_2y_5y")).toBe(false);
   });
 
-  it("advanced (tier 3) keeps the staple AND unlocks every variant", () => {
-    const picks = pullPicks("advanced_5y_10y");
-    expect(picks.has("staple")).toBe(true); // north-star: staple never stripped
-    expect(picks).toEqual(new Set(["staple", "skill2", "skill3"]));
+  it("advanced (tier 3) makes every variant eligible, staple included", () => {
+    expect(eligibleAlone("staple", "advanced_5y_10y")).toBe(true);
+    expect(eligibleAlone("skill2", "advanced_5y_10y")).toBe(true);
+    expect(eligibleAlone("skill3", "advanced_5y_10y")).toBe(true);
   });
 
-  it("highly-advanced (tier 4) never strips the staple", () => {
-    expect(pullPicks("highly_advanced_10y_plus").has("staple")).toBe(true);
+  it("null experience gates nothing — every variant is eligible", () => {
+    for (const id of ["staple", "skill2", "skill3"]) {
+      expect(eligibleAlone(id, null)).toBe(true);
+      expect(eligibleAlone(id, undefined)).toBe(true);
+    }
+  });
+});
+
+describe("buildAssistancePlanner — F1 staples-first ranking", () => {
+  // A pull slot with one universal staple (band 0) and two niche variants
+  // (band 2 / 3). All eligible for an advanced lifter — F1 must still lead with
+  // the staple, never the niche.
+  const POOL_F1: CatalogMovement[] = [
+    mv({ id: "staple", slug: "db-row-single-arm", pattern: "pull", primaryMuscles: ["lats"], experienceMin: 0 }),
+    mv({ id: "niche2", slug: "meadows-row", pattern: "pull", primaryMuscles: ["lats"], experienceMin: 2 }),
+    mv({ id: "niche3", slug: "kroc-row", pattern: "pull", primaryMuscles: ["lats"], experienceMin: 3 }),
+  ];
+
+  function pickCounts(experience: Parameters<typeof buildAssistancePlanner>[0]["experience"]) {
+    const planner = buildAssistancePlanner({ catalog: POOL_F1, filters: { blockedRegions: new Set() }, experience });
+    const counts: Record<string, number> = {};
+    for (let i = 0; i < 60; i++) {
+      const id = planner(`ref-${i}`)("pull", 0)!.movementId;
+      counts[id] = (counts[id] ?? 0) + 1;
+    }
+    return counts;
+  }
+
+  it("advanced lifter overwhelmingly gets the foundational staple, not the niche rows", () => {
+    const c = pickCounts("advanced_5y_10y");
+    // The staple dominates; the niche variants are heavily suppressed.
+    expect(c.staple ?? 0).toBeGreaterThan(55);
+    expect((c.niche2 ?? 0) + (c.niche3 ?? 0)).toBeLessThan(5);
   });
 
-  it("null experience is byte-identical to no gate (full pool, no filtering)", () => {
-    expect(pullPicks(null)).toEqual(new Set(["staple", "skill2", "skill3"]));
-    expect(pullPicks(undefined)).toEqual(new Set(["staple", "skill2", "skill3"]));
+  it("never prefers a higher-band (more advanced) variant over the staple", () => {
+    const c = pickCounts("highly_advanced_10y_plus");
+    expect(c.staple ?? 0).toBeGreaterThan((c.niche2 ?? 0) + (c.niche3 ?? 0));
+  });
+
+  it("rotates freely among EQUALLY-foundational staples (no single fixed pick)", () => {
+    const equalStaples: CatalogMovement[] = [
+      mv({ id: "a", slug: "chin-up", pattern: "pull", primaryMuscles: ["lats", "biceps"], experienceMin: 0 }),
+      mv({ id: "b", slug: "bb-row", pattern: "pull", primaryMuscles: ["lats"], experienceMin: 0 }),
+      mv({ id: "c", slug: "cable-row", pattern: "pull", primaryMuscles: ["lats"], experienceMin: 0 }),
+    ];
+    const planner = buildAssistancePlanner({ catalog: equalStaples, filters: { blockedRegions: new Set() } });
+    const picks = new Set(
+      Array.from({ length: 12 }, (_, i) => planner(`r-${i}`)("pull", 0)!.movementId),
+    );
+    expect(picks.size).toBeGreaterThan(1);
   });
 });
 

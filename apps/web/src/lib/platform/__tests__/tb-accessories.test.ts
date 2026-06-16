@@ -201,33 +201,53 @@ describe("buildTbAccessoryInjector — experience unlock floor (O2)", () => {
     mv({ id: "skill", slug: "fancy-curl", pattern: "isolation", primaryMuscles: ["biceps"], experienceMin: 3 }),
   ];
 
-  function picks(experience: Parameters<typeof buildTbAccessoryInjector>[0]["experience"]): Set<string> {
+  // Isolate the GATE from F1 ranking: test each movement ALONE.
+  function eligibleAlone(
+    id: string,
+    experience: Parameters<typeof buildTbAccessoryInjector>[0]["experience"],
+  ): boolean {
     const inject = buildTbAccessoryInjector({
-      catalog: TIERED,
+      catalog: TIERED.filter((m) => m.id === id),
       filters: { blockedRegions: new Set() },
       muscles: ["biceps"],
       maxItems: 1,
       setsPerItem: 3,
       experience,
     });
-    return new Set(
-      Array.from({ length: 40 }, (_, i) => inject(`ref-${i}`)[0]?.movementId).filter(Boolean) as string[],
-    );
+    return inject("ref")[0]?.movementId === id;
   }
 
-  it("beginner sees only the staple, never the advanced variant", () => {
-    expect(picks("beginner_lt_6m")).toEqual(new Set(["staple"]));
+  it("beginner: only the staple is eligible; the advanced variant is gated out", () => {
+    expect(eligibleAlone("staple", "beginner_lt_6m")).toBe(true);
+    expect(eligibleAlone("skill", "beginner_lt_6m")).toBe(false);
   });
 
-  it("advanced keeps the staple AND unlocks the advanced variant", () => {
-    const p = picks("advanced_5y_10y");
-    expect(p.has("staple")).toBe(true); // never stripped
-    expect(p).toEqual(new Set(["staple", "skill"]));
+  it("advanced: both the staple and the advanced variant are eligible", () => {
+    expect(eligibleAlone("staple", "advanced_5y_10y")).toBe(true);
+    expect(eligibleAlone("skill", "advanced_5y_10y")).toBe(true);
   });
 
-  it("null experience is byte-identical (no gate)", () => {
-    expect(picks(null)).toEqual(new Set(["staple", "skill"]));
-    expect(picks(undefined)).toEqual(new Set(["staple", "skill"]));
+  it("null experience gates nothing", () => {
+    expect(eligibleAlone("staple", null)).toBe(true);
+    expect(eligibleAlone("skill", null)).toBe(true);
+    expect(eligibleAlone("skill", undefined)).toBe(true);
+  });
+
+  it("F1: an advanced lifter still leads with the foundational staple, not the niche", () => {
+    const inject = buildTbAccessoryInjector({
+      catalog: TIERED,
+      filters: { blockedRegions: new Set() },
+      muscles: ["biceps"],
+      maxItems: 1,
+      setsPerItem: 3,
+      experience: "advanced_5y_10y",
+    });
+    const counts: Record<string, number> = {};
+    for (let i = 0; i < 60; i++) {
+      const id = inject(`ref-${i}`)[0]!.movementId;
+      counts[id] = (counts[id] ?? 0) + 1;
+    }
+    expect(counts.staple ?? 0).toBeGreaterThan(counts.skill ?? 0);
   });
 });
 

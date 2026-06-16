@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Foreign accessory/assistance — staples-first ranking (F1)
+- The foreign accessory/assistance injectors (5/3/1, Tactical Barbell, Green
+  Protocol) no longer rotate UNIFORMLY over their eligible pool — they now bias
+  selection toward the more FOUNDATIONAL movement (lower `experienceMin`), with a
+  per-candidate jitter still rotating among equally-foundational staples. Result:
+  universal staples (chin-ups, pull-ups, BB/DB/cable rows, lat-pulldowns) lead,
+  and niche variants (Meadows / Kroc / archer rows, weighted pull-up) drop out of
+  the rotation for advanced lifters instead of appearing as often as staples.
+- Selection only, and LOADING-NEUTRAL: sets / reps / intensity stay engine-owned
+  and program-specific (5/3/1 25–50 reps submaximal, TB 8–15 near failure). The
+  signal is the experience band, NOT loadability, so it prefers the bodyweight
+  chin-up over the weighted pull-up — a higher tier only unlocks movements, it
+  never makes a session heavier (the Hybrid generator's ADR-0041 loaded-variant
+  preference is deliberately NOT ported). New `foreign-accessory-ranking.ts`.
+
 ### Green Protocol — opt-in accessory work
 - Green Protocol now offers the same opt-in accessory toggle as Tactical Barbell
   (default OFF), per the book's "accessories are optional" guidance. Because GP is
