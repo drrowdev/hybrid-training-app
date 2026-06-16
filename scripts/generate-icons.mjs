@@ -3,16 +3,16 @@ import { writeFile, readFile } from "node:fs/promises";
 
 // Home-screen / PWA icon generator.
 //
-// Brand: SxC ("Strength × Cardio"). Charcoal master tile (#1A1A1A) with the
-// S×C wordmark (light S/C #F4F3F1, accent-green × #A3E635). We deliberately
-// do NOT use a green tile — the green × loses contrast on a green field.
+// Brand: S×C. Near-black master tile (#0F1310, the app background) with the
+// S×C wordmark (light S/C #F4F3F1, sage × #8FB39B). We deliberately
+// do NOT use a sage tile — the sage × loses contrast on a sage field.
 //
 // The wordmark is composited from the canonical brand asset so the icon can
 // never drift from the wordmark used elsewhere (header, splash screens).
 
 const sizes = [192, 256, 384, 512];
 
-const ICON_BG = "#1a1a1a";
+const ICON_BG = "#0f1310";
 
 const wordmarkPath = new URL(
   "../apps/web/public/branding/sxc-wordmark-dark.svg",
