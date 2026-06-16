@@ -28,6 +28,7 @@ import { buildSyncRow } from "./sync-row";
 import { classifyAndLinkExternalCardio } from "./link-external-cardio";
 import type { ZoneBands } from "@/lib/stats/hr-zones";
 import type { HrZonesSeconds } from "./zones-from-summary";
+import type { HrHistogram } from "./hr-histogram";
 
 export type WriteActivityResult =
   | {
@@ -57,8 +58,14 @@ export async function writeStravaActivity(args: {
    * to the summary leak-model approximation.
    */
   streamZones?: HrZonesSeconds | null;
+  /**
+   * Band-independent bpm→seconds histogram from the same HR stream
+   * (migration 0109). Persisted so a later zone-config change can
+   * re-bucket hr_zones locally without re-fetching the stream.
+   */
+  streamHistogram?: HrHistogram | null;
 }): Promise<WriteActivityResult> {
-  const { supabase, userId, activity, bands, userTimezone, streamZones } = args;
+  const { supabase, userId, activity, bands, userTimezone, streamZones, streamHistogram } = args;
 
   const row = buildSyncRow(activity, userId, { bands, hrZones: streamZones ?? null });
   if (!row) return { status: "skipped", reason: "unmappable" };
@@ -91,6 +98,7 @@ export async function writeStravaActivity(args: {
       external_source: row.cardio.external_source,
       notes: row.cardio.notes,
       hr_zones: row.cardio.hr_zones,
+      hr_histogram: streamHistogram ?? null,
     })
     .select("id")
     .maybeSingle();

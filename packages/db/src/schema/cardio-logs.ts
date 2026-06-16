@@ -38,6 +38,13 @@ export const cardioLogs = pgTable(
     avgPaceSecPerKm: integer("avg_pace_sec_per_km"),
     avgPowerW: smallint("avg_power_w"),
     hrZones: jsonb("hr_zones").$type<Record<string, number>>(),
+    /**
+     * Band-independent bpm→seconds distribution from the per-second HR
+     * stream (migration 0109). Lets a zone-config change re-bucket
+     * `hr_zones` for past activities locally via `zonesFromHistogram`,
+     * with no Strava re-fetch. Null on stream-less / manual rows.
+     */
+    hrHistogram: jsonb("hr_histogram").$type<Record<string, number>>(),
     /** Strava integration (DC-D4 modality tagging + DC-J8 mileage ramp). */
     stravaActivityId: text("strava_activity_id"),
     externalSource: text("external_source"),

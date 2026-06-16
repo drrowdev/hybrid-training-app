@@ -764,6 +764,13 @@
       "when": 1785141600000,
       "tag": "0108_uncap_staple_experience_bands",
       "breakpoints": false
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1785228000000,
+      "tag": "0109_cardio_logs_hr_histogram",
+      "breakpoints": false
     }
   ]
 }

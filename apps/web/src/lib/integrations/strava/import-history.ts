@@ -36,6 +36,7 @@ import {
 import { mapStravaActivity, categorizeSkip, type SkipCategory } from "./mapping";
 import { writeStravaActivity } from "./write-activity";
 import { zonesFromStream } from "./zones-from-stream";
+import { histogramFromStream } from "./hr-histogram";
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
 import { getUserTimezone, dayDate } from "@/lib/planner/queries";
 import { readZoneConfig } from "@/lib/stats/hr-zones";
@@ -232,6 +233,7 @@ export async function importStravaHistory(
       // never throws, so a large import degrades gracefully rather than
       // aborting.
       let streamZones = null;
+      let streamHistogram = null;
       if (bands) {
         const streams = await fetchActivityStreams(accessToken, activity.id, {
           fetchImpl: deps.streamFetchImpl,
@@ -241,6 +243,10 @@ export async function importStravaHistory(
             hrStream: streams.heartrate,
             timeStream: streams.time,
             bands,
+          });
+          streamHistogram = histogramFromStream({
+            hrStream: streams.heartrate,
+            timeStream: streams.time,
           });
         }
       }
@@ -252,6 +258,7 @@ export async function importStravaHistory(
         bands,
         userTimezone,
         streamZones,
+        streamHistogram,
       });
       if (result.status === "imported") {
         summary.imported++;
