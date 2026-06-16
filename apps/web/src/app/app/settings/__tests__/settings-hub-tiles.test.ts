@@ -37,7 +37,7 @@ describe("settings hub — tile contract", () => {
 
   it("no longer mounts a top-level Strava tile", () => {
     // Belt-and-suspenders: spec calls out removing Strava + AI tiles.
-    // Strava lives under Preferences and (now) the Integrations sub-hub.
+    // Strava lives under the Integrations sub-hub.
     expect(source).not.toContain('testId="settings-hub-strava"');
   });
 
