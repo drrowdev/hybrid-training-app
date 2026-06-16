@@ -160,3 +160,40 @@ delta can't dump an hour into a zone). Tagged CP-1; not separately cited.
 **Posture.** Stream fetch is opportunistic and **non-blocking** — a `null` from
 `fetchActivityStreams` (no stream, rate-limited, network error) silently falls back to
 the summary approximation. Bulk sync and history import remain summary-only by design.
+
+## Addendum (2026-06-16) — history-import streams + band-independent re-bucketing
+
+Two follow-ups extend the original implementation. The "history import remains
+summary-only by design" note above is **superseded** by item 1.
+
+1. **History import now fetches streams (#558).** The original ADR limited stream
+   fetching to the single-activity webhook path to bound rate-limit exposure. In
+   practice `fetchActivityStreams` never throws (returns `null` on 404 / 429 /
+   network), so a bulk import degrades gracefully — each activity that has a stream
+   gets measured time-in-zone, the rest fall back to the approximation. History
+   import (`importStravaHistory`) now does the same per-activity stream fetch +
+   `zonesFromStream` as the webhook path, so backfilled activities are no longer
+   stuck on the leak model. Posture is unchanged in spirit: one streams call per
+   *new* activity, best-effort, never blocking.
+
+2. **`cardio_logs.hr_histogram` for local re-bucketing (#559, migration 0109).**
+   `hr_zones` is time-in-zone bucketed against the user's bands *at import time*, so
+   editing HR zones afterwards left every past activity stale — and recomputing
+   required re-fetching the per-second stream (rate-limited). We now persist a
+   compact, **band-independent** `bpm → seconds` histogram (`hr-histogram.ts`
+   `histogramFromStream`, same dt-weighting + `MAX_GAP_SEC` cap as `zonesFromStream`)
+   alongside the measured zones, in both the webhook and history paths. A zone-config
+   change re-buckets all stored activities **locally** via `zonesFromHistogram` — no
+   Strava round-trip, no API cost.
+
+3. **Recompute on zone-config save (#560).** `updateHrZones` now re-buckets stored
+   `hr_zones` from the histograms against the new bands AND refreshes the cached
+   `region_state` ledger (cardio's contribution to region freshness is time-in-zone
+   weighted via `cardioIntensityScalar`, so stale zones would otherwise leave the
+   ledger reflecting the old bands). Best-effort; fires only when ≥1 activity's zones
+   changed. ESL (`planned_sessions.effective_stress_load`) is **not** recomputed — it
+   reads `inferred_kind` + duration, not `hr_zones`.
+
+**Still no engine-load math change.** `ZONE_INTENSITY_WEIGHTS`, the load scalars, and
+the clamp are untouched; the histogram only changes the *source/freshness* of
+`hr_zones`, not how it's weighted. No CP-2 numeric change.

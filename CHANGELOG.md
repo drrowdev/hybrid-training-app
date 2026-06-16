@@ -4,6 +4,56 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### HR zones — instant re-bucketing + region-ledger recompute on edit (#559, #560)
+- New `cardio_logs.hr_histogram` jsonb (migration 0109): a compact, band-independent
+  `bpm → seconds` distribution captured from the per-second HR stream at import. It
+  lets a zone-config change re-bucket every past activity's `hr_zones` **locally**
+  (via `zonesFromHistogram`) with **no Strava re-fetch** — closing the gap where
+  editing your HR zones left historical time-in-zone stale.
+- Saving HR zones (`updateHrZones`) now (a) re-buckets all stored activities from
+  their histograms against the new bands and (b) refreshes the cached `region_state`
+  ledger (cardio's contribution is time-in-zone weighted), so the freshness/
+  interference math reflects the new zones. Best-effort; ESL is untouched (it reads
+  `inferred_kind` + duration, not `hr_zones`). New `hr-histogram.ts`.
+
+### Strava history import — measured time-in-zone (#558)
+- Historical import now fetches the per-second HR stream per activity (the same path
+  the webhook sync already used) and buckets **true** time-in-zone instead of the
+  summary leak-model approximation, which dumped most of an activity's time into the
+  single band containing its average HR. Best-effort: one streams call per activity
+  when zone bands exist; a null result (no stream / 404 / rate-limit) falls back to
+  the approximation, so large imports degrade gracefully. Extends ADR 0009 (which
+  originally left bulk/history paths summary-only).
+
+### Activity-aware post-session summary card (#557, #564)
+- The "Workout complete!" card now reflects what was actually done. Pure-cardio
+  sessions (e.g. a Strava run) render cardio tiles — **Distance · Duration · Avg HR ·
+  Max HR · Pace** — plus a Z1–Z5 time-in-zone bar, instead of the strength
+  Tonnage/Sets/PRs grid; hybrid sessions show both. Tiles and the zone bar are
+  omitted when the underlying data is absent (no empty "—" noise); pace shows only
+  for foot-based modalities. The redundant logged-cardio row on completed sessions is
+  dropped. New pure `summariseCardioLogs`; the zone-bar legend aligns each label
+  under its segment.
+
+### Strava settings — friendlier connected state (#556)
+- Plain-language access line instead of raw OAuth scope tokens; the athlete ID becomes
+  a "View on Strava" link; Sync / Connect / Disconnect buttons show pending states;
+  Disconnect asks for confirmation.
+
+### Settings review — consistency + de-jargon pass (#555, #561–#563)
+- Removed the redundant training-days control from Profile (the plan wizard collects
+  days per-block) and the duplicate Strava link from Preferences.
+- HR-zone method dropdown: removed exercise-science author names (Karvonen / Friel)
+  from user-facing copy and widened the select so the longest option no longer clips.
+- Global input padding so native date inputs (notably Events) render consistently with
+  the wizard; Events date constrained with `min={today}`; dropped "AMPK / mTORC1" from
+  the two-a-day copy; normalised settings hub tile descriptions.
+- **Consolidated limitations onto `/app/recovery/injuries`**: deleted the orphaned
+  `/app/settings/limitations` route and its parallel "set-and-forget" toggle write
+  path (the planner reads both UIs' rows identically — the rich flow is a superset).
+  Added a compact **"Quickly block a region"** control that reuses the region-only
+  `addLimitation` action and excludes already-blocked regions. No data migration.
+
 ### Quick HYROX workout generation
 - The Today "Quick workout" sheet gains a **Strength | HYROX** toggle. HYROX shows
   a "what can you do right now?" **station checklist** (Run, Ski Erg, Rower, Sled,
