@@ -42,10 +42,8 @@ describe("settings hub — tile contract", () => {
   });
 
   it("uses plain-language copy on the Heart-rate zones tile", () => {
-    // Replaces the jargon-y "%Max, %HRR, or %LTHR. Powers HR-aware stats."
-    expect(source).toContain(
-      "Define your heart rate training zones so the app can categorize cardio intensity.",
-    );
+    // Terse, jargon-free fragment consistent with the other hub tiles.
+    expect(source).toContain("Z1–Z5 thresholds for cardio intensity.");
     expect(source).not.toContain("%Max, %HRR, or %LTHR");
   });
 });

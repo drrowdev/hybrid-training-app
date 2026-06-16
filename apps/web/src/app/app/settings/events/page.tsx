@@ -67,7 +67,7 @@ export default async function EventsSettingsPage() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div style={{ display: "grid", gap: 4 }}>
               <label style={{ fontSize: 12, color: "var(--cp-text-muted)" }} htmlFor="eventDate">Date</label>
-              <input id="eventDate" name="eventDate" type="date" required />
+              <input id="eventDate" name="eventDate" type="date" required min={today} />
             </div>
             <div style={{ display: "grid", gap: 4 }}>
               <label style={{ fontSize: 12, color: "var(--cp-text-muted)" }} htmlFor="priority">Priority</label>

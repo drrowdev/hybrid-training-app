@@ -127,8 +127,8 @@ export function parseZonePct(s: string): number | null {
  * Plain-language helper text shown below the HR-method dropdown.
  * Mirrors the dropdown labels: the user-facing primary is the
  * what/why; the technical name lives only in parentheses on the
- * option itself. See settings/page.tsx (`Define your heart rate
- * training zones…`) for the entry-point copy.
+ * option itself. See settings/page.tsx (`Z1–Z5 thresholds for cardio
+ * intensity.`) for the entry-point copy.
  */
 export function hrMethodHelpText(method: HrMethod): string {
   switch (method) {
