@@ -62,7 +62,7 @@ export async function addLimitation(formData: FormData): Promise<void> {
   if (error) throw new Error(error.message);
 
   revalidatePath("/app");
-  revalidatePath("/app/settings/limitations");
+  revalidatePath("/app/recovery/injuries");
 }
 
 const editSchema = z.object({
@@ -90,7 +90,7 @@ export async function editLimitation(formData: FormData): Promise<void> {
     .eq("id", parsed.data.id);
   if (error) throw new Error(error.message);
 
-  revalidatePath("/app/settings/limitations");
+  revalidatePath("/app/recovery/injuries");
 }
 
 export async function resolveLimitation(formData: FormData): Promise<void> {
@@ -102,7 +102,7 @@ export async function resolveLimitation(formData: FormData): Promise<void> {
     .update({ resolved_at: new Date().toISOString() })
     .eq("id", id);
   revalidatePath("/app");
-  revalidatePath("/app/settings/limitations");
+  revalidatePath("/app/recovery/injuries");
 }
 
 export async function reopenLimitation(formData: FormData): Promise<void> {
@@ -114,7 +114,7 @@ export async function reopenLimitation(formData: FormData): Promise<void> {
     .update({ resolved_at: null })
     .eq("id", id);
   revalidatePath("/app");
-  revalidatePath("/app/settings/limitations");
+  revalidatePath("/app/recovery/injuries");
 }
 
 export async function deleteLimitation(formData: FormData): Promise<void> {
@@ -122,7 +122,6 @@ export async function deleteLimitation(formData: FormData): Promise<void> {
   if (!id) return;
   const supabase = await createClient();
   await supabase.from("limitations").delete().eq("id", id);
-  revalidatePath("/app/settings/limitations");
   revalidatePath("/app/recovery/injuries");
 }
 
@@ -196,7 +195,6 @@ export async function createLimitation(
 
   revalidatePath("/app");
   revalidatePath("/app/recovery/injuries");
-  revalidatePath("/app/settings/limitations");
   return { ok: true, id: data.id };
 }
 
@@ -237,7 +235,6 @@ export async function updateLimitation(
   if (error) return { ok: false, error: error.message };
   revalidatePath("/app");
   revalidatePath("/app/recovery/injuries");
-  revalidatePath("/app/settings/limitations");
   return { ok: true, id };
 }
 
@@ -321,7 +318,6 @@ export async function resolveLimitationById(
 
   revalidatePath("/app");
   revalidatePath("/app/recovery/injuries");
-  revalidatePath("/app/settings/limitations");
   return { ok: true, id };
 }
 
@@ -377,7 +373,6 @@ export async function reopenLimitationById(
 
   revalidatePath("/app");
   revalidatePath("/app/recovery/injuries");
-  revalidatePath("/app/settings/limitations");
   return { ok: true, id };
 }
 
@@ -391,7 +386,6 @@ export async function deleteLimitationById(
   const { error } = await supabase.from("limitations").delete().eq("id", id);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/app/recovery/injuries");
-  revalidatePath("/app/settings/limitations");
   return { ok: true, id };
 }
 
@@ -455,7 +449,6 @@ export async function applyLimitationResponseResult(): Promise<ApplyLimitationRe
   revalidatePath("/app");
   revalidatePath("/app/plan");
   revalidatePath("/app/sessions");
-  revalidatePath("/app/settings/limitations");
   revalidatePath("/app/recovery/injuries");
 
   return {
@@ -551,7 +544,6 @@ export async function applyLimitationResponseSelection(
   revalidatePath("/app");
   revalidatePath("/app/plan");
   revalidatePath("/app/sessions");
-  revalidatePath("/app/settings/limitations");
   revalidatePath("/app/recovery/injuries");
 
   return { ok: true, swapped, dropped, sessions: updated };

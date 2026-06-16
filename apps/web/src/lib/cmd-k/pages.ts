@@ -26,7 +26,7 @@ export const STATIC_PAGES: PaletteItem[] = [
   { id: "page-log", kind: "page", title: "Log", subtitle: "Jump to today's session", href: "/app/log", icon: "▮" },
   { id: "page-settings", kind: "page", title: "Settings", subtitle: "Profile, integrations, preferences", href: "/app/settings", icon: "⚙" },
   { id: "page-settings-events", kind: "page", title: "Settings — Events", subtitle: "Priority events + races", href: "/app/settings/events", icon: "⚙" },
-  { id: "page-settings-limitations", kind: "page", title: "Settings — Limitations", subtitle: "Injuries + region limitations", href: "/app/settings/limitations", icon: "⚙" },
+  { id: "page-limitations", kind: "page", title: "Limitations", subtitle: "Injuries + region limitations", href: "/app/recovery/injuries", icon: "⚙" },
   { id: "page-settings-strava", kind: "page", title: "Settings — Strava", subtitle: "Strava integration", href: "/app/settings/strava", icon: "⚙" },
   { id: "page-settings-tms", kind: "page", title: "Settings — Training Maxes", subtitle: "Update TM values", href: "/app/settings/training-maxes", icon: "⚙" },
   { id: "page-settings-trash", kind: "page", title: "Settings — Trash", subtitle: "Restore or hard-delete", href: "/app/settings/trash", icon: "⚙" },

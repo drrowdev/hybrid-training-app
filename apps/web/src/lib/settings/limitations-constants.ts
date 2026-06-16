@@ -36,16 +36,3 @@ export const REGION_LABELS: Record<Region, string> = {
   shoulder_scapular: "Shoulder / scapular",
   elbow_forearm: "Elbow / forearm",
 };
-
-/** Sentinel `kind` values written by the toggle UI. */
-export const KIND_REGION_TOGGLE = "Region limitation";
-export const KIND_TENDINOPATHY = "Tendinopathy";
-
-export type UpdateLimitationsInput = {
-  blockedRegions: Region[];
-  tendinopathyActive: boolean;
-};
-
-export type UpdateLimitationsResult =
-  | { ok: true }
-  | { ok: false; error: string };

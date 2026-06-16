@@ -23,6 +23,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { ALL_MUSCLE_GROUPS, type MuscleGroup } from "@/lib/muscle/muscle-groups";
 import { ActiveLimitationsList } from "@/components/limitations/ActiveLimitationsList";
 import { AddLimitationButton } from "@/components/limitations/AddLimitationButton";
+import { QuickBlockRegion } from "@/components/limitations/QuickBlockRegion";
 import { HistorySection } from "@/components/limitations/HistorySection";
 import { LimitationResponseCard } from "@/components/limitations/LimitationResponseCard";
 import { getLimitationResponseOffer } from "@/lib/limitations/offer";
@@ -128,6 +129,10 @@ export default async function InjuriesPage() {
 
   const hasAny = rows.length > 0;
 
+  const activeRegions = active
+    .map((r) => r.region)
+    .filter((x): x is string => Boolean(x));
+
   const activeItems = active.map((row) => ({
     row,
     movements: row.affectedMovementIds
@@ -175,6 +180,8 @@ export default async function InjuriesPage() {
           formatProfile={formatProfile}
         />
       )}
+
+      <QuickBlockRegion activeRegions={activeRegions} />
 
       <HistorySection rows={resolved} />
     </main>
