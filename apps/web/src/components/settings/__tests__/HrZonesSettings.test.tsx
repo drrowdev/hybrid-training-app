@@ -119,13 +119,12 @@ describe("HrZonesSettings — static render", () => {
       initial: { hrMethod: "max", hrMax: 190, hrResting: null, hrLthr: null, hrPercents: {} },
       age: 30,
     });
-    expect(html).toContain("Percentage of max heart rate");
-    expect(html).toContain("Percentage of heart rate reserve (Karvonen)");
-    expect(html).toContain("Percentage of lactate threshold heart rate (Friel)");
-    // The old bare-jargon labels must not leak back in as option text.
-    expect(html).not.toContain(">%Max HR<");
-    expect(html).not.toContain(">%HRR (Karvonen)<");
-    expect(html).not.toContain(">%LTHR (Friel)<");
+    expect(html).toContain("% of max heart rate");
+    expect(html).toContain("% of heart-rate reserve");
+    expect(html).toContain("% of lactate threshold (LTHR)");
+    // No author/method names should leak into user-facing option text.
+    expect(html).not.toContain("Karvonen");
+    expect(html).not.toContain("Friel");
     // The static "Pick how you want to define your zones." helper is
     // replaced by the dynamic per-method help text.
     expect(html).not.toContain("Pick how you want to define your zones.");
