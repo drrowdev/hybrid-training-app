@@ -717,6 +717,9 @@ export function ProgramPicker({
   const [accessoryMuscles, setAccessoryMuscles] = useState<string[]>([...TB_DEFAULT_ACCESSORY_MUSCLES]);
   // Per-block two-a-day preference (migration 0110) — Hybrid only, default OFF.
   const [twoADay, setTwoADay] = useState<boolean>(false);
+  // Per-block antagonist-superset accessories (migration 0111) — ALL programs,
+  // default OFF.
+  const [supersetAccessories, setSupersetAccessories] = useState<boolean>(false);
 
   const [cluster, setCluster] = useState<PickerClusterEntry[]>(() =>
     activeTbTemplate ? defaultClusterFor(activeTbTemplate, anchoredKeys) : [],
@@ -1058,6 +1061,7 @@ export function ProgramPicker({
           ? { accessories: { enabled: true, muscles: accessoryMuscles } }
           : {}),
         ...(isHybrid && twoADay ? { twoADay: true } : {}),
+        ...(supersetAccessories ? { supersetAccessories: true } : {}),
       });
       setResult(res);
       if (res.ok) router.push("/app");
@@ -2047,6 +2051,23 @@ export function ProgramPicker({
             </p>
           </div>
         ) : null}
+
+        <div style={{ marginTop: 24, maxWidth: 560 }} data-testid="superset-accessories">
+          <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={supersetAccessories}
+              data-testid="superset-accessories-toggle"
+              onChange={(e) => setSupersetAccessories(e.target.checked)}
+            />
+            <span className={styles.label} style={{ margin: 0 }}>
+              Superset accessories (optional)
+            </span>
+          </label>
+          <p className={styles.sub} style={{ marginTop: 6 }}>
+            {"Pair opposing accessories (e.g. a curl with a pushdown) so you rest once per round instead of twice \u2014 a shorter session for the same work. Never changes which exercises or how many sets you get. Applies to this block only."}
+          </p>
+        </div>
 
         {renderSummary()}
       </div>

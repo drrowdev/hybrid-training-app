@@ -93,6 +93,8 @@ const createProgramInstanceSchema = z
       .optional(),
     /** Per-block two-a-day preference (migration 0110) — Hybrid only; foreign programs ignore it. */
     twoADay: z.boolean().optional(),
+    /** Per-block antagonist-superset accessories (migration 0111) — applies to ALL programs. */
+    supersetAccessories: z.boolean().optional(),
   })
   .strict();
 
@@ -109,7 +111,7 @@ export async function createProgramInstance(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay } = parsed.data;
+  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, supersetAccessories } = parsed.data;
 
   // Reject duplicate weekdays — they'd collide on the (week, day, slot) unique key.
   // (Native programs own their own calendar and ignore `weekdays`, but the check
@@ -139,6 +141,7 @@ export async function createProgramInstance(
       startedOn,
       ...(roundingKg != null ? { roundingKg } : {}),
       ...(twoADay != null ? { twoADay } : {}),
+      ...(supersetAccessories != null ? { supersetAccessories } : {}),
     });
   }
   return createForeignProgramInstance(supabase, user, {
@@ -151,6 +154,7 @@ export async function createProgramInstance(
     ...(startWeekIndex != null ? { startWeekIndex } : {}),
     ...(roundingKg != null ? { roundingKg } : {}),
     ...(accessories ? { accessories } : {}),
+    ...(supersetAccessories != null ? { supersetAccessories } : {}),
   });
 }
 
@@ -245,6 +249,8 @@ interface DeployArgs {
   accessories?: { enabled: boolean; muscles?: string[] };
   /** Per-block two-a-day preference (migration 0110) — Hybrid/native only. */
   twoADay?: boolean;
+  /** Per-block antagonist-superset accessories (migration 0111) — all programs. */
+  supersetAccessories?: boolean;
 }
 
 /**
@@ -419,7 +425,7 @@ async function buildForeignGpAccessoryInjector(
 async function createForeignProgramInstance(
   supabase: SupabaseClient,
   user: User,
-  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories }: DeployArgs,
+  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, supersetAccessories }: DeployArgs,
 ): Promise<CreateProgramInstanceResult> {
   const engine = getProgramEngine(programId);
   if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
@@ -538,6 +544,10 @@ async function createForeignProgramInstance(
       // Open cardio days are external-logged (Strava auto-link), so flag the block
       // external when any are present; otherwise keep the strength-only default.
       cardio_source: cardioWeekdays && cardioWeekdays.length > 0 ? "external" : "internal",
+      // Per-block antagonist-superset choice (migration 0111, wizard Schedule
+      // step). Applies to ALL programs; default OFF when the toggle is unset so
+      // the per-block value wins over the profile pref at read time.
+      superset_accessories: supersetAccessories ?? false,
       notes: engine.meta.name,
     })
     .select("id")
@@ -696,7 +706,7 @@ async function createForeignProgramInstance(
 async function createNativeProgramInstance(
   supabase: SupabaseClient,
   user: User,
-  { programId, setupValues, weekdays, startedOn, roundingKg, twoADay }: DeployArgs,
+  { programId, setupValues, weekdays, startedOn, roundingKg, twoADay, supersetAccessories }: DeployArgs,
 ): Promise<CreateProgramInstanceResult> {
   const engine = getNativeProgramEngine(programId)!;
 
@@ -753,6 +763,10 @@ async function createNativeProgramInstance(
       // Hybrid stores an explicit boolean so the per-block value wins over the
       // profile default at materialisation; default OFF when the toggle is unset.
       allows_two_a_days: twoADay ?? false,
+      // Per-block antagonist-superset choice (migration 0111, wizard Schedule
+      // step). Applies to ALL programs; default OFF when the toggle is unset so
+      // the per-block value wins over the profile pref at read time.
+      superset_accessories: supersetAccessories ?? false,
       notes: engine.meta.name,
     })
     .select("id")

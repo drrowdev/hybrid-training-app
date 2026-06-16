@@ -778,6 +778,13 @@
       "when": 1785314400000,
       "tag": "0110_training_blocks_two_a_days",
       "breakpoints": false
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1785400800000,
+      "tag": "0111_training_blocks_superset_accessories",
+      "breakpoints": false
     }
   ]
 }

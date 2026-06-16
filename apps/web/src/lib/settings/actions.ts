@@ -27,7 +27,6 @@ const profileSchema = z.object({
   effortPreference: z.enum(["low", "standard", "high"]).optional(),
   hapticsEnabled: z.coerce.boolean().optional(),
   timerSoundEnabled: z.coerce.boolean().optional(),
-  supersetAccessories: z.coerce.boolean().optional(),
   showTodayRecoveryCard: z.coerce.boolean().optional(),
 });
 
@@ -48,10 +47,6 @@ export async function updateProfile(formData: FormData): Promise<void> {
     timerSoundEnabled:
       formData.get("timerSoundEnabledPresent") === "1"
         ? formData.get("timerSoundEnabled") === "on"
-        : undefined,
-    supersetAccessories:
-      formData.get("supersetAccessoriesPresent") === "1"
-        ? formData.get("supersetAccessories") === "on"
         : undefined,
     showTodayRecoveryCard:
       formData.get("showTodayRecoveryCardPresent") === "1"
@@ -91,8 +86,6 @@ export async function updateProfile(formData: FormData): Promise<void> {
   if (parsed.data.effortPreference !== undefined) updates.effort_preference = parsed.data.effortPreference;
   if (parsed.data.hapticsEnabled !== undefined) updates.haptics_enabled = parsed.data.hapticsEnabled;
   if (parsed.data.timerSoundEnabled !== undefined) updates.timer_sound_enabled = parsed.data.timerSoundEnabled;
-  if (parsed.data.supersetAccessories !== undefined)
-    updates.superset_accessories = parsed.data.supersetAccessories;
   if (parsed.data.showTodayRecoveryCard !== undefined)
     updates.show_today_recovery_card = parsed.data.showTodayRecoveryCard;
 
