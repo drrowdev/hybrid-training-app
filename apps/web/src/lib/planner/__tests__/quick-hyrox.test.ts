@@ -114,6 +114,23 @@ describe("buildQuickHyroxView", () => {
     expect(v.loadedStations.map((s) => s.key)).toEqual(["sandbag-lunge"]);
   });
 
+  it("compromised rotates through all selected FUNCTIONAL stations, excluding ergs", () => {
+    const v = buildQuickHyroxView({
+      ...base,
+      format: "compromised",
+      stations: S("run", "ski_erg", "sled", "sandbag", "wall_ball"),
+    });
+    const names = v.structure.map((r) => r.name);
+    expect(names).toContain("Sled Push");
+    expect(names).toContain("Sandbag Lunges");
+    expect(names).toContain("Wall Balls");
+    // the ski erg is aerobic, not a compromised-run station
+    expect(names).not.toContain("SkiErg");
+    expect(v.loadedStations.map((s) => s.key)).toEqual(
+      expect.arrayContaining(["sled-push", "sandbag-lunge", "wall-ball"]),
+    );
+  });
+
   it("erg view has no loaded stations", () => {
     const v = buildQuickHyroxView({ ...base, format: "erg", stations: S("ski_erg") });
     expect(v.loadedStations).toEqual([]);
