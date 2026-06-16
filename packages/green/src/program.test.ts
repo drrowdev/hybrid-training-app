@@ -8,7 +8,7 @@
 import { describe, it, expect } from "vitest";
 import type { PlatformContext, LoggedSession } from "@hta/program-core";
 import { itemsOfKind } from "@hta/program-core";
-import { greenProtocolEngine as gp, type GreenInstance } from "./program";
+import { greenProtocolEngine as gp, greenStrengthTemplateByRef, type GreenInstance } from "./program";
 
 const ctx: PlatformContext = {
   oneRepMaxes: { squat: 200, bench: 100, deadlift: 250, press: 100 },
@@ -335,5 +335,35 @@ describe("Green engine — segments (start points)", () => {
       "Block 2 · Operator",
     ]);
     expect(segs[4]!.startWeekIndex).toBe(14);
+  });
+});
+
+describe("greenStrengthTemplateByRef", () => {
+  it("maps every STRENGTH session ref to its TB template, and excludes non-strength sessions", () => {
+    const inst = setup({ phaseId: "icat" });
+    const map = greenStrengthTemplateByRef(inst);
+    const specs = gp.timeline(inst);
+
+    // Cross-check against the timeline's modality tags: a ref is in the map IFF
+    // its session is a strength session.
+    for (const spec of specs) {
+      const isStrength = spec.tags?.includes("modality:strength") ?? false;
+      expect(map.has(spec.ref)).toBe(isStrength);
+    }
+
+    // Every mapped value is an accessory-eligible TB template id.
+    for (const tmpl of map.values()) {
+      expect(["operator", "fighter", "zulu-ht"]).toContain(tmpl);
+    }
+    expect(map.size).toBeGreaterThan(0);
+  });
+
+  it("a conditioning session ref is absent (→ no accessories there)", () => {
+    const inst = setup({ phaseId: "icat" });
+    const map = greenStrengthTemplateByRef(inst);
+    const conditioning = gp
+      .timeline(inst)
+      .find((s) => s.tags?.includes("modality:conditioning"));
+    if (conditioning) expect(map.has(conditioning.ref)).toBe(false);
   });
 });

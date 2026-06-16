@@ -230,3 +230,41 @@ describe("buildTbAccessoryInjector — experience unlock floor (O2)", () => {
     expect(picks(undefined)).toEqual(new Set(["staple", "skill"]));
   });
 });
+
+describe("buildTbAccessoryInjector — per-session planForRef (Green Protocol)", () => {
+  const CAT: CatalogMovement[] = [
+    mv({ id: "curl1", slug: "db-curl", pattern: "isolation", primaryMuscles: ["biceps"] }),
+    mv({ id: "tri1", slug: "pushdown", pattern: "isolation", primaryMuscles: ["triceps"] }),
+    mv({ id: "calf1", slug: "calf-raise", pattern: "isolation", primaryMuscles: ["calves"] }),
+  ];
+
+  // Simulates the GP map: strength refs resolve to a TB-template cap; a
+  // conditioning ref resolves to null (→ no accessories on that session).
+  function gpInject() {
+    return buildTbAccessoryInjector({
+      catalog: CAT,
+      filters: noFilters,
+      muscles: ["biceps", "triceps", "calves"],
+      maxItems: 0, // overridden by planForRef
+      setsPerItem: 0,
+      planForRef: (ref) => {
+        if (ref.startsWith("zulu")) return { maxItems: 3, setsPerItem: 3 };
+        if (ref.startsWith("operator")) return { maxItems: 2, setsPerItem: 3 };
+        return null; // conditioning / rest
+      },
+    });
+  }
+
+  it("gives a conditioning session (planForRef → null) NO accessories", () => {
+    expect(gpInject()("cond-run-1")).toHaveLength(0);
+  });
+
+  it("caps a Zulu-HT strength session at 3 and an Operator session at 2", () => {
+    expect(gpInject()("zulu-w1-s1")).toHaveLength(3);
+    expect(gpInject()("operator-w1-s1")).toHaveLength(2);
+  });
+
+  it("applies the resolved setsPerItem from the per-ref plan", () => {
+    expect(gpInject()("zulu-w1-s1").every((i) => i.sets === 3)).toBe(true);
+  });
+});

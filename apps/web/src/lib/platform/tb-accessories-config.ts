@@ -63,6 +63,7 @@ export function tbAccessoryPlanForTemplate(templateId: string): TbAccessoryPlan 
   switch (templateId) {
     case "zulu":
     case "zulu-ia":
+    case "zulu-ht":
       return { maxItems: 3, setsPerItem: 3 };
     case "operator":
     case "fighter":
