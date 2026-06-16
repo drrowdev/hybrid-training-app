@@ -10,6 +10,8 @@ vi.mock("next/navigation", () => ({
 const noop = async () => "00000000-0000-4000-8000-0000000000ff";
 const genNoop = async (_: { length: "short" | "normal" }) =>
   "00000000-0000-4000-8000-0000000000fe";
+const genHyroxNoop = async (_: { length: "short" | "normal"; stations: string[] }) =>
+  "00000000-0000-4000-8000-0000000000fd";
 
 function candidate(over: Partial<QuickRepeatCandidate> = {}): QuickRepeatCandidate {
   return {
@@ -30,6 +32,8 @@ describe("QuickWorkoutSheet", () => {
         startStrength={noop}
         repeatRecent={noop}
         generateStrength={genNoop}
+        generateHyrox={genHyroxNoop}
+        hyroxStationDefaults={[]}
       />,
     );
     expect(html).toBe("");
@@ -44,6 +48,8 @@ describe("QuickWorkoutSheet", () => {
         startStrength={noop}
         repeatRecent={noop}
         generateStrength={genNoop}
+        generateHyrox={genHyroxNoop}
+        hyroxStationDefaults={[]}
       />,
     );
     expect(html).toContain('data-testid="quick-workout-generate"');
@@ -72,6 +78,8 @@ describe("QuickWorkoutSheet", () => {
         startStrength={noop}
         repeatRecent={noop}
         generateStrength={genNoop}
+        generateHyrox={genHyroxNoop}
+        hyroxStationDefaults={[]}
       />,
     );
     expect(html).not.toContain('data-testid="quick-duration-row"');
@@ -87,6 +95,8 @@ describe("QuickWorkoutSheet", () => {
         startStrength={noop}
         repeatRecent={noop}
         generateStrength={genNoop}
+        generateHyrox={genHyroxNoop}
+        hyroxStationDefaults={[]}
       />,
     );
     expect(html).not.toContain('data-testid="quick-workout-recent"');
@@ -109,6 +119,8 @@ describe("QuickWorkoutSheet", () => {
         startStrength={noop}
         repeatRecent={noop}
         generateStrength={genNoop}
+        generateHyrox={genHyroxNoop}
+        hyroxStationDefaults={[]}
       />,
     );
     expect(html).toContain('data-testid="quick-workout-recent"');

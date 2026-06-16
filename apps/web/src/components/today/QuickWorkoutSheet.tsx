@@ -29,6 +29,30 @@ export type RepeatFn = (input: { sessionId: string }) => Promise<string>;
 export type GenerateStrengthFn = (input: {
   length: "short" | "normal";
 }) => Promise<string>;
+export type HyroxStation =
+  | "run"
+  | "ski_erg"
+  | "rower"
+  | "sled"
+  | "sandbag"
+  | "wall_ball"
+  | "farmers"
+  | "burpees";
+export type GenerateHyroxFn = (input: {
+  length: "short" | "normal";
+  stations: HyroxStation[];
+}) => Promise<string>;
+
+const HYROX_STATION_LABELS: { id: HyroxStation; label: string }[] = [
+  { id: "run", label: "Run" },
+  { id: "ski_erg", label: "Ski Erg" },
+  { id: "rower", label: "Rower" },
+  { id: "sled", label: "Sled" },
+  { id: "sandbag", label: "Sandbag" },
+  { id: "wall_ball", label: "Wall Ball" },
+  { id: "farmers", label: "Farmers" },
+  { id: "burpees", label: "Burpees" },
+];
 
 export function QuickWorkoutSheet({
   open,
@@ -37,6 +61,8 @@ export function QuickWorkoutSheet({
   startStrength,
   repeatRecent,
   generateStrength,
+  generateHyrox,
+  hyroxStationDefaults,
 }: {
   open: boolean;
   onClose: () => void;
@@ -44,10 +70,31 @@ export function QuickWorkoutSheet({
   startStrength: StartStrengthFn;
   repeatRecent: RepeatFn;
   generateStrength: GenerateStrengthFn;
+  generateHyrox: GenerateHyroxFn;
+  hyroxStationDefaults: HyroxStation[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [modality, setModality] = useState<"strength" | "hyrox">("strength");
+  const [stations, setStations] = useState<Set<HyroxStation>>(
+    () => new Set(hyroxStationDefaults),
+  );
+  const toggleStation = (id: HyroxStation) =>
+    setStations((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  // circuit needs ≥2 stations; erg/run need their option; so allow generate when
+  // ≥2 selected OR (run/erg present). Keep it simple: ≥1 station of any kind.
+  const stationCount = [...stations].filter((s) => s !== "run").length;
+  const canGenerateHyrox =
+    stations.has("ski_erg") ||
+    stations.has("rower") ||
+    stations.has("run") ||
+    stationCount >= 2;
 
   const fire = (id: string, fn: () => Promise<string>) => {
     if (pending) return;
@@ -100,6 +147,128 @@ export function QuickWorkoutSheet({
         </div>
       }
     >
+      <div
+        role="tablist"
+        aria-label="Quick workout type"
+        data-testid="quick-modality-toggle"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 4,
+          padding: 4,
+          background: "var(--cp-surface-soft)",
+          borderRadius: 10,
+          marginBottom: 16,
+        }}
+      >
+        {(["strength", "hyrox"] as const).map((m) => {
+          const active = modality === m;
+          return (
+            <button
+              key={m}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              data-testid={`quick-modality-${m}`}
+              onClick={() => setModality(m)}
+              style={{
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: "none",
+                cursor: "pointer",
+                font: "inherit",
+                fontSize: 13,
+                fontWeight: 600,
+                background: active ? "var(--cp-accent)" : "transparent",
+                color: active ? "var(--cp-accent-fg)" : "var(--cp-text-muted)",
+              }}
+            >
+              {m === "strength" ? "Strength" : "HYROX"}
+            </button>
+          );
+        })}
+      </div>
+
+      {modality === "hyrox" ? (
+        <div data-testid="quick-hyrox" style={{ display: "grid", gap: 12 }}>
+          <div
+            style={{
+              fontSize: 11,
+              letterSpacing: "0.1em",
+              color: "var(--cp-text-muted)",
+              textTransform: "uppercase",
+              fontWeight: 600,
+            }}
+          >
+            What can you do right now?
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {HYROX_STATION_LABELS.map(({ id, label }) => {
+              const on = stations.has(id);
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={on}
+                  data-testid={`quick-hyrox-station-${id}`}
+                  onClick={() => toggleStation(id)}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 999,
+                    border: "1px solid var(--cp-border)",
+                    background: on ? "var(--cp-accent)" : "transparent",
+                    color: on ? "var(--cp-accent-fg)" : "var(--cp-text)",
+                    cursor: "pointer",
+                    font: "inherit",
+                    fontSize: 13,
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <GenerateTile
+              length="short"
+              label="Short"
+              sublabel="~30 min"
+              disabled={pending || !canGenerateHyrox}
+              loading={pendingId === "hyrox:short"}
+              onClick={() =>
+                fire("hyrox:short", () =>
+                  generateHyrox({ length: "short", stations: [...stations] }),
+                )
+              }
+            />
+            <GenerateTile
+              length="normal"
+              label="Normal"
+              sublabel="up to ~60 min"
+              disabled={pending || !canGenerateHyrox}
+              loading={pendingId === "hyrox:normal"}
+              onClick={() =>
+                fire("hyrox:normal", () =>
+                  generateHyrox({ length: "normal", stations: [...stations] }),
+                )
+              }
+            />
+          </div>
+          <p
+            style={{
+              margin: "2px 0 0",
+              fontSize: 11,
+              color: "var(--cp-text-muted)",
+              lineHeight: 1.4,
+            }}
+          >
+            {canGenerateHyrox
+              ? "Builds a station circuit, an erg/run, or a compromised run \u2014 picking whichever you\u2019re due for. Loads use your HYROX division."
+              : "Pick an erg or run, or at least two stations, to generate."}
+          </p>
+        </div>
+      ) : (
+        <>
       <div
         data-testid="quick-workout-generate"
         style={{ display: "grid", gap: 8 }}
@@ -191,6 +360,8 @@ export function QuickWorkoutSheet({
             />
           ))}
         </div>
+      )}
+        </>
       )}
     </BottomSheet>
   );

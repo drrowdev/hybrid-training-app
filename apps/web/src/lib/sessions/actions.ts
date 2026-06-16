@@ -12,6 +12,8 @@ import { expandPrescriptionSetItems } from "@/lib/planner/expand-prescription-se
 import { getUserTimezone, dayDate } from "@/lib/planner/queries";
 import { roundToPlate } from "@/lib/planner/archetypes";
 import { resolveQuickStrengthPlan } from "@/lib/planner/quick-generate-resolve";
+import { resolveQuickHyroxPlan } from "@/lib/planner/quick-hyrox-resolve";
+import type { HyroxQuickStation } from "@/lib/planner/quick-hyrox";
 import type { QuickLength } from "@/lib/planner/quick-generate";
 import { TM_RESOLUTION_SELECT } from "@/lib/training-maxes/columns";
 import { applyAutoregVolumeScale } from "@/lib/planner/autoreg-volume";
@@ -2128,4 +2130,80 @@ export async function generateQuickStrengthSession(
 
   revalidatePath("/app");
   return created.id;
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * generateQuickHyroxSession — on-demand HYROX conditioning workout.
+ *
+ *   - per-generation station checklist (overrides profile equipment for today);
+ *   - ~30 / ~60 min budget;
+ *   - adaptive format: circuit / compromised / erg / run, chosen by which formats
+ *     the checklist enables and which is most overdue vs its programmed cadence;
+ *   - experience + division from the user's active-or-most-recent HYROX instance
+ *     (default intermediate / open).
+ *
+ * Deterministic. RLS: user-scoped client + explicit user_id filters + Zod
+ * `.strict()`. Off-plan: never links a planned_sessions slot. The format is
+ * stamped on `prescription.meta.hyroxQuickFormat` so future generations can read
+ * recency. The session logs through the generic cardio surface (one block).
+ * ──────────────────────────────────────────────────────────────────── */
+
+const HYROX_QUICK_STATIONS = [
+  "run",
+  "ski_erg",
+  "rower",
+  "sled",
+  "sandbag",
+  "wall_ball",
+  "farmers",
+  "burpees",
+] as const;
+
+const generateQuickHyroxSchema = z
+  .object({
+    length: z.enum(["short", "normal"]),
+    stations: z.array(z.enum(HYROX_QUICK_STATIONS)).min(1),
+  })
+  .strict();
+
+export type GenerateQuickHyroxInput = {
+  length: QuickLength;
+  stations: HyroxQuickStation[];
+};
+
+export async function generateQuickHyroxSession(
+  input: GenerateQuickHyroxInput,
+): Promise<string> {
+  const parsed = generateQuickHyroxSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) redirect("/login");
+
+  const plan = await resolveQuickHyroxPlan(supabase, user.id, {
+    length: parsed.data.length,
+    stations: [...parsed.data.stations],
+  });
+  if (!plan.ok) throw new Error(plan.error);
+
+  const prescription: Prescription = {
+    items: plan.items,
+    meta: { hyroxQuickFormat: plan.format },
+  };
+  const { data: createdHyrox, error: insHyroxErr } = await supabase
+    .from("sessions")
+    .insert({ user_id: user.id, title: plan.title, prescription })
+    .select("id")
+    .single();
+  if (insHyroxErr || !createdHyrox) {
+    throw new Error(insHyroxErr?.message ?? "Could not create session");
+  }
+
+  revalidatePath("/app");
+  return createdHyrox.id;
 }

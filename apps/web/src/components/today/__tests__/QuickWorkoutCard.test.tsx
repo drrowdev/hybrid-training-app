@@ -10,6 +10,8 @@ const noopStrength = async () => "00000000-0000-4000-8000-0000000000ff";
 const noopRepeat = async () => "00000000-0000-4000-8000-0000000000ff";
 const noopGenerate = async (_: { length: "short" | "normal" }) =>
   "00000000-0000-4000-8000-0000000000fe";
+const noopHyrox = async (_: { length: "short" | "normal"; stations: string[] }) =>
+  "00000000-0000-4000-8000-0000000000fd";
 
 describe("QuickWorkoutCard", () => {
   it("renders the planned-day subtitle when variant is 'planned'", () => {
@@ -20,6 +22,8 @@ describe("QuickWorkoutCard", () => {
         startStrength={noopStrength}
         repeatRecent={noopRepeat}
         generateStrength={noopGenerate}
+        generateHyrox={noopHyrox}
+        hyroxStationDefaults={[]}
       />,
     );
     expect(html).toContain('data-testid="quick-workout-card"');
@@ -37,6 +41,8 @@ describe("QuickWorkoutCard", () => {
         startStrength={noopStrength}
         repeatRecent={noopRepeat}
         generateStrength={noopGenerate}
+        generateHyrox={noopHyrox}
+        hyroxStationDefaults={[]}
       />,
     );
     expect(html).toContain('data-variant="rest"');
@@ -52,6 +58,8 @@ describe("QuickWorkoutCard", () => {
         startStrength={noopStrength}
         repeatRecent={noopRepeat}
         generateStrength={noopGenerate}
+        generateHyrox={noopHyrox}
+        hyroxStationDefaults={[]}
       />,
     );
     expect(html).toMatch(/<button[^>]+data-testid="quick-workout-card"/);
