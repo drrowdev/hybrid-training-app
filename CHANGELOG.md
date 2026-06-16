@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Quick HYROX workout generation
+- The Today "Quick workout" sheet gains a **Strength | HYROX** toggle. HYROX shows
+  a "what can you do right now?" **station checklist** (Run, Ski Erg, Rower, Sled,
+  Sandbag, Wall Ball, Farmers, Burpees) pre-checked from your equipment but
+  overridable per generation (e.g. a hotel gym today), plus the usual ~30 / ~60 min
+  tiles.
+- The generator picks the format **adaptively**: from the stations you checked it
+  computes the feasible formats (circuit / compromised run / erg / steady run) and
+  generates whichever you're most **overdue** for — grounded in how often the HYROX
+  engine programs each (compromised + circuit ~weekly, erg/run ~twice weekly). So
+  selecting Run + stations after a while surfaces a compromised run; otherwise a
+  circuit. Experience + division come from your active-or-most-recent HYROX plan
+  (default intermediate / Open); station loads use the division standard.
+- Generated as an off-plan, in-app-loggable cardio session (one block: duration +
+  RPE), tagged with its format so future generations read recency. New
+  `quick-hyrox.ts` (pure assembler + feasibility) + `quick-hyrox-resolve.ts`
+  (experience/division + cadence-grounded format pick).
+
 ### Foreign accessory/assistance — staples-first ranking (F1)
 - The foreign accessory/assistance injectors (5/3/1, Tactical Barbell, Green
   Protocol) no longer rotate UNIFORMLY over their eligible pool — they now bias

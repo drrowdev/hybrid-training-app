@@ -376,6 +376,15 @@ export type Prescription = {
    * program-owned recommendations. Absent on archetype-generated sessions.
    */
   programRef?: string;
+  /**
+   * Quick HYROX generation — the chosen session format ("circuit" /
+   * "compromised" / "erg" / "run"). Set only on quick-generated HYROX sessions
+   * so the adaptive format picker can read recency from past sessions. Absent on
+   * every other session.
+   */
+  meta?: {
+    hyroxQuickFormat?: "circuit" | "compromised" | "erg" | "run";
+  };
 };
 
 export const plannedSessions = pgTable(

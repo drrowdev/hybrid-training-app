@@ -23,6 +23,8 @@ import {
   type StartStrengthFn,
   type RepeatFn,
   type GenerateStrengthFn,
+  type GenerateHyroxFn,
+  type HyroxStation,
 } from "./QuickWorkoutSheet";
 import type { QuickRepeatCandidate } from "@/lib/sessions/queries";
 
@@ -34,12 +36,16 @@ export function QuickWorkoutCard({
   startStrength,
   repeatRecent,
   generateStrength,
+  generateHyrox,
+  hyroxStationDefaults,
 }: {
   variant: QuickWorkoutVariant;
   recent: QuickRepeatCandidate[];
   startStrength: StartStrengthFn;
   repeatRecent: RepeatFn;
   generateStrength: GenerateStrengthFn;
+  generateHyrox: GenerateHyroxFn;
+  hyroxStationDefaults: HyroxStation[];
 }) {
   const [open, setOpen] = useState(false);
   const subtitle =
@@ -111,6 +117,8 @@ export function QuickWorkoutCard({
         startStrength={startStrength}
         repeatRecent={repeatRecent}
         generateStrength={generateStrength}
+        generateHyrox={generateHyrox}
+        hyroxStationDefaults={hyroxStationDefaults}
       />
     </>
   );

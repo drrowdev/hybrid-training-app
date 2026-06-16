@@ -35,6 +35,7 @@ import {
   startQuickStrengthSession,
   repeatRecentSession,
   generateQuickStrengthSession,
+  generateQuickHyroxSession,
   updatePlannedSessionNotes,
 } from "@/lib/sessions/actions";
 import { getQuickRepeatCandidates } from "@/lib/sessions/queries";
@@ -52,6 +53,7 @@ import {
   hasLoadableMainLift,
   resolveEquipment,
 } from "@/lib/settings/equipment-presets";
+import { defaultHyroxStationsFromEquipment } from "@/lib/planner/quick-hyrox";
 import { computeTaperRecommendation, taperModalityForEvent } from "@/lib/planner/taper";
 import { computeRecoveryWindow } from "@/lib/planner/recovery";
 import { TaperBanner, type TaperBannerState } from "@/components/today/TaperBanner";
@@ -539,6 +541,9 @@ export default async function TodayPage() {
   const timezone = profile?.timezone ?? "UTC";
   const amWindowStart = profile?.am_window_start ?? "07:00:00";
   const pmWindowStart = profile?.pm_window_start ?? "17:00:00";
+  const hyroxStationDefaults = defaultHyroxStationsFromEquipment(
+    resolveEquipment(profile),
+  );
 
   const computedWeekIndex = activeBlock
     ? Math.max(
@@ -794,6 +799,8 @@ export default async function TodayPage() {
               startStrength={startQuickStrengthSession}
               repeatRecent={repeatRecentSession}
               generateStrength={generateQuickStrengthSession}
+              generateHyrox={generateQuickHyroxSession}
+              hyroxStationDefaults={hyroxStationDefaults}
             />
 
             {hasStravaConnection && <StravaStaleSyncTrigger />}
