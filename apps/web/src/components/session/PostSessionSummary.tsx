@@ -603,41 +603,55 @@ function CardioZoneBar({ zones }: { zones: Record<Zone, number> }) {
               key={z}
               data-testid={`cardio-zone-segment-${z}`}
               title={`${ZONE_META[z].label} · ${ZONE_META[z].desc} · ${fmtZoneMin(zones[z])}`}
-              style={{ width: `${pct(z) * 100}%`, background: ZONE_META[z].color }}
+              style={{ flexGrow: zones[z], flexBasis: 0, background: ZONE_META[z].color }}
             />
           ) : null,
         )}
       </div>
-      <ul
+      <div
         style={{
-          listStyle: "none",
-          margin: 0,
-          padding: 0,
           display: "flex",
-          flexWrap: "wrap",
-          gap: "6px 16px",
+          marginTop: -2,
         }}
       >
-        {ZONES.filter((z) => zones[z] > 0).map((z) => (
-          <li key={z} style={{ display: "flex", gap: 6, alignItems: "baseline", fontSize: 12 }}>
-            <span
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: 2,
-                background: ZONE_META[z].color,
-                flexShrink: 0,
-                alignSelf: "center",
-              }}
-              aria-hidden="true"
-            />
-            <span style={{ color: "var(--cp-text)", fontWeight: 600 }}>{ZONE_META[z].label}</span>
-            <span style={{ color: "var(--cp-text-muted)" }} className="mono">
-              {fmtZoneMin(zones[z])}
-            </span>
-          </li>
-        ))}
-      </ul>
+        {(() => {
+          const visible = ZONES.filter((z) => zones[z] > 0);
+          return visible.map((z, i) => {
+            const justify =
+              i === 0 ? "flex-start" : i === visible.length - 1 ? "flex-end" : "center";
+            return (
+              <div
+                key={z}
+                data-testid={`cardio-zone-legend-${z}`}
+                style={{
+                  flexGrow: zones[z],
+                  flexBasis: 0,
+                  minWidth: 0,
+                  display: "flex",
+                  justifyContent: justify,
+                }}
+              >
+                <span
+                  style={{
+                    whiteSpace: "nowrap",
+                    fontSize: 12,
+                    display: "inline-flex",
+                    gap: 5,
+                    alignItems: "baseline",
+                  }}
+                >
+                  <span style={{ color: "var(--cp-text)", fontWeight: 600 }}>
+                    {ZONE_META[z].label}
+                  </span>
+                  <span style={{ color: "var(--cp-text-muted)" }} className="mono">
+                    {fmtZoneMin(zones[z])}
+                  </span>
+                </span>
+              </div>
+            );
+          });
+        })()}
+      </div>
     </div>
   );
 }
