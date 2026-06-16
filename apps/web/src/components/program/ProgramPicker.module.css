@@ -293,6 +293,9 @@
   align-items: center;
   justify-content: center;
   text-align: center;
+  /* Symmetric gutter keeps the code centred while reserving room on the right
+     so the wide "Build your own" wrap never runs under the info badge. */
+  padding-inline: 30px;
 }
 .pdesc {
   font-size: 11px;
@@ -330,7 +333,10 @@
   position: absolute;
   top: 50%;
   right: 12px;
-  transform: translateY(-50%);
+  /* Align to the CODE's vertical centre, not the card's. The centred content
+     block puts the code 9px above the card midpoint (kicker above is shorter
+     than the tagline below); this offset is constant across card heights. */
+  transform: translateY(calc(-50% - 9px));
   width: 17px;
   height: 17px;
   border-radius: 50%;
@@ -359,7 +365,7 @@
 /* Track the card's hover lift so the badge stays glued to the card
    instead of detaching when the tile animates up. */
 .pcard:hover + .pinfo {
-  transform: translateY(-50%) translateY(-2px);
+  transform: translateY(calc(-50% - 11px));
 }
 
 .label {
