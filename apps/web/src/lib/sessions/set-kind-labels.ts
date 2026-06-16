@@ -38,7 +38,7 @@ export const SET_KIND_LABELS: Record<SetKind, SetKindLabel> = {
   },
   accessory: {
     label: "Accessory",
-    caption: "Assistance work for supporting muscles (curls, RDLs, raises).",
+    caption: "Accessory work for supporting muscles (curls, RDLs, raises).",
   },
   tendon: {
     label: "Tendon",

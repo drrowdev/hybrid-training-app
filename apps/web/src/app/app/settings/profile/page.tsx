@@ -174,7 +174,7 @@ export default async function ProfileSettingsPage() {
         </SettingsGroup>
 
         {/* Accessory volume (ADR 0016 effort_preference) — a GLOBAL dial that
-            scales the optional accessory / assistance work across programs.
+            scales the optional accessory work across programs.
             Collapsed by default. New blocks only. */}
         <SettingsGroup
           id="effort-preference"
@@ -183,9 +183,8 @@ export default async function ProfileSettingsPage() {
           testId="settings-group-effort-preference"
         >
           <p className="text-xs text-foreground/60">
-            How much optional accessory &amp; assistance work your strength days
-            carry. <strong>Applies to every program you run</strong> (5/3/1
-            assistance, Hybrid &amp; archetype accessories) — Balanced is the
+            How much optional accessory work your strength days carry.{" "}
+            <strong>Applies to every program you run</strong> — Balanced is the
             standard. Your main lifts, supplemental and cardio are unchanged.
             Applies to new blocks; existing blocks keep what they were built with.
           </p>

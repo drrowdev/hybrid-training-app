@@ -41,7 +41,7 @@ const FUNCTIONAL_WHY: Record<FunctionalRole, string> = {
   loaded_mobility:
     "Loaded mobility to own the end of your range with control, not just flexibility.",
   compound_assistance:
-    "Assistance work that reinforces and strengthens your main-lift pattern.",
+    "Accessory work that reinforces and strengthens your main-lift pattern.",
   velocity_cued:
     "Moved fast on purpose — it trains how quickly you can produce force.",
   hip_stabilizer:
