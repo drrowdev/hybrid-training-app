@@ -335,41 +335,6 @@ export function FeedbackAutoSave({
   );
 }
 
-// ─── Training style (antagonist supersets) ───────────────────────────
-
-export function SupersetAutoSave({
-  initialSuperset,
-}: {
-  initialSuperset: boolean;
-}) {
-  const saveSuperset = useCallback(
-    (v: boolean) => saveCheckbox("supersetAccessories", v),
-    [],
-  );
-  return (
-    <div
-      className="rounded-lg border border-foreground/10 p-4 space-y-3"
-      data-testid="settings-superset-form"
-    >
-      <AutoSaveCheckbox
-        label={
-          <>
-            Pair opposing accessories into supersets
-            <span className="block text-xs text-foreground/60 mt-1">
-              Groups opposite movements (e.g. a curl with a pushdown) so you
-              rest once per round instead of twice — a shorter session for the
-              same work. Expect the effort to feel a little higher.
-            </span>
-          </>
-        }
-        initial={initialSuperset}
-        save={saveSuperset}
-        testId="settings-superset-toggle"
-      />
-    </div>
-  );
-}
-
 // ─── Daily recovery check-in ─────────────────────────────────────────
 // Removed — the Today wellness check-in card was retired (see
 // chore/retire-wellness-checkin). The `show_today_recovery_card`

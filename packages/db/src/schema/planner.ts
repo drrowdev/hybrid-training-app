@@ -159,6 +159,16 @@ export const trainingBlocks = pgTable("training_blocks", {
    * setting when null. Foreign program blocks leave it null.
    */
   allowsTwoADays: boolean("allows_two_a_days"),
+  /**
+   * Per-block antagonist-superset accessory preference (migration 0111).
+   * NULLABLE with NO default: null means "inherit profile / legacy" so every
+   * pre-0111 block reads byte-identically to the old
+   * `profiles.superset_accessories`-driven behaviour. The program wizard's
+   * Schedule step writes an explicit boolean (shown for ALL programs); the
+   * read-time pairing (`queries.ts`) lets a non-null per-block value WIN and
+   * falls back to the profile setting when null.
+   */
+  supersetAccessories: boolean("superset_accessories"),
 });
 
 export type TrainingBlock = typeof trainingBlocks.$inferSelect;

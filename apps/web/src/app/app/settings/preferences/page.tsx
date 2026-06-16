@@ -5,7 +5,6 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { DateTimeFormatCard } from "@/components/settings/DateTimeFormatCard";
 import {
   FeedbackAutoSave,
-  SupersetAutoSave,
   UnitsAutoSave,
 } from "@/components/settings/SettingsAutoSaveSections";
 import {
@@ -26,7 +25,7 @@ export default async function PreferencesSettingsPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "haptics_enabled, timer_sound_enabled, superset_accessories, time_format, date_format, timezone, units",
+      "haptics_enabled, timer_sound_enabled, time_format, date_format, timezone, units",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -81,19 +80,6 @@ export default async function PreferencesSettingsPage() {
           <FeedbackAutoSave
             initialHaptics={profile?.haptics_enabled !== false}
             initialTimerSound={profile?.timer_sound_enabled !== false}
-          />
-        </div>
-
-        {/* Training style — antagonist supersets */}
-        <div className="space-y-3" data-testid="settings-superset">
-          <p className="text-xs text-foreground/60">
-            How accessory work is sequenced inside a session. Off by default —
-            accessories run one at a time. Turning supersets on never changes
-            which exercises or how many sets you get; it only pairs opposites so
-            you wait through one rest instead of two.
-          </p>
-          <SupersetAutoSave
-            initialSuperset={profile?.superset_accessories === true}
           />
         </div>
 
