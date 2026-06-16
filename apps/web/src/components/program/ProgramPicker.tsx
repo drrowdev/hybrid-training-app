@@ -33,7 +33,7 @@ const CARD_META: Record<string, { kick: string; code: string }> = {
   "wendler-531": { kick: "Wendler", code: "5/3/1" },
   "tactical-barbell": { kick: "Tactical Barbell", code: "TB" },
   "green-protocol": { kick: "Tactical Barbell", code: "GP" },
-  hyrox: { kick: "HYROX", code: "Race day" },
+  hyrox: { kick: "Hybrid Racing", code: "HYROX" },
 };
 
 /**
@@ -166,7 +166,7 @@ const PROG_INFO: Record<string, ProgInfo> = {
     meta: ["Strength + cardio", "Adapts to your goals"],
   },
   hyrox: {
-    kick: "HYROX",
+    kick: "Hybrid Racing",
     title: "HYROX",
     body: "Race-specific training for HYROX \u2014 the standardised fitness race of eight 1 km runs alternating with eight functional stations (ski erg, sled push & pull, burpee broad jumps, row, farmers carry, sandbag lunges and wall balls).\n\nThe plan periodises toward race day: a Base block builds your aerobic engine and a strength foundation, Build adds heavy strength and threshold running, Race-prep sharpens the signature \u201Ccompromised running\u201D (running hard on legs pre-fatigued by the stations) plus station circuits and a simulation or two, then a Taper leaves you fresh for the start line.\n\nYour running and ergs are tracked through Strava; the loaded stations log against the standardised division weights. Pick your experience level (it sets a 10\u201316 week build), your division (Open / Pro / Doubles) and how many days a week you can train. Best if you\u2019re targeting a HYROX event.",
     meta: ["Run + stations", "Event-targeted \u00B7 10\u201316 weeks"],
