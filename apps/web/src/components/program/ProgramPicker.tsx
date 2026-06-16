@@ -1277,7 +1277,7 @@ export function ProgramPicker({
               <span className={styles.pill}>Coming soon</span>
             </div>
             <div className={styles.optDesc}>
-              Advanced leader/anchor with jumps, throws and a tight assistance cap.
+              Advanced leader/anchor with jumps, throws and a tight accessory cap.
             </div>
           </div>
         )}
