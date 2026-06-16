@@ -26,7 +26,6 @@ import {
   AutoSaveRadioGroup,
   AutoSaveSelect,
   AutoSaveTextField,
-  AutoSaveTimeField,
 } from "./auto-save";
 
 type TrainingExperience =
@@ -278,83 +277,6 @@ export function EffortPreferenceAutoSave({
         save={save}
         statusTestIdSuffix="settings-effort"
       />
-    </div>
-  );
-}
-
-// ─── Two-a-day toggle + windows ──────────────────────────────────────
-
-export function TwoADayAutoSave({
-  initialAllowsTwoADays,
-  initialAmStart,
-  initialPmStart,
-}: {
-  initialAllowsTwoADays: boolean;
-  initialAmStart: string;
-  initialPmStart: string;
-}) {
-  const [enabled, setEnabled] = useState(initialAllowsTwoADays);
-  const saveEnabled = useCallback(
-    async (v: boolean) => {
-      setEnabled(v);
-      await saveCheckbox("allowsTwoADays", v);
-    },
-    [],
-  );
-  const saveAm = useCallback(
-    (v: string) => saveField("amWindowStart", v),
-    [],
-  );
-  const savePm = useCallback(
-    (v: string) => saveField("pmWindowStart", v),
-    [],
-  );
-  return (
-    <div
-      className="rounded-lg border border-foreground/10 p-4 space-y-4"
-      data-testid="settings-two-a-day"
-    >
-      <AutoSaveCheckbox
-        label={
-          <>
-            Enable two-a-day sessions
-            <span className="block text-xs text-foreground/60 mt-1">
-              Currently {enabled ? "on" : "off"}.
-            </span>
-          </>
-        }
-        initial={initialAllowsTwoADays}
-        save={saveEnabled}
-        testId="settings-two-a-day-toggle"
-      />
-      {enabled && (
-        <>
-          <div
-            className="grid grid-cols-2 gap-3 pt-2 border-t border-foreground/10"
-            data-testid="settings-two-a-day-windows"
-          >
-            <AutoSaveTimeField
-              label="AM session start"
-              initial={initialAmStart}
-              save={saveAm}
-              testId="settings-am-window-start"
-              inputProps={{ step: 300 }}
-            />
-            <AutoSaveTimeField
-              label="PM session start"
-              initial={initialPmStart}
-              save={savePm}
-              testId="settings-pm-window-start"
-              inputProps={{ step: 300 }}
-            />
-          </div>
-          <p className="text-xs text-foreground/60">
-            Used as the default time-of-day shown on Today and Plan when you
-            haven&apos;t set an explicit time on a session. Override per-session
-            from the Plan page.
-          </p>
-        </>
-      )}
     </div>
   );
 }

@@ -5,7 +5,6 @@ import {
   EffortPreferenceAutoSave,
   ProfileBasicsAutoSave,
   TrainingExperienceAutoSave,
-  TwoADayAutoSave,
 } from "@/components/settings/SettingsAutoSaveSections";
 import { SettingsGroup } from "@/components/settings/SettingsGroup";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -62,11 +61,6 @@ function asBodyCompPhase(v: unknown): BodyCompPhase {
   return v === "gain" || v === "lean_out" ? v : "maintain";
 }
 
-function toHHMM(value: string | null | undefined, fallback: string): string {
-  if (typeof value !== "string" || value === "") return fallback;
-  return value.slice(0, 5);
-}
-
 export default async function ProfileSettingsPage() {
   const supabase = await createClient();
   const {
@@ -77,7 +71,7 @@ export default async function ProfileSettingsPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "display_name, units, body_comp_phase, phase_started_at, phase_target_weeks, training_experience, allows_two_a_days, am_window_start, pm_window_start, timezone, effort_preference",
+      "display_name, units, body_comp_phase, phase_started_at, phase_target_weeks, training_experience, timezone, effort_preference",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -85,12 +79,10 @@ export default async function ProfileSettingsPage() {
   const experience = asTrainingExperience(profile?.training_experience);
   const phase = asBodyCompPhase(profile?.body_comp_phase);
   const effortPreference = asEffortPreference(profile?.effort_preference);
-  const twoADay = !!profile?.allows_two_a_days;
 
   const experienceSummary = experience ? EXPERIENCE_LABEL[experience] : "Not set";
   const phaseSummary = PHASE_LABEL[phase];
   const effortSummary = EFFORT_PREFERENCE_LABEL[effortPreference];
-  const preferencesSummary = twoADay ? "Two-a-day" : "Single session";
 
   return (
     <div className="space-y-8">
@@ -185,29 +177,6 @@ export default async function ProfileSettingsPage() {
             Applies to new blocks; existing blocks keep what they were built with.
           </p>
           <EffortPreferenceAutoSave initial={effortPreference} />
-        </SettingsGroup>
-
-        {/* Two-a-day — AM lift + PM cardio. Collapsed by default. */}
-        <SettingsGroup
-          id="training-preferences"
-          title="Two-a-day sessions"
-          summary={preferencesSummary}
-          testId="settings-group-training-preferences"
-        >
-          <div className="space-y-3">
-            <p className="text-xs text-foreground/60">
-              Two sessions on the same day: AM lift + PM cardio, ideally 6+
-              hours apart so the lifting and cardio don&apos;t blunt each
-              other. When this is on, curated focuses get a two-a-day variant
-              and the custom builder lets you add a PM session per day. New
-              blocks only — existing blocks aren&apos;t re-compiled.
-            </p>
-            <TwoADayAutoSave
-              initialAllowsTwoADays={twoADay}
-              initialAmStart={toHHMM(profile?.am_window_start, "07:00")}
-              initialPmStart={toHHMM(profile?.pm_window_start, "17:00")}
-            />
-          </div>
         </SettingsGroup>
       </div>
     </div>

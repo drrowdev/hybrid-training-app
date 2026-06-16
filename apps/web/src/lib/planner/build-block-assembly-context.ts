@@ -158,6 +158,13 @@ export type BuildBlockAssemblyContextInput = {
   accessoryVolume?: string;
   cardioSource: "internal" | "external";
   cardioSourceName: string | null;
+  /**
+   * Per-block two-a-day preference (migration 0110). When provided (true/false)
+   * it WINS; when null/undefined the build falls back to the user's profile
+   * `allows_two_a_days`. Callers that don't pass it (and existing blocks whose
+   * column is null) stay byte-identical to the pre-0110 profile-driven read.
+   */
+  allowsTwoADays?: boolean | null;
 };
 
 /**
@@ -206,7 +213,12 @@ export async function buildBlockAssemblyContext(
     .select("allows_two_a_days, warmup_scheme, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_assessment_completed_at, bodyweight_kg, training_experience, effort_preference, preferred_cardio_modalities")
     .eq("id", userId)
     .maybeSingle();
-  const allowsTwoADays = Boolean(profile?.allows_two_a_days ?? false);
+  // Per-block two-a-day preference (migration 0110) WINS when provided
+  // (true/false); a null/undefined per-block value falls back to the user's
+  // profile setting. This keeps existing callers (no per-block value) and
+  // existing blocks (column = null) byte-identical to the pre-0110 read.
+  const allowsTwoADays =
+    input.allowsTwoADays ?? Boolean(profile?.allows_two_a_days ?? false);
   const warmupScheme = resolveWarmupScheme(profile?.warmup_scheme);
   const equipment = resolveEquipment(profile);
   const experience = resolveDeclaredExperience(profile?.training_experience);

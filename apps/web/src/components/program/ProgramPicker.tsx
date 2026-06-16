@@ -698,6 +698,7 @@ export function ProgramPicker({
 
   const isTb = selected?.id === TB_PROGRAM_ID;
   const isGp = selected?.id === "green-protocol";
+  const isHybrid = selected?.id === "hybrid";
   const tbTemplateById = useMemo(() => {
     const m = new Map<string, PickerTbTemplate>();
     for (const t of tbTemplates) m.set(t.id, t);
@@ -714,6 +715,8 @@ export function ProgramPicker({
   const accessoriesOffered = (isTb && tbAccessoryPlan != null) || isGp;
   const [accessoriesOn, setAccessoriesOn] = useState<boolean>(false);
   const [accessoryMuscles, setAccessoryMuscles] = useState<string[]>([...TB_DEFAULT_ACCESSORY_MUSCLES]);
+  // Per-block two-a-day preference (migration 0110) — Hybrid only, default OFF.
+  const [twoADay, setTwoADay] = useState<boolean>(false);
 
   const [cluster, setCluster] = useState<PickerClusterEntry[]>(() =>
     activeTbTemplate ? defaultClusterFor(activeTbTemplate, anchoredKeys) : [],
@@ -1054,6 +1057,7 @@ export function ProgramPicker({
         ...(accessoriesOffered && accessoriesOn
           ? { accessories: { enabled: true, muscles: accessoryMuscles } }
           : {}),
+        ...(isHybrid && twoADay ? { twoADay: true } : {}),
       });
       setResult(res);
       if (res.ok) router.push("/app");
@@ -2024,6 +2028,25 @@ export function ProgramPicker({
             <p className={styles.note}>{schednote}</p>
           </>
         )}
+
+        {isHybrid ? (
+          <div style={{ marginTop: 24, maxWidth: 560 }} data-testid="hybrid-two-a-day">
+            <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={twoADay}
+                data-testid="hybrid-two-a-day-toggle"
+                onChange={(e) => setTwoADay(e.target.checked)}
+              />
+              <span className={styles.label} style={{ margin: 0 }}>
+                Two-a-day sessions (optional)
+              </span>
+            </label>
+            <p className={styles.sub} style={{ marginTop: 6 }}>
+              {"Split eligible training days into an AM lift + PM cardio, ideally 6+ hours apart so the lifting and cardio don\u2019t blunt each other. Applies to this block only \u2014 leave off for a single session per day."}
+            </p>
+          </div>
+        ) : null}
 
         {renderSummary()}
       </div>

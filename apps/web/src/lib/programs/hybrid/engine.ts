@@ -220,7 +220,22 @@ export async function materializeHybridNative(
   userId: string,
   blockId: string,
 ): Promise<NativeMaterializeResult> {
-  const built = await buildBlockAssemblyContext(supabase, userId, toContextInput(instance));
+  // Per-block two-a-day preference (migration 0110) is stored on the block row
+  // by the deploy path, NOT on the instance. Load it and thread it into the
+  // shared context input so the AUTHORITATIVE grid honours the wizard choice.
+  // A null column (legacy blocks) makes the build fall back to the profile
+  // setting — byte-identical to the pre-0110 behaviour.
+  const { data: block } = await supabase
+    .from("training_blocks")
+    .select("allows_two_a_days")
+    .eq("id", blockId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  const allowsTwoADays = (block?.allows_two_a_days as boolean | null | undefined) ?? null;
+  const built = await buildBlockAssemblyContext(supabase, userId, {
+    ...toContextInput(instance),
+    allowsTwoADays,
+  });
   if (!built.ok) return { ok: false, error: built.error };
   const rows = assembleBlockSessions(built.ctx, blockId, userId);
   // Distinct resolved MAIN-lift movement ids (primary + dual-main secondary) —
