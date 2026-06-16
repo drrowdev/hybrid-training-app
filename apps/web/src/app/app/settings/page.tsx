@@ -156,11 +156,11 @@ export default async function SettingsPage() {
           testId="settings-hub-events"
         />
         <SettingsHubCard
-          href="/app/settings/preferences"
+          href="/app/settings/training"
           icon={<SettingsIcon name="preferences" />}
-          title="Preferences"
-          description="Time, feedback, warmups."
-          testId="settings-hub-preferences"
+          title="Training preferences"
+          description="Warmups, cardio source and modalities."
+          testId="settings-hub-training"
         />
         <SettingsHubCard
           href="/app/settings/integrations"

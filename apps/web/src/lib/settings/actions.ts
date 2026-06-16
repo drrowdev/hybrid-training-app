@@ -25,8 +25,6 @@ const profileSchema = z.object({
     ])
     .optional(),
   effortPreference: z.enum(["low", "standard", "high"]).optional(),
-  hapticsEnabled: z.coerce.boolean().optional(),
-  timerSoundEnabled: z.coerce.boolean().optional(),
   showTodayRecoveryCard: z.coerce.boolean().optional(),
 });
 
@@ -40,14 +38,6 @@ export async function updateProfile(formData: FormData): Promise<void> {
     trainingDaysPerWeek: formData.get("trainingDaysPerWeek") || undefined,
     trainingExperience: formData.get("trainingExperience") || undefined,
     effortPreference: formData.get("effortPreference") || undefined,
-    hapticsEnabled:
-      formData.get("hapticsEnabledPresent") === "1"
-        ? formData.get("hapticsEnabled") === "on"
-        : undefined,
-    timerSoundEnabled:
-      formData.get("timerSoundEnabledPresent") === "1"
-        ? formData.get("timerSoundEnabled") === "on"
-        : undefined,
     showTodayRecoveryCard:
       formData.get("showTodayRecoveryCardPresent") === "1"
         ? formData.get("showTodayRecoveryCard") === "on"
@@ -84,8 +74,6 @@ export async function updateProfile(formData: FormData): Promise<void> {
   if (parsed.data.trainingDaysPerWeek !== undefined) updates.training_days_per_week = parsed.data.trainingDaysPerWeek;
   if (parsed.data.trainingExperience !== undefined) updates.training_experience = parsed.data.trainingExperience;
   if (parsed.data.effortPreference !== undefined) updates.effort_preference = parsed.data.effortPreference;
-  if (parsed.data.hapticsEnabled !== undefined) updates.haptics_enabled = parsed.data.hapticsEnabled;
-  if (parsed.data.timerSoundEnabled !== undefined) updates.timer_sound_enabled = parsed.data.timerSoundEnabled;
   if (parsed.data.showTodayRecoveryCard !== undefined)
     updates.show_today_recovery_card = parsed.data.showTodayRecoveryCard;
 

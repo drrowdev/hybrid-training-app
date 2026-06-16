@@ -283,58 +283,6 @@ export function EffortPreferenceAutoSave({
 
 // ─── Session feedback (haptics + timer tone) ─────────────────────────
 
-export function FeedbackAutoSave({
-  initialHaptics,
-  initialTimerSound,
-}: {
-  initialHaptics: boolean;
-  initialTimerSound: boolean;
-}) {
-  const saveHaptics = useCallback(
-    (v: boolean) => saveCheckbox("hapticsEnabled", v),
-    [],
-  );
-  const saveTimer = useCallback(
-    (v: boolean) => saveCheckbox("timerSoundEnabled", v),
-    [],
-  );
-  return (
-    <div
-      className="rounded-lg border border-foreground/10 p-4 space-y-3"
-      data-testid="settings-feedback-form"
-    >
-      <AutoSaveCheckbox
-        label={
-          <>
-            Haptic tick on set save
-            <span className="block text-xs text-foreground/60 mt-1">
-              A ~10ms vibration when a logged set commits. Web Vibration API.
-            </span>
-          </>
-        }
-        initial={initialHaptics}
-        save={saveHaptics}
-        testId="settings-haptics-toggle"
-      />
-      <AutoSaveCheckbox
-        label={
-          <>
-            Rest-timer tone at zero
-            <span className="block text-xs text-foreground/60 mt-1">
-              A short 200ms beep when the auto rest timer hits zero. Web Audio
-              API (gated by browser autoplay rules — needs a first user
-              gesture).
-            </span>
-          </>
-        }
-        initial={initialTimerSound}
-        save={saveTimer}
-        testId="settings-timer-sound-toggle"
-      />
-    </div>
-  );
-}
-
 // ─── Daily recovery check-in ─────────────────────────────────────────
 // Removed — the Today wellness check-in card was retired (see
 // chore/retire-wellness-checkin). The `show_today_recovery_card`

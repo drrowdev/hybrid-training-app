@@ -5,6 +5,7 @@ import {
   EffortPreferenceAutoSave,
   ProfileBasicsAutoSave,
   TrainingExperienceAutoSave,
+  UnitsAutoSave,
 } from "@/components/settings/SettingsAutoSaveSections";
 import { SettingsGroup } from "@/components/settings/SettingsGroup";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -104,6 +105,16 @@ export default async function ProfileSettingsPage() {
           <ProfileBasicsAutoSave
             initialDisplayName={profile?.display_name ?? ""}
           />
+          <div className="space-y-2" data-testid="settings-units">
+            <p className="text-xs text-foreground/60">
+              Show weights and distances in kilograms / kilometres or pounds /
+              miles. Everything is stored in metric and converted for display —
+              switching never changes your logged numbers.
+            </p>
+            <UnitsAutoSave
+              initialUnits={profile?.units === "imperial" ? "imperial" : "metric"}
+            />
+          </div>
         </SettingsGroup>
 
         {/* Training experience — one-time-ish; collapsed by default. */}
