@@ -17,8 +17,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createClient, getAuthUser } from "@/lib/supabase/server";
-import {
+import { createClient, getAuthUser } from "@/lib/supabase/server";import {
   computeZoneBandsSafe,
   HR_MAX_RANGE,
   HR_RESTING_RANGE,
@@ -30,6 +29,8 @@ import {
 } from "@/lib/stats/hr-zones";
 import { mergeIntake, type HrPercents, type HrZoneIntake } from "@/lib/profile/intake";
 import { zonesFromHistogram } from "@/lib/integrations/strava/hr-histogram";
+import { recomputeRegionState } from "@/lib/engine/region-ledger";
+import { getUserTimezone } from "@/lib/planner/queries";
 
 const ZONE_PCTS_SCHEMA = z.object({
   z1: z.number(),
@@ -228,16 +229,24 @@ export async function updateHrZones(
   });
 
   // Re-bucket past activities against the new bands from their stored
-  // histograms (no Strava re-fetch). Best-effort — a failure here must
-  // not fail the settings save.
+  // histograms (no Strava re-fetch). When any zones actually changed,
+  // refresh the cached region ledger too — cardio's contribution is
+  // time-in-zone weighted (cardioIntensityScalar), so stale zones would
+  // otherwise leave the region-freshness math reflecting the old bands.
+  // Both best-effort — a failure here must not fail the settings save.
   try {
-    await recomputeStoredHrZones(supabase, user.id, result.hrZones);
+    const updated = await recomputeStoredHrZones(supabase, user.id, result.hrZones);
+    if (updated > 0) {
+      const tz = await getUserTimezone(user.id);
+      await recomputeRegionState(supabase, user.id, tz);
+    }
   } catch (e) {
-    console.error("recomputeStoredHrZones failed:", e);
+    console.error("post-zone-save recompute failed:", e);
   }
 
   revalidatePath("/app/settings");
   revalidatePath("/app/settings/hr-zones");
   revalidatePath("/app/stats");
+  revalidatePath("/app");
   return result;
 }

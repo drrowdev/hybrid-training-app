@@ -613,13 +613,13 @@ function CardioZoneBar({ zones }: { zones: Record<Zone, number> }) {
           listStyle: "none",
           margin: 0,
           padding: 0,
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
-          gap: 6,
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "6px 16px",
         }}
       >
         {ZONES.filter((z) => zones[z] > 0).map((z) => (
-          <li key={z} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12 }}>
+          <li key={z} style={{ display: "flex", gap: 6, alignItems: "baseline", fontSize: 12 }}>
             <span
               style={{
                 width: 10,
@@ -627,11 +627,12 @@ function CardioZoneBar({ zones }: { zones: Record<Zone, number> }) {
                 borderRadius: 2,
                 background: ZONE_META[z].color,
                 flexShrink: 0,
+                alignSelf: "center",
               }}
               aria-hidden="true"
             />
-            <span style={{ color: "var(--cp-text)" }}>{ZONE_META[z].label}</span>
-            <span style={{ marginLeft: "auto", color: "var(--cp-text-muted)" }} className="mono">
+            <span style={{ color: "var(--cp-text)", fontWeight: 600 }}>{ZONE_META[z].label}</span>
+            <span style={{ color: "var(--cp-text-muted)" }} className="mono">
               {fmtZoneMin(zones[z])}
             </span>
           </li>
