@@ -8,6 +8,10 @@ import {
 } from "@/lib/integrations/strava/actions";
 import { StravaPoweredBadge } from "@/components/StravaPoweredBadge";
 import { ImportHistorySection } from "@/components/settings/StravaImportHistory";
+import {
+  StravaConnectionActions,
+  StravaConnectButton,
+} from "@/components/settings/StravaConnectionActions";
 import { PageHeader } from "@/components/ui/PageHeader";
 
 function formatTimeAgo(iso: string | null): string {
@@ -20,6 +24,23 @@ function formatTimeAgo(iso: string | null): string {
   if (hours < 24) return `${hours} h ago`;
   const days = Math.round(hours / 24);
   return `${days} d ago`;
+}
+
+/**
+ * Translate raw Strava OAuth scope tokens (e.g. "activity:read read")
+ * into a single plain-language line. The raw value is preserved in a
+ * tooltip for anyone who wants it.
+ */
+function describeScopes(scopes: string | null): string {
+  if (!scopes) return "Activity access";
+  const tokens = scopes.split(/[\s,]+/).filter(Boolean);
+  if (tokens.includes("activity:read_all")) {
+    return "Reads your activities, including private ones";
+  }
+  if (tokens.includes("activity:read")) {
+    return "Reads your activities";
+  }
+  return "Basic profile access";
 }
 
 export default async function StravaSettingsPage({
@@ -112,16 +133,21 @@ export default async function StravaSettingsPage({
         <section className="cp-card" style={{ padding: 20, display: "grid", gap: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
             <h2 style={{ fontSize: 16, margin: 0 }}>Connected</h2>
-            <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
-              athlete #{connection.athlete_id}
-            </span>
+            <a
+              href={`https://www.strava.com/athletes/${connection.athlete_id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontSize: 12, color: "var(--cp-text-muted)" }}
+            >
+              View on Strava ↗
+            </a>
           </div>
           <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "max-content 1fr", gap: "4px 16px", fontSize: 13 }}>
             <dt style={{ color: "var(--cp-text-muted)" }}>Last sync</dt>
             <dd style={{ margin: 0 }}>{formatTimeAgo(connection.last_synced_at)}</dd>
-            <dt style={{ color: "var(--cp-text-muted)" }}>Scopes</dt>
-            <dd style={{ margin: 0 }} className="mono">
-              {connection.scopes}
+            <dt style={{ color: "var(--cp-text-muted)" }}>Access</dt>
+            <dd style={{ margin: 0 }} title={connection.scopes ?? undefined}>
+              {describeScopes(connection.scopes)}
             </dd>
           </dl>
           {connection.last_sync_error && (
@@ -138,22 +164,14 @@ export default async function StravaSettingsPage({
               Last sync error: {connection.last_sync_error}
             </div>
           )}
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <form action={syncStravaNow}>
-              <button type="submit" className="cp-btn primary">
-                Sync now
-              </button>
-            </form>
-            <form action={disconnectStrava}>
-              <button type="submit" className="cp-btn">
-                Disconnect
-              </button>
-            </form>
-          </div>
+          <StravaConnectionActions
+            syncAction={syncStravaNow}
+            disconnectAction={disconnectStrava}
+          />
           <p style={{ fontSize: 12, color: "var(--cp-text-muted)", margin: 0 }}>
-            Sync pulls the last 30 days of activities. Strength-style entries
-            (WeightTraining, Crossfit, Workout) are skipped — we log those
-            here directly.
+            Each sync pulls your last 30 days of activity. Strength workouts
+            (logged as WeightTraining, Crossfit, or Workout in Strava) are left
+            out — you log those right here in your plan.
           </p>
         </section>
       ) : (
@@ -163,11 +181,10 @@ export default async function StravaSettingsPage({
             One-click connect via Strava OAuth. We&apos;ll ask for read access
             to your activities and pull the last 30 days on first sync.
           </p>
-          <form action={connectStrava}>
-            <button type="submit" className="cp-btn primary" disabled={!isConfigured}>
-              Connect Strava
-            </button>
-          </form>
+          <StravaConnectButton
+            connectAction={connectStrava}
+            disabled={!isConfigured}
+          />
         </section>
       )}
 
