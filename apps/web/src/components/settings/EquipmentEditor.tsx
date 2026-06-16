@@ -858,6 +858,18 @@ function AccessoriesSection({
           testId="equipment-accessory-rings"
           onChange={(v) => onChange({ ...accessories, rings: v })}
         />
+        <BoolRow
+          label="Sled (HYROX push/pull)"
+          value={accessories.sled}
+          testId="equipment-accessory-sled"
+          onChange={(v) => onChange({ ...accessories, sled: v })}
+        />
+        <BoolRow
+          label="Wall ball (HYROX)"
+          value={accessories.wallBall}
+          testId="equipment-accessory-wallBall"
+          onChange={(v) => onChange({ ...accessories, wallBall: v })}
+        />
       </div>
     </fieldset>
   );

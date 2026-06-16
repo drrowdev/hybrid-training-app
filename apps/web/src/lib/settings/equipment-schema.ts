@@ -162,6 +162,19 @@ export type Equipment = {
     ankleWeights?: { kg: number } | false;
     pullUpBar: boolean;
     rings: boolean;
+    /**
+     * HYROX sled (push + pull). Availability only — HYROX sled loads are
+     * standardised by division, so the quick-HYROX generator just needs to know
+     * a sled is on hand. Defaulted to `false` by `parseEquipment` for equipment
+     * stored before this field existed.
+     */
+    sled: boolean;
+    /**
+     * HYROX wall-ball ball + target. Availability only (the throw weight is set
+     * by the HYROX division, not configured here). Defaulted to `false` by
+     * `parseEquipment` for pre-existing equipment.
+     */
+    wallBall: boolean;
   };
 };
 
@@ -349,6 +362,8 @@ export function parseEquipment(input: unknown): Equipment {
     ankleWeights: ankleWeightsKg !== null ? { kg: ankleWeightsKg } : false,
     pullUpBar: Boolean(accRaw.pullUpBar),
     rings: Boolean(accRaw.rings),
+    sled: Boolean(accRaw.sled),
+    wallBall: Boolean(accRaw.wallBall),
   };
 
   return {
