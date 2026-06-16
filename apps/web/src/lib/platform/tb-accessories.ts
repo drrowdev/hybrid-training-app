@@ -23,6 +23,7 @@
 import type { CatalogMovement } from "@/lib/planner/accessory-picker";
 import { loadsBlockedRegion, loadsBlockedMuscle } from "@/lib/planner/accessory-picker";
 import { declaredExperienceToTier } from "@/lib/planner/experience-tier";
+import { pickValueBiased } from "./foreign-accessory-ranking";
 import type { DeclaredExperience } from "@hta/engine";
 import { resolveRequiredEquipment, isEquipmentAvailable } from "@/lib/planner/equipment-requirements";
 import type { Equipment } from "@/lib/settings/equipment-schema";
@@ -155,7 +156,10 @@ export function buildTbAccessoryInjector(args: BuildTbAccessoryInjectorArgs): Tb
       const pool = byMuscle.get(mu)!;
       const fresh = pool.filter((m) => !used.has(m.id));
       const list = fresh.length > 0 ? fresh : pool;
-      const pick = list[mixSeed(hashString(`${sessionRef}:${mu}`)) % list.length]!;
+      // F1 — staples-first selection within the muscle's pool (value-biased, with
+      // per-candidate jitter for rotation). Selection only; the rep/intensity
+      // character (8–15 near failure) stays fixed below.
+      const pick = pickValueBiased(list, `${sessionRef}:${mu}`)!;
       if (used.has(pick.id)) continue;
       used.add(pick.id);
       items.push({

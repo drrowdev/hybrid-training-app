@@ -14,6 +14,7 @@
 import type { CatalogMovement } from "@/lib/planner/accessory-picker";
 import { loadsBlockedRegion, loadsBlockedMuscle } from "@/lib/planner/accessory-picker";
 import { declaredExperienceToTier } from "@/lib/planner/experience-tier";
+import { pickValueBiased } from "./foreign-accessory-ranking";
 import type { DeclaredExperience } from "@hta/engine";
 import { resolveRequiredEquipment, isEquipmentAvailable } from "@/lib/planner/equipment-requirements";
 import type { Equipment } from "@/lib/settings/equipment-schema";
@@ -134,21 +135,6 @@ export type SessionAssistanceResolver = (
 /** Bind a per-session resolver (own `usedThisSession` state) keyed by engine ref. */
 export type AssistancePlanner = (sessionRef: string) => SessionAssistanceResolver;
 
-// Integer bit-mix (mirrors accessory-picker `mixSeed`) for stable rotation.
-function mixSeed(seed: number): number {
-  let x = seed | 0;
-  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b);
-  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b);
-  x = x ^ (x >>> 16);
-  return x < 0 ? x + 0x100000000 : x;
-}
-
-function hashString(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0;
-  return h;
-}
-
 /**
  * Pre-filter the catalog into per-slot candidate pools (equipment + limitation +
  * main-lift filtered, classified by slot) and return a planner that hands out a
@@ -192,8 +178,9 @@ export function buildAssistancePlanner(args: BuildAssistancePlannerArgs): Assist
       // when a small catalog can't fill every slot uniquely.
       const fresh = pool.filter((m) => !usedThisSession.has(m.id));
       const list = fresh.length > 0 ? fresh : pool;
-      const idx = mixSeed(hashString(`${sessionRef}:${category}:${slotIndex}`)) % list.length;
-      const pick = list[idx]!;
+      // F1 — staples-first selection (value-biased, with per-candidate jitter for
+      // rotation). Selection only; sets/reps stay engine-owned (ADR 0047).
+      const pick = pickValueBiased(list, `${sessionRef}:${category}:${slotIndex}`)!;
       usedThisSession.add(pick.id);
       return { movementId: pick.id, slug: pick.slug, displayName: pick.displayName };
     };
