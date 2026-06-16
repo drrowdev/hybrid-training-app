@@ -203,6 +203,7 @@ PR #160 added the classifier itself, #162 wired it into populating `hr_zones` on
 * "Real miss" = AMRAP top set reps below target OR weight below `prescribed × 0.95`. Now keyed off the explicit `isAmrap` flag (not a positional guess), so the reactive-deload net is a real safety mechanism on real AMRAPs.
 * Two consecutive real misses on the same lift → **−10 % TM**, rounded to 0.5 kg (`tm-bump-actions.ts`).
 * Deload weeks are also declared up-front in each archetype's `weekProfiles` (e.g. Strength Anchor week 3 at 0.45/0.55/0.65). The engine deload is the reactive layer on top of the scheduled one.
+* **Coherent multi-modal deload (ADR 0037, June 2026)** — the scheduled deload week now reduces **intensity, not just volume**. Previously it trimmed strength sets (`strengthVolumeScale`) + Z2 duration (`z2DurationMinOverride`) but left the *maximal* cardio at full dose — the VO2 day stayed `4×4 @ 90–95% HRmax` and the alactic finisher stayed, which is backwards for a recovery week. `deloadCardioPlan` (`apps/web/src/lib/planner/archetypes.ts`), consulted by both materialization loops in `actions.ts`, now: (1) downgrades a `cardio_vo2` day to **easy Z2** — or to **one threshold touch** when weekly frequency ≥ 5 **and** tier ≥ 2, so it is never harder than a loading week — and (2) **drops the alactic finisher**. Data-driven (keys off `cardioKind` + `intensityLabel` + weekly frequency + tier); a no-op on loading weeks (byte-identical) and on archetypes with no VO2. Grounded in 5/3/1's 7th-Week Protocol ("decrease total reps and/or use less intensive movements") and Tactical Barbell's strength-block deload.
 
 ## 15. PR detection — what counts as a personal record
 
@@ -446,3 +447,25 @@ Logic:
 **What this does NOT measure:** autonomic recovery (no HRV, no sleep, no resting HR). The card states this verbatim — it measures load **absorption** (am I keeping up with the work I imposed?), not whether you are ready for a hard session today. The bands themselves (0.8 / 1.3 / 1.5) are team-sport population averages per Williams 2017 / Gabbett 2016 lineage with Lolli 2019 / Impellizzeri 2020 critique noted; per-user band calibration is deferred to v2 once a personal ACWR distribution exists.
 
 **Parity guard:** empty / zero-data path renders an `EmptyState` (variant `card`) with "Log a few sessions" copy, matching `FreshnessCard` convention. Test coverage: 30 new pure unit tests pin the band boundaries (0.79 / 0.8 / 1.0 / 1.29 / 1.3 / 1.49 / 1.5 / 2.5), ISO-week distinct counting, cold-start gate, every (band × drift × output) cell that maps to a non-default verdict, and the gauge-marker math.
+
+### Accessory floors — movement-selection guarantees (ADR 0034–0036, June 2026)
+
+A run of plan-review fixes hardened *what accessory movements every block guarantees*, all data-driven (derived from movement `pattern` / role tags, scaling with days/week, archetype, and focus — no hardcoded movement lists):
+
+* **ADR 0034 — modality- & pattern-aware durability.** A running-impact block steers its first weekly HSR to the Achilles/calf region (running = #1 Achilles-tendinopathy site); later HSR fills follow the day's main-lift pattern tendon region.
+* **ADR 0035 — shoulder-stability (cuff) floor.** A block that presses (vertical/horizontal_press main or secondary) guarantees one weekly rotator-cuff item.
+* **ADR 0036 — universal pull floor.** The four main-lift patterns contain no pull, so every archetype now guarantees a weekly pull, **scaled to the block's pressing exposures** (a dual-main-lift block that presses twice gets two pulls) so push:pull stays balanced.
+
+### Coherent multi-modal deload + pull-plane diversity (ADR 0037, June 2026)
+
+**Problem:** the deload week reduced volume but not intensity — VO2 stayed `4×4 @ 90–95% HRmax` and the alactic finisher stayed at full dose. A separate gap: ADR 0036 scaled pull *count* but two weekly pulls could both be *vertical* (no horizontal row).
+
+**Engine:** `deloadCardioPlan` (pure, `apps/web/src/lib/planner/archetypes.ts`) downgrades a deload-week `cardio_vo2` day to easy Z2 — or one threshold touch at weekly frequency ≥ 5 and tier ≥ 2 (never harder than a loading week) — and drops the alactic finisher. Applied in both materialization loops (`actions.ts`); no migration (reuses seeded `run-easy-z2` / `run-threshold`). Pull-plane diversity: a soft `PULL_PLANE_DIVERSITY_PENALTY` in `accessory-picker.ts` demotes a pull whose plane (vertical = lats-lead / horizontal = mid-back·rear-delt-lead, classified from `primaryMuscles`) is already used that week, so two weekly pulls span both back vectors.
+
+**Grounding / what this confirmed about the fundamentals:** I re-derived the progression model from the two canonical references in the workspace — *5/3/1 Forever* and *Tactical Barbell*. Both **hold load constant within a block and progress at the block boundary** (TB: *"the exact same weight every time, before adding more … a block is 6 weeks"*; 5/3/1: TM increment per cycle + the AMRAP/PR set as the within-block progress signal on strength-goal archetypes only). This **vindicates the existing static-wave strength engine** — we deliberately did **not** add within-wave TM bumps (a deep-research review asked for `+2.5 kg between waves`; that contradicts TB). Engine progression already lives at the block boundary via the TM-bump stack (`progression/suggest-next.ts`, `engine/tm-anchored-pr.ts`, `engine/tm-bump-actions.ts`, `stats/bump-proposal.ts`). Both systems agree a deload reduces *intensity* (5/3/1's 7th-Week Protocol: "use less intensive movements"; TB's strength-block deload) — that agreement is the basis for this ADR. The endurance/maintenance AMRAP suppression (cardio-budget) is also TB-aligned (submaximal, "rack before failure") and was kept.
+
+**Reviewer findings deliberately NOT actioned** (wrong or by-design): "bands not in equipment" (false — the user's equipment carries bands/rings); "+2.5 kg TM between waves" (contradicts TB); "deload missing the 50% set" (deliberate keep-heaviest decision, ADR 0030/#372); "durability must progress every week" (neither TB nor 5/3/1 progresses assistance within a block).
+
+### Next — planned review (open, June 2026)
+
+A focused review of **movement selection and block generation** is planned: auditing how main lifts, secondaries, accessories, and cardio modalities are chosen and assembled across archetypes/frequencies/focuses, to confirm the data-driven selection holds up structurally (and to surface any remaining taste-level refinements beyond the now-closed accessory-floor and deload-coherence work).
