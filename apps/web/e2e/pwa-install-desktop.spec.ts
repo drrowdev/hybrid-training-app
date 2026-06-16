@@ -30,7 +30,7 @@ test.describe("PWA install metadata", () => {
     ).toHaveAttribute("content", "yes");
     await expect(
       page.locator('meta[name="apple-mobile-web-app-title"]'),
-    ).toHaveAttribute("content", "SxC");
+    ).toHaveAttribute("content", "S×C");
     await expect(
       page.locator('meta[name="apple-mobile-web-app-status-bar-style"]'),
     ).toHaveAttribute("content", "black-translucent");
