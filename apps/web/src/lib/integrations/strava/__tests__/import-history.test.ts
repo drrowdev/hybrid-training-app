@@ -20,6 +20,7 @@ import type { StravaActivity } from "../client";
 const listActivitiesInRange = vi.fn();
 const fetchActivitiesPage = vi.fn();
 const refreshAccessToken = vi.fn();
+const fetchActivityStreams = vi.fn(async () => null as unknown);
 const recomputeRegionState = vi.fn(async () => ({ updated: 0, firstDate: null, lastDate: null }));
 
 vi.mock("../client", async () => {
@@ -32,6 +33,8 @@ vi.mock("../client", async () => {
       (fetchActivitiesPage as (...a: unknown[]) => unknown)(...args),
     refreshAccessToken: (...args: unknown[]) =>
       (refreshAccessToken as (...a: unknown[]) => unknown)(...args),
+    fetchActivityStreams: (...args: unknown[]) =>
+      (fetchActivityStreams as (...a: unknown[]) => unknown)(...args),
   };
 });
 vi.mock("@/lib/engine/region-ledger", () => ({
@@ -78,7 +81,13 @@ function makeActivity(over: Partial<StravaActivity> = {}): StravaActivity {
 }
 
 type SessionRow = { id: string; user_id: string; strava_activity_id: number };
-type CardioRow = { id: string; session_id: string; strava_activity_id: string; modality: string };
+type CardioRow = {
+  id: string;
+  session_id: string;
+  strava_activity_id: string;
+  modality: string;
+  hr_zones?: Record<string, number> | null;
+};
 
 type PlannedSeed = {
   id: string;
@@ -265,6 +274,8 @@ describe("importStravaHistory", () => {
     listActivitiesInRange.mockReset();
     fetchActivitiesPage.mockReset();
     refreshAccessToken.mockReset();
+    fetchActivityStreams.mockReset();
+    fetchActivityStreams.mockResolvedValue(null);
     recomputeRegionState.mockReset();
     recomputeRegionState.mockResolvedValue({ updated: 0, firstDate: null, lastDate: null });
   });
@@ -299,6 +310,59 @@ describe("importStravaHistory", () => {
     expect(result.summary.skipped.duplicates).toBe(0);
     expect(result.summary.errors).toEqual([]);
     expect(supa.state.cardio).toHaveLength(5);
+  });
+
+  it("uses measured per-second HR-stream zones when available (not the summary approximation)", async () => {
+    // A run whose avg HR (148) would dump almost everything into one
+    // band under the summary leak model, but whose real stream spreads
+    // time across Z2/Z3/Z4 — the bug Garmin exposed on the 12.6 run.
+    listActivitiesInRange.mockResolvedValue([
+      makeActivity({ id: 77, sport_type: "Run", type: "Run", average_heartrate: 148 }),
+    ]);
+    // hrMax 190 → zone bands; this stream sits 60s in Z2, 120s in Z3, 60s in Z4.
+    fetchActivityStreams.mockResolvedValue({
+      heartrate: [120, 150, 170],
+      time: [0, 60, 180],
+    });
+    const supa = makeSupabase({ connection: FRESH_CONN });
+
+    const result = await importStravaHistory(supa as never, "u1", {
+      startDate: "2026-05-10",
+      endDate: "2026-05-20",
+      autoLinkToPlanned: false,
+    });
+
+    if (!result.ok) throw new Error(result.error);
+    expect(fetchActivityStreams).toHaveBeenCalledWith(
+      "tok",
+      77,
+      expect.anything(),
+    );
+    expect(supa.state.cardio).toHaveLength(1);
+    const zones = supa.state.cardio[0]!.hr_zones as Record<string, number> | null;
+    expect(zones).not.toBeNull();
+    // Measured spread, not a single dominant band.
+    const nonZero = Object.values(zones!).filter((s) => s > 0);
+    expect(nonZero.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("falls back to the summary approximation when no HR stream is available", async () => {
+    listActivitiesInRange.mockResolvedValue([
+      makeActivity({ id: 78, sport_type: "Run", type: "Run", average_heartrate: 150 }),
+    ]);
+    fetchActivityStreams.mockResolvedValue(null);
+    const supa = makeSupabase({ connection: FRESH_CONN });
+
+    const result = await importStravaHistory(supa as never, "u1", {
+      startDate: "2026-05-10",
+      endDate: "2026-05-20",
+      autoLinkToPlanned: false,
+    });
+
+    if (!result.ok) throw new Error(result.error);
+    expect(supa.state.cardio).toHaveLength(1);
+    // Still populated (approximation), just not from a stream.
+    expect(supa.state.cardio[0]!.hr_zones).not.toBeNull();
   });
 
   it("counts duplicates separately from skips when activities re-import", async () => {

@@ -28,12 +28,14 @@ import { z } from "zod";
 import {
   listActivitiesInRange,
   refreshAccessToken,
+  fetchActivityStreams,
   StravaRateLimitError,
   type FetchPageOptions,
   type StravaActivity,
 } from "./client";
 import { mapStravaActivity, categorizeSkip, type SkipCategory } from "./mapping";
 import { writeStravaActivity } from "./write-activity";
+import { zonesFromStream } from "./zones-from-stream";
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
 import { getUserTimezone, dayDate } from "@/lib/planner/queries";
 import { readZoneConfig } from "@/lib/stats/hr-zones";
@@ -107,6 +109,8 @@ export type ImportDeps = {
   now?: () => Date;
   /** Override the page size — kept for symmetry; default 30. */
   perPage?: number;
+  /** Override fetch for the per-activity HR-stream call (tests). */
+  streamFetchImpl?: typeof fetch;
 };
 
 export async function importStravaHistory(
@@ -220,12 +224,34 @@ export async function importStravaHistory(
     }
 
     try {
+      // Real time-in-zone from the per-second HR stream (ADR 0009),
+      // matching the webhook sync path. Best-effort: one extra streams
+      // call per activity, only when zone bands are configured. A null
+      // result (no stream, 404, rate-limited) falls back to the summary
+      // leak-model approximation inside buildSyncRow. fetchActivityStreams
+      // never throws, so a large import degrades gracefully rather than
+      // aborting.
+      let streamZones = null;
+      if (bands) {
+        const streams = await fetchActivityStreams(accessToken, activity.id, {
+          fetchImpl: deps.streamFetchImpl,
+        });
+        if (streams) {
+          streamZones = zonesFromStream({
+            hrStream: streams.heartrate,
+            timeStream: streams.time,
+            bands,
+          });
+        }
+      }
+
       const result = await writeStravaActivity({
         supabase,
         userId,
         activity,
         bands,
         userTimezone,
+        streamZones,
       });
       if (result.status === "imported") {
         summary.imported++;

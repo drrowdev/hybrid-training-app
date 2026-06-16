@@ -1343,7 +1343,9 @@ export default async function SessionDetailPage({
         // is prescribed). Freestyle cardio added via AddToWorkout lands
         // as a logged row, so it still surfaces here once added.
         const showCardioSection =
-          hasLoggedCardio || cardioItemsIndexed.length > 0 || showCardioLogForm;
+          (hasLoggedCardio && !isComplete) ||
+          cardioItemsIndexed.length > 0 ||
+          showCardioLogForm;
         if (!showCardioSection) return null;
         return (
         <section
@@ -1424,7 +1426,7 @@ export default async function SessionDetailPage({
               markExternalCompleteAction={markExternalCardioComplete}
             />
           )}
-          {hasLoggedCardio && (
+          {hasLoggedCardio && !isComplete && (
             <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0" }}>
               {cardio!.map((c) => {
                 const mov = Array.isArray(c.movement) ? c.movement[0] : c.movement;
