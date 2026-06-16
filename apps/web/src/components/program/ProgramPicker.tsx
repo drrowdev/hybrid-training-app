@@ -2037,12 +2037,7 @@ export function ProgramPicker({
       <h1 className={styles.pageTitle}>Start a program</h1>
 
       <div className={styles.top}>
-        <div className={styles.mark}>
-          <div className={styles.diamond}>
-            <span>{"S\u00D7C"}</span>
-          </div>
-        </div>
-        <div className={styles.stepcount}>
+        <div className={styles.stepcount} style={{ marginLeft: "auto" }}>
           STEP <b>{step + 1}</b> / 4
         </div>
       </div>

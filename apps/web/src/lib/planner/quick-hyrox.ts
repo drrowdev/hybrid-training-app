@@ -113,6 +113,19 @@ function countStations(stations: ReadonlySet<HyroxQuickStation>): number {
   return HYROX_QUICK_STATION_OPTIONS.filter((o) => stations.has(o)).length;
 }
 
+/** Ergs are off-feet aerobic, not "stations" for a compromised run. */
+const ERG_MOVEMENTS = new Set(["skierg", "rowing-erg"]);
+
+/**
+ * The functional stations to rotate through on a compromised run — every
+ * selected station EXCEPT the ergs (the run legs already cover the aerobic
+ * stimulus). Falls back to whatever's selected if only ergs are available.
+ */
+function compromisedStations(movements: string[]): string[] {
+  const functional = movements.filter((m) => !ERG_MOVEMENTS.has(m));
+  return functional.length > 0 ? functional : movements;
+}
+
 /** Which formats can be generated from the checked stations. */
 export function feasibleFormats(stations: ReadonlySet<HyroxQuickStation>): HyroxQuickFormat[] {
   const out: HyroxQuickFormat[] = [];
@@ -208,15 +221,18 @@ export function assembleQuickHyroxItems(args: AssembleQuickHyroxArgs): Prescript
   const movements = selectedStationMovements(stations);
 
   if (format === "compromised") {
-    const station = movements[0] ? getStation(movements[0]) : undefined;
-    const stationDose = movements[0] ? QUICK_DOSE[movements[0]] : "a station";
-    const loads = loadRefs(movements.slice(0, 1), division);
+    const stationPool = compromisedStations(movements);
+    const stationNames = stationPool
+      .map((m) => getStation(m)?.name ?? m)
+      .join(", ");
+    const loads = loadRefs(stationPool, division);
     return [
       cardioItem(
         "cardio_threshold",
         "HYROX · Compromised Run",
         cap,
-        `${rounds} × (400 m run → ${stationDose}${station ? ` (${station.name})` : ""} → 400 m run) at race effort, minimal rest. ` +
+        `${rounds} × (400 m run → one race station → 400 m run) at race effort, minimal rest. ` +
+          `Rotate the station each round through: ${stationNames}. ` +
           `Running on pre-fatigued legs is the signature HYROX skill.${loads ? ` ${loads}.` : ""}`,
       ),
     ];
@@ -325,19 +341,21 @@ export function buildQuickHyroxView(args: AssembleQuickHyroxArgs): QuickHyroxVie
   const movements = selectedStationMovements(stations);
 
   if (format === "compromised") {
-    const first = movements[0];
-    const st = first ? getStation(first) : undefined;
+    const stationPool = compromisedStations(movements);
     const structure: QuickHyroxStructureRow[] = [
-      { name: `${rounds} rounds`, detail: "run → station → run · race effort, minimal rest" },
+      { name: `${rounds} rounds`, detail: "run → station → run · race effort; rotate the station each round" },
       { name: "Run", amount: "400 m" },
-      ...(st && first ? [{ name: st.name, ...(QUICK_AMOUNT[first] ? { amount: QUICK_AMOUNT[first] } : {}) }] : []),
+      ...stationPool.map((m) => ({
+        name: getStation(m)?.name ?? m,
+        ...(QUICK_AMOUNT[m] ? { amount: QUICK_AMOUNT[m] } : {}),
+      })),
       { name: "Run", amount: "400 m" },
     ];
     return {
       title: "HYROX · Compromised Run",
       divisionLabel,
       structure,
-      loadedStations: loadedStationsView(first ? [first] : [], division),
+      loadedStations: loadedStationsView(stationPool, division),
     };
   }
 
