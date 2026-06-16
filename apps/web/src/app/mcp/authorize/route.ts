@@ -105,7 +105,7 @@ function renderConsentPage(args: {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="robots" content="noindex,nofollow" />
-<title>Authorize ${displayName} — SxC</title>
+<title>Authorize ${displayName} — S×C</title>
 <style>
   :root { color-scheme: light dark; }
   html, body { margin: 0; padding: 0; background: #f4f3f1; color: #1a1a1a;
@@ -140,7 +140,7 @@ function renderConsentPage(args: {
 <main>
   <div class="card">
     <h1>Authorize ${displayName}</h1>
-    <p>${displayName} is requesting read access to your SxC data.</p>
+    <p>${displayName} is requesting read access to your S×C data.</p>
     <dl>
       <dt>Client</dt><dd><span class="mono">${clientId}</span></dd>
       <dt>Scope</dt><dd><span class="mono">${scope}</span></dd>

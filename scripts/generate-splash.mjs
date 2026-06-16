@@ -38,18 +38,18 @@ const DEVICES = [
   { w: 1024, h: 1366, r: 2 }, // iPad Pro 12.9"
 ];
 
-const BG = { r: 26, g: 26, b: 26, alpha: 1 }; // #1a1a1a (manifest background_color)
+const BG = { r: 15, g: 19, b: 16, alpha: 1 }; // #0f1310 (manifest background_color)
 
 const repoRoot = new URL("../", import.meta.url);
-const lockupPath = new URL(
-  "apps/web/public/branding/sxc-lockup-dark.svg",
+const wordmarkPath = new URL(
+  "apps/web/public/branding/sxc-wordmark-dark.svg",
   repoRoot,
 );
 const outDir = new URL("apps/web/public/splash/", repoRoot);
 const moduleOut = new URL("apps/web/src/lib/pwa/splash-screens.ts", repoRoot);
 
 await mkdir(outDir, { recursive: true });
-const lockupSvg = await readFile(lockupPath);
+const wordmarkSvg = await readFile(wordmarkPath);
 
 const entries = [];
 
@@ -57,9 +57,9 @@ for (const { w, h, r } of DEVICES) {
   const pxW = w * r;
   const pxH = h * r;
 
-  // Brand lockup sized to ~62% of the (portrait) short edge.
+  // Brand wordmark sized to ~62% of the (portrait) short edge.
   const logoW = Math.round(pxW * 0.62);
-  const logo = await sharp(lockupSvg, { density: 384 })
+  const logo = await sharp(wordmarkSvg, { density: 384 })
     .resize({ width: logoW })
     .png()
     .toBuffer();

@@ -138,7 +138,7 @@ export function InstallPrompt() {
   return (
     <div
       role="region"
-      aria-label="Install SxC"
+      aria-label="Install S×C"
       style={{
         position: "fixed",
         left: 12,
@@ -159,7 +159,7 @@ export function InstallPrompt() {
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
         <div style={{ fontSize: 22, lineHeight: 1 }} aria-hidden="true">⚡</div>
         <div style={{ display: "grid", gap: 4, flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>Install SxC for faster gym access</div>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>Install S×C for faster gym access</div>
           {iOS ? (
             <div style={{ fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
               Tap the <strong>Share</strong> icon in Safari, then{" "}
@@ -167,7 +167,7 @@ export function InstallPrompt() {
             </div>
           ) : (
             <div style={{ fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
-              One tap to put SxC on your home screen. Opens full-screen, no browser
+              One tap to put S×C on your home screen. Opens full-screen, no browser
               chrome.
             </div>
           )}

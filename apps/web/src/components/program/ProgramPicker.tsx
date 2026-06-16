@@ -44,7 +44,7 @@ const CARD_TAGLINE: Record<string, string> = {
   "wendler-531": "Percentage strength",
   "tactical-barbell": "Operator · Fighter · Zulu",
   "green-protocol": "Strength + endurance",
-  hybrid: "Personalised strength × cardio",
+  hybrid: "Personalised strength + cardio",
   hyrox: "Run + functional stations",
 };
 

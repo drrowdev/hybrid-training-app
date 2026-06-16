@@ -48,12 +48,12 @@ const sairaStencil = Saira_Stencil_One({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://getsxc.app"),
-  title: "SxC — Strength × Cardio",
+  title: "S×C",
   description: "Train hybrid. One plan, two modalities, zero collisions.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    title: "SxC",
+    title: "S×C",
     statusBarStyle: "black-translucent",
   },
   icons: {
@@ -70,8 +70,8 @@ export const metadata: Metadata = {
   },
   openGraph: {
     type: "website",
-    siteName: "SxC — Strength × Cardio",
-    title: "SxC — Strength × Cardio",
+    siteName: "S×C",
+    title: "S×C",
     description: "Train hybrid. One plan, two modalities, zero collisions.",
     url: "https://getsxc.app",
     images: [
@@ -79,13 +79,13 @@ export const metadata: Metadata = {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "SxC — Strength × Cardio",
+        alt: "S×C",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "SxC — Strength × Cardio",
+    title: "S×C",
     description: "Train hybrid. One plan, two modalities, zero collisions.",
     images: ["/og-image.png"],
   },

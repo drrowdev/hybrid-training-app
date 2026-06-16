@@ -67,8 +67,8 @@ test.describe("PWA install metadata", () => {
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
     expect(body.display).toBe("standalone");
-    expect(body.name).toBe("SxC — Strength × Cardio");
-    expect(body.short_name).toBe("SxC");
+    expect(body.name).toBe("S×C");
+    expect(body.short_name).toBe("S×C");
     expect(Array.isArray(body.icons)).toBe(true);
     // Must include at least one maskable icon so Android adaptive icons
     // don't get cropped, plus a 192 and a 512.
