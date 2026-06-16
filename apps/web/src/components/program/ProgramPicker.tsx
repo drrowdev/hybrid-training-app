@@ -697,6 +697,7 @@ export function ProgramPicker({
   }, [benchRoles]);
 
   const isTb = selected?.id === TB_PROGRAM_ID;
+  const isGp = selected?.id === "green-protocol";
   const tbTemplateById = useMemo(() => {
     const m = new Map<string, PickerTbTemplate>();
     for (const t of tbTemplates) m.set(t.id, t);
@@ -707,6 +708,10 @@ export function ProgramPicker({
   const activeTbTemplate = isTb ? tbTemplateById.get(tbTemplateId) ?? null : null;
   // ADR 0048 — optional TB accessories (opt-in, template-gated).
   const tbAccessoryPlan = isTb ? tbAccessoryPlanForTemplate(tbTemplateId) : null;
+  // Green Protocol also offers opt-in accessories (its book treats them as
+  // optional). GP is periodised, so the cap is per strength session rather than
+  // a single template — the offer itself is unconditional when GP is selected.
+  const accessoriesOffered = (isTb && tbAccessoryPlan != null) || isGp;
   const [accessoriesOn, setAccessoriesOn] = useState<boolean>(false);
   const [accessoryMuscles, setAccessoryMuscles] = useState<string[]>([...TB_DEFAULT_ACCESSORY_MUSCLES]);
 
@@ -1046,7 +1051,7 @@ export function ProgramPicker({
         ...(supportsCardioDays && cardioWeekdays.length > 0 ? { cardioWeekdays } : {}),
         ...(selected.id === "hyrox" && raceDate ? { raceDate } : {}),
         ...(startWeekIndex > 0 ? { startWeekIndex } : {}),
-        ...(isTb && tbAccessoryPlan && accessoriesOn
+        ...(accessoriesOffered && accessoriesOn
           ? { accessories: { enabled: true, muscles: accessoryMuscles } }
           : {}),
       });
@@ -1384,7 +1389,7 @@ export function ProgramPicker({
   }
 
   function renderTbAccessories() {
-    if (!isTb || !tbAccessoryPlan) return null;
+    if (!accessoriesOffered) return null;
     const toggleMuscle = (m: string) =>
       setAccessoryMuscles((prev) =>
         prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m],
@@ -1403,9 +1408,9 @@ export function ProgramPicker({
           </span>
         </label>
         <p className={styles.sub} style={{ marginTop: 6 }}>
-          {"Tactical Barbell doesn\u2019t prescribe accessories \u2014 your main lifts and conditioning do the heavy lifting. Turn this on only if you want a little aesthetic work (arms, abs, calves) after your main lifts. Up to "}
-          {tbAccessoryPlan.maxItems}
-          {" per session, kept light so it never compromises your strength work."}
+          {isGp
+            ? "Green Protocol treats accessories as optional \u2014 conditioning and your main lifts come first. Turn this on for a little aesthetic work (arms, abs, calves) after your strength sessions. Up to 2\u20133 per session depending on the day\u2019s template, and never added to a conditioning day."
+            : `Tactical Barbell doesn\u2019t prescribe accessories \u2014 your main lifts and conditioning do the heavy lifting. Turn this on only if you want a little aesthetic work (arms, abs, calves) after your main lifts. Up to ${tbAccessoryPlan?.maxItems ?? 2} per session, kept light so it never compromises your strength work.`}
         </p>
         {accessoriesOn ? (
           <>

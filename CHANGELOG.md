@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Green Protocol — opt-in accessory work
+- Green Protocol now offers the same opt-in accessory toggle as Tactical Barbell
+  (default OFF), per the book's "accessories are optional" guidance. Because GP is
+  periodised across multiple TB templates, the per-session cap is resolved from
+  each strength session's template (Zulu-HT 3, Operator/Fighter 2) and
+  **conditioning days never receive accessories**. Inherits the training-experience
+  unlock floor. New `greenStrengthTemplateByRef` helper (`@hta/green`) maps strength
+  session refs → TB template; `buildTbAccessoryInjector` gained an optional
+  `planForRef` per-session cap resolver. `zulu-ht` added to the accessory template
+  gate.
+
 ### Training experience → foreign-program assistance (5/3/1, TB, GP)
 - The declared training-experience tier (`profiles.training_experience`) now
   gates assistance/accessory selection on the foreign deploy path, where it was

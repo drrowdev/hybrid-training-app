@@ -209,6 +209,25 @@ function buildPlan(instance: GreenInstance): PlanEntry[] {
   return entries;
 }
 
+/**
+ * Map every STRENGTH session's program ref to the Tactical Barbell template it
+ * delegates to (`operator` / `fighter` / `zulu-ht`). Conditioning, deload, test
+ * and rest sessions are absent from the map.
+ *
+ * Used by the platform's opt-in Green accessory injector: GP is periodised across
+ * multiple TB templates, so the accessory cap is resolved per session from this
+ * map, and non-strength sessions (a ref not in the map) get NO accessories.
+ */
+export function greenStrengthTemplateByRef(instance: GreenInstance): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const e of buildPlan(instance)) {
+    if (e.cell.kind === "strength" && e.tbTemplateId) {
+      map.set(e.spec.ref, e.tbTemplateId);
+    }
+  }
+  return map;
+}
+
 /** Classify a phase week for segmentation: deload / benchmark / strength / cardio. */
 function greenWeekMeta(week: GreenWeek): {
   isDeload: boolean;

@@ -70,6 +70,15 @@ export interface BuildTbAccessoryInjectorArgs {
   /** Movement ids never to use (the user's anchored main lifts). */
   excludeMovementIds?: Set<string>;
   /**
+   * Optional per-session cap resolver. When supplied it OVERRIDES the fixed
+   * `maxItems` / `setsPerItem` for each session ref, and returning `null` means
+   * "no accessories for this session". Used by the periodised Green Protocol,
+   * where each strength session resolves its own TB-template cap and conditioning
+   * / rest sessions (refs the resolver returns `null` for) get none. Tactical
+   * Barbell omits it and keeps the single fixed template cap.
+   */
+  planForRef?: (sessionRef: string) => { maxItems: number; setsPerItem: number } | null;
+  /**
    * Declared training experience (`profiles.training_experience`). Unlock floor
    * only — drops a candidate when the user's tier is below its `experienceMin`
    * (a beginner who opts into TB accessories doesn't get skill variants).
@@ -103,7 +112,7 @@ function hashString(s: string): number {
  * is smaller than the chosen-muscle count, every muscle still gets hit over time.
  */
 export function buildTbAccessoryInjector(args: BuildTbAccessoryInjectorArgs): TbAccessoryInjector {
-  const { catalog, equipment, filters, muscles, maxItems, setsPerItem, excludeMovementIds, experience } = args;
+  const { catalog, equipment, filters, muscles, maxItems, setsPerItem, excludeMovementIds, planForRef, experience } = args;
 
   // Unlock floor (design §3 O2): drop a candidate only when the user's tier is
   // below its `experienceMin`. `experienceMax` is never honoured here, so no
@@ -131,11 +140,17 @@ export function buildTbAccessoryInjector(args: BuildTbAccessoryInjectorArgs): Tb
   const liveMuscles = muscles.filter((mu) => (byMuscle.get(mu)?.length ?? 0) > 0);
 
   return (sessionRef) => {
-    if (liveMuscles.length === 0 || maxItems <= 0) return [];
+    // Per-session cap (Green: resolved from the session's TB template; `null`
+    // ⇒ a non-strength session, no accessories). TB: the fixed template cap.
+    const plan = planForRef ? planForRef(sessionRef) : { maxItems, setsPerItem };
+    if (!plan) return [];
+    const cap = plan.maxItems;
+    const sets = plan.setsPerItem;
+    if (liveMuscles.length === 0 || cap <= 0) return [];
     const used = new Set<string>();
     const items: PrescriptionItem[] = [];
     const start = mixSeed(hashString(sessionRef)) % liveMuscles.length;
-    for (let i = 0; i < liveMuscles.length && items.length < maxItems; i++) {
+    for (let i = 0; i < liveMuscles.length && items.length < cap; i++) {
       const mu = liveMuscles[(start + i) % liveMuscles.length]!;
       const pool = byMuscle.get(mu)!;
       const fresh = pool.filter((m) => !used.has(m.id));
@@ -148,7 +163,7 @@ export function buildTbAccessoryInjector(args: BuildTbAccessoryInjectorArgs): Tb
         movementSlug: pick.slug,
         movementName: pick.displayName,
         kind: "accessory",
-        sets: setsPerItem,
+        sets: sets,
         reps: ACCESSORY_REPS,
         notes: ACCESSORY_REPS_NOTE,
       });

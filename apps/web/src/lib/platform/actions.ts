@@ -36,6 +36,7 @@ import { buildAssistancePlanner, type AssistancePlanner } from "./assistance-res
 import { loadPickerCatalog } from "@/lib/planner/picker-catalog";
 import { readLimitationsContext } from "@/lib/planner/limitations-context";
 import { resolveDeclaredExperience } from "@/lib/planner/build-block-assembly-context";
+import { greenStrengthTemplateByRef, type GreenInstance } from "@hta/green";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import type { MovementResolver } from "./adapter";
 import {
@@ -346,6 +347,67 @@ async function buildForeignTbAccessoryInjector(
 }
 
 /**
+ * Build the optional Green Protocol accessory injector. GP is periodised across
+ * multiple TB templates, so — unlike TB's single fixed-template injector — the
+ * cap is resolved PER SESSION from the green plan's `ref → TB-template` map:
+ *   - strength session → its template's cap (Zulu-HT 3, Operator/Fighter 2)
+ *   - conditioning / deload / test / rest session → `null` ⇒ no accessories
+ * Inherits the same experience unlock floor + equipment/limitation filters as TB.
+ * Returns `undefined` when accessories aren't enabled or the catalog can't load.
+ */
+async function buildForeignGpAccessoryInjector(
+  supabase: SupabaseClient,
+  userId: string,
+  resolveMovement: MovementResolver,
+  instance: GreenInstance,
+  accessories: { enabled: boolean; muscles?: string[] } | undefined,
+): Promise<TbAccessoryInjector | undefined> {
+  if (!accessories?.enabled) return undefined;
+  const templateByRef = greenStrengthTemplateByRef(instance);
+  if (templateByRef.size === 0) return undefined;
+
+  const catalog = await loadPickerCatalog(supabase);
+  if (catalog.length === 0) return undefined;
+
+  const limitations = await readLimitationsContext(supabase, userId);
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, training_experience")
+    .eq("id", userId)
+    .maybeSingle();
+  const equipment = resolveEquipment(profile);
+  const experience = resolveDeclaredExperience(profile?.training_experience);
+
+  // Don't resolve an accessory to one of the cluster's main lifts.
+  const excludeMovementIds = new Set<string>();
+  for (const key of ["squat", "bench", "deadlift", "press", "row", "chinup", "pullup"]) {
+    const resolved = resolveMovement(key);
+    if (resolved) excludeMovementIds.add(resolved.movementId);
+  }
+
+  return buildTbAccessoryInjector({
+    catalog,
+    equipment,
+    filters: {
+      blockedRegions: limitations.blockedRegions,
+      blockedMuscles: limitations.blockedMuscles,
+      blockedMovementIds: limitations.blockedMovementIds,
+      allowedMovementIds: limitations.allowedMovementIds,
+    },
+    muscles: resolveTbAccessoryMuscles(accessories.muscles),
+    // Overridden per-session by planForRef; placeholders for the fixed path.
+    maxItems: 0,
+    setsPerItem: 0,
+    planForRef: (ref) => {
+      const templateId = templateByRef.get(ref);
+      return templateId ? tbAccessoryPlanForTemplate(templateId) : null;
+    },
+    excludeMovementIds,
+    experience,
+  });
+}
+
+/**
  * Foreign per-session engine deploy (5/3/1, Tactical Barbell, Green Protocol).
  * Behaviour is byte-identical to the pre-refactor inline flow.
  */
@@ -422,6 +484,19 @@ async function createForeignProgramInstance(
             accessories,
           )
         : undefined;
+    // Optional, opt-in Green Protocol accessory work — periodised, capped
+    // per-session by each strength session's TB template (conditioning gets none).
+    const gpAccessories =
+      programId === "green-protocol"
+        ? await buildForeignGpAccessoryInjector(
+            supabase,
+            user.id,
+            resolveMovement,
+            instance as GreenInstance,
+            accessories,
+          )
+        : undefined;
+    const foreignAccessories = tbAccessories ?? gpAccessories;
     write = buildProgramInstanceWrite({
       engine,
       instance,
@@ -430,7 +505,7 @@ async function createForeignProgramInstance(
       weekdays,
       startedOn,
       ...(assistance ? { assistance } : {}),
-      ...(tbAccessories ? { accessories: tbAccessories } : {}),
+      ...(foreignAccessories ? { accessories: foreignAccessories } : {}),
       ...(startWeekIndex != null ? { startWeekIndex } : {}),
       ...(cardioWeekdays && cardioWeekdays.length > 0 ? { cardioWeekdays } : {}),
     });
