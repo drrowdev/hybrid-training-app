@@ -267,6 +267,43 @@ export default async function SessionDetailPage({
       session.performed_at as string | null,
     );
   }
+  // Quick HYROX (off-plan): no program instance, but the generator stored the
+  // structured completion view on the prescription. Render the SAME
+  // HyroxCompletionForm a planned HYROX session uses (structure + confirm-weights
+  // + Mark complete / Strava) — never the generic cardio logger.
+  if (!hyroxView && !isComplete) {
+    const quickView = (
+      plannedPrescription as
+        | (Prescription & {
+            meta?: {
+              hyroxQuickView?: {
+                title: string;
+                divisionLabel: string;
+                structure: { name: string; detail?: string; amount?: string }[];
+                loadedStations: {
+                  key: string;
+                  name: string;
+                  defaultKg: number;
+                  loadLabel: string;
+                  amount?: string;
+                }[];
+              };
+            };
+          })
+        | null
+    )?.meta?.hyroxQuickView;
+    if (quickView) {
+      hyroxView = {
+        hyroxSessionId: "quick",
+        title: quickView.title,
+        structure: quickView.structure,
+        loadedStations: quickView.loadedStations,
+        isBenchmark: false,
+        divisionLabel: quickView.divisionLabel,
+        stravaMatch: null,
+      };
+    }
+  }
 
   // ADR 0026 P5b — when the lifter has opted into antagonist supersets, derive
   // accessory pairing from the (unpaired) stored prescription so the logger can

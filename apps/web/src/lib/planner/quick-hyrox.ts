@@ -63,6 +63,18 @@ const QUICK_DOSE: Record<string, string> = {
   "wall-ball": "25 wall balls",
 };
 
+/** Quick-dose AMOUNT only (for the structured completion view's right column). */
+const QUICK_AMOUNT: Record<string, string> = {
+  skierg: "250 m",
+  "rowing-erg": "250 m",
+  "sled-push": "25 m",
+  "sled-pull": "25 m",
+  "burpee-broad-jump": "20 m",
+  "farmers-carry": "50 m",
+  "sandbag-lunge": "25 m",
+  "wall-ball": "25 reps",
+};
+
 const LENGTH_CAP_MIN: Record<HyroxQuickLength, number> = { short: 30, normal: 60 };
 
 /** Rounds for a circuit / compromised session by length × level. `[DEF]`. */
@@ -222,4 +234,125 @@ export function assembleQuickHyroxItems(args: AssembleQuickHyroxArgs): Prescript
         `${loads ? ` Loads — ${loads}.` : ""}`,
     ),
   ];
+}
+
+// ── Structured completion view (renders via the same HyroxCompletionForm a
+//    planned HYROX session uses) ──────────────────────────────────────────────
+
+export interface QuickHyroxStructureRow {
+  name: string;
+  detail?: string;
+  amount?: string;
+}
+export interface QuickHyroxLoadedStation {
+  key: string;
+  name: string;
+  defaultKg: number;
+  loadLabel: string;
+  amount?: string;
+}
+export interface QuickHyroxView {
+  title: string;
+  divisionLabel: string;
+  structure: QuickHyroxStructureRow[];
+  loadedStations: QuickHyroxLoadedStation[];
+}
+
+const DIVISION_LABEL: Record<HyroxDivision, string> = {
+  open: "Open division",
+  pro: "Pro division",
+  doubles: "Doubles",
+};
+
+/** The selected stations that carry a division load → confirm-weight rows. */
+function loadedStationsView(
+  movements: string[],
+  division: HyroxDivision,
+): QuickHyroxLoadedStation[] {
+  const out: QuickHyroxLoadedStation[] = [];
+  for (const m of movements) {
+    const st = getStation(m);
+    if (!st) continue;
+    const load = division === "pro" ? st.pro : st.open;
+    if (!load) continue;
+    out.push({
+      key: m,
+      name: st.name,
+      defaultKg: load.men ?? 0,
+      loadLabel: stationLoadLabel(st, division),
+      ...(QUICK_AMOUNT[m] ? { amount: QUICK_AMOUNT[m] } : {}),
+    });
+  }
+  return out;
+}
+
+/**
+ * Build the structured HYROX completion view for a quick session — the same
+ * shape a planned HYROX session feeds to `HyroxCompletionForm`: a "what to do"
+ * structure (rounds + per-station amounts) + the loaded stations to confirm. The
+ * user reads it, marks complete (one time + RPE) and/or syncs Strava — no generic
+ * cardio logger.
+ */
+export function buildQuickHyroxView(args: AssembleQuickHyroxArgs): QuickHyroxView {
+  const { format, stations, length, experience, division } = args;
+  const cap = LENGTH_CAP_MIN[length];
+  const divisionLabel = DIVISION_LABEL[division];
+
+  if (format === "erg") {
+    const erg = stations.has("ski_erg") ? "SkiErg" : "Rower";
+    return {
+      title: `HYROX · ${erg}`,
+      divisionLabel,
+      structure: [
+        { name: `${erg} steady`, detail: "Zone 2 (RPE 4–5), smooth & continuous", amount: `${cap} min` },
+      ],
+      loadedStations: [],
+    };
+  }
+
+  if (format === "run") {
+    return {
+      title: "HYROX · Run",
+      divisionLabel,
+      structure: [
+        { name: "Steady run", detail: "Zone 2 (RPE 4–5), conversational", amount: `${cap} min` },
+      ],
+      loadedStations: [],
+    };
+  }
+
+  const rounds = ROUNDS[length][experience];
+  const movements = selectedStationMovements(stations);
+
+  if (format === "compromised") {
+    const first = movements[0];
+    const st = first ? getStation(first) : undefined;
+    const structure: QuickHyroxStructureRow[] = [
+      { name: `${rounds} rounds`, detail: "run → station → run · race effort, minimal rest" },
+      { name: "Run", amount: "400 m" },
+      ...(st && first ? [{ name: st.name, ...(QUICK_AMOUNT[first] ? { amount: QUICK_AMOUNT[first] } : {}) }] : []),
+      { name: "Run", amount: "400 m" },
+    ];
+    return {
+      title: "HYROX · Compromised Run",
+      divisionLabel,
+      structure,
+      loadedStations: loadedStationsView(first ? [first] : [], division),
+    };
+  }
+
+  // circuit
+  const structure: QuickHyroxStructureRow[] = [
+    { name: `${rounds} rounds`, detail: "high-rep, sustainable load · tight transitions" },
+    ...movements.map((m) => ({
+      name: getStation(m)?.name ?? m,
+      ...(QUICK_AMOUNT[m] ? { amount: QUICK_AMOUNT[m] } : {}),
+    })),
+  ];
+  return {
+    title: "HYROX · Station Circuit",
+    divisionLabel,
+    structure,
+    loadedStations: loadedStationsView(movements, division),
+  };
 }

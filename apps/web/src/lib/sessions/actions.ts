@@ -2193,7 +2193,7 @@ export async function generateQuickHyroxSession(
 
   const prescription: Prescription = {
     items: plan.items,
-    meta: { hyroxQuickFormat: plan.format },
+    meta: { hyroxQuickFormat: plan.format, hyroxQuickView: plan.view },
   };
   const { data: createdHyrox, error: insHyroxErr } = await supabase
     .from("sessions")

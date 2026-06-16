@@ -16,10 +16,12 @@ import type { PrescriptionItem } from "@hta/db";
 import type { HyroxExperience, HyroxDivision } from "@hta/hyrox";
 import {
   assembleQuickHyroxItems,
+  buildQuickHyroxView,
   feasibleFormats,
   type HyroxQuickStation,
   type HyroxQuickFormat,
   type HyroxQuickLength,
+  type QuickHyroxView,
 } from "./quick-hyrox";
 
 /**
@@ -47,7 +49,7 @@ const RECENCY_LOOKBACK_DAYS = 21;
 const DAY_MS = 86_400_000;
 
 export type QuickHyroxResult =
-  | { ok: true; items: PrescriptionItem[]; title: string; format: HyroxQuickFormat }
+  | { ok: true; items: PrescriptionItem[]; title: string; format: HyroxQuickFormat; view: QuickHyroxView }
   | { ok: false; error: string };
 
 const VALID_EXPERIENCE = new Set<HyroxExperience>(["beginner", "intermediate", "advanced"]);
@@ -153,13 +155,6 @@ export function pickFormat(
   return best;
 }
 
-const FORMAT_TITLE: Record<HyroxQuickFormat, string> = {
-  compromised: "HYROX · Compromised Run",
-  circuit: "HYROX · Station Circuit",
-  erg: "HYROX · Erg",
-  run: "HYROX · Run",
-};
-
 export async function resolveQuickHyroxPlan(
   supabase: SupabaseClient,
   userId: string,
@@ -181,12 +176,14 @@ export async function resolveQuickHyroxPlan(
   ]);
 
   const format = pickFormat(feasible, daysSince) ?? feasible[0]!;
-  const items = assembleQuickHyroxItems({
+  const assembleArgs = {
     format,
     stations: stationSet,
     length: opts.length,
     experience,
     division,
-  });
-  return { ok: true, items, title: FORMAT_TITLE[format], format };
+  };
+  const items = assembleQuickHyroxItems(assembleArgs);
+  const view = buildQuickHyroxView(assembleArgs);
+  return { ok: true, items, title: view.title, format, view };
 }

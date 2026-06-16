@@ -384,6 +384,24 @@ export type Prescription = {
    */
   meta?: {
     hyroxQuickFormat?: "circuit" | "compromised" | "erg" | "run";
+    /**
+     * The structured HYROX completion view for a quick-generated session, stored
+     * at generation time so the session page can render the same
+     * `HyroxCompletionForm` a planned HYROX session uses (structured "what to do"
+     * + confirm-weights + Mark complete / Strava), without a program instance.
+     */
+    hyroxQuickView?: {
+      title: string;
+      divisionLabel: string;
+      structure: { name: string; detail?: string; amount?: string }[];
+      loadedStations: {
+        key: string;
+        name: string;
+        defaultKg: number;
+        loadLabel: string;
+        amount?: string;
+      }[];
+    };
   };
 };
 
