@@ -16,6 +16,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   computeZoneBandsSafe,
@@ -28,6 +29,7 @@ import {
   type ZonePercents,
 } from "@/lib/stats/hr-zones";
 import { mergeIntake, type HrPercents, type HrZoneIntake } from "@/lib/profile/intake";
+import { zonesFromHistogram } from "@/lib/integrations/strava/hr-histogram";
 
 const ZONE_PCTS_SCHEMA = z.object({
   z1: z.number(),
@@ -172,6 +174,42 @@ export async function performUpdateHrZones(
 }
 
 /**
+ * Re-bucket every stored cardio activity's `hr_zones` against fresh
+ * bands, using the band-independent `hr_histogram` captured at import.
+ * This makes a zone-config change self-healing: past activities reflect
+ * the new zones immediately, with NO Strava stream re-fetch.
+ *
+ * Best-effort and scoped to the user's own rows (RLS-safe via the
+ * cookie-bound client). Rows without a histogram (legacy / manual) are
+ * left untouched. Returns the number of rows updated.
+ */
+export async function recomputeStoredHrZones(
+  supabase: SupabaseClient,
+  userId: string,
+  bands: ZoneBands | null,
+): Promise<number> {
+  if (!bands) return 0;
+  const { data: rows, error } = await supabase
+    .from("cardio_logs")
+    .select("id, hr_histogram, sessions!inner(user_id)")
+    .eq("sessions.user_id", userId)
+    .not("hr_histogram", "is", null);
+  if (error || !rows) return 0;
+
+  let updated = 0;
+  for (const row of rows as Array<{ id: string; hr_histogram: Record<string, number> | null }>) {
+    const zones = zonesFromHistogram(row.hr_histogram, bands);
+    if (!zones) continue;
+    const { error: upErr } = await supabase
+      .from("cardio_logs")
+      .update({ hr_zones: zones })
+      .eq("id", row.id);
+    if (!upErr) updated++;
+  }
+  return updated;
+}
+
+/**
  * Server-action entry point. Reads the cookie-bound supabase client +
  * authenticated user, then delegates to `performUpdateHrZones`.
  */
@@ -189,7 +227,17 @@ export async function updateHrZones(
     userId: user.id,
   });
 
+  // Re-bucket past activities against the new bands from their stored
+  // histograms (no Strava re-fetch). Best-effort — a failure here must
+  // not fail the settings save.
+  try {
+    await recomputeStoredHrZones(supabase, user.id, result.hrZones);
+  } catch (e) {
+    console.error("recomputeStoredHrZones failed:", e);
+  }
+
   revalidatePath("/app/settings");
   revalidatePath("/app/settings/hr-zones");
+  revalidatePath("/app/stats");
   return result;
 }

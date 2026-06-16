@@ -19,6 +19,7 @@ import {
 } from "./client";
 import { writeStravaActivity } from "./write-activity";
 import { zonesFromStream } from "./zones-from-stream";
+import { histogramFromStream } from "./hr-histogram";
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
 import { getUserTimezone } from "@/lib/planner/queries";
 import { readZoneConfig } from "@/lib/stats/hr-zones";
@@ -207,6 +208,7 @@ export async function syncStravaSingle(
   // null result (no stream, rate-limited, error) falls back to the
   // summary leak-model approximation inside buildSyncRow.
   let streamZones = null;
+  let streamHistogram = null;
   if (bands) {
     const streams = await fetchActivityStreams(accessToken, activityId);
     if (streams) {
@@ -214,6 +216,10 @@ export async function syncStravaSingle(
         hrStream: streams.heartrate,
         timeStream: streams.time,
         bands,
+      });
+      streamHistogram = histogramFromStream({
+        hrStream: streams.heartrate,
+        timeStream: streams.time,
       });
     }
   }
@@ -225,6 +231,7 @@ export async function syncStravaSingle(
     bands,
     userTimezone,
     streamZones,
+    streamHistogram,
   });
   if (result.status === "skipped") return { status: "skipped", reason: result.reason };
   if (result.status === "duplicate") return { status: "skipped", reason: "duplicate" };
