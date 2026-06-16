@@ -226,7 +226,8 @@ const inputStyle: React.CSSProperties = {
 
 const selectStyle: React.CSSProperties = {
   ...inputStyle,
-  width: 160,
+  width: "100%",
+  maxWidth: 320,
   appearance: "auto",
 };
 
@@ -448,9 +449,9 @@ export function HrZonesSettings({ initial, age }: HrZonesSettingsProps) {
               }}
               style={selectStyle}
             >
-              <option value="max">Percentage of max heart rate</option>
-              <option value="hrr">Percentage of heart rate reserve (Karvonen)</option>
-              <option value="lthr">Percentage of lactate threshold heart rate (Friel)</option>
+              <option value="max">% of max heart rate</option>
+              <option value="hrr">% of heart-rate reserve</option>
+              <option value="lthr">% of lactate threshold (LTHR)</option>
             </select>
             <span style={{ ...errorStyle, color: "var(--cp-text-muted)" }}>
               {hrMethodHelpText(value.hrMethod)}
