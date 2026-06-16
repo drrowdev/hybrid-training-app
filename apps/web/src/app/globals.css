@@ -169,6 +169,7 @@ select {
   color: var(--cp-text);
   border: 1px solid var(--cp-border);
   border-radius: 8px;
+  padding: 8px 10px;
   font-family: inherit;
 }
 input:focus,
