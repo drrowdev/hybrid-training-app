@@ -20,7 +20,18 @@ import { updateSessionNotes } from "@/lib/sessions/actions";
 import type { ProgressionKind } from "@/lib/progression/suggest-next";
 import type { DiagnosticResult } from "@/lib/planner/bw-diagnostics";
 import { useUnits } from "@/lib/units/context";
-import { displayWeight, weightUnitLabel } from "@/lib/stats/units";
+import { displayWeight, weightUnitLabel, type WeightUnit } from "@/lib/stats/units";
+import {
+  formatDistance,
+  formatSecPerKmToPace,
+  paceUnitLabel,
+} from "@/lib/cardio/units";
+import {
+  cardioKindLabel,
+  modalitySupportsPace,
+  type CardioSessionSummary,
+} from "@/lib/sessions/cardio-summary";
+import type { Zone } from "@/lib/stats/hr-zones";
 
 /**
  * Phase 2 D2 — "Next time" suggestion shown for each main lift in the
@@ -44,6 +55,7 @@ export function PostSessionSummary({
   initialNotes,
   progressionHints,
   bwDiagnostics,
+  cardio,
 }: {
   sessionId: string;
   summary: SessionSummary;
@@ -71,6 +83,14 @@ export function PostSessionSummary({
    * to the settings page for full context.
    */
   bwDiagnostics?: DiagnosticResult[];
+  /**
+   * Aggregated cardio metrics for sessions that logged cardio blocks
+   * (e.g. a Strava run). When present, the card shows cardio-relevant
+   * stats — distance, HR, pace, time-in-zone — instead of (pure cardio)
+   * or alongside (hybrid) the strength tiles. Null/omitted for
+   * strength-only sessions, which render byte-identically to before.
+   */
+  cardio?: CardioSessionSummary | null;
 }) {
   const units = useUnits();
   const [showNote, setShowNote] = useState(false);
@@ -99,6 +119,17 @@ export function PostSessionSummary({
     setShowNote(false);
   };
 
+  // A session counts as having strength content when it logged working
+  // sets, accrued tonnage, or prescribed strength sets. Pure-cardio
+  // sessions (a Strava run) have none of these, so we suppress the
+  // strength tiles entirely; hybrid sessions show both blocks.
+  const hasStrength =
+    summary.workingSetCount > 0 ||
+    summary.totalTonnageKg > 0 ||
+    (programmedSets ?? 0) > 0;
+  const showStrengthTiles = hasStrength || !cardio;
+  const cardioOnly = !!cardio && !showStrengthTiles;
+
   return (
     <section
       data-testid="post-session-summary"
@@ -121,53 +152,65 @@ export function PostSessionSummary({
             fontWeight: 700,
           }}
         >
-          Session complete
+          {cardioOnly ? "Workout complete" : "Session complete"}
         </div>
         <h2 style={{ fontSize: 24, margin: "4px 0 0", letterSpacing: "-0.01em" }}>
-          Session complete!
+          {cardioOnly ? "Workout complete!" : "Session complete!"}
         </h2>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-          gap: 10,
-        }}
-      >
-        <SummaryStat
-          label="Tonnage"
-          value={summary.totalTonnageKg > 0 ? `${formatKg(displayWeight(summary.totalTonnageKg, units))} ${weightUnitLabel(units)}` : "—"}
-          testId="summary-tonnage"
-        />
-        <SummaryStat
-          label="Duration"
-          value={summary.durationMin != null ? `${summary.durationMin} min` : "—"}
-          testId="summary-duration"
-        />
-        <SummaryStat
-          label="Sets"
-          value={
-            programmedSets && programmedSets > 0
-              ? `${summary.workingSetCount} / ${programmedSets}`
-              : `${summary.workingSetCount}`
-          }
-          testId="summary-sets"
-        />
-        <SummaryStat
-          label="PRs"
-          value={`${summary.prCount}`}
-          highlight={summary.prCount > 0}
-          testId="summary-prs"
-        />
-        {effortValue != null && (
+      {showStrengthTiles && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+            gap: 10,
+          }}
+        >
           <SummaryStat
-            label="Effort"
-            value={`${effortValue} / 10`}
-            testId="summary-effort"
+            label="Tonnage"
+            value={summary.totalTonnageKg > 0 ? `${formatKg(displayWeight(summary.totalTonnageKg, units))} ${weightUnitLabel(units)}` : "—"}
+            testId="summary-tonnage"
           />
-        )}
-      </div>
+          <SummaryStat
+            label="Duration"
+            value={summary.durationMin != null ? `${summary.durationMin} min` : "—"}
+            testId="summary-duration"
+          />
+          <SummaryStat
+            label="Sets"
+            value={
+              programmedSets && programmedSets > 0
+                ? `${summary.workingSetCount} / ${programmedSets}`
+                : `${summary.workingSetCount}`
+            }
+            testId="summary-sets"
+          />
+          <SummaryStat
+            label="PRs"
+            value={`${summary.prCount}`}
+            highlight={summary.prCount > 0}
+            testId="summary-prs"
+          />
+          {effortValue != null && (
+            <SummaryStat
+              label="Effort"
+              value={`${effortValue} / 10`}
+              testId="summary-effort"
+            />
+          )}
+        </div>
+      )}
+
+      {cardio && (
+        <CardioStats
+          cardio={cardio}
+          units={units}
+          withHeader={!cardioOnly}
+          showSessionLevel={cardioOnly}
+          effortValue={effortValue}
+        />
+      )}
 
       {progressionHints && progressionHints.length > 0 && (
         <div
@@ -369,6 +412,232 @@ function SaveNoteButton() {
     <button type="submit" className="cp-btn primary" disabled={pending} style={{ minHeight: 48 }}>
       {pending ? "Saving…" : "Save note"}
     </button>
+  );
+}
+
+function fmtZoneMin(sec: number): string {
+  const m = Math.round(sec / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
+function fmtCardioDuration(sec: number): string {
+  const m = Math.round(sec / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${String(m % 60).padStart(2, "0")}m`;
+}
+
+const ZONE_META: Record<Zone, { label: string; desc: string; color: string }> = {
+  Z1: { label: "Z1", desc: "recovery", color: "var(--cp-zone-z1, #6bbf6b)" },
+  Z2: { label: "Z2", desc: "easy aerobic", color: "var(--cp-zone-z2, #4ea8de)" },
+  Z3: { label: "Z3", desc: "tempo", color: "var(--cp-zone-z3, #f7c948)" },
+  Z4: { label: "Z4", desc: "threshold", color: "var(--cp-zone-z4, #f49f3b)" },
+  Z5: { label: "Z5", desc: "VO2max", color: "var(--cp-zone-z5, #e35454)" },
+};
+
+const ZONES: Zone[] = ["Z1", "Z2", "Z3", "Z4", "Z5"];
+
+/**
+ * Cardio block of the post-session card. Renders the activity-relevant
+ * stat tiles (distance, HR, pace) plus a time-in-HR-zone bar when zone
+ * data exists. `showSessionLevel` adds Duration + Effort tiles for
+ * pure-cardio sessions (where there's no strength grid to carry them);
+ * hybrid sessions keep those in the strength grid. `withHeader` labels
+ * the block "Cardio" to separate it from the strength tiles above.
+ */
+function CardioStats({
+  cardio,
+  units,
+  withHeader,
+  showSessionLevel,
+  effortValue,
+}: {
+  cardio: CardioSessionSummary;
+  units: WeightUnit;
+  withHeader: boolean;
+  showSessionLevel: boolean;
+  effortValue: string | null;
+}) {
+  const kindLabel = cardioKindLabel(cardio.inferredKind);
+  const showPace =
+    cardio.paceSecPerKm != null && modalitySupportsPace(cardio.modality);
+
+  return (
+    <div data-testid="cardio-summary" style={{ display: "grid", gap: 10 }}>
+      {withHeader && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 10,
+            color: "var(--cp-text-muted)",
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+            fontWeight: 600,
+          }}
+        >
+          Cardio
+          {kindLabel && <CardioKindChip label={kindLabel} />}
+        </div>
+      )}
+      {!withHeader && kindLabel && (
+        <div>
+          <CardioKindChip label={kindLabel} />
+        </div>
+      )}
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+          gap: 10,
+        }}
+      >
+        {cardio.distanceKm != null && (
+          <SummaryStat
+            label="Distance"
+            value={formatDistance(cardio.distanceKm, units)}
+            testId="cardio-distance"
+          />
+        )}
+        {showSessionLevel && (
+          <SummaryStat
+            label="Duration"
+            value={fmtCardioDuration(cardio.durationSec)}
+            testId="cardio-duration"
+          />
+        )}
+        {cardio.avgHrBpm != null && (
+          <SummaryStat
+            label="Avg HR"
+            value={`${cardio.avgHrBpm} bpm`}
+            testId="cardio-avg-hr"
+          />
+        )}
+        {cardio.maxHrBpm != null && (
+          <SummaryStat
+            label="Max HR"
+            value={`${cardio.maxHrBpm} bpm`}
+            testId="cardio-max-hr"
+          />
+        )}
+        {showPace && (
+          <SummaryStat
+            label="Pace"
+            value={`${formatSecPerKmToPace(cardio.paceSecPerKm, units)} ${paceUnitLabel(units)}`}
+            testId="cardio-pace"
+          />
+        )}
+        {showSessionLevel && effortValue != null && (
+          <SummaryStat
+            label="Effort"
+            value={`${effortValue} / 10`}
+            testId="cardio-effort"
+          />
+        )}
+      </div>
+
+      {cardio.zones && <CardioZoneBar zones={cardio.zones} />}
+    </div>
+  );
+}
+
+function CardioKindChip({ label }: { label: string }) {
+  return (
+    <span
+      data-testid="cardio-kind-chip"
+      style={{
+        fontSize: 10,
+        fontWeight: 600,
+        letterSpacing: "0.04em",
+        textTransform: "uppercase",
+        color: "var(--cp-accent)",
+        background: "color-mix(in oklab, var(--cp-accent) 12%, transparent)",
+        border: "1px solid color-mix(in oklab, var(--cp-accent) 40%, transparent)",
+        borderRadius: 999,
+        padding: "2px 8px",
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+/** Single-session time-in-HR-zone stacked bar with a minutes legend. */
+function CardioZoneBar({ zones }: { zones: Record<Zone, number> }) {
+  const total = ZONES.reduce((acc, z) => acc + zones[z], 0);
+  if (total <= 0) return null;
+  const pct = (z: Zone) => zones[z] / total;
+
+  return (
+    <div data-testid="cardio-zone-bar" style={{ display: "grid", gap: 8 }}>
+      <div
+        style={{
+          fontSize: 10,
+          color: "var(--cp-text-muted)",
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          fontWeight: 600,
+        }}
+      >
+        Time in HR zones
+      </div>
+      <div
+        role="img"
+        aria-label="Time-in-zone stacked bar from Z1 (recovery) to Z5 (VO2max)"
+        style={{
+          display: "flex",
+          height: 16,
+          borderRadius: 4,
+          overflow: "hidden",
+          background: "var(--cp-surface)",
+          border: "1px solid var(--cp-border)",
+        }}
+      >
+        {ZONES.map((z) =>
+          zones[z] > 0 ? (
+            <div
+              key={z}
+              data-testid={`cardio-zone-segment-${z}`}
+              title={`${ZONE_META[z].label} · ${ZONE_META[z].desc} · ${fmtZoneMin(zones[z])}`}
+              style={{ width: `${pct(z) * 100}%`, background: ZONE_META[z].color }}
+            />
+          ) : null,
+        )}
+      </div>
+      <ul
+        style={{
+          listStyle: "none",
+          margin: 0,
+          padding: 0,
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
+          gap: 6,
+        }}
+      >
+        {ZONES.filter((z) => zones[z] > 0).map((z) => (
+          <li key={z} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12 }}>
+            <span
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: 2,
+                background: ZONE_META[z].color,
+                flexShrink: 0,
+              }}
+              aria-hidden="true"
+            />
+            <span style={{ color: "var(--cp-text)" }}>{ZONE_META[z].label}</span>
+            <span style={{ marginLeft: "auto", color: "var(--cp-text-muted)" }} className="mono">
+              {fmtZoneMin(zones[z])}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

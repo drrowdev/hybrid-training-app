@@ -101,3 +101,22 @@ export function paceUnitLabel(units: PaceUnits): "min:sec/km" | "min:sec/mi" {
 export function distanceUnitLabel(units: PaceUnits): "km" | "mi" {
   return units === "imperial" ? "mi" : "km";
 }
+
+/** Convert a canonical kilometre value into the user's display units. */
+export function kmToDisplayDistance(km: number, units: PaceUnits): number {
+  return units === "imperial" ? km / KM_PER_MILE : km;
+}
+
+/**
+ * Format a kilometre distance as a "5.30 km" / "3.29 mi" string. Returns
+ * "" for null/undefined/non-finite input.
+ */
+export function formatDistance(
+  km: number | string | null | undefined,
+  units: PaceUnits = "metric",
+): string {
+  if (km == null) return "";
+  const n = Number(km);
+  if (!Number.isFinite(n) || n < 0) return "";
+  return `${kmToDisplayDistance(n, units).toFixed(2)} ${distanceUnitLabel(units)}`;
+}
