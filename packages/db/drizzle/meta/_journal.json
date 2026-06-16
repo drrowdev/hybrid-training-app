@@ -771,6 +771,13 @@
       "when": 1785228000000,
       "tag": "0109_cardio_logs_hr_histogram",
       "breakpoints": false
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1785314400000,
+      "tag": "0110_training_blocks_two_a_days",
+      "breakpoints": false
     }
   ]
 }

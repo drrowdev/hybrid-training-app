@@ -91,6 +91,8 @@ const createProgramInstanceSchema = z
       })
       .strict()
       .optional(),
+    /** Per-block two-a-day preference (migration 0110) — Hybrid only; foreign programs ignore it. */
+    twoADay: z.boolean().optional(),
   })
   .strict();
 
@@ -107,7 +109,7 @@ export async function createProgramInstance(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories } = parsed.data;
+  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay } = parsed.data;
 
   // Reject duplicate weekdays — they'd collide on the (week, day, slot) unique key.
   // (Native programs own their own calendar and ignore `weekdays`, but the check
@@ -136,6 +138,7 @@ export async function createProgramInstance(
       weekdays,
       startedOn,
       ...(roundingKg != null ? { roundingKg } : {}),
+      ...(twoADay != null ? { twoADay } : {}),
     });
   }
   return createForeignProgramInstance(supabase, user, {
@@ -240,6 +243,8 @@ interface DeployArgs {
   startWeekIndex?: number;
   roundingKg?: number;
   accessories?: { enabled: boolean; muscles?: string[] };
+  /** Per-block two-a-day preference (migration 0110) — Hybrid/native only. */
+  twoADay?: boolean;
 }
 
 /**
@@ -691,7 +696,7 @@ async function createForeignProgramInstance(
 async function createNativeProgramInstance(
   supabase: SupabaseClient,
   user: User,
-  { programId, setupValues, weekdays, startedOn, roundingKg }: DeployArgs,
+  { programId, setupValues, weekdays, startedOn, roundingKg, twoADay }: DeployArgs,
 ): Promise<CreateProgramInstanceResult> {
   const engine = getNativeProgramEngine(programId)!;
 
@@ -744,6 +749,10 @@ async function createNativeProgramInstance(
       status: "active",
       days_per_week: daysPerWeek,
       day_index_overrides: dayIndexOverrides,
+      // Per-block two-a-day choice (migration 0110, wizard Schedule step).
+      // Hybrid stores an explicit boolean so the per-block value wins over the
+      // profile default at materialisation; default OFF when the toggle is unset.
+      allows_two_a_days: twoADay ?? false,
       notes: engine.meta.name,
     })
     .select("id")

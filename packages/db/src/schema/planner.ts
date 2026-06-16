@@ -150,6 +150,15 @@ export const trainingBlocks = pgTable("training_blocks", {
    * rendered on the external-cardio session card when present.
    */
   cardioSourceName: text("cardio_source_name"),
+  /**
+   * Per-block two-a-day preference (migration 0110). NULLABLE with NO default:
+   * null means "inherit profile / legacy" so every pre-0110 block reads
+   * byte-identically to the old `profiles.allows_two_a_days`-driven behaviour.
+   * The Hybrid wizard's Schedule step writes an explicit boolean; the planner
+   * read lets a non-null per-block value WIN and falls back to the profile
+   * setting when null. Foreign program blocks leave it null.
+   */
+  allowsTwoADays: boolean("allows_two_a_days"),
 });
 
 export type TrainingBlock = typeof trainingBlocks.$inferSelect;
