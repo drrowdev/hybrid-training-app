@@ -328,7 +328,7 @@
 }
 .pinfo {
   position: absolute;
-  top: 5px;
+  top: 14px;
   left: 50%;
   transform: translateX(-50%);
   width: 17px;
@@ -355,6 +355,11 @@
   background: transparent;
   color: var(--accent);
   opacity: 1;
+}
+/* Track the card's hover lift so the badge stays glued to the card top
+   instead of detaching when the tile animates up. */
+.pcard:hover + .pinfo {
+  transform: translateX(-50%) translateY(-2px);
 }
 
 .label {

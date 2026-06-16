@@ -241,7 +241,7 @@ const styles = {
     width: "100%",
     textAlign: "left",
     cursor: "pointer",
-    font: "inherit",
+    fontFamily: "inherit",
   },
   popItemTitle: { fontSize: 13 },
   popItemWhen: { fontSize: 11, color: "var(--cp-text-muted)" },
