@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   assembleQuickHyroxItems,
+  buildQuickHyroxView,
   feasibleFormats,
   type HyroxQuickStation,
 } from "../quick-hyrox";
@@ -83,6 +84,48 @@ describe("assembleQuickHyroxItems", () => {
     const pro = assembleQuickHyroxItems({ ...base, division: "pro", format: "circuit", stations: S("sled", "wall_ball") });
     expect(open[0]!.notes).toMatch(/Open:/);
     expect(pro[0]!.notes).toMatch(/Pro:/);
+  });
+});
+
+describe("buildQuickHyroxView", () => {
+  const base = { length: "normal" as const, experience: "intermediate" as const, division: "open" as const };
+
+  it("circuit view lists each selected station + loaded-station confirm rows", () => {
+    const v = buildQuickHyroxView({ ...base, format: "circuit", stations: S("sled", "wall_ball", "rower") });
+    expect(v.title).toBe("HYROX · Station Circuit");
+    expect(v.divisionLabel).toBe("Open division");
+    expect(v.structure[0]!.name).toMatch(/rounds/);
+    const names = v.structure.map((r) => r.name);
+    expect(names).toContain("Sled Push");
+    expect(names).toContain("Wall Balls");
+    expect(names).toContain("Row");
+    const loadedKeys = v.loadedStations.map((s) => s.key);
+    expect(loadedKeys).toContain("sled-push");
+    expect(loadedKeys).toContain("wall-ball");
+    expect(loadedKeys).not.toContain("rowing-erg"); // erg carries no division load
+    expect(v.loadedStations.find((s) => s.key === "wall-ball")!.defaultKg).toBe(6); // Open men
+  });
+
+  it("compromised view is run → station → run with the station's load to confirm", () => {
+    const v = buildQuickHyroxView({ ...base, format: "compromised", stations: S("run", "sandbag") });
+    expect(v.title).toBe("HYROX · Compromised Run");
+    expect(v.structure.filter((r) => r.name === "Run")).toHaveLength(2);
+    expect(v.structure.some((r) => r.name === "Sandbag Lunges")).toBe(true);
+    expect(v.loadedStations.map((s) => s.key)).toEqual(["sandbag-lunge"]);
+  });
+
+  it("erg view has no loaded stations", () => {
+    const v = buildQuickHyroxView({ ...base, format: "erg", stations: S("ski_erg") });
+    expect(v.loadedStations).toEqual([]);
+    expect(v.structure[0]!.amount).toBe("60 min");
+  });
+
+  it("pro division raises the confirm-weight default", () => {
+    const open = buildQuickHyroxView({ ...base, division: "open", format: "circuit", stations: S("sled", "wall_ball") });
+    const pro = buildQuickHyroxView({ ...base, division: "pro", format: "circuit", stations: S("sled", "wall_ball") });
+    const openWb = open.loadedStations.find((s) => s.key === "wall-ball")!.defaultKg;
+    const proWb = pro.loadedStations.find((s) => s.key === "wall-ball")!.defaultKg;
+    expect(proWb).toBeGreaterThan(openWb);
   });
 });
 

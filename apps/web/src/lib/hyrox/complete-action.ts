@@ -69,7 +69,7 @@ export async function completeHyroxSession(
   // Ownership — RLS also blocks, but a clean message beats a generic 401.
   const { data: session, error: sErr } = await supabase
     .from("sessions")
-    .select("id, user_id, completed_at")
+    .select("id, user_id, completed_at, prescription")
     .eq("id", sessionId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -85,6 +85,52 @@ export async function completeHyroxSession(
     .maybeSingle();
   const blockId = planned?.block_id as string | undefined;
   const programRef = (planned?.prescription as Prescription | null)?.programRef;
+
+  // Quick HYROX (off-plan): no planned session / program instance. Complete it
+  // directly — one cardio block (time + RPE) + stamp done. No engine
+  // materialization or program progression (there's no program to advance).
+  const quickFormat = (session.prescription as Prescription | null)?.meta?.hyroxQuickFormat;
+  if ((!blockId || !programRef) && quickFormat) {
+    const modality =
+      quickFormat === "circuit"
+        ? "other_cardio"
+        : quickFormat === "erg"
+          ? "row"
+          : "run";
+    await supabase.from("set_logs").delete().eq("session_id", sessionId);
+    await supabase.from("cardio_logs").delete().eq("session_id", sessionId);
+    const { error: cErr } = await supabase.from("cardio_logs").insert({
+      session_id: sessionId,
+      movement_id: null,
+      block_index: 0,
+      modality,
+      duration_sec: totalDurationSec,
+      rpe: sessionRpe,
+      ...(avgHrBpm != null ? { avg_hr_bpm: avgHrBpm } : {}),
+      ...(hrZones ? { hr_zones: hrZones } : {}),
+    });
+    if (cErr) return { error: cErr.message };
+    const { error: updErr } = await supabase
+      .from("sessions")
+      .update({
+        completed_at: session.completed_at ?? new Date().toISOString(),
+        duration_min: Math.round(totalDurationSec / 60),
+        session_rpe: sessionRpe,
+        notes: notes ?? null,
+      })
+      .eq("id", sessionId);
+    if (updErr) return { error: updErr.message };
+    try {
+      await recomputeActualSessionLoad({ supabase, sessionId, requireCompleted: false });
+      await recomputeRegionState(supabase, user.id, await getUserTimezone(user.id));
+    } catch (e) {
+      console.error("recompute (quick hyrox) failed:", e);
+    }
+    revalidatePath("/app");
+    revalidatePath(`/app/sessions/${sessionId}`);
+    return { ok: true };
+  }
+
   if (!blockId || !programRef) return { error: "This session isn't linked to a HYROX plan." };
 
   // Resolve the HYROX instance for the block and map the ref → session id.
