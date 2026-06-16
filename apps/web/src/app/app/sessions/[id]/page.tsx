@@ -52,6 +52,7 @@ import { formatHitValue, countSessionTmAnchoredPrs, getSessionTmAnchoredPrSummar
 import { findBumpProposalForSession } from "@/lib/stats/bump-proposal";
 import { findPrRecalibrateProposals } from "@/lib/stats/pr-recalibrate";
 import { getLastSetLogForMovement, getPriorBestsForMovements, summariseSessionSets } from "@/lib/sessions/queries";
+import { summariseCardioLogs } from "@/lib/sessions/cardio-summary";
 import { suggestNextWeight } from "@/lib/progression/suggest-next";
 import {
   matchPrescriptionItemsDetailed,
@@ -130,7 +131,7 @@ export default async function SessionDetailPage({
     supabase
       .from("cardio_logs")
       .select(
-        "id, block_index, modality, duration_sec, distance_km, avg_hr_bpm, max_hr_bpm, rpe, notes, inferred_kind, inferred_confidence, external_source, movement:movements(id, display_name)",
+        "id, block_index, modality, duration_sec, distance_km, avg_hr_bpm, max_hr_bpm, avg_pace_sec_per_km, hr_zones, rpe, notes, inferred_kind, inferred_confidence, external_source, movement:movements(id, display_name)",
       )
       .eq("session_id", id)
       .order("block_index", { ascending: true }),
@@ -490,6 +491,24 @@ export default async function SessionDetailPage({
           duration_min: (session.duration_min as number | null) ?? null,
         },
         tmAnchoredPrCount,
+      )
+    : null;
+
+  // Activity-aware completion card — aggregate the session's cardio
+  // blocks so the summary can show distance / HR / pace / time-in-zone
+  // instead of (or, for hybrid days, alongside) the strength tiles.
+  const cardioSummary = isComplete
+    ? summariseCardioLogs(
+        (cardio ?? []).map((c) => ({
+          duration_sec: c.duration_sec as number | null,
+          distance_km: c.distance_km as number | string | null,
+          avg_hr_bpm: (c.avg_hr_bpm as number | null) ?? null,
+          max_hr_bpm: (c.max_hr_bpm as number | null) ?? null,
+          avg_pace_sec_per_km: (c.avg_pace_sec_per_km as number | null) ?? null,
+          hr_zones: (c.hr_zones as Record<string, number> | null) ?? null,
+          modality: (c.modality as string | null) ?? null,
+          inferred_kind: (c.inferred_kind as string | null) ?? null,
+        })),
       )
     : null;
 
@@ -942,6 +961,7 @@ export default async function SessionDetailPage({
           initialNotes={session.notes ?? null}
           progressionHints={progressionHints}
           bwDiagnostics={bwSessionDiagnostics}
+          cardio={cardioSummary}
         />
       )}
 
