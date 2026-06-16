@@ -159,7 +159,7 @@ export default async function SettingsPage() {
           href="/app/settings/preferences"
           icon={<SettingsIcon name="preferences" />}
           title="Preferences"
-          description="Time, feedback, warmups, connections."
+          description="Time, feedback, warmups."
           testId="settings-hub-preferences"
         />
         <SettingsHubCard

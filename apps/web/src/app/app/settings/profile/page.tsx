@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
-import { TrainingDaysControl } from "@/components/settings/TrainingDaysControl";
 import {
   BodyCompPhaseAutoSave,
   EffortPreferenceAutoSave,
@@ -78,7 +77,7 @@ export default async function ProfileSettingsPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "display_name, units, body_comp_phase, phase_started_at, phase_target_weeks, training_days_per_week, training_experience, allows_two_a_days, am_window_start, pm_window_start, timezone, effort_preference",
+      "display_name, units, body_comp_phase, phase_started_at, phase_target_weeks, training_experience, allows_two_a_days, am_window_start, pm_window_start, timezone, effort_preference",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -86,15 +85,12 @@ export default async function ProfileSettingsPage() {
   const experience = asTrainingExperience(profile?.training_experience);
   const phase = asBodyCompPhase(profile?.body_comp_phase);
   const effortPreference = asEffortPreference(profile?.effort_preference);
-  const days = Number(profile?.training_days_per_week ?? 4);
   const twoADay = !!profile?.allows_two_a_days;
 
   const experienceSummary = experience ? EXPERIENCE_LABEL[experience] : "Not set";
   const phaseSummary = PHASE_LABEL[phase];
   const effortSummary = EFFORT_PREFERENCE_LABEL[effortPreference];
-  const preferencesSummary = `${days} days/wk · ${
-    twoADay ? "two-a-day" : "single session"
-  }`;
+  const preferencesSummary = twoADay ? "Two-a-day" : "Single session";
 
   return (
     <div className="space-y-8">
@@ -191,21 +187,13 @@ export default async function ProfileSettingsPage() {
           <EffortPreferenceAutoSave initial={effortPreference} />
         </SettingsGroup>
 
-        {/* Training preferences — frequency + two-a-day toggle.
-            Collapsed by default. */}
+        {/* Two-a-day — AM lift + PM cardio. Collapsed by default. */}
         <SettingsGroup
           id="training-preferences"
-          title="Training preferences"
+          title="Two-a-day sessions"
           summary={preferencesSummary}
           testId="settings-group-training-preferences"
         >
-          <div className="space-y-3">
-            <p className="text-xs text-foreground/60">
-              The default training frequency the planner uses when you start a
-              new block. You can still override it per block.
-            </p>
-            <TrainingDaysControl initial={days} />
-          </div>
           <div className="space-y-3">
             <p className="text-xs text-foreground/60">
               Two sessions on the same day: AM lift + PM cardio, ideally 6+
