@@ -16,6 +16,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { Prescription } from "@hta/db";
 import {
   deriveCardState,
@@ -129,9 +130,12 @@ export function MovementCard({
   bodyweightCapable,
 }: MovementCardProps) {
   const units = useUnits();
+  const router = useRouter();
   // A mid-session swap repaints this card to the chosen movement: the header
   // shows its name and future sets log against its id. Sets already logged stay
-  // attributed to the original in the DB (the swap action is forward-only audit).
+  // attributed to the original in the DB (the swap is forward-only). The swap is
+  // persisted server-side, so we also refresh to pick up the new movement's
+  // server-derived state (notably whether a weight is required).
   const [swappedMovement, setSwappedMovement] = useState<
     { id: string; slug: string; displayName: string } | null
   >(null);
@@ -575,6 +579,11 @@ export function MovementCard({
           onSwapped={(next) => {
             setSwappedMovement(next);
             setSwapOpen(false);
+            // The swap is persisted on the server (prescription updated); refresh
+            // so the card picks up the new movement's server-derived state — most
+            // importantly whether a weight is required (a bodyweight movement like
+            // a GHD sit-up must be loggable at 0 kg).
+            router.refresh();
           }}
         />
       )}

@@ -12,6 +12,7 @@ type SessionRow = { id: string; user_id: string };
 
 const USER_ID = "00000000-0000-4000-8000-000000000001";
 const SESSION_ID = "00000000-0000-4000-8000-000000000010";
+const PLANNED_ID = "00000000-0000-4000-8000-000000000020";
 const ORIGINAL_ID = "00000000-0000-4000-8000-0000000000a1";
 const NEW_ID = "00000000-0000-4000-8000-0000000000a2";
 
@@ -21,6 +22,11 @@ const movements: Movement[] = [
 ];
 const sessions: SessionRow[] = [{ id: SESSION_ID, user_id: USER_ID }];
 const overrideInserts: Array<Record<string, unknown>> = [];
+const plannedUpdates: Array<Record<string, unknown>> = [];
+// A planned_session linked to the active session, with the original movement.
+let plannedPrescription: { items: Array<Record<string, unknown>> } | null = null;
+
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
@@ -28,7 +34,7 @@ vi.mock("@/lib/supabase/server", () => ({
       getUser: async () => ({ data: { user: { id: USER_ID } } }),
     },
     from: (table: string) => {
-      const state: { eqs: Array<[string, unknown]>; insert?: Record<string, unknown> } = { eqs: [] };
+      const state: { eqs: Array<[string, unknown]>; insert?: Record<string, unknown>; update?: Record<string, unknown> } = { eqs: [] };
       const q: Record<string, (...a: never[]) => unknown> = {
         select: (() => q) as (...a: never[]) => unknown,
         eq: ((col: string, val: unknown) => {
@@ -40,6 +46,11 @@ vi.mock("@/lib/supabase/server", () => ({
           if (table === "engine_override_events") overrideInserts.push(row);
           return q as unknown;
         }) as (...a: never[]) => unknown,
+        update: ((row: Record<string, unknown>) => {
+          state.update = row;
+          if (table === "planned_sessions") plannedUpdates.push(row);
+          return q as unknown;
+        }) as (...a: never[]) => unknown,
         maybeSingle: (() => {
           if (table === "movements") {
             const id = state.eqs.find(([c]) => c === "id")?.[1];
@@ -48,6 +59,14 @@ vi.mock("@/lib/supabase/server", () => ({
           if (table === "sessions") {
             const id = state.eqs.find(([c]) => c === "id")?.[1];
             return Promise.resolve({ data: sessions.find((s) => s.id === id) ?? null, error: null });
+          }
+          if (table === "planned_sessions") {
+            return Promise.resolve({
+              data: plannedPrescription
+                ? { id: PLANNED_ID, prescription: plannedPrescription }
+                : null,
+              error: null,
+            });
           }
           if (table === "engine_override_events") {
             return Promise.resolve({ data: { id: "ovr-1" }, error: null });
@@ -64,6 +83,8 @@ vi.mock("@/lib/supabase/server", () => ({
 describe("swapActiveMovement", () => {
   beforeEach(() => {
     overrideInserts.length = 0;
+    plannedUpdates.length = 0;
+    plannedPrescription = null;
   });
 
   it("writes an override-audit row with movement_swap context", async () => {
@@ -90,6 +111,29 @@ describe("swapActiveMovement", () => {
     expect(ctx.newMovementId).toBe(NEW_ID);
     expect(ctx.reasonCategory).toBe("pain");
     expect(ctx.freeformReason).toBe("right knee twinge");
+  });
+
+  it("persists the swap onto the linked planned_session prescription", async () => {
+    plannedPrescription = {
+      items: [
+        { movementId: ORIGINAL_ID, movementSlug: "front-squat", movementName: "Front Squat", kind: "main", sets: 3, reps: 5 },
+      ],
+    };
+    const { swapActiveMovement } = await import("../swap-actions");
+    const fd = new FormData();
+    fd.set("sessionId", SESSION_ID);
+    fd.set("originalMovementId", ORIGINAL_ID);
+    fd.set("newMovementId", NEW_ID);
+    fd.set("reason", "equipment");
+    const result = await swapActiveMovement(fd);
+    expect(result.ok).toBe(true);
+    expect(plannedUpdates).toHaveLength(1);
+    const updated = plannedUpdates[0]!.prescription as { items: Array<Record<string, unknown>> };
+    expect(updated.items[0]!.movementId).toBe(NEW_ID);
+    expect(updated.items[0]!.movementSlug).toBe("goblet-squat");
+    // Set/rep shape preserved.
+    expect(updated.items[0]!.sets).toBe(3);
+    expect(updated.items[0]!.reps).toBe(5);
   });
 
   it("rejects an unknown reason category", async () => {
