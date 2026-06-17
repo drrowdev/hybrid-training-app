@@ -273,7 +273,7 @@ export function WarmupSettings({ initial }: WarmupSettingsProps) {
         </span>
         {preview.length === 0 ? (
           <span style={{ fontSize: 13, color: "var(--cp-text-muted)", fontStyle: "italic" }}>
-            No warmups — the engine jumps straight to the first working set.
+            No warm-ups — your sessions start at the first working set.
           </span>
         ) : (
           <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 2 }}>

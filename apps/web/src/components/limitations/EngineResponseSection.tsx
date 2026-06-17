@@ -48,8 +48,8 @@ export function EngineResponseSection({
           title="No automatic adjustments recently"
           body={
             hasActiveLimitation
-              ? "When the engine caps or substitutes affected movements, those adjustments appear here."
-              : "When you have an active limitation, the engine caps or substitutes affected movements automatically. Recent adjustments appear here."
+              ? "When the app caps or substitutes affected movements, those adjustments appear here."
+              : "When you have an active limitation, the app automatically caps or substitutes affected movements. Recent adjustments appear here."
           }
         />
       ) : (

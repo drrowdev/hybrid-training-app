@@ -1217,7 +1217,7 @@ export default async function SessionDetailPage({
                     Today&apos;s top set (<span className="mono">{p.bestSet.weight} kg × {p.bestSet.reps}</span>
                     {p.bestSet.rpe != null ? <> @ RPE {p.bestSet.rpe}</> : null}) implies an estimated 1RM
                     of <span className="mono">{p.estimatedOneRm.toFixed(1)} kg</span>. Recalibrating the
-                    TM keeps future prescriptions honest.
+                    TM keeps your working weights accurate.
                   </div>
                 </div>
               </div>

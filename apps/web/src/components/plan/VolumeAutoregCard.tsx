@@ -81,7 +81,7 @@ export function VolumeAutoregCard({
             You&apos;ve logged <strong>{offer.actual}</strong> strength sets in the
             last 7 days — <strong>{pct}%</strong> of this week&apos;s ~
             {offer.prescribed}-set budget. To keep quality high and fatigue in
-            check, the engine can ease accessory volume on your{" "}
+            check, the app can ease accessory volume on your{" "}
             {offer.sessionCount} remaining session
             {offer.sessionCount === 1 ? "" : "s"} to about {offer.keepPct}% of
             plan. Main lifts stay untouched, and it&apos;s reversible.

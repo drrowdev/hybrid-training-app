@@ -92,7 +92,7 @@ export function TaperBanner(props: Props) {
                 : `${props.daysOut}d out — ${props.phase === "deep" ? "deeper unload" : props.phase === "polish" ? "polish only" : "start tapering"}`}
           </div>
           <div style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>
-            Engine will: {cuts}.
+            Your plan will: {cuts}.
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <form action={(fd) => start(() => applyTaperPlan(fd).then(() => undefined))}>

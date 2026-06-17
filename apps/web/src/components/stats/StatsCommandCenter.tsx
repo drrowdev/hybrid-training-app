@@ -1094,13 +1094,7 @@ export function EnduranceDrawer({
           )}
           <div style={{ fontSize: 11.5, color: "var(--cp-text-muted)" }}>{data.detail}</div>
           <div style={{ fontSize: 11.5, color: "var(--cp-text-muted)" }}>
-            {data.sampleRuns} of {data.totalRuns} run{data.totalRuns === 1 ? "" : "s"} counted as easy
-            {data.droppedRuns > 0 && (
-              <>
-                {" · "}
-                {data.droppedRuns} dropped (effort unclear)
-              </>
-            )}
+            Based on your {data.sampleRuns} easy run{data.sampleRuns === 1 ? "" : "s"} in this window.
           </div>
         </section>
 
@@ -1180,11 +1174,6 @@ export function EnduranceDrawer({
             </>
           )}
         </section>
-
-        <p style={{ margin: 0, fontSize: 11, color: "var(--cp-text-muted)" }}>
-          Descriptive history — pace and zone distribution summarise what you ran, they do not
-          drive workout prescription.
-        </p>
       </div>
     </BottomSheet>
   );
@@ -1376,7 +1365,7 @@ export function ReadinessDrawer({
   const rd = readiness.summary.rpeDrift;
   const signals: Array<{ label: string; value: string; detail: string }> = [
     {
-      label: "Load balance",
+      label: "Training load",
       value:
         ratio == null
           ? "Building"
@@ -1384,12 +1373,12 @@ export function ReadinessDrawer({
       detail: `recent ${Math.round(lb.bodyAcute)} vs usual ${Math.round(lb.bodyChronic)} training load`,
     },
     {
-      label: "Effort drift · 28d",
+      label: "Effort trend · 28d",
       value: rd.verdictLabel,
-      detail: rd.meanRpe == null ? "Not enough sessions yet" : `mean session RPE ${round1(rd.meanRpe)}`,
+      detail: rd.meanRpe == null ? "Not enough sessions yet" : `average effort ${round1(rd.meanRpe)}/10`,
     },
     {
-      label: "Output trend · 28d",
+      label: "Performance trend · 28d",
       value: ot.direction === "no-data" ? "No PR history yet" : ot.direction,
       detail: ot.direction === "no-data" ? ot.detail : `${ot.recentPrCount} PRs recent vs ${ot.priorPrCount} prior`,
     },
@@ -1406,7 +1395,7 @@ export function ReadinessDrawer({
             Recovery &amp; load
           </div>
           <div style={{ fontSize: 11.5, color: "var(--cp-text-muted)", marginTop: 2 }}>
-            training load vs your baseline, with corroborating signals
+            training load vs your baseline
           </div>
         </div>
       }
@@ -1421,7 +1410,13 @@ export function ReadinessDrawer({
               data-testid="stats-recovery-confidence"
               style={{ marginLeft: "auto", fontSize: 11, color: "var(--cp-text-muted)" }}
             >
-              {building ? "building baseline" : `${readiness.signalsAgree} of 3 signals agree`}
+              {building
+                ? "Still learning your baseline"
+                : readiness.signalsAgree >= 3
+                  ? "High confidence"
+                  : readiness.signalsAgree === 2
+                    ? "Moderate confidence"
+                    : "Low confidence"}
             </span>
           </div>
           <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--cp-text-muted)" }}>{readiness.subtext}</p>
@@ -1467,15 +1462,15 @@ export function ReadinessDrawer({
           </div>
           {building && (
             <div style={{ fontSize: 11, color: "var(--cp-warning)", marginTop: 6 }}>
-              Only {lb.weeksOfData} week{lb.weeksOfData === 1 ? "" : "s"} of history — the chronic
-              baseline is still warming up, so treat the band as provisional.
+              Only {lb.weeksOfData} week{lb.weeksOfData === 1 ? "" : "s"} of history so far — early
+              readings may still shift.
             </div>
           )}
         </div>
 
         <div>
           <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--cp-text-muted)", marginBottom: 8 }}>
-            Corroborating signals
+            What we looked at
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {signals.map((s) => (
@@ -1488,12 +1483,6 @@ export function ReadinessDrawer({
               </div>
             ))}
           </div>
-        </div>
-
-        <div style={{ paddingTop: 4, borderTop: "1px solid var(--cp-border)" }}>
-          <span style={{ fontSize: 10.5, color: "var(--cp-text-muted)" }}>
-            Display only — readiness never feeds workout prescription.
-          </span>
         </div>
       </div>
     </BottomSheet>

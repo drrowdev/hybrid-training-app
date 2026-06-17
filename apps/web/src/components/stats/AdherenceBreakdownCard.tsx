@@ -29,7 +29,7 @@ export function AdherenceBreakdownCard({ result }: { result: AdherenceResult }) 
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
         <h3 style={{ margin: 0, fontSize: 14, letterSpacing: "-0.005em" }}>Breakdown</h3>
         <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-          all-time · diagnostic (does not affect headline %)
+          All-time · for reference
         </span>
       </header>
       <ul

@@ -168,10 +168,10 @@ export function HrZonesCard({ state }: HrZonesCardProps) {
         {" "}
         <span style={{ fontStyle: "italic" }}>
           {state.source === "measured"
-            ? "Measured from per-second HR streams."
+            ? "Measured from your heart-rate data."
             : state.source === "mixed"
-              ? "Measured from HR streams where available; approximated from session-average HR otherwise."
-              : "Approximated from session-average HR; per-second streams will refine this when available."}
+              ? "Measured from heart-rate data where available, estimated otherwise."
+              : "Estimated from your average heart rate."}
         </span>
         {state.droppedCount > 0 && (
           <>

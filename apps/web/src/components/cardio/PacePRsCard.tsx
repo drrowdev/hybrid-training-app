@@ -169,7 +169,7 @@ export function PacePRsCard({ state, formatProfile }: PacePRsCardProps) {
       </table>
 
       <footer style={{ fontSize: 11, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
-        Approximated by scaling each activity&apos;s average pace to the target distance; per-activity splits will refine this when available.
+        Estimated from each run&apos;s average pace.
       </footer>
     </section>
   );

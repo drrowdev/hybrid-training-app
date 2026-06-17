@@ -27,7 +27,7 @@ export default async function AllPrsPage() {
       <PageHeader
         back={{ href: "/app/stats", label: "Stats" }}
         title="All PRs"
-        subtitle="Every personal record we've caught, newest first. Weight PRs, reps-at-weight PRs, and estimated-1RM PRs are tracked separately — a session can fire more than one."
+        subtitle="Your personal records, newest first — best weight, best reps at a weight, and best estimated 1-rep max."
       />
 
       {prs.length === 0 ? (
