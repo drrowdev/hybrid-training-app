@@ -1,12 +1,15 @@
 /**
- * getActiveBlock — current archetype, week index, and prescribed
- * sessions for the next two weeks.
+ * getActiveBlock — the program the user is following, current week index,
+ * and prescribed sessions for the next two weeks.
  *
  * Data source: `training_blocks WHERE status='active'` + `planned_sessions`
- * for the next 14 days. Capped at 14 prescribed sessions.
+ * for the next 14 days. Capped at 14 prescribed sessions. The block's
+ * `program_id` is resolved to a user-facing program label (name + summary);
+ * `archetype` is retained for legacy archetype blocks and internal modality.
  */
 import { z } from "zod";
 import type { Tool } from "./types";
+import { resolveProgramLabel } from "./program-label";
 
 const plannedSchema = z.object({
   date: z.string(),
@@ -17,7 +20,17 @@ const plannedSchema = z.object({
   status: z.enum(["pending", "completed", "skipped"]),
 });
 
+const programSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    summary: z.string(),
+  })
+  .nullable();
+
 const outputSchema = z.object({
+  program: programSchema,
+  program_family: z.string().nullable(),
   archetype: z.string().nullable(),
   started_on: z.string().nullable(),
   weeks_total: z.number().int().nullable(),
@@ -51,13 +64,13 @@ function isoWeekday(yyyymmdd: string): number {
 export const getActiveBlock: Tool<Input, Output> = {
   name: "getActiveBlock",
   description:
-    "Returns the user's currently active training block — archetype, total weeks, current week index, and prescribed sessions for the next two weeks (capped at 14).",
+    "Returns the user's currently active training block — the PROGRAM they are following (by name, e.g. 5/3/1, Tactical Barbell, Green Protocol, HYROX, or Hybrid) plus a one-line summary, total weeks, current week index, and prescribed sessions for the next two weeks (capped at 14). `program` is null for legacy archetype blocks; `archetype` is the internal modality and stays meaningful for those.",
   inputSchema,
   outputSchema,
   async handler(_input, ctx) {
     const { data: block } = await ctx.supabase
       .from("training_blocks")
-      .select("id, archetype, started_on, weeks, notes")
+      .select("id, program_id, program_family, archetype, started_on, weeks, notes")
       .eq("user_id", ctx.userId)
       .eq("status", "active")
       .is("deleted_at", null)
@@ -67,6 +80,8 @@ export const getActiveBlock: Tool<Input, Output> = {
 
     if (!block) {
       return {
+        program: null,
+        program_family: null,
         archetype: null,
         started_on: null,
         weeks_total: null,
@@ -132,6 +147,8 @@ export const getActiveBlock: Tool<Input, Output> = {
       }));
 
     return {
+      program: resolveProgramLabel(block.program_id as string | null),
+      program_family: (block.program_family as string | null) ?? null,
       archetype: (block.archetype as string | null) ?? null,
       started_on: startedOn,
       weeks_total: (block.weeks as number | null) ?? null,

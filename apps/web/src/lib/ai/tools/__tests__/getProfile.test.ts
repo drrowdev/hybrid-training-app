@@ -14,16 +14,13 @@ function makeCtx(userId: string, tables: Parameters<typeof createSupabaseStub>[0
 }
 
 describe("getProfile", () => {
-  it("happy path: returns experience tier, equipment, archetype prefs, and active limitations", async () => {
+  it("happy path: returns experience tier, equipment, and active limitations", async () => {
     const ctx = makeCtx("u1", {
       profiles: [
         {
           id: "u1",
           training_experience: "intermediate_2y_5y",
           equipment: { preset: "home", bars: ["barbell"] },
-          wizard_day_pref: {
-            byArchetype: { strength_anchor: { 4: { days: [1, 2, 3, 4] } } },
-          },
         },
       ],
       limitations: [
@@ -45,7 +42,6 @@ describe("getProfile", () => {
     });
     const out = await getProfile.handler({}, ctx);
     expect(out.experience_tier).toBe("intermediate_2y_5y");
-    expect(out.archetype_preferences).toContain("strength_anchor");
     expect(out.equipment).toContain("preset:home");
     expect(out.active_limitations).toHaveLength(2);
     expect(out.active_limitations[0]?.region).toBe("knee");
@@ -101,7 +97,6 @@ describe("getProfile", () => {
     }));
     const result = getProfile.outputSchema.safeParse({
       experience_tier: null,
-      archetype_preferences: [],
       equipment: [],
       active_limitations: sample,
     });

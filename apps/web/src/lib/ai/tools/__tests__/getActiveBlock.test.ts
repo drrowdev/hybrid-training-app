@@ -50,9 +50,62 @@ describe("getActiveBlock", () => {
     });
     const out = await getActiveBlock.handler({}, ctx);
     expect(out.archetype).toBe("strength_anchor");
+    expect(out.program).toBeNull();
     expect(out.weeks_total).toBe(4);
     expect(out.prescribed_next_two_weeks).toHaveLength(2);
     expect(out.prescribed_next_two_weeks[1]?.status).toBe("completed");
+  });
+
+  it("platform block: resolves program.name from program_id, archetype null", async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const ctx = makeCtx("u1", {
+      training_blocks: [
+        {
+          id: "blk-tb",
+          user_id: "u1",
+          program_id: "tactical-barbell",
+          program_family: "tactical-barbell",
+          archetype: null,
+          started_on: today,
+          weeks: 6,
+          notes: null,
+          status: "active",
+          deleted_at: null,
+        },
+      ],
+      planned_sessions: [],
+    });
+    const out = await getActiveBlock.handler({}, ctx);
+    expect(out.program).not.toBeNull();
+    expect(out.program?.id).toBe("tactical-barbell");
+    expect(out.program?.name).toBe("Tactical Barbell");
+    expect(typeof out.program?.summary).toBe("string");
+    expect(out.program_family).toBe("tactical-barbell");
+    expect(out.archetype).toBeNull();
+  });
+
+  it("legacy archetype block: program is null, archetype retained", async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const ctx = makeCtx("u1", {
+      training_blocks: [
+        {
+          id: "blk-legacy",
+          user_id: "u1",
+          program_id: null,
+          program_family: null,
+          archetype: "strength_anchor",
+          started_on: today,
+          weeks: 4,
+          notes: null,
+          status: "active",
+          deleted_at: null,
+        },
+      ],
+      planned_sessions: [],
+    });
+    const out = await getActiveBlock.handler({}, ctx);
+    expect(out.program).toBeNull();
+    expect(out.archetype).toBe("strength_anchor");
   });
 
   it("RLS isolation: user A cannot see user B's active block", async () => {
@@ -86,6 +139,8 @@ describe("getActiveBlock", () => {
       status: "pending" as const,
     }));
     const r = getActiveBlock.outputSchema.safeParse({
+      program: null,
+      program_family: null,
       archetype: "strength_anchor",
       started_on: "2026-05-01",
       weeks_total: 4,
