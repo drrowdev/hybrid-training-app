@@ -184,7 +184,7 @@ export default async function StatsOverviewPage({
         relevance={{ strength: strengthRelevant, cardio: cardioRelevant }}
       />
 
-      <DeepDiveLinks />
+      <DeepDiveLinks showEngine={Boolean(block?.usesAdaptiveEngine)} />
     </div>
   );
 }
@@ -193,12 +193,19 @@ export default async function StatsOverviewPage({
 // Bottom — slim deep-dive footer. Tiles now open drawers for depth; these
 // stay as a low-emphasis index to the full subpages (each drawer is a
 // summary + a deep link, so the full pages still need an entry point).
+//
+// The "Adaptive engine" chip only appears for blocks the adaptive engine
+// actually drives (the built-in Hybrid generator / legacy archetype blocks).
+// Foreign platform programs run fixed templates, so that page is noise for
+// them — see `usesAdaptiveEngine` on ActiveBlockProgress.
 // ──────────────────────────────────────────────────────────────────────
 
-function DeepDiveLinks() {
+function DeepDiveLinks({ showEngine }: { showEngine: boolean }) {
   const links: Array<{ label: string; href: string }> = [
     { label: "PRs & per-movement", href: "/app/stats/prs" },
-    { label: "How the planner sees you", href: "/app/stats/engine" },
+    ...(showEngine
+      ? [{ label: "Adaptive engine", href: "/app/stats/engine" }]
+      : []),
     { label: "Block analytics", href: "/app/stats/blocks" },
     { label: "Consistency details", href: "/app/stats/adherence" },
   ];

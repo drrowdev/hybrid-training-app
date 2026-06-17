@@ -1147,7 +1147,7 @@ export function EnduranceDrawer({
                       style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12 }}
                     >
                       <span style={{ width: 22, fontWeight: 600 }}>{zone}</span>
-                      <span className="mono" style={{ width: 56, fontSize: 10.5, color: "var(--cp-text-muted)" }}>
+                      <span className="mono" style={{ width: 88, fontSize: 10.5, color: "var(--cp-text-muted)", whiteSpace: "nowrap" }}>
                         {band} bpm
                       </span>
                       <span style={{ flex: 1, height: 8, background: "var(--cp-surface-soft)", borderRadius: 4, overflow: "hidden" }}>
@@ -1161,7 +1161,7 @@ export function EnduranceDrawer({
                           }}
                         />
                       </span>
-                      <span className="mono" style={{ width: 48, textAlign: "right", color: "var(--cp-text-muted)" }}>
+                      <span className="mono" style={{ width: 56, textAlign: "right", color: "var(--cp-text-muted)", whiteSpace: "nowrap" }}>
                         {mins} min
                       </span>
                     </div>
@@ -1488,17 +1488,10 @@ export function ReadinessDrawer({
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8, paddingTop: 4, borderTop: "1px solid var(--cp-border)" }}>
+        <div style={{ paddingTop: 4, borderTop: "1px solid var(--cp-border)" }}>
           <span style={{ fontSize: 10.5, color: "var(--cp-text-muted)" }}>
             Display only — readiness never feeds workout prescription.
           </span>
-          <Link
-            href="/app/stats/engine"
-            data-testid="stats-recovery-engine-link"
-            style={{ marginLeft: "auto", fontSize: 12, color: "var(--cp-accent)", textDecoration: "none", fontWeight: 500 }}
-          >
-            How the planner sees you →
-          </Link>
         </div>
       </div>
     </BottomSheet>
