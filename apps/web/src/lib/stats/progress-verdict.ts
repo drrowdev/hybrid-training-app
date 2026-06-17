@@ -64,7 +64,7 @@ function strengthChip(s: StrengthProgress): ProgressProofChip {
     return {
       modality: "strength",
       direction: "building",
-      text: "Strength building — log more mains to unlock a trend.",
+      text: "Strength building — log more main lifts to see a trend.",
     };
   }
   // Pick the lift with the largest |slope| as the headline chip — it's
@@ -116,14 +116,13 @@ function enduranceChip(e: EnduranceProgress): ProgressProofChip {
   if (e.slopeSecPerKmPerWeek == null) {
     return { modality: "endurance", direction: e.direction, text: "Easy pace holding." };
   }
-  const abs = Math.abs(e.slopeSecPerKmPerWeek).toFixed(1);
   if (e.direction === "up") {
-    return { modality: "endurance", direction: "up", text: `Easy pace −${abs}s/km/wk` };
+    return { modality: "endurance", direction: "up", text: "Easy runs getting faster" };
   }
   if (e.direction === "down") {
-    return { modality: "endurance", direction: "down", text: `Easy pace +${abs}s/km/wk` };
+    return { modality: "endurance", direction: "down", text: "Easy runs slowing down" };
   }
-  return { modality: "endurance", direction: "flat", text: `Easy pace holding (${abs}s/km/wk)` };
+  return { modality: "endurance", direction: "flat", text: "Easy pace steady" };
 }
 
 /** Reduce a directional signal to one of {up, down, flat, building}. */

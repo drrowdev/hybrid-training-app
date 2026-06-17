@@ -158,11 +158,16 @@ export default async function StatsOverviewPage({
     },
   };
 
+  const strengthRelevant =
+    Boolean(block?.planStrength) || volumeAll.totalKg > 0 || strengthAll.perLift.length > 0;
+  const cardioRelevant =
+    Boolean(block?.planCardio) || enduranceAll.direction !== "no-run-data";
+
   return (
     <div style={{ display: "grid", gap: 18 }}>
       <PageHeader
         title="Stats"
-        subtitle="A command center — read the verdict up top, scan the tiles for detail."
+        subtitle="Your training at a glance — where strength and endurance are trending, how recovered you are, and whether you're showing up."
       />
 
       <StatsCommandCenter
@@ -176,6 +181,7 @@ export default async function StatsOverviewPage({
         bodyweight={bodyweight}
         units={units}
         formatProfile={formatProfile}
+        relevance={{ strength: strengthRelevant, cardio: cardioRelevant }}
       />
 
       <DeepDiveLinks />

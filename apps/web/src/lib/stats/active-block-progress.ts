@@ -27,6 +27,10 @@ export type ActiveBlockProgress = {
   scheduledToDate: number;
   logged: number;
   skipped: number;
+  /** Any planned session whose modality is strength-flavoured. */
+  planStrength: boolean;
+  /** Any planned session whose modality is cardio-flavoured. */
+  planCardio: boolean;
 };
 
 export async function getActiveBlockProgress(
@@ -37,7 +41,7 @@ export async function getActiveBlockProgress(
   const { data, error } = await supabase
     .from("training_blocks")
     .select(
-      "id, archetype, started_on, weeks, days_per_week, status, notes, day_index_overrides, planned_sessions(week_index, day_index, completed_session_id, skipped_at)",
+      "id, archetype, started_on, weeks, days_per_week, status, notes, day_index_overrides, planned_sessions(week_index, day_index, completed_session_id, skipped_at, session_modality)",
     )
     .eq("user_id", userId)
     .eq("status", "active")
@@ -53,6 +57,7 @@ export async function getActiveBlockProgress(
     day_index: number;
     completed_session_id: string | null;
     skipped_at: string | null;
+    session_modality: string | null;
   };
   const planned = (data.planned_sessions ?? []) as PlannedRow[];
   const today = todayYmd(tz);
@@ -90,6 +95,17 @@ export async function getActiveBlockProgress(
     totalScheduled = data.weeks * dpw;
   }
 
+  const CARDIO_MODALITIES = new Set(["pure_z2_aerobic", "pure_hiit", "mixed_modal"]);
+  const STRENGTH_MODALITIES = new Set(["pure_strength", "pure_hypertrophy", "mixed_modal"]);
+  let planCardio = false;
+  let planStrength = false;
+  for (const p of planned) {
+    const m = p.session_modality;
+    if (m == null) continue;
+    if (CARDIO_MODALITIES.has(m)) planCardio = true;
+    if (STRENGTH_MODALITIES.has(m)) planStrength = true;
+  }
+
   return {
     blockId: data.id,
     archetypeName: archetypeDisplayName(data.archetype, data.notes ?? null),
@@ -101,6 +117,8 @@ export async function getActiveBlockProgress(
     scheduledToDate,
     logged,
     skipped,
+    planStrength,
+    planCardio,
   };
 }
 
