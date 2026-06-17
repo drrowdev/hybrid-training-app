@@ -398,7 +398,7 @@ describe("EnduranceDrawer - pace trend + time-in-zone", () => {
         timeInZone: {
           kind: "ok",
           totals: { Z1: 600, Z2: 3600, Z3: 1200, Z4: 300, Z5: 0 },
-          split: { easyPct: 70, thresholdPct: 20, hardPct: 5 },
+          split: { easyPct: 0.7, thresholdPct: 0.2, hardPct: 0.05 },
           bands: { z1Max: 120, z2Max: 140, z3Max: 160, z4Max: 175 },
           activityCount: 6,
           droppedCount: 1,

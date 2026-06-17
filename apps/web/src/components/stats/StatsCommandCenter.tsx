@@ -911,7 +911,7 @@ function EnduranceTile({
     <Tile span={4} testid="stats-tile-endurance" empty={noRun}>
       <TileHead
         title="Endurance progress"
-        meta={`Easy-run pace · ${RANGE_LABEL[range]}`}
+        meta={`Easy runs · ${RANGE_LABEL[range]}`}
         right={
           noRun || onExpand == null ? undefined : (
             <button
@@ -959,9 +959,9 @@ function EnduranceTile({
                 }}
               >
                 {data.direction === "up"
-                  ? "Getting faster ↘"
+                  ? "Getting faster ↑"
                   : data.direction === "down"
-                    ? "Slowing ↗"
+                    ? "Slowing ↓"
                     : "Holding"}
               </span>
             )}
@@ -1005,8 +1005,9 @@ function ZoneBars({ zones }: { zones: EnduranceProgress["timeInZone"] }) {
       <div style={{ display: "flex", alignItems: "flex-end", gap: 7, height: 54 }}>
         {labels.map((z) => {
           const h = Math.round((zones.totals[z] / max) * 100);
+          const mins = Math.round(zones.totals[z] / 60);
           return (
-            <div key={z} style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", gap: 5, height: "100%" }}>
+            <div key={z} title={`${z} · ${mins} min`} style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", gap: 5, height: "100%" }}>
               <div
                 style={{
                   width: "100%",
@@ -1019,6 +1020,9 @@ function ZoneBars({ zones }: { zones: EnduranceProgress["timeInZone"] }) {
             </div>
           );
         })}
+      </div>
+      <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 6 }}>
+        {Math.round(zones.split.easyPct * 100)}% easy · {Math.round(zones.split.thresholdPct * 100)}% threshold · {Math.round(zones.split.hardPct * 100)}% hard
       </div>
     </div>
   );
@@ -1116,7 +1120,7 @@ export function EnduranceDrawer({
           ) : (
             <>
               <div style={{ fontSize: 11.5, color: "var(--cp-text-muted)" }}>
-                {z.split.easyPct}% easy · {z.split.thresholdPct}% threshold · {z.split.hardPct}% hard
+                {Math.round(z.split.easyPct * 100)}% easy · {Math.round(z.split.thresholdPct * 100)}% threshold · {Math.round(z.split.hardPct * 100)}% hard
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 2 }}>
                 {(["Z1", "Z2", "Z3", "Z4", "Z5"] as const).map((zone) => {
@@ -1128,14 +1132,14 @@ export function EnduranceDrawer({
                   const pct = Math.round((mins / Math.max(maxMins, 1)) * 100);
                   const band =
                     zone === "Z1"
-                      ? `<${z.bands.z1Max}`
+                      ? `<${Math.round(z.bands.z1Max)}`
                       : zone === "Z2"
-                        ? `${z.bands.z1Max}–${z.bands.z2Max}`
+                        ? `${Math.round(z.bands.z1Max)}–${Math.round(z.bands.z2Max)}`
                         : zone === "Z3"
-                          ? `${z.bands.z2Max}–${z.bands.z3Max}`
+                          ? `${Math.round(z.bands.z2Max)}–${Math.round(z.bands.z3Max)}`
                           : zone === "Z4"
-                            ? `${z.bands.z3Max}–${z.bands.z4Max}`
-                            : `≥${z.bands.z4Max}`;
+                            ? `${Math.round(z.bands.z3Max)}–${Math.round(z.bands.z4Max)}`
+                            : `≥${Math.round(z.bands.z4Max)}`;
                   return (
                     <div
                       key={zone}
@@ -1375,10 +1379,10 @@ export function ReadinessDrawer({
         ratio == null
           ? "Building"
           : `${ratio.toFixed(2)} · ${ACWR_BAND_LABEL[lb.band] ?? lb.band}`,
-      detail: `acute ${Math.round(lb.bodyAcute)} vs chronic ${Math.round(lb.bodyChronic)} (Σ ATL / Σ CTL)`,
+      detail: `recent ${Math.round(lb.bodyAcute)} vs usual ${Math.round(lb.bodyChronic)} training load`,
     },
     {
-      label: "sRPE drift · 28d",
+      label: "Effort drift · 28d",
       value: rd.verdictLabel,
       detail: rd.meanRpe == null ? "Not enough sessions yet" : `mean session RPE ${round1(rd.meanRpe)}`,
     },
@@ -1400,7 +1404,7 @@ export function ReadinessDrawer({
             Recovery &amp; load
           </div>
           <div style={{ fontSize: 11.5, color: "var(--cp-text-muted)", marginTop: 2 }}>
-            acute:chronic workload + corroborating signals
+            training load vs your baseline, with corroborating signals
           </div>
         </div>
       }
@@ -1418,13 +1422,12 @@ export function ReadinessDrawer({
               {building ? "building baseline" : `${readiness.signalsAgree} of 3 signals agree`}
             </span>
           </div>
-          <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--cp-text)" }}>{readiness.headline}</p>
-          <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--cp-text-muted)" }}>{readiness.subtext}</p>
+          <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--cp-text-muted)" }}>{readiness.subtext}</p>
         </div>
 
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
-            <span style={{ fontSize: 12.5, fontWeight: 600 }}>Acute:chronic ratio</span>
+            <span style={{ fontSize: 12.5, fontWeight: 600 }}>Load ratio · recent vs usual</span>
             <span className="mono" style={{ fontSize: 13, fontWeight: 700 }}>
               {ratio == null ? "—" : ratio.toFixed(2)}
             </span>
@@ -1454,11 +1457,11 @@ export function ReadinessDrawer({
             ))}
           </div>
           <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 8, lineHeight: 1.5 }}>
-            Detraining &lt;{LOAD_BAND_THRESHOLDS.detrainingMax} · productive{" "}
-            {LOAD_BAND_THRESHOLDS.detrainingMax}–{LOAD_BAND_THRESHOLDS.productiveMax} · pushing{" "}
-            {LOAD_BAND_THRESHOLDS.productiveMax}–{LOAD_BAND_THRESHOLDS.pushingMax} · spiking &gt;
-            {LOAD_BAND_THRESHOLDS.pushingMax}. EWMA acute:chronic on session load; thresholds echo
-            the Gabbett 2016 sweet-spot range.
+            Below {LOAD_BAND_THRESHOLDS.detrainingMax} = easing off ·{" "}
+            {LOAD_BAND_THRESHOLDS.detrainingMax}–{LOAD_BAND_THRESHOLDS.productiveMax} = productive ·{" "}
+            {LOAD_BAND_THRESHOLDS.productiveMax}–{LOAD_BAND_THRESHOLDS.pushingMax} = pushing · above{" "}
+            {LOAD_BAND_THRESHOLDS.pushingMax} = spiking. Compares your recent training load against your
+            usual baseline.
           </div>
           {building && (
             <div style={{ fontSize: 11, color: "var(--cp-warning)", marginTop: 6 }}>
@@ -1709,7 +1712,7 @@ export function ConsistencyDrawer({
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 12, borderTop: "1px solid var(--cp-border)" }}>
           <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-            Completion, weekday mix, archetype split and skip notes
+            Completion, weekday mix, strength/cardio split and skip notes
           </span>
           <Link
             href="/app/stats/adherence"
