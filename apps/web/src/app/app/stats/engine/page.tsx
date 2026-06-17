@@ -423,8 +423,8 @@ function CeilingExplainerCard({
 }) {
   const formulaCopy: Record<typeof ceiling.formula, string> = {
     median_of_recovered: "Median of your last 3 recovered weeks",
-    cold_start_partial: "Median of your available recovered weeks (cold start)",
-    cold_start_conservative: "Conservative floor — no recovered weeks yet (cold start)",
+    cold_start_partial: "Median of your available recovered weeks so far",
+    cold_start_conservative: "Conservative floor — no recovered weeks yet",
   };
   const recoveredOk = ceiling.formula === "median_of_recovered";
   const recoveredCount = ceiling.inputs.recoveredWeeksCount;
@@ -479,8 +479,8 @@ function CeilingExplainerCard({
         {recoveredOk
           ? `${recoveredCount} recovered weeks ✓`
           : recoveredCount > 0
-            ? `Only ${recoveredCount} recovered week${recoveredCount === 1 ? "" : "s"} — cold start`
-            : "0 recovered weeks — cold start"}
+            ? `Only ${recoveredCount} recovered week${recoveredCount === 1 ? "" : "s"} so far`
+            : "No recovered weeks yet"}
         <MetricHelp term="recovered_week" />
       </div>
 
@@ -555,14 +555,14 @@ function CeilingExplainerCard({
           helpTerm="ceiling"
         />
         <CeilingInputRow
-          label="Confidence bias"
+          label="Confidence"
           value={ceiling.confidenceBias.toFixed(2)}
           unit="×"
           cite="ceiling-confidence"
           help={
             ceiling.formula === "median_of_recovered"
               ? "Full data — 3+ recovered weeks."
-              : "Sparse data — confidence collapses to 0.80× until 3 recovered weeks land."
+              : "Limited data — held conservative until 3 recovered weeks are in."
           }
           helpTerm="confidence_bias"
         />

@@ -255,7 +255,7 @@ export function AddLimitationModal({
               color: "var(--cp-text-muted)",
             }}
           >
-            The engine will cap or rotate around the affected muscles and
+            The app will cap or rotate around the affected muscles and
             movements you select.
           </p>
         </header>

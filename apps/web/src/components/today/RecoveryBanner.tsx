@@ -53,7 +53,6 @@ export function RecoveryBanner(props: Props) {
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
         <div style={{ fontSize: 11, color: accent, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
           Recovery · {props.eventName}
-          {props.confidence === "LOW" ? " · LOW CONFIDENCE" : ""}
         </div>
         <span className="mono" style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
           {props.days}d
@@ -66,8 +65,8 @@ export function RecoveryBanner(props: Props) {
             Post-race recovery — {props.days}d window
           </div>
           <div style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>
-            Engine will: {describeRecoveryCuts(props)}.
-            {props.confidence === "LOW" ? " Ultras are under-studied — adjust by feel." : ""}
+            Your plan will: {describeRecoveryCuts(props)}.
+            {props.confidence === "LOW" ? " For ultra distances, lean on how you feel too." : ""}
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <form action={(fd) => start(() => applyRecoveryPlan(fd).then(() => undefined))}>

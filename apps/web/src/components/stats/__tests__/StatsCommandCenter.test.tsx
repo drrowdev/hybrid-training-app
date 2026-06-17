@@ -343,14 +343,15 @@ describe("ReadinessDrawer - ACWR drilldown", () => {
     expect(rows).toHaveLength(3);
   });
 
-  it("surfaces the acute:chronic ratio and the signals-agree count", () => {
+  it("surfaces the acute:chronic ratio and a plain confidence label", () => {
     expect(open).toContain("1.08");
     expect(open).toContain('data-testid="stats-recovery-confidence"');
-    expect(open).toContain("2 of 3 signals agree");
+    expect(open).toContain("Moderate confidence");
   });
 
-  it("notes readiness is display-only and does not link out", () => {
-    expect(open).toContain("readiness never feeds workout prescription");
+  it("does not expose the signal count or a display-only disclaimer, and does not link out", () => {
+    expect(open).not.toContain("of 3 signals agree");
+    expect(open).not.toContain("never feeds workout prescription");
     expect(open).not.toContain('data-testid="stats-recovery-engine-link"');
   });
 
@@ -369,7 +370,7 @@ describe("ReadinessDrawer - ACWR drilldown", () => {
         })}
       />,
     );
-    expect(cold).toContain("building baseline");
+    expect(cold).toContain("Still learning your baseline");
     expect(cold).toMatch(/1 week of history/);
   });
 
@@ -386,9 +387,8 @@ describe("EnduranceDrawer - pace trend + time-in-zone", () => {
     const open = renderToStaticMarkup(
       <EnduranceDrawer open onClose={() => {}} data={bucket().endurance} range="90d" />,
     );
-    // 9 of 12 runs easy, 1 dropped (from the bucket() endurance fixture)
-    expect(open).toContain("9 of 12 runs counted as easy");
-    expect(open).toContain("1 dropped");
+    // 9 easy runs in the window (from the bucket() endurance fixture)
+    expect(open).toContain("Based on your 9 easy runs");
     expect(open).toContain("lower = faster");
   });
 
