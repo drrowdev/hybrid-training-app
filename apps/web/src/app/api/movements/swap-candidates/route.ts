@@ -1,9 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   rankSwapCandidates,
   type SwapMovementFields,
 } from "@/lib/sessions/swap-ranking";
+import { resolveEquipment } from "@/lib/settings/equipment-presets";
+import {
+  resolveRequiredEquipment,
+  isEquipmentAvailable,
+} from "@/lib/planner/equipment-requirements";
 
 /**
  * GET /api/movements/swap-candidates?originalId=<uuid>&limit=25
@@ -57,9 +62,34 @@ export async function GET(request: NextRequest) {
     .limit(500);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  // Filter to alternatives the user can actually load with their equipment — a
+  // swap menu that suggests a leg-press machine to someone training at home is
+  // noise. Read the signed-in user's equipment profile; if it can't be resolved,
+  // or filtering would empty the list, fall back to the unfiltered bucket so the
+  // picker is never blank.
+  let pool = (data ?? []) as unknown as SwapMovementFields[];
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("equipment, barbell_kg, trap_bar_kg, plate_inventory_kg")
+      .eq("id", user.id)
+      .maybeSingle();
+    const equipment = resolveEquipment(profile);
+    const available = pool.filter((m) =>
+      isEquipmentAvailable(
+        resolveRequiredEquipment({ slug: m.slug, equipment: m.equipment }),
+        equipment,
+      ),
+    );
+    if (available.length > 0) pool = available;
+  }
+
   const ranked = rankSwapCandidates(
     orig as unknown as SwapMovementFields,
-    (data ?? []) as unknown as SwapMovementFields[],
+    pool,
   ).slice(0, limit);
 
   return NextResponse.json({
