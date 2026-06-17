@@ -478,33 +478,40 @@ export function MovementCard({
               </button>
             )}
           </div>
-          <ul
-            data-testid={`movement-card-recap-lines-${group.movementId}`}
-            style={{
-              listStyle: "none",
-              margin: 0,
-              padding: 0,
-              display: "grid",
-              gap: 2,
-              fontSize: 12,
-              color: "var(--cp-text-muted)",
-            }}
-          >
-            {recapLines.map((line) => (
-              <li
-                key={line.kind}
-                data-recap-kind={line.kind}
-                style={{
-                  color:
-                    line.kind === "skipped"
-                      ? "var(--cp-warning)"
-                      : "var(--cp-text-muted)",
-                }}
-              >
-                {line.text}
-              </li>
-            ))}
-          </ul>
+          {/* Per-set/bucket recap list. Only shown when REVIEWING a finished
+              session (readOnly) — during an ACTIVE workout a just-completed
+              movement collapses to the compact "✓ complete + Edit sets" row
+              above (plus the one-line header summary), so the card stays short
+              on mobile instead of listing every set again. */}
+          {readOnly && (
+            <ul
+              data-testid={`movement-card-recap-lines-${group.movementId}`}
+              style={{
+                listStyle: "none",
+                margin: 0,
+                padding: 0,
+                display: "grid",
+                gap: 2,
+                fontSize: 12,
+                color: "var(--cp-text-muted)",
+              }}
+            >
+              {recapLines.map((line) => (
+                <li
+                  key={line.kind}
+                  data-recap-kind={line.kind}
+                  style={{
+                    color:
+                      line.kind === "skipped"
+                        ? "var(--cp-warning)"
+                        : "var(--cp-text-muted)",
+                  }}
+                >
+                  {line.text}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
