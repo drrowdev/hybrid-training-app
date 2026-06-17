@@ -24,14 +24,14 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
-import { programSegments, type PlatformContext } from "@hta/program-core";
+import { programSegments, type PlatformContext, type ProgramEngine } from "@hta/program-core";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { ARCHETYPES } from "@/lib/planner/archetypes";
 import type { HybridInstance } from "@/lib/programs/hybrid/engine";
 import { resolveHybridTmPercent } from "@/lib/programs/hybrid/engine";
 import { buildPlatformContext } from "./context";
 import { getProgramEngine, getNativeProgramEngine, isNativeProgram } from "./registry";
-import { buildProgramInstanceWrite } from "./program-instance";
+import { buildProgramInstanceWrite, type ProgramInstanceWrite } from "./program-instance";
 import { buildAssistancePlanner, type AssistancePlanner } from "./assistance-resolver";
 import { loadPickerCatalog } from "@/lib/planner/picker-catalog";
 import { readLimitationsContext } from "@/lib/planner/limitations-context";
@@ -46,6 +46,8 @@ import {
   type TbAccessoryInjector,
 } from "./tb-accessories";
 import { discardAbandonedInProgressSessions } from "@/lib/planner/archive-prior-blocks";
+import { planForwardOnlyRewrite } from "./forward-rewrite";
+import { todayYmd, mondayOfYmd, daysBetweenYmd } from "@/lib/dates";
 
 const WEEKDAY = z.number().int().min(0).max(6);
 
@@ -95,6 +97,10 @@ const createProgramInstanceSchema = z
     twoADay: z.boolean().optional(),
     /** Per-block antagonist-superset accessories (migration 0111) — applies to ALL programs. */
     supersetAccessories: z.boolean().optional(),
+    /** When present, this deploy is a forward-only EDIT of an existing active
+     *  block (5/3/1 / Tactical Barbell only): keep the same block + program
+     *  instance, freeze past + current week, regenerate only future weeks. */
+    editBlockId: z.string().uuid().optional(),
   })
   .strict();
 
@@ -111,7 +117,7 @@ export async function createProgramInstance(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, supersetAccessories } = parsed.data;
+  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, supersetAccessories, editBlockId } = parsed.data;
 
   // Reject duplicate weekdays — they'd collide on the (week, day, slot) unique key.
   // (Native programs own their own calendar and ignore `weekdays`, but the check
@@ -132,6 +138,25 @@ export async function createProgramInstance(
 
   // Same user-scoped client (RLS) for BOTH paths — never the service role.
   const supabase = await createClient();
+
+  // Forward-only EDIT of an existing block (5/3/1 / TB). Keeps the block + its
+  // active program instance, freezes past + current week, regenerates future
+  // weeks from the new wizard inputs.
+  if (editBlockId) {
+    if (!STRENGTH_ONLY_PROGRAM_IDS.has(programId)) {
+      return { ok: false, error: "This program can't be edited in place yet." };
+    }
+    return updateForeignProgramInstance(supabase, user, editBlockId, {
+      programId,
+      setupValues,
+      weekdays,
+      startedOn,
+      ...(cardioForProgram.length > 0 ? { cardioWeekdays: cardioForProgram } : {}),
+      ...(roundingKg != null ? { roundingKg } : {}),
+      ...(accessories ? { accessories } : {}),
+      ...(supersetAccessories != null ? { supersetAccessories } : {}),
+    });
+  }
 
   if (isNativeProgram(programId)) {
     return createNativeProgramInstance(supabase, user, {
@@ -419,6 +444,107 @@ async function buildForeignGpAccessoryInjector(
 }
 
 /**
+ * Pure(ish) foreign build: engine setup → assistance/accessory resolution →
+ * materialised `ProgramInstanceWrite`. Extracted so the create AND the
+ * forward-only edit path share ONE build (no drift in engine behaviour).
+ * Throws on engine/setup errors; the caller wraps it in a try.
+ */
+async function computeForeignWrite(
+  supabase: SupabaseClient,
+  user: User,
+  engine: ProgramEngine,
+  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories }: DeployArgs,
+): Promise<{ instance: unknown; write: ProgramInstanceWrite }> {
+  // HYROX: a supplied race date overrides the experience block length with the
+  // whole weeks from start to race, so the program's end-taper lands on race week
+  // (ADR 0050 step 10). Clamping happens in the engine setup.
+  const hyroxWeeksToRace =
+    programId === "hyrox" && raceDate ? wholeWeeksBetween(startedOn, raceDate) : null;
+
+  const { ctx, resolveMovement } = await buildPlatformContext(supabase, user.id, {
+    ...(roundingKg != null ? { roundingKg } : {}),
+  });
+  // Global accessory-volume preference (profiles.effort_preference:
+  // low=Easier / standard=Balanced / high=Harder). 5/3/1 scales its assistance
+  // volume by this single global control. Read best-effort; default standard.
+  let assistanceVolumePref: "low" | "standard" | "high" = "standard";
+  if (programId === "wendler-531") {
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("effort_preference")
+      .eq("id", user.id)
+      .maybeSingle();
+    const raw = prof?.effort_preference;
+    if (raw === "low" || raw === "high") assistanceVolumePref = raw;
+  }
+  const instance = engine.setup(
+    {
+      values: {
+        ...setupValues,
+        // 5/3/1 packs its 4 main lifts across the chosen strength days
+        // (4 = one lift/day, 2 = two/day). The frequency is the weekday count
+        // picked in the Schedule step, mirrored into setup like Hybrid does.
+        ...(programId === "wendler-531" ? { daysPerWeek: weekdays.length } : {}),
+        ...(programId === "wendler-531" ? { assistanceVolume: assistanceVolumePref } : {}),
+        ...(hyroxWeeksToRace != null ? { weeks: hyroxWeeksToRace } : {}),
+      },
+    },
+    ctx,
+  );
+  // ADR 0047 — 5/3/1 and HYROX both emit category-tagged assistance intent, so
+  // both need the (catalog + equipment + limitation) resolver. TB / Green Protocol
+  // emit none and stay byte-identical.
+  const assistance =
+    programId === "wendler-531" || programId === "hyrox"
+      ? await buildForeignAssistancePlanner(
+          supabase,
+          user.id,
+          resolveMovement,
+          // 5/3/1 honours the declared experience tier; HYROX is decoupled
+          // (it collects its own per-block experience in the wizard).
+          programId === "wendler-531",
+        )
+      : undefined;
+  // ADR 0048 — optional, opt-in TB accessory work (Zulu/Operator/Fighter only).
+  const tbAccessories =
+    programId === "tactical-barbell"
+      ? await buildForeignTbAccessoryInjector(
+          supabase,
+          user.id,
+          resolveMovement,
+          typeof setupValues.templateId === "string" ? setupValues.templateId : "",
+          accessories,
+        )
+      : undefined;
+  // Optional, opt-in Green Protocol accessory work — periodised, capped
+  // per-session by each strength session's TB template (conditioning gets none).
+  const gpAccessories =
+    programId === "green-protocol"
+      ? await buildForeignGpAccessoryInjector(
+          supabase,
+          user.id,
+          resolveMovement,
+          instance as GreenInstance,
+          accessories,
+        )
+      : undefined;
+  const foreignAccessories = tbAccessories ?? gpAccessories;
+  const write = buildProgramInstanceWrite({
+    engine,
+    instance,
+    ctx,
+    resolveMovement,
+    weekdays,
+    startedOn,
+    ...(assistance ? { assistance } : {}),
+    ...(foreignAccessories ? { accessories: foreignAccessories } : {}),
+    ...(startWeekIndex != null ? { startWeekIndex } : {}),
+    ...(cardioWeekdays && cardioWeekdays.length > 0 ? { cardioWeekdays } : {}),
+  });
+  return { instance, write };
+}
+
+/**
  * Foreign per-session engine deploy (5/3/1, Tactical Barbell, Green Protocol).
  * Behaviour is byte-identical to the pre-refactor inline flow.
  */
@@ -430,96 +556,21 @@ async function createForeignProgramInstance(
   const engine = getProgramEngine(programId);
   if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
 
-  // HYROX: a supplied race date overrides the experience block length with the
-  // whole weeks from start to race, so the program's end-taper lands on race week
-  // (ADR 0050 step 10). Clamping happens in the engine setup.
-  const hyroxWeeksToRace =
-    programId === "hyrox" && raceDate ? wholeWeeksBetween(startedOn, raceDate) : null;
-
   // Shared strength state → engine setup → materialised plan + TM alignment.
-  let write;
+  let write: ProgramInstanceWrite;
   let instance: unknown;
   try {
-    const { ctx, resolveMovement } = await buildPlatformContext(supabase, user.id, {
-      ...(roundingKg != null ? { roundingKg } : {}),
-    });
-    // Global accessory-volume preference (profiles.effort_preference:
-    // low=Easier / standard=Balanced / high=Harder). 5/3/1 scales its assistance
-    // volume by this single global control. Read best-effort; default standard.
-    let assistanceVolumePref: "low" | "standard" | "high" = "standard";
-    if (programId === "wendler-531") {
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("effort_preference")
-        .eq("id", user.id)
-        .maybeSingle();
-      const raw = prof?.effort_preference;
-      if (raw === "low" || raw === "high") assistanceVolumePref = raw;
-    }
-    instance = engine.setup(
-      {
-        values: {
-          ...setupValues,
-          // 5/3/1 packs its 4 main lifts across the chosen strength days
-          // (4 = one lift/day, 2 = two/day). The frequency is the weekday count
-          // picked in the Schedule step, mirrored into setup like Hybrid does.
-          ...(programId === "wendler-531" ? { daysPerWeek: weekdays.length } : {}),
-          ...(programId === "wendler-531" ? { assistanceVolume: assistanceVolumePref } : {}),
-          ...(hyroxWeeksToRace != null ? { weeks: hyroxWeeksToRace } : {}),
-        },
-      },
-      ctx,
-    );
-    // ADR 0047 — 5/3/1 and HYROX both emit category-tagged assistance intent, so
-    // both need the (catalog + equipment + limitation) resolver. TB / Green Protocol
-    // emit none and stay byte-identical.
-    const assistance =
-      programId === "wendler-531" || programId === "hyrox"
-        ? await buildForeignAssistancePlanner(
-            supabase,
-            user.id,
-            resolveMovement,
-            // 5/3/1 honours the declared experience tier; HYROX is decoupled
-            // (it collects its own per-block experience in the wizard).
-            programId === "wendler-531",
-          )
-        : undefined;
-    // ADR 0048 — optional, opt-in TB accessory work (Zulu/Operator/Fighter only).
-    const tbAccessories =
-      programId === "tactical-barbell"
-        ? await buildForeignTbAccessoryInjector(
-            supabase,
-            user.id,
-            resolveMovement,
-            typeof setupValues.templateId === "string" ? setupValues.templateId : "",
-            accessories,
-          )
-        : undefined;
-    // Optional, opt-in Green Protocol accessory work — periodised, capped
-    // per-session by each strength session's TB template (conditioning gets none).
-    const gpAccessories =
-      programId === "green-protocol"
-        ? await buildForeignGpAccessoryInjector(
-            supabase,
-            user.id,
-            resolveMovement,
-            instance as GreenInstance,
-            accessories,
-          )
-        : undefined;
-    const foreignAccessories = tbAccessories ?? gpAccessories;
-    write = buildProgramInstanceWrite({
-      engine,
-      instance,
-      ctx,
-      resolveMovement,
+    ({ instance, write } = await computeForeignWrite(supabase, user, engine, {
+      programId,
+      setupValues,
       weekdays,
       startedOn,
-      ...(assistance ? { assistance } : {}),
-      ...(foreignAccessories ? { accessories: foreignAccessories } : {}),
-      ...(startWeekIndex != null ? { startWeekIndex } : {}),
       ...(cardioWeekdays && cardioWeekdays.length > 0 ? { cardioWeekdays } : {}),
-    });
+      ...(raceDate ? { raceDate } : {}),
+      ...(startWeekIndex != null ? { startWeekIndex } : {}),
+      ...(roundingKg != null ? { roundingKg } : {}),
+      ...(accessories ? { accessories } : {}),
+    }));
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Setup failed" };
   }
@@ -685,6 +736,181 @@ async function createForeignProgramInstance(
   revalidatePath("/app/stats");
 
   return { ok: true, blockId, programInstanceId: pi.id as string, skipped: write.skipped.length };
+}
+
+/**
+ * Forward-only EDIT of an existing foreign block (5/3/1 / Tactical Barbell).
+ *
+ * Re-enters the wizard for an ACTIVE plan and applies the new inputs WITHOUT
+ * losing logged history: it keeps the same `training_blocks` row + active
+ * `program_instances` row, FREEZES every week up to and including the current
+ * week, and regenerates only the future weeks from a fresh materialise.
+ *
+ * Guardrails mirror the create path — user-scoped client, explicit `user_id`
+ * ownership on every query (never the service role). The original `started_on`
+ * is preserved so past weeks keep their dates; touched future rows (a session
+ * started or skipped ahead of today) are never deleted or collided on.
+ */
+async function updateForeignProgramInstance(
+  supabase: SupabaseClient,
+  user: User,
+  blockId: string,
+  args: DeployArgs,
+): Promise<CreateProgramInstanceResult> {
+  const { programId, supersetAccessories } = args;
+  const engine = getProgramEngine(programId);
+  if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
+
+  // 1) Load + validate the target block (ownership, active, program match).
+  const { data: block, error: blockErr } = await supabase
+    .from("training_blocks")
+    .select("id, started_on, weeks, program_id, status, deleted_at")
+    .eq("id", blockId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (blockErr) return { ok: false, error: blockErr.message };
+  if (!block) return { ok: false, error: "Plan not found." };
+  if (block.status !== "active" || block.deleted_at != null) {
+    return { ok: false, error: "This plan is no longer active." };
+  }
+  if ((block.program_id as string | null) !== programId) {
+    return { ok: false, error: "Program mismatch — start a new plan to change methodology." };
+  }
+  const blockStartedOn = block.started_on as string;
+
+  // 2) Forward-only boundary: freeze weeks <= the week that contains today.
+  const { data: prof } = await supabase
+    .from("profiles")
+    .select("timezone")
+    .eq("id", user.id)
+    .maybeSingle();
+  const tz = (prof?.timezone as string | null) ?? "UTC";
+  const blockMonday = mondayOfYmd(blockStartedOn);
+  const elapsedDays = daysBetweenYmd(blockMonday, todayYmd(tz));
+  const currentWeekIndex = Math.max(0, Math.floor(elapsedDays / 7));
+
+  // 3) Fresh materialise from the new inputs — same engine, ORIGINAL start date.
+  let write: ProgramInstanceWrite;
+  let instance: unknown;
+  try {
+    ({ instance, write } = await computeForeignWrite(supabase, user, engine, {
+      ...args,
+      startedOn: blockStartedOn,
+    }));
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Setup failed" };
+  }
+  if (write.sessions.length === 0) {
+    return { ok: false, error: "This program produced no sessions — check your training maxes." };
+  }
+  const newWeeks = Math.max(write.weeks, currentWeekIndex + 1);
+
+  // 4) Decide what to delete vs insert in the future weeks. Any future row that
+  //    was started or skipped ahead of today (rare) is preserved so we neither
+  //    delete it nor collide on its (week, day, slot) key.
+  const { data: futureRows, error: frErr } = await supabase
+    .from("planned_sessions")
+    .select("id, week_index, day_index, slot, completed_session_id, skipped_at")
+    .eq("block_id", blockId)
+    .eq("user_id", user.id)
+    .gt("week_index", currentWeekIndex);
+  if (frErr) return { ok: false, error: frErr.message };
+  const plan = planForwardOnlyRewrite({
+    currentWeekIndex,
+    writeWeeks: write.weeks,
+    existingFuture: (futureRows ?? []).map((r) => ({
+      id: r.id as string,
+      weekIndex: r.week_index as number,
+      dayIndex: r.day_index as number,
+      slot: (r.slot as string) ?? "single",
+      touched: r.completed_session_id != null || r.skipped_at != null,
+    })),
+    newSessions: write.sessions.map((s) => ({
+      weekIndex: s.weekIndex,
+      dayIndex: s.dayIndex,
+      slot: s.slot,
+    })),
+  });
+
+  // 5) Clear the regenerable future rows (untouched only).
+  if (plan.deleteIds.length > 0) {
+    const { error: delErr } = await supabase
+      .from("planned_sessions")
+      .delete()
+      .eq("user_id", user.id)
+      .in("id", plan.deleteIds);
+    if (delErr) return { ok: false, error: `Couldn't clear future weeks: ${delErr.message}` };
+  }
+
+  // 6) Insert the new future rows.
+  const newRows = plan.insertIndices.map((i) => {
+    const s = write.sessions[i]!;
+    return {
+      block_id: blockId,
+      user_id: user.id,
+      week_index: s.weekIndex,
+      day_index: s.dayIndex,
+      slot: s.slot,
+      title: s.title,
+      role: s.role,
+      prescription: s.prescription,
+      session_modality: s.sessionModality,
+      effective_stress_load: s.effectiveStressLoad,
+    };
+  });
+  if (newRows.length > 0) {
+    const { error: insErr } = await supabase.from("planned_sessions").insert(newRows);
+    if (insErr) return { ok: false, error: `Couldn't write updated weeks: ${insErr.message}` };
+  }
+
+  // 7) Update block metadata (id + started_on unchanged). Re-seed tm_percent so
+  //    the new future weeks render correct weights — a no-op when the user only
+  //    changed cardio (the common case), since the seeds are identical.
+  const cardioPresent = !!(args.cardioWeekdays && args.cardioWeekdays.length > 0);
+  await supabase
+    .from("training_blocks")
+    .update({
+      weeks: newWeeks,
+      days_per_week: write.daysPerWeek,
+      day_index_overrides: write.dayIndexOverrides,
+      cardio_source: cardioPresent ? "external" : "internal",
+      superset_accessories: supersetAccessories ?? false,
+    })
+    .eq("id", blockId)
+    .eq("user_id", user.id);
+
+  for (const seed of write.tmPercents) {
+    await supabase
+      .from("training_maxes")
+      .update({ tm_percent: seed.tmPercent })
+      .eq("user_id", user.id)
+      .eq("movement_id", seed.movementId);
+  }
+
+  // 8) Keep the active program instance in sync (serialised state + wizard input).
+  const { data: pi } = await supabase
+    .from("program_instances")
+    .update({
+      instance,
+      setup_input: { values: args.setupValues, weekdays: args.weekdays, startedOn: blockStartedOn },
+      updated_at: new Date().toISOString(),
+    })
+    .eq("block_id", blockId)
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .select("id")
+    .maybeSingle();
+
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
+  revalidatePath("/app/stats");
+
+  return {
+    ok: true,
+    blockId,
+    programInstanceId: (pi?.id as string) ?? "",
+    skipped: write.skipped.length,
+  };
 }
 
 /**

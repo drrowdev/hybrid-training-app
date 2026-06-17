@@ -59,6 +59,9 @@ export type ActiveBlock = {
   weeks: number;
   status: "active" | "completed" | "archived";
   notes: string | null;
+  /** Platform program id (e.g. "wendler-531", "tactical-barbell", "hybrid").
+   * NULL for legacy archetype blocks. Gates the wizard "Edit plan" re-entry. */
+  programId: string | null;
   /** Engine family (e.g. "531", "tactical-barbell", "tactical-barbell-green",
    * "hybrid"). Drives program-aware copy — 5/3/1 calls a training block a
    * "cycle"; Tactical Barbell / Green Protocol call it a "block". */
@@ -141,7 +144,7 @@ export async function getActiveBlock(): Promise<ActiveBlock | null> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("training_blocks")
-    .select("id, archetype, started_on, weeks, status, notes, program_family, focus_muscles, power_emphasis")
+    .select("id, archetype, started_on, weeks, status, notes, program_id, program_family, focus_muscles, power_emphasis")
     .eq("status", "active")
     .is("deleted_at", null)
     .order("started_on", { ascending: false })
@@ -155,6 +158,7 @@ export async function getActiveBlock(): Promise<ActiveBlock | null> {
     weeks: data.weeks,
     status: data.status,
     notes: data.notes ?? null,
+    programId: (data as { program_id?: string | null }).program_id ?? null,
     programFamily: (data as { program_family?: string | null }).program_family ?? null,
     focusMuscles: Array.isArray(data.focus_muscles)
       ? (data.focus_muscles as string[])
