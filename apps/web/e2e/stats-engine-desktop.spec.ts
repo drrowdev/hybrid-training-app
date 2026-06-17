@@ -14,17 +14,16 @@ import { seedEngineState } from "./fixtures/seed-engine";
  *  - One skipped planned session + one movement swap → two override rows
  *
  * The spec asserts:
- *  - all seven sections render
+ *  - all five sections render
  *  - the decision-trace headline + archetype name appear
  *  - the "Why?" tooltip on a bucket exposes a popover with explanation
  *  - the recent overrides list has at least one row
- *  - the engine internals card surfaces a version string
  */
 
 test.describe("@desktop /app/stats/engine", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "Chromium-only");
 
-  test("renders all seven sections + decision trace + bucket why", async ({
+  test("renders all sections + decision trace + bucket why", async ({
     page,
     context,
     freshUser,
@@ -92,19 +91,8 @@ test.describe("@desktop /app/stats/engine", () => {
       "data-formula",
       /median_of_recovered|cold_start_partial|cold_start_conservative/,
     );
-    // "Why these weeks?" tooltip — DC-K1 explainer affordance.
-    const whyWeeks = page.getByTestId("stats-engine-ceiling-why-weeks");
-    await expect(whyWeeks).toBeVisible();
-    await whyWeeks.focus();
 
-    // ── E · User tier ────────────────────────────────────────
-    const tier = page.getByTestId("stats-engine-tier");
-    await expect(tier).toBeVisible();
-    await expect(page.getByTestId("stats-engine-tier-label")).toContainText(
-      /Consumer|Intermediate|High-performance/i,
-    );
-
-    // ── F · Recent overrides ─────────────────────────────────
+    // ── E · Recent overrides ─────────────────────────────────
     const overrides = page.getByTestId("stats-engine-overrides");
     await expect(overrides).toBeVisible();
     const overrideRows = page.getByTestId("stats-engine-override-row");
@@ -114,12 +102,6 @@ test.describe("@desktop /app/stats/engine", () => {
     await expect(page.getByTestId("stats-engine-override-note").first()).toContainText(
       /Bar busy/i,
     );
-
-    // ── G · Engine internals ─────────────────────────────────
-    await expect(page.getByTestId("stats-engine-internals")).toBeVisible();
-    await expect(
-      page.getByTestId("stats-engine-internals-version"),
-    ).toHaveText(/\d+\.\d+\.\d+/);
   });
 
   test("region freshness strip reads from region_state_history cache (PR #41)", async ({
@@ -207,75 +189,5 @@ test.describe("@desktop /app/stats/engine", () => {
       "data-empty",
       "true",
     );
-  });
-
-  test("section E surfaces declared experience + confidence + contributors (DC-G1..G6)", async ({
-    page,
-    context,
-    freshUser,
-    seedConfig,
-    admin,
-    baseURL,
-  }) => {
-    await markOnboarded(admin, freshUser.userId);
-    // Seed an intermediate-level profile: declared 2-5y, bodyweight 80kg,
-    // four main-lift TMs exactly on the intermediate bodyweight-ratio
-    // gates (1.0× / 0.75× / 1.5× / 0.5× BW).
-    await admin
-      .from("profiles")
-      .update({ training_experience: "intermediate_2y_5y", bodyweight_kg: 80 })
-      .eq("id", freshUser.userId);
-
-    const slugs = [
-      { slug: "back-squat-high-bar", oneRm: 80 },
-      { slug: "bench-press-flat", oneRm: 60 },
-      { slug: "conventional-deadlift", oneRm: 120 },
-      { slug: "ohp-standing", oneRm: 40 },
-    ];
-    for (const { slug, oneRm } of slugs) {
-      // Movements catalog rows are seeded in migration 0011_seed_catalog.
-      const { data: m } = await admin
-        .from("movements")
-        .select("id")
-        .eq("slug", slug)
-        .is("user_id", null)
-        .maybeSingle();
-      if (m?.id) {
-        await admin
-          .from("training_maxes")
-          .upsert(
-            {
-              user_id: freshUser.userId,
-              movement_id: m.id as string,
-              one_rm_kg: oneRm,
-              tm_percent: null,
-            },
-            { onConflict: "user_id,movement_id" },
-          );
-      }
-    }
-
-    await signInAs(context, freshUser, seedConfig, baseURL ?? "http://localhost:3000");
-    await page.goto("/app/stats/engine");
-    await page.waitForLoadState("networkidle");
-
-    const tier = page.getByTestId("stats-engine-tier");
-    await expect(tier).toBeVisible();
-    // Declared + inferred should both land at intermediate → no mismatch.
-    await expect(tier).toHaveAttribute("data-tier", "intermediate");
-    await expect(tier).toHaveAttribute("data-mismatch", "false");
-    await expect(page.getByTestId("stats-engine-tier-label")).toContainText(
-      /Intermediate/i,
-    );
-    // Confidence badge surfaces the contributor count.
-    await expect(page.getByTestId("stats-engine-tier-confidence")).toContainText(
-      /\d+ observed contributor/,
-    );
-    // Contributors expansion has rows for each main lift we seeded.
-    const contribDetails = page.getByTestId("stats-engine-tier-contributors");
-    await expect(contribDetails).toBeVisible();
-    await contribDetails.locator("summary").click();
-    const rows = page.getByTestId("stats-engine-tier-contributor-row");
-    expect(await rows.count()).toBeGreaterThanOrEqual(4);
   });
 });

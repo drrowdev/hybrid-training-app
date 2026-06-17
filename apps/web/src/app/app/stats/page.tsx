@@ -193,7 +193,7 @@ function DeepDiveLinks() {
   const links: Array<{ label: string; href: string }> = [
     { label: "PRs & per-movement", href: "/app/stats/prs" },
     { label: "How the planner sees you", href: "/app/stats/engine" },
-    { label: "Block outcomes", href: "/app/stats/blocks" },
+    { label: "Block analytics", href: "/app/stats/blocks" },
     { label: "Consistency details", href: "/app/stats/adherence" },
   ];
   return (
@@ -216,9 +216,9 @@ function DeepDiveLinks() {
           key={l.href}
           href={l.href}
           data-testid="stats-deep-dive"
-          className="cp-link"
+          className="cp-chip"
         >
-          {l.label} →
+          {l.label}
         </Link>
       ))}
     </section>
