@@ -69,7 +69,7 @@ export default async function StravaSettingsPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        back={{ href: "/app/settings", label: "Settings" }}
+        back={{ href: "/app/settings/integrations", label: "Integrations" }}
         title="Strava"
         subtitle="Pull your runs, rides, swims, and other cardio into the training ledger so region freshness reflects all your work, not just lifts."
         actions={<StravaPoweredBadge />}

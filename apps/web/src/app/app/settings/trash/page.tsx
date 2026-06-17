@@ -34,7 +34,7 @@ export default async function TrashPage() {
       style={{ display: "grid", gap: 20, maxWidth: 720 }}
     >
       <PageHeader
-        back={{ href: "/app/settings", label: "Settings" }}
+        back={{ href: "/app/settings/account", label: "Account & data" }}
         title={
           <>
             Trash
