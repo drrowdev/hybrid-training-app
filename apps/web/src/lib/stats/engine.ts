@@ -170,7 +170,7 @@ export async function getDecisionTrace(
   // Rest-day case: no planned session for today.
   if (!todayPlanned || todayPlanned.length === 0) {
     reasons.push({
-      text: "No anchor session scheduled for today — the engine treats it as a recovery day.",
+      text: "No session scheduled for today — treated as a recovery day.",
       cite: "DC-E1",
     });
     return {
@@ -669,15 +669,15 @@ export async function getCeilingExplain(
   const notes: string[] = [];
   if (base.formula === "median_of_recovered") {
     notes.push(
-      `Base = median weekly tonnage across your last 3 recovered weeks. ${recoveredCount} of last 12 weeks qualified.`,
+      `Based on the typical weekly tonnage of your last 3 recovered weeks (${recoveredCount} of the last 12 qualified).`,
     );
   } else if (base.formula === "cold_start_partial") {
     notes.push(
-      `Cold start — only ${recoveredCount} recovered week${recoveredCount === 1 ? "" : "s"} in the last 12. Base = median of those, with a 0.80× confidence collapse.`,
+      `Limited data — only ${recoveredCount} recovered week${recoveredCount === 1 ? "" : "s"} in the last 12 so far. The estimate stays conservative until you have 3.`,
     );
   } else {
     notes.push(
-      "Cold start — no fully recovered weeks in the last 12. Base = lowest of the last 4 weeks × 0.9, with a 0.80× confidence collapse.",
+      "No fully recovered weeks in the last 12 yet. The estimate stays conservative until you build a few.",
     );
   }
 
