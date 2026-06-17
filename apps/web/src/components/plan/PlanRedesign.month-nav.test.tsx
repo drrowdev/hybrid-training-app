@@ -7,8 +7,14 @@
  * SSR snapshot that asserts the visible contract (label, prev/next
  * buttons, and the `overflow-x: hidden` style that PR #200 broke).
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+
+// Static render has no App Router context; the component calls useRouter().
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: () => {}, push: () => {}, replace: () => {} }),
+}));
+
 import {
   PlanRedesign,
   addMonthsUtc,
