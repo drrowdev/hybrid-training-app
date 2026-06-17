@@ -72,6 +72,7 @@ export type StatsCommandCenterProps = {
   bodyweight: BodyweightTrend;
   units: WeightUnit;
   formatProfile: ProfileForFormat;
+  relevance: { strength: boolean; cardio: boolean };
 };
 
 // ── tone helpers ─────────────────────────────────────────────────────
@@ -218,6 +219,7 @@ export function StatsCommandCenter(props: StatsCommandCenterProps) {
     freshness,
     bodyweight,
     units,
+    relevance,
   } = props;
   const [range, setRange] = useState<Range>(initialRange);
   const [openTile, setOpenTile] = useState<
@@ -254,6 +256,7 @@ export function StatsCommandCenter(props: StatsCommandCenterProps) {
         readiness={readiness}
         streak={streak}
         range={range}
+        relevance={relevance}
       />
 
       <div
@@ -264,16 +267,20 @@ export function StatsCommandCenter(props: StatsCommandCenterProps) {
           gap: 14,
         }}
       >
-        <StrengthTile
-          data={bucket.strength}
-          range={range}
-          onExpand={() => setOpenTile("strength")}
-        />
-        <EnduranceTile
-          data={bucket.endurance}
-          range={range}
-          onExpand={() => setOpenTile("endurance")}
-        />
+        {relevance.strength && (
+          <StrengthTile
+            data={bucket.strength}
+            range={range}
+            onExpand={() => setOpenTile("strength")}
+          />
+        )}
+        {relevance.cardio && (
+          <EnduranceTile
+            data={bucket.endurance}
+            range={range}
+            onExpand={() => setOpenTile("endurance")}
+          />
+        )}
         <RecoveryLoadTile
           freshness={freshness}
           readiness={readiness}
@@ -285,7 +292,9 @@ export function StatsCommandCenter(props: StatsCommandCenterProps) {
           onExpand={() => setOpenTile("consistency")}
         />
         <BodyweightTile data={bodyweight} units={units} />
-        <VolumeTile data={bucket.volume} range={range} units={units} />
+        {relevance.strength && (
+          <VolumeTile data={bucket.volume} range={range} units={units} />
+        )}
       </div>
 
       <StrengthDrawer
@@ -380,6 +389,7 @@ function Hero({
   readiness,
   streak,
   range,
+  relevance,
 }: {
   block: ActiveBlockProgress | null;
   verdict: ProgressVerdict;
@@ -388,6 +398,7 @@ function Hero({
   readiness: Readiness;
   streak: Streak;
   range: Range;
+  relevance: { strength: boolean; cardio: boolean };
 }) {
   return (
     <section className="cp-card" style={{ ...CARD, padding: 0, overflow: "hidden" }}>
@@ -402,7 +413,7 @@ function Hero({
       >
         <HeroCell>
           <CellLabel>Progress · {RANGE_LABEL[range]}</CellLabel>
-          <ProgressVerdictCell verdict={verdict} prs={prs} />
+          <ProgressVerdictCell verdict={verdict} prs={prs} relevance={relevance} />
         </HeroCell>
         <HeroCell border>
           <CellLabel>Readiness · now</CellLabel>
@@ -560,8 +571,21 @@ function CellLabel({ children }: { children: ReactNode }) {
   );
 }
 
-function ProgressVerdictCell({ verdict, prs }: { verdict: ProgressVerdict; prs: PrsRangeResult }) {
+function ProgressVerdictCell({
+  verdict,
+  prs,
+  relevance,
+}: {
+  verdict: ProgressVerdict;
+  prs: PrsRangeResult;
+  relevance: { strength: boolean; cardio: boolean };
+}) {
   const tone = verdictTone(verdict.verdict);
+  const chips = verdict.proofChips.filter((chip) => {
+    if (chip.modality === "endurance" && !relevance.cardio) return false;
+    if (chip.modality === "strength" && !relevance.strength) return false;
+    return true;
+  });
   return (
     <>
       <div
@@ -572,7 +596,7 @@ function ProgressVerdictCell({ verdict, prs }: { verdict: ProgressVerdict; prs: 
         {verdict.label}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 11 }}>
-        {verdict.proofChips.map((chip, i) => (
+        {chips.map((chip, i) => (
           <ProofChip key={i} text={chip.text} cardio={chip.modality === "endurance"} />
         ))}
         {prs.uniqueMovementCount > 0 && (
@@ -630,22 +654,32 @@ function ReadinessCell({ readiness }: { readiness: Readiness }) {
 }
 
 function ConsistencyCell({ adherence, streak }: { adherence: AdherenceResult; streak: Streak }) {
-  const pct = adherence.scheduled === 0 ? null : Math.round(adherence.ratio * 100);
+  const noPlan = adherence.scheduled === 0;
+  const pct = noPlan ? null : Math.round(adherence.ratio * 100);
+  const headline = noPlan
+    ? streak.currentStreakWeeks > 0
+      ? `${streak.currentStreakWeeks} wk`
+      : "—"
+    : `${pct}%`;
   return (
     <div data-testid="stats-card-adherence">
       <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em" }}>
-        {pct == null ? "—" : `${pct}%`}
+        {headline}
       </div>
       <div style={{ fontSize: 12.5, color: "var(--cp-text-muted)", marginTop: 7, lineHeight: 1.5 }}>
-        {streak.currentStreakWeeks > 0 && (
-          <>
-            {streak.currentStreakWeeks}-week streak ·{" "}
-          </>
-        )}
-        {adherence.scheduled === 0 ? (
-          "Nothing scheduled yet"
+        {noPlan ? (
+          streak.currentStreakWeeks > 0 ? (
+            "Consistent weeks · no active plan to compare against"
+          ) : (
+            "No active plan yet — your logged cadence shows below."
+          )
         ) : (
           <>
+            {streak.currentStreakWeeks > 0 && (
+              <>
+                {streak.currentStreakWeeks}-week streak ·{" "}
+              </>
+            )}
             {adherence.completed} of {adherence.scheduled} sessions
             {adherence.skipped > 0 && <> · {adherence.skipped} skipped</>}
           </>
@@ -877,7 +911,7 @@ function EnduranceTile({
     <Tile span={4} testid="stats-tile-endurance" empty={noRun}>
       <TileHead
         title="Endurance progress"
-        meta={`easy run · ${RANGE_LABEL[range]}`}
+        meta={`Easy-run pace · ${RANGE_LABEL[range]}`}
         right={
           noRun || onExpand == null ? undefined : (
             <button
@@ -910,12 +944,25 @@ function EnduranceTile({
               {data.easyPaceSecPerKm == null ? "—" : fmtPace(data.easyPaceSecPerKm)}
             </span>
             <span style={{ fontSize: 11.5, color: "var(--cp-text-muted)" }}>/km avg</span>
-            {data.slopeSecPerKmPerWeek != null && data.direction !== "building" && (
+            {(data.direction === "up" || data.direction === "down" || data.direction === "flat") && (
               <span
-                style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, color: toneVar(directionTone(data.direction)) }}
+                style={{
+                  marginLeft: "auto",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color:
+                    data.direction === "up"
+                      ? toneVar("success")
+                      : data.direction === "down"
+                        ? toneVar("danger")
+                        : "var(--cp-text-muted)",
+                }}
               >
-                {data.slopeSecPerKmPerWeek > 0 ? "+" : ""}
-                {round1(data.slopeSecPerKmPerWeek)} s/km·wk
+                {data.direction === "up"
+                  ? "Getting faster ↘"
+                  : data.direction === "down"
+                    ? "Slowing ↗"
+                    : "Holding"}
               </span>
             )}
           </div>
@@ -996,7 +1043,7 @@ export function EnduranceDrawer({
   const slopeText =
     slope == null || data.direction === "building"
       ? "—"
-      : `${slope > 0 ? "+" : ""}${round1(slope)} s/km·wk`;
+      : `${slope < 0 ? "−" : "+"}${Math.round(Math.abs(slope))} sec/km per week`;
   const z = data.timeInZone;
   return (
     <BottomSheet
@@ -1191,6 +1238,18 @@ function RecoveryLoadTile({
         />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              fontSize: 11,
+              color: "var(--cp-text-muted)",
+            }}
+          >
+            <span>Region freshness</span>
+            <span>% recovered</span>
+          </div>
           {freshness.map((r) => {
             const pct = Math.round(r.freshness * 100);
             return (
@@ -1199,7 +1258,7 @@ function RecoveryLoadTile({
                 data-testid="stats-freshness-row"
                 style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5 }}
               >
-                <span style={{ width: 78, color: "var(--cp-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span style={{ width: 104, color: "var(--cp-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {r.regionLabel}
                 </span>
                 <span style={{ flex: 1, height: 8, borderRadius: 999, background: "var(--cp-surface-soft)", overflow: "hidden" }}>
@@ -1213,7 +1272,7 @@ function RecoveryLoadTile({
           })}
         </div>
       )}
-      <AcwrStrip loadBalance={lb} markerPct={readiness.gaugeMarkerPct} />
+      <AcwrStrip loadBalance={lb} />
     </Tile>
   );
 }
@@ -1226,34 +1285,61 @@ const ACWR_BAND_LABEL: Record<string, string> = {
   spiking: "Spiking",
 };
 
+const ACWR_BAND_PHRASE: Record<string, string> = {
+  unknown: "Still building your baseline.",
+  detraining: "Recent load is below your usual — you're easing off.",
+  productive: "Recent load is in your productive range.",
+  pushing: "Recent load is above your usual — pushing.",
+  spiking: "Recent load is well above your usual — spiking, back off.",
+};
+
 function AcwrStrip({
   loadBalance,
-  markerPct,
 }: {
   loadBalance: Readiness["summary"]["loadBalance"];
-  markerPct: number;
 }) {
   const ratio = loadBalance.ratio;
+  const max = Math.max(loadBalance.bodyAcute, loadBalance.bodyChronic, 1);
+  const recentPct = (loadBalance.bodyAcute / max) * 100;
+  const typicalPct = (loadBalance.bodyChronic / max) * 100;
+  const rows: Array<{ label: string; pct: number; fill: string }> = [
+    { label: "Recent · 7-day", pct: recentPct, fill: "var(--cp-accent)" },
+    { label: "Typical · 28-day", pct: typicalPct, fill: "var(--cp-text-muted)" },
+  ];
   return (
-    <div style={{ marginTop: 14, paddingTop: 13, borderTop: "1px solid var(--cp-border)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 7 }}>
+    <div
+      data-testid="stats-acwr-strip"
+      style={{ marginTop: 14, paddingTop: 13, borderTop: "1px solid var(--cp-border)" }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
         <span>
-          Acute:chronic load
+          Training load vs baseline
           <MetricHelp term="load_balance" />
         </span>
         <span className="mono" style={{ color: "var(--cp-text-muted)" }}>
-          {ratio == null ? ACWR_BAND_LABEL.unknown : `${ratio.toFixed(2)} · ${ACWR_BAND_LABEL[loadBalance.band] ?? loadBalance.band}`}
+          {ratio == null ? "Building baseline" : `${Math.round(ratio * 100)}% of usual`}
         </span>
       </div>
-      <div style={{ position: "relative", height: 10, borderRadius: 999, background: "var(--cp-surface-soft)", overflow: "hidden" }}>
-        <div
-          style={{
-            height: "100%",
-            width: `${Math.min(100, Math.max(0, markerPct))}%`,
-            background: "linear-gradient(90deg, var(--cp-accent), var(--cp-warning))",
-            borderRadius: 999,
-          }}
-        />
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+        {rows.map((r) => (
+          <div key={r.label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 11, color: "var(--cp-text-muted)", width: 92 }}>{r.label}</span>
+            <span style={{ flex: 1, height: 6, borderRadius: 999, background: "var(--cp-surface-soft)", overflow: "hidden" }}>
+              <span
+                style={{
+                  display: "block",
+                  width: `${Math.min(100, Math.max(0, r.pct))}%`,
+                  height: "100%",
+                  borderRadius: 999,
+                  background: r.fill,
+                }}
+              />
+            </span>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 6 }}>
+        {ACWR_BAND_PHRASE[loadBalance.band] ?? ACWR_BAND_PHRASE.unknown}
       </div>
     </div>
   );

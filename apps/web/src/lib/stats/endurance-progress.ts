@@ -191,17 +191,17 @@ function detailFor(
 ): string {
   if (direction === "no-run-data") {
     return totalRuns === 0
-      ? "No runs in window — pace trend is running-specific."
-      : `No easy runs classifiable (${totalRuns} run${totalRuns === 1 ? "" : "s"} total, none with effort tag or HR).`;
+      ? "No runs logged in this window yet — the pace trend is running-specific."
+      : `Logged ${totalRuns} run${totalRuns === 1 ? "" : "s"} but none could be classed as easy (no effort tag or heart-rate), so there's no pace trend yet.`;
   }
   if (direction === "building") {
-    return `Only ${sampleRuns} easy run${sampleRuns === 1 ? "" : "s"} across <${ENDURANCE_MIN_WEEKS} weeks — keep logging easy efforts to unlock the slope.`;
+    return `Only ${sampleRuns} easy run${sampleRuns === 1 ? "" : "s"} so far — keep logging easy efforts to see a trend.`;
   }
-  if (slope == null) return "Holding — no clear direction.";
-  const absStr = Math.abs(slope).toFixed(1);
-  if (direction === "up") return `Easy pace −${absStr}s/km per week across ${sampleRuns} runs — getting faster at the same effort.`;
-  if (direction === "down") return `Easy pace +${absStr}s/km per week across ${sampleRuns} runs — slower at the same effort.`;
-  return `Easy pace holding (${absStr}s/km/week) across ${sampleRuns} runs.`;
+  if (slope == null) return "Easy pace is holding steady.";
+  const absRound = Math.round(Math.abs(slope));
+  if (direction === "up") return `Getting faster at the same effort — about ${absRound} sec/km quicker each week, across ${sampleRuns} runs.`;
+  if (direction === "down") return `Slowing at the same effort — about ${absRound} sec/km slower each week, across ${sampleRuns} runs.`;
+  return `Easy pace is holding steady across ${sampleRuns} runs.`;
 }
 
 type CardioRow = {

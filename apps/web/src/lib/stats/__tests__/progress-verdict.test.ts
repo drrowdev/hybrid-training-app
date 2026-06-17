@@ -126,7 +126,7 @@ describe("getProgressVerdict — pure verdict matrix", () => {
     expect(sChip.text).toMatch(/Squat/);
     expect(sChip.text).toMatch(/-1\.4 kg\/wk/);
     expect(eChip.direction).toBe("up");
-    expect(eChip.text).toMatch(/−6\.0s\/km\/wk/);
+    expect(eChip.text).toBe("Easy runs getting faster");
   });
 
   it("strength chip for building state explains the gating", () => {

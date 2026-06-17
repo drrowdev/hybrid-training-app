@@ -148,7 +148,7 @@ function subtextFor(
     case "building":
       return `Bands personalize as your training history grows (${weeksLogged} of ${READINESS_BUILDING_WEEK_THRESHOLD} weeks logged).`;
     case "detraining":
-      return "Acute load is below your baseline — fine for a recovery week, watch for it becoming the new normal.";
+      return "Your recent training load is below your usual baseline — fine for a recovery week, but watch it doesn't become the new normal.";
     case "productive":
       return "You're building — and your output is keeping up, so the load is being absorbed, not just accumulated.";
     case "pushing-tolerated":

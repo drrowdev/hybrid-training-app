@@ -145,6 +145,8 @@ export function baseProps(overrides: Partial<StatsCommandCenterProps> = {}): Sta
       scheduledToDate: 7,
       logged: 6,
       skipped: 1,
+      planStrength: true,
+      planCardio: true,
     },
     readiness: readiness(),
     streak: {
@@ -176,6 +178,7 @@ export function baseProps(overrides: Partial<StatsCommandCenterProps> = {}): Sta
     },
     units: "metric",
     formatProfile: { timezone: "Europe/Helsinki" },
+    relevance: { strength: true, cardio: true },
     ...overrides,
   };
 }
