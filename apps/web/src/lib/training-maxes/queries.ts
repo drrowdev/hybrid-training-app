@@ -5,6 +5,7 @@
  * (typically 85-90) is applied unless a per-movement override is set. The
  * "training max" is the computed product, rounded to the plate increment.
  */
+import { cache } from "react";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import type { TmFormula, TmSource } from "@hta/db";
 
@@ -41,7 +42,7 @@ export type TmContext = {
   byMovementId: Map<string, number>;
 };
 
-export async function getTrainingMaxContext(): Promise<TmContext> {
+export const getTrainingMaxContext = cache(async function getTrainingMaxContext(): Promise<TmContext> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -109,7 +110,7 @@ export async function getTrainingMaxContext(): Promise<TmContext> {
   }
 
   return { defaultPercent, rows, bySlug, byMovementId };
-}
+});
 
 export async function getTrainingMaxDict(): Promise<{
   byMovementId: Map<string, number>;
