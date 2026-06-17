@@ -271,6 +271,7 @@ export function MovementFocusView({
   const [restToken, setRestToken] = useState(0);
   const [justLogged, setJustLogged] = useState(false);
   const [skipMenuOpen, setSkipMenuOpen] = useState(false);
+  const [skipScope, setSkipScope] = useState<"set" | "movement">("set");
   const [skipPending, setSkipPending] = useState(false);
   const [skipError, setSkipError] = useState<string | null>(null);
   useEffect(() => {
@@ -478,6 +479,46 @@ export function MovementFocusView({
         itemIndex: activeItemIndex,
         isLast: cursor >= totalSlots - 1,
       });
+    } finally {
+      setSkipPending(false);
+    }
+  };
+
+  // Skip every remaining (unlogged) set of this movement in one go, with a
+  // single reason. Targets are snapshotted up front from the slots not yet
+  // covered, then each is written through the same optimistic `addStrengthSet`
+  // path the per-set skip uses — so the dot strip fills in instantly. Writes
+  // are sequential so the server's set_index count stays correct.
+  const remainingSlots = group.itemIndices
+    .map((idx, slot) => ({ idx, kind: group.items[slot]?.kind ?? "main" }))
+    .filter(({ idx }) => !loggedItemIndices.has(idx));
+
+  const handleSkipRest = async (reason: SkipReason, note: string | null) => {
+    if (skipPending) return;
+    setSkipPending(true);
+    setSkipError(null);
+    try {
+      for (const { idx, kind } of remainingSlots) {
+        const fd = new FormData();
+        fd.set("sessionId", sessionId);
+        fd.set("movementId", group.movementId);
+        fd.set("setKind", SET_KIND_TO_LOG[kind] ?? "main");
+        fd.set("weightKg", "0");
+        fd.set("reps", "0");
+        fd.set("prescriptionItemIndex", String(idx));
+        fd.set("skipped", "true");
+        fd.set("skipReason", reason);
+        if (note) fd.set("notes", note);
+        const result = await addStrengthSet(fd);
+        if (result?.error) {
+          setSkipError(result.error);
+          return;
+        }
+      }
+      hapticTick(hapticsEnabled);
+      setSkipMenuOpen(false);
+      setManualCursor(null);
+      onSaved?.({ itemIndex: activeItemIndex, isLast: true });
     } finally {
       setSkipPending(false);
     }
@@ -931,10 +972,11 @@ export function MovementFocusView({
               )}
             </button>
             {!isActiveLogged && (
-              <div style={{ display: "flex", justifyContent: "flex-start" }}>
+              <div style={{ display: "flex", justifyContent: "flex-start", gap: 16 }}>
                 <button
                   type="button"
                   onClick={() => {
+                    setSkipScope("set");
                     setSkipMenuOpen((v) => !v);
                     setSkipError(null);
                   }}
@@ -949,8 +991,32 @@ export function MovementFocusView({
                     padding: "4px 0",
                   }}
                 >
-                  {skipMenuOpen ? "Cancel skip" : "Skip set"}
+                  {skipMenuOpen && skipScope === "set" ? "Cancel skip" : "Skip set"}
                 </button>
+                {remainingSlots.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSkipScope("movement");
+                      setSkipMenuOpen((v) => !(v && skipScope === "movement"));
+                      setSkipError(null);
+                    }}
+                    data-testid="movement-focus-skip-rest-button"
+                    disabled={submitting || skipPending}
+                    style={{
+                      all: "unset",
+                      cursor: submitting || skipPending ? "default" : "pointer",
+                      fontSize: 12,
+                      color: "var(--cp-text-muted)",
+                      textDecoration: "underline",
+                      padding: "4px 0",
+                    }}
+                  >
+                    {skipMenuOpen && skipScope === "movement"
+                      ? "Cancel skip"
+                      : `Skip rest (${remainingSlots.length})`}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -958,9 +1024,15 @@ export function MovementFocusView({
 
         {skipMenuOpen && !isActiveLogged && (
           <SkipSetMenu
-            onConfirm={handleSkip}
+            onConfirm={skipScope === "movement" ? handleSkipRest : handleSkip}
+            prompt={
+              skipScope === "movement"
+                ? `Why skip the rest of this movement? (${remainingSlots.length} sets)`
+                : "Why skip this set?"
+            }
             onCancel={() => {
               setSkipMenuOpen(false);
+              setSkipScope("set");
               setSkipError(null);
             }}
             pending={skipPending}
