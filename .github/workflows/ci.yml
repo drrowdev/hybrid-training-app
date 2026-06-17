@@ -102,6 +102,9 @@ jobs:
       - name: Unit tests (domain + engine)
         run: pnpm -r --filter './packages/**' test
 
+      - name: Unit tests (web)
+        run: pnpm --filter @hta/web test
+
       - name: Build web
         run: pnpm --filter @hta/web build
         env:
