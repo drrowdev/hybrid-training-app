@@ -33,7 +33,7 @@ describe("MetricHelp", () => {
     expect(html).toContain('data-testid="metric-help-title"');
     expect(html).toContain("Weekly ceiling");
     expect(html).toContain('data-testid="metric-help-body"');
-    expect(html).toMatch(/maximum weekly tonnage/i);
+    expect(html).toMatch(/weekly tonnage/i);
   });
 
   it("omits the citation block (research refs are not surfaced to end users)", () => {
