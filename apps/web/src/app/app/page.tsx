@@ -1708,7 +1708,7 @@ function PlannedSessionCard({
             color: "var(--cp-text)",
             lineHeight: 1.4,
           }}
-          title={`${conflict.regionLabel} freshness ${(conflict.freshness * 100).toFixed(0)}% — Gabbett 2016 (acute-to-chronic load injury risk)`}
+          title={`${conflict.regionLabel} freshness ${(conflict.freshness * 100).toFixed(0)}% — still recovering from recent load`}
         >
           <span aria-hidden style={{ fontSize: 14 }}>⚠</span>
           <span>

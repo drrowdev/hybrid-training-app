@@ -129,7 +129,7 @@ export default async function StatsAdherencePage({
           data-testid="stats-adherence-blocks-link"
           style={{ color: "var(--cp-accent)", fontSize: 13, textDecoration: "none" }}
         >
-          View block outcomes →
+          View block analytics →
         </Link>
       </footer>
     </div>
