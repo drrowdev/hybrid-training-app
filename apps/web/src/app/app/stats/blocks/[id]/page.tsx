@@ -136,7 +136,7 @@ function Header({ summary }: { summary: BlockSummary }): ReactElement {
       : "Active";
   return (
     <PageHeader
-      back={{ href: "/app/stats/blocks", label: "Block outcomes" }}
+      back={{ href: "/app/stats/blocks", label: "Block analytics" }}
       title={block.archetypeName}
       titleTestId="stats-block-header"
       actions={<StatusBadge status={block.status} />}

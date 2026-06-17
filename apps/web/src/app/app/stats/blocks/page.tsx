@@ -51,7 +51,7 @@ export default async function StatsBlocksIndexPage() {
     <div style={{ display: "grid", gap: 18 }}>
       <PageHeader
         back={{ href: "/app/stats", label: "Stats" }}
-        title="Block outcomes"
+        title="Block analytics"
         subtitle="Every block you've run — open one to see e1RM progression, adherence, RPE creep, power emphasis outcomes, and wellness during the block."
       />
 
