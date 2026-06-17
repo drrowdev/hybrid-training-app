@@ -1,17 +1,17 @@
 "use server";
 
 /**
- * Mid-session movement swap audit-action.
+ * Mid-session movement swap.
  *
- * Unlike `swapPrescriptionItem` (which mutates the planned_session's
- * prescription JSONB), this action is fire-and-forget audit only — the
- * client owns the in-session "active movement" state, and sets that
- * have already been logged against the original lift stay attributed
- * to it. Going forward, the logger writes future sets against the new
- * movement's id.
+ * Records a DC-K4 override audit AND persists the swap onto the workout's
+ * prescription (the linked planned_session for a plan workout, or the session
+ * row for a quick/freestyle one) so it survives a reload and the logger
+ * re-derives the new movement's bodyweight capability. Forward-only: sets
+ * already logged against the original lift keep its movement_id; future sets log
+ * against the new movement.
  *
- * Per DC-K4 ("override-and-warn, never silent overrule") the swap
- * lands a row in `engine_override_events` with:
+ * Per DC-K4 ("override-and-warn, never silent overrule") the swap also lands a
+ * row in `engine_override_events` with:
  *   - event_type = "swap"
  *   - original/new movement slugs + ids
  *   - reason (Pain / Equipment / Other) + optional freeform note
@@ -19,8 +19,11 @@
  *     was triggered from
  */
 import { z } from "zod";
+import { revalidatePath } from "next/cache";
+import type { Prescription } from "@hta/db";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
+import { swapMovementInPrescription } from "./prescription-mutations";
 
 const swapActiveSchema = z.object({
   sessionId: z.string().uuid(),
@@ -104,12 +107,58 @@ export async function swapActiveMovement(
     },
   });
 
+  // PERSIST the swap so it survives a reload AND the logger re-derives the new
+  // movement's bodyweight capability (e.g. swapping a weighted sit-up for a GHD
+  // sit-up makes the weight field optional). Forward-only: already-logged
+  // set_logs keep the ORIGINAL movement_id — only the prescription's movement
+  // identity changes, so future sets log against the new movement. The
+  // prescription lives on the linked planned_session for a plan workout, or
+  // directly on the session row for a quick/freestyle one.
+  const newMovement = {
+    id: next.id as string,
+    slug: next.slug as string,
+    displayName: next.display_name as string,
+  };
+  const { data: planned } = await supabase
+    .from("planned_sessions")
+    .select("id, prescription")
+    .eq("completed_session_id", parsed.data.sessionId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (planned?.prescription) {
+    const updated = swapMovementInPrescription(
+      planned.prescription as Prescription,
+      parsed.data.originalMovementId,
+      newMovement,
+    );
+    await supabase
+      .from("planned_sessions")
+      .update({ prescription: updated })
+      .eq("id", planned.id as string)
+      .eq("user_id", user.id);
+  } else {
+    const { data: sessionRx } = await supabase
+      .from("sessions")
+      .select("prescription")
+      .eq("id", parsed.data.sessionId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    const rx = (sessionRx as { prescription?: Prescription | null } | null)?.prescription;
+    if (rx) {
+      const updated = swapMovementInPrescription(rx, parsed.data.originalMovementId, newMovement);
+      await supabase
+        .from("sessions")
+        .update({ prescription: updated })
+        .eq("id", parsed.data.sessionId)
+        .eq("user_id", user.id);
+    }
+  }
+
+  revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
+  revalidatePath("/app");
+
   return {
     ok: true,
-    newMovement: {
-      id: next.id as string,
-      slug: next.slug as string,
-      displayName: next.display_name as string,
-    },
+    newMovement,
   };
 }
