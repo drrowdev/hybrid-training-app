@@ -26,9 +26,11 @@ export type SkipSetMenuProps = {
   onCancel: () => void;
   pending?: boolean;
   error?: string | null;
+  /** Heading above the reason chips. Defaults to the single-set prompt. */
+  prompt?: string;
 };
 
-export function SkipSetMenu({ onConfirm, onCancel, pending, error }: SkipSetMenuProps) {
+export function SkipSetMenu({ onConfirm, onCancel, pending, error, prompt }: SkipSetMenuProps) {
   const [reason, setReason] = useState<SkipReason | null>(null);
   const [note, setNote] = useState("");
 
@@ -57,7 +59,7 @@ export function SkipSetMenu({ onConfirm, onCancel, pending, error }: SkipSetMenu
           color: "var(--cp-text)",
         }}
       >
-        Why skip this set?
+        {prompt ?? "Why skip this set?"}
       </div>
       <div
         role="radiogroup"
