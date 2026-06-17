@@ -105,7 +105,7 @@ const RECAP_DELAY_MS = 700;
 
 export function MovementCard({
   sessionId,
-  group,
+  group: groupProp,
   readOnly = false,
   tmKg,
   oneRmKg,
@@ -129,10 +129,30 @@ export function MovementCard({
   bodyweightCapable,
 }: MovementCardProps) {
   const units = useUnits();
+  // A mid-session swap repaints this card to the chosen movement: the header
+  // shows its name and future sets log against its id. Sets already logged stay
+  // attributed to the original in the DB (the swap action is forward-only audit).
+  const [swappedMovement, setSwappedMovement] = useState<
+    { id: string; slug: string; displayName: string } | null
+  >(null);
+  const group = useMemo<MovementGroup>(
+    () =>
+      swappedMovement
+        ? {
+            ...groupProp,
+            movementId: swappedMovement.id,
+            movementName: swappedMovement.displayName,
+            movementSlug: swappedMovement.slug,
+          }
+        : groupProp,
+    [groupProp, swappedMovement],
+  );
   const cardState = deriveCardState(group, loggedItemIndices);
   const complete = isMovementComplete(group, loggedItemIndices);
 
-  const storageKey = `${persistKeyPrefix}:${group.movementId}`;
+  // Persistence key stays anchored to the ORIGINAL movement so collapse state
+  // survives a swap (and isn't orphaned under a new key).
+  const storageKey = `${persistKeyPrefix}:${groupProp.movementId}`;
 
   // Compute the initial collapsed value. Server render uses card state
   // defaults; client mount syncs with localStorage so the user's
@@ -534,7 +554,8 @@ export function MovementCard({
           onClose={() => setSwapOpen(false)}
           sessionId={sessionId}
           original={{ id: group.movementId, displayName: group.movementName }}
-          onSwapped={() => {
+          onSwapped={(next) => {
+            setSwappedMovement(next);
             setSwapOpen(false);
           }}
         />
