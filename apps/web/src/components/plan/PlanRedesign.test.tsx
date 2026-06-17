@@ -6,8 +6,15 @@
  * open/close, swap-form submit) lives in the Playwright spec because
  * it requires a real DOM event loop.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+
+// The component calls `useRouter()` (to refresh after a move/edit). Under the
+// node-env static render used here there's no App Router context, so stub it.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: () => {}, push: () => {}, replace: () => {} }),
+}));
+
 import { PlanRedesign, type PlanSessionInput } from "./PlanRedesign";
 import type { PrescriptionItem } from "@hta/db";
 

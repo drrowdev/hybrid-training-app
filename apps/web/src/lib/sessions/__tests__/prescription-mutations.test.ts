@@ -3,6 +3,9 @@ import {
   applyPrescriptionSwap,
   isSwapped,
   originalMovementName,
+  removeMovementFromPrescription,
+  swapMovementInPrescription,
+  addMovementToPrescription,
 } from "../prescription-mutations";
 import type { Prescription } from "@hta/db";
 
@@ -115,5 +118,57 @@ describe("applyPrescriptionSwap — Phase 2 A2", () => {
     });
     expect(isSwapped(next.items[0]!)).toBe(true);
     expect(originalMovementName(next.items[0]!)).toBe("Bench Press (flat)");
+  });
+});
+
+describe("removeMovementFromPrescription", () => {
+  it("drops every item of the movement, keeps the rest", () => {
+    const next = removeMovementFromPrescription(base, "mov-bench");
+    expect(next.items).toHaveLength(1);
+    expect(next.items[0]!.movementId).toBe("mov-squat");
+  });
+  it("is a no-op when the movement is absent", () => {
+    const next = removeMovementFromPrescription(base, "mov-nope");
+    expect(next.items).toHaveLength(2);
+  });
+});
+
+describe("swapMovementInPrescription", () => {
+  it("retargets all items of the movement and records lineage", () => {
+    const multi: Prescription = {
+      items: [
+        { movementId: "mov-bench", movementSlug: "bench", movementName: "Bench", kind: "warmup", sets: 1, reps: 5 },
+        { movementId: "mov-bench", movementSlug: "bench", movementName: "Bench", kind: "main", sets: 3, reps: 5 },
+        { movementId: "mov-squat", movementSlug: "squat", movementName: "Squat", kind: "main", sets: 3, reps: 5 },
+      ],
+    };
+    const next = swapMovementInPrescription(
+      multi,
+      "mov-bench",
+      { id: "mov-floor", slug: "floor-press", displayName: "Floor Press" },
+      "2026-05-23T12:00:00.000Z",
+    );
+    expect(next.items[0]!.movementId).toBe("mov-floor");
+    expect(next.items[1]!.movementId).toBe("mov-floor");
+    expect(next.items[2]!.movementId).toBe("mov-squat");
+    const meta = next.items[1]!.meta as Record<string, unknown>;
+    expect(meta.swappedFrom).toEqual({ movementId: "mov-bench", movementName: "Bench" });
+  });
+});
+
+describe("addMovementToPrescription", () => {
+  it("appends a 3x10 accessory tagged userAdded", () => {
+    const next = addMovementToPrescription(base, {
+      id: "mov-curl",
+      slug: "db-biceps-curl",
+      displayName: "DB Biceps Curl",
+    });
+    expect(next.items).toHaveLength(3);
+    const added = next.items[2]!;
+    expect(added.movementId).toBe("mov-curl");
+    expect(added.kind).toBe("accessory");
+    expect(added.sets).toBe(3);
+    expect(added.reps).toBe(10);
+    expect((added.meta as Record<string, unknown>).userAdded).toBe(true);
   });
 });

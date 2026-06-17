@@ -51,6 +51,15 @@ import {
 import { segmentSupersetRows } from "@/lib/plan/superset-grouping";
 import { MetricHelp } from "@/components/ui/MetricHelp";
 import { AskWhyButton } from "@/components/session/AskWhyButton";
+import {
+  MovementPicker,
+  type MovementSearchResult,
+} from "@/components/movement-picker";
+import {
+  removePlannedMovement,
+  swapPlannedMovement,
+  addPlannedMovement,
+} from "@/lib/sessions/planned-movement-actions";
 import type { PrescriptionItem } from "@hta/db";
 
 export type PlanFilter = "all" | "strength" | "cardio";
@@ -1943,36 +1952,46 @@ export function SessionDrawer({
             </form>
           )}
 
-          {sections.movements.map((sec) => (
-            <DrawerMovement key={sec.rowKey} section={sec} editing={editing} />
-          ))}
+          {editing ? (
+            <MovementEditList
+              plannedSessionId={session.id}
+              items={session.items}
+              onChanged={() => router.refresh()}
+            />
+          ) : (
+            <>
+              {sections.movements.map((sec) => (
+                <DrawerMovement key={sec.rowKey} section={sec} editing={false} />
+              ))}
 
-          {sections.accessories.length > 0 && (
-            <DrawerRowSection
-              testId="plan-drawer-section-accessories"
-              label="Accessories"
-              prefix="A"
-              rows={sections.accessories}
-            />
-          )}
-          {sections.tendon.length > 0 && (
-            <DrawerRowSection
-              testId="plan-drawer-section-tendon"
-              label="Tendon work"
-              prefix="T"
-              rows={sections.tendon}
-            />
-          )}
-          {sections.hingeCompensations.length > 0 && (
-            <DrawerRowSection
-              testId="plan-drawer-section-hinge"
-              label="Posterior chain"
-              prefix="H"
-              rows={sections.hingeCompensations}
-            />
-          )}
-          {sections.cardio.length > 0 && (
-            <DrawerCardio items={sections.cardio} />
+              {sections.accessories.length > 0 && (
+                <DrawerRowSection
+                  testId="plan-drawer-section-accessories"
+                  label="Accessories"
+                  prefix="A"
+                  rows={sections.accessories}
+                />
+              )}
+              {sections.tendon.length > 0 && (
+                <DrawerRowSection
+                  testId="plan-drawer-section-tendon"
+                  label="Tendon work"
+                  prefix="T"
+                  rows={sections.tendon}
+                />
+              )}
+              {sections.hingeCompensations.length > 0 && (
+                <DrawerRowSection
+                  testId="plan-drawer-section-hinge"
+                  label="Posterior chain"
+                  prefix="H"
+                  rows={sections.hingeCompensations}
+                />
+              )}
+              {sections.cardio.length > 0 && (
+                <DrawerCardio items={sections.cardio} />
+              )}
+            </>
           )}
 
           <div
@@ -2341,6 +2360,232 @@ function SetRow({
     </div>
   );
 }
+
+/**
+ * Edit mode for the plan drawer: a flat list of the workout's strength movements,
+ * each with Swap + Remove, plus an "Add movement" control. Edits persist to THIS
+ * planned session only (per-instance) and repaint via `onChanged` (router.refresh).
+ */
+function MovementEditList({
+  plannedSessionId,
+  items,
+  onChanged,
+}: {
+  plannedSessionId: string;
+  items: PrescriptionItem[];
+  onChanged: () => void;
+}) {
+  const movements = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { movementId: string; name: string }[] = [];
+    for (const it of items) {
+      if ((it.kind ?? "").startsWith("cardio_")) continue;
+      const id = it.movementId;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      out.push({ movementId: id, name: it.movementName ?? it.movementSlug ?? "Movement" });
+    }
+    return out;
+  }, [items]);
+
+  return (
+    <div data-testid="plan-drawer-edit-movements" style={{ display: "grid", gap: 8 }}>
+      <div className="section">Movements</div>
+      {movements.map((m) => (
+        <MovementEditRow
+          key={m.movementId}
+          plannedSessionId={plannedSessionId}
+          movementId={m.movementId}
+          name={m.name}
+          canRemove={movements.length > 1}
+          onChanged={onChanged}
+        />
+      ))}
+      <AddMovementControl plannedSessionId={plannedSessionId} onChanged={onChanged} />
+    </div>
+  );
+}
+
+function MovementEditRow({
+  plannedSessionId,
+  movementId,
+  name,
+  canRemove,
+  onChanged,
+}: {
+  plannedSessionId: string;
+  movementId: string;
+  name: string;
+  canRemove: boolean;
+  onChanged: () => void;
+}) {
+  const [swapping, setSwapping] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const doRemove = () => {
+    setError(null);
+    startTransition(async () => {
+      const fd = new FormData();
+      fd.set("plannedSessionId", plannedSessionId);
+      fd.set("movementId", movementId);
+      const r = await removePlannedMovement(fd);
+      if (r.error) setError(r.error);
+      else onChanged();
+    });
+  };
+  const doSwap = (m: MovementSearchResult | null) => {
+    if (!m || pending) return;
+    setError(null);
+    startTransition(async () => {
+      const fd = new FormData();
+      fd.set("plannedSessionId", plannedSessionId);
+      fd.set("movementId", movementId);
+      fd.set("newMovementId", m.id);
+      const r = await swapPlannedMovement(fd);
+      if (r.error) setError(r.error);
+      else {
+        setSwapping(false);
+        onChanged();
+      }
+    });
+  };
+
+  return (
+    <div
+      data-testid={`plan-drawer-edit-movement-${movementId}`}
+      style={{
+        display: "grid",
+        gap: 6,
+        padding: "8px 10px",
+        border: "1px solid var(--cp-border)",
+        borderRadius: 8,
+        background: "var(--cp-surface-soft)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontSize: 13, fontWeight: 500 }}>{name}</span>
+        <span style={{ display: "inline-flex", gap: 6 }}>
+          <button
+            type="button"
+            className="cp-btn"
+            data-testid={`plan-drawer-swap-movement-${movementId}`}
+            onClick={() => setSwapping((v) => !v)}
+            disabled={pending}
+            style={editBtnStyle}
+          >
+            {swapping ? "Cancel" : "Swap"}
+          </button>
+          <button
+            type="button"
+            className="cp-btn"
+            data-testid={`plan-drawer-remove-movement-${movementId}`}
+            onClick={doRemove}
+            disabled={pending || !canRemove}
+            title={canRemove ? undefined : "A workout needs at least one movement"}
+            style={editBtnStyle}
+          >
+            Remove
+          </button>
+        </span>
+      </div>
+      {swapping && (
+        <MovementPicker
+          name={`__swap_${movementId}`}
+          placeholder="Swap for…"
+          onChange={doSwap}
+        />
+      )}
+      {error && (
+        <span role="alert" style={{ fontSize: 12, color: "var(--cp-danger)" }}>
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function AddMovementControl({
+  plannedSessionId,
+  onChanged,
+}: {
+  plannedSessionId: string;
+  onChanged: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const doAdd = (m: MovementSearchResult | null) => {
+    if (!m || pending) return;
+    setError(null);
+    startTransition(async () => {
+      const fd = new FormData();
+      fd.set("plannedSessionId", plannedSessionId);
+      fd.set("movementId", m.id);
+      const r = await addPlannedMovement(fd);
+      if (r.error) setError(r.error);
+      else {
+        setOpen(false);
+        onChanged();
+      }
+    });
+  };
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        data-testid="plan-drawer-add-movement"
+        onClick={() => setOpen(true)}
+        style={{
+          justifySelf: "start",
+          background: "transparent",
+          border: "1px dashed var(--cp-border)",
+          borderRadius: 999,
+          padding: "6px 14px",
+          fontSize: 13,
+          color: "var(--cp-text-muted)",
+          cursor: "pointer",
+          fontFamily: "inherit",
+        }}
+      >
+        + Add movement
+      </button>
+    );
+  }
+  return (
+    <div style={{ display: "grid", gap: 6 }}>
+      <MovementPicker
+        name="__add_planned_movement"
+        placeholder="Search the catalog…"
+        onChange={doAdd}
+      />
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <button
+          type="button"
+          data-testid="plan-drawer-add-movement-cancel"
+          onClick={() => setOpen(false)}
+          style={{ background: "transparent", border: "none", color: "var(--cp-text-muted)", fontSize: 12, cursor: "pointer", padding: 0 }}
+        >
+          × cancel
+        </button>
+        {pending && <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>Adding…</span>}
+      </div>
+      {error && (
+        <span role="alert" style={{ fontSize: 12, color: "var(--cp-danger)" }}>
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}
+
+const editBtnStyle: React.CSSProperties = {
+  fontSize: 12,
+  padding: "4px 10px",
+  minHeight: 32,
+};
 
 function DrawerRowSection({
   label,

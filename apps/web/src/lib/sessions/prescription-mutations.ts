@@ -82,3 +82,71 @@ export function originalMovementName(item: PrescriptionItem): string | null {
 export function isSwapped(item: PrescriptionItem): boolean {
   return originalMovementName(item) != null;
 }
+
+/**
+ * Returns a NEW prescription with every item belonging to `movementId` removed.
+ * Used by the plan drawer's movement-level edit ("Remove movement"). A no-op
+ * (same-shape new object) when the movement isn't present.
+ */
+export function removeMovementFromPrescription(
+  prescription: Prescription,
+  movementId: string,
+): Prescription {
+  const items = (prescription.items ?? []).filter((it) => it.movementId !== movementId);
+  return { ...prescription, items };
+}
+
+/**
+ * Returns a NEW prescription with `fromMovementId`'s items all retargeted to the
+ * given movement (whole-movement swap, vs the per-item `applyPrescriptionSwap`).
+ * Preserves each item's set/rep shape and records the swap lineage in meta.
+ */
+export function swapMovementInPrescription(
+  prescription: Prescription,
+  fromMovementId: string,
+  newMovement: { id: string; slug: string; displayName: string },
+  swappedAt?: string,
+): Prescription {
+  let next = { ...prescription, items: [...(prescription.items ?? [])] };
+  const stamp = swappedAt ?? new Date().toISOString();
+  next.items.forEach((it, i) => {
+    if (it.movementId !== fromMovementId) return;
+    next = applyPrescriptionSwap(next, {
+      itemIndex: i,
+      newMovement,
+      swappedAt: stamp,
+    });
+  });
+  return next;
+}
+
+export type AddMovementInput = {
+  id: string;
+  slug: string;
+  displayName: string;
+  /** Defaults to a standard 3×10 accessory. */
+  sets?: number;
+  reps?: number;
+};
+
+/**
+ * Returns a NEW prescription with a movement appended as an accessory. Defaults
+ * to 3×10 — the app's standard accessory dose — so a user can add a movement in
+ * the plan drawer without a per-set wizard. Tagged `meta.userAdded` so the
+ * origin is auditable.
+ */
+export function addMovementToPrescription(
+  prescription: Prescription,
+  movement: AddMovementInput,
+): Prescription {
+  const item: PrescriptionItem = {
+    movementId: movement.id,
+    movementSlug: movement.slug,
+    movementName: movement.displayName,
+    kind: "accessory",
+    sets: movement.sets ?? 3,
+    reps: movement.reps ?? 10,
+    meta: { userAdded: true, addedAt: new Date().toISOString() },
+  };
+  return { ...prescription, items: [...(prescription.items ?? []), item] };
+}
