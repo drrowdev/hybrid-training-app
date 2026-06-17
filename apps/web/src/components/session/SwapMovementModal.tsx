@@ -61,36 +61,53 @@ export function SwapMovementModal({
   const searchRef = useRef<HTMLInputElement | null>(null);
   const titleId = useId();
 
-  // Lazy-fetch candidates from the same role/pattern bucket on open.
+  // Fetch candidates whenever the menu opens or the (debounced) search changes.
+  // Empty query → similarity-ranked recommendations for the original movement.
+  // Non-empty query → a WHOLE-CATALOG search on the server (equipment-filtered),
+  // so a relevant-but-distant movement (e.g. an overhead triceps extension when
+  // swapping a close-grip bench) is reachable by typing — it would never appear
+  // in the capped, similarity-ordered recommendations list.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    fetch(
-      `/api/movements/swap-candidates?originalId=${encodeURIComponent(original.id)}&limit=40`,
-    )
-      .then(async (r) => {
-        if (!r.ok) {
-          const body = (await r.json().catch(() => ({}))) as { error?: string };
-          throw new Error(body.error ?? `HTTP ${r.status}`);
-        }
-        return (await r.json()) as { movements: SwapMovementCatalogRow[] };
-      })
-      .then((body) => {
-        if (!cancelled) {
-          setCandidates(body.movements ?? []);
-          setError(null);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) setError((e as Error).message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    const q = search.trim();
+    const id = setTimeout(
+      () => {
+        if (cancelled) return;
+        setLoading(true);
+        const params = new URLSearchParams({
+          originalId: original.id,
+          limit: "40",
+        });
+        if (q.length > 0) params.set("q", q);
+        fetch(`/api/movements/swap-candidates?${params.toString()}`)
+          .then(async (r) => {
+            if (!r.ok) {
+              const body = (await r.json().catch(() => ({}))) as { error?: string };
+              throw new Error(body.error ?? `HTTP ${r.status}`);
+            }
+            return (await r.json()) as { movements: SwapMovementCatalogRow[] };
+          })
+          .then((body) => {
+            if (!cancelled) {
+              setCandidates(body.movements ?? []);
+              setError(null);
+            }
+          })
+          .catch((e) => {
+            if (!cancelled) setError((e as Error).message);
+          })
+          .finally(() => {
+            if (!cancelled) setLoading(false);
+          });
+      },
+      q.length > 0 ? 180 : 0,
+    );
     return () => {
       cancelled = true;
+      clearTimeout(id);
     };
-  }, [open, original.id]);
+  }, [open, original.id, search]);
 
   useEffect(() => {
     if (!open) return;
@@ -109,12 +126,9 @@ export function SwapMovementModal({
 
   if (!open) return null;
 
-  const filtered =
-    search.trim().length === 0
-      ? candidates
-      : candidates.filter((c) =>
-          c.display_name.toLowerCase().includes(search.trim().toLowerCase()),
-        );
+  // Candidates are already server-filtered by `search` (whole-catalog when
+  // searching, recommendations when not), so render them directly.
+  const filtered = candidates;
   const isSearching = search.trim().length > 0;
   const recommended = filtered.filter((c) => c.recommended);
   const others = filtered.filter((c) => !c.recommended);
