@@ -311,20 +311,19 @@ export default async function SessionDetailPage({
   // bracket paired CARDS adjacent. We never reorder `prescription.items` (the
   // index-based set matching depends on their order); only the card render is
   // grouped. Off / no pairs => empty map => byte-identical legacy card layout.
-  let supersetByMovementId: ReadonlyMap<string, SupersetCardInfo> = new Map();
-  if (plannedPrescription) {
-    const supersetPrefOn = await getSupersetAccessoriesPref(supabase, user.id);
-    if (supersetPrefOn) {
+  // Superset chain stays internally sequential (pref gate → muscle-map load),
+  // but the chain as a whole runs in parallel with the other independent reads
+  // below via the Batch 1 Promise.all join.
+  const supersetByMovementIdPromise: Promise<ReadonlyMap<string, SupersetCardInfo>> =
+    (async () => {
+      if (!plannedPrescription) return new Map<string, SupersetCardInfo>();
+      const supersetPrefOn = await getSupersetAccessoriesPref(supabase, user.id);
+      if (!supersetPrefOn) return new Map<string, SupersetCardInfo>();
       const accessoryIds = accessoryMovementIds(plannedPrescription);
-      if (accessoryIds.length > 0) {
-        const muscleMap = await loadPrimaryMusclesByMovementId(supabase, accessoryIds);
-        supersetByMovementId = buildSupersetByMovementId(
-          plannedPrescription,
-          resolverFromMap(muscleMap),
-        );
-      }
-    }
-  }
+      if (accessoryIds.length === 0) return new Map<string, SupersetCardInfo>();
+      const muscleMap = await loadPrimaryMusclesByMovementId(supabase, accessoryIds);
+      return buildSupersetByMovementId(plannedPrescription, resolverFromMap(muscleMap));
+    })();
   const resolvedFreestyle = resolveFreestyleMovements({
     persisted: persistedFreestyle,
     sets: setLogSlimForFreestyle,
@@ -344,7 +343,7 @@ export default async function SessionDetailPage({
     | "restorative"
     | null
     | undefined) ?? null;
-  const bwGateStateByFamily = await loadBwGateStatesForPrescription({
+  const bwGateStateByFamilyPromise = loadBwGateStatesForPrescription({
     supabase,
     userId: user.id,
     prescription: plannedPrescription,
@@ -383,29 +382,36 @@ export default async function SessionDetailPage({
       )
     : [];
 
-  // TM-bump proposal — runs the AMRAP confidence gate. Returns null when
-  // there's no planned-session link, no AMRAP, no qualifying set, or the
-  // gate suppresses (hard gate or below score threshold).
-  const bumpProposal = !isComplete && sets.length > 0
-    ? await findBumpProposalForSession(supabase, user.id, id)
-    : null;
+  // TM-bump / deload / PR-recalibrate is a GENUINE waterfall: deload is gated
+  // on `!bumpProposal` and recalibrate excludes movements derived from both
+  // prior RESULTS. It stays internally sequential, wrapped in one promise so it
+  // runs in parallel with the other independent reads via the Batch 1 join.
+  const proposalsPromise = (async () => {
+    // TM-bump proposal — runs the AMRAP confidence gate. Returns null when
+    // there's no planned-session link, no AMRAP, no qualifying set, or the
+    // gate suppresses (hard gate or below score threshold).
+    const bumpProposal = !isComplete && sets.length > 0
+      ? await findBumpProposalForSession(supabase, user.id, id)
+      : null;
 
-  // Deload proposal — fires when this session AND the prior AMRAP session
-  // on the same movement both missed real (GRM-gated). Mutually exclusive
-  // with bumpProposal in practice (the same set can't both bump and deload).
-  const deloadProposal = !isComplete && !bumpProposal && sets.length > 0
-    ? await findDeloadProposalForSession(supabase, user.id, id)
-    : null;
+    // Deload proposal — fires when this session AND the prior AMRAP session
+    // on the same movement both missed real (GRM-gated). Mutually exclusive
+    // with bumpProposal in practice (the same set can't both bump and deload).
+    const deloadProposal = !isComplete && !bumpProposal && sets.length > 0
+      ? await findDeloadProposalForSession(supabase, user.id, id)
+      : null;
 
-  // PR-driven recalibrate — catches custom blocks, freestyle sessions, and
-  // non-AMRAP top sets in curated blocks. Excludes movements that already
-  // have an AMRAP or deload proposal so we don't double-stack cards.
-  const excludeMovementIds = new Set<string>();
-  if (bumpProposal) excludeMovementIds.add(bumpProposal.movementId);
-  if (deloadProposal) excludeMovementIds.add(deloadProposal.movementId);
-  const prRecalibrateProposals = !isComplete && sets.length > 0
-    ? await findPrRecalibrateProposals(supabase, user.id, id, session.performed_at, excludeMovementIds)
-    : [];
+    // PR-driven recalibrate — catches custom blocks, freestyle sessions, and
+    // non-AMRAP top sets in curated blocks. Excludes movements that already
+    // have an AMRAP or deload proposal so we don't double-stack cards.
+    const excludeMovementIds = new Set<string>();
+    if (bumpProposal) excludeMovementIds.add(bumpProposal.movementId);
+    if (deloadProposal) excludeMovementIds.add(deloadProposal.movementId);
+    const prRecalibrateProposals = !isComplete && sets.length > 0
+      ? await findPrRecalibrateProposals(supabase, user.id, id, session.performed_at, excludeMovementIds)
+      : [];
+    return { bumpProposal, deloadProposal, prRecalibrateProposals };
+  })();
 
   // Phase 1 B2 — "Last time" inline hints. Resolve the set of movements
   // relevant to this session: every movement in the prescription PLUS
@@ -416,23 +422,13 @@ export default async function SessionDetailPage({
   for (const item of plannedPrescription?.items ?? []) {
     if (item.movementId) relevantMovementIds.add(item.movementId);
   }
-  const lastHintsList = await Promise.all(
+  const lastHintsListPromise = Promise.all(
     Array.from(relevantMovementIds).map((mid) =>
       getLastSetLogForMovement(supabase, user.id, mid, { excludeSessionId: id }).then((row) =>
         row ? ([mid, row] as const) : null,
       ),
     ),
   );
-  const lastSetHints: Record<string, LastSetHint> = {};
-  for (const entry of lastHintsList) {
-    if (!entry) continue;
-    const [mid, row] = entry;
-    lastSetHints[mid] = {
-      weightKg: row.weightKg,
-      reps: row.reps,
-      performedAt: row.performedAt,
-    };
-  }
 
   // Phase 1 B3 — Prior personal bests snapshot for the client-side PR
   // badge. We pull the user's strongest prior set per relevant movement
@@ -443,14 +439,42 @@ export default async function SessionDetailPage({
   // Perf audit F11: aggregation pushed into Postgres via the
   // `prior_bests_for_movements` RPC (migration 0054) so we receive one
   // row per movement instead of up to 500 raw set_logs rows.
-  let priorBests: Record<string, PriorBest> = {};
-  if (relevantMovementIds.size > 0 && !isComplete) {
-    priorBests = await getPriorBestsForMovements(
-      supabase,
-      user.id,
-      Array.from(relevantMovementIds),
-      session.performed_at,
-    );
+  const priorBestsPromise: Promise<Record<string, PriorBest>> =
+    relevantMovementIds.size > 0 && !isComplete
+      ? getPriorBestsForMovements(
+          supabase,
+          user.id,
+          Array.from(relevantMovementIds),
+          session.performed_at,
+        )
+      : Promise.resolve({});
+
+  // Batch 1 join — superset chain, bw-gate states, the proposal waterfall,
+  // last-set hints and prior bests are mutually independent, so they execute
+  // together here. Each promise was started above; this awaits them as one.
+  const [
+    supersetByMovementId,
+    bwGateStateByFamily,
+    { bumpProposal, deloadProposal, prRecalibrateProposals },
+    lastHintsList,
+    priorBests,
+  ] = await Promise.all([
+    supersetByMovementIdPromise,
+    bwGateStateByFamilyPromise,
+    proposalsPromise,
+    lastHintsListPromise,
+    priorBestsPromise,
+  ]);
+
+  const lastSetHints: Record<string, LastSetHint> = {};
+  for (const entry of lastHintsList) {
+    if (!entry) continue;
+    const [mid, row] = entry;
+    lastSetHints[mid] = {
+      weightKg: row.weightKg,
+      reps: row.reps,
+      performedAt: row.performedAt,
+    };
   }
 
   // Phase 1 C1/C2 — post-session summary. Materialised on-the-fly from
@@ -583,61 +607,72 @@ export default async function SessionDetailPage({
   // non-family-specific `cns_overreach_risk` signal which is always
   // relevant. The diagnostics module is read-only of session data
   // and never writes back to bw_progress.
-  let bwSessionDiagnostics: import("@/lib/planner/bw-diagnostics").DiagnosticResult[] | undefined;
-  if (isComplete) {
+  //
+  // This (isComplete-guarded) read and the Strava autofill read below are
+  // mutually independent, so both run together in the Batch 2 join.
+  const bwSessionDiagnosticsPromise: Promise<
+    import("@/lib/planner/bw-diagnostics").DiagnosticResult[] | undefined
+  > = (async () => {
+    if (!isComplete) return undefined;
     const sessionFamilies = new Set<string>();
     for (const it of plannedPrescription?.items ?? []) {
       if (it.bw?.family) sessionFamilies.add(it.bw.family);
     }
-    if (sessionFamilies.size > 0) {
-      const { loadAndRunBwDiagnostics } = await import(
-        "@/lib/planner/bw-diagnostics-loader"
-      );
-      const all = await loadAndRunBwDiagnostics({ supabase, userId: user.id });
-      const filtered = all.filter((d) => {
-        if (d.signal.kind === "cns_overreach_risk") return true;
-        const fam = (d.signal as { family?: string }).family;
-        return fam != null && sessionFamilies.has(fam);
-      });
-      bwSessionDiagnostics = filtered.length > 0 ? filtered.slice(0, 2) : undefined;
-    }
-  }
+    if (sessionFamilies.size === 0) return undefined;
+    const { loadAndRunBwDiagnostics } = await import(
+      "@/lib/planner/bw-diagnostics-loader"
+    );
+    const all = await loadAndRunBwDiagnostics({ supabase, userId: user.id });
+    const filtered = all.filter((d) => {
+      if (d.signal.kind === "cns_overreach_risk") return true;
+      const fam = (d.signal as { family?: string }).family;
+      return fam != null && sessionFamilies.has(fam);
+    });
+    return filtered.length > 0 ? filtered.slice(0, 2) : undefined;
+  })();
 
   // Phase 2 C1 — Strava autofill match. Only relevant when the session
   // is still open (post-completion the cardio is presumably already
   // logged). Silently no-op when the user has no Strava connection or
-  // no in-window activity.
-  let stravaMatch: StravaAutofillMatch | null = null;
-  let stravaConnected = false;
-  let stravaLastSyncedAt: string | null = null;
-  {
+  // no in-window activity. The connection lookup gates the activity match,
+  // so those two stay sequential inside this promise.
+  const stravaPromise = (async () => {
     const { data: connRow } = await supabase
       .from("strava_connections")
       .select("user_id, last_synced_at")
       .eq("user_id", user.id)
       .maybeSingle();
-    stravaConnected = !!connRow;
-    stravaLastSyncedAt =
+    const stravaConnected = !!connRow;
+    const stravaLastSyncedAt =
       (connRow?.last_synced_at as string | null | undefined) ?? null;
-  }
-  if (!isComplete && stravaConnected) {
-    const candidate = await findMatchingStravaActivity(
-      supabase,
-      user.id,
-      session.performed_at,
-      { excludeSessionId: id },
-    );
-    if (candidate) {
-      stravaMatch = {
-        cardioLogId: candidate.cardioLogId,
-        stravaActivityId: candidate.stravaActivityId,
-        modality: candidate.modality,
-        durationSec: candidate.durationSec,
-        distanceKm: candidate.distanceKm,
-        avgHrBpm: candidate.avgHrBpm,
-      };
+    let stravaMatch: StravaAutofillMatch | null = null;
+    if (!isComplete && stravaConnected) {
+      const candidate = await findMatchingStravaActivity(
+        supabase,
+        user.id,
+        session.performed_at,
+        { excludeSessionId: id },
+      );
+      if (candidate) {
+        stravaMatch = {
+          cardioLogId: candidate.cardioLogId,
+          stravaActivityId: candidate.stravaActivityId,
+          modality: candidate.modality,
+          durationSec: candidate.durationSec,
+          distanceKm: candidate.distanceKm,
+          avgHrBpm: candidate.avgHrBpm,
+        };
+      }
     }
-  }
+    return { stravaConnected, stravaLastSyncedAt, stravaMatch };
+  })();
+
+  // Batch 2 join — run the bodyweight diagnostics and Strava autofill reads
+  // together.
+  const [
+    bwSessionDiagnostics,
+    { stravaConnected, stravaLastSyncedAt, stravaMatch },
+  ] = await Promise.all([bwSessionDiagnosticsPromise, stravaPromise]);
 
   // feat/logging-works — which prescription items have been satisfied
   // by ≥1 logged set, and the canonical set_logs.id for each (so the
