@@ -28,6 +28,7 @@
  */
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { DragEvent } from "react";
 import { formatPrescriptionItem } from "@/lib/planner/archetypes";
@@ -240,6 +241,8 @@ export function PlanRedesign(props: PlanRedesignProps) {
     aiAccess,
   } = props;
 
+  const router = useRouter();
+
   // View + filter are pure client-side transforms over the same
   // session set. Server navigation here is wasteful — it refetches the
   // whole block from the DB just to flip a CSS class. Keep them as
@@ -392,8 +395,12 @@ export function PlanRedesign(props: PlanRedesignProps) {
       fd.set("weekIndex", String(weekIndex));
       fd.set("dayIndex", String(dayIndex));
       await moveAction(fd);
+      // The move action revalidates server data, but an imperatively-invoked
+      // server action doesn't refresh the client router on its own — pull the
+      // fresh plan so the grid updates without a full page reload.
+      router.refresh();
     },
-    [moveAction],
+    [moveAction, router],
   );
   const handleDrop =
     (targetWeek: number, targetDay: number) =>
@@ -1543,6 +1550,7 @@ export function SessionDrawer({
 }) {
   const [editing, setEditing] = useState(false);
   const [showSwap, setShowSwap] = useState(false);
+  const router = useRouter();
   // Inline error surfaced from a failed swap-day submit. The project
   // has no toast helper today (no `useToast`, no `toast(` callsites),
   // so we render the message inside the drawer and keep the drawer
@@ -1746,6 +1754,12 @@ export function SessionDrawer({
     const result = await runSwapMove(moveAction, fd);
     setSwapPending(false);
     if (result.ok) {
+      // Refresh the plan so the moved workout lands on its new day without a
+      // full reload (the move action revalidates server data, but an imperative
+      // server-action call doesn't refresh the client router by itself). This is
+      // also the only move path available on touch devices, where the timeline's
+      // native drag-and-drop doesn't fire.
+      router.refresh();
       onClose();
       return;
     }
