@@ -147,6 +147,7 @@ export function baseProps(overrides: Partial<StatsCommandCenterProps> = {}): Sta
       skipped: 1,
       planStrength: true,
       planCardio: true,
+      usesAdaptiveEngine: true,
     },
     readiness: readiness(),
     streak: {
@@ -348,9 +349,9 @@ describe("ReadinessDrawer - ACWR drilldown", () => {
     expect(open).toContain("2 of 3 signals agree");
   });
 
-  it("deep-links to the engine internals page", () => {
-    expect(open).toContain('data-testid="stats-recovery-engine-link"');
-    expect(open).toContain("/app/stats/engine");
+  it("notes readiness is display-only and does not link out", () => {
+    expect(open).toContain("readiness never feeds workout prescription");
+    expect(open).not.toContain('data-testid="stats-recovery-engine-link"');
   });
 
   it("flags a provisional band in cold-start (weeksOfData < 4)", () => {

@@ -31,6 +31,14 @@ export type ActiveBlockProgress = {
   planStrength: boolean;
   /** Any planned session whose modality is cardio-flavoured. */
   planCardio: boolean;
+  /**
+   * True when this block is driven by the adaptive engine — the built-in
+   * Hybrid generator (`program_id === "hybrid"`) or a legacy adaptive
+   * archetype block (no `program_id`, but an `archetype` set). Foreign
+   * platform programs (5/3/1, Tactical Barbell, Green Protocol, HYROX) run
+   * fixed templates, so the engine page ("Adaptive engine") doesn't apply.
+   */
+  usesAdaptiveEngine: boolean;
 };
 
 export async function getActiveBlockProgress(
@@ -41,7 +49,7 @@ export async function getActiveBlockProgress(
   const { data, error } = await supabase
     .from("training_blocks")
     .select(
-      "id, archetype, started_on, weeks, days_per_week, status, notes, day_index_overrides, planned_sessions(week_index, day_index, completed_session_id, skipped_at, session_modality)",
+      "id, archetype, program_id, started_on, weeks, days_per_week, status, notes, day_index_overrides, planned_sessions(week_index, day_index, completed_session_id, skipped_at, session_modality)",
     )
     .eq("user_id", userId)
     .eq("status", "active")
@@ -106,6 +114,10 @@ export async function getActiveBlockProgress(
     if (STRENGTH_MODALITIES.has(m)) planStrength = true;
   }
 
+  const programId = (data.program_id as string | null) ?? null;
+  const usesAdaptiveEngine =
+    programId === "hybrid" || (programId == null && data.archetype != null);
+
   return {
     blockId: data.id,
     archetypeName: archetypeDisplayName(data.archetype, data.notes ?? null),
@@ -119,6 +131,7 @@ export async function getActiveBlockProgress(
     skipped,
     planStrength,
     planCardio,
+    usesAdaptiveEngine,
   };
 }
 
