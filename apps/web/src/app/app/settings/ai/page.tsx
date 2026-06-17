@@ -66,7 +66,7 @@ export default async function AiSettingsPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        back={{ href: "/app/settings", label: "Settings" }}
+        back={{ href: "/app/settings/integrations", label: "Integrations" }}
         title="AI"
       />
 
