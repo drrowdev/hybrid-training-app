@@ -38,7 +38,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   acwr: {
     title: "Acute-to-chronic workload ratio (ACWR)",
     body:
-      "Last 7 days of load divided by the rolling 28-day average. The sweet spot sits at 0.8–1.3; above 1.5 the injury-risk curve steepens sharply. We warn before scheduling a session that would push you over the line.",
+      "Your last 7 days of training load compared with your typical 28-day average. The healthy range is 0.8–1.3; above 1.5, injury risk climbs sharply. We warn before scheduling a session that would push you over.",
     citation: "Gabbett 2016",
   },
 
@@ -46,7 +46,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   ceiling: {
     title: "Weekly ceiling",
     body:
-      "The maximum weekly tonnage we estimate you can absorb without losing recovery. Computed from your last 3 recovered weeks (median × confidence). Used to flag overreach when a plan exceeds it.",
+      "The most weekly tonnage we estimate you can absorb without losing recovery, based on your last 3 recovered weeks. Used to flag overreach when a plan exceeds it.",
   },
   recovered_week: {
     title: "Recovered week",
@@ -56,17 +56,17 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   grm: {
     title: "Global recovery multiplier (GRM)",
     body:
-      "A 0.85–1.10 scalar that nudges the day's prescribed intensity up or down based on your check-in — fatigue, soreness, and (when logged) sleep. We apply it before you start, so today's load matches today's body.",
+      "A 0.85–1.10 adjustment that nudges the day's target intensity up or down based on your check-in — fatigue, soreness, and (when logged) sleep. Applied before you start, so today's load matches today's body.",
   },
   confidence_bias: {
     title: "Confidence bias",
     body:
-      "A multiplier on the ceiling that shrinks when we have little data. With 3+ recovered weeks it's 1.00; with sparse history it collapses toward 0.80 so the engine projects conservatively until you've built a track record.",
+      "An adjustment that scales the ceiling down when you have little training history. With 3+ recovered weeks it's full (1.00); with sparse history it eases toward 0.80 so estimates stay conservative until you've built a track record.",
   },
   cold_start: {
     title: "Cold start",
     body:
-      "The state of the engine before it has enough data to estimate ceilings confidently — fewer than 3 recovered weeks logged. We walk down a conservative ladder of defaults until the personal signal takes over.",
+      "When you haven't logged enough training history yet — fewer than 3 recovered weeks — the app uses conservative starter defaults and personalizes as you build a track record.",
   },
 
   // ─── Buckets + regions ───────────────────────────────────────────

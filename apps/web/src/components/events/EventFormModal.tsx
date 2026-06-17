@@ -236,7 +236,7 @@ export function EventFormModal({
             {initial ? "Edit event" : "Add event"}
           </h2>
           <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--cp-text-muted)" }}>
-            Mark a race, comp, meet or test so the planner can suggest a taper.
+            Mark a race, comp, meet or test so the app can suggest a taper.
           </p>
         </header>
 

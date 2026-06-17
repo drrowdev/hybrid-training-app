@@ -88,8 +88,8 @@ export function EarlyDeloadCard({
         <>
           <div style={{ fontSize: 13, color: "var(--cp-text)", lineHeight: 1.5 }}>
             Your accumulated training load is running high — mostly{" "}
-            <strong>{dominantDriver(reco.terms)}</strong>. The strength
-            auto-deload only watches your lifts; this also accounts for cardio
+            <strong>{dominantDriver(reco.terms)}</strong>. A strength-only
+            deload would miss this; here it also accounts for cardio
             load. You can <strong>bring your deload forward to this week</strong>{" "}
             and resume loading after, or push on. Your scheduled deload stays
             either way.

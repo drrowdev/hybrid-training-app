@@ -90,7 +90,7 @@ export default async function ProfileSettingsPage() {
       <PageHeader
         back={{ href: "/app/settings", label: "Settings" }}
         title="Training profile"
-        subtitle="Identity and the defaults the planner uses when building a new block."
+        subtitle="Identity and the defaults the app uses when building a new block."
       />
 
       <div className="space-y-3">
@@ -139,10 +139,10 @@ export default async function ProfileSettingsPage() {
             </summary>
             <p className="mt-2 leading-relaxed">
               Your declared experience anchors your starting tier. From there,
-              the engine refines it based on four observed signals: per-lift
+              the app refines it based on four signals: per-lift
               strength relative to bodyweight, 12-week training adherence,
               schedule regularity, and recovery check-in fill rate. When your
-              declared tier and the engine&apos;s observations disagree, the
+              declared tier and what the app observes disagree, the
               app keeps your choice and shows a soft note — never silently
               overrules you.
             </p>

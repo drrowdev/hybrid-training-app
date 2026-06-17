@@ -40,7 +40,7 @@ describe("CardioPrescriptionList — Phase 2 classification", () => {
       />,
     );
     expect(html).toContain('data-classified="true"');
-    expect(html).toContain("Auto-classified as");
+    expect(html).toContain("Detected as");
     expect(html).toContain("VO2 intervals");
     expect(html).toContain("avg 168 bpm (Z4), max 178 bpm");
     expect(html).toContain("Effective load: 80");
@@ -93,7 +93,7 @@ describe("CardioPrescriptionList — Phase 2 classification", () => {
     );
     expect(html).toContain('data-classified="false"');
     expect(html).toContain("Logged via Runna. Mark complete when done.");
-    expect(html).not.toContain("Auto-classified as");
+    expect(html).not.toContain("Detected as");
   });
 
   it("renders the ESL band qualifier based on the load number", () => {
