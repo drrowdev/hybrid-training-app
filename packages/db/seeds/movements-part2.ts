@@ -229,7 +229,7 @@ const LEG_ISO: NewMovement[] = [
   legIso("tibialis-raise", "Tibialis Raise", { equipment: "bodyweight-or-band", primaryMuscles: ["tibialis"], primaryRegion: "foot_ankle_calf" }),
 ];
 
-// ─── core / abs (15) ───
+// ─── core / abs (19) ───
 const core = (slug: string, name: string, opts: MoveOpts = {}): NewMovement =>
   m(slug, name, {
     pattern: "isolation",
@@ -256,6 +256,10 @@ const CORE: NewMovement[] = [
   core("dead-bug", "Dead Bug", { equipment: "bodyweight" }),
   core("hollow-body-hold", "Hollow Body Hold", { equipment: "bodyweight", metadata: { protocol: "isometric" } }),
   core("bird-dog", "Bird Dog", { equipment: "bodyweight", primaryMuscles: ["abs", "lower_back", "glutes"], bilateral: false }),
+  core("ghd-situp", "GHD Sit-Up", { equipment: "ghd-machine", primaryMuscles: ["abs"], secondaryMuscles: ["obliques", "quads"], metadata: { emphasis: "trunk-flexion" }, experienceMin: 2 }),
+  core("reverse-crunch", "Reverse Crunch", { equipment: "bodyweight", metadata: { emphasis: "lower-abs" } }),
+  core("decline-situp", "Decline Sit-Up", { equipment: "decline-bench", metadata: { emphasis: "trunk-flexion" } }),
+  core("machine-crunch", "Machine Crunch", { equipment: "machine", stability: "supported" }),
 ];
 
 // ─── prehab: hip-stabiliser (glute-med / frontal plane) + ankle/foot (8) ───

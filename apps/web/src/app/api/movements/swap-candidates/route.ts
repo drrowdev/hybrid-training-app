@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const url = new URL(request.url);
   const originalId = url.searchParams.get("originalId");
+  const q = (url.searchParams.get("q") ?? "").trim();
   const limit = Math.min(
     50,
     Math.max(1, Number(url.searchParams.get("limit") ?? "25")),
@@ -48,6 +49,54 @@ export async function GET(request: NextRequest) {
     .maybeSingle();
   if (oErr) return NextResponse.json({ error: oErr.message }, { status: 500 });
   if (!orig) return NextResponse.json({ error: "Movement not found" }, { status: 404 });
+
+  // The signed-in user's equipment, resolved once. A swap menu that suggests a
+  // leg-press machine to someone training at home is noise; we filter to loadable
+  // alternatives, falling back to the unfiltered pool if a profile can't be
+  // resolved or filtering would empty the list.
+  const {
+    data: { user },
+  } = await getAuthUser();
+  let equipment: ReturnType<typeof resolveEquipment> | null = null;
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("equipment, barbell_kg, trap_bar_kg, plate_inventory_kg")
+      .eq("id", user.id)
+      .maybeSingle();
+    equipment = resolveEquipment(profile);
+  }
+  const equipmentFilter = (pool: SwapMovementFields[]): SwapMovementFields[] => {
+    if (!equipment) return pool;
+    const available = pool.filter((m) =>
+      isEquipmentAvailable(
+        resolveRequiredEquipment({ slug: m.slug, equipment: m.equipment }),
+        equipment!,
+      ),
+    );
+    return available.length > 0 ? available : pool;
+  };
+
+  // SEARCH MODE: when the user types a query, search the WHOLE catalog by name /
+  // slug — not just the similarity-ranked bucket. The recommendations list is
+  // capped + ordered by similarity, so a relevant-but-distant movement (e.g. an
+  // overhead triceps extension when swapping a close-grip bench) would otherwise
+  // be unreachable by typing. Equipment-filtered, ranked so close matches lead.
+  if (q.length > 0) {
+    const safe = q.replace(/[%_(),]/g, "\\$&");
+    const { data, error } = await supabase
+      .from("movements")
+      .select(MOVEMENT_FIELDS)
+      .neq("id", originalId)
+      .or(`display_name.ilike.%${safe}%,slug.ilike.%${safe}%`)
+      .limit(200);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    const ranked = rankSwapCandidates(
+      orig as unknown as SwapMovementFields,
+      equipmentFilter((data ?? []) as unknown as SwapMovementFields[]),
+    ).slice(0, limit);
+    return NextResponse.json({ pattern: orig.pattern, movements: ranked, mode: "search" });
+  }
 
   // Candidate pool = the same movement-pattern bucket UNION any movement that
   // shares a primary muscle with the original. The pattern bucket gives true
@@ -88,34 +137,9 @@ export async function GET(request: NextRequest) {
     if (!byId.has(m.id)) byId.set(m.id, m);
   }
 
-  // Filter to alternatives the user can actually load with their equipment — a
-  // swap menu that suggests a leg-press machine to someone training at home is
-  // noise. Read the signed-in user's equipment profile; if it can't be resolved,
-  // or filtering would empty the list, fall back to the unfiltered pool so the
-  // picker is never blank.
-  let pool = Array.from(byId.values());
-  const {
-    data: { user },
-  } = await getAuthUser();
-  if (user) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("equipment, barbell_kg, trap_bar_kg, plate_inventory_kg")
-      .eq("id", user.id)
-      .maybeSingle();
-    const equipment = resolveEquipment(profile);
-    const available = pool.filter((m) =>
-      isEquipmentAvailable(
-        resolveRequiredEquipment({ slug: m.slug, equipment: m.equipment }),
-        equipment,
-      ),
-    );
-    if (available.length > 0) pool = available;
-  }
-
   const ranked = rankSwapCandidates(
     orig as unknown as SwapMovementFields,
-    pool,
+    equipmentFilter(Array.from(byId.values())),
   ).slice(0, limit);
 
   return NextResponse.json({
