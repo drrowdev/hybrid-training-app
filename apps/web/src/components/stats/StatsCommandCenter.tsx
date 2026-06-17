@@ -749,7 +749,7 @@ function StrengthTile({
                 whiteSpace: "nowrap",
               }}
             >
-              Detail →
+              Details →
             </button>
           )
         }
@@ -911,7 +911,7 @@ function EnduranceTile({
     <Tile span={4} testid="stats-tile-endurance" empty={noRun}>
       <TileHead
         title="Endurance progress"
-        meta={`Easy runs · ${RANGE_LABEL[range]}`}
+        meta={`Avg easy-run pace · ${RANGE_LABEL[range]}`}
         right={
           noRun || onExpand == null ? undefined : (
             <button
@@ -930,7 +930,7 @@ function EnduranceTile({
                 whiteSpace: "nowrap",
               }}
             >
-              Detail →
+              Details →
             </button>
           )
         }
@@ -1229,7 +1229,7 @@ function RecoveryLoadTile({
                 whiteSpace: "nowrap",
               }}
             >
-              Detail →
+              Details →
             </button>
           )
         }
@@ -1260,16 +1260,18 @@ function RecoveryLoadTile({
               <div
                 key={r.region}
                 data-testid="stats-freshness-row"
-                style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5 }}
+                style={{ display: "flex", flexDirection: "column", gap: 4 }}
               >
-                <span style={{ width: 104, color: "var(--cp-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {r.regionLabel}
-                </span>
-                <span style={{ flex: 1, height: 8, borderRadius: 999, background: "var(--cp-surface-soft)", overflow: "hidden" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, fontSize: 12.5 }}>
+                  <span style={{ color: "var(--cp-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {r.regionLabel}
+                  </span>
+                  <span className="mono" style={{ width: 30, textAlign: "right", fontWeight: 600, fontSize: 12, flexShrink: 0 }}>
+                    {pct}
+                  </span>
+                </div>
+                <span style={{ height: 8, borderRadius: 999, background: "var(--cp-surface-soft)", overflow: "hidden" }}>
                   <span style={{ display: "block", width: `${pct}%`, height: "100%", borderRadius: 999, background: toneVar(colorByAccent[r.accent]) }} />
-                </span>
-                <span className="mono" style={{ width: 30, textAlign: "right", fontWeight: 600, fontSize: 12 }}>
-                  {pct}
                 </span>
               </div>
             );
@@ -1540,7 +1542,7 @@ function ConsistencyTile({
                   whiteSpace: "nowrap",
                 }}
               >
-                Detail →
+                Details →
               </button>
             )}
           </span>
