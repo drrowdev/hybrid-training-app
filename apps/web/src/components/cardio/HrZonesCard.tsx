@@ -163,7 +163,7 @@ export function HrZonesCard({ state }: HrZonesCardProps) {
       </div>
 
       <footer style={{ fontSize: 11, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
-        Seiler 2010 polarised model targets ~80% Z1–Z2 + ~20% Z4–Z5, minimising Z3.
+        The polarised model targets ~80% easy (Z1–Z2) + ~20% hard (Z4–Z5), keeping the medium zone (Z3) low.
         <MetricHelp term="polarised_distribution" />
         {" "}
         <span style={{ fontStyle: "italic" }}>
