@@ -240,7 +240,7 @@ function ExternalCardioRow({
             <>
               {" · "}
               <span style={{ fontWeight: 400, color: "var(--cp-text-muted)" }}>
-                Auto-classified as
+                Detected as
               </span>{" "}
               <span
                 data-testid={`cardio-external-classified-${itemIndex}`}
@@ -254,8 +254,8 @@ function ExternalCardioRow({
               {isLowConfidence && (
                 <span
                   data-testid={`cardio-external-low-confidence-${itemIndex}`}
-                  title="The classifier is uncertain — HR data may have been incomplete."
-                  aria-label="Low-confidence classification"
+                  title="We weren't sure about this one — heart-rate data may have been incomplete."
+                  aria-label="Uncertain classification"
                   style={{
                     marginLeft: 4,
                     fontSize: 11,

@@ -126,7 +126,7 @@ export function EquipmentStep({
           lineHeight: 1.55,
         }}
       >
-        Pick the option closest to your usual setup. The planner uses this to
+        Pick the option closest to your usual setup. The app uses this to
         decide which accessory movements you can actually perform — you can
         change it any time in Settings.
       </p>

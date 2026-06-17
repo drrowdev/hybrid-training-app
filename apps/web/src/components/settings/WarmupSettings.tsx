@@ -135,8 +135,8 @@ export function WarmupSettings({ initial }: WarmupSettingsProps) {
           lineHeight: 1.5,
         }}
       >
-        The engine prepends a warmup ladder before each main lift so you ramp
-        into the working weight. Pick a preset — or go Custom and dial it in.
+        A warmup ladder ramps you into the working weight before each main
+        lift. Pick a preset — or go Custom and dial it in.
       </p>
 
       <label

@@ -40,7 +40,7 @@ export function EngineResponseSection({
         <MetricHelp term="injury_aware_ceiling" />
       </header>
       <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)" }}>
-        Engine overrides in the last 14 days.
+        Automatic adjustments in the last 14 days.
       </p>
       {events.length === 0 ? (
         <EmptyState

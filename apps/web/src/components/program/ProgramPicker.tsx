@@ -156,7 +156,7 @@ const PROG_INFO: Record<string, ProgInfo> = {
   "green-protocol": {
     kick: "Tactical Barbell \u00B7 Green Protocol",
     title: "Green Protocol",
-    body: "Tactical Barbell\u2019s bigger sibling, for people who need serious endurance on top of strength \u2014 think military selection, tactical roles, or any hybrid athlete chasing an ultra-runner\u2019s engine with real barbell strength.\n\nInstead of just programming your lifts, it programs your running and rucking too: you build a wide aerobic base first, then ramp up intensity toward a goal. It runs in longer phases \u2014 Hybrid is the everyday baseline you can stay on indefinitely, while blocks like Capacity, Velocity and Outcome peak you for a specific event.\n\nThe guiding idea is to build the foundation gradually: the wider the base, the higher the peak. Your lifting is prescribed here in the app; your runs and rucks are tracked through Strava. Best when endurance matters as much as strength.",
+    body: "Tactical Barbell\u2019s bigger sibling, for people who need serious endurance on top of strength \u2014 think military selection, tactical roles, or any hybrid athlete chasing an ultra-runner\u2019s engine with real barbell strength.\n\nInstead of just programming your lifts, it programs your running and rucking too: you build a wide aerobic base first, then ramp up intensity toward a goal. It runs in longer phases \u2014 Hybrid is the everyday baseline you can stay on indefinitely, while blocks like Capacity, Velocity and Outcome peak you for a specific event.\n\nThe guiding idea is to build the foundation gradually: the wider the base, the higher the peak. Your lifting plan is shown here in the app; your runs and rucks are tracked through Strava. Best when endurance matters as much as strength.",
     meta: ["Strength + endurance", "Event & selection prep"],
   },
   hybrid: {
@@ -1336,7 +1336,7 @@ export function ProgramPicker({
                       kick: "Wendler 5/3/1",
                       title: "How a 5/3/1 cycle is built",
                       body:
-                        "A 5/3/1 cycle is made of short blocks that each do a different job. You run a couple of Leaders, take a lighter 7th week, then finish with an Anchor.\n\nLEADER \u2014 the volume-building blocks. You train at submaximal weights with extra supplemental sets to bank work and drive size, without grinding. You typically run two Leaders back to back.\n\n7TH WEEK \u2014 a single lighter week between phases. It either deloads you (easy, to recover) or tests your training max so the app knows whether to nudge your numbers up. It\u2019s the built-in checkpoint that keeps the plan honest.\n\nANCHOR \u2014 the block where you express the strength you built. Volume drops, intensity rises, and you push your top sets for new rep records. One Anchor caps the cycle before you start the next.",
+                        "A 5/3/1 cycle is made of short blocks that each do a different job. You run a couple of Leaders, take a lighter 7th week, then finish with an Anchor.\n\nLEADER \u2014 the volume-building blocks. You train at submaximal weights with extra supplemental sets to bank work and drive size, without grinding. You typically run two Leaders back to back.\n\n7TH WEEK \u2014 a single lighter week between phases. It either deloads you (easy, to recover) or tests your training max so the app knows whether to nudge your numbers up. It\u2019s the built-in checkpoint that keeps your numbers on track.\n\nANCHOR \u2014 the block where you express the strength you built. Volume drops, intensity rises, and you push your top sets for new rep records. One Anchor caps the cycle before you start the next.",
                       meta: ["2\u00D7 Leader", "7th week", "1\u00D7 Anchor"],
                     })
                   }
@@ -1418,7 +1418,7 @@ export function ProgramPicker({
         <p className={styles.sub} style={{ marginTop: 6 }}>
           {isGp
             ? "Green Protocol treats accessories as optional \u2014 conditioning and your main lifts come first. Turn this on for a little aesthetic work (arms, abs, calves) after your strength sessions. Up to 2\u20133 per session depending on the day\u2019s template, and never added to a conditioning day."
-            : `Tactical Barbell doesn\u2019t prescribe accessories \u2014 your main lifts and conditioning do the heavy lifting. Turn this on only if you want a little aesthetic work (arms, abs, calves) after your main lifts. Up to ${tbAccessoryPlan?.maxItems ?? 2} per session, kept light so it never compromises your strength work.`}
+            : `Tactical Barbell doesn\u2019t add accessories \u2014 your main lifts and conditioning do the heavy lifting. Turn this on only if you want a little aesthetic work (arms, abs, calves) after your main lifts. Up to ${tbAccessoryPlan?.maxItems ?? 2} per session, kept light so it never compromises your strength work.`}
         </p>
         {accessoriesOn ? (
           <>
@@ -1640,12 +1640,12 @@ export function ProgramPicker({
     const note = is531
       ? `Your Training Max is ${tmPct}% of each 1RM${tmPct === 85 ? " \u2014 the 5/3/1 standard" : ""}. All working percentages run off that TM.`
       : isHyrox
-        ? "HYROX prescribes your strength sessions off a submaximal % of these 1RMs (no Training Max needed). Your run paces and station weights come from your division standard \u2014 you'll confirm them when you log. Enter the lifts you train; you can skip any you don't."
+        ? "HYROX bases your strength sessions on a submaximal % of these 1RMs (no Training Max needed). Your run paces and station weights come from your division standard \u2014 you'll confirm them when you log. Enter the lifts you train; you can skip any you don't."
         : isCluster && activeTbTemplate!.structure === "split"
           ? `Tactical Barbell loads ${useTm ? `off a Training Max (${tmPct}% of your 1RM)` : "a submaximal % of your 1RM"}. Each lift sits in an A or B session; you train each session twice a week. Tap the A/B chip to move a lift.`
           : `Tactical Barbell loads ${useTm ? `off a Training Max (${tmPct}% of your 1RM)` : "a submaximal % of your 1RM \u2014 no Training Max required"}.${
               bodyweightEntry
-                ? " An optional bodyweight movement (e.g. pull-ups) doesn\u2019t count toward the cap and is prescribed as a % of your max reps, not a weight."
+                ? " An optional bodyweight movement (e.g. pull-ups) doesn\u2019t count toward the cap and is set as a % of your max reps, not a weight."
                 : " Switch a lift\u2019s variant from its dropdown."
             }`;
 
@@ -1663,7 +1663,7 @@ export function ProgramPicker({
 
         {!hasUsableTms && (
           <p className={styles.banner}>
-            {"Enter a 1-rep max for each lift below so the program can prescribe weights."}
+            {"Enter a 1-rep max for each lift below so the program can set your weights."}
           </p>
         )}
 
@@ -1901,7 +1901,7 @@ export function ProgramPicker({
         <h2 className={styles.h1}>Set your schedule</h2>
         <p className={styles.sub}>
           {fixedSchedule
-            ? `${selected.name} prescribes both your lifting and conditioning days \u2014 just pick a start date.`
+            ? `${selected.name} plans both your lifting and conditioning days \u2014 just pick a start date.`
             : "Your training days come from your program. Pick which weekdays you'll train, then pick a start date."}
         </p>
 
@@ -1960,7 +1960,7 @@ export function ProgramPicker({
 
         {fixedSchedule ? (
           <p className={styles.note}>
-            {`${selected.name} sets its own weekly schedule (strength and conditioning days are prescribed by the program). It owns your calendar \u2014 you just pick the start date.`}
+            {`${selected.name} sets its own weekly schedule (strength and conditioning days are set by the program). It owns your calendar \u2014 you just pick the start date.`}
           </p>
         ) : (
           <>

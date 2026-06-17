@@ -70,7 +70,7 @@ export function AiBenefits(): ReactElement {
           Why connect your own AI?
         </h2>
         <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: "var(--cp-text-muted)" }}>
-          The engine already decides what you train and why. Connecting an AI
+          The app already decides what you train and why. Connecting an AI
           adds a coach you can talk to — it reads that reasoning and explains it
           in plain language, grounded in your own data.
         </p>

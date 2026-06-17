@@ -21,7 +21,7 @@ export function HingeAcknowledgementPage() {
         glutes in ways that bodyweight alone cannot fully replicate.
       </p>
       <p style={paragraphStyle}>
-        The engine compensates with isometric work, tempo-controlled
+        The app compensates with isometric work, tempo-controlled
         eccentrics (e.g. Nordic curl progressions), and unilateral hinge
         drills — but the gap is real. If you add a vest, belt, or bands
         later, weighted variants unlock automatically.

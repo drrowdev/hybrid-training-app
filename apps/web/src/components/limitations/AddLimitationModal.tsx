@@ -363,7 +363,7 @@ export function AddLimitationModal({
                 color: "var(--cp-text-muted)",
               }}
             >
-              The region is the engine&apos;s strongest safety filter and
+              The region is the app&apos;s strongest safety filter and
               can&apos;t be bypassed by the allow-list below. Leave on
               &ldquo;Auto&rdquo; to infer it from the muscles, or set it
               explicitly (e.g. elbow / forearm for cubital tunnel).
@@ -565,7 +565,7 @@ function AffectedPreviewSection({
     >
       <header style={{ display: "grid", gap: 2 }}>
         <strong style={{ fontSize: 13 }}>
-          These movements will be filtered from your prescriptions:
+          These movements will be skipped in your upcoming sessions:
         </strong>
         <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
           Toggle a row if you can still do that movement without pain.

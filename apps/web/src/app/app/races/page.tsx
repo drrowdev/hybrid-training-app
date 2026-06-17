@@ -84,14 +84,14 @@ export default async function RacesPage() {
     >
       <PageHeader
         title="Events"
-        subtitle="Races, comps, meets and tests. The planner uses A and B priority events to suggest a taper in the final 14 days."
+        subtitle="Races, comps, meets and tests. The app uses A and B priority events to suggest a taper in the final 14 days."
       />
 
       {!hasAny ? (
         <EmptyState
           variant="card"
           title="No events yet"
-          body="Mark a race, comp, meet or test and the planner will line up a rule-based taper inside the final two weeks."
+          body="Mark a race, comp, meet or test and the app will line up a taper inside the final two weeks."
           icon="◆"
         />
       ) : null}

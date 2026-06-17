@@ -344,7 +344,7 @@ export default async function TrainingProfilePage() {
                     marginLeft: 4,
                   }}
                 >
-                  · {tierState.confidence}
+                  · {tierState.confidence} confidence
                 </span>
                 <MetricHelp term="bts_tier" />
               </span>
@@ -609,7 +609,7 @@ export default async function TrainingProfilePage() {
               <EmptyState
                 variant="inline"
                 title="No active limitations"
-                body="Recording limitations lets the engine cap or rotate around an affected muscle."
+                body="Recording limitations lets the app cap or rotate around an affected muscle."
                 action={{ label: "Manage →", href: "/app/recovery/injuries" }}
               />
             ) : (

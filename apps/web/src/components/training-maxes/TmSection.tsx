@@ -90,8 +90,8 @@ export function TmSection({
         </div>
         {hasActiveBlock && (
           <p className={styles.note}>
-            🔒 Your active program turns these 1-rep maxes into the working weights it
-            prescribes.
+            🔒 Your active program uses these 1-rep maxes to set your working
+            weights.
           </p>
         )}
       </section>
