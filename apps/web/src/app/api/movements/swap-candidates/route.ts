@@ -49,25 +49,51 @@ export async function GET(request: NextRequest) {
   if (oErr) return NextResponse.json({ error: oErr.message }, { status: 500 });
   if (!orig) return NextResponse.json({ error: "Movement not found" }, { status: 404 });
 
-  // Fetch the WHOLE same-pattern bucket (bounded; the largest bucket — isolation —
-  // is well under this cap) and rank it, THEN slice to `limit`. Truncating at the
-  // DB before ranking would hand the ranker an arbitrary subset, so for a big
-  // bucket the genuinely-similar alternatives (e.g. other ab movements when
-  // swapping a Dragon Flag) could be cut entirely and never surface.
-  const { data, error } = await supabase
-    .from("movements")
-    .select(MOVEMENT_FIELDS)
-    .eq("pattern", orig.pattern as string)
-    .neq("id", originalId)
-    .limit(500);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // Candidate pool = the same movement-pattern bucket UNION any movement that
+  // shares a primary muscle with the original. The pattern bucket gives true
+  // like-for-like (e.g. another horizontal press for a bench press); the
+  // primary-muscle union surfaces same-target work the pattern misses — e.g.
+  // swapping Close-Grip Bench (a "press") should also offer triceps isolation,
+  // which lives in the "isolation" pattern. We fetch both, dedupe by id, then let
+  // the ranker order by similarity so the closest matches still lead. Each query
+  // is bounded; truncating before ranking would hand the ranker an arbitrary
+  // subset and drop genuinely-similar alternatives.
+  const origMuscles = ((orig.primary_muscles as string[] | null) ?? []).filter(
+    (m): m is string => typeof m === "string" && m.length > 0,
+  );
+  const [byPattern, byMuscle] = await Promise.all([
+    supabase
+      .from("movements")
+      .select(MOVEMENT_FIELDS)
+      .eq("pattern", orig.pattern as string)
+      .neq("id", originalId)
+      .limit(500),
+    origMuscles.length > 0
+      ? supabase
+          .from("movements")
+          .select(MOVEMENT_FIELDS)
+          .overlaps("primary_muscles", origMuscles)
+          .neq("id", originalId)
+          .limit(500)
+      : Promise.resolve({ data: [] as unknown[], error: null }),
+  ]);
+  if (byPattern.error) return NextResponse.json({ error: byPattern.error.message }, { status: 500 });
+  if (byMuscle.error) return NextResponse.json({ error: byMuscle.error.message }, { status: 500 });
+
+  const byId = new Map<string, SwapMovementFields>();
+  for (const m of [
+    ...((byPattern.data ?? []) as unknown as SwapMovementFields[]),
+    ...((byMuscle.data ?? []) as unknown as SwapMovementFields[]),
+  ]) {
+    if (!byId.has(m.id)) byId.set(m.id, m);
+  }
 
   // Filter to alternatives the user can actually load with their equipment — a
   // swap menu that suggests a leg-press machine to someone training at home is
   // noise. Read the signed-in user's equipment profile; if it can't be resolved,
-  // or filtering would empty the list, fall back to the unfiltered bucket so the
+  // or filtering would empty the list, fall back to the unfiltered pool so the
   // picker is never blank.
-  let pool = (data ?? []) as unknown as SwapMovementFields[];
+  let pool = Array.from(byId.values());
   const {
     data: { user },
   } = await getAuthUser();
