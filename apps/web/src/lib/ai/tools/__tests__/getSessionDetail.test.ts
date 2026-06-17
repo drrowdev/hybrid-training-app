@@ -97,6 +97,123 @@ describe("getSessionDetail", () => {
     expect(out.generationContext.goal?.focusMuscles).toEqual(["biceps"]);
   });
 
+  it("platform block: surfaces session.program from the block program_id", async () => {
+    const ctx = makeCtx("u1", {
+      sessions: [
+        {
+          id: "sess-p",
+          user_id: "u1",
+          performed_at: `${today}T08:00:00.000Z`,
+          title: "531 Squat day",
+          prescription: null,
+          deleted_at: null,
+        },
+      ],
+      planned_sessions: [
+        {
+          user_id: "u1",
+          block_id: "blk-531",
+          completed_session_id: "sess-p",
+          week_index: 0,
+          day_index: 0,
+          role: "squat",
+          title: "531 Squat day",
+          session_modality: "pure_strength",
+          prescription: {
+            items: [
+              {
+                movementId: "m-squat",
+                movementName: "Back Squat",
+                kind: "main",
+                sets: 3,
+                reps: 5,
+                percentTm: 85,
+              },
+            ],
+          },
+        },
+      ],
+      training_blocks: [
+        {
+          id: "blk-531",
+          user_id: "u1",
+          program_id: "wendler-531",
+          program_family: "531",
+          archetype: null,
+          started_on: today,
+          weeks: 4,
+          focus_muscles: [],
+          secondary_focus: "none",
+          accessory_volume: "medium",
+          power_emphasis: false,
+          status: "active",
+          deleted_at: null,
+        },
+      ],
+      profiles: [],
+      limitations: [],
+    });
+
+    const out = await getSessionDetail.handler({ sessionId: "sess-p" }, ctx);
+    expect(out.found).toBe(true);
+    expect(out.session.program).not.toBeNull();
+    expect(out.session.program?.id).toBe("wendler-531");
+    expect(out.session.program?.name).toBe("5/3/1");
+    expect(typeof out.session.program?.summary).toBe("string");
+    expect(getSessionDetail.outputSchema.safeParse(out).success).toBe(true);
+  });
+
+  it("legacy archetype block: session.program is null", async () => {
+    const ctx = makeCtx("u1", {
+      sessions: [
+        {
+          id: "sess-legacy",
+          user_id: "u1",
+          performed_at: `${today}T08:00:00.000Z`,
+          title: "Squat day",
+          prescription: null,
+          deleted_at: null,
+        },
+      ],
+      planned_sessions: [
+        {
+          user_id: "u1",
+          block_id: "blk-1",
+          completed_session_id: "sess-legacy",
+          week_index: 0,
+          day_index: 0,
+          role: "squat",
+          title: "Squat day",
+          session_modality: "pure_strength",
+          prescription: { items: [] },
+        },
+      ],
+      training_blocks: [
+        {
+          id: "blk-1",
+          user_id: "u1",
+          program_id: null,
+          archetype: "strength_anchor",
+          started_on: today,
+          weeks: 4,
+          focus_muscles: [],
+          secondary_focus: "none",
+          accessory_volume: "medium",
+          power_emphasis: false,
+          status: "active",
+          deleted_at: null,
+        },
+      ],
+      profiles: [],
+      limitations: [],
+    });
+
+    const out = await getSessionDetail.handler({ sessionId: "sess-legacy" }, ctx);
+    expect(out.found).toBe(true);
+    expect(out.session.program).toBeNull();
+    expect(out.session.archetype).toBe("strength_anchor");
+  });
+
   it("planned-not-started: resolves a planned_sessions.id directly (no session row yet)", async () => {
     const ctx = makeCtx("u1", {
       sessions: [],

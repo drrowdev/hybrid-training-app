@@ -26,6 +26,10 @@ import type {
 import { ARCHETYPES } from "@/lib/planner/archetypes";
 import type { ArchetypeId } from "@/lib/planner/archetypes";
 import { archetypeDisplayName } from "@/lib/planner/queries";
+import {
+  getNativeProgramEngine,
+  getProgramEngine,
+} from "@/lib/platform/registry";
 import { deloadWeekIndexFor } from "@/lib/planner/deload-skip";
 import { isMaxIntentRpe, MAX_INTENT_LABEL } from "@/lib/sessions/effort-label";
 
@@ -37,11 +41,23 @@ export type SessionMovement = {
   why: string | null;
 };
 
+export type SessionProgramLabel = {
+  id: string;
+  name: string;
+  summary: string;
+};
+
 export type SessionSummary = {
   id: string;
   date: string | null;
   title: string | null;
   archetype: string | null;
+  /**
+   * The PROGRAM this session's block belongs to (ADR 0046), resolved from
+   * `training_blocks.program_id` to a user-facing name + summary. Null for
+   * legacy archetype blocks (program_id null) or off-plan quick sessions.
+   */
+  program: SessionProgramLabel | null;
   weekIndex: number | null;
   phase: string;
 };
@@ -312,6 +328,7 @@ type PlannedRow = {
 
 type BlockRow = {
   id: string;
+  program_id: string | null;
   archetype: string | null;
   program_family: string | null;
   notes: string | null;
@@ -674,7 +691,7 @@ export async function loadSessionDetail(
     const { data: blockData } = await supabase
       .from("training_blocks")
       .select(
-        "id, archetype, program_family, notes, started_on, weeks, focus_muscles, secondary_focus, accessory_volume, power_emphasis",
+        "id, program_id, archetype, program_family, notes, started_on, weeks, focus_muscles, secondary_focus, accessory_volume, power_emphasis",
       )
       .eq("id", planned.block_id)
       .eq("user_id", userId)
@@ -685,7 +702,7 @@ export async function loadSessionDetail(
     const { data: activeBlock } = await supabase
       .from("training_blocks")
       .select(
-        "id, archetype, program_family, notes, started_on, weeks, focus_muscles, secondary_focus, accessory_volume, power_emphasis",
+        "id, program_id, archetype, program_family, notes, started_on, weeks, focus_muscles, secondary_focus, accessory_volume, power_emphasis",
       )
       .eq("user_id", userId)
       .eq("status", "active")
@@ -698,6 +715,14 @@ export async function loadSessionDetail(
 
   const weekIndex = onPlan ? planned?.week_index ?? null : null;
   const archetype = block?.archetype ?? null;
+  const programId = block?.program_id ?? null;
+  const programMeta =
+    programId != null
+      ? (getProgramEngine(programId) ?? getNativeProgramEngine(programId))?.meta
+      : undefined;
+  const program = programMeta
+    ? { id: programMeta.id, name: programMeta.name, summary: programMeta.summary }
+    : null;
   const phase = onPlan
     ? computePhase(
         archetype,
@@ -738,6 +763,7 @@ export async function loadSessionDetail(
         : null,
       title,
       archetype,
+      program,
       weekIndex,
       phase,
     },

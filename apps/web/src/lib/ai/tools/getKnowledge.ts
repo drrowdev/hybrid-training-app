@@ -36,7 +36,7 @@ type Output = z.infer<typeof outputSchema>;
 export const getKnowledge: Tool<Input, Output> = {
   name: "getKnowledge",
   description:
-    "Returns embedded reference knowledge: archetype descriptions, the calibration policy (CP-1 through CP-5), and the engine constants table.",
+    "Returns embedded reference knowledge: engine modality (archetype) descriptions, the calibration policy (CP-1 through CP-5), and the engine constants table.",
   inputSchema,
   outputSchema,
   async handler() {

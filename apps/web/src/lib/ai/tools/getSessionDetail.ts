@@ -24,6 +24,13 @@ const sessionSchema = z.object({
   date: z.string().nullable(),
   title: z.string().nullable(),
   archetype: z.string().nullable(),
+  program: z
+    .object({
+      id: z.string(),
+      name: z.string(),
+      summary: z.string(),
+    })
+    .nullable(),
   weekIndex: z.number().int().nullable(),
   phase: z.string(),
 });
@@ -157,7 +164,7 @@ function emptyContext(): Output["generationContext"] {
 export const getSessionDetail: Tool<Input, Output> = {
   name: "getSessionDetail",
   description:
-    "Returns full detail for one of the user's workout sessions — its prescribed movements with the engine's per-movement reason and the generation context that shaped it, PLUS `performance`: what the user ACTUALLY logged (per-movement sets, working-set count, and `notPerformed` = prescribed movements with zero logged sets). Accepts a completed/in-progress session id OR a planned-session id (where `performance` is null). Use this to explain WHY a session is programmed AND to assess HOW the user actually did — basing any recap on `performance`, never the prescription alone.",
+    "Returns full detail for one of the user's workout sessions — which PROGRAM it belongs to (`session.program`: name + summary, resolved from the block's program_id; null for legacy archetype blocks or off-plan sessions), its prescribed movements with the engine's per-movement reason and the generation context that shaped it, PLUS `performance`: what the user ACTUALLY logged (per-movement sets, working-set count, and `notPerformed` = prescribed movements with zero logged sets). Accepts a completed/in-progress session id OR a planned-session id (where `performance` is null). Use this to explain WHY a session is programmed AND to assess HOW the user actually did — basing any recap on `performance`, never the prescription alone.",
   inputSchema,
   outputSchema,
   async handler(input, ctx) {
@@ -178,6 +185,7 @@ export const getSessionDetail: Tool<Input, Output> = {
           date: null,
           title: null,
           archetype: null,
+          program: null,
           weekIndex: null,
           phase: "",
         },
