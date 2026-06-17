@@ -418,10 +418,36 @@ type DayType = "strength" | "cardio" | "rest";
  * ONLY ways to split four lifts into two pairs, so they fully cover the space.
  */
 type PairingId = "default" | "press-squat" | "upper-lower";
-const PAIRINGS: { id: PairingId; dayOrder: string[]; label: string }[] = [
-  { id: "default", dayOrder: ["press", "deadlift", "bench", "squat"], label: "Overhead Press + Deadlift · Bench + Squat" },
-  { id: "press-squat", dayOrder: ["press", "squat", "deadlift", "bench"], label: "Overhead Press + Squat · Deadlift + Bench" },
-  { id: "upper-lower", dayOrder: ["bench", "press", "squat", "deadlift"], label: "Upper (Bench + Press) · Lower (Squat + Deadlift)" },
+const PAIRINGS: {
+  id: PairingId;
+  dayOrder: string[];
+  /** Short scannable name for the split. */
+  name: string;
+  /** The two lifts trained on each of the two days. */
+  dayA: string;
+  dayB: string;
+}[] = [
+  {
+    id: "default",
+    dayOrder: ["press", "deadlift", "bench", "squat"],
+    name: "Press + pull, then push + squat",
+    dayA: "Overhead Press + Deadlift",
+    dayB: "Bench + Squat",
+  },
+  {
+    id: "press-squat",
+    dayOrder: ["press", "squat", "deadlift", "bench"],
+    name: "Overhead day, then bench day",
+    dayA: "Overhead Press + Squat",
+    dayB: "Deadlift + Bench",
+  },
+  {
+    id: "upper-lower",
+    dayOrder: ["bench", "press", "squat", "deadlift"],
+    name: "Upper / lower split",
+    dayA: "Bench + Overhead Press",
+    dayB: "Squat + Deadlift",
+  },
 ];
 
 /** Build a default week: `n` strength days on the canonical spread, rest elsewhere. */
@@ -2041,17 +2067,72 @@ export function ProgramPicker({
             {selected.id === "wendler-531" && freq531 === 2 ? (
               <div style={{ marginBottom: 18 }}>
                 <div className={styles.label}>Lift pairing</div>
-                <select
-                  className={styles.datein}
-                  value={pairing}
-                  onChange={(e) => setPairing(e.target.value as PairingId)}
+                <div
+                  role="radiogroup"
+                  aria-label="Lift pairing"
+                  style={{ display: "grid", gap: 8, marginTop: 6 }}
                 >
-                  {PAIRINGS.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
+                  {PAIRINGS.map((p) => {
+                    const sel = p.id === pairing;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={sel}
+                        onClick={() => setPairing(p.id)}
+                        style={{
+                          display: "grid",
+                          gap: 6,
+                          textAlign: "left",
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          cursor: "pointer",
+                          fontFamily: "inherit",
+                          background: sel ? "var(--cp-accent-soft)" : "var(--cp-surface)",
+                          border: `1px solid ${sel ? "var(--cp-accent)" : "var(--cp-border)"}`,
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: sel ? "var(--cp-accent)" : "var(--cp-text-muted)",
+                          }}
+                        >
+                          {p.name}
+                        </span>
+                        <span style={{ display: "grid", gap: 2 }}>
+                          {[
+                            { d: "Day 1", lifts: p.dayA },
+                            { d: "Day 2", lifts: p.dayB },
+                          ].map((row) => (
+                            <span
+                              key={row.d}
+                              style={{ display: "flex", alignItems: "baseline", gap: 8 }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  letterSpacing: "0.06em",
+                                  textTransform: "uppercase",
+                                  color: "var(--cp-text-muted)",
+                                  minWidth: 38,
+                                }}
+                              >
+                                {row.d}
+                              </span>
+                              <span style={{ fontSize: 14, fontWeight: 500, color: "var(--cp-text)" }}>
+                                {row.lifts}
+                              </span>
+                            </span>
+                          ))}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
                 <div className={styles.note} style={{ marginTop: 6 }}>
                   With two training days, each session trains two main lifts. Choose which lifts pair up.
                 </div>

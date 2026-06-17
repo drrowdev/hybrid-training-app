@@ -1897,23 +1897,34 @@ export function SessionDrawer({
                 </button>
               </form>
             )}
-            {overdue && !session.skipped && !session.done && (
-              <LogNowDateForm
-                plannedId={session.id}
-                title={session.title}
-                defaultDateYmd={session.date <= today ? session.date : today}
-                maxDateYmd={today}
-                minDateYmd={addDaysToYmd(today, -14)}
-                action={startSessionAction}
-              />
-            )}
-            {(session.isStrength || session.isCardio) &&
-              (aiAccess ? (
-                <AskWhyButton sessionId={session.id} />
-              ) : (
-                <AskWhyButton href="/app/settings/ai" />
-              ))}
           </div>
+
+          {/* Overdue "Log now" + Ask-why live OUTSIDE the 4-up action grid so the
+              expanding date form and the why-chip render at their natural size
+              (full width / content height) instead of being stretched to fill a
+              cramped grid cell. */}
+          {((overdue && !session.skipped && !session.done) ||
+            session.isStrength ||
+            session.isCardio) && (
+            <div className="drawer-cta-extras">
+              {overdue && !session.skipped && !session.done && (
+                <LogNowDateForm
+                  plannedId={session.id}
+                  title={session.title}
+                  defaultDateYmd={session.date <= today ? session.date : today}
+                  maxDateYmd={today}
+                  minDateYmd={addDaysToYmd(today, -14)}
+                  action={startSessionAction}
+                />
+              )}
+              {(session.isStrength || session.isCardio) &&
+                (aiAccess ? (
+                  <AskWhyButton sessionId={session.id} />
+                ) : (
+                  <AskWhyButton href="/app/settings/ai" />
+                ))}
+            </div>
+          )}
 
           {showSwap && (
             <form
@@ -2154,6 +2165,19 @@ export function SessionDrawer({
             width: 100%;
             text-align: center;
             justify-content: center;
+          }
+          .plan-drawer .drawer-cta-extras {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+          }
+          /* The "Log now" CTA (and its expanded date form) takes the full row so
+             the form is readable and the primary button never wraps to 2 lines. */
+          .plan-drawer .drawer-cta-extras > [data-testid^="overdue-log-"],
+          .plan-drawer .drawer-cta-extras > [data-testid^="log-now-form-"] {
+            flex: 1 1 100%;
           }
           .plan-drawer .section {
             margin: 20px 0 8px;
