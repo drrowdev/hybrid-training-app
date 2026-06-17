@@ -18,6 +18,7 @@ import { TB_TEMPLATES } from "@hta/tacticalbarbell";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { selectablePrograms, getProgramEngine, getNativeProgramEngine } from "@/lib/platform/registry";
 import { buildPlatformContext } from "@/lib/platform/context";
+import { getBlockEditContext } from "@/lib/platform/edit-context";
 import { getTrainingMaxContext } from "@/lib/training-maxes/queries";
 import { STRENGTH_ROLE_CANDIDATES, type StrengthRole } from "@/lib/planner/archetypes";
 import { ENGINE_KEY_TO_ROLE } from "@/lib/platform/movement-keys";
@@ -80,7 +81,7 @@ function defaultSessionsPerWeek(engine: ProgramEngine): number | undefined {
 export default async function ProgramPickerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ program?: string; phase?: string }>;
+  searchParams: Promise<{ program?: string; phase?: string; edit?: string }>;
 }) {
   const supabase = await createClient();
   const {
@@ -155,6 +156,11 @@ export default async function ProgramPickerPage({
     sp.program && ENABLED_PROGRAM_IDS.has(sp.program) ? sp.program : undefined;
   const initialLoadoutValue = initialProgramId && sp.phase ? sp.phase : undefined;
 
+  // Edit mode (?edit=<blockId>): re-enter the wizard for the user's active
+  // strength-only plan (5/3/1 / TB), prefilled with its current loadout +
+  // schedule + cardio days. Null when the block isn't editable → fresh wizard.
+  const editContext = sp.edit ? await getBlockEditContext(sp.edit) : null;
+
   return (
     <div className={`${archivo.variable} ${oswald.variable} ${saira.variable} ${jetbrains.variable}`}>
       <ProgramPicker
@@ -165,6 +171,7 @@ export default async function ProgramPickerPage({
         {...(pullupMovement ? { pullupMovement } : {})}
         {...(initialProgramId ? { initialProgramId } : {})}
         {...(initialLoadoutValue ? { initialLoadoutValue } : {})}
+        {...(editContext ? { editContext } : {})}
       />
     </div>
   );

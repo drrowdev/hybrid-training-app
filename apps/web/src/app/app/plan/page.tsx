@@ -94,6 +94,12 @@ export default async function PlanPage({
   // it a "block" — matching each methodology's own book terminology.
   const cycleNoun = block.programFamily === "531" ? "cycle" : "block";
 
+  // Forward-only wizard re-entry ("Edit plan") is wired for the strength-only
+  // foreign programs (5/3/1, Tactical Barbell) — the ones whose cardio days are
+  // user-added in the wizard. Other programs own their own calendar/cardio.
+  const canEditPlan =
+    block.programId === "wendler-531" || block.programId === "tactical-barbell";
+
   const [all, { data: profile }, blockNumbering] = await Promise.all([
     getPlannedDays(block.id, block.startedOn),
     supabase
@@ -279,6 +285,36 @@ export default async function PlanPage({
             Start a new program
           </Link>
         </div>
+
+        {canEditPlan && (
+          <>
+            <div style={{ borderTop: "1px solid var(--cp-border)" }} />
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: 12,
+              }}
+            >
+              <div style={{ minWidth: 200 }}>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>Edit this plan</div>
+                <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
+                  Re-open the wizard to adjust your schedule or add cardio days. Changes apply to
+                  upcoming weeks — this week and your logged sessions stay as they are.
+                </div>
+              </div>
+              <Link
+                href={`/app/program?edit=${block.id}`}
+                className="cp-btn"
+                data-testid="edit-plan"
+              >
+                Edit plan
+              </Link>
+            </div>
+          </>
+        )}
 
         <div style={{ borderTop: "1px solid var(--cp-border)" }} />
 

@@ -433,7 +433,14 @@ function buildWeek(n: number): DayType[] {
   return w;
 }
 
-/** Sensible default weekday spread for a given sessions-per-week count (0=Mon). */
+/** Build a week from explicit strength + cardio weekdays (edit-mode prefill). */
+function buildWeekFrom(strengthDays: number[], cardioDays: number[]): DayType[] {
+  const w: DayType[] = Array.from({ length: 7 }, () => "rest");
+  for (const d of cardioDays) if (d >= 0 && d <= 6) w[d] = "cardio";
+  // Strength wins any collision so the strength-day count stays correct.
+  for (const d of strengthDays) if (d >= 0 && d <= 6) w[d] = "strength";
+  return w;
+}
 const DAY_SPREADS: Record<number, number[]> = {
   1: [0],
   2: [0, 3],
@@ -578,6 +585,17 @@ function upcomingMondayYmd(ymd: string): string {
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
 }
 
+export interface ProgramEditContextProp {
+  blockId: string;
+  programId: string;
+  setupValues: Record<string, unknown>;
+  strengthWeekdays: number[];
+  cardioWeekdays: number[];
+  startedOn: string;
+  supersetAccessories: boolean;
+  accessoriesEnabled: boolean;
+}
+
 export function ProgramPicker({
   programs,
   anchoredKeys,
@@ -586,6 +604,7 @@ export function ProgramPicker({
   pullupMovement,
   initialProgramId,
   initialLoadoutValue,
+  editContext,
 }: {
   programs: PickerProgram[];
   anchoredKeys: string[];
@@ -596,11 +615,21 @@ export function ProgramPicker({
   initialProgramId?: string;
   /** Deep-link preselect: the loadout value for that program (Green Protocol phaseId). */
   initialLoadoutValue?: string;
+  /** Edit mode: re-enter the wizard for an active plan, prefilled + program-locked. */
+  editContext?: ProgramEditContextProp;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<CreateProgramInstanceResult | null>(null);
   const [modalInfo, setModalInfo] = useState<ProgInfo | null>(null);
+
+  // Edit mode: re-enter the wizard for an active plan. Behaves like a locked
+  // preselect — start on Loadout, program fixed, schedule/loadout prefilled from
+  // the live block. Changes apply forward-only (past + current week stay logged).
+  const editProgram = editContext
+    ? programs.find((p) => p.id === editContext.programId) ?? null
+    : null;
+  const isEditing = !!editContext && !!editProgram;
 
   // Deep-link preselect (guided advance): when the route carries ?program=&phase=
   // (e.g. the Today "Set up Velocity →" nudge), open the wizard already on that
@@ -608,8 +637,12 @@ export function ProgramPicker({
   // the user can fine-tune (cluster, schedule) before deploying. Derived from props
   // straight into the initial state below — no effects, no render-phase mutation.
   const preselectProgram =
-    initialProgramId ? programs.find((p) => p.id === initialProgramId && p.enabled) ?? null : null;
+    editProgram ??
+    (initialProgramId ? programs.find((p) => p.id === initialProgramId && p.enabled) ?? null : null);
   function preselectValues(): Record<string, unknown> {
+    if (isEditing && editContext) {
+      return { ...defaultValuesFor(editProgram!.fields), ...editContext.setupValues };
+    }
     if (!preselectProgram) return {};
     const base = defaultValuesFor(preselectProgram.fields);
     const key = loadoutFieldKey(preselectProgram.id);
@@ -627,7 +660,9 @@ export function ProgramPicker({
   const selected = programs.find((p) => p.id === selectedId) ?? null;
 
   const [values, setValues] = useState<Record<string, unknown>>(preselectValues);
-  const [startedOn, setStartedOn] = useState<string>(upcomingMondayYmd(todayYmd()));
+  const [startedOn, setStartedOn] = useState<string>(
+    isEditing && editContext ? editContext.startedOn : upcomingMondayYmd(todayYmd()),
+  );
   const [raceDate, setRaceDate] = useState<string>("");
   // Start point (the program phase/block to begin from). Default 0 = beginning.
   const [segments, setSegments] = useState<ProgramSegmentOption[]>([]);
@@ -669,10 +704,18 @@ export function ProgramPicker({
   }, [step, selectedId, startedOn, raceDate, valuesKey]);
 
   // Weekly schedule grid: 7 day cells. The strength days become deploy `weekdays`.
-  const [week, setWeek] = useState<DayType[]>(() => buildWeek(preselectProgram?.sessionsPerWeek ?? 4));
+  const [week, setWeek] = useState<DayType[]>(() =>
+    isEditing && editContext
+      ? buildWeekFrom(editContext.strengthWeekdays, editContext.cardioWeekdays)
+      : buildWeek(preselectProgram?.sessionsPerWeek ?? 4),
+  );
   // 5/3/1 lets the user pick strength frequency; other programs derive it.
   const [freq531, setFreq531] = useState<number>(
-    preselectProgram?.id === "wendler-531" ? (preselectProgram.sessionsPerWeek ?? 4) : 4,
+    isEditing && editContext?.programId === "wendler-531"
+      ? Math.max(1, Math.min(7, editContext.strengthWeekdays.length))
+      : preselectProgram?.id === "wendler-531"
+        ? (preselectProgram.sessionsPerWeek ?? 4)
+        : 4,
   );
   // 5/3/1 2-day lift pairing (which two lifts share each session). Only used when
   // 5/3/1 runs at 2 days/week; ignored otherwise.
@@ -713,13 +756,17 @@ export function ProgramPicker({
   // optional). GP is periodised, so the cap is per strength session rather than
   // a single template — the offer itself is unconditional when GP is selected.
   const accessoriesOffered = (isTb && tbAccessoryPlan != null) || isGp;
-  const [accessoriesOn, setAccessoriesOn] = useState<boolean>(false);
+  const [accessoriesOn, setAccessoriesOn] = useState<boolean>(
+    isEditing && editContext ? editContext.accessoriesEnabled : false,
+  );
   const [accessoryMuscles, setAccessoryMuscles] = useState<string[]>([...TB_DEFAULT_ACCESSORY_MUSCLES]);
   // Per-block two-a-day preference (migration 0110) — Hybrid only, default OFF.
   const [twoADay, setTwoADay] = useState<boolean>(false);
   // Per-block antagonist-superset accessories (migration 0111) — ALL programs,
   // default OFF.
-  const [supersetAccessories, setSupersetAccessories] = useState<boolean>(false);
+  const [supersetAccessories, setSupersetAccessories] = useState<boolean>(
+    isEditing && editContext ? editContext.supersetAccessories : false,
+  );
 
   const [cluster, setCluster] = useState<PickerClusterEntry[]>(() =>
     activeTbTemplate ? defaultClusterFor(activeTbTemplate, anchoredKeys) : [],
@@ -1062,9 +1109,10 @@ export function ProgramPicker({
           : {}),
         ...(isHybrid && twoADay ? { twoADay: true } : {}),
         ...(supersetAccessories ? { supersetAccessories: true } : {}),
+        ...(isEditing && editContext ? { editBlockId: editContext.blockId } : {}),
       });
       setResult(res);
-      if (res.ok) router.push("/app");
+      if (res.ok) router.push(isEditing ? "/app/plan" : "/app");
     });
   }
 
@@ -1082,8 +1130,11 @@ export function ProgramPicker({
 
   const canContinue = step !== 0 || !!selected;
 
+  // In edit mode the program is locked, so the wizard floor is the Loadout step.
+  const minStep = isEditing ? 1 : 0;
+
   function goBack() {
-    setStep((s) => Math.max(0, s - 1));
+    setStep((s) => Math.max(minStep, s - 1));
   }
   function goNext() {
     setStep((s) => {
@@ -1094,6 +1145,7 @@ export function ProgramPicker({
   }
   /** Jump straight to an already-visited step via the progress rail. */
   function goToStep(i: number) {
+    if (i < minStep) return;
     if (i <= maxStep && i !== step) setStep(i);
   }
 
@@ -1912,9 +1964,12 @@ export function ProgramPicker({
             className={styles.datein}
             value={startedOn}
             onChange={(e) => setStartedOn(e.target.value)}
+            disabled={isEditing}
           />
           <div className={styles.note} style={{ marginTop: 6 }}>
-            Programs run in full weeks, so we start on a Monday by default.
+            {isEditing
+              ? "Your start date stays fixed — edits apply to upcoming weeks only."
+              : "Programs run in full weeks, so we start on a Monday by default."}
           </div>
           {selected?.id === "hyrox" ? (
             <div style={{ marginTop: 16 }}>
@@ -1935,7 +1990,7 @@ export function ProgramPicker({
           ) : null}
         </div>
 
-        {segments.length > 1 ? (
+        {!isEditing && segments.length > 1 ? (
           <div style={{ marginBottom: 18 }}>
             <div className={styles.label}>Start point</div>
             <select
@@ -2078,7 +2133,23 @@ export function ProgramPicker({
 
   return (
     <div className={styles.wizard}>
-      <h1 className={styles.pageTitle}>Start a program</h1>
+      <h1 className={styles.pageTitle}>{isEditing ? "Edit your plan" : "Start a program"}</h1>
+
+      {isEditing && (
+        <div
+          className="cp-card"
+          style={{
+            padding: "10px 14px",
+            margin: "0 0 4px",
+            fontSize: 13,
+            color: "var(--cp-text-muted, #9aa0a6)",
+            borderColor: "var(--cp-border)",
+          }}
+        >
+          Editing your active {editProgram?.name ?? "plan"}. Changes apply to upcoming weeks —
+          this week and everything you&rsquo;ve already logged stay as they are.
+        </div>
+      )}
 
       <div className={styles.top}>
         <div className={styles.stepcount} style={{ marginLeft: "auto" }}>
@@ -2088,7 +2159,7 @@ export function ProgramPicker({
 
       <div className={styles.rail}>
         {STEP_LABELS.map((label, i) => {
-          const navigable = i <= maxStep && i !== step;
+          const navigable = i >= minStep && i <= maxStep && i !== step;
           return (
             <div
               key={label}
@@ -2115,7 +2186,7 @@ export function ProgramPicker({
       </div>
       <div className={styles.raillabels}>
         {STEP_LABELS.map((label, i) => {
-          const navigable = i <= maxStep && i !== step;
+          const navigable = i >= minStep && i <= maxStep && i !== step;
           return navigable ? (
             <button
               key={label}
@@ -2139,7 +2210,7 @@ export function ProgramPicker({
       {step === 3 && renderScheduleStep()}
 
       <div className={styles.nav}>
-        {step > 0 ? (
+        {step > minStep ? (
           <button type="button" className={`${styles.btn} ${styles.ghost}`} onClick={goBack}>
             Back
           </button>
@@ -2157,7 +2228,13 @@ export function ProgramPicker({
               onClick={deploy}
               disabled={!canDeploy}
             >
-              {pending ? "Deploying…" : "Deploy program"}
+              {isEditing
+                ? pending
+                  ? "Saving…"
+                  : "Save changes"
+                : pending
+                  ? "Deploying…"
+                  : "Deploy program"}
             </button>
           </span>
         ) : (
