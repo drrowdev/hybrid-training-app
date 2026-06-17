@@ -304,7 +304,18 @@ export function MovementCard({
     const first = group.items[0];
     if (!first || first.kind === "main") return undefined;
     const note = cleanPrescriptionNotes(first.notes);
-    return note && note.trim().length > 0 ? note : undefined;
+    if (!note) return undefined;
+    const trimmed = note.trim();
+    if (trimmed.length === 0) return undefined;
+    // Some generators stash the set's rep TARGET in `notes` (e.g. "10–15" or
+    // "12") rather than a rationale. That's already implied by the row's set ×
+    // reps — surfacing it under a "Why this movement" heading reads as empty.
+    // Only treat genuine prose (a multi-word explanation) as a "why".
+    if (/^\d+\s*[\u2013-]\s*\d+$/.test(trimmed) || /^\d+$/.test(trimmed)) {
+      return undefined;
+    }
+    if (!/\s/.test(trimmed)) return undefined;
+    return trimmed;
   }, [group.items, readOnly]);
 
   return (
