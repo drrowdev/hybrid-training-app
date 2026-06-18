@@ -21,6 +21,7 @@ export function NextBlockSuggestionCard({
   nudge,
   eyebrow = "Suggested next focus",
   suggestionTail = "It\u2019s only a suggestion.",
+  heading,
   cta,
   testId,
 }: {
@@ -29,6 +30,10 @@ export function NextBlockSuggestionCard({
   eyebrow?: string;
   /** Trailing sentence after the suggestion reason. */
   suggestionTail?: string;
+  /** Override the default "Consider a <program> block next" heading (e.g. the
+   *  Season-aware nudge, where the next block is the user's own plan, not a
+   *  fresh suggestion). */
+  heading?: string;
   /** Optional link rendered at the foot of the card. */
   cta?: { href: string; label: string };
   testId?: string;
@@ -65,7 +70,7 @@ export function NextBlockSuggestionCard({
           {suggestion && (
             <>
               <h2 style={{ fontSize: 18, margin: 0, letterSpacing: "-0.01em" }}>
-                Consider a {suggestedName} block next
+                {heading ?? `Consider a ${suggestedName} block next`}
               </h2>
               <p
                 style={{
