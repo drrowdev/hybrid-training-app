@@ -327,6 +327,9 @@ export interface BlockAssemblyContext {
   secondaryFocus: SecondaryFocus;
   /** ADR 0024 per-block accessory volume level. */
   accessoryVolume: AccessoryVolumeLevel;
+  /** ADR 0052 — Season strength↔endurance generator bias (Hybrid only). Optional;
+   *  absent/null = no bias = byte-identical. */
+  seasonBias?: "strength" | "endurance" | null;
   /** Raw `profiles.bodyweight_kg` (used for BW main-lift scaling). */
   profileBodyweightKg: number | string | null | undefined;
   /** Raw `profiles.bw_assessment_completed_at` (gates hinge compensation). */
@@ -396,6 +399,7 @@ export function assembleBlockSessions(
     effortPreference,
     secondaryFocus,
     accessoryVolume,
+    seasonBias,
     profileBodyweightKg,
     bwAssessmentCompletedAt,
     preferredCardioModalities,
@@ -582,7 +586,7 @@ export function assembleBlockSessions(
         // volume creep + VO2 peak-week density bump, scaled to cardio emphasis.
         const pPlan = dPlan
           ? null
-          : cardioProgressionPlan({ day, archetype, weekIndex: week, secondaryFocus });
+          : cardioProgressionPlan({ day, archetype, weekIndex: week, secondaryFocus, seasonBias });
         if (dPlan || pPlan) {
           cardioDayOverride = {
             ...day,

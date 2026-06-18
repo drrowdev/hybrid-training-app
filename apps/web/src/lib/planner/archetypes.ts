@@ -1586,11 +1586,12 @@ export function requiredCardioSlugs(archetype: Archetype): string[] {
  * on the deload week, on non-cardio days, and on archetypes whose tier is
  * "none" — so every existing block stays byte-identical.
  */
-export type CardioProgressionTier = "pure" | "mixed" | "balanced" | "none";
+export type CardioProgressionTier = "pure" | "mixed" | "balanced" | "endurance_biased" | "none";
 
 export function cardioProgressionTier(
   archetypeId: ArchetypeId,
   secondaryFocus: string | null,
+  seasonBias: "strength" | "endurance" | null = null,
 ): CardioProgressionTier {
   if (archetypeId === "endurance_anchor") {
     // Cardio is the primary goal. A strength/muscle SECONDARY tempers the creep
@@ -1600,7 +1601,14 @@ export function cardioProgressionTier(
       ? "mixed"
       : "pure";
   }
-  if (archetypeId === "concurrent_hybrid") return "balanced";
+  if (archetypeId === "concurrent_hybrid") {
+    // ADR 0052 — an `endurance_bias` Season block raises the easy-volume creep
+    // to the `endurance_biased` tier (creeps the Z2 day, which the default
+    // `balanced` tier does NOT, since balanced only creeps a "long" driver and
+    // Hybrid ships an `easy_z2` day). strength/null bias keeps the
+    // byte-identical "balanced".
+    return seasonBias === "endurance" ? "endurance_biased" : "balanced";
+  }
   // Strength-led or non-cardio archetypes: cardio is maintenance, not a build.
   return "none";
 }
@@ -1624,6 +1632,10 @@ const CARDIO_CREEP_PARAMS: Record<
   pure: { creepPerWeek: 0.1, cap: 0.2, includeShortEasy: true },
   mixed: { creepPerWeek: 0.05, cap: 0.15, includeShortEasy: false },
   balanced: { creepPerWeek: 0.05, cap: 0.1, includeShortEasy: false },
+  // ADR 0052 — endurance-biased concurrent block: creeps the easy Z2 day
+  // (includeShortEasy) at a modest rate, between balanced and pure. CP-1
+  // heuristic, within the 5–10%/wk aerobic-volume band (research-v2 §4); un-tuned.
+  endurance_biased: { creepPerWeek: 0.07, cap: 0.15, includeShortEasy: true },
 };
 
 export interface CardioWaveContext {
@@ -1685,9 +1697,10 @@ export function cardioProgressionPlan(args: {
   archetype: Archetype;
   weekIndex: number;
   secondaryFocus: string | null;
+  seasonBias?: "strength" | "endurance" | null;
 }): CardioProgressionPlan | null {
-  const { day, archetype, weekIndex, secondaryFocus } = args;
-  const tier = cardioProgressionTier(archetype.id, secondaryFocus);
+  const { day, archetype, weekIndex, secondaryFocus, seasonBias = null } = args;
+  const tier = cardioProgressionTier(archetype.id, secondaryFocus, seasonBias);
   if (tier === "none") return null;
   const ctx = cardioWaveContext(archetype.weekProfiles, weekIndex);
   if (ctx.isDeload) return null; // deload handled by ADR 0037 / z2 override

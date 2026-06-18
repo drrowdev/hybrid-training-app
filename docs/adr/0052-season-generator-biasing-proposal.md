@@ -1,7 +1,10 @@
-# ADR 0052 — Season emphasis → Hybrid concurrent-generator biasing (PROPOSAL)
+# ADR 0052 — Season emphasis → Hybrid concurrent-generator biasing
 
-**Status:** Proposed (design-only — written for review before any code, per the
-handoff's "propose engine changes before implementing" rule)
+**Status:** Accepted (2026-06-18) — endurance-first cut. Resolves the three open
+questions below: **(1) archetype-relative floor (3a)**, **(2) tilt magnitude
+`SEASON_BIAS_SHIFT = 0.1`**, **(3) ship `endurance_bias` first, defer
+`strength_bias`**. Originally written design-only for review per the handoff's
+"propose engine changes before implementing" rule.
 **Date:** 2026-06-18
 **Relates to:** ADR 0051 (Season roadmap — this is the deferred Phase-2
 "generator-biasing" half its Decision 7 named; the *advisory* half shipped as
@@ -63,16 +66,27 @@ So **there is no existing allocation lever to reuse** — a Season bias must be 
 
 `daysForFrequency(archetype, daysPerWeek)` (`archetypes.ts:1423`) keeps all
 anchors, then greedily fills the remaining day budget with **optionals sorted by
-`rank`**. So the strength↔cardio mix at a given frequency is a pure function of
-(a) which days are anchors and (b) the optional ranks. Worked example:
+`rank` ascending** (lowest rank picked first). Because VO2 is **rank 6 — below
+both strength optionals (bench 7, OHP 8)** — cardio is *already* favoured in the
+fill. Worked example (verified against the live code, not the earlier mis-stated
+table):
 
-- freq 4 → squat, deadlift, Z2 (anchors) + bench (rank 7) = **3 strength / 1 cardio**
-- freq 5 → + OHP = **4 strength / 1 cardio**
-- freq 6 → + VO2 = **4 strength / 2 cardio**
+- freq 3 → squat, deadlift, Z2 (anchors only) = **2 strength / 1 cardio**
+- freq 4 → + VO2 (rank 6, picked first) = **2 strength / 2 cardio**
+- freq 5 → + VO2 + bench = **3 strength / 2 cardio**
+- freq 6 → + VO2 + bench + OHP = **4 strength / 2 cardio**
 
 Cardio *volume* is the archetype `durationMin` (60/45) plus the fixed `"balanced"`
 creep `CARDIO_CREEP_PARAMS.balanced = { creepPerWeek: 0.05, cap: 0.1 }`
 (`archetypes.ts:1626`) applied by `cardioProgressionPlan` (`archetypes.ts:1683`).
+
+**Consequence for the lever choice (important):** because day-allocation already
+prioritises cardio, an `endurance_bias` gains little from a rank reorder — the
+real lever is **cardio VOLUME** (raise the easy-volume creep, the ADR-0038
+"easy-volume creep ON" the ADR 0051 mapping table specified). A `strength_bias`
+is the mirror: it would **demote VO2** (so strength optionals fill first → more
+strength days) **and clamp the creep to 0** (hold cardio flat) — which *removes*
+cardio and is the higher-detraining-risk direction, hence deferred to a later cut.
 
 **Therefore a bias has exactly three clean levers, all *before* the ceiling:**
 1. **Optional-rank reorder** — promote VO2 (endurance bias) or strength optionals
@@ -197,12 +211,22 @@ opt-in, gated, reversible, and paired with the PR-#610 validator.
   shipped in PR #610 stays; a writable slider is a separate ADR if wanted).
 - A guaranteed-performance claim (Decision 8 / Grgic 2017).
 
-## Open questions for review
+## Resolved (2026-06-18) + first cut
 
-1. **Floor tension (the key one):** 3a (archetype-relative floor — recommended),
-   3b (literal 2×/wk), or 3c (bias only at freq ≥ 5)?
-2. **Tilt magnitude:** start `SEASON_BIAS_SHIFT` at the shipped 0.1 (→ ~60/40), or
-   more conservative (0.05) for the first generator-affecting release?
-3. **Scope of first cut:** ship `endurance_bias` first (lower risk — it only adds
-   easy aerobic volume, the ADR-0038 path already exists) and defer
-   `strength_bias` (which must *remove* cardio, higher detraining risk)?
+1. **Floor tension → 3a (archetype-relative floor).** The enforced floor is "do
+   not drop the held quality below its archetype anchor." For Hybrid the held-
+   cardio floor is the **1 Z2 anchor at 60 min**; the global 2×/wk stays the
+   *advisory* baseline (PR #610), not an enforced add.
+2. **Tilt magnitude → `SEASON_BIAS_SHIFT = 0.1`** (the already-shipped display
+   value), now also gaining a generator effect + validation plan.
+3. **First cut → `endurance_bias` only.** It only *adds* easy aerobic volume via
+   the existing ADR-0038 creep path (low risk). `strength_bias` (which must
+   *remove* cardio) is accepted in design but **deferred** — a `strength_bias`
+   Hybrid block is a generator no-op for now and keeps expressing itself through
+   selection + the advisory floor.
+
+**This cut implements:** `seasonBias` threaded (Hybrid only, default null ⇒
+byte-identical); when `"endurance"`, the Z2 easy-volume creep is raised one band
+(toward ADR-0038's `mixed`/`pure`), holding the strength anchors untouched. Day
+allocation is NOT reordered (cardio is already favoured). Golden master stays
+green for null bias.

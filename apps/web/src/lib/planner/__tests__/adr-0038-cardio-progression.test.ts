@@ -101,6 +101,50 @@ describe("ADR 0038 — pure tier (endurance, no strength secondary)", () => {
   });
 });
 
+describe("ADR 0052 — endurance-bias raises concurrent cardio creep", () => {
+  const easyZ2 = CONCURRENT_HYBRID.days.find(
+    (d): d is CardioDay => d.kind === "cardio" && d.role === "easy_z2",
+  )!;
+
+  it("maps concurrent_hybrid + endurance bias to the endurance_biased tier; else balanced", () => {
+    expect(cardioProgressionTier("concurrent_hybrid", "none", "endurance")).toBe("endurance_biased");
+    // strength bias is deferred (a no-op this cut) and null is unchanged.
+    expect(cardioProgressionTier("concurrent_hybrid", "none", "strength")).toBe("balanced");
+    expect(cardioProgressionTier("concurrent_hybrid", "none", null)).toBe("balanced");
+  });
+
+  it("creeps the easy Z2 day under endurance bias, but never at baseline", () => {
+    let biasedCreeps = 0;
+    for (let w = 0; w < CONCURRENT_HYBRID.weekProfiles.length; w++) {
+      // Baseline (balanced) never creeps the easy_z2 day (it's not a "long" driver
+      // and balanced has includeShortEasy=false) — the byte-identical no-op.
+      expect(
+        cardioProgressionPlan({ day: easyZ2, archetype: CONCURRENT_HYBRID, weekIndex: w, secondaryFocus: "none" }),
+      ).toBeNull();
+      const biased = cardioProgressionPlan({
+        day: easyZ2,
+        archetype: CONCURRENT_HYBRID,
+        weekIndex: w,
+        secondaryFocus: "none",
+        seasonBias: "endurance",
+      });
+      if (biased?.durationMinOverride != null) {
+        expect(biased.durationMinOverride).toBeGreaterThan(easyZ2.durationMin!);
+        biasedCreeps++;
+      }
+    }
+    expect(biasedCreeps).toBeGreaterThan(0);
+  });
+
+  it("strength bias is a no-op on cardio creep this cut", () => {
+    for (let w = 0; w < CONCURRENT_HYBRID.weekProfiles.length; w++) {
+      expect(
+        cardioProgressionPlan({ day: easyZ2, archetype: CONCURRENT_HYBRID, weekIndex: w, secondaryFocus: "none", seasonBias: "strength" }),
+      ).toBeNull();
+    }
+  });
+});
+
 describe("ADR 0038 — invariants", () => {
   it("never progresses on the deload week (ADR 0037 owns it)", () => {
     for (const d of [LONG, EASY, BIKE, VO2]) {

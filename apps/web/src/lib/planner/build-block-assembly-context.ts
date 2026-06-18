@@ -156,6 +156,8 @@ export type BuildBlockAssemblyContextInput = {
   goal?: string;
   secondaryFocus?: string;
   accessoryVolume?: string;
+  /** ADR 0052 — Season strength↔endurance generator bias (Hybrid only). */
+  seasonBias?: "strength" | "endurance" | null;
   cardioSource: "internal" | "external";
   cardioSourceName: string | null;
   /**
@@ -229,6 +231,10 @@ export async function buildBlockAssemblyContext(
   // ADR 0024 — per-block accessory volume level (`low | medium | high`).
   // `medium` (the default) is a byte-identical no-op on every archetype.
   const accessoryVolume = resolveAccessoryVolumeLevel(input.accessoryVolume);
+  // ADR 0052 — Season generator bias (Hybrid only). null (the default for every
+  // non-Season deploy) is byte-identical: it only raises the concurrent cardio
+  // creep band when explicitly "endurance".
+  const seasonBias = input.seasonBias ?? null;
 
   // ADR 0017 — ranked cardio-modality preference. The catalog is loaded
   // lazily; with no preference set the resolver is a no-op and the default
@@ -593,6 +599,7 @@ export async function buildBlockAssemblyContext(
     effortPreference,
     secondaryFocus,
     accessoryVolume,
+    seasonBias,
     profileBodyweightKg: profile?.bodyweight_kg,
     bwAssessmentCompletedAt: profile?.bw_assessment_completed_at,
     preferredCardioModalities,
