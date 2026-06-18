@@ -341,3 +341,159 @@ which is ADR 0008's, not this ADR's.
 - Revisit whether `endurance_bias` should also creep *quality* (VO₂ density) per
   ADR 0038's "then add quality" clause, or hold quality and only build easy
   volume in a bias block — a Phase-2 calibration question.
+
+## Amendment — program/template-aware selection (2026-06-18)
+
+The base ADR modelled a Season block as `(program, emphasis)`. Review feedback
+(correct): **the template is where most of the periodization character lives.**
+"Tactical Barbell" is not one thing — Operator (3-day, strength-leaning, leaves
+room for conditioning), Zulu (4-day, higher volume), and Fighter (2-day,
+minimalist) are different *phases* of an arc. Choosing the program without the
+template is like a coach saying "do some barbell training": the useful decision
+is the specific one. This amendment makes the roadmap reason at the
+**`(program → template → emphasis)`** level, and — crucially — makes it pick well
+**without hardcoding knowledge of each program/template into the planner.**
+
+### A1. Block model gains the template
+
+`season_blocks` adds one nullable column:
+
+```
+season_blocks
+  ...
+  template_ref  text null   -- program-specific variant id (TB template id,
+                            --  5/3/1 template, Green Protocol phase entry, …).
+                            --  NULL = let the program's own default/wizard pick.
+```
+
+A Season block is now `(program_id, template_ref?, emphasis)`. `emphasis` still
+carries the hybrid strength↔endurance bias (A-spec); `template_ref` picks the
+*shape*. They compose: the emphasis says "lean strength, hold cardio"; the
+selection logic finds the `(program, template)` that best delivers that.
+
+### A2. Programs and templates describe themselves (no hardcoded planner)
+
+The planner must **understand** the catalog, not **memorise** it. Hardcoded
+"if TB and week 6 use Zulu" logic is brittle, combinatorial, and forces planner
+surgery for every new program/template. Instead, each program — and each template
+within it — exposes a small **periodization descriptor** through the existing
+registry (the same place programs already expose `describeSetup()` / `meta` /
+segments). The planner then reasons **generically** over those descriptors.
+
+```
+PeriodizationDescriptor {
+  // What qualities it develops, with coarse weights (0..1, one sig fig).
+  emphasis: {
+    strength?: number; power?: number; hypertrophy?: number;
+    endurance?: number; conditioning?: number;
+  };
+  // Where it naturally sits in an arc (a SET — many templates fit several).
+  arcRoles: Array<'base' | 'accumulation' | 'intensification'
+                 | 'realization' | 'peak' | 'maintenance'>;
+  // Coarse load shape, for matching + the maintenance-floor / interference check.
+  frequencyBand: 'low' | 'moderate' | 'high';   // sessions/week
+  volumeBand:    'low' | 'moderate' | 'high';
+  // Does the program leave room to run the OTHER quality alongside it?
+  concurrencyHeadroom: 'low' | 'moderate' | 'high';
+  // THE granularity flag (see A3).
+  granularity: 'block' | 'arc';
+  // For 'arc' programs only: the internal phases it self-sequences.
+  internalPhases?: Array<{ label: string; arcRole: string }>;
+  // Optional eligibility (experience floor, equipment) — reuses existing gates.
+  requires?: { experienceMin?: number; equipment?: string[] };
+}
+```
+
+This is metadata, not engine math. Adding a new program later means it **ships
+its own descriptor** and the planner picks it up automatically — zero planner
+changes. The descriptor is the single source of truth, co-located with the
+program (so it can't drift from the picker, exactly like the registry display
+names today).
+
+### A3. Granularity — some programs are already arcs
+
+The load-bearing nuance. Programs differ in **granularity**:
+
+- **`block`** — a single sequenceable mesocycle: Hybrid, one Tactical Barbell
+  template, one 5/3/1 cycle. The roadmap orders these.
+- **`arc`** — a program that **periodizes itself** across multiple phases:
+  **Green Protocol** (cycles through TB templates base → build → peak) and
+  **HYROX** (a race build with internal phases). Selecting an `arc` program *is*
+  selecting a multi-phase span of the Season.
+
+The planner must **not** wrap extra periodization around an `arc` program's
+internal phases (that would nest a macrocycle inside a macrocycle and double-
+periodize). Instead it treats an `arc` block as occupying its whole span, and the
+roadmap UI can **expand** it to show the internal phases — read from the existing
+`programSegments`, no new data. A Season is therefore a mix of `block` units the
+planner sequences and `arc` units that bring their own internal sequence.
+
+### A4. Selection logic (generic, advisory)
+
+Given a Season slot's target `(emphasis, arcRole)` and the user's context
+(recent blocks, experience, equipment, upcoming event), a **pure** function
+scores every eligible `(program, template)` candidate by descriptor fit:
+
+1. **Emphasis fit** — cosine-style match between the slot's desired emphasis
+   vector and the candidate's `emphasis`.
+2. **Arc-role fit** — does the slot's `arcRole` ∈ candidate `arcRoles`.
+3. **Concurrency fit** — for a `*_bias` slot, prefer high `concurrencyHeadroom`
+   (room to hold the other quality at its maintenance floor, A-spec).
+4. **Anti-staleness / recency** — down-weight the template just run (ties to the
+   existing ADR 0010 staleness rule).
+5. **Eligibility gate** — drop candidates failing `requires` (experience/equipment).
+6. **Event coherence** — near an A-event, prefer `peak`/`arc` candidates whose
+   taper matches the event modality (ADR 0008).
+
+It returns a ranked `(program, template, reason)` and **proposes, never auto-
+applies** — the user accepts or overrides in the wizard, as everywhere else. The
+reason is plain-English ("two strength-leaning blocks done — TB Zulu adds the
+conditioning volume to round you out before your race"). Returning *no confident
+pick* is allowed (the user just chooses) — silence beats a low-confidence pick.
+
+### A5. The descriptors, grounded against today's catalog (illustrative)
+
+| Program / template | emphasis (lean) | arcRoles | granularity |
+|---|---|---|---|
+| 5/3/1 (FSL) | strength ▰▰▰, hypertrophy ▰ | accumulation, intensification | block |
+| TB Operator | strength ▰▰, conditioning headroom **high** | intensification, maintenance | block |
+| TB Zulu | strength ▰▰, hypertrophy ▰▰ (higher volume) | accumulation | block |
+| TB Fighter | strength ▰ (minimalist, 2-day) | maintenance | block |
+| Hybrid | balanced concurrent, **bias-tunable** | base, build (any, via emphasis) | block |
+| Green Protocol | endurance ▰▰ + strength ▰ concurrent | **self-sequences** base→build→peak | **arc** |
+| HYROX | conditioning ▰▰▰ + strength ▰, race-specific | **self-sequences** to race week | **arc** |
+
+(Weights illustrative — the real values ship as one-sig-fig heuristics per A6.)
+This shows the model already covers the catalog: a "strength-bias, intensification"
+slot proposes 5/3/1 or TB Operator; a "round out my conditioning" slot proposes
+TB Zulu; a "build my engine for a race" slot proposes the Green Protocol or HYROX
+**arc** and stops adding phases around it.
+
+### A6. CP pressure-test addendum
+
+- The **descriptors** are metadata (tags + coarse bands), not engine constants —
+  they don't enter `buildPrescription` or any CP-2 row. They are authored
+  alongside each program and reviewed like copy.
+- The **selection weights** (how much emphasis-fit vs arc-fit vs staleness vs
+  concurrency each count) ARE new heuristics → **CP-1**, tagged
+  `// heuristic — Season selection weights (CP-1), practitioner-consensus`, with a
+  validation plan: **proposal-acceptance rate** (do users accept the proposed
+  `(program, template)` or override?) is the Stage-B signal; a low acceptance rate
+  on a given slot type means the weights (or a descriptor) are wrong. This is a
+  *product* signal, honestly weaker than physiology, but it directly measures
+  whether the picker proposes things advanced users agree with — which is the
+  feature's actual job.
+- **CP-3:** emphasis weights and bands ship at one significant figure with the
+  heuristic tag. **CP-4 untouched:** this is *selection* logic that runs before a
+  block is ever materialised — it never enters the ceiling chain. **CP-5:**
+  arc-role framing cites Issurin 2010 (MODERATE); no fabricated precision.
+
+### A7. Net
+
+The Season's blocks become `(emphasis + a proposed program AND template)`, matched
+by a **self-description tag layer on every program and template** plus a
+**granularity flag** that knows which programs are already arcs. The planner stays
+generic and registry-driven: the catalog teaches it what each option is *for*, so
+it can propose the right program and the right template at the right point in the
+arc — and new programs slot in by shipping their own descriptor. Still advisory,
+still forward-only-materialised, still CP-clean.
