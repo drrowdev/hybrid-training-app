@@ -35,6 +35,12 @@ import {
   goalRunwayStatus,
 } from "@/lib/seasons/goal-math";
 import { emphasisToSlot, selectNextBlock } from "@/lib/seasons/select-next-block";
+import {
+  floorAdvisory,
+  floorAdvisoryText,
+  balanceSplit,
+  type FloorContext,
+} from "@/lib/seasons/maintenance-floor";
 import type { SeasonEmphasis } from "@hta/db";
 import styles from "./SeasonRoadmap.module.css";
 
@@ -51,6 +57,8 @@ export type SeasonRoadmapProps = {
   today: string;
   /** Upcoming A-priority events the user can anchor the Season to. */
   upcomingEvents: UpcomingEvent[];
+  /** Rolling baseline + interference context for the maintenance-floor advisory. */
+  floorContext: FloorContext | null;
 };
 
 /** Friendly labels for the emphasis enum (hybrid strength↔endurance bias). */
@@ -68,17 +76,6 @@ const MAX_SEASON_BLOCKS = 8;
 
 function emphasisLabel(value: string): string {
   return EMPHASIS_LABEL[value] ?? value;
-}
-
-/** Advisory maintenance-floor line for a bias block (ADR 0051 Decision 7).
- *  Qualitative for now — the held quality stays at a maintenance floor so it
- *  doesn't detrain. The live interference-scalar check is a later phase. */
-function biasFloorNote(emphasis: string): string | null {
-  if (emphasis === "strength_bias")
-    return "Cardio held at a maintenance floor so your engine doesn’t fade.";
-  if (emphasis === "endurance_bias")
-    return "Strength held at a maintenance floor so you don’t detrain it.";
-  return null;
 }
 
 type BlockDraft = {
@@ -104,6 +101,7 @@ export function SeasonRoadmap({
   emphasisOptions,
   today,
   upcomingEvents,
+  floorContext,
 }: SeasonRoadmapProps) {
   if (!season) {
     return (
@@ -121,6 +119,7 @@ export function SeasonRoadmap({
       emphasisOptions={emphasisOptions}
       today={today}
       upcomingEvents={upcomingEvents}
+      floorContext={floorContext}
     />
   );
 }
@@ -336,12 +335,14 @@ function SeasonPopulated({
   emphasisOptions,
   today,
   upcomingEvents,
+  floorContext,
 }: {
   season: ActiveSeason;
   programs: SeasonRoadmapProgram[];
   emphasisOptions: readonly string[];
   today: string;
   upcomingEvents: UpcomingEvent[];
+  floorContext: FloorContext | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -607,11 +608,7 @@ function SeasonPopulated({
                       {emphasisLabel(b.emphasis)}
                     </span>
                     {b.intentNote && <div className={styles.why}>{b.intentNote}</div>}
-                    {biasFloorNote(b.emphasis) && (
-                      <div className={styles.floorNote} data-testid="season-floor-note">
-                        🛡 {biasFloorNote(b.emphasis)}
-                      </div>
-                    )}
+                    <BiasFloor emphasis={b.emphasis} floorContext={floorContext} />
                     {b.status === "planned" && (
                       <div className={styles.ctrls}>
                         {b.id === nextPlannedId && (
@@ -831,6 +828,52 @@ function AddBlockCard({
             + Add block
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Bias block: read-only balance + maintenance-floor advisory ────── */
+
+function BiasFloor({
+  emphasis,
+  floorContext,
+}: {
+  emphasis: string;
+  floorContext: FloorContext | null;
+}) {
+  const split = balanceSplit(emphasis);
+  if (!split) return null; // not a bias block → nothing to show
+  const adv = floorAdvisory(emphasis, floorContext);
+  const text = adv
+    ? floorAdvisoryText(adv)
+    : emphasis === "strength_bias"
+      ? "Cardio held at a maintenance floor so your engine doesn’t fade."
+      : "Strength held at a maintenance floor so you don’t detrain it.";
+  return (
+    <div className={styles.bias} data-testid="season-bias">
+      <div
+        className={styles.balanceBar}
+        role="img"
+        aria-label={`Intended balance: ${split.primaryLabel} ${split.primaryPct}, ${split.secondaryLabel} ${split.secondaryPct}`}
+        data-testid="season-balance-bar"
+      >
+        <span className={styles.balPrimary} style={{ width: `${split.primaryPct}%` }} />
+        <span className={styles.balSecondary} style={{ width: `${split.secondaryPct}%` }} />
+      </div>
+      <div className={styles.balLabels}>
+        <span>
+          {split.primaryLabel} <b>{split.primaryPct}</b>
+        </span>
+        <span>
+          {split.secondaryLabel} <b>{split.secondaryPct}</b>
+        </span>
+      </div>
+      <div
+        className={`${styles.floorNote} ${adv?.severity === "watch" ? styles.floorWatch : ""}`}
+        data-testid="season-floor-note"
+      >
+        🛡 {text}
       </div>
     </div>
   );

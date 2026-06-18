@@ -185,6 +185,34 @@
   color: var(--cp-text-soft);
   line-height: 1.35;
 }
+.floorWatch {
+  color: var(--cp-warning);
+}
+.bias {
+  display: grid;
+  gap: 4px;
+  margin-top: 2px;
+}
+.balanceBar {
+  display: flex;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid var(--cp-border);
+}
+.balPrimary {
+  background: var(--cp-accent);
+}
+.balSecondary {
+  background: color-mix(in oklab, var(--cp-warning) 70%, var(--cp-surface));
+}
+.balLabels {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--cp-font-mono, monospace);
+  font-size: 10px;
+  color: var(--cp-text-muted);
+}
 .suggestBtn {
   font: inherit;
   font-size: 12px;
