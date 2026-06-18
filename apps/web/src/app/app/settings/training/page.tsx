@@ -10,6 +10,7 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { WarmupSettings } from "@/components/settings/WarmupSettings";
 import { CardioSourceSettings } from "@/components/settings/CardioSourceSettings";
 import { CardioModalitySettings } from "@/components/settings/CardioModalitySettings";
+import { SeasonPlanningToggle } from "@/components/settings/SeasonPlanningToggle";
 import { resolveWarmupScheme } from "@/lib/planner/warmups";
 import { sanitizePreferredModalities } from "@/lib/planner/preferred-cardio-modality";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -25,7 +26,7 @@ export default async function TrainingSettingsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("warmup_scheme, preferred_cardio_source, preferred_cardio_source_name, preferred_cardio_modalities")
+    .select("warmup_scheme, preferred_cardio_source, preferred_cardio_source_name, preferred_cardio_modalities, season_planning_enabled")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -68,6 +69,11 @@ export default async function TrainingSettingsPage() {
       <section style={{ display: "grid", gap: 12 }}>
         <h2 style={{ fontSize: 18, margin: 0 }}>Cardio types</h2>
         <CardioModalitySettings initial={cardioModalities} />
+      </section>
+
+      <section style={{ display: "grid", gap: 12 }}>
+        <h2 style={{ fontSize: 18, margin: 0 }}>Planning</h2>
+        <SeasonPlanningToggle initial={Boolean(profile?.season_planning_enabled)} />
       </section>
     </main>
   );
