@@ -24,11 +24,14 @@ export function SeasonDiscoveryNudge() {
   const [show, setShow] = useState(false);
 
   useEffect(() => {
+    let dismissed = false;
     try {
-      if (window.localStorage.getItem(DISMISS_KEY) !== "1") setShow(true);
+      dismissed = window.localStorage.getItem(DISMISS_KEY) === "1";
     } catch {
-      setShow(true);
+      dismissed = false;
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time localStorage mount read (runs once, [] deps); avoids an SSR flash.
+    setShow(!dismissed);
   }, []);
 
   if (!show) return null;
