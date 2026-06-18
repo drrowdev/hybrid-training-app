@@ -46,6 +46,7 @@ import { LimitationResponseCard } from "@/components/limitations/LimitationRespo
 import { addDaysToYmd } from "@/lib/dates";
 import { hasAiAccess } from "@/lib/ai/access";
 import { getActiveSeason, getUpcomingAEvents } from "@/lib/seasons/queries";
+import { getMaintenanceFloorContext } from "@/lib/seasons/maintenance-floor-server";
 import { SEASON_EMPHASIS_VALUES } from "@/lib/seasons/season-logic";
 import { selectablePrograms } from "@/lib/platform/registry";
 import { SeasonRoadmap } from "@/components/seasons/SeasonRoadmap";
@@ -84,9 +85,10 @@ export default async function PlanPage({
   const profileTz = seasonProfile?.timezone ?? "UTC";
 
   if (seasonEnabled && sp?.view === "season") {
-    const [season, upcomingEvents] = await Promise.all([
+    const [season, upcomingEvents, floorContext] = await Promise.all([
       getActiveSeason(),
       getUpcomingAEvents(todayYmd(profileTz)),
+      getMaintenanceFloorContext(supabase, user.id),
     ]);
     const programs = selectablePrograms().map((p) => ({ id: p.id, name: p.name }));
     return (
@@ -98,6 +100,7 @@ export default async function PlanPage({
           emphasisOptions={SEASON_EMPHASIS_VALUES}
           today={todayYmd(profileTz)}
           upcomingEvents={upcomingEvents}
+          floorContext={floorContext}
         />
       </div>
     );

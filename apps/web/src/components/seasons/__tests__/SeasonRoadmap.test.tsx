@@ -67,6 +67,7 @@ describe("SeasonRoadmap — empty state", () => {
         emphasisOptions={EMPHASIS}
         today="2026-06-18"
         upcomingEvents={[]}
+        floorContext={null}
       />,
     );
     expect(html).toContain('data-testid="season-empty"');
@@ -125,6 +126,7 @@ describe("SeasonRoadmap — populated state", () => {
         emphasisOptions={EMPHASIS}
         today="2026-06-18"
         upcomingEvents={[]}
+        floorContext={null}
       />,
     );
     expect(html).toContain('data-testid="season-roadmap"');
@@ -141,6 +143,7 @@ describe("SeasonRoadmap — populated state", () => {
         emphasisOptions={EMPHASIS}
         today="2026-06-18"
         upcomingEvents={[]}
+        floorContext={null}
       />,
     );
     expect(html).toContain("Hybrid");
@@ -161,6 +164,7 @@ describe("SeasonRoadmap — populated state", () => {
         emphasisOptions={EMPHASIS}
         today="2026-06-18"
         upcomingEvents={[]}
+        floorContext={null}
       />,
     );
     expect(html).toContain("Done");
@@ -176,6 +180,7 @@ describe("SeasonRoadmap — populated state", () => {
         emphasisOptions={EMPHASIS}
         today="2026-06-18"
         upcomingEvents={[]}
+        floorContext={null}
       />,
     );
     // Exactly one planned block → exactly one remove control.
@@ -193,6 +198,7 @@ describe("SeasonRoadmap — populated state", () => {
         emphasisOptions={EMPHASIS}
         today="2026-06-18"
         upcomingEvents={[]}
+        floorContext={null}
       />,
     );
     // Single planned block here → exactly one Start CTA, carrying both the
@@ -213,6 +219,7 @@ describe("SeasonRoadmap — populated state", () => {
         emphasisOptions={EMPHASIS}
         today="2026-06-18"
         upcomingEvents={[]}
+        floorContext={null}
       />,
     );
     expect(html).toContain('data-testid="season-end"');
@@ -227,6 +234,7 @@ describe("SeasonRoadmap — populated state", () => {
         emphasisOptions={EMPHASIS}
         today="2026-06-18"
         upcomingEvents={[]}
+        floorContext={null}
       />,
     );
     const editCount = (html.match(/data-testid="season-block-edit"/g) ?? []).length;
@@ -258,6 +266,7 @@ describe("SeasonRoadmap — reorder controls", () => {
         emphasisOptions={EMPHASIS}
         today="2026-06-18"
         upcomingEvents={[]}
+        floorContext={null}
       />,
     );
     expect((html.match(/data-testid="season-block-up"/g) ?? []).length).toBe(2);
@@ -272,6 +281,7 @@ describe("SeasonRoadmap — reorder controls", () => {
         emphasisOptions={EMPHASIS}
         today="2026-06-18"
         upcomingEvents={[]}
+        floorContext={null}
       />,
     );
     // At least one up-control is disabled (the first planned block); at least
@@ -308,6 +318,7 @@ describe("SeasonRoadmap — goal anchor + advisories", () => {
         emphasisOptions={EMPHASIS}
         today="2026-06-18"
         upcomingEvents={[{ id: "e1", name: "City Marathon", eventDate: "2026-09-01" }]}
+        floorContext={null}
       />,
     );
     expect(html).toContain('data-testid="season-goal-select"');
@@ -331,6 +342,7 @@ describe("SeasonRoadmap — goal anchor + advisories", () => {
         emphasisOptions={EMPHASIS}
         today="2026-06-18" // 4 weeks to the goal; 12 weeks of blocks → overrun
         upcomingEvents={[]}
+        floorContext={null}
       />,
     );
     expect(html).toContain('data-testid="season-goal-pill"');
@@ -353,9 +365,39 @@ describe("SeasonRoadmap — goal anchor + advisories", () => {
         emphasisOptions={EMPHASIS}
         today="2026-06-18"
         upcomingEvents={[]}
+        floorContext={null}
       />,
     );
     expect(html).toContain('data-testid="season-floor-note"');
     expect(html.toLowerCase()).toContain("maintenance floor");
+  });
+
+  it("renders a quantitative floor advisory + balance bar when context is present", () => {
+    const season: ActiveSeason = {
+      id: "s-bias2",
+      name: "Strength block",
+      goal: null,
+      blocks: [block({ id: "x", position: 0, status: "planned", emphasis: "strength_bias" })],
+    };
+    const html = renderToStaticMarkup(
+      <SeasonRoadmap
+        season={season}
+        programs={PROGRAMS}
+        emphasisOptions={EMPHASIS}
+        today="2026-06-18"
+        upcomingEvents={[]}
+        floorContext={{
+          cardioBaselineMinPerWk: 180,
+          cardioSessionsPerWk: 4,
+          strengthSessionsPerWk: 3,
+          cardioScalarAtFloor: 0.97,
+        }}
+      />,
+    );
+    // Read-only balance bar (60/40) + quantitative advisory (≥~60 min, 97%).
+    expect(html).toContain('data-testid="season-balance-bar"');
+    expect(html).toContain("Strength");
+    expect(html).toContain("60 min");
+    expect(html).toContain("97%");
   });
 });
