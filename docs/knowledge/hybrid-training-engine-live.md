@@ -469,3 +469,23 @@ A run of plan-review fixes hardened *what accessory movements every block guaran
 ### Next — planned review (open, June 2026)
 
 A focused review of **movement selection and block generation** is planned: auditing how main lifts, secondaries, accessories, and cardio modalities are chosen and assembled across archetypes/frequencies/focuses, to confirm the data-driven selection holds up structurally (and to surface any remaining taste-level refinements beyond the now-closed accessory-floor and deload-coherence work).
+
+---
+
+## Season / macrocycle roadmap (ADR 0051, June 2026) — advisory orchestration ONLY
+
+An **opt-in** layer ABOVE the program platform (`profiles.season_planning_enabled`, default false → with it off the app is byte-identical). A *Season* is an ordered list of block intentions `(program, template?, emphasis)`, optionally anchored to a goal event/date. It is **orchestration, never prescription**: it does NOT touch `buildPrescription`, the 2-factor ceiling chain (CP-4), the load model, the modality multipliers, or the concurrent interference scalar. No CP-2 row moves; a Season with zero blocks is byte-identical.
+
+- **Just-in-time materialization (Decision 2):** only the ACTIVE block is materialized into `training_blocks`/`planned_sessions`; future blocks are intentions with no sessions. Activation reuses `createProgramInstance` unchanged (wizard deep-link `?seasonBlockId=`), then links `season_blocks.block_id` + flips status — `apps/web/src/lib/seasons/activation.ts` (best-effort, never rolls back a valid deploy).
+- **Advisory, never blocks (Decision 4):** the Season SHOWS, never overrules. The ADR-0010 next-block nudge becomes "advance to your next planned block" when a Season is active; with no Season it behaves exactly as before.
+- **Event anchor (Decision 5):** `training_seasons.goal_type / target_event_id / target_date` (migration `0114`); the roadmap back-calculates "N weeks out" + a runway-overrun flag (`apps/web/src/lib/seasons/goal-math.ts`). The taper itself is ADR 0008's — the Season only orders blocks up to the event.
+- **Descriptor-driven selection (amendment A2–A5):** each program/template carries a coarse `PeriodizationDescriptor` (emphasis vector, arcRoles, freq/volume bands, concurrencyHeadroom, `block | arc` granularity) in `apps/web/src/lib/seasons/descriptors.ts`; the pure `selectNextBlock` (`select-next-block.ts`) ranks candidates and PROPOSES a fit with a plain-English reason — never auto-applies. Arc programs (Green Protocol, HYROX) self-sequence and are not double-periodized.
+- **Maintenance-floor advisory (Decision 7, Phase 2 "Option B"):** for a `*_bias` block a READ-ONLY check shows whether the held quality clears its maintenance floor. `apps/web/src/lib/seasons/maintenance-floor-server.ts` reads the rolling 28-day cardio/strength baseline (the same `cardio_logs.duration_sec` definition the engine uses, via `minutesByModalityFromCardioLogs`) and computes the interference scalar the held cardio would impose AT the volume floor via `computeConcurrentScalar` — it READS the scalar, never mutates it. A read-only 60/40 balance bar + a quantitative line render on bias blocks.
+
+**New constants — all CP-1 heuristics** (practitioner-consensus; the maintenance principle is Bickel 2011 *Med Sci Sports Exerc* 43(7) at HIGH, the magnitudes are not), tagged in code, with the ADR 0051 A6 validation plan (proposal-acceptance rate; measured retention of the held quality):
+- `MAINTENANCE_FREQUENCY_FLOOR = 2` sessions/wk, `MAINTENANCE_VOLUME_FLOOR_FRAC = 1/3`, `SEASON_BIAS_SHIFT = 0.1` (60/40 **display only**), `BASELINE_WINDOW_DAYS = 28` — all in `apps/web/src/lib/seasons/maintenance-floor.ts`.
+- Season selection weights (emphasis / arc / concurrency / recency / event) in `select-next-block.ts`.
+
+**Explicit non-goal / deferred (needs its own reviewed proposal):** Season emphasis does NOT yet bias the Hybrid concurrent GENERATOR's allocation. `strength_bias` / `endurance_bias` express themselves via program/template SELECTION + the advisory floor, not by re-allocating a deployed Hybrid block. Threading an emphasis knob through `setupHybrid` into the generator is a genuine engine change (the Hybrid wizard only exposes `focusMuscles` + `tmPercent`), would be gated so non-Season Hybrid stays byte-identical, and is parked.
+
+Shipped PRs #600–#610 (Phases 0–2 Option B). No CP-2 numeric row added; the four new heuristics are governed by CP-1.
