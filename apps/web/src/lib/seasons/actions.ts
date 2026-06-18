@@ -36,10 +36,19 @@ const blockInputSchema = z
   })
   .strict();
 
+const goalSchema = z
+  .object({
+    goalType: z.enum(["event", "theme"]),
+    targetDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+    targetEventId: z.string().uuid().nullish(),
+  })
+  .strict();
+
 const createSeasonSchema = z
   .object({
     name: z.string().min(1).max(80),
     blocks: z.array(blockInputSchema).min(1).max(MAX_SEASON_BLOCKS),
+    goal: goalSchema.nullish(),
   })
   .strict();
 
@@ -72,7 +81,18 @@ export async function createSeason(input: unknown): Promise<SeasonActionResult> 
 
   const { data: season, error: sErr } = await supabase
     .from("training_seasons")
-    .insert({ user_id: user.id, name: parsed.data.name, status: "active" })
+    .insert({
+      user_id: user.id,
+      name: parsed.data.name,
+      status: "active",
+      ...(parsed.data.goal
+        ? {
+            goal_type: parsed.data.goal.goalType,
+            target_date: parsed.data.goal.targetDate ?? null,
+            target_event_id: parsed.data.goal.targetEventId ?? null,
+          }
+        : {}),
+    })
     .select("id")
     .single();
   if (sErr || !season) return { ok: false, error: sErr?.message ?? "Couldn't create the season." };
@@ -273,6 +293,55 @@ export async function reorderSeasonBlocks(input: unknown): Promise<SeasonActionR
     if (error) return { ok: false, error: error.message };
   }
 
+  revalidateSeason();
+  return { ok: true };
+}
+
+const setGoalSchema = z
+  .object({
+    seasonId: z.string().uuid(),
+    /** null clears the goal anchor. */
+    goal: goalSchema.nullable(),
+  })
+  .strict();
+
+/**
+ * Set or clear a Season's goal anchor (ADR 0051 Phase 1). Passing `goal: null`
+ * clears it. User-scoped (RLS) + active-season guard. Pure metadata — no
+ * materialisation, no taper change (the taper stays ADR 0008's when a peak
+ * block activates near the event).
+ */
+export async function setSeasonGoal(input: unknown): Promise<SeasonActionResult> {
+  const parsed = setGoalSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const supabase = await createClient();
+
+  const patch = parsed.data.goal
+    ? {
+        goal_type: parsed.data.goal.goalType,
+        target_date: parsed.data.goal.targetDate ?? null,
+        target_event_id: parsed.data.goal.targetEventId ?? null,
+        updated_at: new Date().toISOString(),
+      }
+    : {
+        goal_type: null,
+        target_date: null,
+        target_event_id: null,
+        updated_at: new Date().toISOString(),
+      };
+
+  const { error } = await supabase
+    .from("training_seasons")
+    .update(patch)
+    .eq("id", parsed.data.seasonId)
+    .eq("user_id", user.id)
+    .eq("status", "active");
+  if (error) return { ok: false, error: error.message };
   revalidateSeason();
   return { ok: true };
 }

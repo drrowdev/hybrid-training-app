@@ -19,15 +19,23 @@
  */
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { ActiveSeason } from "@/lib/seasons/queries";
+import type { ActiveSeason, UpcomingEvent } from "@/lib/seasons/queries";
 import {
   createSeason,
   addSeasonBlock,
   removeSeasonBlock,
   updateSeasonBlock,
   reorderSeasonBlocks,
+  setSeasonGoal,
   abandonSeason,
 } from "@/lib/seasons/actions";
+import {
+  weeksUntil,
+  remainingPlannedWeeks,
+  goalRunwayStatus,
+} from "@/lib/seasons/goal-math";
+import { emphasisToSlot, selectNextBlock } from "@/lib/seasons/select-next-block";
+import type { SeasonEmphasis } from "@hta/db";
 import styles from "./SeasonRoadmap.module.css";
 
 export type SeasonRoadmapProgram = { id: string; name: string };
@@ -39,6 +47,10 @@ export type SeasonRoadmapProps = {
   programs: SeasonRoadmapProgram[];
   /** Valid emphasis tags (the DB enum order). */
   emphasisOptions: readonly string[];
+  /** Today (YYYY-MM-DD, user tz) for the goal "N weeks out" back-calc. */
+  today: string;
+  /** Upcoming A-priority events the user can anchor the Season to. */
+  upcomingEvents: UpcomingEvent[];
 };
 
 /** Friendly labels for the emphasis enum (hybrid strength↔endurance bias). */
@@ -56,6 +68,17 @@ const MAX_SEASON_BLOCKS = 8;
 
 function emphasisLabel(value: string): string {
   return EMPHASIS_LABEL[value] ?? value;
+}
+
+/** Advisory maintenance-floor line for a bias block (ADR 0051 Decision 7).
+ *  Qualitative for now — the held quality stays at a maintenance floor so it
+ *  doesn't detrain. The live interference-scalar check is a later phase. */
+function biasFloorNote(emphasis: string): string | null {
+  if (emphasis === "strength_bias")
+    return "Cardio held at a maintenance floor so your engine doesn’t fade.";
+  if (emphasis === "endurance_bias")
+    return "Strength held at a maintenance floor so you don’t detrain it.";
+  return null;
 }
 
 type BlockDraft = {
@@ -79,10 +102,16 @@ export function SeasonRoadmap({
   season,
   programs,
   emphasisOptions,
+  today,
+  upcomingEvents,
 }: SeasonRoadmapProps) {
   if (!season) {
     return (
-      <SeasonEmptyState programs={programs} emphasisOptions={emphasisOptions} />
+      <SeasonEmptyState
+        programs={programs}
+        emphasisOptions={emphasisOptions}
+        upcomingEvents={upcomingEvents}
+      />
     );
   }
   return (
@@ -90,6 +119,8 @@ export function SeasonRoadmap({
       season={season}
       programs={programs}
       emphasisOptions={emphasisOptions}
+      today={today}
+      upcomingEvents={upcomingEvents}
     />
   );
 }
@@ -99,9 +130,11 @@ export function SeasonRoadmap({
 function SeasonEmptyState({
   programs,
   emphasisOptions,
+  upcomingEvents,
 }: {
   programs: SeasonRoadmapProgram[];
   emphasisOptions: readonly string[];
+  upcomingEvents: UpcomingEvent[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -109,6 +142,10 @@ function SeasonEmptyState({
   const [drafts, setDrafts] = useState<BlockDraft[]>([
     newDraft(programs, emphasisOptions),
   ]);
+  // Optional goal: either an upcoming A-event ("event") or a free target date
+  // ("theme"). Empty = no goal. `goalSel` holds the event id, "theme", or "".
+  const [goalSel, setGoalSel] = useState<string>("");
+  const [themeDate, setThemeDate] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
 
   const addRow = () => {
@@ -127,6 +164,21 @@ function SeasonEmptyState({
     );
   };
 
+  const buildGoal = () => {
+    if (goalSel === "") return null;
+    if (goalSel === "theme") {
+      if (!themeDate) return null;
+      return { goalType: "theme" as const, targetDate: themeDate };
+    }
+    const evt = upcomingEvents.find((e) => e.id === goalSel);
+    if (!evt) return null;
+    return {
+      goalType: "event" as const,
+      targetEventId: evt.id,
+      targetDate: evt.eventDate,
+    };
+  };
+
   const onCreate = () => {
     setError(null);
     if (name.trim().length === 0) {
@@ -137,6 +189,7 @@ function SeasonEmptyState({
       setError("Add at least one block.");
       return;
     }
+    const goal = buildGoal();
     startTransition(async () => {
       const res = await createSeason({
         name: name.trim(),
@@ -145,6 +198,7 @@ function SeasonEmptyState({
           emphasis: b.emphasis,
           intentNote: b.intentNote.trim() === "" ? null : b.intentNote.trim(),
         })),
+        ...(goal ? { goal } : {}),
       });
       if (!res.ok) {
         setError(res.error);
@@ -183,6 +237,39 @@ function SeasonEmptyState({
           onChange={(e) => setName(e.target.value)}
           data-testid="season-name-input"
         />
+      </div>
+
+      <div className={styles.field}>
+        <label className={styles.label} htmlFor="season-goal">
+          Goal (optional)
+        </label>
+        <select
+          id="season-goal"
+          className={styles.select}
+          value={goalSel}
+          disabled={pending}
+          onChange={(e) => setGoalSel(e.target.value)}
+          data-testid="season-goal-select"
+        >
+          <option value="">No specific goal</option>
+          {upcomingEvents.map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.name} — {e.eventDate}
+            </option>
+          ))}
+          <option value="theme">A target date…</option>
+        </select>
+        {goalSel === "theme" && (
+          <input
+            className={styles.input}
+            type="date"
+            value={themeDate}
+            disabled={pending}
+            onChange={(e) => setThemeDate(e.target.value)}
+            data-testid="season-goal-date"
+            style={{ marginTop: 6 }}
+          />
+        )}
       </div>
 
       <ol className={styles.draftList} data-testid="season-draft-list">
@@ -247,10 +334,14 @@ function SeasonPopulated({
   season,
   programs,
   emphasisOptions,
+  today,
+  upcomingEvents,
 }: {
   season: ActiveSeason;
   programs: SeasonRoadmapProgram[];
   emphasisOptions: readonly string[];
+  today: string;
+  upcomingEvents: UpcomingEvent[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -258,6 +349,8 @@ function SeasonPopulated({
   // Which planned block (if any) is being edited inline, plus its working draft.
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<BlockDraft | null>(null);
+  // Whether the goal editor is open.
+  const [goalEditing, setGoalEditing] = useState(false);
 
   const nameById = new Map(programs.map((p) => [p.id, p.name]));
   const blocks = [...season.blocks].sort((a, b) => a.position - b.position);
@@ -265,6 +358,12 @@ function SeasonPopulated({
   // gets the "Start block" CTA so the roadmap advances in order (sequential
   // activation; jumping ahead is out of scope for Phase 0).
   const nextPlannedId = blocks.find((b) => b.status === "planned")?.id ?? null;
+
+  // Goal back-calc (ADR 0051 Phase 1): weeks to the goal date + whether the
+  // remaining blocks fit the runway. Advisory only — show, don't block.
+  const weeksToGoal = weeksUntil(today, season.goal?.targetDate ?? null);
+  const remainingWeeks = remainingPlannedWeeks(blocks);
+  const runway = goalRunwayStatus(weeksToGoal, remainingWeeks);
 
   const onRemove = (blockId: string) => {
     setError(null);
@@ -349,6 +448,23 @@ function SeasonPopulated({
     });
   };
 
+  const onSetGoal = (goal: {
+    goalType: "event" | "theme";
+    targetDate?: string;
+    targetEventId?: string;
+  } | null) => {
+    setError(null);
+    startTransition(async () => {
+      const res = await setSeasonGoal({ seasonId: season.id, goal });
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setGoalEditing(false);
+      router.refresh();
+    });
+  };
+
   return (
     <section
       className={`cp-card ${styles.populated}`}
@@ -359,6 +475,57 @@ function SeasonPopulated({
         <div>
           <div className={styles.eyebrow}>Season</div>
           <h2 className={styles.title}>{season.name}</h2>
+          <div className={styles.goalRow}>
+            {season.goal ? (
+              <>
+                <span className={styles.goalPill} data-testid="season-goal-pill">
+                  ◎ {season.goal.eventName ?? season.goal.targetDate ?? "Goal"}
+                  {weeksToGoal != null && (
+                    <>
+                      {" · "}
+                      <b>{weeksToGoal} wk{weeksToGoal === 1 ? "" : "s"} out</b>
+                    </>
+                  )}
+                </span>
+                {runway === "over" && (
+                  <span className={styles.goalWarn} data-testid="season-runway-warn">
+                    ⚠ {remainingWeeks} wks of blocks vs {weeksToGoal} to your goal — tighten the plan.
+                  </span>
+                )}
+                {runway === "tight" && (
+                  <span className={styles.goalNote}>Tight fit — little slack before your goal.</span>
+                )}
+                <button
+                  type="button"
+                  className={styles.mini}
+                  onClick={() => setGoalEditing((v) => !v)}
+                  disabled={pending}
+                  data-testid="season-goal-edit"
+                >
+                  ✎ Goal
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className={styles.mini}
+                onClick={() => setGoalEditing((v) => !v)}
+                disabled={pending}
+                data-testid="season-goal-add"
+              >
+                ◎ Set a goal
+              </button>
+            )}
+          </div>
+          {goalEditing && (
+            <GoalEditor
+              upcomingEvents={upcomingEvents}
+              hasGoal={!!season.goal}
+              disabled={pending}
+              onSave={onSetGoal}
+              onCancel={() => setGoalEditing(false)}
+            />
+          )}
         </div>
         <button
           type="button"
@@ -440,6 +607,11 @@ function SeasonPopulated({
                       {emphasisLabel(b.emphasis)}
                     </span>
                     {b.intentNote && <div className={styles.why}>{b.intentNote}</div>}
+                    {biasFloorNote(b.emphasis) && (
+                      <div className={styles.floorNote} data-testid="season-floor-note">
+                        🛡 {biasFloorNote(b.emphasis)}
+                      </div>
+                    )}
                     {b.status === "planned" && (
                       <div className={styles.ctrls}>
                         {b.id === nextPlannedId && (
@@ -507,6 +679,10 @@ function SeasonPopulated({
           programs={programs}
           emphasisOptions={emphasisOptions}
           full={blocks.length >= MAX_SEASON_BLOCKS}
+          lastProgramId={
+            [...blocks].reverse().find((b) => b.status === "active" || b.status === "done")
+              ?.programId ?? null
+          }
         />
       </div>
 
@@ -529,11 +705,13 @@ function AddBlockCard({
   programs,
   emphasisOptions,
   full,
+  lastProgramId,
 }: {
   seasonId: string;
   programs: SeasonRoadmapProgram[];
   emphasisOptions: readonly string[];
   full: boolean;
+  lastProgramId: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -541,7 +719,24 @@ function AddBlockCard({
   const [row, setRow] = useState<BlockDraft>(() =>
     newDraft(programs, emphasisOptions),
   );
+  const [suggestion, setSuggestion] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Advisory: propose the best-fitting program for the chosen emphasis, biased
+  // away from what was just run (ADR 0051 A4). Fills the program; the user can
+  // still override. Only suggests a program the picker actually offers.
+  const onSuggest = () => {
+    const res = selectNextBlock(emphasisToSlot(row.emphasis as SeasonEmphasis), {
+      lastProgramId,
+    });
+    const pick = res.ranked.find((r) => programs.some((p) => p.id === r.candidate.programId));
+    if (!pick) {
+      setSuggestion("No confident suggestion — pick what you like.");
+      return;
+    }
+    setRow((r) => ({ ...r, programId: pick.candidate.programId }));
+    setSuggestion(pick.reason);
+  };
 
   const onAdd = () => {
     setError(null);
@@ -587,6 +782,20 @@ function AddBlockCard({
               onChange={(patch) => setRow((r) => ({ ...r, ...patch }))}
               disabled={pending}
             />
+            <button
+              type="button"
+              className={styles.suggestBtn}
+              onClick={onSuggest}
+              disabled={pending}
+              data-testid="season-suggest"
+            >
+              ✨ Suggest a fit
+            </button>
+            {suggestion && (
+              <div className={styles.suggestReason} data-testid="season-suggest-reason">
+                {suggestion}
+              </div>
+            )}
             <div className={styles.addFormActions}>
               <button
                 type="button"
@@ -622,6 +831,94 @@ function AddBlockCard({
             + Add block
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Goal editor (header "Set / Edit goal") ───────────────────────── */
+
+function GoalEditor({
+  upcomingEvents,
+  hasGoal,
+  disabled,
+  onSave,
+  onCancel,
+}: {
+  upcomingEvents: UpcomingEvent[];
+  hasGoal: boolean;
+  disabled?: boolean;
+  onSave: (
+    goal: { goalType: "event" | "theme"; targetDate?: string; targetEventId?: string } | null,
+  ) => void;
+  onCancel: () => void;
+}) {
+  const [sel, setSel] = useState<string>("");
+  const [themeDate, setThemeDate] = useState<string>("");
+
+  const save = () => {
+    if (sel === "") return;
+    if (sel === "theme") {
+      if (!themeDate) return;
+      onSave({ goalType: "theme", targetDate: themeDate });
+      return;
+    }
+    const evt = upcomingEvents.find((e) => e.id === sel);
+    if (!evt) return;
+    onSave({ goalType: "event", targetEventId: evt.id, targetDate: evt.eventDate });
+  };
+
+  return (
+    <div className={styles.goalEditor} data-testid="season-goal-editor">
+      <select
+        className={styles.select}
+        value={sel}
+        disabled={disabled}
+        onChange={(e) => setSel(e.target.value)}
+        aria-label="Goal"
+      >
+        <option value="">Choose a goal…</option>
+        {upcomingEvents.map((e) => (
+          <option key={e.id} value={e.id}>
+            {e.name} — {e.eventDate}
+          </option>
+        ))}
+        <option value="theme">A target date…</option>
+      </select>
+      {sel === "theme" && (
+        <input
+          className={styles.input}
+          type="date"
+          value={themeDate}
+          disabled={disabled}
+          onChange={(e) => setThemeDate(e.target.value)}
+          aria-label="Target date"
+        />
+      )}
+      <div className={styles.addFormActions}>
+        <button type="button" className="cp-btn" onClick={onCancel} disabled={disabled}>
+          Cancel
+        </button>
+        {hasGoal && (
+          <button
+            type="button"
+            className="cp-btn"
+            onClick={() => onSave(null)}
+            disabled={disabled}
+            data-testid="season-goal-clear"
+          >
+            Clear goal
+          </button>
+        )}
+        <button
+          type="button"
+          className="cp-btn primary"
+          onClick={save}
+          disabled={disabled}
+          data-testid="season-goal-save"
+        >
+          Save goal
+        </button>
       </div>
     </div>
   );

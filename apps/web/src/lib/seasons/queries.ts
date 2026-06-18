@@ -17,11 +17,25 @@ export type SeasonBlock = {
   blockId: string | null;
 };
 
+export type SeasonGoal = {
+  type: "event" | "theme";
+  /** Denormalised target/peak date (YYYY-MM-DD), or null. */
+  targetDate: string | null;
+  /** Linked priority_events id when type='event'. */
+  eventId: string | null;
+  /** Event name for display, when resolvable. */
+  eventName: string | null;
+};
+
 export type ActiveSeason = {
   id: string;
   name: string;
+  goal: SeasonGoal | null;
   blocks: SeasonBlock[];
 };
+
+/** An upcoming A-priority event the user could anchor a Season to. */
+export type UpcomingEvent = { id: string; name: string; eventDate: string };
 
 export async function getActiveSeason(): Promise<ActiveSeason | null> {
   const {
@@ -32,7 +46,7 @@ export async function getActiveSeason(): Promise<ActiveSeason | null> {
   const supabase = await createClient();
   const { data: season } = await supabase
     .from("training_seasons")
-    .select("id, name")
+    .select("id, name, goal_type, target_event_id, target_date")
     .eq("user_id", user.id)
     .eq("status", "active")
     .is("deleted_at", null)
@@ -60,5 +74,54 @@ export async function getActiveSeason(): Promise<ActiveSeason | null> {
     blockId: (r.block_id as string | null) ?? null,
   }));
 
-  return { id: season.id as string, name: season.name as string, blocks };
+  // Resolve the goal anchor (ADR 0051 Phase 1). For an event goal, pull the
+  // event name for display; fall back to the denormalised date.
+  let goal: SeasonGoal | null = null;
+  const goalType = season.goal_type as "event" | "theme" | null;
+  if (goalType) {
+    let eventName: string | null = null;
+    const eventId = (season.target_event_id as string | null) ?? null;
+    if (eventId) {
+      const { data: evt } = await supabase
+        .from("events")
+        .select("name")
+        .eq("id", eventId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      eventName = (evt?.name as string | null) ?? null;
+    }
+    goal = {
+      type: goalType,
+      targetDate: (season.target_date as string | null) ?? null,
+      eventId,
+      eventName,
+    };
+  }
+
+  return { id: season.id as string, name: season.name as string, goal, blocks };
+}
+
+/**
+ * Upcoming A-priority events (future-dated), for the Season create builder's
+ * "anchor to an event" picker. User-scoped (RLS). Empty when the user has none.
+ */
+export async function getUpcomingAEvents(todayYmd: string): Promise<UpcomingEvent[]> {
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) return [];
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("events")
+    .select("id, name, event_date")
+    .eq("user_id", user.id)
+    .eq("priority", "A")
+    .gte("event_date", todayYmd)
+    .order("event_date", { ascending: true })
+    .limit(10);
+  return (data ?? []).map((e) => ({
+    id: e.id as string,
+    name: e.name as string,
+    eventDate: e.event_date as string,
+  }));
 }
