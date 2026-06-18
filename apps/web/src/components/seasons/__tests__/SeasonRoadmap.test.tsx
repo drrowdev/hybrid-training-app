@@ -401,3 +401,73 @@ describe("SeasonRoadmap — goal anchor + advisories", () => {
     expect(html).toContain("97%");
   });
 });
+
+describe("SeasonRoadmap — template selection", () => {
+  function block(over: Partial<SeasonBlock> = {}): SeasonBlock {
+    return {
+      id: "t1",
+      position: 0,
+      programId: "tactical-barbell",
+      templateRef: "zulu",
+      emphasis: "base",
+      intentNote: null,
+      plannedWeeks: 6,
+      status: "planned",
+      blockId: null,
+      ...over,
+    };
+  }
+  const templates = {
+    "tactical-barbell": [
+      { value: "operator", label: "Operator" },
+      { value: "zulu", label: "Zulu" },
+    ],
+  };
+
+  it("shows the friendly template label and deep-links it as ?phase= on Start", () => {
+    const season: ActiveSeason = {
+      id: "s-tpl",
+      name: "Template season",
+      goal: null,
+      blocks: [block()],
+    };
+    const html = renderToStaticMarkup(
+      <SeasonRoadmap
+        season={season}
+        programs={PROGRAMS}
+        emphasisOptions={EMPHASIS}
+        today="2026-06-18"
+        upcomingEvents={[]}
+        floorContext={null}
+        templatesByProgram={templates}
+      />,
+    );
+    // Friendly label, not the raw value.
+    expect(html).toContain("Zulu");
+    // Start CTA carries the template as the wizard ?phase= prefill.
+    expect(html).toContain("seasonBlockId=t1");
+    expect(html).toContain("phase=zulu");
+  });
+
+  it("omits ?phase= when a block has no template", () => {
+    const season: ActiveSeason = {
+      id: "s-notpl",
+      name: "No-template season",
+      goal: null,
+      blocks: [block({ id: "n1", templateRef: null, programId: "hybrid" })],
+    };
+    const html = renderToStaticMarkup(
+      <SeasonRoadmap
+        season={season}
+        programs={PROGRAMS}
+        emphasisOptions={EMPHASIS}
+        today="2026-06-18"
+        upcomingEvents={[]}
+        floorContext={null}
+        templatesByProgram={templates}
+      />,
+    );
+    expect(html).toContain("seasonBlockId=n1");
+    expect(html).not.toContain("phase=");
+  });
+});

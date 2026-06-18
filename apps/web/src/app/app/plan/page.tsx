@@ -49,7 +49,7 @@ import { getActiveSeason, getUpcomingAEvents } from "@/lib/seasons/queries";
 import { getMaintenanceFloorContext } from "@/lib/seasons/maintenance-floor-server";
 import { SeasonDiscoveryNudge } from "@/components/seasons/SeasonDiscoveryNudge";
 import { SEASON_EMPHASIS_VALUES } from "@/lib/seasons/season-logic";
-import { selectablePrograms } from "@/lib/platform/registry";
+import { selectablePrograms, getProgramEngine } from "@/lib/platform/registry";
 import { SeasonRoadmap } from "@/components/seasons/SeasonRoadmap";
 
 export default async function PlanPage({
@@ -92,6 +92,19 @@ export default async function PlanPage({
       getMaintenanceFloorContext(supabase, user.id),
     ]);
     const programs = selectablePrograms().map((p) => ({ id: p.id, name: p.name }));
+    // Per-program template/phase options (5/3/1, TB, Green Protocol expose a
+    // `templateId`/`phaseId` select; Hybrid/HYROX have none). Built from the
+    // engine's own describeSetup so the Season builder offers the same variants
+    // the program wizard does, and the value matches the wizard's loadout key
+    // for the `?phase=` activation deep-link.
+    const templatesByProgram: Record<string, { value: string; label: string }[]> = {};
+    for (const p of programs) {
+      const engine = getProgramEngine(p.id);
+      const field = engine
+        ?.describeSetup()
+        .fields.find((f) => f.key === "templateId" || f.key === "phaseId");
+      if (field?.options?.length) templatesByProgram[p.id] = field.options;
+    }
     return (
       <div style={{ display: "grid", gap: 24 }}>
         <SeasonViewTabs />
@@ -102,6 +115,7 @@ export default async function PlanPage({
           today={todayYmd(profileTz)}
           upcomingEvents={upcomingEvents}
           floorContext={floorContext}
+          templatesByProgram={templatesByProgram}
         />
       </div>
     );

@@ -45,6 +45,8 @@ import type { SeasonEmphasis } from "@hta/db";
 import styles from "./SeasonRoadmap.module.css";
 
 export type SeasonRoadmapProgram = { id: string; name: string };
+export type SeasonTemplateOption = { value: string; label: string };
+export type TemplatesByProgram = Record<string, SeasonTemplateOption[]>;
 
 export type SeasonRoadmapProps = {
   /** The user's active Season, or null when they haven't built one yet. */
@@ -59,6 +61,8 @@ export type SeasonRoadmapProps = {
   upcomingEvents: UpcomingEvent[];
   /** Rolling baseline + interference context for the maintenance-floor advisory. */
   floorContext: FloorContext | null;
+  /** Per-program template/phase options (empty for programs without templates). */
+  templatesByProgram?: TemplatesByProgram;
 };
 
 /** Friendly labels for the emphasis enum (hybrid strength↔endurance bias). */
@@ -80,6 +84,7 @@ function emphasisLabel(value: string): string {
 
 type BlockDraft = {
   programId: string;
+  templateRef: string;
   emphasis: string;
   intentNote: string;
 };
@@ -90,6 +95,7 @@ function newDraft(
 ): BlockDraft {
   return {
     programId: programs[0]?.id ?? "",
+    templateRef: "",
     emphasis: emphasisOptions[0] ?? "base",
     intentNote: "",
   };
@@ -102,6 +108,7 @@ export function SeasonRoadmap({
   today,
   upcomingEvents,
   floorContext,
+  templatesByProgram = {},
 }: SeasonRoadmapProps) {
   if (!season) {
     return (
@@ -109,6 +116,7 @@ export function SeasonRoadmap({
         programs={programs}
         emphasisOptions={emphasisOptions}
         upcomingEvents={upcomingEvents}
+        templatesByProgram={templatesByProgram}
       />
     );
   }
@@ -120,6 +128,7 @@ export function SeasonRoadmap({
       today={today}
       upcomingEvents={upcomingEvents}
       floorContext={floorContext}
+      templatesByProgram={templatesByProgram}
     />
   );
 }
@@ -130,10 +139,12 @@ function SeasonEmptyState({
   programs,
   emphasisOptions,
   upcomingEvents,
+  templatesByProgram,
 }: {
   programs: SeasonRoadmapProgram[];
   emphasisOptions: readonly string[];
   upcomingEvents: UpcomingEvent[];
+  templatesByProgram: TemplatesByProgram;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -194,6 +205,7 @@ function SeasonEmptyState({
         name: name.trim(),
         blocks: drafts.map((b) => ({
           programId: b.programId,
+          templateRef: b.templateRef === "" ? null : b.templateRef,
           emphasis: b.emphasis,
           intentNote: b.intentNote.trim() === "" ? null : b.intentNote.trim(),
         })),
@@ -279,6 +291,7 @@ function SeasonEmptyState({
               row={row}
               programs={programs}
               emphasisOptions={emphasisOptions}
+              templatesByProgram={templatesByProgram}
               idPrefix={`draft-${i}`}
               onChange={(patch) => patchRow(i, patch)}
               disabled={pending}
@@ -336,6 +349,7 @@ function SeasonPopulated({
   today,
   upcomingEvents,
   floorContext,
+  templatesByProgram,
 }: {
   season: ActiveSeason;
   programs: SeasonRoadmapProgram[];
@@ -343,6 +357,7 @@ function SeasonPopulated({
   today: string;
   upcomingEvents: UpcomingEvent[];
   floorContext: FloorContext | null;
+  templatesByProgram: TemplatesByProgram;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -384,6 +399,7 @@ function SeasonPopulated({
       const res = await updateSeasonBlock({
         blockId,
         programId: patch.programId,
+        templateRef: patch.templateRef === "" ? null : patch.templateRef,
         emphasis: patch.emphasis,
         intentNote: patch.intentNote.trim() === "" ? null : patch.intentNote.trim(),
       });
@@ -402,6 +418,7 @@ function SeasonPopulated({
     setEditingId(b.id);
     setEditDraft({
       programId: b.programId,
+      templateRef: b.templateRef ?? "",
       emphasis: b.emphasis,
       intentNote: b.intentNote ?? "",
     });
@@ -567,6 +584,7 @@ function SeasonPopulated({
                       row={editDraft}
                       programs={programs}
                       emphasisOptions={emphasisOptions}
+                      templatesByProgram={templatesByProgram}
                       idPrefix={`edit-${b.id}`}
                       onChange={(patch) =>
                         setEditDraft((d) => (d ? { ...d, ...patch } : d))
@@ -599,7 +617,11 @@ function SeasonPopulated({
                 ) : (
                   <>
                     {b.templateRef && (
-                      <div className={styles.tmpl}>{b.templateRef}</div>
+                      <div className={styles.tmpl}>
+                        {templatesByProgram[b.programId]?.find(
+                          (t) => t.value === b.templateRef,
+                        )?.label ?? b.templateRef}
+                      </div>
                     )}
                     <span
                       className={styles.chip}
@@ -616,7 +638,11 @@ function SeasonPopulated({
                             className={styles.startBtn}
                             href={`/app/program?program=${encodeURIComponent(
                               b.programId,
-                            )}&seasonBlockId=${encodeURIComponent(b.id)}`}
+                            )}&seasonBlockId=${encodeURIComponent(b.id)}${
+                              b.templateRef
+                                ? `&phase=${encodeURIComponent(b.templateRef)}`
+                                : ""
+                            }`}
                             data-testid="season-block-start"
                           >
                             Start block →
@@ -675,6 +701,7 @@ function SeasonPopulated({
           seasonId={season.id}
           programs={programs}
           emphasisOptions={emphasisOptions}
+          templatesByProgram={templatesByProgram}
           full={blocks.length >= MAX_SEASON_BLOCKS}
           lastProgramId={
             [...blocks].reverse().find((b) => b.status === "active" || b.status === "done")
@@ -701,12 +728,14 @@ function AddBlockCard({
   seasonId,
   programs,
   emphasisOptions,
+  templatesByProgram,
   full,
   lastProgramId,
 }: {
   seasonId: string;
   programs: SeasonRoadmapProgram[];
   emphasisOptions: readonly string[];
+  templatesByProgram: TemplatesByProgram;
   full: boolean;
   lastProgramId: string | null;
 }) {
@@ -719,9 +748,10 @@ function AddBlockCard({
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Advisory: propose the best-fitting program for the chosen emphasis, biased
-  // away from what was just run (ADR 0051 A4). Fills the program; the user can
-  // still override. Only suggests a program the picker actually offers.
+  // Advisory: propose the best-fitting (program, template) for the chosen
+  // emphasis, biased away from what was just run (ADR 0051 A4). Fills both the
+  // program and its template; the user can still override. Only suggests a
+  // program the picker actually offers.
   const onSuggest = () => {
     const res = selectNextBlock(emphasisToSlot(row.emphasis as SeasonEmphasis), {
       lastProgramId,
@@ -731,7 +761,15 @@ function AddBlockCard({
       setSuggestion("No confident suggestion — pick what you like.");
       return;
     }
-    setRow((r) => ({ ...r, programId: pick.candidate.programId }));
+    // Only carry the template if the program actually offers it as an option.
+    const tpl =
+      pick.candidate.templateRef &&
+      templatesByProgram[pick.candidate.programId]?.some(
+        (t) => t.value === pick.candidate.templateRef,
+      )
+        ? pick.candidate.templateRef
+        : "";
+    setRow((r) => ({ ...r, programId: pick.candidate.programId, templateRef: tpl }));
     setSuggestion(pick.reason);
   };
 
@@ -741,6 +779,7 @@ function AddBlockCard({
       const res = await addSeasonBlock({
         seasonId,
         programId: row.programId,
+        templateRef: row.templateRef === "" ? null : row.templateRef,
         emphasis: row.emphasis,
         intentNote: row.intentNote.trim() === "" ? null : row.intentNote.trim(),
       });
@@ -775,6 +814,7 @@ function AddBlockCard({
               row={row}
               programs={programs}
               emphasisOptions={emphasisOptions}
+              templatesByProgram={templatesByProgram}
               idPrefix="add"
               onChange={(patch) => setRow((r) => ({ ...r, ...patch }))}
               disabled={pending}
@@ -973,6 +1013,7 @@ function BlockFields({
   row,
   programs,
   emphasisOptions,
+  templatesByProgram,
   idPrefix,
   onChange,
   disabled,
@@ -980,10 +1021,12 @@ function BlockFields({
   row: BlockDraft;
   programs: SeasonRoadmapProgram[];
   emphasisOptions: readonly string[];
+  templatesByProgram: TemplatesByProgram;
   idPrefix: string;
   onChange: (patch: Partial<BlockDraft>) => void;
   disabled?: boolean;
 }) {
+  const templates = templatesByProgram[row.programId] ?? [];
   return (
     <div className={styles.fields}>
       <div className={styles.field}>
@@ -995,7 +1038,11 @@ function BlockFields({
           className={styles.select}
           value={row.programId}
           disabled={disabled}
-          onChange={(e) => onChange({ programId: e.target.value })}
+          onChange={(e) =>
+            // Templates are program-specific — reset the template when the
+            // program changes so a stale value can't leak across programs.
+            onChange({ programId: e.target.value, templateRef: "" })
+          }
         >
           {programs.map((p) => (
             <option key={p.id} value={p.id}>
@@ -1004,6 +1051,28 @@ function BlockFields({
           ))}
         </select>
       </div>
+      {templates.length > 0 && (
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor={`${idPrefix}-template`}>
+            Template
+          </label>
+          <select
+            id={`${idPrefix}-template`}
+            className={styles.select}
+            value={row.templateRef}
+            disabled={disabled}
+            onChange={(e) => onChange({ templateRef: e.target.value })}
+            data-testid={`${idPrefix}-template`}
+          >
+            <option value="">Program default</option>
+            {templates.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <div className={styles.field}>
         <label className={styles.label} htmlFor={`${idPrefix}-emphasis`}>
           Emphasis
