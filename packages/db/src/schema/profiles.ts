@@ -120,6 +120,16 @@ export const profiles = pgTable("profiles", {
     .default(true)
     .notNull(),
   /**
+   * ADR 0051 — Season (macrocycle) planning opt-in. Default FALSE: the
+   * advanced multi-block roadmap is OFF for everyone until explicitly
+   * enabled (Settings toggle or the one-time Plan-page discovery card).
+   * With it FALSE the app behaves byte-identically — the Season tab and
+   * its data layer stay hidden. See migration 0113.
+   */
+  seasonPlanningEnabled: boolean("season_planning_enabled")
+    .default(false)
+    .notNull(),
+  /**
    * Free-text training profile notes. Writable by both the user (from
    * the /app/profile page) and — once the AI surface lands — the
    * engine, which will append pattern observations the user can prune.
