@@ -45,7 +45,7 @@ import { applyLimitationResponseSelection } from "@/lib/limitations/actions";
 import { LimitationResponseCard } from "@/components/limitations/LimitationResponseCard";
 import { addDaysToYmd } from "@/lib/dates";
 import { hasAiAccess } from "@/lib/ai/access";
-import { getActiveSeason } from "@/lib/seasons/queries";
+import { getActiveSeason, getUpcomingAEvents } from "@/lib/seasons/queries";
 import { SEASON_EMPHASIS_VALUES } from "@/lib/seasons/season-logic";
 import { selectablePrograms } from "@/lib/platform/registry";
 import { SeasonRoadmap } from "@/components/seasons/SeasonRoadmap";
@@ -77,13 +77,17 @@ export default async function PlanPage({
   // redirect below. A lightweight flag read gates both the tab and the view.
   const { data: seasonProfile } = await supabase
     .from("profiles")
-    .select("season_planning_enabled")
+    .select("season_planning_enabled, timezone")
     .eq("id", user.id)
     .maybeSingle();
   const seasonEnabled = seasonProfile?.season_planning_enabled === true;
+  const profileTz = seasonProfile?.timezone ?? "UTC";
 
   if (seasonEnabled && sp?.view === "season") {
-    const season = await getActiveSeason();
+    const [season, upcomingEvents] = await Promise.all([
+      getActiveSeason(),
+      getUpcomingAEvents(todayYmd(profileTz)),
+    ]);
     const programs = selectablePrograms().map((p) => ({ id: p.id, name: p.name }));
     return (
       <div style={{ display: "grid", gap: 24 }}>
@@ -92,6 +96,8 @@ export default async function PlanPage({
           season={season}
           programs={programs}
           emphasisOptions={SEASON_EMPHASIS_VALUES}
+          today={todayYmd(profileTz)}
+          upcomingEvents={upcomingEvents}
         />
       </div>
     );

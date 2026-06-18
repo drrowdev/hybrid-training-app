@@ -65,6 +65,8 @@ describe("SeasonRoadmap — empty state", () => {
         season={null}
         programs={PROGRAMS}
         emphasisOptions={EMPHASIS}
+        today="2026-06-18"
+        upcomingEvents={[]}
       />,
     );
     expect(html).toContain('data-testid="season-empty"');
@@ -85,6 +87,7 @@ describe("SeasonRoadmap — populated state", () => {
   const season: ActiveSeason = {
     id: "10000000-0000-0000-0000-0000000000aa",
     name: "Spring HYROX build",
+    goal: null,
     blocks: [
       block({
         id: "b-done",
@@ -120,6 +123,8 @@ describe("SeasonRoadmap — populated state", () => {
         season={season}
         programs={PROGRAMS}
         emphasisOptions={EMPHASIS}
+        today="2026-06-18"
+        upcomingEvents={[]}
       />,
     );
     expect(html).toContain('data-testid="season-roadmap"');
@@ -134,6 +139,8 @@ describe("SeasonRoadmap — populated state", () => {
         season={season}
         programs={PROGRAMS}
         emphasisOptions={EMPHASIS}
+        today="2026-06-18"
+        upcomingEvents={[]}
       />,
     );
     expect(html).toContain("Hybrid");
@@ -152,6 +159,8 @@ describe("SeasonRoadmap — populated state", () => {
         season={season}
         programs={PROGRAMS}
         emphasisOptions={EMPHASIS}
+        today="2026-06-18"
+        upcomingEvents={[]}
       />,
     );
     expect(html).toContain("Done");
@@ -165,6 +174,8 @@ describe("SeasonRoadmap — populated state", () => {
         season={season}
         programs={PROGRAMS}
         emphasisOptions={EMPHASIS}
+        today="2026-06-18"
+        upcomingEvents={[]}
       />,
     );
     // Exactly one planned block → exactly one remove control.
@@ -180,6 +191,8 @@ describe("SeasonRoadmap — populated state", () => {
         season={season}
         programs={PROGRAMS}
         emphasisOptions={EMPHASIS}
+        today="2026-06-18"
+        upcomingEvents={[]}
       />,
     );
     // Single planned block here → exactly one Start CTA, carrying both the
@@ -198,6 +211,8 @@ describe("SeasonRoadmap — populated state", () => {
         season={season}
         programs={PROGRAMS}
         emphasisOptions={EMPHASIS}
+        today="2026-06-18"
+        upcomingEvents={[]}
       />,
     );
     expect(html).toContain('data-testid="season-end"');
@@ -210,6 +225,8 @@ describe("SeasonRoadmap — populated state", () => {
         season={season}
         programs={PROGRAMS}
         emphasisOptions={EMPHASIS}
+        today="2026-06-18"
+        upcomingEvents={[]}
       />,
     );
     const editCount = (html.match(/data-testid="season-block-edit"/g) ?? []).length;
@@ -224,6 +241,7 @@ describe("SeasonRoadmap — reorder controls", () => {
   const season: ActiveSeason = {
     id: "10000000-0000-0000-0000-0000000000bb",
     name: "Two-planned season",
+    goal: null,
     blocks: [
       block({ id: "b0", position: 0, status: "done" }),
       block({ id: "b1", position: 1, status: "active" }),
@@ -238,6 +256,8 @@ describe("SeasonRoadmap — reorder controls", () => {
         season={season}
         programs={PROGRAMS}
         emphasisOptions={EMPHASIS}
+        today="2026-06-18"
+        upcomingEvents={[]}
       />,
     );
     expect((html.match(/data-testid="season-block-up"/g) ?? []).length).toBe(2);
@@ -250,6 +270,8 @@ describe("SeasonRoadmap — reorder controls", () => {
         season={season}
         programs={PROGRAMS}
         emphasisOptions={EMPHASIS}
+        today="2026-06-18"
+        upcomingEvents={[]}
       />,
     );
     // At least one up-control is disabled (the first planned block); at least
@@ -259,5 +281,81 @@ describe("SeasonRoadmap — reorder controls", () => {
     // The first planned block has no Start CTA suppressing its up button — the
     // Start CTA is present (it's the next planned), proving sequential ordering.
     expect(html).toContain('data-testid="season-block-start"');
+  });
+});
+
+describe("SeasonRoadmap — goal anchor + advisories", () => {
+  function block(over: Partial<SeasonBlock> = {}): SeasonBlock {
+    return {
+      id: "g1",
+      position: 0,
+      programId: "hybrid",
+      templateRef: null,
+      emphasis: "base",
+      intentNote: null,
+      plannedWeeks: 4,
+      status: "planned",
+      blockId: null,
+      ...over,
+    };
+  }
+
+  it("renders the empty-state goal picker", () => {
+    const html = renderToStaticMarkup(
+      <SeasonRoadmap
+        season={null}
+        programs={PROGRAMS}
+        emphasisOptions={EMPHASIS}
+        today="2026-06-18"
+        upcomingEvents={[{ id: "e1", name: "City Marathon", eventDate: "2026-09-01" }]}
+      />,
+    );
+    expect(html).toContain('data-testid="season-goal-select"');
+    expect(html).toContain("City Marathon");
+  });
+
+  it("shows the goal pill with weeks-out and a runway warning when blocks overrun", () => {
+    const season: ActiveSeason = {
+      id: "s-goal",
+      name: "Race build",
+      goal: { type: "event", targetDate: "2026-07-16", eventId: "e1", eventName: "City 10k" },
+      blocks: [
+        block({ id: "a", position: 0, status: "active", plannedWeeks: 6 }),
+        block({ id: "b", position: 1, status: "planned", plannedWeeks: 6 }),
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <SeasonRoadmap
+        season={season}
+        programs={PROGRAMS}
+        emphasisOptions={EMPHASIS}
+        today="2026-06-18" // 4 weeks to the goal; 12 weeks of blocks → overrun
+        upcomingEvents={[]}
+      />,
+    );
+    expect(html).toContain('data-testid="season-goal-pill"');
+    expect(html).toContain("City 10k");
+    expect(html).toContain("4 wks out");
+    expect(html).toContain('data-testid="season-runway-warn"');
+  });
+
+  it("shows the maintenance-floor advisory on a strength-bias block", () => {
+    const season: ActiveSeason = {
+      id: "s-bias",
+      name: "Strength block",
+      goal: null,
+      blocks: [block({ id: "x", position: 0, status: "planned", emphasis: "strength_bias" })],
+    };
+    const html = renderToStaticMarkup(
+      <SeasonRoadmap
+        season={season}
+        programs={PROGRAMS}
+        emphasisOptions={EMPHASIS}
+        today="2026-06-18"
+        upcomingEvents={[]}
+      />,
+    );
+    expect(html).toContain('data-testid="season-floor-note"');
+    expect(html.toLowerCase()).toContain("maintenance floor");
   });
 });
