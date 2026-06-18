@@ -172,6 +172,24 @@ describe("SeasonRoadmap — populated state", () => {
     expect(removeCount).toBe(1);
   });
 
+  it("shows a Start-block CTA only on the next planned block, deep-linking the wizard", () => {
+    const html = renderToStaticMarkup(
+      <SeasonRoadmap
+        season={season}
+        programs={PROGRAMS}
+        emphasisOptions={EMPHASIS}
+      />,
+    );
+    // Single planned block here → exactly one Start CTA, carrying both the
+    // program preselect and the seasonBlockId activation token.
+    const startCount = (
+      html.match(/data-testid="season-block-start"/g) ?? []
+    ).length;
+    expect(startCount).toBe(1);
+    expect(html).toContain("/app/program?program=tactical-barbell");
+    expect(html).toContain("seasonBlockId=b-planned");
+  });
+
   it("renders the End season + Add block affordances", () => {
     const html = renderToStaticMarkup(
       <SeasonRoadmap

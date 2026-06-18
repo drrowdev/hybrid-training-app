@@ -256,6 +256,10 @@ function SeasonPopulated({
 
   const nameById = new Map(programs.map((p) => [p.id, p.name]));
   const blocks = [...season.blocks].sort((a, b) => a.position - b.position);
+  // The next block the user would start: the first PLANNED one. Only this card
+  // gets the "Start block" CTA so the roadmap advances in order (sequential
+  // activation; jumping ahead is out of scope for Phase 0).
+  const nextPlannedId = blocks.find((b) => b.status === "planned")?.id ?? null;
 
   const onRemove = (blockId: string) => {
     setError(null);
@@ -343,6 +347,17 @@ function SeasonPopulated({
                 {b.intentNote && <div className={styles.why}>{b.intentNote}</div>}
                 {b.status === "planned" && (
                   <div className={styles.ctrls}>
+                    {b.id === nextPlannedId && (
+                      <a
+                        className={styles.startBtn}
+                        href={`/app/program?program=${encodeURIComponent(
+                          b.programId,
+                        )}&seasonBlockId=${encodeURIComponent(b.id)}`}
+                        data-testid="season-block-start"
+                      >
+                        Start block →
+                      </a>
+                    )}
                     <button
                       type="button"
                       className={styles.mini}
