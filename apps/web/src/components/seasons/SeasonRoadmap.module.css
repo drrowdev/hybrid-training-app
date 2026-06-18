@@ -42,6 +42,12 @@
   border-radius: 12px;
   background: var(--cp-surface-soft);
 }
+.draftMain {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
 .draftPos {
   flex: 0 0 auto;
   width: 22px;

@@ -124,6 +124,14 @@ export default async function PlanPage({
   const block = await getActiveBlock();
 
   if (!block || forceNew) {
+    // Season-enabled users with an active Season but no live block would
+    // otherwise be bounced straight to the program wizard and never reach their
+    // roadmap (UX audit P2). Route them to the Season view instead — unless they
+    // explicitly asked for a fresh program (?new=1). Only when a Season actually
+    // exists, so users without one keep the normal "start a program" flow.
+    if (seasonEnabled && !forceNew && (await getActiveSeason())) {
+      redirect("/app/plan?view=season");
+    }
     // Legacy archetype BlockWizard retired — block creation now flows through
     // the program wizard (/app/program). createProgramInstance archives any
     // prior active block on deploy, covering the mid-block "start new" (?new=1).
