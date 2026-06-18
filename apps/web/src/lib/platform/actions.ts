@@ -46,6 +46,7 @@ import {
   type TbAccessoryInjector,
 } from "./tb-accessories";
 import { discardAbandonedInProgressSessions } from "@/lib/planner/archive-prior-blocks";
+import { activateSeasonBlock } from "@/lib/seasons/activation";
 import { planForwardOnlyRewrite } from "./forward-rewrite";
 import { todayYmd, mondayOfYmd, daysBetweenYmd } from "@/lib/dates";
 
@@ -101,6 +102,9 @@ const createProgramInstanceSchema = z
      *  block (5/3/1 / Tactical Barbell only): keep the same block + program
      *  instance, freeze past + current week, regenerate only future weeks. */
     editBlockId: z.string().uuid().optional(),
+    /** When present, the wizard was deep-linked from a Season roadmap (ADR 0051):
+     *  activate this planned season_block + link it to the new block on deploy. */
+    seasonBlockId: z.string().uuid().optional(),
   })
   .strict();
 
@@ -117,7 +121,7 @@ export async function createProgramInstance(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, supersetAccessories, editBlockId } = parsed.data;
+  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, supersetAccessories, editBlockId, seasonBlockId } = parsed.data;
 
   // Reject duplicate weekdays — they'd collide on the (week, day, slot) unique key.
   // (Native programs own their own calendar and ignore `weekdays`, but the check
@@ -167,6 +171,7 @@ export async function createProgramInstance(
       ...(roundingKg != null ? { roundingKg } : {}),
       ...(twoADay != null ? { twoADay } : {}),
       ...(supersetAccessories != null ? { supersetAccessories } : {}),
+      ...(seasonBlockId ? { seasonBlockId } : {}),
     });
   }
   return createForeignProgramInstance(supabase, user, {
@@ -180,6 +185,7 @@ export async function createProgramInstance(
     ...(roundingKg != null ? { roundingKg } : {}),
     ...(accessories ? { accessories } : {}),
     ...(supersetAccessories != null ? { supersetAccessories } : {}),
+    ...(seasonBlockId ? { seasonBlockId } : {}),
   });
 }
 
@@ -276,6 +282,9 @@ interface DeployArgs {
   twoADay?: boolean;
   /** Per-block antagonist-superset accessories (migration 0111) — all programs. */
   supersetAccessories?: boolean;
+  /** When the wizard was deep-linked from a Season roadmap (ADR 0051) — the
+   *  planned season_block to activate + link to the new training block on deploy. */
+  seasonBlockId?: string;
 }
 
 /**
@@ -551,7 +560,7 @@ async function computeForeignWrite(
 async function createForeignProgramInstance(
   supabase: SupabaseClient,
   user: User,
-  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, supersetAccessories }: DeployArgs,
+  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, supersetAccessories, seasonBlockId }: DeployArgs,
 ): Promise<CreateProgramInstanceResult> {
   const engine = getProgramEngine(programId);
   if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
@@ -712,6 +721,17 @@ async function createForeignProgramInstance(
   // Clear any half-opened, zero-logged session from the program we just
   // replaced so Today doesn't surface a stale "Resume today's workout".
   await discardAbandonedInProgressSessions(supabase, user.id).catch(() => {});
+
+  // ADR 0051 — when deep-linked from a Season roadmap, advance the roadmap:
+  // flip the prior active season block to done + this planned one to active,
+  // linked to the new block. Best-effort: never undo a valid deploy.
+  if (seasonBlockId) {
+    try {
+      await activateSeasonBlock(supabase, user.id, seasonBlockId, blockId);
+    } catch (e) {
+      console.error("season-block activation failed:", e);
+    }
+  }
 
   // ADR 0050 step 10 — a HYROX race date becomes an A-priority event so the
   // existing event-taper (ADR 0008) + next-block nudge align to race day. The
@@ -932,7 +952,7 @@ async function updateForeignProgramInstance(
 async function createNativeProgramInstance(
   supabase: SupabaseClient,
   user: User,
-  { programId, setupValues, weekdays, startedOn, roundingKg, twoADay, supersetAccessories }: DeployArgs,
+  { programId, setupValues, weekdays, startedOn, roundingKg, twoADay, supersetAccessories, seasonBlockId }: DeployArgs,
 ): Promise<CreateProgramInstanceResult> {
   const engine = getNativeProgramEngine(programId)!;
 
@@ -1109,6 +1129,16 @@ async function createNativeProgramInstance(
   // Clear any half-opened, zero-logged session from the program we just
   // replaced so Today doesn't surface a stale "Resume today's workout".
   await discardAbandonedInProgressSessions(supabase, user.id).catch(() => {});
+
+  // ADR 0051 — Season roadmap deep-link: advance the roadmap to this block.
+  // Best-effort; a failure must not undo a valid deploy.
+  if (seasonBlockId) {
+    try {
+      await activateSeasonBlock(supabase, user.id, seasonBlockId, blockId);
+    } catch (e) {
+      console.error("season-block activation failed:", e);
+    }
+  }
 
   revalidatePath("/app");
   revalidatePath("/app/plan");

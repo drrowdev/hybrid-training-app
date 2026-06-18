@@ -81,7 +81,7 @@ function defaultSessionsPerWeek(engine: ProgramEngine): number | undefined {
 export default async function ProgramPickerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ program?: string; phase?: string; edit?: string }>;
+  searchParams: Promise<{ program?: string; phase?: string; edit?: string; seasonBlockId?: string }>;
 }) {
   const supabase = await createClient();
   const {
@@ -161,6 +161,13 @@ export default async function ProgramPickerPage({
   // schedule + cardio days. Null when the block isn't editable → fresh wizard.
   const editContext = sp.edit ? await getBlockEditContext(sp.edit) : null;
 
+  // Season roadmap deep-link (ADR 0051): carries the planned season_block to
+  // activate on deploy. Threaded straight through — the deploy action
+  // re-validates ownership + planned status before touching the roadmap, so a
+  // stale/foreign id is a safe no-op. Ignored in edit mode (not an activation).
+  const seasonBlockId =
+    !editContext && sp.seasonBlockId ? sp.seasonBlockId : undefined;
+
   return (
     <div className={`${archivo.variable} ${oswald.variable} ${saira.variable} ${jetbrains.variable}`}>
       <ProgramPicker
@@ -172,6 +179,7 @@ export default async function ProgramPickerPage({
         {...(initialProgramId ? { initialProgramId } : {})}
         {...(initialLoadoutValue ? { initialLoadoutValue } : {})}
         {...(editContext ? { editContext } : {})}
+        {...(seasonBlockId ? { seasonBlockId } : {})}
       />
     </div>
   );

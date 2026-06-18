@@ -631,6 +631,7 @@ export function ProgramPicker({
   initialProgramId,
   initialLoadoutValue,
   editContext,
+  seasonBlockId,
 }: {
   programs: PickerProgram[];
   anchoredKeys: string[];
@@ -643,6 +644,8 @@ export function ProgramPicker({
   initialLoadoutValue?: string;
   /** Edit mode: re-enter the wizard for an active plan, prefilled + program-locked. */
   editContext?: ProgramEditContextProp;
+  /** Season roadmap deep-link (ADR 0051): the planned season_block to activate on deploy. */
+  seasonBlockId?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -1136,6 +1139,7 @@ export function ProgramPicker({
         ...(isHybrid && twoADay ? { twoADay: true } : {}),
         ...(supersetAccessories ? { supersetAccessories: true } : {}),
         ...(isEditing && editContext ? { editBlockId: editContext.blockId } : {}),
+        ...(!isEditing && seasonBlockId ? { seasonBlockId } : {}),
       });
       setResult(res);
       if (res.ok) router.push(isEditing ? "/app/plan" : "/app");
