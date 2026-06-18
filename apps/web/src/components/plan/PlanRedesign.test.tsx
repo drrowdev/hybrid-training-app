@@ -405,6 +405,34 @@ describe("SessionDrawer — drag handle + sheet markup", () => {
     // path is Escape + the X button.
     expect(html).toContain('aria-hidden="true"');
   });
+
+  it("hides Mark done + Skip once the workout is complete", async () => {
+    const { SessionDrawer } = await import("./PlanRedesign");
+    const base = {
+      today: "2026-05-26",
+      weeks: 4,
+      logHrefBase: "/app/sessions/start",
+      onClose: () => {},
+      moveAction: noop,
+      skipAction: noop,
+      unskipAction: noop,
+      updateNotesAction: async () => ({ ok: true as const }),
+      startSessionAction: noop,
+    };
+    const open = renderToStaticMarkup(<SessionDrawer session={session()} {...base} />);
+    expect(open).toContain('data-testid="plan-drawer-mark-done"');
+    expect(open).toContain('data-testid="plan-drawer-skip"');
+
+    const done = renderToStaticMarkup(
+      <SessionDrawer session={session({ done: true })} {...base} />,
+    );
+    expect(done).not.toContain('data-testid="plan-drawer-mark-done"');
+    expect(done).not.toContain('data-testid="plan-drawer-skip"');
+    expect(done).not.toContain('data-testid="plan-drawer-unskip"');
+    // Swap day + Edit remain available on a completed session.
+    expect(done).toContain('data-testid="plan-drawer-swap"');
+    expect(done).toContain('data-testid="plan-drawer-edit"');
+  });
 });
 
 describe("shouldDismissSwipe — pointer-release threshold", () => {
