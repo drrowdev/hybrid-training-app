@@ -134,6 +134,13 @@ export type PlanRedesignProps = {
    * Mirrors the server-side `hasAiAccess` gate.
    */
   aiAccess?: boolean;
+  /**
+   * When true (Season-planning opt-in is on), render a third "Season" tab in
+   * the view toggle that links to `/app/plan?view=season`. Unlike Timeline /
+   * Month (client-side local-state flips), Season needs server-rendered data so
+   * it's a real navigation anchor, not an `onClick` toggle. (ADR 0051.)
+   */
+  seasonEnabled?: boolean;
 };
 
 const DOW_FULL = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
@@ -248,6 +255,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
     updateNotesAction,
     startSessionAction,
     aiAccess,
+    seasonEnabled = false,
   } = props;
 
   const router = useRouter();
@@ -536,6 +544,17 @@ export function PlanRedesign(props: PlanRedesignProps) {
           >
             Month
           </button>
+          {seasonEnabled && (
+            <a
+              className="plan-view-btn"
+              role="tab"
+              data-active="false"
+              data-testid="plan-view-tab-season"
+              href="/app/plan?view=season"
+            >
+              Season
+            </a>
+          )}
         </div>
         <div className="plan-filter" aria-label="Filter by kind">
           <span className="plan-filter-label">Show:</span>

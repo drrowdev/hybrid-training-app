@@ -45,6 +45,10 @@ import { applyLimitationResponseSelection } from "@/lib/limitations/actions";
 import { LimitationResponseCard } from "@/components/limitations/LimitationResponseCard";
 import { addDaysToYmd } from "@/lib/dates";
 import { hasAiAccess } from "@/lib/ai/access";
+import { getActiveSeason } from "@/lib/seasons/queries";
+import { SEASON_EMPHASIS_VALUES } from "@/lib/seasons/season-logic";
+import { selectablePrograms } from "@/lib/platform/registry";
+import { SeasonRoadmap } from "@/components/seasons/SeasonRoadmap";
 
 export default async function PlanPage({
   searchParams,
@@ -67,6 +71,32 @@ export default async function PlanPage({
   // `?new=1` requests a fresh block mid-stream; like the empty state it routes
   // to the program wizard, which archives any prior active block on deploy.
   const forceNew = sp?.new === "1";
+
+  // Season tab (ADR 0051) — opt-in, off by default. It must be reachable even
+  // when there's no active block, so branch here BEFORE the getActiveBlock
+  // redirect below. A lightweight flag read gates both the tab and the view.
+  const { data: seasonProfile } = await supabase
+    .from("profiles")
+    .select("season_planning_enabled")
+    .eq("id", user.id)
+    .maybeSingle();
+  const seasonEnabled = seasonProfile?.season_planning_enabled === true;
+
+  if (seasonEnabled && sp?.view === "season") {
+    const season = await getActiveSeason();
+    const programs = selectablePrograms().map((p) => ({ id: p.id, name: p.name }));
+    return (
+      <div style={{ display: "grid", gap: 24 }}>
+        <SeasonViewTabs />
+        <SeasonRoadmap
+          season={season}
+          programs={programs}
+          emphasisOptions={SEASON_EMPHASIS_VALUES}
+        />
+      </div>
+    );
+  }
+
   const block = await getActiveBlock();
 
   if (!block || forceNew) {
@@ -240,6 +270,7 @@ export default async function PlanPage({
         updateNotesAction={updatePlannedSessionNotes}
         startSessionAction={startSessionFromPlan}
         aiAccess={aiAccess}
+        seasonEnabled={seasonEnabled}
       />
 
       <section
@@ -340,6 +371,42 @@ export default async function PlanPage({
   );
 }
 
+
+function SeasonViewTabs() {
+  const tabBase = {
+    fontSize: 13,
+    fontWeight: 600,
+    padding: "10px 4px",
+    color: "var(--cp-text-muted)",
+    borderBottom: "2px solid transparent",
+    textDecoration: "none",
+  } as const;
+  const activeTab = {
+    ...tabBase,
+    color: "var(--cp-text)",
+    borderBottomColor: "var(--cp-accent)",
+  } as const;
+  return (
+    <nav
+      aria-label="Plan views"
+      style={{ display: "flex", gap: 16, borderBottom: "1px solid var(--cp-border)" }}
+    >
+      <Link href="/app/plan" style={tabBase} data-testid="season-nav-timeline">
+        Timeline
+      </Link>
+      <Link
+        href="/app/plan?view=month"
+        style={tabBase}
+        data-testid="season-nav-month"
+      >
+        Month
+      </Link>
+      <span style={activeTab} aria-current="page" data-testid="season-nav-season">
+        Season
+      </span>
+    </nav>
+  );
+}
 
 function TissueStackCard({ gaps }: { gaps: TissueStackGap[] }) {
   return (
