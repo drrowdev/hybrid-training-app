@@ -1,0 +1,310 @@
+/*
+ * Season roadmap layout (ADR 0051 Phase 0). Mirrors the approved mockup's
+ * horizontal block rail, but uses the app's CSS variables (never the mockup's
+ * hardcoded hex) so it tracks the global theme. Balance slider / goal anchor /
+ * "app suggests next" from the mockup are intentionally omitted this slice.
+ */
+
+/* ── Empty state: create builder ──────────────────────────────────── */
+.empty {
+  padding: 20px;
+  display: grid;
+  gap: 14px;
+}
+.emptyHeading {
+  margin: 0;
+  font-family: var(--cp-font-display, inherit);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.emptyLead {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--cp-text-muted);
+  max-width: 60ch;
+}
+
+.draftList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.draftRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--cp-border);
+  border-radius: 12px;
+  background: var(--cp-surface-soft);
+}
+.draftPos {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  margin-top: 18px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-family: var(--cp-font-mono, monospace);
+  font-size: 11px;
+  color: var(--cp-text-muted);
+  border: 1px solid var(--cp-border);
+}
+.rowRemove {
+  flex: 0 0 auto;
+  margin-top: 18px;
+  font-size: 12px;
+  line-height: 1;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--cp-border);
+  background: var(--cp-surface);
+  color: var(--cp-text-muted);
+  cursor: pointer;
+}
+.rowRemove:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.builderActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ── Shared block field group ─────────────────────────────────────── */
+.fields {
+  flex: 1;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+.field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.label {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--cp-text-muted);
+}
+.input,
+.select {
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--cp-border);
+  background: var(--cp-surface);
+  color: var(--cp-text);
+  width: 100%;
+}
+.input:disabled,
+.select:disabled {
+  opacity: 0.6;
+}
+
+.error {
+  font-size: 12px;
+  color: var(--cp-danger);
+}
+
+/* ── Populated state: roadmap rail ────────────────────────────────── */
+.populated {
+  padding: 20px;
+  display: grid;
+  gap: 8px;
+}
+.head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.eyebrow {
+  font-family: var(--cp-font-mono, monospace);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--cp-text-muted);
+}
+.title {
+  margin: 3px 0 0;
+  font-family: var(--cp-font-display, inherit);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.rail {
+  display: flex;
+  gap: 0;
+  align-items: stretch;
+  overflow-x: auto;
+  padding: 14px 0 8px;
+}
+.blk {
+  flex: 0 0 232px;
+  position: relative;
+  padding: 0 12px;
+}
+.blk:first-child {
+  padding-left: 0;
+}
+.connect {
+  position: absolute;
+  top: 34px;
+  left: -8px;
+  right: -8px;
+  height: 2px;
+  background: var(--cp-border);
+  z-index: 0;
+}
+.bcard {
+  position: relative;
+  z-index: 1;
+  background: var(--cp-surface-soft);
+  border: 1px solid var(--cp-border);
+  border-radius: 12px;
+  padding: 13px 14px;
+  min-height: 188px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.bcard.active {
+  border-color: var(--cp-accent);
+  box-shadow: 0 0 0 1px var(--cp-accent) inset;
+}
+.bcard.done {
+  opacity: 0.62;
+}
+.bcardTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.wk {
+  font-family: var(--cp-font-mono, monospace);
+  font-size: 11px;
+  color: var(--cp-text-muted);
+  letter-spacing: 0.04em;
+}
+.status {
+  font-family: var(--cp-font-mono, monospace);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cp-text-muted);
+}
+.statusActive {
+  color: var(--cp-accent);
+}
+.prog {
+  font-family: var(--cp-font-display, inherit);
+  font-size: 17px;
+  line-height: 1.15;
+}
+.tmpl {
+  font-family: var(--cp-font-mono, monospace);
+  font-size: 11.5px;
+  color: var(--cp-text-soft);
+}
+.chip {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--cp-border);
+  color: var(--cp-text-muted);
+}
+.why {
+  font-size: 11.5px;
+  color: var(--cp-text-muted);
+  line-height: 1.4;
+  margin-top: auto;
+}
+.ctrls {
+  display: flex;
+  gap: 6px;
+}
+.mini {
+  font: inherit;
+  font-size: 11px;
+  padding: 4px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--cp-border);
+  background: var(--cp-surface);
+  color: var(--cp-text-muted);
+  cursor: pointer;
+}
+.mini:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Add-block card ───────────────────────────────────────────────── */
+.add {
+  flex: 0 0 248px;
+  padding: 0 0 0 12px;
+}
+.addcard {
+  height: 100%;
+  min-height: 188px;
+  border: 1px dashed var(--cp-border-strong);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+  padding: 14px;
+  background: transparent;
+}
+.addTrigger {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cp-text-muted);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  padding: 8px;
+}
+.addTrigger:hover {
+  color: var(--cp-text);
+}
+.addForm {
+  display: grid;
+  gap: 10px;
+}
+.addFormActions {
+  display: flex;
+  gap: 8px;
+}
+.addFull {
+  font-size: 12px;
+  color: var(--cp-text-muted);
+  text-align: center;
+}
+
+.foot {
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--cp-border);
+  font-size: 11.5px;
+  color: var(--cp-text-muted);
+  line-height: 1.4;
+}
