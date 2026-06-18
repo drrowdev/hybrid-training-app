@@ -14,13 +14,18 @@
  * additive.
  */
 import { sql } from "drizzle-orm";
-import { integer, pgTable, text, timestamp, uuid, index, unique } from "drizzle-orm/pg-core";
+import { integer, pgTable, text, timestamp, uuid, index, unique, date } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { trainingBlocks } from "./planner";
 
 /** Lifecycle of a Season. One 'active' per user. */
 export const SEASON_STATUSES = ["active", "completed", "abandoned"] as const;
 export type SeasonStatus = (typeof SEASON_STATUSES)[number];
+
+/** Goal anchor type (ADR 0051 Phase 1). 'event' pins a peak to a priority_events
+ *  A-event; 'theme' is a soft target date with no event row. NULL = no goal. */
+export const SEASON_GOAL_TYPES = ["event", "theme"] as const;
+export type SeasonGoalType = (typeof SEASON_GOAL_TYPES)[number];
 
 /** Lifecycle of a Season block. At most one 'active' per Season. */
 export const SEASON_BLOCK_STATUSES = ["planned", "active", "done", "skipped"] as const;
@@ -50,6 +55,12 @@ export const trainingSeasons = pgTable(
     userId: uuid("user_id").notNull(),
     /** User-facing label, e.g. "Spring HYROX build". */
     name: text("name").notNull(),
+    /** Goal anchor (ADR 0051 Phase 1): NULL | 'event' | 'theme'. */
+    goalType: text("goal_type"),
+    /** When goalType='event', the priority_events A-event this Season peaks for. */
+    targetEventId: uuid("target_event_id"),
+    /** Denormalised event/peak date for the "N weeks out" back-calculation. */
+    targetDate: date("target_date"),
     /** Lifecycle — see SEASON_STATUSES. One 'active' per user. */
     status: text("status").notNull().default("active"),
     createdAt: timestamp("created_at", { withTimezone: true })
