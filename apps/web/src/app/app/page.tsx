@@ -12,7 +12,6 @@ import {
   getUpcomingPlannedSessions,
   type PlannedDay,
 } from "@/lib/planner/queries";
-import { summariseOverdue } from "@/lib/planner/overdue";
 import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
 import { todayYmd } from "@/lib/dates";
 import { effectiveTimeOfDay, gapHoursBetween } from "@/lib/planner/time-of-day";
@@ -24,7 +23,6 @@ import { StravaStaleSyncTrigger } from "@/components/StravaStaleSyncTrigger";
 import { StravaSyncPill } from "@/components/shell/StravaSyncPill";
 import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner";
 import { dismissBwBanner } from "@/lib/profile/actions";
-import { OverdueNotice } from "@/components/today/OverdueNotice";
 import { RegionSpikeBanner } from "@/components/today/RegionSpikeBanner";
 import { ProgramRecommendationsBanner } from "@/components/today/ProgramRecommendationsBanner";
 import { getPendingProgramRecommendations, type PendingProgramRecommendation } from "@/lib/platform/recommendations-queries";
@@ -602,9 +600,6 @@ export default async function TodayPage() {
   const plannedDaysAll = activeBlock
     ? await getPlannedDays(activeBlock.id, activeBlock.startedOn)
     : [];
-  const overdueSummary = activeBlock
-    ? summariseOverdue(plannedDaysAll, todayIso)
-    : { count: 0, oldestDate: null, items: [] };
   // "This week" rail sessions — built in the same PlanSessionInput shape
   // the /app/plan page uses so the Today rail reuses the shared rail +
   // drawer (single source of truth; see components/plan/ThisWeekRail).
@@ -787,7 +782,6 @@ export default async function TodayPage() {
               tmMetaByMovementId={tmMetaByMovementId}
               nextUpcoming={upcoming[0] ?? null}
               formatProfile={formatProfile}
-              overdueCount={overdueSummary.count}
               regionSpikes={regionSpikes}
               programRecs={programRecs}
               aiAccess={aiAccess}
@@ -1011,7 +1005,6 @@ function TodaySessionCard({
   tmMetaByMovementId,
   nextUpcoming,
   formatProfile,
-  overdueCount,
   regionSpikes,
   programRecs,
   aiAccess,
@@ -1037,21 +1030,14 @@ function TodaySessionCard({
   }>;
   nextUpcoming: PlannedDay | null;
   formatProfile: ProfileForFormat;
-  overdueCount: number;
   regionSpikes: ReadonlyArray<RegionSpike>;
   programRecs: PendingProgramRecommendation[];
   aiAccess: boolean;
 }) {
-  // Secondary, non-blocking notice rendered above the day's primary
-  // card whenever the user has past-incomplete planned sessions sitting
-  // in limbo. We never auto-open these — the user reviews them on
-  // /app/plan, where the inline one-tap "Mark skipped" / "Log now"
-  // CTAs live.
-  const overdueNotice = <OverdueNotice count={overdueCount} />;
   // Soft, read-only warning when one or more body regions are >25%
-  // above the user's own 4-week ATL baseline. Rendered below the
-  // overdue notice and above the day's primary card. Does not gate
-  // any prescription or planner action — purely informational.
+  // above the user's own 4-week ATL baseline. Rendered above the day's
+  // primary card. Does not gate any prescription or planner action —
+  // purely informational.
   const spikeBanner = <RegionSpikeBanner spikes={regionSpikes} />;
   // Platform programs: program-owned nudges (retest maxes, next block, 7th-week
   // verdict). Informational; dismiss-only. No-op for archetype blocks.
@@ -1061,7 +1047,6 @@ function TodaySessionCard({
   if (openSession) {
     return (
       <>
-        {overdueNotice}
         {spikeBanner}
         {programRecsBanner}
         <section className="cp-card" style={{ padding: 20, display: "grid", gap: 12 }}>
@@ -1086,7 +1071,6 @@ function TodaySessionCard({
     // All planned slots for today are logged.
     return (
       <>
-        {overdueNotice}
         {spikeBanner}
         {programRecsBanner}
         <section
@@ -1119,7 +1103,6 @@ function TodaySessionCard({
     const nextTopLine = nextUpcoming ? topSetLine(nextUpcoming, tmById) : null;
     return (
       <>
-        {overdueNotice}
         {spikeBanner}
         {programRecsBanner}
         <section
@@ -1309,7 +1292,6 @@ function TodaySessionCard({
 
   return (
     <div style={{ display: "grid", gap: 10 }}>
-      {overdueNotice}
       {spikeBanner}
       {programRecsBanner}
       {isTwoADay && (
