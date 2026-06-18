@@ -47,6 +47,7 @@ import { addDaysToYmd } from "@/lib/dates";
 import { hasAiAccess } from "@/lib/ai/access";
 import { getActiveSeason, getUpcomingAEvents } from "@/lib/seasons/queries";
 import { getMaintenanceFloorContext } from "@/lib/seasons/maintenance-floor-server";
+import { SeasonDiscoveryNudge } from "@/components/seasons/SeasonDiscoveryNudge";
 import { SEASON_EMPHASIS_VALUES } from "@/lib/seasons/season-logic";
 import { selectablePrograms, getProgramEngine } from "@/lib/platform/registry";
 import { SeasonRoadmap } from "@/components/seasons/SeasonRoadmap";
@@ -240,6 +241,7 @@ export default async function PlanPage({
 
   return (
     <div style={{ display: "grid", gap: 24 }}>
+      {!seasonEnabled && <SeasonDiscoveryNudge />}
       {tissueGaps.length > 0 && <TissueStackCard gaps={tissueGaps} />}
       {limitationOffer && (
         <LimitationResponseCard
