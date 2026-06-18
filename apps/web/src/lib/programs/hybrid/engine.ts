@@ -159,6 +159,11 @@ export function setupHybrid(
     daysPerWeek: v.daysPerWeek,
     dayIndexOverrides,
     focusMuscles: v.focusMuscles,
+    // ADR 0052 — Season generator bias, threaded from the activation deploy.
+    // Absent for every non-Season Hybrid deploy ⇒ byte-identical.
+    ...(v.seasonBias === "strength" || v.seasonBias === "endurance"
+      ? { seasonBias: v.seasonBias }
+      : {}),
   });
 
   if (!parsed.ok) {

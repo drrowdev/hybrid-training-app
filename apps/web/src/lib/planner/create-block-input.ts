@@ -112,6 +112,13 @@ export const createBlockSchema = z.object({
    * pre-ADR-0024 baseline). Bounded enum is the write guard.
    */
   accessoryVolume: z.enum(["low", "medium", "high"]).optional(),
+  /**
+   * ADR 0052 — Season strength↔endurance generator bias (Hybrid only). Optional:
+   * only present when a block is deployed from a Season block whose emphasis is
+   * `strength_bias` / `endurance_bias`. Absent ⇒ no bias ⇒ byte-identical. The
+   * first cut acts only on `"endurance"` (raises the concurrent cardio creep).
+   */
+  seasonBias: z.enum(["strength", "endurance"]).optional(),
 });
 
 export type CreateBlockParsed = z.infer<typeof createBlockSchema>;
@@ -180,6 +187,9 @@ export function parseCreateBlockInput(
       : {}),
     ...(parsed.data.accessoryVolume !== undefined
       ? { accessoryVolume: parsed.data.accessoryVolume }
+      : {}),
+    ...(parsed.data.seasonBias !== undefined
+      ? { seasonBias: parsed.data.seasonBias }
       : {}),
   };
 

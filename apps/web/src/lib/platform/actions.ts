@@ -163,9 +163,30 @@ export async function createProgramInstance(
   }
 
   if (isNativeProgram(programId)) {
+    // ADR 0052 — when this Hybrid block is being deployed from a Season block,
+    // derive the generator bias from that block's emphasis and pass it through
+    // the wizard values so `setupHybrid` picks it up. Non-Season Hybrid deploys
+    // (no seasonBlockId) inject nothing ⇒ byte-identical.
+    let nativeSetupValues = setupValues;
+    if (seasonBlockId) {
+      const { data: sb } = await supabase
+        .from("season_blocks")
+        .select("emphasis")
+        .eq("id", seasonBlockId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      const emphasis = sb?.emphasis as string | undefined;
+      const seasonBias =
+        emphasis === "endurance_bias"
+          ? "endurance"
+          : emphasis === "strength_bias"
+            ? "strength"
+            : null;
+      if (seasonBias) nativeSetupValues = { ...setupValues, seasonBias };
+    }
     return createNativeProgramInstance(supabase, user, {
       programId,
-      setupValues,
+      setupValues: nativeSetupValues,
       weekdays,
       startedOn,
       ...(roundingKg != null ? { roundingKg } : {}),
