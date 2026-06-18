@@ -471,3 +471,86 @@ describe("SeasonRoadmap — template selection", () => {
     expect(html).not.toContain("phase=");
   });
 });
+
+describe("SeasonRoadmap — audit P2/P3 polish", () => {
+  function block(over: Partial<SeasonBlock> = {}): SeasonBlock {
+    return {
+      id: "p1",
+      position: 0,
+      programId: "hybrid",
+      templateRef: null,
+      emphasis: "base",
+      intentNote: null,
+      plannedWeeks: 5,
+      status: "planned",
+      blockId: null,
+      ...over,
+    };
+  }
+
+  it("shows planned weeks on the block label and a two-step End (no native confirm)", () => {
+    const season: ActiveSeason = {
+      id: "s-w",
+      name: "Weeks season",
+      goal: null,
+      blocks: [block({ plannedWeeks: 6 })],
+    };
+    const html = renderToStaticMarkup(
+      <SeasonRoadmap
+        season={season}
+        programs={PROGRAMS}
+        emphasisOptions={EMPHASIS}
+        today="2026-06-18"
+        upcomingEvents={[]}
+        floorContext={null}
+      />,
+    );
+    expect(html).toContain("6 wks");
+    // Initial render shows the End button, not the confirm (two-step inline).
+    expect(html).toContain('data-testid="season-end"');
+    expect(html).not.toContain('data-testid="season-end-confirm"');
+  });
+
+  it("marks an arc program block as self-paced, but not a block program", () => {
+    const arc: ActiveSeason = {
+      id: "s-arc",
+      name: "Arc",
+      goal: null,
+      blocks: [block({ id: "g", programId: "green-protocol" })],
+    };
+    const blockProg: ActiveSeason = {
+      id: "s-blk",
+      name: "Block",
+      goal: null,
+      blocks: [block({ id: "h", programId: "hybrid" })],
+    };
+    const render = (s: ActiveSeason) =>
+      renderToStaticMarkup(
+        <SeasonRoadmap
+          season={s}
+          programs={PROGRAMS}
+          emphasisOptions={EMPHASIS}
+          today="2026-06-18"
+          upcomingEvents={[]}
+          floorContext={null}
+        />,
+      );
+    expect(render(arc)).toContain('data-testid="season-arc-note"');
+    expect(render(blockProg)).not.toContain('data-testid="season-arc-note"');
+  });
+
+  it("offers Suggest + a weeks input in the first-season builder", () => {
+    const html = renderToStaticMarkup(
+      <SeasonRoadmap
+        season={null}
+        programs={PROGRAMS}
+        emphasisOptions={EMPHASIS}
+        today="2026-06-18"
+        upcomingEvents={[]}
+        floorContext={null}
+      />,
+    );
+    expect(html).toContain('data-testid="season-draft-suggest-0"');
+    expect(html).toContain('data-testid="draft-0-weeks"');
+  });
+});

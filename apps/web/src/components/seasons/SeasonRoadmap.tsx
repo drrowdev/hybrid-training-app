@@ -35,6 +35,7 @@ import {
   goalRunwayStatus,
 } from "@/lib/seasons/goal-math";
 import { emphasisToSlot, selectNextBlock } from "@/lib/seasons/select-next-block";
+import { isArcProgram } from "@/lib/seasons/descriptors";
 import {
   floorAdvisory,
   floorAdvisoryText,
@@ -82,11 +83,19 @@ function emphasisLabel(value: string): string {
   return EMPHASIS_LABEL[value] ?? value;
 }
 
+/** Parse the weeks input to a bounded int, or null when blank/invalid. */
+function parseWeeks(v: string): number | null {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) && n >= 1 && n <= 24 ? n : null;
+}
+
 type BlockDraft = {
   programId: string;
   templateRef: string;
   emphasis: string;
   intentNote: string;
+  /** Planned length in weeks (string for the input; "" = let the engine decide). */
+  plannedWeeks: string;
 };
 
 function newDraft(
@@ -98,6 +107,7 @@ function newDraft(
     templateRef: "",
     emphasis: emphasisOptions[0] ?? "base",
     intentNote: "",
+    plannedWeeks: "",
   };
 }
 
@@ -117,6 +127,7 @@ export function SeasonRoadmap({
         emphasisOptions={emphasisOptions}
         upcomingEvents={upcomingEvents}
         templatesByProgram={templatesByProgram}
+        today={today}
       />
     );
   }
@@ -140,11 +151,13 @@ function SeasonEmptyState({
   emphasisOptions,
   upcomingEvents,
   templatesByProgram,
+  today,
 }: {
   programs: SeasonRoadmapProgram[];
   emphasisOptions: readonly string[];
   upcomingEvents: UpcomingEvent[];
   templatesByProgram: TemplatesByProgram;
+  today: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -157,6 +170,8 @@ function SeasonEmptyState({
   const [goalSel, setGoalSel] = useState<string>("");
   const [themeDate, setThemeDate] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  // Per-row "Suggest a fit" rationale, keyed by row index.
+  const [rowReasons, setRowReasons] = useState<Record<number, string>>({});
 
   const addRow = () => {
     setDrafts((d) =>
@@ -167,11 +182,35 @@ function SeasonEmptyState({
   };
   const removeRow = (i: number) => {
     setDrafts((d) => d.filter((_, idx) => idx !== i));
+    setRowReasons(({ [i]: _drop, ...rest }) => rest);
   };
   const patchRow = (i: number, patch: Partial<BlockDraft>) => {
     setDrafts((d) =>
       d.map((row, idx) => (idx === i ? { ...row, ...patch } : row)),
     );
+  };
+
+  // Suggest the best-fitting (program, template) for a draft row's emphasis,
+  // biased away from the PRIOR row's program so a first-time builder still gets
+  // varied proposals (UX audit — Suggest was missing from the empty builder).
+  const onRowSuggest = (i: number) => {
+    const row = drafts[i]!;
+    const lastProgramId = i > 0 ? (drafts[i - 1]?.programId ?? null) : null;
+    const res = selectNextBlock(emphasisToSlot(row.emphasis as SeasonEmphasis), {
+      lastProgramId,
+    });
+    const pick = res.ranked.find((r) => programs.some((p) => p.id === r.candidate.programId));
+    if (!pick) {
+      setRowReasons((m) => ({ ...m, [i]: "No confident suggestion — pick what you like." }));
+      return;
+    }
+    const tpl =
+      pick.candidate.templateRef &&
+      templatesByProgram[pick.candidate.programId]?.some((t) => t.value === pick.candidate.templateRef)
+        ? pick.candidate.templateRef
+        : "";
+    patchRow(i, { programId: pick.candidate.programId, templateRef: tpl });
+    setRowReasons((m) => ({ ...m, [i]: pick.reason }));
   };
 
   const buildGoal = () => {
@@ -208,6 +247,7 @@ function SeasonEmptyState({
           templateRef: b.templateRef === "" ? null : b.templateRef,
           emphasis: b.emphasis,
           intentNote: b.intentNote.trim() === "" ? null : b.intentNote.trim(),
+          plannedWeeks: parseWeeks(b.plannedWeeks),
         })),
         ...(goal ? { goal } : {}),
       });
@@ -275,6 +315,7 @@ function SeasonEmptyState({
             className={styles.input}
             type="date"
             value={themeDate}
+            min={today}
             disabled={pending}
             onChange={(e) => setThemeDate(e.target.value)}
             data-testid="season-goal-date"
@@ -287,15 +328,29 @@ function SeasonEmptyState({
         {drafts.map((row, i) => (
           <li key={i} className={styles.draftRow} data-testid="season-draft-row">
             <span className={styles.draftPos}>{i + 1}</span>
-            <BlockFields
-              row={row}
-              programs={programs}
-              emphasisOptions={emphasisOptions}
-              templatesByProgram={templatesByProgram}
-              idPrefix={`draft-${i}`}
-              onChange={(patch) => patchRow(i, patch)}
-              disabled={pending}
-            />
+            <div className={styles.draftMain}>
+              <BlockFields
+                row={row}
+                programs={programs}
+                emphasisOptions={emphasisOptions}
+                templatesByProgram={templatesByProgram}
+                idPrefix={`draft-${i}`}
+                onChange={(patch) => patchRow(i, patch)}
+                disabled={pending}
+              />
+              <button
+                type="button"
+                className={styles.suggestBtn}
+                onClick={() => onRowSuggest(i)}
+                disabled={pending}
+                data-testid={`season-draft-suggest-${i}`}
+              >
+                ✨ Suggest a fit
+              </button>
+              {rowReasons[i] && (
+                <div className={styles.suggestReason}>{rowReasons[i]}</div>
+              )}
+            </div>
             <button
               type="button"
               className={styles.rowRemove}
@@ -367,6 +422,8 @@ function SeasonPopulated({
   const [editDraft, setEditDraft] = useState<BlockDraft | null>(null);
   // Whether the goal editor is open.
   const [goalEditing, setGoalEditing] = useState(false);
+  // Two-step inline confirm for ending the season (replaces window.confirm).
+  const [endConfirming, setEndConfirming] = useState(false);
 
   const nameById = new Map(programs.map((p) => [p.id, p.name]));
   const blocks = [...season.blocks].sort((a, b) => a.position - b.position);
@@ -402,6 +459,7 @@ function SeasonPopulated({
         templateRef: patch.templateRef === "" ? null : patch.templateRef,
         emphasis: patch.emphasis,
         intentNote: patch.intentNote.trim() === "" ? null : patch.intentNote.trim(),
+        plannedWeeks: parseWeeks(patch.plannedWeeks),
       });
       if (!res.ok) {
         setError(res.error);
@@ -421,6 +479,7 @@ function SeasonPopulated({
       templateRef: b.templateRef ?? "",
       emphasis: b.emphasis,
       intentNote: b.intentNote ?? "",
+      plannedWeeks: b.plannedWeeks != null ? String(b.plannedWeeks) : "",
     });
   };
 
@@ -450,12 +509,6 @@ function SeasonPopulated({
 
   const onEnd = () => {
     setError(null);
-    if (typeof window !== "undefined") {
-      const ok = window.confirm(
-        "End this season? Your logged sessions stay; the roadmap is archived.",
-      );
-      if (!ok) return;
-    }
     startTransition(async () => {
       const res = await abandonSeason({ seasonId: season.id });
       if (!res.ok) {
@@ -540,20 +593,46 @@ function SeasonPopulated({
               upcomingEvents={upcomingEvents}
               hasGoal={!!season.goal}
               disabled={pending}
+              today={today}
               onSave={onSetGoal}
               onCancel={() => setGoalEditing(false)}
             />
           )}
         </div>
-        <button
-          type="button"
-          className="cp-btn danger"
-          onClick={onEnd}
-          disabled={pending}
-          data-testid="season-end"
-        >
-          End season
-        </button>
+        {endConfirming ? (
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+              End season?
+            </span>
+            <button
+              type="button"
+              className="cp-btn danger"
+              onClick={onEnd}
+              disabled={pending}
+              data-testid="season-end-confirm"
+            >
+              {pending ? "Ending…" : "Confirm"}
+            </button>
+            <button
+              type="button"
+              className="cp-btn"
+              onClick={() => setEndConfirming(false)}
+              disabled={pending}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="cp-btn danger"
+            onClick={() => setEndConfirming(true)}
+            disabled={pending}
+            data-testid="season-end"
+          >
+            End season
+          </button>
+        )}
       </header>
 
       <div className={styles.rail} data-testid="season-rail">
@@ -572,7 +651,10 @@ function SeasonPopulated({
               <div className={styles.connect} aria-hidden />
               <div className={cardClass} data-status={b.status}>
                 <div className={styles.bcardTop}>
-                  <span className={styles.wk}>Block {i + 1}</span>
+                  <span className={styles.wk}>
+                    Block {i + 1}
+                    {b.plannedWeeks ? ` · ${b.plannedWeeks} wk${b.plannedWeeks === 1 ? "" : "s"}` : ""}
+                  </span>
                   <StatusBadge status={b.status} />
                 </div>
                 <div className={styles.prog} data-testid="season-block-program">
@@ -630,6 +712,11 @@ function SeasonPopulated({
                       {emphasisLabel(b.emphasis)}
                     </span>
                     {b.intentNote && <div className={styles.why}>{b.intentNote}</div>}
+                    {isArcProgram(b.programId) && (
+                      <div className={styles.floorNote} data-testid="season-arc-note">
+                        ↻ Self-paced — runs its own internal phases.
+                      </div>
+                    )}
                     <BiasFloor emphasis={b.emphasis} floorContext={floorContext} />
                     {b.status === "planned" && (
                       <div className={styles.ctrls}>
@@ -654,6 +741,7 @@ function SeasonPopulated({
                           onClick={() => onMove(i, -1)}
                           disabled={pending || blocks[i - 1]?.status !== "planned"}
                           aria-label="Move block earlier"
+                          title="Move earlier"
                           data-testid="season-block-up"
                         >
                           ↑
@@ -664,6 +752,7 @@ function SeasonPopulated({
                           onClick={() => onMove(i, 1)}
                           disabled={pending || blocks[i + 1]?.status !== "planned"}
                           aria-label="Move block later"
+                          title="Move later"
                           data-testid="season-block-down"
                         >
                           ↓
@@ -782,6 +871,7 @@ function AddBlockCard({
         templateRef: row.templateRef === "" ? null : row.templateRef,
         emphasis: row.emphasis,
         intentNote: row.intentNote.trim() === "" ? null : row.intentNote.trim(),
+        plannedWeeks: parseWeeks(row.plannedWeeks),
       });
       if (!res.ok) {
         setError(res.error);
@@ -925,12 +1015,14 @@ function GoalEditor({
   upcomingEvents,
   hasGoal,
   disabled,
+  today,
   onSave,
   onCancel,
 }: {
   upcomingEvents: UpcomingEvent[];
   hasGoal: boolean;
   disabled?: boolean;
+  today: string;
   onSave: (
     goal: { goalType: "event" | "theme"; targetDate?: string; targetEventId?: string } | null,
   ) => void;
@@ -973,6 +1065,7 @@ function GoalEditor({
           className={styles.input}
           type="date"
           value={themeDate}
+          min={today}
           disabled={disabled}
           onChange={(e) => setThemeDate(e.target.value)}
           aria-label="Target date"
@@ -1090,6 +1183,23 @@ function BlockFields({
             </option>
           ))}
         </select>
+      </div>
+      <div className={styles.field}>
+        <label className={styles.label} htmlFor={`${idPrefix}-weeks`}>
+          Weeks (optional)
+        </label>
+        <input
+          id={`${idPrefix}-weeks`}
+          className={styles.input}
+          type="number"
+          min={1}
+          max={24}
+          value={row.plannedWeeks}
+          placeholder="auto"
+          disabled={disabled}
+          onChange={(e) => onChange({ plannedWeeks: e.target.value })}
+          data-testid={`${idPrefix}-weeks`}
+        />
       </div>
       <div className={styles.field}>
         <label className={styles.label} htmlFor={`${idPrefix}-note`}>
