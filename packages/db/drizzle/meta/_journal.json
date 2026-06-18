@@ -792,6 +792,13 @@
       "when": 1785487200000,
       "tag": "0112_seed_core_staples",
       "breakpoints": false
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1785573600000,
+      "tag": "0113_training_seasons",
+      "breakpoints": false
     }
   ]
 }
