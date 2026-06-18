@@ -240,6 +240,11 @@
 .ctrls {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
+}
+.editForm {
+  display: grid;
+  gap: 10px;
 }
 .mini {
   font: inherit;

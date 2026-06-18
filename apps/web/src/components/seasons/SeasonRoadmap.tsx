@@ -24,6 +24,8 @@ import {
   createSeason,
   addSeasonBlock,
   removeSeasonBlock,
+  updateSeasonBlock,
+  reorderSeasonBlocks,
   abandonSeason,
 } from "@/lib/seasons/actions";
 import styles from "./SeasonRoadmap.module.css";
@@ -253,6 +255,9 @@ function SeasonPopulated({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // Which planned block (if any) is being edited inline, plus its working draft.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<BlockDraft | null>(null);
 
   const nameById = new Map(programs.map((p) => [p.id, p.name]));
   const blocks = [...season.blocks].sort((a, b) => a.position - b.position);
@@ -265,6 +270,59 @@ function SeasonPopulated({
     setError(null);
     startTransition(async () => {
       const res = await removeSeasonBlock({ blockId });
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      router.refresh();
+    });
+  };
+
+  const onSaveEdit = (blockId: string, patch: BlockDraft) => {
+    setError(null);
+    startTransition(async () => {
+      const res = await updateSeasonBlock({
+        blockId,
+        programId: patch.programId,
+        emphasis: patch.emphasis,
+        intentNote: patch.intentNote.trim() === "" ? null : patch.intentNote.trim(),
+      });
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setEditingId(null);
+      setEditDraft(null);
+      router.refresh();
+    });
+  };
+
+  const onEditStart = (b: ActiveSeason["blocks"][number]) => {
+    setError(null);
+    setEditingId(b.id);
+    setEditDraft({
+      programId: b.programId,
+      emphasis: b.emphasis,
+      intentNote: b.intentNote ?? "",
+    });
+  };
+
+  // Swap a planned block with its neighbour. Reordering is confined to the
+  // planned tail — done/active blocks keep their position — so a move is only
+  // offered when the adjacent block is also planned. The action takes the FULL
+  // ordering and validates it's a permutation, so we send every id.
+  const onMove = (index: number, dir: -1 | 1) => {
+    const target = index + dir;
+    if (target < 0 || target >= blocks.length) return;
+    if (blocks[index]!.status !== "planned" || blocks[target]!.status !== "planned") return;
+    const orderedBlockIds = blocks.map((b) => b.id);
+    [orderedBlockIds[index], orderedBlockIds[target]] = [
+      orderedBlockIds[target]!,
+      orderedBlockIds[index]!,
+    ];
+    setError(null);
+    startTransition(async () => {
+      const res = await reorderSeasonBlocks({ seasonId: season.id, orderedBlockIds });
       if (!res.ok) {
         setError(res.error);
         return;
@@ -335,40 +393,109 @@ function SeasonPopulated({
                 <div className={styles.prog} data-testid="season-block-program">
                   {nameById.get(b.programId) ?? b.programId}
                 </div>
-                {b.templateRef && (
-                  <div className={styles.tmpl}>{b.templateRef}</div>
-                )}
-                <span
-                  className={styles.chip}
-                  data-testid="season-block-emphasis"
-                >
-                  {emphasisLabel(b.emphasis)}
-                </span>
-                {b.intentNote && <div className={styles.why}>{b.intentNote}</div>}
-                {b.status === "planned" && (
-                  <div className={styles.ctrls}>
-                    {b.id === nextPlannedId && (
-                      <a
-                        className={styles.startBtn}
-                        href={`/app/program?program=${encodeURIComponent(
-                          b.programId,
-                        )}&seasonBlockId=${encodeURIComponent(b.id)}`}
-                        data-testid="season-block-start"
-                      >
-                        Start block →
-                      </a>
-                    )}
-                    <button
-                      type="button"
-                      className={styles.mini}
-                      onClick={() => onRemove(b.id)}
+                {editingId === b.id && editDraft ? (
+                  <div className={styles.editForm} data-testid="season-edit-form">
+                    <BlockFields
+                      row={editDraft}
+                      programs={programs}
+                      emphasisOptions={emphasisOptions}
+                      idPrefix={`edit-${b.id}`}
+                      onChange={(patch) =>
+                        setEditDraft((d) => (d ? { ...d, ...patch } : d))
+                      }
                       disabled={pending}
-                      aria-label="Remove block"
-                      data-testid="season-block-remove"
-                    >
-                      ✕ Remove
-                    </button>
+                    />
+                    <div className={styles.addFormActions}>
+                      <button
+                        type="button"
+                        className="cp-btn"
+                        onClick={() => {
+                          setEditingId(null);
+                          setEditDraft(null);
+                        }}
+                        disabled={pending}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="cp-btn primary"
+                        onClick={() => onSaveEdit(b.id, editDraft)}
+                        disabled={pending}
+                        data-testid="season-edit-save"
+                      >
+                        {pending ? "Saving…" : "Save"}
+                      </button>
+                    </div>
                   </div>
+                ) : (
+                  <>
+                    {b.templateRef && (
+                      <div className={styles.tmpl}>{b.templateRef}</div>
+                    )}
+                    <span
+                      className={styles.chip}
+                      data-testid="season-block-emphasis"
+                    >
+                      {emphasisLabel(b.emphasis)}
+                    </span>
+                    {b.intentNote && <div className={styles.why}>{b.intentNote}</div>}
+                    {b.status === "planned" && (
+                      <div className={styles.ctrls}>
+                        {b.id === nextPlannedId && (
+                          <a
+                            className={styles.startBtn}
+                            href={`/app/program?program=${encodeURIComponent(
+                              b.programId,
+                            )}&seasonBlockId=${encodeURIComponent(b.id)}`}
+                            data-testid="season-block-start"
+                          >
+                            Start block →
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          className={styles.mini}
+                          onClick={() => onMove(i, -1)}
+                          disabled={pending || blocks[i - 1]?.status !== "planned"}
+                          aria-label="Move block earlier"
+                          data-testid="season-block-up"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.mini}
+                          onClick={() => onMove(i, 1)}
+                          disabled={pending || blocks[i + 1]?.status !== "planned"}
+                          aria-label="Move block later"
+                          data-testid="season-block-down"
+                        >
+                          ↓
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.mini}
+                          onClick={() => onEditStart(b)}
+                          disabled={pending}
+                          aria-label="Edit block"
+                          data-testid="season-block-edit"
+                        >
+                          ✎ Edit
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.mini}
+                          onClick={() => onRemove(b.id)}
+                          disabled={pending}
+                          aria-label="Remove block"
+                          data-testid="season-block-remove"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>

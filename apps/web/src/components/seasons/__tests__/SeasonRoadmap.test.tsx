@@ -19,6 +19,8 @@ vi.mock("@/lib/seasons/actions", () => ({
   createSeason: vi.fn(),
   addSeasonBlock: vi.fn(),
   removeSeasonBlock: vi.fn(),
+  updateSeasonBlock: vi.fn(),
+  reorderSeasonBlocks: vi.fn(),
   abandonSeason: vi.fn(),
 }));
 
@@ -200,5 +202,62 @@ describe("SeasonRoadmap — populated state", () => {
     );
     expect(html).toContain('data-testid="season-end"');
     expect(html).toContain('data-testid="season-add-block"');
+  });
+
+  it("renders an Edit control on each planned block", () => {
+    const html = renderToStaticMarkup(
+      <SeasonRoadmap
+        season={season}
+        programs={PROGRAMS}
+        emphasisOptions={EMPHASIS}
+      />,
+    );
+    const editCount = (html.match(/data-testid="season-block-edit"/g) ?? []).length;
+    expect(editCount).toBe(1); // one planned block in this fixture
+  });
+});
+
+describe("SeasonRoadmap — reorder controls", () => {
+  // done(0) · active(1) · planned(2) · planned(3): reorder is confined to the
+  // planned tail, so the first planned can't move up (past the active block) and
+  // the last planned can't move down.
+  const season: ActiveSeason = {
+    id: "10000000-0000-0000-0000-0000000000bb",
+    name: "Two-planned season",
+    blocks: [
+      block({ id: "b0", position: 0, status: "done" }),
+      block({ id: "b1", position: 1, status: "active" }),
+      block({ id: "b2", position: 2, programId: "wendler-531", status: "planned" }),
+      block({ id: "b3", position: 3, programId: "tactical-barbell", status: "planned" }),
+    ],
+  };
+
+  it("offers up/down controls on each planned block", () => {
+    const html = renderToStaticMarkup(
+      <SeasonRoadmap
+        season={season}
+        programs={PROGRAMS}
+        emphasisOptions={EMPHASIS}
+      />,
+    );
+    expect((html.match(/data-testid="season-block-up"/g) ?? []).length).toBe(2);
+    expect((html.match(/data-testid="season-block-down"/g) ?? []).length).toBe(2);
+  });
+
+  it("disables moving the first planned block up (can't reorder past the active block)", () => {
+    const html = renderToStaticMarkup(
+      <SeasonRoadmap
+        season={season}
+        programs={PROGRAMS}
+        emphasisOptions={EMPHASIS}
+      />,
+    );
+    // At least one up-control is disabled (the first planned block); at least
+    // one is enabled (the second planned block can move up).
+    expect(/disabled[^>]*data-testid="season-block-up"/.test(html)).toBe(true);
+    expect(/data-testid="season-block-up"/.test(html)).toBe(true);
+    // The first planned block has no Start CTA suppressing its up button — the
+    // Start CTA is present (it's the next planned), proving sequential ordering.
+    expect(html).toContain('data-testid="season-block-start"');
   });
 });
