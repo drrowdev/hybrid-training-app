@@ -799,6 +799,13 @@
       "when": 1785573600000,
       "tag": "0113_training_seasons",
       "breakpoints": false
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1785660000000,
+      "tag": "0114_training_seasons_goal_anchor",
+      "breakpoints": false
     }
   ]
 }
