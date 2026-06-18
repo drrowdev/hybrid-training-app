@@ -278,7 +278,6 @@ export async function reorderSeasonBlocks(input: unknown): Promise<SeasonActionR
 }
 
 const abandonSchema = z.object({ seasonId: z.string().uuid() }).strict();
-
 /** End a Season (status = abandoned). Does not touch any materialised blocks. */
 export async function abandonSeason(input: unknown): Promise<SeasonActionResult> {
   const parsed = abandonSchema.safeParse(input);
@@ -329,4 +328,32 @@ async function renumberSeason(
       .eq("id", ordered[i]!)
       .eq("user_id", userId);
   }
+}
+
+const setEnabledSchema = z.object({ enabled: z.boolean() }).strict();
+
+/**
+ * Toggle the Season-planning opt-in (profiles.season_planning_enabled). Off by
+ * default; this is the only thing that surfaces the Season tab. Turning it off
+ * leaves any existing Season data intact (just hidden).
+ */
+export async function setSeasonPlanningEnabled(input: unknown): Promise<SeasonActionResult> {
+  const parsed = setEnabledSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ season_planning_enabled: parsed.data.enabled })
+    .eq("id", user.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/app/settings/training");
+  revalidatePath("/app/plan");
+  return { ok: true };
 }
