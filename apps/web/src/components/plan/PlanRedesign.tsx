@@ -1847,7 +1847,15 @@ export function SessionDrawer({
           </button>
         </header>
         <div className="drawer-body">
-          <div className="drawer-actions">
+          <div
+            className="drawer-actions"
+            data-complete={session.done ? "true" : "false"}
+            style={
+              session.done
+                ? { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }
+                : undefined
+            }
+          >
             <button
               type="button"
               className="cp-btn"
@@ -1865,37 +1873,43 @@ export function SessionDrawer({
             >
               ✎ {editing ? "Done editing" : "Edit"}
             </button>
-            <Link
-              href={`${logHrefBase}/${session.id}`}
-              className="cp-btn"
-              data-testid="plan-drawer-mark-done"
-            >
-              ✓ Mark done
-            </Link>
-            {session.skipped ? (
-              <form action={unskipAction}>
-                <input type="hidden" name="id" value={session.id} />
-                <button
-                  type="submit"
-                  className="cp-btn ghost"
-                  data-testid="plan-drawer-unskip"
-                  style={{ width: "100%" }}
+            {/* "Mark done" and "Skip" only make sense for an un-logged session —
+                hide them once the workout is complete. */}
+            {!session.done && (
+              <>
+                <Link
+                  href={`${logHrefBase}/${session.id}`}
+                  className="cp-btn"
+                  data-testid="plan-drawer-mark-done"
                 >
-                  Un-skip
-                </button>
-              </form>
-            ) : (
-              <form action={skipAction}>
-                <input type="hidden" name="id" value={session.id} />
-                <button
-                  type="submit"
-                  className="cp-btn ghost"
-                  data-testid="plan-drawer-skip"
-                  style={{ width: "100%" }}
-                >
-                  Skip
-                </button>
-              </form>
+                  ✓ Mark done
+                </Link>
+                {session.skipped ? (
+                  <form action={unskipAction}>
+                    <input type="hidden" name="id" value={session.id} />
+                    <button
+                      type="submit"
+                      className="cp-btn ghost"
+                      data-testid="plan-drawer-unskip"
+                      style={{ width: "100%" }}
+                    >
+                      Un-skip
+                    </button>
+                  </form>
+                ) : (
+                  <form action={skipAction}>
+                    <input type="hidden" name="id" value={session.id} />
+                    <button
+                      type="submit"
+                      className="cp-btn ghost"
+                      data-testid="plan-drawer-skip"
+                      style={{ width: "100%" }}
+                    >
+                      Skip
+                    </button>
+                  </form>
+                )}
+              </>
             )}
           </div>
 
