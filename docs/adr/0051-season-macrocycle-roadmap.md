@@ -497,3 +497,71 @@ generic and registry-driven: the catalog teaches it what each option is *for*, s
 it can propose the right program and the right template at the right point in the
 arc — and new programs slot in by shipping their own descriptor. Still advisory,
 still forward-only-materialised, still CP-clean.
+
+## Amendment — recommended starting values + calibration stance (2026-06-18)
+
+Concrete defaults for the four balance constants (A-spec), with a per-constant
+confidence call and the decision on how each is set and refined. These are the
+**Stage-A heuristic starting points** (CP-1); none is calibrated yet.
+
+### 1. `SEASON_BIAS_SHIFT` — how hard a focus block leans
+
+- **Default:** 60/40 (a focus block tilts to ~60% of the emphasised quality),
+  **capped** there — no 70/30 swings.
+- **Confidence: LOW (weakest of the four).** No good evidence for the "right"
+  tilt in a concurrent athlete; aggressive shifts raise interference + run-down
+  risk for non-elites.
+- **Decision: ship gentle AND make it a user-facing slider.** This is an
+  advanced-user feature; expose the tilt so the user owns it, default to 60/40,
+  and let keen users push it. **Validation signal:** interference-deload rate at
+  higher tilt settings (does a harder tilt cost more forced recovery?). The app
+  must not act over-sure about this number.
+
+### 2. `MAINTENANCE_FREQUENCY_FLOOR` — minimum touches of the held quality
+
+- **Default:** ≥ 2 sessions/week of the de-emphasized quality during a focus
+  block (never 1×, never 0).
+- **Confidence: HIGH on the principle.** Preserving *frequency* is the strongest,
+  best-supported lever for retaining trained fitness (Bickel 2011 + maintenance
+  literature).
+- **Decision: a firm floor, treated as the most trustworthy of the four.** This
+  is the credible core of the "hold the other quality" promise — cheap insurance,
+  well-backed. The Hybrid generator must seat this floor before applying the tilt.
+
+### 3. `MAINTENANCE_VOLUME_FLOOR_FRAC` — how much volume the held quality keeps
+
+- **Default:** ≈ ⅓ (≈ 33%) of the athlete's rolling baseline weekly volume for
+  the held quality, **with frequency preserved (constant #2)**.
+- **Confidence: HIGH on direction, LOW on the exact fraction.** Trained
+  adaptations are largely maintained on roughly a third of usual volume *when
+  frequency holds* (Bickel 2011, HIGH) — but 30% vs 40% for a given user is a
+  guess.
+- **Decision: anchor the default at the literature ~⅓ and let passive Strava
+  data check it.** This is the one floor we can refine cheaply and objectively:
+  if easy-run pace-at-HR drifts during strength-focus blocks, the floor is too
+  low → raise it. Passive, continuous, no user testing required — the best
+  validation path of the four.
+
+### 4. Season-template defaults — block length + default arc
+
+- **Default:** 3–4 week blocks (matching the app's existing block cadence);
+  default arc `base → focus → opposite-focus → peak` (peak only when an event
+  anchors the Season).
+- **Confidence: MODERATE.** Sensible coaching convention, not proven
+  optimisation — and it's only a first-draft suggestion the user rearranges.
+- **Decision: ship conventional defaults as an editable draft.** **Validation
+  signal:** adherence / override rate — a proposed block that keeps getting
+  skipped means that template slot is wrong.
+
+### Overall stance
+
+- **Lean on the strongest evidence:** the two maintenance floors (#2 frequency,
+  #3 volume) carry the credible promise and are treated as the trustworthy core;
+  #3's exact fraction is refined automatically from Strava.
+- **Keep the weak one gentle and user-owned:** the bias tilt (#1) defaults
+  conservative and is a slider, because the science is thinnest there.
+- **Treat the arc shape (#4) as an editable suggestion**, judged by whether users
+  follow it.
+- No constant is presented as calibrated; all ship as conservative Stage-A
+  defaults tagged CP-1, refined (where possible) by the passive signals above
+  rather than by any up-front claim of precision.
