@@ -418,3 +418,13 @@
   color: var(--cp-text-muted);
   line-height: 1.4;
 }
+
+/* UX audit P2 — on phones the horizontal rail forces sideways scrolling through
+   the roadmap (the centerpiece). Stack it vertically so every block is visible. */
+@media (max-width: 640px) {
+  .rail { flex-direction: column; overflow-x: visible; gap: 10px; }
+  .blk, .add { flex: 1 1 auto; padding: 0; }
+  .blk:first-child { padding-left: 0; }
+  .connect { display: none; }
+  .bcard, .addcard { min-height: 0; }
+}
