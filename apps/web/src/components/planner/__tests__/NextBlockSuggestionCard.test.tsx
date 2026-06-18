@@ -73,4 +73,33 @@ describe("NextBlockSuggestionCard", () => {
     expect(html).toContain("Consider a peak week.");
     expect(html).not.toContain("block next");
   });
+
+  it("uses the heading override (Season-aware nudge) instead of the default", () => {
+    const html = renderToStaticMarkup(
+      <NextBlockSuggestionCard
+        nudge={{
+          suggestion: {
+            programId: "tactical-barbell",
+            programName: "Tactical Barbell",
+            reason: "Add conditioning before the peak.",
+          },
+          realization: null,
+        }}
+        heading="Next up: a Tactical Barbell block"
+        suggestionTail=""
+        cta={{
+          href: "/app/program?program=tactical-barbell&seasonBlockId=abc",
+          label: "Start this block",
+        }}
+        testId="block-ending-nudge-season"
+      />,
+    );
+    expect(html).toContain("Next up: a Tactical Barbell block");
+    // The default "Consider a … block next" heading is suppressed.
+    expect(html).not.toContain("Consider a Tactical Barbell block next");
+    // Empty tail → no trailing "only a suggestion".
+    expect(html).not.toContain("only a suggestion");
+    expect(html).toContain("seasonBlockId=abc");
+    expect(html).toContain("Start this block");
+  });
 });

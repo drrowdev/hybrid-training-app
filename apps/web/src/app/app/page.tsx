@@ -42,6 +42,9 @@ import { getNextBlockNudge } from "@/lib/planner/next-block-suggestion-server";
 import { NextBlockSuggestionCard } from "@/components/planner/NextBlockSuggestionCard";
 import type { SuggestProgramId } from "@/lib/planner/next-block-suggestion";
 import { KNOWN_SUGGEST_PROGRAMS } from "@/lib/planner/next-block-suggestion";
+import { getActiveSeason } from "@/lib/seasons/queries";
+import { nextPlannedBlock } from "@/lib/seasons/season-logic";
+import { selectablePrograms } from "@/lib/platform/registry";
 import {
   ActiveLimitationsCard,
   type ActiveLimitationSummary,
@@ -108,7 +111,7 @@ export default async function TodayPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "display_name, timezone, am_window_start, pm_window_start, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, time_format, date_format, bw_nudge_hidden_until, bw_banner_dismissed_at, byoai_provider, byoai_key_vault_id, byoai_unlocked_at, units",
+      "display_name, timezone, am_window_start, pm_window_start, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, time_format, date_format, bw_nudge_hidden_until, bw_banner_dismissed_at, byoai_provider, byoai_key_vault_id, byoai_unlocked_at, units, season_planning_enabled",
     )
     .eq("id", userId)
     .maybeSingle();
@@ -586,6 +589,24 @@ export default async function TodayPage() {
       })()
     : null;
 
+  // Season-aware override (ADR 0051 D2): when Season planning is on and the user
+  // has an active Season with a next planned block, the final-week nudge advances
+  // the roadmap (activate the next block) instead of the recomputed ADR-0010
+  // guess. Only computed in the final week, gated on the opt-in flag.
+  const seasonNext =
+    inFinalWeek && profile?.season_planning_enabled === true
+      ? await (async () => {
+          const season = await getActiveSeason();
+          if (!season) return null;
+          const next = nextPlannedBlock(season.blocks);
+          if (!next) return null;
+          const programName =
+            selectablePrograms().find((p) => p.id === next.programId)?.name ??
+            next.programId;
+          return { seasonName: season.name, block: next, programName };
+        })()
+      : null;
+
   // Today is a single-column layout — the right rail (Training Maxes
   // summary) was retired with the shell refresh; TM details live on
   // /app/profile and /app/settings/training-maxes now.
@@ -751,18 +772,44 @@ export default async function TodayPage() {
               pendingCount={limitationSummary.pendingCount}
             />
 
-            {endingNudge && (endingNudge.suggestion || endingNudge.realization) && (
+            {seasonNext ? (
               <NextBlockSuggestionCard
-                nudge={endingNudge}
-                eyebrow={"Final week \u00b7 what\u2019s next"}
-                cta={{
-                  href: endingNudge.suggestion
-                    ? `/app/program?program=${endingNudge.suggestion.programId}`
-                    : "/app/program",
-                  label: "Plan your next block",
+                nudge={{
+                  suggestion: {
+                    // The card never reads programId (the CTA href is passed
+                    // separately); the cast just satisfies the suggestion shape
+                    // for season programs outside the ADR-0010 lineup (e.g. HYROX).
+                    programId: seasonNext.block.programId as SuggestProgramId,
+                    programName: seasonNext.programName,
+                    reason:
+                      seasonNext.block.intentNote?.trim() ||
+                      `It\u2019s the next block in your season \u201C${seasonNext.seasonName}\u201D.`,
+                  },
+                  realization: endingNudge?.realization ?? null,
                 }}
-                testId="block-ending-nudge"
+                eyebrow={"Final week \u00b7 next in your season"}
+                heading={`Next up: a ${seasonNext.programName} block`}
+                suggestionTail={""}
+                cta={{
+                  href: `/app/program?program=${seasonNext.block.programId}&seasonBlockId=${seasonNext.block.id}`,
+                  label: "Start this block",
+                }}
+                testId="block-ending-nudge-season"
               />
+            ) : (
+              endingNudge && (endingNudge.suggestion || endingNudge.realization) && (
+                <NextBlockSuggestionCard
+                  nudge={endingNudge}
+                  eyebrow={"Final week \u00b7 what\u2019s next"}
+                  cta={{
+                    href: endingNudge.suggestion
+                      ? `/app/program?program=${endingNudge.suggestion.programId}`
+                      : "/app/program",
+                    label: "Plan your next block",
+                  }}
+                  testId="block-ending-nudge"
+                />
+              )
             )}
 
 
