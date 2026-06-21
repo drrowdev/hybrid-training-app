@@ -1,0 +1,60 @@
+/* Season discovery nudge (UX bug fix). On desktop it's a single row: icon +
+   text + actions. On mobile the inline-flex row squeezed the text column to one
+   word per line, so below 560px we stack: text on top, actions in a full-width
+   row underneath. */
+.nudge {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border-style: dashed;
+  border-color: color-mix(in oklab, var(--cp-accent) 38%, var(--cp-border));
+  background: color-mix(in oklab, var(--cp-accent) 6%, transparent);
+}
+
+.icon {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--cp-accent-soft, transparent);
+  color: var(--cp-accent);
+  font-size: 18px;
+}
+
+.body {
+  flex: 1;
+  min-width: 0;
+}
+.title {
+  font-weight: 600;
+  font-size: 13.5px;
+}
+.lead {
+  font-size: 12px;
+  color: var(--cp-text-muted);
+  margin-top: 2px;
+}
+
+.actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+}
+
+@media (max-width: 560px) {
+  .nudge {
+    flex-wrap: wrap;
+  }
+  /* Text takes the full remaining row next to the icon… */
+  .body {
+    flex: 1 1 200px;
+  }
+  /* …then the actions drop onto their own full-width row, right-aligned. */
+  .actions {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+  }
+}
