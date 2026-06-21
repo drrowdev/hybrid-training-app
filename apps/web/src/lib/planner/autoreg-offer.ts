@@ -12,6 +12,7 @@ import {
   autoregScaleForBand,
   hasDiscretionaryVolume,
   previewAutoregTrim,
+  suppressAutoregForBlockTiming,
   type AutoregTrimChange,
 } from "@/lib/planner/autoreg-volume";
 
@@ -53,6 +54,36 @@ export async function getVolumeAutoregOffer(): Promise<VolumeAutoregOffer | null
 
   const active = await getActiveBlockRemainingSessions(supabase, user.id);
   if (!active) return null;
+
+  // Field bug: a future-dated deploy (or a block with nothing logged yet) made
+  // this offer fire by comparing the PRIOR block's last-7-days sets to the new
+  // block's week-1 budget. Suppress until the active block owns some logged
+  // work. Fetch its start date + count sessions performed on/after it.
+  const { data: blk } = await supabase
+    .from("training_blocks")
+    .select("started_on")
+    .eq("id", active.blockId)
+    .maybeSingle();
+  const startedOnYmd = (blk?.started_on as string | null) ?? null;
+  let ownLoggedSessions = 0;
+  if (startedOnYmd) {
+    const { count } = await supabase
+      .from("sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .is("deleted_at", null)
+      .gte("performed_at", `${startedOnYmd}T00:00:00`);
+    ownLoggedSessions = count ?? 0;
+  }
+  if (
+    suppressAutoregForBlockTiming({
+      startedOnYmd,
+      nowMs: Date.now(),
+      ownLoggedSessions,
+    })
+  ) {
+    return null;
+  }
 
   const targets = active.remaining.filter(
     (s) =>
