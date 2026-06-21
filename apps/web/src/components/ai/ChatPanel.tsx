@@ -508,6 +508,8 @@ export function ChatPanel({
           align-items: center;
           gap: 8px;
           padding: 10px 12px;
+          padding-top: max(10px, env(safe-area-inset-top));
+          padding-right: max(12px, env(safe-area-inset-right));
           border-bottom: 1px solid var(--cp-border);
         }
         .cp-ai-header-spacer {
@@ -753,6 +755,9 @@ export function ChatPanel({
         .cp-ai-composer {
           border-top: 1px solid var(--cp-border);
           padding: 10px 12px;
+          padding-bottom: max(10px, env(safe-area-inset-bottom));
+          padding-left: max(12px, env(safe-area-inset-left));
+          padding-right: max(12px, env(safe-area-inset-right));
           display: flex;
           gap: 8px;
           align-items: flex-end;

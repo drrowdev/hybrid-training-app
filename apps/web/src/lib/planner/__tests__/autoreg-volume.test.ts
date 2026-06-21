@@ -5,6 +5,7 @@ import {
   autoregScaleForBand,
   hasDiscretionaryVolume,
   previewAutoregTrim,
+  suppressAutoregForBlockTiming,
   AUTOREG_VOLUME_SCALE_OVER,
   AUTOREG_VOLUME_SCALE_WAYOVER,
 } from "../autoreg-volume";
@@ -149,5 +150,33 @@ describe("previewAutoregTrim", () => {
     expect(
       previewAutoregTrim(rx([item({ movementId: "m", kind: "main", movementName: "Bench" })]), 0.5),
     ).toEqual([]);
+  });
+});
+
+describe("suppressAutoregForBlockTiming (future-dated / empty block guard)", () => {
+  const NOW = new Date("2026-06-21T12:00:00Z").getTime();
+
+  it("suppresses for a block that has not started yet (future-dated deploy)", () => {
+    expect(
+      suppressAutoregForBlockTiming({ startedOnYmd: "2026-06-22", nowMs: NOW, ownLoggedSessions: 0 }),
+    ).toBe(true);
+  });
+
+  it("suppresses for a started block with zero sessions of its own", () => {
+    expect(
+      suppressAutoregForBlockTiming({ startedOnYmd: "2026-06-18", nowMs: NOW, ownLoggedSessions: 0 }),
+    ).toBe(true);
+  });
+
+  it("does NOT suppress once the block owns logged sessions", () => {
+    expect(
+      suppressAutoregForBlockTiming({ startedOnYmd: "2026-06-18", nowMs: NOW, ownLoggedSessions: 3 }),
+    ).toBe(false);
+  });
+
+  it("falls back to legacy behaviour (no suppression) when start date is unknown", () => {
+    expect(
+      suppressAutoregForBlockTiming({ startedOnYmd: null, nowMs: NOW, ownLoggedSessions: 0 }),
+    ).toBe(false);
   });
 });

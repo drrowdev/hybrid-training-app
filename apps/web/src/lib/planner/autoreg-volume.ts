@@ -56,6 +56,36 @@ export function autoregScaleForBand(band: CeilingBand): number | null {
   return null;
 }
 
+/**
+ * Whether to SUPPRESS the volume-autoreg offer based purely on the active
+ * block's timing. The offer eases *this block's* recent strength volume, so it
+ * is meaningless — and misleading — before the block owns any logged work:
+ *
+ *   - a future-dated block (deployed to start later) has logged nothing yet, so
+ *     the rolling "last 7 days" sets belong to a PRIOR/archived block;
+ *   - a just-deployed block with zero sessions of its own is the same case.
+ *
+ * In both, comparing the prior block's sets to the new block's week-1 budget
+ * produces a false "over budget" warning (field bug). Pure + deterministic so
+ * the timing rule is unit-tested without a Supabase double.
+ */
+export function suppressAutoregForBlockTiming(args: {
+  /** Active block `started_on` (YYYY-MM-DD), or null when unknown. */
+  startedOnYmd: string | null;
+  /** "now" in epoch ms. */
+  nowMs: number;
+  /** Count of sessions logged ON/AFTER started_on (i.e. belonging to this block). */
+  ownLoggedSessions: number;
+}): boolean {
+  const { startedOnYmd, nowMs, ownLoggedSessions } = args;
+  if (!startedOnYmd) return false; // unknown timing — fall back to the old behaviour
+  const startedMs = new Date(`${startedOnYmd}T00:00:00`).getTime();
+  if (!Number.isFinite(startedMs)) return false;
+  if (startedMs > nowMs) return true; // block hasn't started yet
+  if (ownLoggedSessions <= 0) return true; // started, but nothing logged in it yet
+  return false;
+}
+
 function isDiscretionary(item: PrescriptionItem): boolean {
   return DISCRETIONARY_KINDS.has(item.kind);
 }

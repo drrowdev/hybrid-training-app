@@ -14,6 +14,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { setSeasonPlanningEnabled } from "@/lib/seasons/actions";
+import styles from "./SeasonDiscoveryNudge.module.css";
 
 const DISMISS_KEY = "sxc.seasonNudgeDismissed";
 
@@ -54,59 +55,39 @@ export function SeasonDiscoveryNudge() {
 
   return (
     <section
-      className="cp-card"
+      className={`cp-card ${styles.nudge}`}
       data-testid="season-discovery-nudge"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 14,
-        padding: "14px 18px",
-        borderStyle: "dashed",
-        borderColor: "color-mix(in oklab, var(--cp-accent) 38%, var(--cp-border))",
-        background: "color-mix(in oklab, var(--cp-accent) 6%, transparent)",
-      }}
     >
-      <div
-        aria-hidden
-        style={{
-          flex: "0 0 auto",
-          width: 36,
-          height: 36,
-          borderRadius: 10,
-          display: "grid",
-          placeItems: "center",
-          background: "var(--cp-accent-soft, transparent)",
-          color: "var(--cp-accent)",
-          fontSize: 18,
-        }}
-      >
+      <div aria-hidden className={styles.icon}>
         ✦
       </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 600, fontSize: 13.5 }}>Thinking longer-term?</div>
-        <div style={{ fontSize: 12, color: "var(--cp-text-muted)", marginTop: 2 }}>
+      <div className={styles.body}>
+        <div className={styles.title}>Thinking longer-term?</div>
+        <div className={styles.lead}>
           Map a training season — base → focus blocks → peak for a goal. You stay
           in control; only your current block is ever scheduled.
         </div>
       </div>
-      <button
-        type="button"
-        className="cp-btn primary"
-        onClick={onPlan}
-        disabled={pending}
-        data-testid="season-discovery-plan"
-      >
-        {pending ? "Opening…" : "Plan a season →"}
-      </button>
-      <button
-        type="button"
-        className="cp-btn ghost"
-        onClick={onDismiss}
-        disabled={pending}
-        data-testid="season-discovery-dismiss"
-      >
-        Dismiss
-      </button>
+      <div className={styles.actions}>
+        <button
+          type="button"
+          className="cp-btn primary"
+          onClick={onPlan}
+          disabled={pending}
+          data-testid="season-discovery-plan"
+        >
+          {pending ? "Opening…" : "Plan a season →"}
+        </button>
+        <button
+          type="button"
+          className="cp-btn ghost"
+          onClick={onDismiss}
+          disabled={pending}
+          data-testid="season-discovery-dismiss"
+        >
+          Dismiss
+        </button>
+      </div>
     </section>
   );
 }
