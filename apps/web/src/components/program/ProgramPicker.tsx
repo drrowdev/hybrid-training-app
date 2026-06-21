@@ -220,6 +220,12 @@ const PROGRAM_LOADOUT: Record<string, ProgramLoadoutMeta> = {
     struct: "Prescribed in-app \u00B7 runs & rucks logged via Strava",
     grouped: true,
   },
+  hyrox: {
+    title: "Configure your HYROX build",
+    sub: "Pick your experience level (it sets a 10\u201316 week build), your division and how many days a week you can train. The plan periodises itself toward race day.",
+    structLabel: "Phases",
+    struct: "Base \u2192 Build \u2192 Race-prep \u2192 Taper",
+  },
 };
 
 interface TemplateCopy {
@@ -771,6 +777,7 @@ export function ProgramPicker({
   const isTb = selected?.id === TB_PROGRAM_ID;
   const isGp = selected?.id === "green-protocol";
   const isHybrid = selected?.id === "hybrid";
+  const isHyrox = selected?.id === "hyrox";
   const tbTemplateById = useMemo(() => {
     const m = new Map<string, PickerTbTemplate>();
     for (const t of tbTemplates) m.set(t.id, t);
@@ -843,6 +850,10 @@ export function ProgramPicker({
     return c;
   }, [week]);
   const daysMatch = fixedSchedule || requiredDays == null || weekdays.length === requiredDays;
+  // The scheduled days of a fixed-schedule program (HYROX, Green Protocol) are a
+  // MIX of runs / stations / strength — not "strength days". Use a neutral noun
+  // so the review/summary copy isn't misleading (field report).
+  const daysNoun = fixedSchedule ? "training" : "strength";
 
   const clusterValidation = useMemo<ClusterValidationLite | null>(() => {
     if (!activeTbTemplate) return null;
@@ -1548,7 +1559,6 @@ export function ProgramPicker({
     // Setup-field programs (Hybrid goal chips / HYROX experience+division) — no
     // template list, just the engine's describeSetup fields.
     if (!loadoutKey) {
-      const isHyrox = selected.id === "hyrox";
       return (
         <div className={styles.step}>
           <h2 className={styles.h1}>{isHyrox ? "Set up your race build" : "Build for your goals"}</h2>
@@ -1713,7 +1723,6 @@ export function ProgramPicker({
       : `\u2713 ${relevantBenchKeys.length} main lift${relevantBenchKeys.length === 1 ? "" : "s"}`;
 
     const is531 = selected.id === "wendler-531";
-    const isHyrox = selected.id === "hyrox";
     // Load basis controls: 5/3/1 always uses a TM (user picks the %); TB loads
     // off the raw 1RM by default but can optionally derive a TM.
     const tmPct = Math.round(Number(values.tmPercent ?? (is531 ? 0.85 : 0.9)) * 100);
@@ -1933,7 +1942,7 @@ export function ProgramPicker({
       : "Custom";
     const weekText = supportsCardioDays
       ? `${dayCounts.strength} strength \u00B7 ${dayCounts.cardio} cardio \u00B7 ${dayCounts.rest} rest`
-      : `${dayCounts.strength} strength \u00B7 ${dayCounts.rest} rest`;
+      : `${dayCounts.strength} ${daysNoun} \u00B7 ${dayCounts.rest} rest`;
     return (
       <div className={styles.summary}>
         <div className={styles.srow}>
@@ -1969,7 +1978,7 @@ export function ProgramPicker({
       ? `\u26A0 ${dayCounts.strength}/${requiredDays} strength days \u2014 pick ${requiredDays}`
       : supportsCardioDays
         ? `${dayCounts.strength} strength \u00B7 ${dayCounts.cardio} cardio \u00B7 ${dayCounts.rest} rest`
-        : `${dayCounts.strength} strength \u00B7 ${dayCounts.rest} rest`;
+        : `${dayCounts.strength} ${daysNoun} \u00B7 ${dayCounts.rest} rest`;
     const dirty = week.some((t, i) => t !== buildWeek(requiredDays ?? freq531)[i]);
     const schednote =
       selected.id === "wendler-531"
@@ -2192,22 +2201,27 @@ export function ProgramPicker({
           </div>
         ) : null}
 
-        <div style={{ marginTop: 24, maxWidth: 560 }} data-testid="superset-accessories">
-          <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              checked={supersetAccessories}
-              data-testid="superset-accessories-toggle"
-              onChange={(e) => setSupersetAccessories(e.target.checked)}
-            />
-            <span className={styles.label} style={{ margin: 0 }}>
-              Superset accessories (optional)
-            </span>
-          </label>
-          <p className={styles.sub} style={{ marginTop: 6 }}>
-            {"Pair opposing accessories (e.g. a curl with a pushdown) so you rest once per round instead of twice \u2014 a shorter session for the same work. Never changes which exercises or how many sets you get. Applies to this block only."}
-          </p>
-        </div>
+        {/* Superset-accessories pairing is a barbell-accessory concept; HYROX
+            has no supersettable accessories (its stations ARE the work), so the
+            toggle is hidden for it (field report). */}
+        {!isHyrox && (
+          <div style={{ marginTop: 24, maxWidth: 560 }} data-testid="superset-accessories">
+            <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={supersetAccessories}
+                data-testid="superset-accessories-toggle"
+                onChange={(e) => setSupersetAccessories(e.target.checked)}
+              />
+              <span className={styles.label} style={{ margin: 0 }}>
+                Superset accessories (optional)
+              </span>
+            </label>
+            <p className={styles.sub} style={{ marginTop: 6 }}>
+              {"Pair opposing accessories (e.g. a curl with a pushdown) so you rest once per round instead of twice \u2014 a shorter session for the same work. Never changes which exercises or how many sets you get. Applies to this block only."}
+            </p>
+          </div>
+        )}
 
         {renderSummary()}
       </div>
