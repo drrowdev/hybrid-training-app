@@ -24,6 +24,7 @@
 import type { ReactNode } from "react";
 import type { PrescriptionItem } from "@hta/db";
 import { cardioPreviewRows } from "./cardio-preview-rows";
+import { CardioPlanView } from "./CardioPlanView";
 import {
   describeCardioKind,
   type CardioDescriptionKind,
@@ -62,6 +63,11 @@ export function CardioCard({
 }: CardioCardOptions & { item: PrescriptionItem }) {
   const rawName = item.movementName ?? "Cardio";
   const name = stripShorthandSuffix(rawName);
+  // Preferred path: a structured cardioPlan (HYROX station/cardio sessions) →
+  // render the clean, sectioned CardioPlanView. Everything below is the legacy
+  // fallback for cardio that carries no structured plan (Z2/VO2/threshold from
+  // the planner, external programs, and plans materialised before cardioPlan).
+  const plan = item.cardioPlan ?? null;
   // Prefer the item's own prescription note (the engine's "what to do" copy —
   // HYROX intervals/circuits/compromised runs, Green's LSD, etc.) over the
   // generic kind-based description. Falls back to the educational kind copy for
@@ -104,14 +110,21 @@ export function CardioCard({
         </div>
       )}
 
-      <p
-        data-testid={
-          rowTestIdPrefix ? `${rowTestIdPrefix}-description` : undefined
-        }
-        style={descriptionBlockStyle}
-      >
-        {description}
-      </p>
+      {plan ? (
+        <CardioPlanView
+          plan={plan}
+          durationMin={hideDurationRow ? null : item.durationMin ?? null}
+        />
+      ) : (
+        <>
+          <p
+            data-testid={
+              rowTestIdPrefix ? `${rowTestIdPrefix}-description` : undefined
+            }
+            style={descriptionBlockStyle}
+          >
+            {description}
+          </p>
 
       {rows.length > 0 && (
         <div style={statsGridStyle}>
@@ -137,6 +150,8 @@ export function CardioCard({
             </div>
           ))}
         </div>
+      )}
+        </>
       )}
     </section>
   );

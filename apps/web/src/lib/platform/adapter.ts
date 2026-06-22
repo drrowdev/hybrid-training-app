@@ -130,6 +130,10 @@ export function adaptSessionPrescription(
         } else {
           cardio.protocolNote = EXTERNAL_CARDIO_DISPLAY_NOTE;
         }
+        // Structured presentation (summary / format / per-station loads / effort)
+        // — the clean, sectioned render used across all surfaces. Additive: when
+        // absent the card falls back to `notes`.
+        if (it.cardioPlan) cardio.cardioPlan = it.cardioPlan;
         items.push(cardio);
         continue;
       }

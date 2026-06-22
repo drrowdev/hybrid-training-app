@@ -250,6 +250,22 @@ export type PrescriptionItem = {
   intensityLabel?: string;
   notes?: string;
   /**
+   * Cardio: structured, render-ready presentation (summary / format / per-station
+   * loads / effort) — the clean alternative to cramming everything into `notes`.
+   * Rendered by the shared CardioPlanView across Today / live session / plan
+   * drawer. Structurally mirrors `@hta/program-core` `CardioPlan` (kept local to
+   * avoid a circular type import). Optional/additive — items without it fall back
+   * to `notes` rendering, so existing plans and other programs are unaffected.
+   */
+  cardioPlan?: {
+    summary: string;
+    meta?: string;
+    segments?: { label: string; detail: string }[];
+    stations?: { name: string; load?: string; target?: string }[];
+    effort: string;
+    logHint?: string;
+  };
+  /**
    * Reps-in-reserve target for accessories. Range or single value
    * (min === max). Mutually exclusive with `targetRpe`. Populated by the
    * accessory-intensity matrix — see `lib/planner/accessory-intensity.ts`.

@@ -101,6 +101,41 @@ describe("CardioCard", () => {
     expect(alacticHtml).toMatch(/sprint|sharp|explosive/i);
   });
 
+  it("renders the structured cardioPlan (segments + station loads + effort) when present", () => {
+    const stationIntervals = vo2({
+      kind: "cardio_external",
+      movementId: "",
+      movementName: "Station Intervals",
+      durationMin: undefined,
+      protocolNote: undefined,
+      hrCap: undefined,
+      notes: "Rotate through the race stations at a hard, repeatable effort.",
+      cardioPlan: {
+        summary: "Rotate through the race stations at a hard, repeatable effort.",
+        meta: "4 rounds",
+        segments: [{ label: "Each round", detail: "SkiErg → Sled Push → Wall Balls" }],
+        stations: [
+          { name: "Sled Push", load: "152 kg", target: "50 m" },
+          { name: "Wall Balls", load: "6 kg", target: "100 reps · target 3.0 m" },
+        ],
+        effort: "Hard but repeatable — RPE 7–8, race pace not max.",
+        logHint: "Manual session — tap Mark complete when you're done.",
+      },
+    });
+    const html = renderToStaticMarkup(
+      <CardioCard item={stationIntervals} testId="card" rowTestIdPrefix="card" />,
+    );
+    expect(html).toContain('data-testid="cardio-plan-view"');
+    expect(html).toContain("4 rounds");
+    expect(html).toContain("SkiErg → Sled Push → Wall Balls");
+    expect(html).toContain("Sled Push");
+    expect(html).toContain("152 kg");
+    expect(html).toContain("RPE 7");
+    // The legacy generic placeholders never appear when a plan is present.
+    expect(html).not.toMatch(/Follow your external program/i);
+    expect(html).not.toMatch(/Follow prescribed effort/i);
+  });
+
   it("surfaces the item's own engine note as the description (HYROX cardio_external) — overriding the generic kind copy", () => {
     const stationIntervals = vo2({
       kind: "cardio_external",

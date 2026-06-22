@@ -180,6 +180,36 @@ describe("adaptSessionPrescription — strength", () => {
     expect(cardio.protocolNote).toMatch(/Strava|external/i);
   });
 
+  it("passes a structured cardioPlan through to the stored cardio item", () => {
+    const { prescription } = adaptSessionPrescription(
+      {
+        items: [
+          {
+            kind: "conditioning",
+            name: "Station Intervals",
+            movementId: "sled-push",
+            sets: 4,
+            note: "Rotate through the race stations at a hard, repeatable effort.",
+            cardioPlan: {
+              summary: "Rotate through the race stations at a hard, repeatable effort.",
+              meta: "4 rounds",
+              segments: [{ label: "Each round", detail: "SkiErg → Sled Push → Wall Balls" }],
+              stations: [{ name: "Sled Push", load: "152 kg", target: "50 m" }],
+              effort: "Hard but repeatable — RPE 7–8.",
+              logHint: "Manual session — tap Mark complete when you're done.",
+            },
+          },
+        ],
+      },
+      resolve,
+    );
+    const cardio = prescription.items[0]!;
+    expect(cardio.kind).toBe("cardio_external");
+    expect(cardio.cardioPlan?.meta).toBe("4 rounds");
+    expect(cardio.cardioPlan?.stations?.[0]).toEqual({ name: "Sled Push", load: "152 kg", target: "50 m" });
+    expect(cardio.cardioPlan?.effort).toMatch(/RPE 7/);
+  });
+
   it("maps a Green Protocol conditioning day to cardio_external items", () => {
     const { prescription, skipped } = adaptSessionPrescription(
       {
