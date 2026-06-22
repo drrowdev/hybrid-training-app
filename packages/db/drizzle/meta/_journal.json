@@ -806,6 +806,13 @@
       "when": 1785660000000,
       "tag": "0114_training_seasons_goal_anchor",
       "breakpoints": false
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1785746400000,
+      "tag": "0115_hyrox_gender_weight_category",
+      "breakpoints": false
     }
   ]
 }

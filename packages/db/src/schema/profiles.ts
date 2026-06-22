@@ -27,12 +27,17 @@ export const bodyCompPhase = pgEnum("body_comp_phase", [
   "lean_out",
 ]);
 
+/** HYROX competition weight category — drives gendered station loads (divisions.ts). */
+export const gender = pgEnum("gender", ["male", "female"]);
+
 export const profiles = pgTable("profiles", {
   id: uuid("id").primaryKey(),
   displayName: text("display_name"),
   timezone: text("timezone").default("UTC").notNull(),
   units: text("units").default("metric").notNull(),
   bodyweightKg: numeric("bodyweight_kg", { precision: 6, scale: 2 }),
+  /** Competition weight category (HYROX uses men's / women's station standards). */
+  gender: gender("gender"),
   bodyCompPhase: bodyCompPhase("body_comp_phase").default("maintain").notNull(),
   phaseStartedAt: date("phase_started_at"),
   phaseTargetWeeks: smallint("phase_target_weeks"),

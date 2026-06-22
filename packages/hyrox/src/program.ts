@@ -312,6 +312,7 @@ function prescribeRef(
     division: instance.division,
     phase: week.phase,
     isDeload: week.isDeload,
+    ...(ctx.gender ? { gender: ctx.gender } : {}),
   };
 
   if (cell.kind === "sim") {

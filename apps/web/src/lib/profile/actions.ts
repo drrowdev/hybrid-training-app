@@ -93,6 +93,7 @@ const preferencesSchema = z.object({
   amWindowStart: z.string().regex(HHMM).optional(),
   pmWindowStart: z.string().regex(HHMM).optional(),
   units: z.enum(["metric", "imperial"]).optional(),
+  gender: z.enum(["male", "female", ""]).optional(),
 });
 
 function addHours(hhmm: string, hours: number): string {
@@ -110,6 +111,7 @@ export async function updatePreferences(
     amWindowStart: formData.get("amWindowStart") || undefined,
     pmWindowStart: formData.get("pmWindowStart") || undefined,
     units: formData.get("units") || undefined,
+    gender: formData.get("gender") ?? undefined,
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -126,6 +128,10 @@ export async function updatePreferences(
   }
   if (parsed.data.units) {
     updates.units = parsed.data.units;
+  }
+  // Competition weight category for HYROX station loads. "" clears it back to NULL.
+  if (parsed.data.gender !== undefined) {
+    updates.gender = parsed.data.gender === "" ? null : parsed.data.gender;
   }
 
   if (Object.keys(updates).length === 0) return { ok: true };

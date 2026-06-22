@@ -4,7 +4,7 @@
 import { describe, it, expect } from "vitest";
 import type { PlatformContext, SessionPrescription } from "@hta/program-core";
 import { hyroxEngine, type HyroxInstance } from "./program";
-import { stationLoadLabel, getStation } from "./divisions";
+import { stationLoadLabel, getStation, wallBallTargetLabel } from "./divisions";
 
 const ctxNoMaxes: PlatformContext = { oneRepMaxes: {}, roundingKg: 2.5 };
 const ctxWithMaxes: PlatformContext = {
@@ -174,6 +174,31 @@ describe("HYROX prescribe — simulations & divisions", () => {
   it("stationLoadLabel marks Doubles as Open (shared)", () => {
     const sled = getStation("sled-push")!;
     expect(stationLoadLabel(sled, "doubles")).toMatch(/shared/i);
+  });
+
+  it("surfaces the gender-correct station load when gender is known (ADR — weight category)", () => {
+    const i = inst({ division: "open" });
+    const sledNote = (ctx: PlatformContext) =>
+      hyroxEngine.prescribe(i, simRef(i), ctx).items.find((it) => it.movementId === "sled-push")?.note ?? "";
+    // Open sled push: men 152 kg, women 102 kg.
+    const male = sledNote({ ...ctxWithMaxes, gender: "male" });
+    const female = sledNote({ ...ctxWithMaxes, gender: "female" });
+    expect(male).toContain("152");
+    expect(male).not.toContain("102");
+    expect(female).toContain("102");
+    expect(female).not.toContain("152");
+    // No gender → both shown (confirm-at-log fallback).
+    const both = sledNote(ctxWithMaxes);
+    expect(both).toContain("152");
+    expect(both).toContain("102");
+  });
+
+  it("wall-ball target height + load are gender-correct (3.0 m / 6 kg men · 2.7 m / 4 kg women)", () => {
+    const wb = getStation("wall-ball")!;
+    expect(stationLoadLabel(wb, "open", "male")).toContain("6 kg");
+    expect(stationLoadLabel(wb, "open", "female")).toContain("4 kg");
+    expect(wallBallTargetLabel("male")).toContain("3.0 m");
+    expect(wallBallTargetLabel("female")).toContain("2.7 m");
   });
 });
 

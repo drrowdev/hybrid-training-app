@@ -115,7 +115,7 @@ export default async function TrainingProfilePage() {
     supabase
       .from("profiles")
       .select(
-        "display_name, timezone, units, am_window_start, pm_window_start, training_experience, ai_notes, updated_at",
+        "display_name, timezone, units, am_window_start, pm_window_start, training_experience, ai_notes, gender, updated_at",
       )
       .eq("id", userId)
       .maybeSingle(),
@@ -135,6 +135,7 @@ export default async function TrainingProfilePage() {
     (profile?.units as "metric" | "imperial" | null) ?? "metric";
   const amWindowStart = ((profile?.am_window_start as string | null) ?? "07:00").slice(0, 5);
   const pmWindowStart = ((profile?.pm_window_start as string | null) ?? "17:00").slice(0, 5);
+  const gender = (profile?.gender as "male" | "female" | null) ?? null;
   const trainingExperience = (profile?.training_experience as string | null) ?? null;
   const aiNotes = (profile?.ai_notes as string | null) ?? "";
   const aiNotesUpdatedAt = (profile?.updated_at as string | null) ?? null;
@@ -525,6 +526,7 @@ export default async function TrainingProfilePage() {
               amWindowStart={amWindowStart}
               pmWindowStart={pmWindowStart}
               units={units}
+              gender={gender}
               action={updatePreferences}
             />
             <hr style={{ border: 0, borderTop: "1px solid var(--cp-border)" }} />

@@ -17,6 +17,7 @@ export type PreferencesEditorProps = {
   amWindowStart: string;
   pmWindowStart: string;
   units: "metric" | "imperial";
+  gender: "male" | "female" | null;
   action: (formData: FormData) => Promise<ActionResult>;
 };
 
@@ -24,20 +25,23 @@ export function PreferencesEditor({
   amWindowStart,
   pmWindowStart,
   units,
+  gender,
   action,
 }: PreferencesEditorProps) {
   const [am, setAm] = useState(amWindowStart);
   const [pm, setPm] = useState(pmWindowStart);
   const [u, setU] = useState(units);
+  const [g, setG] = useState<"male" | "female" | null>(gender);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [savedKey, setSavedKey] = useState<string | null>(null);
 
-  const submit = (field: "am" | "pm" | "units", value: string) => {
+  const submit = (field: "am" | "pm" | "units" | "gender", value: string) => {
     const fd = new FormData();
     if (field === "am") fd.set("amWindowStart", value);
     if (field === "pm") fd.set("pmWindowStart", value);
     if (field === "units") fd.set("units", value);
+    if (field === "gender") fd.set("gender", value);
     startTransition(async () => {
       const result = await action(fd);
       if (result.ok) {
@@ -124,6 +128,46 @@ export function PreferencesEditor({
               }}
             >
               {opt === "metric" ? "kg" : "lb"}
+            </button>
+          ))}
+        </div>
+      </Row>
+      <Row label="Gender">
+        <div
+          role="radiogroup"
+          aria-label="Gender"
+          style={{ display: "inline-flex", gap: 4 }}
+        >
+          {(["male", "female"] as const).map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              role="radio"
+              aria-checked={g === opt}
+              data-testid={`prefs-gender-${opt}`}
+              data-selected={g === opt ? "true" : "false"}
+              disabled={pending}
+              onClick={() => {
+                if (g === opt) return;
+                setG(opt);
+                submit("gender", opt);
+              }}
+              style={{
+                padding: "4px 10px",
+                fontSize: 12,
+                borderRadius: 999,
+                border: "1px solid var(--cp-border)",
+                background:
+                  g === opt
+                    ? "var(--cp-accent-soft, var(--cp-surface-soft))"
+                    : "transparent",
+                color: g === opt ? "var(--cp-accent, var(--cp-text))" : "var(--cp-text-muted)",
+                cursor: "pointer",
+                fontWeight: g === opt ? 600 : 500,
+                fontFamily: "inherit",
+              }}
+            >
+              {opt === "male" ? "Male" : "Female"}
             </button>
           ))}
         </div>

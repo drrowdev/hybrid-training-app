@@ -491,8 +491,22 @@ async function computeForeignWrite(
   const hyroxWeeksToRace =
     programId === "hyrox" && raceDate ? wholeWeeksBetween(startedOn, raceDate) : null;
 
+  // HYROX surfaces gender-correct station loads (men's / women's standards), so
+  // read the athlete's competition weight category for the context. Best-effort;
+  // NULL falls back to showing both standards to confirm at log time.
+  let hyroxGender: "male" | "female" | undefined;
+  if (programId === "hyrox") {
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("gender")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (prof?.gender === "male" || prof?.gender === "female") hyroxGender = prof.gender;
+  }
+
   const { ctx, resolveMovement } = await buildPlatformContext(supabase, user.id, {
     ...(roundingKg != null ? { roundingKg } : {}),
+    ...(hyroxGender ? { gender: hyroxGender } : {}),
   });
   // Global accessory-volume preference (profiles.effort_preference:
   // low=Easier / standard=Balanced / high=Harder). 5/3/1 scales its assistance
