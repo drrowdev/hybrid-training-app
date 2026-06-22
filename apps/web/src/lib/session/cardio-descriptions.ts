@@ -64,6 +64,19 @@ export const GENERIC_CARDIO_ONE_LINER =
   "Cardio session — follow the prescribed intensity and duration.";
 
 /**
+ * Placeholder protocol note the platform adapter stamps on a
+ * `cardio_external` item ONLY when the engine supplied no prescription
+ * note of its own (genuinely opaque external cardio). When the engine
+ * DOES supply a note it becomes the card description and this generic
+ * line is suppressed. Exported so the adapter and the render layer agree
+ * on the exact string — render surfaces skip it rather than showing it
+ * as a redundant "Protocol" row (e.g. on plans materialised before the
+ * note started driving the description).
+ */
+export const EXTERNAL_CARDIO_DISPLAY_NOTE =
+  "Display-only — log the actual session (Strava / your tracker) so the engine can account for the load.";
+
+/**
  * Resolve a description for any prescription item kind. Returns the
  * generic fallback for unknown / non-cardio kinds rather than null —
  * callers always render something so the user is never left without
