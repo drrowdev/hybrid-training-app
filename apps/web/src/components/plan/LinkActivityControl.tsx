@@ -1,0 +1,143 @@
+"use client";
+
+/**
+ * LinkActivityControl — "Link a logged activity" affordance on a planned cardio
+ * session drawer. Lets the user attach an already-logged run (e.g. a Strava
+ * activity that synced before the day was swapped, or any internal-cardio plan
+ * the auto-linker skips) to this planned slot, with full HYROX load attribution
+ * via `linkActivityToPlanned`.
+ *
+ * Candidates are fetched on demand (no upfront prop threading) and the chosen
+ * link refreshes the route so the Today hero / week rail update immediately.
+ */
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  getLinkableActivities,
+  linkActivityToPlanned,
+  type LinkableActivity,
+} from "@/lib/sessions/link-activity";
+
+function summarise(a: LinkableActivity): string {
+  const parts: string[] = [];
+  if (a.durationMin != null) parts.push(`${a.durationMin} min`);
+  if (a.distanceKm != null) parts.push(`${a.distanceKm.toFixed(1)} km`);
+  if (a.avgHrBpm != null) parts.push(`avg ${a.avgHrBpm} bpm`);
+  const day = a.performedAt ? new Date(a.performedAt).toLocaleDateString() : "";
+  return [day, parts.join(" · ")].filter(Boolean).join(" — ");
+}
+
+export function LinkActivityControl({ plannedId }: { plannedId: string }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [items, setItems] = useState<LinkableActivity[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState<string | null>(null);
+
+  const toggle = async () => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    setOpen(true);
+    setError(null);
+    if (items == null) {
+      setLoading(true);
+      try {
+        setItems(await getLinkableActivities());
+      } catch {
+        setError("Couldn't load your recent activities.");
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const link = async (sessionId: string) => {
+    setPending(sessionId);
+    setError(null);
+    const fd = new FormData();
+    fd.set("plannedId", plannedId);
+    fd.set("sessionId", sessionId);
+    const res = await linkActivityToPlanned(fd);
+    setPending(null);
+    if (res?.error) {
+      setError(res.error);
+      return;
+    }
+    router.refresh();
+    setOpen(false);
+  };
+
+  return (
+    <div data-testid="link-activity-control" style={{ display: "grid", gap: 8 }}>
+      <button
+        type="button"
+        onClick={toggle}
+        className="cp-btn ghost"
+        data-testid="link-activity-toggle"
+        aria-expanded={open}
+        style={{ width: "100%", minHeight: 44 }}
+      >
+        {open ? "× Cancel" : "🔗 Link a logged activity"}
+      </button>
+
+      {open && (
+        <div
+          style={{
+            display: "grid",
+            gap: 6,
+            padding: 8,
+            border: "1px solid var(--cp-border)",
+            borderRadius: 10,
+            background: "var(--cp-surface)",
+          }}
+        >
+          {loading && (
+            <div style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>Loading…</div>
+          )}
+          {error && (
+            <div role="alert" style={{ fontSize: 12, color: "var(--cp-danger)" }}>
+              {error}
+            </div>
+          )}
+          {!loading && items != null && items.length === 0 && (
+            <div style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+              No unlinked activities in the last 3 weeks. Logged runs sync from Strava.
+            </div>
+          )}
+          {!loading &&
+            (items ?? []).map((a) => (
+              <button
+                type="button"
+                key={a.sessionId}
+                onClick={() => link(a.sessionId)}
+                disabled={pending != null}
+                data-testid={`link-activity-candidate-${a.sessionId}`}
+                style={{
+                  textAlign: "left",
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                  border: "1px solid var(--cp-border)",
+                  background: "var(--cp-surface-soft)",
+                  color: "var(--cp-text)",
+                  cursor: pending != null ? "not-allowed" : "pointer",
+                  opacity: pending != null && pending !== a.sessionId ? 0.6 : 1,
+                  display: "grid",
+                  gap: 2,
+                  minHeight: 44,
+                }}
+              >
+                <span style={{ fontSize: 13, fontWeight: 600 }}>{a.title}</span>
+                <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
+                  {pending === a.sessionId ? "Linking…" : summarise(a)}
+                </span>
+              </button>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
