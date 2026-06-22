@@ -515,6 +515,10 @@ async function computeForeignWrite(
         // (4 = one lift/day, 2 = two/day). The frequency is the weekday count
         // picked in the Schedule step, mirrored into setup like Hybrid does.
         ...(programId === "wendler-531" ? { daysPerWeek: weekdays.length } : {}),
+        // HYROX is frequency-flexible (3–7): the number of training weekdays
+        // picked in the Schedule step IS its sessions/week, mirrored into setup
+        // the same way (no separate HYROX frequency field anymore).
+        ...(programId === "hyrox" ? { sessionsPerWeek: weekdays.length } : {}),
         ...(programId === "wendler-531" ? { assistanceVolume: assistanceVolumePref } : {}),
         ...(hyroxWeeksToRace != null ? { weeks: hyroxWeeksToRace } : {}),
       },

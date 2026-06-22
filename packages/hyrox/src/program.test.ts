@@ -30,9 +30,9 @@ describe("HYROX engine — meta", () => {
 });
 
 describe("HYROX engine — describeSetup", () => {
-  it("collects experience, division, and sessions/week", () => {
+  it("collects experience and division (sessions/week comes from the Schedule step)", () => {
     const keys = hyroxEngine.describeSetup().fields.map((f) => f.key);
-    expect(keys).toEqual(["experience", "division", "sessionsPerWeek"]);
+    expect(keys).toEqual(["experience", "division"]);
   });
 
   it("offers the three divisions", () => {
@@ -372,13 +372,17 @@ describe("HYROX timeline — specs", () => {
     expect(tl.map((s) => s.index)).toEqual(tl.map((_, i) => i));
   });
 
-  it("assigns a weekday and a round-trippable ref to every spec", () => {
+  it("does NOT fix a weekday on specs, but every ref round-trips", () => {
+    // HYROX now uses the Schedule-step weekdays (like 5/3/1 / Hybrid), so specs
+    // carry no explicit weekday — materialize seats them on the chosen days. The
+    // ref still encodes an internal weekday coordinate for content lookup.
     const tl = hyroxEngine.timeline(setup());
     for (const spec of tl) {
-      expect(spec.weekday).toBeGreaterThanOrEqual(0);
-      expect(spec.weekday).toBeLessThanOrEqual(6);
+      expect(spec.weekday).toBeUndefined();
       const parsed = parseHyroxRef(spec.ref);
       expect(parsed).not.toBeNull();
+      expect(parsed!.weekday).toBeGreaterThanOrEqual(0);
+      expect(parsed!.weekday).toBeLessThanOrEqual(6);
       expect(hyroxRef(parsed!.week, parsed!.weekday)).toBe(spec.ref);
     }
   });

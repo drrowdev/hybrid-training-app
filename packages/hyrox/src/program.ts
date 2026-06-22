@@ -218,7 +218,13 @@ function specForCell(
     title,
     kind: kindForCell(cell, week.isDeload),
     weekLabel,
-    weekday,
+    // NOTE: deliberately NO `weekday` on the spec. HYROX used to fix its own
+    // calendar (auto-spread weekdays), which made `materialize` ignore the user's
+    // chosen training days. Like 5/3/1 / Hybrid, HYROX now lets the user pick
+    // training weekdays on the Schedule step; `materialize` seats this week's
+    // sessions onto them in timeline order. The `weekday` embedded in the ref is
+    // an internal CONTENT coordinate (cellForRef looks up grid.days[weekday]) and
+    // no longer dictates the calendar placement.
     tags,
   };
 }
@@ -330,7 +336,7 @@ export const hyroxEngine: ProgramEngine<HyroxInstance> = {
             { value: "intermediate", label: "Intermediate — completed a race (12-week build)" },
             { value: "advanced", label: "Advanced — competitive (16-week build)" },
           ],
-          help: "Sets your block length and default training volume. You can still adjust sessions/week below.",
+          help: "Sets your block length and default training volume. You choose your training days on the Schedule step.",
         },
         {
           key: "division",
@@ -343,21 +349,6 @@ export const hyroxEngine: ProgramEngine<HyroxInstance> = {
             { value: "doubles", label: "Doubles" },
           ],
           help: "Determines the station weights and rep standards your sessions prescribe.",
-        },
-        {
-          key: "sessionsPerWeek",
-          label: "Sessions per week",
-          type: "select",
-          defaultValue: "5",
-          options: [
-            { value: "3", label: "3" },
-            { value: "4", label: "4" },
-            { value: "5", label: "5" },
-            { value: "6", label: "6" },
-            { value: "7", label: "7" },
-            { value: "8", label: "8 (two-a-days)" },
-          ],
-          help: "Running is ~half of HYROX — most weeks lean aerobic, with 1–2 strength and 1–2 station/compromised sessions.",
         },
       ],
     };

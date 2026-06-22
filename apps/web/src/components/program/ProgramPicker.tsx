@@ -827,14 +827,17 @@ export function ProgramPicker({
 
   // The program dictates how many strength days a week it needs. TB's active
   // TEMPLATE owns the frequency; 5/3/1 lets the user choose it; fixed-schedule
-  // programs (Green Protocol) prescribe their own calendar; Hybrid is open.
+  // programs (Green Protocol) prescribe their own calendar; Hybrid and HYROX are
+  // open (any training-day count, derived from the Schedule step).
   const requiredDays: number | null = fixedSchedule
     ? null
     : isTb
       ? activeTbTemplate?.sessionsPerWeek ?? null
       : selected?.id === "wendler-531"
         ? freq531
-        : selected?.sessionsPerWeek ?? null;
+        : isHyrox
+          ? null
+          : selected?.sessionsPerWeek ?? null;
 
   const weekdays = useMemo(
     () => week.flatMap((t, i) => (t === "strength" ? [i] : [])),
@@ -849,11 +852,19 @@ export function ProgramPicker({
     for (const t of week) c[t] += 1;
     return c;
   }, [week]);
-  const daysMatch = fixedSchedule || requiredDays == null || weekdays.length === requiredDays;
-  // The scheduled days of a fixed-schedule program (HYROX, Green Protocol) are a
+  // HYROX is frequency-flexible but the engine needs at least 3 training days
+  // (its clamp floor) and at most 7 (one per weekday). Enforce that range so we
+  // never deploy a schedule the engine would under/over-seat.
+  const HYROX_MIN_DAYS = 3;
+  const HYROX_MAX_DAYS = 7;
+  const hyroxDaysOk =
+    !isHyrox || (weekdays.length >= HYROX_MIN_DAYS && weekdays.length <= HYROX_MAX_DAYS);
+  const daysMatch =
+    (fixedSchedule || requiredDays == null || weekdays.length === requiredDays) && hyroxDaysOk;
+  // The scheduled days of a mixed-modality program (HYROX, Green Protocol) are a
   // MIX of runs / stations / strength — not "strength days". Use a neutral noun
   // so the review/summary copy isn't misleading (field report).
-  const daysNoun = fixedSchedule ? "training" : "strength";
+  const daysNoun = fixedSchedule || isHyrox ? "training" : "strength";
 
   const clusterValidation = useMemo<ClusterValidationLite | null>(() => {
     if (!activeTbTemplate) return null;
@@ -1398,7 +1409,9 @@ export function ProgramPicker({
       ? copy.freq.toUpperCase()
       : requiredDays != null
         ? `${requiredDays} / WEEK`
-        : "\u2014";
+        : isHyrox && weekdays.length > 0
+          ? `${weekdays.length} / WEEK`
+          : "\u2014";
     const lenText = loadoutMeta.freqChoice
       ? (loadoutMeta.lenNote ?? "\u2014").toUpperCase()
       : (copy?.len ?? "\u2014").toUpperCase();
@@ -1973,8 +1986,12 @@ export function ProgramPicker({
 
   function renderScheduleStep() {
     if (!selected) return null;
-    const countWarn = !fixedSchedule && requiredDays != null && dayCounts.strength !== requiredDays;
-    const countText = countWarn
+    const hyroxTooFew = isHyrox && dayCounts.strength < HYROX_MIN_DAYS;
+    const countWarn =
+      (!fixedSchedule && requiredDays != null && dayCounts.strength !== requiredDays) || hyroxTooFew;
+    const countText = hyroxTooFew
+      ? `\u26A0 ${dayCounts.strength} training ${dayCounts.strength === 1 ? "day" : "days"} \u2014 pick at least ${HYROX_MIN_DAYS}`
+      : countWarn
       ? `\u26A0 ${dayCounts.strength}/${requiredDays} strength days \u2014 pick ${requiredDays}`
       : supportsCardioDays
         ? `${dayCounts.strength} strength \u00B7 ${dayCounts.cardio} cardio \u00B7 ${dayCounts.rest} rest`
@@ -1985,7 +2002,9 @@ export function ProgramPicker({
         ? `5/3/1 trains ${requiredDays} strength days a week. Tap a day to cycle strength \u2192 cardio \u2192 rest \u2014 keep ${requiredDays} strength days; cardio days are optional open sessions.`
         : isTb
           ? `${activeTbTemplate?.name ?? "This template"} trains ${requiredDays} strength days a week \u2014 you choose which. Tap an open day to add optional cardio, or leave it as rest.`
-          : "Pick which days you'll train. Your training-day count sets how many days a week the plan runs.";
+          : isHyrox
+            ? `Pick the days you'll train (${HYROX_MIN_DAYS}\u2013${HYROX_MAX_DAYS}). HYROX periodises each week across runs, stations and strength \u2014 your training-day count sets how many sessions a week the plan builds.`
+            : "Pick which days you'll train. Your training-day count sets how many days a week the plan runs.";
 
     return (
       <div className={styles.step}>

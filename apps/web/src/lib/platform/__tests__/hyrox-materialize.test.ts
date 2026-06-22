@@ -2,8 +2,9 @@
  * HYROX materialisation — end-to-end against the real @hta/hyrox engine
  * (ADR 0050 step 6). Proves a concrete HYROX instance flows through the
  * program-agnostic materialize/adapter path:
- *   - one planned row per non-rest timeline spec, seated on the engine's FIXED
- *     weekdays (HYROX sets an explicit weekday on every spec);
+ *   - one planned row per non-rest timeline spec, seated on the user's CHOSEN
+ *     training weekdays (HYROX no longer fixes its own calendar — like 5/3/1 /
+ *     Hybrid it uses the Schedule-step weekdays);
  *   - strength sessions resolve their role-anchored mains and (with the ADR-0047
  *     planner) their station accessories;
  *   - run / erg / station / circuit / compromised / sim sessions map to the app's
@@ -30,8 +31,8 @@ const resolve: MovementResolver = (key) =>
     ? { movementId: `mv-${key}`, slug: `${key}-variant`, displayName: key }
     : undefined;
 
-// Full week so the (ignored) schedule never under-seats — HYROX specs carry their
-// own weekday, so this is belt-and-suspenders.
+// A 5-session instance seats onto the first five chosen weekdays; pass the full
+// week so the schedule never under-seats.
 const weekdays = [0, 1, 2, 3, 4, 5, 6];
 
 function inst(over: Partial<Record<"experience" | "division" | "sessionsPerWeek", unknown>> = {}): HyroxInstance {
@@ -65,7 +66,7 @@ describe("materializeProgram — HYROX (no assistance planner)", () => {
     expect(Math.max(...result.sessions.map((s) => s.weekIndex))).toBe(i.weeks - 1);
   });
 
-  it("seats every session on the engine's fixed weekday (0..6)", () => {
+  it("seats every session within the chosen schedule weekdays (0..6)", () => {
     for (const s of result.sessions) {
       expect(s.dayIndex).toBeGreaterThanOrEqual(0);
       expect(s.dayIndex).toBeLessThanOrEqual(6);
@@ -123,6 +124,31 @@ describe("materializeProgram — HYROX (no assistance planner)", () => {
       expect(s.effectiveStressLoad).toBeGreaterThanOrEqual(0);
       expect(s.prescription.programRef).toBe(s.ref);
     }
+  });
+});
+
+describe("materializeProgram — HYROX honours the chosen training weekdays", () => {
+  // A 3-session HYROX week placed on Tue/Thu/Sat must land EXACTLY on those days
+  // (not the engine's old auto-spread). This is the unification fix: HYROX uses
+  // the Schedule-step weekdays like 5/3/1 / Hybrid.
+  const i = inst({ sessionsPerWeek: 3 });
+  const chosen = [1, 3, 5]; // Tue / Thu / Sat
+  const result = materializeProgram(hyroxEngine, i, ctx, resolve, { weekdays: chosen });
+
+  it("places every session on a chosen weekday — none elsewhere", () => {
+    for (const s of result.sessions) {
+      expect(chosen).toContain(s.dayIndex);
+    }
+  });
+
+  it("a normal (non-deload, non-taper) week uses all three chosen days", () => {
+    const grid = buildHyroxGrid({ weeks: i.weeks, sessionsPerWeek: i.sessionsPerWeek, experience: i.experience });
+    // Find a program-week index that is a full 3-session work week.
+    const fullWeek = grid.find((w) => !w.isDeload && w.phase !== "taper" && w.days.filter((c) => c.kind !== "rest").length === 3);
+    expect(fullWeek).toBeDefined();
+    const wkIndex = fullWeek!.week - 1;
+    const days = result.sessions.filter((s) => s.weekIndex === wkIndex).map((s) => s.dayIndex).sort((a, b) => a - b);
+    expect(days).toEqual(chosen);
   });
 });
 
