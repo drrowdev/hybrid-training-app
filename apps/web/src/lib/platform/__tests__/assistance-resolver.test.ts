@@ -102,20 +102,24 @@ describe("classifyAssistanceCandidate", () => {
     ).toBeNull();
   });
 
-  it("classifies single-leg + core as single_leg_or_core", () => {
+  it("classifies single-leg, core and carry into their granular slots", () => {
     expect(
       classifyAssistanceCandidate(mv({ id: "1", slug: "bss", pattern: "squat", functionalRoles: ["single_leg"] as never })),
-    ).toBe("single_leg_or_core");
+    ).toBe("single_leg");
     expect(
       classifyAssistanceCandidate(mv({ id: "2", slug: "plank", pattern: "isolation", functionalRoles: ["anti_extension"] as never })),
-    ).toBe("single_leg_or_core");
+    ).toBe("core");
     expect(
       classifyAssistanceCandidate(mv({ id: "3", slug: "back-ext", pattern: "hinge", primaryRegion: "lumbar_trunk" })),
-    ).toBe("single_leg_or_core");
+    ).toBe("core");
     // name keyword overrides a bilateral squat/hinge pattern
     expect(
       classifyAssistanceCandidate(mv({ id: "4", slug: "lunge", displayName: "Walking Lunge", pattern: "squat" })),
-    ).toBe("single_leg_or_core");
+    ).toBe("single_leg");
+    // loaded carries get their own slot
+    expect(
+      classifyAssistanceCandidate(mv({ id: "5", slug: "farmer", displayName: "Farmer Carry", pattern: "carry" })),
+    ).toBe("carry");
   });
 
   it("returns null for excluded patterns and unclassifiable movements", () => {
@@ -320,5 +324,5 @@ describe("buildAssistancePlanner — F1 staples-first ranking", () => {
 });
 
 // Guard against accidental enum drift.
-const _slots: AssistanceSlot[] = ["push", "pull", "single_leg_or_core"];
+const _slots: AssistanceSlot[] = ["push", "pull", "single_leg", "core", "carry"];
 void _slots;

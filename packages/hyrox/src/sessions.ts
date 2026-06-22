@@ -30,8 +30,8 @@ export type HyroxCategory =
   | "strength" // HYROX-owned station-specific compound strength
   | "sim"; // partial / full race simulation (benchmark-like)
 
-/** Platform assistance categories HYROX strength accessories resolve through (ADR 0047). */
-export type HyroxAssistSlot = "push" | "pull" | "single_leg_or_core";
+/** Platform assistance categories HYROX strength accessories resolve through (ADR 0047 / 0057). */
+export type HyroxAssistSlot = "push" | "pull" | "single_leg" | "core" | "carry";
 
 export interface HyroxSession {
   /** Stable id used by the phase grid and prescriptions. */
@@ -236,10 +236,10 @@ export const HYROX_SESSIONS: HyroxSession[] = [
     zone: "anaerobic",
     unit: "rounds",
     movements: ["squat", "deadlift", "press"],
-    assist: ["pull", "single_leg_or_core"],
+    assist: ["single_leg", "carry", "pull", "core"],
     perMovementLog: true,
     trackable: false,
-    note: "Station-specific compound strength, full body — low reps (3-6), higher load. Squat drives the sleds/lunges/wall balls; deadlift the sled pull; overhead press the wall balls. Pull + single-leg/core accessories round out the stations.",
+    note: "Station-specific compound strength, full body. Moderate-heavy mains (squat / deadlift / overhead press) drive the sleds, lunges and wall balls. HYROX-specific accessories — single-leg, a loaded carry, pulling, and trunk — train the qualities the race demands.",
   },
   {
     id: "strength-lower",
@@ -248,7 +248,7 @@ export const HYROX_SESSIONS: HyroxSession[] = [
     zone: "anaerobic",
     unit: "rounds",
     movements: ["squat", "deadlift"],
-    assist: ["single_leg_or_core"],
+    assist: ["single_leg", "carry"],
     perMovementLog: true,
     trackable: false,
     note: "Single-leg drive (sled push) + posterior chain (sled pull, farmers carry) emphasis. Heavy squat + deadlift, 3-6 reps, plus a single-leg/core accessory (split squats, lunges, loaded carries).",

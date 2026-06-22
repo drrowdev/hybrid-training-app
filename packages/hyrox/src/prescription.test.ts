@@ -77,8 +77,8 @@ describe("HYROX prescribe — strength", () => {
     const squatMain = p.items.find((it) => it.kind === "main" && it.movementId === "squat");
     expect(squatMain).toBeDefined();
     expect(squatMain!.weightKg).toBeGreaterThan(0);
-    // base phase scheme is 75% → 140 × 0.75 = 105
-    expect(squatMain!.weightKg).toBe(105);
+    // base phase scheme is 72% → 140 × 0.72 = 100.8 → 100 (rounded)
+    expect(squatMain!.weightKg).toBe(100);
     expect(p.items.some((it) => it.kind === "warmup" && it.movementId === "squat")).toBe(true);
   });
 
@@ -90,15 +90,19 @@ describe("HYROX prescribe — strength", () => {
     expect(mainKeys.every((k) => ["squat", "deadlift", "press", "bench"].includes(k!))).toBe(true);
   });
 
-  it("emits station accessories as category-tagged assistance intent (no movementId)", () => {
+  it("emits HYROX-specific station accessories as category-tagged assistance intent (no movementId)", () => {
     const i = inst();
     const p = hyroxEngine.prescribe(i, strengthRef(i), ctxWithMaxes);
     const assist = p.items.filter((it) => it.kind === "assistance");
     expect(assist.length).toBeGreaterThan(0);
     for (const a of assist) {
       expect(a.movementId).toBeUndefined();
-      expect(["push", "pull", "single_leg_or_core"]).toContain(a.assistanceCategory);
+      expect(["push", "pull", "single_leg", "core", "carry"]).toContain(a.assistanceCategory);
     }
+    // Full-body HYROX strength always programs a guaranteed single-leg AND a loaded carry.
+    const cats = assist.map((a) => a.assistanceCategory);
+    expect(cats).toContain("single_leg");
+    expect(cats).toContain("carry");
   });
 
   it("rounds working weight to the platform increment", () => {
