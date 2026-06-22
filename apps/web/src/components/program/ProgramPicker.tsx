@@ -865,6 +865,8 @@ export function ProgramPicker({
   // MIX of runs / stations / strength — not "strength days". Use a neutral noun
   // so the review/summary copy isn't misleading (field report).
   const daysNoun = fixedSchedule || isHyrox ? "training" : "strength";
+  // Title-cased version for the day-cell label + legend chip ("Training" / "Strength").
+  const daysNounCap = daysNoun.charAt(0).toUpperCase() + daysNoun.slice(1);
 
   const clusterValidation = useMemo<ClusterValidationLite | null>(() => {
     if (!activeTbTemplate) return null;
@@ -1744,7 +1746,7 @@ export function ProgramPicker({
     const note = is531
       ? `Your Training Max is ${tmPct}% of each 1RM${tmPct === 85 ? " \u2014 the 5/3/1 standard" : ""}. All working percentages run off that TM.`
       : isHyrox
-        ? "HYROX bases your strength sessions on a submaximal % of these 1RMs (no Training Max needed). Your run paces and station weights come from your division standard \u2014 you'll confirm them when you log. Enter the lifts you train; you can skip any you don't."
+        ? "HYROX uses these 1RMs for the strength work in your plan \u2014 a submaximal %, no Training Max needed. Your run paces and station weights come from your division standard, which you'll confirm when you log. Enter the lifts you train; you can skip any you don't."
         : isCluster && activeTbTemplate!.structure === "split"
           ? `Tactical Barbell loads ${useTm ? `off a Training Max (${tmPct}% of your 1RM)` : "a submaximal % of your 1RM"}. Each lift sits in an A or B session; you train each session twice a week. Tap the A/B chip to move a lift.`
           : `Tactical Barbell loads ${useTm ? `off a Training Max (${tmPct}% of your 1RM)` : "a submaximal % of your 1RM \u2014 no Training Max required"}.${
@@ -2171,7 +2173,7 @@ export function ProgramPicker({
               </div>
             ) : null}
             <div className={styles.legend}>
-              <span className={`${styles.lg} ${styles.lgS}`}>Strength</span>
+              <span className={`${styles.lg} ${styles.lgS}`}>{daysNounCap}</span>
               {supportsCardioDays ? <span className={`${styles.lg} ${styles.lgC}`}>Cardio</span> : null}
               <span className={`${styles.lg} ${styles.lgR}`}>Rest</span>
               <span className={`${styles.lgCount}${countWarn ? ` ${styles.lgCountWarn}` : ""}`}>{countText}</span>
@@ -2181,7 +2183,7 @@ export function ProgramPicker({
                 const t = week[i] ?? "rest";
                 const cls =
                   t === "strength" ? styles.wdStrength : t === "cardio" ? styles.wdCardio : styles.wdRest;
-                const wtLabel = t === "strength" ? "Strength" : t === "cardio" ? "Cardio" : "Rest";
+                const wtLabel = t === "strength" ? daysNounCap : t === "cardio" ? "Cardio" : "Rest";
                 return (
                   <button key={i} type="button" onClick={() => cycleDay(i)} className={`${styles.wd} ${cls}`}>
                     <span className={styles.wn}>{label}</span>
