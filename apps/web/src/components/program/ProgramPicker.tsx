@@ -2218,7 +2218,7 @@ export function ProgramPicker({
             </label>
             <p className={styles.sub} style={{ marginTop: 6 }}>
               {isHyrox
-                ? "Adds an easy off-feet erg (ski/row/bike) as a PM session on some hard days \u2014 extra aerobic volume without the leg impact. Leave 6\u20138 hours after your main session so the two don\u2019t blunt each other. This block only; beginners excluded."
+                ? "Adds an easy off-feet erg (ski/row/bike) as a PM session on some hard days \u2014 extra aerobic volume without the leg impact. Leave 6\u20138 hours after your main session so the two don\u2019t blunt each other."
                 : "Split eligible training days into an AM lift + PM cardio, ideally 6+ hours apart so the lifting and cardio don\u2019t blunt each other. Applies to this block only \u2014 leave off for a single session per day."}
             </p>
           </div>
