@@ -625,6 +625,35 @@ describe("HYROX strength dosing (ADR 0056)", () => {
       expect(s.length).toBe(1);
     }
   });
+
+  it("spaces two strength days evenly — not on the first+last training day", () => {
+    // 5-day Base = 2 strength days. They must NOT bookend the week (pos 0 & last);
+    // even spacing puts them on the 2nd & 4th training days (Tue/Fri).
+    const w = week("intermediate", 5, "base");
+    const trainingCells = w.days
+      .map((c, d) => ({ c, d }))
+      .filter(({ c }) => c.kind === "session" || c.kind === "sim");
+    const strengthSlots = trainingCells
+      .map(({ c }, idx) => ({ idx, c }))
+      .filter(({ c }) =>
+        c.kind === "session" &&
+        getHyroxSession((c as { session: string }).session)?.category === "strength",
+      )
+      .map(({ idx }) => idx);
+    expect(strengthSlots).toEqual([1, 3]); // 2nd and 4th of 5 training days
+  });
+
+  it("places a single strength day mid-week (not on the first training day)", () => {
+    const w = week("intermediate", 4, "base"); // 4 days, 1 strength
+    const trainingCells = w.days.filter((c) => c.kind === "session" || c.kind === "sim");
+    const strengthIdx = trainingCells.findIndex(
+      (c) =>
+        c.kind === "session" &&
+        getHyroxSession((c as { session: string }).session)?.category === "strength",
+    );
+    expect(strengthIdx).toBeGreaterThan(0); // not the first training day
+    expect(strengthIdx).toBeLessThan(trainingCells.length - 1); // not the last
+  });
 });
 
 describe("HYROX timeline — specs", () => {

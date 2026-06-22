@@ -78,15 +78,41 @@ until 6 days; race-prep stays at one. A 6-day plan gets two in Base **and** Buil
 
 ## Worked examples
 
-- **Intermediate, 5 days, Base:** strength-full · station · long · quality ·
-  strength-full (2 full-body — every lift 2×). *(was: 1 strength-full)*
-- **Intermediate, 5 days, Build:** strength-full · station · quality · compromised
-  · long (1, endurance-protected).
-- **Advanced, 6 days, Build:** strength-full · station · quality · compromised ·
-  long · strength-full (2 full-body).
-- **Any level, 4 days, Base:** strength-full · station · long · quality (1
-  full-body).
-- **Race-prep, any budget:** one strength day (maintenance).
+Placement now spaces the two strength days evenly (see "Weekday placement"):
+
+- **Intermediate, 5 days, Base:** Mon station · **Tue strength** · Wed long ·
+  **Fri strength** · Sat threshold (2 full-body, on the 2nd & 4th training days —
+  every lift 2×). *(was: 1 strength-full bookending the week)*
+- **Intermediate, 5 days, Build:** strength on the mid-week day (1,
+  endurance-protected).
+- **Advanced, 6 days, Build:** Mon circuit · **Tue strength** · Wed quality ·
+  Thu compromised · **Fri strength** · Sat long (2 full-body, Tue/Fri).
+- **Any level, 4 days, Base:** strength on the 3rd training day (1 full-body, mid-week).
+- **Race-prep, any budget:** one strength day (maintenance), mid-week.
+
+## Weekday placement
+
+The two strength days are seated on **evenly-spaced positions** within the
+training week rather than in slot-priority order. Priority order put strength on
+the user's 1st and last training days (e.g. Mon/Sat in a 5-day week) — too far
+apart, with two consecutive run/station days bunched mid-week.
+
+`strengthPositions(n, k)` returns `k` distinct session indices that split the
+`n`-session week into `k+1` even gaps (`round((i+1)·(n+1)/(k+1)) − 1`, clamped +
+de-collided). For `n=5,k=2` → positions 1 & 3 (the 2nd and 4th training days,
+Tue/Fri in a default Mon-start week); `n=6,k=2` → 1 & 4 (Tue/Fri); `n≥4,k=1` →
+the middle. The remaining sessions fill the other days in priority order, so
+endurance protection (Build phase orders all four run/station essentials before
+the 2nd strength day) is preserved. The race simulation seats on the last
+**non-strength** day so it never displaces a lift.
+
+Rationale: UX and programming quality drive this — two strength days ~3 days
+apart give cleaner recovery and stimulus distribution than bookended days, and
+HYROX is explicitly about training under fatigue, so next-day strength↔endurance
+adjacency is acceptable (interference is mostly hypertrophic + acute <6 h, not a
+24-h problem). Technical slot ordering is NOT a determining factor.
+
+
 
 ## CP pressure-test
 
