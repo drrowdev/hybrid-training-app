@@ -236,7 +236,7 @@ describe("HYROX grid — periodization", () => {
 describe("HYROX week quotas (ADR 0053)", () => {
   const BUDGETS = [3, 4, 5, 6, 7, 8] as const;
   const STATION_IDS = new Set(["station-intervals", "se-circuit"]);
-  const CROSS_IDS = new Set(["easy-ski", "easy-row"]);
+  const CROSS_IDS = new Set(["easy-bike", "easy-row", "easy-ski"]);
 
   /** Every (level × budget) combination, work weeks only (no deload/taper). */
   function workWeeks(experience: HyroxExperience, sessionsPerWeek: number) {
@@ -292,10 +292,9 @@ describe("HYROX week quotas (ADR 0053)", () => {
         for (const week of workWeeks(experience, spw)) {
           const hasRun =
             hasSim(week) ||
-            primarySessions(week).some((id) => {
-              const cat = getHyroxSession(id)?.category;
-              return cat === "run" || cat === "compromised";
-            });
+            // Any run-based session: easy/long/threshold runs, VO2 (run intervals),
+            // and compromised running all materialise the "run" movement.
+            primarySessions(week).some((id) => getHyroxSession(id)?.movements.includes("run"));
           expect(hasRun, `${experience} @ ${spw}/wk, ${week.phase} wk${week.week}`).toBe(true);
         }
       }
@@ -353,10 +352,12 @@ describe("HYROX week quotas (ADR 0053)", () => {
     expect(new Set(strengthIds).size).toBeGreaterThanOrEqual(2); // not the same day twice
   });
 
-  it("the reported regression is gone: a low-budget base week is not strength + easy + ski + long", () => {
+  it("the reported regression is gone: a low-budget base week has no lone easy erg, has a station", () => {
     const week = workWeeks("beginner", 4).find((w) => w.phase === "base")!;
     const ids = primarySessions(week);
     expect(ids).not.toContain("easy-ski");
+    expect(ids).not.toContain("easy-bike");
+    expect(ids).not.toContain("easy-row");
     expect(ids.some((id) => STATION_IDS.has(id))).toBe(true);
   });
 });
@@ -504,6 +505,73 @@ describe("HYROX plan quality (QA guard)", () => {
         expect(hasStation, `${experience}@${spw} wk${w.week}`).toBe(true);
       }
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADR 0055 — best-in-class refinements: a real taper, bike-default easy modality,
+// within-build quality undulation.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("HYROX best-in-class refinements (ADR 0055)", () => {
+  function grid(experience: HyroxExperience, spw = 5) {
+    return buildHyroxGrid({ weeks: WEEKS_BY_EXPERIENCE[experience], sessionsPerWeek: spw, experience });
+  }
+  const ids = (w: { days: { kind: string; session?: string; plus?: { session: string } }[] }) =>
+    w.days.filter((c) => c.kind === "session").map((c) => (c as { session: string }).session);
+
+  it("RACE week (final taper) carries NO heavy strength and is capped at 3", () => {
+    for (const experience of EXPERIENCES) {
+      const g = grid(experience, 6);
+      const taperWeeks = g.filter((w) => w.phase === "taper");
+      const raceWeek = taperWeeks[taperWeeks.length - 1]!;
+      expect(ids(raceWeek)).not.toContain("strength-full");
+      expect(ids(raceWeek)).not.toContain("strength-lower");
+      expect(raceWeek.days.filter((c) => c.kind !== "rest").length).toBeLessThanOrEqual(3);
+      // It still primes the race: a compromised-run primer + a station touch.
+      expect(ids(raceWeek)).toContain("compromised-run");
+    }
+  });
+
+  it("a 2-week taper keeps ONE last strength in the SHARPEN week, not the race week", () => {
+    // intermediate/advanced have 2 taper weeks.
+    for (const experience of ["intermediate", "advanced"] as const) {
+      const g = grid(experience, 5);
+      const taperWeeks = g.filter((w) => w.phase === "taper");
+      expect(taperWeeks.length).toBe(2);
+      const [sharpen, race] = taperWeeks;
+      expect(ids(sharpen!)).toContain("strength-full");
+      expect(ids(race!)).not.toContain("strength-full");
+    }
+  });
+
+  it("easy aerobic defaults to the BIKE — ski never appears as a primary or companion", () => {
+    for (const experience of EXPERIENCES) {
+      for (const spw of [3, 4, 5, 6, 7] as const) {
+        for (const twoADay of [false, true]) {
+          const g = buildHyroxGrid({ weeks: WEEKS_BY_EXPERIENCE[experience], sessionsPerWeek: spw, experience, twoADay });
+          for (const w of g) {
+            for (const c of w.days) {
+              if (c.kind === "session") {
+                expect(c.session, `${experience}@${spw}`).not.toBe("easy-ski");
+                if (c.plus) expect(c.plus.session).not.toBe("easy-ski");
+              }
+            }
+          }
+        }
+      }
+      // And the easy cross-fill at 6 days IS the bike.
+      const base6 = grid(experience, 6).find((w) => w.phase === "base")!;
+      expect(ids(base6)).toContain("easy-bike");
+    }
+  });
+
+  it("the Build phase UNDULATES the quality run week-to-week (threshold ↔ VO2)", () => {
+    const g = grid("advanced", 4); // advanced has multiple build weeks
+    const buildWeeks = g.filter((w) => w.phase === "build" && !w.isDeload);
+    const threshold = buildWeeks.filter((w) => ids(w).includes("threshold-run")).length;
+    const vo2 = buildWeeks.filter((w) => ids(w).includes("vo2-intervals")).length;
+    expect(threshold).toBeGreaterThan(0);
+    expect(vo2).toBeGreaterThan(0); // both stimuli appear across the build block
   });
 });
 

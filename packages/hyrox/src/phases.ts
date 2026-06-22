@@ -103,16 +103,19 @@ type HyroxSlotCat =
   | "compromised" // run-under-fatigue, the signature HYROX skill
   | "long"
   | "easy"
-  | "cross"; // off-feet ergs (ski/row) — leftover-only, never displaces an essential
+  | "cross"; // off-feet easy aerobic (bike/row) — leftover-only, never an essential
 
 /**
  * Per-phase ORDERED slot priority — the ADR 0053 quota model. Taking the first N
  * slots for an N-session budget guarantees the HYROX-essential categories first
  * (strength + a functional station every week; quality running; compromised
- * running from Build onward; the long aerobic run). `cross` (off-feet ergs) sits
- * LAST so it only fills genuinely leftover budget at high session counts and
+ * running from Build onward; the long aerobic run). `cross` (off-feet easy aerobic)
+ * sits LAST so it only fills genuinely leftover budget at high session counts and
  * never displaces a station or quality run in a small week. `[DEF]` coach-
  * consensus weekly dosing — see ADR 0050 §Calibration / ADR 0053.
+ *
+ * Taper (ADR 0055) is NOT keyed here — it splits into a "sharpen" and a "race"
+ * week, resolved by `slotsForWeek`.
  */
 const PHASE_SLOTS: Record<HyroxPhaseId, HyroxSlotCat[]> = {
   // Base: aerobic foundation, but a station + the long run lead so even a
@@ -124,10 +127,23 @@ const PHASE_SLOTS: Record<HyroxPhaseId, HyroxSlotCat[]> = {
   // Race-prep: compromised + stations + strength + VO2 lead (race-specific);
   // long + easy fill; erg leftover-only.
   specific: ["compromised", "station", "strength", "quality", "long", "easy", "cross"],
-  // Taper: reduced volume (capped at 4), intensity maintained — short, sharp,
-  // with a station touch; no filler erg unless budget is high.
-  taper: ["strength", "station", "quality", "easy", "quality", "cross", "easy"],
+  // Taper "sharpen" week (earlier taper week, 2-week tapers only): one LAST
+  // moderate strength + one LAST quality + a station touch + easy (ADR 0055).
+  taper: ["strength", "quality", "station", "easy", "easy", "easy", "easy"],
 };
+
+/**
+ * Taper RACE week (the final taper week, ≤7 days out) — ADR 0055. NO heavy
+ * strength, NO separate hard threshold/VO2: a single short race-pace primer
+ * (compromised run = run+station at race effort, volume-cut by the taper engine),
+ * a light station technique touch, then easy. Capped at 3 sessions to bias rest.
+ */
+const TAPER_RACE_SLOTS: HyroxSlotCat[] = ["compromised", "station", "easy", "easy", "easy", "easy", "easy"];
+
+function slotsForWeek(phase: HyroxPhaseId, taperKind: TaperKind): HyroxSlotCat[] {
+  if (phase === "taper" && taperKind === "race") return TAPER_RACE_SLOTS;
+  return PHASE_SLOTS[phase];
+}
 
 /**
  * Resolve a slot category to a concrete `sessions.ts` id, given the phase and how
@@ -135,7 +151,7 @@ const PHASE_SLOTS: Record<HyroxPhaseId, HyroxSlotCat[]> = {
  * Second occurrences vary the stimulus (a split strength day; the other erg/
  * station modality; a sharper VO2 over threshold).
  */
-function sessionForSlot(phase: HyroxPhaseId, cat: HyroxSlotCat, occ: number): string {
+function sessionForSlot(phase: HyroxPhaseId, cat: HyroxSlotCat, occ: number, week: number): string {
   switch (cat) {
     case "strength":
       // First strength day is full-body; a second (high-budget) day splits to
@@ -148,9 +164,11 @@ function sessionForSlot(phase: HyroxPhaseId, cat: HyroxSlotCat, occ: number): st
       if (phase === "build") return occ === 0 ? "se-circuit" : "station-intervals";
       return occ === 0 ? "station-intervals" : "se-circuit";
     case "quality":
-      // Race-prep sharpens with VO2; earlier phases build threshold first, then
-      // VO2 on any second quality slot.
+      // Race-prep sharpens with VO2. Build UNDULATES the weekly quality stimulus
+      // (ADR 0055) — threshold on odd weeks, VO2 on even — instead of repeating one
+      // type, matching block-periodization practice. Base/taper build threshold.
       if (phase === "specific") return "vo2-intervals";
+      if (phase === "build") return week % 2 === 0 ? "vo2-intervals" : "threshold-run";
       return occ === 0 ? "threshold-run" : "vo2-intervals";
     case "compromised":
       return "compromised-run";
@@ -159,7 +177,11 @@ function sessionForSlot(phase: HyroxPhaseId, cat: HyroxSlotCat, occ: number): st
     case "easy":
       return "easy-run";
     case "cross":
-      return occ === 0 ? "easy-ski" : "easy-row";
+      // Easy off-feet aerobic (ADR 0055): the BIKE is the best easy-Z2 tool
+      // (low-impact, no eccentric or grip/shoulder fatigue — Spies/HYROX365,
+      // Weersma, Botterill); row varies it. Ski is intentionally NOT here — it's a
+      // station/intervals tool, poor for long easy work.
+      return occ === 0 ? "easy-bike" : "easy-row";
   }
 }
 
@@ -168,18 +190,23 @@ function deloadWeekDays(): HyroxDayCell[] {
   const days: HyroxDayCell[] = Array.from({ length: 7 }, () => ({ kind: "rest" }));
   days[0] = { kind: "deload" };
   days[2] = { kind: "session", session: "easy-run" };
-  days[4] = { kind: "session", session: "easy-ski" };
+  // Low-impact recovery aerobic — bike, not ski (ADR 0055).
+  days[4] = { kind: "session", session: "easy-bike" };
   return days;
 }
+
+/** Taper sub-kind: the final taper week is the "race" week (≤7d out); earlier
+ *  taper weeks (2-week tapers) are "sharpen". Non-taper weeks pass `null`. */
+type TaperKind = "sharpen" | "race" | null;
 
 function spreadFor(n: number): number[] {
   return SPREAD[Math.min(n, 7)] ?? SPREAD[7]!;
 }
 
-/** Effective primary sessions for a (non-deload) week of a given phase. */
-function effectiveSessions(phase: HyroxPhaseId, sessionsPerWeek: number): number {
-  // Taper sheds volume: cap at 4 sessions regardless of the block default.
-  if (phase === "taper") return Math.min(sessionsPerWeek, 4);
+/** Effective primary sessions for a (non-deload) week. Taper sheds volume: the
+ *  sharpen week caps at 4, the race week at 3 to bias rest (ADR 0055). */
+function effectiveSessions(phase: HyroxPhaseId, taperKind: TaperKind, sessionsPerWeek: number): number {
+  if (phase === "taper") return Math.min(sessionsPerWeek, taperKind === "race" ? 3 : 4);
   return sessionsPerWeek;
 }
 
@@ -213,12 +240,13 @@ const HARD_PRIMARY: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The off-feet erg used as the PM companion (ADR 0054 R5). Always an erg —
- * lowest interference with strength (Wilson 2012: ski/bike 0.4, row 0.5 vs run
- * 1.0) and no ground-reaction impact on legs already loaded by the AM session
- * (Doma 2019). Rotated across the week's doubles for variety.
+ * The easy off-feet erg used as the PM companion (ADR 0054 R5, refined ADR 0055).
+ * Always an easy erg — lowest interference with strength (Wilson 2012) and no
+ * ground-reaction impact on legs loaded by the AM session (Doma 2019).
+ * Bike-DOMINANT (the best easy-Z2 tool — no eccentric or grip/shoulder fatigue),
+ * varied with row; ski is excluded (an intervals/technique tool, poor for easy).
  */
-const COMPANION_ERGS = ["easy-ski", "easy-row", "easy-bike"] as const;
+const COMPANION_ERGS = ["easy-bike", "easy-row", "easy-bike"] as const;
 
 /**
  * Attach an easy off-feet erg PM companion to up to `cap` HARD-primary days,
@@ -248,11 +276,13 @@ function buildWeekDays(
   withSim: boolean,
   experience: HyroxExperience,
   twoADay: boolean,
+  week: number,
+  taperKind: TaperKind,
 ): HyroxDayCell[] {
   const days: HyroxDayCell[] = Array.from({ length: 7 }, () => ({ kind: "rest" }));
-  const total = effectiveSessions(phase, sessionsPerWeek);
+  const total = effectiveSessions(phase, taperKind, sessionsPerWeek);
   const primaryCount = Math.min(total, 7);
-  const slots = PHASE_SLOTS[phase];
+  const slots = slotsForWeek(phase, taperKind);
   const wd = spreadFor(primaryCount);
 
   // Walk the phase's priority-ordered slots, taking the first `primaryCount`.
@@ -263,7 +293,7 @@ function buildWeekDays(
     const cat = slots[i % slots.length]!;
     const n = occ[cat] ?? 0;
     occ[cat] = n + 1;
-    const session = sessionForSlot(phase, cat, n);
+    const session = sessionForSlot(phase, cat, n, week);
     days[wd[i]!] = { kind: "session", session };
   }
 
@@ -332,13 +362,22 @@ export function buildHyroxGrid(input: HyroxGridInput): HyroxWeekPlan[] {
   }
   const simWeekSet = new Set(specificWeeks.slice(-SIM_WEEKS[experience]));
 
+  // The RACE week is the final taper week (≤7 days out); earlier taper weeks are
+  // "sharpen" (ADR 0055). Find the last taper week.
+  let lastTaperWeek = -1;
+  for (let w = 1; w <= weeks; w++) if (phases[w - 1] === "taper") lastTaperWeek = w;
+  const taperKindFor = (w: number): TaperKind => {
+    if (phases[w - 1] !== "taper") return null;
+    return w === lastTaperWeek ? "race" : "sharpen";
+  };
+
   const plan: HyroxWeekPlan[] = [];
   for (let w = 1; w <= weeks; w++) {
     const phase = phases[w - 1]!;
     const deload = isDeload(w);
     const days = deload
       ? deloadWeekDays()
-      : buildWeekDays(phase, sessionsPerWeek, simWeekSet.has(w), experience, twoADay);
+      : buildWeekDays(phase, sessionsPerWeek, simWeekSet.has(w), experience, twoADay, w, taperKindFor(w));
     plan.push({ week: w, phase, isDeload: deload, days });
   }
   return plan;
