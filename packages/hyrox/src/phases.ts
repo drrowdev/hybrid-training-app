@@ -93,36 +93,46 @@ const SPREAD: Record<number, number[]> = {
  * Per-phase ordered session pools. Taking the first N and zipping onto the
  * (ascending) weekday spread yields a hard/easy alternation with strength early.
  * `[DEF]` content selection — each id resolves to a `sessions.ts` template.
+ *
+ * ORDERING IS LOAD-BEARING (ADR 0053): because `buildWeekDays` takes the FIRST N
+ * entries for an N-session budget, the HYROX essentials (strength, a functional
+ * station, the long run, a quality run) MUST lead each pool so even a 3-session
+ * week is a real HYROX week. The demoted off-feet ergs (`easy-ski`/`easy-row`)
+ * sit at the BACK so they only fill genuinely leftover budget at high session
+ * counts — never displacing a station or quality run in a small week.
  */
 const PHASE_POOLS: Record<HyroxPhaseId, string[]> = {
-  // Base: aerobic foundation + strength + station technique.
+  // Base: strength + station technique + long aerobic lead; quality + easy fill;
+  // ergs leftover-only.
   base: [
     "strength-full",
-    "easy-run",
-    "easy-ski",
+    "station-intervals",
     "long-run",
     "threshold-run",
-    "station-intervals",
+    "easy-run",
+    "easy-ski",
     "easy-row",
   ],
-  // Build: heavy strength + threshold + strength-endurance, maintain Z2.
+  // Build: strength + station-endurance + quality lead; long + easy fill; second
+  // strength day and erg leftover-only.
   build: [
     "strength-full",
-    "easy-run",
-    "threshold-run",
     "se-circuit",
-    "easy-ski",
-    "strength-lower",
+    "threshold-run",
     "long-run",
+    "easy-run",
+    "strength-lower",
+    "easy-ski",
   ],
-  // Race-prep: compromised running + station circuits + VO2, maintain strength.
+  // Race-prep: compromised running + stations + strength + VO2 lead (already
+  // HYROX-specific); easy aerobic fills; erg leftover-only.
   specific: [
     "compromised-run",
-    "strength-full",
     "station-intervals",
+    "strength-full",
     "vo2-intervals",
-    "easy-run",
     "se-circuit",
+    "easy-run",
     "easy-ski",
   ],
   // Taper: reduced volume, intensity maintained (short, sharp).
