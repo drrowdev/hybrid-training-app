@@ -62,9 +62,15 @@ export function CardioCard({
 }: CardioCardOptions & { item: PrescriptionItem }) {
   const rawName = item.movementName ?? "Cardio";
   const name = stripShorthandSuffix(rawName);
-  const description = describeCardioKind(
-    item.kind as CardioDescriptionKind | string,
-  );
+  // Prefer the item's own prescription note (the engine's "what to do" copy —
+  // HYROX intervals/circuits/compromised runs, Green's LSD, etc.) over the
+  // generic kind-based description. Falls back to the educational kind copy for
+  // structured cardio (Z2 / VO2 / threshold) that carries no per-item note.
+  const itemNote = item.notes?.trim();
+  const description =
+    itemNote && itemNote.length > 0
+      ? itemNote
+      : describeCardioKind(item.kind as CardioDescriptionKind | string);
   const allRows = cardioPreviewRows(item);
   const rows = hideDurationRow
     ? allRows.filter((r) => r.label !== "Duration")

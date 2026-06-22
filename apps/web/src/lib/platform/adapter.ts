@@ -115,12 +115,21 @@ export function adaptSessionPrescription(
           kind: "cardio_external",
           movementName: it.name,
           intensityLabel: it.name,
-          protocolNote: "Display-only — log the actual session (Strava / your tracker) so the engine can account for the load.",
         };
         if (it.durationSec != null && it.durationSec > 0) {
           cardio.durationMin = Math.round(it.durationSec / 60);
         }
-        if (it.note) cardio.notes = it.note;
+        // The engine note IS the "how to do it" prescription (HYROX intervals /
+        // circuits / compromised runs, Green's LSD, etc.) — surface it as the
+        // card description. Only when there's no prescription note do we fall
+        // back to the generic "log it from your tracker" hint, so the card never
+        // shows both a real protocol and the contradictory display-only line.
+        if (it.note) {
+          cardio.notes = it.note;
+        } else {
+          cardio.protocolNote =
+            "Display-only — log the actual session (Strava / your tracker) so the engine can account for the load.";
+        }
         items.push(cardio);
         continue;
       }
