@@ -188,16 +188,21 @@ function ExternalCardioRow({
     ? programName
     : "External cardio";
   // Body line: Phase 2 — when the Strava classifier returned a kind,
-  // surface that instead of the Phase 1 placeholder. We keep the
-  // fallback for users without HR data or with Strava disconnected.
+  // surface that instead of the placeholder. Otherwise prefer the
+  // engine's own prescription note (`notes` — what the user is meant to
+  // do this session), then the protocol hint, then the generic fallback.
   const hasClassification = classification != null;
   const isLowConfidence =
     hasClassification && classification.confidence < 0.7;
+  const richNote = (item.notes ?? "").trim();
+  const protoNote = (item.protocolNote ?? "").trim();
   const body = hasClassification
     ? null
-    : item.protocolNote && item.protocolNote.trim().length > 0
-      ? `${item.protocolNote.trim()} Mark complete when done.`
-      : `Logged via ${programName.length > 0 && programName !== "External program" ? programName : "your external program"}. Mark complete when done.`;
+    : richNote.length > 0
+      ? `${richNote} Mark complete when done.`
+      : protoNote.length > 0
+        ? `${protoNote} Mark complete when done.`
+        : `Logged via ${programName.length > 0 && programName !== "External program" ? programName : "your external program"}. Mark complete when done.`;
 
   const onClick = () => {
     if (!markCompleteAction || !plannedSessionId) return;

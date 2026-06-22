@@ -158,8 +158,26 @@ describe("adaptSessionPrescription — strength", () => {
     expect(cardio.movementName).toBe("Long Run");
     expect(cardio.durationMin).toBe(45);
     expect(cardio.notes).toMatch(/conversational/i);
-    expect(cardio.protocolNote).toMatch(/Strava|external/i);
+    // With a real engine note present, the note becomes the card description
+    // and the generic "display-only" protocolNote is suppressed (no redundant /
+    // contradictory line). The generic hint only appears when there's no note.
+    expect(cardio.protocolNote).toBeUndefined();
     expect(skipped.map((s) => s.reason)).toEqual(["no anchored movement for key 'bicep-curl'"]);
+  });
+
+  it("uses the generic display-only protocolNote only when the cardio item carries no note", () => {
+    const { prescription } = adaptSessionPrescription(
+      {
+        items: [
+          { kind: "cardio", name: "Easy Spin", movementId: "bike-erg", durationSec: 1800 },
+        ],
+      },
+      resolve,
+    );
+    const cardio = prescription.items[0]!;
+    expect(cardio.kind).toBe("cardio_external");
+    expect(cardio.notes).toBeUndefined();
+    expect(cardio.protocolNote).toMatch(/Strava|external/i);
   });
 
   it("maps a Green Protocol conditioning day to cardio_external items", () => {

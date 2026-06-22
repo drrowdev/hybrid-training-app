@@ -101,6 +101,27 @@ describe("CardioCard", () => {
     expect(alacticHtml).toMatch(/sprint|sharp|explosive/i);
   });
 
+  it("surfaces the item's own engine note as the description (HYROX cardio_external) — overriding the generic kind copy", () => {
+    const stationIntervals = vo2({
+      kind: "cardio_external",
+      movementId: "",
+      movementName: "Station Intervals",
+      durationMin: undefined,
+      protocolNote: undefined,
+      hrCap: undefined,
+      notes:
+        "4 rounds of station technique + intervals (sled / ski / row / wall ball / lunge) — sharpen efficiency and pacing.",
+    });
+    const html = renderToStaticMarkup(
+      <CardioCard item={stationIntervals} testId="card" rowTestIdPrefix="card" />,
+    );
+    expect(html).toContain("station technique + intervals");
+    // The generic "external program" placeholder must NOT appear once a real
+    // prescription note is present.
+    expect(html).not.toMatch(/Follow your external program/i);
+    expect(html).not.toMatch(/Display-only/i);
+  });
+
   it("never renders the bare engine kind code (VO2 / Z2 / alactic) as its own block (Fix 1)", () => {
     // Allow occurrences inside the title / structured Intensity row,
     // but not as a standalone chip.
