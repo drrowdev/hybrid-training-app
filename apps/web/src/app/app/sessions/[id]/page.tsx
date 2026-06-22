@@ -901,22 +901,28 @@ export default async function SessionDetailPage({
             initialTitle={session.title ?? "Session"}
           />
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {aiAccess ? (
-              <AskWhyButton
-                sessionId={session.id}
-                label={isComplete ? "How did I do?" : undefined}
-                prompt={
-                  isComplete
-                    ? "How did this workout go? Assess how I performed — top sets, any PRs, effort vs. target — and what I got out of it."
-                    : undefined
-                }
-              />
-            ) : (
-              <AskWhyButton
-                href="/app/settings/ai"
-                label={isComplete ? "How did I do?" : undefined}
-              />
-            )}
+            {/* "Ask why this workout" is hidden for pre-programmed platform
+                programs (5/3/1 / TB / Green / HYROX — they carry a programRef):
+                the rationale is the published methodology, not a personalised
+                choice. The post-completion "How did I do?" performance review
+                stays available for every program. */}
+            {(isComplete || !programRef) &&
+              (aiAccess ? (
+                <AskWhyButton
+                  sessionId={session.id}
+                  label={isComplete ? "How did I do?" : undefined}
+                  prompt={
+                    isComplete
+                      ? "How did this workout go? Assess how I performed — top sets, any PRs, effort vs. target — and what I got out of it."
+                      : undefined
+                  }
+                />
+              ) : (
+                <AskWhyButton
+                  href="/app/settings/ai"
+                  label={isComplete ? "How did I do?" : undefined}
+                />
+              ))}
             <details className="cp-menu" style={{ position: "relative" }}>
               <summary
                 aria-label="More actions"

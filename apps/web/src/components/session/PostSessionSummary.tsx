@@ -611,46 +611,41 @@ function CardioZoneBar({ zones }: { zones: Record<Zone, number> }) {
       <div
         style={{
           display: "flex",
-          marginTop: -2,
+          flexWrap: "wrap",
+          gap: "4px 14px",
+          marginTop: 2,
         }}
       >
-        {(() => {
-          const visible = ZONES.filter((z) => zones[z] > 0);
-          return visible.map((z, i) => {
-            const justify =
-              i === 0 ? "flex-start" : i === visible.length - 1 ? "flex-end" : "center";
-            return (
-              <div
-                key={z}
-                data-testid={`cardio-zone-legend-${z}`}
-                style={{
-                  flexGrow: zones[z],
-                  flexBasis: 0,
-                  minWidth: 0,
-                  display: "flex",
-                  justifyContent: justify,
-                }}
-              >
-                <span
-                  style={{
-                    whiteSpace: "nowrap",
-                    fontSize: 12,
-                    display: "inline-flex",
-                    gap: 5,
-                    alignItems: "baseline",
-                  }}
-                >
-                  <span style={{ color: "var(--cp-text)", fontWeight: 600 }}>
-                    {ZONE_META[z].label}
-                  </span>
-                  <span style={{ color: "var(--cp-text-muted)" }} className="mono">
-                    {fmtZoneMin(zones[z])}
-                  </span>
-                </span>
-              </div>
-            );
-          });
-        })()}
+        {ZONES.filter((z) => zones[z] > 0).map((z) => (
+          <span
+            key={z}
+            data-testid={`cardio-zone-legend-${z}`}
+            style={{
+              display: "inline-flex",
+              gap: 6,
+              alignItems: "center",
+              fontSize: 12,
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 2,
+                background: ZONE_META[z].color,
+                flexShrink: 0,
+              }}
+            />
+            <span style={{ color: "var(--cp-text)", fontWeight: 600 }}>
+              {ZONE_META[z].label}
+            </span>
+            <span style={{ color: "var(--cp-text-muted)" }} className="mono">
+              {fmtZoneMin(zones[z])}
+            </span>
+          </span>
+        ))}
       </div>
     </div>
   );
