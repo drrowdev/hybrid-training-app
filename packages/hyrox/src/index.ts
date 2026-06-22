@@ -42,6 +42,8 @@ export {
   HYROX_STATIONS,
   getStation,
   stationLoadLabel,
+  wallBallTargetLabel,
+  stationLoadsSummary,
   type HyroxStation,
   type StationLoad,
 } from "./divisions";

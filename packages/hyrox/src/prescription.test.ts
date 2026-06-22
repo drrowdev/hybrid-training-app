@@ -4,7 +4,7 @@
 import { describe, it, expect } from "vitest";
 import type { PlatformContext, SessionPrescription } from "@hta/program-core";
 import { hyroxEngine, type HyroxInstance } from "./program";
-import { stationLoadLabel, getStation, wallBallTargetLabel } from "./divisions";
+import { stationLoadLabel, getStation, wallBallTargetLabel, stationLoadsSummary } from "./divisions";
 
 const ctxNoMaxes: PlatformContext = { oneRepMaxes: {}, roundingKg: 2.5 };
 const ctxWithMaxes: PlatformContext = {
@@ -199,6 +199,29 @@ describe("HYROX prescribe — simulations & divisions", () => {
     expect(stationLoadLabel(wb, "open", "female")).toContain("4 kg");
     expect(wallBallTargetLabel("male")).toContain("3.0 m");
     expect(wallBallTargetLabel("female")).toContain("2.7 m");
+  });
+
+  it("surfaces race loads on station sessions (intervals/circuit/compromised), not just sims", () => {
+    // station-intervals carries loaded stations (sled / wall ball / sandbag).
+    const summaryMale = stationLoadsSummary(
+      ["sled-push", "sled-pull", "wall-ball", "sandbag-lunge", "skierg", "rowing-erg"],
+      "open",
+      "male",
+    );
+    expect(summaryMale).toContain("152 kg"); // sled push, men's Open
+    expect(summaryMale).toContain("6 kg"); // wall ball, men's Open
+    expect(summaryMale).not.toContain("/"); // gender known → single weights, no M/W slash
+    // Unloaded-only movement set yields no load line.
+    expect(stationLoadsSummary(["run"], "open", "male")).toBe("");
+    // End-to-end: a station-intervals prescription note carries the loads.
+    const i = inst({ division: "pro" });
+    const ref = hyroxEngine
+      .timeline(i)
+      .find((s) => s.tags?.includes("session:station-intervals"))?.ref;
+    if (ref) {
+      const note = hyroxEngine.prescribe(i, ref, { ...ctxWithMaxes, gender: "female" }).items[0]?.note ?? "";
+      expect(note).toMatch(/race loads/i);
+    }
   });
 });
 
