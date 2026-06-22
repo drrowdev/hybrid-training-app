@@ -60,9 +60,21 @@ describe("5/3/1 assistance classification — real seed catalog", () => {
     }
   });
 
-  it("puts unilateral lower + trunk + carries in single-leg/core", () => {
-    for (const n of ["Bulgarian Split Squat (DB)", "Pistol Squat", "Single-Leg RDL", "Plank", "Hanging Leg Raise", "Farmer Carry (DB)", "Pallof Press"]) {
-      expect(slotOf(n), n).toBe("single_leg_or_core");
+  it("puts unilateral lower movements in single_leg", () => {
+    for (const n of ["Bulgarian Split Squat (DB)", "Pistol Squat", "Single-Leg RDL"]) {
+      expect(slotOf(n), n).toBe("single_leg");
+    }
+  });
+
+  it("puts trunk movements in core", () => {
+    for (const n of ["Plank", "Hanging Leg Raise", "Pallof Press"]) {
+      expect(slotOf(n), n).toBe("core");
+    }
+  });
+
+  it("puts loaded carries in their own carry slot", () => {
+    for (const n of ["Farmer Carry (DB)", "Farmer Carry (Trap Bar)"]) {
+      expect(slotOf(n), n).toBe("carry");
     }
   });
 
@@ -74,7 +86,7 @@ describe("5/3/1 assistance classification — real seed catalog", () => {
 
   it("never mis-slots a unilateral row/press into core", () => {
     for (const n of ["Single-Arm DB Row", "Single-Arm Pulldown", "Half-Kneeling Landmine Press", "Z-Press"]) {
-      expect(slotOf(n), n).not.toBe("single_leg_or_core");
+      expect(slotOf(n), n).not.toBe("core");
     }
   });
 

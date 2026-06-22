@@ -90,6 +90,14 @@ export function adaptSessionPrescription(
       }
       const range =
         it.repsMax != null && it.repsMax !== it.reps ? `${it.reps}\u2013${it.repsMax}` : undefined;
+      // Surface the engine's accessory cue when present (HYROX carries prescribed
+      // by distance, single-leg "per leg", etc.), combined with the rep range.
+      // Falls back to the bare range for engines (5/3/1) that emit no note.
+      const notes = it.note
+        ? range
+          ? `${range} \u00b7 ${it.note}`
+          : it.note
+        : range;
       items.push({
         movementId: resolved.movementId,
         movementSlug: resolved.slug,
@@ -97,7 +105,7 @@ export function adaptSessionPrescription(
         kind: "accessory",
         sets: it.sets ?? 1,
         ...(it.reps !== undefined ? { reps: it.reps } : {}),
-        ...(range ? { notes: range } : {}),
+        ...(notes ? { notes } : {}),
       });
       continue;
     }

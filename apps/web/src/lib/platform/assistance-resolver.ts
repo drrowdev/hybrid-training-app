@@ -20,8 +20,17 @@ import { resolveRequiredEquipment, isEquipmentAvailable } from "@/lib/planner/eq
 import type { Equipment } from "@/lib/settings/equipment-schema";
 import type { ResolvedMovement } from "./adapter";
 
-/** The three 5/3/1 assistance slots the engine emits (matches `assistanceCategory`). */
-export type AssistanceSlot = "push" | "pull" | "single_leg_or_core";
+/**
+ * Assistance slots a movement can be classified into. 5/3/1 emits the coarse
+ * `single_leg_or_core` intent; HYROX emits the granular `single_leg` / `core` /
+ * `carry` so it can guarantee unilateral work and loaded carries (a race
+ * station). The resolver maps a `single_leg_or_core` REQUEST onto the union of
+ * the granular pools, so 5/3/1 behaviour is unchanged.
+ */
+export type AssistanceSlot = "push" | "pull" | "single_leg" | "core" | "carry";
+
+/** What an `assistanceCategory` string on a prescription item may request. */
+export type AssistanceRequest = AssistanceSlot | "single_leg_or_core";
 
 // Primary-muscle buckets used to classify ISOLATION movements, whose `pattern`
 // alone ("isolation") doesn't say push vs pull. Compound presses/pulls are caught
@@ -83,14 +92,22 @@ export function classifyAssistanceCandidate(m: CatalogMovement): AssistanceSlot 
   if ((pattern === "pull" || roles.has("pull")) && trainsPull) return "pull";
   if (pattern === "press") return "push";
 
-  // Single-leg or core. `anti_rotation` is intentionally NOT a trigger: it tags
-  // every unilateral press/pull/carry, which would wrongly pull single-arm rows
-  // into core. Genuine anti-rotation core (Pallof, bird-dog, suitcase carry) is
-  // already caught by its abs/obliques muscles or lumbar_trunk region below.
-  if (roles.has("single_leg") || roles.has("anti_extension")) return "single_leg_or_core";
-  if (m.primaryRegion === "lumbar_trunk") return "single_leg_or_core";
-  if (primary.some((mu) => CORE_MUSCLES.has(mu))) return "single_leg_or_core";
-  if (SINGLE_LEG_KEYWORDS.some((kw) => name.includes(kw))) return "single_leg_or_core";
+  // Loaded carry — its own slot (farmer / suitcase / overhead / Zercher). Checked
+  // before single-leg/core so a suitcase carry's oblique loading doesn't pull it
+  // into the core bucket. 5/3/1's coarse single_leg_or_core request unions the
+  // carry pool back in, so carries stay available there too.
+  if (pattern === "carry") return "carry";
+
+  // Single-leg: explicit role, or a name keyword that overrides a bilateral
+  // squat/hinge pattern (lunge, split squat, step-up, pistol, single-leg RDL).
+  if (roles.has("single_leg")) return "single_leg";
+  if (SINGLE_LEG_KEYWORDS.some((kw) => name.includes(kw))) return "single_leg";
+
+  // Core: anti-extension / lumbar-trunk / abs-oblique trunk work. `anti_rotation`
+  // is intentionally NOT a trigger (it tags every unilateral press/pull/carry).
+  if (roles.has("anti_extension")) return "core";
+  if (m.primaryRegion === "lumbar_trunk") return "core";
+  if (primary.some((mu) => CORE_MUSCLES.has(mu))) return "core";
 
   // Isolation disambiguation (compounds were already handled by pattern above).
   if (pattern === "isolation" && trainsPull) return "pull";
@@ -151,7 +168,9 @@ export function buildAssistancePlanner(args: BuildAssistancePlannerArgs): Assist
   const byCategory: Record<AssistanceSlot, CatalogMovement[]> = {
     push: [],
     pull: [],
-    single_leg_or_core: [],
+    single_leg: [],
+    core: [],
+    carry: [],
   };
 
   for (const m of catalog) {
@@ -168,11 +187,23 @@ export function buildAssistancePlanner(args: BuildAssistancePlannerArgs): Assist
   for (const key of Object.keys(byCategory) as AssistanceSlot[]) {
     byCategory[key].sort((a, b) => a.slug.localeCompare(b.slug));
   }
+  // 5/3/1's coarse `single_leg_or_core` request draws from the union of the
+  // granular pools (unilateral + core + carry) — the same breadth it had before
+  // the slots were split, so 5/3/1 selection is unchanged. Sorted for determinism.
+  const singleLegOrCore = [...byCategory.single_leg, ...byCategory.core, ...byCategory.carry].sort(
+    (a, b) => a.slug.localeCompare(b.slug),
+  );
+
+  /** Map an assistance REQUEST string to its candidate pool. */
+  const poolFor = (category: string): CatalogMovement[] => {
+    if (category === "single_leg_or_core") return singleLegOrCore;
+    return byCategory[category as AssistanceSlot] ?? [];
+  };
 
   return (sessionRef) => {
     const usedThisSession = new Set<string>();
     return (category, slotIndex) => {
-      const pool = byCategory[category as AssistanceSlot];
+      const pool = poolFor(category);
       if (!pool || pool.length === 0) return undefined;
       // Prefer movements not yet used this session; fall back to the full pool
       // when a small catalog can't fill every slot uniquely.

@@ -40,11 +40,16 @@ interface StrengthScheme {
   /** Fraction of 1RM for the working sets. */
   pct: number;
 }
+/**
+ * Strength loading per phase. HYROX strength is SUPPORTIVE and power-endurance —
+ * moderate-heavy and repeatable, never a max-strength peak (ADR 0057). Reps stay
+ * in the 4–6 band, intensity ≤ ~80% 1RM. `[DEF]` coach-consensus, user-gated.
+ */
 const STRENGTH_SCHEME: Record<HyroxPhaseId, StrengthScheme> = {
-  base: { sets: 4, reps: 5, pct: 0.75 }, // accumulate, groove patterns
-  build: { sets: 4, reps: 4, pct: 0.83 }, // intensify
-  specific: { sets: 3, reps: 3, pct: 0.8 }, // maintain strength, shed volume
-  taper: { sets: 2, reps: 3, pct: 0.68 }, // stay sharp, minimal fatigue
+  base: { sets: 4, reps: 6, pct: 0.72 }, // accumulate, build work capacity, groove patterns
+  build: { sets: 5, reps: 5, pct: 0.78 }, // intensify with VOLUME, not a heavy single — stays sub-max
+  specific: { sets: 3, reps: 4, pct: 0.78 }, // maintain strength, shed volume for the race
+  taper: { sets: 2, reps: 3, pct: 0.65 }, // stay sharp, minimal fatigue
 };
 
 /** Easy-run minutes by level (the Z2 anchor; other aerobic durations derive from it). `[DEF]`. */
@@ -315,9 +320,47 @@ const MAIN_LIFT_LABEL: Record<string, string> = {
 
 /** Display label for an assistance category slot. */
 const ASSIST_LABEL: Record<string, string> = {
-  push: "Push assistance",
-  pull: "Pull assistance",
-  single_leg_or_core: "Single-leg / core assistance",
+  push: "Push accessory",
+  pull: "Pull accessory",
+  single_leg: "Single-leg",
+  core: "Core / trunk",
+  carry: "Loaded carry",
+};
+
+/**
+ * HYROX-specific accessory prescription per slot (ADR 0057). Strength-endurance
+ * lean: single-leg + core run higher reps; carries are prescribed by distance/time
+ * (no rep target). `[DEF]` coach-consensus.
+ */
+interface AccessorySpec {
+  reps?: number;
+  repsMax?: number;
+  note: string;
+}
+const ACCESSORY_SPEC: Record<string, AccessorySpec> = {
+  single_leg: {
+    reps: 10,
+    repsMax: 15,
+    note: "Per leg — controlled, full range. The engine behind the lunges, sled and compromised running.",
+  },
+  carry: {
+    note: "Heavy carry — ~30–40 m (or ~30–40 s) per set. Tall posture, ribs down, crush the grip. Trains the farmers-carry station.",
+  },
+  pull: {
+    reps: 8,
+    repsMax: 12,
+    note: "Strict, full range — posture and the sled pull.",
+  },
+  core: {
+    reps: 12,
+    repsMax: 20,
+    note: "Brace hard — anti-rotation / anti-extension for the sandbag, carries and wall balls.",
+  },
+  push: {
+    reps: 8,
+    repsMax: 12,
+    note: "Strict press — supports the wall-ball overhead drive.",
+  },
 };
 
 /**
@@ -368,16 +411,19 @@ function buildStrength(sess: HyroxSession, ctx: PlatformContext, args: Prescribe
   }
 
   // Station-specific accessories — assistance INTENT (the platform resolves the
-  // concrete movement). Trimmed in the taper to shed accumulated fatigue.
+  // concrete movement). HYROX-specific slots (single-leg, carry, pull, core) with
+  // per-slot prescriptions (ADR 0057). Trimmed in the taper to shed fatigue.
   const assistSets = args.phase === "taper" ? 2 : 3;
   for (const slot of sess.assist ?? []) {
+    const spec = ACCESSORY_SPEC[slot] ?? { reps: 8, repsMax: 12, note: "" };
     items.push({
       kind: "assistance",
       name: ASSIST_LABEL[slot] ?? slot,
       assistanceCategory: slot,
       sets: assistSets,
-      reps: 8,
-      repsMax: 12,
+      ...(spec.reps !== undefined ? { reps: spec.reps } : {}),
+      ...(spec.repsMax !== undefined ? { repsMax: spec.repsMax } : {}),
+      ...(spec.note ? { note: spec.note } : {}),
     });
   }
 

@@ -199,7 +199,9 @@ describe("materializeProgram — HYROX with assistance planner (ADR 0047)", () =
   const catalog: CatalogMovement[] = [
     { id: "dip", slug: "dip", displayName: "Dip", pattern: "press" },
     { id: "row", slug: "row-db", displayName: "DB Row", pattern: "pull", primaryMuscles: ["lats", "biceps"] },
-    { id: "lunge", slug: "walking-lunge", displayName: "Walking Lunge", pattern: "squat", primaryRegion: "lumbar_trunk" },
+    { id: "lunge", slug: "walking-lunge", displayName: "Walking Lunge", pattern: "squat", functionalRoles: ["single_leg"] as never },
+    { id: "carry", slug: "farmer-carry", displayName: "Farmer Carry", pattern: "carry" },
+    { id: "plank", slug: "plank", displayName: "Plank", pattern: "isolation", primaryMuscles: ["abs"] },
     { id: "run", slug: "run", displayName: "Run", pattern: "cardio" },
   ].map((m) => ({
     primaryMuscles: [],
