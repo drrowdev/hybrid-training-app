@@ -35,13 +35,14 @@ const resolve: MovementResolver = (key) =>
 // week so the schedule never under-seats.
 const weekdays = [0, 1, 2, 3, 4, 5, 6];
 
-function inst(over: Partial<Record<"experience" | "division" | "sessionsPerWeek", unknown>> = {}): HyroxInstance {
+function inst(over: Partial<Record<"experience" | "division" | "sessionsPerWeek" | "twoADay", unknown>> = {}): HyroxInstance {
   return hyroxEngine.setup(
     {
       values: {
         experience: over.experience ?? "intermediate",
         division: over.division ?? "open",
         sessionsPerWeek: over.sessionsPerWeek ?? 5,
+        ...(over.twoADay ? { twoADay: true } : {}),
       },
     },
     ctx,
@@ -149,6 +150,46 @@ describe("materializeProgram — HYROX honours the chosen training weekdays", ()
     const wkIndex = fullWeek!.week - 1;
     const days = result.sessions.filter((s) => s.weekIndex === wkIndex).map((s) => s.dayIndex).sort((a, b) => a - b);
     expect(days).toEqual(chosen);
+  });
+});
+
+describe("materializeProgram — HYROX two-a-days (ADR 0054)", () => {
+  const i = inst({ experience: "advanced", sessionsPerWeek: 6, twoADay: true });
+  const result = materializeProgram(hyroxEngine, i, ctx, resolve, { weekdays });
+
+  it("emits paired am/pm rows on the same weekday for a double-day", () => {
+    // Group sessions by (week, day); a doubled day has exactly one 'am' + one 'pm'.
+    const byDay = new Map<string, string[]>();
+    for (const s of result.sessions) {
+      const k = `${s.weekIndex}-${s.dayIndex}`;
+      byDay.set(k, [...(byDay.get(k) ?? []), s.slot]);
+    }
+    const doubled = [...byDay.values()].filter((slots) => slots.length === 2);
+    expect(doubled.length).toBeGreaterThan(0);
+    for (const slots of doubled) {
+      expect(new Set(slots)).toEqual(new Set(["am", "pm"]));
+    }
+    // Single days stay 'single'.
+    const singles = [...byDay.values()].filter((slots) => slots.length === 1);
+    expect(singles.every((s) => s[0] === "single")).toBe(true);
+  });
+
+  it("the pm row is an easy off-feet erg (cardio_external), never a strength main", () => {
+    const pm = result.sessions.filter((s) => s.slot === "pm");
+    expect(pm.length).toBeGreaterThan(0);
+    for (const s of pm) {
+      expect(s.prescription.items.every((it) => it.kind === "cardio_external")).toBe(true);
+    }
+  });
+
+  it("keeps the (week, day, slot) grid collision-free with doubles", () => {
+    const keys = result.sessions.map((s) => `${s.weekIndex}-${s.dayIndex}-${s.slot}`);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("two-a-day OFF stays single-slot only (byte-identical)", () => {
+    const off = materializeProgram(hyroxEngine, inst({ experience: "advanced", sessionsPerWeek: 6 }), ctx, resolve, { weekdays });
+    expect(off.sessions.every((s) => s.slot === "single")).toBe(true);
   });
 });
 

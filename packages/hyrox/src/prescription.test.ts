@@ -19,6 +19,7 @@ function inst(over: Partial<HyroxInstance> = {}): HyroxInstance {
         experience: over.experience ?? "intermediate",
         division: over.division ?? "open",
         sessionsPerWeek: over.sessionsPerWeek ?? 5,
+        ...(over.twoADay ? { twoADay: true } : {}),
       },
     },
     ctxNoMaxes,
@@ -176,12 +177,21 @@ describe("HYROX prescribe — simulations & divisions", () => {
   });
 });
 
-describe("HYROX prescribe — two-a-day", () => {
-  it("appends a second session for an 8/week two-a-day day", () => {
-    const i = inst({ experience: "advanced", sessionsPerWeek: 8 });
-    const twoADayRef = hyroxEngine.timeline(i).find((s) => s.tags?.includes("two-a-day"))?.ref;
-    expect(twoADayRef).toBeDefined();
-    const p = hyroxEngine.prescribe(i, twoADayRef!, ctxWithMaxes);
-    expect(p.items.some((it) => it.name.startsWith("Two-a-day"))).toBe(true);
+describe("HYROX prescribe — two-a-day (ADR 0054)", () => {
+  it("attaches a PM companion the engine can prescribe as an easy erg", () => {
+    const i = inst({ experience: "advanced", twoADay: true });
+    const spec = hyroxEngine.timeline(i).find((s) => s.secondSession != null);
+    expect(spec).toBeDefined();
+    expect(spec!.tags).toContain("two-a-day");
+    // The companion has its own "-pm" ref and resolves through prescribe().
+    const pmRef = spec!.secondSession!.ref;
+    expect(pmRef.endsWith("-pm")).toBe(true);
+    const p = hyroxEngine.prescribe(i, pmRef, ctxWithMaxes);
+    expect(p.items.length).toBeGreaterThan(0);
+  });
+
+  it("emits NO companion when two-a-day is off (byte-identical default)", () => {
+    const i = inst({ experience: "advanced" });
+    expect(hyroxEngine.timeline(i).some((s) => s.secondSession != null)).toBe(false);
   });
 });

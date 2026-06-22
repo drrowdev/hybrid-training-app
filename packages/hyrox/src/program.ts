@@ -82,6 +82,8 @@ export interface HyroxInstance {
   weeks: number;
   /** Training sessions per week (defaulted by experience, user-overridable). */
   sessionsPerWeek: number;
+  /** Two-a-day (AM/PM) programming enabled for this block (ADR 0054). */
+  twoADay: boolean;
 }
 
 export const hyroxMeta: ProgramMeta = {
@@ -143,14 +145,14 @@ function cleanSessionName(name: string): string {
   return name.replace(/\s*\([^)]*\)\s*$/, "").trim();
 }
 
-export function hyroxRef(week: number, weekday: number): string {
-  return `hx-w${week}-d${weekday}`;
+export function hyroxRef(week: number, weekday: number, pm = false): string {
+  return `hx-w${week}-d${weekday}${pm ? "-pm" : ""}`;
 }
 
-export function parseHyroxRef(ref: string): { week: number; weekday: number } | null {
-  const m = ref.match(/^hx-w(\d+)-d(\d+)$/);
+export function parseHyroxRef(ref: string): { week: number; weekday: number; pm: boolean } | null {
+  const m = ref.match(/^hx-w(\d+)-d(\d+)(-pm)?$/);
   if (!m) return null;
-  return { week: Number(m[1]), weekday: Number(m[2]) };
+  return { week: Number(m[1]), weekday: Number(m[2]), pm: m[3] != null };
 }
 
 function kindForCell(cell: HyroxDayCell, isDeload: boolean): PlannedSessionKind {
@@ -193,13 +195,8 @@ function specForCell(
       if (sess.perMovementLog) tags.push("per-movement-log");
     }
     if (cell.kind === "sim") tags.push("benchmark", "simulation");
-    let suffix = "";
-    if (cell.kind === "session" && cell.plus) {
-      tags.push("two-a-day");
-      const plusSess = getHyroxSession(cell.plus.session);
-      suffix = ` + ${plusSess?.name ?? cell.plus.session} (two-a-day)`;
-    }
-    label = `${weekLabel} · ${DAY_LABELS[weekday]} · ${name}${suffix}`;
+    if (cell.kind === "session" && cell.plus) tags.push("two-a-day");
+    label = `${weekLabel} · ${DAY_LABELS[weekday]} · ${name}`;
     // Strength → the working lifts (what you actually do); everything else → the
     // session name with its "(Z2)/(4+4)" qualifier stripped.
     if (sess?.category === "strength") {
@@ -211,6 +208,17 @@ function specForCell(
     }
   }
 
+  const secondSession =
+    cell.kind === "session" && cell.plus
+      ? (() => {
+          const plusSess = getHyroxSession(cell.plus.session);
+          const baseName = plusSess ? cleanSessionName(plusSess.name) : cell.plus.session;
+          // PM companion of a two-a-day (ADR 0054). The "(PM · 6–8 h later)" cue
+          // surfaces Robineau 2016's same-day spacing guidance on the card.
+          return { ref: hyroxRef(week.week, weekday, true), title: `${baseName} · PM (6–8 h later)` };
+        })()
+      : undefined;
+
   return {
     ref: hyroxRef(week.week, weekday),
     index,
@@ -218,6 +226,7 @@ function specForCell(
     title,
     kind: kindForCell(cell, week.isDeload),
     weekLabel,
+    ...(secondSession ? { secondSession } : {}),
     // NOTE: deliberately NO `weekday` on the spec. HYROX used to fix its own
     // calendar (auto-spread weekdays), which made `materialize` ignore the user's
     // chosen training days. Like 5/3/1 / Hybrid, HYROX now lets the user pick
@@ -234,6 +243,7 @@ function buildTimeline(instance: HyroxInstance): PlannedSessionSpec[] {
     weeks: instance.weeks,
     sessionsPerWeek: instance.sessionsPerWeek,
     experience: instance.experience,
+    twoADay: instance.twoADay,
   });
   const specs: PlannedSessionSpec[] = [];
   let index = 0;
@@ -258,11 +268,18 @@ function locateCell(
     weeks: instance.weeks,
     sessionsPerWeek: instance.sessionsPerWeek,
     experience: instance.experience,
+    twoADay: instance.twoADay,
   });
   const week = plan.find((w) => w.week === parsed.week);
   if (!week) return null;
   const cell = week.days[parsed.weekday];
   if (!cell || cell.kind === "rest") return null;
+  // A "-pm" ref resolves to the day's two-a-day companion (an easy erg), surfaced
+  // as a synthetic session cell so prescribe()/completion treat it like any other.
+  if (parsed.pm) {
+    if (cell.kind !== "session" || !cell.plus) return null;
+    return { week, cell: { kind: "session", session: cell.plus.session } };
+  }
   return { week, cell };
 }
 
@@ -371,6 +388,7 @@ export const hyroxEngine: ProgramEngine<HyroxInstance> = {
       division,
       weeks,
       sessionsPerWeek,
+      twoADay: v.twoADay === true || v.twoADay === "true",
     };
   },
 
@@ -402,6 +420,7 @@ export const hyroxEngine: ProgramEngine<HyroxInstance> = {
       weeks: instance.weeks,
       sessionsPerWeek: instance.sessionsPerWeek,
       experience: instance.experience,
+      twoADay: instance.twoADay,
     });
     const out: ProgramSegment[] = [];
     let lastPhase: string | null = null;

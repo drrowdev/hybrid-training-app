@@ -483,7 +483,7 @@ async function computeForeignWrite(
   supabase: SupabaseClient,
   user: User,
   engine: ProgramEngine,
-  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories }: DeployArgs,
+  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay }: DeployArgs,
 ): Promise<{ instance: unknown; write: ProgramInstanceWrite }> {
   // HYROX: a supplied race date overrides the experience block length with the
   // whole weeks from start to race, so the program's end-taper lands on race week
@@ -519,6 +519,9 @@ async function computeForeignWrite(
         // picked in the Schedule step IS its sessions/week, mirrored into setup
         // the same way (no separate HYROX frequency field anymore).
         ...(programId === "hyrox" ? { sessionsPerWeek: weekdays.length } : {}),
+        // HYROX two-a-day (ADR 0054): the per-block toggle adds easy off-feet PM
+        // companions. Mirrored into setup so the engine bakes them into the grid.
+        ...(programId === "hyrox" && twoADay ? { twoADay: true } : {}),
         ...(programId === "wendler-531" ? { assistanceVolume: assistanceVolumePref } : {}),
         ...(hyroxWeeksToRace != null ? { weeks: hyroxWeeksToRace } : {}),
       },
@@ -585,7 +588,7 @@ async function computeForeignWrite(
 async function createForeignProgramInstance(
   supabase: SupabaseClient,
   user: User,
-  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, supersetAccessories, seasonBlockId }: DeployArgs,
+  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, supersetAccessories, seasonBlockId, twoADay }: DeployArgs,
 ): Promise<CreateProgramInstanceResult> {
   const engine = getProgramEngine(programId);
   if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
@@ -604,6 +607,7 @@ async function createForeignProgramInstance(
       ...(startWeekIndex != null ? { startWeekIndex } : {}),
       ...(roundingKg != null ? { roundingKg } : {}),
       ...(accessories ? { accessories } : {}),
+      ...(twoADay ? { twoADay } : {}),
     }));
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Setup failed" };
@@ -633,6 +637,9 @@ async function createForeignProgramInstance(
       // step). Applies to ALL programs; default OFF when the toggle is unset so
       // the per-block value wins over the profile pref at read time.
       superset_accessories: supersetAccessories ?? false,
+      // HYROX two-a-day choice (ADR 0054) — baked into the grid at deploy. Set the
+      // block flag for read-side consistency with the live AM/PM rows.
+      allows_two_a_days: programId === "hyrox" ? !!twoADay : false,
       notes: engine.meta.name,
     })
     .select("id")

@@ -1158,7 +1158,7 @@ export function ProgramPicker({
         ...(accessoriesOffered && accessoriesOn
           ? { accessories: { enabled: true, muscles: accessoryMuscles } }
           : {}),
-        ...(isHybrid && twoADay ? { twoADay: true } : {}),
+        ...((isHybrid || isHyrox) && twoADay ? { twoADay: true } : {}),
         ...(supersetAccessories ? { supersetAccessories: true } : {}),
         ...(isEditing && editContext ? { editBlockId: editContext.blockId } : {}),
         ...(!isEditing && seasonBlockId ? { seasonBlockId } : {}),
@@ -2201,8 +2201,8 @@ export function ProgramPicker({
           </>
         )}
 
-        {isHybrid ? (
-          <div style={{ marginTop: 24, maxWidth: 560 }} data-testid="hybrid-two-a-day">
+        {(isHybrid || isHyrox) ? (
+          <div style={{ marginTop: 24, maxWidth: 560 }} data-testid="two-a-day">
             <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
               <input
                 type="checkbox"
@@ -2215,7 +2215,9 @@ export function ProgramPicker({
               </span>
             </label>
             <p className={styles.sub} style={{ marginTop: 6 }}>
-              {"Split eligible training days into an AM lift + PM cardio, ideally 6+ hours apart so the lifting and cardio don\u2019t blunt each other. Applies to this block only \u2014 leave off for a single session per day."}
+              {isHyrox
+                ? "Adds an easy off-feet erg (ski/row/bike) as a PM session on some hard days \u2014 extra aerobic volume without the leg impact. Leave 6\u20138 hours after your main session so the two don\u2019t blunt each other. This block only; beginners excluded."
+                : "Split eligible training days into an AM lift + PM cardio, ideally 6+ hours apart so the lifting and cardio don\u2019t blunt each other. Applies to this block only \u2014 leave off for a single session per day."}
             </p>
           </div>
         ) : null}
