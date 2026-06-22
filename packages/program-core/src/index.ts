@@ -228,6 +228,14 @@ export interface PlannedSessionSpec {
   weekLabel?: string;
   /** Planned weekday (0 = Mon), when the program assigns one. */
   weekday?: number;
+  /**
+   * Optional PM companion for a two-a-day (AM/PM) day. When set, the platform
+   * materialises a SECOND planned session on the same weekday: the primary takes
+   * slot "am" and this companion takes slot "pm". The `ref` resolves through the
+   * engine's own `prescribe()` like any other session. Programs that don't double
+   * up a day omit this (single-session day). See ADR 0054.
+   */
+  secondSession?: { ref: string; title?: string };
   /** Free-form tags for filtering/rendering (e.g. ["main:squat", "7w:deload"]). */
   tags?: string[];
 }

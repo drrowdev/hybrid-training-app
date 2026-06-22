@@ -91,8 +91,8 @@ export interface MaterializedSession {
   weekIndex: number;
   /** Weekday offset within the week, 0 = Monday (drives `dayDate`). */
   dayIndex: number;
-  /** Two-a-day slot. Always "single" here — doubles are a later concern. */
-  slot: "single";
+  /** Two-a-day slot. "single" for a one-session day; "am"/"pm" for a paired day. */
+  slot: "single" | "am" | "pm";
   title: string;
   role: string;
   prescription: Prescription;
@@ -323,11 +323,16 @@ export function materializeProgram<I>(
     const { modality, load } = stampModality(prescriptionWithRef);
     if (skipped.length > 0) allSkipped.push(...skipped);
 
+    // A two-a-day day (ADR 0054): the engine attaches a PM companion to the spec.
+    // The primary takes slot "am" and the companion a second "pm" row on the same
+    // weekday — reusing the (week, day, slot) machinery Hybrid already uses.
+    const hasSecond = spec.secondSession != null;
+
     sessions.push({
       ref: spec.ref,
       weekIndex,
       dayIndex,
-      slot: "single",
+      slot: hasSecond ? "am" : "single",
       // Clean, content-first title (the program / week / day context lives in the
       // page chrome) plus a glanceable load cue — the working % for strength, the
       // duration for timed cardio.
@@ -338,6 +343,34 @@ export function materializeProgram<I>(
       effectiveStressLoad: load,
       skipped,
     });
+
+    if (spec.secondSession) {
+      const pmRef = spec.secondSession.ref;
+      const pmRx = engine.prescribe(instance, pmRef, ctx);
+      const { prescription: pmPrescription, skipped: pmSkipped } = adaptSessionPrescription(
+        pmRx,
+        resolveMovement,
+        opts.assistance?.(pmRef),
+      );
+      const pmWithRef: Prescription = { ...pmPrescription, programRef: pmRef };
+      const { modality: pmModality, load: pmLoad } = stampModality(pmWithRef);
+      if (pmSkipped.length > 0) allSkipped.push(...pmSkipped);
+      sessions.push({
+        ref: pmRef,
+        weekIndex,
+        dayIndex,
+        slot: "pm",
+        title: enrichTitle(
+          spec.secondSession.title ?? deriveSessionTitle(pmRx) ?? pmRef,
+          pmRx,
+        ),
+        role: roleForKind("training"),
+        prescription: pmWithRef,
+        sessionModality: pmModality,
+        effectiveStressLoad: pmLoad,
+        skipped: pmSkipped,
+      });
+    }
   }
 
   // Open cardio days (strength-only programs): one reserved cardio_external

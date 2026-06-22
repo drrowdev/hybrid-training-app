@@ -183,10 +183,71 @@ function effectiveSessions(phase: HyroxPhaseId, sessionsPerWeek: number): number
   return sessionsPerWeek;
 }
 
+/**
+ * Two-a-day (AM/PM) programming — ADR 0054. Max double-days per week by
+ * experience. `[DEF]` heuristic (CP-1): tuned between the conservative concurrent-
+ * training science (Robineau 2016 — 2 doubles/wk already submaximal) and real
+ * HYROX practice (advanced athletes run 3–5/wk because the companion is easy).
+ * Beginners get none — insufficient base; Bellinger 2020 overreaching risk.
+ */
+const TWO_A_DAY_CAP: Record<HyroxExperience, number> = {
+  beginner: 0,
+  intermediate: 2,
+  advanced: 3,
+};
+
+/**
+ * Sessions whose adaptation an easy aerobic companion pairs with (ADR 0054 R8).
+ * A double-day is one HARD primary + one EASY companion; we never double an
+ * already-easy day, the long run, or a simulation.
+ */
+const HARD_PRIMARY: ReadonlySet<string> = new Set([
+  "strength-full",
+  "strength-lower",
+  "strength-upper",
+  "station-intervals",
+  "se-circuit",
+  "threshold-run",
+  "vo2-intervals",
+  "compromised-run",
+]);
+
+/**
+ * The off-feet erg used as the PM companion (ADR 0054 R5). Always an erg —
+ * lowest interference with strength (Wilson 2012: ski/bike 0.4, row 0.5 vs run
+ * 1.0) and no ground-reaction impact on legs already loaded by the AM session
+ * (Doma 2019). Rotated across the week's doubles for variety.
+ */
+const COMPANION_ERGS = ["easy-ski", "easy-row", "easy-bike"] as const;
+
+/**
+ * Attach an easy off-feet erg PM companion to up to `cap` HARD-primary days,
+ * on NON-ADJACENT weekdays (ADR 0054 R7/R8). Mutates `days` in place. No-op when
+ * the cap is 0, in the taper, or when no eligible hard day exists. Deload weeks
+ * never reach here (they are built separately), and simulation cells are excluded
+ * (sims are standalone hard days).
+ */
+function applyTwoADays(days: HyroxDayCell[], phase: HyroxPhaseId, experience: HyroxExperience): void {
+  const cap = TWO_A_DAY_CAP[experience];
+  if (cap <= 0 || phase === "taper") return;
+  let placed = 0;
+  const selected: number[] = [];
+  for (let d = 0; d < days.length && placed < cap; d++) {
+    const cell = days[d]!;
+    if (cell.kind !== "session" || !HARD_PRIMARY.has(cell.session)) continue;
+    if (selected.includes(d - 1)) continue; // keep double-days non-adjacent
+    days[d] = { ...cell, plus: { session: COMPANION_ERGS[placed % COMPANION_ERGS.length]! } };
+    selected.push(d);
+    placed += 1;
+  }
+}
+
 function buildWeekDays(
   phase: HyroxPhaseId,
   sessionsPerWeek: number,
   withSim: boolean,
+  experience: HyroxExperience,
+  twoADay: boolean,
 ): HyroxDayCell[] {
   const days: HyroxDayCell[] = Array.from({ length: 7 }, () => ({ kind: "rest" }));
   const total = effectiveSessions(phase, sessionsPerWeek);
@@ -206,18 +267,14 @@ function buildWeekDays(
     days[wd[i]!] = { kind: "session", session };
   }
 
-  // Two-a-day overflow (8 sessions/week): an easy second session on Monday.
-  if (total > 7) {
-    const d = days[wd[0]!]!;
-    if (d.kind === "session") {
-      days[wd[0]!] = { ...d, plus: { session: "easy-ski" } };
-    }
-  }
-
   // Race-prep simulation: the last placed session of the week becomes a half sim.
   if (withSim && primaryCount > 0) {
     days[wd[primaryCount - 1]!] = { kind: "sim", session: "sim-half" };
   }
+
+  // Two-a-day companions (ADR 0054) — applied AFTER the sim so a sim day is never
+  // doubled and a companion is never overwritten by a sim.
+  if (twoADay) applyTwoADays(days, phase, experience);
 
   return days;
 }
@@ -230,6 +287,8 @@ export interface HyroxGridInput {
   weeks: number;
   sessionsPerWeek: number;
   experience: HyroxExperience;
+  /** Two-a-day (AM/PM) programming — adds easy off-feet PM companions (ADR 0054). */
+  twoADay?: boolean;
 }
 
 /**
@@ -252,6 +311,7 @@ export function buildHyroxGrid(input: HyroxGridInput): HyroxWeekPlan[] {
   const weeks = Math.max(1, Math.floor(input.weeks));
   const sessionsPerWeek = Math.max(1, Math.floor(input.sessionsPerWeek));
   const { experience } = input;
+  const twoADay = input.twoADay ?? false;
 
   // First pass: assign phases + deload flags.
   const phases: HyroxPhaseId[] = [];
@@ -278,7 +338,7 @@ export function buildHyroxGrid(input: HyroxGridInput): HyroxWeekPlan[] {
     const deload = isDeload(w);
     const days = deload
       ? deloadWeekDays()
-      : buildWeekDays(phase, sessionsPerWeek, simWeekSet.has(w));
+      : buildWeekDays(phase, sessionsPerWeek, simWeekSet.has(w), experience, twoADay);
     plan.push({ week: w, phase, isDeload: deload, days });
   }
   return plan;

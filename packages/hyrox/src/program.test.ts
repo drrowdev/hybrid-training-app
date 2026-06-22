@@ -216,9 +216,12 @@ describe("HYROX grid — periodization", () => {
     expect(sims.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("adds a two-a-day for an 8-sessions/week block", () => {
-    const grid = buildHyroxGrid({ weeks: 16, sessionsPerWeek: 8, experience: "advanced" });
-    const hasPlus = grid
+  it("adds two-a-day companions only when the flag is on (ADR 0054)", () => {
+    const off = buildHyroxGrid({ weeks: 16, sessionsPerWeek: 6, experience: "advanced" });
+    expect(off.flatMap((w) => w.days).some((c) => c.kind === "session" && c.plus)).toBe(false);
+
+    const on = buildHyroxGrid({ weeks: 16, sessionsPerWeek: 6, experience: "advanced", twoADay: true });
+    const hasPlus = on
       .filter((w) => !w.isDeload && w.phase !== "taper")
       .some((w) => w.days.some((c) => c.kind === "session" && c.plus));
     expect(hasPlus).toBe(true);
@@ -355,6 +358,86 @@ describe("HYROX week quotas (ADR 0053)", () => {
     const ids = primarySessions(week);
     expect(ids).not.toContain("easy-ski");
     expect(ids.some((id) => STATION_IDS.has(id))).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADR 0054 — two-a-day (AM/PM) invariants. Locked across levels so the
+// evidence-grounded dosing can't silently regress.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("HYROX two-a-days (ADR 0054)", () => {
+  const CAP: Record<HyroxExperience, number> = { beginner: 0, intermediate: 2, advanced: 3 };
+  const ERGS = new Set(["easy-ski", "easy-row", "easy-bike"]);
+  const HARD = new Set([
+    "strength-full",
+    "strength-lower",
+    "strength-upper",
+    "station-intervals",
+    "se-circuit",
+    "threshold-run",
+    "vo2-intervals",
+    "compromised-run",
+  ]);
+
+  function grid(experience: HyroxExperience, spw: number, twoADay: boolean) {
+    return buildHyroxGrid({ weeks: WEEKS_BY_EXPERIENCE[experience], sessionsPerWeek: spw, experience, twoADay });
+  }
+  function doublesIn(week: { days: { kind: string; session?: string; plus?: { session: string } }[] }) {
+    return week.days.filter((c) => c.kind === "session" && c.plus);
+  }
+
+  it("off by default — no companions anywhere, every level/budget (byte-identical)", () => {
+    for (const experience of EXPERIENCES) {
+      for (const spw of [3, 5, 7] as const) {
+        const anyPlus = grid(experience, spw, false).flatMap((w) => w.days).some((c) => c.kind === "session" && c.plus);
+        expect(anyPlus, `${experience}@${spw}`).toBe(false);
+      }
+    }
+  });
+
+  it("beginners never get a two-a-day even with the flag on", () => {
+    for (const spw of [3, 4, 5] as const) {
+      const anyPlus = grid("beginner", spw, true).flatMap((w) => w.days).some((c) => c.kind === "session" && c.plus);
+      expect(anyPlus).toBe(false);
+    }
+  });
+
+  it("respects the per-week experience cap and never doubles deload/taper", () => {
+    for (const experience of EXPERIENCES) {
+      for (const spw of [4, 5, 6, 7] as const) {
+        for (const week of grid(experience, spw, true)) {
+          const n = doublesIn(week).length;
+          expect(n).toBeLessThanOrEqual(CAP[experience]);
+          if (week.isDeload || week.phase === "taper") expect(n).toBe(0);
+        }
+      }
+    }
+  });
+
+  it("every companion is an easy off-feet erg, paired with a HARD primary, on non-adjacent days", () => {
+    for (const experience of ["intermediate", "advanced"] as const) {
+      for (const spw of [5, 6, 7] as const) {
+        for (const week of grid(experience, spw, true)) {
+          const dbl: number[] = [];
+          week.days.forEach((c, d) => {
+            if (c.kind === "session" && c.plus) {
+              expect(ERGS.has(c.plus.session)).toBe(true); // easy off-feet erg
+              expect(HARD.has(c.session)).toBe(true); // hard primary
+              dbl.push(d);
+            }
+          });
+          for (let k = 1; k < dbl.length; k++) {
+            expect(dbl[k]! - dbl[k - 1]!).toBeGreaterThan(1); // non-adjacent
+          }
+        }
+      }
+    }
+  });
+
+  it("advanced build/race-prep weeks actually use the doubles when enabled", () => {
+    const g = grid("advanced", 6, true);
+    const used = g.some((w) => !w.isDeload && (w.phase === "build" || w.phase === "specific") && doublesIn(w).length > 0);
+    expect(used).toBe(true);
   });
 });
 

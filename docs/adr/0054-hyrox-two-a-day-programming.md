@@ -1,7 +1,7 @@
 # ADR 0054 — HYROX two-a-day (AM/PM) programming model
 
-**Status:** Proposed (design + evidence review — written for sign-off BEFORE any
-engine code, per the "propose engine changes first" rule).
+**Status:** Accepted (design + evidence review + real-program practice review;
+user sign-off 2026-06-22). Implemented in the same PR.
 **Date:** 2026-06-22
 **Relates to:** ADR 0050 (HYROX program), ADR 0053 (HYROX week-builder quota
 model), ADR 0025 (intensity-aware interference), the modality interference scalar
@@ -75,7 +75,50 @@ double caps and the phase windows are **CP-1 heuristics** extrapolated from
 adjacent literature; "Eklund et al" and a standalone "Fyfe & Hawley" review could
 not be verified and are **not** cited.
 
-## Decision — the programming rules
+## Real-program practice review (2026-06-22)
+
+A second research pass reviewed how the most-followed HYROX programs actually
+schedule doubles, then ran a science-vs-practice gap analysis. Sources: RoxLyfe
+(coach Paul Gillingham + World-Champ-contributor Hidde Weersma, MSc), and verified
+elite training — Lauren Weeks (3× World Champion), Alexander Rončević (2024 WC),
+the RoxLyfe "Elite 15" survey (median ~18 h/wk, ~79 km/wk running).
+
+Convergence (science + practice agree → keep, raise confidence):
+- **≥6–8 h spacing** — RoxLyfe cites it explicitly (matches Robineau 2016).
+- **Off-feet ergs (ski/row/bike) to add aerobic volume without running's
+  interference/impact** — Wilson 2012 + Lauren Weeks + RoxLyfe "off-feet
+  conditioning" all converge. Validates the easy-companion-is-an-erg rule (HIGH).
+- **Hard/easy, ~80–95 % easy** — elite practice is even more polarized than
+  Seiler 80/20; two-hard-same-day is "advanced only."
+
+Divergences (→ adjustments folded into the rules below):
+- **Order.** Meta-analyses say strength-first; RoxLyfe says endurance-first for
+  HYROX. Moot here: the companion is ALWAYS easy aerobic, so the day is simply
+  "hard primary first, easy companion second" — no two meaningful sessions to
+  mis-order. The SE/ES framing is dropped.
+- **Phase.** Real programs use easy doubles in **Base** for volume, not only
+  Build/Race-prep. Since the companion is easy (low interference), this is safe →
+  doubles now allowed in Base/Build/Race-prep (still never deload/taper/sim).
+- **Frequency.** Real advanced athletes run 3–5 doubles/wk (elites near-daily);
+  it works because the doubles are mostly easy. For a mixed-ability app the caps
+  land between the conservative science and elite practice: **beginner 0 /
+  intermediate ≤2 / advanced ≤3**.
+
+Deliberate exclusions (with rationale):
+- **Norwegian double-threshold** (two quality sessions/day) — real but elite-only,
+  needs lactate control; excluded to preserve the safe one-hard-one-easy rule.
+- **"Compromised running"** (run immediately after stations, no gap) is universal
+  in HYROX race-prep but is ONE session, not a two-a-day — already a session type
+  in the quota model (ADR 0053). Kept distinct so the two are never conflated.
+
+Companion-modality refinement (grounded in Doma 2019): an easy *run* companion
+would add ground-reaction impact to legs already loaded by the AM session, so the
+companion is **always an off-feet erg** (ski/row/bike), rotated for variety — the
+exact off-feet-conditioning pattern elite HYROX athletes use. (An easy run is only
+ever defensible after upper-body-only strength, which the quota model does not
+currently place, so in practice the companion is always an erg.)
+
+
 
 **R1 — Opt-in, off by default.** A per-block toggle (reuse the existing
 `allows_two_a_days` column from migration 0110). OFF ⇒ byte-identical to today.
@@ -94,37 +137,36 @@ session is **easy Z2 aerobic only**. The engine never pairs two hard sessions.
 PM = the easy aerobic. When the primary is strength this realises strength-before-
 endurance. [HIGH — Eddens 2018, Murlasits 2018, Gao 2023.]
 
-**R5 — Easy-session selection (modality-aware).**
-- Default: a **low-impact erg** — ski / row / bike — `easy-ski`/`easy-row`/
-  `easy-bike`, Z2. Lowest interference (scalar 0.4–0.5) and no added impact on
-  fibres damaged by the AM lift. [Wilson 2012 HIGH; Doma 2019 MODERATE.]
-- If the primary that day is **upper-body strength or a run** (lower-body fibres
-  not the limiter), an `easy-run` is permitted.
-- Duration kept modest (Z2, the engine's existing easy-aerobic dose) so energy
-  cost / AMPK stays low. [Coffey & Hawley 2017 HIGH.]
+**R5 — Easy-companion selection (modality-aware, off-feet).** The added second
+session is **always an off-feet erg** — `easy-ski` / `easy-row` / `easy-bike`, Z2,
+rotated across the week's doubles for variety. Lowest interference (scalar
+0.4–0.5 vs run 1.0) and no added impact on fibres loaded by the AM session.
+[Wilson 2012 HIGH (modality); Doma 2019 MODERATE (muscle-damage avoidance);
+RoxLyfe/Lauren Weeks off-feet practice.] Duration is the engine's existing Z2
+dose, kept modest so energy cost / AMPK stays low. [Coffey & Hawley 2017 HIGH.]
 
-**R6 — ≥6 h spacing (guidance, not enforced).** Surface copy on the PM session:
-*"Leave 6+ hours after your main session (ideally 8) — training the two too close
-together blunts both."* The app can't see wall-clock time; it advises. [HIGH —
-Robineau 2016.]
+**R6 — 6–8 h spacing (guidance, not enforced).** Surface copy on the PM session:
+*"Leave 6–8 h after your main session — training the two too close together blunts
+both."* The app can't see wall-clock time; it advises. [HIGH — Robineau 2016;
+RoxLyfe/Weersma cite the same 6–8 h.]
 
-**R7 — Phase + experience dosing (CP-1 heuristic).**
-- **Phases:** doubles only in **Build** and **Race-prep**. **Never** in Base
-  (build the base first), deload, or taper, and **never** add a second session to
-  a **simulation** week's sim (sims are standalone hard days). [RoxLyfe; Bellinger
-  2020.]
-- **Per-week cap by experience:** beginner **0** (insufficient base — no doubles at
-  all), intermediate **≤1**, advanced **≤2**. [Robineau 2016; Wilson 2012;
-  Bellinger 2020 — all extrapolated, LOW–MODERATE.]
-- **Spacing:** never two double-days back-to-back; place them on non-adjacent
+**R7 — Phase + experience dosing (CP-1 heuristic, practice-tuned).**
+- **Phases:** doubles in **Base, Build, and Race-prep**. **Never** in deload or
+  taper, and **never** add a companion to a **simulation** day (sims are standalone
+  hard days). [RoxLyfe; Bellinger 2020.]
+- **Per-week cap by experience:** beginner **0** (insufficient base — no doubles),
+  intermediate **≤2**, advanced **≤3**. Tuned between the conservative science
+  (Robineau: 2 doubles/wk already submaximal) and real practice (advanced HYROX
+  athletes run 3–5/wk because the doubles are mostly easy). [CP-1 heuristic.]
+- **Spacing:** never two double-days back-to-back; companions land on non-adjacent
   training days.
-- The deload cadence (ADR 0050) already inserts recovery every 4th work week,
-  satisfying Bellinger's "planned deload after a doubles block."
+- The deload cadence (ADR 0050) already inserts recovery every 4th work week.
 
 **R8 — Selection of WHICH days double.** Among a phase's eligible training days,
-pick the day(s) whose primary is a **hard strength or quality session** (the
-sessions whose adaptation an easy aerobic companion protects/complements), highest-
-priority first, up to the experience cap, spaced apart.
+attach a companion to the day(s) whose primary is a **hard session** (strength /
+station-intervals / SE circuit / threshold / VO2 / compromised run — never an
+already-easy day, the long run, or a sim), highest-priority first, up to the
+experience cap, spaced apart.
 
 ## Worked example
 
@@ -162,19 +204,11 @@ the lower-body lift. Beginner same week ⇒ 0 doubles (toggle no-ops).
 - Output changes only when the toggle is ON; covered by new invariant tests
   (one-hard-one-easy; caps; phase windows; SE order; low-impact-after-lower-body).
 
-## Open questions for sign-off
-
-1. **Caps:** beginner 0 / intermediate ≤1 / advanced ≤2 per week — good, or do you
-   want advanced up to 3 (the upper end of the practitioner range, higher overreach
-   risk)?
-2. **Easy-run allowance:** permit an easy *run* as the PM session after upper-body/
-   run primaries (my proposal), or keep PM **always** a low-impact erg for maximum
-   safety/simplicity?
-3. **Spacing copy:** surface the "≥6 h, ideally 8" guidance on the PM card (my
-   proposal) — agree?
-
 ## Decision
 
-Pending sign-off. On approval: implement R1–R8 in `packages/hyrox` (second-session
-selection in the week builder) + the materialize `pm`-slot seam + the wizard toggle
-+ invariant tests, and move this ADR to Accepted.
+Accepted (user sign-off 2026-06-22, "adopt the revised design"). Caps:
+beginner 0 / intermediate ≤2 / advanced ≤3; doubles in Base/Build/Race-prep;
+companion always an off-feet erg; 6–8 h spacing copy. Implemented in this PR:
+R1–R8 in `packages/hyrox` (companion selection in the week builder) + the
+materialize `am`/`pm`-slot seam (reusing the live slot infra Hybrid uses) + the
+wizard toggle + invariant tests.
