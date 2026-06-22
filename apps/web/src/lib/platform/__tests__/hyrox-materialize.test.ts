@@ -92,8 +92,10 @@ describe("materializeProgram — HYROX (no assistance planner)", () => {
       expect(s.title).not.toContain("HYROX · Wk");
       expect(s.title).not.toMatch(/·\s*Day \d/);
     }
-    // strength → the lifts + the working % ; a run → the activity + duration
-    expect(result.sessions.some((s) => s.title === "Squat · Deadlift · Overhead Press · 75%")).toBe(true);
+    // strength → the lifts + the working % (e.g. "Squat · Deadlift · 75%" for a
+    // split day, "Squat · Deadlift · Overhead Press · 83%" for a full-body day);
+    // a run → the activity + duration.
+    expect(result.sessions.some((s) => /^Squat · Deadlift.*· \d+%$/.test(s.title))).toBe(true);
     expect(result.sessions.some((s) => /^Easy Run · \d+ min$/.test(s.title))).toBe(true);
   });
 

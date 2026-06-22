@@ -118,14 +118,17 @@ type HyroxSlotCat =
  * week, resolved by `slotsForWeek`.
  */
 const PHASE_SLOTS: Record<HyroxPhaseId, HyroxSlotCat[]> = {
-  // Base: aerobic foundation, but a station + the long run lead so even a
-  // 3-session week trains the race; quality + easy fill; ergs leftover-only.
-  base: ["strength", "station", "long", "quality", "easy", "cross", "easy"],
-  // Build: strength + station-endurance + quality lead; compromised running
-  // enters here (ADR 0053); long + easy fill; a second (split) strength day last.
-  build: ["strength", "station", "quality", "compromised", "long", "easy", "strength"],
+  // Base: strength + station + long + quality lead; a SECOND (split) strength day
+  // enters at the 5th slot (ADR 0056) since base has no compromised work to
+  // protect; easy + erg fill the rest.
+  base: ["strength", "station", "long", "quality", "strength", "easy", "cross"],
+  // Build: all four endurance essentials (station, quality, compromised, long)
+  // are protected ahead of the 2nd strength day, so the split strength only
+  // appears at 6+ sessions (ADR 0056 — endurance-protected); easy fills last.
+  build: ["strength", "station", "quality", "compromised", "long", "strength", "easy"],
   // Race-prep: compromised + stations + strength + VO2 lead (race-specific);
-  // long + easy fill; erg leftover-only.
+  // ONE strength day (maintenance, ADR 0056) — no 2nd strength here; long + easy
+  // fill; erg leftover-only.
   specific: ["compromised", "station", "strength", "quality", "long", "easy", "cross"],
   // Taper "sharpen" week (earlier taper week, 2-week tapers only): one LAST
   // moderate strength + one LAST quality + a station touch + easy (ADR 0055).
@@ -151,12 +154,23 @@ function slotsForWeek(phase: HyroxPhaseId, taperKind: TaperKind): HyroxSlotCat[]
  * Second occurrences vary the stimulus (a split strength day; the other erg/
  * station modality; a sharper VO2 over threshold).
  */
+/**
+ * Resolve a slot category to a concrete `sessions.ts` id, given the phase, how
+ * many times this category has already been placed in the week (`occ`, 0-based),
+ * and the week number (for Build quality undulation).
+ */
 function sessionForSlot(phase: HyroxPhaseId, cat: HyroxSlotCat, occ: number, week: number): string {
   switch (cat) {
     case "strength":
-      // First strength day is full-body; a second (high-budget) day splits to
-      // lower/posterior so the week isn't a single monolithic session.
-      return occ === 0 ? "strength-full" : "strength-lower";
+      // Strength is ALWAYS a full-body session (squat + deadlift + press). When a
+      // week carries two strength days they are BOTH full-body, so every main lift
+      // is trained 2x/week (the frequency target; Schoenfeld 2016 — 2x ≥ 1x at
+      // matched volume). HYROX strength is submaximal (1-2 RIR), so the doubled
+      // full-body dose stays manageable, and every compound transfers to a
+      // station. (No lower/upper split: HYROX is built on training under fatigue,
+      // so the generic concurrent-interference rationale for splitting doesn't
+      // apply — see ADR 0056.)
+      return "strength-full";
     case "station":
       // Base/race-prep lead with station intervals (technique/pacing); Build
       // leans on the strength-endurance circuit. A second station slot uses the
@@ -201,6 +215,27 @@ type TaperKind = "sharpen" | "race" | null;
 
 function spreadFor(n: number): number[] {
   return SPREAD[Math.min(n, 7)] ?? SPREAD[7]!;
+}
+
+/**
+ * Evenly-spaced session POSITIONS (indices into the N-session week) for the K
+ * strength days, so two strength days land mid-week and well apart — e.g. the
+ * 2nd & 4th training days (Tue + Fri in a default 5-day week) instead of
+ * bookending the week on the 1st & last (Mon/Sat). One strength day lands near
+ * the middle. ADR 0056. Returns exactly K distinct indices in [0, n).
+ */
+function strengthPositions(n: number, k: number): Set<number> {
+  const out = new Set<number>();
+  if (k <= 0 || n <= 0) return out;
+  for (let i = 0; i < k; i++) {
+    // Ideal even split: the K sessions divide the week into K+1 equal gaps.
+    let p = Math.round(((i + 1) * (n + 1)) / (k + 1)) - 1;
+    p = Math.max(0, Math.min(n - 1, p));
+    while (out.has(p) && p < n - 1) p += 1; // nudge off any collision
+    while (out.has(p) && p > 0) p -= 1;
+    out.add(p);
+  }
+  return out;
 }
 
 /** Effective primary sessions for a (non-deload) week. Taper sheds volume: the
@@ -285,21 +320,39 @@ function buildWeekDays(
   const slots = slotsForWeek(phase, taperKind);
   const wd = spreadFor(primaryCount);
 
-  // Walk the phase's priority-ordered slots, taking the first `primaryCount`.
-  // `occ` tracks per-category occurrences so a repeated category varies its
-  // concrete session (split strength, the other erg, VO2 over threshold).
+  // Resolve the week's sessions in priority order. `occ` tracks per-category
+  // occurrences so a repeated category varies its concrete session (the other
+  // erg, VO2 over threshold). Strength is always full-body (ADR 0056).
   const occ: Partial<Record<HyroxSlotCat, number>> = {};
+  const resolved: { cat: HyroxSlotCat; session: string }[] = [];
   for (let i = 0; i < primaryCount; i++) {
     const cat = slots[i % slots.length]!;
     const n = occ[cat] ?? 0;
     occ[cat] = n + 1;
-    const session = sessionForSlot(phase, cat, n, week);
-    days[wd[i]!] = { kind: "session", session };
+    resolved.push({ cat, session: sessionForSlot(phase, cat, n, week) });
   }
 
-  // Race-prep simulation: the last placed session of the week becomes a half sim.
+  // Place sessions onto the week's training days. Strength goes on evenly-spaced
+  // positions (ADR 0056 — Tue/Fri rather than Mon/Sat); the remaining sessions
+  // fill the other days in priority order. Position i = the user's i-th chosen
+  // training day (materialize seats specs in emission order).
+  const strengthQueue = resolved.filter((r) => r.cat === "strength").map((r) => r.session);
+  const otherQueue = resolved.filter((r) => r.cat !== "strength").map((r) => r.session);
+  const sPos = strengthPositions(primaryCount, strengthQueue.length);
+  let si = 0;
+  let oi = 0;
+  for (let pos = 0; pos < primaryCount; pos++) {
+    const useStrength = sPos.has(pos) && si < strengthQueue.length;
+    const session = useStrength ? strengthQueue[si++]! : otherQueue[oi++] ?? strengthQueue[si++]!;
+    days[wd[pos]!] = { kind: "session", session };
+  }
+
+  // Race-prep simulation: a race rehearsal replaces the LAST non-strength day of
+  // the week (never a strength day).
   if (withSim && primaryCount > 0) {
-    days[wd[primaryCount - 1]!] = { kind: "sim", session: "sim-half" };
+    let simPos = primaryCount - 1;
+    while (simPos > 0 && sPos.has(simPos)) simPos -= 1;
+    days[wd[simPos]!] = { kind: "sim", session: "sim-half" };
   }
 
   // Two-a-day companions (ADR 0054) — applied AFTER the sim so a sim day is never
