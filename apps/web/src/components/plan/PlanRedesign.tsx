@@ -1784,13 +1784,15 @@ export function SessionDrawer({
     const result = await runSwapMove(moveAction, fd);
     setSwapPending(false);
     if (result.ok) {
-      // Refresh the plan so the moved workout lands on its new day without a
-      // full reload (the move action revalidates server data, but an imperative
-      // server-action call doesn't refresh the client router by itself). This is
-      // also the only move path available on touch devices, where the timeline's
-      // native drag-and-drop doesn't fire.
-      router.refresh();
+      // Close the drawer FIRST, then refresh. onClose strips the #session=<id>
+      // hash via history.replaceState; doing that AFTER router.refresh() changed
+      // the URL out from under the in-flight refresh, so the refreshed RSC was
+      // dropped and the Today hero / week-rail stayed stale until a manual
+      // reload. Settling the URL before refreshing makes the refresh stick. The
+      // move action already revalidated server data; an imperative server-action
+      // call just doesn't refresh the client router on its own.
       onClose();
+      router.refresh();
       return;
     }
     // Keep the drawer open so the user can retry. Surface the message
