@@ -86,6 +86,7 @@ import type { PlanSessionInput } from "@/components/plan/PlanRedesign";
 import { hasAiAccess } from "@/lib/ai/access";
 import { AskWhyButton } from "@/components/session/AskWhyButton";
 import { askWhySessionId } from "@/lib/sessions/ask-why";
+import { isTodayFullyLogged } from "@/lib/sessions/today-hero";
 
 /** Coarse "N days/weeks ago" string used by the e1RM hero annotation. */
 function relativeFromIso(iso: string | null, now: Date = new Date()): string {
@@ -1114,8 +1115,12 @@ function TodaySessionCard({
     );
   }
 
-  if (completedToday.length > 0 && plannedToday.length <= completedToday.length) {
-    // All planned slots for today are logged.
+  if (isTodayFullyLogged({ completedTodayCount: completedToday.length, plannedToday })) {
+    // Every planned slot for today is actually completed (linked or logged).
+    // NB: we check per-session completion, not a count comparison — an extra
+    // standalone activity (e.g. an easy Strava run auto-synced on a day that
+    // also has a prescribed session) must NOT mask a still-pending planned
+    // session. It surfaces under "Recent activity"; the planned card stays.
     return (
       <>
         {spikeBanner}

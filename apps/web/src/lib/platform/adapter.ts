@@ -17,6 +17,7 @@
 import type { SessionPrescription, PrescribedItem } from "@hta/program-core";
 import type { Prescription, PrescriptionItem } from "@hta/db";
 import { STRENGTH_KIND_MAP } from "./movement-keys";
+import { EXTERNAL_CARDIO_DISPLAY_NOTE } from "@/lib/session/cardio-descriptions";
 
 /** The user's anchored movement for an engine key. */
 export interface ResolvedMovement {
@@ -127,8 +128,7 @@ export function adaptSessionPrescription(
         if (it.note) {
           cardio.notes = it.note;
         } else {
-          cardio.protocolNote =
-            "Display-only — log the actual session (Strava / your tracker) so the engine can account for the load.";
+          cardio.protocolNote = EXTERNAL_CARDIO_DISPLAY_NOTE;
         }
         items.push(cardio);
         continue;

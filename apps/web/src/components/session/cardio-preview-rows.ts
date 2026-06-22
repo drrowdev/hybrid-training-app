@@ -13,6 +13,7 @@
  * readable than the original single-line mash", not perfect parsing.
  */
 import type { PrescriptionItem } from "@hta/db";
+import { EXTERNAL_CARDIO_DISPLAY_NOTE } from "@/lib/session/cardio-descriptions";
 
 export type CardioRow = { label: string; value: string };
 
@@ -45,7 +46,13 @@ export function cardioPreviewRows(item: PrescriptionItem): CardioRow[] {
     rows.push({ label: "Duration", value: `${item.durationMin} min` });
   }
 
-  const note = item.protocolNote?.trim();
+  const noteRaw = item.protocolNote?.trim();
+  // Plans materialised before the engine note drove the card description still
+  // carry the generic "display-only" placeholder in protocolNote. The real
+  // instructions now render from `notes`, so skip the placeholder rather than
+  // surfacing it as a redundant "Protocol" row.
+  const note =
+    noteRaw && noteRaw !== EXTERNAL_CARDIO_DISPLAY_NOTE.trim() ? noteRaw : undefined;
   let intensityFromNote = false;
 
   if (note) {
