@@ -341,7 +341,7 @@ export function deloadPrescription(): SessionPrescription {
         name: "Recovery (optional Z2)",
         movementId: "run",
         durationSec: 20 * 60,
-        note: "Deload — drop volume and intensity this week. Optional easy Zone-2 movement only (run/ski/row/bike); let fatigue clear and adaptations land.",
+        note: "Deload — drop volume and intensity this week. Optional easy Zone-2 movement only (run/ski/row/bike); let fatigue clear so your recent training pays off.",
       },
     ],
   };

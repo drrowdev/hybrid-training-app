@@ -222,7 +222,7 @@ const PROGRAM_LOADOUT: Record<string, ProgramLoadoutMeta> = {
   },
   hyrox: {
     title: "Configure your HYROX build",
-    sub: "Pick your experience level (it sets a 10\u201316 week build), your division and how many days a week you can train. The plan periodises itself toward race day.",
+    sub: "Pick your experience level (it sets a 10\u201316 week build), your division and how many days a week you can train. The plan periodises toward race day.",
     structLabel: "Phases",
     struct: "Base \u2192 Build \u2192 Race-prep \u2192 Taper",
   },
@@ -1746,7 +1746,7 @@ export function ProgramPicker({
     const note = is531
       ? `Your Training Max is ${tmPct}% of each 1RM${tmPct === 85 ? " \u2014 the 5/3/1 standard" : ""}. All working percentages run off that TM.`
       : isHyrox
-        ? "HYROX uses these 1RMs for the strength work in your plan \u2014 a submaximal %, no Training Max needed. Your run paces and station weights come from your division standard, which you'll confirm when you log. Enter the lifts you train; you can skip any you don't."
+        ? "Your strength sessions use these 1RMs to set their loads \u2014 a submaximal %, no Training Max needed. Your run paces and station weights come from your division standard, which you'll confirm when you log. Enter the lifts you train; you can skip any you don't."
         : isCluster && activeTbTemplate!.structure === "split"
           ? `Tactical Barbell loads ${useTm ? `off a Training Max (${tmPct}% of your 1RM)` : "a submaximal % of your 1RM"}. Each lift sits in an A or B session; you train each session twice a week. Tap the A/B chip to move a lift.`
           : `Tactical Barbell loads ${useTm ? `off a Training Max (${tmPct}% of your 1RM)` : "a submaximal % of your 1RM \u2014 no Training Max required"}.${
@@ -2005,7 +2005,7 @@ export function ProgramPicker({
         : isTb
           ? `${activeTbTemplate?.name ?? "This template"} trains ${requiredDays} strength days a week \u2014 you choose which. Tap an open day to add optional cardio, or leave it as rest.`
           : isHyrox
-            ? `Pick the days you'll train (${HYROX_MIN_DAYS}\u2013${HYROX_MAX_DAYS}). HYROX periodises each week across runs, stations and strength \u2014 your training-day count sets how many sessions a week the plan builds.`
+            ? `Pick the days you'll train (${HYROX_MIN_DAYS}\u2013${HYROX_MAX_DAYS}). The plan periodises each week across runs, stations and strength \u2014 your training-day count sets how many sessions a week it builds.`
             : "Pick which days you'll train. Your training-day count sets how many days a week the plan runs.";
 
     return (

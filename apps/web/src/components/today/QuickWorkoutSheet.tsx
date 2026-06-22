@@ -263,7 +263,7 @@ export function QuickWorkoutSheet({
             }}
           >
             {canGenerateHyrox
-              ? "Builds a station circuit, an erg/run, or a compromised run \u2014 picking whichever you\u2019re due for. Loads use your HYROX division."
+              ? "Builds a station circuit, an erg/run, or a compromised run \u2014 picking whichever you\u2019re due for. Weights are set to your division standard."
               : "Pick an erg or run, or at least two stations, to generate."}
           </p>
         </div>
