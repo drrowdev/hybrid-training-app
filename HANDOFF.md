@@ -285,5 +285,3 @@ every required variable.
 - Migrations are append-only and numbered; never edit a committed one
   except for purely-additive idempotency tweaks
   (`ADD COLUMN IF NOT EXISTS`).
-- No external program names anywhere in code, copy, or docs
-  (DC-Q6 brand-purity).
