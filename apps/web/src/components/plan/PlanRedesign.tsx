@@ -51,6 +51,7 @@ import {
 import { segmentSupersetRows } from "@/lib/plan/superset-grouping";
 import { MetricHelp } from "@/components/ui/MetricHelp";
 import { AskWhyButton } from "@/components/session/AskWhyButton";
+import { LinkActivityControl } from "@/components/plan/LinkActivityControl";
 import { CardioPlanView } from "@/components/session/CardioPlanView";
 import { EXTERNAL_CARDIO_DISPLAY_NOTE } from "@/lib/session/cardio-descriptions";
 import {
@@ -1961,6 +1962,9 @@ export function SessionDrawer({
                   minDateYmd={addDaysToYmd(today, -14)}
                   action={startSessionAction}
                 />
+              )}
+              {session.isCardio && !session.done && !session.skipped && (
+                <LinkActivityControl plannedId={session.id} />
               )}
               {(session.isStrength || session.isCardio) &&
                 !session.isPreProgrammed &&
