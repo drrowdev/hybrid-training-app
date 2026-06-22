@@ -441,6 +441,72 @@ describe("HYROX two-a-days (ADR 0054)", () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// QA GUARD — full-matrix plan-quality floor. Institutionalises the manual QA
+// review: across EVERY level × budget 3–7 × two-a-day on/off, no generated week
+// may regress into a "weak" week (the original field-report bug: a sparse week
+// whose sessions were strength + easy aerobic + a lone ski-erg, no station/quality).
+// ─────────────────────────────────────────────────────────────────────────────
+describe("HYROX plan quality (QA guard)", () => {
+  const ERG_PRIMARY = new Set(["easy-ski", "easy-row", "easy-bike"]);
+  const STATIONS = new Set(["station-intervals", "se-circuit"]);
+
+  function* matrix() {
+    for (const experience of EXPERIENCES) {
+      for (const spw of [3, 4, 5, 6, 7] as const) {
+        for (const twoADay of [false, true]) {
+          yield {
+            experience,
+            spw,
+            twoADay,
+            grid: buildHyroxGrid({ weeks: WEEKS_BY_EXPERIENCE[experience], sessionsPerWeek: spw, experience, twoADay }),
+          };
+        }
+      }
+    }
+  }
+
+  it("no work week is all-easy — every base/build/race-prep week has a hard session", () => {
+    for (const { experience, spw, grid } of matrix()) {
+      for (const w of grid) {
+        if (w.isDeload || w.phase === "taper") continue;
+        const hasHard = w.days.some(
+          (c) =>
+            (c.kind === "session" && getHyroxSession(c.session)?.zone !== "aerobic" && getHyroxSession(c.session)?.zone !== "recovery") ||
+            c.kind === "sim",
+        );
+        expect(hasHard, `${experience}@${spw} wk${w.week}`).toBe(true);
+      }
+    }
+  });
+
+  it("THE field-report guard: no lone off-feet erg as a PRIMARY below 6 sessions/week", () => {
+    for (const { experience, spw, grid } of matrix()) {
+      if (spw >= 6) continue; // an easy erg is a legitimate supplementary day at 6–7
+      for (const w of grid) {
+        if (w.isDeload) continue; // deload recovery legitimately uses easy ergs
+        for (const c of w.days) {
+          if (c.kind === "session") {
+            expect(ERG_PRIMARY.has(c.session), `${experience}@${spw} wk${w.week} primary=${c.session}`).toBe(false);
+          }
+        }
+      }
+    }
+  });
+
+  it("every work week trains the functional stations (or a race sim)", () => {
+    for (const { experience, spw, grid } of matrix()) {
+      for (const w of grid) {
+        if (w.isDeload || w.phase === "taper") continue;
+        const hasStation = w.days.some(
+          (c) => (c.kind === "session" && STATIONS.has(c.session)) || c.kind === "sim",
+        );
+        expect(hasStation, `${experience}@${spw} wk${w.week}`).toBe(true);
+      }
+    }
+  });
+});
+
 describe("HYROX timeline — specs", () => {
   it("emits one spec per non-rest cell, with 0-based contiguous indices", () => {
     const inst = setup({ experience: "intermediate" });
