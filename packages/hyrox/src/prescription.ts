@@ -19,7 +19,7 @@
 import type { PlatformContext, PrescribedItem, SessionPrescription } from "@hta/program-core";
 import { buildGlobalWarmupItems } from "@hta/program-core";
 import { getHyroxSession, type HyroxSession } from "./sessions";
-import { HYROX_STATIONS, getStation, stationLoadLabel } from "./divisions";
+import { HYROX_STATIONS, getStation, stationLoadLabel, wallBallTargetLabel } from "./divisions";
 import type { HyroxExperience, HyroxDivision } from "./types";
 import type { HyroxPhaseId } from "./phases";
 
@@ -100,6 +100,8 @@ export interface PrescribeArgs {
   division: HyroxDivision;
   phase: HyroxPhaseId;
   isDeload: boolean;
+  /** Competition weight category — selects the gender-correct station loads. */
+  gender?: "male" | "female";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -193,10 +195,11 @@ function buildSimulation(sess: HyroxSession, args: PrescribeArgs): PrescribedIte
     : "Full simulation — all 8 runs + 8 stations in race order, at race effort. A costly stimulus; use rarely and not close to the event.";
   const items: PrescribedItem[] = [];
   stations.forEach((st, idx) => {
-    const loadRef = stationLoadLabel(st, args.division);
+    const loadRef = stationLoadLabel(st, args.division, args.gender);
+    const height = st.movement === "wall-ball" ? wallBallTargetLabel(args.gender) : "";
     // Fold the simulation intro into the FIRST station's note (a standalone
     // leading note would be dropped by the adapter, losing the guidance).
-    const note = [idx === 0 ? intro : "", st.note, loadRef].filter(Boolean).join(" ");
+    const note = [idx === 0 ? intro : "", st.note, height, loadRef].filter(Boolean).join(" ");
     items.push({
       kind: "conditioning",
       name: st.name,

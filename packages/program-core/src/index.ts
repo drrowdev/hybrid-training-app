@@ -170,6 +170,8 @@ export interface PlatformContext {
   recentLogs?: LoggedSession[];
   /** Movement/region keys currently under an active injury limitation. */
   activeLimitations?: string[];
+  /** Competition weight category (HYROX men's / women's station standards). */
+  gender?: "male" | "female";
   /** Injectable "now" for deterministic date math in tests. */
   now?: Date;
 }

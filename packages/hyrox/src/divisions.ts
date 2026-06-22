@@ -117,7 +117,7 @@ export const HYROX_STATIONS: HyroxStation[] = [
     reps: 100,
     open: { men: 6, women: 4 },
     pro: { men: 9, women: 6 },
-    note: "100 reps to target (3.0 m men / 2.7 m women). Squat depth + full extension each rep.",
+    note: "100 reps to the target. Squat depth + full extension each rep.",
   },
 ];
 
@@ -127,12 +127,27 @@ export function getStation(movement: string): HyroxStation | undefined {
   return BY_MOVEMENT.get(movement);
 }
 
-/** Human "Open: M 152 kg / W 102 kg" reference for a loaded station; "" if unloaded. */
-export function stationLoadLabel(station: HyroxStation, division: HyroxDivision): string {
+/** Human "Open: 152 kg — confirm yours" reference for a loaded station. When the
+ *  athlete's `gender` is known, only their standard is shown; otherwise both are
+ *  surfaced ("M 152 / W 102") to confirm at log time. "" if unloaded. */
+export function stationLoadLabel(
+  station: HyroxStation,
+  division: HyroxDivision,
+  gender?: "male" | "female",
+): string {
   // Doubles uses Open loads (shared between partners).
   const load = division === "pro" ? station.pro : station.open;
   if (!load) return "";
   const per = load.perHand ? "/hand" : "";
   const tier = division === "pro" ? "Pro" : division === "doubles" ? "Open (shared)" : "Open";
+  if (gender === "male") return `${tier}: ${load.men} kg${per} — confirm yours`;
+  if (gender === "female") return `${tier}: ${load.women} kg${per} — confirm yours`;
   return `${tier}: M ${load.men} kg${per} / W ${load.women} kg${per} — confirm yours`;
+}
+
+/** Wall-ball target height by competition standard: 3.0 m men / 2.7 m women. */
+export function wallBallTargetLabel(gender?: "male" | "female"): string {
+  if (gender === "male") return "target 3.0 m";
+  if (gender === "female") return "target 2.7 m";
+  return "target 3.0 m men / 2.7 m women";
 }

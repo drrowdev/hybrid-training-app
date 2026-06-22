@@ -32,7 +32,7 @@ interface TmRow {
 export async function buildPlatformContext(
   supabase: Pick<SupabaseClient, "from">,
   userId: string,
-  opts: { roundingKg?: number } = {},
+  opts: { roundingKg?: number; gender?: "male" | "female" } = {},
 ): Promise<PlatformContextBundle> {
   const { data, error } = await supabase
     .from("training_maxes")
@@ -61,6 +61,7 @@ export async function buildPlatformContext(
     ctx: {
       oneRepMaxes,
       roundingKg: opts.roundingKg ?? 2.5,
+      ...(opts.gender ? { gender: opts.gender } : {}),
     },
     resolveMovement,
     anchoredKeys: Object.keys(oneRepMaxes),
