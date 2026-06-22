@@ -138,7 +138,9 @@ describe("HYROX prescribe — aerobic / intervals", () => {
 
   it("scales easy-run duration up with experience", () => {
     const durFor = (experience: "beginner" | "advanced") => {
-      const i = inst({ experience });
+      // 6 sessions/wk so a non-deload base week carries a dedicated easy-run
+      // (at 5/wk the easy slot is spent on the 2nd strength day — ADR 0056).
+      const i = inst({ experience, sessionsPerWeek: 6 });
       const ref = firstRefWithTag(i, "session:easy-run")!;
       const p = hyroxEngine.prescribe(i, ref, ctxWithMaxes);
       return p.items.find((it) => it.kind === "cardio")!.durationSec!;

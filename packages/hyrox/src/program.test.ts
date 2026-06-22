@@ -342,14 +342,13 @@ describe("HYROX week quotas (ADR 0053)", () => {
     }
   });
 
-  it("a second strength day appears at high budgets, splitting the load", () => {
+  it("a second strength day appears at high budgets (two full-body days)", () => {
     // The user's complaint that a 6-day plan had a single monolithic strength day.
     const week = workWeeks("advanced", 8).find((w) => w.phase === "build")!;
     const strengthIds = primarySessions(week).filter(
       (id) => getHyroxSession(id)?.category === "strength",
     );
-    expect(strengthIds.length).toBeGreaterThanOrEqual(2);
-    expect(new Set(strengthIds).size).toBeGreaterThanOrEqual(2); // not the same day twice
+    expect(strengthIds.length).toBeGreaterThanOrEqual(2); // two strength days
   });
 
   it("the reported regression is gone: a low-budget base week has no lone easy erg, has a station", () => {
@@ -559,9 +558,10 @@ describe("HYROX best-in-class refinements (ADR 0055)", () => {
           }
         }
       }
-      // And the easy cross-fill at 6 days IS the bike.
-      const base6 = grid(experience, 6).find((w) => w.phase === "base")!;
-      expect(ids(base6)).toContain("easy-bike");
+      // And the easy cross-fill (the `cross` slot) IS the bike — appears at 7 days
+      // in base (slot 7) now that the 2nd strength day takes slot 5 (ADR 0056).
+      const base7 = grid(experience, 7).find((w) => w.phase === "base")!;
+      expect(ids(base7)).toContain("easy-bike");
     }
   });
 
@@ -572,6 +572,58 @@ describe("HYROX best-in-class refinements (ADR 0055)", () => {
     const vo2 = buildWeeks.filter((w) => ids(w).includes("vo2-intervals")).length;
     expect(threshold).toBeGreaterThan(0);
     expect(vo2).toBeGreaterThan(0); // both stimuli appear across the build block
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADR 0056 — strength dosing: full-body at low budgets / 1-strength weeks; a
+// second SPLIT strength day at 5+ days in Base and 6+ days in Build (endurance-
+// protected); race-prep stays at one maintenance strength day.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("HYROX strength dosing (ADR 0056)", () => {
+  function week(experience: HyroxExperience, spw: number, phase: HyroxPhaseId) {
+    return buildHyroxGrid({ weeks: WEEKS_BY_EXPERIENCE[experience], sessionsPerWeek: spw, experience })
+      .filter((w) => !w.isDeload && w.phase === phase)[0]!;
+  }
+  const strengthIds = (w: { days: { kind: string; session?: string }[] }) =>
+    w.days.filter((c) => c.kind === "session" && getHyroxSession((c as { session: string }).session)?.category === "strength")
+      .map((c) => (c as { session: string }).session);
+
+  it("a 5-day BASE week has TWO full-body strength days (every lift 2×)", () => {
+    const s = strengthIds(week("intermediate", 5, "base"));
+    expect(s.length).toBe(2);
+    expect(s.every((id) => id === "strength-full")).toBe(true);
+  });
+
+  it("a 5-day BUILD week stays at ONE strength day (endurance-protected)", () => {
+    const w = week("intermediate", 5, "build");
+    const s = strengthIds(w);
+    expect(s.length).toBe(1);
+    expect(s[0]).toBe("strength-full"); // single day is full-body
+    // The endurance essentials are all preserved at 5 days.
+    const ids2 = w.days.filter((c) => c.kind === "session").map((c) => (c as { session: string }).session);
+    expect(ids2).toContain("compromised-run");
+    expect(ids2).toContain("long-run");
+  });
+
+  it("a 6-day BUILD week gets a second full-body strength day", () => {
+    const s = strengthIds(week("advanced", 6, "build"));
+    expect(s.length).toBe(2);
+    expect(s.every((id) => id === "strength-full")).toBe(true);
+  });
+
+  it("a low-budget (4-day) week is a single FULL-BODY strength day", () => {
+    for (const phase of ["base", "build"] as const) {
+      const s = strengthIds(week("intermediate", 4, phase));
+      expect(s).toEqual(["strength-full"]);
+    }
+  });
+
+  it("RACE-PREP keeps ONE maintenance strength day at every budget", () => {
+    for (const spw of [5, 6, 7] as const) {
+      const s = strengthIds(week("advanced", spw, "specific"));
+      expect(s.length).toBe(1);
+    }
   });
 });
 
