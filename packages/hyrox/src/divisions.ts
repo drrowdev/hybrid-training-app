@@ -182,3 +182,56 @@ export function stationLoadsSummary(
   const tier = division === "pro" ? "Pro" : division === "doubles" ? "Open (shared)" : "Open";
   return `${tier} race loads — ${parts.join(", ")} (confirm yours).`;
 }
+
+/** A station's distance/reps/height target as a short label (e.g. "50 m", "100 reps"). */
+export function stationTargetLabel(station: HyroxStation, gender?: "male" | "female"): string {
+  if (station.movement === "wall-ball") {
+    const height = gender === "female" ? "2.7 m" : gender === "male" ? "3.0 m" : "3.0/2.7 m";
+    return station.reps != null ? `${station.reps} reps · target ${height}` : `target ${height}`;
+  }
+  if (station.reps != null) return `${station.reps} reps`;
+  if (station.distanceM != null) return `${station.distanceM} m`;
+  return "";
+}
+
+/** A station's gender/division-correct working load as a bare label (e.g. "152 kg", "24 kg/hand"). "" when unloaded. */
+export function stationLoadValue(
+  station: HyroxStation,
+  division: HyroxDivision,
+  gender?: "male" | "female",
+): string {
+  const load = division === "pro" ? station.pro : station.open;
+  if (!load) return "";
+  const per = load.perHand ? " kg/hand" : " kg";
+  if (gender === "male") return `${load.men}${per}`;
+  if (gender === "female") return `${load.women}${per}`;
+  return `${load.men}/${load.women}${per}`;
+}
+
+/**
+ * Structured per-station rows (name + gender-correct load + target) for a set of
+ * movement keys, in the order given. Drives the clean station list in
+ * CardioPlanView. Unknown/non-station movements are skipped.
+ */
+export function stationRows(
+  movements: readonly string[],
+  division: HyroxDivision,
+  gender?: "male" | "female",
+): { name: string; load?: string; target?: string }[] {
+  const seen = new Set<string>();
+  const rows: { name: string; load?: string; target?: string }[] = [];
+  for (const m of movements) {
+    if (seen.has(m)) continue;
+    seen.add(m);
+    const st = getStation(m);
+    if (!st) continue;
+    const load = stationLoadValue(st, division, gender);
+    const target = stationTargetLabel(st, gender);
+    rows.push({
+      name: st.name,
+      ...(load ? { load } : {}),
+      ...(target ? { target } : {}),
+    });
+  }
+  return rows;
+}

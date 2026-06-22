@@ -133,7 +133,8 @@ describe("HYROX prescribe — aerobic / intervals", () => {
     const p = hyroxEngine.prescribe(i, ref, ctxWithMaxes);
     const cardio = p.items.find((it) => it.kind === "cardio");
     expect(cardio?.durationSec).toBeGreaterThan(0);
-    expect(cardio?.note).toMatch(/zone 2|rpe 4-5/i);
+    // Zone/RPE guidance now lives in the structured cardioPlan.effort.
+    expect(cardio?.cardioPlan?.effort).toMatch(/zone 2|rpe 4.5/i);
   });
 
   it("scales easy-run duration up with experience", () => {
@@ -167,10 +168,10 @@ describe("HYROX prescribe — simulations & divisions", () => {
   it("reflects the chosen division in the station load reference", () => {
     const open = hyroxEngine.prescribe(inst({ division: "open" }), simRef(inst({ division: "open" })), ctxWithMaxes);
     const pro = hyroxEngine.prescribe(inst({ division: "pro" }), simRef(inst({ division: "pro" })), ctxWithMaxes);
-    const sledNote = (p: SessionPrescription) =>
-      p.items.find((it) => it.movementId === "sled-push")?.note ?? "";
-    expect(sledNote(open)).toContain("152");
-    expect(sledNote(pro)).toContain("202");
+    const sledLoad = (p: SessionPrescription) =>
+      p.items.find((it) => it.movementId === "sled-push")?.cardioPlan?.stations?.[0]?.load ?? "";
+    expect(sledLoad(open)).toContain("152");
+    expect(sledLoad(pro)).toContain("202");
   });
 
   it("stationLoadLabel marks Doubles as Open (shared)", () => {
@@ -180,17 +181,18 @@ describe("HYROX prescribe — simulations & divisions", () => {
 
   it("surfaces the gender-correct station load when gender is known (ADR — weight category)", () => {
     const i = inst({ division: "open" });
-    const sledNote = (ctx: PlatformContext) =>
-      hyroxEngine.prescribe(i, simRef(i), ctx).items.find((it) => it.movementId === "sled-push")?.note ?? "";
+    const sledLoad = (ctx: PlatformContext) =>
+      hyroxEngine.prescribe(i, simRef(i), ctx).items.find((it) => it.movementId === "sled-push")
+        ?.cardioPlan?.stations?.[0]?.load ?? "";
     // Open sled push: men 152 kg, women 102 kg.
-    const male = sledNote({ ...ctxWithMaxes, gender: "male" });
-    const female = sledNote({ ...ctxWithMaxes, gender: "female" });
+    const male = sledLoad({ ...ctxWithMaxes, gender: "male" });
+    const female = sledLoad({ ...ctxWithMaxes, gender: "female" });
     expect(male).toContain("152");
     expect(male).not.toContain("102");
     expect(female).toContain("102");
     expect(female).not.toContain("152");
     // No gender → both shown (confirm-at-log fallback).
-    const both = sledNote(ctxWithMaxes);
+    const both = sledLoad(ctxWithMaxes);
     expect(both).toContain("152");
     expect(both).toContain("102");
   });
@@ -215,14 +217,17 @@ describe("HYROX prescribe — simulations & divisions", () => {
     expect(summaryMale).not.toContain("/"); // gender known → single weights, no M/W slash
     // Unloaded-only movement set yields no load line.
     expect(stationLoadsSummary(["run"], "open", "male")).toBe("");
-    // End-to-end: a station-intervals prescription note carries the loads.
+    // End-to-end: a station-intervals prescription now carries the gender-correct
+    // loads as STRUCTURED station rows on its cardioPlan (not buried in prose).
     const i = inst({ division: "pro" });
     const ref = hyroxEngine
       .timeline(i)
       .find((s) => s.tags?.includes("session:station-intervals"))?.ref;
     if (ref) {
-      const note = hyroxEngine.prescribe(i, ref, { ...ctxWithMaxes, gender: "female" }).items[0]?.note ?? "";
-      expect(note).toMatch(/race loads/i);
+      const item = hyroxEngine.prescribe(i, ref, { ...ctxWithMaxes, gender: "female" }).items[0];
+      const stations = item?.cardioPlan?.stations ?? [];
+      const sled = stations.find((s) => s.name === "Sled Push");
+      expect(sled?.load).toContain("152"); // Pro women sled push = 152 kg
     }
   });
 });

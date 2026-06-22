@@ -51,6 +51,8 @@ import {
 import { segmentSupersetRows } from "@/lib/plan/superset-grouping";
 import { MetricHelp } from "@/components/ui/MetricHelp";
 import { AskWhyButton } from "@/components/session/AskWhyButton";
+import { CardioPlanView } from "@/components/session/CardioPlanView";
+import { EXTERNAL_CARDIO_DISPLAY_NOTE } from "@/lib/session/cardio-descriptions";
 import {
   MovementPicker,
   type MovementSearchResult,
@@ -2741,10 +2743,16 @@ function DrawerCardio({ items }: { items: PrescriptionItem[] }) {
       {items.map((it, i) => {
         const duration = it.durationMin != null ? `${it.durationMin} min` : null;
         const target = it.hrCap ?? null;
-        const protocol = it.protocolNote ?? null;
-        // When neither a target nor a protocol is present, fall back to
-        // the one-line formatter so the row is never empty.
-        const fallback = !target && !protocol ? formatPrescriptionItem(it) : null;
+        // Plans materialised before cardioPlan still carry the engine's rich note
+        // in `notes` plus a generic "display-only" placeholder in protocolNote.
+        // Prefer the real note; suppress the placeholder so the drawer shows the
+        // actual instructions, not "log it from your tracker".
+        const richNote = (it.notes ?? "").trim();
+        const protoRaw = (it.protocolNote ?? "").trim();
+        const protocol =
+          protoRaw && protoRaw !== EXTERNAL_CARDIO_DISPLAY_NOTE.trim() ? protoRaw : null;
+        // When nothing meaningful is present, fall back to the one-line formatter.
+        const fallback = !target && !protocol && !richNote ? formatPrescriptionItem(it) : null;
         return (
           <div key={i} data-testid={`plan-drawer-cardio-${i}`} className="cardio-block">
             <div className="movement-head">
@@ -2755,23 +2763,37 @@ function DrawerCardio({ items }: { items: PrescriptionItem[] }) {
                 </span>
               )}
             </div>
-            {target && (
-              <div className="cardio-line">
-                <span className="lbl">Target</span>
-                <span className="val">{target}</span>
+            {it.cardioPlan ? (
+              <div style={{ marginTop: 8 }}>
+                <CardioPlanView plan={it.cardioPlan} />
               </div>
-            )}
-            {protocol && (
-              <div className="cardio-line">
-                <span className="lbl">Protocol</span>
-                <span className="val">{protocol}</span>
-              </div>
-            )}
-            {fallback && (
-              <div className="cardio-line">
-                <span className="lbl">Detail</span>
-                <span className="val">{fallback}</span>
-              </div>
+            ) : (
+              <>
+                {richNote && (
+                  <div className="cardio-line">
+                    <span className="lbl">Session</span>
+                    <span className="val">{richNote}</span>
+                  </div>
+                )}
+                {target && (
+                  <div className="cardio-line">
+                    <span className="lbl">Target</span>
+                    <span className="val">{target}</span>
+                  </div>
+                )}
+                {protocol && (
+                  <div className="cardio-line">
+                    <span className="lbl">Protocol</span>
+                    <span className="val">{protocol}</span>
+                  </div>
+                )}
+                {fallback && (
+                  <div className="cardio-line">
+                    <span className="lbl">Detail</span>
+                    <span className="val">{fallback}</span>
+                  </div>
+                )}
+              </>
             )}
           </div>
         );

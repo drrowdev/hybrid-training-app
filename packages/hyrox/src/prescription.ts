@@ -16,10 +16,16 @@
  * (sRPE, interference, freshness, taper) is the existing CP-2 engine, applied to
  * the materialized ACTUALS post-completion — never here. See ADR 0050 §Calibration.
  */
-import type { PlatformContext, PrescribedItem, SessionPrescription } from "@hta/program-core";
+import type { PlatformContext, PrescribedItem, SessionPrescription, CardioPlan } from "@hta/program-core";
 import { buildGlobalWarmupItems } from "@hta/program-core";
 import { getHyroxSession, type HyroxSession } from "./sessions";
-import { HYROX_STATIONS, getStation, stationLoadLabel, wallBallTargetLabel, stationLoadsSummary } from "./divisions";
+import {
+  HYROX_STATIONS,
+  getStation,
+  stationRows,
+  stationLoadValue,
+  stationTargetLabel,
+} from "./divisions";
 import type { HyroxExperience, HyroxDivision } from "./types";
 import type { HyroxPhaseId } from "./phases";
 
@@ -108,7 +114,7 @@ export interface PrescribeArgs {
 // Per-category builders
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** A run/erg session → one cardio item with a duration target + zone guidance. */
+/** A run/erg session → one cardio item with a duration target + structured plan. */
 function buildAerobic(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[] {
   const baseMin = EASY_RUN_MIN[args.experience] * AEROBIC_PHASE_MULT[args.phase];
   let durMin = baseMin;
@@ -117,11 +123,38 @@ function buildAerobic(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[]
     durMin = THRESHOLD_MIN[args.experience] * (args.phase === "taper" ? 0.7 : 1);
   }
   if (args.isDeload) durMin = Math.min(durMin, 30);
+  const dur = Math.round(durMin);
+  const isErg = sess.category === "erg";
+  const machine =
+    sess.id === "easy-ski" ? "SkiErg" : sess.id === "easy-row" ? "row" : sess.id === "easy-bike" ? "bike" : "run";
 
-  const zoneNote =
-    sess.zone === "threshold"
-      ? "Hold ~half-marathon effort (RPE 7-8) through the middle; easy warm-up + cool-down."
-      : "Keep it easy and conversational (Zone 2, RPE 4-5).";
+  let plan: CardioPlan;
+  if (sess.id === "threshold-run") {
+    const work = Math.max(8, dur - 15); // ~10 min warm-up + ~5 min cool-down
+    plan = {
+      summary: "A sustained, comfortably-hard run at around your 10K–half-marathon effort.",
+      meta: `~${dur} min`,
+      segments: [
+        { label: "Warm-up", detail: "~10 min easy" },
+        { label: "Threshold", detail: `~${work} min steady at RPE 7–8` },
+        { label: "Cool-down", detail: "~5 min easy" },
+      ],
+      effort: "Comfortably hard (RPE 7–8) — breathing hard but in control, a pace you could just about hold to the finish.",
+      logHint: "Log it from your watch or Strava when you're done.",
+    };
+  } else {
+    const longest = sess.id === "long-run";
+    plan = {
+      summary: longest
+        ? "Your longest easy run of the week — build durability for the back half of the race. Longer, not harder."
+        : isErg
+          ? `Steady ${machine} at an easy aerobic pace — low-impact engine work that spares the legs.`
+          : "Easy aerobic run — the steady mileage that builds the engine carrying roughly half the race.",
+      meta: `~${dur} min`,
+      effort: "Easy Zone 2 (RPE 4–5) — conversational the whole way. If you can't talk in full sentences, slow down.",
+      logHint: "Log it from your watch or Strava when you're done.",
+    };
+  }
 
   return [
     {
@@ -129,19 +162,45 @@ function buildAerobic(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[]
       name: sess.name,
       ...mid(sess.movements[0]),
       durationSec: minutes(durMin),
-      note: `Target ~${Math.round(durMin)} min. ${zoneNote} ${sess.note}`,
+      note: plan.summary,
+      cardioPlan: plan,
     },
   ];
 }
 
-/** VO2 / station intervals → a conditioning item expressed in rounds. */
+/** VO2 / station intervals → a conditioning item expressed in rounds + structured plan. */
 function buildIntervals(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[] {
   const rounds = ROUNDS_BY_LEVEL[args.experience] + (args.phase === "specific" ? 1 : 0);
-  const detail =
-    sess.id === "vo2-intervals"
-      ? `${rounds} × 800 m hard (RPE 8-9) with equal-time jog/walk recovery. Top-end aerobic power.`
-      : `${rounds} rounds of station technique + intervals (sled / ski / row / wall ball / lunge) — sharpen efficiency and pacing.`;
-  const loads = stationLoadsSummary(sess.movements, args.division, args.gender);
+
+  let plan: CardioPlan;
+  if (sess.id === "vo2-intervals") {
+    plan = {
+      summary: "Hard running intervals to lift your top-end engine and running economy.",
+      meta: `${rounds} × 800 m`,
+      segments: [
+        { label: "Warm-up", detail: "~10 min easy + a few strides" },
+        { label: "Intervals", detail: `${rounds} × 800 m hard, with equal-time jog/walk recovery` },
+        { label: "Cool-down", detail: "~5 min easy" },
+      ],
+      effort: "Hard on the reps (RPE 8–9) — controlled, repeatable, not a sprint. Easy on the recoveries.",
+      logHint: "Log it from your watch or Strava when you're done.",
+    };
+  } else {
+    const rotation = sess.movements
+      .map((m) => getStation(m)?.name ?? movementLabel(m))
+      .join(" → ");
+    plan = {
+      summary:
+        "Rotate through the race stations at a hard, repeatable effort — sharpen technique, transitions and pacing on the costliest stations.",
+      meta: `${rounds} rounds`,
+      segments: [{ label: "Each round", detail: rotation }],
+      stations: stationRows(sess.movements, args.division, args.gender),
+      effort:
+        "Hard but repeatable (RPE 7–8) — race pace, not max. Short rest between stations, a longer break between rounds.",
+      logHint: "Manual session — tap Mark complete when you're done.",
+    };
+  }
+
   return [
     {
       kind: "conditioning",
@@ -149,15 +208,24 @@ function buildIntervals(sess: HyroxSession, args: PrescribeArgs): PrescribedItem
       ...mid(sess.movements[0]),
       sets: rounds,
       repsLabel: `${rounds} rounds`,
-      note: [`${detail} ${sess.note}`, loads].filter(Boolean).join(" "),
+      note: plan.summary,
+      cardioPlan: plan,
     },
   ];
 }
 
-/** Compromised running → run → station → run rounds under fatigue. */
+/** Compromised running → run → station → run rounds under fatigue + structured plan. */
 function buildCompromised(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[] {
   const rounds = ROUNDS_BY_LEVEL[args.experience];
-  const loads = stationLoadsSummary(sess.movements, args.division, args.gender);
+  const plan: CardioPlan = {
+    summary:
+      "The signature HYROX session: run hard on legs already fatigued by a station — the race-specific skill of running under fatigue.",
+    meta: `${rounds} rounds`,
+    segments: [{ label: "Each round", detail: "1 km run → one race station → 1 km run, minimal rest" }],
+    stations: stationRows(sess.movements, args.division, args.gender),
+    effort: "Race effort (RPE 7–8). The runs will feel heavy after the station — that's the point. Hold form.",
+    logHint: "Manual session — tap Mark complete when you're done.",
+  };
   return [
     {
       kind: "conditioning",
@@ -165,20 +233,27 @@ function buildCompromised(sess: HyroxSession, args: PrescribeArgs): PrescribedIt
       ...mid(sess.movements[0]),
       sets: rounds,
       repsLabel: `${rounds} rounds`,
-      note: [`${rounds} × (1 km run → a race station → 1 km run) at race effort, minimal rest. ${sess.note}`, loads]
-        .filter(Boolean)
-        .join(" "),
+      note: plan.summary,
+      cardioPlan: plan,
     },
   ];
 }
 
-/** Strength-endurance circuit → station combos at sustainable load. */
+/** Strength-endurance circuit → station combos at sustainable load + structured plan. */
 function buildCircuit(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[] {
   const rounds = ROUNDS_BY_LEVEL[args.experience];
-  const stations = sess.movements
+  const rotation = sess.movements
     .map((m) => getStation(m)?.name ?? movementLabel(m))
-    .join(", ");
-  const loads = stationLoadsSummary(sess.movements, args.division, args.gender);
+    .join(" → ");
+  const plan: CardioPlan = {
+    summary:
+      "Strength-endurance circuit — high reps in the race movement patterns at a load you can keep moving through.",
+    meta: `${rounds} rounds`,
+    segments: [{ label: "Each round", detail: rotation }],
+    stations: stationRows(sess.movements, args.division, args.gender),
+    effort: "Sustainable and steady — keep moving, don't redline. Build muscular endurance, not max strength.",
+    logHint: "Manual session — tap Mark complete when you're done.",
+  };
   return [
     {
       kind: "conditioning",
@@ -186,12 +261,8 @@ function buildCircuit(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[]
       ...mid(sess.movements[0]),
       sets: rounds,
       repsLabel: `${rounds} rounds`,
-      note: [
-        `${rounds} rounds: ${stations}. High-rep, sustainable load — build muscular endurance in the race patterns. ${sess.note}`,
-        loads,
-      ]
-        .filter(Boolean)
-        .join(" "),
+      note: plan.summary,
+      cardioPlan: plan,
     },
   ];
 }
@@ -201,22 +272,34 @@ function buildSimulation(sess: HyroxSession, args: PrescribeArgs): PrescribedIte
   const half = sess.id === "sim-half";
   const stations = HYROX_STATIONS.slice(0, half ? 4 : 8);
   const intro = half
-    ? "Half simulation — 4 runs (1 km each) alternating with the first 4 stations, at race effort. Rehearse pacing, transitions and fuelling."
-    : "Full simulation — all 8 runs + 8 stations in race order, at race effort. A costly stimulus; use rarely and not close to the event.";
+    ? "Half-race rehearsal — 4 runs (1 km each) alternating with the first 4 stations, at race effort. Practise pacing, transitions and fuelling."
+    : "Full-race rehearsal — all 8 runs + 8 stations in race order, at race effort. A costly stimulus: use rarely, never close to the event.";
   const items: PrescribedItem[] = [];
   stations.forEach((st, idx) => {
-    const loadRef = stationLoadLabel(st, args.division, args.gender);
-    const height = st.movement === "wall-ball" ? wallBallTargetLabel(args.gender) : "";
-    // Fold the simulation intro into the FIRST station's note (a standalone
-    // leading note would be dropped by the adapter, losing the guidance).
-    const note = [idx === 0 ? intro : "", st.note, height, loadRef].filter(Boolean).join(" ");
+    const load = stationLoadValue(st, args.division, args.gender);
+    const target = stationTargetLabel(st, args.gender);
+    const plan: CardioPlan = {
+      summary: idx === 0 ? intro : st.note ?? `${st.name} at race effort.`,
+      meta: half ? `Station ${idx + 1} of 4` : `Station ${idx + 1} of 8`,
+      segments: [{ label: "Before this station", detail: "1 km run at race pace" }],
+      stations: [
+        {
+          name: st.name,
+          ...(load ? { load } : {}),
+          ...(target ? { target } : {}),
+        },
+      ],
+      effort: "Race effort — controlled and even. Treat it like the real thing.",
+      logHint: "Manual session — tap Mark complete when you're done.",
+    };
     items.push({
       kind: "conditioning",
       name: st.name,
       movementId: st.movement,
       ...(st.distanceM != null ? { distanceM: st.distanceM } : {}),
       ...(st.reps != null ? { reps: st.reps } : {}),
-      ...(note ? { note } : {}),
+      note: idx === 0 ? intro : st.note ?? st.name,
+      cardioPlan: plan,
     });
   });
   return items;
@@ -334,14 +417,21 @@ export function prescribeSession(
 
 /** The deload-marker prescription — a light optional recovery session. */
 export function deloadPrescription(): SessionPrescription {
+  const plan: CardioPlan = {
+    summary: "Deload week — keep it light so accumulated fatigue clears and your recent training pays off.",
+    meta: "optional · ~20 min",
+    effort: "Very easy Zone 2 (RPE 3–4) movement only — run, ski, row or bike. Skip it entirely if you're beat.",
+    logHint: "Optional — log it from your watch or Strava if you do it.",
+  };
   return {
     items: [
       {
         kind: "cardio",
-        name: "Recovery (optional Z2)",
+        name: "Recovery (optional easy Z2)",
         movementId: "run",
         durationSec: 20 * 60,
-        note: "Deload — drop volume and intensity this week. Optional easy Zone-2 movement only (run/ski/row/bike); let fatigue clear so your recent training pays off.",
+        note: plan.summary,
+        cardioPlan: plan,
       },
     ],
   };

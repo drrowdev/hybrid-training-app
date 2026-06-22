@@ -74,6 +74,52 @@ export interface PrescribedItem {
    * their own assistance movement (e.g. TB Zulu/HT pull-ups) leave this unset.
    */
   assistanceCategory?: string;
+  /**
+   * Structured presentation for a conditioning / cardio item — the clean,
+   * sectioned alternative to cramming everything into `note`. Rendered by the
+   * shared CardioPlanView across Today / live session / plan drawer. Optional
+   * and additive: items without it fall back to `note` rendering. Built
+   * gender/division-correct at the source (e.g. HYROX station sessions).
+   */
+  cardioPlan?: CardioPlan;
+}
+
+/** One ordered step in a cardio session's structure (warm-up/work/cool-down, or a station rotation). */
+export interface CardioPlanSegment {
+  /** Short label, e.g. "Warm-up", "Work", "Cool-down", "Each round". */
+  label: string;
+  /** The detail, e.g. "10 min easy", "SkiErg → Sled Push → Sled Pull → Wall Balls → Lunges". */
+  detail: string;
+}
+
+/** A loaded/targeted station in a HYROX session, surfaced as a clean key/value row. */
+export interface CardioPlanStation {
+  /** Station name, e.g. "Sled Push". */
+  name: string;
+  /** Gender/division-correct working load, e.g. "152 kg" or "24 kg/hand". Omitted when unloaded. */
+  load?: string;
+  /** Distance / reps / height target, e.g. "50 m", "100 reps", "target 3.0 m". */
+  target?: string;
+}
+
+/**
+ * Structured, render-ready presentation of a conditioning/cardio session. Lets the
+ * UI show clean sections instead of a free-text blob. All fields are display copy
+ * — no engine math. See `CardioPlanView`.
+ */
+export interface CardioPlan {
+  /** One crisp sentence: what this session is and the point of it. */
+  summary: string;
+  /** Optional structure label shown by the headline, e.g. "4 rounds", "~40 min". */
+  meta?: string;
+  /** Ordered structure: warm-up/work/cool-down for runs, or the round/rotation for stations. */
+  segments?: CardioPlanSegment[];
+  /** Loaded/targeted stations, shown as a clean list (gender/division-correct). */
+  stations?: CardioPlanStation[];
+  /** Effort / intensity guidance, e.g. "Hard but repeatable — RPE 7–8, race pace not max." */
+  effort: string;
+  /** How this session is logged, e.g. "Log it from your watch or Strava when you're done." */
+  logHint?: string;
 }
 
 /** The full ordered prescription for one session. */

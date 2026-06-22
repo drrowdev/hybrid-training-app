@@ -33,6 +33,7 @@ import {
 import type { CardioMachineType } from "@/lib/settings/equipment-schema";
 import type { swapPrescriptionItem } from "@/lib/sessions/actions";
 import { CardioCard } from "./CardioCard";
+import { CardioPlanView } from "./CardioPlanView";
 import { makeShouldHideHeading } from "@/lib/session/heading-dedup";
 
 type SwapAction = typeof swapPrescriptionItem;
@@ -290,6 +291,8 @@ function ExternalCardioRow({
             </div>
           )}
         </>
+      ) : item.cardioPlan ? (
+        <CardioPlanView plan={item.cardioPlan} durationMin={item.durationMin ?? null} />
       ) : (
         <div style={{ fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
           {body}
