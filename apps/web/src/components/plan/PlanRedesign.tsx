@@ -86,6 +86,14 @@ export type PlanSessionInput = {
   estDurationMin: number | null;
   /** Drawer notes loaded from `planned_sessions.notes` (PR Z1). */
   notes: string | null;
+  /**
+   * True when this session belongs to a pre-programmed platform program
+   * (5/3/1, Tactical Barbell, Green Protocol, HYROX) — i.e. the stored
+   * prescription carries a `programRef`. The "Ask why this workout" chip is
+   * hidden for these (the rationale IS the published methodology); it only
+   * shows for the generated Hybrid plan. Absent/false ⇒ show the chip.
+   */
+  isPreProgrammed?: boolean;
 };
 
 export type PlanRedesignProps = {
@@ -1955,6 +1963,7 @@ export function SessionDrawer({
                 />
               )}
               {(session.isStrength || session.isCardio) &&
+                !session.isPreProgrammed &&
                 (aiAccess ? (
                   <AskWhyButton sessionId={session.id} />
                 ) : (

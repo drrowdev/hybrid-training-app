@@ -207,6 +207,7 @@ export default async function PlanPage({
       items,
       estDurationMin: dur,
       notes: p.notes,
+      isPreProgrammed: p.prescription?.programRef != null,
     };
   });
 

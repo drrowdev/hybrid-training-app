@@ -645,6 +645,7 @@ export default async function TodayPage() {
       items,
       estDurationMin: estimateSessionMinutes(items),
       notes: p.notes,
+      isPreProgrammed: p.prescription?.programRef != null,
     };
   });
   const formatProfile: ProfileForFormat = profile
@@ -1795,11 +1796,12 @@ function PlannedSessionCard({
         >
           Preview
         </Link>
-        {aiAccess ? (
-          <AskWhyButton sessionId={askWhySessionId(planned)} />
-        ) : (
-          <AskWhyButton href="/app/settings/ai" />
-        )}
+        {!planned.prescription?.programRef &&
+          (aiAccess ? (
+            <AskWhyButton sessionId={askWhySessionId(planned)} />
+          ) : (
+            <AskWhyButton href="/app/settings/ai" />
+          ))}
       </div>
     </section>
   );
