@@ -480,7 +480,7 @@ Verdicts on the 22 Open Conflicts. **Closed** = constraint(s) updated to reflect
 | 3 | Region | ✅ EU-central |
 | 4 | Pricing intent | ✅ Free for all + pricing later |
 | 5 | Domain name | ⏸ Owner decides |
-| 6 | Methodology naming | ✅ Already resolved — methodology-pure, owner-confirmed; no re-debate |
+| 6 | Methodology naming | ⛔ RETIRED 2026-06-22 — program names allowed in UI copy (app ships named programs since ADR 0046) |
 | 7 | Native iOS day one vs web-first | ✅ Web-first, Capacitor in Phase 2 |
 | 8 | Public launch criteria | ⏸ Owner decides |
 
@@ -551,7 +551,7 @@ For each Open Conflict OC-1 through OC-22 above, the deliverable is one of:
 - Q3. **Region:** EU-central if GDPR-first; us-east otherwise → *Suggested:* EU-central. **→ Accepted in Phase D.**
 - Q4. **Pricing intent:** Free + Pro day one vs free + pricing later → *Suggested:* free for all, pricing-later. **→ Accepted in Phase D.**
 - Q5. **Domain name:** TBD → *Suggested:* park a domain in Phase D so Resend email sender is on the production domain from day one. **→ Deferred 2026-05-19; owner will use personal Gmail as the Resend transactional sender for v0** (Resend supports single-mailbox verified senders without a custom domain). Re-open before any public marketing or paid-tier launch.
-- Q6. **Methodology naming:** engine is **methodology-pure** (zero external program names in catalog, data model, or engine — only the five archetypes). **→ Re-confirmed by owner in Phase D; not for re-debate.** (Earlier draft text referencing specific external program names is obsolete and contradicts §1 of the plan + DC-F1 of this document.)
+- Q6. **Methodology naming:** ~~engine is methodology-pure (zero external program names)~~ **RETIRED 2026-06-22 by owner.** The app now ships real, named foreign programs (5/3/1, Tactical Barbell, HYROX) in the program picker (ADR 0046+), so the original "zero external program names in user-facing copy" rule is obsolete and no longer enforced. Program names may be used freely in UI copy. (The retired DC-Q6 brand-purity tests have been removed.)
 - Q7. **Native iOS day one vs web-first:** → *Suggested:* web-first; Capacitor wrap in Phase 2. **→ Accepted in Phase D.**
 - Q8. **Public launch criteria:** → *Suggested:* "personal use rock-solid for ≥ 8 weeks + ≥ 1 external alpha user logging for 4 weeks, no data-loss incidents". **→ Accepted in Phase D.** Engine-level metric: anchor-compliance ≥ 90% over the 8-week window with zero data-loss incidents.
 

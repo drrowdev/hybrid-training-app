@@ -450,28 +450,6 @@ describe("bwPrescription · cues + notes (decision 5)", () => {
     });
     expect(out.notes).toBeUndefined();
   });
-
-  it("brand-purity — no external program names in cue or notes", () => {
-    // Sample every archetype × week × bucket and assert nothing contains a
-    // known external program label. This is the runtime fence for DC-Q6.
-    const bannedPatterns =
-      /\b(reddit|stronglifts|wendler|5\s*\/\s*3\s*\/\s*1|smolov|sheiko|starting strength|texas method|crossfit|nsuns|gzclp|gzcl|p90x|insanity)\b/i;
-    for (const archetype of ARCHETYPES) {
-      for (const w of WEEKS) {
-        for (const bucket of ["main", "back_off"] as const) {
-          const out = bwPrescription({
-            node: makeNode({ difficultyAnchor: 30 }),
-            family: "push_h",
-            archetype,
-            bucket,
-            weekIndex: w,
-          });
-          expect(out.intensityCue).not.toMatch(bannedPatterns);
-          if (out.notes) expect(out.notes).not.toMatch(bannedPatterns);
-        }
-      }
-    }
-  });
 });
 
 // ─── Decision 6 — sub-failure-friendly rep cap ────────────────────────────
