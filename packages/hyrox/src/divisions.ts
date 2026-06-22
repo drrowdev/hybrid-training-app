@@ -151,3 +151,34 @@ export function wallBallTargetLabel(gender?: "male" | "female"): string {
   if (gender === "female") return "target 2.7 m";
   return "target 3.0 m men / 2.7 m women";
 }
+
+/**
+ * Compact race-load summary for the LOADED stations among a set of movement keys
+ * (sled push/pull, farmers, sandbag lunge, wall ball). Used to surface the
+ * gender-correct weights on every station session — intervals, circuits,
+ * compromised runs — not just simulations. Unloaded movements (run / ski / row /
+ * burpee) contribute nothing. Returns "" when no loaded station is present.
+ */
+export function stationLoadsSummary(
+  movements: readonly string[],
+  division: HyroxDivision,
+  gender?: "male" | "female",
+): string {
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  for (const m of movements) {
+    if (seen.has(m)) continue;
+    seen.add(m);
+    const st = getStation(m);
+    if (!st) continue;
+    const load = division === "pro" ? st.pro : st.open;
+    if (!load) continue; // unloaded ergo / bodyweight station
+    const per = load.perHand ? "/hand" : "";
+    if (gender === "male") parts.push(`${st.name} ${load.men} kg${per}`);
+    else if (gender === "female") parts.push(`${st.name} ${load.women} kg${per}`);
+    else parts.push(`${st.name} ${load.men}/${load.women} kg${per}`);
+  }
+  if (parts.length === 0) return "";
+  const tier = division === "pro" ? "Pro" : division === "doubles" ? "Open (shared)" : "Open";
+  return `${tier} race loads — ${parts.join(", ")} (confirm yours).`;
+}

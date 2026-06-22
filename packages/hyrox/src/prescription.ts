@@ -19,7 +19,7 @@
 import type { PlatformContext, PrescribedItem, SessionPrescription } from "@hta/program-core";
 import { buildGlobalWarmupItems } from "@hta/program-core";
 import { getHyroxSession, type HyroxSession } from "./sessions";
-import { HYROX_STATIONS, getStation, stationLoadLabel, wallBallTargetLabel } from "./divisions";
+import { HYROX_STATIONS, getStation, stationLoadLabel, wallBallTargetLabel, stationLoadsSummary } from "./divisions";
 import type { HyroxExperience, HyroxDivision } from "./types";
 import type { HyroxPhaseId } from "./phases";
 
@@ -141,6 +141,7 @@ function buildIntervals(sess: HyroxSession, args: PrescribeArgs): PrescribedItem
     sess.id === "vo2-intervals"
       ? `${rounds} × 800 m hard (RPE 8-9) with equal-time jog/walk recovery. Top-end aerobic power.`
       : `${rounds} rounds of station technique + intervals (sled / ski / row / wall ball / lunge) — sharpen efficiency and pacing.`;
+  const loads = stationLoadsSummary(sess.movements, args.division, args.gender);
   return [
     {
       kind: "conditioning",
@@ -148,7 +149,7 @@ function buildIntervals(sess: HyroxSession, args: PrescribeArgs): PrescribedItem
       ...mid(sess.movements[0]),
       sets: rounds,
       repsLabel: `${rounds} rounds`,
-      note: `${detail} ${sess.note}`,
+      note: [`${detail} ${sess.note}`, loads].filter(Boolean).join(" "),
     },
   ];
 }
@@ -156,6 +157,7 @@ function buildIntervals(sess: HyroxSession, args: PrescribeArgs): PrescribedItem
 /** Compromised running → run → station → run rounds under fatigue. */
 function buildCompromised(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[] {
   const rounds = ROUNDS_BY_LEVEL[args.experience];
+  const loads = stationLoadsSummary(sess.movements, args.division, args.gender);
   return [
     {
       kind: "conditioning",
@@ -163,7 +165,9 @@ function buildCompromised(sess: HyroxSession, args: PrescribeArgs): PrescribedIt
       ...mid(sess.movements[0]),
       sets: rounds,
       repsLabel: `${rounds} rounds`,
-      note: `${rounds} × (1 km run → a race station → 1 km run) at race effort, minimal rest. ${sess.note}`,
+      note: [`${rounds} × (1 km run → a race station → 1 km run) at race effort, minimal rest. ${sess.note}`, loads]
+        .filter(Boolean)
+        .join(" "),
     },
   ];
 }
@@ -174,6 +178,7 @@ function buildCircuit(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[]
   const stations = sess.movements
     .map((m) => getStation(m)?.name ?? movementLabel(m))
     .join(", ");
+  const loads = stationLoadsSummary(sess.movements, args.division, args.gender);
   return [
     {
       kind: "conditioning",
@@ -181,7 +186,12 @@ function buildCircuit(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[]
       ...mid(sess.movements[0]),
       sets: rounds,
       repsLabel: `${rounds} rounds`,
-      note: `${rounds} rounds: ${stations}. High-rep, sustainable load — build muscular endurance in the race patterns. ${sess.note}`,
+      note: [
+        `${rounds} rounds: ${stations}. High-rep, sustainable load — build muscular endurance in the race patterns. ${sess.note}`,
+        loads,
+      ]
+        .filter(Boolean)
+        .join(" "),
     },
   ];
 }
