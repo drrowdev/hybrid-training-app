@@ -225,6 +225,139 @@ describe("HYROX grid — periodization", () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ADR 0053 — week-quota invariants. These lock the redesign across EVERY level
+// and EVERY budget so the "pool-by-index starves small weeks" regression can
+// never come back: a generated HYROX week is always a real HYROX week.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("HYROX week quotas (ADR 0053)", () => {
+  const BUDGETS = [3, 4, 5, 6, 7, 8] as const;
+  const STATION_IDS = new Set(["station-intervals", "se-circuit"]);
+  const CROSS_IDS = new Set(["easy-ski", "easy-row"]);
+
+  /** Every (level × budget) combination, work weeks only (no deload/taper). */
+  function workWeeks(experience: HyroxExperience, sessionsPerWeek: number) {
+    const grid = buildHyroxGrid({
+      weeks: WEEKS_BY_EXPERIENCE[experience],
+      sessionsPerWeek,
+      experience,
+    });
+    return grid.filter((w) => !w.isDeload && w.phase !== "taper");
+  }
+
+  function primarySessions(week: { days: { kind: string; session?: string }[] }) {
+    return week.days
+      .filter((c) => c.kind === "session")
+      .map((c) => (c as { session: string }).session);
+  }
+
+  function hasSim(week: { days: { kind: string }[] }) {
+    return week.days.some((c) => c.kind === "sim");
+  }
+
+  it("every work week has a strength session — all levels, all budgets", () => {
+    for (const experience of EXPERIENCES) {
+      for (const spw of BUDGETS) {
+        for (const week of workWeeks(experience, spw)) {
+          if (hasSim(week)) continue; // a race simulation IS the week's stimulus
+          const hasStrength = primarySessions(week).some(
+            (id) => getHyroxSession(id)?.category === "strength",
+          );
+          expect(hasStrength, `${experience} @ ${spw}/wk, ${week.phase} wk${week.week}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("every work week has a functional-station session — all levels, all budgets", () => {
+    // The headline regression: a low-budget week used to be strength + easy
+    // aerobic with NO station. A race simulation also rehearses the stations.
+    for (const experience of EXPERIENCES) {
+      for (const spw of BUDGETS) {
+        for (const week of workWeeks(experience, spw)) {
+          const hasStation =
+            hasSim(week) || primarySessions(week).some((id) => STATION_IDS.has(id));
+          expect(hasStation, `${experience} @ ${spw}/wk, ${week.phase} wk${week.week}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("every work week has a running session (never all off-feet) — all levels, all budgets", () => {
+    for (const experience of EXPERIENCES) {
+      for (const spw of BUDGETS) {
+        for (const week of workWeeks(experience, spw)) {
+          const hasRun =
+            hasSim(week) ||
+            primarySessions(week).some((id) => {
+              const cat = getHyroxSession(id)?.category;
+              return cat === "run" || cat === "compromised";
+            });
+          expect(hasRun, `${experience} @ ${spw}/wk, ${week.phase} wk${week.week}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("off-feet ergs (ski/row) are leftover-only — never a primary below 6 sessions/week", () => {
+    for (const experience of EXPERIENCES) {
+      for (const spw of [3, 4, 5] as const) {
+        const grid = buildHyroxGrid({
+          weeks: WEEKS_BY_EXPERIENCE[experience],
+          sessionsPerWeek: spw,
+          experience,
+        });
+        const crossPrimaries = grid
+          .filter((w) => !w.isDeload) // deload recovery weeks legitimately use easy ergs
+          .flatMap((w) => w.days)
+          .filter((c) => c.kind === "session" && CROSS_IDS.has((c as { session: string }).session));
+        expect(crossPrimaries, `${experience} @ ${spw}/wk`).toHaveLength(0);
+      }
+    }
+  });
+
+  it("compromised running appears from the Build phase (budget ≥ 4) — all levels", () => {
+    for (const experience of EXPERIENCES) {
+      for (const spw of [4, 5, 6, 7, 8] as const) {
+        const buildWeeks = workWeeks(experience, spw).filter((w) => w.phase === "build");
+        for (const week of buildWeeks) {
+          const hasCompromised = primarySessions(week).includes("compromised-run");
+          expect(hasCompromised, `${experience} @ ${spw}/wk, build wk${week.week}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("every race-prep week trains compromised running — all levels, all budgets", () => {
+    for (const experience of EXPERIENCES) {
+      for (const spw of BUDGETS) {
+        const specificWeeks = workWeeks(experience, spw).filter((w) => w.phase === "specific");
+        for (const week of specificWeeks) {
+          const hasCompromised = primarySessions(week).includes("compromised-run");
+          expect(hasCompromised, `${experience} @ ${spw}/wk, specific wk${week.week}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("a second strength day appears at high budgets, splitting the load", () => {
+    // The user's complaint that a 6-day plan had a single monolithic strength day.
+    const week = workWeeks("advanced", 8).find((w) => w.phase === "build")!;
+    const strengthIds = primarySessions(week).filter(
+      (id) => getHyroxSession(id)?.category === "strength",
+    );
+    expect(strengthIds.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(strengthIds).size).toBeGreaterThanOrEqual(2); // not the same day twice
+  });
+
+  it("the reported regression is gone: a low-budget base week is not strength + easy + ski + long", () => {
+    const week = workWeeks("beginner", 4).find((w) => w.phase === "base")!;
+    const ids = primarySessions(week);
+    expect(ids).not.toContain("easy-ski");
+    expect(ids.some((id) => STATION_IDS.has(id))).toBe(true);
+  });
+});
+
 describe("HYROX timeline — specs", () => {
   it("emits one spec per non-rest cell, with 0-based contiguous indices", () => {
     const inst = setup({ experience: "intermediate" });

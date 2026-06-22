@@ -90,54 +90,78 @@ const SPREAD: Record<number, number[]> = {
 };
 
 /**
- * Per-phase ordered session pools. Taking the first N and zipping onto the
- * (ascending) weekday spread yields a hard/easy alternation with strength early.
- * `[DEF]` content selection — each id resolves to a `sessions.ts` template.
- *
- * ORDERING IS LOAD-BEARING (ADR 0053): because `buildWeekDays` takes the FIRST N
- * entries for an N-session budget, the HYROX essentials (strength, a functional
- * station, the long run, a quality run) MUST lead each pool so even a 3-session
- * week is a real HYROX week. The demoted off-feet ergs (`easy-ski`/`easy-row`)
- * sit at the BACK so they only fill genuinely leftover budget at high session
- * counts — never displacing a station or quality run in a small week.
+ * Category of a weekly session "slot" — the quota vocabulary (ADR 0053). The
+ * week builder fills a session budget by walking a per-phase ORDERED slot list
+ * and resolving each slot to a concrete `sessions.ts` id, so the HYROX essentials
+ * always lead and a real HYROX week is guaranteed at any budget (3–8) and every
+ * experience level — not an artifact of where a session happened to sit in a pool.
  */
-const PHASE_POOLS: Record<HyroxPhaseId, string[]> = {
-  // Base: strength + station technique + long aerobic lead; quality + easy fill;
-  // ergs leftover-only.
-  base: [
-    "strength-full",
-    "station-intervals",
-    "long-run",
-    "threshold-run",
-    "easy-run",
-    "easy-ski",
-    "easy-row",
-  ],
-  // Build: strength + station-endurance + quality lead; long + easy fill; second
-  // strength day and erg leftover-only.
-  build: [
-    "strength-full",
-    "se-circuit",
-    "threshold-run",
-    "long-run",
-    "easy-run",
-    "strength-lower",
-    "easy-ski",
-  ],
-  // Race-prep: compromised running + stations + strength + VO2 lead (already
-  // HYROX-specific); easy aerobic fills; erg leftover-only.
-  specific: [
-    "compromised-run",
-    "station-intervals",
-    "strength-full",
-    "vo2-intervals",
-    "se-circuit",
-    "easy-run",
-    "easy-ski",
-  ],
-  // Taper: reduced volume, intensity maintained (short, sharp).
-  taper: ["easy-run", "vo2-intervals", "strength-full", "easy-ski", "threshold-run", "easy-row", "easy-run"],
+type HyroxSlotCat =
+  | "strength"
+  | "station" // functional-station work (intervals / SE circuit)
+  | "quality" // threshold / VO2 running
+  | "compromised" // run-under-fatigue, the signature HYROX skill
+  | "long"
+  | "easy"
+  | "cross"; // off-feet ergs (ski/row) — leftover-only, never displaces an essential
+
+/**
+ * Per-phase ORDERED slot priority — the ADR 0053 quota model. Taking the first N
+ * slots for an N-session budget guarantees the HYROX-essential categories first
+ * (strength + a functional station every week; quality running; compromised
+ * running from Build onward; the long aerobic run). `cross` (off-feet ergs) sits
+ * LAST so it only fills genuinely leftover budget at high session counts and
+ * never displaces a station or quality run in a small week. `[DEF]` coach-
+ * consensus weekly dosing — see ADR 0050 §Calibration / ADR 0053.
+ */
+const PHASE_SLOTS: Record<HyroxPhaseId, HyroxSlotCat[]> = {
+  // Base: aerobic foundation, but a station + the long run lead so even a
+  // 3-session week trains the race; quality + easy fill; ergs leftover-only.
+  base: ["strength", "station", "long", "quality", "easy", "cross", "easy"],
+  // Build: strength + station-endurance + quality lead; compromised running
+  // enters here (ADR 0053); long + easy fill; a second (split) strength day last.
+  build: ["strength", "station", "quality", "compromised", "long", "easy", "strength"],
+  // Race-prep: compromised + stations + strength + VO2 lead (race-specific);
+  // long + easy fill; erg leftover-only.
+  specific: ["compromised", "station", "strength", "quality", "long", "easy", "cross"],
+  // Taper: reduced volume (capped at 4), intensity maintained — short, sharp,
+  // with a station touch; no filler erg unless budget is high.
+  taper: ["strength", "station", "quality", "easy", "quality", "cross", "easy"],
 };
+
+/**
+ * Resolve a slot category to a concrete `sessions.ts` id, given the phase and how
+ * many times this category has already been placed in the week (`occ`, 0-based).
+ * Second occurrences vary the stimulus (a split strength day; the other erg/
+ * station modality; a sharper VO2 over threshold).
+ */
+function sessionForSlot(phase: HyroxPhaseId, cat: HyroxSlotCat, occ: number): string {
+  switch (cat) {
+    case "strength":
+      // First strength day is full-body; a second (high-budget) day splits to
+      // lower/posterior so the week isn't a single monolithic session.
+      return occ === 0 ? "strength-full" : "strength-lower";
+    case "station":
+      // Base/race-prep lead with station intervals (technique/pacing); Build
+      // leans on the strength-endurance circuit. A second station slot uses the
+      // other modality.
+      if (phase === "build") return occ === 0 ? "se-circuit" : "station-intervals";
+      return occ === 0 ? "station-intervals" : "se-circuit";
+    case "quality":
+      // Race-prep sharpens with VO2; earlier phases build threshold first, then
+      // VO2 on any second quality slot.
+      if (phase === "specific") return "vo2-intervals";
+      return occ === 0 ? "threshold-run" : "vo2-intervals";
+    case "compromised":
+      return "compromised-run";
+    case "long":
+      return "long-run";
+    case "easy":
+      return "easy-run";
+    case "cross":
+      return occ === 0 ? "easy-ski" : "easy-row";
+  }
+}
 
 /** A deload week: a marker plus light optional aerobic. `[DEF]` (mirrors GP). */
 function deloadWeekDays(): HyroxDayCell[] {
@@ -167,11 +191,18 @@ function buildWeekDays(
   const days: HyroxDayCell[] = Array.from({ length: 7 }, () => ({ kind: "rest" }));
   const total = effectiveSessions(phase, sessionsPerWeek);
   const primaryCount = Math.min(total, 7);
-  const pool = PHASE_POOLS[phase];
+  const slots = PHASE_SLOTS[phase];
   const wd = spreadFor(primaryCount);
 
+  // Walk the phase's priority-ordered slots, taking the first `primaryCount`.
+  // `occ` tracks per-category occurrences so a repeated category varies its
+  // concrete session (split strength, the other erg, VO2 over threshold).
+  const occ: Partial<Record<HyroxSlotCat, number>> = {};
   for (let i = 0; i < primaryCount; i++) {
-    const session = pool[i % pool.length]!;
+    const cat = slots[i % slots.length]!;
+    const n = occ[cat] ?? 0;
+    occ[cat] = n + 1;
+    const session = sessionForSlot(phase, cat, n);
     days[wd[i]!] = { kind: "session", session };
   }
 
