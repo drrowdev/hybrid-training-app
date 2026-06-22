@@ -105,7 +105,7 @@ export const HYROX_SESSIONS: HyroxSession[] = [
     movements: ["run"],
     perMovementLog: false,
     trackable: true,
-    note: "Comfortably-hard sustained run at ~half-marathon effort (RPE 7-8) — the HYROX race-pace zone. Bracket with an easy warm-up and cool-down.",
+    note: "Comfortably-hard sustained run at ~half-marathon effort (RPE 7-8) — race-pace intensity. Bracket with an easy warm-up and cool-down.",
   },
   {
     id: "vo2-intervals",
