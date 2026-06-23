@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### HYROX no-race × Season planner — peak blocks still taper to the event (ADR 0060)
+- Follow-up to the no-race split: a HYROX block deployed for a **season peak slot**
+  must still taper to its event, but with the race/no-race split a blank race date now
+  means "no taper". The program wizard, when opened for a season block whose emphasis
+  is peaking (`peak`/`realize`) and whose season targets an event date, now **pre-fills
+  the race date** from that event — so the peak block tapers as intended (the user can
+  still clear it). Non-peak season slots stay raceless = ongoing maintenance, which
+  removes a spurious mid-season end-taper the old behaviour produced. The Season
+  descriptor's `arcRoles` already spanned both modes; only its comment was updated
+  (adding "maintenance" would be wrong — raceless HYROX is full-volume, not recovery).
+
 ### HYROX without a race — no-taper concurrent-maintenance mode (ADR 0060)
 - A HYROX block with **no race date** used to still taper toward an *implied* race on
   the block's end date (the wizard even promised a "fixed end-taper"), ending on a
