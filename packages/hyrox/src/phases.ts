@@ -159,17 +159,23 @@ function slotsForWeek(phase: HyroxPhaseId, taperKind: TaperKind): HyroxSlotCat[]
  * many times this category has already been placed in the week (`occ`, 0-based),
  * and the week number (for Build quality undulation).
  */
-function sessionForSlot(phase: HyroxPhaseId, cat: HyroxSlotCat, occ: number, week: number): string {
+function sessionForSlot(
+  phase: HyroxPhaseId,
+  cat: HyroxSlotCat,
+  occ: number,
+  week: number,
+  strengthTotal: number,
+): string {
   switch (cat) {
     case "strength":
-      // Strength is ALWAYS a full-body session (squat + deadlift + press). When a
-      // week carries two strength days they are BOTH full-body, so every main lift
-      // is trained 2x/week (the frequency target; Schoenfeld 2016 — 2x ≥ 1x at
-      // matched volume). HYROX strength is submaximal (1-2 RIR), so the doubled
-      // full-body dose stays manageable, and every compound transfers to a
-      // station. (No lower/upper split: HYROX is built on training under fatigue,
-      // so the generic concurrent-interference rationale for splitting doesn't
-      // apply — see ADR 0056.)
+      // ADR 0058 — two-main split. A week with TWO strength days alternates a
+      // Squat+Press day (A) and a Deadlift+Pull day (B): each day has only two
+      // heavy efforts (protecting CNS + movement quality), the compound pull is
+      // promoted to a primary lift, and every pattern is hit ~1x heavy + backfilled
+      // to 2x muscle stimulus by demand-matched accessories. A SINGLE strength day
+      // (low weekly frequency) uses the full-body session so no pattern is missed.
+      // HYROX never demands max force, so mains stay at 4–6 reps (strength reserve).
+      if (strengthTotal >= 2) return occ === 0 ? "strength-a" : "strength-b";
       return "strength-full";
     case "station":
       // Base/race-prep lead with station intervals (technique/pacing); Build
@@ -265,6 +271,8 @@ const TWO_A_DAY_CAP: Record<HyroxExperience, number> = {
  */
 const HARD_PRIMARY: ReadonlySet<string> = new Set([
   "strength-full",
+  "strength-a",
+  "strength-b",
   "strength-lower",
   "strength-upper",
   "station-intervals",
@@ -322,14 +330,18 @@ function buildWeekDays(
 
   // Resolve the week's sessions in priority order. `occ` tracks per-category
   // occurrences so a repeated category varies its concrete session (the other
-  // erg, VO2 over threshold). Strength is always full-body (ADR 0056).
+  // erg, VO2 over threshold; the Squat+Press vs Deadlift+Pull strength split —
+  // ADR 0058). Count strength slots up front so a solo strength day gets the
+  // full-body session while a two-strength week alternates the split.
+  const weekSlots = Array.from({ length: primaryCount }, (_, i) => slots[i % slots.length]!);
+  const strengthTotal = weekSlots.filter((c) => c === "strength").length;
   const occ: Partial<Record<HyroxSlotCat, number>> = {};
   const resolved: { cat: HyroxSlotCat; session: string }[] = [];
   for (let i = 0; i < primaryCount; i++) {
     const cat = slots[i % slots.length]!;
     const n = occ[cat] ?? 0;
     occ[cat] = n + 1;
-    resolved.push({ cat, session: sessionForSlot(phase, cat, n, week) });
+    resolved.push({ cat, session: sessionForSlot(phase, cat, n, week, strengthTotal) });
   }
 
   // Place sessions onto the week's training days. Strength goes on evenly-spaced

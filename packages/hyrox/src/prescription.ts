@@ -410,21 +410,37 @@ function buildStrength(sess: HyroxSession, ctx: PlatformContext, args: Prescribe
     }
   }
 
-  // Station-specific accessories — assistance INTENT (the platform resolves the
-  // concrete movement). HYROX-specific slots (single-leg, carry, pull, core) with
-  // per-slot prescriptions (ADR 0057). Trimmed in the taper to shed fatigue.
-  const assistSets = args.phase === "taper" ? 2 : 3;
-  for (const slot of sess.assist ?? []) {
-    const spec = ACCESSORY_SPEC[slot] ?? { reps: 8, repsMax: 12, note: "" };
-    items.push({
-      kind: "assistance",
-      name: ASSIST_LABEL[slot] ?? slot,
-      assistanceCategory: slot,
-      sets: assistSets,
-      ...(spec.reps !== undefined ? { reps: spec.reps } : {}),
-      ...(spec.repsMax !== undefined ? { repsMax: spec.repsMax } : {}),
-      ...(spec.note ? { note: spec.note } : {}),
-    });
+  // Station-specific accessories (ADR 0058). Prefer the per-accessory specs
+  // (demand-matched reps); fall back to the flat `assist` slots + ACCESSORY_SPEC
+  // for legacy sessions. The taper trims one working set (min 2).
+  const taperTrim = args.phase === "taper" ? 1 : 0;
+  if (sess.accessories && sess.accessories.length > 0) {
+    for (const acc of sess.accessories) {
+      const sets = Math.max(2, (acc.sets ?? 3) - taperTrim);
+      items.push({
+        kind: "assistance",
+        name: acc.label ?? ASSIST_LABEL[acc.slot] ?? acc.slot,
+        assistanceCategory: acc.slot,
+        sets,
+        ...(acc.reps !== undefined ? { reps: acc.reps } : {}),
+        ...(acc.repsMax !== undefined ? { repsMax: acc.repsMax } : {}),
+        ...(acc.note ? { note: acc.note } : {}),
+      });
+    }
+  } else {
+    const assistSets = Math.max(2, 3 - taperTrim);
+    for (const slot of sess.assist ?? []) {
+      const spec = ACCESSORY_SPEC[slot] ?? { reps: 8, repsMax: 12, note: "" };
+      items.push({
+        kind: "assistance",
+        name: ASSIST_LABEL[slot] ?? slot,
+        assistanceCategory: slot,
+        sets: assistSets,
+        ...(spec.reps !== undefined ? { reps: spec.reps } : {}),
+        ...(spec.repsMax !== undefined ? { repsMax: spec.repsMax } : {}),
+        ...(spec.note ? { note: spec.note } : {}),
+      });
+    }
   }
 
   return items;
