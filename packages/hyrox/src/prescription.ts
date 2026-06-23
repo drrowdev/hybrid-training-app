@@ -321,10 +321,14 @@ const MAIN_LIFT_LABEL: Record<string, string> = {
 /** Display label for an assistance category slot. */
 const ASSIST_LABEL: Record<string, string> = {
   push: "Push accessory",
+  push_overhead: "Overhead press",
   pull: "Pull accessory",
+  pull_vertical: "Vertical pull",
+  pull_horizontal: "Horizontal pull",
   single_leg: "Single-leg",
   core: "Core / trunk",
   carry: "Loaded carry",
+  prehab: "Prehab",
 };
 
 /**

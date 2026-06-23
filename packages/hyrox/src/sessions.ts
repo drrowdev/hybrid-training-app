@@ -30,8 +30,22 @@ export type HyroxCategory =
   | "strength" // HYROX-owned station-specific compound strength
   | "sim"; // partial / full race simulation (benchmark-like)
 
-/** Platform assistance categories HYROX strength accessories resolve through (ADR 0047 / 0057). */
-export type HyroxAssistSlot = "push" | "pull" | "single_leg" | "core" | "carry";
+/**
+ * Platform assistance categories HYROX strength accessories resolve through
+ * (ADR 0047 / 0057 / 0058). The pull/press are split into vertical/horizontal and
+ * overhead variants so HYROX rotates pulling patterns and keeps presses overhead;
+ * `prehab` carries calf/Achilles durability work.
+ */
+export type HyroxAssistSlot =
+  | "push"
+  | "push_overhead"
+  | "pull"
+  | "pull_vertical"
+  | "pull_horizontal"
+  | "single_leg"
+  | "core"
+  | "carry"
+  | "prehab";
 
 /**
  * A strength accessory with its own demand-matched prescription (ADR 0058). The
@@ -273,11 +287,11 @@ export const HYROX_SESSIONS: HyroxSession[] = [
     movements: ["squat", "press"],
     accessories: [
       {
-        slot: "pull",
+        slot: "pull_horizontal",
         reps: 6,
         repsMax: 10,
-        label: "Pull — secondary",
-        note: "Moderate-heavy compound pull (row / pull-up), RPE 7–8 (~2 in reserve). Posture + the sled pull; second pull stimulus of the week.",
+        label: "Horizontal pull — row",
+        note: "Moderate-heavy row, RPE 7–8 (~2 in reserve). Mid-back + the sled pull. (Day B does the vertical pull-up — the week rotates both patterns.)",
       },
       {
         slot: "single_leg",
@@ -292,10 +306,18 @@ export const HYROX_SESSIONS: HyroxSession[] = [
         repsMax: 20,
         note: "Anti-rotation / anti-extension endurance — brace for the sandbag, carries and the full 60–90 min.",
       },
+      {
+        slot: "prehab",
+        sets: 2,
+        reps: 12,
+        repsMax: 15,
+        label: "Calf / Achilles prehab",
+        note: "Calf raises — Achilles + soleus durability for the running and jumps. Controlled, full range; a light prehab finisher.",
+      },
     ],
     perMovementLog: true,
     trackable: false,
-    note: "Day-A strength: heavy Squat + Overhead Press (4–6 reps, strength reserve), then a moderate pull, single-leg endurance and trunk. Two heavy efforts only — quality over quantity.",
+    note: "Day-A strength: heavy Squat + Overhead Press (4–6 reps, strength reserve), then a horizontal row, single-leg endurance, trunk and a calf-prehab finisher. Two heavy efforts only — quality over quantity.",
   },
   {
     id: "strength-b",
@@ -306,18 +328,18 @@ export const HYROX_SESSIONS: HyroxSession[] = [
     movements: ["deadlift"],
     accessories: [
       {
-        slot: "pull",
+        slot: "pull_vertical",
         sets: 4,
         reps: 4,
         repsMax: 6,
-        label: "Pull — primary (heavy)",
-        note: "Heavy compound pull (weighted pull-up / heavy row), RPE 8. The sled-pull strength reserve — the race's missing primary pattern.",
+        label: "Vertical pull — weighted pull-up",
+        note: "Heavy vertical pull (weighted pull-up / chin-up), RPE 8. The sled-pull strength reserve — the race's missing primary pattern.",
       },
       {
-        slot: "push",
+        slot: "push_overhead",
         reps: 8,
         repsMax: 15,
-        label: "Press — power-endurance",
+        label: "Overhead press — power-endurance",
         note: "Explosive push-press / thruster — light, fast, repeatable. Power-endurance for the 100 wall balls (a heavy strict press doesn't transfer there).",
       },
       {
@@ -346,10 +368,11 @@ export const HYROX_SESSIONS: HyroxSession[] = [
     movements: ["squat", "deadlift", "press"],
     accessories: [
       {
-        slot: "pull",
+        slot: "pull_vertical",
         reps: 6,
         repsMax: 10,
-        note: "Compound pull (row / pull-up), RPE 7–8 — posture + the sled pull.",
+        label: "Vertical pull — pull-up",
+        note: "Pull-up / chin-up (weighted as able), RPE 7–8 — posture + the sled pull.",
       },
       {
         slot: "single_leg",

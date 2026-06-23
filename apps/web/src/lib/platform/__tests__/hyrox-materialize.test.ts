@@ -197,11 +197,13 @@ describe("materializeProgram — HYROX two-a-days (ADR 0054)", () => {
 
 describe("materializeProgram — HYROX with assistance planner (ADR 0047)", () => {
   const catalog: CatalogMovement[] = [
-    { id: "dip", slug: "dip", displayName: "Dip", pattern: "press" },
+    { id: "ohp", slug: "ohp", displayName: "Standing Overhead Press", pattern: "press", primaryMuscles: ["front_delts", "triceps"] },
+    { id: "pullup", slug: "pull-up", displayName: "Pull-Up (overhand)", pattern: "pull", primaryMuscles: ["lats", "biceps"] },
     { id: "row", slug: "row-db", displayName: "DB Row", pattern: "pull", primaryMuscles: ["lats", "biceps"] },
     { id: "lunge", slug: "walking-lunge", displayName: "Walking Lunge", pattern: "squat", functionalRoles: ["single_leg"] as never },
     { id: "carry", slug: "farmer-carry", displayName: "Farmer Carry", pattern: "carry" },
     { id: "plank", slug: "plank", displayName: "Plank", pattern: "isolation", primaryMuscles: ["abs"] },
+    { id: "calf", slug: "calf-raise", displayName: "Standing Calf Raise", pattern: "isolation", primaryMuscles: ["calves"], primaryRegion: "foot_ankle_calf" },
     { id: "run", slug: "run", displayName: "Run", pattern: "cardio" },
   ].map((m) => ({
     primaryMuscles: [],

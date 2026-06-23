@@ -163,6 +163,47 @@ describe("buildAssistancePlanner", () => {
     expect(a!.movementId).toBe(b!.movementId);
   });
 
+  it("resolves HYROX sub-pools: vertical→pull-up, horizontal→row, overhead→shoulder press, prehab→calf", () => {
+    const cat: CatalogMovement[] = [
+      mv({ id: "pu", slug: "pull-up", displayName: "Pull-Up (overhand)", pattern: "pull", primaryMuscles: ["lats", "biceps"] }),
+      mv({ id: "rw", slug: "bb-row", displayName: "Barbell Row (overhand)", pattern: "pull", primaryMuscles: ["lats", "mid_back"] }),
+      mv({ id: "ohp", slug: "ohp", displayName: "Standing Overhead Press", pattern: "press", primaryMuscles: ["front_delts", "triceps"] }),
+      mv({ id: "bench", slug: "bench", displayName: "Bench Press (flat)", pattern: "press", primaryMuscles: ["chest", "triceps"] }),
+      mv({ id: "calf", slug: "calf", displayName: "Standing Calf Raise", pattern: "isolation", primaryMuscles: ["calves"], primaryRegion: "foot_ankle_calf" }),
+    ];
+    const planner = buildAssistancePlanner({ catalog: cat, filters: { blockedRegions: new Set() } });
+    const s = planner("ref-1");
+    expect(s("pull_vertical", 0)!.movementId).toBe("pu"); // pull-up, not row
+    expect(s("pull_horizontal", 1)!.movementId).toBe("rw"); // row, not pull-up
+    expect(s("push_overhead", 2)!.movementId).toBe("ohp"); // OHP, never bench
+    expect(s("prehab", 3)!.movementId).toBe("calf");
+  });
+
+  it("HYROX sub-pools fall back to the general pool when the specific variant is unavailable", () => {
+    // Only a row exists (no vertical pull) and only a bench (no overhead press).
+    const cat: CatalogMovement[] = [
+      mv({ id: "rw", slug: "row", displayName: "DB Row", pattern: "pull", primaryMuscles: ["lats"] }),
+      mv({ id: "bench", slug: "bench", displayName: "Bench Press", pattern: "press", primaryMuscles: ["chest"] }),
+    ];
+    const planner = buildAssistancePlanner({ catalog: cat, filters: { blockedRegions: new Set() } });
+    const s = planner("ref-1");
+    expect(s("pull_vertical", 0)!.movementId).toBe("rw"); // falls back to the row
+    expect(s("push_overhead", 1)!.movementId).toBe("bench"); // falls back to the bench
+  });
+
+  it("5/3/1's single_leg_or_core union still includes calf prehab (pool unchanged)", () => {
+    const cat: CatalogMovement[] = [
+      mv({ id: "bss", slug: "bss", displayName: "Bulgarian Split Squat", pattern: "squat", functionalRoles: ["single_leg"] as never }),
+      mv({ id: "calf", slug: "calf", displayName: "Standing Calf Raise", pattern: "isolation", primaryMuscles: ["calves"], primaryRegion: "foot_ankle_calf" }),
+    ];
+    const planner = buildAssistancePlanner({ catalog: cat, filters: { blockedRegions: new Set() } });
+    const s = planner("ref-1");
+    // Both the unilateral lower AND the calf are reachable via the 5/3/1 union.
+    const picks = new Set([s("single_leg_or_core", 0)?.movementId, s("single_leg_or_core", 1)?.movementId]);
+    expect(picks).toContain("bss");
+    expect(picks).toContain("calf");
+  });
+
   it("rotates across sessions (not every session picks the same push)", () => {
     const planner = buildAssistancePlanner({ catalog: POOL, filters: { blockedRegions: new Set() } });
     const picks = new Set(

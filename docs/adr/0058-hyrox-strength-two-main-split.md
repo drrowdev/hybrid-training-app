@@ -53,6 +53,17 @@ the accessories + the running/station volume.
 | Single-leg (both days) | 100 m lunge station + running + sled drive | 3×12–15 / leg |
 | Loaded carry (Day B) | farmers carry station (200 m) | 3 × ~40–60 m / time |
 | Core (Day A) | trunk bracing across the race | 3×12–20 / holds |
+| Calf / Achilles prehab (Day A) | running + jump durability (Achilles/soleus) | 2×12–15 |
+
+Accessory-resolution refinements (follow-up): pulling ROTATES patterns across the
+week — Day A horizontal (row), Day B heavy VERTICAL (weighted pull-up, the
+promoted primary). The press slot resolves to OVERHEAD/explosive only
+(push-press/thruster), never a horizontal bench (no race transfer). Calf
+isolations route to a dedicated `prehab` slot, never single-leg. The resolver
+gains `pull_vertical` / `pull_horizontal` / `push_overhead` sub-pools (each falls
+back to the general pull/push pool when the variant is unavailable) and a `prehab`
+slot; 5/3/1's `single_leg_or_core` union still includes prehab, so 5/3/1 is
+unchanged.
 
 ### Single strength day
 Low weekly frequency → `strength-full`: Squat + Deadlift + Press (4–6) + a pull,
