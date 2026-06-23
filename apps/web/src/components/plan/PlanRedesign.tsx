@@ -1817,10 +1817,15 @@ export function SessionDrawer({
       // move action already revalidated server data; an imperative server-action
       // call just doesn't refresh the client router on its own.
       onClose();
-      // Refresh from the parent (stays mounted) — the drawer unmounts on close,
-      // which dropped its own router.refresh() and left the "This week" rail stale.
-      if (onMutated) onMutated();
-      else router.refresh();
+      // Defer the refresh to a fresh tick AFTER React commits onClose's unmount.
+      // onClose sets the parent's openId to null, which unmounts this drawer in
+      // the same synchronous block; firing router.refresh() inline let that
+      // unmount commit swallow the refresh transition, so the "This week" rail
+      // stayed stale until a manual reload (unlike the link-activity refresh,
+      // which fires while the drawer is still mounted and so always stuck). A
+      // post-commit timeout lets the refresh land on a settled tree + URL.
+      const refresh = onMutated ?? (() => router.refresh());
+      setTimeout(refresh, 0);
       return;
     }
     // Keep the drawer open so the user can retry. Surface the message
