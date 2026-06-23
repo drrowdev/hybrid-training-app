@@ -400,9 +400,9 @@ export function MovementCard({
         {tmKg != null && (
           <span style={{ display: "inline-flex", alignItems: "center" }}>
             <span
-              className="mono"
               style={{
                 fontSize: 11,
+                fontWeight: 600,
                 padding: "2px 6px",
                 borderRadius: 6,
                 background: "var(--cp-surface-soft)",
@@ -417,7 +417,7 @@ export function MovementCard({
         {collapsed && headerSummary && (
           <span
             data-testid={`movement-card-summary-${group.movementId}`}
-            className="cp-mc-summary mono"
+            className="cp-mc-summary"
             style={{
               fontSize: 12,
               color: "var(--cp-text-muted)",
@@ -529,13 +529,13 @@ export function MovementCard({
       )}
 
       {!collapsed && readOnly && (
-        <div style={{ padding: "0 14px 14px", display: "grid", gap: 12 }}>
+        <div className="cp-reveal" style={{ padding: "0 14px 14px", display: "grid", gap: 12 }}>
           <ReadOnlySetList group={group} loggedSets={loggedSets} />
         </div>
       )}
 
       {!collapsed && !readOnly && (
-        <div style={{ padding: "0 14px 14px", display: "grid", gap: 12 }}>
+        <div className="cp-reveal" style={{ padding: "0 14px 14px", display: "grid", gap: 12 }}>
           <LastSetHintRow hint={lastSetHint} label={group.movementName} />
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {fillFromPlan && showFillFromPlan && cardState !== "completed" && (

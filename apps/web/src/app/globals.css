@@ -268,6 +268,18 @@ select option {
   }
 }
 
+/* Reveal: a quick fade + slide-down used when a movement card expands into its
+   logging body, so opening a lift feels like a native disclosure rather than an
+   instant pop. Honors reduced-motion. */
+@keyframes cp-reveal {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+.cp-reveal { animation: cp-reveal 180ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .cp-reveal { animation: none; }
+}
+
 .cp-pill {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 2px 8px;

@@ -779,27 +779,18 @@ function SectionDivider({
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 10,
-        fontSize: 10,
-        textTransform: "uppercase",
-        letterSpacing: "0.08em",
-        color: "var(--cp-text-muted)",
-        fontWeight: 600,
-        padding: "10px 0 2px",
+        gap: 8,
+        fontSize: 15,
+        letterSpacing: "-0.01em",
+        color: "var(--cp-text)",
+        fontWeight: 700,
+        padding: "16px 2px 8px",
       }}
     >
-      <span
-        aria-hidden="true"
-        style={{ height: 1, flex: 1, background: "var(--cp-border)" }}
-      />
-      <span style={{ display: "inline-flex", alignItems: "center" }}>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
         {label}
         {helpTerm && <MetricHelp term={helpTerm} variant="why" placement="bottom" />}
       </span>
-      <span
-        aria-hidden="true"
-        style={{ height: 1, flex: 1, background: "var(--cp-border)" }}
-      />
     </div>
   );
 }

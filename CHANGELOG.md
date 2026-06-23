@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Native-feel pass — Phase 1b: logging screen typography + card reveal
+- Continues the native-feel work on the workout logger. Section headers (“Main lifts”,
+  “Accessory work”) go from a centered uppercase monospace divider to a clean
+  left-aligned **bold sans** heading; the collapsed movement-card summary (e.g.
+  `4 × 6 @ 72% 1RM`) and the TM/1RM badge drop monospace for the body sans. Expanding a
+  movement card now plays a quick fade + slide **reveal** (`cp-reveal`, reduced-motion
+  aware) so opening a lift feels like a native disclosure instead of an instant pop. No
+  logic changes.
+
 ### Native-feel pass — Phase 1a: Today screen typography (UX review)
 - First slice of the "make it feel native, not web" work. Softened the Today screen
   away from the tactical/terminal look toward a warm consumer-app feel, with no logic
