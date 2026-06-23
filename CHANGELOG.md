@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Native-feel pass — Phase 1a: Today screen typography (UX review)
+- First slice of the "make it feel native, not web" work. Softened the Today screen
+  away from the tactical/terminal look toward a warm consumer-app feel, with no logic
+  changes: the page heading drops the uppercase stencil for a clean bold sans; the
+  eyebrow and hero pills (top-set, movement count, est. minutes) drop the monospace for
+  the body sans; and the shared "This week" rail gets a sentence-case section title,
+  sans day/kind/chip labels (was monospace), bolder workout names, and a touch more row
+  breathing room. The dominant "Start workout" CTA is unchanged. Further increments
+  (logging cards + expand animation, rest-timer sheet, pervasive haptics) follow.
+
 ### Logging UI polish — aligned accessory cards + hidden AI FAB
 - **Accessory cards now align with the main-lift cards.** The drag-to-reorder grip
   used to sit in an external column that shrank each accessory card and left the cards
