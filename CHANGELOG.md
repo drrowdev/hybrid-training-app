@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Native-feel pass — Phase 1c: card-tap haptic + no accidental text selection
+- Expanding/collapsing a movement card now fires a light haptic tick (honoring the
+  user's haptics preference), adding tactile feedback to the most-used logging gesture.
+- Interactive chrome (`.cp-btn` buttons, card-header toggles, tab links, the reorder
+  grip — all `role="button"`) is now `user-select: none`, so a long-press no longer
+  selects UI text the way a web page does. Body/content text stays selectable.
+
 ### Native-feel pass — Phase 1b: logging screen typography + card reveal
 - Continues the native-feel work on the workout logger. Section headers (“Main lifts”,
   “Accessory work”) go from a centered uppercase monospace divider to a clean
