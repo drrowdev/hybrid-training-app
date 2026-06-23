@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### HYROX without a race — no-taper concurrent-maintenance mode (ADR 0060)
+- A HYROX block with **no race date** used to still taper toward an *implied* race on
+  the block's end date (the wizard even promised a "fixed end-taper"), ending on a
+  0-strength race-pace primer for a race that doesn't exist. Periodization theory
+  (Fitzgerald) and annual-plan practice (Friel) agree this spends a transient peak you
+  won't use; the right shape is a concurrent **maintenance** state, not a phantom peak
+  and not endless pure base.
+- HYROX is now **binary**: with a race date it peaks as before (Base/Build/Specific/
+  Taper to race week); **without** one it runs a short capped Base intro
+  (`NO_RACE_BASE_WEEKS`, ~4 wk — not the proportional race-mode base, so a re-created
+  block doesn't keep re-basing a maintained athlete) then a **held Build steady state**:
+  the ADR 0059 two-strength alternation + station + quality + compromised every week,
+  every-4th-week deloads for undulation, **no Specific, no sims, no taper**. The Build
+  load is steady (fixed scheme + alternating—not escalating—quality), avoiding the
+  burnout Friel warns about with no near-term start line. Adding a race date later lays
+  Specific + Taper onto the tail to peak from the maintained base. `[DEF]` scheduling
+  default — no new CP-2 constant. (Season-planner arc-role reconciliation for a raceless
+  HYROX block is a tracked follow-up.)
+
 ### HYROX Build — alternate a second strength day at 5 sessions/week (ADR 0059)
 - A 12-week / 5-day HYROX block used to drop from two strength days (Base) to **one**
   for the entire Build *and* Specific block — eight straight weeks of single-day
