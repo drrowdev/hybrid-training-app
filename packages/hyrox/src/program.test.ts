@@ -597,15 +597,44 @@ describe("HYROX strength dosing (ADR 0056)", () => {
     expect(new Set(s)).toEqual(new Set(["strength-a", "strength-b"]));
   });
 
-  it("a 5-day BUILD week stays at ONE strength day (endurance-protected)", () => {
-    const w = week("intermediate", 5, "build");
-    const s = strengthIds(w);
-    expect(s.length).toBe(1);
-    expect(s[0]).toBe("strength-full"); // single day is full-body
-    // The endurance essentials are all preserved at 5 days.
-    const ids2 = w.days.filter((c) => c.kind === "session").map((c) => (c as { session: string }).session);
-    expect(ids2).toContain("compromised-run");
-    expect(ids2).toContain("long-run");
+  it("a 5-day BUILD block ALTERNATES one strength (+long) and a two-day split (no long) — ADR 0059", () => {
+    // ADR 0059: at a 5-session budget Build can't fit a 2nd strength day without
+    // dropping an endurance essential, so it alternates — swapping the bankable
+    // long run for the split on every other Build week. Advanced @ 5/wk has several
+    // non-deload Build weeks to observe the cadence.
+    const buildWeeks = buildHyroxGrid({
+      weeks: WEEKS_BY_EXPERIENCE.advanced,
+      sessionsPerWeek: 5,
+      experience: "advanced",
+    }).filter((w) => !w.isDeload && w.phase === "build");
+    expect(buildWeeks.length).toBeGreaterThanOrEqual(2);
+
+    for (const w of buildWeeks) {
+      const s = strengthIds(w);
+      const ids = w.days
+        .filter((c) => c.kind === "session")
+        .map((c) => (c as { session: string }).session);
+      // The high-specificity endurance stays weekly in EVERY Build week.
+      expect(ids).toContain("compromised-run");
+      const hasQuality = ids.includes("threshold-run") || ids.includes("vo2-intervals");
+      expect(hasQuality, `quality run present, wk${w.week}`).toBe(true);
+      if (s.length === 2) {
+        // "double" week — the split appears and the long run is swapped out.
+        expect(new Set(s)).toEqual(new Set(["strength-a", "strength-b"]));
+        expect(ids).not.toContain("long-run");
+      } else {
+        // "single" week — full-body strength, long run preserved (ADR 0056).
+        expect(s).toEqual(["strength-full"]);
+        expect(ids).toContain("long-run");
+      }
+    }
+
+    // It genuinely alternates (at least one of each) and front-loads the double
+    // on the first non-deload Build week (fresh after the deload).
+    const counts = buildWeeks.map((w) => strengthIds(w).length);
+    expect(counts).toContain(2);
+    expect(counts).toContain(1);
+    expect(strengthIds(buildWeeks[0]!).length).toBe(2);
   });
 
   it("a 6-day BUILD week gets a second strength day (the split's Day B)", () => {
