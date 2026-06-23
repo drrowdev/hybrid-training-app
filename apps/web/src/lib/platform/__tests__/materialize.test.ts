@@ -151,13 +151,19 @@ describe("materializeProgram — 5/3/1 with assistance planner (ADR 0047)", () =
     expect(result.skipped).toHaveLength(0);
   });
 
-  it("adds three resolved accessory items to each training session", () => {
+  it("adds three resolved accessory movements to each training session", () => {
     const training = result.sessions.filter((s) => s.role === "strength");
     expect(training.length).toBeGreaterThan(0);
     for (const s of training) {
       const accessories = s.prescription.items.filter((i) => i.kind === "accessory");
-      expect(accessories).toHaveLength(3);
-      expect(accessories.map((a) => a.movementId).sort()).toEqual(["dip", "plank", "row"]);
+      // Accessory sets are expanded one-item-per-set (3 movements × 3 sets = 9).
+      expect(accessories).toHaveLength(9);
+      expect([...new Set(accessories.map((a) => a.movementId))].sort()).toEqual([
+        "dip",
+        "plank",
+        "row",
+      ]);
+      expect(accessories.every((a) => a.sets === 1)).toBe(true);
     }
   });
 
@@ -171,10 +177,15 @@ describe("materializeProgram — 5/3/1 with assistance planner (ADR 0047)", () =
     expect(nonTraining.length).toBeGreaterThan(0);
     for (const s of nonTraining) {
       const accessories = s.prescription.items.filter((i) => i.kind === "accessory");
-      expect(accessories).toHaveLength(3);
-      expect(accessories.map((a) => a.movementId).sort()).toEqual(["dip", "plank", "row"]);
-      // 5/3/1 Forever keeps assistance during the 7th week but at a reduced dose.
-      expect(accessories.every((a) => a.sets === 2)).toBe(true);
+      // 5/3/1 Forever keeps assistance during the 7th week but at a reduced 2-set
+      // dose — expanded one-item-per-set → 3 movements × 2 sets = 6.
+      expect(accessories).toHaveLength(6);
+      expect([...new Set(accessories.map((a) => a.movementId))].sort()).toEqual([
+        "dip",
+        "plank",
+        "row",
+      ]);
+      expect(accessories.every((a) => a.sets === 1)).toBe(true);
     }
   });
 });

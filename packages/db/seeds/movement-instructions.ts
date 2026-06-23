@@ -1331,6 +1331,19 @@ export const MOVEMENT_INSTRUCTIONS: MovementInstructionSeed[] = [
     cues: ["Drive with the rear delts, not the traps.", "Control the return."],
   },
   {
+    slug: "reverse-crunch",
+    summary:
+      "Curling the hips and knees toward the chest to train the lower abs through pelvic flexion.",
+    setup: "Lie on your back, knees bent ~90°, hands flat by your sides or gripping a bench overhead.",
+    steps: [
+      "Brace the abs and curl the pelvis up, lifting the hips off the floor.",
+      "Draw the knees toward your chest at the top.",
+      "Lower slowly until the hips just touch down — don't swing the legs.",
+    ],
+    cues: ["Lift with the abs by rolling the pelvis, not by kicking the legs.", "Control the way down."],
+    commonMistakes: ["Using momentum to throw the knees up instead of curling the pelvis."],
+  },
+  {
     slug: "reverse-wrist-curl",
     summary: "Curling the back of the hand up to train the forearm extensors.",
     setup: "Rest the forearms on a bench, palms down, holding a light bar or dumbbells.",
