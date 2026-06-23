@@ -646,6 +646,7 @@ export default async function TodayPage() {
       estDurationMin: estimateSessionMinutes(items),
       notes: p.notes,
       isPreProgrammed: p.prescription?.programRef != null,
+      completedSessionId: p.completedSessionId,
     };
   });
   const formatProfile: ProfileForFormat = profile

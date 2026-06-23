@@ -52,6 +52,7 @@ import { segmentSupersetRows } from "@/lib/plan/superset-grouping";
 import { MetricHelp } from "@/components/ui/MetricHelp";
 import { AskWhyButton } from "@/components/session/AskWhyButton";
 import { LinkActivityControl } from "@/components/plan/LinkActivityControl";
+import { CompletedSummaryCard } from "@/components/plan/CompletedSummaryCard";
 import { CardioPlanView } from "@/components/session/CardioPlanView";
 import { EXTERNAL_CARDIO_DISPLAY_NOTE } from "@/lib/session/cardio-descriptions";
 import {
@@ -87,6 +88,11 @@ export type PlanSessionInput = {
   estDurationMin: number | null;
   /** Drawer notes loaded from `planned_sessions.notes` (PR Z1). */
   notes: string | null;
+  /**
+   * The logged session linked to this planned slot (when done). Drives the
+   * completed-summary view + the "View full session" link in the drawer.
+   */
+  completedSessionId?: string | null;
   /**
    * True when this session belongs to a pre-programmed platform program
    * (5/3/1, Tactical Barbell, Green Protocol, HYROX) — i.e. the stored
@@ -1964,7 +1970,7 @@ export function SessionDrawer({
                 />
               )}
               {session.isCardio && !session.done && !session.skipped && (
-                <LinkActivityControl plannedId={session.id} />
+                <LinkActivityControl plannedId={session.id} onLinked={() => router.refresh()} />
               )}
               {(session.isStrength || session.isCardio) &&
                 !session.isPreProgrammed &&
@@ -2019,6 +2025,8 @@ export function SessionDrawer({
               items={session.items}
               onChanged={() => router.refresh()}
             />
+          ) : session.done && session.completedSessionId ? (
+            <CompletedSummaryCard sessionId={session.completedSessionId} />
           ) : (
             <>
               {sections.movements.map((sec) => (
