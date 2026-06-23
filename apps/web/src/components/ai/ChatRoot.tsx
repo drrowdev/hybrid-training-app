@@ -43,6 +43,13 @@ export function ChatRoot(): React.ReactElement {
   const [seed, setSeed] = useState<AskCoachSeed | null>(null);
   const pathname = usePathname();
 
+  // Hide the floating FAB on the full-screen session surfaces (logging a
+  // workout, the start flow, cardio capture) — it overlapped the movement cards
+  // and got in the way. Chat is still reachable there via the in-context
+  // "Ask why" affordance (the ASK_COACH_EVENT below still opens the panel). The
+  // history LIST at exactly /app/sessions keeps the FAB.
+  const hideFab = /^\/app\/sessions\/[^/]+/.test(pathname ?? "");
+
   useEffect(() => {
     function onAskCoach(e: Event): void {
       const next = parseAskCoachEvent((e as CustomEvent).detail);
@@ -66,7 +73,7 @@ export function ChatRoot(): React.ReactElement {
 
   return (
     <>
-      <ChatFab onClick={() => setOpen(true)} />
+      {!hideFab && <ChatFab onClick={() => setOpen(true)} />}
       {open ? (
         <ChatPanel
           onClose={handleClose}

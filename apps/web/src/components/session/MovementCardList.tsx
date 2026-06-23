@@ -426,7 +426,7 @@ export function MovementCardList({
     [accessoryGroups],
   );
 
-  const renderCard = (group: MovementGroup) => {
+  const renderCard = (group: MovementGroup, dragHandle?: React.ReactNode) => {
     const idx = orderedGroups.indexOf(group);
     return (
       <PrescribedCard
@@ -457,6 +457,7 @@ export function MovementCardList({
         preferStandardLbPlates={preferStandardLbPlates}
         bwGateStateByFamily={bwGateStateByFamily}
         bodyweightCapable={bodyweightIdSet.has(group.movementId)}
+        {...(dragHandle ? { dragHandle } : {})}
       />
     );
   };
@@ -468,13 +469,18 @@ export function MovementCardList({
         key={group.movementId}
         movementId={group.movementId}
         registerWrapper={registerWrapper}
-        onGripPointerDown={onGripPointerDown(group.movementId)}
-        onGripPointerMove={onGripPointerMove}
-        onGripPointerUp={onGripPointerUp}
         isDragging={draggingId === group.movementId}
         isDragOver={dragOverId === group.movementId && draggingId !== group.movementId}
       >
-        {renderCard(group)}
+        {renderCard(
+          group,
+          <AccessoryDragGrip
+            movementId={group.movementId}
+            onPointerDown={onGripPointerDown(group.movementId)}
+            onPointerMove={onGripPointerMove}
+            onPointerUp={onGripPointerUp}
+          />,
+        )}
       </ReorderableAccessory>
     );
   };
@@ -545,70 +551,85 @@ export function MovementCardList({
 function ReorderableAccessory({
   movementId,
   registerWrapper,
-  onGripPointerDown,
-  onGripPointerMove,
-  onGripPointerUp,
   isDragging,
   isDragOver,
   children,
 }: {
   movementId: string;
   registerWrapper: (movementId: string, el: HTMLDivElement | null) => void;
-  onGripPointerDown: (e: React.PointerEvent<HTMLSpanElement>) => void;
-  onGripPointerMove: (e: React.PointerEvent<HTMLSpanElement>) => void;
-  onGripPointerUp: (e: React.PointerEvent<HTMLSpanElement>) => void;
   isDragging: boolean;
   isDragOver: boolean;
   children: React.ReactNode;
 }) {
-  const gripStyle: React.CSSProperties = {
-    width: 30,
-    height: 44,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 8,
-    color: "var(--cp-text-muted)",
-    fontSize: 16,
-    lineHeight: 1,
-    border: "1px solid var(--cp-border)",
-    background: "var(--cp-surface)",
-    cursor: "grab",
-    // Stop the browser from scrolling/selecting when the drag starts on touch.
-    touchAction: "none",
-    userSelect: "none",
-  };
+  // Full-width wrapper: the card keeps the same width as the non-reorderable
+  // main-lift cards (the grip lives INSIDE the card header — see AccessoryDragGrip).
+  // The wrapper only registers itself for drag hit-testing and draws the drag
+  // state (dim while picked up, accent rule on the drop target).
   return (
     <div
       ref={(el) => registerWrapper(movementId, el)}
       data-testid={`accessory-reorder-${movementId}`}
       style={{
-        display: "grid",
-        gridTemplateColumns: "1fr auto",
-        gap: 8,
-        alignItems: "center",
         opacity: isDragging ? 0.5 : 1,
         borderTop: isDragOver ? "2px solid var(--cp-accent)" : "2px solid transparent",
         borderRadius: 4,
         transition: "opacity 0.12s",
       }}
     >
-      <div style={{ minWidth: 0 }}>{children}</div>
-      <span
-        data-testid={`accessory-drag-${movementId}`}
-        role="button"
-        tabIndex={0}
-        aria-label="Drag to reorder"
-        title="Drag to reorder"
-        onPointerDown={onGripPointerDown}
-        onPointerMove={onGripPointerMove}
-        onPointerUp={onGripPointerUp}
-        onPointerCancel={onGripPointerUp}
-        style={gripStyle}
-      >
-        ⠿
-      </span>
+      {children}
     </div>
+  );
+}
+
+/**
+ * Subtle in-card reorder grip rendered in the accessory card header (after the
+ * disclosure arrow). Pointer-driven so it works with finger and mouse alike, and
+ * stops propagation so grabbing the handle never toggles the card open/closed.
+ */
+function AccessoryDragGrip({
+  movementId,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+}: {
+  movementId: string;
+  onPointerDown: (e: React.PointerEvent<HTMLSpanElement>) => void;
+  onPointerMove: (e: React.PointerEvent<HTMLSpanElement>) => void;
+  onPointerUp: (e: React.PointerEvent<HTMLSpanElement>) => void;
+}) {
+  return (
+    <span
+      data-testid={`accessory-drag-${movementId}`}
+      role="button"
+      tabIndex={0}
+      aria-label="Drag to reorder"
+      title="Drag to reorder"
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        onPointerDown(e);
+      }}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 24,
+        height: 32,
+        marginRight: -4,
+        color: "var(--cp-text-soft, var(--cp-text-muted))",
+        fontSize: 15,
+        lineHeight: 1,
+        cursor: "grab",
+        touchAction: "none",
+        userSelect: "none",
+      }}
+    >
+      ⠿
+    </span>
   );
 }
 
@@ -646,6 +667,7 @@ function PrescribedCard(props: {
     >
   >;
   bodyweightCapable?: boolean;
+  dragHandle?: React.ReactNode;
 }) {
   const tmKg = props.group.movementSlug
     ? props.tmBySlug[props.group.movementSlug]
@@ -696,6 +718,7 @@ function PrescribedCard(props: {
       persistKeyPrefix={`mc:${props.sessionId}`}
       bwGateStateByFamily={props.bwGateStateByFamily}
       bodyweightCapable={props.bodyweightCapable}
+      dragHandle={props.dragHandle}
     />
   );
 }

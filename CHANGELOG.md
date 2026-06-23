@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Logging UI polish — aligned accessory cards + hidden AI FAB
+- **Accessory cards now align with the main-lift cards.** The drag-to-reorder grip
+  used to sit in an external column that shrank each accessory card and left the cards
+  visually misaligned. The grip is now a subtle handle *inside* the card header (after
+  the disclosure arrow), so every card is full-width and edge-aligned. Drag-to-reorder
+  is unchanged (pointer-driven, touch + mouse).
+- **The AI chat FAB no longer covers the logging screen.** It's hidden on the
+  full-screen session surfaces (logging, start flow, cardio capture) where it overlapped
+  the movement cards. Chat is still reachable there via the in-context "Ask why"
+  affordance; the FAB stays on the rest of the app.
+
 ### Logging-experience fixes (bug batch)
 - **Strava autofill banner no longer shows on pure-strength workouts.** The
   "STRAVA — no match yet / Sync now" banner is gated on the session actually having a
