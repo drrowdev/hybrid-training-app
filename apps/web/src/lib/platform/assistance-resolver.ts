@@ -22,15 +22,27 @@ import type { ResolvedMovement } from "./adapter";
 
 /**
  * Assistance slots a movement can be classified into. 5/3/1 emits the coarse
- * `single_leg_or_core` intent; HYROX emits the granular `single_leg` / `core` /
- * `carry` so it can guarantee unilateral work and loaded carries (a race
- * station). The resolver maps a `single_leg_or_core` REQUEST onto the union of
- * the granular pools, so 5/3/1 behaviour is unchanged.
+ * `single_leg_or_core` intent; HYROX emits granular slots so it can target the
+ * race demands (vertical vs horizontal pull, overhead/explosive press, calf
+ * prehab). The classifier returns ONE base slot per movement; the planner builds
+ * the finer request pools (pull_vertical / pull_horizontal / push_overhead) as
+ * sub-sets of pull / push.
  */
-export type AssistanceSlot = "push" | "pull" | "single_leg" | "core" | "carry";
+export type AssistanceSlot = "push" | "pull" | "single_leg" | "core" | "carry" | "prehab";
 
-/** What an `assistanceCategory` string on a prescription item may request. */
-export type AssistanceRequest = AssistanceSlot | "single_leg_or_core";
+/**
+ * What an `assistanceCategory` string on a prescription item may request.
+ * `single_leg_or_core` (5/3/1) unions single_leg + core + carry + prehab. The
+ * HYROX-specific `pull_vertical` / `pull_horizontal` / `push_overhead` are
+ * sub-pools that fall back to the general pull / push pool when empty (so the
+ * slot is never dropped for want of, e.g., a pull-up bar).
+ */
+export type AssistanceRequest =
+  | AssistanceSlot
+  | "single_leg_or_core"
+  | "pull_vertical"
+  | "pull_horizontal"
+  | "push_overhead";
 
 // Primary-muscle buckets used to classify ISOLATION movements, whose `pattern`
 // alone ("isolation") doesn't say push vs pull. Compound presses/pulls are caught
@@ -98,6 +110,13 @@ export function classifyAssistanceCandidate(m: CatalogMovement): AssistanceSlot 
   // carry pool back in, so carries stay available there too.
   if (pattern === "carry") return "carry";
 
+  // Calf / Achilles isolation → PREHAB, never single-leg. A "Single-Leg Calf
+  // Raise" matches the single-leg keyword but is a calf isolation, not a
+  // single-leg STRENGTH movement; routing it to prehab keeps the single-leg slot
+  // for real unilateral lower work. (5/3/1's single_leg_or_core unions prehab, so
+  // its pool is unchanged.)
+  if (m.primaryRegion === "foot_ankle_calf") return "prehab";
+
   // Single-leg: explicit role, or a name keyword that overrides a bilateral
   // squat/hinge pattern (lunge, split squat, step-up, pistol, single-leg RDL).
   if (roles.has("single_leg")) return "single_leg";
@@ -114,6 +133,45 @@ export function classifyAssistanceCandidate(m: CatalogMovement): AssistanceSlot 
   if (pattern === "isolation" && primary.some((mu) => PUSH_MUSCLES.has(mu))) return "push";
 
   return null;
+}
+
+// Shoulder muscles that mark a press as OVERHEAD (vs a horizontal bench press,
+// which is chest-driven). HYROX has no horizontal press in the race.
+const OVERHEAD_PRESS_MUSCLES = new Set(["front_delts", "side_delts"]);
+const OVERHEAD_PRESS_KEYWORDS = [
+  "overhead",
+  "push press",
+  "push-press",
+  "thruster",
+  "jerk",
+  "z-press",
+  "z press",
+  "military",
+  "shoulder press",
+  "landmine press",
+  "ohp",
+];
+
+/** A vertical pull (pull-up / chin-up / pulldown) — overhead pulling pattern. */
+export function isVerticalPull(m: CatalogMovement): boolean {
+  const n = m.displayName.toLowerCase();
+  return /pull-?up|chin-?up|pulldown|pull-?down|lat pull/.test(n);
+}
+
+/** A horizontal pull (any row). */
+export function isHorizontalPull(m: CatalogMovement): boolean {
+  return m.displayName.toLowerCase().includes("row");
+}
+
+/** An overhead / explosive press (shoulder-driven or a push-press/thruster/jerk) — NOT bench. */
+export function isOverheadPress(m: CatalogMovement): boolean {
+  const n = m.displayName.toLowerCase();
+  if (OVERHEAD_PRESS_KEYWORDS.some((kw) => n.includes(kw))) return true;
+  // Shoulder-primary press with no chest involvement = overhead.
+  const primary = m.primaryMuscles;
+  const isShoulder = primary.some((mu) => OVERHEAD_PRESS_MUSCLES.has(mu));
+  const isChest = primary.some((mu) => mu === "chest" || mu === "upper_chest");
+  return isShoulder && !isChest;
 }
 
 /** Limitation filters (a subset of the planner's LimitationsContext). */
@@ -171,6 +229,7 @@ export function buildAssistancePlanner(args: BuildAssistancePlannerArgs): Assist
     single_leg: [],
     core: [],
     carry: [],
+    prehab: [],
   };
 
   for (const m of catalog) {
@@ -188,16 +247,39 @@ export function buildAssistancePlanner(args: BuildAssistancePlannerArgs): Assist
     byCategory[key].sort((a, b) => a.slug.localeCompare(b.slug));
   }
   // 5/3/1's coarse `single_leg_or_core` request draws from the union of the
-  // granular pools (unilateral + core + carry) — the same breadth it had before
-  // the slots were split, so 5/3/1 selection is unchanged. Sorted for determinism.
-  const singleLegOrCore = [...byCategory.single_leg, ...byCategory.core, ...byCategory.carry].sort(
-    (a, b) => a.slug.localeCompare(b.slug),
-  );
+  // granular pools (unilateral + core + carry + prehab) — the same breadth it had
+  // before the slots were split (calves now live in `prehab` but stay in this
+  // union), so 5/3/1 selection is unchanged. Sorted for determinism.
+  const singleLegOrCore = [
+    ...byCategory.single_leg,
+    ...byCategory.core,
+    ...byCategory.carry,
+    ...byCategory.prehab,
+  ].sort((a, b) => a.slug.localeCompare(b.slug));
 
-  /** Map an assistance REQUEST string to its candidate pool. */
+  // HYROX sub-pools of pull / push (sorted; built from the already-filtered pools).
+  const pullVertical = byCategory.pull.filter(isVerticalPull);
+  const pullHorizontal = byCategory.pull.filter(isHorizontalPull);
+  const pushOverhead = byCategory.push.filter(isOverheadPress);
+
+  /**
+   * Map an assistance REQUEST string to its candidate pool. The HYROX sub-pools
+   * fall back to the general pull / push pool when empty (e.g. no pull-up bar),
+   * so the slot is filled with the best available rather than dropped.
+   */
   const poolFor = (category: string): CatalogMovement[] => {
-    if (category === "single_leg_or_core") return singleLegOrCore;
-    return byCategory[category as AssistanceSlot] ?? [];
+    switch (category) {
+      case "single_leg_or_core":
+        return singleLegOrCore;
+      case "pull_vertical":
+        return pullVertical.length > 0 ? pullVertical : byCategory.pull;
+      case "pull_horizontal":
+        return pullHorizontal.length > 0 ? pullHorizontal : byCategory.pull;
+      case "push_overhead":
+        return pushOverhead.length > 0 ? pushOverhead : byCategory.push;
+      default:
+        return byCategory[category as AssistanceSlot] ?? [];
+    }
   };
 
   return (sessionRef) => {

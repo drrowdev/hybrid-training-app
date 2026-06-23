@@ -103,7 +103,17 @@ describe("HYROX prescribe — strength", () => {
       expect(assist.length).toBeGreaterThan(0);
       for (const a of assist) {
         expect(a.movementId).toBeUndefined();
-        expect(["push", "pull", "single_leg", "core", "carry"]).toContain(a.assistanceCategory);
+        expect([
+          "push",
+          "push_overhead",
+          "pull",
+          "pull_vertical",
+          "pull_horizontal",
+          "single_leg",
+          "core",
+          "carry",
+          "prehab",
+        ]).toContain(a.assistanceCategory);
       }
       allCats.push(...assist.map((a) => a.assistanceCategory as string));
     }
@@ -111,10 +121,10 @@ describe("HYROX prescribe — strength", () => {
     // loaded carry, and pulling all appear.
     expect(allCats).toContain("single_leg");
     expect(allCats).toContain("carry");
-    expect(allCats).toContain("pull");
+    expect(allCats.some((c) => c.startsWith("pull"))).toBe(true);
   });
 
-  it("two-main split: Day A = Squat+Press, Day B = Deadlift + heavy pull + power press + carry (ADR 0058)", () => {
+  it("two-main split: Day A = Squat+Press, Day B = Deadlift + heavy vertical pull + overhead press + carry (ADR 0058)", () => {
     const i = inst(); // 5-day intermediate → base weeks carry the two-day split
     const refA = hyroxEngine.timeline(i).find((s) => s.tags?.includes("session:strength-a"))?.ref;
     const refB = hyroxEngine.timeline(i).find((s) => s.tags?.includes("session:strength-b"))?.ref;
@@ -127,21 +137,23 @@ describe("HYROX prescribe — strength", () => {
     expect(new Set(a.filter((it) => it.kind === "main").map((it) => it.movementId))).toEqual(
       new Set(["squat", "press"]),
     );
-    // Day B main: Deadlift; the compound pull is promoted to a HEAVY primary (4×4–6).
+    // Day B main: Deadlift; the heavy VERTICAL pull (pull-up) is the promoted primary (4×4–6).
     expect(new Set(b.filter((it) => it.kind === "main").map((it) => it.movementId))).toEqual(
       new Set(["deadlift"]),
     );
-    const bPull = b.find((it) => it.kind === "assistance" && it.assistanceCategory === "pull");
+    const bPull = b.find((it) => it.kind === "assistance" && it.assistanceCategory === "pull_vertical");
     expect(bPull?.sets).toBe(4);
     expect(bPull?.reps).toBe(4);
-    // Day B carries the power-endurance press (wall-ball bridge) + a loaded carry.
+    // Day B carries the overhead power-endurance press + a loaded carry.
     const bCats = b.filter((it) => it.kind === "assistance").map((it) => it.assistanceCategory);
-    expect(bCats).toContain("push");
+    expect(bCats).toContain("push_overhead");
     expect(bCats).toContain("carry");
-    // Day A's pull is the MODERATE secondary (6–10), not the heavy primary.
-    const aPull = a.find((it) => it.assistanceCategory === "pull");
+    // Day A pulls HORIZONTAL (row) — the week rotates vertical (B) / horizontal (A).
+    const aPull = a.find((it) => it.assistanceCategory === "pull_horizontal");
     expect(aPull?.reps).toBe(6);
     expect(aPull?.repsMax).toBe(10);
+    // Day A includes a calf-prehab finisher.
+    expect(a.some((it) => it.assistanceCategory === "prehab")).toBe(true);
     // Single-leg runs strength-endurance reps on both days (demand-matched to the lunge station).
     expect(a.find((it) => it.assistanceCategory === "single_leg")?.reps).toBe(12);
   });

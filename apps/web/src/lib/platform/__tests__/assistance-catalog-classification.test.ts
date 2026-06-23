@@ -78,6 +78,12 @@ describe("5/3/1 assistance classification — real seed catalog", () => {
     }
   });
 
+  it("routes calf isolations to prehab — NOT single_leg (even when named 'Single-Leg')", () => {
+    for (const n of ["Standing Calf Raise", "Seated Calf Raise", "Single-Leg Calf Raise"]) {
+      expect(slotOf(n), n).toBe("prehab");
+    }
+  });
+
   it("does NOT classify rear-delt / scapular PREHAB or shrugs as pull (Wendler treats these as shoulder health)", () => {
     for (const n of ["Face Pull", "Band Pull-Apart", "Y-Raise", "Rear Delt Fly (DB)", "Reverse Pec Deck", "Barbell Shrug"]) {
       expect(slotOf(n), n).not.toBe("pull");
