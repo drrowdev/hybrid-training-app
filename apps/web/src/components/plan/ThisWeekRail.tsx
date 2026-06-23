@@ -169,13 +169,15 @@ export function RailList({
         }
         .plan-rail h3 {
           margin: 0;
-          font-size: 11px;
-          letter-spacing: 0.12em;
-          text-transform: uppercase;
-          color: var(--cp-text-muted);
-          font-weight: 600;
-          font-family: var(--cp-font-mono);
+          font-size: 15px;
+          letter-spacing: -0.01em;
+          color: var(--cp-text);
+          font-weight: 700;
         }
+        /* Soften the rail's tactical/monospace labels (day, kind, chips) to the
+           body sans so the Today/Plan rail reads like a consumer app, not a
+           terminal. Scoped to the rail so it never touches mono elsewhere. */
+        .plan-rail .mono { font-family: var(--cp-font-sans, inherit); }
         .rail-head {
           display: flex;
           align-items: center;
@@ -184,8 +186,9 @@ export function RailList({
           margin-bottom: 6px;
         }
         .rail-prog {
-          font-size: 10.5px;
+          font-size: 12px;
           color: var(--cp-text-muted);
+          font-weight: 500;
         }
         .rail-bar {
           height: 4px;
@@ -220,7 +223,7 @@ export function RailList({
           grid-template-columns: 40px 1fr auto;
           gap: 12px;
           align-items: center;
-          padding: 10px 0;
+          padding: 12px 0;
           border: 0;
           border-bottom: 1px solid var(--cp-border);
           background: transparent;
@@ -231,10 +234,10 @@ export function RailList({
         }
         .rail-item:last-child { border-bottom: 0; }
         .rail-item:hover .rail-name { color: var(--cp-accent); }
-        .rail-day { font-size: 11px; color: var(--cp-text-muted); }
-        .rail-name { font-size: 14px; font-weight: 500; }
+        .rail-day { font-size: 12px; color: var(--cp-text-soft); font-weight: 600; }
+        .rail-name { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
         .rail-name .today-chip { margin-left: 6px; }
-        .rail-kind { font-size: 10px; color: var(--cp-text-muted); letter-spacing: 0.05em; text-transform: uppercase; }
+        .rail-kind { font-size: 11px; color: var(--cp-text-muted); letter-spacing: 0.03em; text-transform: uppercase; }
         .rail-item.past { opacity: 0.55; }
         .rail-item.past .rail-name { text-decoration: line-through; }
         /* Today + overdue highlights bleed to the card's inner edges. The

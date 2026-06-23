@@ -677,12 +677,11 @@ export default async function TodayPage() {
           <div
             data-testid="today-eyebrow"
             style={{
-              fontFamily: "var(--cp-font-mono)",
-              fontSize: 11,
+              fontSize: 12,
               color: "var(--cp-text-muted)",
               textTransform: "uppercase",
-              letterSpacing: "0.12em",
-              fontWeight: 500,
+              letterSpacing: "0.06em",
+              fontWeight: 600,
             }}
           >
             {activeBlock && archetypeName ? (
@@ -724,13 +723,11 @@ export default async function TodayPage() {
           >
             <h1
               style={{
-                fontFamily: "var(--cp-font-display)",
-                fontSize: 36,
+                fontSize: 30,
                 margin: 0,
-                letterSpacing: "0.01em",
-                textTransform: "uppercase",
-                lineHeight: 1.05,
-                fontWeight: 600,
+                letterSpacing: "-0.02em",
+                lineHeight: 1.1,
+                fontWeight: 800,
               }}
             >
               Today
@@ -1660,10 +1657,9 @@ function PlannedSessionCard({
         )}
         {estMin != null && (
           <span
-            className="mono"
             style={{
               marginLeft: "auto",
-              fontSize: 11.5,
+              fontSize: 12,
               color: "var(--cp-text-muted)",
             }}
           >
@@ -1684,7 +1680,6 @@ function PlannedSessionCard({
         >
           {topLine && (
             <span
-              className="mono"
               style={{
                 fontSize: 12.5,
                 fontWeight: 600,
@@ -1701,7 +1696,6 @@ function PlannedSessionCard({
           )}
           {movementCount > 0 && (
             <span
-              className="mono"
               style={{
                 fontSize: 12.5,
                 color: "var(--cp-text-soft)",
