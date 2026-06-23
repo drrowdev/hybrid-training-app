@@ -19,6 +19,7 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { selectablePrograms, getProgramEngine, getNativeProgramEngine } from "@/lib/platform/registry";
 import { buildPlatformContext } from "@/lib/platform/context";
 import { getBlockEditContext } from "@/lib/platform/edit-context";
+import { getActiveSeason } from "@/lib/seasons/queries";
 import { getTrainingMaxContext } from "@/lib/training-maxes/queries";
 import { STRENGTH_ROLE_CANDIDATES, type StrengthRole } from "@/lib/planner/archetypes";
 import { ENGINE_KEY_TO_ROLE } from "@/lib/platform/movement-keys";
@@ -168,6 +169,21 @@ export default async function ProgramPickerPage({
   const seasonBlockId =
     !editContext && sp.seasonBlockId ? sp.seasonBlockId : undefined;
 
+  // ADR 0060 — a HYROX block deployed for a season's PEAK slot must still taper to
+  // the event. With the new race/no-race split, a blank race date means "no taper",
+  // so for a peaking season block we pre-fill the wizard's race date from the
+  // season's target event date. Non-peak season slots stay raceless (ongoing
+  // maintenance — no spurious mid-season taper). The user can still clear it.
+  let prefillRaceDate: string | undefined;
+  if (seasonBlockId && initialProgramId === "hyrox") {
+    const season = await getActiveSeason();
+    const block = season?.blocks.find((b) => b.id === seasonBlockId);
+    const isPeakSlot = block?.emphasis === "peak" || block?.emphasis === "realize";
+    if (isPeakSlot && season?.goal?.type === "event" && season.goal.targetDate) {
+      prefillRaceDate = season.goal.targetDate;
+    }
+  }
+
   return (
     <div className={`${archivo.variable} ${oswald.variable} ${saira.variable} ${jetbrains.variable}`}>
       <ProgramPicker
@@ -180,6 +196,7 @@ export default async function ProgramPickerPage({
         {...(initialLoadoutValue ? { initialLoadoutValue } : {})}
         {...(editContext ? { editContext } : {})}
         {...(seasonBlockId ? { seasonBlockId } : {})}
+        {...(prefillRaceDate ? { prefillRaceDate } : {})}
       />
     </div>
   );

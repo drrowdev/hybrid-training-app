@@ -83,12 +83,16 @@ the maintained well-rounded base, exactly the "peak quickly" model.
   Taper, with the existing `isDeload` cadence.
 - Update the wizard copy: the blank-race note should describe an **ongoing build that
   holds fitness with no taper** (today it advertises a "fixed end-taper").
-- **Season planner interaction:** a raceless HYROX block is an *accumulation /
-  maintenance* arc, not a *peak* arc. Today HYROX's descriptor is `arcRoles:
-  ["accumulation","peak"]` (`seasons/descriptors.ts`) on the assumption it always
-  self-sequences to a race. The planner should not treat a raceless HYROX block as a
-  peak; reconcile the descriptor (or make the arc role mode-dependent) so Season
-  sequencing stays correct.
+- **Season planner interaction (handled — ADR 0060 follow-up):** a season **peak**
+  block of HYROX must still taper to the event. With the race/no-race split a blank
+  race date means "no taper", so the wizard now **pre-fills the race date from the
+  season's target event date when the season block's emphasis is peaking** (`peak`/
+  `realize`); non-peak season slots stay raceless (ongoing maintenance — no spurious
+  mid-season taper, an improvement over the old always-taper behaviour). The HYROX
+  descriptor's `arcRoles: ["accumulation","peak"]` already span both modes
+  (accumulation = raceless/ongoing, peak = race build); its comment was updated to
+  document this rather than changing the roles (adding "maintenance" would be wrong —
+  raceless HYROX is full-volume, not a light recovery block).
 
 ## Calibration
 

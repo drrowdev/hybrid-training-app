@@ -638,6 +638,7 @@ export function ProgramPicker({
   initialLoadoutValue,
   editContext,
   seasonBlockId,
+  prefillRaceDate,
 }: {
   programs: PickerProgram[];
   anchoredKeys: string[];
@@ -652,6 +653,13 @@ export function ProgramPicker({
   editContext?: ProgramEditContextProp;
   /** Season roadmap deep-link (ADR 0051): the planned season_block to activate on deploy. */
   seasonBlockId?: string;
+  /**
+   * HYROX only (ADR 0060): pre-fill the optional race date. Set when this wizard
+   * is opened for a season PEAK block whose season targets an event date — so the
+   * block tapers to that event instead of running as raceless maintenance. The
+   * user can still clear it.
+   */
+  prefillRaceDate?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -698,7 +706,7 @@ export function ProgramPicker({
   const [startedOn, setStartedOn] = useState<string>(
     isEditing && editContext ? editContext.startedOn : upcomingMondayYmd(todayYmd()),
   );
-  const [raceDate, setRaceDate] = useState<string>("");
+  const [raceDate, setRaceDate] = useState<string>(prefillRaceDate ?? "");
   // Start point (the program phase/block to begin from). Default 0 = beginning.
   const [segments, setSegments] = useState<ProgramSegmentOption[]>([]);
   const [startWeekIndex, setStartWeekIndex] = useState<number>(0);

@@ -193,13 +193,16 @@ const CATALOG: CandidateDescriptor[] = [
     },
   },
 
-  // ── HYROX (arc) — conditioning-dominant race build, self-sequences to race ─
+  // ── HYROX (arc) — conditioning-dominant concurrent build, self-sequences ─
   {
     programId: "hyrox",
     templateRef: null,
     label: "HYROX",
     descriptor: {
-      // heuristic — conditioning-led race build, self-periodizes to race week (CP-1)
+      // heuristic — conditioning-led concurrent (CP-1). Self-periodizes: WITH a race
+      // date it peaks to race week (Base→Build→Specific→Taper); WITHOUT one it holds
+      // a no-taper Build steady state (ADR 0060) — hence both "accumulation"
+      // (raceless/ongoing) and "peak" (race build) arc roles.
       emphasis: { conditioning: 0.9, endurance: 0.7, strength: 0.4 },
       arcRoles: ["accumulation", "peak"],
       frequencyBand: "high",
