@@ -321,6 +321,7 @@ function buildWeekDays(
   twoADay: boolean,
   week: number,
   taperKind: TaperKind,
+  doubleStrength: boolean,
 ): HyroxDayCell[] {
   const days: HyroxDayCell[] = Array.from({ length: 7 }, () => ({ kind: "rest" }));
   const total = effectiveSessions(phase, taperKind, sessionsPerWeek);
@@ -334,11 +335,21 @@ function buildWeekDays(
   // ADR 0058). Count strength slots up front so a solo strength day gets the
   // full-body session while a two-strength week alternates the split.
   const weekSlots = Array.from({ length: primaryCount }, (_, i) => slots[i % slots.length]!);
+  // ADR 0059 — Build alternation. On a "double" Build week at exactly 5 sessions,
+  // swap the bankable long run for a 2nd strength day, so the split (strength-a /
+  // strength-b) appears and the high-specificity endurance (station / quality /
+  // compromised) stays weekly. Only fires here: Build never tapers, so total === 5
+  // means sessionsPerWeek === 5 (the exact budget where the 2nd strength just
+  // misses); at 6+ the 2nd strength is already in-budget so this is a no-op.
+  if (doubleStrength && phase === "build" && total === 5) {
+    const longIdx = weekSlots.lastIndexOf("long");
+    if (longIdx !== -1) weekSlots[longIdx] = "strength";
+  }
   const strengthTotal = weekSlots.filter((c) => c === "strength").length;
   const occ: Partial<Record<HyroxSlotCat, number>> = {};
   const resolved: { cat: HyroxSlotCat; session: string }[] = [];
   for (let i = 0; i < primaryCount; i++) {
-    const cat = slots[i % slots.length]!;
+    const cat = weekSlots[i]!;
     const n = occ[cat] ?? 0;
     occ[cat] = n + 1;
     resolved.push({ cat, session: sessionForSlot(phase, cat, n, week, strengthTotal) });
@@ -436,13 +447,36 @@ export function buildHyroxGrid(input: HyroxGridInput): HyroxWeekPlan[] {
     return w === lastTaperWeek ? "race" : "sharpen";
   };
 
+  // ADR 0059 — at a 5-session budget the Build phase can't fit a 2nd strength day
+  // without dropping an endurance essential, so it alternates: hold a 2nd (split)
+  // strength day by swapping that week's long run on every other Build week. Walk
+  // the NON-DELOAD Build weeks in order and start with a double, so a fresh
+  // post-deload Build re-accumulates strength first. Only fires at exactly 5
+  // sessions (see buildWeekDays); the set is harmless at other budgets.
+  const doubleStrengthWeeks = new Set<number>();
+  let buildOrdinal = 0;
+  for (let w = 1; w <= weeks; w++) {
+    if (phases[w - 1] !== "build" || isDeload(w)) continue;
+    if (buildOrdinal % 2 === 0) doubleStrengthWeeks.add(w);
+    buildOrdinal += 1;
+  }
+
   const plan: HyroxWeekPlan[] = [];
   for (let w = 1; w <= weeks; w++) {
     const phase = phases[w - 1]!;
     const deload = isDeload(w);
     const days = deload
       ? deloadWeekDays()
-      : buildWeekDays(phase, sessionsPerWeek, simWeekSet.has(w), experience, twoADay, w, taperKindFor(w));
+      : buildWeekDays(
+          phase,
+          sessionsPerWeek,
+          simWeekSet.has(w),
+          experience,
+          twoADay,
+          w,
+          taperKindFor(w),
+          doubleStrengthWeeks.has(w),
+        );
     plan.push({ week: w, phase, isDeload: deload, days });
   }
   return plan;

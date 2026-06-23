@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### HYROX Build — alternate a second strength day at 5 sessions/week (ADR 0059)
+- A 12-week / 5-day HYROX block used to drop from two strength days (Base) to **one**
+  for the entire Build *and* Specific block — eight straight weeks of single-day
+  maintenance, an abrupt `2 → 1` cliff. The Build phase now **alternates** at a
+  5-session budget: every other Build week swaps the (bankable) long run for a second
+  split strength day (`strength-a` / `strength-b`), so strength tapers
+  `2 → ~1.5 → 1 → race` instead. The high-specificity endurance — station, quality
+  run, compromised run — stays **weekly**; only the long run alternates. Front-loaded
+  (the first non-deload Build week is a double) so a fresh post-deload block
+  re-accumulates strength first. Build-only, 5-sessions-only: 3–4/wk and 6+/wk are
+  unchanged (6+ already carries two strength days). `[DEF]` scheduling default — no
+  new CP-2 constant.
+
 ### HR zones — instant re-bucketing + region-ledger recompute on edit (#559, #560)
 - New `cardio_logs.hr_histogram` jsonb (migration 0109): a compact, band-independent
   `bpm → seconds` distribution captured from the per-second HR stream at import. It
