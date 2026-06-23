@@ -370,6 +370,8 @@ describe("HYROX two-a-days (ADR 0054)", () => {
   const ERGS = new Set(["easy-ski", "easy-row", "easy-bike"]);
   const HARD = new Set([
     "strength-full",
+    "strength-a",
+    "strength-b",
     "strength-lower",
     "strength-upper",
     "station-intervals",
@@ -589,10 +591,10 @@ describe("HYROX strength dosing (ADR 0056)", () => {
     w.days.filter((c) => c.kind === "session" && getHyroxSession((c as { session: string }).session)?.category === "strength")
       .map((c) => (c as { session: string }).session);
 
-  it("a 5-day BASE week has TWO full-body strength days (every lift 2×)", () => {
+  it("a 5-day BASE week is a TWO-DAY strength split (Squat+Press / Deadlift+Pull) — ADR 0058", () => {
     const s = strengthIds(week("intermediate", 5, "base"));
     expect(s.length).toBe(2);
-    expect(s.every((id) => id === "strength-full")).toBe(true);
+    expect(new Set(s)).toEqual(new Set(["strength-a", "strength-b"]));
   });
 
   it("a 5-day BUILD week stays at ONE strength day (endurance-protected)", () => {
@@ -606,10 +608,10 @@ describe("HYROX strength dosing (ADR 0056)", () => {
     expect(ids2).toContain("long-run");
   });
 
-  it("a 6-day BUILD week gets a second full-body strength day", () => {
+  it("a 6-day BUILD week gets a second strength day (the split's Day B)", () => {
     const s = strengthIds(week("advanced", 6, "build"));
     expect(s.length).toBe(2);
-    expect(s.every((id) => id === "strength-full")).toBe(true);
+    expect(new Set(s)).toEqual(new Set(["strength-a", "strength-b"]));
   });
 
   it("a low-budget (4-day) week is a single FULL-BODY strength day", () => {

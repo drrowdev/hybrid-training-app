@@ -90,19 +90,60 @@ describe("HYROX prescribe — strength", () => {
     expect(mainKeys.every((k) => ["squat", "deadlift", "press", "bench"].includes(k!))).toBe(true);
   });
 
-  it("emits HYROX-specific station accessories as category-tagged assistance intent (no movementId)", () => {
+  it("emits HYROX-specific station accessories, demand-matched per split day", () => {
     const i = inst();
-    const p = hyroxEngine.prescribe(i, strengthRef(i), ctxWithMaxes);
-    const assist = p.items.filter((it) => it.kind === "assistance");
-    expect(assist.length).toBeGreaterThan(0);
-    for (const a of assist) {
-      expect(a.movementId).toBeUndefined();
-      expect(["push", "pull", "single_leg", "core", "carry"]).toContain(a.assistanceCategory);
+    const strengthRefs = hyroxEngine
+      .timeline(i)
+      .filter((sp) => sp.tags?.includes("modality:strength"))
+      .map((sp) => sp.ref);
+    expect(strengthRefs.length).toBeGreaterThan(0);
+    const allCats: string[] = [];
+    for (const ref of strengthRefs) {
+      const assist = hyroxEngine.prescribe(i, ref, ctxWithMaxes).items.filter((it) => it.kind === "assistance");
+      expect(assist.length).toBeGreaterThan(0);
+      for (const a of assist) {
+        expect(a.movementId).toBeUndefined();
+        expect(["push", "pull", "single_leg", "core", "carry"]).toContain(a.assistanceCategory);
+      }
+      allCats.push(...assist.map((a) => a.assistanceCategory as string));
     }
-    // Full-body HYROX strength always programs a guaranteed single-leg AND a loaded carry.
-    const cats = assist.map((a) => a.assistanceCategory);
-    expect(cats).toContain("single_leg");
-    expect(cats).toContain("carry");
+    // Across the split (or the solo full-body day): a guaranteed single-leg, a
+    // loaded carry, and pulling all appear.
+    expect(allCats).toContain("single_leg");
+    expect(allCats).toContain("carry");
+    expect(allCats).toContain("pull");
+  });
+
+  it("two-main split: Day A = Squat+Press, Day B = Deadlift + heavy pull + power press + carry (ADR 0058)", () => {
+    const i = inst(); // 5-day intermediate → base weeks carry the two-day split
+    const refA = hyroxEngine.timeline(i).find((s) => s.tags?.includes("session:strength-a"))?.ref;
+    const refB = hyroxEngine.timeline(i).find((s) => s.tags?.includes("session:strength-b"))?.ref;
+    expect(refA).toBeDefined();
+    expect(refB).toBeDefined();
+    const a = hyroxEngine.prescribe(i, refA!, ctxWithMaxes).items;
+    const b = hyroxEngine.prescribe(i, refB!, ctxWithMaxes).items;
+
+    // Day A mains: Squat + Press only (two heavy efforts, no deadlift).
+    expect(new Set(a.filter((it) => it.kind === "main").map((it) => it.movementId))).toEqual(
+      new Set(["squat", "press"]),
+    );
+    // Day B main: Deadlift; the compound pull is promoted to a HEAVY primary (4×4–6).
+    expect(new Set(b.filter((it) => it.kind === "main").map((it) => it.movementId))).toEqual(
+      new Set(["deadlift"]),
+    );
+    const bPull = b.find((it) => it.kind === "assistance" && it.assistanceCategory === "pull");
+    expect(bPull?.sets).toBe(4);
+    expect(bPull?.reps).toBe(4);
+    // Day B carries the power-endurance press (wall-ball bridge) + a loaded carry.
+    const bCats = b.filter((it) => it.kind === "assistance").map((it) => it.assistanceCategory);
+    expect(bCats).toContain("push");
+    expect(bCats).toContain("carry");
+    // Day A's pull is the MODERATE secondary (6–10), not the heavy primary.
+    const aPull = a.find((it) => it.assistanceCategory === "pull");
+    expect(aPull?.reps).toBe(6);
+    expect(aPull?.repsMax).toBe(10);
+    // Single-leg runs strength-endurance reps on both days (demand-matched to the lunge station).
+    expect(a.find((it) => it.assistanceCategory === "single_leg")?.reps).toBe(12);
   });
 
   it("rounds working weight to the platform increment", () => {
