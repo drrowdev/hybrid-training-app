@@ -84,6 +84,13 @@ export type MovementCardProps = {
    * set can be logged at 0 kg added load instead of demanding a weight.
    */
   bodyweightCapable?: boolean;
+  /**
+   * Optional reorder grip rendered inside the card header (accessory cards only).
+   * Kept INSIDE the card so the card itself stays full-width and aligned with the
+   * non-reorderable main-lift cards — an external grip column made accessory cards
+   * narrower and visually misaligned.
+   */
+  dragHandle?: React.ReactNode;
   /** Phase 4 BW gate state — passed through verbatim to the focus view. */
   bwGateStateByFamily?: Readonly<
     Record<
@@ -128,6 +135,7 @@ export function MovementCard({
   persistKeyPrefix,
   bwGateStateByFamily,
   bodyweightCapable,
+  dragHandle,
 }: MovementCardProps) {
   const units = useUnits();
   const router = useRouter();
@@ -445,6 +453,7 @@ export function MovementCard({
         >
           <DisclosureArrow open={!collapsed} />
         </span>
+        {dragHandle}
       </div>
 
       {collapsed && cardState === "completed" && recapLines.length > 0 && (
