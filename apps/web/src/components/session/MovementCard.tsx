@@ -34,6 +34,7 @@ import { MetricHelp } from "@/components/ui/MetricHelp";
 import type { PlateInventoryItem } from "./plate-math";
 import type { LastSetHint } from "./SessionLogClient";
 import { formatHintDate } from "@/lib/sessions/format-hint-date";
+import { hapticTick } from "@/lib/feedback";
 import { useUnits } from "@/lib/units/context";
 import { type WeightUnit, formatWeight } from "@/lib/stats/units";
 import type { fillSessionFromPlan } from "@/lib/sessions/actions";
@@ -228,6 +229,7 @@ export function MovementCard({
 
   const toggleCollapsed = () => {
     userOverrodeRef.current = true;
+    hapticTick(hapticsEnabled, 8);
     setCollapsed((v) => {
       const next = !v;
       // Read-only review toggles are ephemeral — don't persist, so the

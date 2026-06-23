@@ -318,6 +318,16 @@ select option {
   transition: background .12s, border-color .12s, color .12s;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* Native feel: interactive chrome (buttons, card-header toggles, tab links, the
+   reorder grip — all role="button") should not let a long-press select text the
+   way a web page does. Content text stays selectable. */
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
 }
 .cp-btn:hover { background: var(--cp-surface-soft); }
 .cp-btn.primary {
