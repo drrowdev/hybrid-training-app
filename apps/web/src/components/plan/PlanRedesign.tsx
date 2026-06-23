@@ -752,6 +752,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
           weeks={weeks}
           logHrefBase={logHrefBase}
           onClose={closeDrawer}
+          onMutated={() => router.refresh()}
           moveAction={moveAction}
           skipAction={skipAction}
           unskipAction={unskipAction}
@@ -1571,6 +1572,7 @@ export function SessionDrawer({
   weeks,
   logHrefBase,
   onClose,
+  onMutated,
   moveAction,
   skipAction,
   unskipAction,
@@ -1583,6 +1585,14 @@ export function SessionDrawer({
   weeks: number;
   logHrefBase: string;
   onClose: () => void;
+  /**
+   * Called after a mutation (swap) that needs the route re-fetched. The PARENT
+   * supplies its own `router.refresh` so the refresh fires from a component that
+   * stays MOUNTED — closing the drawer unmounts it (ThisWeekRail nulls the open
+   * id), which dropped the drawer's own `router.refresh()` and left the Today
+   * "This week" rail stale. Falls back to the drawer's router if omitted.
+   */
+  onMutated?: () => void;
   moveAction: (formData: FormData) => Promise<void> | void;
   skipAction: (formData: FormData) => Promise<void> | void;
   unskipAction: (formData: FormData) => Promise<void> | void;
@@ -1807,7 +1817,10 @@ export function SessionDrawer({
       // move action already revalidated server data; an imperative server-action
       // call just doesn't refresh the client router on its own.
       onClose();
-      router.refresh();
+      // Refresh from the parent (stays mounted) — the drawer unmounts on close,
+      // which dropped its own router.refresh() and left the "This week" rail stale.
+      if (onMutated) onMutated();
+      else router.refresh();
       return;
     }
     // Keep the drawer open so the user can retry. Surface the message

@@ -17,6 +17,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { isOverdue, overdueDays } from "@/lib/planner/overdue";
 import { addDaysToYmd } from "@/lib/dates";
 import {
@@ -331,6 +332,7 @@ export function ThisWeekRail({
   updateNotesAction,
   startSessionAction,
 }: ThisWeekRailProps) {
+  const router = useRouter();
   const [openId, setOpenId] = useState<string | null>(null);
   useEffect(() => {
     const sync = () => {
@@ -394,6 +396,7 @@ export function ThisWeekRail({
           weeks={weeks}
           logHrefBase={logHrefBase}
           onClose={closeDrawer}
+          onMutated={() => router.refresh()}
           moveAction={moveAction}
           skipAction={skipAction}
           unskipAction={unskipAction}

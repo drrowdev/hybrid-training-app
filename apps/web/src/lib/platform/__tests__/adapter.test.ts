@@ -79,6 +79,33 @@ describe("adaptSessionPrescription — strength", () => {
     expect(accessories.every((a) => a.notes === "10\u201315")).toBe(true);
   });
 
+  it("maps a distance-prescribed carry assistance item to app distanceM (no invented reps)", () => {
+    const resolveAssist = (category: string, slotIndex: number) => ({
+      movementId: `m-${category}-${slotIndex}`,
+      slug: `${category}-${slotIndex}`,
+      displayName: `${category} #${slotIndex}`,
+    });
+    const { prescription } = adaptSessionPrescription(
+      {
+        items: [
+          {
+            kind: "assistance",
+            name: "Loaded carry",
+            assistanceCategory: "carry",
+            sets: 3,
+            distanceRangeM: { min: 40, max: 60 },
+            note: "Heavy carry ~40–60 m / set.",
+          },
+        ],
+      },
+      resolve,
+      resolveAssist,
+    );
+    const carry = prescription.items.find((i) => i.kind === "accessory");
+    expect(carry?.reps).toBeUndefined(); // never an invented rep count
+    expect(carry?.distanceM).toEqual({ min: 40, max: 60 });
+  });
+
   it("flags the AMRAP top set as isAmrap", () => {
     const inst = wendler531Engine.setup(
       { values: { templateId: "5spro-fsl", leaderCycles: 2, anchorCycles: 1, tmPercent: 0.85 } },
