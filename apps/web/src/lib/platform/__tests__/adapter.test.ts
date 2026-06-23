@@ -68,14 +68,18 @@ describe("adaptSessionPrescription — strength", () => {
     // No assistance is skipped now; three accessory items were produced.
     expect(skipped).toEqual([]);
     const accessories = prescription.items.filter((i) => i.kind === "accessory");
-    expect(accessories).toHaveLength(3);
-    expect(accessories.map((a) => a.movementId)).toEqual([
-      "m-push-0",
-      "m-pull-1",
-      "m-single_leg_or_core-2",
-    ]);
-    // Standard volume → 3 sets, 10 reps, "10–15" range carried in notes.
-    expect(accessories.every((a) => a.sets === 3 && a.reps === 10)).toBe(true);
+    // Each accessory's prescribed sets are expanded into one loggable item per
+    // set (3 movements × 3 sets = 9) so the logger renders a slot per set; the
+    // plan/preview surfaces collapse them back to "3 × 10" for display.
+    expect(accessories).toHaveLength(9);
+    const distinctIds = [...new Set(accessories.map((a) => a.movementId))];
+    expect(distinctIds).toEqual(["m-push-0", "m-pull-1", "m-single_leg_or_core-2"]);
+    for (const id of distinctIds) {
+      expect(accessories.filter((a) => a.movementId === id)).toHaveLength(3);
+    }
+    // Standard volume → each expanded item is a single set of 10 reps, "10–15"
+    // range carried in notes.
+    expect(accessories.every((a) => a.sets === 1 && a.reps === 10)).toBe(true);
     expect(accessories.every((a) => a.notes === "10\u201315")).toBe(true);
   });
 

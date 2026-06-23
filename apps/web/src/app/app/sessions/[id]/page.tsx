@@ -983,7 +983,7 @@ export default async function SessionDetailPage({
           auto-locking. Best-effort; no-ops where unsupported. */}
       <SessionWakeLock active={!isComplete} />
 
-      {!isComplete && stravaConnected && (
+      {!isComplete && stravaConnected && hasCardio && (
         <StravaAutofillBanner
           sessionId={id}
           match={stravaMatch}

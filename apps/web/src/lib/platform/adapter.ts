@@ -98,18 +98,27 @@ export function adaptSessionPrescription(
           ? `${range} \u00b7 ${it.note}`
           : it.note
         : range;
-      items.push({
+      // Expand into ONE loggable item per set. The logger renders one slot per
+      // prescription item, so a single `sets: N` accessory only offered ONE
+      // loggable set ("1 × 6") while the plan/preview surfaces — which read the
+      // `sets` field or collapse identical one-set items — showed "N × 6". The
+      // canonical shape (mirrored by the main-lift expansion below and
+      // `collapseIdenticalSetItems`) is one item per set; the plan card, drawer,
+      // and preview all collapse them back to "N × reps" for display.
+      const accSets = Math.max(1, it.sets ?? 1);
+      const accItem: PrescriptionItem = {
         movementId: resolved.movementId,
         movementSlug: resolved.slug,
         movementName: resolved.displayName,
         kind: "accessory",
-        sets: it.sets ?? 1,
+        sets: 1,
         ...(it.reps !== undefined ? { reps: it.reps } : {}),
         // Distance-prescribed carries → app `distanceM` so the row renders
         // "3 × 40–60 m" instead of the `reps ?? 10` rep fallback.
         ...(it.distanceRangeM ? { distanceM: it.distanceRangeM } : {}),
         ...(notes ? { notes } : {}),
-      });
+      };
+      for (let s = 0; s < accSets; s++) items.push({ ...accItem });
       continue;
     }
 
@@ -198,7 +207,8 @@ export function adaptSessionPrescription(
     // preserved (N items × 1 = 1 item × N), so load/modality classification is
     // unchanged. Warm-ups and accessories keep their single-item `sets` shape.
     const isWorkingMulti =
-      (appKind === "main" || appKind === "back_off") && setCount > 1;
+      (appKind === "main" || appKind === "back_off" || appKind === "accessory") &&
+      setCount > 1;
     if (isWorkingMulti) {
       for (let s = 0; s < setCount; s++) {
         items.push({ ...appItem, sets: 1 });

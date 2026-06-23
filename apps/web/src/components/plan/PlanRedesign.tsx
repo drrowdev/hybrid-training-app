@@ -2187,6 +2187,11 @@ export function SessionDrawer({
             }
             .plan-drawer .drawer-head {
               touch-action: none;
+              /* Full-screen on mobile (inset:0) puts the sticky header under the
+                 status bar / notch, making the × close button hard to reach.
+                 Keep its content (incl. the close button) below the safe area
+                 whether the header is at rest or stuck to the top on scroll. */
+              padding-top: max(18px, env(safe-area-inset-top));
             }
           }
           @keyframes plan-drawer-slide-up {

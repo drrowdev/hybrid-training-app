@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Logging-experience fixes (bug batch)
+- **Strava autofill banner no longer shows on pure-strength workouts.** The
+  "STRAVA — no match yet / Sync now" banner is gated on the session actually having a
+  cardio component (`hasCardio`), so a strength-only day (e.g. a HYROX lifting day)
+  doesn't surface a Strava matcher that can't apply.
+- **Accessories now log every prescribed set.** Platform programs (HYROX, 5/3/1, …)
+  stored each accessory as one `sets: N` item, so the set logger offered a single
+  loggable set ("1 × 6") even though the plan/preview/drawer showed "3 × 6". Accessory
+  sets are now expanded one-item-per-set in the platform adapter (the canonical shape
+  mains already use), so the logger renders one slot per set and matches the preview;
+  the plan card, drawer, and preview collapse them back to "N × reps" for display.
+- **Plan drawer close (×) is reachable on mobile.** The full-screen drawer's sticky
+  header now keeps its close button below the status bar / notch via
+  `env(safe-area-inset-top)`.
+- **Reverse Crunch has how-to instructions.** Added a `movement_instructions` entry so
+  its in-session info sheet renders (summary / setup / steps / cues).
+
 ### HYROX no-race × Season planner — peak blocks still taper to the event (ADR 0060)
 - Follow-up to the no-race split: a HYROX block deployed for a **season peak slot**
   must still taper to its event, but with the race/no-race split a blank race date now
