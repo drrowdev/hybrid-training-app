@@ -12,7 +12,6 @@
  */
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   getLinkableActivities,
   linkActivityToPlanned,
@@ -28,8 +27,20 @@ function summarise(a: LinkableActivity): string {
   return [day, parts.join(" · ")].filter(Boolean).join(" — ");
 }
 
-export function LinkActivityControl({ plannedId }: { plannedId: string }) {
-  const router = useRouter();
+export function LinkActivityControl({
+  plannedId,
+  onLinked,
+}: {
+  plannedId: string;
+  /**
+   * Called after a successful link. The drawer passes its own `router.refresh`
+   * so the refresh fires from a component that STAYS mounted — this control
+   * unmounts the instant the session flips to done (it's gated on `!done`),
+   * which would otherwise drop the refresh transition (same unmount-race the
+   * swap-day fix addressed).
+   */
+  onLinked?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<LinkableActivity[] | null>(null);
@@ -67,8 +78,8 @@ export function LinkActivityControl({ plannedId }: { plannedId: string }) {
       setError(res.error);
       return;
     }
-    router.refresh();
     setOpen(false);
+    onLinked?.();
   };
 
   return (

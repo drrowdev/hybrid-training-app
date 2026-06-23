@@ -208,6 +208,7 @@ export default async function PlanPage({
       estDurationMin: dur,
       notes: p.notes,
       isPreProgrammed: p.prescription?.programRef != null,
+      completedSessionId: p.completedSessionId,
     };
   });
 
