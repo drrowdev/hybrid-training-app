@@ -2044,7 +2044,7 @@ export function ProgramPicker({
               <div className={styles.note} style={{ marginTop: 6 }}>
                 {raceDate
                   ? "Your build runs from the start date to race week, ending on a taper. We'll also add it to your races."
-                  : "Leave blank for a standard build with a fixed end-taper. Add a date to peak for a specific race."}
+                  : "Leave blank for an ongoing build that holds your fitness — no taper. Add a date to peak for a specific race."}
               </div>
             </div>
           ) : null}

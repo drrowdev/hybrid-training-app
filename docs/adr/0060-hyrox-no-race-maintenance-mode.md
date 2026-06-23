@@ -1,6 +1,6 @@
 # ADR 0060 — HYROX without a race: a no-taper concurrent-maintenance mode
 
-Status: Proposed
+Status: Accepted
 Date: 2026-06-23
 
 ## Context
@@ -40,15 +40,33 @@ A **no-taper concurrent-maintenance** block:
 - **No Taper and no Specific (race-prep) phase.** There is nothing to sharpen for or
   to peak on, so the engine never emits a taper week, a "race" week, or race
   simulations.
-- **Base intro → Build steady state.** A short Base intro, then the **Build** phase
-  for the remainder — the well-rounded concurrent state: the ADR 0059 two-strength
-  alternation, functional station, quality run, and compromised run every week. This
-  *is* the "well-rounded, race-ready" state the literature prescribes.
+- **Short Base intro → Build steady state.** A *short, capped* Base intro (≈ a
+  transition/prep length, not a proportional fraction — see below), then the **Build**
+  phase for the remainder: the ADR 0059 two-strength alternation, functional station,
+  quality run, and compromised run every week. This *is* the "well-rounded,
+  race-ready" state the literature prescribes.
+- **Steady, non-ramping load.** The Build load is held **steady and undulating** — it
+  must NOT progressively intensify toward a (non-existent) peak. In practice this falls
+  out of staying in Build: the Build strength scheme is fixed and the quality stimulus
+  *alternates* (threshold/VO2) rather than escalating, and no Specific/Taper is ever
+  reached. Joe Friel's caution applies directly — with no near-term start line *"there
+  is no reason to start pushing your limits now… a sure way to end up burned-out or
+  injured."*
 - **Periodic deloads** (the existing every-4th-week cadence) carry the undulation that
   keeps a never-tapering block from overreaching.
 - **Fixed block length** (the experience default, user-overridable). When the block
   ends the user starts another; an auto-rolling/indefinite block is a possible future
   enhancement, out of scope here.
+
+### Base intro: a short fixed cap, NOT proportional
+Reusing the race-mode `BASE_FRACTION` (40% of the block) is **wrong** for an ongoing
+no-race block: it would re-do a long base every time the block is re-created, when a
+maintained athlete does not need to re-base. Established practice (Friel's Annual
+Training Plan: a long 12+ wk base is for building a *peak from a reduced state*; the
+between-plans Transition is only ~3–4 weeks, and complete rest "is likely to prolong
+next year's Base Period") says: hold fitness, don't rebuild it. So no-race mode uses a
+**short fixed Base cap** (`NO_RACE_BASE_WEEKS`, `[DEF]` ≈ 3–4 wk, clamped to leave Build
+room), then settles into the Build steady state.
 
 ### Converting no-race → race later
 Attaching a race date to a live no-race block (the edit / "add race" flow) recomputes
@@ -74,11 +92,14 @@ the maintained well-rounded base, exactly the "peak quickly" model.
 
 ## Calibration
 
-`[DEF]` scheduling defaults — the Base-intro length/cap and deload cadence for the
-no-race block. No new CP-2 physiological constant. The *direction* (don't taper toward
-a phantom race; hold a concurrent well-rounded state) is high-confidence — backed by
-both periodization theory and HYROX off-season consensus. The *exact* Base cap and how
-hard the maintenance steady state runs are medium-confidence `[DEF]`.
+`[DEF]` scheduling defaults — the Base-intro cap (`NO_RACE_BASE_WEEKS` ≈ 3–4 wk) and
+the existing deload cadence for the no-race block. No new CP-2 physiological constant.
+The *direction* is high-confidence and triangulated across periodization theory
+(Fitzgerald), the annual-plan / transition literature (Friel), and HYROX off-season
+consensus: (a) don't taper toward a phantom race, (b) hold a concurrent well-rounded
+state rather than pure base, (c) a short base intro not a repeated long base, and
+(d) a steady, non-ramping load to avoid burnout. The only genuinely low-confidence
+residue is the *exact* Base-cap number — trivially tunable later.
 
 ## Consequences
 
@@ -91,12 +112,13 @@ hard the maintenance steady state runs are medium-confidence `[DEF]`.
 - Existing live raceless blocks already in the DB are not retroactively changed;
   the new shape applies to newly generated/redeployed HYROX plans.
 
-## Open questions (for implementation review)
+## Resolved (was "open questions")
 
-1. Base-intro length in no-race mode — proportional (reuse `BASE_FRACTION`) vs a small
-   fixed cap (e.g. ≤3–4 weeks) so a re-created block doesn't repeat a long base each
-   time. Leaning fixed cap.
-2. Whether the no-race steady state is pure Build, or a Build/“Specific-lite” blend
-   that keeps the compromised-run *lead* without sims. Leaning pure Build (compromised
-   is already a weekly Build essential — simplest, and avoids implying a peak).
-3. Auto-roll / indefinite block vs fixed-length-then-recreate. Fixed for v1.
+1. **Base intro:** a **short fixed cap** (`NO_RACE_BASE_WEEKS` ≈ 3–4 wk), NOT
+   proportional — the proportional option is removed (it would repeatedly re-base a
+   maintained athlete).
+2. **Steady state:** **pure Build**, held at a **steady, non-ramping** load (no
+   Specific/sims, no progressive intensification toward a peak).
+3. **Block length:** **fixed for v1** (re-create to continue). Auto-rolling/indefinite
+   is a deferred future enhancement — consistent with how an Annual Training Plan
+   itself chains finite periods.

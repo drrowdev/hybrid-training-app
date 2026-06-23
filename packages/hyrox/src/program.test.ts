@@ -687,6 +687,83 @@ describe("HYROX strength dosing (ADR 0056)", () => {
   });
 });
 
+// ADR 0060 — a block with NO race date is concurrent maintenance, not a peak: a short
+// capped Base intro then a held Build steady state, with NO Specific (race-prep) phase,
+// NO taper, and NO 0-strength race week.
+describe("HYROX no-race maintenance mode (ADR 0060)", () => {
+  const raceless = (experience: HyroxExperience, spw: number) =>
+    buildHyroxGrid({
+      weeks: WEEKS_BY_EXPERIENCE[experience],
+      sessionsPerWeek: spw,
+      experience,
+      hasRace: false,
+    });
+  const strengthCells = (w: { days: { kind: string; session?: string }[] }) =>
+    w.days.filter(
+      (c) =>
+        c.kind === "session" &&
+        getHyroxSession((c as { session: string }).session)?.category === "strength",
+    );
+
+  it("never emits a Specific or Taper phase — only Base/Build, all levels & budgets", () => {
+    for (const exp of ["beginner", "intermediate", "advanced"] as const) {
+      for (const spw of [4, 5, 6] as const) {
+        for (const w of raceless(exp, spw)) {
+          expect(["base", "build"], `${exp} @ ${spw}/wk wk${w.week}`).toContain(w.phase);
+        }
+      }
+    }
+  });
+
+  it("never emits a race simulation, and every non-deload week keeps a strength day", () => {
+    for (const w of raceless("intermediate", 5)) {
+      expect(w.days.some((c) => c.kind === "sim")).toBe(false);
+      if (!w.isDeload) expect(strengthCells(w).length).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it("uses a SHORT capped Base intro (≤ NO_RACE_BASE_WEEKS) then Build for the rest", () => {
+    const grid = raceless("intermediate", 5); // 12 weeks
+    const baseWeeks = grid.filter((w) => w.phase === "base").length;
+    expect(baseWeeks).toBeGreaterThanOrEqual(1);
+    expect(baseWeeks).toBeLessThanOrEqual(4); // the fixed cap, not 40% of the block
+    expect(grid.filter((w) => w.phase === "build").length).toBe(grid.length - baseWeeks);
+  });
+
+  it("keeps the every-4th-week deload cadence across the long maintenance build", () => {
+    const deloads = raceless("advanced", 5) // 16 weeks
+      .filter((w) => w.isDeload)
+      .map((w) => w.week);
+    expect(deloads).toContain(4);
+    expect(deloads).toContain(8);
+    expect(deloads).toContain(12);
+  });
+
+  it("holds the Build steady state — strength still alternates (ADR 0059), no race-week drop", () => {
+    const grid = raceless("advanced", 5);
+    const buildWeeks = grid.filter((w) => w.phase === "build" && !w.isDeload);
+    const counts = buildWeeks.map((w) => strengthCells(w).length);
+    expect(counts).toContain(2); // double weeks
+    expect(counts).toContain(1); // single weeks
+  });
+
+  it("race mode (the default) is unchanged — it still peaks with Specific + Taper", () => {
+    const phases = new Set(
+      buildHyroxGrid({ weeks: 12, sessionsPerWeek: 5, experience: "intermediate" }).map(
+        (w) => w.phase,
+      ),
+    );
+    expect(phases.has("specific")).toBe(true);
+    expect(phases.has("taper")).toBe(true);
+  });
+
+  it("setup() carries hasRace through the instance (default true, explicit false honoured)", () => {
+    expect(setup({ experience: "intermediate" }).hasRace).toBe(true);
+    expect(setup({ experience: "intermediate", hasRace: false }).hasRace).toBe(false);
+    expect(setup({ experience: "intermediate", hasRace: "true" }).hasRace).toBe(true);
+  });
+});
+
 describe("HYROX timeline — specs", () => {
   it("emits one spec per non-rest cell, with 0-based contiguous indices", () => {
     const inst = setup({ experience: "intermediate" });

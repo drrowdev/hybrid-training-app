@@ -68,6 +68,15 @@ const BUILD_FRACTION = 0.33;
 /** Insert a deload on every Nth work week (skipping week 1 and the taper). `[DEF]`. */
 const DELOAD_EVERY = 4;
 
+/**
+ * No-race (ADR 0060) Base-intro length, in weeks. `[DEF]` — a SHORT settle-in, not the
+ * proportional race-mode base. Grounded in annual-plan practice (Friel): a long base
+ * is for building a peak from a reduced state; the between-goals Transition is only
+ * ~3–4 weeks, and a maintained athlete shouldn't re-base every re-created block. Held
+ * deliberately short so the block spends almost all its time in the Build steady state.
+ */
+const NO_RACE_BASE_WEEKS = 4;
+
 /** How many of the final Specific weeks carry a half simulation. `[DEF]`. */
 const SIM_WEEKS: Record<HyroxExperience, number> = {
   beginner: 1,
@@ -395,13 +404,35 @@ export interface HyroxGridInput {
   experience: HyroxExperience;
   /** Two-a-day (AM/PM) programming — adds easy off-feet PM companions (ADR 0054). */
   twoADay?: boolean;
+  /**
+   * Whether this block targets a race (ADR 0060). With a race (default), the grid
+   * peaks: Base → Build → Specific → Taper, ending on race week. WITHOUT a race
+   * (`false`), it never tapers or sharpens — a short Base intro then a held Build
+   * steady state (concurrent maintenance), so the athlete stays race-ready without
+   * spending a peak they won't use.
+   */
+  hasRace?: boolean;
 }
 
 /**
- * Assign each 1-based week to a periodization phase. Base/Build/Specific fill the
- * "work" weeks (everything before the taper); the final `TAPER_WEEKS` are taper.
+ * Assign each 1-based week to a periodization phase. With a race: Base/Build/Specific
+ * fill the "work" weeks and the final `TAPER_WEEKS` are taper. WITHOUT a race (ADR
+ * 0060): a short capped Base intro, then Build for the remainder — no Specific, no
+ * Taper.
  */
-function phaseForWeek(week: number, weeks: number, experience: HyroxExperience): HyroxPhaseId {
+function phaseForWeek(
+  week: number,
+  weeks: number,
+  experience: HyroxExperience,
+  hasRace: boolean,
+): HyroxPhaseId {
+  if (!hasRace) {
+    // No-race maintenance (ADR 0060): a SHORT fixed base intro (not the proportional
+    // race-mode base — a maintained athlete shouldn't re-base every re-created block),
+    // then Build steady state forever. Never Specific/Taper.
+    const baseWeeks = Math.min(NO_RACE_BASE_WEEKS, Math.max(1, weeks - 1));
+    return week <= baseWeeks ? "base" : "build";
+  }
   const taperWeeks = Math.min(TAPER_WEEKS[experience], Math.max(1, weeks - 1));
   const workWeeks = weeks - taperWeeks;
   if (week > workWeeks) return "taper";
@@ -418,10 +449,11 @@ export function buildHyroxGrid(input: HyroxGridInput): HyroxWeekPlan[] {
   const sessionsPerWeek = Math.max(1, Math.floor(input.sessionsPerWeek));
   const { experience } = input;
   const twoADay = input.twoADay ?? false;
+  const hasRace = input.hasRace ?? true;
 
   // First pass: assign phases + deload flags.
   const phases: HyroxPhaseId[] = [];
-  for (let w = 1; w <= weeks; w++) phases.push(phaseForWeek(w, weeks, experience));
+  for (let w = 1; w <= weeks; w++) phases.push(phaseForWeek(w, weeks, experience, hasRace));
 
   const isDeload = (w: number): boolean => {
     const phase = phases[w - 1]!;

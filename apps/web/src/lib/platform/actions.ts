@@ -273,6 +273,8 @@ export async function getProgramSegments(
         values: {
           ...setupValues,
           ...(hyroxWeeksToRace != null ? { weeks: hyroxWeeksToRace } : {}),
+          // ADR 0060 — a race date set ⇒ peak to it; blank ⇒ no-race maintenance.
+          ...(programId === "hyrox" ? { hasRace: raceDate != null } : {}),
         },
       },
       ctx,
@@ -538,6 +540,9 @@ async function computeForeignWrite(
         ...(programId === "hyrox" && twoADay ? { twoADay: true } : {}),
         ...(programId === "wendler-531" ? { assistanceVolume: assistanceVolumePref } : {}),
         ...(hyroxWeeksToRace != null ? { weeks: hyroxWeeksToRace } : {}),
+        // ADR 0060 — race date set ⇒ peak to race week; blank ⇒ no-taper concurrent
+        // maintenance (short Base intro → held Build steady state).
+        ...(programId === "hyrox" ? { hasRace: raceDate != null } : {}),
       },
     },
     ctx,

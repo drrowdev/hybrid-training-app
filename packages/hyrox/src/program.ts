@@ -84,6 +84,12 @@ export interface HyroxInstance {
   sessionsPerWeek: number;
   /** Two-a-day (AM/PM) programming enabled for this block (ADR 0054). */
   twoADay: boolean;
+  /**
+   * Whether this block targets a race (ADR 0060). True ⇒ peak to race week
+   * (Base/Build/Specific/Taper). False ⇒ no-taper concurrent maintenance (short Base
+   * intro → held Build steady state). Defaults true (race) when the setup omits it.
+   */
+  hasRace: boolean;
 }
 
 export const hyroxMeta: ProgramMeta = {
@@ -244,6 +250,7 @@ function buildTimeline(instance: HyroxInstance): PlannedSessionSpec[] {
     sessionsPerWeek: instance.sessionsPerWeek,
     experience: instance.experience,
     twoADay: instance.twoADay,
+    hasRace: instance.hasRace,
   });
   const specs: PlannedSessionSpec[] = [];
   let index = 0;
@@ -269,6 +276,7 @@ function locateCell(
     sessionsPerWeek: instance.sessionsPerWeek,
     experience: instance.experience,
     twoADay: instance.twoADay,
+    hasRace: instance.hasRace,
   });
   const week = plan.find((w) => w.week === parsed.week);
   if (!week) return null;
@@ -390,6 +398,9 @@ export const hyroxEngine: ProgramEngine<HyroxInstance> = {
       weeks,
       sessionsPerWeek,
       twoADay: v.twoADay === true || v.twoADay === "true",
+      // ADR 0060 — race vs no-race. The platform passes `hasRace` explicitly (a race
+      // date was set). Absent ⇒ default to a race build (preserves prior behaviour).
+      hasRace: v.hasRace === undefined ? true : v.hasRace === true || v.hasRace === "true",
     };
   },
 
@@ -422,6 +433,7 @@ export const hyroxEngine: ProgramEngine<HyroxInstance> = {
       sessionsPerWeek: instance.sessionsPerWeek,
       experience: instance.experience,
       twoADay: instance.twoADay,
+      hasRace: instance.hasRace,
     });
     const out: ProgramSegment[] = [];
     let lastPhase: string | null = null;
