@@ -79,12 +79,16 @@ export async function getLinkableActivities(): Promise<LinkableActivity[]> {
     if (!logBySession.has(l.session_id)) logBySession.set(l.session_id, l);
   }
 
-  // Sessions already claimed by a planned slot are excluded.
+  // Sessions already claimed by a planned slot in a LIVE (non-deleted) block are
+  // excluded. We must join through training_blocks and skip soft-deleted blocks —
+  // otherwise an activity that was linked on a now-deleted plan stays permanently
+  // hidden from the picker (it's "linked" to a dead slot).
   const { data: linked } = await supabase
     .from("planned_sessions")
-    .select("completed_session_id")
+    .select("completed_session_id, training_blocks!inner(deleted_at)")
     .eq("user_id", user.id)
-    .not("completed_session_id", "is", null);
+    .not("completed_session_id", "is", null)
+    .is("training_blocks.deleted_at", null);
   const linkedIds = new Set((linked ?? []).map((r) => r.completed_session_id as string));
 
   const out: LinkableActivity[] = [];

@@ -105,6 +105,9 @@ export function adaptSessionPrescription(
         kind: "accessory",
         sets: it.sets ?? 1,
         ...(it.reps !== undefined ? { reps: it.reps } : {}),
+        // Distance-prescribed carries → app `distanceM` so the row renders
+        // "3 × 40–60 m" instead of the `reps ?? 10` rep fallback.
+        ...(it.distanceRangeM ? { distanceM: it.distanceRangeM } : {}),
         ...(notes ? { notes } : {}),
       });
       continue;

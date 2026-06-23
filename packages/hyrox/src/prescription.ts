@@ -424,6 +424,7 @@ function buildStrength(sess: HyroxSession, ctx: PlatformContext, args: Prescribe
         sets,
         ...(acc.reps !== undefined ? { reps: acc.reps } : {}),
         ...(acc.repsMax !== undefined ? { repsMax: acc.repsMax } : {}),
+        ...(acc.distanceM !== undefined ? { distanceRangeM: acc.distanceM } : {}),
         ...(acc.note ? { note: acc.note } : {}),
       });
     }

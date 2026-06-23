@@ -75,6 +75,13 @@ export interface PrescribedItem {
    */
   assistanceCategory?: string;
   /**
+   * Loaded-carry distance range (metres) for an assistance item prescribed by
+   * DISTANCE rather than reps (e.g. HYROX farmers carry). When set, the platform
+   * maps it onto the app item's `distanceM` so the UI renders "3 × 40–60 m"
+   * instead of inventing a rep count.
+   */
+  distanceRangeM?: { min: number; max: number };
+  /**
    * Structured presentation for a conditioning / cardio item — the clean,
    * sectioned alternative to cramming everything into `note`. Rendered by the
    * shared CardioPlanView across Today / live session / plan drawer. Optional

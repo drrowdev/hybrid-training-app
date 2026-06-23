@@ -48,6 +48,8 @@ export interface HyroxAccessory {
   reps?: number;
   /** Upper bound of the rep range. */
   repsMax?: number;
+  /** Loaded-carry distance range (metres) — set instead of reps for carries. */
+  distanceM?: { min: number; max: number };
   /** True when reps are PER LEG (single-leg work). */
   perLeg?: boolean;
   /** Coaching note (the demand it trains + how to load it). */
@@ -327,6 +329,7 @@ export const HYROX_SESSIONS: HyroxSession[] = [
       },
       {
         slot: "carry",
+        distanceM: { min: 40, max: 60 },
         note: "Heavy carry ~40–60 m (or ~40–60 s) per set. Tall posture, crush the grip — the farmers-carry station.",
       },
     ],
@@ -357,6 +360,7 @@ export const HYROX_SESSIONS: HyroxSession[] = [
       },
       {
         slot: "carry",
+        distanceM: { min: 40, max: 60 },
         note: "Heavy carry ~40–60 m / set — grip + trunk for the farmers carry.",
       },
     ],
