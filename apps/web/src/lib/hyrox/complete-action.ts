@@ -27,7 +27,13 @@ import { recomputeActualSessionLoad } from "@/lib/engine/recompute-actual-sessio
 import { getUserTimezone } from "@/lib/planner/queries";
 import { maybeCompleteBlock } from "@/lib/planner/completion";
 import type { Prescription } from "@hta/db";
-import { hyroxSessionIdForRef, type HyroxInstance } from "@hta/hyrox";
+import {
+  hyroxSessionIdForRef,
+  parseHyroxRef,
+  stationFocusForWeek,
+  getHyroxSession,
+  type HyroxInstance,
+} from "@hta/hyrox";
 import {
   buildHyroxActualsById,
   type HrZones,
@@ -157,7 +163,15 @@ export async function completeHyroxSession(
     ...(avgHrBpm != null ? { avgHrBpm } : {}),
     ...(hrZones ? { hrZones: hrZones as HrZones } : {}),
   };
-  const actuals = buildHyroxActualsById(hyroxSessionId, input);
+  // Focused station rotation (ADR 0062): only materialize set rows for the stations
+  // actually in this week's focused subset, not the session's full static list.
+  const week = parseHyroxRef(programRef)?.week ?? 1;
+  const performedMovements = stationFocusForWeek(
+    hyroxSessionId,
+    week,
+    getHyroxSession(hyroxSessionId)?.movements ?? [],
+  ).movements;
+  const actuals = buildHyroxActualsById(hyroxSessionId, input, performedMovements);
 
   // Resolve station slugs → catalog movement ids (global seed movements).
   const slugs = [...new Set(actuals.setLogs.map((s) => s.slug))];

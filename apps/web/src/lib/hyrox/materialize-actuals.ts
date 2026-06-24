@@ -122,6 +122,12 @@ export function sessionCardioModality(sessionId: string): string {
 export function buildHyroxActuals(
   session: HyroxSession,
   input: HyroxCompletionInput,
+  /**
+   * The stations actually performed this session. For the focused station rotation
+   * (ADR 0062) this is the week's focused subset, so we don't log set rows for
+   * loaded stations the athlete didn't do. Defaults to the session's full list.
+   */
+  performedMovements?: readonly string[],
 ): HyroxActuals {
   if (session.category === "strength") {
     // Strength sessions use the normal per-movement logger, not this path.
@@ -143,7 +149,7 @@ export function buildHyroxActuals(
   const weights = input.confirmedWeightsKg ?? {};
   const setLogs: HyroxSetLogSpec[] = [];
   let setIndex = 0;
-  for (const movementKey of session.movements) {
+  for (const movementKey of performedMovements ?? session.movements) {
     if (!isLoadedStation(movementKey)) continue;
     const slug = STATION_SLUG[movementKey];
     const station = getStation(movementKey);
@@ -167,10 +173,11 @@ export function buildHyroxActuals(
 export function buildHyroxActualsById(
   sessionId: string,
   input: HyroxCompletionInput,
+  performedMovements?: readonly string[],
 ): HyroxActuals {
   const session = getHyroxSession(sessionId);
   if (!session) return { cardioLogs: [], setLogs: [] };
-  return buildHyroxActuals(session, input);
+  return buildHyroxActuals(session, input, performedMovements);
 }
 
 /** The loaded stations in a session that need a confirmable weight (for the form). */
