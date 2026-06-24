@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Native-feel pass — Phase 1e: per-movement completion ring
+- Each movement card's status pill (the monospace `2/4` / `2/4 ✓` chip) becomes a small
+  **circular progress ring** that fills as you log the movement's sets — muted while not
+  started, accent while in progress, and a success ring with a ✓ when complete. A
+  glanceable, native-fitness-app way to see how far through a lift you are.
+
 ### Native-feel pass — Phase 1d: rest timer as a circular-countdown sheet
 - The rest timer is no longer an edge-to-edge slim bar with a monospace mm:ss and a
   linear progress strip. It's now a **floating, rounded bottom sheet** (inset from the

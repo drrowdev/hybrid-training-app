@@ -432,20 +432,49 @@ export function MovementCard({
             {headerSummary}
           </span>
         )}
-        <span
-          data-testid={`movement-card-chip-${group.movementId}`}
-          className="mono"
-          style={{
-            fontSize: 11,
-            padding: "2px 8px",
-            borderRadius: 999,
-            background: `color-mix(in oklab, ${chipColor} 14%, transparent)`,
-            color: chipColor,
-            fontWeight: 700,
-          }}
-        >
-          {chipLabel}
-        </span>
+        {total > 0 ? (
+          <span
+            data-testid={`movement-card-chip-${group.movementId}`}
+            aria-label={
+              cardState === "completed"
+                ? "All sets logged"
+                : `${done} of ${total} sets logged`
+            }
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: "50%",
+              flex: "0 0 auto",
+              display: "grid",
+              placeItems: "center",
+              background: `conic-gradient(${chipColor} ${(done / total) * 360}deg, color-mix(in oklab, ${chipColor} 16%, transparent) 0)`,
+            }}
+          >
+            <span
+              style={{
+                width: 25,
+                height: 25,
+                borderRadius: "50%",
+                background: "var(--cp-surface)",
+                display: "grid",
+                placeItems: "center",
+                fontSize: cardState === "completed" ? 13 : 10,
+                fontWeight: 700,
+                color: chipColor,
+                letterSpacing: "-0.02em",
+              }}
+            >
+              {cardState === "completed" ? "✓" : `${done}/${total}`}
+            </span>
+          </span>
+        ) : (
+          <span
+            data-testid={`movement-card-chip-${group.movementId}`}
+            style={{ fontSize: 11, color: chipColor, fontWeight: 700 }}
+          >
+            {chipLabel}
+          </span>
+        )}
         <span
           style={{
             display: "inline-flex",
