@@ -7,6 +7,7 @@ import { cookies } from "next/headers";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { authorizeUrl } from "@/lib/integrations/strava/client";
 import { syncStrava } from "@/lib/integrations/strava/sync";
+import { findMatchingStravaActivity } from "@/lib/integrations/strava/match";
 import {
   importStravaHistory as importStravaHistoryCore,
   type ImportInput,
@@ -103,10 +104,17 @@ export async function syncStravaNow(): Promise<void> {
  * Callable variant of syncStravaNow used by in-session banners — does
  * not redirect, returns a JSON result so the banner can show inline
  * errors. Revalidates the current session path the caller passes in.
+ *
+ * After syncing it reports whether a Strava activity now MATCHES this
+ * session (so the completion form can give explicit "found / none"
+ * feedback instead of silently reverting).
  */
 export async function syncStravaForSession(
   sessionId: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; match: { durationSec: number; avgHrBpm: number | null } | null }
+  | { ok: false; error: string }
+> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -124,7 +132,25 @@ export async function syncStravaForSession(
     return { ok: false, error: message };
   }
   revalidatePath(`/app/sessions/${sessionId}`);
-  return { ok: true };
+
+  // Did the sync surface an activity that matches this session's time?
+  let match: { durationSec: number; avgHrBpm: number | null } | null = null;
+  try {
+    const { data: sess } = await supabase
+      .from("sessions")
+      .select("performed_at")
+      .eq("id", sessionId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    const performedAt = sess?.performed_at as string | null;
+    if (performedAt) {
+      const found = await findMatchingStravaActivity(supabase, user.id, performedAt, {});
+      if (found) match = { durationSec: found.durationSec, avgHrBpm: found.avgHrBpm };
+    }
+  } catch {
+    // Best-effort enrichment — a match-lookup failure never fails the sync.
+  }
+  return { ok: true, match };
 }
 
 const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
