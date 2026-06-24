@@ -1306,6 +1306,10 @@ export default async function SessionDetailPage({
           title={hyroxView.title}
           weekLabel={session.title ?? undefined}
           structure={hyroxView.structure}
+          cardioPlan={
+            (plannedPrescription?.items ?? []).find((it) => it.cardioPlan != null)?.cardioPlan ??
+            null
+          }
           loadedStations={hyroxView.loadedStations}
           isBenchmark={hyroxView.isBenchmark}
           divisionLabel={hyroxView.divisionLabel}

@@ -23,6 +23,7 @@ import {
   HYROX_STATIONS,
   getStation,
   stationRows,
+  intervalStationRows,
   stationLoadValue,
   stationTargetLabel,
 } from "./divisions";
@@ -199,7 +200,7 @@ function buildIntervals(sess: HyroxSession, args: PrescribeArgs): PrescribedItem
         "Rotate through the race stations at a hard, repeatable effort — sharpen technique, transitions and pacing on the costliest stations.",
       meta: `${rounds} rounds`,
       segments: [{ label: "Each round", detail: rotation }],
-      stations: stationRows(sess.movements, args.division, args.gender),
+      stations: intervalStationRows(sess.movements, args.division, args.gender),
       effort:
         "Hard but repeatable (RPE 7–8) — race pace, not max. Short rest between stations, a longer break between rounds.",
       logHint: "Manual session — tap Mark complete when you're done.",
@@ -255,7 +256,7 @@ function buildCircuit(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[]
       "Strength-endurance circuit — high reps in the race movement patterns at a load you can keep moving through.",
     meta: `${rounds} rounds`,
     segments: [{ label: "Each round", detail: rotation }],
-    stations: stationRows(sess.movements, args.division, args.gender),
+    stations: intervalStationRows(sess.movements, args.division, args.gender),
     effort: "Sustainable and steady — keep moving, don't redline. Build muscular endurance, not max strength.",
     logHint: "Manual session — tap Mark complete when you're done.",
   };

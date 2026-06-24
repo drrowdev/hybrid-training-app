@@ -4,7 +4,7 @@
 import { describe, it, expect } from "vitest";
 import type { PlatformContext, SessionPrescription } from "@hta/program-core";
 import { hyroxEngine, type HyroxInstance } from "./program";
-import { stationLoadLabel, getStation, wallBallTargetLabel, stationLoadsSummary } from "./divisions";
+import { stationLoadLabel, getStation, wallBallTargetLabel, stationLoadsSummary, intervalTargetLabel } from "./divisions";
 
 const ctxNoMaxes: PlatformContext = { oneRepMaxes: {}, roundingKg: 2.5 };
 const ctxWithMaxes: PlatformContext = {
@@ -285,6 +285,31 @@ describe("HYROX prescribe — simulations & divisions", () => {
       const stations = item?.cardioPlan?.stations ?? [];
       const sled = stations.find((s) => s.name === "Sled Push");
       expect(sled?.load).toContain("152"); // Pro women sled push = 152 kg
+    }
+  });
+
+  it("station-intervals prescribe PER-ROUND volumes, not full race distances (ADR 0061)", () => {
+    // Per-round interval chunks: ~¼ of a race so N rounds ≈ one race, not N races.
+    expect(intervalTargetLabel(getStation("skierg")!)).toBe("250 m"); // race is 1000 m
+    expect(intervalTargetLabel(getStation("rowing-erg")!)).toBe("250 m"); // race is 1000 m
+    expect(intervalTargetLabel(getStation("sled-push")!)).toBe("12.5 m"); // race is 50 m
+    expect(intervalTargetLabel(getStation("sandbag-lunge")!)).toBe("25 m"); // race is 100 m
+    expect(intervalTargetLabel(getStation("wall-ball")!, "male")).toContain("25 reps"); // race is 100
+    // End-to-end: the station-intervals cardioPlan carries the reduced per-round
+    // target while loads stay race-correct.
+    const i = inst({ division: "open" });
+    const ref = hyroxEngine
+      .timeline(i)
+      .find((s) => s.tags?.includes("session:station-intervals"))?.ref;
+    expect(ref).toBeTruthy();
+    if (ref) {
+      const item = hyroxEngine.prescribe(i, ref, { ...ctxWithMaxes, gender: "male" }).items[0];
+      const stations = item?.cardioPlan?.stations ?? [];
+      const ski = stations.find((s) => s.name === "SkiErg");
+      expect(ski?.target).toBe("250 m"); // NOT "1000 m"
+      const sled = stations.find((s) => s.name === "Sled Push");
+      expect(sled?.target).toBe("12.5 m"); // NOT "50 m"
+      expect(sled?.load).toContain("152"); // load unchanged: men's Open sled push
     }
   });
 });
