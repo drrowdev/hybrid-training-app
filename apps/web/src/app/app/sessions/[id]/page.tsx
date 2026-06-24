@@ -35,6 +35,7 @@ import {
 import { FinishSessionBar } from "@/components/session/FinishSessionBar";
 import { HyroxCompletionForm } from "@/components/session/HyroxCompletionForm";
 import { resolveHyroxCompletionView } from "@/lib/hyrox/resolve-completion-view";
+import { readStationOverrides } from "@/lib/hyrox/completion-view";
 import { SessionWakeLock } from "@/components/session/SessionWakeLock";
 import { PostSessionSummary } from "@/components/session/PostSessionSummary";
 import { UnitsProvider } from "@/lib/units/context";
@@ -266,6 +267,7 @@ export default async function SessionDetailPage({
       planned.block_id as string,
       programRef,
       session.performed_at as string | null,
+      readStationOverrides(plannedPrescription),
     );
   }
   // Quick HYROX (off-plan): no program instance, but the generator stored the

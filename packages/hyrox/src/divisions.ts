@@ -281,9 +281,9 @@ export function intervalStationRows(
   movements: readonly string[],
   division: HyroxDivision,
   gender?: "male" | "female",
-): { name: string; load?: string; target?: string }[] {
+): { name: string; load?: string; target?: string; key?: string }[] {
   const seen = new Set<string>();
-  const rows: { name: string; load?: string; target?: string }[] = [];
+  const rows: { name: string; load?: string; target?: string; key?: string }[] = [];
   for (const m of movements) {
     if (seen.has(m)) continue;
     seen.add(m);
@@ -295,6 +295,7 @@ export function intervalStationRows(
       name: st.name,
       ...(load ? { load } : {}),
       ...(target ? { target } : {}),
+      key: m,
     });
   }
   return rows;

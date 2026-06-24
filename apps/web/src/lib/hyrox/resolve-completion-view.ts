@@ -31,6 +31,7 @@ export async function resolveHyroxCompletionView(
   blockId: string,
   programRef: string,
   performedAt?: string | null,
+  overrides?: import("@hta/hyrox").StationOverrides,
 ): Promise<ResolvedHyroxCompletion | null> {
   const { data: pi } = await supabase
     .from("program_instances")
@@ -41,7 +42,7 @@ export async function resolveHyroxCompletionView(
     .maybeSingle();
   if (!pi || pi.program_id !== "hyrox") return null;
 
-  const view = buildHyroxCompletionView(pi.instance as HyroxInstance, programRef);
+  const view = buildHyroxCompletionView(pi.instance as HyroxInstance, programRef, overrides);
   if (!view) return null;
 
   let stravaMatch: HyroxStravaMatch | null = null;

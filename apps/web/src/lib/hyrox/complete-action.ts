@@ -31,9 +31,11 @@ import {
   hyroxSessionIdForRef,
   parseHyroxRef,
   stationBlocksForWeek,
+  findStationAlternative,
   getHyroxSession,
   type HyroxInstance,
 } from "@hta/hyrox";
+import { readStationOverrides } from "./completion-view";
 import {
   buildHyroxActualsById,
   type HrZones,
@@ -165,13 +167,20 @@ export async function completeHyroxSession(
   };
   // Focused station rotation + paired blocks (ADR 0062 / 0063): materialize set rows
   // for the stations in this week's focused blocks (union of both couplets), not the
-  // session's full static list.
+  // session's full static list. Per-session swaps (ADR 0064): a station swapped to an
+  // unloaded option (erg / bodyweight) produces no set row (load is captured by sRPE).
   const week = parseHyroxRef(programRef)?.week ?? 1;
+  const overrides = readStationOverrides(planned?.prescription as Prescription | null);
   const performedMovements = stationBlocksForWeek(
     hyroxSessionId,
     week,
     getHyroxSession(hyroxSessionId)?.movements ?? [],
-  ).flatMap((b) => [...b.movements]);
+  )
+    .flatMap((b) => [...b.movements])
+    .filter((k) => {
+      const sub = overrides[k];
+      return !sub || (findStationAlternative(k, sub)?.loaded ?? true);
+    });
   const actuals = buildHyroxActualsById(hyroxSessionId, input, performedMovements);
 
   // Resolve station slugs → catalog movement ids (global seed movements).
