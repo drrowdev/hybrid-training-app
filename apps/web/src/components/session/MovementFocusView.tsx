@@ -416,6 +416,10 @@ export function MovementFocusView({
     setJustLoggedAt(Date.now());
     if (flash && (flash.isWeightPr || flash.isE1rmPr || flash.e1rmKg != null)) {
       setPrFlash(flash);
+      // Celebrate a genuine PR (weight or e1RM beats the saved 1RM) with a
+      // heavier, distinct haptic — the e1RM-only readout (no PR) keeps the
+      // normal light log tick fired above.
+      if (flash.isWeightPr || flash.isE1rmPr) hapticTick(hapticsEnabled, 120);
     }
     // Inline rest timer — skipped after the final slot of this movement (B2).
     // There is no "next set" to rest before, so a running countdown would
@@ -776,6 +780,7 @@ export function MovementFocusView({
         {prFlash && (
           <div
             data-testid="pr-flash"
+            className="cp-pop"
             style={{
               display: "flex",
               gap: 6,
@@ -793,7 +798,6 @@ export function MovementFocusView({
             )}
             {prFlash.e1rmKg != null && (
               <span
-                className="mono"
                 style={{
                   padding: "2px 8px",
                   borderRadius: 999,

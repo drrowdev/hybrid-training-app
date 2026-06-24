@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Native-feel pass — Phase 1f: PR celebration
+- Setting a personal record now *feels* like one. When a logged set beats your saved
+  1RM (a Weight or e1RM PR), the existing PR badges now land with a quick celebratory
+  **pop** animation (`cp-pop`, reduced-motion aware) and fire a heavier, distinct
+  **haptic** — separate from the normal light log tick. The e1RM-only readout (no PR)
+  also drops monospace for the body sans.
+
 ### Native-feel pass — Phase 1e: per-movement completion ring
 - Each movement card's status pill (the monospace `2/4` / `2/4 ✓` chip) becomes a small
   **circular progress ring** that fills as you log the movement's sets — muted while not
