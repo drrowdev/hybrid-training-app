@@ -1966,6 +1966,13 @@ export function ProgramPicker({
     const weekText = supportsCardioDays
       ? `${dayCounts.strength} strength \u00B7 ${dayCounts.cardio} cardio \u00B7 ${dayCounts.rest} rest`
       : `${dayCounts.strength} ${daysNoun} \u00B7 ${dayCounts.rest} rest`;
+    // HYROX without a race date is an ongoing maintenance build — no Race-prep,
+    // no Taper (ADR 0060). Only show the full four-phase periodisation when a race
+    // date is set; otherwise it's Base -> Build held steady.
+    const structValue =
+      selected.id === "hyrox" && !raceDate
+        ? "Base \u2192 Build (ongoing, no taper)"
+        : (loadoutMeta?.struct ?? "\u2014");
     return (
       <div className={styles.summary}>
         <div className={styles.srow}>
@@ -1980,7 +1987,7 @@ export function ProgramPicker({
         </div>
         <div className={styles.srow}>
           <span className={styles.sk}>{loadoutMeta?.structLabel ?? "Structure"}</span>
-          <span className={styles.sv}>{loadoutMeta?.struct ?? "\u2014"}</span>
+          <span className={styles.sv}>{structValue}</span>
         </div>
         <div className={styles.srow}>
           <span className={styles.sk}>Week</span>
