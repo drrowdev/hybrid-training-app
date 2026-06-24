@@ -280,6 +280,17 @@ select option {
   .cp-reveal { animation: none; }
 }
 
+/* Sheet slide-up: a spring-eased entrance for floating bottom sheets (the rest
+   timer), so they rise from the bottom edge like a native sheet. */
+@keyframes cp-sheet-up {
+  from { transform: translateY(115%); }
+  to   { transform: none; }
+}
+.cp-sheet-up { animation: cp-sheet-up 240ms cubic-bezier(0.22, 1, 0.36, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .cp-sheet-up { animation: none; }
+}
+
 .cp-pill {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 2px 8px;

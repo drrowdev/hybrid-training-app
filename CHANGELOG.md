@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Native-feel pass — Phase 1d: rest timer as a circular-countdown sheet
+- The rest timer is no longer an edge-to-edge slim bar with a monospace mm:ss and a
+  linear progress strip. It's now a **floating, rounded bottom sheet** (inset from the
+  screen edges, docked above the nav, safe-area aware) that **slides up** when it
+  appears (`cp-sheet-up`, reduced-motion aware), with a **circular countdown ring**
+  around a bold sans mm:ss, a clear “Rest · next <movement>” context, and larger
+  44px ±30s controls. Tapping the ring still dismisses the rest; the zero-buzz +
+  chirp are unchanged.
+
 ### Native-feel pass — Phase 1c: card-tap haptic + no accidental text selection
 - Expanding/collapsing a movement card now fires a light haptic tick (honoring the
   user's haptics preference), adding tactile feedback to the most-used logging gesture.
