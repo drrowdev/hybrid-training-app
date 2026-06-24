@@ -9,7 +9,7 @@
 import {
   hyroxSessionIdForRef,
   parseHyroxRef,
-  stationFocusForWeek,
+  stationBlocksForWeek,
   getHyroxSession,
   getStation,
   stationLoadLabel,
@@ -102,12 +102,14 @@ export function buildHyroxCompletionView(
   if (!sess || sess.category === "strength") return null;
 
   const division = instance.division;
-  // Focused station rotation (ADR 0062): only confirm weights for the stations
-  // ACTUALLY in this week's focused subset, not the session's full static list —
-  // otherwise the form would ask for sled weights on a week that only rows + wall
-  // balls. vo2-intervals / non-rotating sessions fall back to their full list.
+  // Focused station rotation + paired blocks (ADR 0062 / 0063): only confirm weights
+  // for the stations actually in this week's focused blocks (the union of both
+  // sequential couplets), not the session's full static list. vo2-intervals /
+  // non-rotating sessions fall back to their full movement list.
   const week = parseHyroxRef(programRef)?.week ?? 1;
-  const focusedMovements = stationFocusForWeek(hyroxSessionId, week, sess.movements).movements;
+  const focusedMovements = stationBlocksForWeek(hyroxSessionId, week, sess.movements).flatMap(
+    (b) => [...b.movements],
+  );
   const focusedKeys = new Set(focusedMovements);
   const loadedStations: HyroxLoadedStation[] = loadedStationsForSession(hyroxSessionId)
     .filter(({ key }) => focusedKeys.has(key))

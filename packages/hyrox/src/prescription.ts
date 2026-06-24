@@ -119,12 +119,16 @@ export interface PrescribeArgs {
 }
 
 /**
- * Focused station rotation (ADR 0062). A station-intervals / SE-circuit session
- * targets a SMALL, equipment-coherent subset of stations — not all 6/4 at once.
- * Touching every station each round is simulation-shaped and impractical to set up
- * (a sled lane + both ergs + wall + sandbag held simultaneously, 20+ transitions).
- * Real HYROX conditioning is focused couplets; the focus ROTATES by week so the
- * block still covers everything. Each group is gym-feasible (coherent kit).
+ * Focused station rotation (ADR 0062) + paired two-block sessions (ADR 0063). A
+ * station-intervals / SE-circuit session targets SMALL, equipment-coherent station
+ * subsets — not all 6/4 at once (simulation-shaped + impractical: a sled lane +
+ * both ergs + wall + sandbag held at once, 20+ transitions). Real HYROX conditioning
+ * is focused couplets. The focus rotates by week so the block covers everything.
+ *
+ * A single focused couplet is short (~20 min), so a conditioning DAY pairs TWO
+ * complementary couplets done SEQUENTIALLY (finish block 1, then block 2) — coherent
+ * kit at any one time, ~40 min total. The week selects the first block; the second is
+ * the next group in the rotation.
  */
 const STATION_FOCUS_GROUPS: Record<string, { label: string; movements: string[] }[]> = {
   "station-intervals": [
@@ -138,21 +142,70 @@ const STATION_FOCUS_GROUPS: Record<string, { label: string; movements: string[] 
   ],
 };
 
+export interface StationBlock {
+  label?: string;
+  movements: readonly string[];
+}
+
 /**
- * The focused station group for a session in a given week — a coherent 2-station
- * subset that rotates week to week (ADR 0062). Sessions not in the rotation map
- * (e.g. vo2-intervals) fall back to their full movement list.
+ * The focused station BLOCKS for a session in a given week (ADR 0062 / 0063) — two
+ * complementary couplets (the week's group + the next in the rotation) for the paired
+ * station sessions, done sequentially. Sessions not in the rotation map (e.g.
+ * vo2-intervals) yield a single fallback block of their full movement list.
  */
-export function stationFocusForWeek(
+export function stationBlocksForWeek(
   sessionId: string,
   week: number,
   fallback: readonly string[],
-): { label?: string; movements: readonly string[] } {
+): StationBlock[] {
   const groups = STATION_FOCUS_GROUPS[sessionId];
-  if (!groups || groups.length === 0) return { movements: fallback };
-  const idx = (Math.max(1, Math.floor(week)) - 1) % groups.length;
-  const g = groups[idx]!;
-  return { label: g.label, movements: g.movements };
+  if (!groups || groups.length === 0) return [{ movements: fallback }];
+  const w = Math.max(1, Math.floor(week));
+  const idx = (w - 1) % groups.length;
+  const a = groups[idx]!;
+  const b = groups[(idx + 1) % groups.length]!;
+  return [
+    { label: a.label, movements: a.movements },
+    { label: b.label, movements: b.movements },
+  ];
+}
+
+/**
+ * `[DEF]` duration heuristics for station conditioning sessions (ADR 0063) — no
+ * calibration data; refine against logged session times. A station's per-round chunk
+ * (work + brief transition) ≈ 75 s; rest between rounds ≈ 75 s; ~8 min warm-up once;
+ * ~2 min reset between paired blocks.
+ */
+const STATION_BOUT_SEC = 75;
+const STATION_ROUND_REST_SEC = 75;
+const STATION_WARMUP_SEC = 8 * 60;
+const STATION_INTER_BLOCK_REST_SEC = 2 * 60;
+
+function estimateStationSessionSec(blocks: StationBlock[], rounds: number): number {
+  let work = 0;
+  for (const b of blocks) {
+    const perRound = b.movements.length * STATION_BOUT_SEC;
+    work += rounds * perRound + Math.max(0, rounds - 1) * STATION_ROUND_REST_SEC;
+  }
+  const interBlock = Math.max(0, blocks.length - 1) * STATION_INTER_BLOCK_REST_SEC;
+  return STATION_WARMUP_SEC + work + interBlock;
+}
+
+/** Build the EACH-ROUND segments + union station rows for one or more focused blocks. */
+function stationBlockPlanParts(
+  blocks: StationBlock[],
+  division: HyroxDivision,
+  gender?: "male" | "female",
+): { segments: { label: string; detail: string }[]; stations: { name: string; load?: string; target?: string }[] } {
+  const nameOf = (m: string) => getStation(m)?.name ?? movementLabel(m);
+  const paired = blocks.length > 1;
+  const segments = blocks.map((b, i) => {
+    const rotation = b.movements.map(nameOf).join(" → ");
+    const focus = b.label ? `${b.label.charAt(0).toUpperCase()}${b.label.slice(1)} — ` : "";
+    return { label: paired ? `Block ${i + 1}` : "Each round", detail: `${focus}${rotation}` };
+  });
+  const stations = blocks.flatMap((b) => intervalStationRows(b.movements, division, gender));
+  return { segments, stations };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -218,6 +271,7 @@ function buildIntervals(sess: HyroxSession, args: PrescribeArgs): PrescribedItem
   const rounds = ROUNDS_BY_LEVEL[args.experience] + (args.phase === "specific" ? 1 : 0);
 
   let plan: CardioPlan;
+  let durationSec: number | null = null;
   if (sess.id === "vo2-intervals") {
     plan = {
       summary: "Hard running intervals to lift your top-end engine and running economy.",
@@ -231,33 +285,34 @@ function buildIntervals(sess: HyroxSession, args: PrescribeArgs): PrescribedItem
       logHint: "Log it from your watch or Strava when you're done.",
     };
   } else {
-    const focus = stationFocusForWeek(sess.id, args.week ?? 1, sess.movements);
-    const movements = focus.movements;
-    const rotation = movements
-      .map((m) => getStation(m)?.name ?? movementLabel(m))
-      .join(" → ");
+    const blocks = stationBlocksForWeek(sess.id, args.week ?? 1, sess.movements);
+    const { segments, stations } = stationBlockPlanParts(blocks, args.division, args.gender);
+    const paired = blocks.length > 1;
+    const labels = blocks.map((b) => b.label).filter(Boolean) as string[];
     plan = {
-      summary: focus.label
-        ? `Focused station intervals — this week's emphasis is ${focus.label}. Hit just these stations hard and repeatably; the focus rotates each week so the block covers everything.`
+      summary: paired
+        ? `Two focused blocks — ${labels[0]}, then ${labels[1]}. Finish one fully (all ${rounds} rounds), reset, then the next. Hard and repeatable, not max.`
         : "Rotate through the race stations at a hard, repeatable effort — sharpen technique, transitions and pacing on the costliest stations.",
-      meta: focus.label ? `${rounds} rounds · ${focus.label}` : `${rounds} rounds`,
-      segments: [{ label: "Each round", detail: rotation }],
-      stations: intervalStationRows(movements, args.division, args.gender),
+      meta: paired ? `2 blocks · ${rounds} rounds each` : `${rounds} rounds`,
+      segments,
+      stations,
       effort:
-        "Hard but repeatable (RPE 7–8) — race pace, not max. Short rest between stations, a longer break between rounds.",
+        "Hard but repeatable (RPE 7–8) — race pace, not max. Short rest between stations, a longer break between rounds and blocks.",
       logHint: "Manual session — tap Mark complete when you're done.",
     };
+    durationSec = estimateStationSessionSec(blocks, rounds);
   }
 
-  const firstMovement = stationFocusForWeek(sess.id, args.week ?? 1, sess.movements)
-    .movements[0];
+  const blocks = stationBlocksForWeek(sess.id, args.week ?? 1, sess.movements);
+  const paired = blocks.length > 1;
   return [
     {
       kind: "conditioning",
       name: sess.name,
-      ...mid(firstMovement),
+      ...mid(blocks[0]!.movements[0]),
       sets: rounds,
-      repsLabel: `${rounds} rounds`,
+      repsLabel: paired ? `2 blocks · ${rounds} rounds` : `${rounds} rounds`,
+      ...(durationSec != null ? { durationSec } : {}),
       note: plan.summary,
       cardioPlan: plan,
     },
@@ -292,18 +347,17 @@ function buildCompromised(sess: HyroxSession, args: PrescribeArgs): PrescribedIt
 /** Strength-endurance circuit → station combos at sustainable load + structured plan. */
 function buildCircuit(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[] {
   const rounds = ROUNDS_BY_LEVEL[args.experience];
-  const focus = stationFocusForWeek(sess.id, args.week ?? 1, sess.movements);
-  const movements = focus.movements;
-  const rotation = movements
-    .map((m) => getStation(m)?.name ?? movementLabel(m))
-    .join(" → ");
+  const blocks = stationBlocksForWeek(sess.id, args.week ?? 1, sess.movements);
+  const { segments, stations } = stationBlockPlanParts(blocks, args.division, args.gender);
+  const paired = blocks.length > 1;
+  const labels = blocks.map((b) => b.label).filter(Boolean) as string[];
   const plan: CardioPlan = {
-    summary: focus.label
-      ? `Focused strength-endurance circuit — this week's emphasis is ${focus.label}. High reps at a load you can keep moving through; the focus rotates each week so the block covers everything.`
+    summary: paired
+      ? `Two focused strength-endurance blocks — ${labels[0]}, then ${labels[1]}. Finish one fully (all ${rounds} rounds), reset, then the next. High reps at a load you can keep moving through.`
       : "Strength-endurance circuit — high reps in the race movement patterns at a load you can keep moving through.",
-    meta: focus.label ? `${rounds} rounds · ${focus.label}` : `${rounds} rounds`,
-    segments: [{ label: "Each round", detail: rotation }],
-    stations: intervalStationRows(movements, args.division, args.gender),
+    meta: paired ? `2 blocks · ${rounds} rounds each` : `${rounds} rounds`,
+    segments,
+    stations,
     effort: "Sustainable and steady — keep moving, don't redline. Build muscular endurance, not max strength.",
     logHint: "Manual session — tap Mark complete when you're done.",
   };
@@ -311,9 +365,10 @@ function buildCircuit(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[]
     {
       kind: "conditioning",
       name: sess.name,
-      ...mid(movements[0]),
+      ...mid(blocks[0]!.movements[0]),
       sets: rounds,
-      repsLabel: `${rounds} rounds`,
+      repsLabel: paired ? `2 blocks · ${rounds} rounds` : `${rounds} rounds`,
+      durationSec: estimateStationSessionSec(blocks, rounds),
       note: plan.summary,
       cardioPlan: plan,
     },

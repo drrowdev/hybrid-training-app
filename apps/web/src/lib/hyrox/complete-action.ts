@@ -30,7 +30,7 @@ import type { Prescription } from "@hta/db";
 import {
   hyroxSessionIdForRef,
   parseHyroxRef,
-  stationFocusForWeek,
+  stationBlocksForWeek,
   getHyroxSession,
   type HyroxInstance,
 } from "@hta/hyrox";
@@ -163,14 +163,15 @@ export async function completeHyroxSession(
     ...(avgHrBpm != null ? { avgHrBpm } : {}),
     ...(hrZones ? { hrZones: hrZones as HrZones } : {}),
   };
-  // Focused station rotation (ADR 0062): only materialize set rows for the stations
-  // actually in this week's focused subset, not the session's full static list.
+  // Focused station rotation + paired blocks (ADR 0062 / 0063): materialize set rows
+  // for the stations in this week's focused blocks (union of both couplets), not the
+  // session's full static list.
   const week = parseHyroxRef(programRef)?.week ?? 1;
-  const performedMovements = stationFocusForWeek(
+  const performedMovements = stationBlocksForWeek(
     hyroxSessionId,
     week,
     getHyroxSession(hyroxSessionId)?.movements ?? [],
-  ).movements;
+  ).flatMap((b) => [...b.movements]);
   const actuals = buildHyroxActualsById(hyroxSessionId, input, performedMovements);
 
   // Resolve station slugs → catalog movement ids (global seed movements).
