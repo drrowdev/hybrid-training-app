@@ -30,13 +30,15 @@ describe("RestTimer", () => {
     expect(html).toBe("");
   });
 
-  it("renders a full-width bottom bar (Option B), not a floating corner pill", () => {
+  it("renders a floating bottom sheet docked above the nav, not a corner pill", () => {
     const html = renderToStaticMarkup(<RestTimer seconds={90} movementName="Squat" />);
-    // The shell is the full-width fixed bar docked above the nav.
+    // The shell is a fixed, rounded sheet inset from the screen edges and docked
+    // above the bottom nav (native-feel redesign — was a full-width edge bar).
     expect(html).toContain('data-testid="rest-timer-shell"');
     expect(html).toMatch(/position:fixed/);
-    expect(html).toMatch(/left:0/);
-    expect(html).toMatch(/right:0/);
+    expect(html).toMatch(/left:12px/);
+    expect(html).toMatch(/right:12px/);
+    expect(html).toMatch(/border-radius:18px/);
     // Keeps the ±30s controls and the dismissable countdown.
     expect(html).toContain('data-testid="rest-timer-minus-30"');
     expect(html).toContain('data-testid="rest-timer-plus-30"');

@@ -51,31 +51,32 @@ function fmt(secs: number): string {
   return `${m}:${String(r).padStart(2, "0")}`;
 }
 
-// Full-width slim bar pinned above the bottom nav (respecting the safe-area
-// inset). Shared by the active + done states so the timer never shifts.
-const BAR_WRAP_STYLE: React.CSSProperties = {
+// Floating, rounded "sheet" pinned above the bottom nav (respecting the safe-area
+// inset) — a more native presentation than the old edge-to-edge slim bar. Shared
+// by the active + done states so the timer never shifts.
+const SHEET_WRAP_STYLE: React.CSSProperties = {
   position: "fixed",
-  left: 0,
-  right: 0,
-  bottom: "calc(var(--cp-bottomnav-h, 0px) + env(safe-area-inset-bottom))",
+  left: 12,
+  right: 12,
+  bottom: "calc(var(--cp-bottomnav-h, 0px) + env(safe-area-inset-bottom) + 10px)",
   zIndex: 39,
-  padding: "8px 12px",
+  padding: 14,
+  borderRadius: 18,
   background: "var(--cp-bg-elevated)",
-  borderTop: "1px solid var(--cp-border-strong)",
-  boxShadow: "0 -6px 18px rgba(0,0,0,0.18)",
+  border: "1px solid var(--cp-border-strong)",
+  boxShadow: "0 14px 40px rgba(0,0,0,0.40)",
 };
 
 const ADJ_BTN_STYLE: React.CSSProperties = {
-  minWidth: 44,
-  minHeight: 36,
+  minWidth: 46,
+  minHeight: 44,
   padding: "6px 10px",
-  borderRadius: 9,
+  borderRadius: 12,
   border: "1px solid var(--cp-border-strong)",
   background: "transparent",
   color: "var(--cp-text)",
-  fontFamily: "var(--cp-font-mono)",
   fontWeight: 700,
-  fontSize: 12,
+  fontSize: 13,
   cursor: "pointer",
 };
 
@@ -127,7 +128,7 @@ export function RestTimer({
 
   if (done) {
     return (
-      <div data-testid="rest-timer-shell" style={BAR_WRAP_STYLE}>
+      <div data-testid="rest-timer-shell" className="cp-sheet-up" style={SHEET_WRAP_STYLE}>
         <button
           type="button"
           data-testid="rest-timer-done"
@@ -135,15 +136,14 @@ export function RestTimer({
           aria-label="Rest complete — tap to dismiss"
           style={{
             width: "100%",
-            minHeight: 40,
-            padding: "8px 14px",
-            borderRadius: 10,
+            minHeight: 48,
+            padding: "10px 14px",
+            borderRadius: 14,
             border: "1px solid var(--cp-success)",
             background: "var(--cp-success)",
             color: "var(--cp-accent-fg)",
             fontWeight: 700,
-            fontSize: 14,
-            letterSpacing: "0.04em",
+            fontSize: 15,
             cursor: "pointer",
           }}
         >
@@ -157,12 +157,76 @@ export function RestTimer({
     effectiveSeconds > 0
       ? Math.max(0, Math.min(100, (remaining / effectiveSeconds) * 100))
       : 0;
+  const sweepDeg = (pct / 100) * 360;
 
   return (
     <div
       data-testid="rest-timer-shell"
-      style={{ ...BAR_WRAP_STYLE, display: "flex", alignItems: "center", gap: 10 }}
+      className="cp-sheet-up"
+      style={{ ...SHEET_WRAP_STYLE, display: "flex", alignItems: "center", gap: 12 }}
     >
+      {/* Circular countdown — tapping it dismisses the rest, like the old bar. */}
+      <button
+        type="button"
+        data-testid="rest-timer"
+        data-default-seconds={seconds}
+        onClick={dismiss}
+        aria-label={
+          movementName
+            ? `Rest timer ${fmt(remaining)} before next ${movementName} set — tap to dismiss`
+            : `Rest timer ${fmt(remaining)} — tap to dismiss`
+        }
+        style={{
+          flex: "0 0 auto",
+          width: 64,
+          height: 64,
+          borderRadius: "50%",
+          border: 0,
+          padding: 0,
+          cursor: "pointer",
+          background: `conic-gradient(var(--cp-success) ${sweepDeg}deg, var(--cp-border-strong) 0)`,
+          display: "grid",
+          placeItems: "center",
+        }}
+      >
+        <span
+          aria-hidden
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: "50%",
+            background: "var(--cp-bg-elevated)",
+            display: "grid",
+            placeItems: "center",
+            fontWeight: 800,
+            fontSize: 16,
+            letterSpacing: "-0.02em",
+            color: "var(--cp-success)",
+          }}
+        >
+          {fmt(remaining)}
+        </span>
+      </button>
+
+      {/* Context — "Rest" + the next movement. */}
+      <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 15 }}>Rest</div>
+        {movementName && (
+          <div
+            data-testid="rest-timer-context"
+            style={{
+              fontSize: 13,
+              color: "var(--cp-text-muted)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            next {movementName}
+          </div>
+        )}
+      </div>
+
       <button
         type="button"
         data-testid="rest-timer-minus-30"
@@ -175,89 +239,6 @@ export function RestTimer({
       >
         −30s
       </button>
-
-      <button
-        type="button"
-        data-testid="rest-timer"
-        data-default-seconds={seconds}
-        onClick={dismiss}
-        aria-label={
-          movementName
-            ? `Rest timer ${fmt(remaining)} before next ${movementName} set — tap to dismiss`
-            : `Rest timer ${fmt(remaining)} — tap to dismiss`
-        }
-        style={{
-          flex: 1,
-          minHeight: 40,
-          padding: "4px 10px",
-          borderRadius: 10,
-          border: "1px solid var(--cp-border)",
-          background: "transparent",
-          color: "var(--cp-text)",
-          cursor: "pointer",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "stretch",
-          gap: 4,
-          textAlign: "left",
-        }}
-      >
-        <span
-          style={{
-            display: "flex",
-            alignItems: "baseline",
-            justifyContent: "space-between",
-            gap: 8,
-          }}
-        >
-          <span
-            style={{
-              fontFamily: "var(--cp-font-mono)",
-              fontWeight: 800,
-              fontSize: 18,
-              color: "var(--cp-success)",
-            }}
-          >
-            <span aria-hidden style={{ fontSize: 13, marginRight: 5 }}>⏱</span>
-            {fmt(remaining)}
-          </span>
-          {movementName && (
-            <span
-              data-testid="rest-timer-context"
-              style={{
-                fontWeight: 500,
-                fontSize: 11,
-                color: "var(--cp-text-muted)",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              next {movementName}
-            </span>
-          )}
-        </span>
-        <span
-          aria-hidden
-          style={{
-            height: 5,
-            borderRadius: 999,
-            background: "var(--cp-border-strong)",
-            overflow: "hidden",
-          }}
-        >
-          <span
-            style={{
-              display: "block",
-              height: "100%",
-              width: `${pct}%`,
-              background: "var(--cp-success)",
-              transition: "width 0.25s linear",
-            }}
-          />
-        </span>
-      </button>
-
       <button
         type="button"
         data-testid="rest-timer-plus-30"
