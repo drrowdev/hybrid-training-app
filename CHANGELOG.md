@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Gender setting moved to the discoverable Training profile page
+- The Gender setting (male/female — drives sex-specific HYROX station weights and
+  strength-standard defaults) was shipped but stranded on the legacy `/app/profile`
+  page, which nothing in the nav links to. The **More → Settings → Training profile**
+  card opens `/app/settings/profile`, which didn't have it — so the control was
+  effectively unreachable. Added the Gender control to `/app/settings/profile` (in the
+  Profile section, next to name/units) via a new `GenderAutoSave`, wired
+  `gender` into that page's profile query and the settings `updateProfile` action
+  (auto-saves on change, leave unset to see both standards).
+
 ### Native-feel pass — Phase 1g: tab-tap haptics + softened tab labels
 - Tapping a bottom-nav tab now fires a light haptic tick (honoring the user's
   `haptics_enabled` preference, threaded from the layout through `AppShell` →

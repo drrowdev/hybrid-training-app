@@ -25,6 +25,7 @@ const profileSchema = z.object({
     ])
     .optional(),
   effortPreference: z.enum(["low", "standard", "high"]).optional(),
+  gender: z.enum(["male", "female", ""]).optional(),
   showTodayRecoveryCard: z.coerce.boolean().optional(),
 });
 
@@ -38,6 +39,7 @@ export async function updateProfile(formData: FormData): Promise<void> {
     trainingDaysPerWeek: formData.get("trainingDaysPerWeek") || undefined,
     trainingExperience: formData.get("trainingExperience") || undefined,
     effortPreference: formData.get("effortPreference") || undefined,
+    gender: formData.get("gender") ?? undefined,
     showTodayRecoveryCard:
       formData.get("showTodayRecoveryCardPresent") === "1"
         ? formData.get("showTodayRecoveryCard") === "on"
@@ -74,6 +76,7 @@ export async function updateProfile(formData: FormData): Promise<void> {
   if (parsed.data.trainingDaysPerWeek !== undefined) updates.training_days_per_week = parsed.data.trainingDaysPerWeek;
   if (parsed.data.trainingExperience !== undefined) updates.training_experience = parsed.data.trainingExperience;
   if (parsed.data.effortPreference !== undefined) updates.effort_preference = parsed.data.effortPreference;
+  if (parsed.data.gender !== undefined) updates.gender = parsed.data.gender === "" ? null : parsed.data.gender;
   if (parsed.data.showTodayRecoveryCard !== undefined)
     updates.show_today_recovery_card = parsed.data.showTodayRecoveryCard;
 

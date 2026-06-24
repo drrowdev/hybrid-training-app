@@ -108,6 +108,45 @@ export function UnitsAutoSave({
   );
 }
 
+// ─── Gender (sex-specific HYROX loads + strength-standard defaults) ──
+
+const GENDER_OPTIONS = [
+  {
+    value: "male" as const,
+    label: "Male",
+    hint: "Uses men's HYROX station weights and male strength-standard defaults.",
+    testId: "settings-gender-male",
+  },
+  {
+    value: "female" as const,
+    label: "Female",
+    hint: "Uses women's HYROX station weights and female strength-standard defaults.",
+    testId: "settings-gender-female",
+  },
+];
+
+export function GenderAutoSave({
+  initial,
+}: {
+  initial: "male" | "female" | null;
+}) {
+  const save = useCallback((v: string) => saveField("gender", v), []);
+  return (
+    <div
+      className="space-y-3 rounded-lg border border-foreground/10 p-4"
+      data-testid="settings-gender-form"
+    >
+      <AutoSaveRadioGroup
+        name="gender"
+        initial={initial ?? ""}
+        options={GENDER_OPTIONS}
+        save={save}
+        statusTestIdSuffix="settings-gender"
+      />
+    </div>
+  );
+}
+
 // ─── Body composition phase ──────────────────────────────────────────
 
 const PHASE_OPTIONS = [
