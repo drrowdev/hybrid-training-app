@@ -18,6 +18,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { completeHyroxSession } from "@/lib/hyrox/complete-action";
 import { syncStravaForSession } from "@/lib/integrations/strava/actions";
+import { CardioPlanView, type CardioPlanShape } from "@/components/session/CardioPlanView";
 
 export interface HyroxStructureRow {
   /** Step label, e.g. "Run" / "Sled Push" / "Round 1". */
@@ -51,6 +52,13 @@ export interface HyroxCompletionFormProps {
   title: string;
   weekLabel?: string;
   structure: HyroxStructureRow[];
+  /**
+   * The materialized cardio plan (summary · rounds · per-round rotation · stations
+   * & loads · effort) — the SAME structure the plan drawer shows. When present it
+   * renders via the shared `CardioPlanView` for full parity; `structure` is only a
+   * fallback for sessions without a cardioPlan (e.g. legacy quick HYROX).
+   */
+  cardioPlan?: CardioPlanShape | null;
   loadedStations: HyroxLoadedStation[];
   isBenchmark?: boolean;
   divisionLabel?: string;
@@ -76,6 +84,7 @@ export function HyroxCompletionForm({
   title,
   weekLabel,
   structure,
+  cardioPlan,
   loadedStations,
   isBenchmark,
   divisionLabel,
@@ -174,20 +183,24 @@ export function HyroxCompletionForm({
 
       <div>
         <Label>Structured workout</Label>
-        <div style={{ display: "grid", gap: 8 }}>
-          {structure.map((row, i) => (
-            <div key={i} style={rowStyle}>
-              <span style={{ fontFamily: "var(--cp-font-display)", color: "var(--cp-text-muted)", width: 18, textAlign: "center", flex: "none" }}>{i + 1}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{row.name}</div>
-                {row.detail ? <div style={{ fontSize: 11.5, color: "var(--cp-text-muted)", marginTop: 2 }}>{row.detail}</div> : null}
+        {cardioPlan ? (
+          <CardioPlanView plan={cardioPlan} />
+        ) : (
+          <div style={{ display: "grid", gap: 8 }}>
+            {structure.map((row, i) => (
+              <div key={i} style={rowStyle}>
+                <span style={{ fontFamily: "var(--cp-font-display)", color: "var(--cp-text-muted)", width: 18, textAlign: "center", flex: "none" }}>{i + 1}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{row.name}</div>
+                  {row.detail ? <div style={{ fontSize: 11.5, color: "var(--cp-text-muted)", marginTop: 2 }}>{row.detail}</div> : null}
+                </div>
+                {row.amount ? (
+                  <span style={{ fontFamily: "var(--cp-font-display)", color: "var(--cp-text-soft)", flex: "none" }}>{row.amount}</span>
+                ) : null}
               </div>
-              {row.amount ? (
-                <span style={{ fontFamily: "var(--cp-font-display)", color: "var(--cp-text-soft)", flex: "none" }}>{row.amount}</span>
-              ) : null}
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {loadedStations.length > 0 ? (

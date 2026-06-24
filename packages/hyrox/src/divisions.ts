@@ -235,3 +235,67 @@ export function stationRows(
   }
   return rows;
 }
+
+/**
+ * Per-round INTERVAL volume per station — the short, repeatable chunk done EACH
+ * round of a station-intervals / strength-endurance circuit session (NOT the full
+ * race distance/reps, which `stationTargetLabel` returns for simulations).
+ *
+ * `[DEF]` calibration, NOT published fact (ADR 0061). Chunks are ~¼ of the race
+ * volume so the per-level round counts (3/4/5, ADR §ROUNDS_BY_LEVEL) sum to ≈ 0.75 /
+ * 1.0 / 1.25 races — matching HYROX-affiliate interval programming (repeated race-
+ * pace bouts, not full stations × N). Loads (kg) are unchanged race standards.
+ * Movements absent here fall back to the full race target.
+ */
+const INTERVAL_VOLUME: Record<string, { distanceM?: number; reps?: number }> = {
+  skierg: { distanceM: 250 },
+  "rowing-erg": { distanceM: 250 },
+  "sled-push": { distanceM: 12.5 }, // one 12.5 m length
+  "sled-pull": { distanceM: 12.5 },
+  "burpee-broad-jump": { distanceM: 20 },
+  "farmers-carry": { distanceM: 50 },
+  "sandbag-lunge": { distanceM: 25 },
+  "wall-ball": { reps: 25 },
+};
+
+/** A station's PER-ROUND interval volume as a short label (e.g. "250 m", "25 reps"). */
+export function intervalTargetLabel(station: HyroxStation, gender?: "male" | "female"): string {
+  const v = INTERVAL_VOLUME[station.movement];
+  if (!v) return stationTargetLabel(station, gender); // fall back to full race target
+  if (station.movement === "wall-ball") {
+    const height = gender === "female" ? "2.7 m" : gender === "male" ? "3.0 m" : "3.0/2.7 m";
+    return v.reps != null ? `${v.reps} reps · target ${height}` : `target ${height}`;
+  }
+  if (v.reps != null) return `${v.reps} reps`;
+  if (v.distanceM != null) return `${v.distanceM} m`;
+  return "";
+}
+
+/**
+ * Like `stationRows`, but the `target` is the PER-ROUND interval volume
+ * (`intervalTargetLabel`) instead of the full race distance — for station-intervals
+ * and strength-endurance circuits, where N rounds × full race volume would be wrong
+ * (4× a whole race). Loads stay race-correct (ADR 0061).
+ */
+export function intervalStationRows(
+  movements: readonly string[],
+  division: HyroxDivision,
+  gender?: "male" | "female",
+): { name: string; load?: string; target?: string }[] {
+  const seen = new Set<string>();
+  const rows: { name: string; load?: string; target?: string }[] = [];
+  for (const m of movements) {
+    if (seen.has(m)) continue;
+    seen.add(m);
+    const st = getStation(m);
+    if (!st) continue;
+    const load = stationLoadValue(st, division, gender);
+    const target = intervalTargetLabel(st, gender);
+    rows.push({
+      name: st.name,
+      ...(load ? { load } : {}),
+      ...(target ? { target } : {}),
+    });
+  }
+  return rows;
+}
