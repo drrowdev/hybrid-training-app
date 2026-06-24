@@ -199,7 +199,6 @@ export function StravaAutofillBanner({
         </div>
         <div
           style={{ fontSize: 14, color: "var(--cp-text)" }}
-          className="mono"
           data-testid="strava-autofill-summary"
         >
           {state === "match" || state === "applied"
