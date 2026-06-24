@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   pickBestMatch,
+  listStravaActivitiesNear,
   STRAVA_MATCH_WINDOW_MS,
   type StravaMatchCandidate,
 } from "../match";
@@ -84,5 +85,65 @@ describe("pickBestMatch — Strava activity matcher (Phase 2 C1)", () => {
 
   it("exposes STRAVA_MATCH_WINDOW_MS as 90 min", () => {
     expect(STRAVA_MATCH_WINDOW_MS).toBe(90 * 60 * 1000);
+  });
+});
+
+describe("listStravaActivitiesNear — manual day picker (ADR-less follow-up)", () => {
+  const targetIso = "2026-05-23T18:00:00.000Z";
+
+  function stubSupabase(rows: unknown[]) {
+    const builder: Record<string, unknown> = {};
+    for (const m of ["select", "eq", "is", "gte", "lte", "order", "limit"]) {
+      builder[m] = () => builder;
+    }
+    builder.then = (resolve: (v: { data: unknown[]; error: null }) => unknown) =>
+      resolve({ data: rows, error: null });
+    return { from: () => builder } as unknown as Parameters<typeof listStravaActivitiesNear>[0];
+  }
+
+  function row(id: string, performedAt: string, extra: Record<string, unknown> = {}) {
+    return {
+      id,
+      strava_activity_id: `act-${id}`,
+      modality: "run",
+      duration_sec: 2040,
+      distance_km: 5.1,
+      avg_hr_bpm: 156,
+      rpe: null,
+      sessions: { id: `s-${id}`, performed_at: performedAt },
+      ...extra,
+    };
+  }
+
+  it("returns same-window activities sorted closest-first to the workout time", async () => {
+    const rows = [
+      row("far", "2026-05-23T07:00:00.000Z"), // 11h before
+      row("near", "2026-05-23T15:00:00.000Z"), // 3h before — the real one
+      row("mid", "2026-05-23T12:00:00.000Z"), // 6h before
+    ];
+    const out = await listStravaActivitiesNear(stubSupabase(rows), "user", targetIso);
+    expect(out.map((c) => c.cardioLogId)).toEqual(["near", "mid", "far"]);
+  });
+
+  it("excludes rows without a linked Strava activity id", async () => {
+    const rows = [
+      row("ok", "2026-05-23T15:00:00.000Z"),
+      row("nope", "2026-05-23T16:00:00.000Z", { strava_activity_id: null }),
+    ];
+    const out = await listStravaActivitiesNear(stubSupabase(rows), "user", targetIso);
+    expect(out.map((c) => c.cardioLogId)).toEqual(["ok"]);
+  });
+
+  it("respects the limit", async () => {
+    const rows = Array.from({ length: 8 }, (_, i) =>
+      row(`a${i}`, new Date(Date.parse(targetIso) - i * 30 * 60 * 1000).toISOString()),
+    );
+    const out = await listStravaActivitiesNear(stubSupabase(rows), "user", targetIso, { limit: 3 });
+    expect(out).toHaveLength(3);
+  });
+
+  it("returns [] for an unparseable target time", async () => {
+    const out = await listStravaActivitiesNear(stubSupabase([]), "user", "not-a-date");
+    expect(out).toEqual([]);
   });
 });
