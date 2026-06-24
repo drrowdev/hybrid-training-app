@@ -15,6 +15,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type ReactNode } from "react";
+import { hapticTick } from "@/lib/feedback";
 
 type Tab = {
   href: string;
@@ -135,7 +136,10 @@ const TABS: Tab[] = [
   },
 ];
 
-export function BottomTabBar({ auditCount = 0 }: { auditCount?: number } = {}) {
+export function BottomTabBar({
+  auditCount = 0,
+  hapticsEnabled = true,
+}: { auditCount?: number; hapticsEnabled?: boolean } = {}) {
   const pathname = usePathname() ?? "/app";
 
   return (
@@ -168,6 +172,7 @@ export function BottomTabBar({ auditCount = 0 }: { auditCount?: number } = {}) {
             data-testid={t.testid}
             data-active={active ? "true" : "false"}
             aria-current={active ? "page" : undefined}
+            onClick={() => hapticTick(hapticsEnabled, 8)}
             style={{
               display: "flex",
               flexDirection: "column",
@@ -201,11 +206,10 @@ export function BottomTabBar({ auditCount = 0 }: { auditCount?: number } = {}) {
             </span>
             <span
               style={{
-                fontFamily: "var(--cp-font-mono)",
                 fontSize: 10,
-                fontWeight: 500,
+                fontWeight: 600,
                 textTransform: "uppercase",
-                letterSpacing: "0.08em",
+                letterSpacing: "0.06em",
               }}
             >
               {t.label}
