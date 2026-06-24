@@ -1,12 +1,8 @@
 "use client";
 
 import { UndoBanner } from "@/components/trash/UndoBanner";
-import type { TopBarAuditEntry } from "@/components/shell/TopBarRight";
 import { TopNav } from "@/components/shell/TopNav";
 import { BottomTabBar } from "@/components/shell/BottomTabBar";
-
-// Re-export so `/app/layout.tsx` keeps its existing import shape.
-export type { TopBarAuditEntry } from "@/components/shell/TopBarRight";
 
 export function AppShell({
   children,
@@ -15,9 +11,6 @@ export function AppShell({
   email,
   hasStravaConnection = false,
   lastSyncedAt = null,
-  recentAudit = [],
-  auditCount = 0,
-  markAuditReadAction,
   hapticsEnabled = true,
   // `buildSha` is still accepted for backwards-compat with the layout
   // wiring but is no longer rendered (the SHA chip was retired earlier).
@@ -28,10 +21,6 @@ export function AppShell({
   email?: string | null;
   hasStravaConnection?: boolean;
   lastSyncedAt?: string | null;
-  recentAudit?: TopBarAuditEntry[];
-  auditCount?: number;
-  /** PR Z1 — server action that persists the "mark all read" gesture. */
-  markAuditReadAction?: () => Promise<{ ok: true } | { ok: false; error: string }>;
   hapticsEnabled?: boolean;
   buildSha?: string;
 }) {
@@ -43,14 +32,11 @@ export function AppShell({
         email={email ?? null}
         hasStravaConnection={hasStravaConnection}
         lastSyncedAt={lastSyncedAt}
-        recentAudit={recentAudit}
-        auditCount={auditCount}
-        markAuditReadAction={markAuditReadAction}
       />
 
       <main className="cp-main">{children}</main>
 
-      <BottomTabBar auditCount={auditCount} hapticsEnabled={hapticsEnabled} />
+      <BottomTabBar hapticsEnabled={hapticsEnabled} />
 
       <UndoBanner />
 

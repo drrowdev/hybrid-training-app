@@ -7,7 +7,6 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { TopBarAuditEntry } from "@/components/shell/TopBarRight";
 
 // ────────────────────────────────────────────────────────────────────
 // Bodyweight — 90-day sparkline + delta vs 30 days ago
@@ -277,54 +276,4 @@ export function shortRelative(iso: string | null, now: Date = new Date()): strin
   const months = Math.round(days / 30);
   if (months < 12) return `${months}mo ago`;
   return `${Math.round(months / 12)}y ago`;
-}
-
-
-// ────────────────────────────────────────────────────────────────────
-// Notifications data — audit feed + unread count
-// Shared by /app/profile and /app/settings so the mobile MORE tab's
-// ProfileNotifications block matches the desktop bell exactly.
-// ────────────────────────────────────────────────────────────────────
-
-export type NotificationsData = {
-  recentAudit: TopBarAuditEntry[];
-  unreadAuditCount: number;
-  auditLastReadAt: string | null;
-};
-
-export async function getNotificationsData(
-  supabase: SupabaseClient,
-  userId: string,
-): Promise<NotificationsData> {
-  const [{ data: profile }, auditRes, auditCountRes] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("audit_last_read_at")
-      .eq("id", userId)
-      .maybeSingle(),
-    supabase
-      .from("engine_override_events")
-      .select("id, event_type, occurred_at, planned_session_id, reason")
-      .eq("user_id", userId)
-      .order("occurred_at", { ascending: false })
-      .limit(5),
-    supabase
-      .from("engine_override_events")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", userId),
-  ]);
-
-  const auditLastReadAt = (profile?.audit_last_read_at as string | null) ?? null;
-  const recentAudit: TopBarAuditEntry[] = (auditRes.data ?? []).map((row) => ({
-    id: row.id as string,
-    eventType: row.event_type as string,
-    occurredAt: row.occurred_at as string,
-    plannedSessionId: (row.planned_session_id as string | null) ?? null,
-    reason: (row.reason as string | null) ?? null,
-  }));
-  const unreadAuditCount = auditLastReadAt
-    ? recentAudit.filter((e) => e.occurredAt > auditLastReadAt).length
-    : auditCountRes.count ?? recentAudit.length;
-
-  return { recentAudit, unreadAuditCount, auditLastReadAt };
 }

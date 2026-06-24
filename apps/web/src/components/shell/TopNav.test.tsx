@@ -33,8 +33,6 @@ describe("TopNav — mobile (<768px) cleanup", () => {
       email="test@example.com"
       hasStravaConnection={false}
       lastSyncedAt={null}
-      recentAudit={[]}
-      auditCount={2}
     />,
   );
 

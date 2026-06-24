@@ -194,22 +194,3 @@ export async function dismissBwBanner(): Promise<ActionResult> {
 
   return { ok: true };
 }
-
-/**
- * Mark all engine-override audit entries as read up to `now()`. Used by
- * the TopBar bell's "mark all read" button. The audit-count query in
- * the app layout filters `engine_override_events.occurred_at >
- * profiles.audit_last_read_at`, so the badge clears immediately on
- * the next render.
- */
-export async function markAuditRead(): Promise<ActionResult> {
-  const { supabase, userId } = await getUserOrRedirect();
-  const { error } = await supabase
-    .from("profiles")
-    .update({ audit_last_read_at: new Date().toISOString() })
-    .eq("id", userId);
-  if (error) return { ok: false, error: error.message };
-
-  revalidatePath("/app");
-  return { ok: true };
-}
