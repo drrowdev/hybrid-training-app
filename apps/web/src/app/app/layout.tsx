@@ -23,7 +23,7 @@ export default async function AppLayout({
   const [{ data: profile }, { count: tmCount }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("display_name, onboarded_at, audit_last_read_at")
+      .select("display_name, onboarded_at, audit_last_read_at, haptics_enabled")
       .eq("id", user.id)
       .maybeSingle(),
     supabase
@@ -104,6 +104,7 @@ export default async function AppLayout({
         recentAudit={recentAudit}
         auditCount={auditCount}
         markAuditReadAction={markAuditRead}
+        hapticsEnabled={(profile?.haptics_enabled as boolean | null) ?? true}
         buildSha={process.env.NEXT_PUBLIC_BUILD_SHA ?? "dev"}
       >
         {children}

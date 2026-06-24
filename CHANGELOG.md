@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Native-feel pass — Phase 1g: tab-tap haptics + softened tab labels
+- Tapping a bottom-nav tab now fires a light haptic tick (honoring the user's
+  `haptics_enabled` preference, threaded from the layout through `AppShell` →
+  `BottomTabBar`), so navigation feels physical like a native app. The tab labels also
+  drop monospace for the body sans.
+
 ### Native-feel pass — Phase 1f: PR celebration
 - Setting a personal record now *feels* like one. When a logged set beats your saved
   1RM (a Weight or e1RM PR), the existing PR badges now land with a quick celebratory

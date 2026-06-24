@@ -18,6 +18,7 @@ export function AppShell({
   recentAudit = [],
   auditCount = 0,
   markAuditReadAction,
+  hapticsEnabled = true,
   // `buildSha` is still accepted for backwards-compat with the layout
   // wiring but is no longer rendered (the SHA chip was retired earlier).
 }: {
@@ -31,6 +32,7 @@ export function AppShell({
   auditCount?: number;
   /** PR Z1 — server action that persists the "mark all read" gesture. */
   markAuditReadAction?: () => Promise<{ ok: true } | { ok: false; error: string }>;
+  hapticsEnabled?: boolean;
   buildSha?: string;
 }) {
   return (
@@ -48,7 +50,7 @@ export function AppShell({
 
       <main className="cp-main">{children}</main>
 
-      <BottomTabBar auditCount={auditCount} />
+      <BottomTabBar auditCount={auditCount} hapticsEnabled={hapticsEnabled} />
 
       <UndoBanner />
 
