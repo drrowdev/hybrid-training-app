@@ -158,3 +158,78 @@ export async function findMatchingStravaActivity(
   }
   return pickBestMatch(candidates, { sessionPerformedAt });
 }
+
+/** Default ±12h window for the manual "pick from nearby activities" list. */
+export const STRAVA_DAY_WINDOW_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * List the user's Strava-imported cardio activities near a session's time —
+ * the fallback "pick the right one" surface when the ±90 min auto-match misses
+ * (e.g. the workout was logged hours after it happened). Uses a much wider
+ * window (±12h by default) and returns ALL candidates, closest-first, instead
+ * of a single best match.
+ */
+export async function listStravaActivitiesNear(
+  supabase: SupabaseClient,
+  userId: string,
+  sessionPerformedAt: string,
+  options: { windowMs?: number; limit?: number } = {},
+): Promise<StravaMatchCandidate[]> {
+  if (!userId || !sessionPerformedAt) return [];
+  const targetMs = Date.parse(sessionPerformedAt);
+  if (!Number.isFinite(targetMs)) return [];
+
+  const windowMs = options.windowMs ?? STRAVA_DAY_WINDOW_MS;
+  const fromIso = new Date(targetMs - windowMs).toISOString();
+  const toIso = new Date(targetMs + windowMs).toISOString();
+
+  const { data, error } = await supabase
+    .from("cardio_logs")
+    .select(
+      "id, strava_activity_id, modality, duration_sec, distance_km, avg_hr_bpm, rpe, sessions!inner(id, user_id, performed_at, deleted_at)",
+    )
+    .eq("external_source", "strava")
+    .eq("sessions.user_id", userId)
+    .is("sessions.deleted_at", null)
+    .gte("sessions.performed_at", fromIso)
+    .lte("sessions.performed_at", toIso)
+    .order("performed_at", { ascending: false, referencedTable: "sessions" })
+    .limit(50);
+
+  if (error || !data) return [];
+
+  type Row = {
+    id: string;
+    strava_activity_id: string | null;
+    modality: string;
+    duration_sec: number;
+    distance_km: number | string | null;
+    avg_hr_bpm: number | null;
+    rpe: number | string | null;
+    sessions:
+      | { id: string; performed_at: string }
+      | { id: string; performed_at: string }[]
+      | null;
+  };
+  const out: StravaMatchCandidate[] = [];
+  for (const r of data as Row[]) {
+    const s = Array.isArray(r.sessions) ? r.sessions[0] : r.sessions;
+    if (!s || !r.strava_activity_id) continue;
+    out.push({
+      cardioLogId: r.id,
+      stravaActivityId: r.strava_activity_id,
+      modality: r.modality,
+      durationSec: r.duration_sec,
+      distanceKm: r.distance_km == null ? null : Number(r.distance_km),
+      avgHrBpm: r.avg_hr_bpm,
+      rpe: r.rpe == null ? null : Number(r.rpe),
+      performedAt: s.performed_at,
+    });
+  }
+  out.sort(
+    (a, b) =>
+      Math.abs(Date.parse(a.performedAt) - targetMs) -
+      Math.abs(Date.parse(b.performedAt) - targetMs),
+  );
+  return out.slice(0, options.limit ?? 10);
+}

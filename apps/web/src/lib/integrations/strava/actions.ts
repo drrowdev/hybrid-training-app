@@ -7,7 +7,10 @@ import { cookies } from "next/headers";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { authorizeUrl } from "@/lib/integrations/strava/client";
 import { syncStrava } from "@/lib/integrations/strava/sync";
-import { findMatchingStravaActivity } from "@/lib/integrations/strava/match";
+import {
+  findMatchingStravaActivity,
+  listStravaActivitiesNear,
+} from "@/lib/integrations/strava/match";
 import {
   importStravaHistory as importStravaHistoryCore,
   type ImportInput,
@@ -109,10 +112,23 @@ export async function syncStravaNow(): Promise<void> {
  * session (so the completion form can give explicit "found / none"
  * feedback instead of silently reverting).
  */
+export type StravaSessionCandidate = {
+  cardioLogId: string;
+  modality: string;
+  performedAt: string;
+  durationSec: number;
+  distanceKm: number | null;
+  avgHrBpm: number | null;
+};
+
 export async function syncStravaForSession(
   sessionId: string,
 ): Promise<
-  | { ok: true; match: { durationSec: number; avgHrBpm: number | null } | null }
+  | {
+      ok: true;
+      match: { durationSec: number; avgHrBpm: number | null } | null;
+      candidates: StravaSessionCandidate[];
+    }
   | { ok: false; error: string }
 > {
   const supabase = await createClient();
@@ -133,8 +149,10 @@ export async function syncStravaForSession(
   }
   revalidatePath(`/app/sessions/${sessionId}`);
 
-  // Did the sync surface an activity that matches this session's time?
+  // Did the sync surface an activity that matches this session's time, and what
+  // else is nearby (so the user can pick when the tight auto-match misses)?
   let match: { durationSec: number; avgHrBpm: number | null } | null = null;
+  let candidates: StravaSessionCandidate[] = [];
   try {
     const { data: sess } = await supabase
       .from("sessions")
@@ -146,11 +164,19 @@ export async function syncStravaForSession(
     if (performedAt) {
       const found = await findMatchingStravaActivity(supabase, user.id, performedAt, {});
       if (found) match = { durationSec: found.durationSec, avgHrBpm: found.avgHrBpm };
+      candidates = (await listStravaActivitiesNear(supabase, user.id, performedAt)).map((c) => ({
+        cardioLogId: c.cardioLogId,
+        modality: c.modality,
+        performedAt: c.performedAt,
+        durationSec: c.durationSec,
+        distanceKm: c.distanceKm,
+        avgHrBpm: c.avgHrBpm,
+      }));
     }
   } catch {
-    // Best-effort enrichment — a match-lookup failure never fails the sync.
+    // Best-effort enrichment — a lookup failure never fails the sync.
   }
-  return { ok: true, match };
+  return { ok: true, match, candidates };
 }
 
 const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
