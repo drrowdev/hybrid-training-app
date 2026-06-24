@@ -48,4 +48,4 @@ export {
   type StationLoad,
 } from "./divisions";
 
-export { prescribeSession, deloadPrescription, stationFocusForWeek, type PrescribeArgs } from "./prescription";
+export { prescribeSession, deloadPrescription, stationBlocksForWeek, type StationBlock, type PrescribeArgs } from "./prescription";

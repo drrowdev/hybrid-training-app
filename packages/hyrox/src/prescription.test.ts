@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 import type { PlatformContext, SessionPrescription } from "@hta/program-core";
 import { hyroxEngine, type HyroxInstance } from "./program";
 import { stationLoadLabel, getStation, wallBallTargetLabel, stationLoadsSummary, intervalTargetLabel } from "./divisions";
-import { stationFocusForWeek } from "./prescription";
+import { stationBlocksForWeek } from "./prescription";
 
 const ctxNoMaxes: PlatformContext = { oneRepMaxes: {}, roundingKg: 2.5 };
 const ctxWithMaxes: PlatformContext = {
@@ -320,8 +320,8 @@ describe("HYROX prescribe — simulations & divisions", () => {
   });
 });
 
-describe("HYROX focused station rotation (ADR 0062)", () => {
-  it("each station-intervals session targets a small focused subset, not all 6", () => {
+describe("HYROX focused station rotation + paired blocks (ADR 0062 / 0063)", () => {
+  it("each station-intervals session is two focused blocks (4 stations), never all 6", () => {
     const i = inst({ division: "open", experience: "intermediate" });
     const refs = hyroxEngine
       .timeline(i)
@@ -329,9 +329,13 @@ describe("HYROX focused station rotation (ADR 0062)", () => {
       .map((s) => s.ref);
     expect(refs.length).toBeGreaterThan(0);
     for (const ref of refs) {
-      const stations = hyroxEngine.prescribe(i, ref, ctxWithMaxes).items[0]?.cardioPlan?.stations ?? [];
-      expect(stations.length).toBeGreaterThanOrEqual(1);
-      expect(stations.length).toBeLessThanOrEqual(3); // focused, never the full 6
+      const item = hyroxEngine.prescribe(i, ref, ctxWithMaxes).items[0];
+      const plan = item?.cardioPlan;
+      expect(plan?.segments?.length).toBe(2); // Block 1 + Block 2
+      const stations = plan?.stations ?? [];
+      expect(stations.length).toBe(4); // two 2-station couplets, not the full 6
+      // A paired session carries a duration estimate so the card shows ~N min.
+      expect(item?.durationSec ?? 0).toBeGreaterThan(0);
     }
   });
 
@@ -350,17 +354,32 @@ describe("HYROX focused station rotation (ADR 0062)", () => {
     expect(firstNames.size).toBeGreaterThanOrEqual(2); // rotation is active, not static
   });
 
-  it("stationFocusForWeek cycles deterministically and covers every station", () => {
+  it("stationBlocksForWeek pairs complementary couplets and covers every station", () => {
     const all = ["sled-push", "sled-pull", "wall-ball", "sandbag-lunge", "skierg", "rowing-erg"];
-    expect(stationFocusForWeek("station-intervals", 1, all).movements).toEqual(["sled-push", "sled-pull"]);
-    expect(stationFocusForWeek("station-intervals", 2, all).movements).toEqual(["rowing-erg", "wall-ball"]);
-    expect(stationFocusForWeek("station-intervals", 3, all).movements).toEqual(["skierg", "sandbag-lunge"]);
-    expect(stationFocusForWeek("station-intervals", 4, all).movements).toEqual(["sled-push", "sled-pull"]); // wraps
+    // Week 1: sled power + erg/wall-ball; week 2 advances one group; wraps at the cycle.
+    expect(stationBlocksForWeek("station-intervals", 1, all).map((b) => b.movements)).toEqual([
+      ["sled-push", "sled-pull"],
+      ["rowing-erg", "wall-ball"],
+    ]);
+    expect(stationBlocksForWeek("station-intervals", 2, all).map((b) => b.movements)).toEqual([
+      ["rowing-erg", "wall-ball"],
+      ["skierg", "sandbag-lunge"],
+    ]);
+    expect(stationBlocksForWeek("station-intervals", 3, all).map((b) => b.movements)).toEqual([
+      ["skierg", "sandbag-lunge"],
+      ["sled-push", "sled-pull"],
+    ]);
     // Union across a full cycle covers all 6 station-intervals stations.
-    const covered = new Set([1, 2, 3].flatMap((w) => stationFocusForWeek("station-intervals", w, all).movements));
+    const covered = new Set(
+      [1, 2, 3].flatMap((w) =>
+        stationBlocksForWeek("station-intervals", w, all).flatMap((b) => [...b.movements]),
+      ),
+    );
     expect(covered).toEqual(new Set(all));
-    // Unknown session id → fall back to the full movement list (e.g. vo2-intervals).
-    expect(stationFocusForWeek("vo2-intervals", 1, ["run"]).movements).toEqual(["run"]);
+    // Unknown session id → a single fallback block of the full movement list.
+    const fb = stationBlocksForWeek("vo2-intervals", 1, ["run"]);
+    expect(fb).toHaveLength(1);
+    expect(fb[0]!.movements).toEqual(["run"]);
   });
 });
 
