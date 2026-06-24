@@ -492,7 +492,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
   return (
     <div data-testid="plan-redesign" style={{ display: "grid", gap: 24 }}>
       <header className="plan-head">
-        <div className="plan-eyebrow mono">
+        <div className="plan-eyebrow">
           {archetypeName}
           <PlanFocusBadge muscles={focusMuscles} />
         </div>
@@ -512,7 +512,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
         >
           <span style={{ width: `${progressPct}%` }} />
         </div>
-        <div className="plan-meta mono">
+        <div className="plan-meta">
           <b>
             {longDate(startedOn)} – {longDate(endedOn)}
           </b>
@@ -765,9 +765,10 @@ export function PlanRedesign(props: PlanRedesignProps) {
       <style>{`
         .plan-head { display: grid; gap: 6px; }
         .plan-eyebrow {
-          font-size: 11px;
-          letter-spacing: 0.12em;
+          font-size: 12px;
+          letter-spacing: 0.06em;
           text-transform: uppercase;
+          font-weight: 600;
           color: var(--cp-text-muted);
         }
         .plan-head-row {
@@ -779,12 +780,10 @@ export function PlanRedesign(props: PlanRedesignProps) {
         }
         .plan-h1 {
           margin: 0;
-          font-family: var(--cp-font-display);
-          font-size: 32px;
-          font-weight: 600;
-          letter-spacing: 0.01em;
-          text-transform: uppercase;
-          line-height: 1.05;
+          font-size: 30px;
+          font-weight: 800;
+          letter-spacing: -0.02em;
+          line-height: 1.1;
         }
         .plan-nav-link {
           /* Defined globally in globals.css — declared here too so

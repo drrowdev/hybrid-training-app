@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Native-feel pass — Phase 1h: Plan header + Strava banner typography
+- Extends the de-"terminal" typography sweep to the **Plan** page header (the second
+  main screen): the uppercase stencil "PLAN" heading becomes a clean bold sans "Plan",
+  and the eyebrow + block meta line ("date range · Week N of M · sessions · skipped")
+  drop monospace for the body sans. The in-session **Strava** auto-fill banner summary
+  also drops monospace.
+
 ### Strength label fix — HYROX/TB/GP main lifts read "% 1RM", not "% TM"
 - HYROX (and Tactical Barbell / Green Protocol) load straight off the **true 1RM**
   (their seeded `tm_percent` is 100), so the correct basis noun is **1RM**, not TM. The
