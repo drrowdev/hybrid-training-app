@@ -70,6 +70,17 @@ export function buildProgramInstanceWrite<I>(
 ): ProgramInstanceWrite {
   const { engine, instance, ctx, resolveMovement, weekdays, assistance, accessories, startWeekIndex, cardioWeekdays } = args;
 
+  // The working-max basis the program loads off (Option A seeds it onto
+  // training_maxes.tm_percent). A program loads straight off the true 1RM when
+  // every anchored main lift's basis is 100 (Tactical Barbell, Green Protocol,
+  // HYROX); 5/3/1 loads off a real Training Max (< 100). Derive the label noun
+  // so plan/preview surfaces read "% 1RM" vs "% TM" correctly.
+  const alignment = computeTmAlignment(engine.meta.family, instance, ctx.oneRepMaxes);
+  const alignmentValues = Object.values(alignment).filter((v): v is number => v != null);
+  const loadsOffOneRm =
+    alignmentValues.length === 0 || alignmentValues.every((v) => v === 100);
+  const mainLiftBasisLabel: "TM" | "1RM" = loadsOffOneRm ? "1RM" : "TM";
+
   const { sessions, weeks, skipped } = materializeProgram(
     engine,
     instance,
@@ -77,6 +88,7 @@ export function buildProgramInstanceWrite<I>(
     resolveMovement,
     {
       weekdays,
+      mainLiftBasisLabel,
       ...(assistance ? { assistance } : {}),
       ...(accessories ? { accessories } : {}),
       ...(startWeekIndex != null ? { startWeekIndex } : {}),
@@ -85,7 +97,6 @@ export function buildProgramInstanceWrite<I>(
   );
 
   // Seed tm_percent so the engine's percentOfTm renders the right load (Option A).
-  const alignment = computeTmAlignment(engine.meta.family, instance, ctx.oneRepMaxes);
   const tmPercents: TmPercentSeed[] = [];
   for (const [engineKey, tmPercent] of Object.entries(alignment)) {
     if (tmPercent == null) continue;
