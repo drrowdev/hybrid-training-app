@@ -112,8 +112,47 @@ export interface PrescribeArgs {
   division: HyroxDivision;
   phase: HyroxPhaseId;
   isDeload: boolean;
+  /** 1-based block week — rotates the focused station selection (ADR 0062). */
+  week?: number;
   /** Competition weight category — selects the gender-correct station loads. */
   gender?: "male" | "female";
+}
+
+/**
+ * Focused station rotation (ADR 0062). A station-intervals / SE-circuit session
+ * targets a SMALL, equipment-coherent subset of stations — not all 6/4 at once.
+ * Touching every station each round is simulation-shaped and impractical to set up
+ * (a sled lane + both ergs + wall + sandbag held simultaneously, 20+ transitions).
+ * Real HYROX conditioning is focused couplets; the focus ROTATES by week so the
+ * block still covers everything. Each group is gym-feasible (coherent kit).
+ */
+const STATION_FOCUS_GROUPS: Record<string, { label: string; movements: string[] }[]> = {
+  "station-intervals": [
+    { label: "sled power", movements: ["sled-push", "sled-pull"] }, // turf lane only
+    { label: "erg + wall ball", movements: ["rowing-erg", "wall-ball"] }, // rower + med ball
+    { label: "SkiErg + lunges", movements: ["skierg", "sandbag-lunge"] }, // ski + sandbag
+  ],
+  "se-circuit": [
+    { label: "bodyweight engine", movements: ["wall-ball", "burpee-broad-jump"] }, // minimal kit
+    { label: "loaded carries", movements: ["sandbag-lunge", "farmers-carry"] }, // sandbag + KBs
+  ],
+};
+
+/**
+ * The focused station group for a session in a given week — a coherent 2-station
+ * subset that rotates week to week (ADR 0062). Sessions not in the rotation map
+ * (e.g. vo2-intervals) fall back to their full movement list.
+ */
+export function stationFocusForWeek(
+  sessionId: string,
+  week: number,
+  fallback: readonly string[],
+): { label?: string; movements: readonly string[] } {
+  const groups = STATION_FOCUS_GROUPS[sessionId];
+  if (!groups || groups.length === 0) return { movements: fallback };
+  const idx = (Math.max(1, Math.floor(week)) - 1) % groups.length;
+  const g = groups[idx]!;
+  return { label: g.label, movements: g.movements };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -192,26 +231,31 @@ function buildIntervals(sess: HyroxSession, args: PrescribeArgs): PrescribedItem
       logHint: "Log it from your watch or Strava when you're done.",
     };
   } else {
-    const rotation = sess.movements
+    const focus = stationFocusForWeek(sess.id, args.week ?? 1, sess.movements);
+    const movements = focus.movements;
+    const rotation = movements
       .map((m) => getStation(m)?.name ?? movementLabel(m))
       .join(" → ");
     plan = {
-      summary:
-        "Rotate through the race stations at a hard, repeatable effort — sharpen technique, transitions and pacing on the costliest stations.",
-      meta: `${rounds} rounds`,
+      summary: focus.label
+        ? `Focused station intervals — this week's emphasis is ${focus.label}. Hit just these stations hard and repeatably; the focus rotates each week so the block covers everything.`
+        : "Rotate through the race stations at a hard, repeatable effort — sharpen technique, transitions and pacing on the costliest stations.",
+      meta: focus.label ? `${rounds} rounds · ${focus.label}` : `${rounds} rounds`,
       segments: [{ label: "Each round", detail: rotation }],
-      stations: intervalStationRows(sess.movements, args.division, args.gender),
+      stations: intervalStationRows(movements, args.division, args.gender),
       effort:
         "Hard but repeatable (RPE 7–8) — race pace, not max. Short rest between stations, a longer break between rounds.",
       logHint: "Manual session — tap Mark complete when you're done.",
     };
   }
 
+  const firstMovement = stationFocusForWeek(sess.id, args.week ?? 1, sess.movements)
+    .movements[0];
   return [
     {
       kind: "conditioning",
       name: sess.name,
-      ...mid(sess.movements[0]),
+      ...mid(firstMovement),
       sets: rounds,
       repsLabel: `${rounds} rounds`,
       note: plan.summary,
@@ -248,15 +292,18 @@ function buildCompromised(sess: HyroxSession, args: PrescribeArgs): PrescribedIt
 /** Strength-endurance circuit → station combos at sustainable load + structured plan. */
 function buildCircuit(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[] {
   const rounds = ROUNDS_BY_LEVEL[args.experience];
-  const rotation = sess.movements
+  const focus = stationFocusForWeek(sess.id, args.week ?? 1, sess.movements);
+  const movements = focus.movements;
+  const rotation = movements
     .map((m) => getStation(m)?.name ?? movementLabel(m))
     .join(" → ");
   const plan: CardioPlan = {
-    summary:
-      "Strength-endurance circuit — high reps in the race movement patterns at a load you can keep moving through.",
-    meta: `${rounds} rounds`,
+    summary: focus.label
+      ? `Focused strength-endurance circuit — this week's emphasis is ${focus.label}. High reps at a load you can keep moving through; the focus rotates each week so the block covers everything.`
+      : "Strength-endurance circuit — high reps in the race movement patterns at a load you can keep moving through.",
+    meta: focus.label ? `${rounds} rounds · ${focus.label}` : `${rounds} rounds`,
     segments: [{ label: "Each round", detail: rotation }],
-    stations: intervalStationRows(sess.movements, args.division, args.gender),
+    stations: intervalStationRows(movements, args.division, args.gender),
     effort: "Sustainable and steady — keep moving, don't redline. Build muscular endurance, not max strength.",
     logHint: "Manual session — tap Mark complete when you're done.",
   };
@@ -264,7 +311,7 @@ function buildCircuit(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[]
     {
       kind: "conditioning",
       name: sess.name,
-      ...mid(sess.movements[0]),
+      ...mid(movements[0]),
       sets: rounds,
       repsLabel: `${rounds} rounds`,
       note: plan.summary,

@@ -8,6 +8,8 @@
  */
 import {
   hyroxSessionIdForRef,
+  parseHyroxRef,
+  stationFocusForWeek,
   getHyroxSession,
   getStation,
   stationLoadLabel,
@@ -47,7 +49,7 @@ function defaultWeightKg(movementKey: string, division: string): number {
 }
 
 /** Build the structured display rows for a session id (engine-defined). */
-function buildStructure(hyroxSessionId: string): HyroxStructureRow[] {
+function buildStructure(hyroxSessionId: string, performedMovements?: readonly string[]): HyroxStructureRow[] {
   const sess = getHyroxSession(hyroxSessionId);
   if (!sess) return [];
 
@@ -73,8 +75,9 @@ function buildStructure(hyroxSessionId: string): HyroxStructureRow[] {
   }
 
   // intervals / circuit / compromised — a rounds summary + the involved stations.
+  // For the focused rotation (ADR 0062) only the week's focused stations are shown.
   const rows: HyroxStructureRow[] = [{ name: sess.name, detail: sess.note }];
-  for (const key of sess.movements) {
+  for (const key of performedMovements ?? sess.movements) {
     const st = getStation(key);
     if (!st) continue;
     rows.push({
@@ -99,8 +102,16 @@ export function buildHyroxCompletionView(
   if (!sess || sess.category === "strength") return null;
 
   const division = instance.division;
-  const loadedStations: HyroxLoadedStation[] = loadedStationsForSession(hyroxSessionId).map(
-    ({ key }) => {
+  // Focused station rotation (ADR 0062): only confirm weights for the stations
+  // ACTUALLY in this week's focused subset, not the session's full static list —
+  // otherwise the form would ask for sled weights on a week that only rows + wall
+  // balls. vo2-intervals / non-rotating sessions fall back to their full list.
+  const week = parseHyroxRef(programRef)?.week ?? 1;
+  const focusedMovements = stationFocusForWeek(hyroxSessionId, week, sess.movements).movements;
+  const focusedKeys = new Set(focusedMovements);
+  const loadedStations: HyroxLoadedStation[] = loadedStationsForSession(hyroxSessionId)
+    .filter(({ key }) => focusedKeys.has(key))
+    .map(({ key }) => {
       const st = getStation(key);
       return {
         key,
@@ -113,13 +124,12 @@ export function buildHyroxCompletionView(
             ? { amount: `${st.reps} reps` }
             : {}),
       };
-    },
-  );
+    });
 
   return {
     hyroxSessionId,
     title: sess.name,
-    structure: buildStructure(hyroxSessionId),
+    structure: buildStructure(hyroxSessionId, focusedMovements),
     loadedStations,
     isBenchmark: sess.category === "sim",
     divisionLabel: DIVISION_LABEL[division] ?? "Open division",

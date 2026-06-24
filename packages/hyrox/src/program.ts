@@ -320,6 +320,7 @@ function prescribeRef(
     division: instance.division,
     phase: week.phase,
     isDeload: week.isDeload,
+    week: week.week,
     ...(ctx.gender ? { gender: ctx.gender } : {}),
   };
 

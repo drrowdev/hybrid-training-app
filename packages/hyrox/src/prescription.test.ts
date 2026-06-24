@@ -5,6 +5,7 @@ import { describe, it, expect } from "vitest";
 import type { PlatformContext, SessionPrescription } from "@hta/program-core";
 import { hyroxEngine, type HyroxInstance } from "./program";
 import { stationLoadLabel, getStation, wallBallTargetLabel, stationLoadsSummary, intervalTargetLabel } from "./divisions";
+import { stationFocusForWeek } from "./prescription";
 
 const ctxNoMaxes: PlatformContext = { oneRepMaxes: {}, roundingKg: 2.5 };
 const ctxWithMaxes: PlatformContext = {
@@ -274,18 +275,21 @@ describe("HYROX prescribe — simulations & divisions", () => {
     expect(summaryMale).not.toContain("/"); // gender known → single weights, no M/W slash
     // Unloaded-only movement set yields no load line.
     expect(stationLoadsSummary(["run"], "open", "male")).toBe("");
-    // End-to-end: a station-intervals prescription now carries the gender-correct
-    // loads as STRUCTURED station rows on its cardioPlan (not buried in prose).
-    const i = inst({ division: "pro" });
-    const ref = hyroxEngine
+    // End-to-end: across the block the focused rotation (ADR 0062) hits a sled-power
+    // week whose station rows carry the gender-correct load. Gather every
+    // station-intervals session so we don't depend on which group week 1 lands on.
+    const i = inst({ division: "pro", experience: "advanced" });
+    const refs = hyroxEngine
       .timeline(i)
-      .find((s) => s.tags?.includes("session:station-intervals"))?.ref;
-    if (ref) {
-      const item = hyroxEngine.prescribe(i, ref, { ...ctxWithMaxes, gender: "female" }).items[0];
-      const stations = item?.cardioPlan?.stations ?? [];
-      const sled = stations.find((s) => s.name === "Sled Push");
-      expect(sled?.load).toContain("152"); // Pro women sled push = 152 kg
-    }
+      .filter((s) => s.tags?.includes("session:station-intervals"))
+      .map((s) => s.ref);
+    const allStations = refs.flatMap(
+      (ref) =>
+        hyroxEngine.prescribe(i, ref, { ...ctxWithMaxes, gender: "female" }).items[0]?.cardioPlan
+          ?.stations ?? [],
+    );
+    const sled = allStations.find((s) => s.name === "Sled Push");
+    expect(sled?.load).toContain("152"); // Pro women sled push = 152 kg
   });
 
   it("station-intervals prescribe PER-ROUND volumes, not full race distances (ADR 0061)", () => {
@@ -295,22 +299,68 @@ describe("HYROX prescribe — simulations & divisions", () => {
     expect(intervalTargetLabel(getStation("sled-push")!)).toBe("12.5 m"); // race is 50 m
     expect(intervalTargetLabel(getStation("sandbag-lunge")!)).toBe("25 m"); // race is 100 m
     expect(intervalTargetLabel(getStation("wall-ball")!, "male")).toContain("25 reps"); // race is 100
-    // End-to-end: the station-intervals cardioPlan carries the reduced per-round
-    // target while loads stay race-correct.
-    const i = inst({ division: "open" });
-    const ref = hyroxEngine
+    // End-to-end: NO station in ANY station-intervals session shows a full race
+    // distance, and the loaded stations stay race-correct.
+    const i = inst({ division: "open", experience: "advanced" });
+    const refs = hyroxEngine
       .timeline(i)
-      .find((s) => s.tags?.includes("session:station-intervals"))?.ref;
-    expect(ref).toBeTruthy();
-    if (ref) {
-      const item = hyroxEngine.prescribe(i, ref, { ...ctxWithMaxes, gender: "male" }).items[0];
-      const stations = item?.cardioPlan?.stations ?? [];
-      const ski = stations.find((s) => s.name === "SkiErg");
-      expect(ski?.target).toBe("250 m"); // NOT "1000 m"
-      const sled = stations.find((s) => s.name === "Sled Push");
-      expect(sled?.target).toBe("12.5 m"); // NOT "50 m"
-      expect(sled?.load).toContain("152"); // load unchanged: men's Open sled push
+      .filter((s) => s.tags?.includes("session:station-intervals"))
+      .map((s) => s.ref);
+    expect(refs.length).toBeGreaterThan(0);
+    const allStations = refs.flatMap(
+      (ref) =>
+        hyroxEngine.prescribe(i, ref, { ...ctxWithMaxes, gender: "male" }).items[0]?.cardioPlan
+          ?.stations ?? [],
+    );
+    expect(allStations.find((s) => s.name === "SkiErg")?.target).toBe("250 m"); // NOT "1000 m"
+    expect(allStations.find((s) => s.name === "Sled Push")?.target).toBe("12.5 m"); // NOT "50 m"
+    expect(allStations.find((s) => s.name === "Sled Push")?.load).toContain("152"); // load unchanged
+    // No full-race distance leaks through anywhere.
+    expect(allStations.some((s) => s.target === "1000 m" || s.target === "50 m")).toBe(false);
+  });
+});
+
+describe("HYROX focused station rotation (ADR 0062)", () => {
+  it("each station-intervals session targets a small focused subset, not all 6", () => {
+    const i = inst({ division: "open", experience: "intermediate" });
+    const refs = hyroxEngine
+      .timeline(i)
+      .filter((s) => s.tags?.includes("session:station-intervals"))
+      .map((s) => s.ref);
+    expect(refs.length).toBeGreaterThan(0);
+    for (const ref of refs) {
+      const stations = hyroxEngine.prescribe(i, ref, ctxWithMaxes).items[0]?.cardioPlan?.stations ?? [];
+      expect(stations.length).toBeGreaterThanOrEqual(1);
+      expect(stations.length).toBeLessThanOrEqual(3); // focused, never the full 6
     }
+  });
+
+  it("the focus rotates across the block (more than one group appears)", () => {
+    const i = inst({ division: "open", experience: "advanced" });
+    const refs = hyroxEngine
+      .timeline(i)
+      .filter((s) => s.tags?.includes("session:station-intervals"))
+      .map((s) => s.ref);
+    const firstNames = new Set(
+      refs.map(
+        (ref) =>
+          hyroxEngine.prescribe(i, ref, ctxWithMaxes).items[0]?.cardioPlan?.stations?.[0]?.name,
+      ),
+    );
+    expect(firstNames.size).toBeGreaterThanOrEqual(2); // rotation is active, not static
+  });
+
+  it("stationFocusForWeek cycles deterministically and covers every station", () => {
+    const all = ["sled-push", "sled-pull", "wall-ball", "sandbag-lunge", "skierg", "rowing-erg"];
+    expect(stationFocusForWeek("station-intervals", 1, all).movements).toEqual(["sled-push", "sled-pull"]);
+    expect(stationFocusForWeek("station-intervals", 2, all).movements).toEqual(["rowing-erg", "wall-ball"]);
+    expect(stationFocusForWeek("station-intervals", 3, all).movements).toEqual(["skierg", "sandbag-lunge"]);
+    expect(stationFocusForWeek("station-intervals", 4, all).movements).toEqual(["sled-push", "sled-pull"]); // wraps
+    // Union across a full cycle covers all 6 station-intervals stations.
+    const covered = new Set([1, 2, 3].flatMap((w) => stationFocusForWeek("station-intervals", w, all).movements));
+    expect(covered).toEqual(new Set(all));
+    // Unknown session id → fall back to the full movement list (e.g. vo2-intervals).
+    expect(stationFocusForWeek("vo2-intervals", 1, ["run"]).movements).toEqual(["run"]);
   });
 });
 
