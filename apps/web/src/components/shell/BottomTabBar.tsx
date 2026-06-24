@@ -8,8 +8,7 @@
  * avatar dropdown.
  *
  * Hidden ≥ 769 px via a CSS media query — the TopNav's centred tabs
- * handle desktop. Rendering always happens (SSR-friendly) so the MORE
- * notification dot is testable via renderToStaticMarkup.
+ * handle desktop.
  */
 
 import Link from "next/link";
@@ -137,9 +136,8 @@ const TABS: Tab[] = [
 ];
 
 export function BottomTabBar({
-  auditCount = 0,
   hapticsEnabled = true,
-}: { auditCount?: number; hapticsEnabled?: boolean } = {}) {
+}: { hapticsEnabled?: boolean } = {}) {
   const pathname = usePathname() ?? "/app";
 
   return (
@@ -187,22 +185,6 @@ export function BottomTabBar({
           >
             <span style={{ display: "inline-flex", lineHeight: 0, position: "relative" }}>
               {t.icon}
-              {t.testid === "bottomtab-more" && auditCount > 0 && (
-                <span
-                  data-testid="bottomtab-more-dot"
-                  aria-label={`${auditCount} unread notifications`}
-                  style={{
-                    position: "absolute",
-                    top: -2,
-                    right: -4,
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    background: "var(--cp-danger)",
-                    boxShadow: "0 0 0 2px var(--cp-bg-elevated)",
-                  }}
-                />
-              )}
             </span>
             <span
               style={{

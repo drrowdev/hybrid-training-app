@@ -102,19 +102,4 @@ describe("dismissBwBanner (PR Z1)", () => {
   });
 });
 
-describe("markAuditRead (PR Z1)", () => {
-  beforeEach(() => {
-    calls.length = 0;
-  });
 
-  it("stamps profiles.audit_last_read_at to now(), scoped to user", async () => {
-    const { markAuditRead } = await import("../actions");
-    const result = await markAuditRead();
-    expect(result).toEqual({ ok: true });
-    expect(calls).toHaveLength(1);
-    expect(calls[0]!.table).toBe("profiles");
-    expect(calls[0]!.eqs).toEqual([["id", USER_ID]]);
-    expect(typeof calls[0]!.update.audit_last_read_at).toBe("string");
-    expect(Number.isNaN(Date.parse(calls[0]!.update.audit_last_read_at as string))).toBe(false);
-  });
-});

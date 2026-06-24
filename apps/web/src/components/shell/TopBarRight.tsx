@@ -8,9 +8,7 @@
  *      opens the quick-jump palette.
  *   2. Strava sync indicator (dot + label). Hidden when the user has
  *      no `strava_connections` row.
- *   3. Notifications bell with unread badge + popover listing the most
- *      recent engine-override audit entries.
- *   4. User-initials avatar with a Settings / Account & data / Sign out
+ *   3. User-initials avatar with a Settings / Account & data / Sign out
  *      dropdown. (Profile / Limitations / Events live under the
  *      settings hub now — one click from Settings.)
  *
@@ -26,14 +24,6 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useCommandPalette } from "@/components/cmd-k/CommandPaletteProvider";
-
-export type TopBarAuditEntry = {
-  id: string;
-  eventType: string;
-  occurredAt: string;
-  plannedSessionId: string | null;
-  reason: string | null;
-};
 
 type SyncState = "fresh" | "stale";
 
@@ -73,24 +63,8 @@ function formatRelative(iso: string): string {
   return `${days}d ago`;
 }
 
-function eventLabel(t: string): string {
-  switch (t) {
-    case "skip":
-      return "Session skipped";
-    case "swap":
-      return "Movement swapped";
-    case "manual_end":
-      return "Block ended manually";
-    case "custom":
-      return "Custom override";
-    default:
-      return t;
-  }
-}
-
-// Shared shapes — pulled out so the avatar / bell / search buttons share
-// the same baseline geometry and the popover items match across the
-// notifications panel and the user menu.
+// Shared shapes — pulled out so the avatar / search buttons share the same
+// baseline geometry and the popover items match in the user menu.
 const styles = {
   root: {
     display: "flex",
@@ -145,36 +119,6 @@ const styles = {
   syncLabel: { fontWeight: 500 },
   popWrap: { position: "relative" },
   summary: { listStyle: "none", cursor: "pointer" },
-  bell: {
-    position: "relative",
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 16,
-    color: "var(--cp-text)",
-    background: "transparent",
-    border: "1px solid transparent",
-    transition: "background 0.12s, border-color 0.12s",
-  },
-  badge: {
-    position: "absolute",
-    top: -2,
-    right: -2,
-    minWidth: 16,
-    height: 16,
-    padding: "0 4px",
-    borderRadius: 999,
-    background: "#d33",
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: 700,
-    lineHeight: "16px",
-    textAlign: "center",
-    boxShadow: "0 0 0 2px var(--cp-bg-elevated)",
-  },
   avatar: {
     width: 32,
     height: 32,
@@ -208,25 +152,6 @@ const styles = {
     minWidth: 220,
     maxWidth: 320,
   },
-  popHead: {
-    fontSize: 11,
-    fontWeight: 600,
-    letterSpacing: "0.04em",
-    textTransform: "uppercase",
-    color: "var(--cp-text-muted)",
-    padding: "6px 8px",
-  },
-  popEmpty: {
-    padding: "14px 8px",
-    fontSize: 13,
-    color: "var(--cp-text-muted)",
-    textAlign: "center",
-  },
-  popList: {
-    listStyle: "none",
-    padding: 0,
-    margin: 0,
-  },
   popItem: {
     display: "flex",
     flexDirection: "column",
@@ -242,20 +167,6 @@ const styles = {
     textAlign: "left",
     cursor: "pointer",
     fontFamily: "inherit",
-  },
-  popItemTitle: { fontSize: 13 },
-  popItemWhen: { fontSize: 11, color: "var(--cp-text-muted)" },
-  popMark: {
-    marginTop: 4,
-    width: "100%",
-    background: "transparent",
-    border: "none",
-    padding: 8,
-    fontSize: 12,
-    color: "var(--cp-accent)",
-    cursor: "pointer",
-    borderTop: "1px solid var(--cp-border)",
-    borderRadius: "0 0 12px 12px",
   },
   userHead: {
     padding: "6px 8px 8px",
@@ -315,41 +226,12 @@ function PopItemLink({
   );
 }
 
-function AuditItemLink({
-  href,
-  body,
-  when,
-}: {
-  href: string;
-  body: string;
-  when: string;
-}) {
-  const [hover, hoverProps] = useHover();
-  return (
-    <Link
-      href={href}
-      className="cp-tbr-pop-item"
-      style={{
-        ...styles.popItem,
-        background: hover ? "var(--cp-surface-soft)" : "transparent",
-      }}
-      {...hoverProps}
-    >
-      <span style={styles.popItemTitle}>{body}</span>
-      <span style={styles.popItemWhen}>{when}</span>
-    </Link>
-  );
-}
-
 export function TopBarRight({
   signOutAction,
   displayName,
   email,
   hasStravaConnection,
   lastSyncedAt,
-  recentAudit,
-  auditCount,
-  markAuditReadAction,
   // `buildSha` is still accepted for backwards-compat with AppShell and
   // the /app layout's env wiring, but the SHA chip itself is no longer
   // rendered. The prop is intentionally not destructured.
@@ -359,10 +241,6 @@ export function TopBarRight({
   email: string | null;
   hasStravaConnection: boolean;
   lastSyncedAt: string | null;
-  recentAudit: TopBarAuditEntry[];
-  auditCount: number;
-  /** PR Z1 — persists the "mark all read" gesture cross-device. */
-  markAuditReadAction?: () => Promise<{ ok: true } | { ok: false; error: string }>;
   buildSha?: string;
 }) {
   const palette = useCommandPalette();
@@ -393,32 +271,11 @@ export function TopBarRight({
   const syncDotColor =
     syncState === "fresh" ? "var(--cp-accent)" : "var(--cp-text-muted)";
 
-  // PR Z1 — "mark all read" persists to `profiles.audit_last_read_at`
-  // via `markAuditReadAction`. Local state is updated optimistically;
-  // on server failure we restore the previous count so the badge
-  // doesn't lie to the user.
-  const [unread, setUnread] = useState<number>(auditCount);
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- resync local optimistic count when the server prop changes (e.g. route revalidation)
-    setUnread(auditCount);
-  }, [auditCount]);
-
-  const onMarkRead = () => {
-    const prev = unread;
-    setUnread(0);
-    if (!markAuditReadAction) return;
-    void markAuditReadAction().then((res) => {
-      if (!res?.ok) setUnread(prev);
-    });
-  };
-
   const initials = initialsFrom(displayName, email);
 
   // Local hover state for the discrete top-bar controls.
   const [searchHover, searchHoverProps] = useHover();
-  const [bellHover, bellHoverProps] = useHover();
   const [avatarHover, avatarHoverProps] = useHover();
-  const [markHover, markHoverProps] = useHover();
   const [signOutHover, signOutHoverProps] = useHover();
 
   return (
@@ -483,84 +340,7 @@ export function TopBarRight({
         </div>
       )}
 
-      {/* 3. Notifications bell */}
-      <details
-        className="cp-tbr-pop"
-        data-testid="topbar-bell-wrap"
-        style={styles.popWrap}
-      >
-        <summary
-          className="cp-tbr-bell"
-          aria-label={`Notifications${unread > 0 ? ` (${unread} unread)` : ""}`}
-          data-testid="topbar-bell"
-          style={{
-            ...styles.summary,
-            ...styles.bell,
-            background: bellHover ? "var(--cp-surface-soft)" : "transparent",
-            borderColor: bellHover ? "var(--cp-border)" : "transparent",
-          }}
-          {...bellHoverProps}
-        >
-          <span aria-hidden>🔔</span>
-          {unread > 0 && (
-            <span data-testid="topbar-bell-badge" style={styles.badge}>
-              {unread > 99 ? "99+" : unread}
-            </span>
-          )}
-        </summary>
-        <div
-          role="dialog"
-          aria-label="Recent notifications"
-          data-testid="topbar-bell-panel"
-          style={styles.popPanel}
-        >
-          <div style={styles.popHead}>Recent activity</div>
-          {recentAudit.length === 0 ? (
-            <div style={styles.popEmpty}>No notifications</div>
-          ) : (
-            <ul style={styles.popList}>
-              {recentAudit.map((entry) => {
-                const label = eventLabel(entry.eventType);
-                const when = formatRelative(entry.occurredAt);
-                const body = entry.reason ? `${label} — ${entry.reason}` : label;
-                if (entry.plannedSessionId) {
-                  return (
-                    <li key={entry.id}>
-                      <AuditItemLink
-                        href={`/app/sessions/start/${entry.plannedSessionId}`}
-                        body={body}
-                        when={when}
-                      />
-                    </li>
-                  );
-                }
-                return (
-                  <li key={entry.id}>
-                    <div style={styles.popItem}>
-                      <span style={styles.popItemTitle}>{body}</span>
-                      <span style={styles.popItemWhen}>{when}</span>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          <button
-            type="button"
-            data-testid="topbar-bell-mark-read"
-            onClick={onMarkRead}
-            style={{
-              ...styles.popMark,
-              background: markHover ? "var(--cp-surface-soft)" : "transparent",
-            }}
-            {...markHoverProps}
-          >
-            Mark all read
-          </button>
-        </div>
-      </details>
-
-      {/* 4. User-initials avatar + dropdown */}
+      {/* User-initials avatar + dropdown */}
       <details
         className="cp-tbr-pop cp-tbr-user"
         data-testid="topbar-user-wrap"

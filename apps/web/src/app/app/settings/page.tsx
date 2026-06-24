@@ -7,10 +7,7 @@ import {
 } from "@/lib/settings/equipment-presets";
 import { todayYmd } from "@/lib/dates";
 import { formatRelativeEventDate } from "@/lib/events/format";
-import { ProfileNotifications } from "@/components/profile/ProfileNotifications";
 import { QuickSearchRow } from "@/components/profile/QuickSearchRow";
-import { markAuditRead } from "@/lib/profile/actions";
-import { getNotificationsData } from "@/lib/profile/queries";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SettingsIcon } from "@/components/settings/SettingsIcons";
 
@@ -75,27 +72,15 @@ export default async function SettingsPage() {
   const upcomingEventsCount = upcomingEvents ?? 0;
   const trainingMaxesSet = tmCount ?? 0;
 
-  const { recentAudit, unreadAuditCount } = await getNotificationsData(
-    supabase,
-    user.id,
-  );
-
   return (
     <div className="space-y-6">
       <PageHeader title="Settings" />
 
-      {/* Mobile-only: Notifications + Quick search. Hidden on desktop
-          where the top-bar already surfaces both. The MORE tab routes
-          here, so mobile users need parity with the desktop bell + search. */}
-      <div className="cp-mobile-only" data-testid="settings-mobile-notifications">
-        <div style={{ display: "grid", gap: 12 }}>
-          <ProfileNotifications
-            recentAudit={recentAudit}
-            unreadCount={unreadAuditCount}
-            markAuditReadAction={markAuditRead}
-          />
-          <QuickSearchRow />
-        </div>
+      {/* Mobile-only: Quick search. Hidden on desktop where the top-bar
+          already surfaces it. The MORE tab routes here, so mobile users
+          need parity with the desktop search. */}
+      <div className="cp-mobile-only" data-testid="settings-mobile-search">
+        <QuickSearchRow />
       </div>
 
       <div className="settings-hub-grid">

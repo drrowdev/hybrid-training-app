@@ -7,7 +7,7 @@
  *   1. Brand wordmark (S×C, green ×) → /app
  *   2. Primary tabs: Today / Plan / Stats / Settings with pill-style active
  *      highlight via usePathname().
- *   3. Status cluster (TopBarRight): Search / sync / bell / avatar.
+ *   3. Status cluster (TopBarRight): Search / sync / avatar.
  *
  * Mobile (≤768 px): primary tabs, brand wordmark, and the right cluster
  * are all hidden via CSS so the BottomTabBar + Today-page header take
@@ -20,10 +20,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  TopBarRight,
-  type TopBarAuditEntry,
-} from "@/components/shell/TopBarRight";
+import { TopBarRight } from "@/components/shell/TopBarRight";
 
 type Tab = {
   href: string;
@@ -68,18 +65,12 @@ export function TopNav({
   email,
   hasStravaConnection,
   lastSyncedAt,
-  recentAudit,
-  auditCount,
-  markAuditReadAction,
 }: {
   signOutAction: () => Promise<void>;
   displayName: string | null;
   email: string | null;
   hasStravaConnection: boolean;
   lastSyncedAt: string | null;
-  recentAudit: TopBarAuditEntry[];
-  auditCount: number;
-  markAuditReadAction?: () => Promise<{ ok: true } | { ok: false; error: string }>;
 }) {
   const pathname = usePathname() ?? "/app";
 
@@ -225,9 +216,6 @@ export function TopNav({
             email={email}
             hasStravaConnection={hasStravaConnection}
             lastSyncedAt={lastSyncedAt}
-            recentAudit={recentAudit}
-            auditCount={auditCount}
-            markAuditReadAction={markAuditReadAction}
           />
         </div>
       </div>
