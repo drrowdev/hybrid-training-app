@@ -82,6 +82,13 @@ export interface MaterializeOptions {
    * collides with a strength session in the same week is skipped.
    */
   cardioWeekdays?: number[];
+  /**
+   * The noun for main-lift "% of working-max" labels — "1RM" for programs that
+   * load off the true 1RM (Tactical Barbell, Green Protocol, HYROX) or "TM" for
+   * 5/3/1. Threaded to the adapter so plan/preview surfaces label the basis
+   * correctly. Defaults to "TM".
+   */
+  mainLiftBasisLabel?: "TM" | "1RM";
 }
 
 export interface MaterializedSession {
@@ -310,6 +317,7 @@ export function materializeProgram<I>(
       engineRx,
       resolveMovement,
       sessionAssistance,
+      opts.mainLiftBasisLabel,
     );
     const prescriptionWithRef: Prescription = { ...prescription, programRef: spec.ref };
     // ADR 0048 — optional TB accessories: appended after the main work on training
@@ -351,6 +359,7 @@ export function materializeProgram<I>(
         pmRx,
         resolveMovement,
         opts.assistance?.(pmRef),
+        opts.mainLiftBasisLabel,
       );
       const pmWithRef: Prescription = { ...pmPrescription, programRef: pmRef };
       const { modality: pmModality, load: pmLoad } = stampModality(pmWithRef);

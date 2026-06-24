@@ -121,6 +121,23 @@ describe("adaptSessionPrescription — strength", () => {
     expect(prescription.items.some((i) => i.isAmrap)).toBe(true);
   });
 
+  it("labels the main-lift basis noun: defaults to '% TM', '% 1RM' when told", () => {
+    const main = {
+      kind: "main" as const,
+      name: "Back Squat",
+      movementId: "squat",
+      sets: 1,
+      reps: 6,
+      percentOfTm: 0.72,
+    };
+    // Default — 5/3/1 loads off a real Training Max.
+    const tm = adaptSessionPrescription({ items: [main] }, resolve);
+    expect(tm.prescription.items[0]!.intensityLabel).toBe("72% TM");
+    // Programs that load off the true 1RM (Tactical Barbell, Green Protocol, HYROX).
+    const oneRm = adaptSessionPrescription({ items: [main] }, resolve, undefined, "1RM");
+    expect(oneRm.prescription.items[0]!.intensityLabel).toBe("72% 1RM");
+  });
+
   it("maps a Tactical Barbell session and carries the submaximal note", () => {
     const inst = tacticalBarbellEngine.setup({ values: { templateId: "operator" } }, ctx);
     const { prescription, skipped } = adaptSessionPrescription(

@@ -67,6 +67,15 @@ export function adaptSessionPrescription(
   prescription: SessionPrescription,
   resolveMovement: MovementResolver,
   resolveAssistance?: AssistanceResolver,
+  /**
+   * The noun for a main lift's "% of working-max" intensity label. Programs that
+   * load straight off the true 1RM (Tactical Barbell, Green Protocol, HYROX —
+   * their seeded `tm_percent` is 100) want "1RM"; 5/3/1, which loads off a real
+   * Training Max, wants "TM". Stamped onto main / back-off items so every surface
+   * (plan drawer, preview) labels the basis correctly — the live logger already
+   * derives this from TM == 1RM. Defaults to "TM" (the prior hard-coded label).
+   */
+  mainLiftBasisLabel: "TM" | "1RM" = "TM",
 ): AdaptResult {
   const items: PrescriptionItem[] = [];
   const skipped: SkippedItem[] = [];
@@ -188,6 +197,12 @@ export function adaptSessionPrescription(
       sets: setCount,
       ...(it.reps !== undefined ? { reps: it.reps } : {}),
       ...(it.percentOfTm !== undefined ? { percentTm: Math.round(it.percentOfTm * 100) } : {}),
+      // Label the working-max basis on the main / supplemental rows so the plan
+      // drawer + preview read "72% 1RM" for HYROX/TB/GP (which load off the 1RM)
+      // and "72% TM" for 5/3/1 — matching the live logger.
+      ...((appKind === "main" || appKind === "back_off") && it.percentOfTm !== undefined
+        ? { intensityLabel: `${Math.round(it.percentOfTm * 100)}% ${mainLiftBasisLabel}` }
+        : {}),
       // Warm-ups resolve to a concrete kg (the engine ramps off the top working
       // weight) but carry no % of TM, so without this they rendered "—kg".
       // Surface the absolute target so the logger prescribes a real warm-up load.

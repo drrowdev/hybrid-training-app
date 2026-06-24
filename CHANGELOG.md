@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Strength label fix — HYROX/TB/GP main lifts read "% 1RM", not "% TM"
+- HYROX (and Tactical Barbell / Green Protocol) load straight off the **true 1RM**
+  (their seeded `tm_percent` is 100), so the correct basis noun is **1RM**, not TM. The
+  weight was always right — both surfaces compute the same kg — but the plan drawer /
+  preview mislabelled it "% TM" while the live logger correctly showed "% 1RM". Fixed
+  at the source: the platform adapter now stamps the right basis noun onto each main /
+  back-off item's `intensityLabel` (`72% 1RM` for programs that load off the 1RM,
+  `72% TM` for 5/3/1), derived from the program's actual seeded basis. Every surface now
+  agrees. (Applies to newly generated/redeployed blocks; an existing block keeps its
+  stored label until regenerated — the logger already reads "1RM" for it.)
+
 ### Gender setting moved to the discoverable Training profile page
 - The Gender setting (male/female — drives sex-specific HYROX station weights and
   strength-standard defaults) was shipped but stranded on the legacy `/app/profile`
