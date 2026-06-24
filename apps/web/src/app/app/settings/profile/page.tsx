@@ -117,10 +117,6 @@ export default async function ProfileSettingsPage() {
             />
           </div>
           <div className="space-y-2" data-testid="settings-gender">
-            <p className="text-xs text-foreground/60">
-              Used for sex-specific HYROX station weights and strength-standard
-              defaults. Optional — leave unset to see both standards.
-            </p>
             <GenderAutoSave
               initial={(profile?.gender as "male" | "female" | null) ?? null}
             />

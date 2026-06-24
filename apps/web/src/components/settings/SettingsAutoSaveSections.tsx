@@ -111,18 +111,8 @@ export function UnitsAutoSave({
 // ─── Gender (sex-specific HYROX loads + strength-standard defaults) ──
 
 const GENDER_OPTIONS = [
-  {
-    value: "male" as const,
-    label: "Male",
-    hint: "Uses men's HYROX station weights and male strength-standard defaults.",
-    testId: "settings-gender-male",
-  },
-  {
-    value: "female" as const,
-    label: "Female",
-    hint: "Uses women's HYROX station weights and female strength-standard defaults.",
-    testId: "settings-gender-female",
-  },
+  { value: "male" as const, label: "Male", testId: "settings-gender-male" },
+  { value: "female" as const, label: "Female", testId: "settings-gender-female" },
 ];
 
 export function GenderAutoSave({
