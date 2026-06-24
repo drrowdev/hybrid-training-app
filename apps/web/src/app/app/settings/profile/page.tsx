@@ -3,6 +3,7 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   BodyCompPhaseAutoSave,
   EffortPreferenceAutoSave,
+  GenderAutoSave,
   ProfileBasicsAutoSave,
   TrainingExperienceAutoSave,
   UnitsAutoSave,
@@ -72,7 +73,7 @@ export default async function ProfileSettingsPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "display_name, units, body_comp_phase, phase_started_at, phase_target_weeks, training_experience, timezone, effort_preference",
+      "display_name, units, gender, body_comp_phase, phase_started_at, phase_target_weeks, training_experience, timezone, effort_preference",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -113,6 +114,15 @@ export default async function ProfileSettingsPage() {
             </p>
             <UnitsAutoSave
               initialUnits={profile?.units === "imperial" ? "imperial" : "metric"}
+            />
+          </div>
+          <div className="space-y-2" data-testid="settings-gender">
+            <p className="text-xs text-foreground/60">
+              Used for sex-specific HYROX station weights and strength-standard
+              defaults. Optional — leave unset to see both standards.
+            </p>
+            <GenderAutoSave
+              initial={(profile?.gender as "male" | "female" | null) ?? null}
             />
           </div>
         </SettingsGroup>
