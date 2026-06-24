@@ -101,6 +101,10 @@ export function HyroxCompletionForm({
   );
   const [error, setError] = useState<string | null>(null);
   const [matchUsed, setMatchUsed] = useState(false);
+  // Feedback after a manual "import from Strava" tap, and the avg-HR from a
+  // manually-imported match (the prop `stravaMatch` is null on that path).
+  const [notice, setNotice] = useState<{ kind: "ok" | "info"; text: string } | null>(null);
+  const [importedAvgHr, setImportedAvgHr] = useState<number | null>(null);
 
   const durationSec = parseMmSs(durationStr);
   const canSubmit = durationSec != null && durationSec > 0 && rpe != null && !pending;
@@ -113,11 +117,23 @@ export function HyroxCompletionForm({
 
   function manualImport() {
     setError(null);
+    setNotice(null);
     startSync(async () => {
       const res = await syncStravaForSession(sessionId);
       if (!res.ok) {
         setError(res.error || "Couldn't reach Strava.");
         return;
+      }
+      if (res.match) {
+        setDurationStr(fmtMmSs(res.match.durationSec));
+        setImportedAvgHr(res.match.avgHrBpm);
+        setMatchUsed(true);
+        setNotice({ kind: "ok", text: "Found your Strava activity — time filled in below. Set your RPE and complete." });
+      } else {
+        setNotice({
+          kind: "info",
+          text: "Synced, but no Strava activity matched this workout's date and time. Enter your time below manually.",
+        });
       }
       router.refresh();
     });
@@ -131,6 +147,7 @@ export function HyroxCompletionForm({
       const n = Number(weights[s.key]);
       if (Number.isFinite(n) && n > 0) confirmedWeights[s.key] = n;
     }
+    const avgHrBpm = matchUsed ? (importedAvgHr ?? stravaMatch?.avgHrBpm ?? null) : null;
     startTransition(async () => {
       const res = await completeHyroxSession({
         sessionId,
@@ -138,7 +155,7 @@ export function HyroxCompletionForm({
         sessionRpe: rpe,
         ...(Object.keys(confirmedWeights).length > 0 ? { confirmedWeights } : {}),
         ...(notes.trim() ? { notes: notes.trim() } : {}),
-        ...(matchUsed && stravaMatch?.avgHrBpm != null ? { avgHrBpm: stravaMatch.avgHrBpm } : {}),
+        ...(avgHrBpm != null ? { avgHrBpm } : {}),
       });
       if (!res.ok) {
         setError(res.error || "Couldn't complete the session.");
@@ -170,7 +187,7 @@ export function HyroxCompletionForm({
             background: "rgba(252,76,2,.12)", border: "1px solid rgba(252,76,2,.45)",
           }}
         >
-          <span aria-hidden style={{ fontSize: 15 }}>⌚</span>
+          <StravaGlyph size={15} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600 }}>{stravaMatch.label}</div>
             <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
@@ -276,11 +293,40 @@ export function HyroxCompletionForm({
       </div>
 
       {error ? <div style={{ color: "var(--cp-danger)", fontSize: 13 }}>{error}</div> : null}
+      {notice ? (
+        <div
+          role="status"
+          data-testid="strava-import-notice"
+          style={{
+            fontSize: 13,
+            lineHeight: 1.45,
+            padding: "10px 12px",
+            borderRadius: 10,
+            color: notice.kind === "ok" ? "var(--cp-text)" : "var(--cp-text-muted)",
+            background: notice.kind === "ok" ? "rgba(252,76,2,.10)" : "var(--cp-surface)",
+            border: `1px solid ${notice.kind === "ok" ? "rgba(252,76,2,.40)" : "var(--cp-border)"}`,
+          }}
+        >
+          {notice.text}
+        </div>
+      ) : null}
 
       <div style={{ display: "grid", gap: 10 }}>
         {!stravaMatch ? (
-          <button type="button" onClick={manualImport} disabled={syncing} style={ghostBtn}>
-            {syncing ? "Checking Strava…" : "⌚ Import session data from Strava"}
+          <button
+            type="button"
+            onClick={manualImport}
+            disabled={syncing}
+            style={{ ...ghostBtn, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+          >
+            {syncing ? (
+              "Checking Strava…"
+            ) : (
+              <>
+                <StravaGlyph size={14} />
+                Import session data from Strava
+              </>
+            )}
           </button>
         ) : null}
         <button type="button" onClick={submit} disabled={!canSubmit} style={{ ...primaryBtn, opacity: canSubmit ? 1 : 0.5 }}>
@@ -291,6 +337,22 @@ export function HyroxCompletionForm({
         </div>
       </div>
     </section>
+  );
+}
+
+/** The Strava brand mark, rendered in Strava orange (replaces the OS ⌚ emoji). */
+function StravaGlyph({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      aria-hidden
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="#fc4c02"
+      style={{ flex: "none" }}
+    >
+      <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169" />
+    </svg>
   );
 }
 
