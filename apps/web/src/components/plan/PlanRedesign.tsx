@@ -64,6 +64,8 @@ import {
   swapPlannedMovement,
   addPlannedMovement,
 } from "@/lib/sessions/planned-movement-actions";
+import { setHyroxStationOverride } from "@/lib/hyrox/station-swap-actions";
+import { stationAlternativesFor } from "@hta/hyrox";
 import type { PrescriptionItem } from "@hta/db";
 
 export type PlanFilter = "all" | "strength" | "cardio";
@@ -2494,7 +2496,7 @@ function MovementEditList({
 
   return (
     <div data-testid="plan-drawer-edit-movements" style={{ display: "grid", gap: 8 }}>
-      <div className="section">Movements</div>
+      {movements.length > 0 && <div className="section">Movements</div>}
       {movements.map((m) => (
         <MovementEditRow
           key={m.movementId}
@@ -2505,7 +2507,175 @@ function MovementEditList({
           onChanged={onChanged}
         />
       ))}
-      <AddMovementControl plannedSessionId={plannedSessionId} onChanged={onChanged} />
+      {movements.length > 0 && (
+        <AddMovementControl plannedSessionId={plannedSessionId} onChanged={onChanged} />
+      )}
+      <StationEditList plannedSessionId={plannedSessionId} items={items} onChanged={onChanged} />
+    </div>
+  );
+}
+
+/**
+ * Edit the stations of a HYROX conditioning session (ADR 0064). Each station the
+ * engine prescribed (carrying a stable `key`) gets a Swap to a curated equipment
+ * alternative — persisted for THIS session only. Hidden for non-station sessions.
+ */
+function StationEditList({
+  plannedSessionId,
+  items,
+  onChanged,
+}: {
+  plannedSessionId: string;
+  items: PrescriptionItem[];
+  onChanged: () => void;
+}) {
+  const stations = useMemo(() => {
+    const cardio = items.find((it) => (it.cardioPlan?.stations?.length ?? 0) > 0);
+    const overrides = ((cardio?.meta as Record<string, unknown> | undefined)?.stationOverrides ??
+      {}) as Record<string, string>;
+    const seen = new Set<string>();
+    const out: { key: string; name: string; current?: string }[] = [];
+    for (const r of cardio?.cardioPlan?.stations ?? []) {
+      if (!r.key || seen.has(r.key)) continue;
+      seen.add(r.key);
+      if (stationAlternativesFor(r.key).length === 0) continue;
+      out.push({ key: r.key, name: r.name, ...(overrides[r.key] ? { current: overrides[r.key] } : {}) });
+    }
+    return out;
+  }, [items]);
+
+  if (stations.length === 0) return null;
+  return (
+    <div data-testid="plan-drawer-edit-stations" style={{ display: "grid", gap: 8, marginTop: 4 }}>
+      <div className="section">Stations</div>
+      <div style={{ fontSize: 12, color: "var(--cp-text-muted)", marginTop: -4 }}>
+        No kit for a station? Swap it for this workout only.
+      </div>
+      {stations.map((s) => (
+        <StationEditRow
+          key={s.key}
+          plannedSessionId={plannedSessionId}
+          stationKey={s.key}
+          name={s.name}
+          current={s.current}
+          onChanged={onChanged}
+        />
+      ))}
+    </div>
+  );
+}
+
+function StationEditRow({
+  plannedSessionId,
+  stationKey,
+  name,
+  current,
+  onChanged,
+}: {
+  plannedSessionId: string;
+  stationKey: string;
+  name: string;
+  current?: string;
+  onChanged: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const alts = stationAlternativesFor(stationKey);
+
+  const submit = (substituteKey: string) => {
+    if (pending) return;
+    setError(null);
+    startTransition(async () => {
+      const fd = new FormData();
+      fd.set("plannedSessionId", plannedSessionId);
+      fd.set("stationKey", stationKey);
+      fd.set("substituteKey", substituteKey);
+      const r = await setHyroxStationOverride(fd);
+      if (r.error) setError(r.error);
+      else {
+        setOpen(false);
+        onChanged();
+      }
+    });
+  };
+
+  return (
+    <div
+      data-testid={`plan-drawer-edit-station-${stationKey}`}
+      style={{
+        display: "grid",
+        gap: 6,
+        padding: "8px 10px",
+        border: "1px solid var(--cp-border)",
+        borderRadius: 8,
+        background: "var(--cp-surface-soft)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontSize: 13, fontWeight: 500 }}>
+          {name}
+          {current && <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}> · swapped</span>}
+        </span>
+        <span style={{ display: "inline-flex", gap: 6 }}>
+          {current && (
+            <button
+              type="button"
+              className="cp-btn"
+              onClick={() => submit("")}
+              disabled={pending}
+              style={editBtnStyle}
+              data-testid={`plan-drawer-reset-station-${stationKey}`}
+            >
+              Reset
+            </button>
+          )}
+          <button
+            type="button"
+            className="cp-btn"
+            data-testid={`plan-drawer-swap-station-${stationKey}`}
+            onClick={() => setOpen((v) => !v)}
+            disabled={pending}
+            style={editBtnStyle}
+          >
+            {open ? "Cancel" : "Swap"}
+          </button>
+        </span>
+      </div>
+      {open && (
+        <div style={{ display: "grid", gap: 4 }}>
+          {alts.map((a) => (
+            <button
+              key={a.key}
+              type="button"
+              onClick={() => submit(a.key)}
+              disabled={pending}
+              data-testid={`plan-drawer-station-alt-${stationKey}-${a.key}`}
+              style={{
+                textAlign: "left",
+                background: a.key === current ? "var(--cp-accent-soft)" : "transparent",
+                border: "1px solid var(--cp-border)",
+                borderRadius: 7,
+                padding: "7px 10px",
+                fontSize: 13,
+                color: "var(--cp-text)",
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              {a.name}
+              {a.approximate && (
+                <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}> · approximate</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+      {error && (
+        <span role="alert" style={{ fontSize: 12, color: "var(--cp-danger)" }}>
+          {error}
+        </span>
+      )}
     </div>
   );
 }

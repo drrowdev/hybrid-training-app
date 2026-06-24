@@ -107,6 +107,8 @@ export interface CardioPlanStation {
   load?: string;
   /** Distance / reps / height target, e.g. "50 m", "100 reps", "target 3.0 m". */
   target?: string;
+  /** Stable engine movement key (e.g. "sled-push") — lets a per-session station swap target this row. */
+  key?: string;
 }
 
 /**

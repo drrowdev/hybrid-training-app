@@ -29,6 +29,11 @@ import {
 } from "./divisions";
 import type { HyroxExperience, HyroxDivision } from "./types";
 import type { HyroxPhaseId } from "./phases";
+import {
+  overriddenStationName,
+  applyOverridesToStationRows,
+  type StationOverrides,
+} from "./station-alternatives";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // `[DEF]` programming content — coach-consensus, user-gated, NOT calibration.
@@ -191,20 +196,30 @@ function estimateStationSessionSec(blocks: StationBlock[], rounds: number): numb
   return STATION_WARMUP_SEC + work + interBlock;
 }
 
-/** Build the EACH-ROUND segments + union station rows for one or more focused blocks. */
-function stationBlockPlanParts(
+/**
+ * Build the EACH-ROUND segments + union station rows for one or more focused blocks.
+ * `overrides` (ADR 0064) relabels swapped stations for a per-session equipment change.
+ */
+export function stationBlockPlanParts(
   blocks: StationBlock[],
   division: HyroxDivision,
   gender?: "male" | "female",
-): { segments: { label: string; detail: string }[]; stations: { name: string; load?: string; target?: string }[] } {
-  const nameOf = (m: string) => getStation(m)?.name ?? movementLabel(m);
+  overrides?: StationOverrides,
+): {
+  segments: { label: string; detail: string }[];
+  stations: { name: string; load?: string; target?: string; key?: string }[];
+} {
+  const nameOf = (m: string) => overriddenStationName(m, overrides) || movementLabel(m);
   const paired = blocks.length > 1;
   const segments = blocks.map((b, i) => {
     const rotation = b.movements.map(nameOf).join(" → ");
     const focus = b.label ? `${b.label.charAt(0).toUpperCase()}${b.label.slice(1)} — ` : "";
     return { label: paired ? `Block ${i + 1}` : "Each round", detail: `${focus}${rotation}` };
   });
-  const stations = blocks.flatMap((b) => intervalStationRows(b.movements, division, gender));
+  const stations = applyOverridesToStationRows(
+    blocks.flatMap((b) => intervalStationRows(b.movements, division, gender)),
+    overrides,
+  );
   return { segments, stations };
 }
 

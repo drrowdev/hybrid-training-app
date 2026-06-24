@@ -48,4 +48,22 @@ export {
   type StationLoad,
 } from "./divisions";
 
-export { prescribeSession, deloadPrescription, stationBlocksForWeek, type StationBlock, type PrescribeArgs } from "./prescription";
+export {
+  prescribeSession,
+  deloadPrescription,
+  stationBlocksForWeek,
+  stationBlockPlanParts,
+  type StationBlock,
+  type PrescribeArgs,
+} from "./prescription";
+
+export {
+  STATION_ALTERNATIVES,
+  stationAlternativesFor,
+  findStationAlternative,
+  isOverrideLoaded,
+  overriddenStationName,
+  applyOverridesToStationRows,
+  type StationAlternative,
+  type StationOverrides,
+} from "./station-alternatives";

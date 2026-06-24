@@ -261,7 +261,7 @@ export type PrescriptionItem = {
     summary: string;
     meta?: string;
     segments?: { label: string; detail: string }[];
-    stations?: { name: string; load?: string; target?: string }[];
+    stations?: { name: string; load?: string; target?: string; key?: string }[];
     effort: string;
     logHint?: string;
   };

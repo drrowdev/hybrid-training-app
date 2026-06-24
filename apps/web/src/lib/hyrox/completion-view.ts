@@ -13,14 +13,26 @@ import {
   getHyroxSession,
   getStation,
   stationLoadLabel,
+  findStationAlternative,
+  overriddenStationName,
   HYROX_STATIONS,
   type HyroxInstance,
+  type StationOverrides,
 } from "@hta/hyrox";
 import { loadedStationsForSession } from "./materialize-actuals";
 import type {
   HyroxStructureRow,
   HyroxLoadedStation,
 } from "@/components/session/HyroxCompletionForm";
+
+/** Read the per-session station-override map off a stored prescription, if any. */
+export function readStationOverrides(
+  prescription: { items?: { cardioPlan?: unknown; meta?: Record<string, unknown> }[] } | null | undefined,
+): StationOverrides {
+  const item = (prescription?.items ?? []).find((it) => it.cardioPlan != null);
+  const m = item?.meta?.stationOverrides;
+  return m && typeof m === "object" ? ({ ...(m as StationOverrides) }) : {};
+}
 
 export interface HyroxCompletionView {
   hyroxSessionId: string;
@@ -49,7 +61,11 @@ function defaultWeightKg(movementKey: string, division: string): number {
 }
 
 /** Build the structured display rows for a session id (engine-defined). */
-function buildStructure(hyroxSessionId: string, performedMovements?: readonly string[]): HyroxStructureRow[] {
+function buildStructure(
+  hyroxSessionId: string,
+  performedMovements?: readonly string[],
+  overrides?: StationOverrides,
+): HyroxStructureRow[] {
   const sess = getHyroxSession(hyroxSessionId);
   if (!sess) return [];
 
@@ -75,13 +91,14 @@ function buildStructure(hyroxSessionId: string, performedMovements?: readonly st
   }
 
   // intervals / circuit / compromised — a rounds summary + the involved stations.
-  // For the focused rotation (ADR 0062) only the week's focused stations are shown.
+  // For the focused rotation (ADR 0062) only the week's focused stations are shown;
+  // swapped stations (ADR 0064) are relabelled.
   const rows: HyroxStructureRow[] = [{ name: sess.name, detail: sess.note }];
   for (const key of performedMovements ?? sess.movements) {
     const st = getStation(key);
     if (!st) continue;
     rows.push({
-      name: st.name,
+      name: overriddenStationName(key, overrides),
       amount: st.distanceM != null ? metersLabel(st.distanceM) : st.reps != null ? `${st.reps} reps` : undefined,
     });
   }
@@ -95,6 +112,7 @@ function buildStructure(hyroxSessionId: string, performedMovements?: readonly st
 export function buildHyroxCompletionView(
   instance: HyroxInstance,
   programRef: string,
+  overrides?: StationOverrides,
 ): HyroxCompletionView | null {
   const hyroxSessionId = hyroxSessionIdForRef(instance, programRef);
   if (!hyroxSessionId) return null;
@@ -111,27 +129,33 @@ export function buildHyroxCompletionView(
     (b) => [...b.movements],
   );
   const focusedKeys = new Set(focusedMovements);
+  // Per-session swaps (ADR 0064): relabel a station swapped to another LOADED option;
+  // drop it from confirm-weights when swapped to an unloaded option (erg / bodyweight).
   const loadedStations: HyroxLoadedStation[] = loadedStationsForSession(hyroxSessionId)
     .filter(({ key }) => focusedKeys.has(key))
-    .map(({ key }) => {
+    .flatMap(({ key }) => {
+      const alt = overrides?.[key] ? findStationAlternative(key, overrides[key]!) : undefined;
+      if (alt && !alt.loaded) return [];
       const st = getStation(key);
-      return {
-        key,
-        name: st?.name ?? key,
-        defaultKg: defaultWeightKg(key, division),
-        loadLabel: st ? stationLoadLabel(st, division) : "",
-        ...(st?.distanceM != null
-          ? { amount: metersLabel(st.distanceM) }
-          : st?.reps != null
-            ? { amount: `${st.reps} reps` }
-            : {}),
-      };
+      return [
+        {
+          key,
+          name: alt?.name ?? st?.name ?? key,
+          defaultKg: defaultWeightKg(key, division),
+          loadLabel: st ? stationLoadLabel(st, division) : "",
+          ...(st?.distanceM != null
+            ? { amount: metersLabel(st.distanceM) }
+            : st?.reps != null
+              ? { amount: `${st.reps} reps` }
+              : {}),
+        },
+      ];
     });
 
   return {
     hyroxSessionId,
     title: sess.name,
-    structure: buildStructure(hyroxSessionId, focusedMovements),
+    structure: buildStructure(hyroxSessionId, focusedMovements, overrides),
     loadedStations,
     isBenchmark: sess.category === "sim",
     divisionLabel: DIVISION_LABEL[division] ?? "Open division",
