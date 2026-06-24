@@ -5,12 +5,9 @@ import { redirect } from "next/navigation";
 import { randomBytes } from "crypto";
 import { cookies } from "next/headers";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
-import { authorizeUrl } from "@/lib/integrations/strava/client";
+import { authorizeUrl, refreshAccessToken, listActivitiesInRange } from "@/lib/integrations/strava/client";
 import { syncStrava } from "@/lib/integrations/strava/sync";
-import {
-  findMatchingStravaActivity,
-  listStravaActivitiesNear,
-} from "@/lib/integrations/strava/match";
+import { findMatchingStravaActivity } from "@/lib/integrations/strava/match";
 import {
   importStravaHistory as importStravaHistoryCore,
   type ImportInput,
@@ -113,13 +110,88 @@ export async function syncStravaNow(): Promise<void> {
  * feedback instead of silently reverting).
  */
 export type StravaSessionCandidate = {
-  cardioLogId: string;
-  modality: string;
+  /** Strava activity id (the candidate is fetched live from the API, so it may
+   *  not yet be imported as a cardio_log — e.g. an indoor "Workout" type). */
+  stravaActivityId: string;
+  name: string | null;
+  /** Friendly activity-type label (e.g. "Run", "Workout"). */
+  typeLabel: string;
   performedAt: string;
   durationSec: number;
   distanceKm: number | null;
   avgHrBpm: number | null;
 };
+
+/** ±12h window for the manual "pick the day's activity" list. */
+const DAY_WINDOW_MS = 12 * 60 * 60 * 1000;
+
+/** Pretty label for a Strava sport_type/type ("VirtualRide" → "Virtual Ride"). */
+function prettyType(sportType: string | null, type: string | null): string {
+  const raw = sportType || type || "Activity";
+  return raw.replace(/([a-z])([A-Z])/g, "$1 $2");
+}
+
+/**
+ * Fetch the user's Strava activities within ±12h of a session, straight from the
+ * Strava API — so even activity types we don't IMPORT (indoor "Workout", etc.)
+ * still appear in the manual picker. Returns [] on any error (best-effort).
+ */
+async function fetchStravaDayActivities(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  performedAt: string,
+): Promise<StravaSessionCandidate[]> {
+  const targetMs = Date.parse(performedAt);
+  if (!Number.isFinite(targetMs)) return [];
+
+  const { data: conn } = await supabase
+    .from("strava_connections")
+    .select("access_token, refresh_token, expires_at")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!conn) return [];
+
+  let accessToken = conn.access_token as string;
+  try {
+    const expiresAtMs = new Date(conn.expires_at as string).getTime();
+    if (expiresAtMs - Date.now() < 60_000) {
+      const refreshed = await refreshAccessToken(conn.refresh_token as string);
+      accessToken = refreshed.accessToken;
+      await supabase
+        .from("strava_connections")
+        .update({
+          access_token: refreshed.accessToken,
+          refresh_token: refreshed.refreshToken,
+          expires_at: refreshed.expiresAt.toISOString(),
+        })
+        .eq("user_id", userId);
+    }
+
+    const activities = await listActivitiesInRange(accessToken, {
+      afterEpoch: Math.floor((targetMs - DAY_WINDOW_MS) / 1000),
+      beforeEpoch: Math.floor((targetMs + DAY_WINDOW_MS) / 1000),
+    });
+
+    return activities
+      .map((a) => ({
+        stravaActivityId: String(a.id),
+        name: a.name,
+        typeLabel: prettyType(a.sport_type, a.type),
+        performedAt: a.start_date,
+        durationSec: a.elapsed_time || a.moving_time || 0,
+        distanceKm: a.distance > 0 ? a.distance / 1000 : null,
+        avgHrBpm: a.average_heartrate != null ? Math.round(a.average_heartrate) : null,
+      }))
+      .sort(
+        (x, y) =>
+          Math.abs(Date.parse(x.performedAt) - targetMs) -
+          Math.abs(Date.parse(y.performedAt) - targetMs),
+      )
+      .slice(0, 10);
+  } catch {
+    return [];
+  }
+}
 
 export async function syncStravaForSession(
   sessionId: string,
@@ -150,7 +222,8 @@ export async function syncStravaForSession(
   revalidatePath(`/app/sessions/${sessionId}`);
 
   // Did the sync surface an activity that matches this session's time, and what
-  // else is nearby (so the user can pick when the tight auto-match misses)?
+  // else did the athlete record near it (fetched live from Strava so even
+  // un-imported indoor "Workout" types are pickable)?
   let match: { durationSec: number; avgHrBpm: number | null } | null = null;
   let candidates: StravaSessionCandidate[] = [];
   try {
@@ -164,14 +237,7 @@ export async function syncStravaForSession(
     if (performedAt) {
       const found = await findMatchingStravaActivity(supabase, user.id, performedAt, {});
       if (found) match = { durationSec: found.durationSec, avgHrBpm: found.avgHrBpm };
-      candidates = (await listStravaActivitiesNear(supabase, user.id, performedAt)).map((c) => ({
-        cardioLogId: c.cardioLogId,
-        modality: c.modality,
-        performedAt: c.performedAt,
-        durationSec: c.durationSec,
-        distanceKm: c.distanceKm,
-        avgHrBpm: c.avgHrBpm,
-      }));
+      candidates = await fetchStravaDayActivities(supabase, user.id, performedAt);
     }
   } catch {
     // Best-effort enrichment — a lookup failure never fails the sync.

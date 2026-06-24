@@ -86,23 +86,10 @@ function fmtClock(iso: string): string {
   return new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-function labelModality(m: string): string {
-  const map: Record<string, string> = {
-    run: "Run",
-    bike: "Ride",
-    swim: "Swim",
-    walk: "Walk",
-    row: "Row",
-    ski: "Ski",
-    other_cardio: "Workout",
-  };
-  return map[m] ?? m.charAt(0).toUpperCase() + m.slice(1);
-}
-
-/** One-line summary of a candidate activity: "Run · 18:42 · 34 min · 5.1 km · 156 bpm". */
+/** One-line summary of a candidate activity: "Morning Workout · 18:42 · 34 min · 156 bpm". */
 function candidateLabel(c: StravaSessionCandidate): string {
   const parts = [
-    labelModality(c.modality),
+    c.name?.trim() || c.typeLabel,
     fmtClock(c.performedAt),
     `${Math.round(c.durationSec / 60)} min`,
   ];
@@ -156,7 +143,7 @@ export function HyroxCompletionForm({
     setCandidates([]);
     setNotice({
       kind: "ok",
-      text: `Using your ${labelModality(c.modality)} from ${fmtClock(c.performedAt)} — time filled in below. Set your RPE and complete.`,
+      text: `Using your ${c.name?.trim() || c.typeLabel} from ${fmtClock(c.performedAt)} — time filled in. Set your RPE and complete.`,
     });
   }
 
@@ -174,17 +161,17 @@ export function HyroxCompletionForm({
         setDurationStr(fmtMmSs(res.match.durationSec));
         setImportedAvgHr(res.match.avgHrBpm);
         setMatchUsed(true);
-        setNotice({ kind: "ok", text: "Found your Strava activity — time filled in below. Set your RPE and complete." });
+        setNotice({ kind: "ok", text: "Found your Strava activity — time filled in. Set your RPE and complete." });
       } else if (res.candidates.length > 0) {
         setCandidates(res.candidates);
         setNotice({
           kind: "info",
-          text: "Couldn't auto-match (it was logged a while after the workout). Pick the right activity:",
+          text: "Couldn't auto-match. Pick the activity you did from Strava:",
         });
       } else {
         setNotice({
           kind: "info",
-          text: "Synced, but no Strava activity was found near this workout's time. Enter your time below manually.",
+          text: "Synced, but no Strava activity was found near this workout's time. Enter your time under \u201CHow it went\u201D.",
         });
       }
       router.refresh();
@@ -366,10 +353,10 @@ export function HyroxCompletionForm({
         <div data-testid="strava-candidates" style={{ display: "grid", gap: 6 }}>
           {candidates.map((c) => (
             <button
-              key={c.cardioLogId}
+              key={c.stravaActivityId}
               type="button"
               onClick={() => pickCandidate(c)}
-              data-testid={`strava-candidate-${c.cardioLogId}`}
+              data-testid={`strava-candidate-${c.stravaActivityId}`}
               style={{
                 display: "flex",
                 alignItems: "center",
