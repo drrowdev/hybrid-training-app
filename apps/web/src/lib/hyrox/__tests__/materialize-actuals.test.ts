@@ -9,6 +9,7 @@ import {
   buildHyroxActualsById,
   loadedStationsForSession,
   sessionCardioModality,
+  stationKeyForSlug,
 } from "../materialize-actuals";
 
 const baseInput = {
@@ -136,5 +137,27 @@ describe("loadedStationsForSession", () => {
     }
     // sanity: getHyroxSession resolves what we iterate
     expect(getHyroxSession("sim-half")).toBeDefined();
+  });
+});
+
+describe("stationKeyForSlug — set-log slug → station key (completed summary)", () => {
+  it("reverses the materialized station slugs", () => {
+    expect(stationKeyForSlug("sled-push-heavy")).toBe("sled-push");
+    expect(stationKeyForSlug("sled-pull")).toBe("sled-pull");
+    expect(stationKeyForSlug("farmer-carry-kb")).toBe("farmers-carry");
+    expect(stationKeyForSlug("sandbag-lunge")).toBe("sandbag-lunge");
+    expect(stationKeyForSlug("wall-ball")).toBe("wall-ball");
+  });
+
+  it("round-trips every loaded station's materialized slug", () => {
+    for (const s of nonStrength) {
+      for (const st of loadedStationsForSession(s.id)) {
+        expect(stationKeyForSlug(st.slug)).toBe(st.key);
+      }
+    }
+  });
+
+  it("returns null for an unknown slug", () => {
+    expect(stationKeyForSlug("back-squat")).toBeNull();
   });
 });
