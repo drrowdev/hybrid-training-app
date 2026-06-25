@@ -63,6 +63,18 @@ export interface HyroxCompletionFormProps {
   isBenchmark?: boolean;
   divisionLabel?: string;
   stravaMatch?: HyroxStravaMatch | null;
+  /**
+   * Edit mode (ADR-less follow-up): re-opening a COMPLETED HYROX session to fix
+   * the logged values. Prefills the form and relabels the CTA. `onCancel` returns
+   * to the read-only summary without saving.
+   */
+  editMode?: boolean;
+  onCancel?: () => void;
+  initialDurationSec?: number | null;
+  initialRpe?: number | null;
+  /** Confirmed weights keyed by engine station key (e.g. "sled-push"). */
+  initialWeights?: Record<string, number>;
+  initialNotes?: string | null;
 }
 
 function fmtMmSs(totalSec: number): string {
@@ -108,15 +120,28 @@ export function HyroxCompletionForm({
   isBenchmark,
   divisionLabel,
   stravaMatch,
+  editMode,
+  onCancel,
+  initialDurationSec,
+  initialRpe,
+  initialWeights,
+  initialNotes,
 }: HyroxCompletionFormProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [syncing, startSync] = useTransition();
-  const [durationStr, setDurationStr] = useState("");
-  const [rpe, setRpe] = useState<number | null>(null);
-  const [notes, setNotes] = useState("");
+  const [durationStr, setDurationStr] = useState(
+    initialDurationSec != null && initialDurationSec > 0 ? fmtMmSs(initialDurationSec) : "",
+  );
+  const [rpe, setRpe] = useState<number | null>(initialRpe ?? null);
+  const [notes, setNotes] = useState(initialNotes ?? "");
   const [weights, setWeights] = useState<Record<string, string>>(() =>
-    Object.fromEntries(loadedStations.map((s) => [s.key, String(s.defaultKg)])),
+    Object.fromEntries(
+      loadedStations.map((s) => [
+        s.key,
+        String(initialWeights?.[s.key] ?? s.defaultKg),
+      ]),
+    ),
   );
   const [error, setError] = useState<string | null>(null);
   const [matchUsed, setMatchUsed] = useState(false);
@@ -201,6 +226,7 @@ export function HyroxCompletionForm({
         return;
       }
       router.refresh();
+      onCancel?.();
     });
   }
 
@@ -399,10 +425,17 @@ export function HyroxCompletionForm({
           </button>
         ) : null}
         <button type="button" onClick={submit} disabled={!canSubmit} style={{ ...primaryBtn, opacity: canSubmit ? 1 : 0.5 }}>
-          {pending ? "Completing…" : "Complete session"}
+          {pending ? (editMode ? "Saving…" : "Completing…") : editMode ? "Save changes" : "Complete session"}
         </button>
+        {editMode && onCancel && (
+          <button type="button" onClick={onCancel} disabled={pending} style={ghostBtn}>
+            Cancel
+          </button>
+        )}
         <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textAlign: "center", lineHeight: 1.5 }}>
-          Muscle freshness updates only after you complete. Load is driven by time × RPE (sRPE).
+          {editMode
+            ? "Saving re-materializes this workout's logged loads, time and effort."
+            : "Muscle freshness updates only after you complete. Load is driven by time × RPE (sRPE)."}
         </div>
       </div>
     </section>

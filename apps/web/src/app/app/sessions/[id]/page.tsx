@@ -38,6 +38,7 @@ import { resolveHyroxCompletionView } from "@/lib/hyrox/resolve-completion-view"
 import { readStationOverrides } from "@/lib/hyrox/completion-view";
 import { SessionWakeLock } from "@/components/session/SessionWakeLock";
 import { PostSessionSummary, type HyroxSummary } from "@/components/session/PostSessionSummary";
+import { CompletedHyroxEditor } from "@/components/session/CompletedHyroxEditor";
 import { stationKeyForSlug } from "@/lib/hyrox/materialize-actuals";
 import { UnitsProvider } from "@/lib/units/context";
 import { StravaAutofillBanner, type StravaAutofillMatch } from "@/components/session/StravaAutofillBanner";
@@ -268,6 +269,20 @@ export default async function SessionDetailPage({
       planned.block_id as string,
       programRef,
       session.performed_at as string | null,
+      readStationOverrides(plannedPrescription),
+    );
+  }
+  // For a COMPLETED HYROX session we resolve the same view (no Strava banner) so
+  // the post-session summary can offer an "Edit workout" affordance that re-opens
+  // the completion form prefilled — re-completing re-materializes (idempotent).
+  let hyroxEditView: Awaited<ReturnType<typeof resolveHyroxCompletionView>> = null;
+  if (isComplete && programRef?.startsWith("hx-") && planned?.block_id) {
+    hyroxEditView = await resolveHyroxCompletionView(
+      supabase,
+      user.id,
+      planned.block_id as string,
+      programRef,
+      null,
       readStationOverrides(plannedPrescription),
     );
   }
@@ -575,10 +590,48 @@ export default async function SessionDetailPage({
     };
   })();
 
+  // Edit-mode prefill for a completed HYROX station session — the loads, time,
+  // effort and note the user logged, so "Edit workout" re-opens the completion
+  // form populated. Only built when both the summary and the resolved edit view
+  // are present.
+  const hyroxEditForm = (() => {
+    if (!hyroxSummary || !hyroxEditView) return null;
+    const item = (plannedPrescription?.items ?? []).find(
+      (it) => (it.cardioPlan?.stations?.length ?? 0) > 0,
+    );
+    const initialWeights: Record<string, number> = {};
+    for (const s of setsRaw ?? []) {
+      const mv = Array.isArray(s.movement) ? s.movement[0] : s.movement;
+      const slug = (mv?.slug as string | undefined) ?? undefined;
+      const key = slug ? stationKeyForSlug(slug) : null;
+      const w = s.weight_kg != null ? Number(s.weight_kg) : null;
+      if (key && w && w > 0 && initialWeights[key] == null) initialWeights[key] = w;
+    }
+    const firstCardio = (cardio ?? [])[0] as { duration_sec?: number | null } | undefined;
+    const initialDurationSec =
+      firstCardio?.duration_sec ??
+      (session.duration_min != null ? (session.duration_min as number) * 60 : null);
+    return {
+      sessionId: id,
+      title: hyroxEditView.title,
+      weekLabel: session.title ?? undefined,
+      structure: hyroxEditView.structure,
+      cardioPlan: item?.cardioPlan ?? null,
+      loadedStations: hyroxEditView.loadedStations,
+      isBenchmark: hyroxEditView.isBenchmark,
+      divisionLabel: hyroxEditView.divisionLabel,
+      initialDurationSec,
+      initialRpe: (session.session_rpe as number | null) ?? null,
+      initialWeights,
+      initialNotes: (session.notes as string | null) ?? null,
+    };
+  })();
 
-  // Prescription gives us the rep target; fall back to logged reps when
-  // the link isn't present.
+  // Phase 2 D2 — suggested progression hints (declared here, populated below).
+  // Prescription gives us the rep target; fall back to logged reps when the
+  // link isn't present.
   let progressionHints: ProgressionHint[] | undefined;
+
   // Only surface a "next time, try X" autoregulation hint on OFF-PLAN sessions
   // (quick / freestyle / ad-hoc). For a prescription-linked block the next
   // session's main-lift load is already determined by the program's wave
@@ -1030,17 +1083,33 @@ export default async function SessionDetailPage({
       )}
 
       {isComplete && summary && (
-        <PostSessionSummary
-          sessionId={id}
-          summary={summary}
-          programmedSets={countProgrammedWorkingSets(plannedPrescription)}
-          sessionRpe={(session.session_rpe as number | string | null) ?? null}
-          initialNotes={session.notes ?? null}
-          progressionHints={progressionHints}
-          bwDiagnostics={bwSessionDiagnostics}
-          cardio={cardioSummary}
-          hyrox={hyroxSummary}
-        />
+        hyroxEditForm ? (
+          <CompletedHyroxEditor formProps={hyroxEditForm}>
+            <PostSessionSummary
+              sessionId={id}
+              summary={summary}
+              programmedSets={countProgrammedWorkingSets(plannedPrescription)}
+              sessionRpe={(session.session_rpe as number | string | null) ?? null}
+              initialNotes={session.notes ?? null}
+              progressionHints={progressionHints}
+              bwDiagnostics={bwSessionDiagnostics}
+              cardio={cardioSummary}
+              hyrox={hyroxSummary}
+            />
+          </CompletedHyroxEditor>
+        ) : (
+          <PostSessionSummary
+            sessionId={id}
+            summary={summary}
+            programmedSets={countProgrammedWorkingSets(plannedPrescription)}
+            sessionRpe={(session.session_rpe as number | string | null) ?? null}
+            initialNotes={session.notes ?? null}
+            progressionHints={progressionHints}
+            bwDiagnostics={bwSessionDiagnostics}
+            cardio={cardioSummary}
+            hyrox={hyroxSummary}
+          />
+        )
       )}
 
       {showRecommendation && (
@@ -1289,7 +1358,7 @@ export default async function SessionDetailPage({
         </section>
       )}
 
-      {session.duration_min != null && (
+      {session.duration_min != null && !hyroxSummary && (
         <div
           style={{
             fontSize: 12,
@@ -1686,15 +1755,6 @@ export default async function SessionDetailPage({
           />
         );
       })()}
-
-      {isComplete && session.notes && (
-        <section className="cp-card" style={{ padding: 20 }}>
-          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>Notes</h3>
-          <p style={{ margin: "6px 0 0", fontSize: 14, color: "var(--cp-text-muted)", whiteSpace: "pre-wrap" }}>
-            {session.notes}
-          </p>
-        </section>
-      )}
     </div>
     </UnitsProvider>
   );
