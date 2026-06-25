@@ -562,7 +562,6 @@ export default async function SessionDetailPage({
     }
     return {
       actualMin: (session.duration_min as number | null) ?? null,
-      prescribedMin: item?.durationMin ?? null,
       avgHrBpm: cardioSummary?.avgHrBpm ?? null,
       roundsLabel: plan.meta ?? null,
       stations: plan.stations.map((st) => {
@@ -1355,7 +1354,7 @@ export default async function SessionDetailPage({
         />
       )}
 
-      {!hyroxView && (
+      {!hyroxView && !hyroxSummary && (
         <SessionWorkArea
         sessionId={id}
         isComplete={isComplete}
@@ -1390,7 +1389,7 @@ export default async function SessionDetailPage({
       />
       )}
 
-      {!hyroxView && (() => {
+      {!hyroxView && !hyroxSummary && (() => {
         // Cardio prescription items live in the same `prescription.items`
         // array as strength items but are filtered out of the per-movement
         // card grid (see `movement-grouping.ts`). Surface them here so
