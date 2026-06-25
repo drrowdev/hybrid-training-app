@@ -458,3 +458,64 @@ describe("HYROX prescribe — taper sheds conditioning volume (ADR 0065)", () =>
     expect(roundsFor(i, "compromised-run", (t) => t.includes("phase:specific"))).toBe(4);
   });
 });
+
+describe("HYROX compromised running — one station per round (ADR 0066)", () => {
+  function compromisedPlans(i: HyroxInstance, gender?: "male" | "female") {
+    return hyroxEngine
+      .timeline(i)
+      .filter((s) => s.tags?.includes("session:compromised-run"))
+      .map(
+        (s) =>
+          hyroxEngine.prescribe(i, s.ref, gender ? { ...ctxWithMaxes, gender } : ctxWithMaxes).items[0]
+            ?.cardioPlan,
+      )
+      .filter((p): p is NonNullable<typeof p> => p != null);
+  }
+
+  it("prescribes exactly one station per round, enumerated round-by-round", () => {
+    const i = inst({ experience: "advanced" }); // 5 rounds in build/specific
+    const plans = compromisedPlans(i);
+    expect(plans.length).toBeGreaterThan(0);
+    for (const plan of plans) {
+      const rounds = Number(plan.meta?.match(/(\d+) rounds/)?.[1]);
+      expect(rounds).toBeGreaterThanOrEqual(2);
+      expect(plan.segments?.length).toBe(rounds); // one segment per round
+      plan.segments?.forEach((seg, idx) => {
+        expect(seg.label).toBe(`Round ${idx + 1}`);
+        expect(seg.detail).toMatch(/^1 km run → .+ → 1 km run$/);
+      });
+    }
+  });
+
+  it("never lists all stations every round (the old N-rounds / 3-stations bug)", () => {
+    const i = inst();
+    const plans = compromisedPlans(i);
+    expect(plans.length).toBeGreaterThan(0);
+    for (const plan of plans) {
+      const names = (plan.stations ?? []).map((s) => s.name);
+      // Each round-segment references exactly ONE of the listed stations.
+      for (const seg of plan.segments ?? []) {
+        expect(names.filter((n) => seg.detail.includes(n))).toHaveLength(1);
+      }
+      // The station list is the UNIQUE set used (deduped), ≤ the 3 loaded stations.
+      expect(new Set(names).size).toBe(names.length);
+      expect(names.length).toBeLessThanOrEqual(3);
+    }
+  });
+
+  it("rotates the leading station across the block (not static)", () => {
+    const i = inst({ experience: "advanced" });
+    const leads = new Set(compromisedPlans(i).map((p) => p.segments?.[0]?.detail));
+    expect(leads.size).toBeGreaterThanOrEqual(2);
+  });
+
+  it("keeps FULL race station volume + loads (compromised uses real stations, unlike intervals)", () => {
+    const i = inst({ division: "open", experience: "advanced" });
+    const stations = compromisedPlans(i, "male").flatMap((p) => p.stations ?? []);
+    const sled = stations.find((s) => s.name === "Sled Push");
+    expect(sled?.load).toContain("152"); // men's Open sled — load unchanged
+    expect(sled?.target).toBe("50 m"); // FULL race volume, NOT the 12.5 m interval chunk
+    const wb = stations.find((s) => s.name === "Wall Balls");
+    expect(wb?.target).toContain("100 reps"); // full race, NOT 25
+  });
+});

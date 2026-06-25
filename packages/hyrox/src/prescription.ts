@@ -16,16 +16,16 @@
  * (sRPE, interference, freshness, taper) is the existing CP-2 engine, applied to
  * the materialized ACTUALS post-completion — never here. See ADR 0050 §Calibration.
  */
-import type { PlatformContext, PrescribedItem, SessionPrescription, CardioPlan } from "@hta/program-core";
+import type { PlatformContext, PrescribedItem, SessionPrescription, CardioPlan, CardioPlanSegment, CardioPlanStation } from "@hta/program-core";
 import { buildGlobalWarmupItems } from "@hta/program-core";
 import { getHyroxSession, type HyroxSession } from "./sessions";
 import {
   HYROX_STATIONS,
   getStation,
-  stationRows,
   intervalStationRows,
   stationLoadValue,
   stationTargetLabel,
+  type HyroxStation,
 } from "./divisions";
 import type { HyroxExperience, HyroxDivision } from "./types";
 import type { HyroxPhaseId } from "./phases";
@@ -358,18 +358,67 @@ function buildIntervals(sess: HyroxSession, args: PrescribeArgs): PrescribedItem
   ];
 }
 
-/** Compromised running → run → station → run rounds under fatigue + structured plan. */
+/**
+ * Compromised-running station rotation (ADR 0066). Compromised running is
+ * run → ONE station under fatigue → run, with the station ROTATING across rounds —
+ * NOT all stations every round. The old `buildCompromised` listed ALL of the
+ * session's stations (`stationRows`) at full race volume while the copy said "one
+ * race station per round": an ambiguous, self-contradictory "N rounds / 3 stations"
+ * structure (caught by 3 independent program reviews). Here each round gets exactly
+ * one station, round-robin over the session's loaded stations, offset by week for
+ * variety, so the meaning is unambiguous and the per-session station volume is one
+ * full station × rounds (not all stations × rounds).
+ */
+function compromisedRotation(
+  movements: readonly string[],
+  rounds: number,
+  week: number,
+): HyroxStation[] {
+  const stations = movements.map((m) => getStation(m)).filter((s): s is HyroxStation => s != null);
+  if (stations.length === 0) return [];
+  const offset = Math.max(0, Math.floor(week) - 1);
+  return Array.from({ length: rounds }, (_, r) => stations[(offset + r) % stations.length]!);
+}
+
+/** Compromised running → run → ONE rotating station → run, per round (ADR 0061 step 5 / 0066). */
 function buildCompromised(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[] {
   const rounds = Math.max(
     2,
     ROUNDS_BY_LEVEL[args.experience] + (args.phase === "taper" ? taperRoundsDelta(args.taperKind) : 0),
   );
+  const rotation = compromisedRotation(sess.movements, rounds, args.week ?? 1);
+
+  // One station per round, rotating — each round names its own station (ADR 0066).
+  const segments: CardioPlanSegment[] = rotation.map((st, i) => {
+    const target = stationTargetLabel(st, args.gender);
+    return {
+      label: `Round ${i + 1}`,
+      detail: `1 km run → ${st.name}${target ? ` (${target})` : ""} → 1 km run`,
+    };
+  });
+
+  // Load reference: the UNIQUE stations touched this session, in rotation order.
+  const seen = new Set<string>();
+  const stations: CardioPlanStation[] = [];
+  for (const st of rotation) {
+    if (seen.has(st.movement)) continue;
+    seen.add(st.movement);
+    const load = stationLoadValue(st, args.division, args.gender);
+    const target = stationTargetLabel(st, args.gender);
+    stations.push({
+      name: st.name,
+      ...(load ? { load } : {}),
+      ...(target ? { target } : {}),
+      key: st.movement,
+    });
+  }
+
   const plan: CardioPlan = {
     summary:
-      "The signature HYROX session: run hard on legs already fatigued by a station — the race-specific skill of running under fatigue.",
+      "The signature HYROX session: run hard on legs already fatigued by a station — the race-specific skill of running under fatigue. One station per round, rotating.",
     meta: `${rounds} rounds`,
-    segments: [{ label: "Each round", detail: "1 km run → one race station → 1 km run, minimal rest" }],
-    stations: stationRows(sess.movements, args.division, args.gender),
+    segments,
+    stations,
     effort: "Race effort (RPE 7–8). The runs will feel heavy after the station — that's the point. Hold form.",
     logHint: "Manual session — tap Mark complete when you're done.",
   };
