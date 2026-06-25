@@ -37,7 +37,8 @@ import { HyroxCompletionForm } from "@/components/session/HyroxCompletionForm";
 import { resolveHyroxCompletionView } from "@/lib/hyrox/resolve-completion-view";
 import { readStationOverrides } from "@/lib/hyrox/completion-view";
 import { SessionWakeLock } from "@/components/session/SessionWakeLock";
-import { PostSessionSummary } from "@/components/session/PostSessionSummary";
+import { PostSessionSummary, type HyroxSummary } from "@/components/session/PostSessionSummary";
+import { stationKeyForSlug } from "@/lib/hyrox/materialize-actuals";
 import { UnitsProvider } from "@/lib/units/context";
 import { StravaAutofillBanner, type StravaAutofillMatch } from "@/components/session/StravaAutofillBanner";
 import { MODALITY_LABEL } from "@/lib/planner/session-modality";
@@ -538,10 +539,44 @@ export default async function SessionDetailPage({
       )
     : null;
 
-  // Phase 2 D2 — suggested progression hints. Computed only for completed
-  // sessions, only for main lifts (defined as "movement_id has a row in
-  // training_maxes"). For each main lift in this session, find the top
-  // working set, estimate 1RM, and pass through the progression engine.
+  // HYROX conditioning summary — a station-intervals / circuit session materializes
+  // its loaded stations into strength set_logs, so the generic strength tiles report
+  // a meaningless tonnage/sets/PRs. Detect such a completed session (a HYROX block
+  // whose prescription carries a cardioPlan with stations) and build a conditioning
+  // summary: time (actual vs prescribed) + the stations and the loads actually used.
+  const hyroxSummary: HyroxSummary | null = (() => {
+    if (!isComplete || !programRef?.startsWith("hx-")) return null;
+    const item = (plannedPrescription?.items ?? []).find(
+      (it) => (it.cardioPlan?.stations?.length ?? 0) > 0,
+    );
+    const plan = item?.cardioPlan;
+    if (!plan?.stations) return null;
+    // Actual confirmed weight (kg) per station key, from the materialized set_logs.
+    const usedByKey = new Map<string, number>();
+    for (const s of setsRaw ?? []) {
+      const mv = Array.isArray(s.movement) ? s.movement[0] : s.movement;
+      const slug = (mv?.slug as string | undefined) ?? undefined;
+      const key = slug ? stationKeyForSlug(slug) : null;
+      const w = s.weight_kg != null ? Number(s.weight_kg) : null;
+      if (key && w && w > 0 && !usedByKey.has(key)) usedByKey.set(key, w);
+    }
+    return {
+      actualMin: (session.duration_min as number | null) ?? null,
+      prescribedMin: item?.durationMin ?? null,
+      avgHrBpm: cardioSummary?.avgHrBpm ?? null,
+      roundsLabel: plan.meta ?? null,
+      stations: plan.stations.map((st) => {
+        const usedKg = st.key ? usedByKey.get(st.key) : undefined;
+        return {
+          name: st.name,
+          ...(usedKg != null ? { load: `${usedKg} kg` } : st.load ? { load: st.load } : {}),
+          ...(st.target ? { target: st.target } : {}),
+        };
+      }),
+    };
+  })();
+
+
   // Prescription gives us the rep target; fall back to logged reps when
   // the link isn't present.
   let progressionHints: ProgressionHint[] | undefined;
@@ -1005,6 +1040,7 @@ export default async function SessionDetailPage({
           progressionHints={progressionHints}
           bwDiagnostics={bwSessionDiagnostics}
           cardio={cardioSummary}
+          hyrox={hyroxSummary}
         />
       )}
 

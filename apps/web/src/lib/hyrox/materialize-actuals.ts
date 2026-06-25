@@ -105,6 +105,17 @@ const STATION_SLUG: Record<string, string> = {
   "wall-ball": "wall-ball",
 };
 
+/** Reverse of STATION_SLUG: materialized catalog slug → loaded-station engine key.
+ *  Lets the completed-session summary attribute a logged set back to its station. */
+const SLUG_TO_STATION: Record<string, string> = Object.fromEntries(
+  Object.entries(STATION_SLUG).map(([key, slug]) => [slug, key]),
+);
+
+/** The HYROX station engine key for a materialized set-log slug, or null. */
+export function stationKeyForSlug(slug: string): string | null {
+  return SLUG_TO_STATION[slug] ?? null;
+}
+
 /** A station is "loaded" (gets a confirmable weight) iff it has a division load. */
 function isLoadedStation(movementKey: string): boolean {
   return getStation(movementKey)?.open != null;

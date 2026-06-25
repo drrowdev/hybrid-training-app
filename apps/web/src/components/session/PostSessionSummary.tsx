@@ -47,6 +47,21 @@ export type ProgressionHint = {
   rationale: string;
 };
 
+/**
+ * HYROX conditioning summary (station-intervals / SE-circuit). When present the
+ * card shows time (actual vs prescribed) / effort / avg HR + the stations and the
+ * loads used, instead of the strength tonnage/sets/PRs tiles which are meaningless
+ * for a conditioning session. HYROX loads are competition-standard kg.
+ */
+export type HyroxSummary = {
+  actualMin: number | null;
+  prescribedMin: number | null;
+  avgHrBpm: number | null;
+  /** e.g. "2 blocks · 4 rounds". */
+  roundsLabel: string | null;
+  stations: { name: string; load?: string; target?: string }[];
+};
+
 export function PostSessionSummary({
   sessionId,
   summary,
@@ -56,6 +71,7 @@ export function PostSessionSummary({
   progressionHints,
   bwDiagnostics,
   cardio,
+  hyrox,
 }: {
   sessionId: string;
   summary: SessionSummary;
@@ -91,6 +107,8 @@ export function PostSessionSummary({
    * strength-only sessions, which render byte-identically to before.
    */
   cardio?: CardioSessionSummary | null;
+  /** HYROX conditioning summary — replaces the strength tiles + cardio block. */
+  hyrox?: HyroxSummary | null;
 }) {
   const units = useUnits();
   const [showNote, setShowNote] = useState(false);
@@ -127,8 +145,11 @@ export function PostSessionSummary({
     summary.workingSetCount > 0 ||
     summary.totalTonnageKg > 0 ||
     (programmedSets ?? 0) > 0;
-  const showStrengthTiles = hasStrength || !cardio;
-  const cardioOnly = !!cardio && !showStrengthTiles;
+  // A HYROX conditioning session takes over the whole tile area — the strength
+  // tonnage/sets/PRs are misleading and the avg HR is folded into the HYROX tiles.
+  const isHyrox = !!hyrox;
+  const showStrengthTiles = !isHyrox && (hasStrength || !cardio);
+  const cardioOnly = !isHyrox && !!cardio && !showStrengthTiles;
 
   return (
     <section
@@ -158,6 +179,8 @@ export function PostSessionSummary({
           {cardioOnly ? "Workout complete!" : "Session complete!"}
         </h2>
       </div>
+
+      {hyrox && <HyroxStats hyrox={hyrox} effortValue={effortValue} />}
 
       {showStrengthTiles && (
         <div
@@ -202,7 +225,7 @@ export function PostSessionSummary({
         </div>
       )}
 
-      {cardio && (
+      {cardio && !isHyrox && (
         <CardioStats
           cardio={cardio}
           units={units}
@@ -651,14 +674,108 @@ function CardioZoneBar({ zones }: { zones: Record<Zone, number> }) {
   );
 }
 
+/**
+ * HYROX conditioning summary block — time (actual vs prescribed), effort, avg HR
+ * tiles + the stations and loads used. Replaces the strength tonnage/sets/PRs
+ * tiles (meaningless for conditioning) and the generic cardio block.
+ */
+function HyroxStats({ hyrox, effortValue }: { hyrox: HyroxSummary; effortValue: string | null }) {
+  const timeValue = hyrox.actualMin != null ? `${hyrox.actualMin} min` : "—";
+  return (
+    <div data-testid="hyrox-summary" style={{ display: "grid", gap: 12 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+          gap: 10,
+        }}
+      >
+        <SummaryStat
+          label="Time"
+          value={timeValue}
+          sub={
+            hyrox.prescribedMin != null && hyrox.actualMin != null
+              ? `prescribed ~${hyrox.prescribedMin} min`
+              : undefined
+          }
+          testId="hyrox-time"
+        />
+        {effortValue != null && (
+          <SummaryStat label="Effort" value={`${effortValue} / 10`} testId="hyrox-effort" />
+        )}
+        {hyrox.avgHrBpm != null && (
+          <SummaryStat label="Avg HR" value={`${hyrox.avgHrBpm} bpm`} testId="hyrox-hr" />
+        )}
+        {hyrox.roundsLabel && (
+          <SummaryStat label="Format" value={hyrox.roundsLabel} testId="hyrox-format" />
+        )}
+      </div>
+
+      {hyrox.stations.length > 0 && (
+        <div style={{ display: "grid", gap: 6 }}>
+          <div
+            style={{
+              fontFamily: "var(--cp-font-mono)",
+              fontSize: 10,
+              color: "var(--cp-text-muted)",
+              textTransform: "uppercase",
+              letterSpacing: "0.1em",
+              fontWeight: 500,
+            }}
+          >
+            Stations &amp; loads
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gap: 1,
+              borderRadius: 10,
+              overflow: "hidden",
+              border: "1px solid var(--cp-border)",
+            }}
+          >
+            {hyrox.stations.map((st, i) => (
+              <div
+                key={i}
+                data-testid={`hyrox-station-${i}`}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "baseline",
+                  gap: 12,
+                  padding: "8px 12px",
+                  background: "var(--cp-surface)",
+                }}
+              >
+                <span style={{ fontSize: 14, color: "var(--cp-text)", fontWeight: 500 }}>{st.name}</span>
+                <span style={{ fontSize: 13, color: "var(--cp-text-muted)", textAlign: "right" }}>
+                  {st.load && (
+                    <span className="mono" style={{ color: "var(--cp-text)", fontWeight: 600 }}>
+                      {st.load}
+                    </span>
+                  )}
+                  {st.load && st.target ? <span style={{ opacity: 0.6 }}> · </span> : null}
+                  {st.target}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SummaryStat({
   label,
   value,
+  sub,
   highlight,
   testId,
 }: {
   label: string;
   value: string;
+  sub?: string;
   highlight?: boolean;
   testId?: string;
 }) {
@@ -696,6 +813,9 @@ function SummaryStat({
       >
         {value}
       </div>
+      {sub && (
+        <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 2 }}>{sub}</div>
+      )}
     </div>
   );
 }
