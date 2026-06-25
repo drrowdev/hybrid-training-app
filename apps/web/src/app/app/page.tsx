@@ -883,12 +883,12 @@ function ActivityPill({ label, mono }: { label: string; mono?: boolean }) {
     <span
       className={mono ? "mono" : undefined}
       style={{
-        fontSize: 10.5,
+        fontSize: 11,
         color: "var(--cp-text-muted)",
         background: "var(--cp-surface-soft)",
         border: "1px solid var(--cp-border)",
         borderRadius: 7,
-        padding: "2px 7px",
+        padding: "3px 8px",
       }}
     >
       {label}
@@ -1223,8 +1223,8 @@ function TodaySessionCard({
               <div data-testid="rest-tomorrow" style={{ display: "grid", gap: 3, minWidth: 0 }}>
                 <div
                   style={{
-                    fontSize: 10.5,
-                    letterSpacing: "0.12em",
+                    fontSize: 11,
+                    letterSpacing: "0.1em",
                     textTransform: "uppercase",
                     color: "var(--cp-text-muted)",
                     fontWeight: 700,
@@ -1247,8 +1247,8 @@ function TodaySessionCard({
               <div style={{ display: "grid", gap: 3, minWidth: 0 }}>
                 <div
                   style={{
-                    fontSize: 10.5,
-                    letterSpacing: "0.12em",
+                    fontSize: 11,
+                    letterSpacing: "0.1em",
                     textTransform: "uppercase",
                     color: "var(--cp-text-muted)",
                     fontWeight: 700,
@@ -1265,13 +1265,16 @@ function TodaySessionCard({
               href="/app/plan"
               style={{
                 flex: "0 0 auto",
-                fontSize: 12.5,
+                display: "inline-flex",
+                alignItems: "center",
+                minHeight: 44,
+                fontSize: 13,
                 fontWeight: 600,
                 color: "var(--cp-text)",
                 textDecoration: "none",
-                padding: "7px 12px",
+                padding: "0 16px",
                 border: "1px solid var(--cp-border-strong)",
-                borderRadius: 9,
+                borderRadius: 10,
                 whiteSpace: "nowrap",
               }}
             >
@@ -1373,7 +1376,7 @@ function TodaySessionCard({
           <span
             className="mono"
             title="Robineau 2016 (HIGH) — recovery between concurrent sessions"
-            style={{ fontSize: 10, color: "var(--cp-text-muted)", flexShrink: 0 }}
+            style={{ fontSize: 11, color: "var(--cp-text-muted)", flexShrink: 0 }}
           >
             Robineau 2016
           </span>
