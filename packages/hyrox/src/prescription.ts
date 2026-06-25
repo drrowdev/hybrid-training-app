@@ -87,6 +87,21 @@ const ROUNDS_BY_LEVEL: Record<HyroxExperience, number> = {
   advanced: 5,
 };
 
+/**
+ * Taper ROUNDS delta for conditioning sessions (compromised-run, station-intervals).
+ * ADR 0065. A volume-down / intensity-maintained taper (Bosquet 2007 meta-analysis:
+ * a progressive ~41–60% volume reduction over 1–2 weeks, with intensity held, best
+ * raises performance). We shed total work (rounds) and keep race-pace effort: the
+ * sharpen week drops one round, the race week two — `Math.max(2, …)` at the call site
+ * floors every taper session to a brief sharpener, never empty. `[DEF]` calibration
+ * inside the Bosquet window.
+ */
+function taperRoundsDelta(taperKind: PrescribeArgs["taperKind"]): number {
+  if (taperKind === "race") return -2;
+  if (taperKind === "sharpen") return -1;
+  return 0;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Small helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -119,6 +134,10 @@ export interface PrescribeArgs {
   isDeload: boolean;
   /** 1-based block week — rotates the focused station selection (ADR 0062). */
   week?: number;
+  /** Taper sub-kind (ADR 0065) — sheds conditioning ROUNDS in taper weeks so the
+   *  race week is a brief sharpener, not a full-volume session. `null`/absent on
+   *  non-taper weeks. */
+  taperKind?: "sharpen" | "race" | null;
   /** Competition weight category — selects the gender-correct station loads. */
   gender?: "male" | "female";
 }
@@ -283,7 +302,12 @@ function buildAerobic(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[]
 
 /** VO2 / station intervals → a conditioning item expressed in rounds + structured plan. */
 function buildIntervals(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[] {
-  const rounds = ROUNDS_BY_LEVEL[args.experience] + (args.phase === "specific" ? 1 : 0);
+  const rounds = Math.max(
+    2,
+    ROUNDS_BY_LEVEL[args.experience] +
+      (args.phase === "specific" ? 1 : 0) +
+      (args.phase === "taper" ? taperRoundsDelta(args.taperKind) : 0),
+  );
 
   let plan: CardioPlan;
   let durationSec: number | null = null;
@@ -336,7 +360,10 @@ function buildIntervals(sess: HyroxSession, args: PrescribeArgs): PrescribedItem
 
 /** Compromised running → run → station → run rounds under fatigue + structured plan. */
 function buildCompromised(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[] {
-  const rounds = ROUNDS_BY_LEVEL[args.experience];
+  const rounds = Math.max(
+    2,
+    ROUNDS_BY_LEVEL[args.experience] + (args.phase === "taper" ? taperRoundsDelta(args.taperKind) : 0),
+  );
   const plan: CardioPlan = {
     summary:
       "The signature HYROX session: run hard on legs already fatigued by a station — the race-specific skill of running under fatigue.",

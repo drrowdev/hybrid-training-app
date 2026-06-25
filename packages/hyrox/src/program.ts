@@ -321,6 +321,7 @@ function prescribeRef(
     phase: week.phase,
     isDeload: week.isDeload,
     week: week.week,
+    ...(week.taperKind ? { taperKind: week.taperKind } : {}),
     ...(ctx.gender ? { gender: ctx.gender } : {}),
   };
 

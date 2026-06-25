@@ -40,6 +40,9 @@ export interface HyroxWeekPlan {
   week: number;
   phase: HyroxPhaseId;
   isDeload: boolean;
+  /** Taper sub-kind for taper weeks (`null` otherwise) — drives the conditioning
+   *  volume taper in prescription (ADR 0065). */
+  taperKind: TaperKind;
   /** Exactly 7 cells, Day 1 … Day 7 (index 0 = Monday). */
   days: HyroxDayCell[];
 }
@@ -226,7 +229,7 @@ function deloadWeekDays(): HyroxDayCell[] {
 
 /** Taper sub-kind: the final taper week is the "race" week (≤7d out); earlier
  *  taper weeks (2-week tapers) are "sharpen". Non-taper weeks pass `null`. */
-type TaperKind = "sharpen" | "race" | null;
+export type TaperKind = "sharpen" | "race" | null;
 
 function spreadFor(n: number): number[] {
   return SPREAD[Math.min(n, 7)] ?? SPREAD[7]!;
@@ -509,7 +512,7 @@ export function buildHyroxGrid(input: HyroxGridInput): HyroxWeekPlan[] {
           taperKindFor(w),
           doubleStrengthWeeks.has(w),
         );
-    plan.push({ week: w, phase, isDeload: deload, days });
+    plan.push({ week: w, phase, isDeload: deload, taperKind: taperKindFor(w), days });
   }
   return plan;
 }
