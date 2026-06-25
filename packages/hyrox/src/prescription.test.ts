@@ -401,3 +401,60 @@ describe("HYROX prescribe — two-a-day (ADR 0054)", () => {
     expect(hyroxEngine.timeline(i).some((s) => s.secondSession != null)).toBe(false);
   });
 });
+
+describe("HYROX prescribe — taper sheds conditioning volume (ADR 0065)", () => {
+  const weekOf = (tags: string[]): number => {
+    const t = tags.find((x) => x.startsWith("week:"));
+    return t ? Number(t.slice("week:".length)) : NaN;
+  };
+
+  /** Rounds (the conditioning item's `sets`) prescribed for the FIRST matching ref. */
+  function roundsFor(
+    i: HyroxInstance,
+    sessionId: string,
+    predicate: (tags: string[]) => boolean,
+  ): number | undefined {
+    const entry = eachRef(i).find((r) => r.tags.includes(`session:${sessionId}`) && predicate(r.tags));
+    if (!entry) return undefined;
+    return hyroxEngine.prescribe(i, entry.ref, ctxWithMaxes).items.find((it) => it.kind === "conditioning")?.sets;
+  }
+
+  it("cuts compromised-run rounds in the race week vs the race-prep (specific) phase", () => {
+    const i = inst(); // intermediate 5/wk → ROUNDS_BY_LEVEL = 4, 2-week taper
+    const specific = roundsFor(i, "compromised-run", (t) => t.includes("phase:specific"));
+    // The race week is the LAST taper week carrying a compromised-run.
+    const raceEntry = eachRef(i)
+      .filter((r) => r.tags.includes("session:compromised-run") && r.tags.includes("phase:taper"))
+      .sort((a, b) => weekOf(b.tags) - weekOf(a.tags))[0];
+    expect(raceEntry).toBeDefined();
+    const raceRounds = hyroxEngine
+      .prescribe(i, raceEntry!.ref, ctxWithMaxes)
+      .items.find((it) => it.kind === "conditioning")?.sets;
+    expect(specific).toBe(4);
+    expect(raceRounds).toBe(2); // 4 − 2 (race-week delta), floored at 2
+    expect(raceRounds!).toBeLessThan(specific!);
+  });
+
+  it("cuts station-intervals rounds progressively across a 2-week taper (sharpen > race)", () => {
+    const i = inst();
+    const taperStation = eachRef(i)
+      .filter((r) => r.tags.includes("session:station-intervals") && r.tags.includes("phase:taper"))
+      .sort((a, b) => weekOf(a.tags) - weekOf(b.tags));
+    expect(taperStation.length).toBeGreaterThanOrEqual(2);
+    const roundsAt = (ref: string) =>
+      hyroxEngine.prescribe(i, ref, ctxWithMaxes).items.find((it) => it.kind === "conditioning")?.sets;
+    const sharpen = roundsAt(taperStation[0]!.ref);
+    const race = roundsAt(taperStation[taperStation.length - 1]!.ref);
+    expect(sharpen).toBe(3); // 4 − 1
+    expect(race).toBe(2); // 4 − 2
+    expect(race!).toBeLessThan(sharpen!);
+  });
+
+  it("leaves non-taper conditioning rounds unchanged (no silent regression)", () => {
+    const i = inst();
+    // Specific-phase station-intervals keep the race-prep bump (ROUNDS + 1 = 5),
+    // untouched by the taper delta — proving non-taper weeks are byte-identical.
+    expect(roundsFor(i, "station-intervals", (t) => t.includes("phase:specific"))).toBe(5);
+    expect(roundsFor(i, "compromised-run", (t) => t.includes("phase:specific"))).toBe(4);
+  });
+});
