@@ -44,4 +44,10 @@ describe("RestTimer", () => {
     expect(html).toContain('data-testid="rest-timer-plus-30"');
     expect(html).toContain('data-testid="rest-timer"');
   });
+
+  it("renders an explicit ✕ dismiss control (discoverable, not just tap-the-circle)", () => {
+    const html = renderToStaticMarkup(<RestTimer seconds={90} movementName="Squat" />);
+    expect(html).toContain('data-testid="rest-timer-dismiss"');
+    expect(html).toContain('aria-label="Dismiss rest timer"');
+  });
 });

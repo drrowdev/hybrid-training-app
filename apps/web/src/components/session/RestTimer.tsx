@@ -5,10 +5,10 @@
  *
  * Renders a slim FULL-WIDTH bar pinned just above the bottom nav while a rest
  * countdown is active — it shows the remaining mm:ss, a progress bar, the
- * "next <movement>" context and ±30s controls. Unlike the old floating pill it
- * never overlaps the weight/reps steppers. It is present ONLY while a rest is in
- * progress (the parent passes `seconds=0` → renders nothing) plus a brief
- * "Ready ✓" completion state the lifter taps to dismiss.
+ * "next <movement>" context, ±30s controls and an explicit ✕ dismiss. Unlike the
+ * old floating pill it never overlaps the weight/reps steppers. It is present ONLY
+ * while a rest is in progress (the parent passes `seconds=0` → renders nothing) plus
+ * a brief "Ready ✓" completion state the lifter taps to dismiss.
  *
  * Optional Web Vibration buzz + ~200ms 600Hz Web Audio chirp when the timer
  * hits zero — gracefully no-op where the APIs are unavailable (or disabled in
@@ -250,6 +250,30 @@ export function RestTimer({
         style={ADJ_BTN_STYLE}
       >
         +30s
+      </button>
+      <button
+        type="button"
+        data-testid="rest-timer-dismiss"
+        onClick={(e) => {
+          e.stopPropagation();
+          dismiss();
+        }}
+        aria-label="Dismiss rest timer"
+        title="Dismiss"
+        style={{
+          flex: "0 0 auto",
+          width: 44,
+          height: 44,
+          borderRadius: 12,
+          border: "1px solid var(--cp-border-strong)",
+          background: "transparent",
+          color: "var(--cp-text-muted)",
+          fontSize: 18,
+          lineHeight: 1,
+          cursor: "pointer",
+        }}
+      >
+        ✕
       </button>
     </div>
   );
