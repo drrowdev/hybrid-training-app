@@ -844,3 +844,33 @@ describe("HYROX engine — segments (start points)", () => {
     expect(new Set(idx).size).toBe(idx.length);
   });
 });
+
+describe("HYROX simulation week preserves aerobic recovery (ADR 0067)", () => {
+  const idsOf = (w: { days: { kind: string; session?: string }[] }) =>
+    w.days.filter((c) => c.kind === "session").map((c) => (c as { session: string }).session);
+  const hasSim = (w: { days: { kind: string }[] }) => w.days.some((c) => c.kind === "sim");
+
+  it("a sim week keeps an aerobic long/easy run — the sim displaces a quality/station day, not the recovery", () => {
+    for (const experience of ["intermediate", "advanced"] as const) {
+      const g = buildHyroxGrid({
+        weeks: WEEKS_BY_EXPERIENCE[experience],
+        sessionsPerWeek: 5,
+        experience,
+      });
+      const simWeeks = g.filter(hasSim);
+      expect(simWeeks.length).toBeGreaterThan(0);
+      for (const w of simWeeks) {
+        const sessions = idsOf(w);
+        // The aerobic engine/recovery survives the peak week (the old bug displaced it).
+        expect(
+          sessions.some((id) => id === "long-run" || id === "easy-run"),
+          `${experience} sim wk${w.week} keeps an aerobic day`,
+        ).toBe(true);
+        // The signature compromised run is preserved (also a program invariant).
+        expect(sessions).toContain("compromised-run");
+        // The separate hard VO2 quality day is what the sim replaced — not the long run.
+        expect(sessions).not.toContain("vo2-intervals");
+      }
+    }
+  });
+});
