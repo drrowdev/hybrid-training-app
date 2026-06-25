@@ -370,23 +370,42 @@ function buildWeekDays(
   // Place sessions onto the week's training days. Strength goes on evenly-spaced
   // positions (ADR 0056 — Tue/Fri rather than Mon/Sat); the remaining sessions
   // fill the other days in priority order. Position i = the user's i-th chosen
-  // training day (materialize seats specs in emission order).
-  const strengthQueue = resolved.filter((r) => r.cat === "strength").map((r) => r.session);
-  const otherQueue = resolved.filter((r) => r.cat !== "strength").map((r) => r.session);
+  // training day (materialize seats specs in emission order). Track each placed
+  // day's CATEGORY so the simulation can displace the right session (ADR 0067).
+  const strengthQueue = resolved.filter((r) => r.cat === "strength");
+  const otherQueue = resolved.filter((r) => r.cat !== "strength");
   const sPos = strengthPositions(primaryCount, strengthQueue.length);
   let si = 0;
   let oi = 0;
+  const posCat: (HyroxSlotCat | undefined)[] = Array.from({ length: primaryCount }, () => undefined);
   for (let pos = 0; pos < primaryCount; pos++) {
     const useStrength = sPos.has(pos) && si < strengthQueue.length;
-    const session = useStrength ? strengthQueue[si++]! : otherQueue[oi++] ?? strengthQueue[si++]!;
-    days[wd[pos]!] = { kind: "session", session };
+    const picked = useStrength ? strengthQueue[si++]! : (otherQueue[oi++] ?? strengthQueue[si++]!);
+    days[wd[pos]!] = { kind: "session", session: picked.session };
+    posCat[pos] = picked.cat;
   }
 
-  // Race-prep simulation: a race rehearsal replaces the LAST non-strength day of
-  // the week (never a strength day).
+  // Race-prep simulation. A simulation IS a hard, race-specific effort, so it must
+  // REPLACE a redundant hard session — NOT the week's aerobic recovery. The old
+  // rule ("last non-strength day") displaced the LONG RUN, leaving the peak week as
+  // 4 hard sessions + a max-effort sim with no easy/aerobic day (the reviewers'
+  // "death week"). Instead displace the last QUALITY/STATION day — the sim already
+  // rehearses stations + race-pace running — preserving strength, compromised (the
+  // signature skill, also a program invariant), and the long/easy aerobic recovery.
+  // Fallback to the old rule if no quality/station day exists (ADR 0067).
   if (withSim && primaryCount > 0) {
-    let simPos = primaryCount - 1;
-    while (simPos > 0 && sPos.has(simPos)) simPos -= 1;
+    let simPos = -1;
+    for (let pos = primaryCount - 1; pos >= 0; pos--) {
+      const cat = posCat[pos];
+      if (cat === "quality" || cat === "station") {
+        simPos = pos;
+        break;
+      }
+    }
+    if (simPos === -1) {
+      simPos = primaryCount - 1;
+      while (simPos > 0 && sPos.has(simPos)) simPos -= 1;
+    }
     days[wd[simPos]!] = { kind: "sim", session: "sim-half" };
   }
 
