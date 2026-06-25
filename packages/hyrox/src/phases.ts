@@ -231,6 +231,11 @@ function deloadWeekDays(): HyroxDayCell[] {
  *  taper weeks (2-week tapers) are "sharpen". Non-taper weeks pass `null`. */
 export type TaperKind = "sharpen" | "race" | null;
 
+/** Race-simulation kind for a Specific week (ADR 0068): a `full` 8+8 rehearsal early
+ *  in race-prep (clear of the race), a `half` 4+4 sharpener nearer the taper, or
+ *  `null` for a non-sim week. */
+type SimKind = "full" | "half" | null;
+
 function spreadFor(n: number): number[] {
   return SPREAD[Math.min(n, 7)] ?? SPREAD[7]!;
 }
@@ -328,7 +333,7 @@ function applyTwoADays(days: HyroxDayCell[], phase: HyroxPhaseId, experience: Hy
 function buildWeekDays(
   phase: HyroxPhaseId,
   sessionsPerWeek: number,
-  withSim: boolean,
+  simKind: SimKind,
   experience: HyroxExperience,
   twoADay: boolean,
   week: number,
@@ -392,8 +397,9 @@ function buildWeekDays(
   // "death week"). Instead displace the last QUALITY/STATION day — the sim already
   // rehearses stations + race-pace running — preserving strength, compromised (the
   // signature skill, also a program invariant), and the long/easy aerobic recovery.
-  // Fallback to the old rule if no quality/station day exists (ADR 0067).
-  if (withSim && primaryCount > 0) {
+  // Fallback to the old rule if no quality/station day exists (ADR 0067). The sim
+  // is a `full` (8+8) early-race-prep rehearsal or a `half` (4+4) sharpener (ADR 0068).
+  if (simKind && primaryCount > 0) {
     let simPos = -1;
     for (let pos = primaryCount - 1; pos >= 0; pos--) {
       const cat = posCat[pos];
@@ -406,7 +412,7 @@ function buildWeekDays(
       simPos = primaryCount - 1;
       while (simPos > 0 && sPos.has(simPos)) simPos -= 1;
     }
-    days[wd[simPos]!] = { kind: "sim", session: "sim-half" };
+    days[wd[simPos]!] = { kind: "sim", session: simKind === "full" ? "sim-full" : "sim-half" };
   }
 
   // Two-a-day companions (ADR 0054) — applied AFTER the sim so a sim day is never
@@ -485,12 +491,28 @@ export function buildHyroxGrid(input: HyroxGridInput): HyroxWeekPlan[] {
     return (phase === "base" || phase === "build") && w > 1 && w % DELOAD_EVERY === 0;
   };
 
-  // Identify which Specific weeks (non-deload) carry a simulation: the last K.
+  // Race simulations across the Specific block (ADR 0055 + 0068).
+  //  • HALF (4+4) sharpeners: the last `SIM_WEEKS[level]` Specific weeks — race
+  //    rehearsals at a manageable cost near the taper.
+  //  • One FULL (8+8) rehearsal: the FIRST Specific week, but only when the block has
+  //    ≥2 Specific weeks so the full sim is clear of race week (with weeks of recovery
+  //    before the taper). The reviews flagged that the program never scheduled a full
+  //    back-half rehearsal; this adds exactly one, early and well clear of the event.
   const specificWeeks: number[] = [];
   for (let w = 1; w <= weeks; w++) {
     if (phases[w - 1] === "specific" && !isDeload(w)) specificWeeks.push(w);
   }
-  const simWeekSet = new Set(specificWeeks.slice(-SIM_WEEKS[experience]));
+  const halfSimWeekSet = new Set(specificWeeks.slice(-SIM_WEEKS[experience]));
+  // Only add the full sim when, after reserving the last `SIM_WEEKS` weeks for half
+  // sharpeners, ≥2 Specific weeks remain — so the full sim takes the first and ≥1
+  // real (non-sim) race-prep week always survives (a program invariant).
+  const fullSimWeek =
+    specificWeeks.length >= SIM_WEEKS[experience] + 2 ? specificWeeks[0]! : -1;
+  const simKindFor = (w: number): SimKind => {
+    if (w === fullSimWeek) return "full";
+    if (halfSimWeekSet.has(w)) return "half";
+    return null;
+  };
 
   // The RACE week is the final taper week (≤7 days out); earlier taper weeks are
   // "sharpen" (ADR 0055). Find the last taper week.
@@ -524,7 +546,7 @@ export function buildHyroxGrid(input: HyroxGridInput): HyroxWeekPlan[] {
       : buildWeekDays(
           phase,
           sessionsPerWeek,
-          simWeekSet.has(w),
+          simKindFor(w),
           experience,
           twoADay,
           w,

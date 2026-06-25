@@ -210,7 +210,11 @@ describe("HYROX prescribe — aerobic / intervals", () => {
 
 describe("HYROX prescribe — simulations & divisions", () => {
   function simRef(i: HyroxInstance): string {
-    const s = hyroxEngine.timeline(i).find((sp) => sp.tags?.includes("simulation"));
+    // The LAST simulation in the timeline is always a half-sim sharpener near the
+    // taper (ADR 0068 adds a full sim EARLIER in the block); these tests assert
+    // half-sim behaviour, so target that one.
+    const sims = hyroxEngine.timeline(i).filter((sp) => sp.tags?.includes("simulation"));
+    const s = sims[sims.length - 1];
     if (!s) throw new Error("no sim in timeline");
     return s.ref;
   }

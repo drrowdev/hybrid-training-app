@@ -819,7 +819,7 @@ describe("hyroxSessionIdForRef", () => {
     const i = setup({ experience: "intermediate" });
     const tl = hyroxEngine.timeline(i);
     const sim = tl.find((s) => s.tags?.includes("simulation"))!;
-    expect(hyroxSessionIdForRef(i, sim.ref)).toBe("sim-half");
+    expect(hyroxSessionIdForRef(i, sim.ref)).toMatch(/^sim-(half|full)$/);
     const training = tl.find((s) => s.kind === "training")!;
     expect(typeof hyroxSessionIdForRef(i, training.ref)).toBe("string");
   });
@@ -872,5 +872,52 @@ describe("HYROX simulation week preserves aerobic recovery (ADR 0067)", () => {
         expect(sessions).not.toContain("vo2-intervals");
       }
     }
+  });
+});
+
+describe("HYROX full race simulation before taper (ADR 0068)", () => {
+  const simsInOrder = (g: { week: number; days: { kind: string; session?: string }[] }[]) =>
+    g.flatMap((w) =>
+      w.days
+        .filter((c) => c.kind === "sim")
+        .map((c) => ({ week: w.week, id: (c as { session: string }).session })),
+    );
+
+  it("never schedules more than one full sim, and every full sim precedes the half sharpeners", () => {
+    for (const experience of EXPERIENCES) {
+      const inst = setup({ experience });
+      const g = buildHyroxGrid({ weeks: inst.weeks, sessionsPerWeek: inst.sessionsPerWeek, experience });
+      const sims = simsInOrder(g);
+      const fulls = sims.filter((s) => s.id === "sim-full");
+      const halves = sims.filter((s) => s.id === "sim-half");
+      expect(fulls.length).toBeLessThanOrEqual(1);
+      // A full sim is always EARLIER than every half sharpener (clear of the race).
+      for (const f of fulls) for (const h of halves) expect(f.week).toBeLessThan(h.week);
+    }
+  });
+
+  it("the intermediate race build includes exactly one full sim, early in race-prep", () => {
+    const inst = setup({ experience: "intermediate" });
+    const g = buildHyroxGrid({ weeks: inst.weeks, sessionsPerWeek: inst.sessionsPerWeek, experience: "intermediate" });
+    const sims = simsInOrder(g);
+    expect(sims.filter((s) => s.id === "sim-full")).toHaveLength(1);
+    expect(sims.filter((s) => s.id === "sim-half").length).toBeGreaterThanOrEqual(1);
+    // The full sim sits at the FIRST Specific week, with ≥1 non-sim week after it.
+    const specific = g.filter((w) => w.phase === "specific" && !w.isDeload);
+    const fullWeek = sims.find((s) => s.id === "sim-full")!.week;
+    expect(fullWeek).toBe(specific[0]!.week);
+    expect(specific.some((w) => w.week > fullWeek && !w.days.some((c) => c.kind === "sim"))).toBe(true);
+  });
+
+  it("a full simulation prescribes all 8 stations in race order", () => {
+    const inst = setup({ experience: "intermediate" });
+    const tl = hyroxEngine.timeline(inst);
+    const fullSim = tl.find((s) => hyroxSessionIdForRef(inst, s.ref) === "sim-full");
+    expect(fullSim).toBeDefined();
+    const stationItems = hyroxEngine
+      .prescribe(inst, fullSim!.ref, ctx)
+      .items.filter((it) => it.kind === "conditioning");
+    expect(stationItems).toHaveLength(8);
+    expect(stationItems[0]!.movementId).toBe("skierg");
   });
 });
