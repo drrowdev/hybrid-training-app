@@ -55,7 +55,6 @@ export type ProgressionHint = {
  */
 export type HyroxSummary = {
   actualMin: number | null;
-  prescribedMin: number | null;
   avgHrBpm: number | null;
   /** e.g. "2 blocks · 4 rounds". */
   roundsLabel: string | null;
@@ -693,11 +692,6 @@ function HyroxStats({ hyrox, effortValue }: { hyrox: HyroxSummary; effortValue: 
         <SummaryStat
           label="Time"
           value={timeValue}
-          sub={
-            hyrox.prescribedMin != null && hyrox.actualMin != null
-              ? `prescribed ~${hyrox.prescribedMin} min`
-              : undefined
-          }
           testId="hyrox-time"
         />
         {effortValue != null && (
@@ -769,13 +763,11 @@ function HyroxStats({ hyrox, effortValue }: { hyrox: HyroxSummary; effortValue: 
 function SummaryStat({
   label,
   value,
-  sub,
   highlight,
   testId,
 }: {
   label: string;
   value: string;
-  sub?: string;
   highlight?: boolean;
   testId?: string;
 }) {
@@ -813,9 +805,6 @@ function SummaryStat({
       >
         {value}
       </div>
-      {sub && (
-        <div style={{ fontSize: 11, color: "var(--cp-text-muted)", marginTop: 2 }}>{sub}</div>
-      )}
     </div>
   );
 }
