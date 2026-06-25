@@ -800,6 +800,16 @@ a.cp-tbr-pop-item { color: var(--cp-text); }
   .cp-desktop-only { display: none !important; }
 }
 
+/* ── Session logging: plate breakdown placement ───────────────────
+   On a phone the barbell plate breakdown otherwise pushes the
+   weight/reps inputs + "Log set" button below the fold. The focus
+   view is a CSS grid, so move the plate reference to the bottom on
+   mobile (it stays visible, the inputs come first). Desktop keeps it
+   above the form. */
+@media (max-width: 768px) {
+  .cp-plate-wrap { order: 5; }
+}
+
 /* ── Today — two-column layout (primary actions + glanceable rail) ──
    Above 768px the Today page splits into a main column and a ~320px
    right rail (Up next / This week / Recent activity). At/below 768px it

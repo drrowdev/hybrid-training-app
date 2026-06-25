@@ -852,13 +852,15 @@ export function MovementFocusView({
           );
         }
         return (
-          <PlateView
-            targetWeightKg={weight}
-            barWeightKg={barWeightKg}
-            inventory={inv}
-            units={units}
-            preferStandardLbPlates={preferStandardLbPlates}
-          />
+          <div className="cp-plate-wrap">
+            <PlateView
+              targetWeightKg={weight}
+              barWeightKg={barWeightKg}
+              inventory={inv}
+              units={units}
+              preferStandardLbPlates={preferStandardLbPlates}
+            />
+          </div>
         );
       })()}
 
@@ -1349,13 +1351,15 @@ function BwLoadControl({
 }
 
 const loadStepperBtn: React.CSSProperties = {
-  width: 28,
-  height: 28,
+  minWidth: 44,
+  minHeight: 44,
+  width: 44,
+  height: 44,
   borderRadius: 8,
   border: "1px solid var(--cp-border)",
   background: "var(--cp-surface)",
   color: "var(--cp-text)",
-  fontSize: 14,
+  fontSize: 18,
   cursor: "pointer",
 };
 
@@ -1584,7 +1588,7 @@ function Stepper({
           onClick={onMinus}
           className="cp-btn"
           aria-label={`Decrease ${label}`}
-          style={{ padding: "8px 12px", minWidth: 40 }}
+          style={{ padding: "8px 12px", minWidth: 44, minHeight: 44 }}
         >
           −
         </button>
@@ -1595,6 +1599,13 @@ function Stepper({
           onChange={(e) => {
             const n = Number(e.target.value);
             if (!Number.isNaN(n)) onSet(n);
+          }}
+          onFocus={(e) => {
+            // Mobile: the on-screen keyboard covers the lower half of the
+            // viewport, hiding the input + the "Log set" button. Scroll the
+            // focused field toward the top so both stay visible above it.
+            const el = e.currentTarget;
+            setTimeout(() => el.scrollIntoView({ block: "center", behavior: "smooth" }), 50);
           }}
           className="mono"
           aria-label={label}
@@ -1615,7 +1626,7 @@ function Stepper({
           onClick={onPlus}
           className="cp-btn"
           aria-label={`Increase ${label}`}
-          style={{ padding: "8px 12px", minWidth: 40 }}
+          style={{ padding: "8px 12px", minWidth: 44, minHeight: 44 }}
         >
           +
         </button>
