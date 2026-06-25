@@ -64,4 +64,34 @@ describe("ReadOnlySetList", () => {
     expect(html).toContain('data-testid="movement-card-readonly-empty-m1"');
     expect(html).toContain("No sets were logged");
   });
+
+  it("adds an Edit link per logged set when sessionId is provided", () => {
+    const html = renderToStaticMarkup(
+      <ReadOnlySetList
+        group={group}
+        sessionId="sess-1"
+        loggedSets={[set({ id: "a", weightKg: 85, reps: 5, rpe: 8 })]}
+      />,
+    );
+    expect(html).toContain('data-testid="readonly-set-edit-a"');
+    expect(html).toContain('href="/app/sessions/sess-1/sets/a/edit"');
+  });
+
+  it("does not add an Edit link for skipped sets", () => {
+    const html = renderToStaticMarkup(
+      <ReadOnlySetList
+        group={group}
+        sessionId="sess-1"
+        loggedSets={[set({ id: "b", skipped: true, skipReason: "fatigue", rpe: null })]}
+      />,
+    );
+    expect(html).not.toContain('data-testid="readonly-set-edit-b"');
+  });
+
+  it("omits Edit links entirely without sessionId (in-session recap)", () => {
+    const html = renderToStaticMarkup(
+      <ReadOnlySetList group={group} loggedSets={[set({ id: "a" })]} />,
+    );
+    expect(html).not.toContain("readonly-set-edit-");
+  });
 });

@@ -17,6 +17,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import type { Prescription } from "@hta/db";
 import {
   deriveCardState,
@@ -561,7 +562,7 @@ export function MovementCard({
 
       {!collapsed && readOnly && (
         <div className="cp-reveal" style={{ padding: "0 14px 14px", display: "grid", gap: 12 }}>
-          <ReadOnlySetList group={group} loggedSets={loggedSets} />
+          <ReadOnlySetList group={group} loggedSets={loggedSets} sessionId={sessionId} />
         </div>
       )}
 
@@ -643,9 +644,12 @@ export function MovementCard({
 export function ReadOnlySetList({
   group,
   loggedSets,
+  sessionId,
 }: {
   group: MovementGroup;
   loggedSets: FocusLoggedSet[];
+  /** When set, each logged row gets an Edit link to the set-edit page. */
+  sessionId?: string;
 }) {
   const units = useUnits();
   if (loggedSets.length === 0) {
@@ -690,11 +694,23 @@ export function ReadOnlySetList({
           >
             {s.skipped ? `Skipped${s.skipReason ? ` (${s.skipReason})` : ""}` : formatReadOnlySet(s, units)}
           </span>
-          {!s.skipped && s.rpe != null && (
-            <span className="mono" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
-              RPE {s.rpe}
-            </span>
-          )}
+          <span style={{ display: "inline-flex", gap: 12, alignItems: "baseline", justifySelf: "end" }}>
+            {!s.skipped && s.rpe != null && (
+              <span className="mono" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+                RPE {s.rpe}
+              </span>
+            )}
+            {sessionId && !s.skipped && (
+              <Link
+                href={`/app/sessions/${sessionId}/sets/${s.id}/edit`}
+                data-testid={`readonly-set-edit-${s.id}`}
+                className="mono"
+                style={{ fontSize: 12, color: "var(--cp-accent)", textDecoration: "none" }}
+              >
+                Edit
+              </Link>
+            )}
+          </span>
         </li>
       ))}
     </ul>
