@@ -479,16 +479,34 @@ export function buildHyroxGrid(input: HyroxGridInput): HyroxWeekPlan[] {
   const twoADay = input.twoADay ?? false;
   const hasRace = input.hasRace ?? true;
 
-  // First pass: assign phases + deload flags.
+  // First pass: assign phases.
   const phases: HyroxPhaseId[] = [];
   for (let w = 1; w <= weeks; w++) phases.push(phaseForWeek(w, weeks, experience, hasRace));
 
+  // All Specific weeks (phase-only, before deloads) — the last `SIM_WEEKS` are the
+  // half-sim sharpeners, protected from deloads so the final race rehearsals into the
+  // taper stay intact.
+  const allSpecificWeeks: number[] = [];
+  for (let w = 1; w <= weeks; w++) if (phases[w - 1] === "specific") allSpecificWeeks.push(w);
+  const protectedSpecific = new Set(allSpecificWeeks.slice(-SIM_WEEKS[experience]));
+  // A Specific-phase deload is only allowed when the block has room for it AND a full
+  // sim / ≥1 normal race-prep week to still survive (`SIM_WEEKS + 2` total Specific
+  // weeks); short Specific blocks keep the prior accumulation-only deload behaviour.
+  const specificDeloadOk = allSpecificWeeks.length >= SIM_WEEKS[experience] + 2;
+
   const isDeload = (w: number): boolean => {
+    if (w <= 1) return false;
     const phase = phases[w - 1]!;
-    // Deloads belong in the accumulation phases. The Specific (race-prep) block is
-    // short and the taper follows soon after, so we never interrupt those — that
-    // would collapse race-prep to nothing (esp. for beginners). `[DEF]`.
-    return (phase === "base" || phase === "build") && w > 1 && w % DELOAD_EVERY === 0;
+    if (phase === "taper") return false;
+    if (w % DELOAD_EVERY !== 0) return false;
+    // Deloads run on a 3:1/4:1 cadence through accumulation AND into the realization
+    // (Specific) block (ADR 0069): concurrent endurance+strength fatigue is additive,
+    // and best-practice HYROX programming keeps a recovery week roughly every 3rd–4th
+    // week through the hard block — the taper is an ADDITIONAL terminal recovery, not a
+    // substitute. The final half-sim sharpeners are protected; very short Specific
+    // blocks stay accumulation-only so race-prep isn't collapsed.
+    if (phase === "specific") return specificDeloadOk && !protectedSpecific.has(w);
+    return true; // base / build
   };
 
   // Race simulations across the Specific block (ADR 0055 + 0068).

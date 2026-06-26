@@ -44,7 +44,7 @@ describe("HYROX engine — describeSetup", () => {
 });
 
 describe("HYROX engine — setup", () => {
-  it("derives block length from experience (10 / 12 / 16)", () => {
+  it("derives block length from experience (12 / 14 / 18)", () => {
     expect(setup({ experience: "beginner" }).weeks).toBe(WEEKS_BY_EXPERIENCE.beginner);
     expect(setup({ experience: "intermediate" }).weeks).toBe(WEEKS_BY_EXPERIENCE.intermediate);
     expect(setup({ experience: "advanced" }).weeks).toBe(WEEKS_BY_EXPERIENCE.advanced);
@@ -69,7 +69,7 @@ describe("HYROX engine — setup", () => {
     const inst = setup({ experience: "nonsense", division: "nonsense" });
     expect(inst.experience).toBe("intermediate");
     expect(inst.division).toBe("open");
-    expect(inst.weeks).toBe(12);
+    expect(inst.weeks).toBe(14);
   });
 
   it("accepts all three divisions", () => {
@@ -84,13 +84,13 @@ describe("HYROX engine — setup", () => {
   });
 
   it("honours a race-date `weeks` override, clamped to [4, 24]", () => {
-    // beginner default is 10; an override wins.
+    // beginner default is 12; an override wins.
     expect(setup({ experience: "beginner", weeks: 8 }).weeks).toBe(8);
     expect(setup({ experience: "beginner", weeks: 2 }).weeks).toBe(4); // clamp low
     expect(setup({ experience: "beginner", weeks: 40 }).weeks).toBe(24); // clamp high
     // absent / invalid → experience default.
-    expect(setup({ experience: "advanced" }).weeks).toBe(16);
-    expect(setup({ experience: "advanced", weeks: "" }).weeks).toBe(16);
+    expect(setup({ experience: "advanced" }).weeks).toBe(18);
+    expect(setup({ experience: "advanced", weeks: "" }).weeks).toBe(18);
   });
 });
 
@@ -144,14 +144,28 @@ describe("HYROX grid — periodization", () => {
     expect(grid.slice(-2).every((w) => w.phase === "taper")).toBe(true);
   });
 
-  it("inserts deloads on 4th work weeks, only in Base/Build (never Specific or Taper)", () => {
-    const grid = buildHyroxGrid({ weeks: 16, sessionsPerWeek: 5, experience: "advanced" });
-    expect(grid.find((w) => w.week === 4)!.isDeload).toBe(true);
-    expect(grid.find((w) => w.week === 8)!.isDeload).toBe(true);
-    for (const w of grid) {
-      if (w.isDeload) expect(["base", "build"]).toContain(w.phase);
+  it("inserts deloads on a 4-week cadence through Base/Build/Specific, sparing the taper and final sharpeners (ADR 0069)", () => {
+    // A long advanced build: a Specific-phase deload now breaks the realization block
+    // (concurrent fatigue is additive; recovery continues into the hard block).
+    const g = buildHyroxGrid({ weeks: 18, sessionsPerWeek: 5, experience: "advanced" });
+    expect(g.find((w) => w.week === 4)!.isDeload).toBe(true);
+    expect(g.find((w) => w.week === 8)!.isDeload).toBe(true);
+    expect(g.find((w) => w.week === 12)!.isDeload).toBe(true); // a Specific-phase deload
+    expect(g.some((w) => w.isDeload && w.phase === "specific")).toBe(true);
+    for (const w of g) {
+      if (w.isDeload) {
+        expect(w.phase).not.toBe("taper"); // never in the taper
+        expect(w.week % 4).toBe(0); // always on the cadence
+      }
     }
-    expect(grid.find((w) => w.week === 1)!.isDeload).toBe(false);
+    // The final Specific weeks (the half-sim sharpeners into the taper) are protected.
+    const specific = g.filter((w) => w.phase === "specific");
+    expect(specific[specific.length - 1]!.isDeload).toBe(false);
+    // A SHORT Specific block stays accumulation-only — no room to deload AND keep the
+    // sims + a real race-prep week, so deloads remain in Base/Build there.
+    const short = buildHyroxGrid({ weeks: 16, sessionsPerWeek: 5, experience: "advanced" });
+    expect(short.filter((w) => w.isDeload && w.phase === "specific")).toHaveLength(0);
+    expect(g.find((w) => w.week === 1)!.isDeload).toBe(false);
   });
 
   it("gives every level at least one real (non-sim) race-prep week", () => {
@@ -919,5 +933,34 @@ describe("HYROX full race simulation before taper (ADR 0068)", () => {
       .items.filter((it) => it.kind === "conditioning");
     expect(stationItems).toHaveLength(8);
     expect(stationItems[0]!.movementId).toBe("skierg");
+  });
+});
+
+describe("HYROX deload cadence — 3:1/4:1 through the hard block (ADR 0069)", () => {
+  const deloadWeeks = (g: { week: number; isDeload: boolean }[]) =>
+    g.filter((w) => w.isDeload).map((w) => w.week);
+
+  it("every default race build gets ≥2 deloads (not one), at the 4-week cadence", () => {
+    for (const experience of EXPERIENCES) {
+      const inst = setup({ experience });
+      const g = buildHyroxGrid({ weeks: inst.weeks, sessionsPerWeek: inst.sessionsPerWeek, experience });
+      const deloads = deloadWeeks(g);
+      expect(deloads.length, `${experience} @ ${inst.weeks}wk deloads=${deloads}`).toBeGreaterThanOrEqual(2);
+      // No deload runs longer than the cadence apart from the next (no >4 hard work
+      // weeks between a deload/start and the next deload).
+      const workEnd = g.filter((w) => w.phase !== "taper").length;
+      const marks = [0, ...deloads, workEnd + 1];
+      for (let i = 1; i < marks.length; i++) {
+        expect(marks[i]! - marks[i - 1]!, `${experience} gap before wk${marks[i]}`).toBeLessThanOrEqual(5);
+      }
+    }
+  });
+
+  it("a 12-week race-date build (intermediate) now gets two deloads, not one", () => {
+    // Real users entering a race date 12 weeks out — the headline review finding.
+    const g = buildHyroxGrid({ weeks: 12, sessionsPerWeek: 5, experience: "intermediate" });
+    expect(deloadWeeks(g)).toEqual([4, 8]);
+    // The taper still closes the block and no deload lands inside it.
+    expect(g.slice(-2).every((w) => w.phase === "taper" && !w.isDeload)).toBe(true);
   });
 });
