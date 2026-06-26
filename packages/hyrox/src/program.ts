@@ -47,14 +47,15 @@ export type { HyroxExperience, HyroxDivision } from "./types";
 
 /**
  * Default block length (weeks) by experience. `[DEF]` programming schedule, NOT
- * calibrated physiology — sits inside the cited 8–16 wk range (12 = consensus
- * sweet spot). Source: RoxLyfe training-plan fundamentals; HYROX365 Academy. A
- * supplied race date later overrides this (ADR 0050 step 10).
+ * calibrated physiology — sits inside the cited 8–18 wk range. A supplied race date
+ * later overrides this (ADR 0050 step 10). Lengths are set so the default build fits
+ * a 3:1/4:1 deload rhythm (≥2 mid-block deloads) plus a full + half race simulation
+ * before the taper (ADR 0069). Source: RoxLyfe / HYROX365 plan fundamentals.
  */
 export const WEEKS_BY_EXPERIENCE: Record<HyroxExperience, number> = {
-  beginner: 10,
-  intermediate: 12,
-  advanced: 16,
+  beginner: 12,
+  intermediate: 14,
+  advanced: 18,
 };
 
 /**
