@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { type WeightUnit, toKg } from "@/lib/stats/units";
@@ -167,16 +168,10 @@ export async function addStrengthSet(
   } = await getAuthUser();
   if (!user) return { error: "Not signed in." };
 
-  const { count } = await supabase
-    .from("set_logs")
-    .select("id", { count: "exact", head: true })
-    .eq("session_id", parsed.data.sessionId);
-
   const clientLogId = parsed.data.clientLogId ?? null;
   const insertPayload = {
     session_id: parsed.data.sessionId,
     movement_id: parsed.data.movementId,
-    set_index: count ?? 0,
     set_kind: parsed.data.setKind,
     // Skipped rows always persist as 0 / 0 / null rpe — every engine
     // helper either ignores them (.eq('skipped', false)) or treats
@@ -787,44 +782,6 @@ const completeSchema = z.object({
   notes: z.string().trim().max(2000).optional().nullable(),
 });
 
-/**
- * Volume-weighted mean of per-set RPEs.
- * Sets without RPE or without tonnage are excluded.
- * Returns null when no usable sets exist.
- */
-function deriveSessionRpe(
-  sets: Array<{ weight_kg: number | null; reps: number | null; rpe: number | null }>,
-): number | null {
-  let weighted = 0;
-  let totalVolume = 0;
-  for (const s of sets) {
-    if (s.rpe == null) continue;
-    const w = Number(s.weight_kg ?? 0);
-    const r = Number(s.reps ?? 0);
-    const vol = w * r;
-    if (vol <= 0) continue;
-    weighted += Number(s.rpe) * vol;
-    totalVolume += vol;
-  }
-  if (totalVolume <= 0) return null;
-  return Math.round((weighted / totalVolume) * 10) / 10; // 1 decimal
-}
-
-/**
- * Elapsed minutes between the first and last set timestamp.
- * Capped at 3 h to swallow "user paused the app mid-session" edge cases.
- * Returns null when fewer than 2 sets are logged.
- */
-function deriveDurationMin(timestamps: string[]): number | null {
-  if (timestamps.length < 2) return null;
-  const sorted = [...timestamps].sort();
-  const first = new Date(sorted[0]!).getTime();
-  const last = new Date(sorted[sorted.length - 1]!).getTime();
-  const minutes = Math.round((last - first) / 60_000);
-  if (!Number.isFinite(minutes) || minutes <= 0) return null;
-  return Math.min(minutes, 180);
-}
-
 export async function completeSession(formData: FormData): Promise<void> {
   const parsed = completeSchema.safeParse({
     sessionId: formData.get("sessionId"),
@@ -865,139 +822,103 @@ export async function completeSessionResult(
   if (!idCheck.success) return { error: "Invalid session id" };
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await getAuthUser();
-  if (!user) return { error: "not-signed-in" };
-
-  // Auto-derive session RPE from per-set RPEs (volume-weighted).
-  // Auto-derive duration from the gap between first and last set timestamps.
-  // No user prompt — keeps the wrap-up flow to a single tap.
-  const { data: sets } = await supabase
-    .from("set_logs")
-    .select("weight_kg, reps, rpe, created_at")
-    .eq("session_id", sessionId)
-    .eq("skipped", false);
-  const setRows = sets ?? [];
-
-  const derivedRpe = deriveSessionRpe(
-    setRows.map((s) => ({
-      weight_kg: s.weight_kg == null ? null : Number(s.weight_kg),
-      reps: s.reps == null ? null : Number(s.reps),
-      rpe: s.rpe == null ? null : Number(s.rpe),
-    })),
+  // One RLS-protected database call validates ownership, derives session RPE
+  // and duration, and stamps completion. Returning the owning user id avoids a
+  // separate GoTrue lookup on the successful path while keeping the explicit
+  // auth/ownership gate inside Postgres.
+  const { data: userId, error } = await supabase.rpc(
+    "complete_training_session",
+    {
+      p_session_id: sessionId,
+      p_notes: notes ?? null,
+    },
   );
-  const derivedDuration = deriveDurationMin(setRows.map((s) => s.created_at as string));
-
-  const { error } = await supabase
-    .from("sessions")
-    .update({
-      session_rpe: derivedRpe,
-      duration_min: derivedDuration,
-      notes: notes ?? null,
-      completed_at: new Date().toISOString(),
-    })
-    .eq("id", sessionId);
-
   if (error) return { error: error.message };
-
-  // Finding 1 fix — recompute planned_sessions.effective_stress_load
-  // from the logged set_logs + cardio_logs now that the session has
-  // been stamped completed_at. Best-effort: any failure here must
-  // never block the user from marking the session complete (the
-  // helper itself try/catches; this is belt-and-suspenders).
-  try {
-    await recomputeActualSessionLoad({
-      supabase,
-      sessionId,
-      requireCompleted: false,
-    });
-  } catch (e) {
-    console.error("recomputeActualSessionLoad (completion) failed:", e);
+  if (!userId) {
+    const {
+      data: { user },
+    } = await getAuthUser();
+    return { error: user ? "Session not found." : "not-signed-in" };
   }
 
-  // DC-C14: rematerialise the per-region ledger now that this session is
-  // counted. Idempotent; failures here shouldn't block the user from
-  // marking the session complete, so we swallow + log.
-  try {
-    await recomputeRegionState(supabase, user.id, await getUserTimezone(user.id));
-  } catch (e) {
-    console.error("recomputeRegionState failed:", e);
-  }
-
-  // Auto-complete the block if this completion fills the last
-  // un-touched planned_session. Resolve the block via the
-  // planned_session linked to THIS session (link is established at
-  // start time by startSessionFromPlan / startSessionDirect).
-  // Failures here must never block the completion itself.
-  try {
-    const { data: linked } = await supabase
-      .from("planned_sessions")
-      .select("block_id")
-      .eq("completed_session_id", sessionId)
-      .maybeSingle();
-    if (linked?.block_id) {
-      await maybeCompleteBlock(supabase, linked.block_id as string);
-      // Platform programs: advance the engine instance + surface its
-      // program-owned recommendations. No-op for archetype blocks.
-      try {
-        const { applyProgramProgression } = await import("@/lib/platform/progression");
+  // Stats ledgers, TM suggestions and BW diagnostics do not affect the
+  // completion stamp or the summary that follows. Run them after the response
+  // and in parallel so Finish remains a one-tap interaction instead of waiting
+  // for several full-history recomputations.
+  after(async () => {
+    // Reuse the captured Supabase client. Dynamic request APIs such as
+    // `cookies()` are no longer available once `after()` begins.
+    const timezonePromise = supabase
+      .from("profiles")
+      .select("timezone")
+      .eq("id", userId)
+      .maybeSingle()
+      .then(({ data }) => data?.timezone ?? "UTC");
+    await Promise.all([
+      recomputeActualSessionLoad({
+        supabase,
+        sessionId,
+        requireCompleted: false,
+      }).catch((e) => {
+        console.error("recomputeActualSessionLoad (completion) failed:", e);
+      }),
+      (async () => {
+        const timezone = await timezonePromise;
+        await recomputeRegionState(supabase, userId, timezone);
+      })().catch((e) => {
+        console.error("recomputeRegionState failed:", e);
+      }),
+      (async () => {
+        const { data: linked } = await supabase
+          .from("planned_sessions")
+          .select("block_id")
+          .eq("completed_session_id", sessionId)
+          .maybeSingle();
+        if (!linked?.block_id) return;
+        await maybeCompleteBlock(supabase, linked.block_id as string);
+        const { applyProgramProgression } = await import(
+          "@/lib/platform/progression"
+        );
         await applyProgramProgression({
           supabase,
-          userId: user.id,
+          userId,
           sessionId,
           blockId: linked.block_id as string,
         });
-      } catch (e) {
-        console.error("applyProgramProgression failed:", e);
-      }
-    }
-  } catch (e) {
-    console.error("maybeCompleteBlock failed:", e);
-  }
-
-  // After completion, scan for AMRAP top sets that warrant a TM bump
-  // suggestion. Never auto-overwrites; only writes pending rows that the
-  // user resolves from the Today banner. Failures here must never block
-  // session completion.
-  try {
-    const { generateTmSuggestionsForSession } = await import(
-      "@/lib/training-maxes/actions"
-    );
-    await generateTmSuggestionsForSession(sessionId);
-  } catch (e) {
-    console.error("generateTmSuggestionsForSession failed:", e);
-  }
-
-  // Bodyweight Phase 4 — bump weeks_at_node + evaluate TUT-gated
-  // progression for each BW family in this session. Inserts a
-  // bw_progression_events row when the gate opens.
-  try {
-    const { applyBwSessionCompletionSideEffects } = await import(
-      "@/lib/sessions/bw-set-logging"
-    );
-    await applyBwSessionCompletionSideEffects({
-      supabase,
-      userId: user.id,
-      sessionId,
-      timezone: await getUserTimezone(user.id),
-    });
-    revalidatePath("/app/settings/bodyweight-progression");
-  } catch (e) {
-    console.error("applyBwSessionCompletionSideEffects failed:", e);
-  }
-
-  // Bodyweight Phase 6 — capture a diagnostics snapshot after the
-  // side-effects hook so any newly-opened gate, fresh TUT, or fresh
-  // weeks_at_node is reflected in the stored payload. Non-blocking.
-  try {
-    const { captureBwDiagnosticsSnapshot } = await import(
-      "@/lib/planner/bw-diagnostics-snapshot"
-    );
-    await captureBwDiagnosticsSnapshot({ supabase, userId: user.id });
-  } catch (e) {
-    console.error("captureBwDiagnosticsSnapshot (completion) failed:", e);
-  }
+      })().catch((e) => {
+        console.error("block completion/progression failed:", e);
+      }),
+      (async () => {
+        const { generateTmSuggestionsForSession } = await import(
+          "@/lib/training-maxes/actions"
+        );
+        await generateTmSuggestionsForSession(sessionId);
+      })().catch((e) => {
+        console.error("generateTmSuggestionsForSession failed:", e);
+      }),
+      (async () => {
+        const timezone = await timezonePromise;
+        const { applyBwSessionCompletionSideEffects } = await import(
+          "@/lib/sessions/bw-set-logging"
+        );
+        await applyBwSessionCompletionSideEffects({
+          supabase,
+          userId,
+          sessionId,
+          timezone,
+        });
+        const { captureBwDiagnosticsSnapshot } = await import(
+          "@/lib/planner/bw-diagnostics-snapshot"
+        );
+        await captureBwDiagnosticsSnapshot({ supabase, userId });
+        revalidatePath("/app/settings/bodyweight-progression");
+      })().catch((e) => {
+        console.error("BW completion side-effects failed:", e);
+      }),
+    ]);
+    revalidatePath("/app");
+    revalidatePath("/app/stats");
+  });
 
   revalidatePath("/app");
   revalidatePath("/app/plan");

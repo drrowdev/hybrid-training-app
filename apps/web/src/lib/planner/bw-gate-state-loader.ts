@@ -43,12 +43,21 @@ export async function loadBwGateStatesForPrescription(args: {
   if (progressRows.length === 0) return {};
 
   const nodeIds = progressRows.map((r) => r.current_node_id);
-  const nodesRes = await args.supabase
-    .from("movement_nodes")
-    .select(
-      "id, node_key, display_name, family, difficulty_anchor, isometric_capable, prerequisites",
-    )
-    .in("id", nodeIds);
+  const [nodesRes, childrenRes] = await Promise.all([
+    args.supabase
+      .from("movement_nodes")
+      .select(
+        "id, node_key, display_name, family, difficulty_anchor, isometric_capable, prerequisites",
+      )
+      .in("id", nodeIds),
+    args.supabase
+      .from("movement_nodes")
+      .select(
+        "id, node_key, display_name, family, difficulty_anchor, isometric_capable, prerequisites",
+      )
+      .in("family", families)
+      .overlaps("prerequisites", nodeIds),
+  ]);
   if (nodesRes.error) return {};
   const allNodesData = (nodesRes.data ?? []) as Array<{
     id: string;
@@ -60,13 +69,6 @@ export async function loadBwGateStatesForPrescription(args: {
     prerequisites: string[] | null;
   }>;
 
-  const childrenRes = await args.supabase
-    .from("movement_nodes")
-    .select(
-      "id, node_key, display_name, family, difficulty_anchor, isometric_capable, prerequisites",
-    )
-    .in("family", families)
-    .overlaps("prerequisites", nodeIds);
   const childRows = childrenRes.error
     ? []
     : ((childrenRes.data ?? []) as typeof allNodesData);

@@ -820,6 +820,27 @@
       "when": 1785750000000,
       "tag": "0116_expand_training_block_weeks",
       "breakpoints": false
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1785753600000,
+      "tag": "0117_instant_logging_hot_path",
+      "breakpoints": false
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1785757200000,
+      "tag": "0118_complete_session_rpc",
+      "breakpoints": false
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1785760800000,
+      "tag": "0119_enforce_atomic_set_index",
+      "breakpoints": false
     }
   ]
 }

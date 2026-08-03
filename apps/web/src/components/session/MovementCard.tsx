@@ -181,6 +181,7 @@ export function MovementCard({
   });
   const userOverrodeRef = useRef(false);
   const autoCollapsedRef = useRef(false);
+  const persistCollapsedRef = useRef(false);
   const [swapOpen, setSwapOpen] = useState(false);
   // Hydrate from localStorage on mount. Skipped in read-only mode so a
   // completed session always opens condensed, ignoring whatever toggle
@@ -203,6 +204,18 @@ export function MovementCard({
       /* ignore */
     }
   }, [storageKey, readOnly]);
+
+  // Persist only user-driven changes, after React has painted the disclosure.
+  // Mount-time hydration and automatic completion collapse stay read-only here.
+  useEffect(() => {
+    if (readOnly || !persistCollapsedRef.current) return;
+    persistCollapsedRef.current = false;
+    try {
+      window.localStorage.setItem(storageKey, collapsed ? "closed" : "open");
+    } catch {
+      /* ignore */
+    }
+  }, [collapsed, storageKey, readOnly]);
 
   // Auto-collapse to recap once every set is logged. Latches via
   // autoCollapsedRef so re-expanding AFTER the auto-collapse doesn't snap the
@@ -230,20 +243,9 @@ export function MovementCard({
 
   const toggleCollapsed = () => {
     userOverrodeRef.current = true;
+    persistCollapsedRef.current = true;
     hapticTick(hapticsEnabled, 8);
-    setCollapsed((v) => {
-      const next = !v;
-      // Read-only review toggles are ephemeral — don't persist, so the
-      // session reopens condensed next visit.
-      if (!readOnly) {
-        try {
-          window.localStorage.setItem(storageKey, next ? "closed" : "open");
-        } catch {
-          /* ignore */
-        }
-      }
-      return next;
-    });
+    setCollapsed((v) => !v);
   };
 
   /**
@@ -271,12 +273,8 @@ export function MovementCard({
     }
     setPinnedCursor(nextOptionalSlot ?? lastSlot);
     userOverrodeRef.current = true;
+    persistCollapsedRef.current = true;
     setCollapsed(false);
-    try {
-      window.localStorage.setItem(storageKey, "open");
-    } catch {
-      /* ignore */
-    }
   };
 
   const requiredSlots = group.items
@@ -304,7 +302,13 @@ export function MovementCard({
   // liner summaryLine is dropped in favour of one row per bucket
   // (warm-ups / working / volume / accessory / tendon) plus a final
   // `N skipped (reason)` row when any skips were recorded.
-  const recapLines = buildMovementRecap(group.items, loggedSets);
+  const recapLines = useMemo(
+    () =>
+      collapsed && cardState === "completed"
+        ? buildMovementRecap(group.items, loggedSets)
+        : [],
+    [collapsed, cardState, group.items, loggedSets],
+  );
 
   // One-line summary for the collapsed header chip. Hidden on narrow
   // viewports via the `cp-mc-summary` class (see globals.css).
