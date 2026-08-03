@@ -285,6 +285,52 @@ describe("materializeProgram — TB optional accessories (ADR 0048)", () => {
   });
 });
 
+describe("materializeProgram — TB3 Activation", () => {
+  const activationCtx: PlatformContext = {
+    oneRepMaxes: {
+      ...ctx.oneRepMaxes,
+      "barbell-row": 100,
+      "pendlay-row": 100,
+      "rack-pull": 200,
+      "weighted-pullup": 40,
+      "power-clean": 80,
+      "push-press": 70,
+    },
+    roundingKg: 2.5,
+  };
+  const instance = tacticalBarbellEngine.setup(
+    { values: { templateId: "activation" } },
+    activationCtx,
+  );
+  const result = materializeProgram(
+    tacticalBarbellEngine,
+    instance,
+    activationCtx,
+    resolve,
+    { weekdays: [0] },
+  );
+
+  it("materialises all 25 weeks on the engine-owned phase schedule", () => {
+    expect(result.sessions).toHaveLength(69);
+    expect(result.weeks).toBe(25);
+    expect(result.skipped).toHaveLength(0);
+    expect(result.sessions.filter((session) => session.weekIndex === 0).map((session) => session.dayIndex)).toEqual([0, 2, 4]);
+    expect(result.sessions.filter((session) => session.weekIndex === 5).map((session) => session.dayIndex)).toEqual([0, 1, 3, 5]);
+    expect(result.sessions.filter((session) => session.weekIndex === 21).map((session) => session.dayIndex)).toEqual([0, 3]);
+  });
+
+  it("preserves test/deload roles and optional Operator Black sets", () => {
+    expect(result.sessions.filter((session) => session.weekIndex === 4).every((session) => session.role === "test")).toBe(true);
+    expect(result.sessions.filter((session) => session.weekIndex === 14).every((session) => session.role === "deload")).toBe(true);
+    const black = result.sessions.find(
+      (session) => session.weekIndex === 15 && session.ref.endsWith("operator-d1"),
+    )!;
+    const main = black.prescription.items.filter((item) => item.kind === "main");
+    expect(main.filter((item) => item.optional)).toHaveLength(6);
+    expect(main.filter((item) => !item.optional)).toHaveLength(9);
+  });
+});
+
 describe("materializeProgram — Green Protocol (concurrent strength + cardio)", () => {
   it("seats sessions on the engine's own weekdays and materialises cardio days", () => {
     const inst = greenProtocolEngine.setup(

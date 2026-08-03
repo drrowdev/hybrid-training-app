@@ -42,6 +42,8 @@ function fakeSupabase(canned: Canned, rec: Recorded) {
     const chain = () => b as never;
     b.select = () => chain();
     b.eq = () => chain();
+    b.is = () => chain();
+    b.in = () => chain();
     b.order = () => chain();
     b.limit = () => chain();
     b.insert = (rows: unknown) => {

@@ -4,7 +4,9 @@ import {
   ROLE_TO_ENGINE_KEY,
   roleForSlug,
   engineKeyForSlug,
+  engineKeysForSlug,
   BODYWEIGHT_ENGINE_KEY_BY_SLUG,
+  STATIC_ENGINE_MOVEMENTS,
   STRENGTH_KIND_MAP,
   TM_BASIS_PERCENT_BY_FAMILY,
 } from "../movement-keys";
@@ -34,6 +36,17 @@ describe("movement-key mapping", () => {
     expect(engineKeyForSlug("pull-up-overhand")).toBe("pullup");
     expect(roleForSlug("pull-up-overhand")).toBeUndefined();
     expect(Object.values(ENGINE_KEY_TO_ROLE)).not.toContain("pullup");
+  });
+
+  it("maps Activation catalog movements without losing shared strength roles", () => {
+    expect(engineKeyForSlug("bb-row-overhand")).toBe("barbell-row");
+    expect(engineKeyForSlug("power-clean")).toBe("power-clean");
+    expect(STATIC_ENGINE_MOVEMENTS["ab-triad"]?.slug).toBe("hanging-knee-raise");
+    expect(engineKeysForSlug("push-press")).toEqual(["push-press"]);
+    expect(engineKeysForSlug("block-pull-deadlift")).toEqual(["rack-pull"]);
+    expect(engineKeysForSlug("push-up")).toEqual(
+      expect.arrayContaining(["pushup", "plyo-pushup"]),
+    );
   });
 
   it("maps the strength item kinds the platform materialises", () => {

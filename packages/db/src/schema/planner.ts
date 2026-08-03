@@ -8,6 +8,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   date,
   index,
   jsonb,
@@ -169,7 +170,12 @@ export const trainingBlocks = pgTable("training_blocks", {
    * falls back to the profile setting when null.
    */
   supersetAccessories: boolean("superset_accessories"),
-});
+}, (table) => [
+  check(
+    "training_blocks_weeks_check",
+    sql`${table.weeks} >= 1 AND ${table.weeks} <= 52`,
+  ),
+]);
 
 export type TrainingBlock = typeof trainingBlocks.$inferSelect;
 export type NewTrainingBlock = typeof trainingBlocks.$inferInsert;
@@ -229,6 +235,8 @@ export type PrescriptionItem = {
   kind: PrescriptionItemKind;
   /** Strength: sets (typically 1 = a single working set; the planner repeats items for a wave). */
   sets?: number;
+  /** This concrete set is above an autoregulated minimum and may be declined. */
+  optional?: boolean;
   /** Strength: reps per set. */
   reps?: number;
   /** Strength: % of TM. */

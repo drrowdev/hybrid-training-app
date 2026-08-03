@@ -16,6 +16,7 @@ vi.mock("@/lib/training-maxes/actions", () => ({
 import {
   ProgramPicker,
   defaultClusterFor,
+  relevantBenchmarkKeysFor,
   validateClusterClient,
   toggleMultiSelect,
   type PickerProgram,
@@ -59,6 +60,22 @@ const ZULU: PickerTbTemplate = {
     { movement: "press", split: "A" },
     { movement: "bench", split: "B" },
     { movement: "deadlift", split: "B" },
+  ],
+};
+
+const ACTIVATION: PickerTbTemplate = {
+  id: "activation",
+  name: "Activation",
+  structure: "cluster",
+  clusterMin: 3,
+  clusterMax: 3,
+  sessionsPerWeek: 3,
+  fixedLoadout: true,
+  fixedSchedule: true,
+  defaultCluster: [
+    { movement: "squat" },
+    { movement: "pushup", kind: "unanchored" },
+    { movement: "power-clean" },
   ],
 };
 
@@ -161,9 +178,45 @@ describe("defaultClusterFor", () => {
     ]);
   });
 
-  it("drops default lifts the user has not anchored (but keeps bodyweight)", () => {
+  describe("relevantBenchmarkKeysFor", () => {
+    const roles = [
+      "squat",
+      "bench",
+      "deadlift",
+      "press",
+      "barbell-row",
+      "weighted-pullup",
+    ].map((engineKey) => ({
+      engineKey,
+      role: engineKey,
+      variants: [],
+    }));
+
+    it("keeps non-TB programs on the four canonical strength benchmarks", () => {
+      expect(relevantBenchmarkKeysFor(null, [], roles)).toEqual([
+        "squat",
+        "bench",
+        "deadlift",
+        "press",
+      ]);
+    });
+
+    it("adds only the benchmark keys required by the active TB template", () => {
+      expect(relevantBenchmarkKeysFor(
+        { ...OPERATOR, requiredBenchmarkKeys: ["deadlift"] },
+        [
+          { movement: "bench" },
+          { movement: "squat" },
+          { movement: "weighted-pullup", kind: "weighted-bw" },
+        ],
+        roles,
+      )).toEqual(["squat", "bench", "deadlift", "weighted-pullup"]);
+    });
+  });
+
+  it("keeps unanchored default lifts so the benchmark step can collect them", () => {
     const result = defaultClusterFor(OPERATOR, ["squat", "bench"]);
-    expect(result.map((c) => c.movement)).toEqual(["squat", "bench"]);
+    expect(result.map((c) => c.movement)).toEqual(["squat", "bench", "deadlift"]);
   });
 
   it("preserves split labels for split templates", () => {
@@ -174,6 +227,11 @@ describe("defaultClusterFor", () => {
       { movement: "bench", split: "B" },
       { movement: "deadlift", split: "B" },
     ]);
+  });
+
+  it("keeps a fixed phase loadout before its training maxes exist", () => {
+    expect(defaultClusterFor(ACTIVATION, [])).toEqual(ACTIVATION.defaultCluster);
+    expect(validateClusterClient(ACTIVATION, ACTIVATION.defaultCluster).ok).toBe(true);
   });
 });
 
@@ -246,5 +304,39 @@ describe("ProgramPicker rendering", () => {
     expect(html).toContain("Continue");
     // Program cards are present so the user can make a selection.
     expect(html).toContain('data-testid="program-card-wendler-531"');
+  });
+
+  it("presents Activation as a fixed 25-week phase program", () => {
+    const activationPrograms = programs.map((program) =>
+      program.id === "tactical-barbell"
+        ? {
+            ...program,
+            fields: [
+              {
+                key: "templateId",
+                label: "Template",
+                type: "select" as const,
+                options: [
+                  { value: "operator", label: "Operator" },
+                  { value: "activation", label: "Activation" },
+                ],
+                defaultValue: "operator",
+              },
+            ],
+          }
+        : program,
+    );
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={activationPrograms}
+        anchoredKeys={[]}
+        tbTemplates={[OPERATOR, ACTIVATION]}
+        initialProgramId="tactical-barbell"
+        initialLoadoutValue="activation"
+      />,
+    );
+    expect(html).toContain("Activation");
+    expect(html).toContain("25-WEEK PROGRAM");
+    expect(html).toContain("Base, Armor, Operator and Vertex");
   });
 });

@@ -22,7 +22,10 @@ import { getBlockEditContext } from "@/lib/platform/edit-context";
 import { getActiveSeason } from "@/lib/seasons/queries";
 import { getTrainingMaxContext } from "@/lib/training-maxes/queries";
 import { STRENGTH_ROLE_CANDIDATES, type StrengthRole } from "@/lib/planner/archetypes";
-import { ENGINE_KEY_TO_ROLE } from "@/lib/platform/movement-keys";
+import {
+  ENGINE_KEY_TO_ROLE,
+  STATIC_ENGINE_MOVEMENTS,
+} from "@/lib/platform/movement-keys";
 import {
   ProgramPicker,
   type PickerProgram,
@@ -141,7 +144,14 @@ export default async function ProgramPickerPage({
     clusterMin: t.clusterMin,
     clusterMax: t.clusterMax,
     ...(t.allowsBodyweightFourth ? { allowsBodyweightFourth: true } : {}),
-    sessionsPerWeek: t.weeklySessions.length,
+    sessionsPerWeek: t.weeklySessions.filter(
+      (session) => !session.activeWeeks || session.activeWeeks.includes(1),
+    ).length,
+    ...(t.fixedLoadout ? { fixedLoadout: true } : {}),
+    ...(t.fixedSchedule ? { fixedSchedule: true } : {}),
+    ...(t.requiredBenchmarkKeys
+      ? { requiredBenchmarkKeys: t.requiredBenchmarkKeys }
+      : {}),
     defaultCluster: t.defaultCluster.map((c) => ({
       movement: c.movement,
       ...(c.split ? { split: c.split } : {}),
@@ -215,7 +225,10 @@ async function buildBenchRoles(
   supabase: Awaited<ReturnType<typeof createClient>>,
 ): Promise<PickerBenchRole[]> {
   const allSlugs = Array.from(
-    new Set(Object.values(STRENGTH_ROLE_CANDIDATES).flat()),
+    new Set([
+      ...Object.values(STRENGTH_ROLE_CANDIDATES).flat(),
+      ...Object.values(STATIC_ENGINE_MOVEMENTS).map((movement) => movement.slug),
+    ]),
   );
   const { data: catalog } = await supabase
     .from("movements")
@@ -267,6 +280,36 @@ async function buildBenchRoles(
       variants,
       ...(currentSlug ? { currentSlug } : {}),
       ...(currentOneRmKg != null ? { currentOneRmKg } : {}),
+    });
+  }
+
+  const activationBenchKeys = [
+    "barbell-row",
+    "pendlay-row",
+    "rack-pull",
+    "weighted-pullup",
+    "overhead-press",
+    "power-clean",
+    "push-press",
+  ];
+  for (const engineKey of activationBenchKeys) {
+    const definition = STATIC_ENGINE_MOVEMENTS[engineKey];
+    if (!definition) continue;
+    const hit = bySlug.get(definition.slug);
+    if (!hit) continue;
+    const currentOneRmKg = oneRmBySlug.get(definition.slug);
+    roles.push({
+      engineKey,
+      role: `tb:${engineKey}`,
+      variants: [
+        {
+          slug: definition.slug,
+          label: definition.displayName ?? hit.displayName,
+          movementId: hit.id,
+        },
+      ],
+      currentSlug: definition.slug,
+      ...(currentOneRmKg != null && currentOneRmKg > 0 ? { currentOneRmKg } : {}),
     });
   }
   return roles;

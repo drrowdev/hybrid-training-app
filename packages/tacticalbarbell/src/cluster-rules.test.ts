@@ -56,7 +56,7 @@ describe("Gladiator — minimalist 2-lift lock", () => {
   });
 });
 
-describe("Operator — optional bodyweight 4th", () => {
+describe("Operator — TB3 fixed loadout", () => {
   it("keeps a bodyweight lift on top of the 3 barbell lifts (exempt from the cap)", () => {
     const inst = setup({
       templateId: "operator",
@@ -86,7 +86,7 @@ describe("Operator — optional bodyweight 4th", () => {
     expect(inst.cluster.filter((c) => c.kind === "bodyweight")).toHaveLength(1);
   });
 
-  it("prescribes the bodyweight lift as a % of max reps, not a weight", () => {
+  it("prescribes the TB3 weighted pull-up even when a legacy custom cluster is stored", () => {
     const inst = setup({
       templateId: "operator",
       cluster: [
@@ -94,21 +94,20 @@ describe("Operator — optional bodyweight 4th", () => {
         { movement: "pullup", kind: "bodyweight" },
       ],
     });
-    // week 1 = 70%, pullup max reps = 20 → 14 reps, no weight.
     const p = tb.prescribe(inst, "b0-w1-s1", ctx);
-    const pull = p.items.find((i) => i.movementId === "pullup")!;
-    expect(pull.weightKg).toBeUndefined();
-    expect(pull.reps).toBe(14);
-    expect(pull.repsLabel).toBe("14");
-    expect(pull.note).toContain("max reps");
-    // the barbell lift is still weight-loaded (the work set, past its warm-ups).
+    const pull = p.items.find(
+      (i) => i.movementId === "weighted-pullup" && i.kind === "main",
+    )!;
+    expect(pull.percentOfTm).toBe(0.75);
+    expect(pull.reps).toBe(5);
+    expect(p.items.some((i) => i.movementId === "pullup")).toBe(false);
     const squat = p.items.find((i) => i.movementId === "squat" && i.kind === "main")!;
-    expect(squat.weightKg).toBe(140);
+    expect(squat.weightKg).toBe(150);
   });
 });
 
-describe("Zulu — variable-size A/B clusters", () => {
-  it("accepts a 5-lift cluster split A:3 / B:2 and prescribes per split", () => {
+describe("Zulu — TB3 fixed A/B work", () => {
+  it("keeps a legacy custom cluster in the instance but prescribes the TB3 loadout", () => {
     const inst = setup({
       templateId: "zulu",
       splitA: ["squat", "press", "row"],
@@ -117,8 +116,15 @@ describe("Zulu — variable-size A/B clusters", () => {
     expect(inst.cluster).toHaveLength(5);
     const a = tb.prescribe(inst, "b0-w1-p1a", ctx);
     const b = tb.prescribe(inst, "b0-w1-p1b", ctx);
-    expect(itemsOfKind(a, "main").map((i) => i.movementId)).toEqual(["squat", "press", "row"]);
-    expect(itemsOfKind(b, "main").map((i) => i.movementId)).toEqual(["bench", "deadlift"]);
+    expect(itemsOfKind(a, "main").map((i) => i.movementId)).toEqual(["bench", "squat"]);
+    expect(itemsOfKind(b, "main").map((i) => i.movementId)).toEqual([
+      "deadlift",
+      "weighted-pullup",
+    ]);
+    expect(itemsOfKind(a, "supplemental").map((i) => i.movementId)).toEqual([
+      "overhead-press",
+      "ab-triad",
+    ]);
   });
 
   it("supports a 6-lift cluster (A:3 / B:3)", () => {

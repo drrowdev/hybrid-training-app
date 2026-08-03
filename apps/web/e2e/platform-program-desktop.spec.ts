@@ -21,6 +21,11 @@ const STRENGTH_TMS: { slug: string; oneRmKg: number }[] = [
   { slug: "conventional-deadlift", oneRmKg: 212 },
   { slug: "ohp-standing", oneRmKg: 71 },
 ];
+const TB3_TMS = [
+  ...STRENGTH_TMS,
+  { slug: "weighted-pull-up", oneRmKg: 35 },
+  { slug: "bb-row-overhand", oneRmKg: 100 },
+];
 
 test.describe("@desktop /app/program · deploy 5/3/1", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "Chromium-only");
@@ -134,7 +139,7 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
   }) => {
     await markOnboarded(admin, freshUser.userId);
 
-    for (const tm of STRENGTH_TMS) {
+    for (const tm of TB3_TMS) {
       const { data: mv } = await admin
         .from("movements")
         .select("id")
@@ -197,7 +202,7 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     expect(pi!.block_id).toBe(block!.id);
   });
 
-  test("picker deploys TB Zulu with a custom A/B split cluster", async ({
+  test("picker deploys the fixed TB3 Zulu A/B loadout", async ({
     page,
     context,
     freshUser,
@@ -206,7 +211,7 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     baseURL,
   }) => {
     await markOnboarded(admin, freshUser.userId);
-    for (const tm of STRENGTH_TMS) {
+    for (const tm of TB3_TMS) {
       const { data: mv } = await admin
         .from("movements")
         .select("id")
@@ -267,6 +272,64 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     expect(cluster.length).toBe(4);
     expect(cluster.some((c) => c.split === "A")).toBe(true);
     expect(cluster.some((c) => c.split === "B")).toBe(true);
+  });
+
+  test("picker deploys all 25 weeks of TB3 Activation without invented maxes", async ({
+    page,
+    context,
+    freshUser,
+    seedConfig,
+    admin,
+    baseURL,
+  }) => {
+    await markOnboarded(admin, freshUser.userId);
+    await signInAs(context, freshUser, seedConfig, baseURL ?? "http://localhost:3000");
+    await page.goto("/app/program");
+    await page.waitForLoadState("networkidle");
+
+    await page.getByTestId("program-card-tactical-barbell").click();
+    const next = page.getByRole("button", { name: "Continue" });
+    await next.click();
+    await page.getByTestId("loadout-opt-activation").click();
+    await next.click();
+    await expect(page.getByRole("heading", { name: "Starting maxes" })).toBeVisible();
+    await next.click();
+    await expect(
+      page.getByText("The strength schedule changes with the phase"),
+    ).toBeVisible();
+
+    const deploy = page.getByRole("button", { name: /Deploy program/ });
+    await expect(deploy).toBeEnabled();
+    await deploy.click();
+    await page.waitForURL("**/app", { timeout: 15_000 });
+
+    const { data: block } = await admin
+      .from("training_blocks")
+      .select("id, program_id, weeks")
+      .eq("user_id", freshUser.userId)
+      .eq("status", "active")
+      .maybeSingle();
+    expect(block!.program_id).toBe("tactical-barbell");
+    expect(block!.weeks).toBe(25);
+
+    const { data: sessions } = await admin
+      .from("planned_sessions")
+      .select("week_index, day_index, role, prescription")
+      .eq("block_id", block!.id);
+    expect(sessions).toHaveLength(69);
+    expect(
+      sessions!.filter((session) => session.week_index === 14).every(
+        (session) => session.role === "deload",
+      ),
+    ).toBe(true);
+    expect(
+      sessions!.filter((session) => session.week_index === 21).map(
+        (session) => session.day_index,
+      ).sort((a, b) => a - b),
+    ).toEqual([0, 3]);
+    const base = sessions!.find((session) => session.week_index === 0);
+    const baseItems = (base!.prescription as { items: Array<{ movementSlug?: string }> }).items;
+    expect(baseItems.some((item) => item.movementSlug === "push-up")).toBe(true);
   });
 
   test("picker deploys a Hybrid (native) platform block end-to-end", async ({

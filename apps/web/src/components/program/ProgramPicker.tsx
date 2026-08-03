@@ -42,7 +42,7 @@ const CARD_META: Record<string, { kick: string; code: string }> = {
  */
 const CARD_TAGLINE: Record<string, string> = {
   "wendler-531": "Percentage strength",
-  "tactical-barbell": "Operator · Fighter · Zulu",
+  "tactical-barbell": "Operator · Fighter · Zulu · Activation",
   "green-protocol": "Strength + endurance",
   hybrid: "Personalised strength + cardio",
   hyrox: "Run + functional stations",
@@ -88,7 +88,7 @@ export interface PickerProgram {
 export interface PickerClusterEntry {
   movement: string;
   split?: "A" | "B";
-  kind?: "barbell" | "weighted-bw" | "bodyweight";
+  kind?: "barbell" | "weighted-bw" | "bodyweight" | "unanchored";
 }
 
 /**
@@ -105,11 +105,15 @@ export interface PickerTbTemplate {
   allowsBodyweightFourth?: boolean;
   /** Training sessions this template runs per week → required training weekdays. */
   sessionsPerWeek: number;
+  fixedLoadout?: boolean;
+  fixedSchedule?: boolean;
+  requiredBenchmarkKeys?: string[];
   defaultCluster: PickerClusterEntry[];
 }
 
 /** TB program id (matches the engine's program family / id). */
 const TB_PROGRAM_ID = "tactical-barbell";
+const CANONICAL_BENCH_KEYS = new Set(["squat", "bench", "deadlift", "press"]);
 
 /** A selectable movement variant for a main-lift role (resolved to a catalog id). */
 export interface PickerBenchVariant {
@@ -299,6 +303,13 @@ const TEMPLATE_COPY: Record<string, Record<string, TemplateCopy>> = {
       len: "12-week block",
       long: "Grey Man is a 12-week generalist block that double-waves volume and then intensity \u2014 a longer, balanced run for steady all-round progress when you don\u2019t want to commit to a single specific goal.",
     },
+    activation: {
+      badge: "25-week on-ramp",
+      desc: "Base, Armor, Operator and Vertex in one guided progression.",
+      freq: "2\u20134 strength sessions / week",
+      len: "25-week program",
+      long: "Activation is the complete TB3 on-ramp in one program. It starts with four weeks of strength-endurance circuits, tests the lifts, moves through Armor and Operator Blue/Black, then finishes with the explosive Vertex/Breacher phase and a final retest. Each phase owns its exercise selection and schedule. Conditioning guidance stays outside this strength-only plan.",
+    },
   },
   "green-protocol": {
     capacity: {
@@ -392,6 +403,13 @@ const MOVEMENT_LABEL: Record<string, string> = {
   deadlift: "Deadlift",
   press: "Overhead Press",
   pullup: "Pull-ups",
+  "barbell-row": "Barbell Row",
+  "pendlay-row": "Pendlay Row",
+  "rack-pull": "Rack Pull",
+  "weighted-pullup": "Weighted Pull-up",
+  "overhead-press": "Overhead Press",
+  "power-clean": "Power Clean",
+  "push-press": "Push Press",
 };
 
 function movementLabel(key: string): string {
@@ -486,16 +504,32 @@ const DAY_SPREADS: Record<number, number[]> = {
 /** Clone the template's defaultCluster, dropping unknown movement keys. */
 export function defaultClusterFor(
   template: PickerTbTemplate,
-  anchoredKeys: string[],
+  _anchoredKeys: string[],
 ): PickerClusterEntry[] {
-  const allowed = new Set(anchoredKeys);
-  return template.defaultCluster
-    .filter((c) => allowed.has(c.movement) || c.kind === "bodyweight")
-    .map((c) => ({
-      movement: c.movement,
-      ...(c.split ? { split: c.split } : {}),
-      ...(c.kind ? { kind: c.kind } : {}),
-    }));
+  void _anchoredKeys;
+  return template.defaultCluster.map((c) => ({
+    movement: c.movement,
+    ...(c.split ? { split: c.split } : {}),
+    ...(c.kind ? { kind: c.kind } : {}),
+  }));
+}
+
+export function relevantBenchmarkKeysFor(
+  template: PickerTbTemplate | null,
+  cluster: PickerClusterEntry[],
+  benchRoles: PickerBenchRole[],
+): string[] {
+  const roleKeys = benchRoles.map((role) => role.engineKey);
+  const available = new Set(roleKeys);
+  if (!template) {
+    return roleKeys.filter((key) => CANONICAL_BENCH_KEYS.has(key));
+  }
+  return cluster
+    .filter((entry) => entry.kind !== "bodyweight" && available.has(entry.movement))
+    .map((entry) => entry.movement)
+    .concat(template.requiredBenchmarkKeys ?? [])
+    .filter((key, index, all) => all.indexOf(key) === index)
+    .sort((a, b) => roleKeys.indexOf(a) - roleKeys.indexOf(b));
 }
 
 export interface ClusterValidationLite {
@@ -794,6 +828,7 @@ export function ProgramPicker({
 
   const tbTemplateId = isTb ? String(values.templateId ?? "") : "";
   const activeTbTemplate = isTb ? tbTemplateById.get(tbTemplateId) ?? null : null;
+  const isActivation = activeTbTemplate?.id === "activation";
   // ADR 0048 — optional TB accessories (opt-in, template-gated).
   const tbAccessoryPlan = isTb ? tbAccessoryPlanForTemplate(tbTemplateId) : null;
   // Green Protocol also offers opt-in accessories (its book treats them as
@@ -827,7 +862,7 @@ export function ProgramPicker({
     if (activeTbTemplate) setWeek(buildWeek(activeTbTemplate.sessionsPerWeek));
   }
 
-  const fixedSchedule = !!selected?.fixedSchedule;
+  const fixedSchedule = !!selected?.fixedSchedule || !!activeTbTemplate?.fixedSchedule;
   // Strength-only programs (5/3/1, TB) let the user add OPEN cardio days; the
   // concurrent programs (Hybrid, Green Protocol) own their own cardio.
   const supportsCardioDays = selected?.id === "wendler-531" || isTb;
@@ -886,7 +921,9 @@ export function ProgramPicker({
   // step: add/remove a lift, and (for split templates) move a lift between the A
   // and B sessions. Editable only when the template allows a variable lift count.
   const clusterEditable =
-    !!activeTbTemplate && activeTbTemplate.clusterMin !== activeTbTemplate.clusterMax;
+    !!activeTbTemplate &&
+    !activeTbTemplate.fixedLoadout &&
+    activeTbTemplate.clusterMin !== activeTbTemplate.clusterMax;
   const countingLifts = clusterValidation?.countingLifts ?? cluster.length;
   const canAddCluster =
     clusterEditable &&
@@ -947,27 +984,28 @@ export function ProgramPicker({
   // Which main-lift roles the Benchmarks step shows. Cluster programs (TB) show
   // the barbell lifts in their chosen cluster; everyone else shows all four mains.
   const relevantBenchKeys = useMemo<string[]>(() => {
-    if (activeTbTemplate) {
-      const order = benchRoles.map((r) => r.engineKey);
-      return cluster
-        .filter((c) => c.kind !== "bodyweight" && benchRoleByKey.has(c.movement))
-        .map((c) => c.movement)
-        .sort((a, b) => order.indexOf(a) - order.indexOf(b));
-    }
-    return benchRoles.map((r) => r.engineKey);
-  }, [activeTbTemplate, cluster, benchRoles, benchRoleByKey]);
+    return relevantBenchmarkKeysFor(activeTbTemplate, cluster, benchRoles);
+  }, [activeTbTemplate, cluster, benchRoles]);
 
   const enteredAnyTm = useMemo(
     () => Object.values(benchVals).some((b) => Number(b.valueStr) > 0),
     [benchVals],
   );
   const hasUsableTms = anchoredKeys.length > 0 || enteredAnyTm;
+  const missingRelevantBenchKeys = relevantBenchKeys.filter(
+    (key) => Number(benchVals[key]?.valueStr ?? 0) <= 0,
+  );
+  const benchmarksReady =
+    isActivation ||
+    (activeTbTemplate?.fixedLoadout
+      ? missingRelevantBenchKeys.length === 0
+      : hasUsableTms);
 
   const canDeploy =
     !!selected?.enabled &&
     (fixedSchedule || weekdays.length > 0) &&
     daysMatch &&
-    hasUsableTms &&
+    benchmarksReady &&
     clusterOk &&
     !pending;
 
@@ -1728,16 +1766,25 @@ export function ProgramPicker({
   function renderBenchmarksStep() {
     if (!selected) return null;
     const isCluster = !!activeTbTemplate;
-    const title = isCluster
+    const title = isActivation
+      ? "Starting maxes"
+      : isCluster
       ? activeTbTemplate!.structure === "split"
         ? "Your cluster"
         : "Your strength cluster"
       : "Your benchmarks";
-    const sub = isCluster
+    const sub = isActivation
+      ? "Optional for now. Activation begins with strength-endurance circuits, then gives you a test week before percentage-based lifting starts."
+      : isCluster
       ? "Pick the main lifts for your cluster. Enter a 1-rep max for each, or estimate it from a recent set."
       : "Enter a 1-rep max for each lift, switch the variant, or estimate from a recent set.";
 
-    const pillText = isCluster
+    const activationMaxCount = relevantBenchKeys.filter(
+      (key) => Number(benchVals[key]?.valueStr ?? 0) > 0,
+    ).length;
+    const pillText = isActivation
+      ? `${activationMaxCount} of ${relevantBenchKeys.length} set`
+      : isCluster
       ? `${clusterValidation?.ok ? "\u2713" : "\u26A0"} ${
           clusterValidation?.ok
             ? `${clusterValidation.countingLifts} main lift${clusterValidation.countingLifts === 1 ? "" : "s"}`
@@ -1755,6 +1802,8 @@ export function ProgramPicker({
       ? `Your Training Max is ${tmPct}% of each 1RM${tmPct === 85 ? " \u2014 the 5/3/1 standard" : ""}. All working percentages run off that TM.`
       : isHyrox
         ? "Your strength sessions use these 1RMs to set their loads \u2014 a submaximal %, no Training Max needed. Your run paces and station weights come from your division standard, which you'll confirm when you log. Enter the lifts you train; you can skip any you don't."
+        : isActivation
+          ? "Activation owns its phase-specific exercise selection. Enter any maxes you already know; missing values remain visible and can be set from the week-5 tests before Armor begins."
         : isCluster && activeTbTemplate!.structure === "split"
           ? `Tactical Barbell loads ${useTm ? `off a Training Max (${tmPct}% of your 1RM)` : "a submaximal % of your 1RM"}. Each lift sits in an A or B session; you train each session twice a week. Tap the A/B chip to move a lift.`
           : `Tactical Barbell loads ${useTm ? `off a Training Max (${tmPct}% of your 1RM)` : "a submaximal % of your 1RM \u2014 no Training Max required"}.${
@@ -1766,6 +1815,8 @@ export function ProgramPicker({
     const lockHint =
       selected.id === "wendler-531"
         ? "\uD83D\uDD12 5/3/1 always trains the four main lifts \u2014 squat, bench, deadlift and press."
+        : isActivation
+          ? "\uD83D\uDD12 Activation uses a fixed, phase-specific loadout. These fields only set starting loads; they do not change the exercises."
         : isCluster && activeTbTemplate!.clusterMin === activeTbTemplate!.clusterMax
           ? `\uD83D\uDD12 ${activeTbTemplate!.name} uses a fixed cluster of exactly ${activeTbTemplate!.clusterMax} lifts. Swap a lift by changing its variant.`
           : null;
@@ -1775,9 +1826,13 @@ export function ProgramPicker({
         <h2 className={styles.h1}>{title}</h2>
         <p className={styles.sub}>{sub}</p>
 
-        {!hasUsableTms && (
+        {!benchmarksReady && !isActivation && (
           <p className={styles.banner}>
-            {"Enter a 1-rep max for each lift below so the program can set your weights."}
+            {activeTbTemplate?.fixedLoadout
+              ? `Add a 1-rep max for ${missingRelevantBenchKeys
+                  .map((key) => movementLabel(key))
+                  .join(", ")} so every programmed lift has a real load.`
+              : "Enter a 1-rep max for each lift below so the program can set your weights."}
           </p>
         )}
 
@@ -1806,7 +1861,7 @@ export function ProgramPicker({
 
         <div className={styles.lifts}>
           {relevantBenchKeys.map((k) => renderBenchRow(k))}
-          {isCluster && bodyweightEntry ? renderPullupRow() : null}
+          {isCluster && !isActivation && bodyweightEntry ? renderPullupRow() : null}
         </div>
 
         {isCluster && (clusterEditable || canAddBodyweight || bodyweightEntry) && (
@@ -2028,7 +2083,9 @@ export function ProgramPicker({
         <h2 className={styles.h1}>Set your schedule</h2>
         <p className={styles.sub}>
           {fixedSchedule
-            ? `${selected.name} plans both your lifting and conditioning days \u2014 just pick a start date.`
+            ? isActivation
+              ? "Activation sets the lifting days for each phase. Pick when week 1 starts."
+              : `${selected.name} plans both your lifting and conditioning days \u2014 just pick a start date.`
             : "Your training days come from your program. Pick which weekdays you'll train, then pick a start date."}
         </p>
 
@@ -2090,7 +2147,9 @@ export function ProgramPicker({
 
         {fixedSchedule ? (
           <p className={styles.note}>
-            {`${selected.name} sets its own weekly schedule (strength and conditioning days are set by the program). It owns your calendar \u2014 you just pick the start date.`}
+            {isActivation
+              ? "The strength schedule changes with the phase: Base 3 days, Armor 4, Operator 3 and Vertex 2. Conditioning is not generated."
+              : `${selected.name} sets its own weekly schedule (strength and conditioning days are set by the program). It owns your calendar \u2014 you just pick the start date.`}
           </p>
         ) : (
           <>

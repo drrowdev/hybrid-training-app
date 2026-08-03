@@ -188,7 +188,8 @@ export function adaptSessionPrescription(
     }
 
     const notes = composeNotes(it);
-    const setCount = it.sets ?? 1;
+    const requiredSetCount = Math.max(1, it.sets ?? 1);
+    const setCount = Math.max(requiredSetCount, it.setsMax ?? requiredSetCount);
     const appItem: PrescriptionItem = {
       movementId: resolved.movementId,
       movementSlug: resolved.slug,
@@ -226,7 +227,11 @@ export function adaptSessionPrescription(
       setCount > 1;
     if (isWorkingMulti) {
       for (let s = 0; s < setCount; s++) {
-        items.push({ ...appItem, sets: 1 });
+        items.push({
+          ...appItem,
+          sets: 1,
+          ...(s >= requiredSetCount ? { optional: true } : {}),
+        });
       }
     } else {
       items.push(appItem);

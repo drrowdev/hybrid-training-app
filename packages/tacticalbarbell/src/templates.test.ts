@@ -6,9 +6,9 @@ import { describe, it, expect } from "vitest";
 import { TB_TEMPLATES, getTbTemplate } from "./templates";
 
 describe("TB templates — structural integrity", () => {
-  it("ships the seven canonical templates", () => {
+  it("ships the seven canonical templates plus TB3 Activation", () => {
     expect(TB_TEMPLATES.map((t) => t.id).sort()).toEqual(
-      ["fighter", "gladiator", "grey-man", "mass", "operator", "zulu", "zulu-ia"],
+      ["activation", "fighter", "gladiator", "grey-man", "mass", "operator", "zulu", "zulu-ia"],
     );
   });
 
@@ -45,24 +45,49 @@ describe("TB templates — structural integrity", () => {
     });
   }
 
-  it("Operator caps the cluster at 3 main lifts and runs 3×/week off one wave", () => {
+  it("Operator TB3 uses the 75/80/85/75/80/peak wave and week-scoped peak days", () => {
     const op = getTbTemplate("operator")!;
     expect(op.maxMainLifts).toBe(3);
-    expect(op.weeklySessions).toHaveLength(3);
+    expect(op.weeklySessions).toHaveLength(6);
     expect(op.waves).toHaveLength(1);
-    expect(op.waves[0]!.percents).toEqual([0.7, 0.8, 0.9, 0.75, 0.85, 0.95]);
+    expect(op.waves[0]!.percents).toEqual([0.75, 0.8, 0.85, 0.75, 0.8, 1]);
+    expect(op.setsReps.map((w) => [w.setsMin, w.setsMax, w.repsLabel])).toEqual([
+      [3, 5, "5"],
+      [3, 5, "5"],
+      [3, 5, "3"],
+      [3, 5, "5"],
+      [3, 5, "5"],
+      [1, 1, "1"],
+    ]);
+    expect(op.weeklySessions.filter((s) => s.kind === "test").map((s) => s.label)).toEqual([
+      "Peak · Squat",
+      "Peak · Bench",
+      "Peak · Deadlift",
+    ]);
   });
 
-  it("Zulu is an A/B split with a heavier second pass", () => {
+  it("Fighter TB3 shares the core wave and peaks its lifts in week 6", () => {
+    const f = getTbTemplate("fighter")!;
+    expect(f.waves[0]!.percents).toEqual([0.75, 0.8, 0.85, 0.75, 0.8, 1]);
+    expect(f.weeklySessions.filter((s) => s.kind === "test")).toHaveLength(2);
+  });
+
+  it("Zulu TB3 is an A/B split with light 70/75% passes and 100% peak sessions", () => {
     const z = getTbTemplate("zulu")!;
     expect(z.structure).toBe("split");
-    expect(z.weeklySessions.map((s) => s.split)).toEqual(["A", "B", "A", "B"]);
+    expect(z.weeklySessions.filter((s) => s.kind !== "test").map((s) => s.split)).toEqual([
+      "A",
+      "B",
+      "A",
+      "B",
+    ]);
     const one = z.waves.find((w) => w.id === "one")!;
     const two = z.waves.find((w) => w.id === "two")!;
-    expect(one.percents).toEqual([0.7, 0.8, 0.9, 0.7, 0.8, 0.9]);
-    expect(two.percents).toEqual([0.75, 0.8, 0.9, 0.75, 0.8, 0.9]);
-    // Pass 2 opens heavier than Pass 1 in week 1, identical thereafter.
+    expect(one.percents).toEqual([0.7, 0.8, 0.85, 0.7, 0.8, 1]);
+    expect(two.percents).toEqual([0.75, 0.8, 0.85, 0.75, 0.8, 1]);
     expect(two.percents[0]).toBeGreaterThan(one.percents[0]!);
+    expect(z.setsReps[0]!.repsLabel).toBe("5–8");
+    expect(z.weeklySessions.filter((s) => s.kind === "test")).toHaveLength(4);
   });
 
   it("Zulu I/A shares the split but autoregulates 3–5 sets and loads heavier in the back half", () => {
@@ -88,6 +113,27 @@ describe("TB templates — structural integrity", () => {
     expect(g.blockWeeks).toBe(12);
     expect(g.waves[0]!.percents).toEqual([
       0.7, 0.8, 0.9, 0.7, 0.8, 0.9, 0.75, 0.85, 0.95, 0.75, 0.85, 0.95,
+    ]);
+  });
+
+  it("Activation carries the full 25-week phase map and fixed session loadouts", () => {
+    const activation = getTbTemplate("activation")!;
+    expect(activation.blockWeeks).toBe(25);
+    expect(activation.weeklySessions).toHaveLength(17);
+    expect(activation.weeklySessions.find((session) => session.id === "operator-d1")?.kindByWeek).toEqual({
+      15: "deload",
+    });
+    expect(activation.segments?.map((segment) => [segment.startWeekIndex, segment.label])).toEqual([
+      [0, "Base"],
+      [4, "Rest and test"],
+      [5, "Armor"],
+      [8, "Operator Blue"],
+      [13, "Peak"],
+      [14, "Operator Black"],
+      [19, "Peak"],
+      [20, "Rest and test"],
+      [21, "Vertex (Breacher)"],
+      [24, "Final retest"],
     ]);
   });
 });
