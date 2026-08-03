@@ -115,7 +115,7 @@ export function RestTimer({
         timerBeep(timerSoundEnabled);
         clearInterval(id);
       }
-    }, 250);
+    }, 500);
     return () => clearInterval(id);
   }, [effectiveSeconds, hapticsEnabled, timerSoundEnabled]);
 

@@ -119,6 +119,52 @@ export async function getLastSetLogForMovement(
   return null;
 }
 
+/**
+ * Batched "last time" hints for the live logger. This is the multi-movement
+ * equivalent of `getLastSetLogForMovement`, backed by one Postgres RPC instead
+ * of one PostgREST request per movement.
+ */
+export async function getLastSetsForMovements(
+  supabase: SupabaseClient,
+  userId: string,
+  movementIds: string[],
+  options: { excludeSessionId?: string } = {},
+): Promise<Record<string, LastSetForMovement>> {
+  if (!userId || movementIds.length === 0) return {};
+
+  const { data, error } = await supabase.rpc("last_sets_for_movements", {
+    p_movement_ids: movementIds,
+    p_user_id: userId,
+    p_exclude_session_id: options.excludeSessionId ?? null,
+  });
+  if (error || !data) return {};
+
+  type Row = {
+    movement_id: string;
+    weight_kg: number | string;
+    reps: number;
+    rpe: number | string | null;
+    performed_at: string;
+  };
+
+  const out: Record<string, LastSetForMovement> = {};
+  for (const row of data as Row[]) {
+    const weightKg = Number(row.weight_kg);
+    const reps = Number(row.reps);
+    if (!Number.isFinite(weightKg) || weightKg <= 0 || !Number.isFinite(reps) || reps <= 0) {
+      continue;
+    }
+    out[row.movement_id] = {
+      movementId: row.movement_id,
+      weightKg,
+      reps,
+      rpe: row.rpe == null ? null : Number(row.rpe),
+      performedAt: row.performed_at,
+    };
+  }
+  return out;
+}
+
 export type SessionSummary = {
   setCount: number;
   workingSetCount: number;
@@ -163,8 +209,8 @@ export function summariseSessionSets(
     const start = new Date(session.performed_at).getTime();
     const end = new Date(session.completed_at).getTime();
     if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
-      // Cap at 3h — matches deriveDurationMin in actions.ts so the two
-      // code paths never disagree by an order of magnitude.
+      // Cap at 3h — matches complete_training_session so the two code paths
+      // never disagree by an order of magnitude.
       duration = Math.min(180, Math.round((end - start) / 60_000));
     }
   }

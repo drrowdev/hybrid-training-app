@@ -8,11 +8,10 @@
  *   - `variant="banner"` — compact pill embedded in the
  *     "Session in progress" status banner.
  *
- * Both submit `completeSession` directly (inline form) — there is no
- * separate `/complete` interstitial page any more. On success the action
- * stamps `completed_at`, derives RPE + duration from the logged sets, and
- * redirects back to the session detail, which then renders the
- * PostSessionSummary.
+ * Both call the redirect-free completion action, show immediate pending
+ * feedback, then perform a full navigation to the summary. The document
+ * navigation deliberately resets scroll and layout-shift accounting instead
+ * of replacing the long active-session tree in place.
  *
  * `disabled` is enforced both visually and via aria-disabled. When the
  * gate is dimmed we render a plain button-styled `<span>` so keyboard
@@ -20,8 +19,9 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { completeSession } from "@/lib/sessions/actions";
+import { completeSessionResult } from "@/lib/sessions/actions";
 import { enqueue as outboxEnqueue } from "@/lib/offline/outbox";
+import { useSessionLoggingState } from "./SessionLoggingState";
 
 export function FinishSessionBar({
   sessionId,
@@ -47,10 +47,18 @@ export function FinishSessionBar({
   hybrid?: boolean;
   testId?: string;
 }) {
+  const loggingState = useSessionLoggingState();
+  const effectiveDisabled = disabled && !loggingState?.hasStrengthSets;
   const disabledLabel = hybrid
     ? "Log at least 1 strength set to finish"
     : "Log at least 1 set to finish";
-  const label = disabled ? disabledLabel : "Finish session →";
+  const label = effectiveDisabled ? disabledLabel : "Finish session →";
+  const effectiveSubtitle =
+    disabled && loggingState?.hasStrengthSets
+      ? loggingState.remainingPlannedSets > 0
+        ? `${loggingState.remainingPlannedSets} planned sets aren't logged. You can still finish; the session will be marked complete with what you logged. · Finish anyway`
+        : null
+      : subtitle;
 
   // Finish-while-offline: completeSession is heavy server work that redirects to
   // the summary, so it can't run offline. When the network is down we instead
@@ -58,9 +66,11 @@ export function FinishSessionBar({
   // the outbox flusher on the session page replays it on reconnect. The ONLINE
   // path is untouched — the native form action redirects as before.
   const [savedOffline, setSavedOffline] = useState(false);
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const [finishing, setFinishing] = useState(false);
+  const [finishError, setFinishError] = useState<string | null>(null);
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
-      e.preventDefault();
       const id =
         globalThis.crypto?.randomUUID?.() ?? `complete-${Date.now()}`;
       void outboxEnqueue({
@@ -70,8 +80,27 @@ export function FinishSessionBar({
         payload: { sessionId },
       }).catch(() => null);
       setSavedOffline(true);
+      return;
     }
-    // Online: let the native form action submit (completeSession redirects).
+    if (finishing) return;
+    setFinishing(true);
+    setFinishError(null);
+    try {
+      const result = await completeSessionResult(sessionId, null);
+      if (result.error) {
+        if (result.error === "not-signed-in") {
+          window.location.assign("/login");
+          return;
+        }
+        setFinishError(result.error);
+        setFinishing(false);
+        return;
+      }
+      window.location.assign(`/app/sessions/${sessionId}?completed=1`);
+    } catch {
+      setFinishError("Couldn't finish the session. Check your connection and retry.");
+      setFinishing(false);
+    }
   };
 
   // The armed bottom bar overlaps the floating rest-timer's corner. Publish
@@ -118,7 +147,7 @@ export function FinishSessionBar({
   }, [publishesClearance]);
 
   if (variant === "banner") {
-    if (disabled) {
+    if (effectiveDisabled) {
       return (
         <span
           data-testid={testId}
@@ -149,7 +178,6 @@ export function FinishSessionBar({
     }
     return (
       <form
-        action={completeSession}
         onSubmit={handleSubmit}
         data-testid={testId}
         data-armed="true"
@@ -158,10 +186,11 @@ export function FinishSessionBar({
         <input type="hidden" name="sessionId" value={sessionId} />
         <button
           type="submit"
+          disabled={finishing}
           className="cp-btn primary"
           style={{ padding: "8px 14px", fontSize: 12 }}
         >
-          Finish session →
+          {finishing ? "Finishing…" : "Finish session →"}
         </button>
       </form>
     );
@@ -176,7 +205,7 @@ export function FinishSessionBar({
     <div
       ref={barRef}
       data-testid={testId}
-      data-armed={disabled ? "false" : "true"}
+      data-armed={effectiveDisabled ? "false" : "true"}
       style={{
         marginInline: -16,
         marginTop: 16,
@@ -188,7 +217,7 @@ export function FinishSessionBar({
         paddingInline: 16,
       }}
     >
-      {disabled ? (
+      {effectiveDisabled ? (
         <span
           aria-disabled="true"
           className="cp-btn primary big"
@@ -211,21 +240,21 @@ export function FinishSessionBar({
         </span>
       ) : (
         <form
-          action={completeSession}
           onSubmit={handleSubmit}
           style={{ flex: 1, display: "flex" }}
         >
           <input type="hidden" name="sessionId" value={sessionId} />
           <button
             type="submit"
+            disabled={finishing}
             className="cp-btn primary big"
             style={{ flex: 1, textAlign: "center" }}
           >
-            Finish session →
+            {finishing ? "Finishing…" : "Finish session →"}
           </button>
         </form>
       )}
-      {subtitle && (
+      {effectiveSubtitle && (
         <div
           data-testid="finish-subtitle"
           style={{
@@ -235,7 +264,12 @@ export function FinishSessionBar({
             paddingTop: 2,
           }}
         >
-          {subtitle}
+          {effectiveSubtitle}
+        </div>
+      )}
+      {finishError && (
+        <div role="alert" style={{ color: "var(--cp-danger)", fontSize: 12 }}>
+          {finishError}
         </div>
       )}
     </div>

@@ -13,7 +13,6 @@
  */
 
 import {
-  entriesForSession,
   nextSeq,
   sortBySeq,
   type OutboxEntry,
@@ -23,13 +22,16 @@ import {
 const DB_NAME = "hta-offline";
 const DB_VERSION = 1;
 const STORE = "outbox";
+let dbPromise: Promise<IDBDatabase> | null = null;
+let lastSeq = 0;
 
 function hasIDB(): boolean {
   return typeof indexedDB !== "undefined";
 }
 
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
@@ -39,9 +41,21 @@ function openDb(): Promise<IDBDatabase> {
         store.createIndex("by_seq", "seq", { unique: false });
       }
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error("indexedDB open failed"));
+    req.onsuccess = () => {
+      const db = req.result;
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+        lastSeq = 0;
+      };
+      resolve(db);
+    };
+    req.onerror = () => {
+      dbPromise = null;
+      reject(req.error ?? new Error("indexedDB open failed"));
+    };
   });
+  return dbPromise;
 }
 
 function txStore(db: IDBDatabase, mode: IDBTransactionMode): IDBObjectStore {
@@ -58,12 +72,8 @@ function reqToPromise<T>(req: IDBRequest<T>): Promise<T> {
 async function readAll(): Promise<OutboxEntry[]> {
   if (!hasIDB()) return [];
   const db = await openDb();
-  try {
-    const all = await reqToPromise(txStore(db, "readonly").getAll());
-    return sortBySeq(all as OutboxEntry[]);
-  } finally {
-    db.close();
-  }
+  const all = await reqToPromise(txStore(db, "readonly").getAll());
+  return sortBySeq(all as OutboxEntry[]);
 }
 
 export type EnqueueInput = {
@@ -82,28 +92,46 @@ export type EnqueueInput = {
 export async function enqueue(input: EnqueueInput): Promise<OutboxEntry | null> {
   if (!hasIDB()) return null;
   const db = await openDb();
-  try {
-    const existing = (await reqToPromise(
-      txStore(db, "readonly").getAll(),
-    )) as OutboxEntry[];
-    const now = Date.now();
-    const entry: OutboxEntry = {
-      id: input.id,
-      op: input.op,
-      sessionId: input.sessionId,
-      seq: nextSeq(
-        existing.map((e) => e.seq),
-        now,
-      ),
-      payload: input.payload,
-      createdAt: now,
-      attempts: 0,
+  // One readwrite transaction is serialised across tabs by IndexedDB. Reading
+  // the highest sequence from the index and then writing in that same
+  // transaction preserves global FIFO without deserialising the full queue.
+  return new Promise<OutboxEntry>((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    const store = tx.objectStore(STORE);
+    const cursorReq = store.index("by_seq").openKeyCursor(null, "prev");
+    let entry: OutboxEntry | null = null;
+
+    cursorReq.onsuccess = () => {
+      const storedMax =
+        typeof cursorReq.result?.key === "number" ? cursorReq.result.key : 0;
+      const now = Date.now();
+      lastSeq = nextSeq([lastSeq, storedMax], now);
+      entry = {
+        id: input.id,
+        op: input.op,
+        sessionId: input.sessionId,
+        seq: lastSeq,
+        payload: input.payload,
+        createdAt: now,
+        attempts: 0,
+      };
+      store.put(entry);
     };
-    await reqToPromise(txStore(db, "readwrite").put(entry));
-    return entry;
-  } finally {
-    db.close();
-  }
+    cursorReq.onerror = () => {
+      tx.abort();
+      reject(
+        cursorReq.error ?? new Error("indexedDB sequence read failed"),
+      );
+    };
+    tx.oncomplete = () => {
+      if (entry) resolve(entry);
+      else reject(new Error("indexedDB enqueue failed"));
+    };
+    tx.onerror = () =>
+      reject(tx.error ?? new Error("indexedDB enqueue failed"));
+    tx.onabort = () =>
+      reject(tx.error ?? new Error("indexedDB enqueue aborted"));
+  });
 }
 
 /** All pending entries, FIFO. Empty when IndexedDB is unavailable. */
@@ -113,7 +141,21 @@ export async function listPending(): Promise<OutboxEntry[]> {
 
 /** Pending entries for one session, FIFO. */
 export async function listForSession(sessionId: string): Promise<OutboxEntry[]> {
-  return entriesForSession(await readAll(), sessionId);
+  if (!hasIDB()) return [];
+  const db = await openDb();
+  const rows = await reqToPromise(
+    txStore(db, "readonly").index("by_session").getAll(sessionId),
+  );
+  return sortBySeq(rows as OutboxEntry[]);
+}
+
+/** Count pending writes for one session without deserialising the queue. */
+export async function countForSession(sessionId: string): Promise<number> {
+  if (!hasIDB()) return 0;
+  const db = await openDb();
+  return reqToPromise(
+    txStore(db, "readonly").index("by_session").count(sessionId),
+  );
 }
 
 /** Remove an entry once it has been confirmed persisted (or permanently
@@ -121,11 +163,41 @@ export async function listForSession(sessionId: string): Promise<OutboxEntry[]> 
 export async function remove(id: string): Promise<void> {
   if (!hasIDB()) return;
   const db = await openDb();
-  try {
-    await reqToPromise(txStore(db, "readwrite").delete(id));
-  } finally {
-    db.close();
-  }
+  await reqToPromise(txStore(db, "readwrite").delete(id));
+}
+
+/** Remove a confirmed write and return the remaining count in one transaction. */
+export async function removeAndCountForSession(
+  id: string,
+  sessionId: string,
+): Promise<number> {
+  if (!hasIDB()) return 0;
+  const db = await openDb();
+  return new Promise<number>((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    const store = tx.objectStore(STORE);
+    let remaining = 0;
+    const removeReq = store.delete(id);
+    removeReq.onsuccess = () => {
+      // Queue the count only after WebKit has acknowledged the delete request,
+      // then resolve after the whole transaction commits.
+      const countReq = store.index("by_session").count(sessionId);
+      countReq.onsuccess = () => {
+        remaining = countReq.result;
+      };
+      countReq.onerror = () => {
+        tx.abort();
+      };
+    };
+    removeReq.onerror = () => {
+      tx.abort();
+    };
+    tx.oncomplete = () => resolve(remaining);
+    tx.onerror = () =>
+      reject(tx.error ?? new Error("indexedDB remove/count failed"));
+    tx.onabort = () =>
+      reject(tx.error ?? new Error("indexedDB remove/count aborted"));
+  });
 }
 
 /** Record a failed attempt (transient/network) so retries can back off and the
@@ -133,16 +205,12 @@ export async function remove(id: string): Promise<void> {
 export async function recordAttempt(id: string, error: string): Promise<void> {
   if (!hasIDB()) return;
   const db = await openDb();
-  try {
-    const store = txStore(db, "readwrite");
-    const entry = (await reqToPromise(store.get(id))) as OutboxEntry | undefined;
-    if (!entry) return;
-    entry.attempts += 1;
-    entry.lastError = error;
-    await reqToPromise(store.put(entry));
-  } finally {
-    db.close();
-  }
+  const store = txStore(db, "readwrite");
+  const entry = (await reqToPromise(store.get(id))) as OutboxEntry | undefined;
+  if (!entry) return;
+  entry.attempts += 1;
+  entry.lastError = error;
+  await reqToPromise(store.put(entry));
 }
 
 /** True when IndexedDB is usable in this runtime. */

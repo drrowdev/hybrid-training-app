@@ -122,6 +122,71 @@ test.describe("@desktop session log", () => {
     expect(first.movement_id).toBe(seed.todayMovementId);
   });
 
+  test("B: set feedback and finish gate do not wait for the network", async ({
+    page,
+    context,
+    freshUser,
+    seedConfig,
+    admin,
+    baseURL,
+  }) => {
+    const url = baseURL ?? "http://localhost:3000";
+    await markOnboarded(admin, freshUser.userId);
+    await seedStrengthTms(admin, freshUser.userId);
+    const seed = await seedActiveBlock(admin, freshUser.userId);
+    await signInAs(context, freshUser, seedConfig, url);
+
+    await page.goto(`/app/sessions/start/${seed.todayPlannedId}`);
+    await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, {
+      timeout: 15_000,
+    });
+
+    const header = page.getByTestId(
+      `movement-card-header-${seed.todayMovementId}`,
+    );
+    if ((await header.getAttribute("aria-expanded")) === "false") {
+      await header.click();
+    }
+    const card = page.getByTestId(`movement-card-${seed.todayMovementId}`);
+    const finish = page.getByTestId("finish-stickybar");
+    await expect(finish).toHaveAttribute("data-armed", "false");
+
+    let delayedPost = false;
+    await page.route("**/app/sessions/**", async (route) => {
+      if (!delayedPost && route.request().method() === "POST") {
+        delayedPost = true;
+        await new Promise((resolve) => setTimeout(resolve, 1_200));
+      }
+      await route.continue();
+    });
+
+    const started = Date.now();
+    await page.getByTestId("movement-focus-log-button").click();
+    await expect(card).not.toHaveAttribute("data-state", "not_started", {
+      timeout: 500,
+    });
+    await expect(finish).toHaveAttribute("data-armed", "true", {
+      timeout: 500,
+    });
+    expect(Date.now() - started).toBeLessThan(500);
+
+    await expect
+      .poll(
+        async () => {
+          const { count } = await admin
+            .from("set_logs")
+            .select("id", { count: "exact", head: true })
+            .eq(
+              "session_id",
+              new URL(page.url()).pathname.split("/").pop()!,
+            );
+          return count ?? 0;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(1);
+  });
+
   test("C: skip a planned session marks it skipped and hides the Start CTA", async ({
     page,
     context,

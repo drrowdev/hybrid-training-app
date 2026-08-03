@@ -21,7 +21,6 @@ import { hasAiAccess } from "@/lib/ai/access";
 import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
 import {
   type LoggedSet,
-  type LastSetHint,
   type PriorBest,
 } from "@/components/session/SessionLogClient";
 import { SessionWorkArea } from "@/components/session/SessionWorkArea";
@@ -33,6 +32,7 @@ import {
   type PersistedFreestyle,
 } from "@/lib/sessions/freestyle-resolver";
 import { FinishSessionBar } from "@/components/session/FinishSessionBar";
+import { SessionLoggingStateProvider } from "@/components/session/SessionLoggingState";
 import { HyroxCompletionForm } from "@/components/session/HyroxCompletionForm";
 import { resolveHyroxCompletionView } from "@/lib/hyrox/resolve-completion-view";
 import { readStationOverrides } from "@/lib/hyrox/completion-view";
@@ -54,7 +54,7 @@ import { formatDate } from "@/lib/format/datetime";
 import { formatHitValue, countSessionTmAnchoredPrs, getSessionTmAnchoredPrSummaries } from "@/lib/stats/pr-queries";
 import { findBumpProposalForSession } from "@/lib/stats/bump-proposal";
 import { findPrRecalibrateProposals } from "@/lib/stats/pr-recalibrate";
-import { getLastSetLogForMovement, getPriorBestsForMovements, summariseSessionSets } from "@/lib/sessions/queries";
+import { getLastSetsForMovements, getPriorBestsForMovements, summariseSessionSets } from "@/lib/sessions/queries";
 import { summariseCardioLogs } from "@/lib/sessions/cardio-summary";
 import { suggestNextWeight } from "@/lib/progression/suggest-next";
 import {
@@ -361,11 +361,13 @@ export default async function SessionDetailPage({
     | "restorative"
     | null
     | undefined) ?? null;
-  const bwGateStateByFamilyPromise = loadBwGateStatesForPrescription({
-    supabase,
-    userId: user.id,
-    prescription: plannedPrescription,
-  });
+  const bwGateStateByFamilyPromise = isComplete
+    ? Promise.resolve({})
+    : loadBwGateStatesForPrescription({
+        supabase,
+        userId: user.id,
+        prescription: plannedPrescription,
+      });
   const plannedTopPercent = plannedPrescription?.items
     .filter((i) => i.kind === "main" && typeof i.percentTm === "number")
     .reduce((max, i) => Math.max(max, i.percentTm ?? 0), 0);
@@ -433,20 +435,22 @@ export default async function SessionDetailPage({
 
   // Phase 1 B2 — "Last time" inline hints. Resolve the set of movements
   // relevant to this session: every movement in the prescription PLUS
-  // every movement already logged. Run the lookups in parallel so the
-  // page render cost stays close to a single round-trip.
+  // every movement already logged. One RPC returns the latest prior top set
+  // for every movement, avoiding an N-request fan-out on session open.
   const relevantMovementIds = new Set<string>();
   for (const s of sets) if (s.movement.id) relevantMovementIds.add(s.movement.id);
   for (const item of plannedPrescription?.items ?? []) {
     if (item.movementId) relevantMovementIds.add(item.movementId);
   }
-  const lastHintsListPromise = Promise.all(
-    Array.from(relevantMovementIds).map((mid) =>
-      getLastSetLogForMovement(supabase, user.id, mid, { excludeSessionId: id }).then((row) =>
-        row ? ([mid, row] as const) : null,
-      ),
-    ),
-  );
+  const lastSetHintsPromise =
+    relevantMovementIds.size > 0 && !isComplete
+      ? getLastSetsForMovements(
+          supabase,
+          user.id,
+          Array.from(relevantMovementIds),
+          { excludeSessionId: id },
+        )
+      : Promise.resolve({});
 
   // Phase 1 B3 — Prior personal bests snapshot for the client-side PR
   // badge. We pull the user's strongest prior set per relevant movement
@@ -474,26 +478,15 @@ export default async function SessionDetailPage({
     supersetByMovementId,
     bwGateStateByFamily,
     { bumpProposal, deloadProposal, prRecalibrateProposals },
-    lastHintsList,
+    lastSetHints,
     priorBests,
   ] = await Promise.all([
     supersetByMovementIdPromise,
     bwGateStateByFamilyPromise,
     proposalsPromise,
-    lastHintsListPromise,
+    lastSetHintsPromise,
     priorBestsPromise,
   ]);
-
-  const lastSetHints: Record<string, LastSetHint> = {};
-  for (const entry of lastHintsList) {
-    if (!entry) continue;
-    const [mid, row] = entry;
-    lastSetHints[mid] = {
-      weightKg: row.weightKg,
-      reps: row.reps,
-      performedAt: row.performedAt,
-    };
-  }
 
   // Phase 1 C1/C2 — post-session summary. Materialised on-the-fly from
   // already-fetched rows; no new schema column.
@@ -888,7 +881,10 @@ export default async function SessionDetailPage({
       .filter((m): m is string => !!m),
   );
   const allMovementIds = Array.from(
-    new Set([...cardioMovementIds, ...strengthMovementIdSet]),
+    new Set([
+      ...cardioMovementIds,
+      ...(!isComplete ? strengthMovementIdSet : []),
+    ]),
   );
   const cardioModalityByMovementId: Record<string, string | null> = {};
   const bodyweightMovementIds: string[] = [];
@@ -942,6 +938,11 @@ export default async function SessionDetailPage({
 
   return (
     <UnitsProvider units={userUnits}>
+    <SessionLoggingStateProvider
+      key={sets.length}
+      initialHasStrengthSets={sets.length > 0}
+      initialUnloggedStrengthCount={unloggedStrengthCount}
+    >
     <div style={{ display: "grid", gap: 18 }}>
       <header>
         {/* Single crumb row — e.g. "29 MAY · ENDURANCE · WK 1". Replaces
@@ -1756,6 +1757,7 @@ export default async function SessionDetailPage({
         );
       })()}
     </div>
+    </SessionLoggingStateProvider>
     </UnitsProvider>
   );
 }

@@ -10,7 +10,7 @@
  * with an inline focus view, dot strip, and per-set save flow.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Prescription } from "@hta/db";
 import type {
@@ -33,13 +33,15 @@ import {
   type OptimisticLog,
 } from "@/lib/sessions/optimistic-log";
 import {
+  countForSession as outboxCountForSession,
   enqueue as outboxEnqueue,
-  remove as outboxRemove,
   listForSession as outboxListForSession,
+  removeAndCountForSession as outboxRemoveAndCountForSession,
 } from "@/lib/offline/outbox";
 import { formDataToPayload, payloadToFormData } from "@/lib/offline/outbox-core";
 import { startAutoFlush } from "@/lib/offline/flusher";
 import { OfflineSyncBadge } from "./OfflineSyncBadge";
+import { useSessionLoggingState } from "./SessionLoggingState";
 import type { PlateInventoryItem } from "./plate-math";
 import type { ResolvedFreestyleMovement } from "@/lib/sessions/freestyle-resolver";
 import type { SupersetCardInfo } from "@/lib/sessions/superset-cards";
@@ -155,8 +157,7 @@ export function SessionWorkArea({
   // full-page rebuild re-ran ~15 queries just to record one row). We keep a
   // client overlay of pending logs so the UI advances the instant the user taps;
   // the real write settles in the background. A fresh server snapshot (finish,
-  // edit, offline-flush, the one-shot first-set refresh below, or a reload)
-  // reconciles confirmed entries away.
+  // edit, offline-flush, or a reload) reconciles confirmed entries away.
   const [pendingLogs, setPendingLogs] = useState<OptimisticLog[]>([]);
   // Phase 4 — per-family bodyweight TUT overrides. The BW "Next:" chip counter
   // ticks up as you log BW sets; with no per-set revalidation we refresh just
@@ -168,20 +169,9 @@ export function SessionWorkArea({
   // server snapshot so the overlay reconciles the now-persisted rows away.
   const router = useRouter();
   const [outboxPending, setOutboxPending] = useState(0);
-  // Finish-gate sync. `addStrengthSet` intentionally skips revalidatePath (a
-  // ~15-query rebuild per set), so the server-rendered FinishSessionBar — whose
-  // `disabled` is `sets.length === 0` — stayed stuck on "Log at least 1 set to
-  // finish" until a manual reload, even after sets were logged. The optimistic
-  // overlay keeps the cards reactive but can't reach that sibling. We instead
-  // fire ONE background `router.refresh()` the first time a set lands in an
-  // empty session: the server snapshot then shows ≥1 set, the gate flips to
-  // "Finish session →" and stays armed. Self-limiting — once `sets` is non-empty
-  // the ref is already true, so no further refreshes (later sets ride the
-  // overlay). Sessions that already had sets at mount never trigger it.
-  const gateSyncedRef = useRef(sets.length > 0);
-  useEffect(() => {
-    if (sets.length > 0) gateSyncedRef.current = true;
-  }, [sets.length]);
+  const loggingState = useSessionLoggingState();
+  const registerStrengthLog = loggingState?.registerStrengthLog;
+  const rollbackStrengthLog = loggingState?.rollbackStrengthLog;
 
   // Reconcile: whenever a fresh server snapshot lands (any revalidating action —
   // finish / delete / edit / fill / swap — or a reload changes the `sets` prop),
@@ -196,7 +186,6 @@ export function SessionWorkArea({
       const next = dropConfirmed(prev);
       return next.length === prev.length ? prev : next;
     });
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the fresh server bwGateStateByFamily supersedes our TUT overrides
     setBwTutOverrides((prev) => (Object.keys(prev).length === 0 ? prev : {}));
   }, [sets]);
 
@@ -220,6 +209,12 @@ export function SessionWorkArea({
       if (overlay) {
         setPendingLogs((prev) => [...prev, optimistic]);
       }
+      if (optimistic) {
+        registerStrengthLog?.(
+          clientKey,
+          optimistic.prescriptionItemIndex != null,
+        );
+      }
 
       // Durably enqueue BEFORE the network call so a signal drop or app kill
       // can't lose the set — it replays from the outbox on reconnect/relaunch.
@@ -242,20 +237,22 @@ export function SessionWorkArea({
         // Offline / network error. Keep the overlay AND the outbox entry; the
         // flusher replays it when connectivity returns. Report optimistic
         // success so the logger advances to the next set.
-        const queued = await outboxListForSession(sid).catch(() => []);
-        setOutboxPending(queued.length);
+        const queued = await outboxCountForSession(sid).catch(() => 0);
+        setOutboxPending(queued);
         return { ok: true };
       }
 
       // Online resolved — the row is persisted, so drop the durable entry.
-      await outboxRemove(clientLogId).catch(() => {});
-      const queued = await outboxListForSession(sid).catch(() => []);
-      setOutboxPending(queued.length);
+      const queued = await outboxRemoveAndCountForSession(clientLogId, sid).catch(
+        () => 0,
+      );
+      setOutboxPending(queued);
 
       if (!overlay) return result ?? { ok: true };
       if (result?.error) {
         // Validation rejection — roll the overlay back so the slot un-logs.
         setPendingLogs((prev) => prev.filter((l) => l.clientKey !== clientKey));
+        rollbackStrengthLog?.(clientKey);
       } else if (result?.set?.id) {
         // Mark confirmed with the REAL id, so the edit link works mid-session
         // without a per-set page revalidation. The entry survives until the next
@@ -268,17 +265,10 @@ export function SessionWorkArea({
           const { family, tutAccumulated } = result.bwTut;
           setBwTutOverrides((prev) => ({ ...prev, [family]: tutAccumulated }));
         }
-        // First set of an empty session — pull one fresh server snapshot so the
-        // finish gate (server-rendered FinishSessionBar) flips to armed. Fires
-        // at most once per mount (see gateSyncedRef note above).
-        if (!gateSyncedRef.current) {
-          gateSyncedRef.current = true;
-          router.refresh();
-        }
       }
       return result ?? { ok: true };
     },
-    [addStrengthSet, sessionId, router],
+    [addStrengthSet, sessionId, registerStrengthLog, rollbackStrengthLog],
   );
 
   // Seed the overlay from a durable outbox (relaunch with unsynced sets) and
@@ -394,4 +384,3 @@ export function SessionWorkArea({
     </>
   );
 }
-

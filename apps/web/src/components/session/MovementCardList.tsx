@@ -12,7 +12,7 @@
  * path here, so the user always sees the same card-shaped UI.
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import type { Prescription } from "@hta/db";
 import {
   groupPrescriptionByMovement,
@@ -633,7 +633,7 @@ function AccessoryDragGrip({
   );
 }
 
-function PrescribedCard(props: {
+type PrescribedCardProps = {
   sessionId: string;
   group: MovementGroup;
   readOnly?: boolean;
@@ -668,7 +668,9 @@ function PrescribedCard(props: {
   >;
   bodyweightCapable?: boolean;
   dragHandle?: React.ReactNode;
-}) {
+};
+
+const PrescribedCard = memo(function PrescribedCard(props: PrescribedCardProps) {
   const tmKg = props.group.movementSlug
     ? props.tmBySlug[props.group.movementSlug]
     : undefined;
@@ -721,6 +723,72 @@ function PrescribedCard(props: {
       dragHandle={props.dragHandle}
     />
   );
+}, samePrescribedCardProps);
+
+function samePrescribedCardProps(
+  previous: PrescribedCardProps,
+  next: PrescribedCardProps,
+): boolean {
+  if (
+    previous.sessionId !== next.sessionId ||
+    previous.group !== next.group ||
+    previous.readOnly !== next.readOnly ||
+    previous.tmBySlug !== next.tmBySlug ||
+    previous.oneRmBySlug !== next.oneRmBySlug ||
+    previous.priorBests !== next.priorBests ||
+    previous.lastSetHint !== next.lastSetHint ||
+    previous.addStrengthSet !== next.addStrengthSet ||
+    previous.fillFromPlan !== next.fillFromPlan ||
+    previous.showFillFromPlan !== next.showFillFromPlan ||
+    previous.hapticsEnabled !== next.hapticsEnabled ||
+    previous.timerSoundEnabled !== next.timerSoundEnabled ||
+    previous.barbellKg !== next.barbellKg ||
+    previous.trapBarKg !== next.trapBarKg ||
+    previous.plateInventory !== next.plateInventory ||
+    previous.preferStandardLbPlates !== next.preferStandardLbPlates ||
+    previous.bwGateStateByFamily !== next.bwGateStateByFamily ||
+    previous.bodyweightCapable !== next.bodyweightCapable ||
+    Boolean(previous.dragHandle) !== Boolean(next.dragHandle)
+  ) {
+    return false;
+  }
+
+  if (!sameLoggedSets(previous.loggedSets, next.loggedSets)) return false;
+  for (const itemIndex of previous.group.itemIndices) {
+    if (
+      previous.loggedItemIndices.has(itemIndex) !==
+        next.loggedItemIndices.has(itemIndex) ||
+      (previous.skippedItemIndices?.has(itemIndex) ?? false) !==
+        (next.skippedItemIndices?.has(itemIndex) ?? false) ||
+      previous.loggedSetIdByItemIndex[itemIndex] !==
+        next.loggedSetIdByItemIndex[itemIndex]
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function sameLoggedSets(previous: LoggedSet[], next: LoggedSet[]): boolean {
+  if (previous === next) return true;
+  if (previous.length !== next.length) return false;
+  for (let index = 0; index < previous.length; index++) {
+    const a = previous[index]!;
+    const b = next[index]!;
+    if (
+      a.id !== b.id ||
+      a.weight_kg !== b.weight_kg ||
+      a.reps !== b.reps ||
+      a.distance_m !== b.distance_m ||
+      a.duration_sec !== b.duration_sec ||
+      a.rpe !== b.rpe ||
+      a.skipped !== b.skipped ||
+      a.skip_reason !== b.skip_reason
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
