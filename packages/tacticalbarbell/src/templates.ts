@@ -144,6 +144,9 @@ export interface TbTemplate {
   setsReps: TbWeekScheme[];
   /** Percentage waves; length 1 for cluster templates, 2 for Zulu. */
   waves: TbPercentWave[];
+  /** Loading retained for composite engines that delegate to TB. */
+  delegatedSetsReps?: TbWeekScheme[];
+  delegatedWaves?: TbPercentWave[];
   /** The recurring weekly sessions (length === sessions per week). */
   weeklySessions: TbWeeklySession[];
   /** Minimum number of COUNTING main lifts (TB1 cluster taxonomy). */
@@ -219,6 +222,17 @@ const OPERATOR: TbTemplate = {
   blockWeeks: 6,
   setsReps: TB3_SET_RANGE,
   waves: [{ id: "main", label: "Main", percents: [0.75, 0.8, 0.85, 0.75, 0.8, 1] }],
+  delegatedSetsReps: [
+    w("3–5", 3, 5, "5", 5),
+    w("3–5", 3, 5, "5", 5),
+    w("3–4", 3, 4, "3", 3),
+    w("3–5", 3, 5, "5", 5),
+    w("3–5", 3, 5, "3", 3),
+    w("3–4", 3, 4, "1–2", 2),
+  ],
+  delegatedWaves: [
+    { id: "main", label: "Main", percents: [0.7, 0.8, 0.9, 0.75, 0.85, 0.95] },
+  ],
   weeklySessions: [
     {
       id: "s1",
@@ -297,6 +311,17 @@ const FIGHTER: TbTemplate = {
   blockWeeks: 6,
   setsReps: TB3_SET_RANGE,
   waves: [{ id: "main", label: "Main", percents: [0.75, 0.8, 0.85, 0.75, 0.8, 1] }],
+  delegatedSetsReps: [
+    w("3–5", 3, 5, "5", 5),
+    w("3–5", 3, 5, "5", 5),
+    w("3–5", 3, 5, "3", 3),
+    w("3–5", 3, 5, "5", 5),
+    w("3–5", 3, 5, "5", 5),
+    w("3–5", 3, 5, "3", 3),
+  ],
+  delegatedWaves: [
+    { id: "main", label: "Main", percents: [0.75, 0.8, 0.9, 0.75, 0.8, 0.9] },
+  ],
   weeklySessions: [
     {
       id: "s1",

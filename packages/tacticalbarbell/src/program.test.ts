@@ -49,6 +49,7 @@ describe("TB engine — meta + setup", () => {
       "weighted-pullup",
     ]);
     expect(inst.useTrainingMax).toBe(false);
+    expect(inst.useTemplateDefaults).toBe(true);
   });
 
   it("Operator honours its 3-lift cap even if more lifts are supplied", () => {

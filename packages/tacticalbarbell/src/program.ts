@@ -63,6 +63,12 @@ export interface TbInstance {
   useTrainingMax: boolean;
   /** TM fraction of 1RM when `useTrainingMax` is set (TB1 commonly uses 0.9). */
   tmPercent: number;
+  /**
+   * Direct Tactical Barbell programs use the template's prescribed TB3 loadout.
+   * Composite engines (Green Protocol) set this false because they own the
+   * strength cluster while reusing TB's loading wave.
+   */
+  useTemplateDefaults: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -126,7 +132,7 @@ function sessionLifts(
   instance: TbInstance,
   session: TbTemplate["weeklySessions"][number],
 ): TbClusterLift[] {
-  let lifts = session.fixedMovements
+  let lifts = instance.useTemplateDefaults && session.fixedMovements
     ? session.fixedMovements.map((entry) => cloneEntry(entry))
     : instance.cluster.filter((c) => (session.split ? c.split === session.split : true));
   const excluded = new Set(session.excludeMovements ?? []);
@@ -237,6 +243,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
     const blocks = Math.max(1, Math.floor(Number(v.blocks ?? 1)) || 1);
     const useTrainingMax = v.useTrainingMax === true;
     const tmPercent = Number(v.tmPercent ?? 0.9) || 0.9;
+    const useTemplateDefaults = v.useTemplateDefaults !== false;
 
     return {
       templateId: template.id,
@@ -245,6 +252,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       cluster: resolveCluster(template, v),
       useTrainingMax,
       tmPercent,
+      useTemplateDefaults,
     };
   },
 
@@ -289,10 +297,18 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
 
     const session = template.weeklySessions.find((s) => s.id === parsed.sessionId);
     if (!session) return { items: [] };
-    const wave = template.waves.find((wv) => wv.id === session.waveId);
+    const waves =
+      instance.useTemplateDefaults || !template.delegatedWaves
+        ? template.waves
+        : template.delegatedWaves;
+    const schemes =
+      instance.useTemplateDefaults || !template.delegatedSetsReps
+        ? template.setsReps
+        : template.delegatedSetsReps;
+    const wave = waves.find((wv) => wv.id === session.waveId);
     if (!wave) return { items: [] };
 
-    const scheme = template.setsReps[parsed.week - 1];
+    const scheme = schemes[parsed.week - 1];
     const pct = wave.percents[parsed.week - 1];
     if (!scheme || pct == null) return { items: [] };
 
@@ -358,7 +374,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
         // known (Activation establishes several in its test weeks). Preserve the
         // percentage prescription so the platform can materialise the movement
         // now and resolve a load from the user's later 1RM update.
-        if (session.fixedMovements) {
+        if (instance.useTemplateDefaults && session.fixedMovements) {
           items.push({
             kind: prescribedItemKind,
             name: movementLabel(lift.movement),
