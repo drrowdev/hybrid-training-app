@@ -253,13 +253,23 @@ export function MovementCard({
    * "next open slot" pick (which would land outside the prescribed
    * range when every slot is covered).
    */
-  const expandAtLastLogged = () => {
+  const optionalSlots = group.items
+    .map((item, slot) => (item.optional ? slot : -1))
+    .filter((slot) => slot >= 0);
+  const optionalDone = optionalSlots.filter((slot) =>
+    loggedItemIndices.has(group.itemIndices[slot]!),
+  ).length;
+  const nextOptionalSlot = optionalSlots.find(
+    (slot) => !loggedItemIndices.has(group.itemIndices[slot]!),
+  );
+
+  const expandAtNextSet = () => {
     const slots = group.itemIndices;
     let lastSlot = 0;
     for (let i = 0; i < slots.length; i++) {
       if (loggedItemIndices.has(slots[i]!)) lastSlot = i;
     }
-    setPinnedCursor(lastSlot);
+    setPinnedCursor(nextOptionalSlot ?? lastSlot);
     userOverrodeRef.current = true;
     setCollapsed(false);
     try {
@@ -269,8 +279,13 @@ export function MovementCard({
     }
   };
 
-  const total = group.itemIndices.length;
-  const done = group.itemIndices.filter((i) => loggedItemIndices.has(i)).length;
+  const requiredSlots = group.items
+    .map((item, slot) => (!item.optional ? slot : -1))
+    .filter((slot) => slot >= 0);
+  const total = requiredSlots.length;
+  const done = requiredSlots.filter((slot) =>
+    loggedItemIndices.has(group.itemIndices[slot]!),
+  ).length;
 
   const chipColor =
     cardState === "completed"
@@ -438,8 +453,8 @@ export function MovementCard({
             data-testid={`movement-card-chip-${group.movementId}`}
             aria-label={
               cardState === "completed"
-                ? "All sets logged"
-                : `${done} of ${total} sets logged`
+                ? "All required sets logged"
+                : `${done} of ${total} required sets logged`
             }
             style={{
               width: 32,
@@ -509,17 +524,22 @@ export function MovementCard({
           >
             <span style={{ color: "var(--cp-success)", fontWeight: 700 }}>✓</span>
             <span style={{ flex: "1 1 auto", fontWeight: 600, color: "var(--cp-text)" }}>
-              {group.movementName} complete
+              {group.movementName} required sets complete
             </span>
+            {optionalSlots.length > 0 && (
+              <span style={{ color: "var(--cp-text-muted)" }}>
+                {optionalDone}/{optionalSlots.length} optional
+              </span>
+            )}
             {!readOnly && (
               <button
                 type="button"
-                onClick={expandAtLastLogged}
+                onClick={expandAtNextSet}
                 className="cp-btn"
                 style={{ padding: "4px 10px", fontSize: 11 }}
                 data-testid={`movement-card-edit-${group.movementId}`}
               >
-                Edit sets
+                {nextOptionalSlot != null ? "Add optional set" : "Edit sets"}
               </button>
             )}
           </div>

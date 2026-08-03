@@ -63,6 +63,12 @@ export interface TbInstance {
   useTrainingMax: boolean;
   /** TM fraction of 1RM when `useTrainingMax` is set (TB1 commonly uses 0.9). */
   tmPercent: number;
+  /**
+   * Direct Tactical Barbell programs use the template's prescribed TB3 loadout.
+   * Composite engines (Green Protocol) set this false because they own the
+   * strength cluster while reusing TB's loading wave.
+   */
+  useTemplateDefaults: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -80,7 +86,7 @@ interface ParsedRef {
 }
 
 function parseRef(ref: string): ParsedRef | null {
-  const m = ref.match(/^b(\d+)-w(\d+)-([a-z0-9]+)$/);
+  const m = ref.match(/^b(\d+)-w(\d+)-([a-z0-9-]+)$/);
   if (!m) return null;
   return { block: Number(m[1]), week: Number(m[2]), sessionId: m[3]! };
 }
@@ -94,7 +100,7 @@ const META: ProgramMeta = {
   name: "Tactical Barbell",
   family: "tactical-barbell",
   summary:
-    "K. Black's Tactical Barbell — submaximal, percentage-based strength run in 6-week blocks (Operator, Fighter, Zulu Standard/I/A, Gladiator, Mass, Grey Man), built to coexist with conditioning.",
+    "K. Black's Tactical Barbell — TB3 Operator, Fighter, Zulu and the 25-week Activation on-ramp, plus established strength templates built to coexist with conditioning.",
 };
 
 // Warm-up ramp is the shared global routine (see buildGlobalWarmupItems in
@@ -111,6 +117,7 @@ function resolveCluster(template: TbTemplate, values: Record<string, unknown>): 
     if (splitA.length > 0 || splitB.length > 0) {
       return [...splitA, ...splitB];
     }
+
     return template.defaultCluster.map((c) => cloneEntry(c));
   }
   const picked = entriesFromValue(values.cluster);
@@ -118,6 +125,24 @@ function resolveCluster(template: TbTemplate, values: Record<string, unknown>): 
     return template.defaultCluster.map((c) => cloneEntry(c));
   }
   return clampCluster(template, picked);
+}
+
+function sessionLifts(
+  template: TbTemplate,
+  instance: TbInstance,
+  session: TbTemplate["weeklySessions"][number],
+): TbClusterLift[] {
+  let lifts = instance.useTemplateDefaults && session.fixedMovements
+    ? session.fixedMovements.map((entry) => cloneEntry(entry))
+    : instance.cluster.filter((c) => (session.split ? c.split === session.split : true));
+  const excluded = new Set(session.excludeMovements ?? []);
+  lifts = lifts.filter((lift) => !excluded.has(lift.movement));
+  for (const entry of session.includeMovements ?? []) {
+    if (!lifts.some((lift) => lift.movement === entry.movement)) {
+      lifts.push(cloneEntry(entry));
+    }
+  }
+  return lifts;
 }
 
 /** Copy a template cluster entry into an instance lift, omitting undefined optionals. */
@@ -156,7 +181,12 @@ function entriesFromValue(v: unknown): TbClusterLift[] {
       const o = x as Record<string, unknown>;
       if (typeof o.movement === "string" && o.movement.length > 0) {
         const lift: TbClusterLift = { movement: o.movement };
-        if (o.kind === "barbell" || o.kind === "weighted-bw" || o.kind === "bodyweight") {
+        if (
+          o.kind === "barbell" ||
+          o.kind === "weighted-bw" ||
+          o.kind === "bodyweight" ||
+          o.kind === "unanchored"
+        ) {
           lift.kind = o.kind;
         }
         if (o.split === "A" || o.split === "B") lift.split = o.split;
@@ -179,7 +209,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
           type: "select",
           options: TB_TEMPLATES.map((t) => ({ value: t.id, label: t.name })),
           defaultValue: "operator",
-          help: "Operator (3×/wk, ≤3 lifts), Fighter (2×/wk), Zulu (A/B split), Zulu I/A (3–5 sets, heavier), Gladiator (5×5), Mass (hypertrophy), Grey Man (12-wk).",
+          help: "TB3 Operator (3×/wk), Fighter (2×/wk), Zulu (A/B split), Activation (25-week on-ramp), plus Zulu I/A, Gladiator, Mass and Grey Man.",
         },
         {
           key: "blocks",
@@ -213,6 +243,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
     const blocks = Math.max(1, Math.floor(Number(v.blocks ?? 1)) || 1);
     const useTrainingMax = v.useTrainingMax === true;
     const tmPercent = Number(v.tmPercent ?? 0.9) || 0.9;
+    const useTemplateDefaults = v.useTemplateDefaults !== false;
 
     return {
       templateId: template.id,
@@ -221,6 +252,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       cluster: resolveCluster(template, v),
       useTrainingMax,
       tmPercent,
+      useTemplateDefaults,
     };
   },
 
@@ -232,6 +264,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
     for (let block = 0; block < instance.blocks; block++) {
       for (let week = 1; week <= template.blockWeeks; week++) {
         for (const session of template.weeklySessions) {
+          if (session.activeWeeks && !session.activeWeeks.includes(week)) continue;
           const tags = [
             `template:${template.id}`,
             `block:${block + 1}`,
@@ -243,8 +276,10 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
             ref: sessionRef(block, week, session.id),
             index: index++,
             label: `${template.name} · Block ${block + 1} · Wk ${week} · ${session.label}`,
-            kind: "training",
+            kind: session.kindByWeek?.[week] ?? session.kind ?? "training",
+            title: session.label,
             weekLabel: `Block ${block + 1} · Wk ${week}`,
+            ...(session.weekday != null ? { weekday: session.weekday } : {}),
             tags,
           });
         }
@@ -262,37 +297,114 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
 
     const session = template.weeklySessions.find((s) => s.id === parsed.sessionId);
     if (!session) return { items: [] };
-    const wave = template.waves.find((wv) => wv.id === session.waveId);
+    const waves =
+      instance.useTemplateDefaults || !template.delegatedWaves
+        ? template.waves
+        : template.delegatedWaves;
+    const schemes =
+      instance.useTemplateDefaults || !template.delegatedSetsReps
+        ? template.setsReps
+        : template.delegatedSetsReps;
+    const wave = waves.find((wv) => wv.id === session.waveId);
     if (!wave) return { items: [] };
 
-    const scheme = template.setsReps[parsed.week - 1];
+    const scheme = schemes[parsed.week - 1];
     const pct = wave.percents[parsed.week - 1];
     if (!scheme || pct == null) return { items: [] };
 
-    const lifts = instance.cluster.filter((c) => (session.split ? c.split === session.split : true));
+    const lifts = sessionLifts(template, instance, session);
 
     const items: PrescribedItem[] = [];
     for (const lift of lifts) {
       const anchor = ctx.oneRepMaxes[lift.movement];
-      if (anchor == null || anchor <= 0) continue;
+      const movementRange = session.movementSetRanges?.[lift.movement];
+      const setsMin = movementRange?.min ?? scheme.setsMin;
+      const setsMax = movementRange?.max ?? scheme.setsMax;
+      const isPeak = session.peakMovements?.includes(lift.movement) ?? false;
+      const support = session.peakMovements && !isPeak ? session.support : undefined;
+      let prescribedPercent: number | null = support?.percent ?? pct;
+      let prescribedSetsMin = support?.sets ?? setsMin;
+      let prescribedSetsMax = support?.sets ?? setsMax;
+      let prescribedReps = support?.reps ?? scheme.reps;
+      let prescribedRepsMax = support ? undefined : scheme.repsMax;
+      let prescribedRepsLabel = support ? String(support.reps) : scheme.repsLabel;
+      let prescribedItemKind: PrescribedItem["kind"] = "main";
+      let includeWarmup = true;
+      let ruleNote: string | undefined;
+
+      for (const rule of session.prescriptionRules ?? []) {
+        if (rule.activeWeeks && !rule.activeWeeks.includes(parsed.week)) continue;
+        if (rule.movements && !rule.movements.includes(lift.movement)) continue;
+        if (rule.percent !== undefined) prescribedPercent = rule.percent;
+        if (rule.setsMin != null) prescribedSetsMin = rule.setsMin;
+        if (rule.setsMax != null) prescribedSetsMax = rule.setsMax;
+        if (rule.reps != null) prescribedReps = rule.reps;
+        if (rule.repsMax !== undefined) prescribedRepsMax = rule.repsMax;
+        if (rule.repsLabel != null) prescribedRepsLabel = rule.repsLabel;
+        if (rule.itemKind != null) prescribedItemKind = rule.itemKind;
+        if (rule.warmup != null) includeWarmup = rule.warmup;
+        if (rule.note != null) ruleNote = rule.note;
+      }
+
       const rangeNote =
-        scheme.setsMin !== scheme.setsMax
-          ? `${scheme.setsMin}–${scheme.setsMax} sets — submaximal, stop short of failure`
-          : "submaximal, stop short of failure";
+        ruleNote ??
+        (prescribedSetsMin !== prescribedSetsMax
+          ? `${prescribedSetsMin}–${prescribedSetsMax} sets — submaximal, stop short of failure`
+          : isPeak
+            ? "peak attempt — stop if technique breaks down"
+            : "submaximal, stop short of failure");
+
+      if (lift.kind === "unanchored" || prescribedPercent == null) {
+        items.push({
+          kind: prescribedItemKind,
+          name: movementLabel(lift.movement),
+          movementId: lift.movement,
+          sets: prescribedSetsMin,
+          ...(prescribedSetsMax !== prescribedSetsMin ? { setsMax: prescribedSetsMax } : {}),
+          reps: prescribedReps,
+          ...(prescribedRepsMax != null ? { repsMax: prescribedRepsMax } : {}),
+          repsLabel: prescribedRepsLabel,
+          note: rangeNote,
+        });
+        continue;
+      }
+
+      if (anchor == null || anchor <= 0) {
+        // Fixed-loadout templates may intentionally begin before every max is
+        // known (Activation establishes several in its test weeks). Preserve the
+        // percentage prescription so the platform can materialise the movement
+        // now and resolve a load from the user's later 1RM update.
+        if (instance.useTemplateDefaults && session.fixedMovements) {
+          items.push({
+            kind: prescribedItemKind,
+            name: movementLabel(lift.movement),
+            movementId: lift.movement,
+            sets: prescribedSetsMin,
+            ...(prescribedSetsMax !== prescribedSetsMin ? { setsMax: prescribedSetsMax } : {}),
+            reps: prescribedReps,
+            ...(prescribedRepsMax != null ? { repsMax: prescribedRepsMax } : {}),
+            repsLabel: prescribedRepsLabel,
+            percentOfTm: prescribedPercent,
+            note: `${rangeNote} · set a 1RM before this session`,
+          });
+        }
+        continue;
+      }
 
       // Bodyweight movements (e.g. pull-ups) are anchored on MAX CLEAN REPS and
       // prescribed as a % of that rep ceiling — never a weight (TB1).
       if (lift.kind === "bodyweight") {
-        const targetReps = Math.max(1, Math.round(anchor * pct));
+        const targetReps = Math.max(1, Math.round(anchor * prescribedPercent));
         items.push({
           kind: "main",
           name: movementLabel(lift.movement),
           movementId: lift.movement,
-          sets: scheme.setsMin,
+          sets: prescribedSetsMin,
+          ...(prescribedSetsMax !== prescribedSetsMin ? { setsMax: prescribedSetsMax } : {}),
           reps: targetReps,
           repsLabel: `${targetReps}`,
-          percentOfTm: pct,
-          note: `bodyweight — ${Math.round(pct * 100)}% of max reps; ${rangeNote}`,
+          percentOfTm: prescribedPercent,
+          note: `bodyweight — ${Math.round(prescribedPercent * 100)}% of max reps; ${rangeNote}`,
         });
         continue;
       }
@@ -300,27 +412,31 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       const basis = instance.useTrainingMax
         ? roundToIncrement(anchor * instance.tmPercent, ctx.roundingKg)
         : anchor;
-      const weightKg = roundToIncrement(basis * pct, ctx.roundingKg);
+      const weightKg = roundToIncrement(basis * prescribedPercent, ctx.roundingKg);
       // Warm-up ramp to the working weight — shared global routine (40/60/80% ×
       // 5/5/3, floored). Submaximal TB work still benefits from a couple of ramp
       // sets to groove the lift.
-      items.push(
-        ...buildGlobalWarmupItems({
-          name: movementLabel(lift.movement),
-          movementId: lift.movement,
-          workingWeightKg: weightKg,
-          roundingKg: ctx.roundingKg,
-        }),
-      );
+      if (includeWarmup) {
+        items.push(
+          ...buildGlobalWarmupItems({
+            name: movementLabel(lift.movement),
+            movementId: lift.movement,
+            workingWeightKg: weightKg,
+            roundingKg: ctx.roundingKg,
+          }),
+        );
+      }
       items.push({
-        kind: "main",
+        kind: prescribedItemKind,
         name: movementLabel(lift.movement),
         movementId: lift.movement,
-        sets: scheme.setsMin,
-        reps: scheme.reps,
-        repsLabel: scheme.repsLabel,
+        sets: prescribedSetsMin,
+        ...(prescribedSetsMax !== prescribedSetsMin ? { setsMax: prescribedSetsMax } : {}),
+        reps: prescribedReps,
+        ...(prescribedRepsMax != null ? { repsMax: prescribedRepsMax } : {}),
+        repsLabel: prescribedRepsLabel,
         weightKg,
-        percentOfTm: pct,
+        percentOfTm: prescribedPercent,
         note: rangeNote,
       });
     }
@@ -336,7 +452,10 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
     const parsed = parseRef(log.ref);
     if (!template || !parsed) return { instance, recommendations: [] };
 
-    const lastSessionId = template.weeklySessions[template.weeklySessions.length - 1]?.id;
+    const finalWeekSessions = template.weeklySessions.filter(
+      (session) => !session.activeWeeks || session.activeWeeks.includes(template.blockWeeks),
+    );
+    const lastSessionId = finalWeekSessions[finalWeekSessions.length - 1]?.id;
     const isBlockEnd = parsed.week === template.blockWeeks && parsed.sessionId === lastSessionId;
     if (!isBlockEnd) return { instance, recommendations: [] };
 
@@ -377,11 +496,21 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
   segments(instance: TbInstance): ProgramSegment[] {
     const out: ProgramSegment[] = [];
     for (let block = 0; block < instance.blocks; block++) {
-      out.push({
-        startWeekIndex: block * instance.blockWeeks,
-        label: `Block ${block + 1}`,
-        kind: "block",
-      });
+      const template = getTbTemplate(instance.templateId);
+      if (template?.segments) {
+        for (const segment of template.segments) {
+          out.push({
+            ...segment,
+            startWeekIndex: block * instance.blockWeeks + segment.startWeekIndex,
+          });
+        }
+      } else {
+        out.push({
+          startWeekIndex: block * instance.blockWeeks,
+          label: `Block ${block + 1}`,
+          kind: "block",
+        });
+      }
     }
     return out;
   },

@@ -108,6 +108,21 @@ describe("deriveCardState / isMovementComplete", () => {
     expect(isMovementComplete(group, covered)).toBe(true);
     expect(deriveCardState(group, covered)).toBe("completed");
   });
+
+  it("completes a 3–5 set prescription after the three required sets", () => {
+    const [range] = groupPrescriptionByMovement(
+      p([
+        { movementId: "squat", kind: "main", sets: 1, reps: 5 },
+        { movementId: "squat", kind: "main", sets: 1, reps: 5 },
+        { movementId: "squat", kind: "main", sets: 1, reps: 5 },
+        { movementId: "squat", kind: "main", sets: 1, reps: 5, optional: true },
+        { movementId: "squat", kind: "main", sets: 1, reps: 5, optional: true },
+      ]),
+    );
+    expect(isMovementComplete(range!, new Set([0, 1, 2]))).toBe(true);
+    expect(deriveCardState(range!, new Set([0, 1, 2]))).toBe("completed");
+    expect(bucketLabelForKind("main", 0, 2, true)).toBe("Optional set · 1 of 2");
+  });
 });
 
 describe("autoCursorForGroup + effectiveCursor", () => {

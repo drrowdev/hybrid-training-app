@@ -190,6 +190,17 @@ export function MovementFocusView({
     () => bucketPositionForSlot(group, cursor),
     [group, cursor],
   );
+  const displaySlot = useMemo(() => {
+    if (!activeItem?.optional) return bucketSlot;
+    const optionalSlots = group.items
+      .map((item, slot) => (item.optional ? slot : -1))
+      .filter((slot) => slot >= 0);
+    return {
+      bucket: bucketSlot.bucket,
+      position: Math.max(0, optionalSlots.indexOf(cursor)),
+      total: optionalSlots.length,
+    };
+  }, [activeItem?.optional, bucketSlot, cursor, group.items]);
 
   // AMRAP detection. Platform programs (5/3/1, Tactical Barbell, …) always mark
   // an AMRAP set explicitly via `isAmrap`, so we trust that flag alone. (The old
@@ -584,7 +595,8 @@ export function MovementFocusView({
           textAlign: "center",
         }}
       >
-        Set {bucketSlot.position + 1} of {bucketSlot.total}
+        {activeItem.optional ? "Optional set" : "Set"} {displaySlot.position + 1} of{" "}
+        {displaySlot.total}
       </div>
 
       <div
@@ -617,7 +629,14 @@ export function MovementFocusView({
             fontWeight: 600,
           }}
         >
-          <span>{bucketLabelForKind(activeItem.kind, bucketSlot.position, bucketSlot.total)}</span>
+          <span>
+            {bucketLabelForKind(
+              activeItem.kind,
+              displaySlot.position,
+              displaySlot.total,
+              activeItem.optional,
+            )}
+          </span>
           {activeItem.percentTm != null && (
             <span
               className="mono"

@@ -813,6 +813,13 @@
       "when": 1785746400000,
       "tag": "0115_hyrox_gender_weight_category",
       "breakpoints": false
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1785750000000,
+      "tag": "0116_expand_training_block_weeks",
+      "breakpoints": false
     }
   ]
 }

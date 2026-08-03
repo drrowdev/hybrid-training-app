@@ -49,12 +49,62 @@ export const BODYWEIGHT_ENGINE_KEY_BY_SLUG: Record<string, string> = {
   "pull-up-overhand": "pullup",
 };
 
+/**
+ * Engine-owned movements with a fixed shared-catalog counterpart. These resolve
+ * even when the user has no 1RM row, which lets unanchored Activation work
+ * (circuits, jumps, core) materialise without inventing training-max records.
+ * When a real 1RM exists for one of the barbell entries, `engineKeyForSlug`
+ * anchors it under the exact engine key instead of folding it into a broad role.
+ */
+export const STATIC_ENGINE_MOVEMENTS: Record<
+  string,
+  { slug: string; displayName?: string }
+> = {
+  squat: { slug: "back-squat-high-bar", displayName: "Back Squat" },
+  bench: { slug: "bench-press-flat", displayName: "Bench Press" },
+  deadlift: { slug: "conventional-deadlift", displayName: "Deadlift" },
+  press: { slug: "ohp-standing", displayName: "Overhead Press" },
+  pushup: { slug: "push-up" },
+  "plyo-pushup": { slug: "push-up", displayName: "Plyometric Push-up" },
+  "goblet-squat": { slug: "goblet-squat" },
+  "inverted-row": { slug: "inverted-row" },
+  "ab-triad": { slug: "hanging-knee-raise", displayName: "Ab Triad" },
+  "barbell-row": { slug: "bb-row-overhand", displayName: "Barbell Row" },
+  "pendlay-row": { slug: "pendlay-row" },
+  "rack-pull": { slug: "block-pull-deadlift", displayName: "Rack Pull" },
+  "back-extension": { slug: "back-extension-45", displayName: "Back Extension" },
+  "weighted-pullup": { slug: "weighted-pull-up", displayName: "Weighted Pull-up" },
+  "overhead-press": { slug: "ohp-standing", displayName: "Overhead Press" },
+  "power-clean": { slug: "power-clean" },
+  "push-press": { slug: "push-press" },
+  "jump-squat": { slug: "jump-squat" },
+};
+
 /** The engine movement key a given movement slug maps to (via its role), or undefined. */
 export function engineKeyForSlug(slug: string): string | undefined {
+  return engineKeysForSlug(slug)[0];
+}
+
+/** Exact engine keys owned by a specific catalog movement (no broad role aliases). */
+export function directEngineKeysForSlug(slug: string): string[] {
+  const keys = new Set<string>();
   const bw = BODYWEIGHT_ENGINE_KEY_BY_SLUG[slug];
-  if (bw) return bw;
+  if (bw) keys.add(bw);
+  for (const [engineKey, movement] of Object.entries(STATIC_ENGINE_MOVEMENTS)) {
+    if (movement.slug === slug) keys.add(engineKey);
+  }
+  return [...keys];
+}
+
+/**
+ * Engine keys a slug can represent in isolation. Exact bindings win; broad
+ * strength-role fallback is used only when no exact program binding exists.
+ */
+export function engineKeysForSlug(slug: string): string[] {
+  const exact = directEngineKeysForSlug(slug);
+  if (exact.length > 0) return exact;
   const role = roleForSlug(slug);
-  return role ? ROLE_TO_ENGINE_KEY[role] : undefined;
+  return role ? [ROLE_TO_ENGINE_KEY[role]] : [];
 }
 
 /**

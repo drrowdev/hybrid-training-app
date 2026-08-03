@@ -48,6 +48,12 @@ export interface PrescribedItem {
   movementId?: string;
   /** Number of sets this item represents (default 1). */
   sets?: number;
+  /**
+   * Upper bound for an autoregulated set range. `sets` remains the required
+   * minimum; materialisers may expose the sets above that floor as optional
+   * work (e.g. Tactical Barbell 3–5 sets).
+   */
+  setsMax?: number;
   /** Target reps (the minimum on an AMRAP/PR set). */
   reps?: number;
   /** Upper bound for a rep range (e.g. 8–10). */

@@ -10,11 +10,22 @@ const RESOLVED: Record<string, { movementId: string; slug: string; displayName: 
   bench: { movementId: "m-bench", slug: "bench-press-flat", displayName: "Bench Press" },
   deadlift: { movementId: "m-dead", slug: "conventional-deadlift", displayName: "Deadlift" },
   press: { movementId: "m-press", slug: "ohp-standing", displayName: "Overhead Press" },
+  "weighted-pullup": {
+    movementId: "m-pullup",
+    slug: "weighted-pull-up",
+    displayName: "Weighted Pull-up",
+  },
 };
 const resolve: MovementResolver = (k) => RESOLVED[k];
 
 const ctx: PlatformContext = {
-  oneRepMaxes: { squat: 165, bench: 118, deadlift: 212, press: 71 },
+  oneRepMaxes: {
+    squat: 165,
+    bench: 118,
+    deadlift: 212,
+    press: 71,
+    "weighted-pullup": 40,
+  },
   roundingKg: 2.5,
 };
 
@@ -145,16 +156,16 @@ describe("adaptSessionPrescription — strength", () => {
       resolve,
     );
     expect(skipped).toEqual([]);
-    // Operator wk1 prescribes 3 sets/lift plus a warm-up ramp; each working set
-    // is its own loggable item, so the three cluster lifts each expand to a
-    // warm-up ramp + 3 work-set items.
+    // Operator TB3 week 1 has three lifts on the squat day. Each has three
+    // required sets and two optional sets after its warm-up ramp.
     const slugs = prescription.items.map((i) => i.movementSlug);
     expect(new Set(slugs)).toEqual(
-      new Set(["back-squat-high-bar", "bench-press-flat", "conventional-deadlift"]),
+      new Set(["back-squat-high-bar", "bench-press-flat", "weighted-pull-up"]),
     );
     const mains = prescription.items.filter((i) => i.kind === "main");
-    expect(mains).toHaveLength(9); // 3 lifts × 3 work sets
+    expect(mains).toHaveLength(15); // 3 lifts × 5 available sets
     expect(mains.every((i) => i.sets === 1)).toBe(true);
+    expect(mains.filter((i) => i.optional)).toHaveLength(6);
     expect(mains[0]!.notes).toMatch(/submaximal/i);
     // Each lift carries a warm-up ramp ahead of its work sets.
     expect(prescription.items.some((i) => i.kind === "warmup")).toBe(true);

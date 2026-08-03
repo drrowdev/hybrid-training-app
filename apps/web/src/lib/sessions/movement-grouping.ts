@@ -123,10 +123,11 @@ export function deriveCardState(
   group: MovementGroup,
   loggedItemIndices: ReadonlySet<number>,
 ): MovementCardState {
-  const total = group.itemIndices.length;
+  const required = group.itemIndices.filter((_, slot) => !group.items[slot]?.optional);
+  const total = required.length;
   if (total === 0) return "not_started";
   let done = 0;
-  for (const idx of group.itemIndices) if (loggedItemIndices.has(idx)) done++;
+  for (const idx of required) if (loggedItemIndices.has(idx)) done++;
   if (done === 0) return "not_started";
   if (done >= total) return "completed";
   return "in_progress";
@@ -146,8 +147,9 @@ export function isMovementComplete(
   group: MovementGroup,
   loggedItemIndices: ReadonlySet<number>,
 ): boolean {
-  if (group.itemIndices.length === 0) return false;
-  return group.itemIndices.every((idx) => loggedItemIndices.has(idx));
+  const required = group.itemIndices.filter((_, slot) => !group.items[slot]?.optional);
+  if (required.length === 0) return false;
+  return required.every((idx) => loggedItemIndices.has(idx));
 }
 
 /**
@@ -195,7 +197,9 @@ export function bucketLabelForKind(
   kind: PrescriptionItem["kind"],
   position: number,
   total: number,
+  optional = false,
 ): string {
+  if (optional) return `Optional set · ${position + 1} of ${total}`;
   const tag =
     kind === "warmup"
       ? "Warm-up"

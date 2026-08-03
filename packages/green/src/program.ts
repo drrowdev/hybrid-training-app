@@ -381,6 +381,7 @@ export const greenProtocolEngine: ProgramEngine<GreenInstance> = {
               cluster: cluster.map((c) => c.movement),
               useTrainingMax,
               tmPercent,
+              useTemplateDefaults: false,
             },
           },
           ctx,
