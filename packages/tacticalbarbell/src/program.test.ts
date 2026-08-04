@@ -161,6 +161,14 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
       ["Squat", 150, 0.75],
     ]);
     expect(itemsOfKind(pass1, "main").every((item) => item.repsLabel === "5–8")).toBe(true);
+    expect(itemsOfKind(pass1, "supplemental").map((item) => item.name)).toEqual([
+      "Overhead Press",
+    ]);
+    expect(itemsOfKind(pass1, "assistance").map((item) => [item.name, item.sets, item.reps])).toEqual([
+      ["Hanging Leg Raise", 3, 5],
+      ["Hanging Knee Raise", 3, 5],
+      ["Toes-to-Bar", 3, 5],
+    ]);
   });
 
   it("a split session only prescribes that split's lifts", () => {
@@ -230,14 +238,17 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
     expect(itemsOfKind(p, "main")[0]).toMatchObject({ name: "Squat", repsLabel: "1–2", percentOfTm: 0.95, weightKg: 190 });
   });
 
-  it("Activation Base is an unanchored circuit with a separate ab finisher", () => {
+  it("Activation Base expands Ab Triad into three exercises for three rounds", () => {
     const p = tb.prescribe(setup({ templateId: "activation" }), "b0-w1-base-1", ctx);
     expect(p.items.map((item) => [item.name, item.sets, item.reps, item.weightKg])).toEqual([
       ["Push-up", 3, 10, undefined],
       ["Goblet Squat", 3, 10, undefined],
       ["Inverted Row", 3, 10, undefined],
-      ["Ab Triad", 3, 5, undefined],
+      ["Hanging Leg Raise", 3, 5, undefined],
+      ["Hanging Knee Raise", 3, 5, undefined],
+      ["Toes-to-Bar", 3, 5, undefined],
     ]);
+    expect(p.items.slice(-3).every((item) => item.kind === "assistance")).toBe(true);
   });
 
   it("Activation emits phase-specific cardio prescriptions", () => {
@@ -272,11 +283,48 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
       ["Rack Pull", 0.7, undefined],
     ]);
     expect(p.items.find((item) => item.name === "Back Extension")).toBeDefined();
-    expect(p.items.find((item) => item.name === "Ab Triad")).toBeDefined();
+    expect(
+      p.items.filter((item) =>
+        ["Hanging Leg Raise", "Hanging Knee Raise", "Toes-to-Bar"].includes(item.name),
+      ),
+    ).toHaveLength(3);
   });
 
-  it("Activation Armor applies second-pass, pull taper and supplemental prescriptions", () => {
+  it("Activation Armor keeps rack pulls and weighted pull-ups on the main-lift dose", () => {
     const inst = setup({ templateId: "activation" });
+    const armorWave = [
+      [6, 0.7, 8],
+      [7, 0.8, 5],
+      [8, 0.85, 3],
+    ] as const;
+    for (const [week, percentOfTm, reps] of armorWave) {
+      const a1 = tb.prescribe(inst, `b0-w${week}-armor-a1`, ctx);
+      expect(
+        itemsOfKind(a1, "main").find((item) => item.name === "Rack Pull"),
+      ).toMatchObject({ percentOfTm, sets: 4, reps });
+
+      const b1 = tb.prescribe(inst, `b0-w${week}-armor-b1`, ctx);
+      expect(
+        itemsOfKind(b1, "main").find((item) => item.name === "Weighted Pull-up"),
+      ).toMatchObject({ percentOfTm, sets: 4, reps });
+
+      const b2 = tb.prescribe(inst, `b0-w${week}-armor-b2`, ctx);
+      expect(
+        itemsOfKind(b2, "main").find((item) => item.name === "Weighted Pull-up"),
+      ).toMatchObject({
+        percentOfTm: week === 6 ? 0.75 : percentOfTm,
+        sets: 3,
+        reps,
+      });
+    }
+    const a1 = tb.prescribe(inst, "b0-w6-armor-a1", ctx);
+    expect(
+      itemsOfKind(a1, "supplemental").find((item) => item.name === "Back Extension"),
+    ).toMatchObject({
+      sets: 3,
+      setsMax: 5,
+      repsLabel: "8–10",
+    });
     const a2 = itemsOfKind(tb.prescribe(inst, "b0-w6-armor-a2", ctx), "main");
     expect(a2.find((item) => item.name === "Squat")).toMatchObject({
       percentOfTm: 0.75,
@@ -289,7 +337,6 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
     });
     const b1 = tb.prescribe(inst, "b0-w7-armor-b1", ctx);
     expect(itemsOfKind(b1, "supplemental").map((item) => [item.name, item.sets, item.setsMax, item.repsLabel, item.percentOfTm])).toEqual([
-      ["Weighted Pull-up", 3, 5, "8–10", 0.7],
       ["Overhead Press", 3, 5, "8–10", 0.7],
     ]);
     expect(itemsOfKind(tb.prescribe(inst, "b0-w8-armor-a2", ctx), "main")

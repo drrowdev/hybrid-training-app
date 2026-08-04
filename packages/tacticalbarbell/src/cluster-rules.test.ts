@@ -123,7 +123,11 @@ describe("Zulu — TB3 fixed A/B work", () => {
     ]);
     expect(itemsOfKind(a, "supplemental").map((i) => i.movementId)).toEqual([
       "overhead-press",
-      "ab-triad",
+    ]);
+    expect(itemsOfKind(a, "assistance").map((i) => i.movementId)).toEqual([
+      "hanging-leg-raise",
+      "hanging-knee-raise",
+      "toes-to-bar",
     ]);
   });
 

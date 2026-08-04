@@ -138,6 +138,18 @@ describe("TB templates — structural integrity", () => {
     expect(activation.weeklySessions.find((session) => session.id === "operator-d1")?.kindByWeek).toEqual({
       15: "deload",
     });
+    expect(
+      activation.weeklySessions
+        .find((session) => session.id === "armor-a1")
+        ?.fixedMovements?.map((entry) => entry.movement),
+    ).toEqual([
+      "squat",
+      "rack-pull",
+      "back-extension",
+      "hanging-leg-raise",
+      "hanging-knee-raise",
+      "toes-to-bar",
+    ]);
     expect(activation.segments?.map((segment) => [segment.startWeekIndex, segment.label])).toEqual([
       [0, "Base"],
       [4, "Rest and test"],

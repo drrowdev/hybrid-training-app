@@ -42,6 +42,9 @@ describe("movement-key mapping", () => {
     expect(engineKeyForSlug("bb-row-overhand")).toBe("barbell-row");
     expect(engineKeyForSlug("power-clean")).toBe("power-clean");
     expect(STATIC_ENGINE_MOVEMENTS["ab-triad"]?.slug).toBe("hanging-knee-raise");
+    expect(STATIC_ENGINE_MOVEMENTS["hanging-leg-raise"]?.slug).toBe("hanging-leg-raise");
+    expect(STATIC_ENGINE_MOVEMENTS["hanging-knee-raise"]?.slug).toBe("hanging-knee-raise");
+    expect(STATIC_ENGINE_MOVEMENTS["toes-to-bar"]?.slug).toBe("toes-to-bar");
     expect(engineKeysForSlug("push-press")).toEqual(["push-press"]);
     expect(engineKeysForSlug("block-pull-deadlift")).toEqual(["rack-pull"]);
     expect(engineKeysForSlug("push-up")).toEqual(

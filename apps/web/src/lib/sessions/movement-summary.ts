@@ -22,8 +22,11 @@ const MAX_CHARS = 30;
 /** Strength kinds that count as "main" work in the partition. */
 export const MAIN_KIND_SET: ReadonlySet<PrescriptionItem["kind"]> = new Set([
   "main",
-  "back_off",
   "power_potentiation",
+]);
+
+export const SUPPLEMENTAL_KIND_SET: ReadonlySet<PrescriptionItem["kind"]> = new Set([
+  "back_off",
 ]);
 
 /** Strength kinds that count as "accessory" work in the partition. */
@@ -33,16 +36,17 @@ export const ACCESSORY_KIND_SET: ReadonlySet<PrescriptionItem["kind"]> = new Set
   "warmup",
 ]);
 
-export type LiftBucket = "main" | "accessory" | "other";
+export type LiftBucket = "main" | "supplemental" | "accessory" | "other";
 
 /**
- * A group is "main" if any of its items is a main-kind. Otherwise if
- * every item is an accessory-kind, it's "accessory". Empty item lists
- * (freestyle) bucket as "other".
+ * A group is "main" if any item is a main kind. A group containing only
+ * back-off work is supplemental, not a main lift. Otherwise, groups made only
+ * from accessory kinds are accessories. Empty item lists bucket as "other".
  */
 export function bucketForGroup(group: MovementGroup): LiftBucket {
   if (group.items.length === 0) return "other";
   for (const it of group.items) if (MAIN_KIND_SET.has(it.kind)) return "main";
+  for (const it of group.items) if (SUPPLEMENTAL_KIND_SET.has(it.kind)) return "supplemental";
   for (const it of group.items)
     if (!ACCESSORY_KIND_SET.has(it.kind)) return "other";
   return "accessory";
@@ -63,6 +67,7 @@ function strengthItems(items: PrescriptionItem[]): PrescriptionItem[] {
   return items.filter(
     (it) =>
       MAIN_KIND_SET.has(it.kind) ||
+      SUPPLEMENTAL_KIND_SET.has(it.kind) ||
       it.kind === "accessory" ||
       it.kind === "tendon",
   );
