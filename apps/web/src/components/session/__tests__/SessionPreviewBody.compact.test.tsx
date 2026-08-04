@@ -133,6 +133,7 @@ describe("SessionPreviewBody (compact / Today hero)", () => {
     expect(html).toContain("Front Squat");
     expect(html).toContain("Bench Press");
     expect(html).toContain('data-testid="session-preview-section-strength"');
+    expect(html).toContain("MAIN LIFTS");
     expect(html).toContain('data-testid="session-preview-movement-m-1"');
     expect(html).toContain('data-testid="session-preview-movement-m-2"');
     // Condensed: the per-movement summary line is shown…
@@ -141,6 +142,34 @@ describe("SessionPreviewBody (compact / Today hero)", () => {
     // lives on the Preview page / full variant only).
     expect(html).not.toContain("Set 1");
     expect(html).not.toContain("Warm-up");
+  });
+
+  it("separates main and supplemental movements into distinct compact cards", () => {
+    const items: PrescriptionItem[] = [
+      main({ movementId: "bench", movementName: "Bench Press" }),
+      main({ movementId: "row", movementName: "Barbell Row" }),
+      main({
+        movementId: "pullup",
+        movementName: "Pull-up",
+        kind: "back_off",
+        percentTm: undefined,
+        reps: 8,
+        repRange: { min: 8, max: 10 },
+      }),
+      main({
+        movementId: "press",
+        movementName: "Overhead Press",
+        kind: "back_off",
+        percentTm: 65,
+        reps: 8,
+        repRange: { min: 8, max: 10 },
+      }),
+    ];
+    const html = renderCompact(items, { title: "Armor B1" });
+    expect(html).toContain('data-testid="session-preview-section-strength"');
+    expect(html).toContain('data-testid="session-preview-section-supplemental"');
+    expect(html).toContain("MAIN LIFTS");
+    expect(html).toContain("SUPPLEMENTAL LIFTS");
   });
 
   it("renders both strength and cardio for hybrid sessions", () => {

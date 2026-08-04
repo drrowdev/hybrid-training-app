@@ -7,8 +7,9 @@ import { seedActiveBlock } from "./fixtures/session-log";
  * Phase 1 — Today page hero card desktop coverage.
  *
  * Verifies the upgraded /app surface:
- *   - Hero session card renders with the archetype + week label and the
- *     resolved top-set numbers (weight × reps from prescription + TM).
+ *   - The page eyebrow owns program + full week progress; the hero does not
+ *     duplicate them.
+ *   - Hero movement roles are split into main + supplemental sections/counts.
  *   - "Start workout →" CTA links into the check-in flow.
  *   - The "Preview" secondary link (separate, sitting elsewhere on
  *     the page) goes to /app/plan.
@@ -20,7 +21,7 @@ import { seedActiveBlock } from "./fixtures/session-log";
 test.describe("@desktop today page (Phase 1)", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "Chromium-only for first PR");
 
-  test("hero card renders archetype label + top-line numbers + Start CTA", async ({
+  test("hero keeps metadata singular and separates main/supplemental lifts", async ({
     page,
     context,
     freshUser,
@@ -33,6 +34,69 @@ test.describe("@desktop today page (Phase 1)", () => {
     await markOnboarded(admin, freshUser.userId);
     await seedStrengthTms(admin, freshUser.userId);
     const seed = await seedActiveBlock(admin, freshUser.userId);
+    const { data: movements } = await admin
+      .from("movements")
+      .select("id, slug, display_name")
+      .in("slug", [
+        "bench-press-flat",
+        "bb-row-overhand",
+        "pull-up-overhand",
+        "ohp-standing",
+      ])
+      .is("user_id", null);
+    expect(movements).toHaveLength(4);
+    const bySlug = new Map(movements!.map((movement) => [movement.slug, movement]));
+    const repeated = (
+      slug: string,
+      kind: "main" | "back_off",
+      count: number,
+      percentTm?: number,
+    ) =>
+      Array.from({ length: count }, (_, index) => {
+        const movement = bySlug.get(slug)!;
+        return {
+          movementId: movement.id,
+          movementSlug: movement.slug,
+          movementName: movement.display_name,
+          kind,
+          sets: 1,
+          reps: 8,
+          ...(percentTm != null ? { percentTm } : {}),
+          ...(kind === "back_off"
+            ? {
+                setRange: { min: 3, max: 5 },
+                repRange: { min: 8, max: 10 },
+                ...(index >= 3 ? { optional: true } : {}),
+              }
+            : {}),
+        };
+      });
+    const { error: prescriptionError } = await admin
+      .from("planned_sessions")
+      .update({
+        title: "Armor B1 · 70%",
+        prescription: {
+          items: [
+            ...repeated("bench-press-flat", "main", 4, 70),
+            ...repeated("bb-row-overhand", "main", 4, 70),
+            ...repeated("pull-up-overhand", "back_off", 5),
+            ...repeated("ohp-standing", "back_off", 5, 65),
+          ],
+        },
+      })
+      .eq("id", seed.todayPlannedId);
+    expect(prescriptionError).toBeNull();
+    const { error: stravaError } = await admin
+      .from("strava_connections")
+      .insert({
+        user_id: freshUser.userId,
+        athlete_id: 9_990_000 + Math.floor(Math.random() * 9_000),
+        access_token: "today-e2e-access-token",
+        refresh_token: "today-e2e-refresh-token",
+        expires_at: new Date(Date.now() + 6 * 60 * 60_000).toISOString(),
+        last_synced_at: new Date(Date.now() - 72 * 60 * 60_000).toISOString(),
+      });
+    expect(stravaError).toBeNull();
     await signInAs(context, freshUser, seedConfig, url);
 
     await page.goto("/app");
@@ -42,17 +106,30 @@ test.describe("@desktop today page (Phase 1)", () => {
     const hero = page.getByTestId(`today-card-${seed.todayPlannedId}`);
     await expect(hero).toBeVisible();
 
-    // Archetype name + week label appear in the eyebrow.
-    await expect(hero).toContainText(/week\s+\d+/i);
+    const eyebrow = page.getByTestId("today-eyebrow");
+    await expect(eyebrow).toContainText(/WEEK 1 OF 4/i);
+    await expect(hero).not.toContainText(/WEEK 1 OF 4/i);
+    const programName = (await eyebrow.textContent())!.split("·")[0]!.trim();
+    await expect(hero).not.toContainText(programName);
 
-    // Top-line numbers: the seeded waves put week 0 at 70% TM × 5; the
-    // hero renders "Top set NNkg × 5". (The standalone `~N min`
-    // duration was dropped — the structured preview body below now
-    // owns per-section duration rows.)
     const topline = page.getByTestId("hero-topline");
     await expect(topline).toBeVisible();
-    await expect(topline).toContainText(/Top set/);
-    await expect(topline).toContainText(/× 5/);
+    await expect(topline).toHaveText(
+      "2 main lifts, 2 supplemental lifts",
+    );
+    await expect(hero.getByText(/Top set/i)).toHaveCount(0);
+    await expect(
+      hero.getByTestId("session-preview-section-strength"),
+    ).toContainText("MAIN LIFTS");
+    await expect(
+      hero.getByTestId("session-preview-section-supplemental"),
+    ).toContainText("SUPPLEMENTAL LIFTS");
+    await expect(page.getByText(/Strava · Stale/i)).toHaveCount(0);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByTestId("today-eyebrow-mobile")).toContainText(
+      /WEEK 1 OF 4/i,
+    );
+    await page.setViewportSize({ width: 1280, height: 720 });
 
     // Primary CTA → start session route (server-side auto-create + redirect).
     const cta = page.getByTestId("today-cta").first();
