@@ -376,3 +376,7 @@ Supersedes the prior Armor B-day interpretation: B1/B2 main work is Bench plus R
 
 ## [2026-08-04] refine | Align optional-set hierarchy between drawer and preview
 Workout-drawer optional sets now place the muted optional marker beside the set number on the left, matching the workout preview, while the right prescription column contains only load and rep targets. Optional rows use a wider label column, the fully opaque muted text token, and a narrow-screen wrap so the hierarchy stays readable without dimming the prescribed work or colliding with long movement names.
+
+
+## [2026-08-04] refine | Simplify Today hero hierarchy
+Today now keeps program identity and full Week X of Y progress in the page eyebrow, removes the Strava stale pill and posterior-chain load banner, and drops duplicate program/week chips plus the ambiguous top-set chip from the hero. Hero movement counts are role-specific, and the compact prescription renders separate Main Lifts and Supplemental Lifts cards while the full workout preview remains unchanged. The removed top-set provenance query and region-spike query also shorten the Today read path.

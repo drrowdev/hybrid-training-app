@@ -120,6 +120,12 @@ export function SessionPreviewBody({
       ? () => false
       : makeShouldHideHeading(session.title);
   const isCompact = variant === "compact";
+  const mainMovementSections = sections.movements.filter(
+    (section) => !isSupplementalOnlySection(section),
+  );
+  const supplementalMovementSections = sections.movements.filter(
+    isSupplementalOnlySection,
+  );
 
   // On the Preview page the page header already shows "~35 min" in
   // the meta line, so CardioCard hides its Duration row to avoid
@@ -208,8 +214,23 @@ export function SessionPreviewBody({
           The "Preview" CTA on the hero is the drill-in to full sets.
         */}
         {isCompact
-          ? sections.movements.length > 0 && (
-              <CondensedStrengthCard sections={sections.movements} />
+          ? (
+              <>
+                {mainMovementSections.length > 0 && (
+                  <CondensedStrengthCard
+                    sections={mainMovementSections}
+                    label="MAIN LIFTS"
+                    testId="session-preview-section-strength"
+                  />
+                )}
+                {supplementalMovementSections.length > 0 && (
+                  <CondensedStrengthCard
+                    sections={supplementalMovementSections}
+                    label="SUPPLEMENTAL LIFTS"
+                    testId="session-preview-section-supplemental"
+                  />
+                )}
+              </>
             )
           : sections.movements.map((sec) => (
               <MovementCard
@@ -400,13 +421,17 @@ function condensedStrengthSummary(
  */
 function CondensedStrengthCard({
   sections,
+  label,
+  testId,
 }: {
   sections: import("@/lib/plan/prescription-grouping").MovementPrescriptionSection[];
+  label: string;
+  testId: string;
 }) {
   return (
-    <section data-testid="session-preview-section-strength" style={cardStyle}>
+    <section data-testid={testId} style={cardStyle}>
       <div className="mono" style={eyebrowStyle}>
-        STRENGTH
+        {label}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {sections.map((sec) => (

@@ -1,9 +1,6 @@
 import Link from "next/link";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
-  roundToPlate,
-} from "@/lib/planner/archetypes";
-import {
   archetypeDisplayName,
   getActiveBlock,
   getPlannedDays,
@@ -12,18 +9,14 @@ import {
   getUpcomingPlannedSessions,
   type PlannedDay,
 } from "@/lib/planner/queries";
-import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
 import { todayYmd } from "@/lib/dates";
 import { effectiveTimeOfDay, gapHoursBetween } from "@/lib/planner/time-of-day";
 import { getRegionFreshness, type FreshnessConflict } from "@/lib/stats/region-freshness-queries";
-import { getRegionSpikes } from "@/lib/stats/region-spike-queries";
 import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
 import { findHeavyOnRecoveringConflictWithMuscles } from "@/lib/muscle/muscle-conflict";
 import { StravaStaleSyncTrigger } from "@/components/StravaStaleSyncTrigger";
-import { StravaSyncPill } from "@/components/shell/StravaSyncPill";
 import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner";
 import { dismissBwBanner } from "@/lib/profile/actions";
-import { RegionSpikeBanner } from "@/components/today/RegionSpikeBanner";
 import { ProgramRecommendationsBanner } from "@/components/today/ProgramRecommendationsBanner";
 import { getPendingProgramRecommendations, type PendingProgramRecommendation } from "@/lib/platform/recommendations-queries";
 import { dismissProgramRecommendation } from "@/lib/platform/actions";
@@ -49,7 +42,6 @@ import {
   ActiveLimitationsCard,
   type ActiveLimitationSummary,
 } from "@/components/today/ActiveLimitationsCard";
-import type { RegionSpike } from "@/lib/engine/region-spike-detector";
 import {
   hasLoadableMainLift,
   resolveEquipment,
@@ -66,7 +58,7 @@ import {
   acceptTmSuggestion,
   dismissTmSuggestion,
 } from "@/lib/training-maxes/actions";
-import type { TmFormula, TmSource } from "@hta/db";
+import type { TmFormula } from "@hta/db";
 import { listTrainingMaxes } from "@/lib/training-maxes/queries";
 import { addDaysToYmd } from "@/lib/dates";
 import {
@@ -87,20 +79,10 @@ import { hasAiAccess } from "@/lib/ai/access";
 import { AskWhyButton } from "@/components/session/AskWhyButton";
 import { askWhySessionId } from "@/lib/sessions/ask-why";
 import { isTodayFullyLogged } from "@/lib/sessions/today-hero";
-
-/** Coarse "N days/weeks ago" string used by the e1RM hero annotation. */
-function relativeFromIso(iso: string | null, now: Date = new Date()): string {
-  if (!iso) return "recently";
-  const then = new Date(iso).getTime();
-  if (!Number.isFinite(then)) return "recently";
-  const days = Math.round((now.getTime() - then) / (1000 * 60 * 60 * 24));
-  if (days <= 0) return "today";
-  if (days === 1) return "yesterday";
-  if (days < 7) return `${days} days ago`;
-  if (days < 14) return "1 week ago";
-  if (days < 60) return `${Math.round(days / 7)} weeks ago`;
-  return `${Math.round(days / 30)} months ago`;
-}
+import {
+  groupByMovementThenKind,
+  isSupplementalOnlySection,
+} from "@/lib/plan/prescription-grouping";
 
 export default async function TodayPage() {
   const supabase = await createClient();
@@ -125,7 +107,7 @@ export default async function TodayPage() {
 
   const todayIso = todayYmd(profile?.timezone ?? "UTC");
 
-  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness, activeBlock, tmDict, tmRows, regionSpikes, { data: activeLimitationsRaw }, quickRepeatRecent, limitationSummary, programRecs] = await Promise.all([
+  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness, activeBlock, tmRows, { data: activeLimitationsRaw }, quickRepeatRecent, limitationSummary, programRecs] = await Promise.all([
     supabase
       .from("sessions")
       .select("id, title, slot, completed_at, performed_at")
@@ -144,9 +126,7 @@ export default async function TodayPage() {
     getUpcomingPlannedSessions(5),
     getRegionFreshness(supabase, userId),
     getActiveBlock(),
-    getTrainingMaxDict(),
     listTrainingMaxes(),
-    getRegionSpikes(supabase, userId, profile?.timezone ?? "UTC"),
     supabase
       .from("limitations")
       .select("id, kind, severity, started_at")
@@ -171,64 +151,25 @@ export default async function TodayPage() {
   const archetypeName = activeBlock
     ? archetypeDisplayName(activeBlock.archetype, activeBlock.notes)
     : null;
-  const tmById: Record<string, number> = Object.fromEntries(
-    Array.from(tmDict.byMovementId.entries()),
-  );
-  // Provenance map keyed by movement_id, used to annotate the hero topline
-  // when the underlying TM came from a derived e1RM rather than a deliberate
-  // entry. Includes the original session timestamp for the relative-date
-  // suffix ("AMRAP 2 weeks ago").
-  type TmHeroMeta = {
-    source: TmSource;
-    formula: TmFormula | null;
-    derivedAt: string | null;
-    derivedFromSessionId: string | null;
-    derivedFromSessionPerformedAt: string | null;
-  };
-  const tmMetaByMovementId: Record<string, TmHeroMeta> = {};
-  const derivedSessionIds = Array.from(
-    new Set(
-      tmRows
-        .filter((r) => r.source !== "entered" && r.derivedFromSessionId)
-        .map((r) => r.derivedFromSessionId!),
-    ),
-  );
-
-  // Audit F16 fix — the seven blocks that follow used to await one
-  // after another (~6 stages, dominating the 2s TTFB). They are
+  // Audit F16 fix — the five groups that follow used to await one
+  // after another (dominating the 2s TTFB). They are
   // mutually independent given the inputs already resolved by the
   // first Promise.all above, so resolve them in one outer Promise.all
-  // of async IIFEs. The post-fetch in-memory work (tm-meta assembly,
-  // conflict computation, week-strip bucketing) still runs serially
+  // of async IIFEs. The post-fetch in-memory work (conflict computation
+  // and week-strip bucketing) still runs serially
   // after the Promise.all since it consumes results from multiple
   // groups.
   const plannedMovementIds = Array.from(
     new Set(plannedToday.flatMap((p) => p.prescription.items.map((i) => i.movementId))),
   );
   const [
-    sessionPerformedAt,
     pendingSuggestions,
     stravaConn,
     nextEvent,
     { movementRegionById, movementSlugById },
     muscleFreshnessRows,
   ] = await Promise.all([
-    // Group A — derived-session timestamps used by the TM hero topline
-    // annotation. Depends on tmRows (already resolved).
-    (async (): Promise<Map<string, string>> => {
-      const map = new Map<string, string>();
-      if (derivedSessionIds.length === 0) return map;
-      const { data: derivedSessions } = await supabase
-        .from("sessions")
-        .select("id, performed_at")
-        .in("id", derivedSessionIds);
-      for (const s of derivedSessions ?? []) {
-        map.set(s.id, s.performed_at);
-      }
-      return map;
-    })(),
-
-    // Group B — pending TM suggestions + their joined source set /
+    // Group A — pending TM suggestions + their joined source set /
     // session / movement rows. The inner Promise.all stays inside
     // the IIFE because it depends on the suggestion list.
     (async (): Promise<TmSuggestionView[]> => {
@@ -297,15 +238,15 @@ export default async function TodayPage() {
       });
     })(),
 
-    // Group C — Strava connection presence + last sync timestamp.
+    // Group B — Strava connection presence. Sync status stays background-only.
     supabase
       .from("strava_connections")
-      .select("user_id, last_synced_at")
+      .select("user_id")
       .eq("user_id", userId)
       .maybeSingle()
       .then((r) => r.data),
 
-    // Group D — next priority event (drives the taper recommendation).
+    // Group C — next priority event (drives the taper recommendation).
     supabase
       .from("priority_events")
       .select("id, name, event_date, priority, modality, target_performance, result")
@@ -316,7 +257,7 @@ export default async function TodayPage() {
       .maybeSingle()
       .then((r) => r.data),
 
-    // Group E — region / slug maps for the planned movements today
+    // Group D — region / slug maps for the planned movements today
     // (DC-V2 heavy-on-recovering soft warning).
     (async (): Promise<{
       movementRegionById: Map<string, { primaryRegion: string; name: string }>;
@@ -341,14 +282,11 @@ export default async function TodayPage() {
       return { movementRegionById: regionMap, movementSlugById: slugMap };
     })(),
 
-    // Group F — muscle-level freshness (PR feat/muscle-grid-16).
+    // Group E — muscle-level freshness (PR feat/muscle-grid-16).
     getMuscleFreshness(supabase, userId, { tz: profile?.timezone ?? "UTC" }),
   ]);
 
   const hasStravaConnection = Boolean(stravaConn);
-  const lastSyncedAt =
-    ((stravaConn as { last_synced_at: string | null } | null)
-      ?.last_synced_at ?? null) as string | null;
   const taper = computeTaperRecommendation(
     nextEvent
       ? {
@@ -506,19 +444,6 @@ export default async function TodayPage() {
     }
   }
 
-
-  for (const r of tmRows) {
-    tmMetaByMovementId[r.movementId] = {
-      source: r.source,
-      formula: r.derivedFormula,
-      derivedAt: r.derivedAt,
-      derivedFromSessionId: r.derivedFromSessionId,
-      derivedFromSessionPerformedAt: r.derivedFromSessionId
-        ? sessionPerformedAt.get(r.derivedFromSessionId) ?? null
-        : null,
-    };
-  }
-
   const freshnessByRegion = new Map(
     freshness.map((r) => [r.region, { freshness: r.freshness, regionLabel: r.regionLabel }]),
   );
@@ -660,12 +585,12 @@ export default async function TodayPage() {
   const eyebrowLine = (() => {
     if (!activeBlock || !archetypeName) return eyebrowText;
     const week = (computedWeekIndex ?? 0) + 1;
-    return `${archetypeName.toUpperCase()} · WEEK ${week} · ${eyebrowText}`;
+    return `${archetypeName.toUpperCase()} · WEEK ${week} OF ${activeBlock.weeks} · ${eyebrowText}`;
   })();
   const eyebrowLineMobile = (() => {
     if (!activeBlock || !archetypeName) return eyebrowText;
     const week = (computedWeekIndex ?? 0) + 1;
-    return `${archetypeName.toUpperCase()} · W${week} · ${eyebrowText}`;
+    return `${archetypeName.toUpperCase()} · WEEK ${week} OF ${activeBlock.weeks} · ${eyebrowText}`;
   })();
 
   return (
@@ -691,7 +616,7 @@ export default async function TodayPage() {
                     {archetypeName.toUpperCase()}
                   </span>
                   <span style={{ margin: "0 8px", opacity: 0.5 }}>·</span>
-                  WEEK {(computedWeekIndex ?? 0) + 1}
+                  WEEK {(computedWeekIndex ?? 0) + 1} OF {activeBlock.weeks}
                   <span style={{ margin: "0 8px", opacity: 0.5 }}>·</span>
                   {eyebrowText}
                 </span>
@@ -700,7 +625,7 @@ export default async function TodayPage() {
                     {archetypeName.toUpperCase()}
                   </span>
                   <span style={{ margin: "0 6px", opacity: 0.5 }}>·</span>
-                  W{(computedWeekIndex ?? 0) + 1}
+                  WEEK {(computedWeekIndex ?? 0) + 1} OF {activeBlock.weeks}
                   <span style={{ margin: "0 6px", opacity: 0.5 }}>·</span>
                   {eyebrowText}
                 </span>
@@ -712,32 +637,17 @@ export default async function TodayPage() {
               </>
             )}
           </div>
-          <div
+          <h1
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              flexWrap: "wrap",
-              marginTop: 4,
+              fontSize: 30,
+              margin: "4px 0 0",
+              letterSpacing: "-0.02em",
+              lineHeight: 1.1,
+              fontWeight: 800,
             }}
           >
-            <h1
-              style={{
-                fontSize: 30,
-                margin: 0,
-                letterSpacing: "-0.02em",
-                lineHeight: 1.1,
-                fontWeight: 800,
-              }}
-            >
-              Today
-            </h1>
-            <StravaSyncPill
-              hasStravaConnection={hasStravaConnection}
-              lastSyncedAt={lastSyncedAt}
-              variant="inline"
-            />
-          </div>
+            Today
+          </h1>
         </header>
 
         {/* Two-column on wide screens: primary actions in the main
@@ -822,14 +732,8 @@ export default async function TodayPage() {
               amWindowStart={amWindowStart}
               pmWindowStart={pmWindowStart}
               conflictsBySlot={conflictsBySlot}
-              archetypeName={archetypeName}
-              weekIndex={computedWeekIndex}
-              blockWeeks={activeBlock?.weeks ?? null}
-              tmById={tmById}
-              tmMetaByMovementId={tmMetaByMovementId}
               nextUpcoming={upcoming[0] ?? null}
               formatProfile={formatProfile}
-              regionSpikes={regionSpikes}
               programRecs={programRecs}
               aiAccess={aiAccess}
             />
@@ -1045,14 +949,8 @@ function TodaySessionCard({
   amWindowStart,
   pmWindowStart,
   conflictsBySlot,
-  archetypeName,
-  weekIndex,
-  blockWeeks,
-  tmById,
-  tmMetaByMovementId,
   nextUpcoming,
   formatProfile,
-  regionSpikes,
   programRecs,
   aiAccess,
 }: {
@@ -1064,28 +962,11 @@ function TodaySessionCard({
   amWindowStart: string;
   pmWindowStart: string;
   conflictsBySlot: Map<string, FreshnessConflict>;
-  archetypeName: string | null;
-  weekIndex: number | null;
-  blockWeeks: number | null;
-  tmById: Record<string, number>;
-  tmMetaByMovementId: Record<string, {
-    source: TmSource;
-    formula: TmFormula | null;
-    derivedAt: string | null;
-    derivedFromSessionId: string | null;
-    derivedFromSessionPerformedAt: string | null;
-  }>;
   nextUpcoming: PlannedDay | null;
   formatProfile: ProfileForFormat;
-  regionSpikes: ReadonlyArray<RegionSpike>;
   programRecs: PendingProgramRecommendation[];
   aiAccess: boolean;
 }) {
-  // Soft, read-only warning when one or more body regions are >25%
-  // above the user's own 4-week ATL baseline. Rendered above the day's
-  // primary card. Does not gate any prescription or planner action —
-  // purely informational.
-  const spikeBanner = <RegionSpikeBanner spikes={regionSpikes} />;
   // Platform programs: program-owned nudges (retest maxes, next block, 7th-week
   // verdict). Informational; dismiss-only. No-op for archetype blocks.
   const programRecsBanner = (
@@ -1094,7 +975,6 @@ function TodaySessionCard({
   if (openSession) {
     return (
       <>
-        {spikeBanner}
         {programRecsBanner}
         <section className="cp-card" style={{ padding: 20, display: "grid", gap: 12 }}>
           <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
@@ -1122,7 +1002,6 @@ function TodaySessionCard({
     // session. It surfaces under "Recent activity"; the planned card stays.
     return (
       <>
-        {spikeBanner}
         {programRecsBanner}
         <section
           className="cp-card"
@@ -1149,12 +1028,8 @@ function TodaySessionCard({
 
   if (plannedToday.length === 0) {
     // Compact 1-row rest banner. Replaces the older Why-rest-day card.
-    // The next-session preview pulls top-set numbers from the same
-    // prescription + TM math the hero uses so the line reads identically.
-    const nextTopLine = nextUpcoming ? topSetLine(nextUpcoming, tmById) : null;
     return (
       <>
-        {spikeBanner}
         {programRecsBanner}
         <section
           data-testid="today-rest"
@@ -1235,12 +1110,6 @@ function TodaySessionCard({
                 <div style={{ fontSize: 14, fontWeight: 600 }}>{nextUpcoming.title}</div>
                 <div style={{ fontSize: 12.5, color: "var(--cp-text-muted)" }}>
                   {formatUpcomingDay(nextUpcoming.date, formatProfile)}
-                  {nextTopLine && (
-                    <>
-                      {" · "}
-                      <span style={{ color: "var(--cp-accent)" }}>{nextTopLine}</span>
-                    </>
-                  )}
                 </div>
               </div>
             ) : (
@@ -1346,7 +1215,6 @@ function TodaySessionCard({
 
   return (
     <div style={{ display: "grid", gap: 10 }}>
-      {spikeBanner}
       {programRecsBanner}
       {isTwoADay && (
         <div
@@ -1415,11 +1283,6 @@ function TodaySessionCard({
                 isTwoADay={isTwoADay}
                 timeOfDay={slotTimes.get(p.slot) ?? null}
                 conflict={conflictsBySlot.get(p.id) ?? null}
-                archetypeName={archetypeName}
-                weekIndex={weekIndex}
-                blockWeeks={blockWeeks}
-                tmById={tmById}
-                tmMetaByMovementId={tmMetaByMovementId}
                 aiAccess={aiAccess}
               />
             </div>
@@ -1435,111 +1298,50 @@ function PlannedSessionCard({
   isTwoADay,
   timeOfDay,
   conflict,
-  archetypeName,
-  weekIndex,
-  blockWeeks,
-  tmById,
-  tmMetaByMovementId,
   aiAccess,
 }: {
   planned: PlannedDay;
   isTwoADay: boolean;
   timeOfDay: string | null;
   conflict: FreshnessConflict | null;
-  archetypeName: string | null;
-  weekIndex: number | null;
-  blockWeeks: number | null;
-  tmById: Record<string, number>;
-  tmMetaByMovementId: Record<string, {
-    source: TmSource;
-    formula: TmFormula | null;
-    derivedAt: string | null;
-    derivedFromSessionId: string | null;
-    derivedFromSessionPerformedAt: string | null;
-  }>;
   aiAccess: boolean;
 }) {
   const slotLabel =
     planned.slot === "am" ? "Morning" : planned.slot === "pm" ? "Evening" : "Today's session";
 
-  // Phase 1 A1 — resolve the top set numbers from the prescription + TM
-  // dict. The "top set" is the main item with the highest %TM. Falls
-  // back to the first main item when nothing carries a percentTm.
-  const mainItems = planned.prescription.items.filter(
-    (i) => i.kind === "main" || i.kind === "back_off",
-  );
-  const topItem =
-    mainItems
-      .slice()
-      .sort((a, b) => (b.percentTm ?? 0) - (a.percentTm ?? 0))[0] ?? mainItems[0];
-  const topTm = topItem ? tmById[topItem.movementId] : undefined;
-  const topWeight =
-    topItem && typeof topItem.percentTm === "number" && topTm
-      ? roundToPlate(topTm * (topItem.percentTm / 100))
-      : null;
-  const topLine =
-    topItem && topWeight && topItem.reps != null
-      ? `Top set ${topWeight} kg × ${topItem.reps}`
-      : topItem && topItem.percentTm && topItem.reps
-        ? `Top set ${topItem.percentTm}% TM × ${topItem.reps}`
-        : null;
-
-  // When the underlying TM is a derived e1RM (AMRAP or RPE), tag the
-  // topline so the user can see the number isn't carved in stone. The
-  // relative-date suffix uses the source session's performed_at so the
-  // hint stays accurate as time passes.
-  const topMeta = topItem ? tmMetaByMovementId[topItem.movementId] : undefined;
-  const topLineAnnotation = (() => {
-    if (!topMeta || topMeta.source === "entered" || !topLine) return null;
-    const when = relativeFromIso(
-      topMeta.derivedFromSessionPerformedAt ?? topMeta.derivedAt,
-    );
-    const kind = topMeta.source === "derived_amrap" ? "AMRAP" : "RPE set";
-    return `based on e1RM (${kind} ${when})`;
-  })();
-
-  // Glanceable hero metrics (redesign): estimated duration + the number of
-  // distinct movements the user will train. Both derive from the same
-  // prescription the preview body renders, so they never disagree with it.
+  // Glanceable hero metrics derive from the same movement grouping as the
+  // compact preview, so role counts and section contents cannot drift apart.
   const estMin = estimateSessionMinutes(planned.prescription.items);
-  const movementCount = new Set(
-    planned.prescription.items
-      .filter((i) => i.kind !== "warmup")
-      .map((i) => i.movementId)
-      .filter((m): m is string => !!m),
-  ).size;
-  const weekLabel =
-    weekIndex != null
-      ? blockWeeks != null
-        ? `Week ${weekIndex + 1} of ${blockWeeks}`
-        : `Week ${weekIndex + 1}`
-      : null;
-
-  // (Hero topline used to compute an `estMin` rough duration here; it
-  // was dropped now that SessionPreviewBody renders structured per-
-  // section duration rows. See block comment above.)
-
-  // Movement names + accessory tally are rendered by
-  // `<SessionPreviewBody variant="compact">` below, which is the same
-  // component the Preview page uses — so the two surfaces stay in
-  // sync by construction. In the compact variant strength movements
-  // are condensed to one overview row each (name + working-set/top-set
-  // summary) so a multi-lift day doesn't balloon the hero with every
-  // warm-up + working set; cardio keeps its full structured card. The
-  // "Preview" CTA drills into the full set-by-set breakdown on the
-  // Preview page. The older inline chip block lived here too and
-  // double-counted everything that wasn't `main`/`back_off` —
-  // including cardio + warm-ups + tendon — which produced a spurious
-  // "+ 1 assistance" pill on cardio-only sessions that have zero
-  // user-visible accessories. Removed; the preview body is now the
-  // single source of truth for "what am I about to do".
-
-  // Hero topline no longer renders the rough `~N min` duration — the
-  // structured preview body below shows per-section duration rows
-  // (CardioCard's "Duration" cell, strength sets, etc), so the
-  // standalone topline number was duplicate noise. Top-set + e1RM
-  // annotation stay because they are not surfaced anywhere in the
-  // preview body.
+  const grouped = groupByMovementThenKind(planned.prescription.items);
+  const mainLiftCount = grouped.movements.filter(
+    (section) => !isSupplementalOnlySection(section),
+  ).length;
+  const supplementalLiftCount = grouped.movements.filter(
+    isSupplementalOnlySection,
+  ).length;
+  const accessoryCount =
+    grouped.accessories.length +
+    grouped.hingeCompensations.length +
+    grouped.tendon.length;
+  const movementSummary = [
+    mainLiftCount > 0
+      ? `${mainLiftCount} main lift${mainLiftCount === 1 ? "" : "s"}`
+      : null,
+    supplementalLiftCount > 0
+      ? `${supplementalLiftCount} supplemental lift${
+          supplementalLiftCount === 1 ? "" : "s"
+        }`
+      : null,
+    accessoryCount > 0
+      ? `${accessoryCount} accessor${accessoryCount === 1 ? "y" : "ies"}`
+      : null,
+  ]
+    .filter((part): part is string => part != null)
+    .join(", ");
+  const showMetaRow =
+    (isTwoADay && planned.slot !== "single") ||
+    planned.completedAt != null ||
+    estMin != null;
 
   return (
     <section
@@ -1569,47 +1371,15 @@ function PlannedSessionCard({
           opacity: 0.8,
         }}
       />
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          flexWrap: "wrap",
-        }}
-      >
-        {archetypeName && (
-          <span
-            style={{
-              fontSize: 10.5,
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              padding: "4px 9px",
-              borderRadius: 999,
-              color: "var(--cp-accent)",
-              background: "var(--cp-accent-soft)",
-            }}
-          >
-            {archetypeName}
-          </span>
-        )}
-        {weekLabel && (
-          <span
-            style={{
-              fontSize: 10.5,
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              padding: "4px 9px",
-              borderRadius: 999,
-              color: "var(--cp-text-muted)",
-              background: "var(--cp-surface-soft)",
-              border: "1px solid var(--cp-border)",
-            }}
-          >
-            {weekLabel}
-          </span>
-        )}
+      {showMetaRow && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
+          }}
+        >
         {isTwoADay && planned.slot !== "single" && (
           <span
             data-testid={`slot-label-${planned.slot}`}
@@ -1627,19 +1397,6 @@ function PlannedSessionCard({
           >
             {slotLabel}
             {timeOfDay ? ` · ${timeOfDay}` : ""}
-          </span>
-        )}
-        {!archetypeName && !weekLabel && !(isTwoADay && planned.slot !== "single") && (
-          <span
-            style={{
-              fontSize: 10.5,
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              color: "var(--cp-accent)",
-            }}
-          >
-            {slotLabel}
           </span>
         )}
         {planned.completedAt && (
@@ -1669,9 +1426,10 @@ function PlannedSessionCard({
             ~{estMin} min
           </span>
         )}
-      </div>
+        </div>
+      )}
       <h2 style={{ fontSize: 26, margin: 0, letterSpacing: "-0.02em", fontWeight: 700 }}>{planned.title}</h2>
-      {(topLine || movementCount > 0) && (
+      {movementSummary && (
         <div
           data-testid="hero-topline"
           style={{
@@ -1681,49 +1439,18 @@ function PlannedSessionCard({
             gap: 8,
           }}
         >
-          {topLine && (
-            <span
-              style={{
-                fontSize: 12.5,
-                fontWeight: 600,
-                color: "var(--cp-accent)",
-                background: "var(--cp-accent-soft)",
-                border:
-                  "1px solid color-mix(in srgb, var(--cp-accent) 30%, var(--cp-border))",
-                borderRadius: 9,
-                padding: "6px 11px",
-              }}
-            >
-              {topLine}
-            </span>
-          )}
-          {movementCount > 0 && (
-            <span
-              style={{
-                fontSize: 12.5,
-                color: "var(--cp-text-soft)",
-                background: "var(--cp-surface)",
-                border: "1px solid var(--cp-border)",
-                borderRadius: 9,
-                padding: "6px 11px",
-              }}
-            >
-              {movementCount} movement{movementCount === 1 ? "" : "s"}
-            </span>
-          )}
-          {topLineAnnotation && (
-            <span
-              data-testid="hero-topline-e1rm-annotation"
-              style={{
-                color: "var(--cp-text-muted)",
-                fontSize: 12,
-                fontWeight: 500,
-                fontStyle: "italic",
-              }}
-            >
-              {topLineAnnotation}
-            </span>
-          )}
+          <span
+            style={{
+              fontSize: 12.5,
+              color: "var(--cp-text-soft)",
+              background: "var(--cp-surface)",
+              border: "1px solid var(--cp-border)",
+              borderRadius: 9,
+              padding: "6px 11px",
+            }}
+          >
+            {movementSummary}
+          </span>
         </div>
       )}
       {conflict && (
@@ -1805,36 +1532,6 @@ function PlannedSessionCard({
   );
 }
 
-/**
- * Top-set summary line for a planned day. Mirrors the hero topline
- * computation in PlannedSessionCard — extracted so the rest-day banner
- * can render the same "102 kg × 5" string for the next upcoming session.
- */
-function topSetLine(
-  planned: PlannedDay,
-  tmById: Record<string, number>,
-): string | null {
-  const mainItems = planned.prescription.items.filter(
-    (i) => i.kind === "main" || i.kind === "back_off",
-  );
-  const topItem =
-    mainItems
-      .slice()
-      .sort((a, b) => (b.percentTm ?? 0) - (a.percentTm ?? 0))[0] ?? mainItems[0];
-  if (!topItem) return null;
-  const topTm = tmById[topItem.movementId];
-  const topWeight =
-    typeof topItem.percentTm === "number" && topTm
-      ? roundToPlate(topTm * (topItem.percentTm / 100))
-      : null;
-  if (topWeight && topItem.reps != null) {
-    return `top set ${topWeight} kg × ${topItem.reps}`;
-  }
-  if (topItem.percentTm && topItem.reps) {
-    return `top set ${topItem.percentTm}% TM × ${topItem.reps}`;
-  }
-  return null;
-}
 
 function formatUpcomingDay(iso: string, profile: ProfileForFormat): string {
   const target = new Date(`${iso}T00:00:00`);
