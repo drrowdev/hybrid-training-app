@@ -297,6 +297,20 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
 
     const session = template.weeklySessions.find((s) => s.id === parsed.sessionId);
     if (!session) return { items: [] };
+    if (session.conditioning) {
+      return {
+        items: [
+          {
+            kind: "cardio",
+            name: session.conditioning.name,
+            ...(session.conditioning.durationMin != null
+              ? { durationSec: session.conditioning.durationMin * 60 }
+              : {}),
+            note: session.conditioning.note,
+          },
+        ],
+      };
+    }
     const waves =
       instance.useTemplateDefaults || !template.delegatedWaves
         ? template.waves

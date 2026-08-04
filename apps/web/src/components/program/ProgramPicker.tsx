@@ -108,7 +108,16 @@ export interface PickerTbTemplate {
   fixedLoadout?: boolean;
   fixedSchedule?: boolean;
   requiredBenchmarkKeys?: string[];
+  startSchedules?: PickerStartSchedule[];
   defaultCluster: PickerClusterEntry[];
+}
+
+export interface PickerStartSchedule {
+  startWeekIndex: number;
+  label: string;
+  strength: number;
+  cardio: number;
+  rest: number;
 }
 
 /** TB program id (matches the engine's program family / id). */
@@ -532,6 +541,17 @@ export function relevantBenchmarkKeysFor(
     .sort((a, b) => roleKeys.indexOf(a) - roleKeys.indexOf(b));
 }
 
+export function startScheduleFor(
+  template: PickerTbTemplate | null,
+  startWeekIndex: number,
+): PickerStartSchedule | null {
+  return (
+    template?.startSchedules?.find(
+      (schedule) => schedule.startWeekIndex === startWeekIndex,
+    ) ?? null
+  );
+}
+
 export interface ClusterValidationLite {
   ok: boolean;
   errors: string[];
@@ -916,6 +936,10 @@ export function ProgramPicker({
     return validateClusterClient(activeTbTemplate, cluster);
   }, [activeTbTemplate, cluster]);
   const clusterOk = !activeTbTemplate || (clusterValidation?.ok ?? false);
+  const selectedStartSchedule = startScheduleFor(
+    activeTbTemplate,
+    startWeekIndex,
+  );
 
   // Cluster editing (TB). The mockup edits the cluster inline on the benchmarks
   // step: add/remove a lift, and (for split templates) move a lift between the A
@@ -2018,9 +2042,11 @@ export function ProgramPicker({
           loadoutOptions.find((o) => o.value === selectedLoadoutValue)?.label ?? "\u2014",
         )
       : "Custom";
-    const weekText = supportsCardioDays
-      ? `${dayCounts.strength} strength \u00B7 ${dayCounts.cardio} cardio \u00B7 ${dayCounts.rest} rest`
-      : `${dayCounts.strength} ${daysNoun} \u00B7 ${dayCounts.rest} rest`;
+    const weekText = selectedStartSchedule
+      ? `${selectedStartSchedule.strength} strength \u00B7 ${selectedStartSchedule.cardio} cardio \u00B7 ${selectedStartSchedule.rest} rest`
+      : supportsCardioDays
+        ? `${dayCounts.strength} strength \u00B7 ${dayCounts.cardio} cardio \u00B7 ${dayCounts.rest} rest`
+        : `${dayCounts.strength} ${daysNoun} \u00B7 ${dayCounts.rest} rest`;
     // HYROX without a race date is an ongoing maintenance build — no Race-prep,
     // no Taper (ADR 0060). Only show the full four-phase periodisation when a race
     // date is set; otherwise it's Base -> Build held steady.
@@ -2148,7 +2174,9 @@ export function ProgramPicker({
         {fixedSchedule ? (
           <p className={styles.note}>
             {isActivation
-              ? "The strength schedule changes with the phase: Base 3 days, Armor 4, Operator 3 and Vertex 2. Conditioning is not generated."
+              ? selectedStartSchedule
+                ? `Starting ${selectedStartSchedule.label}: ${selectedStartSchedule.strength} strength, ${selectedStartSchedule.cardio} cardio and ${selectedStartSchedule.rest} rest ${selectedStartSchedule.rest === 1 ? "day" : "days"}. The schedule changes automatically with each phase.`
+                : "Activation sets the strength and conditioning schedule for each phase."
               : `${selected.name} sets its own weekly schedule (strength and conditioning days are set by the program). It owns your calendar \u2014 you just pick the start date.`}
           </p>
         ) : (

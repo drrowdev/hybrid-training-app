@@ -311,12 +311,29 @@ describe("materializeProgram — TB3 Activation", () => {
   );
 
   it("materialises all 25 weeks on the engine-owned phase schedule", () => {
-    expect(result.sessions).toHaveLength(69);
+    expect(result.sessions).toHaveLength(111);
     expect(result.weeks).toBe(25);
     expect(result.skipped).toHaveLength(0);
-    expect(result.sessions.filter((session) => session.weekIndex === 0).map((session) => session.dayIndex)).toEqual([0, 2, 4]);
-    expect(result.sessions.filter((session) => session.weekIndex === 5).map((session) => session.dayIndex)).toEqual([0, 1, 3, 5]);
-    expect(result.sessions.filter((session) => session.weekIndex === 21).map((session) => session.dayIndex)).toEqual([0, 3]);
+    expect(result.sessions.filter((session) => session.weekIndex === 0).map((session) => session.dayIndex)).toEqual([0, 2, 4, 1, 3, 5]);
+    expect(result.sessions.filter((session) => session.weekIndex === 5).map((session) => session.dayIndex)).toEqual([0, 1, 3, 5, 2, 4]);
+    expect(result.sessions.filter((session) => session.weekIndex === 21).map((session) => session.dayIndex)).toEqual([0, 3, 1, 5]);
+    expect(result.sessions.filter((session) => session.weekIndex === 5 && session.role === "strength")).toHaveLength(4);
+    expect(result.sessions.filter((session) => session.weekIndex === 5 && session.role === "cardio")).toHaveLength(2);
+  });
+
+  it("starting at Armor rebases a 4 strength / 2 cardio week to week zero", () => {
+    const armor = materializeProgram(
+      tacticalBarbellEngine,
+      instance,
+      activationCtx,
+      resolve,
+      { weekdays: [0], startWeekIndex: 5 },
+    );
+    const firstWeek = armor.sessions.filter((session) => session.weekIndex === 0);
+    expect(firstWeek.filter((session) => session.role === "strength")).toHaveLength(4);
+    expect(firstWeek.filter((session) => session.role === "cardio")).toHaveLength(2);
+    expect(firstWeek.map((session) => session.dayIndex).sort()).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(armor.weeks).toBe(20);
   });
 
   it("preserves test/deload roles and optional Operator Black sets", () => {

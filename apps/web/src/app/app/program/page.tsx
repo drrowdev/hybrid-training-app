@@ -152,6 +152,31 @@ export default async function ProgramPickerPage({
     ...(t.requiredBenchmarkKeys
       ? { requiredBenchmarkKeys: t.requiredBenchmarkKeys }
       : {}),
+    ...(t.segments
+      ? {
+          startSchedules: t.segments.map((segment) => {
+            const week = segment.startWeekIndex + 1;
+            const sessions = t.weeklySessions.filter(
+              (session) =>
+                !session.activeWeeks || session.activeWeeks.includes(week),
+            );
+            const occupiedDays = new Set(
+              sessions.flatMap((session) =>
+                session.weekday == null ? [] : [session.weekday],
+              ),
+            );
+            return {
+              startWeekIndex: segment.startWeekIndex,
+              label: segment.label,
+              strength: sessions.filter((session) => !session.conditioning)
+                .length,
+              cardio: sessions.filter((session) => session.conditioning != null)
+                .length,
+              rest: Math.max(0, 7 - occupiedDays.size),
+            };
+          }),
+        }
+      : {}),
     defaultCluster: t.defaultCluster.map((c) => ({
       movement: c.movement,
       ...(c.split ? { split: c.split } : {}),

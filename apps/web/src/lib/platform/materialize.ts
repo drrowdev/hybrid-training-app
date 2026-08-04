@@ -132,6 +132,20 @@ function roleForKind(kind: PlannedSessionSpec["kind"]): string {
   }
 }
 
+function roleForPrescription(
+  kind: PlannedSessionSpec["kind"],
+  prescription: Prescription,
+): string {
+  if (
+    kind === "training" &&
+    prescription.items.length > 0 &&
+    prescription.items.every((item) => item.kind.startsWith("cardio_"))
+  ) {
+    return "cardio";
+  }
+  return roleForKind(kind);
+}
+
 /**
  * Derive a clean, content-first session title from the engine's prescription.
  * Strength days name the working lifts ("Squat · Bench · Deadlift"); conditioning
@@ -345,7 +359,7 @@ export function materializeProgram<I>(
       // page chrome) plus a glanceable load cue — the working % for strength, the
       // duration for timed cardio.
       title: enrichTitle(spec.title ?? deriveSessionTitle(engineRx) ?? spec.label, engineRx),
-      role: roleForKind(spec.kind),
+      role: roleForPrescription(spec.kind, prescriptionWithRef),
       prescription: prescriptionWithRef,
       sessionModality: modality,
       effectiveStressLoad: load,
@@ -373,7 +387,7 @@ export function materializeProgram<I>(
           spec.secondSession.title ?? deriveSessionTitle(pmRx) ?? pmRef,
           pmRx,
         ),
-        role: roleForKind("training"),
+        role: roleForPrescription("training", pmWithRef),
         prescription: pmWithRef,
         sessionModality: pmModality,
         effectiveStressLoad: pmLoad,

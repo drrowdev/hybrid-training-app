@@ -119,7 +119,22 @@ describe("TB templates — structural integrity", () => {
   it("Activation carries the full 25-week phase map and fixed session loadouts", () => {
     const activation = getTbTemplate("activation")!;
     expect(activation.blockWeeks).toBe(25);
-    expect(activation.weeklySessions).toHaveLength(17);
+    expect(activation.weeklySessions).toHaveLength(26);
+    expect(
+      activation.weeklySessions
+        .filter((session) => session.activeWeeks?.includes(6))
+        .map((session) => [
+          session.weekday,
+          session.conditioning ? "cardio" : "strength",
+        ]),
+    ).toEqual([
+      [0, "strength"],
+      [1, "strength"],
+      [3, "strength"],
+      [5, "strength"],
+      [2, "cardio"],
+      [4, "cardio"],
+    ]);
     expect(activation.weeklySessions.find((session) => session.id === "operator-d1")?.kindByWeek).toEqual({
       15: "deload",
     });
