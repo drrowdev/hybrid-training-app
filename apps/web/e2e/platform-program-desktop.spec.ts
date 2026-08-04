@@ -438,6 +438,34 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     expect(strengthItems(armorB1, "inverted-row", "back_off")).toHaveLength(5);
     expect(strengthItems(armorB1, "ohp-standing", "back_off")).toHaveLength(5);
 
+    await page.goto("/app/plan");
+    await page.getByText("Armor B1 · 70%", { exact: true }).first().click();
+    const drawer = page.getByRole("dialog");
+    await expect(drawer).toBeVisible();
+    const optionalRows = drawer.locator('.set-row[data-optional="true"]');
+    await expect(optionalRows).toHaveCount(4);
+    await expect(optionalRows.first().locator(".optional-marker")).toHaveText(
+      "· optional",
+    );
+    await expect(optionalRows.first().locator(".n")).toContainText(
+      /4 · optional/,
+    );
+    await expect(optionalRows.first().locator(".v")).not.toContainText(
+      "optional",
+    );
+    await page.setViewportSize({ width: 360, height: 800 });
+    const movementBox = await optionalRows
+      .first()
+      .locator(":scope > span:nth-child(2)")
+      .boundingBox();
+    const valueBox = await optionalRows.first().locator(".v").boundingBox();
+    expect(movementBox).toBeTruthy();
+    expect(valueBox).toBeTruthy();
+    expect(movementBox!.x + movementBox!.width).toBeLessThanOrEqual(
+      valueBox!.x,
+    );
+    await page.setViewportSize({ width: 1280, height: 720 });
+
     await page.goto(`/app/sessions/start/${armorA1.id}`);
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}/, { timeout: 30_000 });
     await expect(page.getByTestId("movement-group-main")).toContainText("Main lifts");

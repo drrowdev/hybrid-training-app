@@ -2312,7 +2312,29 @@ export function SessionDrawer({
             align-items: center;
           }
           .plan-drawer .set-row .n { color: var(--cp-text-muted); font-family: var(--cp-font-mono); font-size: 12px; }
-          .plan-drawer .set-row .v { font-family: var(--cp-font-mono); color: var(--cp-text); font-weight: 600; }
+          .plan-drawer .set-row > span:nth-child(2) {
+            min-width: 0;
+            overflow-wrap: anywhere;
+          }
+          .plan-drawer .set-row .v {
+            font-family: var(--cp-font-mono);
+            color: var(--cp-text);
+            font-weight: 600;
+            white-space: nowrap;
+          }
+          .plan-drawer .set-row.optional-set-row {
+            grid-template-columns: 104px minmax(0, 1fr) auto;
+          }
+          .plan-drawer .set-row .optional-marker {
+            color: var(--cp-text-muted);
+            white-space: nowrap;
+          }
+          @media (max-width: 520px) {
+            .plan-drawer .set-row.optional-set-row {
+              grid-template-columns: 88px minmax(0, 1fr) auto;
+              gap: 6px;
+            }
+          }
           .plan-drawer .set-row input {
             font: inherit;
             font-family: var(--cp-font-mono);
@@ -2489,13 +2511,18 @@ function SetRow({
     );
   }
   return (
-    <div className="set-row">
-      <span className="n">{label}</span>
-      <span>{item.movementName ?? "Movement"}</span>
-      <span className="v">
-        {formatPrescriptionItem(item)}
-        {item.optional ? " · optional" : ""}
+    <div
+      className={`set-row${item.optional ? " optional-set-row" : ""}`}
+      {...(item.optional ? { "data-optional": "true" } : {})}
+    >
+      <span className="n">
+        {label}
+        {item.optional ? (
+          <span className="optional-marker"> · optional</span>
+        ) : null}
       </span>
+      <span>{item.movementName ?? "Movement"}</span>
+      <span className="v">{formatPrescriptionItem(item)}</span>
     </div>
   );
 }

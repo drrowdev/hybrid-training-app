@@ -433,6 +433,52 @@ describe("SessionDrawer — drag handle + sheet markup", () => {
     expect(done).toContain('data-testid="plan-drawer-swap"');
     expect(done).toContain('data-testid="plan-drawer-edit"');
   });
+
+  it("moves optional text beside the set number and keeps the value clean", async () => {
+    const { SessionDrawer } = await import("./PlanRedesign");
+    const items = Array.from({ length: 5 }, (_, index) => ({
+      movementId: "ohp",
+      movementName: "Overhead Press",
+      kind: "back_off" as const,
+      sets: 1,
+      reps: 8,
+      percentTm: 65,
+      intensityLabel: "65% 1RM",
+      repRange: { min: 8, max: 10 },
+      ...(index >= 3 ? { optional: true } : {}),
+    }));
+    const html = renderToStaticMarkup(
+      <SessionDrawer
+        session={session({ items })}
+        today="2026-05-26"
+        weeks={4}
+        logHrefBase="/app/sessions/start"
+        onClose={() => {}}
+        moveAction={noop}
+        skipAction={noop}
+        unskipAction={noop}
+        updateNotesAction={async () => ({ ok: true as const })}
+        startSessionAction={noop}
+      />,
+    );
+    expect(html).toContain('class="set-row optional-set-row"');
+    expect(html).toContain(
+      '<span class="n">4<span class="optional-marker"> · optional</span></span>',
+    );
+    expect(html).toContain(
+      '<span class="v">65% 1RM × 8–10</span>',
+    );
+    expect(html).not.toContain(
+      '<span class="v">65% 1RM × 8–10 · optional</span>',
+    );
+    expect(html).toContain("overflow-wrap: anywhere");
+    expect(html).toMatch(
+      /@media\s*\(\s*max-width:\s*520px\s*\)[\s\S]*?optional-set-row[\s\S]*?grid-template-columns:\s*88px/,
+    );
+    expect(html).not.toMatch(
+      /\.optional-marker\s*\{[^}]*opacity:/,
+    );
+  });
 });
 
 describe("shouldDismissSwipe — pointer-release threshold", () => {
