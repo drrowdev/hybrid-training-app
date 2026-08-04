@@ -198,6 +198,36 @@ describe("adaptSessionPrescription — strength", () => {
     expect(prescription.items[4]).toMatchObject({ movementId: "m-squat", percentTm: 65, sets: 1, reps: 10 });
   });
 
+  it("preserves autoregulated set and rep ranges on every concrete log slot", () => {
+    const { prescription } = adaptSessionPrescription(
+      {
+        items: [
+          {
+            kind: "supplemental",
+            name: "Squat supplemental",
+            movementId: "squat",
+            sets: 3,
+            setsMax: 5,
+            reps: 8,
+            repsMax: 10,
+            percentOfTm: 0.65,
+          },
+        ],
+      },
+      resolve,
+      undefined,
+      "1RM",
+    );
+    expect(prescription.items).toHaveLength(5);
+    expect(prescription.items.every((item) =>
+      item.setRange?.min === 3 &&
+      item.setRange.max === 5 &&
+      item.repRange?.min === 8 &&
+      item.repRange.max === 10
+    )).toBe(true);
+    expect(prescription.items.filter((item) => item.optional)).toHaveLength(2);
+  });
+
   it("maps conditioning/cardio → a display-only cardio_external item; still reports unresolved strength", () => {
     const { prescription, skipped } = adaptSessionPrescription(
       {

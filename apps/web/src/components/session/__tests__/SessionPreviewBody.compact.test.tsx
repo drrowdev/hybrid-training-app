@@ -195,4 +195,27 @@ describe("SessionPreviewBody (full / Preview page) — variant defaults preserve
     // the page meta carries `~35 min`.
     expect(html).not.toContain('data-testid="session-preview-cardio-0-row-duration"');
   });
+
+  it("labels supplemental-only movements and their optional fourth/fifth sets", () => {
+    const supplemental = Array.from({ length: 5 }, (_, index) => ({
+      movementId: "reverse-hyper",
+      movementName: "Reverse Hyperextension",
+      kind: "back_off" as const,
+      sets: 1,
+      reps: 8,
+      percentTm: 65,
+      intensityLabel: "65% 1RM",
+      setRange: { min: 3, max: 5 },
+      repRange: { min: 8, max: 10 },
+      ...(index >= 3 ? { optional: true } : {}),
+    }));
+    const html = renderToStaticMarkup(
+      <SessionPreviewBody session={input(supplemental)} />,
+    );
+    expect(html).toContain("SUPPLEMENTAL");
+    expect(html).toContain("Supplemental lift");
+    expect(html).toContain("Set 4 · optional");
+    expect(html).toContain("Set 5 · optional");
+    expect(html).toContain("65% 1RM × 8–10");
+  });
 });

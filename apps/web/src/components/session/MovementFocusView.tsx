@@ -1426,7 +1426,7 @@ function renderIntensityChip(item: PrescriptionItem): string | null {
  *   - Accessory:   "× 8–12 reps"
  *   - Main lift:   "× 5 reps" (legacy, untouched)
  */
-function renderTargetLine(
+export function renderTargetLine(
   item: PrescriptionItem,
   targetReps: number,
   isAmrap: boolean,
@@ -1441,16 +1441,20 @@ function renderTargetLine(
     const { min, max } = item.holdSec;
     return min === max ? `Hold ${min}s` : `Hold ${min}–${max}s`;
   }
-  const repsLabel = `${targetReps} ${isAmrap ? "reps+" : "reps"}`;
+  const repsLabel = item.repRange
+    ? `${item.repRange.min}–${item.repRange.max} reps`
+    : `${targetReps} ${isAmrap ? "reps+" : "reps"}`;
+  const maxRepsHint =
+    item.notes && /max reps/i.test(item.notes) ? " · max reps allowed" : "";
   // Plyometric — explicit intent cue alongside reps.
   if (item.targetRpe && item.targetRpe.min === 10 && item.targetRpe.max === 10) {
-    return `× ${repsLabel} · max intent`;
+    return `× ${repsLabel} · max intent${maxRepsHint}`;
   }
   // Tendon — surface the eccentric tempo next to the rep line.
   if (item.tempoEccentricSec != null) {
-    return `× ${repsLabel} · ${item.tempoEccentricSec}s lower`;
+    return `× ${repsLabel} · ${item.tempoEccentricSec}s lower${maxRepsHint}`;
   }
-  return `× ${repsLabel}`;
+  return `× ${repsLabel}${maxRepsHint}`;
 }
 
 function DotStrip({

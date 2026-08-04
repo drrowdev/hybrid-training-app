@@ -354,15 +354,82 @@ describe("materializeProgram — TB3 Activation", () => {
     expect(itemsFor(a1, "rack-pull", "main")).toHaveLength(4);
     expect(itemsFor(a1, "back-extension", "back_off")).toHaveLength(5);
     expect(itemsFor(a1, "back-extension", "back_off").filter((item) => item.optional)).toHaveLength(2);
+    expect(itemsFor(a1, "back-extension", "back_off")[0]).toMatchObject({
+      percentTm: 65,
+      setRange: { min: 3, max: 5 },
+      repRange: { min: 8, max: 10 },
+    });
     for (const movement of ["hanging-leg-raise", "hanging-knee-raise", "toes-to-bar"]) {
       const items = itemsFor(a1, movement, "accessory");
       expect(items).toHaveLength(3);
       expect(items.every((item) => item.reps === 5)).toBe(true);
     }
     expect(a1.prescription.items.some((item) => item.movementId === "mv-ab-triad")).toBe(false);
-    expect(itemsFor(b1, "weighted-pullup", "main")).toHaveLength(4);
-    expect(itemsFor(b1, "weighted-pullup", "main").some((item) => item.optional)).toBe(false);
+    expect(b1.prescription.items.filter((item) => item.kind === "main").map(
+      (item) => item.movementId,
+    )).toEqual([
+      "mv-bench",
+      "mv-bench",
+      "mv-bench",
+      "mv-bench",
+      "mv-barbell-row",
+      "mv-barbell-row",
+      "mv-barbell-row",
+      "mv-barbell-row",
+    ]);
+    expect(itemsFor(b1, "pullup", "back_off")).toHaveLength(5);
+    expect(itemsFor(b1, "overhead-press", "back_off")).toHaveLength(5);
+    expect(itemsFor(b1, "pullup", "back_off")[0]).toMatchObject({
+      setRange: { min: 3, max: 5 },
+      repRange: { min: 8, max: 10 },
+    });
+    expect(itemsFor(b1, "pullup", "back_off")[0]?.percentTm).toBeUndefined();
     expect(a1.title).not.toContain("Back Extension");
+    expect(b1.title).not.toContain("Pull-up");
+    expect(b1.title).not.toContain("Overhead");
+  });
+
+  it("materialises the selected Reverse Hyper and Inverted Row alternatives", () => {
+    const alternateInstance = tacticalBarbellEngine.setup(
+      {
+        values: {
+          templateId: "activation",
+          armorSupplementalA: "reverse-hyper",
+          armorSupplementalB: "inverted-row",
+        },
+      },
+      activationCtx,
+    );
+    const alternate = materializeProgram(
+      tacticalBarbellEngine,
+      alternateInstance,
+      activationCtx,
+      resolve,
+      { weekdays: [0], startWeekIndex: 5 },
+    );
+    const a1 = alternate.sessions.find((session) =>
+      session.ref.endsWith("armor-a1"),
+    )!;
+    const b1 = alternate.sessions.find((session) =>
+      session.ref.endsWith("armor-b1"),
+    )!;
+    expect(
+      a1.prescription.items.filter(
+        (item) =>
+          item.movementId === "mv-reverse-hyper" && item.kind === "back_off",
+      ),
+    ).toHaveLength(5);
+    expect(
+      b1.prescription.items.filter(
+        (item) =>
+          item.movementId === "mv-inverted-row" && item.kind === "back_off",
+      ),
+    ).toHaveLength(5);
+    expect(
+      b1.prescription.items.some(
+        (item) => item.movementId === "mv-pullup",
+      ),
+    ).toBe(false);
   });
 
   it("preserves test/deload roles and optional Operator Black sets", () => {

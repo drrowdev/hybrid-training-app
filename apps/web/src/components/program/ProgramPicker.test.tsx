@@ -15,6 +15,7 @@ vi.mock("@/lib/training-maxes/actions", () => ({
 
 import {
   ProgramPicker,
+  activationRequiredBenchmarkKeysFor,
   defaultClusterFor,
   relevantBenchmarkKeysFor,
   startScheduleFor,
@@ -195,6 +196,31 @@ describe("defaultClusterFor", () => {
     ]);
   });
 
+  describe("activationRequiredBenchmarkKeysFor", () => {
+    it("lets Base and its test week establish the later maxes", () => {
+      expect(
+        activationRequiredBenchmarkKeysFor(0, "back-extension"),
+      ).toEqual([]);
+      expect(
+        activationRequiredBenchmarkKeysFor(4, "back-extension"),
+      ).toEqual([]);
+    });
+
+    it("requires the exact loaded Armor movements for a direct Armor start", () => {
+      expect(
+        activationRequiredBenchmarkKeysFor(5, "reverse-hyper"),
+      ).toEqual([
+        "squat",
+        "bench",
+        "deadlift",
+        "barbell-row",
+        "rack-pull",
+        "overhead-press",
+        "reverse-hyper",
+      ]);
+    });
+  });
+
   describe("startScheduleFor", () => {
     it("returns the selected Activation phase schedule", () => {
       expect(startScheduleFor(ACTIVATION, 5)).toEqual({
@@ -371,5 +397,10 @@ describe("ProgramPicker rendering", () => {
     expect(html).toContain("Activation");
     expect(html).toContain("25-WEEK PROGRAM");
     expect(html).toContain("Base, Armor, Operator and Vertex");
+    expect(html).toContain("Armor supplemental clusters");
+    expect(html).toContain("Back Extensions + Ab Triad");
+    expect(html).toContain("Reverse Hyper + Ab Triad");
+    expect(html).toContain("Pull-ups + Overhead Press");
+    expect(html).toContain("Inverted Rows + Overhead Press");
   });
 });

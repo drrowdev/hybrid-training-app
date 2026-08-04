@@ -22,6 +22,7 @@ import type { PrescriptionItem } from "@hta/db";
 import {
   collapseIdenticalSetItems,
   groupByMovementThenKind,
+  isSupplementalOnlySection,
   type PrescriptionMovementRow,
 } from "@/lib/plan/prescription-grouping";
 import { segmentSupersetRows } from "@/lib/plan/superset-grouping";
@@ -304,13 +305,14 @@ function MovementCard({
   section: import("@/lib/plan/prescription-grouping").MovementPrescriptionSection;
   hideHeading: boolean;
 }) {
+  const supplementalOnly = isSupplementalOnlySection(section);
   return (
     <section
       data-testid={`session-preview-movement-${section.rowKey}`}
       style={cardStyle}
     >
       <div className="mono" style={eyebrowStyle}>
-        STRENGTH
+        {supplementalOnly ? "SUPPLEMENTAL" : "STRENGTH"}
       </div>
       {!hideHeading && (
         <h3 style={movementHeadingStyle}>{section.movementName}</h3>
@@ -329,12 +331,21 @@ function MovementCard({
       )}
 
       {section.sets.length > 0 && (
-        <SetGroup label={section.sets.length > 1 ? "Main lift" : "Main"}>
+        <SetGroup
+          label={
+            supplementalOnly
+              ? "Supplemental lift"
+              : section.sets.length > 1
+                ? "Main lift"
+                : "Main"
+          }
+        >
           {section.sets.map((row, i) => (
             <SetLine
               key={`m-${i}`}
               setNumber={row.setNumber}
               value={formatPrescriptionItem(row.item)}
+              optional={row.item.optional === true}
             />
           ))}
         </SetGroup>
@@ -364,10 +375,16 @@ function condensedStrengthSummary(
     working.find((s) => s.isTopSet) ??
     working.find((s) => s.item.kind === "main") ??
     working[0];
-  const setLabel = `${working.length} set${working.length === 1 ? "" : "s"}`;
+  const setRange = working[0]?.item.setRange;
+  const setLabel = setRange
+    ? `${setRange.min}–${setRange.max} sets`
+    : `${working.length} set${working.length === 1 ? "" : "s"}`;
   const item = top.item;
   if (item.percentTm != null && item.reps != null) {
-    return `${setLabel} · top ${item.percentTm}% × ${item.reps}`;
+    const reps = item.repRange
+      ? `${item.repRange.min}–${item.repRange.max}`
+      : String(item.reps);
+    return `${setLabel} · top ${item.percentTm}% × ${reps}`;
   }
   const formatted = formatPrescriptionItem(item);
   return formatted ? `${setLabel} · ${formatted}` : setLabel;
@@ -453,7 +470,15 @@ function SetGroup({
   );
 }
 
-function SetLine({ setNumber, value }: { setNumber: number; value: string }) {
+function SetLine({
+  setNumber,
+  value,
+  optional = false,
+}: {
+  setNumber: number;
+  value: string;
+  optional?: boolean;
+}) {
   return (
     <div
       style={{
@@ -470,6 +495,7 @@ function SetLine({ setNumber, value }: { setNumber: number; value: string }) {
         style={{ fontSize: 13, color: "var(--cp-text-muted)" }}
       >
         Set {setNumber}
+        {optional ? " · optional" : ""}
       </span>
       <span
         className="mono"

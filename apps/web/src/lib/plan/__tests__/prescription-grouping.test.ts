@@ -135,6 +135,7 @@ import {
   collapseIdenticalSetItems,
   describeRowExternalLoad,
   groupByMovementThenKind,
+  isSupplementalOnlySection,
 } from "../prescription-grouping";
 
 describe("describeRowExternalLoad", () => {
@@ -205,6 +206,19 @@ describe("groupByMovementThenKind", () => {
     // Back-off rows are NOT eligible for the top-set chip even when
     // their setNumber sequence restarts inside their own bucket.
     expect(sec.sets.filter((r) => r.isBackOff).every((r) => !r.isTopSet)).toBe(true);
+  });
+
+  it("identifies supplemental-only movement sections", () => {
+    const out = groupByMovementThenKind([
+      item({ kind: "back_off", reps: 8 }),
+      item({ kind: "back_off", reps: 8 }),
+    ]);
+    expect(isSupplementalOnlySection(out.movements[0]!)).toBe(true);
+    const mixed = groupByMovementThenKind([
+      item({ kind: "main", reps: 5 }),
+      item({ kind: "back_off", reps: 8 }),
+    ]);
+    expect(isSupplementalOnlySection(mixed.movements[0]!)).toBe(false);
   });
 
   it("groups multi-movement sessions (bodyweight push + pull + squat) by movementId", () => {
@@ -406,5 +420,28 @@ describe("collapseIdenticalSetItems", () => {
     const out = collapseIdenticalSetItems(items);
     expect(out).toHaveLength(3);
   });
-});
 
+  it("collapses required and optional slots when a structured set range exists", () => {
+    const base = item({
+      kind: "back_off",
+      sets: 1,
+      reps: 8,
+      setRange: { min: 3, max: 5 },
+      repRange: { min: 8, max: 10 },
+    });
+    const out = collapseIdenticalSetItems([
+      base,
+      base,
+      base,
+      { ...base, optional: true },
+      { ...base, optional: true },
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      sets: 5,
+      setRange: { min: 3, max: 5 },
+      repRange: { min: 8, max: 10 },
+    });
+    expect(out[0]?.optional).toBeUndefined();
+  });
+});

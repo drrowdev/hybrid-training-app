@@ -82,6 +82,16 @@ export type PlanCardSections = {
   cardio: PrescriptionItem[];
 };
 
+/** True when a movement contains supplemental work but no main working sets. */
+export function isSupplementalOnlySection(
+  section: MovementPrescriptionSection,
+): boolean {
+  return (
+    section.sets.length > 0 &&
+    section.sets.every((row) => row.item.kind === "back_off")
+  );
+}
+
 /** Legacy alias — kept so existing imports compile. */
 export type MovementGroupedSections = PlanCardSections;
 
@@ -406,9 +416,13 @@ export function collapseIdenticalSetItems(
   for (const item of items) {
     const prev = out[out.length - 1];
     if (prev && sameExceptSets(prev, item)) {
-      out[out.length - 1] = {
+      const merged = {
         ...prev,
         sets: (prev.sets ?? 1) + (item.sets ?? 1),
+      };
+      if (merged.setRange) delete merged.optional;
+      out[out.length - 1] = {
+        ...merged,
       };
     } else {
       out.push(item);
@@ -419,9 +433,15 @@ export function collapseIdenticalSetItems(
 
 function sameExceptSets(a: PrescriptionItem, b: PrescriptionItem): boolean {
   const stripSets = (it: PrescriptionItem) => {
-    const { sets: _sets, ...rest } = it as PrescriptionItem & { sets?: number };
+    const {
+      sets: _sets,
+      optional: _optional,
+      ...rest
+    } = it as PrescriptionItem & { sets?: number; optional?: boolean };
     void _sets;
-    return JSON.stringify(rest);
+    return JSON.stringify(
+      it.setRange ? rest : { ...rest, optional: _optional },
+    );
   };
   return stripSets(a) === stripSets(b);
 }
