@@ -42,8 +42,16 @@ describe("bucketForGroup", () => {
     expect(bucketForGroup(g)).toBe("main");
   });
 
-  it("classifies back-off as main", () => {
+  it("classifies a supplemental-only movement separately from main lifts", () => {
     const g = groupOf([{ movementId: "sq", kind: "back_off", sets: 1, reps: 8 }]);
+    expect(bucketForGroup(g)).toBe("supplemental");
+  });
+
+  it("keeps a main lift with its own back-off work in the main bucket", () => {
+    const g = groupOf([
+      { movementId: "sq", kind: "main", sets: 1, reps: 5 },
+      { movementId: "sq", kind: "back_off", sets: 1, reps: 8 },
+    ]);
     expect(bucketForGroup(g)).toBe("main");
   });
 

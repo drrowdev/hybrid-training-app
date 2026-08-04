@@ -318,7 +318,7 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
 
     const { data: sessions } = await admin
       .from("planned_sessions")
-      .select("week_index, day_index, role, prescription")
+      .select("id, week_index, day_index, role, prescription")
       .eq("block_id", block!.id);
     expect(sessions).toHaveLength(86);
     expect(
@@ -352,6 +352,47 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     expect(cardioItems).toEqual([
       expect.objectContaining({ kind: "cardio_external", durationMin: 60 }),
     ]);
+
+    type StoredItem = {
+      movementSlug?: string;
+      movementName?: string;
+      kind: string;
+      reps?: number;
+      optional?: boolean;
+    };
+    const strengthItems = (
+      session: NonNullable<typeof sessions>[number],
+      slug: string,
+      kind: string,
+    ) => ((session.prescription as { items: StoredItem[] }).items ?? []).filter(
+      (item) => item.movementSlug === slug && item.kind === kind,
+    );
+    const armorA1 = sessions!.find(
+      (session) => session.week_index === 0 && session.day_index === 0,
+    )!;
+    const armorB1 = sessions!.find(
+      (session) => session.week_index === 0 && session.day_index === 1,
+    )!;
+
+    expect(strengthItems(armorA1, "block-pull-deadlift", "main")).toHaveLength(4);
+    expect(strengthItems(armorA1, "back-extension-45", "back_off")).toHaveLength(5);
+    for (const slug of ["hanging-leg-raise", "hanging-knee-raise", "toes-to-bar"]) {
+      const triadItems = strengthItems(armorA1, slug, "accessory");
+      expect(triadItems).toHaveLength(3);
+      expect(triadItems.every((item) => item.reps === 5)).toBe(true);
+    }
+    expect(strengthItems(armorB1, "weighted-pull-up", "main")).toHaveLength(4);
+
+    await page.goto(`/app/sessions/start/${armorA1.id}`);
+    await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}/, { timeout: 30_000 });
+    await expect(page.getByTestId("movement-group-main")).toContainText("Main lifts");
+    await expect(page.getByTestId("movement-group-supplemental")).toContainText(
+      "Supplemental lifts",
+    );
+    await expect(page.getByText("Hanging Leg Raise", { exact: true })).toBeVisible();
+    await expect(page.getByText("Hanging Knee Raise", { exact: true })).toBeVisible();
+    await expect(page.getByText("Toes-to-Bar", { exact: true })).toBeVisible();
+    await expect(page.getByText("Ab Triad", { exact: true })).toHaveCount(0);
   });
 
   test("picker deploys a Hybrid (native) platform block end-to-end", async ({

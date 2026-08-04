@@ -367,3 +367,6 @@ Profiled the authenticated Program → Start → Log → Finish flow in Playwrig
 
 ## [2026-08-04] fix | Activation phase schedules include conditioning
 Activation now materializes its programmed conditioning alongside strength: Base adds three LSS days, Armor adds two 60-minute LSS days, Operator adds two HIC/work-capacity days, and Vertex adds two hills/HIC days. Phase-start summaries are derived from the active sessions at each segment boundary instead of the generic template placeholder. Starting at Armor now shows and deploys 4 strength, 2 cardio and 1 rest day; the rebased 20-week plan contains 86 sessions. Cardio-only training prescriptions materialize with the cardio role, while test and deload roles remain authoritative.
+
+## [2026-08-04] fix | Correct TB3 Ab Triad and Armor lift roles
+TB3 Ab Triad prescriptions now materialize three separate catalog movements for three rounds of 5 hanging leg raises, 5 hanging knee raises and 5 toes-to-bar in both Activation and Zulu. Armor A1 rack pulls use the four-set main-lift dose throughout Armor; weighted pull-ups follow the main wave on B1 and the three-set second pass on B2. Back extension remains supplemental and supplemental-only movements now render under a dedicated Supplemental lifts section instead of Main lifts.

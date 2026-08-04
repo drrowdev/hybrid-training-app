@@ -157,7 +157,6 @@ function roleForPrescription(
 const TITLE_MAIN_KINDS: ReadonlySet<PrescribedItemKind> = new Set([
   "main",
   "amrap",
-  "supplemental",
 ]);
 const TITLE_CARDIO_KINDS: ReadonlySet<PrescribedItemKind> = new Set([
   "cardio",

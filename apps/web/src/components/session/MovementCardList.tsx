@@ -267,16 +267,18 @@ export function MovementCardList({
     });
   };
 
-  // Partition prescribed groups into main vs accessory buckets for
-  // the two sub-section headings. Order within each bucket is the
+  // Partition prescribed groups into main, supplemental and accessory buckets.
+  // Order within each bucket is the
   // original first-appearance order from the prescription.
-  const { mainGroups, accessoryGroups, otherGroups } = useMemo(() => {
+  const { mainGroups, supplementalGroups, accessoryGroups, otherGroups } = useMemo(() => {
     const main: MovementGroup[] = [];
+    const supplemental: MovementGroup[] = [];
     const accessory: MovementGroup[] = [];
     const other: MovementGroup[] = [];
     for (const g of groups) {
       const b = bucketForGroup(g);
       if (b === "main") main.push(g);
+      else if (b === "supplemental") supplemental.push(g);
       else if (b === "accessory") accessory.push(g);
       else other.push(g);
     }
@@ -288,7 +290,12 @@ export function MovementCardList({
       ? smartAccessoryOrder(accessory, (g) => g.movementId, accessoryMetaById)
       : accessory;
     const orderedAccessory = applyCustomOrder(smart, (g) => g.movementId, effectiveOrder);
-    return { mainGroups: main, accessoryGroups: orderedAccessory, otherGroups: other };
+    return {
+      mainGroups: main,
+      supplementalGroups: supplemental,
+      accessoryGroups: orderedAccessory,
+      otherGroups: other,
+    };
   }, [groups, accessoryMetaById, effectiveOrder]);
 
   // First prescribed card with no logged sets across the whole session
@@ -298,8 +305,8 @@ export function MovementCardList({
   // Build a single ordered render list so the "first card" check for
   // the session-level fill button stays correct across both sections.
   const orderedGroups: MovementGroup[] = useMemo(
-    () => [...mainGroups, ...accessoryGroups, ...otherGroups],
-    [mainGroups, accessoryGroups, otherGroups],
+    () => [...mainGroups, ...supplementalGroups, ...accessoryGroups, ...otherGroups],
+    [mainGroups, supplementalGroups, accessoryGroups, otherGroups],
   );
 
   // ADR 0026 P5b — fold the accessory cards into solo cards + antagonist
@@ -491,6 +498,16 @@ export function MovementCardList({
         <>
           <SectionDivider label="Main lifts" testId="movement-group-main" />
           {mainGroups.map(renderCard)}
+        </>
+      )}
+
+      {supplementalGroups.length > 0 && (
+        <>
+          <SectionDivider
+            label="Supplemental lifts"
+            testId="movement-group-supplemental"
+          />
+          {supplementalGroups.map(renderCard)}
         </>
       )}
 

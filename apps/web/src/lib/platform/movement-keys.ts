@@ -68,6 +68,10 @@ export const STATIC_ENGINE_MOVEMENTS: Record<
   "plyo-pushup": { slug: "push-up", displayName: "Plyometric Push-up" },
   "goblet-squat": { slug: "goblet-squat" },
   "inverted-row": { slug: "inverted-row" },
+  "hanging-leg-raise": { slug: "hanging-leg-raise" },
+  "hanging-knee-raise": { slug: "hanging-knee-raise" },
+  "toes-to-bar": { slug: "toes-to-bar" },
+  // Legacy Activation plans used one knee-raise item named "Ab Triad".
   "ab-triad": { slug: "hanging-knee-raise", displayName: "Ab Triad" },
   "barbell-row": { slug: "bb-row-overhand", displayName: "Barbell Row" },
   "pendlay-row": { slug: "pendlay-row" },

@@ -41,6 +41,9 @@ export const TB_MOVEMENT_LABEL: Record<string, string> = {
   "push-press": "Push Press",
   "back-extension": "Back Extension",
   "ab-triad": "Ab Triad",
+  "hanging-leg-raise": "Hanging Leg Raise",
+  "hanging-knee-raise": "Hanging Knee Raise",
+  "toes-to-bar": "Toes-to-Bar",
 };
 
 /** A single week's set×rep scheme (shared across a template's session groups). */
@@ -485,6 +488,30 @@ const GREY_MAN: TbTemplate = {
   ],
 };
 
+const AB_TRIAD_MOVEMENTS = [
+  "hanging-leg-raise",
+  "hanging-knee-raise",
+  "toes-to-bar",
+] as const;
+
+const AB_TRIAD = AB_TRIAD_MOVEMENTS.map((movement) => ({
+  movement,
+  kind: "unanchored" as const,
+}));
+
+const abRule: TbPrescriptionRule = {
+  movements: [...AB_TRIAD_MOVEMENTS],
+  percent: null,
+  setsMin: 3,
+  setsMax: 3,
+  reps: 5,
+  repsLabel: "5",
+  itemKind: "assistance",
+  warmup: false,
+  note:
+    "Ab Triad — 3 rounds: 5 hanging leg raises, 5 hanging knee raises, then 5 toes-to-bar.",
+};
+
 const zuluSupplementalRules = (movements: string[]): TbPrescriptionRule[] =>
   [0.65, 0.7, 0.75, 0.65, 0.7].map((percent, index) => ({
     activeWeeks: [index + 1],
@@ -503,7 +530,7 @@ const ZULU_A: TbClusterEntry[] = [
   { movement: "bench", split: "A" },
   { movement: "squat", split: "A" },
   { movement: "overhead-press", split: "A" },
-  { movement: "ab-triad", split: "A", kind: "unanchored" },
+  ...AB_TRIAD.map((entry) => ({ ...entry, split: "A" as const })),
 ];
 const ZULU_B: TbClusterEntry[] = [
   { movement: "deadlift", split: "B" },
@@ -538,7 +565,7 @@ const ZULU: TbTemplate = {
       split: "A",
       activeWeeks: TB3_WORK_WEEKS,
       fixedMovements: ZULU_A,
-      prescriptionRules: zuluSupplementalRules(["overhead-press", "ab-triad"]),
+      prescriptionRules: [...zuluSupplementalRules(["overhead-press"]), abRule],
     },
     {
       id: "p1b",
@@ -557,7 +584,7 @@ const ZULU: TbTemplate = {
       split: "A",
       activeWeeks: TB3_WORK_WEEKS,
       fixedMovements: ZULU_A,
-      prescriptionRules: zuluSupplementalRules(["overhead-press", "ab-triad"]),
+      prescriptionRules: [...zuluSupplementalRules(["overhead-press"]), abRule],
     },
     {
       id: "p2b",
@@ -681,7 +708,6 @@ const A = {
   pushup: { movement: "pushup", kind: "unanchored" },
   gobletSquat: { movement: "goblet-squat", kind: "unanchored" },
   invertedRow: { movement: "inverted-row", kind: "unanchored" },
-  abTriad: { movement: "ab-triad", kind: "unanchored" },
   squat: { movement: "squat" },
   bench: { movement: "bench" },
   deadlift: { movement: "deadlift" },
@@ -704,18 +730,6 @@ const ACTIVATION_OPERATOR_CONDITIONING_WEEKS = [9, 10, 11, 12, 13, 16, 17, 18, 1
 const ACTIVATION_PEAK_WEEKS = [14, 20];
 const ACTIVATION_VERTEX_WEEKS = [22, 23, 24];
 
-const abRule: TbPrescriptionRule = {
-  movements: ["ab-triad"],
-  percent: null,
-  setsMin: 3,
-  setsMax: 3,
-  reps: 5,
-  repsLabel: "5",
-  itemKind: "assistance",
-  warmup: false,
-  note: "Finisher — three rounds of five, outside the circuit.",
-};
-
 const ARMOR_SUPPLEMENTAL_WAVES: Array<[number, number]> = [
   [6, 0.65],
   [7, 0.7],
@@ -736,13 +750,13 @@ const supplementalRules = (movements: string[]): TbPrescriptionRule[] =>
     note: "Supplemental — 3–5 sets of 8–10.",
   }));
 
-const taperRules = (movement: string): TbPrescriptionRule[] =>
+const deadliftTaperRules = (): TbPrescriptionRule[] =>
   [3, 2, 1].map((sets, index) => ({
     activeWeeks: [6 + index],
-    movements: [movement],
+    movements: ["deadlift"],
     setsMin: sets,
     setsMax: sets,
-    note: `${movement === "deadlift" ? "Deadlift" : "Rack pull"} volume tapers across the block.`,
+    note: "Deadlift volume tapers across the block.",
   }));
 
 const armorSecondPassRules: TbPrescriptionRule[] = [
@@ -891,13 +905,13 @@ const ACTIVATION: TbTemplate = {
   ],
   weeklySessions: [
     activationSession("base-1", "Base circuit 1", 0, ACTIVATION_BASE_WEEKS, [
-      A.pushup, A.gobletSquat, A.invertedRow, A.abTriad,
+      A.pushup, A.gobletSquat, A.invertedRow, ...AB_TRIAD,
     ], [abRule]),
     activationSession("base-2", "Base circuit 2", 2, ACTIVATION_BASE_WEEKS, [
-      A.pushup, A.gobletSquat, A.invertedRow, A.abTriad,
+      A.pushup, A.gobletSquat, A.invertedRow, ...AB_TRIAD,
     ], [abRule]),
     activationSession("base-3", "Base circuit 3", 4, ACTIVATION_BASE_WEEKS, [
-      A.pushup, A.gobletSquat, A.invertedRow, A.abTriad,
+      A.pushup, A.gobletSquat, A.invertedRow, ...AB_TRIAD,
     ], [abRule]),
     activationConditioningSession(
       "base-lss-1",
@@ -936,22 +950,22 @@ const ACTIVATION: TbTemplate = {
       A.bench, A.barbellRow, A.squat, A.deadlift, A.rackPull, A.press,
     ], [], { kind: "test" }),
     activationSession("armor-a1", "Armor A1", 0, ACTIVATION_ARMOR_WEEKS, [
-      A.squat, A.rackPull, A.backExtension, A.abTriad,
-    ], [...taperRules("rack-pull"), ...supplementalRules(["back-extension"]), abRule]),
+      A.squat, A.rackPull, A.backExtension, ...AB_TRIAD,
+    ], [...supplementalRules(["back-extension"]), abRule]),
     activationSession("armor-b1", "Armor B1", 1, ACTIVATION_ARMOR_WEEKS, [
       A.bench, A.barbellRow, A.pullup, A.press,
-    ], supplementalRules(["weighted-pullup", "overhead-press"])),
+    ], supplementalRules(["overhead-press"])),
     activationSession("armor-a2", "Armor A2", 3, ACTIVATION_ARMOR_WEEKS, [
-      A.squat, A.deadlift, A.backExtension, A.abTriad,
+      A.squat, A.deadlift, A.backExtension, ...AB_TRIAD,
     ], [
       ...armorSecondPassRules,
-      ...taperRules("deadlift"),
+      ...deadliftTaperRules(),
       ...supplementalRules(["back-extension"]),
       abRule,
     ]),
     activationSession("armor-b2", "Armor B2", 5, ACTIVATION_ARMOR_WEEKS, [
       A.bench, A.barbellRow, A.pullup, A.press,
-    ], [...armorSecondPassRules, ...supplementalRules(["weighted-pullup", "overhead-press"])]),
+    ], [...armorSecondPassRules, ...supplementalRules(["overhead-press"])]),
     activationConditioningSession(
       "armor-lss-1",
       "Armor · LSS 1",
@@ -975,13 +989,13 @@ const ACTIVATION: TbTemplate = {
       },
     ),
     activationSession("operator-d1", "Operator D1", 0, ACTIVATION_OPERATOR_WEEKS, [
-      A.bench, A.squat, A.barbellRow, A.abTriad,
+      A.bench, A.squat, A.barbellRow, ...AB_TRIAD,
     ], operatorRules, { kindByWeek: { 15: "deload" } }),
     activationSession("operator-d2", "Operator D2", 2, ACTIVATION_OPERATOR_WEEKS, [
-      A.bench, A.squat, A.barbellRow, A.abTriad,
+      A.bench, A.squat, A.barbellRow, ...AB_TRIAD,
     ], operatorRules, { kindByWeek: { 15: "deload" } }),
     activationSession("operator-d3", "Operator D3", 4, ACTIVATION_OPERATOR_WEEKS, [
-      A.bench, A.deadlift, A.barbellRow, A.abTriad,
+      A.bench, A.deadlift, A.barbellRow, ...AB_TRIAD,
     ], operatorRules, { kindByWeek: { 15: "deload" } }),
     activationConditioningSession(
       "operator-hic-1",
@@ -1004,19 +1018,19 @@ const ACTIVATION: TbTemplate = {
       },
     ),
     activationSession("peak-squat", "Peak · Squat", 0, ACTIVATION_PEAK_WEEKS, [
-      A.squat, A.barbellRow, A.abTriad,
+      A.squat, A.barbellRow, ...AB_TRIAD,
     ], [
       { movements: ["barbell-row"], percent: 0.75, setsMin: 3, setsMax: 3, reps: 5, repsLabel: "5" },
       abRule,
     ], { kind: "test", peakMovements: ["squat"] }),
     activationSession("peak-bench", "Peak · Bench", 2, ACTIVATION_PEAK_WEEKS, [
-      A.bench, A.barbellRow, A.abTriad,
+      A.bench, A.barbellRow, ...AB_TRIAD,
     ], [
       { movements: ["barbell-row"], percent: 0.75, setsMin: 3, setsMax: 3, reps: 5, repsLabel: "5" },
       abRule,
     ], { kind: "test", peakMovements: ["bench"] }),
     activationSession("peak-deadlift", "Peak · Deadlift", 4, ACTIVATION_PEAK_WEEKS, [
-      A.deadlift, A.barbellRow, A.abTriad,
+      A.deadlift, A.barbellRow, ...AB_TRIAD,
     ], [
       { movements: ["barbell-row"], percent: 0.75, setsMin: 3, setsMax: 3, reps: 5, repsLabel: "5" },
       abRule,
