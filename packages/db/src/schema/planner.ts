@@ -239,6 +239,10 @@ export type PrescriptionItem = {
   optional?: boolean;
   /** Strength: reps per set. */
   reps?: number;
+  /** Strength: prescribed set range before expansion into concrete log slots. */
+  setRange?: { min: number; max: number };
+  /** Strength: prescribed rep range when the target is not a single rep count. */
+  repRange?: { min: number; max: number };
   /** Strength: % of TM. */
   percentTm?: number;
   /**

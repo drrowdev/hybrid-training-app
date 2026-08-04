@@ -313,6 +313,8 @@ async function buildBenchRoles(
     "pendlay-row",
     "rack-pull",
     "weighted-pullup",
+    "back-extension",
+    "reverse-hyper",
     "overhead-press",
     "power-clean",
     "push-press",

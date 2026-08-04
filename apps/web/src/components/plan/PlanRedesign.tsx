@@ -44,6 +44,7 @@ import { addDaysToYmd } from "@/lib/dates";
 import {
   groupByMovementThenKind,
   collapseIdenticalSetItems,
+  isSupplementalOnlySection,
   type PlanSetRow,
   type MovementPrescriptionSection,
   type PrescriptionMovementRow,
@@ -1768,7 +1769,12 @@ export function SessionDrawer({
   };
 
   const sections = useMemo(() => groupByMovementThenKind(session.items), [session.items]);
-  const mainLiftCount = sections.movements.length;
+  const mainLiftCount = sections.movements.filter(
+    (section) => !isSupplementalOnlySection(section),
+  ).length;
+  const supplementalLiftCount = sections.movements.filter(
+    isSupplementalOnlySection,
+  ).length;
   const accessoryCount =
     sections.accessories.length +
     sections.hingeCompensations.length +
@@ -1778,11 +1784,18 @@ export function SessionDrawer({
     if (mainLiftCount > 0) {
       parts.push(`${mainLiftCount} main lift${mainLiftCount === 1 ? "" : "s"}`);
     }
+    if (supplementalLiftCount > 0) {
+      parts.push(
+        `${supplementalLiftCount} supplemental lift${
+          supplementalLiftCount === 1 ? "" : "s"
+        }`,
+      );
+    }
     if (accessoryCount > 0) {
       parts.push(`${accessoryCount} accessor${accessoryCount === 1 ? "y" : "ies"}`);
     }
     return parts.join(" + ");
-  }, [mainLiftCount, accessoryCount]);
+  }, [mainLiftCount, supplementalLiftCount, accessoryCount]);
   const dur = session.estDurationMin;
 
   const handleSwap = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -2378,13 +2391,23 @@ function rangeHint(rows: PlanSetRow[]): string | null {
     .filter((n): n is number => n != null);
   const count = rows.length;
   if (count === 0) return null;
+  const prescribedSetRange = rows[0]?.item.setRange;
+  const setLabel = prescribedSetRange
+    ? `${prescribedSetRange.min}–${prescribedSetRange.max}`
+    : String(count);
+  const prescribedRepRange = rows[0]?.item.repRange;
+  if (prescribedRepRange) {
+    return `Target ${setLabel} × ${prescribedRepRange.min}–${prescribedRepRange.max}`;
+  }
   if (reps.length === 0) {
-    return `Target ${count} set${count === 1 ? "" : "s"}`;
+    return prescribedSetRange
+      ? `Target ${setLabel} sets`
+      : `Target ${count} set${count === 1 ? "" : "s"}`;
   }
   const min = Math.min(...reps);
   const max = Math.max(...reps);
   const repLabel = min === max ? String(min) : `${min}–${max}`;
-  return `Target ${count} × ${repLabel}`;
+  return `Target ${setLabel} × ${repLabel}`;
 }
 
 function DrawerMovement({
@@ -2395,6 +2418,7 @@ function DrawerMovement({
   editing: boolean;
 }) {
   if (section.sets.length === 0 && section.warmups.length === 0) return null;
+  const supplementalOnly = isSupplementalOnlySection(section);
   return (
     <div data-testid={`plan-drawer-movement-${section.rowKey}`}>
       <div className="movement-head">
@@ -2415,7 +2439,13 @@ function DrawerMovement({
       )}
       {section.sets.length > 0 && (
         <>
-          <div className="section">{section.sets.length > 1 ? "Main lift" : "Main"}</div>
+          <div className="section">
+            {supplementalOnly
+              ? "Supplemental lift"
+              : section.sets.length > 1
+                ? "Main lift"
+                : "Main"}
+          </div>
           {section.sets.map((row, i) => (
             <SetRow
               key={`m-${i}`}
@@ -2462,7 +2492,10 @@ function SetRow({
     <div className="set-row">
       <span className="n">{label}</span>
       <span>{item.movementName ?? "Movement"}</span>
-      <span className="v">{formatPrescriptionItem(item)}</span>
+      <span className="v">
+        {formatPrescriptionItem(item)}
+        {item.optional ? " · optional" : ""}
+      </span>
     </div>
   );
 }

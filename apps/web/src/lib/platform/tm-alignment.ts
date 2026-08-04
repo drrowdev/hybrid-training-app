@@ -61,7 +61,15 @@ export function computeTmAlignment(
     // TB and Zulu/HT both expose useTrainingMax + tmPercent; Green delegates to TB.
     const inst = instance as Partial<TbInstance & ZuluHtInstance>;
     const basis = inst.useTrainingMax && typeof inst.tmPercent === "number" ? pct(inst.tmPercent) : 100;
-    for (const key of Object.keys(ENGINE_KEY_TO_ROLE)) out[key] = basis;
+    // Include exact program movements (rows, rack pulls, reverse hypers, etc.),
+    // not only the four broad StrengthRole keys. The logger computes target load
+    // as 1RM × tm_percent × prescription %, so every anchored TB movement must
+    // share the engine's basis.
+    const keys = new Set([
+      ...Object.keys(ENGINE_KEY_TO_ROLE),
+      ...Object.keys(oneRepMaxes),
+    ]);
+    for (const key of keys) out[key] = basis;
     return out;
   }
 

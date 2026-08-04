@@ -71,6 +71,23 @@ describe("TB engine — meta + setup", () => {
     const inst = setup({ templateId: "zulu", blocks: 2 });
     expect(JSON.parse(JSON.stringify(inst))).toEqual(inst);
   });
+
+  it("stores one pair of Activation Armor supplemental choices", () => {
+    expect(setup({ templateId: "activation" })).toMatchObject({
+      armorSupplementalA: "back-extension",
+      armorSupplementalB: "pullup",
+    });
+    expect(
+      setup({
+        templateId: "activation",
+        armorSupplementalA: "reverse-hyper",
+        armorSupplementalB: "inverted-row",
+      }),
+    ).toMatchObject({
+      armorSupplementalA: "reverse-hyper",
+      armorSupplementalB: "inverted-row",
+    });
+  });
 });
 
 describe("TB engine — timeline", () => {
@@ -290,57 +307,162 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
     ).toHaveLength(3);
   });
 
-  it("Activation Armor keeps rack pulls and weighted pull-ups on the main-lift dose", () => {
+  it("Activation Armor matches the complete three-week source matrix", () => {
     const inst = setup({ templateId: "activation" });
-    const armorWave = [
-      [6, 0.7, 8],
-      [7, 0.8, 5],
-      [8, 0.85, 3],
+    const weeks = [
+      {
+        week: 6,
+        a1: { sets: 4, reps: 8, percent: 0.7 },
+        a2: { sets: 3, reps: 8, percent: 0.75, deadliftSets: 3 },
+        supplementalPercent: 0.65,
+      },
+      {
+        week: 7,
+        a1: { sets: 4, reps: 5, percent: 0.8 },
+        a2: { sets: 3, reps: 5, percent: 0.8, deadliftSets: 2 },
+        supplementalPercent: 0.7,
+      },
+      {
+        week: 8,
+        a1: { sets: 4, reps: 3, percent: 0.85 },
+        a2: { sets: 3, reps: 3, percent: 0.85, deadliftSets: 1 },
+        supplementalPercent: 0.75,
+      },
     ] as const;
-    for (const [week, percentOfTm, reps] of armorWave) {
-      const a1 = tb.prescribe(inst, `b0-w${week}-armor-a1`, ctx);
-      expect(
-        itemsOfKind(a1, "main").find((item) => item.name === "Rack Pull"),
-      ).toMatchObject({ percentOfTm, sets: 4, reps });
+    for (const source of weeks) {
+      const a1 = tb.prescribe(inst, `b0-w${source.week}-armor-a1`, ctx);
+      expect(itemsOfKind(a1, "main").map((item) => [
+        item.name,
+        item.sets,
+        item.reps,
+        item.percentOfTm,
+      ])).toEqual([
+        ["Squat", source.a1.sets, source.a1.reps, source.a1.percent],
+        ["Rack Pull", source.a1.sets, source.a1.reps, source.a1.percent],
+      ]);
 
-      const b1 = tb.prescribe(inst, `b0-w${week}-armor-b1`, ctx);
-      expect(
-        itemsOfKind(b1, "main").find((item) => item.name === "Weighted Pull-up"),
-      ).toMatchObject({ percentOfTm, sets: 4, reps });
+      const b1 = tb.prescribe(inst, `b0-w${source.week}-armor-b1`, ctx);
+      expect(itemsOfKind(b1, "main").map((item) => [
+        item.name,
+        item.sets,
+        item.reps,
+        item.percentOfTm,
+      ])).toEqual([
+        ["Bench Press", source.a1.sets, source.a1.reps, source.a1.percent],
+        ["Barbell Row", source.a1.sets, source.a1.reps, source.a1.percent],
+      ]);
 
-      const b2 = tb.prescribe(inst, `b0-w${week}-armor-b2`, ctx);
-      expect(
-        itemsOfKind(b2, "main").find((item) => item.name === "Weighted Pull-up"),
-      ).toMatchObject({
-        percentOfTm: week === 6 ? 0.75 : percentOfTm,
-        sets: 3,
-        reps,
-      });
+      const a2 = tb.prescribe(inst, `b0-w${source.week}-armor-a2`, ctx);
+      expect(itemsOfKind(a2, "main").map((item) => [
+        item.name,
+        item.sets,
+        item.reps,
+        item.percentOfTm,
+      ])).toEqual([
+        ["Squat", source.a2.sets, source.a2.reps, source.a2.percent],
+        [
+          "Deadlift",
+          source.a2.deadliftSets,
+          source.a2.reps,
+          source.a2.percent,
+        ],
+      ]);
+
+      const b2 = tb.prescribe(inst, `b0-w${source.week}-armor-b2`, ctx);
+      expect(itemsOfKind(b2, "main").map((item) => [
+        item.name,
+        item.sets,
+        item.reps,
+        item.percentOfTm,
+      ])).toEqual([
+        ["Bench Press", source.a2.sets, source.a2.reps, source.a2.percent],
+        ["Barbell Row", source.a2.sets, source.a2.reps, source.a2.percent],
+      ]);
+
+      for (const session of [a1, a2]) {
+        expect(itemsOfKind(session, "supplemental").map((item) => [
+          item.name,
+          item.sets,
+          item.setsMax,
+          item.reps,
+          item.repsMax,
+          item.percentOfTm,
+        ])).toEqual([
+          [
+            "Back Extension",
+            3,
+            5,
+            8,
+            10,
+            source.supplementalPercent,
+          ],
+        ]);
+      }
+      for (const session of [b1, b2]) {
+        expect(itemsOfKind(session, "supplemental").map((item) => [
+          item.name,
+          item.sets,
+          item.setsMax,
+          item.reps,
+          item.repsMax,
+          item.percentOfTm,
+        ])).toEqual([
+          ["Pull-up", 3, 5, 8, 10, undefined],
+          [
+            "Overhead Press",
+            3,
+            5,
+            8,
+            10,
+            source.supplementalPercent,
+          ],
+        ]);
+      }
+      expect([...a1.items, ...a2.items].filter((item) =>
+        ["Hanging Leg Raise", "Hanging Knee Raise", "Toes-to-Bar"].includes(
+          item.name,
+        ),
+      )).toHaveLength(6);
+      expect([...b1.items, ...b2.items].some(
+        (item) => item.name === "Weighted Pull-up",
+      )).toBe(false);
     }
+  });
+
+  it("Activation Armor applies the setup-selected supplemental alternatives", () => {
+    const inst = setup({
+      templateId: "activation",
+      armorSupplementalA: "reverse-hyper",
+      armorSupplementalB: "inverted-row",
+    });
     const a1 = tb.prescribe(inst, "b0-w6-armor-a1", ctx);
-    expect(
-      itemsOfKind(a1, "supplemental").find((item) => item.name === "Back Extension"),
-    ).toMatchObject({
+    const b1 = tb.prescribe(inst, "b0-w6-armor-b1", ctx);
+    expect(itemsOfKind(a1, "supplemental").map((item) => item.name)).toEqual([
+      "Reverse Hyperextension",
+    ]);
+    expect(itemsOfKind(b1, "supplemental").map((item) => item.name)).toEqual([
+      "Inverted Row",
+      "Overhead Press",
+    ]);
+    expect(itemsOfKind(a1, "supplemental")[0]).toMatchObject({
       sets: 3,
       setsMax: 5,
-      repsLabel: "8–10",
-    });
-    const a2 = itemsOfKind(tb.prescribe(inst, "b0-w6-armor-a2", ctx), "main");
-    expect(a2.find((item) => item.name === "Squat")).toMatchObject({
-      percentOfTm: 0.75,
-      sets: 3,
       reps: 8,
+      repsMax: 10,
+      percentOfTm: 0.65,
     });
-    expect(a2.find((item) => item.name === "Deadlift")).toMatchObject({
-      percentOfTm: 0.75,
+    expect(itemsOfKind(b1, "supplemental")[0]).toMatchObject({
       sets: 3,
+      setsMax: 5,
+      reps: 8,
+      repsMax: 10,
+      note: expect.stringMatching(/max reps/i),
     });
-    const b1 = tb.prescribe(inst, "b0-w7-armor-b1", ctx);
-    expect(itemsOfKind(b1, "supplemental").map((item) => [item.name, item.sets, item.setsMax, item.repsLabel, item.percentOfTm])).toEqual([
-      ["Overhead Press", 3, 5, "8–10", 0.7],
+    expect(itemsOfKind(b1, "supplemental")[0]?.percentOfTm).toBeUndefined();
+    expect(itemsOfKind(b1, "main").map((item) => item.name)).toEqual([
+      "Bench Press",
+      "Barbell Row",
     ]);
-    expect(itemsOfKind(tb.prescribe(inst, "b0-w8-armor-a2", ctx), "main")
-      .find((item) => item.name === "Deadlift")?.sets).toBe(1);
   });
 
   it("Activation Operator Black uses optional sets and preserves the deadlift 1–3 range", () => {

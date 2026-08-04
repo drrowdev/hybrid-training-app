@@ -283,6 +283,29 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     baseURL,
   }) => {
     await markOnboarded(admin, freshUser.userId);
+    for (const tm of [
+      ...STRENGTH_TMS,
+      { slug: "bb-row-overhand", oneRmKg: 100 },
+      { slug: "block-pull-deadlift", oneRmKg: 200 },
+    ]) {
+      const { data: movement } = await admin
+        .from("movements")
+        .select("id")
+        .eq("slug", tm.slug)
+        .is("user_id", null)
+        .maybeSingle();
+      expect(movement, `catalog must have ${tm.slug}`).toBeTruthy();
+      const { error } = await admin.from("training_maxes").upsert(
+        {
+          user_id: freshUser.userId,
+          movement_id: movement!.id,
+          one_rm_kg: tm.oneRmKg,
+          source: "entered",
+        },
+        { onConflict: "user_id,movement_id" },
+      );
+      expect(error).toBeNull();
+    }
     await signInAs(context, freshUser, seedConfig, baseURL ?? "http://localhost:3000");
     await page.goto("/app/program");
     await page.waitForLoadState("networkidle");
@@ -291,6 +314,15 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     const next = page.getByRole("button", { name: "Continue" });
     await next.click();
     await page.getByTestId("loadout-opt-activation").click();
+    await expect(
+      page.getByTestId("activation-armor-supplementals"),
+    ).toBeVisible();
+    await page
+      .getByTestId("activation-armorSupplementalA-reverse-hyper")
+      .click();
+    await page
+      .getByTestId("activation-armorSupplementalB-inverted-row")
+      .click();
     await next.click();
     await expect(page.getByRole("heading", { name: "Starting maxes" })).toBeVisible();
     await next.click();
@@ -301,8 +333,18 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
       page.getByText("Starting Armor: 4 strength, 2 cardio and 1 rest day."),
     ).toBeVisible();
     await expect(page.getByText("4 strength · 2 cardio · 1 rest")).toBeVisible();
+    await expect(
+      page.getByText(/requires a 1-rep max for Reverse Hyperextension/),
+    ).toBeVisible();
 
     const deploy = page.getByRole("button", { name: /Deploy program/ });
+    await expect(deploy).toBeDisabled();
+    await page.getByRole("button", { name: "Back" }).click();
+    await page.getByLabel("Reverse Hyperextension 1-rep max").fill("80");
+    await next.click();
+    await expect(
+      page.getByText(/requires a 1-rep max for Reverse Hyperextension/),
+    ).toHaveCount(0);
     await expect(deploy).toBeEnabled();
     await deploy.click();
     await page.waitForURL("**/app", { timeout: 15_000 });
@@ -358,7 +400,10 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
       movementName?: string;
       kind: string;
       reps?: number;
+      percentTm?: number;
       optional?: boolean;
+      setRange?: { min: number; max: number };
+      repRange?: { min: number; max: number };
     };
     const strengthItems = (
       session: NonNullable<typeof sessions>[number],
@@ -375,13 +420,23 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     )!;
 
     expect(strengthItems(armorA1, "block-pull-deadlift", "main")).toHaveLength(4);
-    expect(strengthItems(armorA1, "back-extension-45", "back_off")).toHaveLength(5);
+    const reverseHyper = strengthItems(armorA1, "reverse-hyper", "back_off");
+    expect(reverseHyper).toHaveLength(5);
+    expect(reverseHyper[0]).toMatchObject({
+      percentTm: 65,
+      setRange: { min: 3, max: 5 },
+      repRange: { min: 8, max: 10 },
+    });
     for (const slug of ["hanging-leg-raise", "hanging-knee-raise", "toes-to-bar"]) {
       const triadItems = strengthItems(armorA1, slug, "accessory");
       expect(triadItems).toHaveLength(3);
       expect(triadItems.every((item) => item.reps === 5)).toBe(true);
     }
-    expect(strengthItems(armorB1, "weighted-pull-up", "main")).toHaveLength(4);
+    expect(strengthItems(armorB1, "bench-press-flat", "main")).toHaveLength(4);
+    expect(strengthItems(armorB1, "bb-row-overhand", "main")).toHaveLength(4);
+    expect(strengthItems(armorB1, "weighted-pull-up", "main")).toHaveLength(0);
+    expect(strengthItems(armorB1, "inverted-row", "back_off")).toHaveLength(5);
+    expect(strengthItems(armorB1, "ohp-standing", "back_off")).toHaveLength(5);
 
     await page.goto(`/app/sessions/start/${armorA1.id}`);
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}/, { timeout: 30_000 });
@@ -389,6 +444,10 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     await expect(page.getByTestId("movement-group-supplemental")).toContainText(
       "Supplemental lifts",
     );
+    await expect(
+      page.getByText("Reverse Hyperextension", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText("3–5×8–10 @ 65% 1RM")).toBeVisible();
     await expect(page.getByText("Hanging Leg Raise", { exact: true })).toBeVisible();
     await expect(page.getByText("Hanging Knee Raise", { exact: true })).toBeVisible();
     await expect(page.getByText("Toes-to-Bar", { exact: true })).toBeVisible();

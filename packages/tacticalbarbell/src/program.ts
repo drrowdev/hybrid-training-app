@@ -69,6 +69,10 @@ export interface TbInstance {
    * strength cluster while reusing TB's loading wave.
    */
   useTemplateDefaults: boolean;
+  /** Activation Armor Supp A choice, selected once for all Armor sessions. */
+  armorSupplementalA: "back-extension" | "reverse-hyper";
+  /** Activation Armor Supp B choice, selected once for all Armor sessions. */
+  armorSupplementalB: "pullup" | "inverted-row";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -135,6 +139,26 @@ function sessionLifts(
   let lifts = instance.useTemplateDefaults && session.fixedMovements
     ? session.fixedMovements.map((entry) => cloneEntry(entry))
     : instance.cluster.filter((c) => (session.split ? c.split === session.split : true));
+  if (template.id === "activation" && session.id.startsWith("armor-a")) {
+    const selected =
+      instance.armorSupplementalA === "reverse-hyper"
+        ? "reverse-hyper"
+        : "back-extension";
+    lifts = lifts.map((lift) =>
+      lift.movement === "back-extension" ? { movement: selected } : lift,
+    );
+  }
+  if (template.id === "activation" && session.id.startsWith("armor-b")) {
+    const selected =
+      instance.armorSupplementalB === "inverted-row"
+        ? "inverted-row"
+        : "pullup";
+    lifts = lifts.map((lift) =>
+      lift.movement === "pullup"
+        ? { movement: selected, kind: "unanchored" }
+        : lift,
+    );
+  }
   const excluded = new Set(session.excludeMovements ?? []);
   lifts = lifts.filter((lift) => !excluded.has(lift.movement));
   for (const entry of session.includeMovements ?? []) {
@@ -244,6 +268,14 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
     const useTrainingMax = v.useTrainingMax === true;
     const tmPercent = Number(v.tmPercent ?? 0.9) || 0.9;
     const useTemplateDefaults = v.useTemplateDefaults !== false;
+    const armorSupplementalA =
+      v.armorSupplementalA === "reverse-hyper"
+        ? "reverse-hyper"
+        : "back-extension";
+    const armorSupplementalB =
+      v.armorSupplementalB === "inverted-row"
+        ? "inverted-row"
+        : "pullup";
 
     return {
       templateId: template.id,
@@ -253,6 +285,8 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       useTrainingMax,
       tmPercent,
       useTemplateDefaults,
+      armorSupplementalA,
+      armorSupplementalB,
     };
   },
 

@@ -38,6 +38,31 @@ describe("computeTmAlignment — Option A", () => {
     expect(align).toMatchObject({ squat: 100, bench: 100, deadlift: 100, press: 100 });
   });
 
+  it("aligns exact Tactical Barbell movements outside the four broad roles", () => {
+    const activationCtx = {
+      ...ctx.oneRepMaxes,
+      "barbell-row": 120,
+      "rack-pull": 250,
+      "back-extension": 80,
+      "reverse-hyper": 90,
+    };
+    const inst = tacticalBarbellEngine.setup(
+      { values: { templateId: "activation" } },
+      { oneRepMaxes: activationCtx, roundingKg: 2.5 },
+    );
+    const align = computeTmAlignment(
+      "tactical-barbell",
+      inst,
+      activationCtx,
+    );
+    expect(align).toMatchObject({
+      "barbell-row": 100,
+      "rack-pull": 100,
+      "back-extension": 100,
+      "reverse-hyper": 100,
+    });
+  });
+
   it("Tactical Barbell with a derived Training Max uses that TM%", () => {
     const inst = tacticalBarbellEngine.setup(
       { values: { templateId: "operator", useTrainingMax: true, tmPercent: 0.9 } },

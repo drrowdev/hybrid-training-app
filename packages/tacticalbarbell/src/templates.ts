@@ -27,11 +27,12 @@ export const TB_MOVEMENT_LABEL: Record<string, string> = {
   deadlift: "Deadlift",
   press: "Overhead Press",
   "overhead-press": "Overhead Press",
-  pullup: "Weighted Pull-up",
+  pullup: "Pull-up",
   "weighted-pullup": "Weighted Pull-up",
   "barbell-row": "Barbell Row",
   "pendlay-row": "Pendlay Row",
   "rack-pull": "Rack Pull",
+  "reverse-hyper": "Reverse Hyperextension",
   "goblet-squat": "Goblet Squat",
   "inverted-row": "Inverted Row",
   pushup: "Push-up",
@@ -712,11 +713,12 @@ const A = {
   bench: { movement: "bench" },
   deadlift: { movement: "deadlift" },
   press: { movement: "overhead-press" },
-  pullup: { movement: "weighted-pullup", kind: "weighted-bw" },
+  pullup: { movement: "pullup", kind: "unanchored" },
   barbellRow: { movement: "barbell-row" },
   pendlayRow: { movement: "pendlay-row" },
   rackPull: { movement: "rack-pull" },
-  backExtension: { movement: "back-extension", kind: "unanchored" },
+  backExtension: { movement: "back-extension" },
+  reverseHyper: { movement: "reverse-hyper" },
   powerClean: { movement: "power-clean" },
   pushPress: { movement: "push-press" },
   jumpSquat: { movement: "jump-squat", kind: "unanchored" },
@@ -747,7 +749,24 @@ const supplementalRules = (movements: string[]): TbPrescriptionRule[] =>
     repsMax: 10,
     repsLabel: "8–10",
     itemKind: "supplemental",
+    warmup: false,
     note: "Supplemental — 3–5 sets of 8–10.",
+  }));
+
+const bodyweightSupplementalRules = (movements: string[]): TbPrescriptionRule[] =>
+  ARMOR_SUPPLEMENTAL_WAVES.map(([week]) => ({
+    activeWeeks: [week],
+    movements,
+    percent: null,
+    setsMin: 3,
+    setsMax: 5,
+    reps: 8,
+    repsMax: 10,
+    repsLabel: "8–10",
+    itemKind: "supplemental",
+    warmup: false,
+    note:
+      "Supplemental — 3–5 sets of 8–10; max reps may be used for bodyweight work.",
   }));
 
 const deadliftTaperRules = (): TbPrescriptionRule[] =>
@@ -951,21 +970,28 @@ const ACTIVATION: TbTemplate = {
     ], [], { kind: "test" }),
     activationSession("armor-a1", "Armor A1", 0, ACTIVATION_ARMOR_WEEKS, [
       A.squat, A.rackPull, A.backExtension, ...AB_TRIAD,
-    ], [...supplementalRules(["back-extension"]), abRule]),
+    ], [...supplementalRules(["back-extension", "reverse-hyper"]), abRule]),
     activationSession("armor-b1", "Armor B1", 1, ACTIVATION_ARMOR_WEEKS, [
       A.bench, A.barbellRow, A.pullup, A.press,
-    ], supplementalRules(["overhead-press"])),
+    ], [
+      ...bodyweightSupplementalRules(["pullup", "inverted-row"]),
+      ...supplementalRules(["overhead-press"]),
+    ]),
     activationSession("armor-a2", "Armor A2", 3, ACTIVATION_ARMOR_WEEKS, [
       A.squat, A.deadlift, A.backExtension, ...AB_TRIAD,
     ], [
       ...armorSecondPassRules,
       ...deadliftTaperRules(),
-      ...supplementalRules(["back-extension"]),
+      ...supplementalRules(["back-extension", "reverse-hyper"]),
       abRule,
     ]),
     activationSession("armor-b2", "Armor B2", 5, ACTIVATION_ARMOR_WEEKS, [
       A.bench, A.barbellRow, A.pullup, A.press,
-    ], [...armorSecondPassRules, ...supplementalRules(["overhead-press"])]),
+    ], [
+      ...armorSecondPassRules,
+      ...bodyweightSupplementalRules(["pullup", "inverted-row"]),
+      ...supplementalRules(["overhead-press"]),
+    ]),
     activationConditioningSession(
       "armor-lss-1",
       "Armor · LSS 1",

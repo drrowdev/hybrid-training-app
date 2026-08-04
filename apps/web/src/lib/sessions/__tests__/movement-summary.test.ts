@@ -111,6 +111,28 @@ describe("summariseGroupForHeader — not started", () => {
     expect(summariseGroupForHeader(g, [])).toBe("3×10");
   });
 
+  it("supplemental work shows the prescribed set and rep ranges", () => {
+    const ranged = {
+      movementId: "supp",
+      kind: "back_off" as const,
+      sets: 1,
+      reps: 8,
+      percentTm: 65,
+      setRange: { min: 3, max: 5 },
+      repRange: { min: 8, max: 10 },
+    };
+    const g = groupOf([
+      ranged,
+      ranged,
+      ranged,
+      { ...ranged, optional: true },
+      { ...ranged, optional: true },
+    ]);
+    expect(summariseGroupForHeader(g, [], undefined, "1RM")).toBe(
+      "3–5×8–10 @ 65% 1RM",
+    );
+  });
+
   it("mixed main + back-off renders both blocks, truncated tastefully", () => {
     const g = groupOf([
       { movementId: "sq", kind: "main", sets: 1, reps: 5, percentTm: 65 },

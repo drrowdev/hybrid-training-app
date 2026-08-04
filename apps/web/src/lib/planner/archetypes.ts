@@ -2217,7 +2217,9 @@ export function formatPrescriptionItem(item: PrescriptionItem, tmKg?: number): s
     return `${item.intensityLabel ?? "Tendon"} ${reps}${note}`.trim();
   }
   if (item.kind === "accessory") {
-    const sets = item.sets ?? 3;
+    const sets = item.setRange
+      ? `${item.setRange.min}–${item.setRange.max}`
+      : String(item.sets ?? 3);
     // Carries are programmed by distance (or time), never reps. The
     // accessory-intensity matrix strips `reps` for the "carry" bucket
     // and writes `distanceM` instead. Render that here — the catch-all
@@ -2235,7 +2237,9 @@ export function formatPrescriptionItem(item: PrescriptionItem, tmKg?: number): s
       const hold = min === max ? `${min}s hold` : `${min}–${max}s hold`;
       return `${sets} × ${hold}`;
     }
-    const reps = item.reps ?? 10;
+    const reps = item.repRange
+      ? `${item.repRange.min}–${item.repRange.max}`
+      : String(item.reps ?? 10);
     // Internal category tags ("durability" / "functional" / "aesthetic" /
     // "power") live on intensityLabel for engine bookkeeping but must not
     // be rendered to the user — the movement name (e.g. "Farmer carry")
@@ -2250,7 +2254,11 @@ export function formatPrescriptionItem(item: PrescriptionItem, tmKg?: number): s
       ? `${roundToPlate(tmKg * (item.percentTm / 100))} kg`
       : null;
   const intensity = item.intensityLabel ?? (item.percentTm ? `${item.percentTm}% TM` : null);
-  const reps = item.reps != null ? `× ${item.reps}` : "";
+  const reps = item.repRange
+    ? `× ${item.repRange.min}–${item.repRange.max}`
+    : item.reps != null
+      ? `× ${item.reps}`
+      : "";
   if (weight && intensity) return `${weight} (${intensity}) ${reps}`.trim();
   if (weight) return `${weight} ${reps}`.trim();
   if (intensity) return `${intensity} ${reps}`.trim();

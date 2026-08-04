@@ -25,6 +25,33 @@ describe("formatPrescriptionItem · accessory branch", () => {
     expect(formatPrescriptionItem(accessory({ sets: 3, reps: 12 }))).toBe("3 × 12");
   });
 
+  it("renders structured set and rep ranges without collapsing to their maxima", () => {
+    expect(
+      formatPrescriptionItem(
+        accessory({
+          sets: 5,
+          reps: 8,
+          setRange: { min: 3, max: 5 },
+          repRange: { min: 8, max: 10 },
+        }),
+      ),
+    ).toBe("3–5 × 8–10");
+  });
+
+  it("renders a loaded supplemental rep range", () => {
+    expect(
+      formatPrescriptionItem({
+        movementId: "m",
+        kind: "back_off",
+        sets: 1,
+        reps: 8,
+        repRange: { min: 8, max: 10 },
+        percentTm: 65,
+        intensityLabel: "65% 1RM",
+      }),
+    ).toBe("65% 1RM × 8–10");
+  });
+
   it("renders carry accessory as N × distance, ignoring any tentative reps", () => {
     // The accessory-intensity matrix strips `reps` for carries and
     // writes `distanceM` — but defensively we should still pick

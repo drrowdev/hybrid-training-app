@@ -97,14 +97,20 @@ function summarisePlanned(items: PrescriptionItem[], tmLabel: "TM" | "1RM" = "TM
 }
 
 function summariseStrengthBlock(items: PrescriptionItem[], tmLabel: "TM" | "1RM" = "TM"): string {
-  const reps = items.map((it) => it.reps ?? 0);
+  const reps = items.map((it) =>
+    it.repRange ? `${it.repRange.min}–${it.repRange.max}` : String(it.reps ?? 0),
+  );
   const pcts = items.map((it) => it.percentTm).filter((p): p is number => p != null);
   const sameReps = reps.every((r) => r === reps[0]);
   const samePct = pcts.length > 0 && pcts.every((p) => p === pcts[0]);
+  const setRange = items[0]?.setRange;
+  const setLabel = setRange
+    ? `${setRange.min}–${setRange.max}`
+    : String(items.length);
 
   // Uniform across the block: `3×5 @ 80% TM`.
   if (sameReps && samePct) {
-    const head = `${items.length}×${reps[0]}`;
+    const head = `${setLabel}×${reps[0]}`;
     return pcts.length > 0 ? `${head} @ ${pcts[0]}% ${tmLabel}` : head;
   }
   // Same reps, varying intensity: `5·5·5 @ 65/75/85% TM`.

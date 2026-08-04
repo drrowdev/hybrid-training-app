@@ -123,6 +123,8 @@ export interface PickerStartSchedule {
 /** TB program id (matches the engine's program family / id). */
 const TB_PROGRAM_ID = "tactical-barbell";
 const CANONICAL_BENCH_KEYS = new Set(["squat", "bench", "deadlift", "press"]);
+const DEFAULT_ARMOR_SUPPLEMENTAL_A = "back-extension";
+const DEFAULT_ARMOR_SUPPLEMENTAL_B = "pullup";
 
 /** A selectable movement variant for a main-lift role (resolved to a catalog id). */
 export interface PickerBenchVariant {
@@ -416,6 +418,8 @@ const MOVEMENT_LABEL: Record<string, string> = {
   "pendlay-row": "Pendlay Row",
   "rack-pull": "Rack Pull",
   "weighted-pullup": "Weighted Pull-up",
+  "back-extension": "Back Extension",
+  "reverse-hyper": "Reverse Hyperextension",
   "overhead-press": "Overhead Press",
   "power-clean": "Power Clean",
   "push-press": "Push Press",
@@ -550,6 +554,36 @@ export function startScheduleFor(
       (schedule) => schedule.startWeekIndex === startWeekIndex,
     ) ?? null
   );
+}
+
+export function activationRequiredBenchmarkKeysFor(
+  startWeekIndex: number,
+  armorSupplementalA: "back-extension" | "reverse-hyper",
+): string[] {
+  if (startWeekIndex <= 4) return [];
+  if (startWeekIndex <= 7) {
+    return [
+      "squat",
+      "bench",
+      "deadlift",
+      "barbell-row",
+      "rack-pull",
+      "overhead-press",
+      armorSupplementalA,
+    ];
+  }
+  if (startWeekIndex <= 19) {
+    return ["squat", "bench", "deadlift", "barbell-row"];
+  }
+  if (startWeekIndex === 20 || startWeekIndex >= 24) return [];
+  return [
+    "squat",
+    "bench",
+    "barbell-row",
+    "pendlay-row",
+    "power-clean",
+    "push-press",
+  ];
 }
 
 export interface ClusterValidationLite {
@@ -849,6 +883,14 @@ export function ProgramPicker({
   const tbTemplateId = isTb ? String(values.templateId ?? "") : "";
   const activeTbTemplate = isTb ? tbTemplateById.get(tbTemplateId) ?? null : null;
   const isActivation = activeTbTemplate?.id === "activation";
+  const armorSupplementalA =
+    values.armorSupplementalA === "reverse-hyper"
+      ? "reverse-hyper"
+      : DEFAULT_ARMOR_SUPPLEMENTAL_A;
+  const armorSupplementalB =
+    values.armorSupplementalB === "inverted-row"
+      ? "inverted-row"
+      : DEFAULT_ARMOR_SUPPLEMENTAL_B;
   // ADR 0048 — optional TB accessories (opt-in, template-gated).
   const tbAccessoryPlan = isTb ? tbAccessoryPlanForTemplate(tbTemplateId) : null;
   // Green Protocol also offers opt-in accessories (its book treats them as
@@ -1008,8 +1050,26 @@ export function ProgramPicker({
   // Which main-lift roles the Benchmarks step shows. Cluster programs (TB) show
   // the barbell lifts in their chosen cluster; everyone else shows all four mains.
   const relevantBenchKeys = useMemo<string[]>(() => {
-    return relevantBenchmarkKeysFor(activeTbTemplate, cluster, benchRoles);
-  }, [activeTbTemplate, cluster, benchRoles]);
+    const base = relevantBenchmarkKeysFor(activeTbTemplate, cluster, benchRoles);
+    if (!isActivation) return base;
+    return base
+      .filter(
+        (key) => key !== "back-extension" && key !== "reverse-hyper",
+      )
+      .concat(armorSupplementalA)
+      .filter((key, index, all) => all.indexOf(key) === index)
+      .sort(
+        (a, b) =>
+          benchRoles.findIndex((role) => role.engineKey === a) -
+          benchRoles.findIndex((role) => role.engineKey === b),
+      );
+  }, [
+    activeTbTemplate,
+    armorSupplementalA,
+    benchRoles,
+    cluster,
+    isActivation,
+  ]);
 
   const enteredAnyTm = useMemo(
     () => Object.values(benchVals).some((b) => Number(b.valueStr) > 0),
@@ -1024,12 +1084,25 @@ export function ProgramPicker({
     (activeTbTemplate?.fixedLoadout
       ? missingRelevantBenchKeys.length === 0
       : hasUsableTms);
+  const activationStartRequiredBenchKeys = isActivation
+    ? activationRequiredBenchmarkKeysFor(
+       startWeekIndex,
+       armorSupplementalA,
+      )
+    : [];
+  const missingActivationStartBenchKeys =
+    activationStartRequiredBenchKeys.filter(
+      (key) => Number(benchVals[key]?.valueStr ?? 0) <= 0,
+    );
+  const activationStartBenchmarksReady =
+    !isActivation || missingActivationStartBenchKeys.length === 0;
 
   const canDeploy =
     !!selected?.enabled &&
     (fixedSchedule || weekdays.length > 0) &&
     daysMatch &&
     benchmarksReady &&
+    activationStartBenchmarksReady &&
     clusterOk &&
     !pending;
 
@@ -1157,6 +1230,10 @@ export function ProgramPicker({
     if (!selected) return;
     setResult(null);
     const setupValues: Record<string, unknown> = { ...values };
+    if (isActivation) {
+      setupValues.armorSupplementalA = armorSupplementalA;
+      setupValues.armorSupplementalB = armorSupplementalB;
+    }
     if (activeTbTemplate) {
       if (activeTbTemplate.structure === "split") {
         setupValues.splitA = cluster
@@ -1639,6 +1716,91 @@ export function ProgramPicker({
     );
   }
 
+  function renderActivationSupplementals() {
+    if (!isActivation) return null;
+    const groups = [
+      {
+        key: "armorSupplementalA",
+        title: "Supp A · posterior chain + Ab Triad",
+        selected: armorSupplementalA,
+        options: [
+          {
+            value: "back-extension",
+            label: "Back Extensions + Ab Triad",
+            desc: "Loaded supplemental work at 65/70/75% of 1RM.",
+          },
+          {
+            value: "reverse-hyper",
+            label: "Reverse Hyper + Ab Triad",
+            desc: "Loaded supplemental work at 65/70/75% of 1RM.",
+          },
+        ],
+      },
+      {
+        key: "armorSupplementalB",
+        title: "Supp B · pull + overhead press",
+        selected: armorSupplementalB,
+        options: [
+          {
+            value: "pullup",
+            label: "Pull-ups + Overhead Press",
+            desc: "Pull-ups use 8–10 reps or max reps; overhead press uses 65/70/75% of 1RM.",
+          },
+          {
+            value: "inverted-row",
+            label: "Inverted Rows + Overhead Press",
+            desc: "Inverted rows use 8–10 reps or max reps; overhead press uses 65/70/75% of 1RM.",
+          },
+        ],
+      },
+    ] as const;
+    return (
+      <div
+        data-testid="activation-armor-supplementals"
+        style={{ marginTop: 24, maxWidth: 720 }}
+      >
+        <div className={styles.label}>Armor supplemental clusters</div>
+        <p className={styles.sub} style={{ marginTop: 6 }}>
+          Choose each cluster once. The same Supp A and Supp B choices are used
+          throughout all three Armor weeks.
+        </p>
+        <div style={{ display: "grid", gap: 18 }}>
+          {groups.map((group) => (
+            <div key={group.key}>
+              <div className={styles.label}>{group.title}</div>
+              <div className={styles.opts}>
+                {group.options.map((option) => {
+                  const selectedOption = group.selected === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      data-testid={`activation-${group.key}-${option.value}`}
+                      onClick={() => setField(group.key, option.value)}
+                      className={`${styles.opt}${
+                        selectedOption ? ` ${styles.optSel}` : ""
+                      }`}
+                    >
+                      <div className={styles.optOn}>
+                        <span className={styles.optNm}>{option.label}</span>
+                        {selectedOption ? (
+                          <span className={styles.pill}>Selected</span>
+                        ) : null}
+                      </div>
+                      <div className={styles.optDesc}>
+                        3–5 sets of 8–10 reps. {option.desc}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   function renderLoadoutStep() {
     if (!selected) return null;
     // Setup-field programs (Hybrid goal chips / HYROX experience+division) — no
@@ -1669,6 +1831,7 @@ export function ProgramPicker({
         {renderLoadoutOptions()}
         {renderSpecStrip()}
         {renderGpPlan()}
+        {renderActivationSupplementals()}
         {renderTbAccessories()}
       </div>
     );
@@ -1798,7 +1961,7 @@ export function ProgramPicker({
         : "Your strength cluster"
       : "Your benchmarks";
     const sub = isActivation
-      ? "Optional for now. Activation begins with strength-endurance circuits, then gives you a test week before percentage-based lifting starts."
+      ? "Optional when starting from Base. Its test week establishes the main lifts; add the selected Supp A 1RM before Armor. A direct Armor start requires every loaded Armor max now."
       : isCluster
       ? "Pick the main lifts for your cluster. Enter a 1-rep max for each, or estimate it from a recent set."
       : "Enter a 1-rep max for each lift, switch the variant, or estimate from a recent set.";
@@ -2301,9 +2464,21 @@ export function ProgramPicker({
                 </button>
               </div>
             )}
+
             <p className={styles.note}>{schednote}</p>
           </>
         )}
+
+        {isActivation && !activationStartBenchmarksReady ? (
+          <p className={styles.banner}>
+            Starting {selectedStartSchedule?.label ?? "this phase"} requires a
+            1-rep max for{" "}
+            {missingActivationStartBenchKeys
+              .map((key) => movementLabel(key))
+              .join(", ")}
+            . Go back to Starting maxes to add them before deploying.
+          </p>
+        ) : null}
 
         {(isHybrid || isHyrox) ? (
           <div style={{ marginTop: 24, maxWidth: 560 }} data-testid="two-a-day">

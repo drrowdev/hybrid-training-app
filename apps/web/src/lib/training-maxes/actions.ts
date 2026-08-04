@@ -6,6 +6,7 @@ import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { roundToPlate } from "./queries";
 import { evaluateTmSuggestion } from "./suggestions";
+import { activeProgramTmPercent } from "./active-program-basis";
 
 const upsertSchema = z.object({
   movementId: z.string().uuid(),
@@ -38,6 +39,23 @@ export async function upsertTrainingMax(formData: FormData): Promise<UpsertResul
     .eq("user_id", user.id)
     .eq("movement_id", parsed.data.movementId)
     .maybeSingle();
+  let tmPercent = existing?.tm_percent ?? null;
+  if (tmPercent == null) {
+    const { data: activeProgram, error: activeProgramError } = await supabase
+      .from("program_instances")
+      .select("program_family, instance")
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (activeProgramError) {
+      return { ok: false, error: activeProgramError.message };
+    }
+    tmPercent = activeProgramTmPercent(
+      activeProgram?.program_family,
+      activeProgram?.instance,
+    );
+  }
 
   // Manual upsert is always 'entered' — typing a value into the form is an
   // explicit user action. Any prior derived provenance is cleared so the row
@@ -47,7 +65,7 @@ export async function upsertTrainingMax(formData: FormData): Promise<UpsertResul
       user_id: user.id,
       movement_id: parsed.data.movementId,
       one_rm_kg: parsed.data.oneRmKg,
-      tm_percent: existing?.tm_percent ?? null,
+      tm_percent: tmPercent,
       source: "entered",
       derived_from_session_id: null,
       derived_from_set_log_id: null,
@@ -419,5 +437,4 @@ export async function generateTmSuggestionsForSession(
   }
   return created;
 }
-
 

@@ -122,6 +122,9 @@ export function adaptSessionPrescription(
         kind: "accessory",
         sets: 1,
         ...(it.reps !== undefined ? { reps: it.reps } : {}),
+        ...(it.repsMax != null && it.reps != null && it.repsMax !== it.reps
+          ? { repRange: { min: it.reps, max: it.repsMax } }
+          : {}),
         // Distance-prescribed carries → app `distanceM` so the row renders
         // "3 × 40–60 m" instead of the `reps ?? 10` rep fallback.
         ...(it.distanceRangeM ? { distanceM: it.distanceRangeM } : {}),
@@ -197,6 +200,12 @@ export function adaptSessionPrescription(
       kind: appKind,
       sets: setCount,
       ...(it.reps !== undefined ? { reps: it.reps } : {}),
+      ...(requiredSetCount !== setCount
+        ? { setRange: { min: requiredSetCount, max: setCount } }
+        : {}),
+      ...(it.repsMax != null && it.reps != null && it.repsMax !== it.reps
+        ? { repRange: { min: it.reps, max: it.repsMax } }
+        : {}),
       ...(it.percentOfTm !== undefined ? { percentTm: Math.round(it.percentOfTm * 100) } : {}),
       // Label the working-max basis on the main / supplemental rows so the plan
       // drawer + preview read "72% 1RM" for HYROX/TB/GP (which load off the 1RM)
