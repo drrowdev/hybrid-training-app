@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { PrescriptionItem } from "@hta/db";
 import type { SkipReason } from "@/lib/sessions/skip-reasons";
 import {
@@ -42,6 +43,8 @@ import type { PlateInventoryItem } from "./plate-math";
 
 export type FocusLoggedSet = {
   id: string;
+  /** Stored attribution can differ after a forward-only movement swap. */
+  movementId?: string;
   weightKg: number | null;
   reps: number | null;
   /** Distance in metres for loaded-carry sets (set_logs.distance_m). */
@@ -69,6 +72,9 @@ export type FocusViewProps = {
   /** Pre-existing PR snapshot used for the inline PR badges. */
   priorBest: { heaviestWeight: number | null; bestE1rm: number | null } | undefined;
   addStrengthSet: (fd: FormData) => Promise<{ error?: string; ok?: true }>;
+  updateStrengthSet?: (
+    fd: FormData,
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
   hapticsEnabled: boolean;
   timerSoundEnabled: boolean;
   /**
@@ -115,6 +121,10 @@ export type FocusViewProps = {
    * the default-kind validation no longer demands a weight.
    */
   bodyweightCapable?: boolean;
+  /** Compact hierarchy used by the single-movement Focus Strip logger. */
+  focusStrip?: boolean;
+  /** Superset A1 advances immediately; its A2 partner owns the shared rest. */
+  suppressRestAfterSave?: boolean;
 };
 
 const SET_KIND_TO_LOG: Record<string, "warmup" | "main" | "back_off" | "accessory" | "tendon"> = {
@@ -144,6 +154,7 @@ export function MovementFocusView({
   loggedSets,
   priorBest,
   addStrengthSet,
+  updateStrengthSet,
   hapticsEnabled,
   timerSoundEnabled,
   barbellKg = 20,
@@ -154,7 +165,10 @@ export function MovementFocusView({
   onSaved,
   bwGateStateByFamily,
   bodyweightCapable = false,
+  focusStrip = false,
+  suppressRestAfterSave = false,
 }: FocusViewProps) {
+  const router = useRouter();
   const units = useUnits();
   const unitLabel = weightUnitLabel(units);
   // priorBest is no longer consumed for PR detection — the flash is now
@@ -181,7 +195,15 @@ export function MovementFocusView({
   const activeItem = group.items[cursor];
   const activeItemIndex = group.itemIndices[cursor]!;
   const isActiveLogged = loggedItemIndices.has(activeItemIndex);
+  const isActiveSkipped = skippedItemIndices?.has(activeItemIndex) ?? false;
   const loggedSetId = loggedSetIdByItemIndex[activeItemIndex];
+  const activeLoggedSet = isActiveLogged
+    ? loggedSets.find((set) => set.id === loggedSetId)
+    : undefined;
+  const pendingSetSync = isActiveLogged && loggedSetId == null;
+  const loggedBeforeSwap =
+    activeLoggedSet?.movementId != null &&
+    activeLoggedSet.movementId !== group.movementId;
   const isWarmup = activeItem?.kind === "warmup";
   // Position of the active slot within its own kind-bucket
   // (warmup / working / accessory). Drives the "Set X of Y" caption
@@ -220,9 +242,18 @@ export function MovementFocusView({
     if (activeItem.targetWeightKg != null && activeItem.targetWeightKg > 0) {
       return roundToPlate(activeItem.targetWeightKg);
     }
-    // Fall back to the most recent logged weight for this movement.
-    return loggedSets[loggedSets.length - 1]?.weightKg ?? 0;
-  }, [activeItem, tmKg, loggedSets]);
+    // Fall back to the most recent logged weight attributed to this movement.
+    // A forward-only swap can include an older movement's row for inline review;
+    // that historical load must not seed the replacement movement.
+    return (
+      loggedSets
+        .findLast(
+          (set) =>
+            set.movementId == null || set.movementId === group.movementId,
+        )
+        ?.weightKg ?? 0
+    );
+  }, [activeItem, tmKg, loggedSets, group.movementId]);
   const targetReps = activeItem?.reps ?? 5;
   // Detect kind from prescription fields. `distanceM` = loaded carry
   // (programmed by metres, McGill 2014); `holdSec` = isometric hold.
@@ -255,17 +286,33 @@ export function MovementFocusView({
 
   // Stepper state. We snap defaults back to target whenever the cursor
   // moves so the user always starts at the prescription.
-  const [weight, setWeight] = useState<number>(targetWeight);
-  const [reps, setReps] = useState<number>(targetReps);
-  const [distanceM, setDistanceM] = useState<number>(targetDistance);
-  const [durationSec, setDurationSec] = useState<number>(targetDuration);
+  const initialLoggedSet =
+    activeLoggedSet && !activeLoggedSet.skipped
+      ? activeLoggedSet
+      : undefined;
+  const [weight, setWeight] = useState<number>(
+    initialLoggedSet?.weightKg ?? targetWeight,
+  );
+  const [reps, setReps] = useState<number>(
+    initialLoggedSet?.reps != null && initialLoggedSet.reps > 0
+      ? initialLoggedSet.reps
+      : targetReps,
+  );
+  const [distanceM, setDistanceM] = useState<number>(
+    initialLoggedSet?.distanceM ?? targetDistance,
+  );
+  const [durationSec, setDurationSec] = useState<number>(
+    initialLoggedSet?.durationSec ?? targetDuration,
+  );
   // Phase 7 — actual external load applied (vest / belt / ankle / band
   // assist). Mirrors the planner's suggested `bw.externalLoadKg` by
   // default; user can override via the ±2.5 kg stepper. Negative for
   // band-assist.
   const targetExternalLoad = activeItem?.bw?.externalLoadKg ?? 0;
   const [externalLoadKg, setExternalLoadKg] = useState<number>(targetExternalLoad);
-  const [rpe, setRpe] = useState<number | null>(null);
+  const [rpe, setRpe] = useState<number | null>(
+    initialLoggedSet?.rpe ?? null,
+  );
   const [error, setError] = useState<string | null>(null);
   // Logging is now optimistic (the parent overlays the set instantly), so there
   // is no blocking "submitting" window — the CTA never shows a "Logging…" spin.
@@ -300,21 +347,35 @@ export function MovementFocusView({
   useEffect(() => {
     if (lastCursorKey.current === cursorKey) return;
     lastCursorKey.current = cursorKey;
-    setWeight(targetWeight);
-    setReps(targetReps);
-    setDistanceM(targetDistance);
-    setDurationSec(targetDuration);
-    setExternalLoadKg(targetExternalLoad);
     // Pre-select RPE from an already-logged set when re-opening it,
     // otherwise clear so the picker is the empty "no zone" state.
-    const existing = isActiveLogged
-      ? loggedSets.find((s) => s.id === loggedSetId)
-      : null;
+    const existing = activeLoggedSet;
+    setWeight(
+      existing && !existing.skipped && existing.weightKg != null
+        ? existing.weightKg
+        : targetWeight,
+    );
+    setReps(
+      existing && !existing.skipped && existing.reps != null && existing.reps > 0
+        ? existing.reps
+        : targetReps,
+    );
+    setDistanceM(
+      existing && !existing.skipped && existing.distanceM != null
+        ? existing.distanceM
+        : targetDistance,
+    );
+    setDurationSec(
+      existing && !existing.skipped && existing.durationSec != null
+        ? existing.durationSec
+        : targetDuration,
+    );
+    setExternalLoadKg(targetExternalLoad);
     setRpe(existing?.rpe ?? null);
     setError(null);
     setSkipMenuOpen(false);
     setSkipError(null);
-  }, [cursorKey, targetWeight, targetReps, targetDistance, targetDuration, targetExternalLoad, isActiveLogged, loggedSetId, loggedSets]);
+  }, [cursorKey, targetWeight, targetReps, targetDistance, targetDuration, targetExternalLoad, activeLoggedSet]);
 
   // Auto-clear PR flash after 4.5s.
   useEffect(() => {
@@ -326,7 +387,9 @@ export function MovementFocusView({
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!activeItem) return;
-    if (firedIndicesRef.current.has(activeItemIndex)) return;
+    const updatingExisting =
+      isActiveLogged && loggedSetId != null && updateStrengthSet != null;
+    if (!updatingExisting && firedIndicesRef.current.has(activeItemIndex)) return;
     // Per-kind validation. Carries log weight + distance (the rep
     // stepper is hidden); isometric holds log weight (optional) +
     // duration; everything else logs weight + reps.
@@ -396,6 +459,25 @@ export function MovementFocusView({
       fd.set("loadSource", String(activeItem.bw.loadSource));
     }
 
+    if (updatingExisting) {
+      fd.set("id", loggedSetId);
+      hapticTick(hapticsEnabled);
+      setJustLoggedAt(Date.now());
+      void updateStrengthSet(fd)
+        .then((result) => {
+          if (!result.ok) {
+            setError(result.error);
+            return;
+          }
+          setManualCursor(cursor);
+          router.refresh();
+        })
+        .catch(() => {
+          setError("Couldn't update that set — check your connection and retry.");
+        });
+      return;
+    }
+
     // TM-anchored PR detection. The flash fires only when the new set
     // beats the user's saved 1RM (Weight / e1RM) or, in an AMRAP context,
     // exceeds the prescribed rep count (Rep PR). If `oneRmKg` is unset,
@@ -437,7 +519,7 @@ export function MovementFocusView({
     // mislabel itself "next <movement>" and linger over the Finish CTA. We also
     // CLEAR any timer still running from the previous set.
     const isLastSlot = cursor >= totalSlots - 1;
-    if (isLastSlot) {
+    if (isLastSlot || suppressRestAfterSave) {
       setRestSeconds(0);
     } else {
       const secs = restSecondsForKind(SET_KIND_TO_LOG[activeItem.kind] ?? "main");
@@ -539,7 +621,17 @@ export function MovementFocusView({
     }
   };
 
-  const ctaLabel = isActiveLogged ? "Update set ↗" : submitting ? "Logging…" : "Log set";
+  const ctaLabel = isActiveLogged
+    ? pendingSetSync
+      ? "Sync pending"
+      : loggedBeforeSwap
+        ? "Logged before swap"
+        : isActiveSkipped
+          ? "Restore set"
+          : "Update set"
+    : submitting
+      ? "Logging…"
+      : "Log set";
   const nextSlot = cursor + 1 < totalSlots ? cursor + 1 : null;
   const nextItem = nextSlot != null ? group.items[nextSlot]! : null;
   const nextWeight =
@@ -554,7 +646,7 @@ export function MovementFocusView({
       data-testid="movement-focus-view"
       style={{
         display: "grid",
-        gap: 14,
+        gap: focusStrip ? 10 : 14,
         // On wide screens the focus card otherwise stretches to ~900px and
         // makes the weight/buttons look oversized. Cap at a comfortable
         // mobile-equivalent width and center.
@@ -604,7 +696,7 @@ export function MovementFocusView({
         data-testid="movement-focus-card"
         data-just-logged={justLogged ? "true" : "false"}
         style={{
-          padding: 18,
+          padding: focusStrip ? 16 : 18,
           display: "grid",
           gap: 10,
           textAlign: "center",
@@ -870,7 +962,7 @@ export function MovementFocusView({
             </div>
           );
         }
-        return (
+        const plateView = (
           <div className="cp-plate-wrap">
             <PlateView
               targetWeightKg={weight}
@@ -880,6 +972,24 @@ export function MovementFocusView({
               preferStandardLbPlates={preferStandardLbPlates}
             />
           </div>
+        );
+        return focusStrip ? (
+          <details
+            data-testid="focus-strip-plates"
+            style={{
+              borderTop: "1px solid var(--cp-border)",
+              paddingTop: 8,
+              fontSize: 12,
+              color: "var(--cp-text-muted)",
+            }}
+          >
+            <summary className="cp-link" style={{ cursor: "pointer" }}>
+              Plates
+            </summary>
+            <div style={{ marginTop: 8 }}>{plateView}</div>
+          </details>
+        ) : (
+          plateView
         );
       })()}
 
@@ -904,6 +1014,7 @@ export function MovementFocusView({
               onMinus={() => setWeight((v) => stepWeightKg(v, units, -1))}
               onPlus={() => setWeight((v) => stepWeightKg(v, units, 1))}
               onSet={(displayVal) => setWeight(toKg(displayVal, units))}
+              showStepHint={!focusStrip}
             />
           )}
           {itemKind === "carry" ? (
@@ -916,6 +1027,7 @@ export function MovementFocusView({
               onMinus={() => setDistanceM((v) => Math.max(0, v - 5))}
               onPlus={() => setDistanceM((v) => v + 5)}
               onSet={(n) => setDistanceM(Math.max(0, Math.round(n)))}
+              showStepHint={!focusStrip}
             />
           ) : itemKind === "isometric" ? (
             <Stepper
@@ -927,6 +1039,7 @@ export function MovementFocusView({
               onMinus={() => setDurationSec((v) => Math.max(0, v - 5))}
               onPlus={() => setDurationSec((v) => v + 5)}
               onSet={(n) => setDurationSec(Math.max(0, Math.round(n)))}
+              showStepHint={!focusStrip}
             />
           ) : (
             <Stepper
@@ -937,6 +1050,7 @@ export function MovementFocusView({
               onMinus={() => setReps((v) => Math.max(0, v - 1))}
               onPlus={() => setReps((v) => v + 1)}
               onSet={(n) => setReps(Math.max(0, Math.round(n)))}
+              showStepHint={!focusStrip}
             />
           )}
         </div>
@@ -946,6 +1060,7 @@ export function MovementFocusView({
             value={rpe}
             onChange={(next) => setRpe(next)}
             disabled={submitting}
+            compact={focusStrip}
           />
         )}
 
@@ -954,22 +1069,23 @@ export function MovementFocusView({
             {error}
           </div>
         )}
+        {pendingSetSync && (
+          <div role="status" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+            This set is queued offline. It can be edited after it syncs.
+          </div>
+        )}
+        {loggedBeforeSwap && (
+          <div role="status" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+            This set was logged before the movement was swapped, so its original
+            movement attribution is preserved.
+          </div>
+        )}
 
-        {isActiveLogged && loggedSetId ? (
-          <a
-            href={`/app/sessions/${sessionId}/sets/${loggedSetId}/edit`}
-            data-testid={`logged-set-edit-${loggedSetId}`}
-            className="cp-btn primary"
-            style={{ textDecoration: "none", textAlign: "center" }}
-          >
-            {ctaLabel}
-          </a>
-        ) : (
-          <div style={{ display: "grid", gap: 8 }}>
+        <div style={{ display: "grid", gap: 8 }}>
             <button
               type="submit"
               className="cp-btn primary"
-              disabled={submitting}
+              disabled={submitting || pendingSetSync || loggedBeforeSwap}
               data-testid="movement-focus-log-button"
             >
               {ctaLabel}
@@ -1045,7 +1161,6 @@ export function MovementFocusView({
               </div>
             )}
           </div>
-        )}
 
         {skipMenuOpen && !isActiveLogged && (
           <SkipSetMenu
@@ -1573,6 +1688,7 @@ function Stepper({
   onPlus,
   onSet,
   testId,
+  showStepHint = true,
 }: {
   label: string;
   value: number;
@@ -1582,6 +1698,7 @@ function Stepper({
   onPlus: () => void;
   onSet: (n: number) => void;
   testId?: string;
+  showStepHint?: boolean;
 }) {
   return (
     <div
@@ -1654,9 +1771,11 @@ function Stepper({
           +
         </button>
       </div>
-      <div style={{ fontSize: 10, color: "var(--cp-text-muted)", textAlign: "center" }}>
-        ± {step}
-      </div>
+      {showStepHint && (
+        <div style={{ fontSize: 10, color: "var(--cp-text-muted)", textAlign: "center" }}>
+          ± {step}
+        </div>
+      )}
     </div>
   );
 }

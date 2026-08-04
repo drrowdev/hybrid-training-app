@@ -4,7 +4,7 @@ import { markOnboarded, seedStrengthTms } from "./fixtures/seed-blocks";
 import { seedActiveBlock } from "./fixtures/session-log";
 
 /**
- * Main-vs-accessory grouping + collapsed-card summary chip.
+ * Main-vs-accessory movement queue + active prescription summary.
  *
  * Scenario:
  *   1. Sign in, seed today's strength session, then patch the planned
@@ -16,10 +16,10 @@ import { seedActiveBlock } from "./fixtures/session-log";
  *   3. Assert the collapsed squat card header carries the new summary
  *      chip with the planned sets/reps text.
  */
-test.describe("@desktop session log — lift grouping + summary chip", () => {
+test.describe("@desktop Focus Strip — movement summaries", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "Chromium-only");
 
-  test("renders main / accessory dividers and collapsed-card summary chip", async ({
+  test("renders main and accessory movements with active summaries", async ({
     page,
     context,
     freshUser,
@@ -80,54 +80,28 @@ test.describe("@desktop session log — lift grouping + summary chip", () => {
       timeout: 15_000,
     });
 
-    // Section dividers — both visible, main above accessory.
-    const mainDivider = page.getByTestId("movement-group-main");
-    const accessoryDivider = page.getByTestId("movement-group-accessory");
-    await expect(mainDivider).toBeVisible();
-    await expect(accessoryDivider).toBeVisible();
-    await expect(mainDivider).toHaveText(/main lifts/i);
-    await expect(accessoryDivider).toHaveText(/accessory work/i);
-
-    // The squat card sits between the two dividers; the farmer carry
-    // card sits after the accessory divider.
-    const squatCard = page.locator(
-      `[data-testid="movement-card-${seed.todayMovementId}"]`,
+    const focusStrip = page.getByTestId("focus-strip-logger");
+    await expect(focusStrip).toBeVisible();
+    const squat = page.getByTestId(
+      `focus-strip-queue-${seed.todayMovementId}`,
     );
-    const farmerCard = page.locator(
-      `[data-testid="movement-card-${farmer!.id}"]`,
-    );
-    await expect(squatCard).toBeVisible();
-    await expect(farmerCard).toBeVisible();
+    const carry = page.getByTestId(`focus-strip-queue-${farmer!.id}`);
+    await expect(squat).toBeVisible();
+    await expect(carry).toBeVisible();
 
-    // Collapse the squat card (it may auto-open as the active card).
-    if ((await squatCard.getAttribute("data-collapsed")) !== "true") {
-      await page
-        .getByTestId(`movement-card-header-${seed.todayMovementId}`)
-        .click();
-    }
-    await expect(squatCard).toHaveAttribute("data-collapsed", "true", {
-      timeout: 5_000,
-    });
-
-    // Summary chip is present on the collapsed card and reflects the
-    // planned 3×5 @ pct% TM prescription seeded for today.
-    const summary = page.getByTestId(
-      `movement-card-summary-${seed.todayMovementId}`,
+    await squat.click();
+    await expect(focusStrip.getByRole("heading", { level: 2 })).toContainText(
+      /squat/i,
     );
-    await expect(summary).toBeVisible();
-    await expect(summary).toContainText(/3×5|5·5·5/);
-    await expect(summary).toContainText(/% TM/);
+    await expect(focusStrip).toContainText(/Main lift/i);
+    await expect(focusStrip).toContainText(/1×5/);
+    await expect(focusStrip).toContainText(/% TM/);
 
-    // The accessory card's summary should render the 3×10 prescription.
-    if ((await farmerCard.getAttribute("data-collapsed")) !== "true") {
-      await page
-        .getByTestId(`movement-card-header-${farmer!.id}`)
-        .click();
-    }
-    const farmerSummary = page.getByTestId(
-      `movement-card-summary-${farmer!.id}`,
+    await carry.click();
+    await expect(focusStrip.getByRole("heading", { level: 2 })).toContainText(
+      /farmer/i,
     );
-    await expect(farmerSummary).toBeVisible();
-    await expect(farmerSummary).toHaveText(/3×10/);
+    await expect(focusStrip).toContainText(/Accessory/i);
+    await expect(focusStrip).toContainText(/1×10/);
   });
 });

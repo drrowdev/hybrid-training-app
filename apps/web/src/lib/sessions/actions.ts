@@ -232,11 +232,12 @@ export async function addStrengthSet(
       !isSkipped &&
       parsed.data.prescriptionItemIndex != null
     ) {
-      const { data: planned } = await supabase
+      const { data: planned, error: plannedError } = await supabase
         .from("planned_sessions")
         .select("prescription")
         .eq("completed_session_id", parsed.data.sessionId)
         .maybeSingle();
+      if (plannedError) throw new Error(plannedError.message);
       const items =
         (planned?.prescription as { items?: PrescriptionItem[] } | null)
           ?.items ?? [];
@@ -654,6 +655,173 @@ export async function deleteSet(formData: FormData): Promise<void> {
     console.error("recomputeActualSessionLoad (deleteSet) failed:", e);
   }
   revalidatePath(`/app/sessions/${sessionId}`);
+}
+
+const updateStrengthSetInlineSchema = z.object({
+  id: z.string().uuid(),
+  sessionId: z.string().uuid(),
+  setKind: z.enum(["warmup", "main", "back_off", "accessory", "tendon"]),
+  weightKg: z.coerce.number().min(0).max(1000).optional().nullable(),
+  reps: z.coerce.number().int().min(0).max(500).optional().nullable(),
+  durationSec: z.coerce.number().int().min(0).max(7200).optional().nullable(),
+  distanceM: z.coerce.number().int().min(0).max(50000).optional().nullable(),
+  rpe: z.coerce.number().min(0).max(10).optional().nullable(),
+  externalLoadKg: z.coerce.number().min(-100).max(200).optional().nullable(),
+});
+
+export type UpdateStrengthSetInlineResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+/**
+ * Update or restore a prescribed strength slot without leaving the logger.
+ * Restoring a skipped row clears its skip metadata while preserving the stable
+ * prescription_item_index link, so progress navigation never creates a duplicate.
+ */
+export async function updateStrengthSetInline(
+  formData: FormData,
+): Promise<UpdateStrengthSetInlineResult> {
+  const parsed = updateStrengthSetInlineSchema.safeParse({
+    id: formData.get("id"),
+    sessionId: formData.get("sessionId"),
+    setKind: formData.get("setKind") || "main",
+    weightKg: formData.get("weightKg") || undefined,
+    reps: formData.get("reps") || undefined,
+    durationSec: formData.get("durationSec") || undefined,
+    distanceM: formData.get("distanceM") || undefined,
+    rpe: formData.get("rpe") || undefined,
+    externalLoadKg: formData.get("externalLoadKg") ?? undefined,
+  });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid set update",
+    };
+  }
+  const { reps, durationSec, distanceM } = parsed.data;
+  if (!reps && !durationSec && !distanceM) {
+    return {
+      ok: false,
+      error: "Log at least reps, a hold duration, or a distance.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const { data: existing, error: existingError } = await supabase
+    .from("set_logs")
+    .select("set_kind, skipped, skip_reason, prescription_item_index")
+    .eq("id", parsed.data.id)
+    .eq("session_id", parsed.data.sessionId)
+    .maybeSingle();
+  if (existingError) return { ok: false, error: existingError.message };
+  if (!existing) return { ok: false, error: "Set not found." };
+
+  let updateQuery = supabase
+    .from("set_logs")
+    .update({
+      set_kind: parsed.data.setKind,
+      weight_kg: parsed.data.weightKg ?? null,
+      reps: parsed.data.reps ?? null,
+      duration_sec: parsed.data.durationSec ?? null,
+      distance_m: parsed.data.distanceM ?? null,
+      rpe: parsed.data.rpe ?? null,
+      skipped: false,
+      skip_reason: null,
+    })
+    .eq("id", parsed.data.id)
+    .eq("session_id", parsed.data.sessionId);
+  if (existing.skipped) {
+    // Only one concurrent restoration may claim the skipped → performed
+    // transition and its bodyweight progression side effects.
+    updateQuery = updateQuery.eq("skipped", true);
+  }
+  const { data, error } = await updateQuery.select("id")
+    .maybeSingle();
+
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: "Set not found." };
+
+  if (existing.skipped && existing.prescription_item_index != null) {
+    try {
+      const { data: planned, error: plannedError } = await supabase
+        .from("planned_sessions")
+        .select("prescription")
+        .eq("completed_session_id", parsed.data.sessionId)
+        .maybeSingle();
+      if (plannedError) throw new Error(plannedError.message);
+      const items =
+        (planned?.prescription as { items?: PrescriptionItem[] } | null)
+          ?.items ?? [];
+      const item = items[existing.prescription_item_index];
+      if (item?.bw) {
+        const { applyBwSetSideEffects } = await import(
+          "@/lib/sessions/bw-set-logging"
+        );
+        const rir =
+          parsed.data.rpe != null ? Math.max(0, 10 - parsed.data.rpe) : 2;
+        await applyBwSetSideEffects({
+          supabase,
+          userId: user.id,
+          bw: item.bw,
+          actualReps: parsed.data.reps ?? null,
+          actualSeconds: parsed.data.durationSec ?? null,
+          rir,
+          cleanForm: rir >= 1,
+          setDateIso: new Date().toISOString(),
+          skipped: false,
+          externalLoadKg: parsed.data.externalLoadKg ?? null,
+          throwOnError: true,
+        });
+      }
+    } catch (e) {
+      console.error(
+        "applyBwSetSideEffects (updateStrengthSetInline) failed:",
+        e,
+      );
+      const { error: rollbackError } = await supabase
+        .from("set_logs")
+        .update({
+          set_kind: existing.set_kind,
+          weight_kg: 0,
+          reps: 0,
+          duration_sec: null,
+          distance_m: null,
+          rpe: null,
+          skipped: true,
+          skip_reason: existing.skip_reason,
+        })
+        .eq("id", parsed.data.id)
+        .eq("session_id", parsed.data.sessionId)
+        .eq("skipped", false);
+      if (rollbackError) {
+        console.error(
+          "restore rollback (updateStrengthSetInline) failed:",
+          rollbackError,
+        );
+      }
+      return {
+        ok: false,
+        error: rollbackError
+          ? "The set was restored, but bodyweight progression couldn't be saved. Reload before editing it."
+          : "Couldn't restore bodyweight progression. The set was left skipped; retry.",
+      };
+    }
+  }
+
+  try {
+    await recomputeActualSessionLoad({
+      supabase,
+      sessionId: parsed.data.sessionId,
+    });
+  } catch (e) {
+    console.error("recomputeActualSessionLoad (updateStrengthSetInline) failed:", e);
+  }
+  revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
+  return { ok: true };
 }
 
 const editSetSchema = z.object({

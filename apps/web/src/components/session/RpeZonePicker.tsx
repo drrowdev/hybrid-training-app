@@ -28,9 +28,15 @@ export type RpeZonePickerProps = {
   /** Called with the zone midpoint, or null when the user clears. */
   onChange: (rpe: number | null) => void;
   disabled?: boolean;
+  compact?: boolean;
 };
 
-export function RpeZonePicker({ value, onChange, disabled }: RpeZonePickerProps) {
+export function RpeZonePicker({
+  value,
+  onChange,
+  disabled,
+  compact = false,
+}: RpeZonePickerProps) {
   const active = zoneForRpe(value);
 
   return (
@@ -84,8 +90,8 @@ export function RpeZonePicker({ value, onChange, disabled }: RpeZonePickerProps)
         aria-label="How did it feel?"
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 8,
+          gridTemplateColumns: compact ? "repeat(4, 1fr)" : "1fr 1fr",
+          gap: compact ? 6 : 8,
         }}
       >
         {RPE_ZONES.map((zone) => (
@@ -94,6 +100,7 @@ export function RpeZonePicker({ value, onChange, disabled }: RpeZonePickerProps)
             zone={zone}
             selected={active === zone}
             disabled={!!disabled}
+            compact={compact}
             onPick={() => onChange(ZONE_MIDPOINTS[zone])}
           />
         ))}
@@ -107,11 +114,13 @@ function ZoneCard({
   selected,
   disabled,
   onPick,
+  compact,
 }: {
   zone: RpeZone;
   selected: boolean;
   disabled: boolean;
   onPick: () => void;
+  compact: boolean;
 }) {
   const token = ZONE_TOKEN[zone];
   const bg = selected
@@ -133,13 +142,13 @@ function ZoneCard({
       style={{
         all: "unset",
         cursor: disabled ? "default" : "pointer",
-        minHeight: 64,
-        padding: "10px 12px",
-        borderRadius: 12,
+        minHeight: compact ? 42 : 64,
+        padding: compact ? "8px 6px" : "10px 12px",
+        borderRadius: compact ? 10 : 12,
         background: bg,
         border: `${selected ? 2 : 1}px solid ${border}`,
         display: "grid",
-        gap: 4,
+        gap: compact ? 0 : 4,
         textAlign: "center",
         opacity: disabled ? 0.55 : 1,
         transition: "background 140ms ease-out, border-color 140ms ease-out",
@@ -147,7 +156,7 @@ function ZoneCard({
     >
       <div
         style={{
-          fontSize: 15,
+          fontSize: compact ? 12 : 15,
           fontWeight: 700,
           color: selected ? token : "var(--cp-text)",
           lineHeight: 1.1,
@@ -155,15 +164,17 @@ function ZoneCard({
       >
         {ZONE_LABELS[zone]}
       </div>
-      <div
-        className="mono"
-        style={{
-          fontSize: 11,
-          color: "var(--cp-text-muted)",
-        }}
-      >
-        RPE {ZONE_RANGES[zone]}
-      </div>
+      {!compact && (
+        <div
+          className="mono"
+          style={{
+            fontSize: 11,
+            color: "var(--cp-text-muted)",
+          }}
+        >
+          RPE {ZONE_RANGES[zone]}
+        </div>
+      )}
     </button>
   );
 }

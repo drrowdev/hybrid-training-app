@@ -16,12 +16,12 @@ import { seedActiveBlock } from "./fixtures/session-log";
  *   1. Seed today's strength session and patch the prescription with
  *      a Farmer Carry accessory item carrying the matrix's strength /
  *      week-2 distance range (`30–40 m`) and the carry cue copy.
- *   2. Sign in, start the session, expand the carry card.
+ *   2. Sign in, start the session, and select the carry.
  *   3. Assert the meters chip + cue copy + distance stepper are
  *      visible, and that NO rep stepper / "× N reps" target line is
  *      rendered.
  */
-test.describe("@desktop session log — loaded carry distance cue", () => {
+test.describe("@desktop Focus Strip — loaded carry distance cue", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "Chromium-only");
 
   test("renders the meters chip, cue copy, and distance stepper on a carry card", async ({
@@ -85,16 +85,8 @@ test.describe("@desktop session log — loaded carry distance cue", () => {
       timeout: 15_000,
     });
 
-    const carryCard = page.locator(
-      `[data-testid="movement-card-${carry!.id}"]`,
-    );
-    await expect(carryCard).toBeVisible();
-    if ((await carryCard.getAttribute("data-collapsed")) === "true") {
-      await page.getByTestId(`movement-card-header-${carry!.id}`).click();
-    }
-    await expect(carryCard).toHaveAttribute("data-collapsed", "false", {
-      timeout: 5_000,
-    });
+    await page.getByTestId(`focus-strip-queue-${carry!.id}`).click();
+    const carryCard = page.getByTestId("focus-strip-logger");
 
     // Meters chip + cue copy both render under the focus card.
     const chip = carryCard.getByTestId("accessory-intensity-chip");

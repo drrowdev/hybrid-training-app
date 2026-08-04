@@ -16,11 +16,11 @@ import { seedActiveBlock } from "./fixtures/session-log";
  *      prescription to add an isolation-style accessory item whose
  *      RIR / cue matches the hypertrophy / week-2 row of the matrix
  *      (`RIR 1–2`, "Clean reps. Leave 1–2 in the tank.").
- *   2. Start the session, expand the accessory card.
+ *   2. Start the session and select the accessory.
  *   3. Assert the RIR chip + cue text are visible. Cue is research-
  *      grounded plain English — no methodology / external program names.
  */
-test.describe("@desktop session log — accessory RIR cue", () => {
+test.describe("@desktop Focus Strip — accessory RIR cue", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "Chromium-only");
 
   test("renders RIR chip + cue text on an accessory card", async ({
@@ -37,16 +37,15 @@ test.describe("@desktop session log — accessory RIR cue", () => {
     await seedStrengthTms(admin, freshUser.userId);
     const seed = await seedActiveBlock(admin, freshUser.userId);
 
-    // Resolve a known isolation movement from the seed catalog —
-    // lateral raise is single-muscle, non-compound, classifies as
-    // "isolation" by the bucket inference rules.
-    const { data: latRaise, error: lErr } = await admin
+    // Resolve a known movement from the seed catalog. The intensity
+    // fields below are explicit so this rendering test stays deterministic.
+    const { data: accessoryMovement, error: lErr } = await admin
       .from("movements")
       .select("id, slug, display_name")
-      .eq("slug", "db-lateral-raise")
+      .eq("slug", "farmer-carry-db")
       .maybeSingle();
     expect(lErr).toBeFalsy();
-    expect(latRaise).toBeTruthy();
+    expect(accessoryMovement).toBeTruthy();
 
     // Patch the planned prescription with an accessory item carrying
     // the hypertrophy / week-2 matrix output explicitly. Doing it here
@@ -59,9 +58,9 @@ test.describe("@desktop session log — accessory RIR cue", () => {
     expect(pErr).toBeFalsy();
     const prescription = planned!.prescription as { items: unknown[] };
     prescription.items.push({
-      movementId: latRaise!.id,
-      movementSlug: latRaise!.slug,
-      movementName: latRaise!.display_name,
+      movementId: accessoryMovement!.id,
+      movementSlug: accessoryMovement!.slug,
+      movementName: accessoryMovement!.display_name,
       kind: "accessory",
       sets: 3,
       reps: 12,
@@ -86,21 +85,14 @@ test.describe("@desktop session log — accessory RIR cue", () => {
       timeout: 15_000,
     });
 
-    // Expand the lateral raise card so its focus view is rendered.
-    const latRaiseCard = page.locator(
-      `[data-testid="movement-card-${latRaise!.id}"]`,
-    );
-    await expect(latRaiseCard).toBeVisible();
-    if ((await latRaiseCard.getAttribute("data-collapsed")) === "true") {
-      await page.getByTestId(`movement-card-header-${latRaise!.id}`).click();
-    }
-    await expect(latRaiseCard).toHaveAttribute("data-collapsed", "false", {
-      timeout: 5_000,
-    });
+    await page
+      .getByTestId(`focus-strip-queue-${accessoryMovement!.id}`)
+      .click();
+    const focusStrip = page.getByTestId("focus-strip-logger");
 
     // The RIR chip + cue text both render under the focus card.
-    const chip = latRaiseCard.getByTestId("accessory-intensity-chip");
-    const cue = latRaiseCard.getByTestId("accessory-intensity-cue");
+    const chip = focusStrip.getByTestId("accessory-intensity-chip");
+    const cue = focusStrip.getByTestId("accessory-intensity-cue");
     await expect(chip).toBeVisible();
     await expect(chip).toContainText(/RIR\s*1[\u2013–-]2/);
     await expect(cue).toBeVisible();
