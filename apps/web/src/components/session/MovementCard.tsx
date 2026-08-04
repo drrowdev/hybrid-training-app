@@ -793,7 +793,7 @@ export function LastSetHintRow({
   );
 }
 
-function FillFromPlanButton({
+export function FillFromPlanButton({
   fillFromPlan,
   sessionId,
 }: {
@@ -824,7 +824,7 @@ function FillFromPlanButton({
         className="cp-btn primary"
         disabled={pending}
         data-testid="movement-card-fill-from-plan"
-        style={{ padding: "6px 10px", fontSize: 11 }}
+        style={{ padding: "6px 10px", minHeight: 44, fontSize: 11 }}
       >
         {pending ? "Filling…" : "Same as planned"}
       </button>

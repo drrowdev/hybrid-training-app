@@ -89,9 +89,9 @@ test.describe("@desktop session log", () => {
     const sessionId = new URL(page.url()).pathname.split("/").pop()!;
     expect(sessionId).toMatch(/^[0-9a-f-]{36}$/);
 
-    // 3) A planned session renders the prescription as an accordion of
-    //    MovementCards (not the freestyle catalog picker). Expand today's
-    //    main lift and log its prescribed set — the weight (%TM × TM) and
+    // 3) A planned session renders the prescription in the Focus Strip
+    //    (not the freestyle catalog picker). Select today's main lift and
+    //    log its prescribed set — the weight (%TM × TM) and
     //    reps are pre-filled, so logging is a single tap on the focus-view
     //    CTA. See e2e/fixtures/log-flow.ts.
     await logPrescribedSet(page, seed.todayMovementId);
@@ -141,13 +141,13 @@ test.describe("@desktop session log", () => {
       timeout: 15_000,
     });
 
-    const header = page.getByTestId(
-      `movement-card-header-${seed.todayMovementId}`,
+    const queueItem = page.getByTestId(
+      `focus-strip-queue-${seed.todayMovementId}`,
     );
-    if ((await header.getAttribute("aria-expanded")) === "false") {
-      await header.click();
-    }
-    const card = page.getByTestId(`movement-card-${seed.todayMovementId}`);
+    await expect(queueItem).toBeVisible();
+    await expect(
+      page.getByTestId("movement-card-fill-from-plan"),
+    ).toBeVisible();
     const finish = page.getByTestId("finish-stickybar");
     await expect(finish).toHaveAttribute("data-armed", "false");
 
@@ -162,13 +162,17 @@ test.describe("@desktop session log", () => {
 
     const started = Date.now();
     await page.getByTestId("movement-focus-log-button").click();
-    await expect(card).not.toHaveAttribute("data-state", "not_started", {
+    await expect(queueItem).toContainText("✓", {
       timeout: 500,
     });
     await expect(finish).toHaveAttribute("data-armed", "true", {
       timeout: 500,
     });
     expect(Date.now() - started).toBeLessThan(500);
+    await page.getByTestId("movement-dot-0").click();
+    const pendingEdit = page.getByTestId("movement-focus-log-button");
+    await expect(pendingEdit).toContainText("Sync pending");
+    await expect(pendingEdit).toBeDisabled();
 
     await expect
       .poll(
@@ -185,6 +189,7 @@ test.describe("@desktop session log", () => {
         { timeout: 10_000 },
       )
       .toBe(1);
+    await expect(pendingEdit).toContainText("Update set", { timeout: 10_000 });
   });
 
   test("C: skip a planned session marks it skipped and hides the Start CTA", async ({
@@ -274,12 +279,10 @@ test.describe("@desktop session log", () => {
     // 2) Log the seeded squat's first main set, but bump the weight far above
     //    the saved 1RM (100kg) so the TM-anchored detector fires a Weight PR.
     //    The freestyle "Same as planned" + "This session (N sets)" surface was
-    //    retired by the MovementCard accordion → MovementFocusView flow.
-    const header = page.getByTestId(`movement-card-header-${seed.todayMovementId}`);
-    await expect(header).toBeVisible({ timeout: 15_000 });
-    if ((await header.getAttribute("aria-expanded")) === "false") {
-      await header.click();
-    }
+    //    retired by the Focus Strip → MovementFocusView flow.
+    await page
+      .getByTestId(`focus-strip-queue-${seed.todayMovementId}`)
+      .click();
     const weightInput = page.getByRole("textbox", { name: "Weight (kg)", exact: true });
     await expect(weightInput).toBeVisible({ timeout: 15_000 });
     await weightInput.fill("150");
@@ -309,7 +312,9 @@ test.describe("@desktop session log", () => {
     await expect(summary).toBeVisible();
     // Tonnage = 150 × 5 = 750 kg.
     await expect(page.getByTestId("summary-tonnage")).toContainText(/750/);
-    await expect(page.getByTestId("summary-sets")).toContainText(/Sets\s*1$/);
+    await expect(page.getByTestId("summary-sets")).toContainText(
+      /Sets\s*1\s*\/\s*3$/,
+    );
     // The 150kg set beats the saved 100kg 1RM → at least one PR recorded.
     await expect(page.getByTestId("summary-prs")).not.toContainText(/^\s*0\s*$/);
 
@@ -350,21 +355,22 @@ test.describe("@desktop session log", () => {
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 15_000 });
     const sessionId = new URL(page.url()).pathname.split("/").pop()!;
 
-    // Swap moved into the MovementCard: expand the seeded squat card and open
-    // its SwapMovementModal, then pick front squat (a pattern-compatible
+    // Swap is attached to the active Focus Strip movement. Open its
+    // SwapMovementModal, then pick low-bar squat (a pattern-compatible
     // alternative to the seeded high-bar back squat).
-    const header = page.getByTestId(`movement-card-header-${seed.todayMovementId}`);
-    await expect(header).toBeVisible({ timeout: 15_000 });
-    if ((await header.getAttribute("aria-expanded")) === "false") {
-      await header.click();
-    }
-    await page.getByTestId(`movement-card-swap-${seed.todayMovementId}`).click();
+    await page
+      .getByTestId(`focus-strip-queue-${seed.todayMovementId}`)
+      .click();
+    await logPrescribedSet(page, seed.todayMovementId);
+    await page.getByTestId("focus-strip-swap").click();
     await expect(page.getByTestId("swap-movement-modal")).toBeVisible({
       timeout: 10_000,
     });
-    const frontSquat = page.getByTestId("swap-modal-candidate-front-squat").first();
-    await expect(frontSquat).toBeVisible({ timeout: 10_000 });
-    await frontSquat.click();
+    const lowBarSquat = page
+      .getByTestId("swap-modal-candidate-back-squat-low-bar")
+      .first();
+    await expect(lowBarSquat).toBeVisible({ timeout: 10_000 });
+    await lowBarSquat.click();
 
     // The modal closes once the swap commits.
     await expect(page.getByTestId("swap-movement-modal")).toHaveCount(0, {
@@ -373,8 +379,8 @@ test.describe("@desktop session log", () => {
 
     // Service-role: the swap is captured as an `engine_override_events` row
     // (the audit/analytics surface) recording the original → new movement.
-    // `swapActiveMovement` records the override + drives the optimistic card
-    // swap; it deliberately does NOT rewrite the stored prescription.
+    // `swapActiveMovement` records the override and rewrites future prescription
+    // slots while preserving the movement attribution of work already logged.
     await expect
       .poll(
         async () => {
@@ -390,7 +396,7 @@ test.describe("@desktop session log", () => {
         },
         { timeout: 10_000 },
       )
-      .toBe("front-squat");
+      .toBe("back-squat-low-bar");
 
     const { data: override } = await admin
       .from("engine_override_events")
@@ -401,7 +407,24 @@ test.describe("@desktop session log", () => {
       .limit(1)
       .maybeSingle();
     expect(override?.original_movement_slug).toBe("back-squat-high-bar");
-    expect(override?.new_movement_slug).toBe("front-squat");
+    expect(override?.new_movement_slug).toBe("back-squat-low-bar");
+
+    await expect(
+      page.getByRole("heading", { name: /back squat \(low-bar\)/i }),
+    ).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId("movement-dot-0").click();
+    const preSwapSet = page.getByTestId("movement-focus-log-button");
+    await expect(preSwapSet).toContainText("Logged before swap");
+    await expect(preSwapSet).toBeDisabled();
+    await expect(
+      page.getByTestId(`freestyle-card-${seed.todayMovementId}`),
+    ).toHaveCount(0);
+    const { data: loggedRow } = await admin
+      .from("set_logs")
+      .select("movement_id")
+      .eq("session_id", sessionId)
+      .single();
+    expect(loggedRow?.movement_id).toBe(seed.todayMovementId);
 
     // The session id is still accessible (no orphaning).
     expect(sessionId).toMatch(/^[0-9a-f-]{36}$/);
@@ -557,11 +580,13 @@ test.describe("@desktop session log", () => {
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, { timeout: 15_000 });
     const sessionId = new URL(page.url()).pathname.split("/").pop()!;
 
-    // The session renders the MovementCard accordion. Before logging, the
-    // card is in the "not_started" state and the finish bar is disarmed.
-    const card = page.getByTestId(`movement-card-${seed.todayMovementId}`);
-    await expect(card).toBeVisible();
-    await expect(card).toHaveAttribute("data-state", "not_started");
+    // The session renders the Focus Strip. Before logging, its queue shows
+    // zero progress and the finish bar is disarmed.
+    const queueItem = page.getByTestId(
+      `focus-strip-queue-${seed.todayMovementId}`,
+    );
+    await expect(queueItem).toBeVisible();
+    await expect(queueItem).toContainText("0/1");
     await expect(page.getByTestId("finish-stickybar")).toHaveAttribute(
       "data-armed",
       "false",
@@ -572,8 +597,8 @@ test.describe("@desktop session log", () => {
     // (5), so a single tap on the log CTA commits them.
     await logPrescribedSet(page, seed.todayMovementId);
 
-    // The card flips out of "not_started" (logged) and the finish bar arms.
-    await expect(card).not.toHaveAttribute("data-state", "not_started");
+    // The queue marks the movement settled and the finish bar arms.
+    await expect(queueItem).toContainText("✓");
     await expect(page.getByTestId("finish-stickybar")).toHaveAttribute(
       "data-armed",
       "true",
@@ -591,15 +616,12 @@ test.describe("@desktop session log", () => {
     expect(Number(linkedSets![0]!.weight_kg)).toBeCloseTo(62.5, 1);
     expect(linkedSets![0]!.reps).toBe(5);
 
-    // After logging, the focus-view CTA becomes the edit link for the
-    // logged set, wired to the per-set edit route.
-    const setId = linkedSets![0]!.id as string;
-    const editLink = page.getByTestId(`logged-set-edit-${setId}`);
-    await expect(editLink).toBeVisible();
-    await expect(editLink).toHaveAttribute(
-      "href",
-      `/app/sessions/${sessionId}/sets/${setId}/edit`,
+    // Clicking the green set segment enters inline review mode; no route change.
+    await page.getByTestId("movement-dot-0").click();
+    await expect(page.getByTestId("movement-focus-log-button")).toContainText(
+      "Update set",
     );
+    await expect(page).toHaveURL(new RegExp(`/app/sessions/${sessionId}$`));
   });
 
   test("H: feat/logging-works — finish gate enabled after 1 of N sets logged", async ({
@@ -632,7 +654,7 @@ test.describe("@desktop session log", () => {
     await expect(stickybar).toHaveAttribute("data-armed", "false");
     await expect(page.getByTestId("finish-subtitle")).toContainText(/at least 1 set/i);
 
-    // Log exactly ONE prescribed set via the MovementCard accordion →
+    // Log exactly ONE prescribed set via the Focus Strip →
     // MovementFocusView flow (the freestyle catalog/"This session (N)"
     // surface was retired by MovementCardList). The seeded prescription has
     // 1 item, so a single log leaves planned sets unlogged but still arms

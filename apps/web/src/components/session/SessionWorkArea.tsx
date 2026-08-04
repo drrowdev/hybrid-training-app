@@ -6,8 +6,8 @@
  *
  * Originally stitched `<PrescriptionItemsList>` to `<SessionLogClient>`
  * with a tap-to-prefill bridge. That two-component layout is replaced
- * here by `<MovementCardList>` — one collapsible card per movement
- * with an inline focus view, dot strip, and per-set save flow.
+ * here by `<MovementCardList>` — a single active Focus Strip for
+ * prescribed work, plus the existing freestyle cards.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -22,6 +22,7 @@ import type {
   addStrengthSet as addStrengthSetAction,
   fillSessionFromPlan as fillSessionFromPlanAction,
   swapPrescriptionItem as swapPrescriptionItemAction,
+  updateStrengthSetInline as updateStrengthSetInlineAction,
   AddStrengthSetResult,
 } from "@/lib/sessions/actions";
 import { MovementCardList } from "./MovementCardList";
@@ -49,6 +50,7 @@ import type { SupersetCardInfo } from "@/lib/sessions/superset-cards";
 type AddStrengthSetAction = typeof addStrengthSetAction;
 type FillSessionFromPlanAction = typeof fillSessionFromPlanAction;
 type SwapAction = typeof swapPrescriptionItemAction;
+type UpdateStrengthSetAction = typeof updateStrengthSetInlineAction;
 
 export function SessionWorkArea({
   sessionId,
@@ -58,6 +60,7 @@ export function SessionWorkArea({
   tmBySlug,
   oneRmBySlug,
   addStrengthSet,
+  updateStrengthSet,
   fillFromPlan,
   hapticsEnabled,
   timerSoundEnabled,
@@ -92,6 +95,7 @@ export function SessionWorkArea({
   tmBySlug: Record<string, number>;
   oneRmBySlug: Record<string, number>;
   addStrengthSet: AddStrengthSetAction;
+  updateStrengthSet: UpdateStrengthSetAction;
   fillFromPlan: FillSessionFromPlanAction;
   hapticsEnabled: boolean;
   timerSoundEnabled: boolean;
@@ -367,6 +371,7 @@ export function SessionWorkArea({
         priorBests={priorBestsForCards}
         lastSetHints={lastSetHints}
         addStrengthSet={logSet}
+        updateStrengthSet={updateStrengthSet}
         fillFromPlan={fillFromPlan}
         hapticsEnabled={hapticsEnabled}
         timerSoundEnabled={timerSoundEnabled}

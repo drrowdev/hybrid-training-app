@@ -12,6 +12,7 @@ import {
   logCardioSession,
   markExternalCardioComplete,
   swapPrescriptionItem,
+  updateStrengthSetInline,
 } from "@/lib/sessions/actions";
 import { DeleteSessionButton } from "@/components/trash/DeleteSessionButton";
 import { CancelWorkoutButton } from "@/components/session/CancelWorkoutButton";
@@ -1433,6 +1434,7 @@ export default async function SessionDetailPage({
         tmBySlug={tmBySlug}
         oneRmBySlug={oneRmBySlug}
         addStrengthSet={addStrengthSet}
+        updateStrengthSet={updateStrengthSetInline}
         fillFromPlan={fillSessionFromPlan}
         hapticsEnabled={hapticsEnabled}
         timerSoundEnabled={timerSoundEnabled}

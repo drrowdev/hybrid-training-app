@@ -126,6 +126,8 @@ export async function applyBwSetSideEffects(args: {
    * can read the user's progression and bump load accordingly.
    */
   externalLoadKg?: number | null;
+  /** Restore flows roll back the set when progression persistence fails. */
+  throwOnError?: boolean;
 }): Promise<{ family: string; tutAccumulated: number } | null> {
   if (args.skipped) return null;
   const family = args.bw.family as MovementFamily | undefined;
@@ -138,6 +140,7 @@ export async function applyBwSetSideEffects(args: {
     .eq("family", family)
     .maybeSingle();
   if (readErr) {
+    if (args.throwOnError) throw new Error(readErr.message);
     console.error("bw_progress read failed:", readErr.message);
     return null;
   }
@@ -186,6 +189,7 @@ export async function applyBwSetSideEffects(args: {
     .eq("user_id", args.userId)
     .eq("family", family);
   if (upErr) {
+    if (args.throwOnError) throw new Error(upErr.message);
     console.error("bw_progress update failed:", upErr.message);
     return null;
   }

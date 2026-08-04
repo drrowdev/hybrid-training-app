@@ -1,10 +1,9 @@
 "use client";
 
 /**
- * Top-level container for the session log: one collapsible
- * `<MovementCard>` per prescribed movement, plus a freestyle "Add
- * movement" path for sets logged off-plan, plus the compact
- * "All logged sets" table at the bottom.
+ * Top-level container for the session log: a Focus Strip for active
+ * prescribed work, read-only movement cards after completion, and
+ * freestyle cards for off-plan work.
  *
  * Replaces the older `<PrescriptionItemsList>` + `<SessionLogClient>`
  * pair when there is a linked prescription. Freestyle sessions
@@ -24,13 +23,14 @@ import {
   segmentAccessoryGroups,
   type SupersetCardInfo,
 } from "@/lib/sessions/superset-cards";
-import { MovementCard } from "./MovementCard";
+import { FillFromPlanButton, MovementCard } from "./MovementCard";
 import { FreestyleMovementCard } from "./FreestyleMovementCard";
 import type { PlateInventoryItem } from "./plate-math";
 import type { LoggedSet, LastSetHint } from "./SessionLogClient";
 import type {
   addStrengthSet as addStrengthSetAction,
   fillSessionFromPlan as fillSessionFromPlanAction,
+  updateStrengthSetInline as updateStrengthSetInlineAction,
 } from "@/lib/sessions/actions";
 import { removeSessionMovementAction } from "@/lib/sessions/session-movement-actions";
 import { reorderSessionAccessories } from "@/lib/sessions/reorder-actions";
@@ -41,6 +41,7 @@ import {
   smartAccessoryOrder,
   type AccessoryMeta,
 } from "@/lib/sessions/accessory-order";
+import { FocusStripLogger } from "./FocusStripLogger";
 
 const EMPTY_SUPERSET_MAP: ReadonlyMap<string, SupersetCardInfo> = new Map();
 
@@ -64,6 +65,7 @@ export type MovementCardListProps = {
    */
   lastSetHints?: Record<string, LastSetHint>;
   addStrengthSet: typeof addStrengthSetAction;
+  updateStrengthSet: typeof updateStrengthSetInlineAction;
   fillFromPlan: typeof fillSessionFromPlanAction;
   hapticsEnabled: boolean;
   timerSoundEnabled: boolean;
@@ -134,6 +136,7 @@ export function MovementCardList({
   priorBests,
   lastSetHints = {},
   addStrengthSet,
+  updateStrengthSet,
   fillFromPlan,
   hapticsEnabled,
   timerSoundEnabled,
@@ -181,6 +184,25 @@ export function MovementCardList({
     }
     return m;
   }, [sets]);
+  const freestyleSetsByMovement = useMemo(() => {
+    const byMovement = new Map<string, LoggedSet[]>();
+    for (const set of sets) {
+      if (!set.movement.id || set.prescription_item_index != null) continue;
+      const current = byMovement.get(set.movement.id) ?? [];
+      current.push(set);
+      byMovement.set(set.movement.id, current);
+    }
+    return byMovement;
+  }, [sets]);
+  const linkedSetMovementIds = useMemo(
+    () =>
+      new Set(
+        sets
+          .filter((set) => set.prescription_item_index != null)
+          .map((set) => set.movement.id),
+      ),
+    [sets],
+  );
 
   // Freestyle movement ids = logged movements that aren't in the prescription.
   // Used as the fallback when the server didn't supply a resolved list.
@@ -188,6 +210,7 @@ export function MovementCardList({
     const seen = new Map<string, LoggedSet["movement"]>();
     for (const s of sets) {
       if (!s.movement.id) continue;
+      if (s.prescription_item_index != null) continue;
       if (prescribedIds.has(s.movement.id)) continue;
       if (!seen.has(s.movement.id)) seen.set(s.movement.id, s.movement);
     }
@@ -219,6 +242,7 @@ export function MovementCardList({
     const setsCount = new Map<string, number>();
     for (const s of sets) {
       if (!s.movement.id) continue;
+      if (s.prescription_item_index != null) continue;
       setsCount.set(s.movement.id, (setsCount.get(s.movement.id) ?? 0) + 1);
     }
 
@@ -228,6 +252,12 @@ export function MovementCardList({
     if (resolvedFreestyle && resolvedFreestyle.length > 0) {
       for (const r of resolvedFreestyle) {
         if (prescribedIds.has(r.movement.id)) continue;
+        if (
+          linkedSetMovementIds.has(r.movement.id) &&
+          !freestyleSetsByMovement.has(r.movement.id)
+        ) {
+          continue;
+        }
         if (removedIds.has(r.movement.id)) continue;
         seen.add(r.movement.id);
         out.push({ movement: r.movement, loggedSetCount: r.loggedSetCount });
@@ -254,6 +284,8 @@ export function MovementCardList({
     prescribedIds,
     removedIds,
     sets,
+    linkedSetMovementIds,
+    freestyleSetsByMovement,
   ]);
 
   const handleRemove = (movementId: string) => {
@@ -325,6 +357,20 @@ export function MovementCardList({
       ),
     [accessoryGroups, supersetByMovementId, hasManualOrder],
   );
+  const focusGroups = useMemo(
+    () => [
+      ...mainGroups,
+      ...supplementalGroups,
+      ...accessorySegments.flatMap((segment) =>
+        segment.kind === "solo" ? [segment.group] : segment.groups,
+      ),
+      ...otherGroups,
+    ],
+    [mainGroups, supplementalGroups, accessorySegments, otherGroups],
+  );
+  const focusSupersetByMovementId = hasManualOrder
+    ? EMPTY_SUPERSET_MAP
+    : supersetByMovementId ?? EMPTY_SUPERSET_MAP;
 
   // Move an accessory card up/down. Recomputes the full movementId order from
   // the current (possibly smart/custom) accessory order, swaps the neighbour,
@@ -433,8 +479,91 @@ export function MovementCardList({
     [accessoryGroups],
   );
 
+  if (!isComplete && focusGroups.length > 0) {
+    return (
+      <div data-testid="movement-card-list" style={{ display: "grid", gap: 12 }}>
+        {showFillOnFirst && (
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 560,
+              marginInline: "auto",
+              display: "flex",
+              justifyContent: "flex-end",
+            }}
+          >
+            <FillFromPlanButton
+              fillFromPlan={fillFromPlan}
+              sessionId={sessionId}
+            />
+          </div>
+        )}
+        <FocusStripLogger
+          sessionId={sessionId}
+          groups={focusGroups}
+          setsByMovement={setsByMovement}
+          tmBySlug={tmBySlug}
+          oneRmBySlug={oneRmBySlug}
+          loggedItemIndices={loggedItemIndices}
+          skippedItemIndices={skippedItemIndices}
+          loggedSetIdByItemIndex={loggedSetIdByItemIndex}
+          priorBests={priorBests}
+          lastSetHints={lastSetHints}
+          supersetByMovementId={focusSupersetByMovementId}
+          reorderableMovementIds={
+            reorderEnabled
+              ? accessoryGroups.map((group) => group.movementId)
+              : undefined
+          }
+          onReorderMovements={reorderEnabled ? persistOrder : undefined}
+          addStrengthSet={addStrengthSet}
+          updateStrengthSet={updateStrengthSet}
+          hapticsEnabled={hapticsEnabled}
+          timerSoundEnabled={timerSoundEnabled}
+          barbellKg={barbellKg}
+          trapBarKg={trapBarKg}
+          plateInventory={plateInventory}
+          preferStandardLbPlates={preferStandardLbPlates}
+          bwGateStateByFamily={bwGateStateByFamily}
+          bodyweightMovementIds={bodyweightIdSet}
+        />
+
+        {freestyleMerged.length > 0 && (
+          <SectionDivider label="Other" testId="movement-group-other" />
+        )}
+        {freestyleMerged.map(({ movement: m, loggedSetCount }) => (
+          <FreestyleMovementCard
+            key={m.id}
+            sessionId={sessionId}
+            movement={m}
+            readOnly={false}
+            loggedSets={freestyleSetsByMovement.get(m.id) ?? []}
+            loggedSetCount={loggedSetCount}
+            tmKg={tmBySlug[m.slug]}
+            oneRmKg={oneRmBySlug[m.slug]}
+            priorBest={priorBests[m.id]}
+            addStrengthSet={addStrengthSet}
+            removeSessionMovement={removeSessionMovementAction}
+            onRemove={handleRemove}
+            hapticsEnabled={hapticsEnabled}
+            timerSoundEnabled={timerSoundEnabled}
+          />
+        ))}
+      </div>
+    );
+  }
+
   const renderCard = (group: MovementGroup, dragHandle?: React.ReactNode) => {
     const idx = orderedGroups.indexOf(group);
+    const groupSetIds = new Set(
+      group.itemIndices
+        .map((index) => loggedSetIdByItemIndex[index])
+        .filter((id): id is string => id != null),
+    );
+    const groupSets = sets.filter(
+      (set) =>
+        set.movement.id === group.movementId || groupSetIds.has(set.id),
+    );
     return (
       <PrescribedCard
         key={group.movementId}
@@ -446,7 +575,7 @@ export function MovementCardList({
         loggedItemIndices={loggedItemIndices}
         skippedItemIndices={skippedItemIndices}
         loggedSetIdByItemIndex={loggedSetIdByItemIndex}
-        loggedSets={setsByMovement.get(group.movementId) ?? []}
+        loggedSets={groupSets}
         priorBests={priorBests}
         lastSetHint={
           accessoryIds.has(group.movementId)
@@ -541,7 +670,7 @@ export function MovementCardList({
           sessionId={sessionId}
           movement={m}
           readOnly={isComplete}
-          loggedSets={setsByMovement.get(m.id) ?? []}
+          loggedSets={freestyleSetsByMovement.get(m.id) ?? []}
           loggedSetCount={loggedSetCount}
           tmKg={tmBySlug[m.slug]}
           oneRmKg={oneRmBySlug[m.slug]}

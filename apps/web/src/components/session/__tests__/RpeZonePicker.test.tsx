@@ -6,7 +6,7 @@
  * exercised indirectly: we pass an `onChange` spy via React's onClick
  * by rendering with a `_clickRef` is NOT feasible here, so we instead
  * cover the underlying mapping (zone → midpoint, midpoint → zone) in
- * `rpe-zones.test.ts`. The Playwright e2e `rpe-and-skip.spec.ts`
+ * `rpe-zones.test.ts`. The Playwright e2e `rpe-and-skip-desktop.spec.ts`
  * covers the live click → save round-trip.
  */
 import { describe, it, expect } from "vitest";
