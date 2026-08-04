@@ -274,7 +274,7 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     expect(cluster.some((c) => c.split === "B")).toBe(true);
   });
 
-  test("picker deploys all 25 weeks of TB3 Activation without invented maxes", async ({
+  test("picker starts TB3 Activation at Armor with the correct mixed schedule", async ({
     page,
     context,
     freshUser,
@@ -294,9 +294,13 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     await next.click();
     await expect(page.getByRole("heading", { name: "Starting maxes" })).toBeVisible();
     await next.click();
+    const startPoint = page.getByRole("combobox").filter({ has: page.locator("option") });
+    await expect(startPoint).toContainText("Armor");
+    await startPoint.selectOption({ label: "Armor" });
     await expect(
-      page.getByText("The strength schedule changes with the phase"),
+      page.getByText("Starting Armor: 4 strength, 2 cardio and 1 rest day."),
     ).toBeVisible();
+    await expect(page.getByText("4 strength · 2 cardio · 1 rest")).toBeVisible();
 
     const deploy = page.getByRole("button", { name: /Deploy program/ });
     await expect(deploy).toBeEnabled();
@@ -310,26 +314,44 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
       .eq("status", "active")
       .maybeSingle();
     expect(block!.program_id).toBe("tactical-barbell");
-    expect(block!.weeks).toBe(25);
+    expect(block!.weeks).toBe(20);
 
     const { data: sessions } = await admin
       .from("planned_sessions")
       .select("week_index, day_index, role, prescription")
       .eq("block_id", block!.id);
-    expect(sessions).toHaveLength(69);
+    expect(sessions).toHaveLength(86);
     expect(
-      sessions!.filter((session) => session.week_index === 14).every(
+      sessions!.filter(
+        (session) => session.week_index === 0 && session.role === "strength",
+      ),
+    ).toHaveLength(4);
+    expect(
+      sessions!.filter(
+        (session) => session.week_index === 0 && session.role === "cardio",
+      ),
+    ).toHaveLength(2);
+    expect(
+      sessions!.filter((session) => session.week_index === 9).every(
         (session) => session.role === "deload",
       ),
     ).toBe(true);
     expect(
-      sessions!.filter((session) => session.week_index === 21).map(
+      sessions!.filter((session) => session.week_index === 16).map(
         (session) => session.day_index,
       ).sort((a, b) => a - b),
-    ).toEqual([0, 3]);
-    const base = sessions!.find((session) => session.week_index === 0);
-    const baseItems = (base!.prescription as { items: Array<{ movementSlug?: string }> }).items;
-    expect(baseItems.some((item) => item.movementSlug === "push-up")).toBe(true);
+    ).toEqual([0, 1, 3, 5]);
+    const cardio = sessions!.find(
+      (session) => session.week_index === 0 && session.role === "cardio",
+    );
+    const cardioItems = (
+      cardio!.prescription as {
+        items: Array<{ kind?: string; durationMin?: number }>;
+      }
+    ).items;
+    expect(cardioItems).toEqual([
+      expect.objectContaining({ kind: "cardio_external", durationMin: 60 }),
+    ]);
   });
 
   test("picker deploys a Hybrid (native) platform block end-to-end", async ({

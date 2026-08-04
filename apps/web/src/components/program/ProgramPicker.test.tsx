@@ -17,6 +17,7 @@ import {
   ProgramPicker,
   defaultClusterFor,
   relevantBenchmarkKeysFor,
+  startScheduleFor,
   validateClusterClient,
   toggleMultiSelect,
   type PickerProgram,
@@ -72,6 +73,22 @@ const ACTIVATION: PickerTbTemplate = {
   sessionsPerWeek: 3,
   fixedLoadout: true,
   fixedSchedule: true,
+  startSchedules: [
+    {
+      startWeekIndex: 0,
+      label: "Base",
+      strength: 3,
+      cardio: 3,
+      rest: 1,
+    },
+    {
+      startWeekIndex: 5,
+      label: "Armor",
+      strength: 4,
+      cardio: 2,
+      rest: 1,
+    },
+  ],
   defaultCluster: [
     { movement: "squat" },
     { movement: "pushup", kind: "unanchored" },
@@ -176,6 +193,22 @@ describe("defaultClusterFor", () => {
       { movement: "bench" },
       { movement: "deadlift" },
     ]);
+  });
+
+  describe("startScheduleFor", () => {
+    it("returns the selected Activation phase schedule", () => {
+      expect(startScheduleFor(ACTIVATION, 5)).toEqual({
+        startWeekIndex: 5,
+        label: "Armor",
+        strength: 4,
+        cardio: 2,
+        rest: 1,
+      });
+    });
+
+    it("returns null when a template has no phase schedule", () => {
+      expect(startScheduleFor(OPERATOR, 0)).toBeNull();
+    });
   });
 
   describe("relevantBenchmarkKeysFor", () => {

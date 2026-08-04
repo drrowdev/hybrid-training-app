@@ -85,6 +85,12 @@ export interface TbWeeklySession {
   kindByWeek?: Record<number, "training" | "deload" | "test" | "rest">;
   /** Fixed session loadout. When present, the user's general cluster is ignored. */
   fixedMovements?: TbClusterEntry[];
+  /** Engine-owned conditioning day materialised as an external-cardio session. */
+  conditioning?: {
+    name: string;
+    durationMin?: number;
+    note: string;
+  };
   /** Remove selected cluster movements for this session (TB3 day variants). */
   excludeMovements?: TbMovement[];
   /** Add a movement even when it is not part of the selected cluster. */
@@ -694,6 +700,7 @@ const A = {
 const ACTIVATION_BASE_WEEKS = [1, 2, 3, 4];
 const ACTIVATION_ARMOR_WEEKS = [6, 7, 8];
 const ACTIVATION_OPERATOR_WEEKS = [9, 10, 11, 12, 13, 15, 16, 17, 18, 19];
+const ACTIVATION_OPERATOR_CONDITIONING_WEEKS = [9, 10, 11, 12, 13, 16, 17, 18, 19];
 const ACTIVATION_PEAK_WEEKS = [14, 20];
 const ACTIVATION_VERTEX_WEEKS = [22, 23, 24];
 
@@ -820,6 +827,21 @@ const activationSession = (
   ...extra,
 });
 
+const activationConditioningSession = (
+  id: string,
+  label: string,
+  weekday: number,
+  activeWeeks: number[],
+  conditioning: NonNullable<TbWeeklySession["conditioning"]>,
+): TbWeeklySession => ({
+  id,
+  label,
+  waveId: "main",
+  weekday,
+  activeWeeks,
+  conditioning,
+});
+
 const ACTIVATION: TbTemplate = {
   id: "activation",
   name: "Activation",
@@ -877,6 +899,39 @@ const ACTIVATION: TbTemplate = {
     activationSession("base-3", "Base circuit 3", 4, ACTIVATION_BASE_WEEKS, [
       A.pushup, A.gobletSquat, A.invertedRow, A.abTriad,
     ], [abRule]),
+    activationConditioningSession(
+      "base-lss-1",
+      "Base · LSS 1",
+      1,
+      ACTIVATION_BASE_WEEKS,
+      {
+        name: "Easy aerobic (LSS)",
+        durationMin: 45,
+        note: "30–60 min easy, conversational long steady state.",
+      },
+    ),
+    activationConditioningSession(
+      "base-lss-2",
+      "Base · LSS 2",
+      3,
+      ACTIVATION_BASE_WEEKS,
+      {
+        name: "Easy aerobic (LSS)",
+        durationMin: 45,
+        note: "30–60 min easy, conversational long steady state.",
+      },
+    ),
+    activationConditioningSession(
+      "base-lss-3",
+      "Base · LSS 3",
+      5,
+      ACTIVATION_BASE_WEEKS,
+      {
+        name: "Easy aerobic (LSS)",
+        durationMin: 45,
+        note: "30–60 min easy, conversational long steady state.",
+      },
+    ),
     activationSession("base-test", "Base test", 0, [5], [
       A.bench, A.barbellRow, A.squat, A.deadlift, A.rackPull, A.press,
     ], [], { kind: "test" }),
@@ -897,6 +952,28 @@ const ACTIVATION: TbTemplate = {
     activationSession("armor-b2", "Armor B2", 5, ACTIVATION_ARMOR_WEEKS, [
       A.bench, A.barbellRow, A.pullup, A.press,
     ], [...armorSecondPassRules, ...supplementalRules(["weighted-pullup", "overhead-press"])]),
+    activationConditioningSession(
+      "armor-lss-1",
+      "Armor · LSS 1",
+      2,
+      ACTIVATION_ARMOR_WEEKS,
+      {
+        name: "Easy aerobic (LSS)",
+        durationMin: 60,
+        note: "60 min easy, conversational long steady state.",
+      },
+    ),
+    activationConditioningSession(
+      "armor-lss-2",
+      "Armor · LSS 2",
+      4,
+      ACTIVATION_ARMOR_WEEKS,
+      {
+        name: "Easy aerobic (LSS)",
+        durationMin: 60,
+        note: "60 min easy, conversational long steady state.",
+      },
+    ),
     activationSession("operator-d1", "Operator D1", 0, ACTIVATION_OPERATOR_WEEKS, [
       A.bench, A.squat, A.barbellRow, A.abTriad,
     ], operatorRules, { kindByWeek: { 15: "deload" } }),
@@ -906,6 +983,26 @@ const ACTIVATION: TbTemplate = {
     activationSession("operator-d3", "Operator D3", 4, ACTIVATION_OPERATOR_WEEKS, [
       A.bench, A.deadlift, A.barbellRow, A.abTriad,
     ], operatorRules, { kindByWeek: { 15: "deload" } }),
+    activationConditioningSession(
+      "operator-hic-1",
+      "Operator · HIC 1",
+      1,
+      ACTIVATION_OPERATOR_CONDITIONING_WEEKS,
+      {
+        name: "HIC / work capacity",
+        note: "Hard conditioning or work-capacity session. Keep it brief and repeatable.",
+      },
+    ),
+    activationConditioningSession(
+      "operator-hic-2",
+      "Operator · HIC 2",
+      3,
+      ACTIVATION_OPERATOR_CONDITIONING_WEEKS,
+      {
+        name: "HIC / work capacity",
+        note: "Hard conditioning or work-capacity session. Keep it brief and repeatable.",
+      },
+    ),
     activationSession("peak-squat", "Peak · Squat", 0, ACTIVATION_PEAK_WEEKS, [
       A.squat, A.barbellRow, A.abTriad,
     ], [
@@ -933,6 +1030,26 @@ const ACTIVATION: TbTemplate = {
     activationSession("breacher-d2", "Breacher D2", 3, ACTIVATION_VERTEX_WEEKS, [
       A.pushPress, A.barbellRow, A.pendlayRow, A.squat, A.jumpSquat,
     ], vertexRules(["barbell-row", "squat"], ["jump-squat"], true)),
+    activationConditioningSession(
+      "vertex-hic-1",
+      "Vertex · Hills/HIC 1",
+      1,
+      ACTIVATION_VERTEX_WEEKS,
+      {
+        name: "Short hills / HIC",
+        note: "Short hill sprints or a brief HIC session. Stop before speed drops.",
+      },
+    ),
+    activationConditioningSession(
+      "vertex-hic-2",
+      "Vertex · Hills/HIC 2",
+      5,
+      ACTIVATION_VERTEX_WEEKS,
+      {
+        name: "Short hills / HIC",
+        note: "Short hill sprints or a brief HIC session. Stop before speed drops.",
+      },
+    ),
   ],
   defaultCluster: Object.values(A),
   clusterMin: Object.keys(A).length,
@@ -952,8 +1069,11 @@ const ACTIVATION: TbTemplate = {
     { startWeekIndex: 24, label: "Final retest", kind: "test" },
   ],
   notes: [
-    "Conditioning is intentionally not generated by this strength engine.",
-    "Base weeks 1–4, test week 5, Armor weeks 6–8, Operator weeks 9–20, test week 21, Vertex weeks 22–24, final retest week 25.",
+    "Base weeks 1–4 pair three strength-endurance circuits with three LSS days.",
+    "Armor weeks 6–8 use four strength days, two 60-minute LSS days and one rest day.",
+    "Operator work weeks use three strength days and two HIC/work-capacity days; peak and deload weeks omit conditioning.",
+    "Vertex weeks 22–24 pair two Breacher strength days with two short hill/HIC days.",
+    "Test weeks 5, 21 and 25 keep the rest of the week off.",
     "Week 15 is an explicit deload before force progression.",
   ],
 };

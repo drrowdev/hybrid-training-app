@@ -101,13 +101,14 @@ describe("TB engine — timeline", () => {
     expect(tl[18]!.ref).toBe("b1-w1-s1");
   });
 
-  it("Activation materialises 69 sessions with explicit test and deload roles", () => {
+  it("Activation materialises strength and conditioning with explicit test/deload roles", () => {
     const tl = tb.timeline(setup({ templateId: "activation" }));
-    expect(tl).toHaveLength(69);
+    expect(tl).toHaveLength(111);
+    expect(tl.filter((session) => session.tags?.includes("week:1"))).toHaveLength(6);
     expect(tl.filter((session) => session.tags?.includes("week:5"))).toHaveLength(1);
     expect(tl.filter((session) => session.tags?.includes("week:15"))).toHaveLength(3);
     expect(tl.filter((session) => session.tags?.includes("week:15")).every((session) => session.kind === "deload")).toBe(true);
-    expect(tl.filter((session) => session.tags?.includes("week:22"))).toHaveLength(2);
+    expect(tl.filter((session) => session.tags?.includes("week:22"))).toHaveLength(4);
     expect(tl.at(-1)?.ref).toBe("b0-w25-operator-test");
   });
 });
@@ -236,6 +237,30 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
       ["Goblet Squat", 3, 10, undefined],
       ["Inverted Row", 3, 10, undefined],
       ["Ab Triad", 3, 5, undefined],
+    ]);
+  });
+
+  it("Activation emits phase-specific cardio prescriptions", () => {
+    const inst = setup({ templateId: "activation" });
+    expect(tb.prescribe(inst, "b0-w1-base-lss-1", ctx).items).toEqual([
+      expect.objectContaining({
+        kind: "cardio",
+        name: "Easy aerobic (LSS)",
+        durationSec: 45 * 60,
+      }),
+    ]);
+    expect(tb.prescribe(inst, "b0-w6-armor-lss-1", ctx).items).toEqual([
+      expect.objectContaining({
+        kind: "cardio",
+        name: "Easy aerobic (LSS)",
+        durationSec: 60 * 60,
+      }),
+    ]);
+    expect(tb.prescribe(inst, "b0-w9-operator-hic-1", ctx).items).toEqual([
+      expect.objectContaining({
+        kind: "cardio",
+        name: "HIC / work capacity",
+      }),
     ]);
   });
 
