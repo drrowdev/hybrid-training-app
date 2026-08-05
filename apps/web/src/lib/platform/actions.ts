@@ -49,6 +49,8 @@ import { discardAbandonedInProgressSessions } from "@/lib/planner/archive-prior-
 import { activateSeasonBlock } from "@/lib/seasons/activation";
 import { planForwardOnlyRewrite } from "./forward-rewrite";
 import { todayYmd, mondayOfYmd, daysBetweenYmd } from "@/lib/dates";
+import { programSetupAuditInput } from "./setup-audit";
+import { inferProgramStartWeekIndex } from "@/lib/plan/program-overview";
 
 const WEEKDAY = z.number().int().min(0).max(6);
 
@@ -744,7 +746,12 @@ async function createForeignProgramInstance(
       program_id: programId,
       program_family: engine.meta.family,
       instance,
-      setup_input: { values: setupValues, weekdays, startedOn },
+      setup_input: programSetupAuditInput({
+        values: setupValues,
+        weekdays,
+        startedOn,
+        startWeekIndex,
+      }),
       block_id: blockId,
       status: "active",
     })
@@ -833,13 +840,34 @@ async function updateForeignProgramInstance(
   if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
 
   // 1) Load + validate the target block (ownership, active, program match).
-  const { data: block, error: blockErr } = await supabase
-    .from("training_blocks")
-    .select("id, started_on, weeks, program_id, status, deleted_at")
-    .eq("id", blockId)
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const [
+    { data: block, error: blockErr },
+    { data: existingProgramInstance, error: instanceErr },
+    { data: firstWeekRows, error: firstWeekErr },
+  ] = await Promise.all([
+    supabase
+      .from("training_blocks")
+      .select("id, started_on, weeks, program_id, status, deleted_at")
+      .eq("id", blockId)
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("program_instances")
+      .select("setup_input, instance")
+      .eq("block_id", blockId)
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .maybeSingle(),
+    supabase
+      .from("planned_sessions")
+      .select("prescription")
+      .eq("block_id", blockId)
+      .eq("user_id", user.id)
+      .eq("week_index", 0),
+  ]);
   if (blockErr) return { ok: false, error: blockErr.message };
+  if (instanceErr) return { ok: false, error: instanceErr.message };
+  if (firstWeekErr) return { ok: false, error: firstWeekErr.message };
   if (!block) return { ok: false, error: "Plan not found." };
   if (block.status !== "active" || block.deleted_at != null) {
     return { ok: false, error: "This plan is no longer active." };
@@ -848,6 +876,32 @@ async function updateForeignProgramInstance(
     return { ok: false, error: "Program mismatch — start a new plan to change methodology." };
   }
   const blockStartedOn = block.started_on as string;
+  const priorSetupInput =
+    (existingProgramInstance?.setup_input as Record<string, unknown> | null) ??
+    {};
+  const storedStartWeekIndex =
+    typeof priorSetupInput.startWeekIndex === "number"
+      ? priorSetupInput.startWeekIndex
+      : null;
+  const firstWeekRefs = (firstWeekRows ?? [])
+    .map(
+      (row) =>
+        (
+          row.prescription as {
+            programRef?: unknown;
+          } | null
+        )?.programRef,
+    )
+    .filter((ref): ref is string => typeof ref === "string");
+  const priorStartWeekIndex =
+    storedStartWeekIndex ??
+    inferProgramStartWeekIndex(
+      engine,
+      existingProgramInstance?.instance,
+      firstWeekRefs,
+    );
+  const effectiveStartWeekIndex =
+    args.startWeekIndex ?? priorStartWeekIndex;
 
   // 2) Forward-only boundary: freeze weeks <= the week that contains today.
   const { data: prof } = await supabase
@@ -867,6 +921,9 @@ async function updateForeignProgramInstance(
     ({ instance, write } = await computeForeignWrite(supabase, user, engine, {
       ...args,
       startedOn: blockStartedOn,
+      ...(effectiveStartWeekIndex > 0
+        ? { startWeekIndex: effectiveStartWeekIndex }
+        : {}),
     }));
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Setup failed" };
@@ -963,7 +1020,12 @@ async function updateForeignProgramInstance(
     .from("program_instances")
     .update({
       instance,
-      setup_input: { values: args.setupValues, weekdays: args.weekdays, startedOn: blockStartedOn },
+      setup_input: programSetupAuditInput({
+        values: args.setupValues,
+        weekdays: args.weekdays,
+        startedOn: blockStartedOn,
+        startWeekIndex: effectiveStartWeekIndex,
+      }),
       updated_at: new Date().toISOString(),
     })
     .eq("block_id", blockId)
@@ -1003,7 +1065,7 @@ async function updateForeignProgramInstance(
 async function createNativeProgramInstance(
   supabase: SupabaseClient,
   user: User,
-  { programId, setupValues, weekdays, startedOn, roundingKg, twoADay, supersetAccessories, seasonBlockId }: DeployArgs,
+  { programId, setupValues, weekdays, startedOn, startWeekIndex, roundingKg, twoADay, supersetAccessories, seasonBlockId }: DeployArgs,
 ): Promise<CreateProgramInstanceResult> {
   const engine = getNativeProgramEngine(programId)!;
 
@@ -1152,7 +1214,12 @@ async function createNativeProgramInstance(
       program_id: programId,
       program_family: engine.meta.family,
       instance,
-      setup_input: { values: setupValues, weekdays, startedOn },
+      setup_input: programSetupAuditInput({
+        values: setupValues,
+        weekdays,
+        startedOn,
+        startWeekIndex,
+      }),
       block_id: blockId,
       status: "active",
     })

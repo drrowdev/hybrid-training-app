@@ -7,20 +7,19 @@ import {
 } from "./fixtures/seed-blocks";
 
 /**
- * /app/plan view modes — post-redesign.
+ * /app/plan program overview, calendar and review-only drawer.
  *
  * Coverage:
- *  - Default view = Timeline (4 week rows).
+ *  - Default view = full-width Program overview (4 expandable week rows).
  *  - Tabbing to Month → 42-cell grid.
- *  - Filter "Strength" toggle stays sticky on the URL.
  *  - Clicking a future session pill opens the drawer; the drawer's
  *    "Swap day" action moves the session to a new date, after which
  *    the original cell loses the pill and the target cell gains it.
  */
-test.describe("@desktop /app/plan view modes + drawer", () => {
+test.describe("@desktop /app/plan overview + drawer", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "Chromium-only");
 
-  test("timeline default → month → filter → drawer swap", async ({
+  test("program default → calendar → review-only drawer swap", async ({
     page,
     context,
     freshUser,
@@ -53,9 +52,11 @@ test.describe("@desktop /app/plan view modes + drawer", () => {
     await page.waitForLoadState("networkidle");
 
     // Header.
-    await expect(page.getByRole("heading", { level: 1, name: /^plan$/i })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(
+      /strength focus/i,
+    );
 
-    // Timeline is the default view in the redesign.
+    // Program overview is the default view in the redesign.
     await expect(page.getByTestId("plan-timeline")).toBeVisible();
     await expect(page.getByTestId("plan-view-tab-timeline")).toHaveAttribute(
       "data-active",
@@ -66,8 +67,11 @@ test.describe("@desktop /app/plan view modes + drawer", () => {
     const weekRows = page.locator('[data-testid^="plan-timeline-week-"]');
     await expect(weekRows.first()).toBeVisible();
 
-    // "This week" rail is visible alongside the timeline.
-    await expect(page.getByTestId("plan-this-week")).toBeVisible();
+    // The duplicate This-week rail is gone; the current week is expanded.
+    await expect(page.getByTestId("plan-this-week")).toHaveCount(0);
+    await expect(
+      page.locator('[data-testid^="plan-timeline-week-"][data-today-row="true"]'),
+    ).toHaveAttribute("open", "");
 
     // Switch to Month → 42 cells.
     await page.getByTestId("plan-view-tab-month").click();
@@ -80,17 +84,14 @@ test.describe("@desktop /app/plan view modes + drawer", () => {
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("plan-timeline")).toBeVisible();
 
-    // Filter toggle — clicking Strength sets it active.
-    await page.getByTestId("plan-filter-strength").click();
-    await expect(page.getByTestId("plan-filter-strength")).toHaveAttribute(
-      "data-active",
-      "true",
-    );
-
-    // Click any session pill on the timeline → drawer opens.
+    // Click any session row in the overview → review/edit drawer opens.
+    if (!(await weekRows.first().getAttribute("open"))) {
+      await weekRows.first().locator("summary").first().click();
+    }
     const firstPill = page.locator('[data-testid^="plan-pill-"]').first();
     await firstPill.click();
     await expect(page.getByTestId("plan-drawer")).toBeVisible();
+    await expect(page.getByTestId("plan-drawer-mark-done")).toHaveCount(0);
 
     // Drawer action: ⇄ Swap day reveals the inline date picker.
     await page.getByTestId("plan-drawer-swap").click();

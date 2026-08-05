@@ -1,20 +1,17 @@
 "use client";
 
 /**
- * /app/plan redesign — single-screen overview with three jobs:
+ * /app/plan redesign — program review and schedule adjustment:
  *
- *  1. Quick read of the whole block (4-week × 7-day timeline grid).
- *  2. Where am I now (today row tinted with the lime accent + a
- *     "This week" rail on the right that lists Mon..Sun for the
- *     current week).
- *  3. Drill into any session via a right-side drawer.
+ *  1. Program identity, phase and completion state with controls nearby.
+ *  2. Full-width engine-owned phase/week bands; current week expanded.
+ *  3. Readable agenda rows for review, rescheduling and prescription edits.
+ *  4. Calendar as a secondary date-oriented view.
  *
- * Replaces the old UpNextHero / view switcher / month calendar /
- * Block at a glance / UpNextRail / inline session list tower. The
- * Month view is kept as an alternate, less prominent rendering — the
- * Timeline is the default.
+ * Workout launch/logging belongs to Today. Plan's shared SessionDrawer runs in
+ * review-only mode while Today keeps its logging actions.
  *
- * Drag-and-drop on the timeline reorders sessions across days using
+ * Drag-and-drop on the agenda reorders sessions across days using
  * the same native HTML5 DnD pattern as the block-wizard step-5
  * schedule. Dropping out of the current block is a no-op.
  *
@@ -29,8 +26,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import type { DragEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type DragEvent,
+  type ReactNode,
+} from "react";
 import { formatPrescriptionItem } from "@/lib/planner/archetypes";
 import {
   FOCUS_MUSCLE_LABEL,
@@ -39,8 +44,11 @@ import {
 } from "@/lib/planner/focus-muscles";
 import { isOverdue, overdueDays } from "@/lib/planner/overdue";
 import { LogNowDateForm } from "@/components/plan/LogNowDateForm";
-import { RailList } from "@/components/plan/ThisWeekRail";
 import { addDaysToYmd } from "@/lib/dates";
+import {
+  buildPlanPhaseGroups,
+  type PlanProgramSegment,
+} from "@/lib/plan/program-overview";
 import {
   groupByMovementThenKind,
   collapseIdenticalSetItems,
@@ -50,7 +58,6 @@ import {
   type PrescriptionMovementRow,
 } from "@/lib/plan/prescription-grouping";
 import { segmentSupersetRows } from "@/lib/plan/superset-grouping";
-import { MetricHelp } from "@/components/ui/MetricHelp";
 import { AskWhyButton } from "@/components/session/AskWhyButton";
 import { LinkActivityControl } from "@/components/plan/LinkActivityControl";
 import { CompletedSummaryCard } from "@/components/plan/CompletedSummaryCard";
@@ -69,7 +76,6 @@ import { setHyroxStationOverride } from "@/lib/hyrox/station-swap-actions";
 import { stationAlternativesFor } from "@hta/hyrox";
 import type { PrescriptionItem } from "@hta/db";
 
-export type PlanFilter = "all" | "strength" | "cardio";
 export type PlanViewMode = "timeline" | "month";
 
 export type PlanSessionInput = {
@@ -108,15 +114,18 @@ export type PlanSessionInput = {
 
 export type PlanRedesignProps = {
   archetypeName: string;
+  /** Program family / methodology shown above the program name. */
+  programFamilyName?: string;
+  /** Engine-owned structural phases, rebased to this materialized block. */
+  segments?: readonly PlanProgramSegment[];
+  /** State-aware program actions rendered beside the program identity. */
+  headerActions?: ReactNode;
   /** Program-aware noun for a training block — "cycle" (5/3/1) or "block"
    * (Tactical Barbell / Green Protocol / default). */
   cycleNoun?: "cycle" | "block";
-  blockNumber: number; // 1-indexed
-  blockTotal: number;
   /** Per-block user-chosen focus muscles (0–2). Rendered as a badge in the plan header. */
   focusMuscles?: readonly string[];
   startedOn: string; // YYYY-MM-DD
-  endedOn: string; // YYYY-MM-DD (last calendar day in the block)
   weeks: number;
   today: string; // YYYY-MM-DD
   currentWeekIndex: number; // 0-indexed; -1 if today is outside the block
@@ -124,9 +133,6 @@ export type PlanRedesignProps = {
   deloadWeekIndex?: number | null;
   sessions: PlanSessionInput[];
   view: PlanViewMode;
-  filter: PlanFilter;
-  /** When true, "Mark done" / "Start" link go to /app/sessions/start/<id>. */
-  logHrefBase: string;
   // Form actions wired by the server page.
   moveAction: (formData: FormData) => Promise<void> | void;
   skipAction: (formData: FormData) => Promise<void> | void;
@@ -140,13 +146,6 @@ export type PlanRedesignProps = {
     id: string,
     notes: string,
   ) => Promise<{ ok?: true; error?: string }>;
-  /**
-   * Server action that starts a session from a planned id, optionally
-   * with a retroactive `performedAt` (YYYY-MM-DD) form field. Wired by
-   * the server page to `startSessionFromPlan`. Used by the overdue
-   * "Log now" date picker.
-   */
-  startSessionAction: (formData: FormData) => Promise<void> | void;
   /**
    * Whether the user has in-app AI access (BYOAI key configured). When
    * true the session drawer's "Ask why" control dispatches the
@@ -214,10 +213,92 @@ export function sessionToOverdueCandidate(s: PlanSessionInput) {
   };
 }
 
-function passesFilter(s: PlanSessionInput, f: PlanFilter): boolean {
-  if (f === "all") return true;
-  if (f === "strength") return s.isStrength;
-  return s.isCardio;
+export type PlanWeekState = "completed" | "current" | "attention" | "upcoming";
+
+export function resolvePlanWeekState(args: {
+  weekIndex: number;
+  currentWeekIndex: number;
+  settled: number;
+  total: number;
+}): PlanWeekState {
+  if (args.weekIndex === args.currentWeekIndex) return "current";
+  if (args.total > 0 && args.settled === args.total) return "completed";
+  if (args.currentWeekIndex >= 0 && args.weekIndex < args.currentWeekIndex) {
+    return "attention";
+  }
+  return "upcoming";
+}
+
+function weekComposition(sessions: readonly PlanSessionInput[]): string {
+  let strength = 0;
+  let cardio = 0;
+  let hybrid = 0;
+  const trainedDays = new Set<number>();
+  for (const session of sessions) {
+    trainedDays.add(session.dayIndex);
+    if (session.isStrength && session.isCardio) hybrid += 1;
+    else if (session.isStrength) strength += 1;
+    else if (session.isCardio) cardio += 1;
+  }
+  const parts: string[] = [];
+  if (strength > 0) parts.push(`${strength} strength`);
+  if (cardio > 0) parts.push(`${cardio} cardio`);
+  if (hybrid > 0) parts.push(`${hybrid} hybrid`);
+  const rest = Math.max(0, 7 - trainedDays.size);
+  if (rest > 0) parts.push(`${rest} rest`);
+  return parts.join(" · ") || "No sessions";
+}
+
+function percentRange(values: number[]): string | null {
+  const sorted = [...new Set(values)].sort((a, b) => a - b);
+  if (sorted.length === 0) return null;
+  if (sorted.length === 1) return `${sorted[0]}%`;
+  return `${sorted[0]}–${sorted[sorted.length - 1]}%`;
+}
+
+function weekLoadSummary(sessions: readonly PlanSessionInput[]): string {
+  const main: number[] = [];
+  const supplemental: number[] = [];
+  for (const session of sessions) {
+    for (const item of session.items) {
+      if (item.percentTm == null) continue;
+      if (item.kind === "main") main.push(item.percentTm);
+      else if (item.kind === "back_off") supplemental.push(item.percentTm);
+    }
+  }
+  const parts: string[] = [];
+  const mainRange = percentRange(main);
+  const supplementalRange = percentRange(supplemental);
+  if (mainRange) parts.push(`Main lifts ${mainRange}`);
+  if (supplementalRange) parts.push(`Supplemental ${supplementalRange}`);
+  return parts.join(" · ") || "Open session for prescription details";
+}
+
+function sessionDoseSummary(session: PlanSessionInput): string {
+  if (session.isCardio && !session.isStrength) {
+    return session.estDurationMin != null
+      ? `Conditioning · ~${session.estDurationMin} min`
+      : "Conditioning";
+  }
+  const main = session.items.find((item) => item.kind === "main");
+  if (main) {
+    const supplementalCount = new Set(
+      session.items
+        .filter((item) => item.kind === "back_off")
+        .map((item) => item.movementId),
+    ).size;
+    return `${formatPrescriptionItem(main)}${
+      supplementalCount > 0
+        ? ` · ${supplementalCount} supplemental`
+        : ""
+    }`;
+  }
+  const movements = new Set(
+    session.items.map((item) => item.movementId).filter(Boolean),
+  ).size;
+  return `${movements || session.items.length} programmed movement${
+    movements === 1 ? "" : "s"
+  }${session.estDurationMin != null ? ` · ~${session.estDurationMin} min` : ""}`;
 }
 
 /**
@@ -257,41 +338,35 @@ function PlanFocusBadge({ muscles }: { muscles: readonly string[] }) {
 export function PlanRedesign(props: PlanRedesignProps) {
   const {
     archetypeName,
+    programFamilyName = "SxC",
+    segments = [{ startWeekIndex: 0, label: archetypeName }],
+    headerActions,
     cycleNoun = "block",
     focusMuscles = [],
     startedOn,
-    endedOn,
     weeks,
     today,
     currentWeekIndex,
     deloadWeekIndex,
     sessions,
     view: initialView,
-    filter: initialFilter,
-    logHrefBase,
     moveAction,
     skipAction,
     unskipAction,
     updateNotesAction,
-    startSessionAction,
     aiAccess,
     seasonEnabled = false,
   } = props;
 
   const router = useRouter();
 
-  // View + filter are pure client-side transforms over the same
-  // session set. Server navigation here is wasteful — it refetches the
-  // whole block from the DB just to flip a CSS class. Keep them as
-  // local state and sync to the URL with history.replaceState so deep
-  // links + reloads still land on the right tab.
+  // View switching is a pure client-side transform over the same session set.
+  // Keep it local and sync the URL so reloads preserve Program / Calendar.
   const [view, setView] = useState<PlanViewMode>(initialView);
-  const [filter, setFilter] = useState<PlanFilter>(initialFilter);
-  const syncUrl = useCallback((nextView: PlanViewMode, nextFilter: PlanFilter) => {
+  const syncUrl = useCallback((nextView: PlanViewMode) => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams();
     if (nextView !== "timeline") params.set("view", nextView);
-    if (nextFilter !== "all") params.set("filter", nextFilter);
     const q = params.toString();
     const url = q ? `${window.location.pathname}?${q}` : window.location.pathname;
     window.history.replaceState(null, "", url + window.location.hash);
@@ -299,16 +374,9 @@ export function PlanRedesign(props: PlanRedesignProps) {
   const onViewChange = useCallback(
     (v: PlanViewMode) => {
       setView(v);
-      syncUrl(v, filter);
+      syncUrl(v);
     },
-    [filter, syncUrl],
-  );
-  const onFilterChange = useCallback(
-    (f: PlanFilter) => {
-      setFilter(f);
-      syncUrl(view, f);
-    },
-    [view, syncUrl],
+    [syncUrl],
   );
 
   // Drawer state — synced to the URL hash so back-button works.
@@ -379,31 +447,23 @@ export function PlanRedesign(props: PlanRedesignProps) {
     return addDaysToYmd(anchor.date, -(anchor.weekIndex * 7 + anchor.dayIndex));
   }, [sessions]);
 
-  // Filter is applied at render time so the per-week progress counters
-  // always reflect the real block, not the filtered view.
-  const visible = useCallback(
-    (cell: PlanSessionInput[] | undefined): PlanSessionInput[] => {
-      if (!cell) return [];
-      return cell.filter((s) => passesFilter(s, filter));
-    },
-    [filter],
-  );
-
-  // Per-week progress: "done / total" using ALL sessions (filter
-  // doesn't change reality).
+  // Per-week progress. A skipped session settles the schedule slot but remains
+  // distinct from a completed workout in the program-wide completion count.
   const weekProgress = useMemo(() => {
-    const out: { done: number; total: number }[] = [];
+    const out: { done: number; settled: number; total: number }[] = [];
     for (let w = 0; w < weeks; w++) {
       let done = 0;
+      let settled = 0;
       let total = 0;
       for (let d = 0; d < 7; d++) {
         const bucket = byCell.get(`${w}-${d}`) ?? [];
         for (const s of bucket) {
           total += 1;
           if (s.done) done += 1;
+          if (s.done || s.skipped) settled += 1;
         }
       }
-      out.push({ done, total });
+      out.push({ done, settled, total });
     }
     return out;
   }, [byCell, weeks]);
@@ -411,7 +471,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
   // DnD state — mirrors block-wizard Step5Schedule.
   const dragFromRef = useRef<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
-  const handleDragStart = (sid: string) => (e: DragEvent<HTMLDivElement>) => {
+  const handleDragStart = (sid: string) => (e: DragEvent<HTMLElement>) => {
     dragFromRef.current = sid;
     e.dataTransfer.effectAllowed = "move";
     // Some browsers require data on the transfer to allow a drop.
@@ -457,25 +517,19 @@ export function PlanRedesign(props: PlanRedesignProps) {
 
   const openSession = openId ? sessions.find((s) => s.id === openId) ?? null : null;
 
-  // Current-week rail (Mon..Sun for the current week). We synthesise
-  // rest rows for days with no session so the rail always shows 7
-  // entries — matches the mockup.
-  const railWeek = Math.max(0, currentWeekIndex >= 0 ? currentWeekIndex : 0);
-  const rail = useMemo(() => {
-    const rows: {
-      dayIndex: number;
-      dow: string;
-      session: PlanSessionInput | null;
-    }[] = [];
-    for (let d = 0; d < 7; d++) {
-      const bucket = byCell.get(`${railWeek}-${d}`) ?? [];
-      // Rail shows one row per day; if a 2-a-day we pick the first
-      // for the rail (drawer-driven detail handles the rest).
-      const s = bucket[0] ?? null;
-      rows.push({ dayIndex: d, dow: DOW_FULL[d]!, session: s });
-    }
-    return rows;
-  }, [byCell, railWeek]);
+  const phaseGroups = useMemo(
+    () => buildPlanPhaseGroups(segments, weeks),
+    [segments, weeks],
+  );
+  const currentPhase =
+    phaseGroups.find(
+      (phase) =>
+        currentWeekIndex >= phase.startWeekIndex &&
+        currentWeekIndex <= phase.endWeekIndex,
+    ) ??
+    (currentWeekIndex >= weeks
+      ? phaseGroups[phaseGroups.length - 1]!
+      : phaseGroups[0]!);
 
   const totalSessions = sessions.length;
   const totalDone = sessions.filter((s) => s.done).length;
@@ -494,50 +548,56 @@ export function PlanRedesign(props: PlanRedesignProps) {
 
   return (
     <div data-testid="plan-redesign" style={{ display: "grid", gap: 24 }}>
-      <header className="plan-head">
-        <div className="plan-eyebrow">
-          {archetypeName}
-          <PlanFocusBadge muscles={focusMuscles} />
+      <header className="plan-program-head">
+        <div className="plan-program-head-row">
+          <div>
+            <div className="plan-eyebrow">
+              Active program · {programFamilyName}
+              <PlanFocusBadge muscles={focusMuscles} />
+            </div>
+            <h1 className="plan-h1">{archetypeName}</h1>
+            <div className="plan-program-subtitle">
+              {currentWeekIndex < 0
+                ? `Starts ${longDate(startedOn)} · ${currentPhase.label}`
+                : currentWeekIndex >= weeks
+                  ? `Program window complete · ${currentPhase.label}`
+                  : `Week ${currentWeekIndex + 1} of ${weeks} · ${
+                      currentPhase.label
+                    } · ${weekComposition(
+                  sessions.filter(
+                    (session) => session.weekIndex === currentWeekIndex,
+                  ),
+                    )}`}
+            </div>
+          </div>
+          {headerActions}
         </div>
-        <div className="plan-head-row">
-          <h1 className="plan-h1">Plan</h1>
-          <Link href="/app/plan/history" className="plan-nav-link">
-            View history →
-          </Link>
-        </div>
-        <div
-          className="plan-progress"
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={progressPct}
-          aria-label={`${totalDone} of ${totalSessions} sessions done`}
-        >
-          <span style={{ width: `${progressPct}%` }} />
-        </div>
-        <div className="plan-meta">
-          <b>
-            {longDate(startedOn)} – {longDate(endedOn)}
-          </b>
-          <span className="sep">·</span>
+        <div className="plan-progress-row">
+          <div
+            className="plan-progress"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progressPct}
+            aria-label={`${totalDone} of ${totalSessions} sessions done`}
+          >
+            <span style={{ width: `${progressPct}%` }} />
+          </div>
           <span>
-            Week {Math.max(1, (currentWeekIndex >= 0 ? currentWeekIndex : 0) + 1)} of {weeks}
+            <b>{totalDone}</b> of {totalSessions} sessions complete
           </span>
-          <span className="sep">·</span>
-          <span>
-            <b>{totalDone}</b> of {totalSessions} sessions
-          </span>
-          <span className="sep">·</span>
-          <span>{totalSkipped} skipped</span>
-          {totalOverdue > 0 && (
-            <>
-              <span className="sep">·</span>
+        </div>
+        {(totalSkipped > 0 || totalOverdue > 0) && (
+          <div className="plan-meta">
+            {totalSkipped > 0 && <span>{totalSkipped} skipped</span>}
+            {totalOverdue > 0 && (
               <span data-testid="plan-meta-overdue">
-                <b className="plan-meta-overdue-count">{totalOverdue}</b> overdue
+                <b className="plan-meta-overdue-count">{totalOverdue}</b>{" "}
+                overdue
               </span>
-            </>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </header>
 
       <div className="plan-controls">
@@ -551,7 +611,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
             aria-selected={view === "timeline"}
             onClick={() => onViewChange("timeline")}
           >
-            Timeline
+            Program
           </button>
           <button
             type="button"
@@ -562,7 +622,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
             aria-selected={view === "month"}
             onClick={() => onViewChange("month")}
           >
-            Month
+            Calendar
           </button>
           {seasonEnabled && (
             <a
@@ -576,191 +636,316 @@ export function PlanRedesign(props: PlanRedesignProps) {
             </a>
           )}
         </div>
-        <div className="plan-filter" aria-label="Filter by kind">
-          <span className="plan-filter-label">Show:</span>
-          {(["all", "strength", "cardio"] as PlanFilter[]).map((k) => (
-            <button
-              key={k}
-              type="button"
-              className="plan-filter-btn"
-              data-active={filter === k ? "true" : "false"}
-              data-testid={`plan-filter-${k}`}
-              onClick={() => onFilterChange(k)}
-            >
-              {k === "all" ? "All" : k === "strength" ? "Strength" : "Cardio"}
-            </button>
-          ))}
-        </div>
+        <span className="plan-overview-hint">
+          Full program overview · current week expanded
+        </span>
       </div>
 
-      <div className="plan-layout">
-        <div className="plan-main">
-          {view === "timeline" ? (
-            <section
-              className="plan-timeline"
-              data-testid="plan-timeline"
-              aria-label={`${cycleNoun === "cycle" ? "Cycle" : "Block"} timeline`}
-            >
-              {Array.from({ length: weeks }, (_, w) => (
-                <div
-                  key={w}
-                  className="plan-week-row"
-                  data-testid={`plan-timeline-week-${w}`}
-                  data-today-row={w === currentWeekIndex ? "true" : undefined}
-                >
-                  <div className="plan-week-label">
-                    <span className="wk mono">Week {w + 1}</span>
-                    {deloadWeekIndex === w && (
-                      <span
-                        data-testid={`plan-week-deload-${w}`}
-                        style={{ display: "inline-flex", alignItems: "center", gap: 2 }}
-                      >
-                        <span
-                          className="mono"
-                          style={{
-                            fontSize: 9,
-                            textTransform: "uppercase",
-                            letterSpacing: "0.06em",
-                            color: "var(--cp-accent)",
-                            border: "1px solid color-mix(in oklab, var(--cp-accent) 35%, transparent)",
-                            borderRadius: 5,
-                            padding: "0 4px",
-                          }}
-                        >
-                          Deload
+      {view === "timeline" ? (
+        <section
+          className="plan-timeline plan-phase-stack"
+          data-testid="plan-timeline"
+          aria-label={`${cycleNoun === "cycle" ? "Cycle" : "Block"} overview`}
+        >
+          {phaseGroups.map((phase, phaseIndex) => {
+            const phaseWeeks = Array.from(
+              {
+                length: phase.endWeekIndex - phase.startWeekIndex + 1,
+              },
+              (_, index) => phase.startWeekIndex + index,
+            );
+            const phaseSessions = sessions.filter(
+              (session) =>
+                session.weekIndex >= phase.startWeekIndex &&
+                session.weekIndex <= phase.endWeekIndex,
+            );
+            const phaseSettled = phaseSessions.filter(
+              (session) => session.done || session.skipped,
+            ).length;
+            const isCurrentPhase =
+              currentWeekIndex >= phase.startWeekIndex &&
+              currentWeekIndex <= phase.endWeekIndex;
+            const weekLabel =
+              phase.startWeekIndex === phase.endWeekIndex
+                ? `Week ${phase.startWeekIndex + 1}`
+                : `Weeks ${phase.startWeekIndex + 1}–${
+                    phase.endWeekIndex + 1
+                  }`;
+            return (
+              <details
+                key={`${phase.startWeekIndex}-${phase.label}`}
+                className={`plan-phase${isCurrentPhase ? " current" : ""}`}
+                open={isCurrentPhase}
+                data-testid={`plan-phase-${phaseIndex}`}
+              >
+                <summary className="plan-phase-head">
+                  <span>
+                    <span className="plan-phase-name">
+                      {phase.label}
+                      {isCurrentPhase && (
+                        <span className="plan-phase-current">
+                          Current phase
                         </span>
-                        <MetricHelp term="deload" variant="why" placement="bottom" />
-                      </span>
-                    )}
-                    <span className="wk-prog mono">
-                      {weekProgress[w]!.done}/{weekProgress[w]!.total || "—"}
+                      )}
                     </span>
-                  </div>
-                  {Array.from({ length: 7 }, (_, d) => {
-                    const cellKey = `${w}-${d}`;
-                    const all = byCell.get(cellKey) ?? [];
-                    const shown = visible(all);
-                    const cellDate =
-                      all[0]?.date ??
-                      (gridAnchorDate
-                        ? addDaysToYmd(gridAnchorDate, w * 7 + d)
-                        : null);
-                    const isToday = cellDate === today;
-                    const isPast = cellDate !== null && cellDate < today;
+                    <span className="plan-phase-meta">
+                      {weekLabel} · {phaseSessions.length} sessions
+                    </span>
+                  </span>
+                  <span className="plan-phase-progress">
+                    {phaseSettled} / {phaseSessions.length} settled
+                    <span className="plan-phase-chevron" aria-hidden="true">
+                      ⌄
+                    </span>
+                  </span>
+                </summary>
+                <div className="plan-phase-weeks">
+                  {phaseWeeks.map((weekIndex) => {
+                    const progress = weekProgress[weekIndex]!;
+                    const weekSessions = sessions.filter(
+                      (session) => session.weekIndex === weekIndex,
+                    );
+                    const state = resolvePlanWeekState({
+                      weekIndex,
+                      currentWeekIndex,
+                      settled: progress.settled,
+                      total: progress.total,
+                    });
+                    const stateLabel =
+                      state === "completed"
+                        ? "Completed"
+                        : state === "current"
+                          ? "Current"
+                          : state === "attention"
+                            ? "Needs attention"
+                            : "Upcoming";
+                    const weekStart = addDaysToYmd(
+                      startedOn,
+                      weekIndex * 7,
+                    );
+                    const weekEnd = addDaysToYmd(weekStart, 6);
                     return (
-                      <div
-                        key={d}
-                        className="plan-day-cell"
-                        data-today={isToday ? "true" : undefined}
-                        data-past={isPast ? "true" : undefined}
-                        data-drag-over={dragOverKey === cellKey ? "true" : undefined}
-                        data-testid={`plan-day-cell-${w}-${d}`}
-                        onDragOver={handleDragOver(cellKey)}
-                        onDragLeave={handleDragLeave}
-                        onDrop={handleDrop(w, d)}
+                      <details
+                        key={weekIndex}
+                        className={`plan-week ${state}`}
+                        open={state === "current"}
+                        data-testid={`plan-timeline-week-${weekIndex}`}
+                        data-today-row={
+                          state === "current" ? "true" : undefined
+                        }
                       >
-                        <span className="day-num mono">
-                          {cellDate ? shortDate(cellDate) : `${DOW_FULL[d]}`}
-                          {isToday && (
-                            <span className="today-dot" aria-label="Today" title="Today" />
-                          )}
-                        </span>
-                        {shown.length === 0 ? (
-                          <span className="session-pill rest">Rest</span>
-                        ) : (
-                          shown.map((s) => {
-                            const kind = s.isCardio ? "cardio" : "strength";
-                            // "done" gets its own clear treatment; only
-                            // past-AND-incomplete sessions are faded ("muted").
-                            const muted = isPast && !s.done;
-                            const overdue = isOverdue(
-                              sessionToOverdueCandidate(s),
-                              today,
-                            );
-                            return (
-                              <div
-                                key={s.id}
-                                className={`session-pill ${kind}${s.done ? " done" : ""}${muted ? " muted" : ""}${overdue ? " overdue" : ""}`}
-                                role="button"
-                                tabIndex={0}
-                                draggable={!s.done && !s.skipped}
-                                data-testid={`plan-pill-${s.id}`}
-                                onClick={() => openDrawer(s.id)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter" || e.key === " ") {
-                                    e.preventDefault();
-                                    openDrawer(s.id);
+                        <summary className="plan-week-head">
+                          <span>
+                            <span className="plan-week-name-row">
+                              <strong>Week {weekIndex + 1}</strong>
+                              <span className={`plan-week-tag ${state}`}>
+                                {stateLabel}
+                              </span>
+                              {deloadWeekIndex === weekIndex && (
+                                <span
+                                  className="plan-week-tag deload"
+                                  data-testid={`plan-week-deload-${weekIndex}`}
+                                >
+                                  Deload
+                                </span>
+                              )}
+                            </span>
+                            <span className="plan-week-dates">
+                              {longDate(weekStart)}–{longDate(weekEnd)}
+                            </span>
+                          </span>
+                          <span className="plan-week-summary">
+                            <b>{weekComposition(weekSessions)}</b>
+                            <span>{weekLoadSummary(weekSessions)}</span>
+                          </span>
+                          <span
+                            className={`plan-week-result ${
+                              state === "completed" ? "done" : ""
+                            }`}
+                          >
+                            <b>
+                              {progress.settled} / {progress.total || "—"}
+                              {state === "completed" ? " ✓" : ""}
+                            </b>
+                            <span className="plan-week-chevron" aria-hidden="true">
+                              ⌄
+                            </span>
+                          </span>
+                        </summary>
+                        <div className="plan-week-body">
+                          <div className="plan-agenda-head">
+                            <b>Week schedule</b>
+                            <span>
+                              Select a session to review or adjust it
+                            </span>
+                          </div>
+                          <div className="plan-agenda-grid">
+                            {Array.from({ length: 7 }, (_, dayIndex) => {
+                              const cellKey = `${weekIndex}-${dayIndex}`;
+                              const daySessions =
+                                byCell.get(cellKey) ?? [];
+                              const dayDate =
+                                daySessions[0]?.date ??
+                                (gridAnchorDate
+                                  ? addDaysToYmd(
+                                      gridAnchorDate,
+                                      weekIndex * 7 + dayIndex,
+                                    )
+                                  : addDaysToYmd(
+                                      startedOn,
+                                      weekIndex * 7 + dayIndex,
+                                    ));
+                              const isToday = dayDate === today;
+                              return (
+                                <div
+                                  key={dayIndex}
+                                  className={`plan-agenda-day${
+                                    isToday ? " today" : ""
+                                  }${
+                                    daySessions.length === 0 ? " rest" : ""
+                                  }`}
+                                  data-today={
+                                    isToday ? "true" : undefined
                                   }
-                                }}
-                                onDragStart={handleDragStart(s.id)}
-                                onDragEnd={handleDragEnd}
-                                title={s.title}
-                              >
-                                {s.done && (
-                                  <span className="done-check" aria-hidden="true">
-                                    {"\u2713 "}
-                                  </span>
-                                )}
-                                {pillTitle(s)}
-                                {overdue && (
-                                  <span
-                                    className="overdue-pill mono"
-                                    data-testid={`overdue-pill-${s.id}`}
-                                    title={`Overdue by ${overdueDays(sessionToOverdueCandidate(s), today)} day(s)`}
-                                  >
-                                    Overdue · {overdueDays(sessionToOverdueCandidate(s), today)}d
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
+                                  data-drag-over={
+                                    dragOverKey === cellKey
+                                      ? "true"
+                                      : undefined
+                                  }
+                                  data-testid={`plan-day-cell-${weekIndex}-${dayIndex}`}
+                                  onDragOver={handleDragOver(cellKey)}
+                                  onDragLeave={handleDragLeave}
+                                  onDrop={handleDrop(weekIndex, dayIndex)}
+                                >
+                                  <div className="plan-agenda-date mono">
+                                    <span>{DOW_FULL[dayIndex]}</span>
+                                    <b>
+                                      {Number(dayDate.slice(8, 10))}
+                                    </b>
+                                  </div>
+                                  <div className="plan-agenda-sessions">
+                                    {daySessions.length === 0 ? (
+                                      <div className="plan-agenda-rest">
+                                        <b>Rest</b>
+                                        <span>No programmed work</span>
+                                        {isToday && (
+                                          <span className="plan-session-status today">
+                                            Today
+                                          </span>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      daySessions.map((session) => {
+                                        const overdue = isOverdue(
+                                          sessionToOverdueCandidate(
+                                            session,
+                                          ),
+                                          today,
+                                        );
+                                        const status = session.done
+                                          ? "Done"
+                                          : session.skipped
+                                            ? "Skipped"
+                                            : session.inProgress
+                                              ? "In progress"
+                                              : overdue
+                                                ? `Overdue · ${overdueDays(
+                                                    sessionToOverdueCandidate(
+                                                      session,
+                                                    ),
+                                                    today,
+                                                  )}d`
+                                                : isToday
+                                                  ? "Today"
+                                                  : "Planned";
+                                        const statusClass = session.done
+                                          ? "done"
+                                          : session.skipped
+                                            ? "skipped"
+                                            : session.inProgress
+                                              ? "in-progress"
+                                              : overdue
+                                                ? "overdue"
+                                                : isToday
+                                                  ? "today"
+                                                  : "planned";
+                                        return (
+                                          <button
+                                            type="button"
+                                            key={session.id}
+                                            className="plan-agenda-session"
+                                            draggable={
+                                              !session.done &&
+                                              !session.skipped
+                                            }
+                                            data-testid={`plan-pill-${session.id}`}
+                                            onClick={() =>
+                                              openDrawer(session.id)
+                                            }
+                                            onDragStart={handleDragStart(
+                                              session.id,
+                                            )}
+                                            onDragEnd={handleDragEnd}
+                                          >
+                                            <span>
+                                              <strong>
+                                                {session.title}
+                                              </strong>
+                                              <small>
+                                                {sessionDoseSummary(
+                                                  session,
+                                                )}
+                                              </small>
+                                            </span>
+                                            <span
+                                              className={`plan-session-status ${statusClass}`}
+                                              data-testid={
+                                                overdue
+                                                  ? `overdue-pill-${session.id}`
+                                                  : undefined
+                                              }
+                                            >
+                                              {session.done ? "✓ " : ""}
+                                              {status}
+                                            </span>
+                                          </button>
+                                        );
+                                      })
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </details>
                     );
                   })}
                 </div>
-              ))}
-            </section>
-          ) : (
-            <MonthAlternate
-              sessions={sessions.filter((s) => passesFilter(s, filter))}
-              today={today}
-              onOpen={openDrawer}
-            />
-          )}
-        </div>
-
-        <RailList rail={rail} today={today} onOpen={openDrawer} />
-      </div>
-
-      <div className="plan-legend" data-testid="plan-legend">
-        <div className="item">
-          <span className="swatch strength" /> Strength
-        </div>
-        <div className="item">
-          <span className="swatch cardio" /> Cardio
-        </div>
-        <div className="item">
-          <span className="swatch today-sw" /> Today
-        </div>
-        <div className="item">
-          <span className="swatch rest-sw" /> Rest
-        </div>
-      </div>
+              </details>
+            );
+          })}
+        </section>
+      ) : (
+        <MonthAlternate
+          sessions={sessions}
+          today={today}
+          onOpen={openDrawer}
+        />
+      )}
 
       {openSession && (
         <SessionDrawer
           session={openSession}
           today={today}
           weeks={weeks}
-          logHrefBase={logHrefBase}
           onClose={closeDrawer}
           onMutated={() => router.refresh()}
           moveAction={moveAction}
           skipAction={skipAction}
           unskipAction={unskipAction}
           updateNotesAction={updateNotesAction}
-          startSessionAction={startSessionAction}
+          allowLogging={false}
           aiAccess={aiAccess}
         />
       )}
@@ -825,6 +1010,348 @@ export function PlanRedesign(props: PlanRedesignProps) {
         }
         .plan-meta b { color: var(--cp-text); font-weight: 600; }
         .plan-meta .sep { color: var(--cp-text-soft); }
+        .plan-program-head {
+          display: grid;
+          gap: 16px;
+          padding-bottom: 24px;
+          border-bottom: 1px solid var(--cp-border);
+        }
+        .plan-program-head-row {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 24px;
+        }
+        .plan-program-subtitle {
+          margin-top: 7px;
+          color: var(--cp-text-muted);
+          font-size: 15px;
+        }
+        .plan-program-head .plan-h1 {
+          margin-top: 4px;
+          font-size: clamp(30px, 5vw, 44px);
+          letter-spacing: -0.04em;
+        }
+        .plan-progress-row {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 16px;
+          align-items: center;
+          color: var(--cp-text-muted);
+          font-size: 13px;
+        }
+        .plan-progress-row .plan-progress {
+          height: 7px;
+          margin-top: 0;
+          border-radius: 999px;
+          background: var(--cp-surface-soft);
+        }
+        .plan-progress-row .plan-progress > span { border-radius: 999px; }
+        .plan-progress-row b { color: var(--cp-text); }
+        .plan-overview-hint {
+          color: var(--cp-text-muted);
+          font-size: 12px;
+        }
+        .plan-timeline.plan-phase-stack {
+          max-height: none;
+          display: grid;
+          gap: 12px;
+          overflow: visible;
+          border: 0;
+          border-radius: 0;
+          background: transparent;
+        }
+        .plan-phase {
+          overflow: hidden;
+          border: 1px solid var(--cp-border);
+          border-radius: 16px;
+          background: var(--cp-surface);
+          box-shadow: 0 0 2px var(--cp-border);
+        }
+        .plan-phase > summary,
+        .plan-week > summary {
+          list-style: none;
+        }
+        .plan-phase > summary::-webkit-details-marker,
+        .plan-week > summary::-webkit-details-marker {
+          display: none;
+        }
+        .plan-phase-head {
+          min-height: 70px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          padding: 14px 18px;
+          cursor: pointer;
+          background: var(--cp-bg-elevated);
+        }
+        .plan-phase[open] > .plan-phase-head {
+          border-bottom: 1px solid var(--cp-border);
+        }
+        .plan-phase-name {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+          font-size: 16px;
+          font-weight: 800;
+        }
+        .plan-phase-current {
+          padding: 3px 8px;
+          border-radius: 999px;
+          background: var(--cp-accent-soft);
+          color: var(--cp-accent);
+          font-size: 10px;
+          font-weight: 800;
+          text-transform: uppercase;
+        }
+        .plan-phase-meta,
+        .plan-phase-progress {
+          display: block;
+          margin-top: 3px;
+          color: var(--cp-text-muted);
+          font-size: 12px;
+        }
+        .plan-phase-progress {
+          margin-top: 0;
+          display: inline-flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 10px;
+          white-space: nowrap;
+        }
+        .plan-phase-chevron,
+        .plan-week-chevron {
+          display: inline-block;
+          color: var(--cp-text-muted);
+          font-size: 18px;
+          transition: transform 140ms ease;
+        }
+        .plan-phase[open] > .plan-phase-head .plan-phase-chevron,
+        .plan-week[open] > .plan-week-head .plan-week-chevron {
+          transform: rotate(180deg);
+        }
+        .plan-week {
+          border-bottom: 1px solid var(--cp-border);
+        }
+        .plan-week:last-child { border-bottom: 0; }
+        .plan-week.completed { box-shadow: inset 4px 0 0 var(--cp-success); }
+        .plan-week.current { box-shadow: inset 5px 0 0 var(--cp-accent); }
+        .plan-week.attention { box-shadow: inset 4px 0 0 var(--cp-warning); }
+        .plan-week-head {
+          min-height: 78px;
+          display: grid;
+          grid-template-columns: 160px minmax(0, 1fr) 86px;
+          gap: 20px;
+          align-items: center;
+          padding: 12px 18px;
+          cursor: pointer;
+          background: var(--cp-surface);
+        }
+        .plan-week.completed > .plan-week-head {
+          background: var(--cp-surface-soft);
+        }
+        .plan-week.current > .plan-week-head {
+          background: color-mix(in srgb, var(--cp-accent) 22%, var(--cp-surface));
+        }
+        .plan-week.attention > .plan-week-head {
+          background: color-mix(in srgb, var(--cp-warning) 10%, var(--cp-surface));
+        }
+        .plan-week.upcoming > .plan-week-head {
+          background: var(--cp-bg-elevated);
+        }
+        .plan-week-head:hover {
+          filter: brightness(0.98);
+        }
+        .plan-week-name-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .plan-week-name-row > strong { font-size: 16px; }
+        .plan-week-dates {
+          display: block;
+          margin-top: 4px;
+          color: var(--cp-text-muted);
+          font-size: 12px;
+        }
+        .plan-week-tag {
+          display: inline-flex;
+          min-height: 22px;
+          align-items: center;
+          padding: 2px 7px;
+          border-radius: 999px;
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.03em;
+          text-transform: uppercase;
+        }
+        .plan-week-tag.completed {
+          color: var(--cp-success);
+          background: color-mix(in srgb, var(--cp-success) 12%, transparent);
+        }
+        .plan-week-tag.current {
+          color: var(--cp-accent);
+          background: var(--cp-accent-soft);
+        }
+        .plan-week-tag.attention {
+          color: var(--cp-warning);
+          background: color-mix(in srgb, var(--cp-warning) 12%, transparent);
+        }
+        .plan-week-tag.upcoming {
+          color: var(--cp-text-muted);
+          border: 1px solid var(--cp-border);
+          background: var(--cp-surface-soft);
+        }
+        .plan-week-tag.deload {
+          color: var(--cp-accent);
+          border: 1px solid var(--cp-accent);
+          background: transparent;
+        }
+        .plan-week-summary {
+          display: grid;
+          gap: 4px;
+          min-width: 0;
+        }
+        .plan-week-summary b { font-size: 13px; }
+        .plan-week-summary span {
+          color: var(--cp-text-muted);
+          font-size: 12px;
+          line-height: 1.35;
+        }
+        .plan-week-result {
+          display: inline-flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 10px;
+          text-align: right;
+          color: var(--cp-text-muted);
+          white-space: nowrap;
+        }
+        .plan-week-result b { color: var(--cp-text); font-size: 14px; }
+        .plan-week-result.done b { color: var(--cp-success); }
+        .plan-week-body {
+          padding: 0 18px 18px;
+          background: var(--cp-surface);
+        }
+        .plan-agenda-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          padding: 12px 0 10px;
+          color: var(--cp-text-muted);
+          font-size: 12px;
+        }
+        .plan-agenda-head b { color: var(--cp-text); font-size: 13px; }
+        .plan-agenda-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 1px;
+          overflow: hidden;
+          border: 1px solid var(--cp-border);
+          border-radius: 12px;
+          background: var(--cp-border);
+        }
+        .plan-agenda-day {
+          min-height: 82px;
+          display: grid;
+          grid-template-columns: 62px minmax(0, 1fr);
+          gap: 12px;
+          padding: 12px 14px;
+          background: var(--cp-surface);
+          transition: background 120ms ease;
+        }
+        .plan-agenda-day.today { background: var(--cp-accent-soft); }
+        .plan-agenda-day.rest { grid-column: 1 / -1; }
+        .plan-agenda-day[data-drag-over="true"] {
+          outline: 2px dashed var(--cp-border-strong);
+          outline-offset: -3px;
+          background: var(--cp-surface-soft);
+        }
+        .plan-agenda-date {
+          grid-row: 1;
+          display: grid;
+          align-content: center;
+          gap: 2px;
+          color: var(--cp-text-muted);
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+        .plan-agenda-date b {
+          color: var(--cp-text);
+          font-size: 18px;
+          line-height: 1;
+        }
+        .plan-agenda-sessions {
+          display: grid;
+          align-content: center;
+          gap: 6px;
+        }
+        .plan-agenda-session {
+          width: 100%;
+          min-width: 0;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 12px;
+          align-items: center;
+          padding: 7px 0;
+          border: 0;
+          background: transparent;
+          color: var(--cp-text);
+          text-align: left;
+          cursor: pointer;
+        }
+        .plan-agenda-session + .plan-agenda-session {
+          border-top: 1px solid var(--cp-border);
+        }
+        .plan-agenda-session strong,
+        .plan-agenda-session small {
+          display: block;
+          overflow-wrap: anywhere;
+        }
+        .plan-agenda-session strong { font-size: 14px; }
+        .plan-agenda-session small {
+          margin-top: 4px;
+          color: var(--cp-text-muted);
+          font-size: 12px;
+        }
+        .plan-agenda-rest {
+          display: grid;
+          align-content: center;
+          gap: 4px;
+        }
+        .plan-agenda-rest span {
+          color: var(--cp-text-muted);
+          font-size: 12px;
+        }
+        .plan-session-status {
+          padding: 4px 7px;
+          border-radius: 999px;
+          background: var(--cp-surface-soft);
+          color: var(--cp-text-muted);
+          font-size: 11px;
+          white-space: nowrap;
+        }
+        .plan-session-status.done {
+          color: var(--cp-success);
+          background: color-mix(in srgb, var(--cp-success) 10%, transparent);
+        }
+        .plan-session-status.today {
+          color: var(--cp-accent);
+          background: var(--cp-accent-soft);
+          font-weight: 800;
+        }
+        .plan-session-status.overdue,
+        .plan-session-status.in-progress {
+          color: var(--cp-warning);
+          background: color-mix(in srgb, var(--cp-warning) 10%, transparent);
+        }
+        .plan-session-status.skipped { text-decoration: line-through; }
 
         .plan-controls {
           display: flex;
@@ -1175,29 +1702,70 @@ export function PlanRedesign(props: PlanRedesignProps) {
         }
         .rail-item.rest-item:hover .rail-name { color: var(--cp-text-soft); }
 
-        /* Mobile (<=768px): collapse the dense Timeline + Month surfaces
-           and the view-toggle / filter tabs that only act on them — show
-           ONLY the "This week" rail card, full-width. The page header
-           (eyebrow / title / progress bar / meta) stays visible. Desktop
-           layout is untouched.
-
-           IMPORTANT: this block lives at the END of the style sheet on
-           purpose. Earlier instances of .plan-view-toggle / .plan-main
-           in the cascade win on equal specificity unless this override
-           appears LAST (or carries !important). PR #202 hid this rule
-           higher up and it was silently overridden — see PR description.
-           Both source-order AND !important are belt-and-braces here so a
-           later refactor that moves rules around can't reintroduce the
-           regression. */
+        .plan-month-grid {
+          max-height: none;
+          overflow-y: visible;
+        }
         @media (max-width: 768px) {
-          .plan-view-toggle { display: none !important; }
-          .plan-filter { display: none !important; }
-          .plan-main { display: none !important; }
-          .plan-rail {
-            --rail-pad: 16px;
+          .plan-program-head-row {
+            display: grid;
+            gap: 18px;
           }
-          .plan-rail h3 {
-            font-size: 12px;
+          .plan-program-subtitle {
+            font-size: 14px;
+            line-height: 1.45;
+          }
+          .plan-progress-row {
+            grid-template-columns: 1fr;
+            gap: 8px;
+          }
+          .plan-view-toggle {
+            display: inline-flex !important;
+            width: 100%;
+          }
+          .plan-view-btn {
+            flex: 1;
+            min-height: 42px;
+          }
+          .plan-overview-hint { display: none; }
+          .plan-phase-head {
+            align-items: flex-start;
+            padding-inline: 14px;
+          }
+          .plan-phase-progress {
+            max-width: 76px;
+            text-align: right;
+            white-space: normal;
+          }
+          .plan-week-head {
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 8px;
+            padding-inline: 14px;
+          }
+          .plan-week-summary {
+            grid-column: 1;
+          }
+          .plan-week-summary span { font-size: 11px; }
+          .plan-week-result {
+            grid-column: 2;
+            grid-row: 1 / span 2;
+          }
+          .plan-week-body { padding-inline: 14px; }
+          .plan-agenda-head > span { display: none; }
+          .plan-agenda-grid { grid-template-columns: 1fr; }
+          .plan-agenda-day.rest { grid-column: auto; }
+          .plan-agenda-day {
+            grid-template-columns: 54px minmax(0, 1fr);
+            gap: 8px;
+          }
+          .plan-agenda-session {
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 8px;
+          }
+          .plan-session-status {
+            max-width: 82px;
+            white-space: normal;
+            text-align: center;
           }
         }
       `}</style>
@@ -1522,7 +2090,6 @@ export async function runSwapMove(
     await moveAction(formData);
     return { ok: true };
   } catch (err) {
-    // eslint-disable-next-line no-console -- diagnostics for the user
     console.error("[plan] swap-day move failed", err);
     const message =
       err instanceof Error && err.message
@@ -1581,11 +2148,12 @@ export function SessionDrawer({
   updateNotesAction,
   startSessionAction,
   aiAccess,
+  allowLogging = true,
 }: {
   session: PlanSessionInput;
   today: string;
   weeks: number;
-  logHrefBase: string;
+  logHrefBase?: string;
   onClose: () => void;
   /**
    * Called after a mutation (swap) that needs the route re-fetched. The PARENT
@@ -1602,8 +2170,10 @@ export function SessionDrawer({
     id: string,
     notes: string,
   ) => Promise<{ ok?: true; error?: string }>;
-  startSessionAction: (formData: FormData) => Promise<void> | void;
+  startSessionAction?: (formData: FormData) => Promise<void> | void;
   aiAccess?: boolean;
+  /** Plan is review/edit-only; Today keeps workout logging actions enabled. */
+  allowLogging?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [showSwap, setShowSwap] = useState(false);
@@ -1947,13 +2517,15 @@ export function SessionDrawer({
                 hide them once the workout is complete. */}
             {!session.done && (
               <>
-                <Link
-                  href={`${logHrefBase}/${session.id}`}
-                  className="cp-btn"
-                  data-testid="plan-drawer-mark-done"
-                >
-                  ✓ Mark done
-                </Link>
+                {allowLogging && logHrefBase && (
+                  <Link
+                    href={`${logHrefBase}/${session.id}`}
+                    className="cp-btn"
+                    data-testid="plan-drawer-mark-done"
+                  >
+                    ✓ Mark done
+                  </Link>
+                )}
                 {session.skipped ? (
                   <form action={unskipAction}>
                     <input type="hidden" name="id" value={session.id} />
@@ -1991,7 +2563,11 @@ export function SessionDrawer({
             session.isStrength ||
             session.isCardio) && (
             <div className="drawer-cta-extras">
-              {overdue && !session.skipped && !session.done && (
+              {allowLogging &&
+                startSessionAction &&
+                overdue &&
+                !session.skipped &&
+                !session.done && (
                 <LogNowDateForm
                   plannedId={session.id}
                   title={session.title}
