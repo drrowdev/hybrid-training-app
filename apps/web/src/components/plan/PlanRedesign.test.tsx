@@ -202,8 +202,33 @@ describe("PlanRedesign — expandable program overview", () => {
 
   it("marks completed sessions with a clear success status", () => {
     const html = render();
+    expect(html).toContain('class="plan-agenda-day completed"');
+    expect(html).toContain('class="plan-agenda-session done"');
     expect(html).toContain('class="plan-session-status done"');
     expect(html).toContain("✓ Done");
+  });
+
+  it("styles only the completed workout when a two-a-day is mixed", () => {
+    const html = render({
+      sessions: [
+        session({
+          id: "am",
+          dayIndex: 0,
+          date: "2026-05-25",
+          slot: "am",
+          done: true,
+        }),
+        session({
+          id: "pm",
+          dayIndex: 0,
+          date: "2026-05-25",
+          slot: "pm",
+          done: false,
+        }),
+      ],
+    });
+    expect(html).not.toContain('class="plan-agenda-day completed"');
+    expect(html).toContain('class="plan-agenda-session done"');
   });
 
   it("renders 'Rest' pills on empty day cells", () => {

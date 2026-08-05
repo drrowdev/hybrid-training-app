@@ -796,6 +796,11 @@ export function PlanRedesign(props: PlanRedesignProps) {
                                       weekIndex * 7 + dayIndex,
                                     ));
                               const isToday = dayDate === today;
+                              const dayCompleted =
+                                daySessions.length > 0 &&
+                                daySessions.every(
+                                  (session) => session.done,
+                                );
                               return (
                                 <div
                                   key={dayIndex}
@@ -803,6 +808,8 @@ export function PlanRedesign(props: PlanRedesignProps) {
                                     isToday ? " today" : ""
                                   }${
                                     daySessions.length === 0 ? " rest" : ""
+                                  }${
+                                    dayCompleted ? " completed" : ""
                                   }`}
                                   data-today={
                                     isToday ? "true" : undefined
@@ -873,7 +880,9 @@ export function PlanRedesign(props: PlanRedesignProps) {
                                           <button
                                             type="button"
                                             key={session.id}
-                                            className="plan-agenda-session"
+                                            className={`plan-agenda-session${
+                                              session.done ? " done" : ""
+                                            }`}
                                             draggable={
                                               !session.done &&
                                               !session.skipped
@@ -1265,6 +1274,13 @@ export function PlanRedesign(props: PlanRedesignProps) {
           transition: background 120ms ease;
         }
         .plan-agenda-day.today { background: var(--cp-accent-soft); }
+        .plan-agenda-day.completed {
+          background: var(--cp-surface-soft);
+          box-shadow: inset 4px 0 0 var(--cp-success);
+        }
+        .plan-agenda-day.completed .plan-agenda-date b {
+          color: var(--cp-success);
+        }
         .plan-agenda-day.rest { grid-column: 1 / -1; }
         .plan-agenda-day[data-drag-over="true"] {
           outline: 2px dashed var(--cp-border-strong);
@@ -1308,6 +1324,18 @@ export function PlanRedesign(props: PlanRedesignProps) {
         }
         .plan-agenda-session + .plan-agenda-session {
           border-top: 1px solid var(--cp-border);
+        }
+        .plan-agenda-session.done {
+          padding: 10px 12px;
+          border-radius: 8px;
+          background: var(--cp-surface-soft);
+          box-shadow: inset 4px 0 0 var(--cp-success);
+        }
+        .plan-agenda-day.completed .plan-agenda-session.done {
+          padding: 7px 0;
+          border-radius: 0;
+          background: transparent;
+          box-shadow: none;
         }
         .plan-agenda-session strong,
         .plan-agenda-session small {
