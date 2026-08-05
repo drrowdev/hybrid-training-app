@@ -86,6 +86,7 @@ export type PlanSessionInput = {
   title: string;
   isCardio: boolean;
   isStrength: boolean;
+  isRehab?: boolean;
   done: boolean;
   /** Linked session exists but isn't finished yet (started, not done). */
   inProgress?: boolean;
@@ -116,6 +117,8 @@ export type PlanRedesignProps = {
   archetypeName: string;
   /** Program family / methodology shown above the program name. */
   programFamilyName?: string;
+  /** Durable backend marker; independent from the editable display name. */
+  customized?: boolean;
   /** Engine-owned structural phases, rebased to this materialized block. */
   segments?: readonly PlanProgramSegment[];
   /** State-aware program actions rendered beside the program identity. */
@@ -233,10 +236,12 @@ function weekComposition(sessions: readonly PlanSessionInput[]): string {
   let strength = 0;
   let cardio = 0;
   let hybrid = 0;
+  let rehab = 0;
   const trainedDays = new Set<number>();
   for (const session of sessions) {
     trainedDays.add(session.dayIndex);
-    if (session.isStrength && session.isCardio) hybrid += 1;
+    if (session.isRehab) rehab += 1;
+    else if (session.isStrength && session.isCardio) hybrid += 1;
     else if (session.isStrength) strength += 1;
     else if (session.isCardio) cardio += 1;
   }
@@ -244,6 +249,7 @@ function weekComposition(sessions: readonly PlanSessionInput[]): string {
   if (strength > 0) parts.push(`${strength} strength`);
   if (cardio > 0) parts.push(`${cardio} cardio`);
   if (hybrid > 0) parts.push(`${hybrid} hybrid`);
+  if (rehab > 0) parts.push(`${rehab} rehab`);
   const rest = Math.max(0, 7 - trainedDays.size);
   if (rest > 0) parts.push(`${rest} rest`);
   return parts.join(" · ") || "No sessions";
@@ -275,6 +281,12 @@ function weekLoadSummary(sessions: readonly PlanSessionInput[]): string {
 }
 
 function sessionDoseSummary(session: PlanSessionInput): string {
+  if (session.isRehab) {
+    const movements = new Set(
+      session.items.map((item) => item.movementId).filter(Boolean),
+    ).size;
+    return `Rehab · ${movements} movement${movements === 1 ? "" : "s"}`;
+  }
   if (session.isCardio && !session.isStrength) {
     return session.estDurationMin != null
       ? `Conditioning · ~${session.estDurationMin} min`
@@ -339,6 +351,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
   const {
     archetypeName,
     programFamilyName = "SxC",
+    customized = false,
     segments = [{ startWeekIndex: 0, label: archetypeName }],
     headerActions,
     cycleNoun = "block",
@@ -553,6 +566,9 @@ export function PlanRedesign(props: PlanRedesignProps) {
           <div>
             <div className="plan-eyebrow">
               Active program · {programFamilyName}
+              {customized ? (
+                <span className="plan-customized-badge">Customized</span>
+              ) : null}
               <PlanFocusBadge muscles={focusMuscles} />
             </div>
             <h1 className="plan-h1">{archetypeName}</h1>
@@ -1035,6 +1051,19 @@ export function PlanRedesign(props: PlanRedesignProps) {
           margin-top: 7px;
           color: var(--cp-text-muted);
           font-size: 15px;
+        }
+        .plan-customized-badge {
+          display: inline-flex;
+          align-items: center;
+          margin-left: 8px;
+          border: 1px solid var(--cp-accent);
+          border-radius: 999px;
+          padding: 2px 7px;
+          color: var(--cp-accent);
+          font-size: 9px;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
         }
         .plan-program-head .plan-h1 {
           margin-top: 4px;
@@ -1601,6 +1630,10 @@ export function PlanRedesign(props: PlanRedesignProps) {
           background: var(--cp-cardio-soft);
           border-left-color: var(--cp-cardio);
         }
+        .session-pill.rehab {
+          background: color-mix(in srgb, var(--cp-warning) 12%, transparent);
+          border-left-color: var(--cp-warning);
+        }
         .session-pill.muted { opacity: 0.5; text-decoration: line-through; }
         /* Completed sessions read clearly at a glance: a bold check, full-
            strength left border and solid text (no fade / strikethrough) so
@@ -2050,7 +2083,11 @@ function MonthAlternate({
                 {isToday && <span className="today-chip mono" style={{ marginLeft: 4 }}>TODAY</span>}
               </span>
               {items.map((s) => {
-                const kind = s.isCardio ? "cardio" : "strength";
+                const kind = s.isRehab
+                  ? "rehab"
+                  : s.isCardio
+                    ? "cardio"
+                    : "strength";
                 const muted = isPast && !s.done;
                 const overdue = isOverdue(sessionToOverdueCandidate(s), today);
                 return (

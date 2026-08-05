@@ -555,6 +555,7 @@ export default async function TodayPage() {
     const isCardio =
       items.length > 0 && items.every((i) => (i.kind ?? "").startsWith("cardio_"));
     const hasStrengthItems = items.some((i) => !(i.kind ?? "").startsWith("cardio_"));
+    const isRehab = p.role === "rehab";
     return {
       id: p.id,
       weekIndex: p.weekIndex,
@@ -562,7 +563,8 @@ export default async function TodayPage() {
       date: p.date,
       title: p.title,
       isCardio,
-      isStrength: hasStrengthItems,
+      isStrength: hasStrengthItems && !isRehab,
+      isRehab,
       done: p.completedAt != null,
       inProgress: !!p.completedSessionId && p.completedAt == null,
       skipped: !!p.skippedAt,

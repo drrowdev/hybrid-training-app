@@ -15,6 +15,10 @@
  */
 import type { Prescription } from "@hta/db";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
+import {
+  tbCustomizationSchema,
+  type TbCustomizationV1,
+} from "./tb-customization";
 
 /** Foreign strength-only programs the edit flow supports (own cardio is wizard-added). */
 const EDITABLE_PROGRAM_IDS = new Set<string>(["wendler-531", "tactical-barbell"]);
@@ -34,6 +38,7 @@ export interface ProgramEditContext {
   supersetAccessories: boolean;
   /** Whether opt-in TB accessory work is present in the block's strength sessions. */
   accessoriesEnabled: boolean;
+  customization?: TbCustomizationV1;
 }
 
 /**
@@ -71,6 +76,7 @@ export async function getBlockEditContext(blockId: string): Promise<ProgramEditC
   const setupInput = (pi?.setup_input ?? {}) as {
     values?: Record<string, unknown>;
     weekdays?: number[];
+    customization?: unknown;
   };
   const setupValues = setupInput.values ?? {};
   const strengthWeekdays = (setupInput.weekdays ?? [])
@@ -105,6 +111,9 @@ export async function getBlockEditContext(blockId: string): Promise<ProgramEditC
     kind?: string;
   }>;
   const accessoriesEnabled = items.some((i) => i.kind === "accessory");
+  const customizationResult = tbCustomizationSchema.safeParse(
+    setupInput.customization,
+  );
 
   return {
     blockId,
@@ -115,5 +124,8 @@ export async function getBlockEditContext(blockId: string): Promise<ProgramEditC
     startedOn: block.started_on as string,
     supersetAccessories: Boolean(block.superset_accessories),
     accessoriesEnabled,
+    ...(customizationResult.success
+      ? { customization: customizationResult.data }
+      : {}),
   };
 }

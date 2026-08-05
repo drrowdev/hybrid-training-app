@@ -51,6 +51,15 @@ import { planForwardOnlyRewrite } from "./forward-rewrite";
 import { todayYmd, mondayOfYmd, daysBetweenYmd } from "@/lib/dates";
 import { programSetupAuditInput } from "./setup-audit";
 import { inferProgramStartWeekIndex } from "@/lib/plan/program-overview";
+import {
+  customizationDays,
+  tbCustomizationSchema,
+  type TbCustomizationV1,
+} from "./tb-customization";
+import {
+  loadsBlockedMuscle,
+  loadsBlockedRegion,
+} from "@/lib/planner/accessory-picker";
 
 const WEEKDAY = z.number().int().min(0).max(6);
 
@@ -100,6 +109,8 @@ const createProgramInstanceSchema = z
     twoADay: z.boolean().optional(),
     /** Per-block antagonist-superset accessories (migration 0111) — applies to ALL programs. */
     supersetAccessories: z.boolean().optional(),
+    /** Versioned Tactical Barbell schedule/movement/rehab overlay. */
+    customization: tbCustomizationSchema.optional(),
     /** When present, this deploy is a forward-only EDIT of an existing active
      *  block (5/3/1 / Tactical Barbell only): keep the same block + program
      *  instance, freeze past + current week, regenerate only future weeks. */
@@ -123,7 +134,23 @@ export async function createProgramInstance(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, supersetAccessories, editBlockId, seasonBlockId } = parsed.data;
+  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, supersetAccessories, customization, editBlockId, seasonBlockId } = parsed.data;
+
+  if (customization) {
+    if (programId !== "tactical-barbell") {
+      return { ok: false, error: "Only Tactical Barbell templates can use this customization." };
+    }
+    if (setupValues.templateId === "activation") {
+      return { ok: false, error: "Activation is a fixed program and can't be customized." };
+    }
+    const customStrengthDays = customizationDays(customization, "strength");
+    if (
+      customStrengthDays.length !== weekdays.length ||
+      customStrengthDays.some((day, index) => day !== weekdays[index])
+    ) {
+      return { ok: false, error: "Customized strength days don't match the submitted schedule." };
+    }
+  }
 
   // Reject duplicate weekdays — they'd collide on the (week, day, slot) unique key.
   // (Native programs own their own calendar and ignore `weekdays`, but the check
@@ -134,7 +161,10 @@ export async function createProgramInstance(
 
   // Open cardio days only apply to strength-only foreign programs (5/3/1, TB),
   // where cardio isn't engine-owned. They must not double up on a strength day.
-  const cardioDays = (cardioWeekdays ?? []).filter((d) => !weekdays.includes(d));
+  const requestedCardioDays = customization
+    ? customizationDays(customization, "conditioning")
+    : cardioWeekdays ?? [];
+  const cardioDays = requestedCardioDays.filter((d) => !weekdays.includes(d));
   const cardioForProgram = STRENGTH_ONLY_PROGRAM_IDS.has(programId) ? cardioDays : [];
 
   const {
@@ -161,6 +191,7 @@ export async function createProgramInstance(
       ...(roundingKg != null ? { roundingKg } : {}),
       ...(accessories ? { accessories } : {}),
       ...(supersetAccessories != null ? { supersetAccessories } : {}),
+      ...(customization ? { customization } : {}),
     });
   }
 
@@ -194,6 +225,7 @@ export async function createProgramInstance(
       ...(roundingKg != null ? { roundingKg } : {}),
       ...(twoADay != null ? { twoADay } : {}),
       ...(supersetAccessories != null ? { supersetAccessories } : {}),
+      ...(customization ? { customization } : {}),
       ...(seasonBlockId ? { seasonBlockId } : {}),
     });
   }
@@ -307,6 +339,7 @@ interface DeployArgs {
   twoADay?: boolean;
   /** Per-block antagonist-superset accessories (migration 0111) — all programs. */
   supersetAccessories?: boolean;
+  customization?: TbCustomizationV1;
   /** When the wizard was deep-linked from a Season roadmap (ADR 0051) — the
    *  planned season_block to activate + link to the new training block on deploy. */
   seasonBlockId?: string;
@@ -487,7 +520,7 @@ async function computeForeignWrite(
   supabase: SupabaseClient,
   user: User,
   engine: ProgramEngine,
-  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay }: DeployArgs,
+  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization }: DeployArgs,
 ): Promise<{ instance: unknown; write: ProgramInstanceWrite }> {
   // HYROX: a supplied race date overrides the experience block length with the
   // whole weeks from start to race, so the program's end-taper lands on race week
@@ -525,10 +558,16 @@ async function computeForeignWrite(
     const raw = prof?.effort_preference;
     if (raw === "low" || raw === "high") assistanceVolumePref = raw;
   }
+  const effectiveSetupValues = customization
+    ? {
+        ...setupValues,
+        customSessionMovements: customization.sessionMovements,
+      }
+    : setupValues;
   const instance = engine.setup(
     {
       values: {
-        ...setupValues,
+        ...effectiveSetupValues,
         // 5/3/1 packs its 4 main lifts across the chosen strength days
         // (4 = one lift/day, 2 = two/day). The frequency is the weekday count
         // picked in the Schedule step, mirrored into setup like Hybrid does.
@@ -549,6 +588,28 @@ async function computeForeignWrite(
     },
     ctx,
   );
+  if (customization) {
+    const validSeries = new Set(
+      engine
+        .timeline(instance)
+        .flatMap((spec) => (spec.seriesKey ? [spec.seriesKey] : [])),
+    );
+    const orphan = Object.keys(customization.sessionMovements).find(
+      (key) => !validSeries.has(key),
+    );
+    if (orphan) {
+      throw new Error(
+        `Customized strength slot '${orphan}' no longer exists in this template. Review the program setup.`,
+      );
+    }
+    for (const movement of Object.values(customization.sessionMovements).flat()) {
+      if (!resolveMovement(movement.movement)) {
+        throw new Error(
+          `Customized movement '${movement.movement}' is not available. Choose another movement.`,
+        );
+      }
+    }
+  }
   // ADR 0047 — 5/3/1 and HYROX both emit category-tagged assistance intent, so
   // both need the (catalog + equipment + limitation) resolver. TB / Green Protocol
   // emit none and stay byte-identical.
@@ -570,7 +631,7 @@ async function computeForeignWrite(
           supabase,
           user.id,
           resolveMovement,
-          typeof setupValues.templateId === "string" ? setupValues.templateId : "",
+          typeof effectiveSetupValues.templateId === "string" ? effectiveSetupValues.templateId : "",
           accessories,
         )
       : undefined;
@@ -598,7 +659,41 @@ async function computeForeignWrite(
     ...(foreignAccessories ? { accessories: foreignAccessories } : {}),
     ...(startWeekIndex != null ? { startWeekIndex } : {}),
     ...(cardioWeekdays && cardioWeekdays.length > 0 ? { cardioWeekdays } : {}),
+    ...(customization ? { customization } : {}),
   });
+  if (customization) {
+    const limitations = await readLimitationsContext(supabase, user.id);
+    const catalog = await loadPickerCatalog(supabase);
+    const byId = new Map(catalog.map((movement) => [movement.id, movement]));
+    const selectedIds = new Set<string>(
+      customization.rehab?.items.map((item) => item.movementId) ?? [],
+    );
+    for (const movement of Object.values(customization.sessionMovements).flat()) {
+      const resolved = resolveMovement(movement.movement);
+      if (resolved) selectedIds.add(resolved.movementId);
+    }
+    const blockedNames: string[] = [];
+    for (const movementId of selectedIds) {
+      const movement = byId.get(movementId);
+      if (!movement) continue;
+      if (
+        limitations.blockedMovementIds.has(movementId) ||
+        loadsBlockedRegion(movement, limitations.blockedRegions) ||
+        loadsBlockedMuscle(
+          movement,
+          limitations.blockedMuscles,
+          limitations.allowedMovementIds,
+        )
+      ) {
+        blockedNames.push(movement.displayName);
+      }
+    }
+    if (blockedNames.length > 0) {
+      throw new Error(
+        `Your active limitations block ${blockedNames.join(", ")}. Change the customized program or update the limitation first.`,
+      );
+    }
+  }
   return { instance, write };
 }
 
@@ -609,7 +704,7 @@ async function computeForeignWrite(
 async function createForeignProgramInstance(
   supabase: SupabaseClient,
   user: User,
-  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, supersetAccessories, seasonBlockId, twoADay }: DeployArgs,
+  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, supersetAccessories, seasonBlockId, twoADay, customization }: DeployArgs,
 ): Promise<CreateProgramInstanceResult> {
   const engine = getProgramEngine(programId);
   if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
@@ -629,6 +724,7 @@ async function createForeignProgramInstance(
       ...(roundingKg != null ? { roundingKg } : {}),
       ...(accessories ? { accessories } : {}),
       ...(twoADay ? { twoADay } : {}),
+      ...(customization ? { customization } : {}),
     }));
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Setup failed" };
@@ -661,7 +757,7 @@ async function createForeignProgramInstance(
       // HYROX two-a-day choice (ADR 0054) — baked into the grid at deploy. Set the
       // block flag for read-side consistency with the live AM/PM rows.
       allows_two_a_days: programId === "hyrox" ? !!twoADay : false,
-      notes: engine.meta.name,
+      notes: customization?.displayName ?? engine.meta.name,
     })
     .select("id")
     .single();
@@ -751,7 +847,10 @@ async function createForeignProgramInstance(
         weekdays,
         startedOn,
         startWeekIndex,
+        ...(customization ? { customization } : {}),
       }),
+      display_name: customization?.displayName ?? null,
+      customization_version: customization?.version ?? null,
       block_id: blockId,
       status: "active",
     })
@@ -835,7 +934,7 @@ async function updateForeignProgramInstance(
   blockId: string,
   args: DeployArgs,
 ): Promise<CreateProgramInstanceResult> {
-  const { programId, supersetAccessories } = args;
+  const { programId, supersetAccessories, customization } = args;
   const engine = getProgramEngine(programId);
   if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
 
@@ -1003,6 +1102,7 @@ async function updateForeignProgramInstance(
       day_index_overrides: write.dayIndexOverrides,
       cardio_source: cardioPresent ? "external" : "internal",
       superset_accessories: supersetAccessories ?? false,
+      notes: customization?.displayName ?? engine.meta.name,
     })
     .eq("id", blockId)
     .eq("user_id", user.id);
@@ -1025,7 +1125,10 @@ async function updateForeignProgramInstance(
         weekdays: args.weekdays,
         startedOn: blockStartedOn,
         startWeekIndex: effectiveStartWeekIndex,
+        ...(customization ? { customization } : {}),
       }),
+      display_name: customization?.displayName ?? null,
+      customization_version: customization?.version ?? null,
       updated_at: new Date().toISOString(),
     })
     .eq("block_id", blockId)

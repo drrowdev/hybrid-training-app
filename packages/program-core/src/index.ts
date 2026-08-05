@@ -274,6 +274,11 @@ export type PlannedSessionKind = "training" | "deload" | "test" | "rest";
 export interface PlannedSessionSpec {
   /** Stable id within the instance (e.g. "leader1-w1-squat"). */
   ref: string;
+  /**
+   * Stable weekly session-slot identity used by customization overlays. Multiple
+   * absolute refs (loading weeks, peak/test weeks) can belong to one series.
+   */
+  seriesKey?: string;
   /** 0-based absolute index across the whole program timeline. */
   index: number;
   /** Human label (e.g. "Leader 1 · Wk 1 · Squat"). */

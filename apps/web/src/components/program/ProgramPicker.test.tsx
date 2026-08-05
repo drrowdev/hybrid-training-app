@@ -349,6 +349,21 @@ describe("ProgramPicker rendering", () => {
     expect(html).toContain("Program");
   });
 
+  it("offers customization for a standalone TB template", () => {
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={programs}
+        anchoredKeys={["squat", "bench", "deadlift"]}
+        tbTemplates={[OPERATOR]}
+        initialProgramId="tactical-barbell"
+      />,
+    );
+    expect(html).toContain("Customize template");
+    expect(html).toContain(
+      "Move strength and conditioning, add rehab-only days",
+    );
+  });
+
   it("starts with no program pre-selected (step 1, no Deploy button)", () => {
     const html = renderToStaticMarkup(
       <ProgramPicker
@@ -402,5 +417,6 @@ describe("ProgramPicker rendering", () => {
     expect(html).toContain("Reverse Hyper + Ab Triad");
     expect(html).toContain("Pull-ups + Overhead Press");
     expect(html).toContain("Inverted Rows + Overhead Press");
+    expect(html).not.toContain("Customize template");
   });
 });
