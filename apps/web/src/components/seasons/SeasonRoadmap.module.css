@@ -7,20 +7,22 @@
 
 /* ── Empty state: create builder ──────────────────────────────────── */
 .empty {
-  padding: 20px;
+  padding: 28px;
   display: grid;
-  gap: 14px;
+  gap: 18px;
+  border-radius: 16px;
+  background: var(--cp-surface);
 }
 .emptyHeading {
   margin: 0;
-  font-family: var(--cp-font-display, inherit);
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font-family: var(--cp-font-sans, inherit);
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
 }
 .emptyLead {
   margin: 0;
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.5;
   color: var(--cp-text-muted);
   max-width: 60ch;
@@ -37,10 +39,10 @@
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 12px;
+  padding: 16px;
   border: 1px solid var(--cp-border);
   border-radius: 12px;
-  background: var(--cp-surface-soft);
+  background: var(--cp-bg-elevated);
 }
 .draftMain {
   flex: 1;
@@ -64,14 +66,8 @@
 .rowRemove {
   flex: 0 0 auto;
   margin-top: 18px;
-  font-size: 12px;
-  line-height: 1;
-  padding: 6px 8px;
-  border-radius: 8px;
-  border: 1px solid var(--cp-border);
-  background: var(--cp-surface);
-  color: var(--cp-text-muted);
-  cursor: pointer;
+  width: 44px;
+  padding-inline: 0;
 }
 .rowRemove:disabled {
   opacity: 0.4;
@@ -125,9 +121,11 @@
 
 /* ── Populated state: roadmap rail ────────────────────────────────── */
 .populated {
-  padding: 20px;
+  padding: 24px;
   display: grid;
-  gap: 8px;
+  gap: 16px;
+  border-radius: 16px;
+  background: var(--cp-surface);
 }
 .head {
   display: flex;
@@ -144,10 +142,10 @@
 }
 .title {
   margin: 3px 0 0;
-  font-family: var(--cp-font-display, inherit);
-  font-size: 24px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font-family: var(--cp-font-sans, inherit);
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
 }
 .goalRow {
   display: flex;
@@ -220,15 +218,9 @@
   color: var(--cp-text-muted);
 }
 .suggestBtn {
-  font: inherit;
   font-size: 12px;
   font-weight: 600;
-  padding: 6px 10px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in oklab, var(--cp-accent) 45%, var(--cp-border));
-  background: var(--cp-accent-soft, transparent);
   color: var(--cp-accent);
-  cursor: pointer;
   justify-self: start;
 }
 .suggestBtn:disabled {
@@ -268,9 +260,9 @@
 .bcard {
   position: relative;
   z-index: 1;
-  background: var(--cp-surface-soft);
+  background: var(--cp-bg-elevated);
   border: 1px solid var(--cp-border);
-  border-radius: 12px;
+  border-radius: 16px;
   padding: 13px 14px;
   min-height: 188px;
   display: flex;
@@ -279,10 +271,13 @@
 }
 .bcard.active {
   border-color: var(--cp-accent);
-  box-shadow: 0 0 0 1px var(--cp-accent) inset;
+  background: var(--cp-accent-soft);
+  box-shadow: inset 5px 0 0 var(--cp-accent);
 }
 .bcard.done {
-  opacity: 0.62;
+  opacity: 1;
+  background: var(--cp-surface-soft);
+  box-shadow: inset 4px 0 0 var(--cp-success);
 }
 .bcardTop {
   display: flex;
@@ -305,6 +300,9 @@
 }
 .statusActive {
   color: var(--cp-accent);
+}
+.statusDone {
+  color: var(--cp-success);
 }
 .prog {
   font-family: var(--cp-font-display, inherit);
@@ -344,14 +342,8 @@
   gap: 10px;
 }
 .mini {
-  font: inherit;
   font-size: 11px;
-  padding: 4px 9px;
-  border-radius: 8px;
-  border: 1px solid var(--cp-border);
-  background: var(--cp-surface);
   color: var(--cp-text-muted);
-  cursor: pointer;
 }
 .mini:disabled {
   opacity: 0.4;
@@ -360,16 +352,8 @@
 .startBtn {
   font-size: 11px;
   font-weight: 600;
-  padding: 4px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--cp-accent);
-  background: var(--cp-accent);
-  color: var(--cp-accent-fg, var(--cp-bg));
   text-decoration: none;
   white-space: nowrap;
-}
-.startBtn:hover {
-  background: var(--cp-accent-hover, var(--cp-accent));
 }
 
 /* ── Add-block card ───────────────────────────────────────────────── */
@@ -390,17 +374,8 @@
   background: transparent;
 }
 .addTrigger {
-  font: inherit;
   font-size: 13px;
   font-weight: 600;
-  color: var(--cp-text-muted);
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  padding: 8px;
-}
-.addTrigger:hover {
-  color: var(--cp-text);
 }
 .addForm {
   display: grid;
@@ -428,6 +403,10 @@
 /* UX audit P2 — on phones the horizontal rail forces sideways scrolling through
    the roadmap (the centerpiece). Stack it vertically so every block is visible. */
 @media (max-width: 640px) {
+  .empty, .populated { padding: 18px 16px; }
+  .emptyHeading { font-size: 24px; }
+  .head { display: grid; }
+  .draftRow { padding: 14px 12px; }
   .rail { flex-direction: column; overflow-x: visible; gap: 10px; }
   .blk, .add { flex: 1 1 auto; padding: 0; }
   .blk:first-child { padding-left: 0; }

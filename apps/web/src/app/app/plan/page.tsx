@@ -396,35 +396,58 @@ function SeasonViewTabs() {
   const tabBase = {
     fontSize: 13,
     fontWeight: 600,
-    padding: "10px 4px",
-    color: "var(--cp-text-muted)",
-    borderBottom: "2px solid transparent",
+    minHeight: 42,
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "8px 14px",
+    borderRadius: 8,
+    color: "var(--cp-text-soft)",
     textDecoration: "none",
   } as const;
   const activeTab = {
     ...tabBase,
     color: "var(--cp-text)",
-    borderBottomColor: "var(--cp-accent)",
+    background: "var(--cp-surface-soft)",
   } as const;
   return (
-    <nav
-      aria-label="Plan views"
-      style={{ display: "flex", gap: 16, borderBottom: "1px solid var(--cp-border)" }}
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        flexWrap: "wrap",
+      }}
     >
-      <Link href="/app/plan" style={tabBase} data-testid="season-nav-timeline">
-        Timeline
-      </Link>
-      <Link
-        href="/app/plan?view=month"
-        style={tabBase}
-        data-testid="season-nav-month"
+      <nav
+        aria-label="Plan views"
+        className="cp-card"
+        style={{
+          display: "inline-flex",
+          gap: 4,
+          padding: 2,
+          borderRadius: 10,
+          background: "var(--cp-surface)",
+        }}
       >
-        Month
-      </Link>
-      <span style={activeTab} aria-current="page" data-testid="season-nav-season">
-        Season
+        <Link href="/app/plan" style={tabBase} data-testid="season-nav-timeline">
+          Program
+        </Link>
+        <Link
+          href="/app/plan?view=month"
+          style={tabBase}
+          data-testid="season-nav-month"
+        >
+          Calendar
+        </Link>
+        <span style={activeTab} aria-current="page" data-testid="season-nav-season">
+          Season
+        </span>
+      </nav>
+      <span style={{ color: "var(--cp-text-muted)", fontSize: 12 }}>
+        Long-range training roadmap
       </span>
-    </nav>
+    </div>
   );
 }
 
