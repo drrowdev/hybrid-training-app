@@ -547,3 +547,108 @@ describe("materializeProgram — cardioWeekdays (open cardio days)", () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 });
+
+describe("materializeProgram — customized Tactical Barbell", () => {
+  const customCtx: PlatformContext = {
+    oneRepMaxes: {
+      squat: 165,
+      bench: 118,
+      deadlift: 212,
+      press: 71,
+    },
+    roundingKg: 2.5,
+  };
+  const customization = {
+    version: 1 as const,
+    displayName: "Tactical Barbell - Customized",
+    dayTypes: [
+      "strength",
+      "rest",
+      "rehab",
+      "strength",
+      "rest",
+      "rest",
+      "conditioning",
+    ],
+    sessionMovements: {
+      "slot-1": [{ movement: "press" }],
+      "slot-2": [{ movement: "deadlift" }],
+    },
+    rehab: {
+      items: [
+        {
+          movementId: "00000000-0000-4000-8000-000000000001",
+          movementName: "Single-leg balance",
+          side: "left" as const,
+          sets: 3,
+          holdSeconds: 30,
+          instructions: "Pain-free range only.",
+        },
+      ],
+    },
+  } satisfies import("../tb-customization").TbCustomizationV1;
+  const instance = tacticalBarbellEngine.setup(
+    {
+      values: {
+        templateId: "fighter",
+        customSessionMovements: customization.sessionMovements,
+      },
+    },
+    customCtx,
+  );
+  const result = materializeProgram(
+    tacticalBarbellEngine,
+    instance,
+    customCtx,
+    resolve,
+    {
+      weekdays: [0, 3],
+      cardioWeekdays: [6],
+      customization,
+    },
+  );
+
+  it("adds one structured rehab-only session per customized rehab day and week", () => {
+    const rehab = result.sessions.filter((session) => session.role === "rehab");
+    expect(rehab).toHaveLength(6);
+    expect(rehab.every((session) => session.dayIndex === 2)).toBe(true);
+    expect(rehab[0]).toMatchObject({
+      title: "Rehab",
+      sessionModality: "restorative",
+      effectiveStressLoad: 0,
+    });
+    expect(rehab[0]!.prescription.items[0]).toMatchObject({
+      movementName: "Single-leg balance",
+      kind: "tendon",
+      sets: 3,
+      holdSec: { min: 30, max: 30 },
+      meta: { rehab: true, side: "left" },
+    });
+  });
+
+  it("keeps conditioning open and the customized strength slots collision-free", () => {
+    expect(
+      result.sessions.filter((session) => session.role === "cardio"),
+    ).toHaveLength(6);
+    const keys = result.sessions.map(
+      (session) =>
+        `${session.weekIndex}-${session.dayIndex}-${session.slot}`,
+    );
+    expect(new Set(keys).size).toBe(keys.length);
+    const weekOneStrength = result.sessions.filter(
+      (session) =>
+        session.weekIndex === 0 && session.role === "strength",
+    );
+    expect(
+      weekOneStrength.map((session) =>
+        Array.from(
+          new Set(
+            session.prescription.items
+              .filter((item) => item.kind === "main")
+              .map((item) => item.movementName),
+          ),
+        ),
+      ),
+    ).toEqual([["Press"], ["Deadlift"]]);
+  });
+});

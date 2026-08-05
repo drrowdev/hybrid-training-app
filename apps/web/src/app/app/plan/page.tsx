@@ -156,7 +156,7 @@ export default async function PlanPage({
   // Platform programs (5/3/1, Tactical Barbell, Green Protocol) don't set a
   // known `archetype`; their display name is stored in `notes` (engine.meta.name)
   // at deploy. Fall back to it so the Plan header shows the program, not a blank.
-  const archetypeName = isCustom
+  const baseArchetypeName = isCustom
     ? block.notes?.trim() || "Custom program"
     : archetype?.name ?? block.notes?.trim() ?? block.archetype ?? "Program";
   // Program-aware noun for a training block: 5/3/1 (family "531") calls it a
@@ -180,7 +180,7 @@ export default async function PlanPage({
         .maybeSingle(),
       supabase
         .from("program_instances")
-        .select("program_id, instance, setup_input")
+        .select("program_id, instance, setup_input, display_name, customization_version")
         .eq("block_id", block.id)
         .eq("user_id", user.id)
         .eq("status", "active")
@@ -207,6 +207,10 @@ export default async function PlanPage({
   const programFamilyName =
     selectablePrograms().find((program) => program.id === block.programId)
       ?.name ?? "SxC";
+  const customized = programInstance?.customization_version != null;
+  const archetypeName =
+    (programInstance?.display_name as string | null)?.trim() ||
+    baseArchetypeName;
   const ownerEngine = programInstance?.program_id
     ? getProgramEngine(programInstance.program_id as string)
     : undefined;
@@ -258,6 +262,7 @@ export default async function PlanPage({
     const isCardio =
       items.length > 0 && items.every((i) => (i.kind ?? "").startsWith("cardio_"));
     const hasStrengthItems = items.some((i) => !(i.kind ?? "").startsWith("cardio_"));
+    const isRehab = p.role === "rehab";
     // Set-aware duration estimate (shared with the planner's tilt governor).
     const dur = estimateSessionMinutes(items);
     return {
@@ -267,7 +272,8 @@ export default async function PlanPage({
       date: p.date,
       title: p.title,
       isCardio,
-      isStrength: hasStrengthItems,
+      isStrength: hasStrengthItems && !isRehab,
+      isRehab,
       done: p.completedAt != null,
       inProgress: !!p.completedSessionId && p.completedAt == null,
       skipped: !!p.skippedAt,
@@ -351,6 +357,7 @@ export default async function PlanPage({
       <PlanRedesign
         archetypeName={archetypeName}
         programFamilyName={programFamilyName}
+        customized={customized}
         segments={segments}
         headerActions={
           <PlanProgramActions

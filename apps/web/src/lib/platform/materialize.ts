@@ -33,6 +33,7 @@ import type { Prescription, PrescriptionItem } from "@hta/db";
 import { adaptSessionPrescription, type MovementResolver, type SkippedItem } from "./adapter";
 import type { AssistancePlanner } from "./assistance-resolver";
 import type { TbAccessoryInjector } from "./tb-accessories";
+import type { TbCustomizationV1 } from "./tb-customization";
 import {
   classifySessionModality,
   effectiveStressLoad,
@@ -89,6 +90,8 @@ export interface MaterializeOptions {
    * correctly. Defaults to "TM".
    */
   mainLiftBasisLabel?: "TM" | "1RM";
+  /** Versioned Tactical Barbell overlay. Omitted preserves canonical output. */
+  customization?: TbCustomizationV1;
 }
 
 export interface MaterializedSession {
@@ -408,8 +411,9 @@ export function materializeProgram<I>(
       for (const day of cardioDays) {
         if (taken.has(`${wk}-${day}`)) continue;
         const ref = `cardio-w${wk}-d${day}`;
+        const isCustomizedConditioning = opts.customization != null;
         const prescription: Prescription = {
-          items: [openCardioItem()],
+          items: [openCardioItem(isCustomizedConditioning ? "Conditioning" : "Cardio")],
           programRef: ref,
         };
         const { modality, load } = stampModality(prescription);
@@ -418,11 +422,80 @@ export function materializeProgram<I>(
           weekIndex: wk,
           dayIndex: day,
           slot: "single",
-          title: "Cardio",
+          title: isCustomizedConditioning ? "Conditioning" : "Cardio",
           role: "cardio",
           prescription,
           sessionModality: modality,
           effectiveStressLoad: load,
+          skipped: [],
+        });
+      }
+    }
+  }
+
+  const rehabDays = opts.customization
+    ? opts.customization.dayTypes.flatMap((type, day) =>
+        type === "rehab" ? [day] : [],
+      )
+    : [];
+  const rehabItems = opts.customization?.rehab?.items ?? [];
+  if (rehabDays.length > 0 && rehabItems.length > 0 && maxEmittedWeek >= 0) {
+    const taken = new Set(sessions.map((session) => `${session.weekIndex}-${session.dayIndex}`));
+    for (let weekIndex = 0; weekIndex <= maxEmittedWeek; weekIndex++) {
+      for (const dayIndex of rehabDays) {
+        if (taken.has(`${weekIndex}-${dayIndex}`)) {
+          throw new Error(
+            `materializeProgram: rehab day ${dayIndex} collides with another session in week ${weekIndex + 1}`,
+          );
+        }
+        const ref = `rehab-w${weekIndex}-d${dayIndex}`;
+        const prescription: Prescription = {
+          programRef: ref,
+          items: rehabItems.map((item): PrescriptionItem => {
+            const sideCue =
+              item.side === "left"
+                ? "Left side"
+                : item.side === "right"
+                  ? "Right side"
+                  : "";
+            const instructions = [sideCue, item.instructions]
+              .filter(Boolean)
+              .join(" · ");
+            return {
+              movementId: item.movementId,
+              movementName: item.movementName,
+              kind: "tendon",
+              sets: item.sets,
+              ...(item.reps != null ? { reps: item.reps } : {}),
+              ...(item.holdSeconds != null
+                ? { holdSec: { min: item.holdSeconds, max: item.holdSeconds } }
+                : {}),
+              ...(item.targetWeightKg != null
+                ? { targetWeightKg: item.targetWeightKg }
+                : {}),
+              ...(instructions
+                ? {
+                    notes: instructions,
+                    intensityCue: instructions.slice(0, 80),
+                  }
+                : {}),
+              meta: {
+                rehab: true,
+                ...(item.side ? { side: item.side } : {}),
+              },
+            };
+          }),
+        };
+        sessions.push({
+          ref,
+          weekIndex,
+          dayIndex,
+          slot: "single",
+          title: "Rehab",
+          role: "rehab",
+          prescription,
+          sessionModality: "restorative",
+          effectiveStressLoad: 0,
           skipped: [],
         });
       }
@@ -438,11 +511,11 @@ export function materializeProgram<I>(
  * when every item is `cardio_*`, and the Strava matcher links a same-day activity
  * to a `cardio_external` placeholder (block `cardio_source='external'`).
  */
-function openCardioItem(): PrescriptionItem {
+function openCardioItem(label = "Cardio"): PrescriptionItem {
   return {
     movementId: "",
     kind: "cardio_external",
-    intensityLabel: "Cardio",
-    protocolNote: "Open cardio — log any run, row, ride or other cardio. Auto-fills from Strava if connected.",
+    intensityLabel: label,
+    protocolNote: `Open ${label.toLowerCase()} — log any run, row, ride or other cardio. Auto-fills from Strava if connected.`,
   };
 }

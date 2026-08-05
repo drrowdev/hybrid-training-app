@@ -392,3 +392,7 @@ Completed workout rows in the expanded Plan agenda now inherit the completed-wee
 
 ## [2026-08-05] refine | Strengthen dark-theme completion and unify Season chrome
 Completed workouts now use a materially stronger success-tinted surface, 6px success edge, inner outline and high-contrast Done badge in the dark theme. Season adopts the same Program/Calendar/Season segmented navigation, body typography, 16px cards and global button hierarchy as the redesigned Plan views; completed and active season blocks also use the corresponding settled/current state treatments.
+
+
+## [2026-08-05] refine | Add versioned customized Tactical Barbell programs
+Standalone Tactical Barbell templates can now run as a backend-marked Customized derivative while retaining the canonical TB engine, percentages, set/rep waves and peak progression. The weekly overlay supports movable strength and open conditioning days, rehab-only days with user/clinician-entered prescriptions, and movement selection per stable strength slot; Activation remains fixed and is rejected server-side. Customized identity and the editable display name persist independently, forward edits freeze current and completed work, active limitations take precedence, and Program/History expose a permanent Customized badge. Canonical no-overlay output remains byte-identical, including explicit regression coverage for Operator, Fighter and Zulu peak sessions.

@@ -25,6 +25,11 @@ import {
   tbAccessoryPlanForTemplate,
 } from "@/lib/platform/tb-accessories-config";
 import { upsertTrainingMax } from "@/lib/training-maxes/actions";
+import {
+  DEFAULT_CUSTOM_TB_NAME,
+  TB_CUSTOMIZATION_VERSION,
+  type TbCustomizationV1,
+} from "@/lib/platform/tb-customization";
 import styles from "./ProgramPicker.module.css";
 
 /** Stencil "code" + Oswald kicker shown on each program card (step 1). */
@@ -110,6 +115,32 @@ export interface PickerTbTemplate {
   requiredBenchmarkKeys?: string[];
   startSchedules?: PickerStartSchedule[];
   defaultCluster: PickerClusterEntry[];
+  sessionSeries?: Array<{
+    key: string;
+    label: string;
+    movements: string[];
+    movementKinds?: Record<
+      string,
+      "barbell" | "weighted-bw" | "bodyweight" | "unanchored"
+    >;
+  }>;
+}
+
+function sessionSeriesFor(template: PickerTbTemplate): NonNullable<
+  PickerTbTemplate["sessionSeries"]
+> {
+  return template.sessionSeries?.length
+    ? template.sessionSeries
+    : Array.from({ length: template.sessionsPerWeek }, (_, index) => ({
+        key: `slot-${index + 1}`,
+        label: `Day ${index + 1}`,
+        movements: template.defaultCluster.map((entry) => entry.movement),
+        movementKinds: Object.fromEntries(
+          template.defaultCluster
+            .filter((entry) => entry.kind != null)
+            .map((entry) => [entry.movement, entry.kind!]),
+        ),
+      }));
 }
 
 export interface PickerStartSchedule {
@@ -146,6 +177,11 @@ export interface PickerBenchRole {
   variants: PickerBenchVariant[];
   currentSlug?: string;
   currentOneRmKg?: number;
+}
+
+export interface PickerRehabMovement {
+  id: string;
+  name: string;
 }
 
 /** Rich program explainers + meta chips for the step-1 info modal (mockup PROG_INFO). */
@@ -446,7 +482,17 @@ function epley1rm(weight: number, reps: number): number {
 
 const WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-type DayType = "strength" | "cardio" | "rest";
+type DayType = "strength" | "cardio" | "rehab" | "rest";
+
+type RehabDraft = {
+  movementId: string;
+  side: "both" | "left" | "right";
+  sets: string;
+  reps: string;
+  holdSeconds: string;
+  targetWeightKg: string;
+  instructions: string;
+};
 
 /**
  * 5/3/1 two-day lift pairings. With 2 training days the engine pairs the four
@@ -497,7 +543,16 @@ function buildWeek(n: number): DayType[] {
 }
 
 /** Build a week from explicit strength + cardio weekdays (edit-mode prefill). */
-function buildWeekFrom(strengthDays: number[], cardioDays: number[]): DayType[] {
+function buildWeekFrom(
+  strengthDays: number[],
+  cardioDays: number[],
+  customization?: TbCustomizationV1,
+): DayType[] {
+  if (customization) {
+    return customization.dayTypes.map((day) =>
+      day === "conditioning" ? "cardio" : day,
+    );
+  }
   const w: DayType[] = Array.from({ length: 7 }, () => "rest");
   for (const d of cardioDays) if (d >= 0 && d <= 6) w[d] = "cardio";
   // Strength wins any collision so the strength-day count stays correct.
@@ -714,6 +769,7 @@ export interface ProgramEditContextProp {
   startedOn: string;
   supersetAccessories: boolean;
   accessoriesEnabled: boolean;
+  customization?: TbCustomizationV1;
 }
 
 export function ProgramPicker({
@@ -722,6 +778,7 @@ export function ProgramPicker({
   tbTemplates = [],
   benchRoles = [],
   pullupMovement,
+  rehabMovements = [],
   initialProgramId,
   initialLoadoutValue,
   editContext,
@@ -733,6 +790,7 @@ export function ProgramPicker({
   tbTemplates?: PickerTbTemplate[];
   benchRoles?: PickerBenchRole[];
   pullupMovement?: { movementId: string; currentMaxReps?: number };
+  rehabMovements?: PickerRehabMovement[];
   /** Deep-link preselect: a program id to open the wizard on (e.g. guided advance). */
   initialProgramId?: string;
   /** Deep-link preselect: the loadout value for that program (Green Protocol phaseId). */
@@ -837,7 +895,11 @@ export function ProgramPicker({
   // Weekly schedule grid: 7 day cells. The strength days become deploy `weekdays`.
   const [week, setWeek] = useState<DayType[]>(() =>
     isEditing && editContext
-      ? buildWeekFrom(editContext.strengthWeekdays, editContext.cardioWeekdays)
+      ? buildWeekFrom(
+          editContext.strengthWeekdays,
+          editContext.cardioWeekdays,
+          editContext.customization,
+        )
       : buildWeek(preselectProgram?.sessionsPerWeek ?? 4),
   );
   // 5/3/1 lets the user pick strength frequency; other programs derive it.
@@ -882,6 +944,17 @@ export function ProgramPicker({
 
   const tbTemplateId = isTb ? String(values.templateId ?? "") : "";
   const activeTbTemplate = isTb ? tbTemplateById.get(tbTemplateId) ?? null : null;
+  const customMovementKeys = useMemo(() => {
+    const keys = [
+      ...benchRoles.map((role) => role.engineKey),
+      ...(activeTbTemplate
+        ? sessionSeriesFor(activeTbTemplate).flatMap(
+            (series) => series.movements,
+          )
+        : []),
+    ];
+    return keys.filter((key, index) => keys.indexOf(key) === index);
+  }, [activeTbTemplate, benchRoles]);
   const isActivation = activeTbTemplate?.id === "activation";
   const armorSupplementalA =
     values.armorSupplementalA === "reverse-hyper"
@@ -908,6 +981,37 @@ export function ProgramPicker({
   const [supersetAccessories, setSupersetAccessories] = useState<boolean>(
     isEditing && editContext ? editContext.supersetAccessories : false,
   );
+  const [customizeTb, setCustomizeTb] = useState<boolean>(
+    Boolean(editContext?.customization),
+  );
+  const [customName, setCustomName] = useState<string>(
+    editContext?.customization?.displayName ?? DEFAULT_CUSTOM_TB_NAME,
+  );
+  const [customSessionMovements, setCustomSessionMovements] = useState<
+    Record<string, string[]>
+  >(editContext?.customization?.sessionMovements
+    ? Object.fromEntries(
+        Object.entries(editContext.customization.sessionMovements).map(
+          ([key, movements]) => [
+            key,
+            movements.map((movement) => movement.movement),
+          ],
+        ),
+      )
+    : {});
+  const [rehabDrafts, setRehabDrafts] = useState<RehabDraft[]>(
+    editContext?.customization?.rehab?.items.map((item) => ({
+      movementId: item.movementId,
+      side: item.side ?? "both",
+      sets: String(item.sets),
+      reps: item.reps == null ? "" : String(item.reps),
+      holdSeconds:
+        item.holdSeconds == null ? "" : String(item.holdSeconds),
+      targetWeightKg:
+        item.targetWeightKg == null ? "" : String(item.targetWeightKg),
+      instructions: item.instructions ?? "",
+    })) ?? [],
+  );
 
   const [cluster, setCluster] = useState<PickerClusterEntry[]>(() =>
     activeTbTemplate ? defaultClusterFor(activeTbTemplate, anchoredKeys) : [],
@@ -922,6 +1026,19 @@ export function ProgramPicker({
     setLastTbTemplateId(currentTbId);
     setCluster(activeTbTemplate ? defaultClusterFor(activeTbTemplate, anchoredKeys) : []);
     if (activeTbTemplate) setWeek(buildWeek(activeTbTemplate.sessionsPerWeek));
+    setCustomizeTb(false);
+    setCustomName(DEFAULT_CUSTOM_TB_NAME);
+    setCustomSessionMovements(
+      activeTbTemplate
+        ? Object.fromEntries(
+            sessionSeriesFor(activeTbTemplate).map((series) => [
+              series.key,
+              [...series.movements],
+            ]),
+          )
+        : {},
+    );
+    setRehabDrafts([]);
   }
 
   const fixedSchedule = !!selected?.fixedSchedule || !!activeTbTemplate?.fixedSchedule;
@@ -952,8 +1069,12 @@ export function ProgramPicker({
     () => week.flatMap((t, i) => (t === "cardio" ? [i] : [])),
     [week],
   );
+  const rehabWeekdays = useMemo(
+    () => week.flatMap((t, i) => (t === "rehab" ? [i] : [])),
+    [week],
+  );
   const dayCounts = useMemo(() => {
-    const c = { strength: 0, cardio: 0, rest: 0 };
+    const c = { strength: 0, cardio: 0, rehab: 0, rest: 0 };
     for (const t of week) c[t] += 1;
     return c;
   }, [week]);
@@ -1050,6 +1171,15 @@ export function ProgramPicker({
   // Which main-lift roles the Benchmarks step shows. Cluster programs (TB) show
   // the barbell lifts in their chosen cluster; everyone else shows all four mains.
   const relevantBenchKeys = useMemo<string[]>(() => {
+    if (customizeTb && activeTbTemplate) {
+      const roleKeys = benchRoles.map((role) => role.engineKey);
+      const available = new Set(roleKeys);
+      return Object.values(customSessionMovements)
+        .flat()
+        .filter((key) => available.has(key) && key !== "pullup")
+        .filter((key, index, all) => all.indexOf(key) === index)
+        .sort((a, b) => roleKeys.indexOf(a) - roleKeys.indexOf(b));
+    }
     const base = relevantBenchmarkKeysFor(activeTbTemplate, cluster, benchRoles);
     if (!isActivation) return base;
     return base
@@ -1069,6 +1199,8 @@ export function ProgramPicker({
     benchRoles,
     cluster,
     isActivation,
+    customizeTb,
+    customSessionMovements,
   ]);
 
   const enteredAnyTm = useMemo(
@@ -1104,6 +1236,20 @@ export function ProgramPicker({
     benchmarksReady &&
     activationStartBenchmarksReady &&
     clusterOk &&
+    (!customizeTb ||
+      (customName.trim().length > 0 &&
+        (!activeTbTemplate ||
+          sessionSeriesFor(activeTbTemplate).every(
+          (series) =>
+            (customSessionMovements[series.key]?.length ?? 0) > 0,
+          )) &&
+        (rehabWeekdays.length === 0 ||
+          rehabDrafts.some(
+            (item) =>
+              item.movementId &&
+              Number(item.sets) > 0 &&
+              (Number(item.reps) > 0 || Number(item.holdSeconds) > 0),
+          )))) &&
     !pending;
 
   // Loadout step derivations (the setup field the template/phase choice writes to).
@@ -1141,6 +1287,19 @@ export function ProgramPicker({
       setCluster(t ? defaultClusterFor(t, anchoredKeys) : []);
       setLastTbTemplateId(String(defaults.templateId ?? "") || null);
       setWeek(buildWeek(t?.sessionsPerWeek ?? p.sessionsPerWeek ?? 3));
+      setCustomizeTb(false);
+      setCustomName(DEFAULT_CUSTOM_TB_NAME);
+      setCustomSessionMovements(
+        t
+          ? Object.fromEntries(
+              sessionSeriesFor(t).map((series) => [
+                series.key,
+                [...series.movements],
+              ]),
+            )
+          : {},
+      );
+      setRehabDrafts([]);
     } else {
       setCluster([]);
       setLastTbTemplateId(null);
@@ -1188,7 +1347,11 @@ export function ProgramPicker({
         ? cur === "strength"
           ? "cardio"
           : cur === "cardio"
-            ? "rest"
+            ? customizeTb
+              ? "rehab"
+              : "rest"
+            : cur === "rehab"
+              ? "rest"
             : "strength"
         : cur === "strength"
           ? "rest"
@@ -1197,6 +1360,67 @@ export function ProgramPicker({
       w[i] = next;
       return w;
     });
+  }
+
+  function toggleCustomizeTb() {
+    if (!activeTbTemplate || isActivation) return;
+    setCustomizeTb((current) => {
+      const next = !current;
+      if (next && Object.keys(customSessionMovements).length === 0) {
+        setCustomSessionMovements(
+          Object.fromEntries(
+            sessionSeriesFor(activeTbTemplate).map((series) => [
+              series.key,
+              [...series.movements],
+            ]),
+          ),
+        );
+      }
+      if (!next) {
+        setWeek((currentWeek) =>
+          currentWeek.map((day) => (day === "rehab" ? "rest" : day)),
+        );
+      }
+      return next;
+    });
+  }
+
+  function toggleSeriesMovement(seriesKey: string, movement: string) {
+    setCustomSessionMovements((current) => {
+      const selected = current[seriesKey] ?? [];
+      return {
+        ...current,
+        [seriesKey]: selected.includes(movement)
+          ? selected.filter((key) => key !== movement)
+          : [...selected, movement],
+      };
+    });
+  }
+
+  function addRehabMovement() {
+    setRehabDrafts((current) => [
+      ...current,
+      {
+        movementId: rehabMovements[0]?.id ?? "",
+        side: "both",
+        sets: "3",
+        reps: "10",
+        holdSeconds: "",
+        targetWeightKg: "",
+        instructions: "",
+      },
+    ]);
+  }
+
+  function updateRehabMovement(
+    index: number,
+    patch: Partial<RehabDraft>,
+  ) {
+    setRehabDrafts((current) =>
+      current.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, ...patch } : item,
+      ),
+    );
   }
   function resetWeek() {
     setWeek(buildWeek(requiredDays ?? freq531));
@@ -1257,6 +1481,79 @@ export function ProgramPicker({
       setupValues.dayOrder = chosen.dayOrder;
     }
 
+    const customization: TbCustomizationV1 | undefined =
+      customizeTb && activeTbTemplate && !isActivation
+        ? {
+            version: TB_CUSTOMIZATION_VERSION,
+            displayName: customName.trim(),
+            dayTypes: week.map((day) =>
+              day === "cardio" ? "conditioning" : day,
+            ),
+            sessionMovements: Object.fromEntries(
+              sessionSeriesFor(activeTbTemplate).map((series) => [
+                series.key,
+                (customSessionMovements[series.key] ?? []).map((movement) => {
+                  const kind =
+                    series.movementKinds?.[movement] ??
+                    (movement === "weighted-pullup"
+                      ? "weighted-bw"
+                      : movement === "pullup"
+                        ? "bodyweight"
+                        : undefined);
+                  return {
+                    movement,
+                    ...(kind ? { kind } : {}),
+                  };
+                }),
+              ]),
+            ),
+            ...(rehabWeekdays.length > 0
+              ? {
+                  rehab: {
+                    items: rehabDrafts
+                      .filter(
+                        (item) =>
+                          item.movementId &&
+                          Number(item.sets) > 0 &&
+                          (Number(item.reps) > 0 ||
+                            Number(item.holdSeconds) > 0),
+                      )
+                      .map((item) => ({
+                        movementId: item.movementId,
+                        movementName:
+                          rehabMovements.find(
+                            (movement) => movement.id === item.movementId,
+                          )?.name ?? "Rehab movement",
+                        side: item.side,
+                        sets: Math.round(Number(item.sets)),
+                        ...(Number(item.reps) > 0
+                          ? { reps: Math.round(Number(item.reps)) }
+                          : {}),
+                        ...(Number(item.holdSeconds) > 0
+                          ? {
+                              holdSeconds: Math.round(
+                                Number(item.holdSeconds),
+                              ),
+                            }
+                          : {}),
+                        ...(Number(item.targetWeightKg) >= 0 &&
+                        item.targetWeightKg !== ""
+                          ? {
+                              targetWeightKg: Number(
+                                item.targetWeightKg,
+                              ),
+                            }
+                          : {}),
+                        ...(item.instructions.trim()
+                          ? { instructions: item.instructions.trim() }
+                          : {}),
+                      })),
+                  },
+                }
+              : {}),
+          }
+        : undefined;
+
     // Lifts the user set or changed → persist as entered 1RMs before deploy. We
     // only write touched rows so an untouched, pre-filled value is never re-saved
     // (this keeps programs that render off real TMs from gaining a tm_percent).
@@ -1309,6 +1606,7 @@ export function ProgramPicker({
           : {}),
         ...((isHybrid || isHyrox) && twoADay ? { twoADay: true } : {}),
         ...(supersetAccessories ? { supersetAccessories: true } : {}),
+        ...(customization ? { customization } : {}),
         ...(isEditing && editContext ? { editBlockId: editContext.blockId } : {}),
         ...(!isEditing && seasonBlockId ? { seasonBlockId } : {}),
       });
@@ -1829,6 +2127,39 @@ export function ProgramPicker({
         <p className={styles.sub}>{loadoutMeta?.sub ?? "Choose how you\u2019ll run it."}</p>
         <div className={styles.label}>{loadoutMeta?.grouped ? "Choose a block" : "Template"}</div>
         {renderLoadoutOptions()}
+        {isTb && !isActivation ? (
+          <div className={styles.customPanel}>
+            <label className={styles.customToggle}>
+              <input
+                type="checkbox"
+                checked={customizeTb}
+                onChange={toggleCustomizeTb}
+              />
+              <span>
+                <b>Customize template</b>
+                <small>
+                  Move strength and conditioning, add rehab-only days, and
+                  choose the movements for each strength slot.
+                </small>
+              </span>
+            </label>
+            {customizeTb ? (
+              <label className={styles.customName}>
+                <span>Program name</span>
+                <input
+                  type="text"
+                  value={customName}
+                  maxLength={120}
+                  onChange={(event) => setCustomName(event.target.value)}
+                />
+                <small>
+                  This can be renamed at any time. The program stays marked
+                  Customized in your history.
+                </small>
+              </label>
+            ) : null}
+          </div>
+        ) : null}
         {renderSpecStrip()}
         {renderGpPlan()}
         {renderActivationSupplementals()}
@@ -2208,7 +2539,9 @@ export function ProgramPicker({
     const weekText = selectedStartSchedule
       ? `${selectedStartSchedule.strength} strength \u00B7 ${selectedStartSchedule.cardio} cardio \u00B7 ${selectedStartSchedule.rest} rest`
       : supportsCardioDays
-        ? `${dayCounts.strength} strength \u00B7 ${dayCounts.cardio} cardio \u00B7 ${dayCounts.rest} rest`
+        ? `${dayCounts.strength} strength \u00B7 ${dayCounts.cardio} conditioning${
+            customizeTb ? ` \u00B7 ${dayCounts.rehab} rehab` : ""
+          } \u00B7 ${dayCounts.rest} rest`
         : `${dayCounts.strength} ${daysNoun} \u00B7 ${dayCounts.rest} rest`;
     // HYROX without a race date is an ongoing maintenance build — no Race-prep,
     // no Taper (ADR 0060). Only show the full four-phase periodisation when a race
@@ -2222,7 +2555,14 @@ export function ProgramPicker({
         <div className={styles.srow}>
           <span className={styles.sk}>Program</span>
           <span className={styles.sv}>
-            <b>{PROGRAM_LABEL[selected.id] ?? selected.name}</b>
+            <b>
+              {customizeTb
+                ? customName.trim() || DEFAULT_CUSTOM_TB_NAME
+                : PROGRAM_LABEL[selected.id] ?? selected.name}
+            </b>
+            {customizeTb ? (
+              <span className={styles.customBadge}>Customized</span>
+            ) : null}
           </span>
         </div>
         <div className={styles.srow}>
@@ -2255,14 +2595,18 @@ export function ProgramPicker({
       : countWarn
       ? `\u26A0 ${dayCounts.strength}/${requiredDays} strength days \u2014 pick ${requiredDays}`
       : supportsCardioDays
-        ? `${dayCounts.strength} strength \u00B7 ${dayCounts.cardio} cardio \u00B7 ${dayCounts.rest} rest`
+        ? `${dayCounts.strength} strength \u00B7 ${dayCounts.cardio} conditioning${
+            customizeTb ? ` \u00B7 ${dayCounts.rehab} rehab` : ""
+          } \u00B7 ${dayCounts.rest} rest`
         : `${dayCounts.strength} ${daysNoun} \u00B7 ${dayCounts.rest} rest`;
     const dirty = week.some((t, i) => t !== buildWeek(requiredDays ?? freq531)[i]);
     const schednote =
       selected.id === "wendler-531"
         ? `5/3/1 trains ${requiredDays} strength days a week. Tap a day to cycle strength \u2192 cardio \u2192 rest \u2014 keep ${requiredDays} strength days; cardio days are optional open sessions.`
         : isTb
-          ? `${activeTbTemplate?.name ?? "This template"} trains ${requiredDays} strength days a week \u2014 you choose which. Tap an open day to add optional cardio, or leave it as rest.`
+          ? customizeTb
+            ? `${activeTbTemplate?.name ?? "This template"} keeps its ${requiredDays} strength slots and progression. Tap a day to cycle Strength, Conditioning, Rehab, and Rest.`
+            : `${activeTbTemplate?.name ?? "This template"} trains ${requiredDays} strength days a week \u2014 you choose which. Tap an open day to add optional conditioning, or leave it as rest.`
           : isHyrox
             ? `Pick the days you'll train (${HYROX_MIN_DAYS}\u2013${HYROX_MAX_DAYS}). The plan periodises each week across runs, stations and strength \u2014 your training-day count sets how many sessions a week it builds.`
             : "Pick which days you'll train. Your training-day count sets how many days a week the plan runs.";
@@ -2439,7 +2783,8 @@ export function ProgramPicker({
             ) : null}
             <div className={styles.legend}>
               <span className={`${styles.lg} ${styles.lgS}`}>{daysNounCap}</span>
-              {supportsCardioDays ? <span className={`${styles.lg} ${styles.lgC}`}>Cardio</span> : null}
+              {supportsCardioDays ? <span className={`${styles.lg} ${styles.lgC}`}>Conditioning</span> : null}
+              {customizeTb ? <span className={`${styles.lg} ${styles.lgH}`}>Rehab</span> : null}
               <span className={`${styles.lg} ${styles.lgR}`}>Rest</span>
               <span className={`${styles.lgCount}${countWarn ? ` ${styles.lgCountWarn}` : ""}`}>{countText}</span>
             </div>
@@ -2447,8 +2792,21 @@ export function ProgramPicker({
               {WD.map((label, i) => {
                 const t = week[i] ?? "rest";
                 const cls =
-                  t === "strength" ? styles.wdStrength : t === "cardio" ? styles.wdCardio : styles.wdRest;
-                const wtLabel = t === "strength" ? daysNounCap : t === "cardio" ? "Cardio" : "Rest";
+                  t === "strength"
+                    ? styles.wdStrength
+                    : t === "cardio"
+                      ? styles.wdCardio
+                      : t === "rehab"
+                        ? styles.wdRehab
+                        : styles.wdRest;
+                const wtLabel =
+                  t === "strength"
+                    ? daysNounCap
+                    : t === "cardio"
+                      ? "Conditioning"
+                      : t === "rehab"
+                        ? "Rehab"
+                        : "Rest";
                 return (
                   <button key={i} type="button" onClick={() => cycleDay(i)} className={`${styles.wd} ${cls}`}>
                     <span className={styles.wn}>{label}</span>
@@ -2466,6 +2824,196 @@ export function ProgramPicker({
             )}
 
             <p className={styles.note}>{schednote}</p>
+
+            {customizeTb && activeTbTemplate ? (
+              <div className={styles.customBuilder}>
+                <div>
+                  <div className={styles.label}>Strength movements</div>
+                  <p className={styles.note}>
+                    Choose the movements for each repeating strength slot.
+                    The template still owns percentages, sets, reps, and peak
+                    progression.
+                  </p>
+                  <div className={styles.seriesGrid}>
+                    {sessionSeriesFor(activeTbTemplate).map((series, index) => (
+                      <fieldset
+                        key={series.key}
+                        className={styles.seriesCard}
+                      >
+                        <legend>
+                          Strength {index + 1}
+                          <small>{series.label}</small>
+                        </legend>
+                        {customMovementKeys.map((movementKey) => {
+                          const checked = (
+                            customSessionMovements[series.key] ?? []
+                          ).includes(movementKey);
+                          return (
+                            <label key={movementKey}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() =>
+                                  toggleSeriesMovement(
+                                    series.key,
+                                    movementKey,
+                                  )
+                                }
+                              />
+                              <span>{movementLabel(movementKey)}</span>
+                            </label>
+                          );
+                        })}
+                        {(customSessionMovements[series.key]?.length ?? 0) ===
+                        0 ? (
+                          <p className={styles.inlineError}>
+                            Choose at least one movement.
+                          </p>
+                        ) : null}
+                      </fieldset>
+                    ))}
+                  </div>
+                </div>
+
+                {rehabWeekdays.length > 0 ? (
+                  <div>
+                    <div className={styles.label}>Rehab protocol</div>
+                    <p className={styles.note}>
+                      Enter only movements and loading supplied by you or your
+                      clinician. SxC does not generate or progress rehab work.
+                    </p>
+                    <div className={styles.rehabList}>
+                      {rehabDrafts.map((item, index) => (
+                        <div
+                          key={`${item.movementId}-${index}`}
+                          className={styles.rehabRow}
+                        >
+                          <select
+                            value={item.movementId}
+                            onChange={(event) =>
+                              updateRehabMovement(index, {
+                                movementId: event.target.value,
+                              })
+                            }
+                            aria-label={`Rehab movement ${index + 1}`}
+                          >
+                            {rehabMovements.map((movement) => (
+                              <option key={movement.id} value={movement.id}>
+                                {movement.name}
+                              </option>
+                            ))}
+                          </select>
+                          <select
+                            value={item.side}
+                            onChange={(event) =>
+                              updateRehabMovement(index, {
+                                side: event.target.value as RehabDraft["side"],
+                              })
+                            }
+                            aria-label={`Side for rehab movement ${index + 1}`}
+                          >
+                            <option value="both">Both sides</option>
+                            <option value="left">Left</option>
+                            <option value="right">Right</option>
+                          </select>
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.sets}
+                            onChange={(event) =>
+                              updateRehabMovement(index, {
+                                sets: event.target.value,
+                              })
+                            }
+                            aria-label={`Sets for rehab movement ${index + 1}`}
+                            placeholder="Sets"
+                          />
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.reps}
+                            onChange={(event) =>
+                              updateRehabMovement(index, {
+                                reps: event.target.value,
+                                holdSeconds: event.target.value
+                                  ? ""
+                                  : item.holdSeconds,
+                              })
+                            }
+                            aria-label={`Reps for rehab movement ${index + 1}`}
+                            placeholder="Reps"
+                          />
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.holdSeconds}
+                            onChange={(event) =>
+                              updateRehabMovement(index, {
+                                holdSeconds: event.target.value,
+                                reps: event.target.value ? "" : item.reps,
+                              })
+                            }
+                            aria-label={`Hold seconds for rehab movement ${index + 1}`}
+                            placeholder="Hold sec"
+                          />
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.5"
+                            value={item.targetWeightKg}
+                            onChange={(event) =>
+                              updateRehabMovement(index, {
+                                targetWeightKg: event.target.value,
+                              })
+                            }
+                            aria-label={`Load for rehab movement ${index + 1}`}
+                            placeholder="kg"
+                          />
+                          <input
+                            type="text"
+                            value={item.instructions}
+                            maxLength={500}
+                            onChange={(event) =>
+                              updateRehabMovement(index, {
+                                instructions: event.target.value,
+                              })
+                            }
+                            aria-label={`Instructions for rehab movement ${index + 1}`}
+                            placeholder="Instructions"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setRehabDrafts((current) =>
+                                current.filter(
+                                  (_, itemIndex) => itemIndex !== index,
+                                ),
+                              )
+                            }
+                            aria-label={`Remove rehab movement ${index + 1}`}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.addlift}
+                      onClick={addRehabMovement}
+                      disabled={rehabMovements.length === 0}
+                    >
+                      + Add rehab movement
+                    </button>
+                    {rehabDrafts.length === 0 ? (
+                      <p className={styles.inlineError}>
+                        Add at least one movement for your rehab day.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </>
         )}
 

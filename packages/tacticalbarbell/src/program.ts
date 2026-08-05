@@ -73,6 +73,8 @@ export interface TbInstance {
   armorSupplementalA: "back-extension" | "reverse-hyper";
   /** Activation Armor Supp B choice, selected once for all Armor sessions. */
   armorSupplementalB: "pullup" | "inverted-row";
+  /** Customized template: exact engine movements assigned to each weekly slot. */
+  customSessionMovements?: Record<string, TbClusterLift[]>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -136,9 +138,33 @@ function sessionLifts(
   instance: TbInstance,
   session: TbTemplate["weeklySessions"][number],
 ): TbClusterLift[] {
-  let lifts = instance.useTemplateDefaults && session.fixedMovements
-    ? session.fixedMovements.map((entry) => cloneEntry(entry))
-    : instance.cluster.filter((c) => (session.split ? c.split === session.split : true));
+  const seriesKey = sessionSeriesKey(template, session);
+  const customized = instance.customSessionMovements?.[seriesKey];
+  const workSession = workSessionForSeries(template, seriesKey);
+  const canonicalWorkSelection =
+    workSession?.fixedMovements ?? template.defaultCluster;
+  const usesCustomizedSelection =
+    customized != null &&
+    customized.length > 0 &&
+    !sameMovementSelection(customized, canonicalWorkSelection);
+  const translatedTest = usesCustomizedSelection && customized
+    ? translateTestSelection(
+        template,
+        session,
+        customized,
+        canonicalWorkSelection,
+      )
+    : null;
+  let lifts =
+    translatedTest
+      ? translatedTest.lifts
+      : usesCustomizedSelection
+        ? customized.map((entry) => ({ ...entry }))
+      : instance.useTemplateDefaults && session.fixedMovements
+        ? session.fixedMovements.map((entry) => cloneEntry(entry))
+        : instance.cluster.filter((c) =>
+            session.split ? c.split === session.split : true,
+          );
   if (template.id === "activation" && session.id.startsWith("armor-a")) {
     const selected =
       instance.armorSupplementalA === "reverse-hyper"
@@ -148,6 +174,7 @@ function sessionLifts(
       lift.movement === "back-extension" ? { movement: selected } : lift,
     );
   }
+
   if (template.id === "activation" && session.id.startsWith("armor-b")) {
     const selected =
       instance.armorSupplementalB === "inverted-row"
@@ -167,6 +194,114 @@ function sessionLifts(
     }
   }
   return lifts;
+}
+
+function sameMovementSelection(
+  left: readonly TbClusterEntry[],
+  right: readonly TbClusterEntry[] | undefined,
+): boolean {
+  if (!right || left.length !== right.length) return false;
+  const normalize = (entry: TbClusterEntry) =>
+    `${entry.movement}:${entry.kind ?? ""}`;
+  return [...left].map(normalize).sort().join("|") ===
+    [...right].map(normalize).sort().join("|");
+}
+
+function sessionSeriesKey(
+  template: TbTemplate,
+  session: TbTemplate["weeklySessions"][number],
+): string {
+  const workSessions = template.weeklySessions.filter(
+    (candidate) =>
+      candidate.conditioning == null &&
+      candidate.kind !== "test" &&
+      candidate.kind !== "rest" &&
+      (!candidate.activeWeeks || candidate.activeWeeks.includes(1)),
+  );
+  const workIndex = workSessions.findIndex(
+    (candidate) => candidate.id === session.id,
+  );
+  if (workIndex >= 0) return `slot-${workIndex + 1}`;
+  const peakIndex = template.weeklySessions
+    .filter((candidate) => candidate.id.startsWith("peak-"))
+    .findIndex((candidate) => candidate.id === session.id);
+  if (peakIndex >= 0) return `slot-${peakIndex + 1}`;
+  return session.id;
+}
+
+function workSessionForSeries(
+  template: TbTemplate,
+  seriesKey: string,
+): TbTemplate["weeklySessions"][number] | undefined {
+  return template.weeklySessions.find(
+    (candidate) =>
+      sessionSeriesKey(template, candidate) === seriesKey &&
+      candidate.kind !== "test" &&
+      candidate.conditioning == null &&
+      (!candidate.activeWeeks || candidate.activeWeeks.includes(1)),
+  );
+}
+
+function translateTestSelection(
+  template: TbTemplate,
+  session: TbTemplate["weeklySessions"][number],
+  customized: readonly TbClusterEntry[],
+  canonicalWorkSelection: readonly TbClusterEntry[],
+): { lifts: TbClusterLift[]; movementMap: Map<string, string> } | null {
+  if (session.kind !== "test" || !session.fixedMovements) return null;
+  const baseNames = new Set(
+    canonicalWorkSelection.map((entry) => entry.movement),
+  );
+  const used = new Set<string>();
+  const movementMap = new Map<string, string>();
+  const lifts: TbClusterLift[] = [];
+
+  for (const fixed of session.fixedMovements) {
+    const exact = customized.find(
+      (entry) => entry.movement === fixed.movement && !used.has(entry.movement),
+    );
+    const added = customized.find(
+      (entry) => !baseNames.has(entry.movement) && !used.has(entry.movement),
+    );
+    const fallback = customized.find(
+      (entry) => !used.has(entry.movement),
+    );
+    const replacement = exact ?? added ?? fallback;
+    if (!replacement) continue;
+    used.add(replacement.movement);
+    movementMap.set(fixed.movement, replacement.movement);
+    lifts.push(cloneEntry(replacement));
+  }
+
+  return lifts.length > 0 ? { lifts, movementMap } : null;
+}
+
+function customizedPeakMovements(
+  template: TbTemplate,
+  session: TbTemplate["weeklySessions"][number],
+  customized: readonly TbClusterEntry[],
+): Set<string> | null {
+  if (!session.peakMovements) return null;
+  const workSession = workSessionForSeries(
+    template,
+    sessionSeriesKey(template, session),
+  );
+  const canonicalWorkSelection =
+    workSession?.fixedMovements ?? template.defaultCluster;
+  if (sameMovementSelection(customized, canonicalWorkSelection)) return null;
+  const translated = translateTestSelection(
+    template,
+    session,
+    customized,
+    canonicalWorkSelection,
+  );
+  if (!translated) return null;
+  return new Set(
+    session.peakMovements.flatMap((movement) => {
+      const replacement = translated.movementMap.get(movement);
+      return replacement ? [replacement] : [];
+    }),
+  );
 }
 
 /** Copy a template cluster entry into an instance lift, omitting undefined optionals. */
@@ -276,6 +411,22 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       v.armorSupplementalB === "inverted-row"
         ? "inverted-row"
         : "pullup";
+    const customMovementsBySeries: Record<string, TbClusterLift[]> = {};
+    if (
+      v.customSessionMovements &&
+      typeof v.customSessionMovements === "object"
+    ) {
+      for (const [key, value] of Object.entries(
+        v.customSessionMovements as Record<string, unknown>,
+      )) {
+        const entries = entriesFromValue(value);
+        if (entries.length > 0) customMovementsBySeries[key] = entries;
+      }
+    }
+    const customSessionMovements =
+      Object.keys(customMovementsBySeries).length > 0
+        ? customMovementsBySeries
+        : undefined;
 
     return {
       templateId: template.id,
@@ -287,6 +438,9 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       useTemplateDefaults,
       armorSupplementalA,
       armorSupplementalB,
+      ...(customSessionMovements
+        ? { customSessionMovements }
+        : {}),
     };
   },
 
@@ -308,6 +462,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
           ];
           specs.push({
             ref: sessionRef(block, week, session.id),
+            seriesKey: sessionSeriesKey(template, session),
             index: index++,
             label: `${template.name} · Block ${block + 1} · Wk ${week} · ${session.label}`,
             kind: session.kindByWeek?.[week] ?? session.kind ?? "training",
@@ -363,12 +518,19 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
     const lifts = sessionLifts(template, instance, session);
 
     const items: PrescribedItem[] = [];
+    const customizedSeries =
+      instance.customSessionMovements?.[sessionSeriesKey(template, session)];
+    const customPeaks = customizedSeries
+      ? customizedPeakMovements(template, session, customizedSeries)
+      : null;
     for (const lift of lifts) {
       const anchor = ctx.oneRepMaxes[lift.movement];
       const movementRange = session.movementSetRanges?.[lift.movement];
       const setsMin = movementRange?.min ?? scheme.setsMin;
       const setsMax = movementRange?.max ?? scheme.setsMax;
-      const isPeak = session.peakMovements?.includes(lift.movement) ?? false;
+      const isPeak = customPeaks
+        ? customPeaks.has(lift.movement)
+        : (session.peakMovements?.includes(lift.movement) ?? false);
       const support = session.peakMovements && !isPeak ? session.support : undefined;
       let prescribedPercent: number | null = support?.percent ?? pct;
       let prescribedSetsMin = support?.sets ?? setsMin;

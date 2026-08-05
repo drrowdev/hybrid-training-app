@@ -9,6 +9,7 @@ import { describe, it, expect } from "vitest";
 import type { PlatformContext, LoggedSession } from "@hta/program-core";
 import { totalPrescribedSets, itemsOfKind } from "@hta/program-core";
 import { tacticalBarbellEngine as tb, type TbInstance } from "./program";
+import { TB_TEMPLATES } from "./templates";
 
 const ctx: PlatformContext = {
   oneRepMaxes: {
@@ -118,6 +119,27 @@ describe("TB engine — timeline", () => {
     expect(tl[18]!.ref).toBe("b1-w1-s1");
   });
 
+  it("assigns stable weekly slot keys across work and peak sessions", () => {
+    const operator = tb.timeline(setup());
+    expect(
+      operator
+        .filter((session) => session.tags?.includes("week:1"))
+        .map((session) => session.seriesKey),
+    ).toEqual(["slot-1", "slot-2", "slot-3"]);
+    expect(
+      operator
+        .filter((session) => session.tags?.includes("week:6"))
+        .map((session) => session.seriesKey),
+    ).toEqual(["slot-1", "slot-2", "slot-3"]);
+
+    const zulu = tb.timeline(setup({ templateId: "zulu" }));
+    expect(
+      zulu
+        .filter((session) => session.tags?.includes("week:1"))
+        .map((session) => session.seriesKey),
+    ).toEqual(["slot-1", "slot-2", "slot-3", "slot-4"]);
+  });
+
   it("Activation materialises strength and conditioning with explicit test/deload roles", () => {
     const tl = tb.timeline(setup({ templateId: "activation" }));
     expect(tl).toHaveLength(111);
@@ -131,6 +153,169 @@ describe("TB engine — timeline", () => {
 });
 
 describe("TB engine — prescribe (% of the shared 1RM)", () => {
+  it("an empty customization is byte-identical to the canonical instance", () => {
+    const canonical = setup({ templateId: "fighter" });
+    const empty = setup({
+      templateId: "fighter",
+      customSessionMovements: {},
+    });
+
+    expect(empty).toEqual(canonical);
+    expect(tb.timeline(empty)).toEqual(tb.timeline(canonical));
+    for (const spec of tb.timeline(canonical)) {
+      expect(tb.prescribe(empty, spec.ref, ctx)).toEqual(
+        tb.prescribe(canonical, spec.ref, ctx),
+      );
+    }
+  });
+
+  it("explicit canonical Fighter slot selections preserve every prescription", () => {
+    const canonical = setup({ templateId: "fighter" });
+    const customized = setup({
+      templateId: "fighter",
+      customSessionMovements: {
+        "slot-1": [
+          { movement: "bench" },
+          { movement: "squat" },
+          { movement: "deadlift" },
+        ],
+        "slot-2": [
+          { movement: "bench" },
+          { movement: "squat" },
+          { movement: "deadlift" },
+        ],
+      },
+    });
+    for (const spec of tb.timeline(canonical)) {
+      expect(tb.prescribe(customized, spec.ref, ctx)).toEqual(
+        tb.prescribe(canonical, spec.ref, ctx),
+      );
+    }
+  });
+
+  it("explicit canonical Zulu slots preserve its shorter peak sessions", () => {
+    const a = [
+      { movement: "bench", split: "A" as const },
+      { movement: "squat", split: "A" as const },
+      { movement: "overhead-press", split: "A" as const },
+      { movement: "hanging-leg-raise", split: "A" as const },
+      { movement: "hanging-knee-raise", split: "A" as const },
+      { movement: "toes-to-bar", split: "A" as const },
+    ];
+    const b = [
+      { movement: "deadlift", split: "B" as const },
+      {
+        movement: "weighted-pullup",
+        kind: "weighted-bw" as const,
+        split: "B" as const,
+      },
+      { movement: "barbell-row", split: "B" as const },
+      {
+        movement: "back-extension",
+        kind: "unanchored" as const,
+        split: "B" as const,
+      },
+    ];
+    const canonical = setup({ templateId: "zulu" });
+    const customized = setup({
+      templateId: "zulu",
+      customSessionMovements: {
+        "slot-1": a,
+        "slot-2": b,
+        "slot-3": a,
+        "slot-4": b,
+      },
+    });
+
+    for (const spec of tb.timeline(canonical)) {
+      expect(tb.prescribe(customized, spec.ref, ctx)).toEqual(
+        tb.prescribe(canonical, spec.ref, ctx),
+      );
+    }
+  });
+
+  it("preserves canonical prescriptions for every standalone template when its slots are unchanged", () => {
+    for (const template of TB_TEMPLATES.filter(
+      (candidate) => candidate.id !== "activation",
+    )) {
+      const workSessions = template.weeklySessions.filter(
+        (session) =>
+          session.conditioning == null &&
+          session.kind !== "test" &&
+          session.kind !== "rest" &&
+          (!session.activeWeeks || session.activeWeeks.includes(1)),
+      );
+      const customSessionMovements = Object.fromEntries(
+        workSessions.map((session, index) => [
+          `slot-${index + 1}`,
+          (session.fixedMovements ?? template.defaultCluster).map(
+            (entry) => ({ ...entry }),
+          ),
+        ]),
+      );
+      const canonical = setup({ templateId: template.id });
+      const customized = setup({
+        templateId: template.id,
+        customSessionMovements,
+      });
+      expect(
+        tb.timeline(customized).map((session) => session.seriesKey),
+        template.id,
+      ).toEqual(tb.timeline(canonical).map((session) => session.seriesKey));
+      for (const spec of tb.timeline(canonical)) {
+        expect(
+          tb.prescribe(customized, spec.ref, ctx),
+          `${template.id}:${spec.ref}`,
+        ).toEqual(tb.prescribe(canonical, spec.ref, ctx));
+      }
+    }
+  });
+
+  it("translates a customized Zulu peak without pulling in its full work-day list", () => {
+    const inst = setup({
+      templateId: "zulu",
+      customSessionMovements: {
+        "slot-1": [
+          { movement: "bench" },
+          { movement: "deadlift" },
+          { movement: "overhead-press" },
+          { movement: "hanging-leg-raise" },
+          { movement: "hanging-knee-raise" },
+          { movement: "toes-to-bar" },
+        ],
+      },
+    });
+    const main = itemsOfKind(
+      tb.prescribe(inst, "b0-w6-peak-a1", ctx),
+      "main",
+    );
+    expect(main.map((item) => item.name)).toEqual([
+      "Deadlift",
+      "Bench Press",
+    ]);
+    expect(main.map((item) => item.percentOfTm)).toEqual([1, 0.8]);
+  });
+
+  it("customizes a weekly slot while retaining its loading and peak progression", () => {
+    const inst = setup({
+      templateId: "fighter",
+      customSessionMovements: {
+        "slot-1": [{ movement: "press" }],
+        "slot-2": [{ movement: "deadlift" }],
+      },
+    });
+    expect(
+      itemsOfKind(tb.prescribe(inst, "b0-w1-s1", ctx), "main").map(
+        (item) => [item.name, item.percentOfTm],
+      ),
+    ).toEqual([["Overhead Press", 0.75]]);
+    expect(
+      itemsOfKind(tb.prescribe(inst, "b0-w6-peak-squat", ctx), "main").map(
+        (item) => [item.name, item.percentOfTm, item.sets, item.reps],
+      ),
+    ).toEqual([["Overhead Press", 1, 1, 1]]);
+  });
+
   it("Operator week 1 = required 3 of up to 5 × 5 @ 75%", () => {
     const inst = setup();
     const p = tb.prescribe(inst, "b0-w1-s1", ctx);

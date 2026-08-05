@@ -62,14 +62,25 @@ export default async function PlanHistoryPage({
   // native <details> markup below.
   const blockIds = pageBlocks.map((b) => b.id);
   const sessionsByBlock = new Map<string, PlannedRow[]>();
+  const customizedBlockIds = new Set<string>();
   if (blockIds.length > 0) {
-    const { data: planned } = await supabase
-      .from("planned_sessions")
-      .select("id, block_id, week_index, day_index, slot, title, completed_session_id, skipped_at")
-      .in("block_id", blockIds)
-      .order("week_index", { ascending: true })
-      .order("day_index", { ascending: true })
-      .order("slot", { ascending: true });
+    const [{ data: planned }, { data: instances }] = await Promise.all([
+      supabase
+        .from("planned_sessions")
+        .select("id, block_id, week_index, day_index, slot, title, completed_session_id, skipped_at")
+        .in("block_id", blockIds)
+        .order("week_index", { ascending: true })
+        .order("day_index", { ascending: true })
+        .order("slot", { ascending: true }),
+      supabase
+        .from("program_instances")
+        .select("block_id, customization_version")
+        .in("block_id", blockIds)
+        .not("customization_version", "is", null),
+    ]);
+    for (const instance of instances ?? []) {
+      if (instance.block_id) customizedBlockIds.add(instance.block_id as string);
+    }
     for (const row of planned ?? []) {
       const blockId = (row as { block_id: string }).block_id;
       const list = sessionsByBlock.get(blockId) ?? [];
@@ -140,6 +151,7 @@ export default async function PlanHistoryPage({
                     key={b.id}
                     block={b}
                     sessions={sessionsByBlock.get(b.id) ?? []}
+                    customized={customizedBlockIds.has(b.id)}
                   />
                 ))}
               </ul>
@@ -156,9 +168,11 @@ export default async function PlanHistoryPage({
 function BlockHistoryRow({
   block,
   sessions,
+  customized,
 }: {
   block: BlockWithCompletionStats;
   sessions: PlannedRow[];
+  customized: boolean;
 }): React.ReactElement {
   const ratio =
     block.totalSessions > 0
@@ -199,6 +213,23 @@ function BlockHistoryRow({
         <summary style={summaryStyle}>
           <div style={summaryHeadStyle}>
             <span style={{ fontWeight: 600, fontSize: 14 }}>{block.archetypeName}</span>
+            {customized ? (
+              <span
+                data-testid="customized-program-badge"
+                style={{
+                  border: "1px solid var(--cp-accent)",
+                  borderRadius: 999,
+                  padding: "2px 7px",
+                  color: "var(--cp-accent)",
+                  fontSize: 9,
+                  fontWeight: 700,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Customized
+              </span>
+            ) : null}
             <StatusBadge status={block.status} />
             <span style={{ marginLeft: "auto" }}>
               <DeleteBlockMenu blockId={block.id} archetypeName={block.archetypeName} />

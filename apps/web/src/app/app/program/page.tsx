@@ -31,7 +31,9 @@ import {
   type PickerProgram,
   type PickerTbTemplate,
   type PickerBenchRole,
+  type PickerRehabMovement,
 } from "@/components/program/ProgramPicker";
+import { loadPickerCatalog } from "@/lib/planner/picker-catalog";
 
 // Sage program-wizard type scale — scoped to this route via CSS variables on
 // the wrapper below (see ProgramPicker.module.css). Not loaded app-wide.
@@ -105,6 +107,15 @@ export default async function ProgramPickerPage({
   // Resolved to its catalog id so the picker can persist a max-reps anchor on
   // deploy; the engine prescribes it as a % of max reps.
   const pullupMovement = await buildPullupMovement(supabase);
+  const rehabMovements: PickerRehabMovement[] = (
+    await loadPickerCatalog(supabase)
+  )
+    .filter((movement) => movement.pattern !== "cardio")
+    .map((movement) => ({
+      id: movement.id,
+      name: movement.displayName,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const programs: PickerProgram[] = selectablePrograms().map((meta) => {
     // A program is owned by EITHER a foreign per-session engine or a native
@@ -182,6 +193,29 @@ export default async function ProgramPickerPage({
       ...(c.split ? { split: c.split } : {}),
       ...(c.kind ? { kind: c.kind } : {}),
     })),
+    sessionSeries: t.weeklySessions
+      .filter(
+        (session) =>
+          session.conditioning == null &&
+          session.kind !== "test" &&
+          session.kind !== "rest" &&
+          (!session.activeWeeks || session.activeWeeks.includes(1)),
+      )
+      .map((session, index) => ({
+        key: `slot-${index + 1}`,
+        label: session.label,
+        movements: (session.fixedMovements ?? t.defaultCluster).map(
+          (movement) => movement.movement,
+        ),
+        movementKinds: Object.fromEntries(
+          (session.fixedMovements ?? t.defaultCluster)
+            .filter((movement) => movement.kind != null)
+            .map((movement) => [movement.movement, movement.kind!]),
+        ) as Record<
+          string,
+          "barbell" | "weighted-bw" | "bodyweight" | "unanchored"
+        >,
+      })),
   }));
 
   // Optional deep-link preselect (e.g. the Today "Set up Velocity →" guided
@@ -226,6 +260,7 @@ export default async function ProgramPickerPage({
         anchoredKeys={anchoredKeys}
         tbTemplates={tbTemplates}
         benchRoles={benchRoles}
+        rehabMovements={rehabMovements}
         {...(pullupMovement ? { pullupMovement } : {})}
         {...(initialProgramId ? { initialProgramId } : {})}
         {...(initialLoadoutValue ? { initialLoadoutValue } : {})}

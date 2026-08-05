@@ -15,7 +15,16 @@
  * links this instance to that block.
  */
 import { sql } from "drizzle-orm";
-import { jsonb, pgTable, text, timestamp, uuid, index } from "drizzle-orm/pg-core";
+import {
+  check,
+  index,
+  jsonb,
+  pgTable,
+  smallint,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { trainingBlocks } from "./planner";
 
@@ -32,6 +41,10 @@ export const programInstances = pgTable(
     programId: text("program_id").notNull(),
     /** Program family for grouping (e.g. "531", "tactical-barbell", "tactical-barbell-green"). */
     programFamily: text("program_family").notNull(),
+    /** User-editable name; independent from canonical engine identity. */
+    displayName: text("display_name"),
+    /** NULL = canonical. Positive value = versioned customization overlay. */
+    customizationVersion: smallint("customization_version"),
     /**
      * The engine's serialised `Instance` (program-core). JSON-round-trippable;
      * advanced by the engine's `onSessionLogged` and re-persisted.
@@ -56,6 +69,10 @@ export const programInstances = pgTable(
   },
   (t) => ({
     userStatusIdx: index("program_instances_user_status_idx").on(t.userId, t.status),
+    customizationVersionCheck: check(
+      "program_instances_customization_version_check",
+      sql`${t.customizationVersion} IS NULL OR ${t.customizationVersion} > 0`,
+    ),
   }),
 );
 

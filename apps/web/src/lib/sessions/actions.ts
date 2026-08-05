@@ -1344,6 +1344,11 @@ export async function fillSessionFromPlan(
     let weight: number | null = null;
     if (typeof item.percentTm === "number" && tm) {
       weight = roundToPlate(tm * (item.percentTm / 100));
+    } else if (
+      typeof item.targetWeightKg === "number" &&
+      Number.isFinite(item.targetWeightKg)
+    ) {
+      weight = item.targetWeightKg;
     }
 
     const key = `${item.movementId}::${setKind}`;
