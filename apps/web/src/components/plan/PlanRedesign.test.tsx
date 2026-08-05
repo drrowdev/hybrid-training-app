@@ -254,6 +254,27 @@ describe("PlanRedesign — view toggle", () => {
     expect(html).not.toContain('data-testid="plan-timeline"');
   });
 
+  it("renders Season inside the same program shell and tab strip", () => {
+    const html = render({
+      view: "season",
+      seasonEnabled: true,
+      seasonContent: (
+        <section data-testid="season-content-fixture">Season roadmap</section>
+      ),
+    });
+    expect(html).toContain('data-testid="plan-redesign"');
+    expect(html).toContain("Active program");
+    expect(html).toContain("Endurance Focus");
+    expect(html).toContain('data-testid="plan-view-tab-timeline"');
+    expect(html).toContain('data-testid="plan-view-tab-month"');
+    expect(html).toContain('data-testid="plan-view-tab-season"');
+    expect(html).toContain('data-testid="plan-season-view"');
+    expect(html).toContain('data-testid="season-content-fixture"');
+    expect(html).not.toContain('href="/app/plan?view=season"');
+    expect(html).not.toContain('data-testid="plan-timeline"');
+    expect(html).not.toContain('data-testid="plan-month-grid"');
+  });
+
 });
 
 describe("PlanRedesign — overdue badge", () => {
