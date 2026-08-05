@@ -55,7 +55,7 @@ test.describe("@desktop /app/plan program phases", () => {
     expect(instanceError).toBeNull();
 
     const completedIds: string[] = [];
-    for (let dayIndex = 0; dayIndex < 6; dayIndex += 1) {
+    for (let dayIndex = 0; dayIndex < 8; dayIndex += 1) {
       const { data, error } = await admin
         .from("sessions")
         .insert({
@@ -99,7 +99,11 @@ test.describe("@desktop /app/plan program phases", () => {
           }`,
         },
         completed_session_id:
-          weekIndex === 0 ? completedIds[dayIndex] : null,
+          weekIndex === 0
+            ? completedIds[dayIndex]
+            : weekIndex === 1 && dayIndex < 2
+              ? completedIds[6 + dayIndex]
+              : null,
       })),
     ).flat();
     const { error: plannedError } = await admin
@@ -135,6 +139,9 @@ test.describe("@desktop /app/plan program phases", () => {
     await expect(current).toHaveClass(/current/);
     await expect(current).toHaveAttribute("open", "");
     await expect(upcoming).toHaveClass(/upcoming/);
+    await expect(
+      current.locator(".plan-agenda-day.completed"),
+    ).toHaveCount(2);
 
     const colors = await Promise.all(
       [completed, current, upcoming].map(async (week) =>
