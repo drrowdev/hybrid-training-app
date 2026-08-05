@@ -82,9 +82,10 @@ export default async function PlanPage({
   // to the program wizard, which archives any prior active block on deploy.
   const forceNew = sp?.new === "1";
 
-  // Season tab (ADR 0051) — opt-in, off by default. It must be reachable even
-  // when there's no active block, so branch here BEFORE the getActiveBlock
-  // redirect below. A lightweight flag read gates both the tab and the view.
+  // Season tab (ADR 0051) — opt-in, off by default. Its data is loaded alongside
+  // the active block so Program / Calendar / Season can switch inside one shared
+  // Plan shell. The standalone branch remains only for the edge case where a
+  // Season exists without an active program to supply that shell.
   const { data: seasonProfile } = await supabase
     .from("profiles")
     .select("season_planning_enabled, timezone")
@@ -93,43 +94,69 @@ export default async function PlanPage({
   const seasonEnabled = seasonProfile?.season_planning_enabled === true;
   const profileTz = seasonProfile?.timezone ?? "UTC";
 
-  if (seasonEnabled && sp?.view === "season") {
-    const [season, upcomingEvents, floorContext] = await Promise.all([
-      getActiveSeason(),
-      getUpcomingAEvents(todayYmd(profileTz)),
-      getMaintenanceFloorContext(supabase, user.id),
-    ]);
-    const programs = selectablePrograms().map((p) => ({ id: p.id, name: p.name }));
-    // Per-program template/phase options (5/3/1, TB, Green Protocol expose a
-    // `templateId`/`phaseId` select; Hybrid/HYROX have none). Built from the
-    // engine's own describeSetup so the Season builder offers the same variants
-    // the program wizard does, and the value matches the wizard's loadout key
-    // for the `?phase=` activation deep-link.
-    const templatesByProgram: Record<string, { value: string; label: string }[]> = {};
-    for (const p of programs) {
-      const engine = getProgramEngine(p.id);
-      const field = engine
-        ?.describeSetup()
-        .fields.find((f) => f.key === "templateId" || f.key === "phaseId");
-      if (field?.options?.length) templatesByProgram[p.id] = field.options;
-    }
+  const [block, seasonReads] = await Promise.all([
+    getActiveBlock(),
+    seasonEnabled
+      ? Promise.all([
+          getActiveSeason(),
+          getUpcomingAEvents(todayYmd(profileTz)),
+          getMaintenanceFloorContext(supabase, user.id),
+        ])
+      : Promise.resolve(null),
+  ]);
+  const seasonData = seasonReads
+    ? (() => {
+        const [season, upcomingEvents, floorContext] = seasonReads;
+        const programs = selectablePrograms().map((program) => ({
+          id: program.id,
+          name: program.name,
+        }));
+        const templatesByProgram: Record<
+          string,
+          { value: string; label: string }[]
+        > = {};
+        for (const program of programs) {
+          const engine = getProgramEngine(program.id);
+          const field = engine
+            ?.describeSetup()
+            .fields.find(
+              (candidate) =>
+                candidate.key === "templateId" ||
+                candidate.key === "phaseId",
+            );
+          if (field?.options?.length) {
+            templatesByProgram[program.id] = field.options;
+          }
+        }
+        return {
+          season,
+          upcomingEvents,
+          floorContext,
+          programs,
+          templatesByProgram,
+        };
+      })()
+    : null;
+  const seasonContent = seasonData ? (
+    <SeasonRoadmap
+      season={seasonData.season}
+      programs={seasonData.programs}
+      emphasisOptions={SEASON_EMPHASIS_VALUES}
+      today={todayYmd(profileTz)}
+      upcomingEvents={seasonData.upcomingEvents}
+      floorContext={seasonData.floorContext}
+      templatesByProgram={seasonData.templatesByProgram}
+    />
+  ) : null;
+
+  if (seasonEnabled && sp?.view === "season" && !block) {
     return (
       <div style={{ display: "grid", gap: 24 }}>
         <SeasonViewTabs />
-        <SeasonRoadmap
-          season={season}
-          programs={programs}
-          emphasisOptions={SEASON_EMPHASIS_VALUES}
-          today={todayYmd(profileTz)}
-          upcomingEvents={upcomingEvents}
-          floorContext={floorContext}
-          templatesByProgram={templatesByProgram}
-        />
+        {seasonContent}
       </div>
     );
   }
-
-  const block = await getActiveBlock();
 
   if (!block || forceNew) {
     // Season-enabled users with an active Season but no live block would
@@ -137,7 +164,7 @@ export default async function PlanPage({
     // roadmap (UX audit P2). Route them to the Season view instead — unless they
     // explicitly asked for a fresh program (?new=1). Only when a Season actually
     // exists, so users without one keep the normal "start a program" flow.
-    if (seasonEnabled && !forceNew && (await getActiveSeason())) {
+    if (seasonEnabled && !forceNew && seasonData?.season) {
       redirect("/app/plan?view=season");
     }
     // Legacy archetype BlockWizard retired — block creation now flows through
@@ -203,7 +230,12 @@ export default async function PlanPage({
     byoai_unlocked_at: profile?.byoai_unlocked_at ?? null,
   });
 
-  const view: PlanViewMode = sp?.view === "month" ? "month" : "timeline";
+  const view: PlanViewMode =
+    seasonEnabled && sp?.view === "season"
+      ? "season"
+      : sp?.view === "month"
+        ? "month"
+        : "timeline";
   const programFamilyName =
     selectablePrograms().find((program) => program.id === block.programId)
       ?.name ?? "SxC";
@@ -393,6 +425,7 @@ export default async function PlanPage({
         updateNotesAction={updatePlannedSessionNotes}
         aiAccess={aiAccess}
         seasonEnabled={seasonEnabled}
+        seasonContent={seasonContent}
       />
     </div>
   );

@@ -76,7 +76,7 @@ import { setHyroxStationOverride } from "@/lib/hyrox/station-swap-actions";
 import { stationAlternativesFor } from "@hta/hyrox";
 import type { PrescriptionItem } from "@hta/db";
 
-export type PlanViewMode = "timeline" | "month";
+export type PlanViewMode = "timeline" | "month" | "season";
 
 export type PlanSessionInput = {
   id: string;
@@ -157,12 +157,13 @@ export type PlanRedesignProps = {
    */
   aiAccess?: boolean;
   /**
-   * When true (Season-planning opt-in is on), render a third "Season" tab in
-   * the view toggle that links to `/app/plan?view=season`. Unlike Timeline /
-   * Month (client-side local-state flips), Season needs server-rendered data so
-   * it's a real navigation anchor, not an `onClick` toggle. (ADR 0051.)
+   * When true (Season-planning opt-in is on), render Season as the third local
+   * view alongside Program and Calendar. Its server-rendered roadmap is supplied
+   * through `seasonContent`, so switching tabs does not replace the Plan shell.
    */
   seasonEnabled?: boolean;
+  /** Season roadmap rendered inside the shared Plan shell when enabled. */
+  seasonContent?: ReactNode;
 };
 
 const DOW_FULL = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
@@ -369,12 +370,13 @@ export function PlanRedesign(props: PlanRedesignProps) {
     updateNotesAction,
     aiAccess,
     seasonEnabled = false,
+    seasonContent,
   } = props;
 
   const router = useRouter();
 
   // View switching is a pure client-side transform over the same session set.
-  // Keep it local and sync the URL so reloads preserve Program / Calendar.
+  // Keep it local and sync the URL so reloads preserve all three Plan views.
   const [view, setView] = useState<PlanViewMode>(initialView);
   const syncUrl = useCallback((nextView: PlanViewMode) => {
     if (typeof window === "undefined") return;
@@ -641,19 +643,25 @@ export function PlanRedesign(props: PlanRedesignProps) {
             Calendar
           </button>
           {seasonEnabled && (
-            <a
+            <button
+              type="button"
               className="plan-view-btn"
               role="tab"
-              data-active="false"
+              data-active={view === "season" ? "true" : "false"}
               data-testid="plan-view-tab-season"
-              href="/app/plan?view=season"
+              aria-selected={view === "season"}
+              onClick={() => onViewChange("season")}
             >
               Season
-            </a>
+            </button>
           )}
         </div>
         <span className="plan-overview-hint">
-          Full program overview · current week expanded
+          {view === "season"
+            ? "Long-range training roadmap"
+            : view === "month"
+              ? "Date-oriented program calendar"
+              : "Full program overview · current week expanded"}
         </span>
       </div>
 
@@ -951,12 +959,14 @@ export function PlanRedesign(props: PlanRedesignProps) {
             );
           })}
         </section>
-      ) : (
+      ) : view === "month" ? (
         <MonthAlternate
           sessions={sessions}
           today={today}
           onOpen={openDrawer}
         />
+      ) : (
+        <div data-testid="plan-season-view">{seasonContent}</div>
       )}
 
       {openSession && (
