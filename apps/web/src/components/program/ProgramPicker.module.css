@@ -1505,17 +1505,26 @@
 .customBuilder {
   display: grid;
   gap: 28px;
+  min-width: 0;
   margin-top: 28px;
   padding-top: 24px;
   border-top: 1px solid var(--line2);
 }
+.customBuilder > div {
+  min-width: 0;
+}
 .seriesGrid {
   display: grid;
+  width: 100%;
+  min-width: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 .seriesCard {
+  width: 100%;
   min-width: 0;
+  min-inline-size: 0;
+  box-sizing: border-box;
   border: 1px solid var(--line2);
   border-radius: var(--wradius);
   background: var(--panel);
@@ -1547,6 +1556,10 @@
   color: var(--dim);
   cursor: pointer;
 }
+.seriesCard > label > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .rehabList {
   display: grid;
   gap: 10px;
@@ -1554,6 +1567,9 @@
 }
 .rehabRow {
   display: grid;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   grid-template-columns: minmax(150px, 1.6fr) minmax(100px, 1fr) repeat(4, minmax(72px, 0.7fr)) auto;
   gap: 8px;
   align-items: center;
@@ -1561,6 +1577,11 @@
   border-radius: var(--wradius);
   background: var(--panel);
   padding: 10px;
+}
+.rehabRow > * {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 .rehabRow input[aria-label^="Instructions"] {
   grid-column: 1 / -2;
