@@ -75,6 +75,9 @@ describe("SeasonRoadmap — empty state", () => {
     expect(html).toContain('data-testid="season-create"');
     // One draft block row is seeded so the user can fill it in immediately.
     expect(html).toContain('data-testid="season-draft-row"');
+    expect(html).toMatch(
+      /class="[^"]*cp-btn[^"]*"[^>]*data-testid="season-draft-suggest-0"/,
+    );
     // The program + emphasis selects are present with friendly labels.
     expect(html).toContain("Hybrid");
     expect(html).toContain("Strength focus");
@@ -209,6 +212,9 @@ describe("SeasonRoadmap — populated state", () => {
     expect(startCount).toBe(1);
     expect(html).toContain("/app/program?program=tactical-barbell");
     expect(html).toContain("seasonBlockId=b-planned");
+    expect(html).toMatch(
+      /class="[^"]*cp-btn primary[^"]*"[^>]*data-testid="season-block-start"/,
+    );
   });
 
   it("renders the End season + Add block affordances", () => {

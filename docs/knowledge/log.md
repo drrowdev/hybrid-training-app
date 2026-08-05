@@ -388,3 +388,7 @@ Plan is now the macro review/edit surface rather than another workout launcher. 
 
 ## [2026-08-05] refine | Distinguish completed workouts inside the current week
 Completed workout rows in the expanded Plan agenda now inherit the completed-week visual language: neutral settled surface, green success edge, success date and Done badge. A whole day receives the treatment only when every scheduled session is complete; mixed two-a-days style only their completed workout, preserving the unfinished session's planned state.
+
+
+## [2026-08-05] refine | Strengthen dark-theme completion and unify Season chrome
+Completed workouts now use a materially stronger success-tinted surface, 6px success edge, inner outline and high-contrast Done badge in the dark theme. Season adopts the same Program/Calendar/Season segmented navigation, body typography, 16px cards and global button hierarchy as the redesigned Plan views; completed and active season blocks also use the corresponding settled/current state treatments.

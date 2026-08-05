@@ -340,7 +340,7 @@ function SeasonEmptyState({
               />
               <button
                 type="button"
-                className={styles.suggestBtn}
+                className={`cp-btn ${styles.suggestBtn}`}
                 onClick={() => onRowSuggest(i)}
                 disabled={pending}
                 data-testid={`season-draft-suggest-${i}`}
@@ -353,7 +353,7 @@ function SeasonEmptyState({
             </div>
             <button
               type="button"
-              className={styles.rowRemove}
+              className={`cp-btn ghost ${styles.rowRemove}`}
               onClick={() => removeRow(i)}
               disabled={pending || drafts.length === 1}
               aria-label={`Remove block ${i + 1}`}
@@ -568,7 +568,7 @@ function SeasonPopulated({
                 )}
                 <button
                   type="button"
-                  className={styles.mini}
+                  className={`cp-btn ghost ${styles.mini}`}
                   onClick={() => setGoalEditing((v) => !v)}
                   disabled={pending}
                   data-testid="season-goal-edit"
@@ -579,7 +579,7 @@ function SeasonPopulated({
             ) : (
               <button
                 type="button"
-                className={styles.mini}
+                className={`cp-btn ghost ${styles.mini}`}
                 onClick={() => setGoalEditing((v) => !v)}
                 disabled={pending}
                 data-testid="season-goal-add"
@@ -722,7 +722,7 @@ function SeasonPopulated({
                       <div className={styles.ctrls}>
                         {b.id === nextPlannedId && (
                           <a
-                            className={styles.startBtn}
+                            className={`cp-btn primary ${styles.startBtn}`}
                             href={`/app/program?program=${encodeURIComponent(
                               b.programId,
                             )}&seasonBlockId=${encodeURIComponent(b.id)}${
@@ -737,7 +737,7 @@ function SeasonPopulated({
                         )}
                         <button
                           type="button"
-                          className={styles.mini}
+                          className={`cp-btn ghost ${styles.mini}`}
                           onClick={() => onMove(i, -1)}
                           disabled={pending || blocks[i - 1]?.status !== "planned"}
                           aria-label="Move block earlier"
@@ -748,7 +748,7 @@ function SeasonPopulated({
                         </button>
                         <button
                           type="button"
-                          className={styles.mini}
+                          className={`cp-btn ghost ${styles.mini}`}
                           onClick={() => onMove(i, 1)}
                           disabled={pending || blocks[i + 1]?.status !== "planned"}
                           aria-label="Move block later"
@@ -759,7 +759,7 @@ function SeasonPopulated({
                         </button>
                         <button
                           type="button"
-                          className={styles.mini}
+                          className={`cp-btn ghost ${styles.mini}`}
                           onClick={() => onEditStart(b)}
                           disabled={pending}
                           aria-label="Edit block"
@@ -769,7 +769,7 @@ function SeasonPopulated({
                         </button>
                         <button
                           type="button"
-                          className={styles.mini}
+                          className={`cp-btn ghost ${styles.mini}`}
                           onClick={() => onRemove(b.id)}
                           disabled={pending}
                           aria-label="Remove block"
@@ -911,7 +911,7 @@ function AddBlockCard({
             />
             <button
               type="button"
-              className={styles.suggestBtn}
+              className={`cp-btn ${styles.suggestBtn}`}
               onClick={onSuggest}
               disabled={pending}
               data-testid="season-suggest"
@@ -951,7 +951,7 @@ function AddBlockCard({
         ) : (
           <button
             type="button"
-            className={styles.addTrigger}
+            className={`cp-btn ${styles.addTrigger}`}
             onClick={() => setOpen(true)}
             data-testid="season-add-block"
           >
@@ -1232,7 +1232,11 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span
       className={`${styles.status} ${
-        status === "active" ? styles.statusActive : ""
+        status === "active"
+          ? styles.statusActive
+          : status === "done"
+            ? styles.statusDone
+            : ""
       }`}
       data-testid="season-block-status"
     >

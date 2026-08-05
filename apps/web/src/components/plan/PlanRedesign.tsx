@@ -1275,8 +1275,10 @@ export function PlanRedesign(props: PlanRedesignProps) {
         }
         .plan-agenda-day.today { background: var(--cp-accent-soft); }
         .plan-agenda-day.completed {
-          background: var(--cp-surface-soft);
-          box-shadow: inset 4px 0 0 var(--cp-success);
+          background: color-mix(in srgb, var(--cp-success) 18%, var(--cp-surface));
+          box-shadow:
+            inset 6px 0 0 var(--cp-success),
+            inset 0 0 0 1px color-mix(in srgb, var(--cp-success) 32%, var(--cp-border));
         }
         .plan-agenda-day.completed .plan-agenda-date b {
           color: var(--cp-success);
@@ -1328,8 +1330,10 @@ export function PlanRedesign(props: PlanRedesignProps) {
         .plan-agenda-session.done {
           padding: 10px 12px;
           border-radius: 8px;
-          background: var(--cp-surface-soft);
-          box-shadow: inset 4px 0 0 var(--cp-success);
+          background: color-mix(in srgb, var(--cp-success) 16%, var(--cp-surface));
+          box-shadow:
+            inset 6px 0 0 var(--cp-success),
+            inset 0 0 0 1px color-mix(in srgb, var(--cp-success) 30%, var(--cp-border));
         }
         .plan-agenda-day.completed .plan-agenda-session.done {
           padding: 7px 0;
@@ -1366,8 +1370,10 @@ export function PlanRedesign(props: PlanRedesignProps) {
           white-space: nowrap;
         }
         .plan-session-status.done {
-          color: var(--cp-success);
-          background: color-mix(in srgb, var(--cp-success) 10%, transparent);
+          color: var(--cp-text);
+          border: 1px solid color-mix(in srgb, var(--cp-success) 48%, var(--cp-border));
+          background: color-mix(in srgb, var(--cp-success) 15%, var(--cp-surface));
+          font-weight: 700;
         }
         .plan-session-status.today {
           color: var(--cp-accent);
