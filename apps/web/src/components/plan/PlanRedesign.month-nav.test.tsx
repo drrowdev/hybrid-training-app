@@ -48,22 +48,16 @@ function renderMonth() {
   return renderToStaticMarkup(
     <PlanRedesign
       archetypeName="Endurance Focus"
-      blockNumber={1}
-      blockTotal={3}
       startedOn="2026-05-25"
-      endedOn="2026-06-21"
       weeks={4}
       today="2026-05-26"
       currentWeekIndex={0}
       sessions={[session()]}
       view="month"
-      filter="all"
-      logHrefBase="/app/sessions/start"
       moveAction={noop}
       skipAction={noop}
       unskipAction={noop}
       updateNotesAction={async () => ({ ok: true as const })}
-      startSessionAction={noop}
     />,
   );
 }

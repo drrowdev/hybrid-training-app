@@ -220,14 +220,13 @@ test.describe("@desktop program run", () => {
     // 1) Sanity: block is active with un-touched plan.
     await assertBlockStatus(admin, seed.blockId, "active");
 
-    // 2) Manual archival via the End block button on /app/plan. The flow
-    //    is now two-stage (DC-K4): "End block" opens an inline confirm
-    //    panel, then "End block" confirms.
+    // 2) Manual archival lives in the program-header overflow. Selecting
+    //    End program opens the existing DC-K4 confirmation form.
     await page.goto("/app/plan");
     await page.waitForLoadState("networkidle");
-    const endBtn = page.getByTestId("end-block-button");
-    await expect(endBtn).toBeVisible();
-    await endBtn.click();
+    await page.getByTestId("program-actions-more").click();
+    await page.getByTestId("program-actions-end").click();
+    await expect(page.getByTestId("program-panel-close")).toBeFocused();
     const confirmBtn = page.getByTestId("end-block-confirm");
     await expect(confirmBtn).toBeVisible({ timeout: 10_000 });
     await confirmBtn.click();
@@ -261,19 +260,6 @@ test.describe("@desktop program run", () => {
       expect(data?.archived_at).toBeTruthy();
       expect(data?.completed_at).toBeNull();
     }
-
-    // 3) The archived block shows up in the "Run it again" picker with
-    //    the muted "Ended" badge — NOT the green "Completed" badge.
-    await page.goto("/app/plan/new");
-    await page.waitForLoadState("networkidle");
-    await expect(page.getByRole("heading", { name: /run it again/i })).toBeVisible();
-    const recentCard = page.locator(".pn-recent-card").first();
-    await expect(recentCard).toBeVisible();
-    await expect(recentCard).toContainText(/strength focus/i);
-    const badge = recentCard.getByTestId("block-status-badge");
-    await expect(badge).toBeVisible();
-    await expect(badge).toHaveAttribute("data-status", "archived");
-    await expect(badge).toContainText(/ended/i);
   });
 
   test("D: two active blocks — newest started_on wins on /app (no DB constraint)", async ({

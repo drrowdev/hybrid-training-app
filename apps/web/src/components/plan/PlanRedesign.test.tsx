@@ -55,10 +55,8 @@ function session(over: Partial<PlanSessionInput> = {}): PlanSessionInput {
 function render(overrides: Partial<Parameters<typeof PlanRedesign>[0]> = {}) {
   const props: Parameters<typeof PlanRedesign>[0] = {
     archetypeName: "Endurance Focus",
-    blockNumber: 1,
-    blockTotal: 3,
+    programFamilyName: "SxC",
     startedOn: "2026-05-25",
-    endedOn: "2026-06-21",
     weeks: 4,
     today: "2026-05-26",
     currentWeekIndex: 0,
@@ -83,13 +81,10 @@ function render(overrides: Partial<Parameters<typeof PlanRedesign>[0]> = {}) {
       }),
     ],
     view: "timeline",
-    filter: "all",
-    logHrefBase: "/app/sessions/start",
     moveAction: noop,
     skipAction: noop,
     unskipAction: noop,
     updateNotesAction: async () => ({ ok: true as const }),
-    startSessionAction: noop,
     ...overrides,
   };
   return renderToStaticMarkup(<PlanRedesign {...props} />);
@@ -157,28 +152,30 @@ describe("PlanRedesign — header", () => {
     expect(html).not.toContain('data-testid="plan-meta-overdue"');
   });
 
-  it("uses plan-nav-link for the View history link", () => {
-    const html = render();
-    expect(html).toContain('class="plan-nav-link"');
-    expect(html).toContain("View history →");
+  it("renders state-aware program actions through the header slot", () => {
+    const html = render({
+      headerActions: <button type="button">Edit program</button>,
+    });
+    expect(html).toContain("Edit program");
   });
 });
 
-describe("PlanRedesign — timeline grid", () => {
-  it("renders the timeline by default with one row per week", () => {
+describe("PlanRedesign — expandable program overview", () => {
+  it("renders the overview by default with one expandable row per week", () => {
     const html = render();
     expect(html).toContain('data-testid="plan-timeline"');
     expect(html).toContain('data-testid="plan-timeline-week-0"');
     expect(html).toContain('data-testid="plan-timeline-week-3"');
   });
 
-  it("paints session pills with the strength or cardio modifier class", () => {
+  it("renders full session names in readable agenda rows", () => {
     const html = render();
-    expect(html).toMatch(/session-pill strength[^"]*"[^>]*>Front Squat/);
-    expect(html).toMatch(/session-pill cardio[^"]*"[^>]*>VO2 intervals/);
+    expect(html).toContain('class="plan-agenda-session"');
+    expect(html).toContain("Front Squat");
+    expect(html).toContain("VO2 intervals");
   });
 
-  it("marks the today cell with data-today=true and a TODAY chip", () => {
+  it("marks the today agenda day and session status", () => {
     const html = render();
     // Today (2026-05-26) is week 0, day 1 (Tue).
     expect(html).toContain('data-testid="plan-day-cell-0-1"');
@@ -186,7 +183,7 @@ describe("PlanRedesign — timeline grid", () => {
     // check that the today cell carries both markers — not their
     // adjacency.
     expect(html).toContain('data-today="true"');
-    expect(html).toContain("TODAY");
+    expect(html).toContain(">Today<");
   });
 
   it("highlights today even when today is a REST day (no session)", () => {
@@ -200,20 +197,13 @@ describe("PlanRedesign — timeline grid", () => {
     expect(html).toMatch(
       /data-today="true"[^>]*data-testid="plan-day-cell-0-2"/,
     );
-    // The "This week" rail's rest row for the same day also highlights +
-    // shows the TODAY chip.
-    expect(html).toMatch(/data-today="true"[^>]*data-testid="plan-rail-2"/);
-    expect(html).toContain("TODAY");
+    expect(html).toContain(">Today<");
   });
 
-  it("marks done sessions with the 'done' modifier + a check, not the faded 'muted' style", () => {
+  it("marks completed sessions with a clear success status", () => {
     const html = render();
-    // s3 is on 2026-05-25 (before today) AND done → 'done' modifier (clear,
-    // not faded). A past-AND-incomplete session would get 'muted' instead.
-    expect(html).toMatch(/session-pill strength done[^"]*"[^>]*>/);
-    expect(html).toMatch(/done-check[^>]*>\s*\u2713/);
-    // A done session is NOT muted (no fade/line-through).
-    expect(html).not.toMatch(/session-pill strength done muted/);
+    expect(html).toContain('class="plan-session-status done"');
+    expect(html).toContain("✓ Done");
   });
 
   it("renders 'Rest' pills on empty day cells", () => {
@@ -222,15 +212,15 @@ describe("PlanRedesign — timeline grid", () => {
   });
 });
 
-describe("PlanRedesign — view toggle + filter", () => {
-  it("flags the Timeline tab as active when view=timeline", () => {
+describe("PlanRedesign — view toggle", () => {
+  it("flags the Program tab as active when view=timeline", () => {
     const html = render({ view: "timeline" });
     expect(html).toContain('data-testid="plan-view-tab-timeline"');
     // The active tab carries data-active="true" — attribute ordering
     // varies, so we assert presence both ways.
     expect(html).toContain('data-active="true"');
-    // And the month tab is inactive.
-    expect(html).toMatch(/plan-view-tab-month[\s\S]*?data-active="false"/);
+    expect(html).toContain(">Program</button>");
+    expect(html).toContain(">Calendar</button>");
   });
 
   it("renders the Month grid when view=month", () => {
@@ -239,12 +229,6 @@ describe("PlanRedesign — view toggle + filter", () => {
     expect(html).not.toContain('data-testid="plan-timeline"');
   });
 
-  it("flags the active filter via data-active", () => {
-    const html = render({ filter: "strength" });
-    expect(html).toContain('data-testid="plan-filter-strength"');
-    expect(html).toMatch(/plan-filter-strength[\s\S]*?data-active="true"/);
-    expect(html).toMatch(/plan-filter-all[\s\S]*?data-active="false"/);
-  });
 });
 
 describe("PlanRedesign — overdue badge", () => {
@@ -265,8 +249,7 @@ describe("PlanRedesign — overdue badge", () => {
     const html = render({ sessions: [overdueRow, session()] });
     expect(html).toContain('data-testid="overdue-pill-s-overdue"');
     expect(html).toMatch(/Overdue · 1d/);
-    // And the host pill carries the overdue modifier class.
-    expect(html).toMatch(/session-pill strength[^"]*overdue/);
+    expect(html).toContain('class="plan-session-status overdue"');
   });
 
   it("does NOT render the Overdue pill on completed past rows", () => {
@@ -310,48 +293,51 @@ describe("PlanRedesign — overdue badge", () => {
 });
 
 
-describe("PlanRedesign — this week rail", () => {
-  it("renders a 7-row rail for the current week", () => {
+describe("PlanRedesign — phase and week hierarchy", () => {
+  it("renders seven readable agenda days inside the current week", () => {
     const html = render();
     for (let d = 0; d < 7; d++) {
-      expect(html).toContain(`data-testid="plan-rail-${d}"`);
+      expect(html).toContain(`data-testid="plan-day-cell-0-${d}"`);
     }
   });
 
-  it("marks done sessions with a ✓ status and future ones with Strength/Cardio kind", () => {
+  it("distinguishes current and upcoming weeks with semantic classes", () => {
     const html = render();
-    // Done rows render a ✓ glyph (aria-label="Done") instead of a text tag.
-    expect(html).toContain('aria-label="Done"');
-    expect(html).toContain(">✓<");
-    expect(html).toContain(">Strength<");
-    expect(html).toContain(">Cardio<");
+    expect(html).toContain('class="plan-week current"');
+    expect(html).toContain('class="plan-week upcoming"');
+    expect(html).toContain("Current");
+    expect(html).toContain("Upcoming");
+  });
+
+  it("marks unfinished weeks for attention after the program window ends", () => {
+    const html = render({ currentWeekIndex: 4 });
+    expect(html).toContain("Program window complete");
+    expect(html).toContain('class="plan-week attention"');
+    expect(html).not.toContain('class="plan-week current"');
+  });
+
+  it("keeps every week upcoming before the program starts", () => {
+    const html = render({ currentWeekIndex: -1 });
+    expect(html).toContain("Starts 25 May");
+    expect(html).not.toContain('class="plan-week current"');
   });
 });
 
 
-describe("PlanRedesign — mobile (<=768px) collapses to This-week rail only", () => {
-  it("emits @media (max-width: 768px) rules that hide .plan-view-toggle and .plan-main", () => {
+describe("PlanRedesign — mobile overview", () => {
+  it("keeps the Program / Calendar control visible on phones", () => {
     const html = render();
-    // styled-jsx inlines the CSS into the SSR markup. Assert the mobile
-    // rules are present and target the toggle + main containers so the
-    // rail card is the only visible plan surface on a phone.
-    expect(html).toMatch(/@media\s*\(\s*max-width:\s*768px\s*\)[\s\S]*?\.plan-view-toggle\s*\{\s*display:\s*none/);
-    expect(html).toMatch(/@media\s*\(\s*max-width:\s*768px\s*\)[\s\S]*?\.plan-main\s*\{\s*display:\s*none/);
+    expect(html).toMatch(
+      /@media\s*\(\s*max-width:\s*768px\s*\)[\s\S]*?\.plan-view-toggle\s*\{[\s\S]*?display:\s*inline-flex\s*!important/,
+    );
   });
 
-  it("uses !important on the mobile hide rules so the rule wins regardless of source order in the cascade (regression: PR #202's hide rule was silently overridden by a later base .plan-main { display: flex })", () => {
+  it("stacks the week agenda to one column instead of hiding it", () => {
     const html = render();
-    expect(html).toMatch(/\.plan-main\s*\{\s*display:\s*none\s*!important/);
-    expect(html).toMatch(/\.plan-view-toggle\s*\{\s*display:\s*none\s*!important/);
-    expect(html).toMatch(/\.plan-filter\s*\{\s*display:\s*none\s*!important/);
-  });
-
-  it("still renders the This-week rail (the only mobile surface) and its 7 day slots", () => {
-    const html = render();
-    expect(html).toContain('data-testid="plan-this-week"');
-    for (let d = 0; d < 7; d++) {
-      expect(html).toContain(`data-testid="plan-rail-${d}"`);
-    }
+    expect(html).toMatch(
+      /@media\s*\(\s*max-width:\s*768px\s*\)[\s\S]*?\.plan-agenda-grid\s*\{\s*grid-template-columns:\s*1fr/,
+    );
+    expect(html).not.toContain('data-testid="plan-this-week"');
   });
 });
 
@@ -376,6 +362,29 @@ describe("PlanRedesign — mobile drawer (full-screen sheet, swipe-down dismiss)
     expect(html).toMatch(/@media\s*\(\s*max-width:\s*768px\s*\)[\s\S]*?\.plan-drawer\s*\{[\s\S]*?inset:\s*0/);
     expect(html).toContain("@keyframes plan-drawer-slide-up");
     expect(html).toMatch(/@media\s*\(\s*max-width:\s*768px\s*\)[\s\S]*?\.drawer-drag-handle\s*\{[\s\S]*?display:\s*flex/);
+  });
+});
+
+describe("SessionDrawer — Plan review-only mode", () => {
+  it("keeps schedule controls but removes workout logging actions", async () => {
+    const { SessionDrawer } = await import("./PlanRedesign");
+    const html = renderToStaticMarkup(
+      <SessionDrawer
+        session={session({ date: "2026-05-25" })}
+        today="2026-05-26"
+        weeks={4}
+        onClose={() => {}}
+        moveAction={noop}
+        skipAction={noop}
+        unskipAction={noop}
+        updateNotesAction={async () => ({ ok: true as const })}
+        allowLogging={false}
+      />,
+    );
+    expect(html).toContain('data-testid="plan-drawer-swap"');
+    expect(html).toContain('data-testid="plan-drawer-skip"');
+    expect(html).not.toContain('data-testid="plan-drawer-mark-done"');
+    expect(html).not.toContain('data-testid="overdue-log-');
   });
 });
 

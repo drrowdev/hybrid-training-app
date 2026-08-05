@@ -22,11 +22,15 @@ type Action = typeof endBlock;
 export function EndBlockForm({
   blockId,
   action,
+  initiallyOpen = false,
+  onClose,
 }: {
   blockId: string;
   action: Action;
+  initiallyOpen?: boolean;
+  onClose?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const [reason, setReason] = useState("");
   const [, startTransition] = useTransition();
 
@@ -98,6 +102,7 @@ export function EndBlockForm({
           onClick={() => {
             setOpen(false);
             setReason("");
+            onClose?.();
           }}
         >
           Cancel
@@ -114,6 +119,7 @@ export function EndBlockForm({
               await action(fd);
               setOpen(false);
               setReason("");
+              onClose?.();
             });
           }}
         >

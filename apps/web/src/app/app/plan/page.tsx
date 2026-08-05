@@ -5,7 +5,6 @@ import {
   endBlock,
   movePlannedSession,
   skipPlannedSession,
-  startSessionFromPlan,
   unskipPlannedSession,
 } from "@/lib/planner/actions";
 import { updatePlannedSessionNotes } from "@/lib/sessions/actions";
@@ -13,14 +12,17 @@ import { estimateSessionMinutes } from "@/lib/sessions/estimate-duration";
 import { ARCHETYPES } from "@/lib/planner/archetypes";
 import {
   getActiveBlock,
-  getBlockNumberAndTotal,
   getPlannedDays,
   todayYmd,
 } from "@/lib/planner/queries";
 import { getTrainingMaxContext } from "@/lib/training-maxes/queries";
 import { getCurrentWeekTissueStackGaps, type TissueStackGap } from "@/lib/stats/tissue-stack-queries";
-import { EndBlockForm } from "@/components/plan/EndBlockForm";
-import { PlanRedesign, type PlanSessionInput, type PlanFilter, type PlanViewMode } from "@/components/plan/PlanRedesign";
+import {
+  PlanRedesign,
+  type PlanSessionInput,
+  type PlanViewMode,
+} from "@/components/plan/PlanRedesign";
+import { PlanProgramActions } from "@/components/plan/PlanProgramActions";
 import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner";
 import { dismissBwBanner } from "@/lib/profile/actions";
 import {
@@ -43,7 +45,7 @@ import { resolveDeloadWeekIndex } from "@/lib/planner/deload-skip";
 import { getLimitationResponseOffer } from "@/lib/limitations/offer";
 import { applyLimitationResponseSelection } from "@/lib/limitations/actions";
 import { LimitationResponseCard } from "@/components/limitations/LimitationResponseCard";
-import { addDaysToYmd } from "@/lib/dates";
+import { daysBetweenYmd, mondayOfYmd } from "@/lib/dates";
 import { hasAiAccess } from "@/lib/ai/access";
 import { getActiveSeason, getUpcomingAEvents } from "@/lib/seasons/queries";
 import { getMaintenanceFloorContext } from "@/lib/seasons/maintenance-floor-server";
@@ -51,6 +53,12 @@ import { SeasonDiscoveryNudge } from "@/components/seasons/SeasonDiscoveryNudge"
 import { SEASON_EMPHASIS_VALUES } from "@/lib/seasons/season-logic";
 import { selectablePrograms, getProgramEngine } from "@/lib/platform/registry";
 import { SeasonRoadmap } from "@/components/seasons/SeasonRoadmap";
+import { programSegments } from "@hta/program-core";
+import {
+  inferProgramStartWeekIndex,
+  relativeProgramSegments,
+  shiftSegmentsForInsertedWeeks,
+} from "@/lib/plan/program-overview";
 
 export default async function PlanPage({
   searchParams,
@@ -162,18 +170,32 @@ export default async function PlanPage({
   const canEditPlan =
     block.programId === "wendler-531" || block.programId === "tactical-barbell";
 
-  const [all, { data: profile }, blockNumbering] = await Promise.all([
-    getPlannedDays(block.id, block.startedOn),
-    supabase
-      .from("profiles")
-      .select("timezone, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_banner_dismissed_at, byoai_provider, byoai_key_vault_id, byoai_unlocked_at")
-      .eq("id", user.id)
-      .maybeSingle(),
-    getBlockNumberAndTotal(block.id),
-  ]);
+  const [all, { data: profile }, { data: programInstance }] =
+    await Promise.all([
+      getPlannedDays(block.id, block.startedOn),
+      supabase
+        .from("profiles")
+        .select("timezone, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_banner_dismissed_at, byoai_provider, byoai_key_vault_id, byoai_unlocked_at")
+        .eq("id", user.id)
+        .maybeSingle(),
+      supabase
+        .from("program_instances")
+        .select("program_id, instance, setup_input")
+        .eq("block_id", block.id)
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .maybeSingle(),
+    ]);
   const timezone = profile?.timezone ?? "UTC";
   const today = todayYmd(timezone);
-  const todayWeek = all.find((d) => d.date === today)?.weekIndex ?? -1;
+  const planStartedOn = mondayOfYmd(block.startedOn);
+  const elapsedDays = daysBetweenYmd(planStartedOn, today);
+  const todayWeek =
+    elapsedDays < 0
+      ? -1
+      : elapsedDays >= block.weeks * 7
+        ? block.weeks
+        : Math.floor(elapsedDays / 7);
 
   const aiAccess = hasAiAccess({
     byoai_provider: profile?.byoai_provider ?? null,
@@ -182,8 +204,54 @@ export default async function PlanPage({
   });
 
   const view: PlanViewMode = sp?.view === "month" ? "month" : "timeline";
-  const filter: PlanFilter =
-    sp?.filter === "strength" || sp?.filter === "cardio" ? sp.filter : "all";
+  const programFamilyName =
+    selectablePrograms().find((program) => program.id === block.programId)
+      ?.name ?? "SxC";
+  const ownerEngine = programInstance?.program_id
+    ? getProgramEngine(programInstance.program_id as string)
+    : undefined;
+  const setupInput =
+    (programInstance?.setup_input as Record<string, unknown> | null) ?? {};
+  const storedStartWeekIndex =
+    typeof setupInput.startWeekIndex === "number"
+      ? setupInput.startWeekIndex
+      : null;
+  const firstBlockRefs = all
+    .filter((day) => day.weekIndex === 0)
+    .map((day) => day.prescription?.programRef)
+    .filter((ref): ref is string => typeof ref === "string");
+  const startWeekIndex =
+    storedStartWeekIndex ??
+    (ownerEngine
+      ? inferProgramStartWeekIndex(
+          ownerEngine,
+          programInstance?.instance,
+          firstBlockRefs,
+        )
+      : 0);
+  const insertedRecoveryWeeks = [
+    ...new Set(
+      all
+        .filter(
+          (day) =>
+            day.role === "deload" &&
+            typeof day.prescription?.programRef !== "string",
+        )
+        .map((day) => day.weekIndex),
+    ),
+  ];
+  const segments = shiftSegmentsForInsertedWeeks(
+    relativeProgramSegments(
+      ownerEngine
+        ? programSegments(ownerEngine, programInstance?.instance)
+        : [],
+      startWeekIndex,
+      block.weeks,
+      archetypeName,
+    ),
+    insertedRecoveryWeeks,
+    block.weeks,
+  );
 
   const sessions: PlanSessionInput[] = all.map((p) => {
     const items = p.prescription?.items ?? [];
@@ -211,9 +279,6 @@ export default async function PlanPage({
       completedSessionId: p.completedSessionId,
     };
   });
-
-  // Block end date: last day of week N-1.
-  const endedOn = addDaysToYmd(block.startedOn, block.weeks * 7 - 1);
 
   // Tissue gaps banner kept — the surfacing of "missing tendon work"
   // is engine output and stays out of the visual rework.
@@ -285,123 +350,43 @@ export default async function PlanPage({
 
       <PlanRedesign
         archetypeName={archetypeName}
+        programFamilyName={programFamilyName}
+        segments={segments}
+        headerActions={
+          <PlanProgramActions
+            blockId={block.id}
+            canEdit={canEditPlan}
+            editHref={`/app/program?edit=${block.id}`}
+            startNewHref="/app/plan?new=1"
+            endAction={endBlock}
+            recoveryControl={
+              deloadWeekPreview && !showDeloadBanner ? (
+                <DeloadWeekCard
+                  preview={deloadWeekPreview}
+                  insertAction={insertDeloadWeekAction}
+                  variant="quiet"
+                  autoOpen={deloadDeepLink}
+                />
+              ) : undefined
+            }
+          />
+        }
         cycleNoun={cycleNoun}
-        blockNumber={blockNumbering.index}
-        blockTotal={blockNumbering.total}
         focusMuscles={block.focusMuscles}
-        startedOn={block.startedOn}
-        endedOn={endedOn}
+        startedOn={planStartedOn}
         weeks={block.weeks}
         today={today}
         currentWeekIndex={todayWeek}
         deloadWeekIndex={resolveDeloadWeekIndex({ archetype: block.archetype, weeks: block.weeks, sessions: all })}
         sessions={sessions}
         view={view}
-        filter={filter}
-        logHrefBase="/app/sessions/start"
         moveAction={movePlannedSession}
         skipAction={skipPlannedSession}
         unskipAction={unskipPlannedSession}
         updateNotesAction={updatePlannedSessionNotes}
-        startSessionAction={startSessionFromPlan}
         aiAccess={aiAccess}
         seasonEnabled={seasonEnabled}
       />
-
-      <section
-        className="cp-card"
-        data-testid="block-controls"
-        style={{ padding: 16, display: "grid", gap: 14 }}
-      >
-        <div style={{ fontSize: 13, fontWeight: 600 }}>Program controls</div>
-
-        {deloadWeekPreview && !showDeloadBanner && (
-          <>
-            <DeloadWeekCard
-              preview={deloadWeekPreview}
-              insertAction={insertDeloadWeekAction}
-              variant="quiet"
-              autoOpen={deloadDeepLink}
-            />
-            <div style={{ borderTop: "1px solid var(--cp-border)" }} />
-          </>
-        )}
-
-
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: 12,
-          }}
-        >
-          <div style={{ minWidth: 200 }}>
-            <div style={{ fontSize: 13, fontWeight: 500 }}>Start a new program</div>
-            <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-              Builds a fresh schedule and archives this one. You keep all logged sessions.
-            </div>
-          </div>
-          <Link
-            href="/app/plan?new=1"
-            className="cp-btn primary"
-            data-testid="start-new-block"
-          >
-            Start a new program
-          </Link>
-        </div>
-
-        {canEditPlan && (
-          <>
-            <div style={{ borderTop: "1px solid var(--cp-border)" }} />
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                flexWrap: "wrap",
-                gap: 12,
-              }}
-            >
-              <div style={{ minWidth: 200 }}>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>Edit this plan</div>
-                <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-                  Re-open the wizard to adjust your schedule or add cardio days. Changes apply to
-                  upcoming weeks — this week and your logged sessions stay as they are.
-                </div>
-              </div>
-              <Link
-                href={`/app/program?edit=${block.id}`}
-                className="cp-btn"
-                data-testid="edit-plan"
-              >
-                Edit plan
-              </Link>
-            </div>
-          </>
-        )}
-
-        <div style={{ borderTop: "1px solid var(--cp-border)" }} />
-
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: 12,
-          }}
-        >
-          <div style={{ minWidth: 200 }}>
-            <div style={{ fontSize: 13, fontWeight: 500 }}>End current program</div>
-            <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-              Archives the schedule without starting a new one. You keep all logged sessions.
-            </div>
-          </div>
-          <EndBlockForm blockId={block.id} action={endBlock} />
-        </div>
-      </section>
     </div>
   );
 }
