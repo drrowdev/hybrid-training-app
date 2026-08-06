@@ -379,7 +379,8 @@ const createProgramInstanceSchema = z
     customization: tbCustomizationSchema.optional(),
     /** When present, this deploy is a forward-only EDIT of an existing active
      *  block (5/3/1 / Tactical Barbell only): keep the same block + program
-     *  instance, freeze past + current week, regenerate only future weeks. */
+     *  instance, preserve everything through today plus touched rows, and
+     *  regenerate only untouched upcoming workouts. */
     editBlockId: z.string().uuid().optional(),
     /** When present, the wizard was deep-linked from a Season roadmap (ADR 0051):
      *  activate this planned season_block + link it to the new block on deploy. */
@@ -456,8 +457,8 @@ export async function createProgramInstance(
   const supabase = await createClient();
 
   // Forward-only EDIT of an existing block (5/3/1 / TB). Keeps the block + its
-  // active program instance, freezes past + current week, regenerates future
-  // weeks from the new wizard inputs.
+  // active program instance, preserves past/today/touched rows, and regenerates
+  // untouched upcoming workouts from the new wizard inputs.
   if (editBlockId) {
     if (!STRENGTH_ONLY_PROGRAM_IDS.has(programId)) {
       return { ok: false, error: "This program can't be edited in place yet." };
@@ -1232,8 +1233,8 @@ async function createForeignProgramInstance(
  *
  * Re-enters the wizard for an ACTIVE plan and applies the new inputs WITHOUT
  * losing logged history: it keeps the same `training_blocks` row + active
- * `program_instances` row, FREEZES every week up to and including the current
- * week, and regenerates only the future weeks from a fresh materialise.
+ * `program_instances` row, freezes every slot through today plus any later
+ * started/skipped row, and regenerates only untouched upcoming slots.
  *
  * Guardrails mirror the create path — user-scoped client, explicit `user_id`
  * ownership on every query (never the service role). The original `started_on`
@@ -1314,7 +1315,7 @@ async function updateForeignProgramInstance(
   const effectiveStartWeekIndex =
     args.startWeekIndex ?? priorStartWeekIndex;
 
-  // 2) Forward-only boundary: freeze weeks <= the week that contains today.
+  // 2) Forward-only boundary: freeze calendar slots through today.
   const { data: prof } = await supabase
     .from("profiles")
     .select("timezone")
@@ -1324,6 +1325,8 @@ async function updateForeignProgramInstance(
   const blockMonday = mondayOfYmd(blockStartedOn);
   const elapsedDays = daysBetweenYmd(blockMonday, todayYmd(tz));
   const currentWeekIndex = Math.max(0, Math.floor(elapsedDays / 7));
+  const currentDayIndex =
+    elapsedDays < 0 ? -1 : ((elapsedDays % 7) + 7) % 7;
 
   // 3) Fresh materialise from the new inputs — same engine, ORIGINAL start date.
   let write: ProgramInstanceWrite;
@@ -1344,18 +1347,18 @@ async function updateForeignProgramInstance(
   }
   const newWeeks = Math.max(write.weeks, currentWeekIndex + 1);
 
-  // 4) Decide what to delete vs insert in the future weeks. Any future row that
-  //    was started or skipped ahead of today (rare) is preserved so we neither
-  //    delete it nor collide on its (week, day, slot) key.
+  // 4) Rewrite only open slots after today. Past/today plus any later row that
+  //    was started or skipped are preserved.
   const { data: futureRows, error: frErr } = await supabase
     .from("planned_sessions")
     .select("id, week_index, day_index, slot, completed_session_id, skipped_at")
     .eq("block_id", blockId)
     .eq("user_id", user.id)
-    .gt("week_index", currentWeekIndex);
+    .gte("week_index", currentWeekIndex);
   if (frErr) return { ok: false, error: frErr.message };
   const plan = planForwardOnlyRewrite({
     currentWeekIndex,
+    currentDayIndex,
     writeWeeks: write.weeks,
     existingFuture: (futureRows ?? []).map((r) => ({
       id: r.id as string,
@@ -1378,7 +1381,7 @@ async function updateForeignProgramInstance(
       .delete()
       .eq("user_id", user.id)
       .in("id", plan.deleteIds);
-    if (delErr) return { ok: false, error: `Couldn't clear future weeks: ${delErr.message}` };
+    if (delErr) return { ok: false, error: `Couldn't clear upcoming workouts: ${delErr.message}` };
   }
 
   // 6) Insert the new future rows.
@@ -1403,7 +1406,7 @@ async function updateForeignProgramInstance(
   }
 
   // 7) Update block metadata (id + started_on unchanged). Re-seed tm_percent so
-  //    the new future weeks render correct weights — a no-op when the user only
+  //    regenerated workouts render correct weights — a no-op when the user only
   //    changed cardio (the common case), since the seeds are identical.
   const cardioPresent = !!(args.cardioWeekdays && args.cardioWeekdays.length > 0);
   await supabase

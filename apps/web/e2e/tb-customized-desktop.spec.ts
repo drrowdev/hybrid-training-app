@@ -2,6 +2,14 @@ import { expect, test } from "./fixtures/seed";
 import { signInAs } from "./fixtures/auth";
 import { markOnboarded, seedStrengthTms } from "./fixtures/seed-blocks";
 
+function currentMondayYmd(): string {
+  const now = new Date();
+  const mondayOffset = (now.getUTCDay() + 6) % 7;
+  const monday = new Date(now);
+  monday.setUTCDate(now.getUTCDate() - mondayOffset);
+  return monday.toISOString().slice(0, 10);
+}
+
 test("customized TB builder exposes standalone templates and Activation", async ({
   page,
   context,
@@ -33,6 +41,7 @@ test("customized TB builder exposes standalone templates and Activation", async 
   await page.getByRole("button", { name: /Tue Conditioning/i }).click();
   await expect(page.getByText("Rehab protocol")).toBeVisible();
   await page.getByRole("button", { name: "Add rehab movement" }).click();
+  await page.locator('input[type="date"]').first().fill(currentMondayYmd());
   await expect(
     page.getByLabel("Rehab movement 1", { exact: true }),
   ).toBeVisible();
@@ -163,7 +172,7 @@ test("creates and restores a phase-aware customized Activation plan", async ({
 
   const { data: sessions, error: sessionsError } = await admin
     .from("planned_sessions")
-    .select("week_index, day_index, role, prescription")
+    .select("id, week_index, day_index, role, prescription, completed_session_id")
     .eq("block_id", programInstance!.block_id);
   expect(sessionsError).toBeNull();
   const weekOne = sessions!.filter((session) => session.week_index === 0);
@@ -219,6 +228,31 @@ test("creates and restores a phase-aware customized Activation plan", async ({
   expect(mappedPeakNames?.[0]).toBe("Deadlift");
   expect(mappedPeakNames).not.toContain("Squat");
 
+  const completedPlanned = sessions!.find(
+    (session) =>
+      session.week_index === 0 &&
+      session.day_index === 2 &&
+      (session.prescription as { programRef?: string }).programRef?.endsWith(
+        "base-2",
+      ),
+  )!;
+  const { data: completedSession, error: completedInsertError } = await admin
+    .from("sessions")
+    .insert({
+      user_id: freshUser.userId,
+      performed_at: new Date().toISOString(),
+      title: "Completed Base circuit 2",
+      completed_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+  expect(completedInsertError).toBeNull();
+  const { error: completedLinkError } = await admin
+    .from("planned_sessions")
+    .update({ completed_session_id: completedSession!.id })
+    .eq("id", completedPlanned.id);
+  expect(completedLinkError).toBeNull();
+
   await page.goto(`/app/program?edit=${programInstance!.block_id}`);
   await expect(
     page.locator('input[value="Tactical Barbell - Customized"]'),
@@ -234,6 +268,7 @@ test("creates and restores a phase-aware customized Activation plan", async ({
       .getByTestId("activation-session-activation.base.base-lss-3")
       .getByRole("checkbox"),
   ).not.toBeChecked();
+  await page.getByLabel("Base circuit 1 weekday").selectOption("5");
   await page
     .getByTestId("activation-phase-operator")
     .locator("summary")
@@ -247,7 +282,7 @@ test("creates and restores a phase-aware customized Activation plan", async ({
 
   const { data: editedSessions, error: editedError } = await admin
     .from("planned_sessions")
-    .select("week_index, day_index, prescription")
+    .select("id, week_index, day_index, prescription, completed_session_id")
     .eq("block_id", programInstance!.block_id);
   expect(editedError).toBeNull();
   expect(
@@ -258,7 +293,7 @@ test("creates and restores a phase-aware customized Activation plan", async ({
           "base-1",
         ),
     )?.day_index,
-  ).toBe(6);
+  ).toBe(5);
   expect(
     editedSessions!.find(
       (session) =>
@@ -268,6 +303,11 @@ test("creates and restores a phase-aware customized Activation plan", async ({
         ),
     )?.day_index,
   ).toBe(6);
+  expect(
+    editedSessions!.find(
+      (session) => session.id === completedPlanned.id,
+    )?.completed_session_id,
+  ).toBe(completedSession!.id);
 });
 
 test("blocks an untouched canonical Activation movement under an active limitation", async ({

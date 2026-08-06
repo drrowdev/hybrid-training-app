@@ -1,14 +1,13 @@
 /**
  * Pure forward-only rewrite planner for the "Edit plan" path.
  *
- * Given the current-week boundary, a freshly materialised set of sessions, and
- * the block's existing FUTURE rows, it decides — without touching the DB — which
- * untouched future rows to delete and which new rows to insert, while preserving
- * any future row that was already started or skipped (so we never destroy logged
- * history nor collide on the (week, day, slot) unique index).
+ * Given today's (week, day) boundary, a freshly materialised set of sessions,
+ * and the block's existing rows from the current week onward, it decides —
+ * without touching the DB — which untouched upcoming rows to delete and which
+ * new rows to insert. Every row through today plus any later row already started
+ * or skipped is preserved.
  *
- * "Forward-only" means weeks at or before `currentWeekIndex` are frozen: nothing
- * in this plan ever references them.
+ * "Forward-only" means calendar slots at or before today's day are frozen.
  */
 
 export interface ExistingFutureRow {
@@ -41,23 +40,34 @@ function key(r: { weekIndex: number; dayIndex: number; slot: string }): string {
 
 export function planForwardOnlyRewrite(args: {
   currentWeekIndex: number;
+  currentDayIndex: number;
   writeWeeks: number;
   existingFuture: ExistingFutureRow[];
   newSessions: NewSessionLite[];
 }): ForwardRewritePlan {
-  const { currentWeekIndex, writeWeeks, existingFuture, newSessions } = args;
+  const {
+    currentWeekIndex,
+    currentDayIndex,
+    writeWeeks,
+    existingFuture,
+    newSessions,
+  } = args;
+  const isFrozen = (row: { weekIndex: number; dayIndex: number }) =>
+    row.weekIndex < currentWeekIndex ||
+    (row.weekIndex === currentWeekIndex &&
+      row.dayIndex <= currentDayIndex);
 
   const preserved = new Set<string>();
   const deleteIds: string[] = [];
   for (const r of existingFuture) {
-    if (r.weekIndex <= currentWeekIndex) continue; // defensive: ignore non-future
+    if (isFrozen(r)) continue;
     if (r.touched) preserved.add(key(r));
     else deleteIds.push(r.id);
   }
 
   const insertIndices: number[] = [];
   newSessions.forEach((s, i) => {
-    if (s.weekIndex <= currentWeekIndex) return; // frozen
+    if (isFrozen(s)) return;
     if (preserved.has(key(s))) return; // keep the logged/skipped row instead
     insertIndices.push(i);
   });
