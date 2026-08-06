@@ -37,6 +37,11 @@ import { loadPickerCatalog } from "@/lib/planner/picker-catalog";
 import { readLimitationsContext } from "@/lib/planner/limitations-context";
 import { resolveDeclaredExperience } from "@/lib/planner/build-block-assembly-context";
 import { greenStrengthTemplateByRef, type GreenInstance } from "@hta/green";
+import {
+  activationCustomizationKey,
+  activationPhaseForSession,
+  getTbTemplate,
+} from "@hta/tacticalbarbell";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import type { MovementResolver } from "./adapter";
 import {
@@ -53,8 +58,12 @@ import { programSetupAuditInput } from "./setup-audit";
 import { inferProgramStartWeekIndex } from "@/lib/plan/program-overview";
 import {
   customizationDays,
+  activationSessionConfigs,
+  isTbActivationCustomizationV2,
+  isTbCustomizationV1,
   tbCustomizationSchema,
-  type TbCustomizationV1,
+  type TbActivationCustomizationV2,
+  type TbCustomization,
 } from "./tb-customization";
 import {
   loadsBlockedMuscle,
@@ -70,6 +79,263 @@ const WEEKDAY = z.number().int().min(0).max(6);
  * derive their own cardio and never accept wizard cardio days.
  */
 const STRENGTH_ONLY_PROGRAM_IDS = new Set<string>(["wendler-531", "tactical-barbell"]);
+
+function validateActivationCustomization(
+  customization: TbActivationCustomizationV2,
+): string | null {
+  const template = getTbTemplate("activation");
+  if (!template) return "Activation template is unavailable.";
+
+  for (const phase of [
+    "base",
+    "armor",
+    "operator",
+    "vertex",
+  ] as const) {
+    const expected = template.weeklySessions.filter(
+      (session) => activationPhaseForSession(session) === phase,
+    );
+    const configured = customization.phases[phase];
+    const expectedKeys = new Set(
+      expected.map((session) => activationCustomizationKey(session)!),
+    );
+    const configuredKeys = Object.keys(configured.sessions);
+    const orphan = configuredKeys.find((key) => !expectedKeys.has(key));
+    if (orphan) {
+      return `Customized Activation session '${orphan}' no longer exists. Review the ${phase} phase.`;
+    }
+    const missing = [...expectedKeys].find(
+      (key) => configured.sessions[key] == null,
+    );
+    if (missing) {
+      return `The ${phase} phase is missing session '${missing}'.`;
+    }
+
+    const occupiedDays = new Set<number>();
+    for (const session of expected) {
+      const key = activationCustomizationKey(session)!;
+      const config = configured.sessions[key]!;
+      const isConditioning = session.conditioning != null;
+      if (!isConditioning && !config.enabled) {
+        return `${session.label} is a required Activation strength session.`;
+      }
+      if (config.enabled) {
+        if (occupiedDays.has(config.day)) {
+          return `The ${phase} phase has more than one session on the same day.`;
+        }
+        occupiedDays.add(config.day);
+      }
+
+      const sourceMovements = new Set(
+        (session.fixedMovements ?? []).map((movement) => movement.movement),
+      );
+      const orphanMovement = Object.keys(config.movementOverrides).find(
+        (movement) => !sourceMovements.has(movement),
+      );
+      if (orphanMovement) {
+        return `${session.label} no longer contains '${orphanMovement}'. Review its movements.`;
+      }
+      if (!isConditioning) {
+        const remaining = [...sourceMovements].filter(
+          (movement) => config.movementOverrides[movement] !== null,
+        );
+        if (remaining.length === 0) {
+          return `${session.label} needs at least one movement.`;
+        }
+        const resolved = remaining.map(
+          (source) =>
+            config.movementOverrides[source]?.movement ?? source,
+        );
+        if (new Set(resolved).size !== resolved.length) {
+          return `${session.label} contains the same movement more than once.`;
+        }
+      }
+    }
+    for (const rehabDay of configured.rehabDays) {
+      if (occupiedDays.has(rehabDay)) {
+        return `The ${phase} phase has rehab on a day that already contains a session.`;
+      }
+    }
+  }
+  return deriveActivationMilestoneOverrides(customization).error;
+}
+
+function deriveActivationMilestoneOverrides(
+  customization: TbActivationCustomizationV2,
+): {
+  overrides: Record<
+    string,
+    {
+      movementOverrides: Record<
+        string,
+        { movement: string; kind?: "barbell" | "weighted-bw" | "bodyweight" | "unanchored" } | null
+      >;
+    }
+  >;
+  error: string | null;
+} {
+  const template = getTbTemplate("activation");
+  if (!template) {
+    return { overrides: {}, error: "Activation template is unavailable." };
+  }
+  const predecessor = (week: number) =>
+    week === 5
+      ? "base"
+      : week === 14 || week === 20 || week === 21
+        ? "operator"
+        : week === 25
+          ? "vertex"
+          : null;
+  const overrides: Record<
+    string,
+    {
+      movementOverrides: Record<
+        string,
+        { movement: string; kind?: "barbell" | "weighted-bw" | "bodyweight" | "unanchored" } | null
+      >;
+    }
+  > = {};
+
+  for (const week of [5, 14, 20, 21, 25]) {
+    const phase = predecessor(week);
+    if (!phase) continue;
+    const phaseSessions = template.weeklySessions.filter(
+      (session) =>
+        activationPhaseForSession(session) === phase &&
+        session.conditioning == null,
+    );
+    const milestones = template.weeklySessions.filter(
+      (session) => session.activeWeeks?.includes(week),
+    );
+    for (const milestone of milestones) {
+      const movementOverrides: Record<
+        string,
+        { movement: string; kind?: "barbell" | "weighted-bw" | "bodyweight" | "unanchored" } | null
+      > = {};
+      for (const sourceSlot of milestone.fixedMovements ?? []) {
+        const source = sourceSlot.movement;
+        const resolutions: Array<
+          { movement: string; kind?: "barbell" | "weighted-bw" | "bodyweight" | "unanchored" } | null
+        > = [];
+        for (const sourceSession of phaseSessions) {
+          const canonical = sourceSession.fixedMovements?.find(
+            (movement) => movement.movement === source,
+          );
+          if (!canonical) continue;
+          const key = activationCustomizationKey(sourceSession)!;
+          const config = customization.phases[phase].sessions[key];
+          if (!config?.enabled) continue;
+          const replacement = config.movementOverrides[source];
+          resolutions.push(
+            replacement === undefined
+              ? {
+                  movement: source,
+                  ...(canonical.kind ? { kind: canonical.kind } : {}),
+                }
+              : replacement,
+          );
+        }
+        if (resolutions.length === 0) continue;
+        const remaining = resolutions.filter(
+          (resolution): resolution is NonNullable<typeof resolution> =>
+            resolution != null,
+        );
+        if (remaining.length === 0) {
+          movementOverrides[source] = null;
+          continue;
+        }
+        const signatures = new Set(
+          remaining.map(
+            (resolution) =>
+              `${resolution.movement}:${resolution.kind ?? ""}`,
+          ),
+        );
+        if (signatures.size > 1) {
+          return {
+            overrides: {},
+            error: `${source} has conflicting replacements before week ${week}. Use one replacement so the protected test can be mapped safely.`,
+          };
+        }
+        const [resolved] = remaining;
+        if (
+          resolved.movement !== source ||
+          (resolved.kind ?? "") !== (sourceSlot.kind ?? "")
+        ) {
+          movementOverrides[source] = resolved;
+        }
+      }
+      if (Object.keys(movementOverrides).length > 0) {
+        overrides[
+          `activation.milestone.w${week}.${milestone.id}`
+        ] = { movementOverrides };
+      }
+    }
+  }
+  return { overrides, error: null };
+}
+
+function effectiveActivationMovements(
+  customization: TbActivationCustomizationV2,
+  startWeekIndex = 0,
+): Array<{
+  movement: string;
+  kind?: "barbell" | "weighted-bw" | "bodyweight" | "unanchored";
+}> {
+  const template = getTbTemplate("activation");
+  if (!template) return [];
+  const movements: Array<{
+    movement: string;
+    kind?: "barbell" | "weighted-bw" | "bodyweight" | "unanchored";
+  }> = [];
+  const phaseEnds = {
+    base: 3,
+    armor: 7,
+    operator: 18,
+    vertex: 23,
+  } as const;
+  for (const session of template.weeklySessions) {
+    const phase = activationPhaseForSession(session);
+    if (!phase) continue;
+    if (phaseEnds[phase] < startWeekIndex) continue;
+    const key = activationCustomizationKey(session)!;
+    const config = customization.phases[phase].sessions[key];
+    if (!config?.enabled) continue;
+    for (const canonical of session.fixedMovements ?? []) {
+      const replacement =
+        config.movementOverrides[canonical.movement];
+      if (replacement === null) continue;
+      movements.push(
+        replacement ?? {
+          movement: canonical.movement,
+          ...(canonical.kind ? { kind: canonical.kind } : {}),
+        },
+      );
+    }
+  }
+
+  const milestones = deriveActivationMilestoneOverrides(customization).overrides;
+  for (const week of [5, 14, 20, 21, 25]) {
+    if (week - 1 < startWeekIndex) continue;
+    for (const session of template.weeklySessions.filter((candidate) =>
+      candidate.activeWeeks?.includes(week),
+    )) {
+      const config =
+        milestones[`activation.milestone.w${week}.${session.id}`];
+      for (const canonical of session.fixedMovements ?? []) {
+        const replacement =
+          config?.movementOverrides[canonical.movement];
+        if (replacement === null) continue;
+        movements.push(
+          replacement ?? {
+            movement: canonical.movement,
+            ...(canonical.kind ? { kind: canonical.kind } : {}),
+          },
+        );
+      }
+    }
+  }
+  return movements;
+}
 
 /** Whole weeks from `startIso` to `endIso` (YYYY-MM-DD), min 1. Drives HYROX weeks-to-race. */
 function wholeWeeksBetween(startIso: string, endIso: string): number {
@@ -140,15 +406,29 @@ export async function createProgramInstance(
     if (programId !== "tactical-barbell") {
       return { ok: false, error: "Only Tactical Barbell templates can use this customization." };
     }
-    if (setupValues.templateId === "activation") {
-      return { ok: false, error: "Activation is a fixed program and can't be customized." };
-    }
-    const customStrengthDays = customizationDays(customization, "strength");
-    if (
-      customStrengthDays.length !== weekdays.length ||
-      customStrengthDays.some((day, index) => day !== weekdays[index])
-    ) {
-      return { ok: false, error: "Customized strength days don't match the submitted schedule." };
+    if (isTbCustomizationV1(customization)) {
+      if (setupValues.templateId === "activation") {
+        return {
+          ok: false,
+          error: "Activation customization requires the phase-aware editor.",
+        };
+      }
+      const customStrengthDays = customizationDays(customization, "strength");
+      if (
+        customStrengthDays.length !== weekdays.length ||
+        customStrengthDays.some((day, index) => day !== weekdays[index])
+      ) {
+        return { ok: false, error: "Customized strength days don't match the submitted schedule." };
+      }
+    } else {
+      if (setupValues.templateId !== "activation") {
+        return {
+          ok: false,
+          error: "Activation customization can only be used with Activation.",
+        };
+      }
+      const activationError = validateActivationCustomization(customization);
+      if (activationError) return { ok: false, error: activationError };
     }
   }
 
@@ -161,7 +441,7 @@ export async function createProgramInstance(
 
   // Open cardio days only apply to strength-only foreign programs (5/3/1, TB),
   // where cardio isn't engine-owned. They must not double up on a strength day.
-  const requestedCardioDays = customization
+  const requestedCardioDays = customization && isTbCustomizationV1(customization)
     ? customizationDays(customization, "conditioning")
     : cardioWeekdays ?? [];
   const cardioDays = requestedCardioDays.filter((d) => !weekdays.includes(d));
@@ -240,6 +520,7 @@ export async function createProgramInstance(
     ...(roundingKg != null ? { roundingKg } : {}),
     ...(accessories ? { accessories } : {}),
     ...(supersetAccessories != null ? { supersetAccessories } : {}),
+    ...(customization ? { customization } : {}),
     ...(seasonBlockId ? { seasonBlockId } : {}),
   });
 }
@@ -339,7 +620,7 @@ interface DeployArgs {
   twoADay?: boolean;
   /** Per-block antagonist-superset accessories (migration 0111) — all programs. */
   supersetAccessories?: boolean;
-  customization?: TbCustomizationV1;
+  customization?: TbCustomization;
   /** When the wizard was deep-linked from a Season roadmap (ADR 0051) — the
    *  planned season_block to activate + link to the new training block on deploy. */
   seasonBlockId?: string;
@@ -558,11 +839,25 @@ async function computeForeignWrite(
     const raw = prof?.effort_preference;
     if (raw === "low" || raw === "high") assistanceVolumePref = raw;
   }
-  const effectiveSetupValues = customization
+  const effectiveSetupValues = customization && isTbCustomizationV1(customization)
     ? {
         ...setupValues,
         customSessionMovements: customization.sessionMovements,
       }
+    : customization && isTbActivationCustomizationV2(customization)
+      ? {
+          ...setupValues,
+          activationSessionOverrides: Object.fromEntries(
+            Object.entries(activationSessionConfigs(customization)).map(
+              ([key, session]) => [
+                key,
+                { movementOverrides: session.movementOverrides },
+              ],
+            ),
+          ),
+          activationMilestoneOverrides:
+            deriveActivationMilestoneOverrides(customization).overrides,
+        }
     : setupValues;
   const instance = engine.setup(
     {
@@ -594,7 +889,10 @@ async function computeForeignWrite(
         .timeline(instance)
         .flatMap((spec) => (spec.seriesKey ? [spec.seriesKey] : [])),
     );
-    const orphan = Object.keys(customization.sessionMovements).find(
+    const customizationKeys = isTbCustomizationV1(customization)
+      ? Object.keys(customization.sessionMovements)
+      : Object.keys(activationSessionConfigs(customization));
+    const orphan = customizationKeys.find(
       (key) => !validSeries.has(key),
     );
     if (orphan) {
@@ -602,7 +900,15 @@ async function computeForeignWrite(
         `Customized strength slot '${orphan}' no longer exists in this template. Review the program setup.`,
       );
     }
-    for (const movement of Object.values(customization.sessionMovements).flat()) {
+    const replacements = isTbCustomizationV1(customization)
+      ? Object.values(customization.sessionMovements).flat()
+      : Object.values(activationSessionConfigs(customization)).flatMap(
+          (session) =>
+            Object.values(session.movementOverrides).filter(
+              (movement) => movement != null,
+            ),
+        );
+    for (const movement of replacements) {
       if (!resolveMovement(movement.movement)) {
         throw new Error(
           `Customized movement '${movement.movement}' is not available. Choose another movement.`,
@@ -668,7 +974,13 @@ async function computeForeignWrite(
     const selectedIds = new Set<string>(
       customization.rehab?.items.map((item) => item.movementId) ?? [],
     );
-    for (const movement of Object.values(customization.sessionMovements).flat()) {
+    const replacementMovements = isTbCustomizationV1(customization)
+      ? Object.values(customization.sessionMovements).flat()
+      : effectiveActivationMovements(
+          customization,
+          startWeekIndex ?? 0,
+        );
+    for (const movement of replacementMovements) {
       const resolved = resolveMovement(movement.movement);
       if (resolved) selectedIds.add(resolved.movementId);
     }

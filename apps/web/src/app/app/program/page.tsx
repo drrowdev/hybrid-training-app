@@ -14,7 +14,13 @@
 import { redirect } from "next/navigation";
 import { Archivo, Oswald, Saira_Stencil_One, JetBrains_Mono } from "next/font/google";
 import type { PlatformContext, ProgramEngine, PlannedSessionSpec } from "@hta/program-core";
-import { TB_TEMPLATES } from "@hta/tacticalbarbell";
+import {
+  ACTIVATION_PHASE_KEYS,
+  ACTIVATION_PHASE_LABELS,
+  TB_TEMPLATES,
+  activationCustomizationKey,
+  activationPhaseForSession,
+} from "@hta/tacticalbarbell";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { selectablePrograms, getProgramEngine, getNativeProgramEngine } from "@/lib/platform/registry";
 import { buildPlatformContext } from "@/lib/platform/context";
@@ -216,6 +222,42 @@ export default async function ProgramPickerPage({
           "barbell" | "weighted-bw" | "bodyweight" | "unanchored"
         >,
       })),
+    ...(t.id === "activation"
+      ? {
+          activationPhases: ACTIVATION_PHASE_KEYS.map((phase) => ({
+            key: phase,
+            label: ACTIVATION_PHASE_LABELS[phase],
+            weeks:
+              phase === "base"
+                ? "Weeks 1–4"
+                : phase === "armor"
+                  ? "Weeks 6–8"
+                  : phase === "operator"
+                    ? "Weeks 9–19"
+                    : "Weeks 22–24",
+            sessions: t.weeklySessions
+              .filter(
+                (session) =>
+                  activationPhaseForSession(session) === phase,
+              )
+              .map((session) => ({
+                key: activationCustomizationKey(session)!,
+                label: session.label,
+                type:
+                  session.conditioning != null
+                    ? ("conditioning" as const)
+                    : ("strength" as const),
+                defaultDay: session.weekday ?? 0,
+                movements: (session.fixedMovements ?? []).map(
+                  (movement) => ({
+                    sourceMovement: movement.movement,
+                    ...(movement.kind ? { kind: movement.kind } : {}),
+                  }),
+                ),
+              })),
+          })),
+        }
+      : {}),
   }));
 
   // Optional deep-link preselect (e.g. the Today "Set up Velocity →" guided

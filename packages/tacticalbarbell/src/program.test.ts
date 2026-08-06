@@ -150,6 +150,29 @@ describe("TB engine — timeline", () => {
     expect(tl.filter((session) => session.tags?.includes("week:22"))).toHaveLength(4);
     expect(tl.at(-1)?.ref).toBe("b0-w25-operator-test");
   });
+
+  it("Activation exposes phase-qualified customization keys and locked milestone keys", () => {
+    const timeline = tb.timeline(setup({ templateId: "activation" }));
+    expect(
+      timeline.find((session) => session.ref === "b0-w1-base-1")?.seriesKey,
+    ).toBe("activation.base.base-1");
+    expect(
+      timeline.find((session) => session.ref === "b0-w6-armor-a1")
+        ?.seriesKey,
+    ).toBe("activation.armor.armor-a1");
+    expect(
+      timeline.find((session) => session.ref === "b0-w9-operator-d1")
+        ?.seriesKey,
+    ).toBe("activation.operator.operator-d1");
+    expect(
+      timeline.find((session) => session.ref === "b0-w22-breacher-d1")
+        ?.seriesKey,
+    ).toBe("activation.vertex.breacher-d1");
+    expect(
+      timeline.find((session) => session.ref === "b0-w14-peak-squat")
+        ?.seriesKey,
+    ).toBe("activation.milestone.peak-squat");
+  });
 });
 
 describe("TB engine — prescribe (% of the shared 1RM)", () => {
@@ -620,6 +643,7 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
       armorSupplementalA: "reverse-hyper",
       armorSupplementalB: "inverted-row",
     });
+
     const a1 = tb.prescribe(inst, "b0-w6-armor-a1", ctx);
     const b1 = tb.prescribe(inst, "b0-w6-armor-b1", ctx);
     expect(itemsOfKind(a1, "supplemental").map((item) => item.name)).toEqual([
@@ -648,6 +672,88 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
       "Bench Press",
       "Barbell Row",
     ]);
+  });
+
+  it("Activation replacements inherit the canonical slot dose and use their own benchmark", () => {
+    const inst = setup({
+      templateId: "activation",
+      activationSessionOverrides: {
+        "activation.armor.armor-a1": {
+          movementOverrides: {
+            squat: { movement: "deadlift" },
+            "back-extension": { movement: "overhead-press" },
+          },
+        },
+      },
+    });
+    const session = tb.prescribe(inst, "b0-w6-armor-a1", ctx);
+    const mains = itemsOfKind(session, "main");
+    const supplemental = itemsOfKind(session, "supplemental");
+    expect(mains.find((item) => item.name === "Deadlift")).toMatchObject({
+      percentOfTm: 0.7,
+      sets: 4,
+      reps: 8,
+      weightKg: 175,
+    });
+    expect(mains.some((item) => item.name === "Squat")).toBe(false);
+    expect(
+      supplemental.find((item) => item.name === "Overhead Press"),
+    ).toMatchObject({
+      percentOfTm: 0.65,
+      sets: 3,
+      setsMax: 5,
+      reps: 8,
+      repsMax: 10,
+      weightKg: 65,
+    });
+  });
+
+  it("Activation can remove a canonical movement slot without affecting its milestone weeks", () => {
+    const inst = setup({
+      templateId: "activation",
+      activationSessionOverrides: {
+        "activation.operator.operator-d2": {
+          movementOverrides: {
+            squat: null,
+          },
+        },
+      },
+    });
+
+    const work = tb.prescribe(inst, "b0-w9-operator-d2", ctx);
+    expect(itemsOfKind(work, "main").some((item) => item.name === "Squat")).toBe(
+      false,
+    );
+    const peak = tb.prescribe(inst, "b0-w14-peak-squat", ctx);
+    expect(itemsOfKind(peak, "main")[0]).toMatchObject({
+      name: "Squat",
+      percentOfTm: 1,
+    });
+  });
+
+  it("Activation maps a derived replacement into a protected peak while preserving peak semantics", () => {
+    const inst = setup({
+      templateId: "activation",
+      activationMilestoneOverrides: {
+        "activation.milestone.w14.peak-squat": {
+          movementOverrides: {
+            squat: { movement: "deadlift" },
+          },
+        },
+      },
+    });
+    const peak = itemsOfKind(
+      tb.prescribe(inst, "b0-w14-peak-squat", ctx),
+      "main",
+    );
+    expect(peak[0]).toMatchObject({
+      name: "Deadlift",
+      percentOfTm: 1,
+      sets: 1,
+      reps: 1,
+      weightKg: 250,
+    });
+    expect(peak.some((item) => item.name === "Squat")).toBe(false);
   });
 
   it("Activation Operator Black uses optional sets and preserves the deadlift 1–3 range", () => {

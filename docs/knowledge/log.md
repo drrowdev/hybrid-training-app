@@ -400,3 +400,7 @@ Standalone Tactical Barbell templates can now run as a backend-marked Customized
 
 ## [2026-08-05] refine | Keep Season inside the active-program Plan shell
 Season now behaves as the third local Plan view alongside Program and Calendar whenever an active program exists. Switching tabs preserves the active-program identity, actions, completion progress, dimensions and responsive shell while replacing only the content pane with the long-range roadmap. The standalone Season page remains available only for the edge case where a roadmap exists without an active program.
+
+
+## [2026-08-06] refine | Add phase-aware customized Activation
+Activation can now run as Tactical Barbell - Customized without weakening the canonical 25-week program. A version-2 overlay gives Base, Armor, Operator and Vertex independent session placement, optional conditioning, open-day rehab and canonical movement-slot removal or compatible replacement; each replacement inherits the source slot's main/supplemental/core rules while loading from its own benchmark. Protected test/peak weeks remain engine-owned and accept only unambiguous derived mappings. Start-point and forward-edit boundaries lock irrelevant/past phases, active limitations evaluate every effective work and milestone movement, and canonical/identity overlays remain byte-identical. The existing positive customization marker supports v2 without a database migration.

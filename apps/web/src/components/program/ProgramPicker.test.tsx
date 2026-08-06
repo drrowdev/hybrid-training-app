@@ -417,6 +417,9 @@ describe("ProgramPicker rendering", () => {
     expect(html).toContain("Reverse Hyper + Ab Triad");
     expect(html).toContain("Pull-ups + Overhead Press");
     expect(html).toContain("Inverted Rows + Overhead Press");
-    expect(html).not.toContain("Customize template");
+    expect(html).toContain("Customize template");
+    expect(html).toContain(
+      "Customize each Activation phase while keeping its progression",
+    );
   });
 });

@@ -33,7 +33,13 @@ import type { Prescription, PrescriptionItem } from "@hta/db";
 import { adaptSessionPrescription, type MovementResolver, type SkippedItem } from "./adapter";
 import type { AssistancePlanner } from "./assistance-resolver";
 import type { TbAccessoryInjector } from "./tb-accessories";
-import type { TbCustomizationV1 } from "./tb-customization";
+import {
+  activationSessionConfigs,
+  isTbActivationCustomizationV2,
+  isTbCustomizationV1,
+  type TbCustomization,
+} from "./tb-customization";
+import { activationPhaseForWeek } from "@hta/tacticalbarbell";
 import {
   classifySessionModality,
   effectiveStressLoad,
@@ -91,7 +97,7 @@ export interface MaterializeOptions {
    */
   mainLiftBasisLabel?: "TM" | "1RM";
   /** Versioned Tactical Barbell overlay. Omitted preserves canonical output. */
-  customization?: TbCustomizationV1;
+  customization?: TbCustomization;
 }
 
 export interface MaterializedSession {
@@ -295,6 +301,11 @@ export function materializeProgram<I>(
   let prevWeekLabel: string | undefined;
   let started = false;
   let maxEmittedWeek = -1;
+  const activationConfigs =
+    opts.customization &&
+    isTbActivationCustomizationV2(opts.customization)
+      ? activationSessionConfigs(opts.customization)
+      : null;
 
   for (const spec of timeline) {
     if (spec.kind === "rest") continue;
@@ -314,9 +325,16 @@ export function materializeProgram<I>(
     if (programWeekIndex < startWeek) continue;
     const weekIndex = programWeekIndex - startWeek;
     if (weekIndex > maxEmittedWeek) maxEmittedWeek = weekIndex;
+    const activationConfig =
+      activationConfigs && spec.seriesKey
+        ? activationConfigs[spec.seriesKey]
+        : undefined;
+    if (activationConfig && !activationConfig.enabled) continue;
 
     let dayIndex: number;
-    if (spec.weekday != null) {
+    if (activationConfig) {
+      dayIndex = activationConfig.day;
+    } else if (spec.weekday != null) {
       dayIndex = spec.weekday;
     } else {
       if (positionInWeek >= opts.weekdays.length) {
@@ -402,7 +420,14 @@ export function materializeProgram<I>(
   // placeholder per requested weekday, in every materialised program-week. Skips
   // any weekday already occupied by a strength session that week so the
   // (week, day, slot) grid stays collision-free.
-  const cardioDays = [...new Set((opts.cardioWeekdays ?? []).map((d) => Math.trunc(d)))]
+  const cardioDays = [
+    ...new Set(
+      (opts.customization && !isTbCustomizationV1(opts.customization)
+        ? []
+        : opts.cardioWeekdays ?? []
+      ).map((d) => Math.trunc(d)),
+    ),
+  ]
     .filter((d) => d >= 0 && d <= 6)
     .sort((a, b) => a - b);
   if (cardioDays.length > 0 && maxEmittedWeek >= 0) {
@@ -433,15 +458,26 @@ export function materializeProgram<I>(
     }
   }
 
-  const rehabDays = opts.customization
-    ? opts.customization.dayTypes.flatMap((type, day) =>
-        type === "rehab" ? [day] : [],
-      )
-    : [];
   const rehabItems = opts.customization?.rehab?.items ?? [];
-  if (rehabDays.length > 0 && rehabItems.length > 0 && maxEmittedWeek >= 0) {
+  if (rehabItems.length > 0 && maxEmittedWeek >= 0) {
     const taken = new Set(sessions.map((session) => `${session.weekIndex}-${session.dayIndex}`));
     for (let weekIndex = 0; weekIndex <= maxEmittedWeek; weekIndex++) {
+      const rehabDays =
+        opts.customization && isTbCustomizationV1(opts.customization)
+          ? opts.customization.dayTypes.flatMap((type, day) =>
+              type === "rehab" ? [day] : [],
+            )
+          : opts.customization &&
+              isTbActivationCustomizationV2(opts.customization)
+            ? (() => {
+                const absoluteWeek =
+                  ((startWeek + weekIndex) % 25) + 1;
+                const phase = activationPhaseForWeek(absoluteWeek);
+                return phase
+                  ? opts.customization.phases[phase].rehabDays
+                  : [];
+              })()
+            : [];
       for (const dayIndex of rehabDays) {
         if (taken.has(`${weekIndex}-${dayIndex}`)) {
           throw new Error(

@@ -9,6 +9,12 @@ export {
   TB_TEMPLATES,
   TB_MOVEMENT_LABEL,
   getTbTemplate,
+  ACTIVATION_PHASE_KEYS,
+  ACTIVATION_PHASE_LABELS,
+  activationPhaseForSession,
+  activationCustomizationKey,
+  activationPhaseForWeek,
+  type ActivationPhaseKey,
   type TbTemplate,
   type TbWeekScheme,
   type TbPercentWave,
@@ -19,6 +25,11 @@ export {
   type TbMovement,
 } from "./templates";
 export { roundToIncrement } from "./rounding";
-export { tacticalBarbellEngine, type TbInstance, type TbClusterLift } from "./program";
+export {
+  tacticalBarbellEngine,
+  type TbInstance,
+  type TbClusterLift,
+  type TbActivationSessionOverride,
+} from "./program";
 export { validateCluster, countingLifts, type ClusterValidation } from "./validate";
 export { zuluHtEngine, type ZuluHtInstance } from "./zulu-ht";

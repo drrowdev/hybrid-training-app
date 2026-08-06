@@ -1610,6 +1610,178 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+.activationBuilder {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.activationMilestones {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--accent-dim);
+  border-radius: var(--wradius);
+  background: var(--cp-accent-soft);
+  padding: 13px 15px;
+}
+.activationMilestones b {
+  color: var(--text);
+  font-size: 13px;
+}
+.activationMilestones span {
+  color: var(--dim);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.activationPhase {
+  min-width: 0;
+  border: 1px solid var(--line2);
+  border-radius: var(--wradius);
+  background: var(--panel);
+  overflow: hidden;
+}
+.activationPhase > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  cursor: pointer;
+  list-style: none;
+}
+.activationPhase > summary::-webkit-details-marker {
+  display: none;
+}
+.activationPhase > summary > span:first-child {
+  display: grid;
+  gap: 3px;
+}
+.activationPhase > summary b {
+  font-family: var(--font-oswald), sans-serif;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.activationPhase > summary small,
+.activationPhase > summary > span:last-child {
+  color: var(--muted);
+  font-size: 11px;
+}
+.activationPhaseBody {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+  padding: 4px 16px 16px;
+  border-top: 1px solid var(--line);
+  margin: 0;
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  min-inline-size: 0;
+}
+.activationPhaseBody:disabled {
+  opacity: 0.62;
+}
+.activationSessions {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding-top: 12px;
+}
+.activationSession {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--wradius);
+  background: var(--bg2);
+  padding: 12px;
+}
+.activationSessionHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.activationSessionHead > span:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  margin-right: auto;
+}
+.activationSessionHead b {
+  color: var(--text);
+  font-size: 13px;
+}
+.activationSessionHead small {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.activationSessionHead > label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.activationSessionHead select,
+.activationMovements select {
+  min-height: 38px;
+  min-width: 0;
+  border: 1px solid var(--line2);
+  border-radius: var(--wradius);
+  background: var(--bg);
+  color: var(--text);
+  padding: 7px 10px;
+  font: inherit;
+}
+.activationEnabled input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+.activationMovements {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+.activationMovements label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+.activationMovements label > span {
+  overflow-wrap: anywhere;
+}
+.activationRehabDays {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.activationRehabDays button {
+  min-width: 48px;
+  min-height: 40px;
+  border: 1px solid var(--line2);
+  border-radius: var(--wradius);
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+}
+.activationRehabDays button.selected {
+  border-color: var(--warn);
+  background: var(--panel2);
+  color: var(--warn);
+}
+.activationRehabDays button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
 
 /* info modal meta chips */
 .modalMeta {
@@ -1638,6 +1810,22 @@
   .rehabRow input[aria-label^="Instructions"],
   .rehabRow button {
     grid-column: 1 / -1;
+  }
+  .activationPhase > summary {
+    align-items: flex-start;
+  }
+  .activationPhase > summary > span:last-child {
+    text-align: right;
+  }
+  .activationSessionHead {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .activationSessionHead > span:first-child {
+    flex: 1 1 100%;
+  }
+  .activationMovements {
+    grid-template-columns: 1fr;
   }
   .opts {
     grid-template-columns: 1fr;
