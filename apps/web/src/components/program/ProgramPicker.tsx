@@ -3341,16 +3341,15 @@ export function ProgramPicker({
               return draft?.enabled ? [draft.day] : [];
             }),
           );
-          const orderedEnabled = phase.sessions
-            .filter(
-              (session) => phaseDraft.sessions[session.key]?.enabled,
-            )
-            .sort((left, right) => {
-              const dayDiff =
-                phaseDraft.sessions[left.key]!.day -
-                phaseDraft.sessions[right.key]!.day;
-              return dayDiff || left.key.localeCompare(right.key);
-            });
+          const orderedSessions = [...phase.sessions].sort((left, right) => {
+            const dayDiff =
+              phaseDraft.sessions[left.key]!.day -
+              phaseDraft.sessions[right.key]!.day;
+            return dayDiff || left.key.localeCompare(right.key);
+          });
+          const orderedEnabled = orderedSessions.filter(
+            (session) => phaseDraft.sessions[session.key]?.enabled,
+          );
           const strengthOrder = orderedEnabled.filter(
             (session) => session.type === "strength",
           );
@@ -3389,7 +3388,7 @@ export function ProgramPicker({
                 disabled={phaseLocked}
               >
                 <div className={styles.activationSessions}>
-                  {phase.sessions.map((session) => {
+                  {orderedSessions.map((session) => {
                     const draft = phaseDraft.sessions[session.key]!;
                     const modalityOrder =
                       session.type === "strength"
