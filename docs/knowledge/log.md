@@ -412,3 +412,7 @@ Forward Edit program now freezes calendar slots through today instead of freezin
 
 ## [2026-08-06] refine | Redesign customized program editing and rehab placement
 The customized TB/Activation editor now presents each program slot as a clear source-slot/current-exercise row with searchable access to every non-cardio exercise in the catalog. Catalog-backed selections use their exact movement id and saved 1RM when present; otherwise they become manually loaded and never inherit the source movement's weight. Server-side catalog membership and active limitations are authoritative. Activation exposes a persistent rehab protocol panel for movement, side, sets/reps or hold, load and clinician instructions; phase day chips can add rehab either to an empty day or as a separate PM session alongside strength/conditioning. Standalone customized TB uses the same searchable library for adding exercises, and all choices restore in forward Edit program.
+
+
+## [2026-08-06] refine | Make customized workout ordering intuitive
+Activation edit cards now derive their visible Strength/Conditioning ordinal from the current weekday order while retaining A1/B1/etc. only as secondary prescription identity. Selecting a weekday already occupied by an enabled workout atomically swaps the two day assignments instead of requiring an empty intermediate day. Disabled conditioning sessions may change their placeholder day without displacing active workouts. Stable session keys, movement choices, rehab overlays and milestone mapping remain unchanged.

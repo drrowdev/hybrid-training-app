@@ -1772,6 +1772,44 @@ export function ProgramPicker({
     }));
   }
 
+  function moveActivationSession(
+    phase: ActivationPhaseKey,
+    sessionKey: string,
+    targetDay: number,
+  ) {
+    setActivationDrafts((current) => {
+      const phaseDraft = current[phase];
+      const moving = phaseDraft.sessions[sessionKey];
+      if (!moving || moving.day === targetDay) return current;
+      const occupant = moving.enabled
+        ? Object.entries(phaseDraft.sessions).find(
+            ([key, session]) =>
+              key !== sessionKey &&
+              session.enabled &&
+              session.day === targetDay,
+          )
+        : undefined;
+      const sessions = {
+        ...phaseDraft.sessions,
+        [sessionKey]: { ...moving, day: targetDay },
+      };
+      if (occupant) {
+        const [occupantKey, occupantSession] = occupant;
+        sessions[occupantKey] = {
+          ...occupantSession,
+          day: moving.day,
+        };
+      }
+      return {
+        ...current,
+        [phase]: {
+          ...phaseDraft,
+          sessions,
+        },
+      };
+    });
+  }
+
   function setActivationMovement(
     phase: ActivationPhaseKey,
     sessionKey: string,
@@ -3303,6 +3341,22 @@ export function ProgramPicker({
               return draft?.enabled ? [draft.day] : [];
             }),
           );
+          const orderedEnabled = phase.sessions
+            .filter(
+              (session) => phaseDraft.sessions[session.key]?.enabled,
+            )
+            .sort((left, right) => {
+              const dayDiff =
+                phaseDraft.sessions[left.key]!.day -
+                phaseDraft.sessions[right.key]!.day;
+              return dayDiff || left.key.localeCompare(right.key);
+            });
+          const strengthOrder = orderedEnabled.filter(
+            (session) => session.type === "strength",
+          );
+          const conditioningOrder = orderedEnabled.filter(
+            (session) => session.type === "conditioning",
+          );
           return (
             <details
               key={phase.key}
@@ -3337,6 +3391,26 @@ export function ProgramPicker({
                 <div className={styles.activationSessions}>
                   {phase.sessions.map((session) => {
                     const draft = phaseDraft.sessions[session.key]!;
+                    const modalityOrder =
+                      session.type === "strength"
+                        ? strengthOrder
+                        : conditioningOrder;
+                    const ordinal =
+                      modalityOrder.findIndex(
+                        (candidate) => candidate.key === session.key,
+                      ) + 1;
+                    const scheduleName =
+                      ordinal > 0
+                        ? `${phase.label} · ${
+                            session.type === "strength"
+                              ? "Strength"
+                              : "Conditioning"
+                          } ${ordinal}`
+                        : `${phase.label} · ${
+                            session.type === "strength"
+                              ? "Strength"
+                              : "Conditioning"
+                          } off`;
                     return (
                       <section
                         key={session.key}
@@ -3345,11 +3419,9 @@ export function ProgramPicker({
                       >
                         <div className={styles.activationSessionHead}>
                           <span>
-                            <b>{session.label}</b>
+                            <b>{scheduleName}</b>
                             <small>
-                              {session.type === "strength"
-                                ? "Strength"
-                                : "Conditioning"}
+                              Uses {session.label} prescription
                             </small>
                           </span>
                           <label>
@@ -3357,23 +3429,18 @@ export function ProgramPicker({
                             <select
                               value={draft.day}
                               onChange={(event) =>
-                                patchActivationSession(
+                                moveActivationSession(
                                   phase.key,
                                   session.key,
-                                  { day: Number(event.target.value) },
+                                  Number(event.target.value),
                                 )
                               }
-                              aria-label={`${session.label} weekday`}
+                              aria-label={`${scheduleName} weekday`}
                             >
                               {WD.map((day, index) => (
                                 <option
                                   key={day}
                                   value={index}
-                                  disabled={
-                                    (occupied.has(index) &&
-                                      index !== draft.day) ||
-                                    phaseDraft.rehabDays.includes(index)
-                                  }
                                 >
                                   {day}
                                 </option>
