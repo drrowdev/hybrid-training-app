@@ -286,57 +286,6 @@ await test("B cannot insert region_state as A", async () => {
   assert.notEqual(error, null, "RLS should have blocked");
 });
 
-console.log("\nmcp_tool_calls + mcp_authorizations (ADR 0003)");
-
-// Service-role insert as A so we have rows to assert isolation against.
-await test("admin can insert an mcp_tool_calls row for A", async () => {
-  const { error } = await admin.from("mcp_tool_calls").insert({
-    user_id: userA2.id,
-    tool_name: "getProfile",
-    latency_ms: 12,
-    result_size_bytes: 200,
-    error_code: null,
-  });
-  assert.equal(error, null, `mcp_tool_calls insert failed: ${error?.message}`);
-});
-
-await test("A sees their own mcp_tool_calls row", async () => {
-  const { data } = await clientA2.from("mcp_tool_calls").select("tool_name");
-  assert.equal((data ?? []).length, 1);
-  assert.equal(data[0].tool_name, "getProfile");
-});
-
-await test("B cannot see A's mcp_tool_calls (RLS isolates)", async () => {
-  const { data } = await clientB.from("mcp_tool_calls").select("id").eq("user_id", userA2.id);
-  assert.equal((data ?? []).length, 0, "B saw A's mcp_tool_calls");
-});
-
-await test("authenticated cannot INSERT mcp_tool_calls (writes are server-only)", async () => {
-  const { error } = await clientA2.from("mcp_tool_calls").insert({
-    user_id: userA2.id,
-    tool_name: "getProfile",
-    latency_ms: 1,
-    result_size_bytes: 1,
-    error_code: null,
-  });
-  assert.notEqual(error, null, "authenticated INSERT should have been blocked");
-});
-
-await test("admin can insert an mcp_authorizations row for A", async () => {
-  const { error } = await admin.from("mcp_authorizations").insert({
-    user_id: userA2.id,
-    client_id: "claude-web",
-    event: "authorize",
-    scope: "tools:read",
-  });
-  assert.equal(error, null, `mcp_authorizations insert failed: ${error?.message}`);
-});
-
-await test("B cannot see A's mcp_authorizations", async () => {
-  const { data } = await clientB.from("mcp_authorizations").select("id").eq("user_id", userA2.id);
-  assert.equal((data ?? []).length, 0, "B saw A's mcp_authorizations");
-});
-
 console.log("\nfull-cascade verification (delete userA2 → everything goes)");
 
 await test("deleting userA2 cascades through sessions / sets / cardio / wellness / region_state", async () => {

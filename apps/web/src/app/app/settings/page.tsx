@@ -151,7 +151,7 @@ export default async function SettingsPage() {
           href="/app/settings/integrations"
           icon={<SettingsIcon name="integrations" />}
           title="Integrations"
-          description="Strava and AI providers."
+          description="Connect and manage Strava."
           testId="settings-hub-integrations"
         />
         <SettingsHubCard

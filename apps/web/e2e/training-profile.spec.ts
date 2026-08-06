@@ -66,8 +66,8 @@ test.describe("@desktop /app/profile · training profile page", () => {
     expect(sparklineCount + emptyCount).toBeGreaterThan(0);
 
     // AI-notes editor is visible.
-    await expect(page.getByTestId("profile-ai-notes")).toBeVisible();
-    await expect(page.getByTestId("ai-notes-textarea")).toBeVisible();
+    await expect(page.getByTestId("profile-training-notes")).toBeVisible();
+    await expect(page.getByTestId("training-notes-textarea")).toBeVisible();
 
     // Inline-edit: click the trigger, type a new name, press Enter.
     await page.getByTestId("display-name-trigger").click();

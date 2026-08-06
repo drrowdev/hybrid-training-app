@@ -38,8 +38,3 @@ export * from "./schema/priority-events";
 export * from "./schema/prescription-modifications";
 export * from "./schema/engine-override-events";
 export * from "./schema/bw-diagnostics-snapshots";
-export * from "./schema/chat-threads";
-export * from "./schema/chat-messages";
-export * from "./schema/memories";
-export * from "./schema/byoai";
-export * from "./schema/ai-call-logs";

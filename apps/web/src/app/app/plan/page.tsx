@@ -46,7 +46,6 @@ import { getLimitationResponseOffer } from "@/lib/limitations/offer";
 import { applyLimitationResponseSelection } from "@/lib/limitations/actions";
 import { LimitationResponseCard } from "@/components/limitations/LimitationResponseCard";
 import { daysBetweenYmd, mondayOfYmd } from "@/lib/dates";
-import { hasAiAccess } from "@/lib/ai/access";
 import { getActiveSeason, getUpcomingAEvents } from "@/lib/seasons/queries";
 import { getMaintenanceFloorContext } from "@/lib/seasons/maintenance-floor-server";
 import { SeasonDiscoveryNudge } from "@/components/seasons/SeasonDiscoveryNudge";
@@ -202,7 +201,7 @@ export default async function PlanPage({
       getPlannedDays(block.id, block.startedOn),
       supabase
         .from("profiles")
-        .select("timezone, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_banner_dismissed_at, byoai_provider, byoai_key_vault_id, byoai_unlocked_at")
+        .select("timezone, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, bw_banner_dismissed_at")
         .eq("id", user.id)
         .maybeSingle(),
       supabase
@@ -223,12 +222,6 @@ export default async function PlanPage({
       : elapsedDays >= block.weeks * 7
         ? block.weeks
         : Math.floor(elapsedDays / 7);
-
-  const aiAccess = hasAiAccess({
-    byoai_provider: profile?.byoai_provider ?? null,
-    byoai_key_vault_id: profile?.byoai_key_vault_id ?? null,
-    byoai_unlocked_at: profile?.byoai_unlocked_at ?? null,
-  });
 
   const view: PlanViewMode =
     seasonEnabled && sp?.view === "season"
@@ -313,7 +306,6 @@ export default async function PlanPage({
       items,
       estDurationMin: dur,
       notes: p.notes,
-      isPreProgrammed: p.prescription?.programRef != null,
       completedSessionId: p.completedSessionId,
     };
   });
@@ -423,7 +415,6 @@ export default async function PlanPage({
         skipAction={skipPlannedSession}
         unskipAction={unskipPlannedSession}
         updateNotesAction={updatePlannedSessionNotes}
-        aiAccess={aiAccess}
         seasonEnabled={seasonEnabled}
         seasonContent={seasonContent}
       />

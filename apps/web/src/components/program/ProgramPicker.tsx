@@ -2190,9 +2190,11 @@ export function ProgramPicker({
         <div className={styles.grid}>
           {[...programs]
             .sort((a, b) => {
-              const ai = CARD_ORDER.indexOf(a.id);
+              const leftIndex = CARD_ORDER.indexOf(a.id);
               const bi = CARD_ORDER.indexOf(b.id);
-              return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+              return (
+                (leftIndex === -1 ? 99 : leftIndex) - (bi === -1 ? 99 : bi)
+              );
             })
             .map((p) => {
             const meta = CARD_META[p.id] ?? { kick: "", code: p.name };

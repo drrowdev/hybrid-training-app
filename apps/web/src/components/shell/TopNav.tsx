@@ -19,6 +19,7 @@
  */
 
 import Link from "next/link";
+import { BrandMark } from "@/components/brand/BrandMark";
 import { usePathname } from "next/navigation";
 import { TopBarRight } from "@/components/shell/TopBarRight";
 
@@ -120,31 +121,7 @@ export function TopNav({
             height: 32,
           }}
         >
-          <span
-            aria-hidden
-            style={{
-              width: 30,
-              height: 30,
-              border: "1.5px solid var(--cp-accent)",
-              borderRadius: 3,
-              transform: "rotate(45deg)",
-              display: "grid",
-              placeItems: "center",
-            }}
-          >
-            <span
-              style={{
-                transform: "rotate(-45deg)",
-                fontFamily: "var(--cp-font-mono)",
-                fontWeight: 700,
-                fontSize: 11,
-                lineHeight: 1,
-                color: "var(--cp-text)",
-              }}
-            >
-              S<span style={{ color: "var(--cp-accent)" }}>×</span>C
-            </span>
-          </span>
+          <BrandMark size={30} />
         </Link>
 
       <nav

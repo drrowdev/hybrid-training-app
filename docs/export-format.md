@@ -1,4 +1,4 @@
-# Data export format (`export-v1`)
+# Data export format (`export-v2`)
 
 The app exposes a one-click data export at **Settings → Account → "Export my
 data (JSON)"**, served by `GET /api/me/export`
@@ -15,8 +15,8 @@ Every export carries two identifiers at the top level:
 
 | Field            | Type    | Meaning                                                        |
 | ---------------- | ------- | ------------------------------------------------------------- |
-| `schema`         | string  | Fixed format identifier: `"hybrid-training-app/export-v1"`.   |
-| `format_version` | integer | Currently `1`. Bumped **only** on a breaking change.          |
+| `schema`         | string  | Fixed format identifier: `"hybrid-training-app/export-v2"`.   |
+| `format_version` | integer | Currently `2`. Bumped **only** on a breaking change.          |
 
 ### Stability contract
 
@@ -39,8 +39,8 @@ covered table is dropped or an excluded (secret/derived) table leaks in.
 
 ```jsonc
 {
-  "schema": "hybrid-training-app/export-v1",
-  "format_version": 1,
+  "schema": "hybrid-training-app/export-v2",
+  "format_version": 2,
   "exported_at": "2026-05-31T12:00:00.000Z",
   "user": { "id": "...", "email": "...", "created_at": "..." },
 
@@ -59,9 +59,6 @@ covered table is dropped or an excluded (secret/derived) table leaks in.
   "limitations": [],
   "limitation_events": [],
   "priority_events": [],
-  "memories": [],
-  "chat_threads": [],
-  "chat_messages": [],
   "bw_progress": [],
   "bw_progression_events": [],
   "prescription_modifications": [],
@@ -70,9 +67,9 @@ covered table is dropped or an excluded (secret/derived) table leaks in.
   "custom_movements": [],
 
   "excluded": {
-    "secrets": ["byoai_key_secrets", "strava_connections"],
+    "secrets": ["strava_connections"],
     "derived": ["tm_suggestions", "region_state_history", "muscle_state_history",
-                "bw_diagnostics_snapshots", "ai_call_logs"],
+                "bw_diagnostics_snapshots"],
     "note": "…"
   },
   "notes": "…"
@@ -87,7 +84,7 @@ user's, never the global catalog.
 
 | Section                      | Source table                 | What it is                                                                 |
 | ---------------------------- | ---------------------------- | -------------------------------------------------------------------------- |
-| `profile`                    | `profiles`                   | The user's profile/settings row (single object or `null`).                 |
+| `profile`                    | `profiles`                   | The user's profile/settings row (single object or `null`). Its legacy notes column is exported as `training_notes`. |
 | `training_maxes`             | `training_maxes`             | Current training max per main lift. Joined to `movement {slug, display_name}`. |
 | `tm_history`                 | `tm_history`                 | Every training-max change over time. Joined to `movement`.                 |
 | `training_blocks`            | `training_blocks`            | Program blocks (archetype, weeks, focus, status). Includes soft-deleted.   |
@@ -100,9 +97,6 @@ user's, never the global catalog.
 | `limitations`                | `limitations`                | Active/historical injury or training limitations.                         |
 | `limitation_events`          | `limitation_events`          | Event log of limitation changes.                                          |
 | `priority_events`            | `priority_events`            | Races / priority events the user is training toward.                      |
-| `memories`                   | `memories`                   | Long-term AI assistant memories the user authored or confirmed.           |
-| `chat_threads`               | `chat_threads`               | In-app AI chat threads.                                                   |
-| `chat_messages`              | `chat_messages`              | Messages within those threads.                                            |
 | `bw_progress`                | `bw_progress`                | Bodyweight-movement progression state.                                    |
 | `bw_progression_events`      | `bw_progression_events`      | Event log of bodyweight-progression changes.                              |
 | `prescription_modifications` | `prescription_modifications` | User edits to engine-prescribed work.                                     |
@@ -128,11 +122,7 @@ self-describing.
 Exporting these would defeat at-rest encryption, so they never leave their
 subsystem:
 
-- `byoai_key_secrets` — encrypted BYOAI API-key ciphertext.
 - `strava_connections` — Strava OAuth access/refresh tokens.
-
-> `profile` does include an **opaque pointer** to the BYOAI secret store, which
-> is not itself a secret and cannot be used to recover a key.
 
 ### Derived / recomputable (omitted for clarity)
 
@@ -143,7 +133,6 @@ omitted to keep the export to first-class user data:
 - `region_state_history`
 - `muscle_state_history`
 - `bw_diagnostics_snapshots`
-- `ai_call_logs`
 
 ### Not personal data
 
@@ -153,7 +142,7 @@ omitted to keep the export to first-class user data:
 
 ## Round-trip / import note
 
-`export-v1` is designed to be re-importable: portable movement slugs, complete
+`export-v2` is designed to be re-importable: portable movement slugs, complete
 authored history, and a stable additive contract. A concrete import feature is
 **parked** (see the data-portability plan) until there's a real third-party
 fixture to target, but any import path must treat this format as its canonical

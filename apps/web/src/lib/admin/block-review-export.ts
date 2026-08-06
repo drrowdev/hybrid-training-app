@@ -3,8 +3,8 @@
  *
  * Takes a fully-assembled `BlockReviewData` snapshot (gathered by
  * `block-review-loader.ts`) and emits a single self-contained markdown
- * document intended to be pasted into an external deep-research AI tool
- * for an objective, critical review of a generated training block.
+ * document intended for an objective, critical review of a generated
+ * training block.
  *
  * The document leads with a REVIEW RUBRIC (the questions the external
  * reviewer should answer), then the full athlete context, the block

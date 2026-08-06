@@ -2,14 +2,13 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
-**Last updated:** 2026-06-16 (post settings-review + cardio/HR-zone fidelity cycle — ADRs 0007–0050; migrations through 0109; test count 3945 web)
+**Last updated:** 2026-08-06 (AI/MCP retirement + compact S×C mark; migrations through 0121)
 
 ## Where we are
 
 **Phase:** Production. Beyond Phase 1. The app (consumer brand **S×C**,
 live at <https://getsxc.app>) is multi-user, has a full mobile UX,
-end-to-end Strava integration (OAuth + webhook + history import), a first
-AI surface (Explain v1) plus an MCP server for external clients, and a
+end-to-end Strava integration (OAuth + webhook + history import) and a
 science-grounded prescription engine. **Programs, not archetypes:** the
 user picks a program — 5/3/1, Tactical Barbell, Green Protocol, HYROX, or
 **Hybrid** (the build-your-own concurrent generator) — via the program
@@ -26,10 +25,9 @@ just one program among equals). The wizard owns block-scoped inputs
   `/app/stats`, `/app/recovery` (Limitations live at
   `/app/recovery/injuries`), `/app/races`, `/app/profile`
 - Settings hub: `/app/settings` — route tiles including
-  `/app/settings/integrations` (Strava + AI), `/app/settings/equipment`,
+  `/app/settings/integrations` (Strava), `/app/settings/equipment`,
   `/app/settings/hr-zones`, `/app/settings/profile`, `/app/settings/events`,
   `/app/settings/preferences`, `/app/settings/training`, …
-- MCP endpoint: `/mcp` (Streamable HTTP, OAuth 2.1 bridge)
 - Strava webhook: `/api/integrations/strava/webhook`
 - Privacy / Terms: `/privacy`, `/terms`
 
@@ -48,10 +46,6 @@ just one program among equals). The wizard owns block-scoped inputs
   `subscription_id` doesn't match. Re-subscribe with
   `pnpm --filter @hta/web run strava:subscribe`; list with
   `pnpm --filter @hta/web run strava:list-subscriptions`.
-- AI providers (BYOAI): user-supplied keys for Anthropic / OpenAI /
-  Gemini stored in the pgcrypto vault keyed by `AI_KEY_ENCRYPTION_KEY`.
-  MCP bearer tokens + auth codes signed by `MCP_TOKEN_SIGNING_KEY`
-  (HMAC, ≥ 32 chars).
 
 ## Since 2026-05-21 (last doc refresh)
 
@@ -59,10 +53,10 @@ just one program among equals). The wizard owns block-scoped inputs
 the bullet-level breakdown and `docs/knowledge/log.md` for the
 chronological narrative.
 
-- **AI architecture landed (ADRs 0002 + 0003).** BYOAI in-app chat with
-  Anthropic / OpenAI / Gemini providers; MCP server at `/mcp` with
-  OAuth 2.1 bridge; 8-tool catalogue shared by chat + MCP; orchestrator
-  v2 routes the in-app chat through the same tools.
+- **AI and MCP retired (August 2026).** All chat controls, provider settings,
+  API/MCP routes, SDKs, stored credentials, chat history, assistant memories,
+  observability tables, and OAuth metadata were removed. Migration 0121
+  performs the database cleanup.
 - **Strava end-to-end.** Push-subscription webhook with idempotent
   dedup, single-activity sync, historical import, onboarding step,
   3-state autofill banner that locks the form after apply so the user
@@ -84,10 +78,9 @@ chronological narrative.
   follow-up swept Quick-cardio UX (inline duration chips, single
   `+ Add to workout`, edit page in min + min:sec/km, Strava-readonly
   + prescription-only edit views).
-- **Settings reorg.** `/app/settings/integrations` sub-hub (Strava +
-  AI consolidated); plain-language HR-zone method labels; Cancel
-  workout button on empty in-progress sessions; AI master opt-in
-  switch dropped in favour of per-provider cards.
+- **Settings reorg.** `/app/settings/integrations` is now Strava-only;
+  plain-language HR-zone method labels; Cancel workout button on empty
+  in-progress sessions.
 - **Limitations v2 lifecycle.** Bilateral side + muscle-level filter +
   per-exercise allow + Today banner.
 - **Taper + recovery lifecycle (ADR 0008 / PR #219).** Opt-in banners
@@ -237,19 +230,10 @@ breakdown and `docs/adr/0020`–`0050` for decisions. Highlights:
 - **E2E RPC smoke tests are gated by the Supabase free-tier 2-project
   cap.** CI runs them against a disposable project; locally,
   contributors need to spin up their own or skip.
-- **AI roadmap parking lot.** Items #11 (Training Profile), #12
-  (calendar view modes) — partially shipped under different PR
-  numbers; the parking-lot file
-  (`docs/knowledge/ai-roadmap.md`) should be re-audited next cycle.
-- **Anti-abuse / cost controls on BYOAI.** Provider keys are user-
-  supplied so usage cost lands on the user, but we still need per-user
-  rate-limit telemetry on the orchestrator to surface runaway loops.
 - **Dial magnitudes are CP-1 Stage-A heuristics (ADR 0016).** The
   ±1 set / +4 early-rep / ±1 RIR numbers in `effort-preference.ts` are
   directional, not data-calibrated — revisit once `effort_preference` ×
   outcome rows exist.
-- **BYOAI model picker (parked PR #192).** Merge-or-close decision
-  pending MCP-vs-BYOAI usage data.
 - **Wheelchair / Handcycle / Snowboard Strava cardio mapping.** Explicit
   accessibility gap, deferred by owner choice.
 
@@ -257,8 +241,7 @@ breakdown and `docs/adr/0020`–`0050` for decisions. Highlights:
 
 - `apps/web/.env.local` — Supabase URL + publishable key + service-role
   key + `DATABASE_URL` (transaction pooler) + `NEXT_PUBLIC_SITE_URL` +
-  `AI_KEY_ENCRYPTION_KEY` + `MCP_TOKEN_SIGNING_KEY` + Strava
-  credentials (`STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`,
+  Strava credentials (`STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`,
   `STRAVA_WEBHOOK_VERIFY_TOKEN`, `STRAVA_WEBHOOK_CALLBACK_URL`,
   `STRAVA_WEBHOOK_SUBSCRIPTION_ID`).
 - `packages/db/.env.local` — `DATABASE_URL` (session pooler for

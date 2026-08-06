@@ -75,9 +75,6 @@ import {
 import { estimateSessionMinutes } from "@/lib/sessions/estimate-duration";
 import { ThisWeekRail } from "@/components/plan/ThisWeekRail";
 import type { PlanSessionInput } from "@/components/plan/PlanRedesign";
-import { hasAiAccess } from "@/lib/ai/access";
-import { AskWhyButton } from "@/components/session/AskWhyButton";
-import { askWhySessionId } from "@/lib/sessions/ask-why";
 import { isTodayFullyLogged } from "@/lib/sessions/today-hero";
 import {
   groupByMovementThenKind,
@@ -94,16 +91,10 @@ export default async function TodayPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "display_name, timezone, am_window_start, pm_window_start, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, time_format, date_format, bw_nudge_hidden_until, bw_banner_dismissed_at, byoai_provider, byoai_key_vault_id, byoai_unlocked_at, units, season_planning_enabled",
+      "display_name, timezone, am_window_start, pm_window_start, equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, time_format, date_format, bw_nudge_hidden_until, bw_banner_dismissed_at, units, season_planning_enabled",
     )
     .eq("id", userId)
     .maybeSingle();
-
-  const aiAccess = hasAiAccess({
-    byoai_provider: profile?.byoai_provider ?? null,
-    byoai_key_vault_id: profile?.byoai_key_vault_id ?? null,
-    byoai_unlocked_at: profile?.byoai_unlocked_at ?? null,
-  });
 
   const todayIso = todayYmd(profile?.timezone ?? "UTC");
 
@@ -572,7 +563,6 @@ export default async function TodayPage() {
       items,
       estDurationMin: estimateSessionMinutes(items),
       notes: p.notes,
-      isPreProgrammed: p.prescription?.programRef != null,
       completedSessionId: p.completedSessionId,
     };
   });
@@ -737,7 +727,6 @@ export default async function TodayPage() {
               nextUpcoming={upcoming[0] ?? null}
               formatProfile={formatProfile}
               programRecs={programRecs}
-              aiAccess={aiAccess}
             />
 
             <QuickWorkoutCard
@@ -954,7 +943,6 @@ function TodaySessionCard({
   nextUpcoming,
   formatProfile,
   programRecs,
-  aiAccess,
 }: {
   openSession: { id: string; title: string | null } | null;
   completedToday: { id: string; title: string | null }[];
@@ -967,7 +955,6 @@ function TodaySessionCard({
   nextUpcoming: PlannedDay | null;
   formatProfile: ProfileForFormat;
   programRecs: PendingProgramRecommendation[];
-  aiAccess: boolean;
 }) {
   // Platform programs: program-owned nudges (retest maxes, next block, 7th-week
   // verdict). Informational; dismiss-only. No-op for archetype blocks.
@@ -1285,7 +1272,6 @@ function TodaySessionCard({
                 isTwoADay={isTwoADay}
                 timeOfDay={slotTimes.get(p.slot) ?? null}
                 conflict={conflictsBySlot.get(p.id) ?? null}
-                aiAccess={aiAccess}
               />
             </div>
           );
@@ -1300,13 +1286,11 @@ function PlannedSessionCard({
   isTwoADay,
   timeOfDay,
   conflict,
-  aiAccess,
 }: {
   planned: PlannedDay;
   isTwoADay: boolean;
   timeOfDay: string | null;
   conflict: FreshnessConflict | null;
-  aiAccess: boolean;
 }) {
   const slotLabel =
     planned.slot === "am" ? "Morning" : planned.slot === "pm" ? "Evening" : "Today's session";
@@ -1523,12 +1507,6 @@ function PlannedSessionCard({
         >
           Preview
         </Link>
-        {!planned.prescription?.programRef &&
-          (aiAccess ? (
-            <AskWhyButton sessionId={askWhySessionId(planned)} />
-          ) : (
-            <AskWhyButton href="/app/settings/ai" />
-          ))}
       </div>
     </section>
   );

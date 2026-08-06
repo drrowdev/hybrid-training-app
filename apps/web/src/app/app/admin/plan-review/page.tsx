@@ -38,8 +38,8 @@ export default async function AdminPlanReviewPage({
         Admin-only. Exports a self-contained markdown document for the{" "}
         {blockId ? "specified" : "active"} block — full athlete context, the
         archetype&rsquo;s intended design, and the complete week-by-week
-        prescription — with a review rubric on top, ready to paste into a
-        deep-research AI tool for an objective quality review.
+        prescription — with a review rubric on top, ready for an objective
+        quality review.
       </p>
 
       {data ? (

@@ -420,3 +420,7 @@ Activation edit cards now derive their visible Strength/Conditioning ordinal fro
 
 ## [2026-08-06] refine | Keep customized workout cards in calendar order
 Activation phase session cards now render in selected weekday order. An occupied-day swap therefore moves both workout cards to their new visual positions immediately, while stable A1/B1 prescription identity and all persisted customization data remain unchanged.
+
+
+## [2026-08-06] remove | Retire AI and unify launch branding
+Removed the in-app chat, session explanation/review controls, provider settings, API and MCP routes, model SDKs, eval/tooling code, and their tests. Migration 0121 deletes provider credentials, chat history, assistant memories, observability and authorization metadata, and provider profile fields; the retained user-owned notes field is presented only as Training notes and exported under training_notes. The compact SxC diamond mark now drives landing/login, favicon, PWA/native icons and splash screens, and social metadata; the expanded descriptor and legacy wordmark assets are retired.

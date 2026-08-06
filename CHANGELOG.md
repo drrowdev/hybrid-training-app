@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### AI retirement + unified compact launch branding
+- Removed all in-app AI controls, chat surfaces, provider settings, API/MCP
+  routes, model SDKs, evaluation/tooling code, and AI-specific tests.
+- Migration 0121 deletes stored provider credentials, chat history, assistant
+  memories, observability rows, MCP authorization metadata, and profile fields.
+- Replaced the legacy oversized landing/login treatment and all baked app-icon,
+  PWA/native splash, and social assets with the compact S×C diamond mark.
+
 ### Native-feel pass — Phase 1h: Plan header + Strava banner typography
 - Extends the de-"terminal" typography sweep to the **Plan** page header (the second
   main screen): the uppercase stencil "PLAN" heading becomes a clean bold sans "Plan",

@@ -237,10 +237,10 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     body:
       "An average taken over a moving window (the most recent N days) rather than across the whole history. Smooths daily fluctuations to surface the trend underneath. We use a 7-day window for bodyweight so a single big-meal day doesn't move the line.",
   },
-  ai_notes: {
+  training_notes: {
     title: "Training notes",
     body:
-      "A free-text field where you can record what works for you and the engine can later annotate patterns it notices. Right now you own this entirely — write whatever helps you read your own training.",
+      "A free-text field where you can record what works for you. You own this entirely — write whatever helps you read your own training.",
   },
   decision_trace: {
     title: "Decision trace",

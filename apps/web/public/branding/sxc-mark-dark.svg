@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect
+    x="106"
+    y="106"
+    width="300"
+    height="300"
+    rx="20"
+    fill="none"
+    stroke="#8FB39B"
+    stroke-width="8"
+    transform="rotate(45 256 256)"
+  />
+  <text
+    x="256"
+    y="282"
+    text-anchor="middle"
+    font-family="Consolas, Courier New, monospace"
+    font-size="92"
+    font-weight="700"
+    fill="#F4F3F1"
+  >S<tspan fill="#8FB39B">×</tspan>C</text>
+</svg>

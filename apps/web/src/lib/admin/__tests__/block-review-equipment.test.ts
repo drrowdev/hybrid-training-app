@@ -1,6 +1,6 @@
 /**
  * Unit coverage for `summariseEquipment` — the equipment line surfaced to the
- * external AI reviewer. Regression guard for the recurring false-positive where
+ * external reviewer. Regression guard for the recurring false-positive where
  * the reviewer flagged band-based prehab (Monster Walk etc.) as an "equipment
  * mismatch" because the nested `accessories` object (bands / rings / pull-up
  * bar / dip belt) was omitted from the summary entirely.

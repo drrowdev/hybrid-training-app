@@ -28,7 +28,7 @@ const STATE_LABEL: Record<CellState, string> = {
   empty: "No session",
   strength: "Strength",
   cardio: "Cardio",
-  both: "Strength + Cardio",
+  both: "Strength and cardio",
   rest: "Rest",
   missed: "Missed",
 };

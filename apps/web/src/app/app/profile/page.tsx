@@ -21,12 +21,12 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { MetricHelp } from "@/components/ui/MetricHelp";
 import { TrainingMaxesCard } from "@/components/today/TrainingMaxesCard";
 import { DisplayNameEditor } from "@/components/profile/DisplayNameEditor";
-import { AiNotesEditor } from "@/components/profile/AiNotesEditor";
+import { TrainingNotesEditor } from "@/components/profile/TrainingNotesEditor";
 import { BodyweightLogger } from "@/components/profile/BodyweightLogger";
 import { BodyweightSparkline } from "@/components/profile/BodyweightSparkline";
 import { PreferencesEditor } from "@/components/profile/PreferencesEditor";
 import {
-  updateAiNotes,
+  updateTrainingNotes,
   updateDisplayName,
   updatePreferences,
 } from "@/lib/profile/actions";
@@ -137,8 +137,8 @@ export default async function TrainingProfilePage() {
   const pmWindowStart = ((profile?.pm_window_start as string | null) ?? "17:00").slice(0, 5);
   const gender = (profile?.gender as "male" | "female" | null) ?? null;
   const trainingExperience = (profile?.training_experience as string | null) ?? null;
-  const aiNotes = (profile?.ai_notes as string | null) ?? "";
-  const aiNotesUpdatedAt = (profile?.updated_at as string | null) ?? null;
+  const trainingNotes = (profile?.ai_notes as string | null) ?? "";
+  const trainingNotesUpdatedAt = (profile?.updated_at as string | null) ?? null;
 
   const initials = initialsFrom(displayName, email);
   const memberSince = memberSinceIso ? memberSincePhrase(memberSinceIso) : null;
@@ -491,19 +491,19 @@ export default async function TrainingProfilePage() {
             )}
           </section>
 
-          {/* 5. AI notes */}
+          {/* 5. Training notes */}
           <section
-            data-testid="profile-ai-notes"
+            data-testid="profile-training-notes"
             className="cp-card"
             style={{ padding: 20, display: "grid", gap: 12 }}
           >
-            <SectionHeader title="Training notes" termId="ai_notes" />
-            <AiNotesEditor
-              initialValue={aiNotes}
-              action={updateAiNotes}
+            <SectionHeader title="Training notes" termId="training_notes" />
+            <TrainingNotesEditor
+              initialValue={trainingNotes}
+              action={updateTrainingNotes}
               lastUpdatedLabel={
-                aiNotes && aiNotesUpdatedAt
-                  ? `Last updated ${shortRelative(aiNotesUpdatedAt)}`
+                trainingNotes && trainingNotesUpdatedAt
+                  ? `Last updated ${shortRelative(trainingNotesUpdatedAt)}`
                   : null
               }
             />

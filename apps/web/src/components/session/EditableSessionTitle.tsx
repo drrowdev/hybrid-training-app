@@ -4,8 +4,8 @@
  * Inline-editable workout title. Renders the title as a heading with a
  * small "Rename" affordance; clicking swaps to a text input that saves
  * via the `updateSessionTitle` server action and calls
- * `router.refresh()` so the new name propagates (header, lists, AI
- * context). Optimistic: the heading updates immediately on save.
+ * `router.refresh()` so the new name propagates through headers and lists.
+ * Optimistic: the heading updates immediately on save.
  *
  * Titles are user-facing labels only — the DB/route key is the session
  * id — so renaming never affects anything but the displayed name.

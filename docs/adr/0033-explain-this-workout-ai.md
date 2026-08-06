@@ -1,6 +1,6 @@
 # ADR 0033 — "Explain this workout" conversational AI (session-grounded)
 
-Status: Accepted (2026-06-06)
+Status: Retired (2026-08-06) — implementation removed by migration 0121
 Supersedes: none
 Related: ADR 0002 (in-app AI chat + eval harness), ADR 0003 (MCP server + tool
 catalogue); the per-accessory deterministic rationale (PR #333,

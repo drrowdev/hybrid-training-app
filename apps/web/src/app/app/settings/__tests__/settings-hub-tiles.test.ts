@@ -2,9 +2,8 @@
  * Settings hub structural contract.
  *
  * Asserts at source-text level that the top-level Settings page mounts
- * the new Integrations tile and no longer mounts the old top-level AI
- * tile (Strava lives under the Integrations sub-hub, never had its own
- * top-level tile). The Integrations sub-hub at
+ * the Integrations tile. Strava lives under the Integrations sub-hub and
+ * never had its own top-level tile. The Integrations sub-hub at
  * /app/settings/integrations is exercised separately in its own
  * `__tests__/page.test.tsx`.
  *
@@ -30,9 +29,10 @@ describe("settings hub — tile contract", () => {
     expect(source).toContain('href="/app/settings/integrations"');
   });
 
-  it("no longer mounts the old top-level AI tile", () => {
+  it("does not expose a retired AI settings tile", () => {
     expect(source).not.toContain('testId="settings-hub-ai"');
     expect(source).not.toMatch(/href="\/app\/settings\/ai"/);
+    expect(source).not.toContain("AI providers");
   });
 
   it("no longer mounts a top-level Strava tile", () => {
