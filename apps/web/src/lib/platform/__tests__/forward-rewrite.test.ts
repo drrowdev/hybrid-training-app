@@ -21,6 +21,7 @@ describe("planForwardOnlyRewrite", () => {
 
     const plan = planForwardOnlyRewrite({
       currentWeekIndex: 1,
+      currentDayIndex: 6,
       writeWeeks: 4,
       existingFuture,
       newSessions,
@@ -46,6 +47,7 @@ describe("planForwardOnlyRewrite", () => {
 
     const plan = planForwardOnlyRewrite({
       currentWeekIndex: 0,
+      currentDayIndex: 6,
       writeWeeks: 2,
       existingFuture,
       newSessions,
@@ -68,6 +70,7 @@ describe("planForwardOnlyRewrite", () => {
 
     const plan = planForwardOnlyRewrite({
       currentWeekIndex: 1,
+      currentDayIndex: 6,
       writeWeeks: 3,
       existingFuture,
       newSessions,
@@ -82,11 +85,94 @@ describe("planForwardOnlyRewrite", () => {
 
   it("extends newWeeks when the new plan is longer, and never shrinks below the current week", () => {
     expect(
-      planForwardOnlyRewrite({ currentWeekIndex: 1, writeWeeks: 6, existingFuture: [], newSessions: [] }).newWeeks,
+      planForwardOnlyRewrite({ currentWeekIndex: 1, currentDayIndex: 6, writeWeeks: 6, existingFuture: [], newSessions: [] }).newWeeks,
     ).toBe(6);
     // A shorter new plan can't erase elapsed weeks.
     expect(
-      planForwardOnlyRewrite({ currentWeekIndex: 5, writeWeeks: 3, existingFuture: [], newSessions: [] }).newWeeks,
+      planForwardOnlyRewrite({ currentWeekIndex: 5, currentDayIndex: 6, writeWeeks: 3, existingFuture: [], newSessions: [] }).newWeeks,
     ).toBe(6);
+  });
+
+  it("regenerates untouched sessions later in the current week", () => {
+    const newSessions: NewSessionLite[] = [
+      ...strengthWeek(1, [0, 3, 5]),
+      ...strengthWeek(2, [0, 3, 5]),
+    ];
+    const existingFuture: ExistingFutureRow[] = [
+      { id: "past", weekIndex: 1, dayIndex: 0, slot: "single", touched: false },
+      { id: "today", weekIndex: 1, dayIndex: 2, slot: "single", touched: false },
+      { id: "later-a", weekIndex: 1, dayIndex: 4, slot: "single", touched: false },
+      { id: "later-b", weekIndex: 1, dayIndex: 6, slot: "single", touched: false },
+      { id: "next", weekIndex: 2, dayIndex: 0, slot: "single", touched: false },
+    ];
+
+    const plan = planForwardOnlyRewrite({
+      currentWeekIndex: 1,
+      currentDayIndex: 2,
+      writeWeeks: 3,
+      existingFuture,
+      newSessions,
+    });
+
+    expect(plan.deleteIds.sort()).toEqual(["later-a", "later-b", "next"]);
+    const inserted = plan.insertIndices.map((index) => newSessions[index]!);
+    expect(inserted).toEqual([
+      { weekIndex: 1, dayIndex: 3, slot: "single" },
+      { weekIndex: 1, dayIndex: 5, slot: "single" },
+      { weekIndex: 2, dayIndex: 0, slot: "single" },
+      { weekIndex: 2, dayIndex: 3, slot: "single" },
+      { weekIndex: 2, dayIndex: 5, slot: "single" },
+    ]);
+  });
+
+  it("preserves a touched upcoming session in the current week", () => {
+    const newSessions = strengthWeek(0, [4, 6]);
+    const plan = planForwardOnlyRewrite({
+      currentWeekIndex: 0,
+      currentDayIndex: 2,
+      writeWeeks: 1,
+      existingFuture: [
+        {
+          id: "started-friday",
+          weekIndex: 0,
+          dayIndex: 4,
+          slot: "single",
+          touched: true,
+        },
+        {
+          id: "open-sunday",
+          weekIndex: 0,
+          dayIndex: 6,
+          slot: "single",
+          touched: false,
+        },
+      ],
+      newSessions,
+    });
+    expect(plan.deleteIds).toEqual(["open-sunday"]);
+    expect(
+      plan.insertIndices.map((index) => newSessions[index]!.dayIndex),
+    ).toEqual([6]);
+  });
+
+  it("rewrites week zero when the block has not started yet", () => {
+    const newSessions = strengthWeek(0, [1, 3, 5]);
+    const plan = planForwardOnlyRewrite({
+      currentWeekIndex: 0,
+      currentDayIndex: -1,
+      writeWeeks: 1,
+      existingFuture: [
+        {
+          id: "old",
+          weekIndex: 0,
+          dayIndex: 0,
+          slot: "single",
+          touched: false,
+        },
+      ],
+      newSessions,
+    });
+    expect(plan.deleteIds).toEqual(["old"]);
+    expect(plan.insertIndices).toEqual([0, 1, 2]);
   });
 });

@@ -970,7 +970,7 @@ export function ProgramPicker({
 
   // Edit mode: re-enter the wizard for an active plan. Behaves like a locked
   // preselect — start on Loadout, program fixed, schedule/loadout prefilled from
-  // the live block. Changes apply forward-only (past + current week stay logged).
+  // the live block. Changes apply only to untouched sessions after today.
   const editProgram = editContext
     ? programs.find((p) => p.id === editContext.programId) ?? null
     : null;
@@ -3471,7 +3471,7 @@ export function ProgramPicker({
           />
           <div className={styles.note} style={{ marginTop: 6 }}>
             {isEditing
-              ? "Your start date stays fixed — edits apply to upcoming weeks only."
+              ? "Your start date stays fixed — edits apply to untouched workouts after today, including later this week."
               : "Programs run in full weeks, so we start on a Monday by default."}
           </div>
           {selected?.id === "hyrox" ? (
@@ -3933,8 +3933,9 @@ export function ProgramPicker({
             borderColor: "var(--cp-border)",
           }}
         >
-          Editing your active {editProgram?.name ?? "plan"}. Changes apply to upcoming weeks —
-          this week and everything you&rsquo;ve already logged stay as they are.
+          Editing your active {editProgram?.name ?? "plan"}. Past, today, and
+          anything already started or skipped stay unchanged; open workouts
+          after today can be regenerated.
         </div>
       )}
 

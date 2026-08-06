@@ -404,3 +404,7 @@ Season now behaves as the third local Plan view alongside Program and Calendar w
 
 ## [2026-08-06] refine | Add phase-aware customized Activation
 Activation can now run as Tactical Barbell - Customized without weakening the canonical 25-week program. A version-2 overlay gives Base, Armor, Operator and Vertex independent session placement, optional conditioning, open-day rehab and canonical movement-slot removal or compatible replacement; each replacement inherits the source slot's main/supplemental/core rules while loading from its own benchmark. Protected test/peak weeks remain engine-owned and accept only unambiguous derived mappings. Start-point and forward-edit boundaries lock irrelevant/past phases, active limitations evaluate every effective work and milestone movement, and canonical/identity overlays remain byte-identical. The existing positive customization marker supports v2 without a database migration.
+
+
+## [2026-08-06] refine | Regenerate untouched workouts later in the current week
+Forward Edit program now freezes calendar slots through today instead of freezing the entire current week. Completed, started and skipped sessions remain immutable anywhere in the plan, while untouched sessions after today can be deleted and regenerated even when they fall later in the same week; pre-start blocks can still regenerate week zero. The reconciliation remains collision-safe against preserved slots and keeps the same block, program instance, history links and completed-session statistics.
