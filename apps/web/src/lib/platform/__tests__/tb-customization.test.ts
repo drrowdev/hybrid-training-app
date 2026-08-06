@@ -110,4 +110,32 @@ describe("Tactical Barbell customization contract", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("requires authoritative metadata for catalog-backed exercises", () => {
+    expect(
+      tbCustomizationSchema.safeParse({
+        ...activation,
+        phases: {
+          ...activation.phases,
+          armor: {
+            sessions: {
+              "activation.armor.armor-a1": {
+                day: 0,
+                enabled: true,
+                movementOverrides: {
+                  squat: {
+                    movement:
+                      "catalog:00000000-0000-4000-8000-000000000010",
+                    movementId:
+                      "00000000-0000-4000-8000-000000000010",
+                  },
+                },
+              },
+            },
+            rehabDays: [],
+          },
+        },
+      }).success,
+    ).toBe(false);
+  });
 });

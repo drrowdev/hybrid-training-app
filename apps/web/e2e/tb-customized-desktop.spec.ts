@@ -99,19 +99,46 @@ test("creates and restores a phase-aware customized Activation plan", async ({
   await expect(base).toBeVisible();
   await page.getByLabel("Base circuit 1 weekday").selectOption("6");
   await page
-    .getByLabel("Base circuit 1 Goblet Squat")
-    .selectOption("");
+    .getByTestId(
+      "activation-movement-activation.base.base-1-goblet-squat",
+    )
+    .getByRole("button", { name: "Remove" })
+    .click();
   await page
     .getByTestId("activation-session-activation.base.base-lss-3")
     .getByRole("checkbox")
     .uncheck();
-  await base.getByRole("button", { name: "Mon", exact: true }).click();
-  await page.getByTestId("activation-phase-operator").locator("summary").click();
-  await page.getByLabel("Operator D1 Squat").selectOption("deadlift");
-  await page.getByLabel("Operator D2 Squat").selectOption("deadlift");
+  const armor = page.getByTestId("activation-phase-armor");
+  await armor.locator(":scope > summary").click();
+  const armorSquat = page.getByTestId(
+    "activation-movement-activation.armor.armor-a1-squat",
+  );
+  await armorSquat.getByText("Change", { exact: true }).click();
+  await armorSquat
+    .getByLabel("Search the exercise library")
+    .fill("Belt Squat");
+  await armorSquat.getByRole("button", { name: /Belt Squat/ }).click();
+  await armor.getByRole("button", { name: "Tue +", exact: true }).click();
+  await page
+    .getByTestId("activation-phase-operator")
+    .locator(":scope > summary")
+    .click();
+  for (const session of ["operator-d1", "operator-d2"]) {
+    const row = page.getByTestId(
+      `activation-movement-activation.operator.${session}-squat`,
+    );
+    await row.getByText("Change", { exact: true }).click();
+    await row.getByLabel("Search the exercise library").fill("Deadlift");
+    await row
+      .getByRole("button", { name: /Conventional Deadlift/ })
+      .click();
+  }
   await page.getByRole("button", { name: "Add rehab movement" }).click();
+  await page
+    .getByLabel("Instructions for rehab movement 1")
+    .fill("Slow and pain-free, as prescribed by physio.");
   await expect(
-    page.getByText("3 strength · 2 conditioning · 1 rehab · 1 rest"),
+    page.getByText("3 strength · 2 conditioning · 0 rehab · 2 rest"),
   ).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -139,6 +166,9 @@ test("creates and restores a phase-aware customized Activation plan", async ({
   const setupInput = programInstance!.setup_input as {
     customization?: {
       version?: number;
+      rehab?: {
+        items?: Array<{ instructions?: string }>;
+      };
       phases?: {
         base?: {
           rehabDays?: number[];
@@ -151,14 +181,28 @@ test("creates and restores a phase-aware customized Activation plan", async ({
             }
           >;
         };
+        armor?: {
+          rehabDays?: number[];
+          sessions?: Record<
+            string,
+            { movementOverrides?: Record<string, unknown> }
+          >;
+        };
       };
     };
   };
   expect(setupInput.customization).toMatchObject({
     version: 2,
+    rehab: {
+      items: [
+        {
+          instructions: "Slow and pain-free, as prescribed by physio.",
+        },
+      ],
+    },
     phases: {
       base: {
-        rehabDays: [0],
+        rehabDays: [],
         sessions: {
           "activation.base.base-1": {
             day: 6,
@@ -167,12 +211,25 @@ test("creates and restores a phase-aware customized Activation plan", async ({
           "activation.base.base-lss-3": { enabled: false },
         },
       },
+      armor: {
+        rehabDays: [1],
+        sessions: {
+          "activation.armor.armor-a1": {
+            movementOverrides: {
+              squat: {
+                slug: "belt-squat",
+                displayName: "Belt Squat",
+              },
+            },
+          },
+        },
+      },
     },
   });
 
   const { data: sessions, error: sessionsError } = await admin
     .from("planned_sessions")
-    .select("id, week_index, day_index, role, prescription, completed_session_id")
+    .select("id, week_index, day_index, slot, role, prescription, completed_session_id")
     .eq("block_id", programInstance!.block_id);
   expect(sessionsError).toBeNull();
   const weekOne = sessions!.filter((session) => session.week_index === 0);
@@ -191,9 +248,7 @@ test("creates and restores a phase-aware customized Activation plan", async ({
       ),
     ),
   ).toBe(false);
-  expect(
-    weekOne.find((session) => session.role === "rehab")?.day_index,
-  ).toBe(0);
+  expect(weekOne.some((session) => session.role === "rehab")).toBe(false);
   const baseOne = weekOne.find((session) =>
     (session.prescription as { programRef?: string }).programRef?.endsWith(
       "base-1",
@@ -206,6 +261,36 @@ test("creates and restores a phase-aware customized Activation plan", async ({
       }
     ).items?.some((item) => item.movementName === "Goblet Squat"),
   ).toBe(false);
+  const armorWeek = sessions!.filter((session) => session.week_index === 5);
+  expect(
+    armorWeek.filter((session) => session.day_index === 1).map(
+      (session) => [session.role, session.slot],
+    ),
+  ).toEqual(
+    expect.arrayContaining([
+      ["strength", "single"],
+      ["rehab", "pm"],
+    ]),
+  );
+  const armorA1 = armorWeek.find((session) =>
+    (session.prescription as { programRef?: string }).programRef?.endsWith(
+      "armor-a1",
+    ),
+  )!;
+  const beltSquat = (
+    armorA1.prescription as {
+      items?: Array<{
+        movementName?: string;
+        percentTm?: number;
+        targetWeightKg?: number;
+      }>;
+    }
+  ).items?.find((item) => item.movementName === "Belt Squat");
+  expect(beltSquat).toMatchObject({
+    movementName: "Belt Squat",
+  });
+  expect(beltSquat?.percentTm).toBeUndefined();
+  expect(beltSquat?.targetWeightKg).toBeUndefined();
   expect(
     sessions!.some(
       (session) => session.week_index === 4 && session.role === "rehab",
@@ -225,7 +310,7 @@ test("creates and restores a phase-aware customized Activation plan", async ({
   ).items
     ?.filter((item) => item.kind === "main")
     .map((item) => item.movementName);
-  expect(mappedPeakNames?.[0]).toBe("Deadlift");
+  expect(mappedPeakNames?.[0]).toBe("Conventional Deadlift");
   expect(mappedPeakNames).not.toContain("Squat");
 
   const completedPlanned = sessions!.find(
@@ -261,8 +346,28 @@ test("creates and restores a phase-aware customized Activation plan", async ({
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByLabel("Base circuit 1 weekday")).toHaveValue("6");
   await expect(
-    page.getByLabel("Base circuit 1 Goblet Squat"),
-  ).toHaveValue("");
+    page
+      .getByTestId(
+        "activation-movement-activation.base.base-1-goblet-squat",
+      )
+      .getByText("Removed"),
+  ).toBeVisible();
+  await page
+    .getByTestId("activation-phase-armor")
+    .locator(":scope > summary")
+    .click();
+  await expect(
+    page
+      .getByTestId(
+        "activation-movement-activation.armor.armor-a1-squat",
+      )
+      .getByText("Belt Squat"),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByTestId("activation-phase-armor")
+      .getByRole("button", { name: "Tue +", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await expect(
     page
       .getByTestId("activation-session-activation.base.base-lss-3")
@@ -271,11 +376,15 @@ test("creates and restores a phase-aware customized Activation plan", async ({
   await page.getByLabel("Base circuit 1 weekday").selectOption("5");
   await page
     .getByTestId("activation-phase-operator")
-    .locator("summary")
+    .locator(":scope > summary")
     .click();
-  await expect(page.getByLabel("Operator D1 Squat")).toHaveValue(
-    "deadlift",
-  );
+  await expect(
+    page
+      .getByTestId(
+        "activation-movement-activation.operator.operator-d1-squat",
+      )
+      .getByText("Conventional Deadlift"),
+  ).toBeVisible();
   await page.getByLabel("Operator D3 weekday").selectOption("6");
   await page.getByRole("button", { name: "Save changes" }).click();
   await page.waitForURL("**/app/plan", { timeout: 30_000 });

@@ -29,7 +29,11 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { ARCHETYPES } from "@/lib/planner/archetypes";
 import type { HybridInstance } from "@/lib/programs/hybrid/engine";
 import { resolveHybridTmPercent } from "@/lib/programs/hybrid/engine";
-import { buildPlatformContext } from "./context";
+import {
+  buildPlatformContext,
+  validateCustomMovementBindings,
+} from "./context";
+import type { CustomMovementBinding } from "./context";
 import { getProgramEngine, getNativeProgramEngine, isNativeProgram } from "./registry";
 import { buildProgramInstanceWrite, type ProgramInstanceWrite } from "./program-instance";
 import { buildAssistancePlanner, type AssistancePlanner } from "./assistance-resolver";
@@ -79,6 +83,38 @@ const WEEKDAY = z.number().int().min(0).max(6);
  * derive their own cardio and never accept wizard cardio days.
  */
 const STRENGTH_ONLY_PROGRAM_IDS = new Set<string>(["wendler-531", "tactical-barbell"]);
+
+function customMovementBindings(
+  customization: TbCustomization | undefined,
+): CustomMovementBinding[] {
+  if (!customization) return [];
+  const movements = isTbCustomizationV1(customization)
+    ? Object.values(customization.sessionMovements).flat()
+    : Object.values(activationSessionConfigs(customization)).flatMap(
+        (session) =>
+          Object.values(session.movementOverrides).filter(
+            (movement) => movement != null,
+          ),
+      );
+  const byKey = new Map<string, CustomMovementBinding>();
+  for (const movement of movements) {
+    if (
+      !movement.movement.startsWith("catalog:") ||
+      !movement.movementId ||
+      !movement.slug ||
+      !movement.displayName
+    ) {
+      continue;
+    }
+    byKey.set(movement.movement, {
+      key: movement.movement,
+      movementId: movement.movementId,
+      slug: movement.slug,
+      displayName: movement.displayName,
+    });
+  }
+  return [...byKey.values()];
+}
 
 function validateActivationCustomization(
   customization: TbActivationCustomizationV2,
@@ -149,11 +185,6 @@ function validateActivationCustomization(
         if (new Set(resolved).size !== resolved.length) {
           return `${session.label} contains the same movement more than once.`;
         }
-      }
-    }
-    for (const rehabDay of configured.rehabDays) {
-      if (occupiedDays.has(rehabDay)) {
-        return `The ${phase} phase has rehab on a day that already contains a session.`;
       }
     }
   }
@@ -822,11 +853,55 @@ async function computeForeignWrite(
       .maybeSingle();
     if (prof?.gender === "male" || prof?.gender === "female") hyroxGender = prof.gender;
   }
+  const customizationCatalog = customization
+    ? await loadPickerCatalog(supabase)
+    : [];
+  const validatedCustomMovements = customization
+    ? validateCustomMovementBindings(
+        customMovementBindings(customization),
+        customizationCatalog.map((movement) => ({
+          id: movement.id,
+          slug: movement.slug,
+          displayName: movement.displayName,
+        })),
+      )
+    : [];
 
   const { ctx, resolveMovement } = await buildPlatformContext(supabase, user.id, {
     ...(roundingKg != null ? { roundingKg } : {}),
     ...(hyroxGender ? { gender: hyroxGender } : {}),
+    ...(validatedCustomMovements.length > 0
+      ? { customMovements: validatedCustomMovements }
+      : {}),
   });
+  const customMovementByKey = new Map(
+    validatedCustomMovements.map((movement) => [movement.key, movement]),
+  );
+  const normalizeCustomMovement = <
+    T extends {
+      movement: string;
+      kind?: "barbell" | "weighted-bw" | "bodyweight" | "unanchored";
+    },
+  >(
+    movement: T,
+  ): T => {
+    if (!movement.movement.startsWith("catalog:")) return movement;
+    const catalog = customMovementByKey.get(movement.movement);
+    return {
+      ...movement,
+      ...(catalog
+        ? {
+            movementId: catalog.movementId,
+            slug: catalog.slug,
+            displayName: catalog.displayName,
+          }
+        : {}),
+      kind:
+        ctx.oneRepMaxes[movement.movement] != null
+          ? "barbell"
+          : "unanchored",
+    };
+  };
   // Global accessory-volume preference (profiles.effort_preference:
   // low=Easier / standard=Balanced / high=Harder). 5/3/1 scales its assistance
   // volume by this single global control. Read best-effort; default standard.
@@ -843,7 +918,14 @@ async function computeForeignWrite(
   const effectiveSetupValues = customization && isTbCustomizationV1(customization)
     ? {
         ...setupValues,
-        customSessionMovements: customization.sessionMovements,
+        customSessionMovements: Object.fromEntries(
+          Object.entries(customization.sessionMovements).map(
+            ([key, movements]) => [
+              key,
+              movements.map(normalizeCustomMovement),
+            ],
+          ),
+        ),
       }
     : customization && isTbActivationCustomizationV2(customization)
       ? {
@@ -852,12 +934,40 @@ async function computeForeignWrite(
             Object.entries(activationSessionConfigs(customization)).map(
               ([key, session]) => [
                 key,
-                { movementOverrides: session.movementOverrides },
+                {
+                  movementOverrides: Object.fromEntries(
+                    Object.entries(session.movementOverrides).map(
+                      ([source, movement]) => [
+                        source,
+                        movement
+                          ? normalizeCustomMovement(movement)
+                          : null,
+                      ],
+                    ),
+                  ),
+                },
               ],
             ),
           ),
-          activationMilestoneOverrides:
-            deriveActivationMilestoneOverrides(customization).overrides,
+          activationMilestoneOverrides: Object.fromEntries(
+            Object.entries(
+              deriveActivationMilestoneOverrides(customization).overrides,
+            ).map(([key, session]) => [
+              key,
+              {
+                movementOverrides: Object.fromEntries(
+                  Object.entries(session.movementOverrides).map(
+                    ([source, movement]) => [
+                      source,
+                      movement
+                        ? normalizeCustomMovement(movement)
+                        : null,
+                    ],
+                  ),
+                ),
+              },
+            ]),
+          ),
         }
     : setupValues;
   const instance = engine.setup(
@@ -970,7 +1080,7 @@ async function computeForeignWrite(
   });
   if (customization) {
     const limitations = await readLimitationsContext(supabase, user.id);
-    const catalog = await loadPickerCatalog(supabase);
+    const catalog = customizationCatalog;
     const byId = new Map(catalog.map((movement) => [movement.id, movement]));
     const selectedIds = new Set<string>(
       customization.rehab?.items.map((item) => item.movementId) ?? [],

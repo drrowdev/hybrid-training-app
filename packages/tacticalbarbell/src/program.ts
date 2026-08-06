@@ -46,6 +46,8 @@ import { roundToIncrement } from "./rounding";
 
 export interface TbClusterLift {
   movement: string;
+  /** Catalog label for a custom movement key. */
+  displayName?: string;
   /** Zulu only: which split (A/B) this lift belongs to. */
   split?: "A" | "B";
   /** How the lift is loaded (default "barbell"). Bodyweight loads off max reps. */
@@ -350,11 +352,18 @@ function customizedPeakMovements(
 }
 
 /** Copy a template cluster entry into an instance lift, omitting undefined optionals. */
-function cloneEntry(c: TbClusterEntry): TbClusterLift {
+function cloneEntry(
+  c: TbClusterEntry & { displayName?: string },
+): TbClusterLift {
   const lift: TbClusterLift = { movement: c.movement };
+  if (c.displayName) lift.displayName = c.displayName;
   if (c.split === "A" || c.split === "B") lift.split = c.split;
   if (c.kind) lift.kind = c.kind;
   return lift;
+}
+
+function liftLabel(lift: TbClusterLift): string {
+  return lift.displayName ?? movementLabel(lift.movement);
 }
 
 /**
@@ -385,6 +394,9 @@ function entriesFromValue(v: unknown): TbClusterLift[] {
       const o = x as Record<string, unknown>;
       if (typeof o.movement === "string" && o.movement.length > 0) {
         const lift: TbClusterLift = { movement: o.movement };
+        if (typeof o.displayName === "string" && o.displayName.length > 0) {
+          lift.displayName = o.displayName;
+        }
         if (
           o.kind === "barbell" ||
           o.kind === "weighted-bw" ||
@@ -654,7 +666,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       if (lift.kind === "unanchored" || prescribedPercent == null) {
         items.push({
           kind: prescribedItemKind,
-          name: movementLabel(lift.movement),
+          name: liftLabel(lift),
           movementId: lift.movement,
           sets: prescribedSetsMin,
           ...(prescribedSetsMax !== prescribedSetsMin ? { setsMax: prescribedSetsMax } : {}),
@@ -674,7 +686,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
         if (instance.useTemplateDefaults && session.fixedMovements) {
           items.push({
             kind: prescribedItemKind,
-            name: movementLabel(lift.movement),
+            name: liftLabel(lift),
             movementId: lift.movement,
             sets: prescribedSetsMin,
             ...(prescribedSetsMax !== prescribedSetsMin ? { setsMax: prescribedSetsMax } : {}),
@@ -694,7 +706,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
         const targetReps = Math.max(1, Math.round(anchor * prescribedPercent));
         items.push({
           kind: "main",
-          name: movementLabel(lift.movement),
+          name: liftLabel(lift),
           movementId: lift.movement,
           sets: prescribedSetsMin,
           ...(prescribedSetsMax !== prescribedSetsMin ? { setsMax: prescribedSetsMax } : {}),
@@ -716,7 +728,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       if (includeWarmup) {
         items.push(
           ...buildGlobalWarmupItems({
-            name: movementLabel(lift.movement),
+            name: liftLabel(lift),
             movementId: lift.movement,
             workingWeightKg: weightKg,
             roundingKg: ctx.roundingKg,
@@ -725,7 +737,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       }
       items.push({
         kind: prescribedItemKind,
-        name: movementLabel(lift.movement),
+        name: liftLabel(lift),
         movementId: lift.movement,
         sets: prescribedSetsMin,
         ...(prescribedSetsMax !== prescribedSetsMin ? { setsMax: prescribedSetsMax } : {}),

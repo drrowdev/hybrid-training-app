@@ -686,6 +686,7 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
         },
       },
     });
+
     const session = tb.prescribe(inst, "b0-w6-armor-a1", ctx);
     const mains = itemsOfKind(session, "main");
     const supplemental = itemsOfKind(session, "supplemental");
@@ -706,6 +707,47 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
       repsMax: 10,
       weightKg: 65,
     });
+  });
+
+  it("supports catalog-backed replacements with their own labels and manual-load fallback", () => {
+    const inst = setup({
+      templateId: "activation",
+      activationSessionOverrides: {
+        "activation.armor.armor-a1": {
+          movementOverrides: {
+            squat: {
+              movement: "catalog:belt-squat",
+              displayName: "Belt Squat",
+              kind: "barbell",
+            },
+            "rack-pull": {
+              movement: "catalog:step-up",
+              displayName: "Step-Up",
+              kind: "unanchored",
+            },
+          },
+        },
+      },
+    });
+    const customCtx: PlatformContext = {
+      ...ctx,
+      oneRepMaxes: {
+        ...ctx.oneRepMaxes,
+        "catalog:belt-squat": 160,
+      },
+    };
+    const main = itemsOfKind(
+      tb.prescribe(inst, "b0-w6-armor-a1", customCtx),
+      "main",
+    );
+    expect(main.find((item) => item.name === "Belt Squat")).toMatchObject({
+      percentOfTm: 0.7,
+      weightKg: 112.5,
+    });
+    const stepUp = main.find((item) => item.name === "Step-Up")!;
+    expect(stepUp).toMatchObject({ sets: 4, reps: 8 });
+    expect(stepUp.percentOfTm).toBeUndefined();
+    expect(stepUp.weightKg).toBeUndefined();
   });
 
   it("Activation can remove a canonical movement slot without affecting its milestone weeks", () => {

@@ -205,6 +205,9 @@ export interface PickerBenchRole {
 export interface PickerRehabMovement {
   id: string;
   name: string;
+  slug: string;
+  pattern: string;
+  hasOneRm: boolean;
 }
 
 /** Rich program explainers + meta chips for the step-1 info modal (mockup PROG_INFO). */
@@ -496,30 +499,6 @@ function movementLabel(key: string): string {
   return MOVEMENT_LABEL[key] ?? key;
 }
 
-function activationReplacementFamily(key: string): string {
-  if (["squat", "deadlift", "rack-pull"].includes(key)) {
-    return "loaded-lower";
-  }
-  if (["back-extension", "reverse-hyper"].includes(key)) {
-    return "loaded-posterior-supplemental";
-  }
-  if (["bench", "overhead-press", "push-press"].includes(key)) {
-    return "loaded-press";
-  }
-  if (["barbell-row", "pendlay-row", "weighted-pullup"].includes(key)) {
-    return "loaded-pull";
-  }
-  if (["inverted-row", "pullup"].includes(key)) return "unloaded-pull";
-  if (
-    ["hanging-leg-raise", "hanging-knee-raise", "toes-to-bar"].includes(
-      key,
-    )
-  ) {
-    return "core";
-  }
-  return key;
-}
-
 // ── Units + 1RM estimate helpers ────────────────────────────────────────────
 const KG_PER_LB = 0.45359237;
 type Unit = "kg" | "lb";
@@ -561,6 +540,100 @@ type ActivationPhaseDraft = {
 };
 
 type ActivationDrafts = Record<ActivationPhaseKey, ActivationPhaseDraft>;
+
+function catalogMovementKey(id: string): string {
+  return `catalog:${id}`;
+}
+
+function catalogMovementMetaFromCustomization(
+  customization: TbCustomization | undefined,
+): Record<string, PickerRehabMovement> {
+  if (!customization) return {};
+  const movements = isTbCustomizationV1(customization)
+    ? Object.values(customization.sessionMovements).flat()
+    : Object.values(customization.phases).flatMap((phase) =>
+        Object.values(phase.sessions).flatMap((session) =>
+          Object.values(session.movementOverrides).filter(
+            (movement) => movement != null,
+          ),
+        ),
+      );
+  return Object.fromEntries(
+    movements.flatMap((movement) =>
+      movement.movement.startsWith("catalog:") &&
+      movement.movementId &&
+      movement.slug &&
+      movement.displayName
+        ? [
+            [
+              movement.movement,
+              {
+                id: movement.movementId,
+                name: movement.displayName,
+                slug: movement.slug,
+                pattern: "custom",
+                hasOneRm: movement.kind !== "unanchored",
+              },
+            ],
+          ]
+        : [],
+    ),
+  );
+}
+
+function ExerciseLibraryPicker({
+  movements,
+  onPick,
+  excludeKeys = [],
+}: {
+  movements: PickerRehabMovement[];
+  onPick: (movement: PickerRehabMovement) => void;
+  excludeKeys?: string[];
+}) {
+  const [query, setQuery] = useState("");
+  const normalized = query.trim().toLowerCase();
+  const matches = movements
+    .filter(
+      (movement) =>
+        !excludeKeys.includes(catalogMovementKey(movement.id)) &&
+        (!normalized ||
+          movement.name.toLowerCase().includes(normalized) ||
+          movement.slug.toLowerCase().includes(normalized) ||
+          movement.pattern.toLowerCase().includes(normalized)),
+    )
+    .slice(0, 12);
+  return (
+    <div className={styles.libraryPicker}>
+      <input
+        type="search"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Search the exercise library"
+        aria-label="Search the exercise library"
+      />
+      <div className={styles.libraryResults}>
+        {matches.map((movement) => (
+          <button
+            key={movement.id}
+            type="button"
+            onClick={(event) => {
+              onPick(movement);
+              setQuery("");
+              event.currentTarget.closest("details")?.removeAttribute("open");
+            }}
+          >
+            <span>
+              <b>{movement.name}</b>
+              <small>{movement.pattern.replace(/_/g, " ")}</small>
+            </span>
+            <em>{movement.hasOneRm ? "Uses saved 1RM" : "Manual load"}</em>
+          </button>
+        ))}
+        {matches.length === 0 ? <p>No matching exercises.</p> : null}
+      </div>
+    </div>
+  );
+}
 
 function defaultActivationDrafts(
   template: PickerTbTemplate | null,
@@ -1087,6 +1160,21 @@ export function ProgramPicker({
     for (const r of benchRoles) m.set(r.engineKey, r);
     return m;
   }, [benchRoles]);
+  const [catalogMovementMeta, setCatalogMovementMeta] = useState<
+    Record<string, PickerRehabMovement>
+  >(() => {
+    const stored = catalogMovementMetaFromCustomization(
+      editContext?.customization,
+    );
+    return Object.fromEntries(
+      Object.entries(stored).map(([key, movement]) => {
+        const current = rehabMovements.find(
+          (candidate) => candidate.id === movement.id,
+        );
+        return [key, current ?? movement];
+      }),
+    );
+  });
 
   const isTb = selected?.id === TB_PROGRAM_ID;
   const isGp = selected?.id === "green-protocol";
@@ -1100,22 +1188,6 @@ export function ProgramPicker({
 
   const tbTemplateId = isTb ? String(values.templateId ?? "") : "";
   const activeTbTemplate = isTb ? tbTemplateById.get(tbTemplateId) ?? null : null;
-  const customMovementKeys = useMemo(() => {
-    const keys = [
-      ...benchRoles.map((role) => role.engineKey),
-      ...(activeTbTemplate
-        ? sessionSeriesFor(activeTbTemplate).flatMap(
-            (series) => series.movements,
-          )
-        : []),
-      ...(activeTbTemplate?.activationPhases ?? []).flatMap((phase) =>
-        phase.sessions.flatMap((session) =>
-          session.movements.map((movement) => movement.sourceMovement),
-        ),
-      ),
-    ];
-    return keys.filter((key, index) => keys.indexOf(key) === index);
-  }, [activeTbTemplate, benchRoles]);
   const activationMovementKindByKey = useMemo(() => {
     const kinds = new Map<
       string,
@@ -1134,8 +1206,13 @@ export function ProgramPicker({
     for (const role of benchRoles) {
       if (!kinds.has(role.engineKey)) kinds.set(role.engineKey, "barbell");
     }
+    for (const [key, movement] of Object.entries(catalogMovementMeta)) {
+      kinds.set(key, movement.hasOneRm ? "barbell" : "unanchored");
+    }
     return kinds;
-  }, [activeTbTemplate, benchRoles]);
+  }, [activeTbTemplate, benchRoles, catalogMovementMeta]);
+  const customMovementLabel = (key: string) =>
+    catalogMovementMeta[key]?.name ?? movementLabel(key);
   const isActivation = activeTbTemplate?.id === "activation";
   const armorSupplementalA =
     values.armorSupplementalA === "reverse-hyper"
@@ -1232,6 +1309,7 @@ export function ProgramPicker({
         : {},
     );
     setRehabDrafts([]);
+    setCatalogMovementMeta({});
     setActivationDrafts(
       defaultActivationDrafts(
         activeTbTemplate,
@@ -1483,13 +1561,6 @@ export function ProgramPicker({
         );
         if (new Set(selected).size !== selected.length) return false;
       }
-      if (
-        activationDrafts[phase.key].rehabDays.some((day) =>
-          occupied.has(day),
-        )
-      ) {
-        return false;
-      }
     }
     const hasRehabDays = Object.values(activationDrafts).some(
       (phase) => phase.rehabDays.length > 0,
@@ -1584,6 +1655,7 @@ export function ProgramPicker({
           : {},
       );
       setRehabDrafts([]);
+      setCatalogMovementMeta({});
       setActivationDrafts(defaultActivationDrafts(t ?? null));
     } else {
       setCluster([]);
@@ -1890,8 +1962,16 @@ export function ProgramPicker({
                 continue;
               }
               const kind = activationMovementKindByKey.get(movement);
+              const catalog = catalogMovementMeta[movement];
               movementOverrides[sourceMovement] = {
                 movement,
+                ...(catalog
+                  ? {
+                      movementId: catalog.id,
+                      slug: catalog.slug,
+                      displayName: catalog.name,
+                    }
+                  : {}),
                 ...(kind ? { kind } : {}),
               };
             }
@@ -1945,8 +2025,16 @@ export function ProgramPicker({
                           : movement === "pullup"
                             ? "bodyweight"
                             : undefined);
+                      const catalog = catalogMovementMeta[movement];
                       return {
                         movement,
+                        ...(catalog
+                          ? {
+                              movementId: catalog.id,
+                              slug: catalog.slug,
+                              displayName: catalog.name,
+                            }
+                          : {}),
                         ...(kind ? { kind } : {}),
                       };
                     },
@@ -3033,8 +3121,10 @@ export function ProgramPicker({
       <div>
         <div className={styles.label}>Rehab protocol</div>
         <p className={styles.note}>
-          Enter only movements and loading supplied by you or your clinician.
-          SxC does not generate or progress rehab work.
+          Write the exercises, side, sets/reps or hold time, load, and
+          clinician instructions here. Then select rehab days in each phase;
+          rehab can share a day with another workout. SxC does not generate
+          or progress this work.
         </p>
         <div className={styles.rehabList}>
           {rehabDrafts.map((item, index) => (
@@ -3168,9 +3258,6 @@ export function ProgramPicker({
 
   function renderActivationCustomization() {
     if (!activeTbTemplate?.activationPhases) return null;
-    const hasRehabDays = Object.values(activationDrafts).some(
-      (phase) => phase.rehabDays.length > 0,
-    );
     const phaseEndWeek: Record<ActivationPhaseKey, number> = {
       base: 3,
       armor: 7,
@@ -3195,6 +3282,9 @@ export function ProgramPicker({
             engine-owned. A consistent replacement is mapped into its test;
             conflicting replacements are never guessed.
           </span>
+        </div>
+        <div className={styles.rehabProtocolPanel}>
+          {renderRehabProtocolEditor()}
         </div>
         {activeTbTemplate.activationPhases.map((phase, phaseIndex) => {
           const phaseDraft = activationDrafts[phase.key];
@@ -3313,58 +3403,94 @@ export function ProgramPicker({
                         {session.type === "strength" ? (
                           <div className={styles.activationMovements}>
                             {session.movements.map((slot) => {
-                              const sourceFamily =
-                                activationReplacementFamily(
-                                  slot.sourceMovement,
-                                );
-                              const choices = customMovementKeys.filter(
-                                (movement) =>
-                                  activationReplacementFamily(
-                                    movement,
-                                  ) === sourceFamily,
+                              const selectedMovement =
+                                draft.movements[slot.sourceMovement];
+                              const selectedInSession = Object.values(
+                                draft.movements,
+                              ).filter(
+                                (movement): movement is string =>
+                                  movement != null,
                               );
+                              const canRemove =
+                                selectedMovement != null &&
+                                selectedInSession.length > 1;
                               return (
-                                <label key={slot.sourceMovement}>
-                                  <span>
-                                    {movementLabel(slot.sourceMovement)}
+                                <div
+                                  key={slot.sourceMovement}
+                                  className={styles.activationMovementRow}
+                                  data-testid={`activation-movement-${session.key}-${slot.sourceMovement}`}
+                                >
+                                  <span className={styles.sourceSlot}>
+                                    <small>Program slot</small>
+                                    <b>
+                                      {movementLabel(
+                                        slot.sourceMovement,
+                                      )}
+                                    </b>
                                   </span>
-                                  <select
-                                    value={
-                                      draft.movements[
-                                        slot.sourceMovement
-                                      ] ?? ""
-                                    }
-                                    onChange={(event) =>
+                                  <span className={styles.currentExercise}>
+                                    <small>Exercise</small>
+                                    <b>
+                                      {selectedMovement
+                                        ? customMovementLabel(
+                                            selectedMovement,
+                                          )
+                                        : "Removed"}
+                                    </b>
+                                    <em>
+                                      {selectedMovement &&
+                                      catalogMovementMeta[
+                                        selectedMovement
+                                      ]?.hasOneRm
+                                        ? "Uses its saved 1RM"
+                                        : selectedMovement?.startsWith(
+                                              "catalog:",
+                                            )
+                                          ? "Manual load"
+                                          : "Programmed loading"}
+                                    </em>
+                                  </span>
+                                  <div className={styles.exerciseActions}>
+                                    <details>
+                                      <summary>Change</summary>
+                                      <ExerciseLibraryPicker
+                                        movements={rehabMovements}
+                                        excludeKeys={selectedInSession}
+                                        onPick={(movement) => {
+                                          const key =
+                                            catalogMovementKey(
+                                              movement.id,
+                                            );
+                                          setCatalogMovementMeta(
+                                            (current) => ({
+                                              ...current,
+                                              [key]: movement,
+                                            }),
+                                          );
+                                          setActivationMovement(
+                                            phase.key,
+                                            session.key,
+                                            slot.sourceMovement,
+                                            key,
+                                          );
+                                        }}
+                                      />
+                                    </details>
+                                    <button
+                                      type="button"
+                                      disabled={!canRemove}
+                                      onClick={() =>
                                       setActivationMovement(
                                         phase.key,
                                         session.key,
                                         slot.sourceMovement,
-                                        event.target.value || null,
-                                      )
-                                    }
-                                    aria-label={`${session.label} ${movementLabel(slot.sourceMovement)}`}
-                                  >
-                                    <option value="">Remove</option>
-                                    {choices.map((movement) => (
-                                      <option
-                                        key={movement}
-                                        value={movement}
-                                        disabled={
-                                          draft.movements[
-                                            slot.sourceMovement
-                                          ] !== movement &&
-                                          Object.values(
-                                            draft.movements,
-                                          ).includes(movement)
-                                        }
-                                      >
-                                        {movement === slot.sourceMovement
-                                          ? `Keep ${movementLabel(movement)}`
-                                          : `Replace with ${movementLabel(movement)}`}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </label>
+                                        null,
+                                      )}
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                </div>
                               );
                             })}
                             {Object.values(draft.movements).every(
@@ -3386,13 +3512,12 @@ export function ProgramPicker({
                     {WD.map((day, index) => {
                       const selected =
                         phaseDraft.rehabDays.includes(index);
-                      const unavailable = occupied.has(index);
+                      const sharesWorkout = occupied.has(index);
                       return (
                         <button
                           key={day}
                           type="button"
                           className={selected ? styles.selected : ""}
-                          disabled={unavailable}
                           onClick={() =>
                             toggleActivationRehabDay(
                               phase.key,
@@ -3401,12 +3526,13 @@ export function ProgramPicker({
                           }
                           aria-pressed={selected}
                           title={
-                            unavailable
-                              ? "Move or disable the scheduled session first"
-                              : undefined
+                            sharesWorkout
+                              ? "Adds a separate rehab session on this workout day"
+                              : "Adds a rehab-only session"
                           }
                         >
                           {day}
+                          {sharesWorkout ? " +" : ""}
                         </button>
                       );
                     })}
@@ -3416,7 +3542,6 @@ export function ProgramPicker({
             </details>
           );
         })}
-        {hasRehabDays ? renderRehabProtocolEditor() : null}
       </div>
     );
   }
@@ -3676,41 +3801,79 @@ export function ProgramPicker({
                   </p>
                   <div className={styles.seriesGrid}>
                     {sessionSeriesFor(activeTbTemplate).map((series, index) => (
-                      <fieldset
+                      <section
                         key={series.key}
                         className={styles.seriesCard}
                       >
-                        <legend>
-                          Strength {index + 1}
+                        <header>
+                          <b>Strength {index + 1}</b>
                           <small>{series.label}</small>
-                        </legend>
-                        {customMovementKeys.map((movementKey) => {
-                          const checked = (
-                            customSessionMovements[series.key] ?? []
-                          ).includes(movementKey);
-                          return (
-                            <label key={movementKey}>
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() =>
-                                  toggleSeriesMovement(
-                                    series.key,
-                                    movementKey,
-                                  )
-                                }
-                              />
-                              <span>{movementLabel(movementKey)}</span>
-                            </label>
-                          );
-                        })}
+                        </header>
+                        <div className={styles.seriesExercises}>
+                          {(customSessionMovements[series.key] ?? []).map(
+                            (movementKey) => (
+                              <div key={movementKey}>
+                                <span>
+                                  <b>{customMovementLabel(movementKey)}</b>
+                                  <small>
+                                    {catalogMovementMeta[movementKey]
+                                      ?.hasOneRm
+                                      ? "Uses saved 1RM"
+                                      : movementKey.startsWith("catalog:")
+                                        ? "Manual load"
+                                        : "Programmed loading"}
+                                  </small>
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={
+                                    (customSessionMovements[
+                                      series.key
+                                    ]?.length ?? 0) <= 1
+                                  }
+                                  onClick={() =>
+                                    toggleSeriesMovement(
+                                      series.key,
+                                      movementKey,
+                                    )
+                                  }
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            ),
+                          )}
+                        </div>
+                        <details className={styles.addExercise}>
+                          <summary>+ Add exercise</summary>
+                          <ExerciseLibraryPicker
+                            movements={rehabMovements}
+                            excludeKeys={
+                              customSessionMovements[series.key] ?? []
+                            }
+                            onPick={(movement) => {
+                              const key = catalogMovementKey(movement.id);
+                              setCatalogMovementMeta((current) => ({
+                                ...current,
+                                [key]: movement,
+                              }));
+                              setCustomSessionMovements((current) => ({
+                                ...current,
+                                [series.key]: [
+                                  ...(current[series.key] ?? []),
+                                  key,
+                                ],
+                              }));
+                            }}
+                          />
+                        </details>
                         {(customSessionMovements[series.key]?.length ?? 0) ===
                         0 ? (
                           <p className={styles.inlineError}>
                             Choose at least one movement.
                           </p>
                         ) : null}
-                      </fieldset>
+                      </section>
                     ))}
                   </div>
                 </div>

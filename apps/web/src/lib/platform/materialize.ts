@@ -460,7 +460,12 @@ export function materializeProgram<I>(
 
   const rehabItems = opts.customization?.rehab?.items ?? [];
   if (rehabItems.length > 0 && maxEmittedWeek >= 0) {
-    const taken = new Set(sessions.map((session) => `${session.weekIndex}-${session.dayIndex}`));
+    const takenSlots = new Set(
+      sessions.map(
+        (session) =>
+          `${session.weekIndex}-${session.dayIndex}-${session.slot}`,
+      ),
+    );
     for (let weekIndex = 0; weekIndex <= maxEmittedWeek; weekIndex++) {
       const rehabDays =
         opts.customization && isTbCustomizationV1(opts.customization)
@@ -479,9 +484,15 @@ export function materializeProgram<I>(
               })()
             : [];
       for (const dayIndex of rehabDays) {
-        if (taken.has(`${weekIndex}-${dayIndex}`)) {
+        const dayHasSession = sessions.some(
+          (session) =>
+            session.weekIndex === weekIndex &&
+            session.dayIndex === dayIndex,
+        );
+        const slot = dayHasSession ? "pm" : "single";
+        if (takenSlots.has(`${weekIndex}-${dayIndex}-${slot}`)) {
           throw new Error(
-            `materializeProgram: rehab day ${dayIndex} collides with another session in week ${weekIndex + 1}`,
+            `materializeProgram: rehab slot '${slot}' on day ${dayIndex} collides in week ${weekIndex + 1}`,
           );
         }
         const ref = `rehab-w${weekIndex}-d${dayIndex}`;
@@ -526,7 +537,7 @@ export function materializeProgram<I>(
           ref,
           weekIndex,
           dayIndex,
-          slot: "single",
+          slot,
           title: "Rehab",
           role: "rehab",
           prescription,
@@ -534,6 +545,7 @@ export function materializeProgram<I>(
           effectiveStressLoad: 0,
           skipped: [],
         });
+        takenSlots.add(`${weekIndex}-${dayIndex}-${slot}`);
       }
     }
   }

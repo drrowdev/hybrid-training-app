@@ -1745,19 +1745,192 @@
 }
 .activationMovements {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   min-width: 0;
 }
-.activationMovements label {
+.activationMovementRow {
   display: grid;
-  gap: 5px;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(180px, 1.2fr) auto;
+  align-items: center;
+  gap: 12px;
   min-width: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.activationMovementRow:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.sourceSlot,
+.currentExercise {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.sourceSlot small,
+.currentExercise small {
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.sourceSlot b,
+.currentExercise b {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 12px;
+}
+.currentExercise em {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+}
+.exerciseActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.exerciseActions > button,
+.exerciseActions summary,
+.addExercise summary {
+  border: 1px solid var(--line2);
+  border-radius: var(--wradius);
+  background: var(--bg);
+  color: var(--dim);
+  padding: 8px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  list-style: none;
+}
+.exerciseActions > button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.exerciseActions details {
+  position: relative;
+}
+.exerciseActions details[open] > summary,
+.addExercise[open] > summary {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.exerciseActions details > .libraryPicker {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  right: 0;
+  width: min(360px, 80vw);
+}
+.libraryPicker {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--line2);
+  border-radius: var(--wradius);
+  background: var(--panel2);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  padding: 10px;
+}
+.libraryPicker > input {
+  width: 100%;
+  min-height: 40px;
+  box-sizing: border-box;
+  border: 1px solid var(--line2);
+  border-radius: var(--wradius);
+  background: var(--bg);
+  color: var(--text);
+  padding: 8px 10px;
+}
+.libraryResults {
+  display: grid;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.libraryResults button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  padding: 9px 6px;
+  text-align: left;
+  cursor: pointer;
+}
+.libraryResults button:first-child {
+  border-top: 0;
+}
+.libraryResults button span {
+  display: grid;
+  gap: 2px;
+}
+.libraryResults small,
+.libraryResults em,
+.libraryResults p {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+}
+.seriesCard > header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.seriesCard > header b {
+  font-family: var(--font-oswald), sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.seriesCard > header small {
+  color: var(--muted);
+}
+.seriesExercises {
+  display: grid;
+  gap: 6px;
+}
+.seriesExercises > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 7px;
+}
+.seriesExercises > div > span {
+  display: grid;
+  gap: 2px;
+}
+.seriesExercises small {
   color: var(--muted);
   font-size: 10px;
 }
-.activationMovements label > span {
-  overflow-wrap: anywhere;
+.seriesExercises button {
+  border: 0;
+  background: transparent;
+  color: var(--warn);
+  cursor: pointer;
+}
+.seriesExercises button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.addExercise {
+  margin-top: 10px;
+}
+.addExercise > .libraryPicker {
+  margin-top: 6px;
+}
+.rehabProtocolPanel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--warn);
+  border-radius: var(--wradius);
+  background: var(--panel);
+  padding: 16px;
 }
 .activationRehabDays {
   display: flex;
@@ -1826,6 +1999,18 @@
   }
   .activationMovements {
     grid-template-columns: 1fr;
+  }
+  .activationMovementRow {
+    grid-template-columns: 1fr;
+  }
+  .exerciseActions {
+    justify-content: flex-start;
+  }
+  .exerciseActions details > .libraryPicker {
+    position: fixed;
+    inset: auto 12px 84px;
+    width: auto;
+    max-height: 60vh;
   }
   .opts {
     grid-template-columns: 1fr;
