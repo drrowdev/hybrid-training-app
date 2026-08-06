@@ -36,6 +36,7 @@ import {
   type TbTemplate,
   type TbLiftKind,
   type TbClusterEntry,
+  activationCustomizationKey,
 } from "./templates";
 import { roundToIncrement } from "./rounding";
 
@@ -49,6 +50,12 @@ export interface TbClusterLift {
   split?: "A" | "B";
   /** How the lift is loaded (default "barbell"). Bodyweight loads off max reps. */
   kind?: TbLiftKind;
+  /** Canonical Activation slot whose prescription rules this replacement inherits. */
+  sourceMovement?: string;
+}
+
+export interface TbActivationSessionOverride {
+  movementOverrides: Record<string, TbClusterLift | null>;
 }
 
 export interface TbInstance {
@@ -75,6 +82,10 @@ export interface TbInstance {
   armorSupplementalB: "pullup" | "inverted-row";
   /** Customized template: exact engine movements assigned to each weekly slot. */
   customSessionMovements?: Record<string, TbClusterLift[]>;
+  /** Activation v2: canonical-slot overrides keyed by phase-qualified session key. */
+  activationSessionOverrides?: Record<string, TbActivationSessionOverride>;
+  /** Activation v2: derived source-slot overrides for protected milestone weeks. */
+  activationMilestoneOverrides?: Record<string, TbActivationSessionOverride>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -137,6 +148,7 @@ function sessionLifts(
   template: TbTemplate,
   instance: TbInstance,
   session: TbTemplate["weeklySessions"][number],
+  week?: number,
 ): TbClusterLift[] {
   const seriesKey = sessionSeriesKey(template, session);
   const customized = instance.customSessionMovements?.[seriesKey];
@@ -165,26 +177,53 @@ function sessionLifts(
         : instance.cluster.filter((c) =>
             session.split ? c.split === session.split : true,
           );
-  if (template.id === "activation" && session.id.startsWith("armor-a")) {
-    const selected =
-      instance.armorSupplementalA === "reverse-hyper"
-        ? "reverse-hyper"
-        : "back-extension";
-    lifts = lifts.map((lift) =>
-      lift.movement === "back-extension" ? { movement: selected } : lift,
-    );
-  }
-
-  if (template.id === "activation" && session.id.startsWith("armor-b")) {
-    const selected =
-      instance.armorSupplementalB === "inverted-row"
-        ? "inverted-row"
-        : "pullup";
-    lifts = lifts.map((lift) =>
-      lift.movement === "pullup"
-        ? { movement: selected, kind: "unanchored" }
-        : lift,
-    );
+  if (template.id === "activation") {
+    const activationKey = activationCustomizationKey(session);
+    const activationOverride = activationKey
+      ? instance.activationSessionOverrides?.[activationKey]
+      : week != null
+        ? instance.activationMilestoneOverrides?.[
+            `activation.milestone.w${week}.${session.id}`
+          ]
+        : undefined;
+    lifts = lifts.flatMap((lift): TbClusterLift[] => {
+      const sourceMovement = lift.movement;
+      let resolvedDefault = cloneEntry(lift);
+      if (
+        session.id.startsWith("armor-a") &&
+        sourceMovement === "back-extension"
+      ) {
+        resolvedDefault = {
+          movement:
+            instance.armorSupplementalA === "reverse-hyper"
+              ? "reverse-hyper"
+              : "back-extension",
+        };
+      }
+      if (
+        session.id.startsWith("armor-b") &&
+        sourceMovement === "pullup"
+      ) {
+        resolvedDefault = {
+          movement:
+            instance.armorSupplementalB === "inverted-row"
+              ? "inverted-row"
+              : "pullup",
+          kind: "unanchored",
+        };
+      }
+      if (!activationOverride) return [resolvedDefault];
+      const replacement =
+        activationOverride.movementOverrides[sourceMovement];
+      if (replacement === null) return [];
+      if (!replacement) return [resolvedDefault];
+      return [
+        {
+          ...cloneEntry(replacement),
+          sourceMovement,
+        },
+      ];
+    });
   }
   const excluded = new Set(session.excludeMovements ?? []);
   lifts = lifts.filter((lift) => !excluded.has(lift.movement));
@@ -211,6 +250,12 @@ function sessionSeriesKey(
   template: TbTemplate,
   session: TbTemplate["weeklySessions"][number],
 ): string {
+  if (template.id === "activation") {
+    return (
+      activationCustomizationKey(session) ??
+      `activation.milestone.${session.id}`
+    );
+  }
   const workSessions = template.weeklySessions.filter(
     (candidate) =>
       candidate.conditioning == null &&
@@ -348,12 +393,41 @@ function entriesFromValue(v: unknown): TbClusterLift[] {
         ) {
           lift.kind = o.kind;
         }
+
         if (o.split === "A" || o.split === "B") lift.split = o.split;
         out.push(lift);
       }
     }
   }
   return out;
+}
+
+function activationSessionOverridesFromValue(
+  value: unknown,
+): Record<string, TbActivationSessionOverride> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const out: Record<string, TbActivationSessionOverride> = {};
+  for (const [sessionKey, rawSession] of Object.entries(
+    value as Record<string, unknown>,
+  )) {
+    if (!rawSession || typeof rawSession !== "object") continue;
+    const rawMovements = (rawSession as Record<string, unknown>)
+      .movementOverrides;
+    if (!rawMovements || typeof rawMovements !== "object") continue;
+    const movementOverrides: Record<string, TbClusterLift | null> = {};
+    for (const [sourceMovement, rawReplacement] of Object.entries(
+      rawMovements as Record<string, unknown>,
+    )) {
+      if (rawReplacement === null) {
+        movementOverrides[sourceMovement] = null;
+        continue;
+      }
+      const [replacement] = entriesFromValue([rawReplacement]);
+      if (replacement) movementOverrides[sourceMovement] = replacement;
+    }
+    out[sessionKey] = { movementOverrides };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
@@ -427,6 +501,12 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       Object.keys(customMovementsBySeries).length > 0
         ? customMovementsBySeries
         : undefined;
+    const activationSessionOverrides = activationSessionOverridesFromValue(
+      v.activationSessionOverrides,
+    );
+    const activationMilestoneOverrides = activationSessionOverridesFromValue(
+      v.activationMilestoneOverrides,
+    );
 
     return {
       templateId: template.id,
@@ -440,6 +520,12 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       armorSupplementalB,
       ...(customSessionMovements
         ? { customSessionMovements }
+        : {}),
+      ...(activationSessionOverrides
+        ? { activationSessionOverrides }
+        : {}),
+      ...(activationMilestoneOverrides
+        ? { activationMilestoneOverrides }
         : {}),
     };
   },
@@ -515,7 +601,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
     const pct = wave.percents[parsed.week - 1];
     if (!scheme || pct == null) return { items: [] };
 
-    const lifts = sessionLifts(template, instance, session);
+    const lifts = sessionLifts(template, instance, session, parsed.week);
 
     const items: PrescribedItem[] = [];
     const customizedSeries =
@@ -524,13 +610,14 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       ? customizedPeakMovements(template, session, customizedSeries)
       : null;
     for (const lift of lifts) {
+      const sourceMovement = lift.sourceMovement ?? lift.movement;
       const anchor = ctx.oneRepMaxes[lift.movement];
-      const movementRange = session.movementSetRanges?.[lift.movement];
+      const movementRange = session.movementSetRanges?.[sourceMovement];
       const setsMin = movementRange?.min ?? scheme.setsMin;
       const setsMax = movementRange?.max ?? scheme.setsMax;
       const isPeak = customPeaks
         ? customPeaks.has(lift.movement)
-        : (session.peakMovements?.includes(lift.movement) ?? false);
+        : (session.peakMovements?.includes(sourceMovement) ?? false);
       const support = session.peakMovements && !isPeak ? session.support : undefined;
       let prescribedPercent: number | null = support?.percent ?? pct;
       let prescribedSetsMin = support?.sets ?? setsMin;
@@ -544,7 +631,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
 
       for (const rule of session.prescriptionRules ?? []) {
         if (rule.activeWeeks && !rule.activeWeeks.includes(parsed.week)) continue;
-        if (rule.movements && !rule.movements.includes(lift.movement)) continue;
+        if (rule.movements && !rule.movements.includes(sourceMovement)) continue;
         if (rule.percent !== undefined) prescribedPercent = rule.percent;
         if (rule.setsMin != null) prescribedSetsMin = rule.setsMin;
         if (rule.setsMax != null) prescribedSetsMax = rule.setsMax;

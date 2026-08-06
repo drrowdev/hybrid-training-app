@@ -186,6 +186,74 @@ export interface TbTemplate {
   notes: string[];
 }
 
+export const ACTIVATION_PHASE_KEYS = [
+  "base",
+  "armor",
+  "operator",
+  "vertex",
+] as const;
+export type ActivationPhaseKey = (typeof ACTIVATION_PHASE_KEYS)[number];
+
+export const ACTIVATION_PHASE_LABELS: Record<ActivationPhaseKey, string> = {
+  base: "Base",
+  armor: "Armor",
+  operator: "Operator",
+  vertex: "Vertex",
+};
+
+/** Editable Activation work phase for a source session; milestones return null. */
+export function activationPhaseForSession(
+  session: TbWeeklySession,
+): ActivationPhaseKey | null {
+  if (
+    session.id === "base-1" ||
+    session.id === "base-2" ||
+    session.id === "base-3" ||
+    session.id.startsWith("base-lss-")
+  ) {
+    return "base";
+  }
+  if (
+    session.id.startsWith("armor-a") ||
+    session.id.startsWith("armor-b") ||
+    session.id.startsWith("armor-lss-")
+  ) {
+    return "armor";
+  }
+  if (
+    session.id.startsWith("operator-d") ||
+    session.id.startsWith("operator-hic-")
+  ) {
+    return "operator";
+  }
+  if (
+    session.id.startsWith("breacher-d") ||
+    session.id.startsWith("vertex-hic-")
+  ) {
+    return "vertex";
+  }
+  return null;
+}
+
+export function activationCustomizationKey(
+  session: TbWeeklySession,
+): string | null {
+  const phase = activationPhaseForSession(session);
+  return phase ? `activation.${phase}.${session.id}` : null;
+}
+
+export function activationPhaseForWeek(
+  week: number,
+): ActivationPhaseKey | null {
+  if (week >= 1 && week <= 4) return "base";
+  if (week >= 6 && week <= 8) return "armor";
+  if ((week >= 9 && week <= 13) || (week >= 15 && week <= 19)) {
+    return "operator";
+  }
+  if (week >= 22 && week <= 24) return "vertex";
+  return null;
+}
+
 // ── shared sets×rep helpers ──────────────────────────────────────────────────
 const w = (
   setsLabel: string,

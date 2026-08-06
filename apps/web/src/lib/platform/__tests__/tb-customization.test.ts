@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_CUSTOM_TB_NAME,
+  activationSessionConfigs,
+  isTbActivationCustomizationV2,
   tbCustomizationSchema,
 } from "../tb-customization";
 
@@ -33,6 +35,39 @@ const base = {
   },
 };
 
+const activation = {
+  version: 2,
+  templateId: "activation",
+  displayName: DEFAULT_CUSTOM_TB_NAME,
+  phases: {
+    base: {
+      sessions: {
+        "activation.base.base-1": {
+          day: 0,
+          enabled: true,
+          movementOverrides: {
+            "goblet-squat": null,
+          },
+        },
+      },
+      rehabDays: [6],
+    },
+    armor: { sessions: {}, rehabDays: [] },
+    operator: { sessions: {}, rehabDays: [] },
+    vertex: { sessions: {}, rehabDays: [] },
+  },
+  rehab: {
+    items: [
+      {
+        movementId: "00000000-0000-4000-8000-000000000001",
+        movementName: "Knee extension",
+        sets: 3,
+        reps: 12,
+      },
+    ],
+  },
+};
+
 describe("Tactical Barbell customization contract", () => {
   it("accepts a versioned weekly layout with structured rehab", () => {
     expect(tbCustomizationSchema.parse(base)).toEqual(base);
@@ -51,8 +86,28 @@ describe("Tactical Barbell customization contract", () => {
         sessionMovements: { "slot-1": [] },
       }).success,
     ).toBe(false);
+    expect(tbCustomizationSchema.safeParse({ ...base, version: 3 }).success).toBe(false);
+  });
+
+  it("accepts phase-aware Activation v2 and flattens its session configs", () => {
+    const parsed = tbCustomizationSchema.parse(activation);
+    expect(isTbActivationCustomizationV2(parsed)).toBe(true);
+    if (!isTbActivationCustomizationV2(parsed)) return;
+    expect(activationSessionConfigs(parsed)).toMatchObject({
+      "activation.base.base-1": {
+        day: 0,
+        enabled: true,
+        movementOverrides: { "goblet-squat": null },
+      },
+    });
+  });
+
+  it("requires a rehab protocol when any Activation phase has rehab days", () => {
     expect(
-      tbCustomizationSchema.safeParse({ ...base, version: 2 }).success,
+      tbCustomizationSchema.safeParse({
+        ...activation,
+        rehab: undefined,
+      }).success,
     ).toBe(false);
   });
 });

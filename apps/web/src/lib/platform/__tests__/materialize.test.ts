@@ -10,7 +10,13 @@
 import { describe, it, expect } from "vitest";
 import type { PlatformContext } from "@hta/program-core";
 import { wendler531Engine, type WendlerInstance } from "@hta/wendler";
-import { tacticalBarbellEngine } from "@hta/tacticalbarbell";
+import {
+  ACTIVATION_PHASE_KEYS,
+  activationCustomizationKey,
+  activationPhaseForSession,
+  getTbTemplate,
+  tacticalBarbellEngine,
+} from "@hta/tacticalbarbell";
 import { greenProtocolEngine } from "@hta/green";
 import { materializeProgram } from "../materialize";
 import { buildAssistancePlanner } from "../assistance-resolver";
@@ -321,6 +327,50 @@ describe("materializeProgram — TB3 Activation", () => {
     expect(result.sessions.filter((session) => session.weekIndex === 5 && session.role === "cardio")).toHaveLength(2);
   });
 
+  it("an explicit identity v2 overlay is byte-identical to canonical Activation", () => {
+    const template = getTbTemplate("activation")!;
+    const makePhase = (
+      phase: (typeof ACTIVATION_PHASE_KEYS)[number],
+    ) => ({
+      sessions: Object.fromEntries(
+        template.weeklySessions
+          .filter(
+            (session) =>
+              activationPhaseForSession(session) === phase,
+          )
+          .map((session) => [
+            activationCustomizationKey(session)!,
+            {
+              day: session.weekday ?? 0,
+              enabled: true,
+              movementOverrides: {},
+            },
+          ]),
+      ),
+      rehabDays: [] as number[],
+    });
+    const phases: import("../tb-customization").TbActivationCustomizationV2["phases"] = {
+      base: makePhase("base"),
+      armor: makePhase("armor"),
+      operator: makePhase("operator"),
+      vertex: makePhase("vertex"),
+    };
+    const identity = {
+      version: 2 as const,
+      templateId: "activation" as const,
+      displayName: "Activation · Customized",
+      phases,
+    };
+    const materialized = materializeProgram(
+      tacticalBarbellEngine,
+      instance,
+      activationCtx,
+      resolve,
+      { weekdays: [0], customization: identity },
+    );
+    expect(materialized).toEqual(result);
+  });
+
   it("starting at Armor rebases a 4 strength / 2 cardio week to week zero", () => {
     const armor = materializeProgram(
       tacticalBarbellEngine,
@@ -441,6 +491,117 @@ describe("materializeProgram — TB3 Activation", () => {
     const main = black.prescription.items.filter((item) => item.kind === "main");
     expect(main.filter((item) => item.optional)).toHaveLength(6);
     expect(main.filter((item) => !item.optional)).toHaveLength(9);
+  });
+
+  it("applies Activation phase placement, conditioning omission, movement overrides, and phase rehab", () => {
+    const customInstance = tacticalBarbellEngine.setup(
+      {
+        values: {
+          templateId: "activation",
+          activationSessionOverrides: {
+            "activation.base.base-1": {
+              movementOverrides: { "goblet-squat": null },
+            },
+          },
+        },
+      },
+      activationCtx,
+    );
+    const customization = {
+      version: 2 as const,
+      templateId: "activation" as const,
+      displayName: "Activation · Customized",
+      phases: {
+        base: {
+          sessions: {
+            "activation.base.base-1": {
+              day: 6,
+              enabled: true,
+              movementOverrides: { "goblet-squat": null },
+            },
+            "activation.base.base-2": {
+              day: 2,
+              enabled: true,
+              movementOverrides: {},
+            },
+            "activation.base.base-3": {
+              day: 4,
+              enabled: true,
+              movementOverrides: {},
+            },
+            "activation.base.base-lss-1": {
+              day: 1,
+              enabled: true,
+              movementOverrides: {},
+            },
+            "activation.base.base-lss-2": {
+              day: 3,
+              enabled: true,
+              movementOverrides: {},
+            },
+            "activation.base.base-lss-3": {
+              day: 5,
+              enabled: false,
+              movementOverrides: {},
+            },
+          },
+          rehabDays: [0],
+        },
+        armor: { sessions: {}, rehabDays: [] },
+        operator: { sessions: {}, rehabDays: [] },
+        vertex: { sessions: {}, rehabDays: [] },
+      },
+      rehab: {
+        items: [
+          {
+            movementId: "00000000-0000-4000-8000-000000000001",
+            movementName: "Knee extension",
+            sets: 3,
+            reps: 12,
+          },
+        ],
+      },
+    } satisfies import("../tb-customization").TbActivationCustomizationV2;
+    const custom = materializeProgram(
+      tacticalBarbellEngine,
+      customInstance,
+      activationCtx,
+      resolve,
+      { weekdays: [0], customization },
+    );
+
+    const baseWeek = custom.sessions.filter(
+      (session) => session.weekIndex === 0,
+    );
+    expect(baseWeek.map((session) => session.dayIndex)).toEqual([
+      6, 2, 4, 1, 3, 0,
+    ]);
+    expect(
+      baseWeek.some((session) => session.ref.endsWith("base-lss-3")),
+    ).toBe(false);
+    expect(baseWeek.find((session) => session.role === "rehab")).toMatchObject({
+      dayIndex: 0,
+      title: "Rehab",
+    });
+    const baseOne = baseWeek.find((session) =>
+      session.ref.endsWith("base-1"),
+    )!;
+    expect(
+      baseOne.prescription.items.some(
+        (item) => item.movementId === "mv-goblet-squat",
+      ),
+    ).toBe(false);
+    expect(
+      custom.sessions.some(
+        (session) =>
+          session.weekIndex === 4 && session.role === "rehab",
+      ),
+    ).toBe(false);
+    expect(
+      custom.sessions.filter(
+        (session) => session.weekIndex === 4 && session.role === "test",
+      ),
+    ).toHaveLength(1);
   });
 });
 

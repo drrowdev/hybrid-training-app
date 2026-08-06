@@ -27,8 +27,12 @@ import {
 import { upsertTrainingMax } from "@/lib/training-maxes/actions";
 import {
   DEFAULT_CUSTOM_TB_NAME,
+  TB_ACTIVATION_CUSTOMIZATION_VERSION,
   TB_CUSTOMIZATION_VERSION,
-  type TbCustomizationV1,
+  isTbActivationCustomizationV2,
+  isTbCustomizationV1,
+  type TbActivationCustomizationV2,
+  type TbCustomization,
 } from "@/lib/platform/tb-customization";
 import styles from "./ProgramPicker.module.css";
 
@@ -123,6 +127,25 @@ export interface PickerTbTemplate {
       string,
       "barbell" | "weighted-bw" | "bodyweight" | "unanchored"
     >;
+  }>;
+  activationPhases?: PickerActivationPhase[];
+}
+
+type ActivationPhaseKey = "base" | "armor" | "operator" | "vertex";
+
+export interface PickerActivationPhase {
+  key: ActivationPhaseKey;
+  label: string;
+  weeks: string;
+  sessions: Array<{
+    key: string;
+    label: string;
+    type: "strength" | "conditioning";
+    defaultDay: number;
+    movements: Array<{
+      sourceMovement: string;
+      kind?: "barbell" | "weighted-bw" | "bodyweight" | "unanchored";
+    }>;
   }>;
 }
 
@@ -459,10 +482,42 @@ const MOVEMENT_LABEL: Record<string, string> = {
   "overhead-press": "Overhead Press",
   "power-clean": "Power Clean",
   "push-press": "Push Press",
+  pushup: "Push-up",
+  "goblet-squat": "Goblet Squat",
+  "inverted-row": "Inverted Row",
+  "hanging-leg-raise": "Hanging Leg Raise",
+  "hanging-knee-raise": "Hanging Knee Raise",
+  "toes-to-bar": "Toes-to-Bar",
+  "jump-squat": "Jump Squat",
+  "plyo-pushup": "Plyometric Push-up",
 };
 
 function movementLabel(key: string): string {
   return MOVEMENT_LABEL[key] ?? key;
+}
+
+function activationReplacementFamily(key: string): string {
+  if (["squat", "deadlift", "rack-pull"].includes(key)) {
+    return "loaded-lower";
+  }
+  if (["back-extension", "reverse-hyper"].includes(key)) {
+    return "loaded-posterior-supplemental";
+  }
+  if (["bench", "overhead-press", "push-press"].includes(key)) {
+    return "loaded-press";
+  }
+  if (["barbell-row", "pendlay-row", "weighted-pullup"].includes(key)) {
+    return "loaded-pull";
+  }
+  if (["inverted-row", "pullup"].includes(key)) return "unloaded-pull";
+  if (
+    ["hanging-leg-raise", "hanging-knee-raise", "toes-to-bar"].includes(
+      key,
+    )
+  ) {
+    return "core";
+  }
+  return key;
 }
 
 // ── Units + 1RM estimate helpers ────────────────────────────────────────────
@@ -493,6 +548,105 @@ type RehabDraft = {
   targetWeightKg: string;
   instructions: string;
 };
+
+type ActivationSessionDraft = {
+  day: number;
+  enabled: boolean;
+  movements: Record<string, string | null>;
+};
+
+type ActivationPhaseDraft = {
+  sessions: Record<string, ActivationSessionDraft>;
+  rehabDays: number[];
+};
+
+type ActivationDrafts = Record<ActivationPhaseKey, ActivationPhaseDraft>;
+
+function defaultActivationDrafts(
+  template: PickerTbTemplate | null,
+  armorSupplementalA: "back-extension" | "reverse-hyper" =
+    DEFAULT_ARMOR_SUPPLEMENTAL_A,
+  armorSupplementalB: "pullup" | "inverted-row" =
+    DEFAULT_ARMOR_SUPPLEMENTAL_B,
+): ActivationDrafts {
+  const empty = (): ActivationPhaseDraft => ({
+    sessions: {},
+    rehabDays: [],
+  });
+  const drafts: ActivationDrafts = {
+    base: empty(),
+    armor: empty(),
+    operator: empty(),
+    vertex: empty(),
+  };
+  for (const phase of template?.activationPhases ?? []) {
+    drafts[phase.key] = {
+      sessions: Object.fromEntries(
+        phase.sessions.map((session) => [
+          session.key,
+          {
+            day: session.defaultDay,
+            enabled: true,
+            movements: Object.fromEntries(
+              session.movements.map((movement) => [
+                movement.sourceMovement,
+                movement.sourceMovement,
+              ]),
+            ),
+          },
+        ]),
+      ),
+      rehabDays: [],
+    };
+  }
+  for (const session of Object.values(drafts.armor.sessions)) {
+    if ("back-extension" in session.movements) {
+      session.movements["back-extension"] = armorSupplementalA;
+    }
+    if ("pullup" in session.movements) {
+      session.movements.pullup = armorSupplementalB;
+    }
+  }
+  return drafts;
+}
+
+function activationDraftsFromCustomization(
+  template: PickerTbTemplate | null,
+  customization: TbCustomization | undefined,
+  armorSupplementalA: "back-extension" | "reverse-hyper" =
+    DEFAULT_ARMOR_SUPPLEMENTAL_A,
+  armorSupplementalB: "pullup" | "inverted-row" =
+    DEFAULT_ARMOR_SUPPLEMENTAL_B,
+): ActivationDrafts {
+  const drafts = defaultActivationDrafts(
+    template,
+    armorSupplementalA,
+    armorSupplementalB,
+  );
+  if (!customization || !isTbActivationCustomizationV2(customization)) {
+    return drafts;
+  }
+  for (const phase of template?.activationPhases ?? []) {
+    const stored = customization.phases[phase.key];
+    drafts[phase.key].rehabDays = [...stored.rehabDays];
+    for (const session of phase.sessions) {
+      const config = stored.sessions[session.key];
+      if (!config) continue;
+      const movements = drafts[phase.key].sessions[session.key]!.movements;
+      for (const [source, replacement] of Object.entries(
+        config.movementOverrides,
+      )) {
+        movements[source] = replacement?.movement ?? null;
+      }
+      drafts[phase.key].sessions[session.key] = {
+        day: config.day,
+        enabled: config.enabled,
+        movements,
+      };
+    }
+  }
+  return drafts;
+}
 
 /**
  * 5/3/1 two-day lift pairings. With 2 training days the engine pairs the four
@@ -546,9 +700,9 @@ function buildWeek(n: number): DayType[] {
 function buildWeekFrom(
   strengthDays: number[],
   cardioDays: number[],
-  customization?: TbCustomizationV1,
+  customization?: TbCustomization,
 ): DayType[] {
-  if (customization) {
+  if (customization && isTbCustomizationV1(customization)) {
     return customization.dayTypes.map((day) =>
       day === "conditioning" ? "cardio" : day,
     );
@@ -769,7 +923,9 @@ export interface ProgramEditContextProp {
   startedOn: string;
   supersetAccessories: boolean;
   accessoriesEnabled: boolean;
-  customization?: TbCustomizationV1;
+  customization?: TbCustomization;
+  currentWeekIndex?: number;
+  programStartWeekIndex?: number;
 }
 
 export function ProgramPicker({
@@ -952,8 +1108,33 @@ export function ProgramPicker({
             (series) => series.movements,
           )
         : []),
+      ...(activeTbTemplate?.activationPhases ?? []).flatMap((phase) =>
+        phase.sessions.flatMap((session) =>
+          session.movements.map((movement) => movement.sourceMovement),
+        ),
+      ),
     ];
     return keys.filter((key, index) => keys.indexOf(key) === index);
+  }, [activeTbTemplate, benchRoles]);
+  const activationMovementKindByKey = useMemo(() => {
+    const kinds = new Map<
+      string,
+      "barbell" | "weighted-bw" | "bodyweight" | "unanchored"
+    >();
+    for (const phase of activeTbTemplate?.activationPhases ?? []) {
+      for (const session of phase.sessions) {
+        for (const movement of session.movements) {
+          kinds.set(
+            movement.sourceMovement,
+            movement.kind ?? "barbell",
+          );
+        }
+      }
+    }
+    for (const role of benchRoles) {
+      if (!kinds.has(role.engineKey)) kinds.set(role.engineKey, "barbell");
+    }
+    return kinds;
   }, [activeTbTemplate, benchRoles]);
   const isActivation = activeTbTemplate?.id === "activation";
   const armorSupplementalA =
@@ -989,16 +1170,19 @@ export function ProgramPicker({
   );
   const [customSessionMovements, setCustomSessionMovements] = useState<
     Record<string, string[]>
-  >(editContext?.customization?.sessionMovements
-    ? Object.fromEntries(
-        Object.entries(editContext.customization.sessionMovements).map(
-          ([key, movements]) => [
-            key,
-            movements.map((movement) => movement.movement),
-          ],
-        ),
-      )
-    : {});
+  >(() => {
+    const customization = editContext?.customization;
+    return customization && isTbCustomizationV1(customization)
+      ? Object.fromEntries(
+          Object.entries(customization.sessionMovements).map(
+            ([key, movements]) => [
+              key,
+              movements.map((movement) => movement.movement),
+            ],
+          ),
+        )
+      : {};
+  });
   const [rehabDrafts, setRehabDrafts] = useState<RehabDraft[]>(
     editContext?.customization?.rehab?.items.map((item) => ({
       movementId: item.movementId,
@@ -1012,6 +1196,15 @@ export function ProgramPicker({
       instructions: item.instructions ?? "",
     })) ?? [],
   );
+  const [activationDrafts, setActivationDrafts] =
+    useState<ActivationDrafts>(() =>
+      activationDraftsFromCustomization(
+        activeTbTemplate,
+        editContext?.customization,
+        armorSupplementalA,
+        armorSupplementalB,
+      ),
+    );
 
   const [cluster, setCluster] = useState<PickerClusterEntry[]>(() =>
     activeTbTemplate ? defaultClusterFor(activeTbTemplate, anchoredKeys) : [],
@@ -1039,6 +1232,13 @@ export function ProgramPicker({
         : {},
     );
     setRehabDrafts([]);
+    setActivationDrafts(
+      defaultActivationDrafts(
+        activeTbTemplate,
+        armorSupplementalA,
+        armorSupplementalB,
+      ),
+    );
   }
 
   const fixedSchedule = !!selected?.fixedSchedule || !!activeTbTemplate?.fixedSchedule;
@@ -1171,6 +1371,31 @@ export function ProgramPicker({
   // Which main-lift roles the Benchmarks step shows. Cluster programs (TB) show
   // the barbell lifts in their chosen cluster; everyone else shows all four mains.
   const relevantBenchKeys = useMemo<string[]>(() => {
+    if (customizeTb && activeTbTemplate && isActivation) {
+      const roleKeys = benchRoles.map((role) => role.engineKey);
+      const available = new Set(roleKeys);
+      const phaseEnds: Record<ActivationPhaseKey, number> = {
+        base: 3,
+        armor: 7,
+        operator: 18,
+        vertex: 23,
+      };
+      return (activeTbTemplate.activationPhases ?? [])
+        .filter((phase) => phaseEnds[phase.key] >= startWeekIndex)
+        .flatMap((phase) =>
+          Object.values(activationDrafts[phase.key].sessions),
+        )
+        .flatMap((session) => Object.values(session.movements))
+        .filter((key): key is string => key != null)
+        .filter(
+          (key) =>
+            available.has(key) &&
+            activationMovementKindByKey.get(key) !== "unanchored" &&
+            activationMovementKindByKey.get(key) !== "bodyweight",
+        )
+        .filter((key, index, all) => all.indexOf(key) === index)
+        .sort((a, b) => roleKeys.indexOf(a) - roleKeys.indexOf(b));
+    }
     if (customizeTb && activeTbTemplate) {
       const roleKeys = benchRoles.map((role) => role.engineKey);
       const available = new Set(roleKeys);
@@ -1201,6 +1426,9 @@ export function ProgramPicker({
     isActivation,
     customizeTb,
     customSessionMovements,
+    activationDrafts,
+    activationMovementKindByKey,
+    startWeekIndex,
   ]);
 
   const enteredAnyTm = useMemo(
@@ -1212,7 +1440,7 @@ export function ProgramPicker({
     (key) => Number(benchVals[key]?.valueStr ?? 0) <= 0,
   );
   const benchmarksReady =
-    isActivation ||
+    (isActivation && (!customizeTb || startWeekIndex <= 4)) ||
     (activeTbTemplate?.fixedLoadout
       ? missingRelevantBenchKeys.length === 0
       : hasUsableTms);
@@ -1227,7 +1455,61 @@ export function ProgramPicker({
       (key) => Number(benchVals[key]?.valueStr ?? 0) <= 0,
     );
   const activationStartBenchmarksReady =
-    !isActivation || missingActivationStartBenchKeys.length === 0;
+    !isActivation ||
+    customizeTb ||
+    missingActivationStartBenchKeys.length === 0;
+  const activationDraftsReady = useMemo(() => {
+    if (!customizeTb || !isActivation) return true;
+    for (const phase of activeTbTemplate?.activationPhases ?? []) {
+      const occupied = new Set<number>();
+      for (const session of phase.sessions) {
+        const draft = activationDrafts[phase.key].sessions[session.key];
+        if (!draft) return false;
+        if (session.type === "strength" && !draft.enabled) return false;
+        if (draft.enabled) {
+          if (occupied.has(draft.day)) return false;
+          occupied.add(draft.day);
+        }
+        if (
+          session.type === "strength" &&
+          Object.values(draft.movements).every(
+            (movement) => movement == null,
+          )
+        ) {
+          return false;
+        }
+        const selected = Object.values(draft.movements).filter(
+          (movement): movement is string => movement != null,
+        );
+        if (new Set(selected).size !== selected.length) return false;
+      }
+      if (
+        activationDrafts[phase.key].rehabDays.some((day) =>
+          occupied.has(day),
+        )
+      ) {
+        return false;
+      }
+    }
+    const hasRehabDays = Object.values(activationDrafts).some(
+      (phase) => phase.rehabDays.length > 0,
+    );
+    return (
+      !hasRehabDays ||
+      rehabDrafts.some(
+        (item) =>
+          item.movementId &&
+          Number(item.sets) > 0 &&
+          (Number(item.reps) > 0 || Number(item.holdSeconds) > 0),
+      )
+    );
+  }, [
+    activeTbTemplate,
+    activationDrafts,
+    customizeTb,
+    isActivation,
+    rehabDrafts,
+  ]);
 
   const canDeploy =
     !!selected?.enabled &&
@@ -1235,10 +1517,12 @@ export function ProgramPicker({
     daysMatch &&
     benchmarksReady &&
     activationStartBenchmarksReady &&
+    activationDraftsReady &&
     clusterOk &&
     (!customizeTb ||
       (customName.trim().length > 0 &&
-        (!activeTbTemplate ||
+        (isActivation ||
+          !activeTbTemplate ||
           sessionSeriesFor(activeTbTemplate).every(
           (series) =>
             (customSessionMovements[series.key]?.length ?? 0) > 0,
@@ -1300,6 +1584,7 @@ export function ProgramPicker({
           : {},
       );
       setRehabDrafts([]);
+      setActivationDrafts(defaultActivationDrafts(t ?? null));
     } else {
       setCluster([]);
       setLastTbTemplateId(null);
@@ -1363,7 +1648,7 @@ export function ProgramPicker({
   }
 
   function toggleCustomizeTb() {
-    if (!activeTbTemplate || isActivation) return;
+    if (!activeTbTemplate) return;
     setCustomizeTb((current) => {
       const next = !current;
       if (next && Object.keys(customSessionMovements).length === 0) {
@@ -1376,12 +1661,84 @@ export function ProgramPicker({
           ),
         );
       }
+      if (next && isActivation) {
+        setActivationDrafts(
+          activationDraftsFromCustomization(
+            activeTbTemplate,
+            editContext?.customization,
+            armorSupplementalA,
+            armorSupplementalB,
+          ),
+        );
+      }
       if (!next) {
         setWeek((currentWeek) =>
           currentWeek.map((day) => (day === "rehab" ? "rest" : day)),
         );
       }
       return next;
+    });
+  }
+
+  function patchActivationSession(
+    phase: ActivationPhaseKey,
+    sessionKey: string,
+    patch: Partial<ActivationSessionDraft>,
+  ) {
+    setActivationDrafts((current) => ({
+      ...current,
+      [phase]: {
+        ...current[phase],
+        sessions: {
+          ...current[phase].sessions,
+          [sessionKey]: {
+            ...current[phase].sessions[sessionKey]!,
+            ...patch,
+          },
+        },
+      },
+    }));
+  }
+
+  function setActivationMovement(
+    phase: ActivationPhaseKey,
+    sessionKey: string,
+    sourceMovement: string,
+    movement: string | null,
+  ) {
+    setActivationDrafts((current) => ({
+      ...current,
+      [phase]: {
+        ...current[phase],
+        sessions: {
+          ...current[phase].sessions,
+          [sessionKey]: {
+            ...current[phase].sessions[sessionKey]!,
+            movements: {
+              ...current[phase].sessions[sessionKey]!.movements,
+              [sourceMovement]: movement,
+            },
+          },
+        },
+      },
+    }));
+  }
+
+  function toggleActivationRehabDay(
+    phase: ActivationPhaseKey,
+    day: number,
+  ) {
+    setActivationDrafts((current) => {
+      const selected = current[phase].rehabDays;
+      return {
+        ...current,
+        [phase]: {
+          ...current[phase],
+          rehabDays: selected.includes(day)
+            ? selected.filter((candidate) => candidate !== day)
+            : [...selected, day].sort((a, b) => a - b),
+        },
+      };
     });
   }
 
@@ -1481,77 +1838,125 @@ export function ProgramPicker({
       setupValues.dayOrder = chosen.dayOrder;
     }
 
-    const customization: TbCustomizationV1 | undefined =
-      customizeTb && activeTbTemplate && !isActivation
-        ? {
-            version: TB_CUSTOMIZATION_VERSION,
-            displayName: customName.trim(),
-            dayTypes: week.map((day) =>
-              day === "cardio" ? "conditioning" : day,
-            ),
-            sessionMovements: Object.fromEntries(
-              sessionSeriesFor(activeTbTemplate).map((series) => [
-                series.key,
-                (customSessionMovements[series.key] ?? []).map((movement) => {
-                  const kind =
-                    series.movementKinds?.[movement] ??
-                    (movement === "weighted-pullup"
-                      ? "weighted-bw"
-                      : movement === "pullup"
-                        ? "bodyweight"
-                        : undefined);
-                  return {
-                    movement,
-                    ...(kind ? { kind } : {}),
-                  };
-                }),
-              ]),
-            ),
-            ...(rehabWeekdays.length > 0
-              ? {
-                  rehab: {
-                    items: rehabDrafts
-                      .filter(
-                        (item) =>
-                          item.movementId &&
-                          Number(item.sets) > 0 &&
-                          (Number(item.reps) > 0 ||
-                            Number(item.holdSeconds) > 0),
-                      )
-                      .map((item) => ({
-                        movementId: item.movementId,
-                        movementName:
-                          rehabMovements.find(
-                            (movement) => movement.id === item.movementId,
-                          )?.name ?? "Rehab movement",
-                        side: item.side,
-                        sets: Math.round(Number(item.sets)),
-                        ...(Number(item.reps) > 0
-                          ? { reps: Math.round(Number(item.reps)) }
-                          : {}),
-                        ...(Number(item.holdSeconds) > 0
-                          ? {
-                              holdSeconds: Math.round(
-                                Number(item.holdSeconds),
-                              ),
-                            }
-                          : {}),
-                        ...(Number(item.targetWeightKg) >= 0 &&
-                        item.targetWeightKg !== ""
-                          ? {
-                              targetWeightKg: Number(
-                                item.targetWeightKg,
-                              ),
-                            }
-                          : {}),
-                        ...(item.instructions.trim()
-                          ? { instructions: item.instructions.trim() }
-                          : {}),
-                      })),
-                  },
-                }
-              : {}),
-          }
+    const rehabItems = rehabDrafts
+      .filter(
+        (item) =>
+          item.movementId &&
+          Number(item.sets) > 0 &&
+          (Number(item.reps) > 0 || Number(item.holdSeconds) > 0),
+      )
+      .map((item) => ({
+        movementId: item.movementId,
+        movementName:
+          rehabMovements.find(
+            (movement) => movement.id === item.movementId,
+          )?.name ?? "Rehab movement",
+        side: item.side,
+        sets: Math.round(Number(item.sets)),
+        ...(Number(item.reps) > 0
+          ? { reps: Math.round(Number(item.reps)) }
+          : {}),
+        ...(Number(item.holdSeconds) > 0
+          ? { holdSeconds: Math.round(Number(item.holdSeconds)) }
+          : {}),
+        ...(Number(item.targetWeightKg) >= 0 &&
+        item.targetWeightKg !== ""
+          ? { targetWeightKg: Number(item.targetWeightKg) }
+          : {}),
+        ...(item.instructions.trim()
+          ? { instructions: item.instructions.trim() }
+          : {}),
+      }));
+    const hasActivationRehabDays = Object.values(activationDrafts).some(
+      (phase) => phase.rehabDays.length > 0,
+    );
+    const activationPhasePayload = (
+      phase: ActivationPhaseKey,
+    ): TbActivationCustomizationV2["phases"][ActivationPhaseKey] => {
+      const sessions: TbActivationCustomizationV2["phases"][ActivationPhaseKey]["sessions"] =
+        Object.fromEntries(
+        (activeTbTemplate?.activationPhases ?? [])
+          .find((candidate) => candidate.key === phase)
+          ?.sessions.map((session) => {
+            const draft = activationDrafts[phase].sessions[session.key]!;
+            const movementOverrides: TbActivationCustomizationV2["phases"][ActivationPhaseKey]["sessions"][string]["movementOverrides"] =
+              {};
+            for (const [sourceMovement, movement] of Object.entries(
+              draft.movements,
+            )) {
+              if (movement === sourceMovement) continue;
+              if (movement == null) {
+                movementOverrides[sourceMovement] = null;
+                continue;
+              }
+              const kind = activationMovementKindByKey.get(movement);
+              movementOverrides[sourceMovement] = {
+                movement,
+                ...(kind ? { kind } : {}),
+              };
+            }
+            return [
+              session.key,
+              {
+                day: draft.day,
+                enabled: draft.enabled,
+                movementOverrides,
+              },
+            ];
+          }) ?? [],
+        );
+      return {
+        sessions,
+        rehabDays: [...activationDrafts[phase].rehabDays],
+      };
+    };
+    const customization: TbCustomization | undefined =
+      customizeTb && activeTbTemplate
+        ? isActivation
+          ? {
+              version: TB_ACTIVATION_CUSTOMIZATION_VERSION,
+              templateId: "activation",
+              displayName: customName.trim(),
+              phases: {
+                base: activationPhasePayload("base"),
+                armor: activationPhasePayload("armor"),
+                operator: activationPhasePayload("operator"),
+                vertex: activationPhasePayload("vertex"),
+              },
+              ...(hasActivationRehabDays
+                ? { rehab: { items: rehabItems } }
+                : {}),
+            }
+          : {
+              version: TB_CUSTOMIZATION_VERSION,
+              displayName: customName.trim(),
+              dayTypes: week.map((day) =>
+                day === "cardio" ? "conditioning" : day,
+              ),
+              sessionMovements: Object.fromEntries(
+                sessionSeriesFor(activeTbTemplate).map((series) => [
+                  series.key,
+                  (customSessionMovements[series.key] ?? []).map(
+                    (movement) => {
+                      const kind =
+                        series.movementKinds?.[movement] ??
+                        (movement === "weighted-pullup"
+                          ? "weighted-bw"
+                          : movement === "pullup"
+                            ? "bodyweight"
+                            : undefined);
+                      return {
+                        movement,
+                        ...(kind ? { kind } : {}),
+                      };
+                    },
+                  ),
+                ]),
+              ),
+              ...(rehabWeekdays.length > 0
+                ? { rehab: { items: rehabItems } }
+                : {}),
+            }
         : undefined;
 
     // Lifts the user set or changed → persist as entered 1RMs before deploy. We
@@ -2127,7 +2532,7 @@ export function ProgramPicker({
         <p className={styles.sub}>{loadoutMeta?.sub ?? "Choose how you\u2019ll run it."}</p>
         <div className={styles.label}>{loadoutMeta?.grouped ? "Choose a block" : "Template"}</div>
         {renderLoadoutOptions()}
-        {isTb && !isActivation ? (
+        {isTb ? (
           <div className={styles.customPanel}>
             <label className={styles.customToggle}>
               <input
@@ -2138,8 +2543,9 @@ export function ProgramPicker({
               <span>
                 <b>Customize template</b>
                 <small>
-                  Move strength and conditioning, add rehab-only days, and
-                  choose the movements for each strength slot.
+                  {isActivation
+                    ? "Customize each Activation phase while keeping its progression and milestone weeks."
+                    : "Move strength and conditioning, add rehab-only days, and choose the movements for each strength slot."}
                 </small>
               </span>
             </label>
@@ -2162,7 +2568,7 @@ export function ProgramPicker({
         ) : null}
         {renderSpecStrip()}
         {renderGpPlan()}
-        {renderActivationSupplementals()}
+        {!customizeTb ? renderActivationSupplementals() : null}
         {renderTbAccessories()}
       </div>
     );
@@ -2536,7 +2942,44 @@ export function ProgramPicker({
           loadoutOptions.find((o) => o.value === selectedLoadoutValue)?.label ?? "\u2014",
         )
       : "Custom";
-    const weekText = selectedStartSchedule
+    const activationStartPhase: ActivationPhaseKey | null =
+      startWeekIndex <= 3
+        ? "base"
+        : startWeekIndex >= 5 && startWeekIndex <= 7
+          ? "armor"
+          : startWeekIndex >= 8 && startWeekIndex <= 18
+            ? "operator"
+            : startWeekIndex >= 21 && startWeekIndex <= 23
+              ? "vertex"
+              : null;
+    const activationStartWeekText =
+      customizeTb && isActivation && activationStartPhase
+        ? (() => {
+            const phase = activeTbTemplate?.activationPhases?.find(
+              (candidate) => candidate.key === activationStartPhase,
+            );
+            const enabled = (phase?.sessions ?? []).filter(
+              (session) =>
+                activationDrafts[activationStartPhase].sessions[
+                  session.key
+                ]?.enabled,
+            );
+            const strength = enabled.filter(
+              (session) => session.type === "strength",
+            ).length;
+            const conditioning = enabled.length - strength;
+            const rehab =
+              activationDrafts[activationStartPhase].rehabDays.length;
+            const rest = Math.max(
+              0,
+              7 - enabled.length - rehab,
+            );
+            return `${strength} strength · ${conditioning} conditioning · ${rehab} rehab · ${rest} rest`;
+          })()
+        : null;
+    const weekText = activationStartWeekText
+      ? activationStartWeekText
+      : selectedStartSchedule
       ? `${selectedStartSchedule.strength} strength \u00B7 ${selectedStartSchedule.cardio} cardio \u00B7 ${selectedStartSchedule.rest} rest`
       : supportsCardioDays
         ? `${dayCounts.strength} strength \u00B7 ${dayCounts.cardio} conditioning${
@@ -2585,6 +3028,399 @@ export function ProgramPicker({
     );
   }
 
+  function renderRehabProtocolEditor() {
+    return (
+      <div>
+        <div className={styles.label}>Rehab protocol</div>
+        <p className={styles.note}>
+          Enter only movements and loading supplied by you or your clinician.
+          SxC does not generate or progress rehab work.
+        </p>
+        <div className={styles.rehabList}>
+          {rehabDrafts.map((item, index) => (
+            <div
+              key={`${item.movementId}-${index}`}
+              className={styles.rehabRow}
+            >
+              <select
+                value={item.movementId}
+                onChange={(event) =>
+                  updateRehabMovement(index, {
+                    movementId: event.target.value,
+                  })
+                }
+                aria-label={`Rehab movement ${index + 1}`}
+              >
+                {rehabMovements.map((movement) => (
+                  <option key={movement.id} value={movement.id}>
+                    {movement.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={item.side}
+                onChange={(event) =>
+                  updateRehabMovement(index, {
+                    side: event.target.value as RehabDraft["side"],
+                  })
+                }
+                aria-label={`Side for rehab movement ${index + 1}`}
+              >
+                <option value="both">Both sides</option>
+                <option value="left">Left</option>
+                <option value="right">Right</option>
+              </select>
+              <input
+                type="number"
+                min="1"
+                value={item.sets}
+                onChange={(event) =>
+                  updateRehabMovement(index, { sets: event.target.value })
+                }
+                aria-label={`Sets for rehab movement ${index + 1}`}
+                placeholder="Sets"
+              />
+              <input
+                type="number"
+                min="1"
+                value={item.reps}
+                onChange={(event) =>
+                  updateRehabMovement(index, {
+                    reps: event.target.value,
+                    holdSeconds: event.target.value
+                      ? ""
+                      : item.holdSeconds,
+                  })
+                }
+                aria-label={`Reps for rehab movement ${index + 1}`}
+                placeholder="Reps"
+              />
+              <input
+                type="number"
+                min="1"
+                value={item.holdSeconds}
+                onChange={(event) =>
+                  updateRehabMovement(index, {
+                    holdSeconds: event.target.value,
+                    reps: event.target.value ? "" : item.reps,
+                  })
+                }
+                aria-label={`Hold seconds for rehab movement ${index + 1}`}
+                placeholder="Hold sec"
+              />
+              <input
+                type="number"
+                min="0"
+                step="0.5"
+                value={item.targetWeightKg}
+                onChange={(event) =>
+                  updateRehabMovement(index, {
+                    targetWeightKg: event.target.value,
+                  })
+                }
+                aria-label={`Load for rehab movement ${index + 1}`}
+                placeholder="kg"
+              />
+              <input
+                type="text"
+                value={item.instructions}
+                maxLength={500}
+                onChange={(event) =>
+                  updateRehabMovement(index, {
+                    instructions: event.target.value,
+                  })
+                }
+                aria-label={`Instructions for rehab movement ${index + 1}`}
+                placeholder="Instructions"
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  setRehabDrafts((current) =>
+                    current.filter(
+                      (_, itemIndex) => itemIndex !== index,
+                    ),
+                  )
+                }
+                aria-label={`Remove rehab movement ${index + 1}`}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          className={styles.addlift}
+          onClick={addRehabMovement}
+          disabled={rehabMovements.length === 0}
+        >
+          + Add rehab movement
+        </button>
+        {rehabDrafts.length === 0 ? (
+          <p className={styles.inlineError}>
+            Add at least one movement for your rehab day.
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  function renderActivationCustomization() {
+    if (!activeTbTemplate?.activationPhases) return null;
+    const hasRehabDays = Object.values(activationDrafts).some(
+      (phase) => phase.rehabDays.length > 0,
+    );
+    const phaseEndWeek: Record<ActivationPhaseKey, number> = {
+      base: 3,
+      armor: 7,
+      operator: 18,
+      vertex: 23,
+    };
+    const firstOpenPhase = Math.max(
+      0,
+      activeTbTemplate.activationPhases.findIndex(
+        (phase) => phaseEndWeek[phase.key] >= startWeekIndex,
+      ),
+    );
+    return (
+      <div
+        className={styles.activationBuilder}
+        data-testid="activation-custom-builder"
+      >
+        <div className={styles.activationMilestones}>
+          <b>Milestone weeks stay protected</b>
+          <span>
+            Tests and peaks in weeks 5, 14, 20, 21, and 25 remain
+            engine-owned. A consistent replacement is mapped into its test;
+            conflicting replacements are never guessed.
+          </span>
+        </div>
+        {activeTbTemplate.activationPhases.map((phase, phaseIndex) => {
+          const phaseDraft = activationDrafts[phase.key];
+          const absoluteCurrentWeek =
+            (editContext?.programStartWeekIndex ?? 0) +
+            (editContext?.currentWeekIndex ?? 0);
+          const beforeStart =
+            phaseEndWeek[phase.key] < startWeekIndex;
+          const phaseLocked =
+            beforeStart ||
+            (isEditing &&
+              phaseEndWeek[phase.key] < absoluteCurrentWeek);
+          const occupied = new Set(
+            phase.sessions.flatMap((session) => {
+              const draft = phaseDraft.sessions[session.key];
+              return draft?.enabled ? [draft.day] : [];
+            }),
+          );
+          return (
+            <details
+              key={phase.key}
+              className={styles.activationPhase}
+              open={phaseIndex === firstOpenPhase}
+              data-testid={`activation-phase-${phase.key}`}
+            >
+              <summary>
+                <span>
+                  <b>{phase.label}</b>
+                  <small>{phase.weeks}</small>
+                </span>
+                <span>
+                  {
+                    phase.sessions.filter(
+                      (session) =>
+                        phaseDraft.sessions[session.key]?.enabled,
+                    ).length
+                  }{" "}
+                  sessions · {phaseDraft.rehabDays.length} rehab
+                  {phaseLocked
+                    ? beforeStart
+                      ? " · Before start · locked"
+                      : " · Past · locked"
+                    : ""}
+                </span>
+              </summary>
+              <fieldset
+                className={styles.activationPhaseBody}
+                disabled={phaseLocked}
+              >
+                <div className={styles.activationSessions}>
+                  {phase.sessions.map((session) => {
+                    const draft = phaseDraft.sessions[session.key]!;
+                    return (
+                      <section
+                        key={session.key}
+                        className={styles.activationSession}
+                        data-testid={`activation-session-${session.key}`}
+                      >
+                        <div className={styles.activationSessionHead}>
+                          <span>
+                            <b>{session.label}</b>
+                            <small>
+                              {session.type === "strength"
+                                ? "Strength"
+                                : "Conditioning"}
+                            </small>
+                          </span>
+                          <label>
+                            <span>Day</span>
+                            <select
+                              value={draft.day}
+                              onChange={(event) =>
+                                patchActivationSession(
+                                  phase.key,
+                                  session.key,
+                                  { day: Number(event.target.value) },
+                                )
+                              }
+                              aria-label={`${session.label} weekday`}
+                            >
+                              {WD.map((day, index) => (
+                                <option
+                                  key={day}
+                                  value={index}
+                                  disabled={
+                                    (occupied.has(index) &&
+                                      index !== draft.day) ||
+                                    phaseDraft.rehabDays.includes(index)
+                                  }
+                                >
+                                  {day}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          {session.type === "conditioning" ? (
+                            <label className={styles.activationEnabled}>
+                              <input
+                                type="checkbox"
+                                checked={draft.enabled}
+                                disabled={
+                                  !draft.enabled && occupied.has(draft.day)
+                                }
+                                onChange={(event) =>
+                                  patchActivationSession(
+                                    phase.key,
+                                    session.key,
+                                    { enabled: event.target.checked },
+                                  )
+                                }
+                              />
+                              Include
+                            </label>
+                          ) : null}
+                        </div>
+                        {session.type === "strength" ? (
+                          <div className={styles.activationMovements}>
+                            {session.movements.map((slot) => {
+                              const sourceFamily =
+                                activationReplacementFamily(
+                                  slot.sourceMovement,
+                                );
+                              const choices = customMovementKeys.filter(
+                                (movement) =>
+                                  activationReplacementFamily(
+                                    movement,
+                                  ) === sourceFamily,
+                              );
+                              return (
+                                <label key={slot.sourceMovement}>
+                                  <span>
+                                    {movementLabel(slot.sourceMovement)}
+                                  </span>
+                                  <select
+                                    value={
+                                      draft.movements[
+                                        slot.sourceMovement
+                                      ] ?? ""
+                                    }
+                                    onChange={(event) =>
+                                      setActivationMovement(
+                                        phase.key,
+                                        session.key,
+                                        slot.sourceMovement,
+                                        event.target.value || null,
+                                      )
+                                    }
+                                    aria-label={`${session.label} ${movementLabel(slot.sourceMovement)}`}
+                                  >
+                                    <option value="">Remove</option>
+                                    {choices.map((movement) => (
+                                      <option
+                                        key={movement}
+                                        value={movement}
+                                        disabled={
+                                          draft.movements[
+                                            slot.sourceMovement
+                                          ] !== movement &&
+                                          Object.values(
+                                            draft.movements,
+                                          ).includes(movement)
+                                        }
+                                      >
+                                        {movement === slot.sourceMovement
+                                          ? `Keep ${movementLabel(movement)}`
+                                          : `Replace with ${movementLabel(movement)}`}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              );
+                            })}
+                            {Object.values(draft.movements).every(
+                              (movement) => movement == null,
+                            ) ? (
+                              <p className={styles.inlineError}>
+                                Keep or replace at least one movement.
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </section>
+                    );
+                  })}
+                </div>
+                <div>
+                  <div className={styles.label}>Rehab-only days</div>
+                  <div className={styles.activationRehabDays}>
+                    {WD.map((day, index) => {
+                      const selected =
+                        phaseDraft.rehabDays.includes(index);
+                      const unavailable = occupied.has(index);
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          className={selected ? styles.selected : ""}
+                          disabled={unavailable}
+                          onClick={() =>
+                            toggleActivationRehabDay(
+                              phase.key,
+                              index,
+                            )
+                          }
+                          aria-pressed={selected}
+                          title={
+                            unavailable
+                              ? "Move or disable the scheduled session first"
+                              : undefined
+                          }
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </fieldset>
+            </details>
+          );
+        })}
+        {hasRehabDays ? renderRehabProtocolEditor() : null}
+      </div>
+    );
+  }
+
   function renderScheduleStep() {
     if (!selected) return null;
     const hyroxTooFew = isHyrox && dayCounts.strength < HYROX_MIN_DAYS;
@@ -2617,7 +3453,9 @@ export function ProgramPicker({
         <p className={styles.sub}>
           {fixedSchedule
             ? isActivation
-              ? "Activation sets the lifting days for each phase. Pick when week 1 starts."
+              ? customizeTb
+                ? "Customize each work phase. Milestone tests and peaks stay protected."
+                : "Activation sets the lifting days for each phase. Pick when week 1 starts."
               : `${selected.name} plans both your lifting and conditioning days \u2014 just pick a start date.`
             : "Your training days come from your program. Pick which weekdays you'll train, then pick a start date."}
         </p>
@@ -2678,7 +3516,9 @@ export function ProgramPicker({
           </div>
         ) : null}
 
-        {fixedSchedule ? (
+        {fixedSchedule && isActivation && customizeTb ? (
+          renderActivationCustomization()
+        ) : fixedSchedule ? (
           <p className={styles.note}>
             {isActivation
               ? selectedStartSchedule

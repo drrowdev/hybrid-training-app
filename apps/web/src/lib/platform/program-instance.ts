@@ -19,7 +19,7 @@ import type { MovementResolver, SkippedItem } from "./adapter";
 import type { AssistancePlanner } from "./assistance-resolver";
 import type { TbAccessoryInjector } from "./tb-accessories";
 import { computeTmAlignment } from "./tm-alignment";
-import type { TbCustomizationV1 } from "./tb-customization";
+import type { TbCustomization } from "./tb-customization";
 
 export interface BuildProgramInstanceArgs<I> {
   engine: ProgramEngine<I>;
@@ -38,7 +38,7 @@ export interface BuildProgramInstanceArgs<I> {
   startWeekIndex?: number;
   /** Optional open-cardio weekdays (0 = Mon … 6 = Sun) for strength-only programs. */
   cardioWeekdays?: number[];
-  customization?: TbCustomizationV1;
+  customization?: TbCustomization;
 }
 
 /** A `training_maxes.tm_percent` seed for one anchored movement. */
