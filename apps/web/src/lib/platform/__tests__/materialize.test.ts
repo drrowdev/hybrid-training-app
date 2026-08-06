@@ -545,7 +545,7 @@ describe("materializeProgram — TB3 Activation", () => {
               movementOverrides: {},
             },
           },
-          rehabDays: [0],
+          rehabDays: [2],
         },
         armor: { sessions: {}, rehabDays: [] },
         operator: { sessions: {}, rehabDays: [] },
@@ -574,14 +574,15 @@ describe("materializeProgram — TB3 Activation", () => {
       (session) => session.weekIndex === 0,
     );
     expect(baseWeek.map((session) => session.dayIndex)).toEqual([
-      6, 2, 4, 1, 3, 0,
+      6, 2, 4, 1, 3, 2,
     ]);
     expect(
       baseWeek.some((session) => session.ref.endsWith("base-lss-3")),
     ).toBe(false);
     expect(baseWeek.find((session) => session.role === "rehab")).toMatchObject({
-      dayIndex: 0,
+      dayIndex: 2,
       title: "Rehab",
+      slot: "pm",
     });
     const baseOne = baseWeek.find((session) =>
       session.ref.endsWith("base-1"),
@@ -811,5 +812,57 @@ describe("materializeProgram — customized Tactical Barbell", () => {
         ),
       ),
     ).toEqual([["Press"], ["Deadlift"]]);
+  });
+
+  it("materializes a catalog-backed standalone TB exercise with its own 1RM", () => {
+    const catalogCtx: PlatformContext = {
+      ...customCtx,
+      oneRepMaxes: {
+        ...customCtx.oneRepMaxes,
+        "catalog:00000000-0000-4000-8000-000000000010": 160,
+      },
+    };
+    const catalogKey =
+      "catalog:00000000-0000-4000-8000-000000000010";
+    const catalogInstance = tacticalBarbellEngine.setup(
+      {
+        values: {
+          templateId: "fighter",
+          customSessionMovements: {
+            "slot-1": [
+              {
+                movement: catalogKey,
+                displayName: "Belt Squat",
+                kind: "barbell",
+              },
+            ],
+            "slot-2": [{ movement: "bench" }],
+          },
+        },
+      },
+      catalogCtx,
+    );
+    const catalogResolve: MovementResolver = (key) =>
+      key === catalogKey
+        ? {
+            movementId: "00000000-0000-4000-8000-000000000010",
+            slug: "belt-squat",
+            displayName: "Belt Squat",
+          }
+        : resolve(key);
+    const result = materializeProgram(
+      tacticalBarbellEngine,
+      catalogInstance,
+      catalogCtx,
+      catalogResolve,
+      { weekdays: [0, 3] },
+    );
+    const beltSquat = result.sessions[0]!.prescription.items.find(
+      (item) => item.movementName === "Belt Squat" && item.kind === "main",
+    );
+    expect(beltSquat).toMatchObject({
+      movementId: "00000000-0000-4000-8000-000000000010",
+      percentTm: 75,
+    });
   });
 });

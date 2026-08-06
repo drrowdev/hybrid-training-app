@@ -28,6 +28,34 @@ export interface PlatformContextBundle {
   anchoredKeys: string[];
 }
 
+export interface CustomMovementBinding {
+  key: string;
+  movementId: string;
+  slug: string;
+  displayName: string;
+}
+
+export function validateCustomMovementBindings(
+  bindings: CustomMovementBinding[],
+  catalog: Array<{ id: string; slug: string; displayName: string }>,
+): CustomMovementBinding[] {
+  const byId = new Map(catalog.map((movement) => [movement.id, movement]));
+  return bindings.map((binding) => {
+    const movement = byId.get(binding.movementId);
+    if (!movement || movement.slug !== binding.slug) {
+      throw new Error(
+        `Customized exercise '${binding.displayName}' is no longer available in the exercise library.`,
+      );
+    }
+    return {
+      key: binding.key,
+      movementId: movement.id,
+      slug: movement.slug,
+      displayName: movement.displayName,
+    };
+  });
+}
+
 interface TmRow {
   one_rm_kg: string | number | null;
   movement: { id: string; slug: string; display_name: string } | null;
@@ -46,7 +74,11 @@ interface MovementRow {
 export async function buildPlatformContext(
   supabase: Pick<SupabaseClient, "from">,
   userId: string,
-  opts: { roundingKg?: number; gender?: "male" | "female" } = {},
+  opts: {
+    roundingKg?: number;
+    gender?: "male" | "female";
+    customMovements?: CustomMovementBinding[];
+  } = {},
 ): Promise<PlatformContextBundle> {
   const { data, error } = await supabase
     .from("training_maxes")
@@ -129,6 +161,25 @@ export async function buildPlatformContext(
       slug: movement.slug,
       displayName: definition.displayName ?? movement.display_name,
     });
+  }
+
+  const oneRmByMovementId = new Map(
+    tmRows.flatMap((row) => {
+      const movement = row.movement;
+      const oneRm = row.one_rm_kg == null ? NaN : Number(row.one_rm_kg);
+      return movement && Number.isFinite(oneRm) && oneRm > 0
+        ? [[movement.id, oneRm] as const]
+        : [];
+    }),
+  );
+  for (const movement of opts.customMovements ?? []) {
+    resolved.set(movement.key, {
+      movementId: movement.movementId,
+      slug: movement.slug,
+      displayName: movement.displayName,
+    });
+    const oneRm = oneRmByMovementId.get(movement.movementId);
+    if (oneRm != null) oneRepMaxes[movement.key] = oneRm;
   }
 
   const resolveMovement: MovementResolver = (engineKey) => resolved.get(engineKey);

@@ -1,7 +1,52 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildPlatformContext } from "../context";
+import {
+  buildPlatformContext,
+  validateCustomMovementBindings,
+} from "../context";
 
 describe("buildPlatformContext", () => {
+  it("uses authoritative catalog metadata and rejects stale custom ids", () => {
+    expect(
+      validateCustomMovementBindings(
+        [
+          {
+            key: "catalog:movement-1",
+            movementId: "movement-1",
+            slug: "belt-squat",
+            displayName: "Client supplied name",
+          },
+        ],
+        [
+          {
+            id: "movement-1",
+            slug: "belt-squat",
+            displayName: "Belt Squat",
+          },
+        ],
+      ),
+    ).toEqual([
+      {
+        key: "catalog:movement-1",
+        movementId: "movement-1",
+        slug: "belt-squat",
+        displayName: "Belt Squat",
+      },
+    ]);
+    expect(() =>
+      validateCustomMovementBindings(
+        [
+          {
+            key: "catalog:missing",
+            movementId: "missing",
+            slug: "made-up",
+            displayName: "Missing movement",
+          },
+        ],
+        [],
+      ),
+    ).toThrow(/no longer available/i);
+  });
+
   it("combines user 1RMs with shared catalog movements for Activation", async () => {
     const from = vi.fn((table: string) => {
       if (table === "training_maxes") {
@@ -58,7 +103,26 @@ describe("buildPlatformContext", () => {
       };
     });
 
-    const bundle = await buildPlatformContext({ from } as never, "user-1");
+    const bundle = await buildPlatformContext(
+      { from } as never,
+      "user-1",
+      {
+        customMovements: [
+          {
+            key: "catalog:trap-id",
+            movementId: "trap-id",
+            slug: "trap-bar-deadlift",
+            displayName: "Trap Bar Deadlift",
+          },
+          {
+            key: "catalog:no-max",
+            movementId: "no-max",
+            slug: "belt-squat",
+            displayName: "Belt Squat",
+          },
+        ],
+      },
+    );
 
     expect(bundle.ctx.oneRepMaxes["push-press"]).toBe(100);
     expect(bundle.ctx.oneRepMaxes.press).toBe(80);
@@ -79,5 +143,15 @@ describe("buildPlatformContext", () => {
       movementId: "row-id",
       displayName: "Barbell Row",
     });
+    expect(bundle.resolveMovement("catalog:trap-id")).toMatchObject({
+      movementId: "trap-id",
+      displayName: "Trap Bar Deadlift",
+    });
+    expect(bundle.ctx.oneRepMaxes["catalog:trap-id"]).toBe(180);
+    expect(bundle.resolveMovement("catalog:no-max")).toMatchObject({
+      movementId: "no-max",
+      displayName: "Belt Squat",
+    });
+    expect(bundle.ctx.oneRepMaxes["catalog:no-max"]).toBeUndefined();
   });
 });

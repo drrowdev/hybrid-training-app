@@ -30,11 +30,28 @@ const rehabItemSchema = z
 const movementReplacementSchema = z
   .object({
     movement: z.string().trim().min(1).max(80),
+    movementId: z.string().uuid().optional(),
+    slug: z.string().trim().min(1).max(160).optional(),
+    displayName: z.string().trim().min(1).max(160).optional(),
     kind: z
       .enum(["barbell", "weighted-bw", "bodyweight", "unanchored"])
       .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    if (!value.movement.startsWith("catalog:")) return;
+    if (
+      !value.movementId ||
+      value.movement !== `catalog:${value.movementId}` ||
+      !value.slug ||
+      !value.displayName
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Catalog movements require a matching id, slug, and display name.",
+      });
+    }
+  });
 
 export const tbCustomizationV1Schema = z
   .object({

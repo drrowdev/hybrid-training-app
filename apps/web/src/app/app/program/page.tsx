@@ -113,13 +113,20 @@ export default async function ProgramPickerPage({
   // Resolved to its catalog id so the picker can persist a max-reps anchor on
   // deploy; the engine prescribes it as a % of max reps.
   const pullupMovement = await buildPullupMovement(supabase);
-  const rehabMovements: PickerRehabMovement[] = (
-    await loadPickerCatalog(supabase)
-  )
+  const [movementCatalog, trainingMaxContext] = await Promise.all([
+    loadPickerCatalog(supabase),
+    getTrainingMaxContext(),
+  ]);
+  const rehabMovements: PickerRehabMovement[] = movementCatalog
     .filter((movement) => movement.pattern !== "cardio")
     .map((movement) => ({
       id: movement.id,
       name: movement.displayName,
+      slug: movement.slug,
+      pattern: movement.pattern ?? "other",
+      hasOneRm: trainingMaxContext.rows.some(
+        (row) => row.movementId === movement.id && row.oneRmKg > 0,
+      ),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
