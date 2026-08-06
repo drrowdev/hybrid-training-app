@@ -97,7 +97,10 @@ test("creates and restores a phase-aware customized Activation plan", async ({
 
   const base = page.getByTestId("activation-phase-base");
   await expect(base).toBeVisible();
-  await page.getByLabel("Base circuit 1 weekday").selectOption("6");
+  await page
+    .getByTestId("activation-session-activation.base.base-1")
+    .getByRole("combobox")
+    .selectOption("6");
   await page
     .getByTestId(
       "activation-movement-activation.base.base-1-goblet-squat",
@@ -108,8 +111,29 @@ test("creates and restores a phase-aware customized Activation plan", async ({
     .getByTestId("activation-session-activation.base.base-lss-3")
     .getByRole("checkbox")
     .uncheck();
+  await page
+    .getByTestId("activation-session-activation.base.base-lss-3")
+    .getByRole("combobox")
+    .selectOption("2");
+  await expect(
+    page
+      .getByTestId("activation-session-activation.base.base-2")
+      .getByRole("combobox"),
+  ).toHaveValue("2");
   const armor = page.getByTestId("activation-phase-armor");
   await armor.locator(":scope > summary").click();
+  const armorA1Card = page.getByTestId(
+    "activation-session-activation.armor.armor-a1",
+  );
+  const armorB1Card = page.getByTestId(
+    "activation-session-activation.armor.armor-b1",
+  );
+  await expect(armorA1Card.getByText("Armor · Strength 1")).toBeVisible();
+  await expect(armorB1Card.getByText("Armor · Strength 2")).toBeVisible();
+  await armorA1Card.getByRole("combobox").selectOption("1");
+  await expect(armorA1Card.getByText("Armor · Strength 2")).toBeVisible();
+  await expect(armorB1Card.getByText("Armor · Strength 1")).toBeVisible();
+  await expect(armorB1Card.getByRole("combobox")).toHaveValue("0");
   const armorSquat = page.getByTestId(
     "activation-movement-activation.armor.armor-a1-squat",
   );
@@ -118,7 +142,7 @@ test("creates and restores a phase-aware customized Activation plan", async ({
     .getByLabel("Search the exercise library")
     .fill("Belt Squat");
   await armorSquat.getByRole("button", { name: /Belt Squat/ }).click();
-  await armor.getByRole("button", { name: "Tue +", exact: true }).click();
+  await armor.getByRole("button", { name: "Mon +", exact: true }).click();
   await page
     .getByTestId("activation-phase-operator")
     .locator(":scope > summary")
@@ -185,7 +209,10 @@ test("creates and restores a phase-aware customized Activation plan", async ({
           rehabDays?: number[];
           sessions?: Record<
             string,
-            { movementOverrides?: Record<string, unknown> }
+            {
+              day?: number;
+              movementOverrides?: Record<string, unknown>;
+            }
           >;
         };
       };
@@ -208,19 +235,23 @@ test("creates and restores a phase-aware customized Activation plan", async ({
             day: 6,
             movementOverrides: { "goblet-squat": null },
           },
-          "activation.base.base-lss-3": { enabled: false },
+          "activation.base.base-lss-3": { day: 2, enabled: false },
         },
       },
       armor: {
-        rehabDays: [1],
+        rehabDays: [0],
         sessions: {
           "activation.armor.armor-a1": {
+            day: 1,
             movementOverrides: {
               squat: {
                 slug: "belt-squat",
                 displayName: "Belt Squat",
               },
             },
+          },
+          "activation.armor.armor-b1": {
+            day: 0,
           },
         },
       },
@@ -263,7 +294,7 @@ test("creates and restores a phase-aware customized Activation plan", async ({
   ).toBe(false);
   const armorWeek = sessions!.filter((session) => session.week_index === 5);
   expect(
-    armorWeek.filter((session) => session.day_index === 1).map(
+    armorWeek.filter((session) => session.day_index === 0).map(
       (session) => [session.role, session.slot],
     ),
   ).toEqual(
@@ -344,7 +375,11 @@ test("creates and restores a phase-aware customized Activation plan", async ({
   ).toBeVisible();
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByLabel("Base circuit 1 weekday")).toHaveValue("6");
+  await expect(
+    page
+      .getByTestId("activation-session-activation.base.base-1")
+      .getByRole("combobox"),
+  ).toHaveValue("6");
   await expect(
     page
       .getByTestId(
@@ -366,14 +401,17 @@ test("creates and restores a phase-aware customized Activation plan", async ({
   await expect(
     page
       .getByTestId("activation-phase-armor")
-      .getByRole("button", { name: "Tue +", exact: true }),
+      .getByRole("button", { name: "Mon +", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   await expect(
     page
       .getByTestId("activation-session-activation.base.base-lss-3")
       .getByRole("checkbox"),
   ).not.toBeChecked();
-  await page.getByLabel("Base circuit 1 weekday").selectOption("5");
+  await page
+    .getByTestId("activation-session-activation.base.base-1")
+    .getByRole("combobox")
+    .selectOption("5");
   await page
     .getByTestId("activation-phase-operator")
     .locator(":scope > summary")
@@ -385,7 +423,10 @@ test("creates and restores a phase-aware customized Activation plan", async ({
       )
       .getByText("Conventional Deadlift"),
   ).toBeVisible();
-  await page.getByLabel("Operator D3 weekday").selectOption("6");
+  await page
+    .getByTestId("activation-session-activation.operator.operator-d3")
+    .getByRole("combobox")
+    .selectOption("6");
   await page.getByRole("button", { name: "Save changes" }).click();
   await page.waitForURL("**/app/plan", { timeout: 30_000 });
 
