@@ -128,12 +128,31 @@ test("creates and restores a phase-aware customized Activation plan", async ({
   const armorB1Card = page.getByTestId(
     "activation-session-activation.armor.armor-b1",
   );
+  const armorSessionCards = armor.locator(
+    '[data-testid^="activation-session-"]',
+  );
   await expect(armorA1Card.getByText("Armor · Strength 1")).toBeVisible();
   await expect(armorB1Card.getByText("Armor · Strength 2")).toBeVisible();
+  await expect(armorSessionCards.nth(0)).toHaveAttribute(
+    "data-testid",
+    "activation-session-activation.armor.armor-a1",
+  );
+  await expect(armorSessionCards.nth(1)).toHaveAttribute(
+    "data-testid",
+    "activation-session-activation.armor.armor-b1",
+  );
   await armorA1Card.getByRole("combobox").selectOption("1");
   await expect(armorA1Card.getByText("Armor · Strength 2")).toBeVisible();
   await expect(armorB1Card.getByText("Armor · Strength 1")).toBeVisible();
   await expect(armorB1Card.getByRole("combobox")).toHaveValue("0");
+  await expect(armorSessionCards.nth(0)).toHaveAttribute(
+    "data-testid",
+    "activation-session-activation.armor.armor-b1",
+  );
+  await expect(armorSessionCards.nth(1)).toHaveAttribute(
+    "data-testid",
+    "activation-session-activation.armor.armor-a1",
+  );
   const armorSquat = page.getByTestId(
     "activation-movement-activation.armor.armor-a1-squat",
   );
@@ -391,6 +410,14 @@ test("creates and restores a phase-aware customized Activation plan", async ({
     .getByTestId("activation-phase-armor")
     .locator(":scope > summary")
     .click();
+  await expect(armorSessionCards.nth(0)).toHaveAttribute(
+    "data-testid",
+    "activation-session-activation.armor.armor-b1",
+  );
+  await expect(armorSessionCards.nth(1)).toHaveAttribute(
+    "data-testid",
+    "activation-session-activation.armor.armor-a1",
+  );
   await expect(
     page
       .getByTestId(

@@ -416,3 +416,7 @@ The customized TB/Activation editor now presents each program slot as a clear so
 
 ## [2026-08-06] refine | Make customized workout ordering intuitive
 Activation edit cards now derive their visible Strength/Conditioning ordinal from the current weekday order while retaining A1/B1/etc. only as secondary prescription identity. Selecting a weekday already occupied by an enabled workout atomically swaps the two day assignments instead of requiring an empty intermediate day. Disabled conditioning sessions may change their placeholder day without displacing active workouts. Stable session keys, movement choices, rehab overlays and milestone mapping remain unchanged.
+
+
+## [2026-08-06] refine | Keep customized workout cards in calendar order
+Activation phase session cards now render in selected weekday order. An occupied-day swap therefore moves both workout cards to their new visual positions immediately, while stable A1/B1 prescription identity and all persisted customization data remain unchanged.
