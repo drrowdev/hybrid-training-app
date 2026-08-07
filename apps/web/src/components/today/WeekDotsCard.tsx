@@ -121,7 +121,7 @@ function Dot({ cell }: { cell: WeekDayCell }) {
   if (both) {
     return (
       <div
-        title="Strength + Cardio"
+        title="Strength and cardio"
         style={{
           ...baseStyle,
           background:

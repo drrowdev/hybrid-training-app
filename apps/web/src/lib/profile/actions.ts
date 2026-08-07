@@ -57,16 +57,16 @@ export async function updateDisplayName(
   return { ok: true };
 }
 
-const aiNotesSchema = z.object({
-  aiNotes: z.string().trim().max(4000).nullable(),
+const trainingNotesSchema = z.object({
+  trainingNotes: z.string().trim().max(4000).nullable(),
 });
 
-export async function updateAiNotes(
+export async function updateTrainingNotes(
   formData: FormData,
 ): Promise<ActionResult> {
-  const raw = formData.get("aiNotes");
-  const parsed = aiNotesSchema.safeParse({
-    aiNotes: raw == null || raw === "" ? null : String(raw),
+  const raw = formData.get("trainingNotes");
+  const parsed = trainingNotesSchema.safeParse({
+    trainingNotes: raw == null || raw === "" ? null : String(raw),
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Notes too long" };
@@ -76,7 +76,7 @@ export async function updateAiNotes(
   const { error } = await supabase
     .from("profiles")
     .update({
-      ai_notes: parsed.data.aiNotes,
+      ai_notes: parsed.data.trainingNotes,
       // bump updated_at so the "Last updated" hint stays accurate.
       updated_at: new Date().toISOString(),
     })

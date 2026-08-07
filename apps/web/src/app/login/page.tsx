@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAuthUser } from "@/lib/supabase/server";
 import { LoginForm } from "./login-form";
+import { BrandMark } from "@/components/brand/BrandMark";
 
 export default async function LoginPage({
   searchParams,
@@ -38,17 +39,10 @@ export default async function LoginPage({
             aria-label="SxC — home"
             style={{
               textDecoration: "none",
-              color: "var(--cp-text)",
-              fontFamily: "var(--font-brand), system-ui, sans-serif",
-              fontWeight: 700,
-              fontSize: 48,
-              lineHeight: 1,
-              letterSpacing: "-0.03em",
-              display: "inline-block",
+              display: "inline-flex",
             }}
           >
-            S<span style={{ color: "var(--cp-accent)", margin: "0 2px" }}>×</span>
-            C
+            <BrandMark size={60} />
           </Link>
           <p className="text-sm" style={{ color: "var(--cp-text-muted)" }}>
             Sign in to continue

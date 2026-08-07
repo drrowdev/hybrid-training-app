@@ -2,13 +2,13 @@ import sharp from "sharp";
 import { writeFile, readFile } from "node:fs/promises";
 
 // Generates the 2732×2732 native launch (splash) image for the iOS shell:
-// charcoal (#1A1A1A) field with the S×C wordmark centred. Overwrites the three
+// charcoal (#1A1A1A) field with the compact S×C mark centred. Overwrites the three
 // splash variants Capacitor's iOS template ships. Matches the PWA splash brand.
 
 const SIZE = 2732;
 
-const wordmark = await readFile(
-  new URL("../../web/public/branding/sxc-wordmark-dark.svg", import.meta.url),
+const mark = await readFile(
+  new URL("../../web/public/branding/sxc-mark-dark.svg", import.meta.url),
 );
 
 const bg = await sharp({
@@ -22,8 +22,8 @@ const bg = await sharp({
   .png()
   .toBuffer();
 
-const logoW = Math.round(SIZE * 0.42);
-const logo = await sharp(wordmark, { density: 1024 })
+const logoW = Math.round(SIZE * 0.28);
+const logo = await sharp(mark, { density: 1024 })
   .resize({ width: logoW })
   .png()
   .toBuffer();

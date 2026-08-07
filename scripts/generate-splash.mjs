@@ -41,15 +41,15 @@ const DEVICES = [
 const BG = { r: 15, g: 19, b: 16, alpha: 1 }; // #0f1310 (manifest background_color)
 
 const repoRoot = new URL("../", import.meta.url);
-const wordmarkPath = new URL(
-  "apps/web/public/branding/sxc-wordmark-dark.svg",
+const markPath = new URL(
+  "apps/web/public/branding/sxc-mark-dark.svg",
   repoRoot,
 );
 const outDir = new URL("apps/web/public/splash/", repoRoot);
 const moduleOut = new URL("apps/web/src/lib/pwa/splash-screens.ts", repoRoot);
 
 await mkdir(outDir, { recursive: true });
-const wordmarkSvg = await readFile(wordmarkPath);
+const markSvg = await readFile(markPath);
 
 const entries = [];
 
@@ -57,9 +57,9 @@ for (const { w, h, r } of DEVICES) {
   const pxW = w * r;
   const pxH = h * r;
 
-  // Brand wordmark sized to ~62% of the (portrait) short edge.
-  const logoW = Math.round(pxW * 0.62);
-  const logo = await sharp(wordmarkSvg, { density: 384 })
+  // Compact diamond mark sized to ~28% of the portrait short edge.
+  const logoW = Math.round(pxW * 0.28);
+  const logo = await sharp(markSvg, { density: 384 })
     .resize({ width: logoW })
     .png()
     .toBuffer();

@@ -1,6 +1,6 @@
 # ADR 0002 — AI architecture (Explain v1 + BYOAI)
 
-**Status:** Accepted
+**Status:** Retired 2026-08-06 — implementation removed by migration 0121
 **Date:** 2026-05-28
 **Phase:** D (Phase D AI planning pass; predates any AI code on `main`)
 

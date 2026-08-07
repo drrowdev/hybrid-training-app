@@ -5,11 +5,11 @@
  * plyometric / power accessories (box jumps, broad jumps). It encodes
  * *maximal explosive intent with full recovery* — NOT a set ground to failure
  * (Behm & Sale 1993; the adaptation is neural / rate-of-force, not metabolic).
- * Rendering it as a bare "RPE 10" makes both the user and the AI recap misread
+ * Rendering it as a bare "RPE 10" makes both the user and session recap misread
  * a jump as a grind-to-failure set. Surfaces that have a richer rep readout
  * (the live set logger, the day card) already special-case this; these helpers
- * give the server-side formatters (admin block-review export, the AI
- * `getSessionDetail` feed) the same treatment from one source of truth.
+ * give server-side formatters and exports the same treatment from one source
+ * of truth.
  */
 
 /** The user-facing label for a max-intent (RPE 10/10) effort target. */

@@ -260,7 +260,7 @@ export function memberSincePhrase(iso: string, now: Date = new Date()): string {
   return `Member since ${years} year${years === 1 ? "" : "s"}`;
 }
 
-/** Short "Updated 3h ago / 4d ago" relative for AI-notes-style hints. */
+/** Short "Updated 3h ago / 4d ago" relative for training-note hints. */
 export function shortRelative(iso: string | null, now: Date = new Date()): string {
   if (!iso) return "";
   const ts = Date.parse(iso);

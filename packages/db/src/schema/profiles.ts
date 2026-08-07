@@ -134,13 +134,8 @@ export const profiles = pgTable("profiles", {
   seasonPlanningEnabled: boolean("season_planning_enabled")
     .default(false)
     .notNull(),
-  /**
-   * Free-text training profile notes. Writable by both the user (from
-   * the /app/profile page) and — once the AI surface lands — the
-   * engine, which will append pattern observations the user can prune.
-   * Default NULL; no length cap at DB level (server actions trim/limit).
-   */
-  aiNotes: text("ai_notes"),
+  /** Free-text notes owned and maintained by the user. */
+  trainingNotes: text("ai_notes"),
   /**
    * Mass of the user's primary Olympic barbell, in kg. Drives the
    * plate-per-side breakdown rendered by the session logger. Default
@@ -303,33 +298,6 @@ export const profiles = pgTable("profiles", {
    * `apps/web/src/lib/planner/preferred-cardio-modality.ts`.
    */
   preferredCardioModalities: text("preferred_cardio_modalities").array(),
-  /**
-   * Which BYOAI provider the stored key targets. CHECK-constrained
-   * at the DB level to {'anthropic','openai','gemini'} or null. See
-   * migration 0069.
-   */
-  byoaiProvider: text("byoai_provider"),
-  /**
-   * Opaque reference into the secret store — the UUID of the row in
-   * `byoai_key_secrets` (pgcrypto fallback path) or, if/when Supabase
-   * Vault lands, the Vault entry ID. NEVER exposed to client code;
-   * `apps/web/src/lib/ai/vault.ts` is the only module that reads it.
-   */
-  byoaiKeyVaultId: text("byoai_key_vault_id"),
-  /**
-   * The user's chosen model id for their BYOAI provider (e.g.
-   * "claude-sonnet-4-6"). Null = use the provider's default. Validated
-   * against the curated catalogue in `apps/web/src/lib/ai/models.ts`; the
-   * resolver falls back to the provider default if it's null or stale.
-   */
-  byoaiModel: text("byoai_model"),
-  /**
-   * Reserved for a future one-time-payment unlock. Default `now()`
-   * means every free-tier user is treated as unlocked today (the
-   * gate is purely the opt-in + provider + key trio). See `hasAiAccess`.
-   */
-  byoaiUnlockedAt: timestamp("byoai_unlocked_at", { withTimezone: true })
-    .default(sql`now()`),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),

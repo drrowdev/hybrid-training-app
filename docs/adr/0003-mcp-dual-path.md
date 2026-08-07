@@ -1,6 +1,6 @@
 # ADR 0003 — MCP server + in-app chat dual path
 
-**Status:** Accepted
+**Status:** Retired 2026-08-06 — implementation removed by migration 0121
 **Date:** 2026-05-28
 **Phase:** D (follow-on to ADR 0002, before any AI surface ships)
 **Supersedes (in part):** ADR 0002 §"First capability — Explain only" — specifically the *single-tool* / monolithic `getEngineSnapshot` decision. Everything else in ADR 0002 (BYOAI key vault, `LlmProvider` abstraction, eval harness, observability log, privacy contract, retry/tool-call limits, RLS posture) **remains in force**.

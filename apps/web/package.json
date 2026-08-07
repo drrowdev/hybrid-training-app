@@ -17,10 +17,8 @@
     "strava:list-subscriptions": "tsx scripts/strava-list-subscriptions.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.32.1",
     "@capacitor-community/background-geolocation": "^1.2.26",
     "@capacitor/core": "^7.4.0",
-    "@google/generative-ai": "^0.21.0",
     "@hta/db": "workspace:*",
     "@hta/domain": "workspace:*",
     "@hta/engine": "workspace:*",
@@ -30,11 +28,9 @@
     "@hta/tacticalbarbell": "workspace:*",
     "@hta/ui": "workspace:*",
     "@hta/wendler": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.29.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.0",
     "next": "16.2.6",
-    "openai": "^4.77.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "zod": "^3.25.76"

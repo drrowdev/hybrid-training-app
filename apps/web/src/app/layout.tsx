@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, JetBrains_Mono, Archivo, Oswald, Saira_Stencil_One } from "next/font/google";
+import { Geist, JetBrains_Mono, Oswald, Saira_Stencil_One } from "next/font/google";
 import { ServiceWorkerRegister } from "@/components/shell/ServiceWorkerRegister";
 import { SplashScreenController } from "@/components/shell/SplashScreenController";
 import { APPLE_SPLASH_SCREENS } from "@/lib/pwa/splash-screens";
@@ -17,14 +17,6 @@ const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-mono",
-});
-
-// Brand wordmark face (S×C). Bold only — used for the nav brand glyph.
-const archivo = Archivo({
-  subsets: ["latin"],
-  display: "swap",
-  weight: "700",
-  variable: "--font-brand",
 });
 
 // Display face — Oswald condensed, used uppercase for page/section headings
@@ -119,7 +111,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${geist.variable} ${jetbrainsMono.variable} ${archivo.variable} ${oswald.variable} ${sairaStencil.variable}`}>
+    <html lang="en" suppressHydrationWarning     className={`${geist.variable} ${jetbrainsMono.variable} ${oswald.variable} ${sairaStencil.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
       </head>

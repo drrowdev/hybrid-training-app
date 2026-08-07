@@ -1,7 +1,7 @@
 /**
  * Contract tests for GET /api/me/export.
  *
- * These pin the export-v1 portability format so that silent drift fails CI
+ * These pin the export-v2 portability format so that silent drift fails CI
  * (golden-master discipline):
  *
  *  - 401 when unauthenticated.
@@ -18,7 +18,19 @@ let currentUser: { id: string; email: string; created_at: string } | null = null
 
 function makeBuilder(table: string) {
   const result =
-    table === "profiles" ? { data: { id: "u1" }, error: null } : { data: [], error: null };
+    table === "profiles"
+      ? {
+          data: {
+            id: "u1",
+            ai_notes: "Train consistently",
+            byoai_provider: "openai",
+            byoai_key_vault_id: "vault-1",
+            byoai_model: "retired-model",
+            byoai_unlocked_at: "2026-01-01T00:00:00Z",
+          },
+          error: null,
+        }
+      : { data: [], error: null };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const builder: any = {
     select() {
@@ -76,9 +88,6 @@ const REQUIRED_TABLES = [
   "limitations",
   "limitation_events",
   "priority_events",
-  "memories",
-  "chat_threads",
-  "chat_messages",
   "bw_progress",
   "bw_progression_events",
   "prescription_modifications",
@@ -102,9 +111,6 @@ const REQUIRED_SECTIONS = [
   "limitations",
   "limitation_events",
   "priority_events",
-  "memories",
-  "chat_threads",
-  "chat_messages",
   "bw_progress",
   "bw_progression_events",
   "prescription_modifications",
@@ -115,14 +121,20 @@ const REQUIRED_SECTIONS = [
 
 /** These must NEVER be queried or appear as a payload section. */
 const FORBIDDEN_TABLES = [
-  "byoai_key_secrets",
+  "ai_call_logs",
   "byoai_key_events",
+  "byoai_key_secrets",
+  "chat_messages",
+  "chat_threads",
+  "memories",
+  "mcp_authorizations",
+  "mcp_consumed_codes",
+  "mcp_tool_calls",
   "strava_connections",
   "tm_suggestions",
   "region_state_history",
   "muscle_state_history",
   "bw_diagnostics_snapshots",
-  "ai_call_logs",
 ];
 
 describe("GET /api/me/export", () => {
@@ -137,9 +149,15 @@ describe("GET /api/me/export", () => {
     const res = await GET();
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.schema).toBe("hybrid-training-app/export-v1");
-    expect(body.format_version).toBe(1);
+    expect(body.schema).toBe("hybrid-training-app/export-v2");
+    expect(body.format_version).toBe(2);
     expect(body.user.id).toBe("u1");
+    expect(body.profile).toHaveProperty("training_notes");
+    expect(body.profile).not.toHaveProperty("ai_notes");
+    expect(body.profile).not.toHaveProperty("byoai_provider");
+    expect(body.profile).not.toHaveProperty("byoai_key_vault_id");
+    expect(body.profile).not.toHaveProperty("byoai_model");
+    expect(body.profile).not.toHaveProperty("byoai_unlocked_at");
   });
 
   it("queries every user-owned table (coverage pin)", async () => {
@@ -170,17 +188,15 @@ describe("GET /api/me/export", () => {
     }
   });
 
-  it("declares the excluded secrets + derived tables", async () => {
+  it("declares the remaining excluded secret + derived tables", async () => {
     const body = await (await GET()).json();
-    expect(body.excluded.secrets).toContain("byoai_key_secrets");
-    expect(body.excluded.secrets).toContain("strava_connections");
+    expect(body.excluded.secrets).toEqual(["strava_connections"]);
     expect(body.excluded.derived).toEqual(
       expect.arrayContaining([
         "tm_suggestions",
         "region_state_history",
         "muscle_state_history",
         "bw_diagnostics_snapshots",
-        "ai_call_logs",
       ]),
     );
   });

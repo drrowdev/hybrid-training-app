@@ -58,7 +58,6 @@ import {
   type PrescriptionMovementRow,
 } from "@/lib/plan/prescription-grouping";
 import { segmentSupersetRows } from "@/lib/plan/superset-grouping";
-import { AskWhyButton } from "@/components/session/AskWhyButton";
 import { LinkActivityControl } from "@/components/plan/LinkActivityControl";
 import { CompletedSummaryCard } from "@/components/plan/CompletedSummaryCard";
 import { CardioPlanView } from "@/components/session/CardioPlanView";
@@ -103,14 +102,6 @@ export type PlanSessionInput = {
    * completed-summary view + the "View full session" link in the drawer.
    */
   completedSessionId?: string | null;
-  /**
-   * True when this session belongs to a pre-programmed platform program
-   * (5/3/1, Tactical Barbell, Green Protocol, HYROX) — i.e. the stored
-   * prescription carries a `programRef`. The "Ask why this workout" chip is
-   * hidden for these (the rationale IS the published methodology); it only
-   * shows for the generated Hybrid plan. Absent/false ⇒ show the chip.
-   */
-  isPreProgrammed?: boolean;
 };
 
 export type PlanRedesignProps = {
@@ -149,13 +140,6 @@ export type PlanRedesignProps = {
     id: string,
     notes: string,
   ) => Promise<{ ok?: true; error?: string }>;
-  /**
-   * Whether the user has in-app AI access (BYOAI key configured). When
-   * true the session drawer's "Ask why" control dispatches the
-   * `sxc:ask-coach` event; when false it links to `/app/settings/ai`.
-   * Mirrors the server-side `hasAiAccess` gate.
-   */
-  aiAccess?: boolean;
   /**
    * When true (Season-planning opt-in is on), render Season as the third local
    * view alongside Program and Calendar. Its server-rendered roadmap is supplied
@@ -368,7 +352,6 @@ export function PlanRedesign(props: PlanRedesignProps) {
     skipAction,
     unskipAction,
     updateNotesAction,
-    aiAccess,
     seasonEnabled = false,
     seasonContent,
   } = props;
@@ -981,7 +964,6 @@ export function PlanRedesign(props: PlanRedesignProps) {
           unskipAction={unskipAction}
           updateNotesAction={updateNotesAction}
           allowLogging={false}
-          aiAccess={aiAccess}
         />
       )}
 
@@ -2228,7 +2210,6 @@ export function SessionDrawer({
   unskipAction,
   updateNotesAction,
   startSessionAction,
-  aiAccess,
   allowLogging = true,
 }: {
   session: PlanSessionInput;
@@ -2252,7 +2233,6 @@ export function SessionDrawer({
     notes: string,
   ) => Promise<{ ok?: true; error?: string }>;
   startSessionAction?: (formData: FormData) => Promise<void> | void;
-  aiAccess?: boolean;
   /** Plan is review/edit-only; Today keeps workout logging actions enabled. */
   allowLogging?: boolean;
 }) {
@@ -2636,13 +2616,8 @@ export function SessionDrawer({
             )}
           </div>
 
-          {/* Overdue "Log now" + Ask-why live OUTSIDE the 4-up action grid so the
-              expanding date form and the why-chip render at their natural size
-              (full width / content height) instead of being stretched to fill a
-              cramped grid cell. */}
           {((overdue && !session.skipped && !session.done) ||
-            session.isStrength ||
-            session.isCardio) && (
+            (session.isCardio && !session.done && !session.skipped)) && (
             <div className="drawer-cta-extras">
               {allowLogging &&
                 startSessionAction &&
@@ -2661,13 +2636,6 @@ export function SessionDrawer({
               {session.isCardio && !session.done && !session.skipped && (
                 <LinkActivityControl plannedId={session.id} onLinked={() => router.refresh()} />
               )}
-              {(session.isStrength || session.isCardio) &&
-                !session.isPreProgrammed &&
-                (aiAccess ? (
-                  <AskWhyButton sessionId={session.id} />
-                ) : (
-                  <AskWhyButton href="/app/settings/ai" />
-                ))}
             </div>
           )}
 

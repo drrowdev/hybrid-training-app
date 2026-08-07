@@ -16,9 +16,7 @@ import {
 } from "@/lib/sessions/actions";
 import { DeleteSessionButton } from "@/components/trash/DeleteSessionButton";
 import { CancelWorkoutButton } from "@/components/session/CancelWorkoutButton";
-import { AskWhyButton } from "@/components/session/AskWhyButton";
 import { EditableSessionTitle } from "@/components/session/EditableSessionTitle";
-import { hasAiAccess } from "@/lib/ai/access";
 import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
 import {
   type LoggedSet,
@@ -121,7 +119,7 @@ export default async function SessionDetailPage({
     supabase
       .from("profiles")
       .select(
-        "haptics_enabled, timer_sound_enabled, barbell_kg, trap_bar_kg, plate_inventory_kg, equipment, timezone, time_format, date_format, units, byoai_provider, byoai_key_vault_id, byoai_unlocked_at",
+        "haptics_enabled, timer_sound_enabled, barbell_kg, trap_bar_kg, plate_inventory_kg, equipment, timezone, time_format, date_format, units",
       )
       .eq("id", user.id)
       .maybeSingle(),
@@ -926,17 +924,6 @@ export default async function SessionDetailPage({
     }
   }
 
-  // Mirror ChatMount's server-side gate so the entry point matches the
-  // chat surface's availability for this user.
-  const aiAccess = hasAiAccess({
-    byoai_provider:
-      (feedbackPrefs?.byoai_provider as string | null | undefined) ?? null,
-    byoai_key_vault_id:
-      (feedbackPrefs?.byoai_key_vault_id as string | null | undefined) ?? null,
-    byoai_unlocked_at:
-      (feedbackPrefs?.byoai_unlocked_at as string | null | undefined) ?? null,
-  });
-
   return (
     <UnitsProvider units={userUnits}>
     <SessionLoggingStateProvider
@@ -992,28 +979,6 @@ export default async function SessionDetailPage({
             initialTitle={session.title ?? "Session"}
           />
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {/* "Ask why this workout" is hidden for pre-programmed platform
-                programs (5/3/1 / TB / Green / HYROX — they carry a programRef):
-                the rationale is the published methodology, not a personalised
-                choice. The post-completion "How did I do?" performance review
-                stays available for every program. */}
-            {(isComplete || !programRef) &&
-              (aiAccess ? (
-                <AskWhyButton
-                  sessionId={session.id}
-                  label={isComplete ? "How did I do?" : undefined}
-                  prompt={
-                    isComplete
-                      ? "How did this workout go? Assess how I performed — top sets, any PRs, effort vs. target — and what I got out of it."
-                      : undefined
-                  }
-                />
-              ) : (
-                <AskWhyButton
-                  href="/app/settings/ai"
-                  label={isComplete ? "How did I do?" : undefined}
-                />
-              ))}
             <details className="cp-menu" style={{ position: "relative" }}>
               <summary
                 aria-label="More actions"
