@@ -413,8 +413,8 @@ describe("ProgramPicker rendering", () => {
     expect(html).toContain("25-WEEK PROGRAM");
     expect(html).toContain("Base, Armor, Operator and Vertex");
     expect(html).toContain("Armor supplemental clusters");
-    expect(html).toContain("Back Extensions + Ab Triad");
-    expect(html).toContain("Reverse Hyper + Ab Triad");
+    expect(html).toContain("Back Extensions + AB Triad");
+    expect(html).toContain("Reverse Hyper + AB Triad");
     expect(html).toContain("Pull-ups + Overhead Press");
     expect(html).toContain("Inverted Rows + Overhead Press");
     expect(html).toContain("Customize template");

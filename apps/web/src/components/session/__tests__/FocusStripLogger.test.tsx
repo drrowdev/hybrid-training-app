@@ -92,6 +92,39 @@ const accessoryB: MovementGroup = {
   slotBuckets: { warmup: [], working: [], accessory: [0] },
 };
 
+const triadGroups: MovementGroup[] = [
+  ["leg", "Hanging Leg Raise", 0],
+  ["knee", "Hanging Knee Raise", 1],
+  ["toes", "Toes-to-Bar", 2],
+].map(([movementId, movementName, position], movementIndex) => ({
+  movementId: String(movementId),
+  movementName: String(movementName),
+  movementSlug: String(movementId),
+  itemIndices: [0, 1, 2].map(
+    (round) => movementIndex * 3 + round,
+  ),
+  items: [0, 1, 2].map(() => ({
+    movementId: String(movementId),
+    movementSlug: String(movementId),
+    movementName: String(movementName),
+    kind: "accessory" as const,
+    sets: 1,
+    reps: 5,
+    circuit: {
+      id: "tb-ab-triad",
+      name: "AB Triad",
+      position: Number(position),
+      size: 3,
+      rounds: 3,
+    },
+  })),
+  slotBuckets: {
+    warmup: [],
+    working: [],
+    accessory: [0, 1, 2],
+  },
+}));
+
 const addStrengthSet = vi.fn(async () => ({ ok: true as const }));
 const updateStrengthSet = vi.fn(async () => ({ ok: true as const }));
 
@@ -154,6 +187,32 @@ describe("FocusStripLogger", () => {
     expect(html).toContain("alternate with Triceps Extension, then rest once");
     expect(html).toContain('data-testid="focus-strip-reorder"');
     expect(html).toContain('aria-label="Move Curl later"');
+  });
+
+  it("shows linked AB Triad round and movement guidance", () => {
+    const html = renderToStaticMarkup(
+      <FocusStripLogger
+        sessionId="session"
+        groups={triadGroups}
+        setsByMovement={new Map()}
+        tmBySlug={{}}
+        oneRmBySlug={{}}
+        loggedItemIndices={new Set([0, 3, 6])}
+        skippedItemIndices={new Set()}
+        loggedSetIdByItemIndex={{}}
+        priorBests={{}}
+        addStrengthSet={addStrengthSet}
+        updateStrengthSet={updateStrengthSet}
+        hapticsEnabled={false}
+        timerSoundEnabled={false}
+      />,
+    );
+    expect(html).toContain('data-testid="focus-strip-circuit-cue"');
+    expect(html).toContain("AB Triad");
+    expect(html).toContain("Round 2 of 3");
+    expect(html).toContain(
+      "Hanging Leg Raise → Hanging Knee Raise → Toes-to-Bar",
+    );
   });
 
   it("clears a confirmed optimistic swap before a later reverse swap", () => {

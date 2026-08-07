@@ -41,7 +41,7 @@ export const TB_MOVEMENT_LABEL: Record<string, string> = {
   "power-clean": "Power Clean",
   "push-press": "Push Press",
   "back-extension": "Back Extension",
-  "ab-triad": "Ab Triad",
+  "ab-triad": "AB Triad",
   "hanging-leg-raise": "Hanging Leg Raise",
   "hanging-knee-raise": "Hanging Knee Raise",
   "toes-to-bar": "Toes-to-Bar",
@@ -557,7 +557,7 @@ const GREY_MAN: TbTemplate = {
   ],
 };
 
-const AB_TRIAD_MOVEMENTS = [
+export const AB_TRIAD_MOVEMENTS = [
   "hanging-leg-raise",
   "hanging-knee-raise",
   "toes-to-bar",
@@ -578,7 +578,7 @@ const abRule: TbPrescriptionRule = {
   itemKind: "assistance",
   warmup: false,
   note:
-    "Ab Triad — 3 rounds: 5 hanging leg raises, 5 hanging knee raises, then 5 toes-to-bar.",
+    "AB Triad — 3 rounds: 5 hanging leg raises, 5 hanging knee raises, then 5 toes-to-bar.",
 };
 
 const zuluSupplementalRules = (movements: string[]): TbPrescriptionRule[] =>

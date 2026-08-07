@@ -13,6 +13,13 @@ import { SwapMovementModal } from "./SwapMovementModal";
 import { MovementHowToButton } from "./MovementHowToButton";
 import type { PlateInventoryItem } from "./plate-math";
 import type { SupersetCardInfo } from "@/lib/sessions/superset-cards";
+import {
+  buildLinkedCircuitByMovementId,
+  circuitMembersFor,
+  circuitRoundFor,
+  firstOpenCircuitMovementId,
+  firstOpenMovementId,
+} from "@/lib/sessions/linked-circuit";
 import { hapticTick } from "@/lib/feedback";
 import type {
   addStrengthSet,
@@ -138,12 +145,17 @@ export function FocusStripLogger({
   bodyweightMovementIds,
 }: FocusStripLoggerProps) {
   const router = useRouter();
+  const linkedCircuitByMovementId = useMemo(
+    () => buildLinkedCircuitByMovementId(groups),
+    [groups],
+  );
   const firstOpenId = useMemo(() => {
-    const open = groups.find((group) =>
-      requiredIndices(group).some((index) => !loggedItemIndices.has(index)),
+    return firstOpenMovementId(
+      groups,
+      linkedCircuitByMovementId,
+      loggedItemIndices,
     );
-    return open?.movementId ?? groups[0]?.movementId ?? "";
-  }, [groups, loggedItemIndices]);
+  }, [groups, linkedCircuitByMovementId, loggedItemIndices]);
   const [activeId, setActiveId] = useState(firstOpenId);
   const [declinedOptionalIds, setDeclinedOptionalIds] = useState<Set<string>>(
     () => new Set(),
@@ -214,6 +226,19 @@ export function FocusStripLogger({
         );
       })
     : undefined;
+  const activeCircuit = linkedCircuitByMovementId.get(
+    activeOriginal.movementId,
+  );
+  const activeCircuitMembers = activeCircuit
+    ? circuitMembersFor(
+        activeOriginal.movementId,
+        groups,
+        linkedCircuitByMovementId,
+      )
+    : [];
+  const activeCircuitRound = activeCircuit
+    ? circuitRoundFor(activeOriginal, activeCircuit, loggedItemIndices)
+    : null;
 
   const totalRequired = groups.reduce(
     (sum, group) => sum + requiredIndices(group).length,
@@ -225,15 +250,18 @@ export function FocusStripLogger({
     0,
   );
 
-  const advance = (declinedIds = declinedOptionalIds) => {
+  const advance = (
+    declinedIds = declinedOptionalIds,
+    coveredIndices = loggedItemIndices,
+  ) => {
     const start = groups.findIndex((group) => group.movementId === activeId);
     for (let offset = 1; offset <= groups.length; offset += 1) {
       const candidate = groups[(start + offset) % groups.length]!;
       const requiredOpen = requiredIndices(candidate).some(
-        (index) => !loggedItemIndices.has(index),
+        (index) => !coveredIndices.has(index),
       );
       const optionalOpenForCandidate = optionalIndices(candidate).some(
-        (index) => !loggedItemIndices.has(index),
+        (index) => !coveredIndices.has(index),
       );
       if (
         requiredOpen ||
@@ -248,10 +276,11 @@ export function FocusStripLogger({
   const hasOpenWork = (
     group: MovementGroup,
     declinedIds = declinedOptionalIds,
+    coveredIndices = loggedItemIndices,
   ) =>
-    requiredIndices(group).some((index) => !loggedItemIndices.has(index)) ||
+    requiredIndices(group).some((index) => !coveredIndices.has(index)) ||
     (optionalIndices(group).some(
-      (index) => !loggedItemIndices.has(index),
+      (index) => !coveredIndices.has(index),
     ) &&
       !declinedIds.has(group.movementId));
 
@@ -554,7 +583,35 @@ export function FocusStripLogger({
           </div>
         ) : (
           <>
-           {activeSuperset && supersetPartner && (
+           {activeCircuit && activeCircuitRound != null && (
+             <div
+               data-testid="focus-strip-circuit-cue"
+               style={{
+                 padding: "8px 10px",
+                 borderRadius: 10,
+                 border: "1px solid var(--cp-border)",
+                 background: "var(--cp-surface-soft)",
+                 color: "var(--cp-text-muted)",
+                 fontSize: 12,
+                 lineHeight: 1.45,
+               }}
+             >
+               <div>
+                 <strong style={{ color: "var(--cp-text)" }}>
+                   {activeCircuit.name}
+                 </strong>
+                 {" · "}Round {activeCircuitRound} of {activeCircuit.rounds}
+                 {" · "}Movement {activeCircuit.position + 1} of{" "}
+                 {activeCircuit.size}
+               </div>
+               <div>
+                 {activeCircuitMembers
+                   .map((member) => member.movementName)
+                   .join(" → ")}
+               </div>
+             </div>
+           )}
+           {!activeCircuit && activeSuperset && supersetPartner && (
              <div
                data-testid="focus-strip-superset-cue"
                style={{
@@ -600,14 +657,35 @@ export function FocusStripLogger({
                 bodyweightMovementIds?.has(activeOriginal.movementId) ?? false
               }
               suppressRestAfterSave={
-                activeSuperset?.slot === "A1" && supersetPartner != null
+                activeCircuit
+                  ? activeCircuit.position < activeCircuit.size - 1
+                  : activeSuperset?.slot === "A1" && supersetPartner != null
               }
               focusStrip
-              onSaved={({ isLast }) => {
-                if (supersetPartner && hasOpenWork(supersetPartner)) {
+              onSaved={({ itemIndex, isLast }) => {
+                const projected = new Set(loggedItemIndices);
+                projected.add(itemIndex);
+                const circuitNext = activeCircuit
+                  ? firstOpenCircuitMovementId(
+                      activeCircuit.id,
+                      groups,
+                      linkedCircuitByMovementId,
+                      projected,
+                    )
+                  : null;
+                if (circuitNext) {
+                  setActiveId(circuitNext);
+                } else if (
+                  supersetPartner &&
+                  hasOpenWork(
+                    supersetPartner,
+                    declinedOptionalIds,
+                    projected,
+                  )
+                ) {
                   setActiveId(supersetPartner.movementId);
                 } else if (isLast) {
-                  advance();
+                  advance(declinedOptionalIds, projected);
                 }
               }}
             />

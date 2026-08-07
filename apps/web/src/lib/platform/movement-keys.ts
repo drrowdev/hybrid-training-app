@@ -72,8 +72,8 @@ export const STATIC_ENGINE_MOVEMENTS: Record<
   "hanging-leg-raise": { slug: "hanging-leg-raise" },
   "hanging-knee-raise": { slug: "hanging-knee-raise" },
   "toes-to-bar": { slug: "toes-to-bar" },
-  // Legacy Activation plans used one knee-raise item named "Ab Triad".
-  "ab-triad": { slug: "hanging-knee-raise", displayName: "Ab Triad" },
+  // Legacy Activation plans used one knee-raise item named "AB Triad".
+  "ab-triad": { slug: "hanging-knee-raise", displayName: "AB Triad" },
   "barbell-row": { slug: "bb-row-overhand", displayName: "Barbell Row" },
   "pendlay-row": { slug: "pendlay-row" },
   "rack-pull": { slug: "block-pull-deadlift", displayName: "Rack Pull" },

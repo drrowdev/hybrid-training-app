@@ -404,6 +404,13 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
       optional?: boolean;
       setRange?: { min: number; max: number };
       repRange?: { min: number; max: number };
+      circuit?: {
+        id: string;
+        name: string;
+        position: number;
+        size: number;
+        rounds: number;
+      };
     };
     const strengthItems = (
       session: NonNullable<typeof sessions>[number],
@@ -431,6 +438,14 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
       const triadItems = strengthItems(armorA1, slug, "accessory");
       expect(triadItems).toHaveLength(3);
       expect(triadItems.every((item) => item.reps === 5)).toBe(true);
+      expect(
+        triadItems.every(
+          (item) =>
+            item.circuit?.id === "tb-ab-triad" &&
+            item.circuit.name === "AB Triad" &&
+            item.circuit.rounds === 3,
+        ),
+      ).toBe(true);
     }
     expect(strengthItems(armorB1, "bench-press-flat", "main")).toHaveLength(4);
     expect(strengthItems(armorB1, "bb-row-overhand", "main")).toHaveLength(4);
@@ -439,6 +454,11 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     expect(strengthItems(armorB1, "ohp-standing", "back_off")).toHaveLength(5);
 
     await page.goto("/app/plan");
+    await page.getByTestId("plan-phase-0").locator(":scope > summary").click();
+    await page
+      .getByTestId("plan-timeline-week-0")
+      .locator(":scope > summary")
+      .click();
     await page.getByText("Armor B1 · 70%", { exact: true }).first().click();
     const drawer = page.getByRole("dialog");
     await expect(drawer).toBeVisible();
@@ -468,18 +488,58 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
 
     await page.goto(`/app/sessions/start/${armorA1.id}`);
     await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}/, { timeout: 30_000 });
-    await expect(page.getByTestId("movement-group-main")).toContainText("Main lifts");
-    await expect(page.getByTestId("movement-group-supplemental")).toContainText(
-      "Supplemental lifts",
-    );
+    await expect(page.getByTestId("focus-strip-logger")).toBeVisible();
+    await page
+      .getByRole("button", { name: /Reverse Hyperextension 0\/5/ })
+      .click();
     await expect(
-      page.getByText("Reverse Hyperextension", { exact: true }),
+      page.getByRole("heading", { name: "Reverse Hyperextension" }),
     ).toBeVisible();
     await expect(page.getByText("3–5×8–10 @ 65% 1RM")).toBeVisible();
-    await expect(page.getByText("Hanging Leg Raise", { exact: true })).toBeVisible();
-    await expect(page.getByText("Hanging Knee Raise", { exact: true })).toBeVisible();
-    await expect(page.getByText("Toes-to-Bar", { exact: true })).toBeVisible();
-    await expect(page.getByText("Ab Triad", { exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: /Hanging Leg Raise 0\/3/ }).click();
+    const circuitCue = page.getByTestId("focus-strip-circuit-cue");
+    await expect(circuitCue).toContainText("AB Triad");
+    await expect(circuitCue).toContainText("Round 1 of 3");
+    await expect(circuitCue).toContainText(
+      "Hanging Leg Raise → Hanging Knee Raise → Toes-to-Bar",
+    );
+
+    await page.getByTestId("movement-focus-log-button").click();
+    await expect(
+      page.getByRole("heading", { name: "Hanging Knee Raise" }),
+    ).toBeVisible();
+    await page.getByTestId("movement-focus-log-button").click();
+    await expect(
+      page.getByRole("heading", { name: "Toes-to-Bar" }),
+    ).toBeVisible();
+    await page.getByTestId("movement-focus-log-button").click();
+    await expect(
+      page.getByRole("heading", { name: "Hanging Leg Raise" }),
+    ).toBeVisible();
+    await expect(circuitCue).toContainText("Round 2 of 3");
+
+    const loggedSessionId = page.url().split("/").at(-1)!;
+    await expect
+      .poll(async () => {
+        const { data } = await admin
+          .from("set_logs")
+          .select("movement:movements(slug)")
+          .eq("session_id", loggedSessionId);
+        return (data ?? [])
+          .map((row) => {
+            const movement = Array.isArray(row.movement)
+              ? row.movement[0]
+              : row.movement;
+            return movement?.slug;
+          })
+          .filter(Boolean)
+          .sort();
+      })
+      .toEqual([
+        "hanging-knee-raise",
+        "hanging-leg-raise",
+        "toes-to-bar",
+      ]);
   });
 
   test("picker deploys a Hybrid (native) platform block end-to-end", async ({

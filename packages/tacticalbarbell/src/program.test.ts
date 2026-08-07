@@ -463,7 +463,7 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
     expect(itemsOfKind(p, "main")[0]).toMatchObject({ name: "Squat", repsLabel: "1–2", percentOfTm: 0.95, weightKg: 190 });
   });
 
-  it("Activation Base expands Ab Triad into three exercises for three rounds", () => {
+  it("Activation Base expands AB Triad into three linked exercises for three rounds", () => {
     const p = tb.prescribe(setup({ templateId: "activation" }), "b0-w1-base-1", ctx);
     expect(p.items.map((item) => [item.name, item.sets, item.reps, item.weightKg])).toEqual([
       ["Push-up", 3, 10, undefined],
@@ -474,6 +474,11 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
       ["Toes-to-Bar", 3, 5, undefined],
     ]);
     expect(p.items.slice(-3).every((item) => item.kind === "assistance")).toBe(true);
+    expect(p.items.slice(-3).map((item) => item.circuit)).toEqual([
+      { id: "tb-ab-triad", name: "AB Triad", position: 0, size: 3, rounds: 3 },
+      { id: "tb-ab-triad", name: "AB Triad", position: 1, size: 3, rounds: 3 },
+      { id: "tb-ab-triad", name: "AB Triad", position: 2, size: 3, rounds: 3 },
+    ]);
   });
 
   it("Activation emits phase-specific cardio prescriptions", () => {

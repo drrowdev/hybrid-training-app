@@ -34,6 +34,19 @@ export type PrescribedItemKind =
   | "cardio"
   | "note";
 
+export interface PrescribedCircuit {
+  /** Stable identity shared by every movement in the circuit. */
+  id: string;
+  /** User-facing circuit name. */
+  name: string;
+  /** Zero-based movement position within one round. */
+  position: number;
+  /** Number of distinct movements in one round. */
+  size: number;
+  /** Number of rounds prescribed. */
+  rounds: number;
+}
+
 /**
  * A single prescribed item. May represent N identical sets via `sets` (e.g. BBB
  * 5×10 = one item with sets:5), or a single working set (main %TM sets differ in
@@ -72,6 +85,8 @@ export interface PrescribedItem {
   distanceM?: number;
   /** Free-text cue / load hint ("heavy", "bodyweight", "leave 1 in reserve"). */
   note?: string;
+  /** Linked multi-movement circuit while retaining per-movement log identity. */
+  circuit?: PrescribedCircuit;
   /**
    * Category hint for a platform-RESOLVED assistance slot — e.g. 5/3/1's
    * "push" / "pull" / "single-leg-or-core". When set on an `assistance` item

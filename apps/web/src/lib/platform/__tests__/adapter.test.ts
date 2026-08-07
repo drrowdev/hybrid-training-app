@@ -228,6 +228,45 @@ describe("adaptSessionPrescription — strength", () => {
     expect(prescription.items.filter((item) => item.optional)).toHaveLength(2);
   });
 
+  it("preserves linked-circuit identity on every granular log slot", () => {
+    const circuit = {
+      id: "tb-ab-triad",
+      name: "AB Triad",
+      position: 0,
+      size: 3,
+      rounds: 3,
+    };
+    const { prescription } = adaptSessionPrescription(
+      {
+        items: [
+          {
+            kind: "assistance",
+            name: "Hanging Leg Raise",
+            movementId: "hanging-leg-raise",
+            sets: 3,
+            reps: 5,
+            circuit,
+          },
+        ],
+      },
+      (key) => ({
+        movementId: `mv-${key}`,
+        slug: key,
+        displayName: "Hanging Leg Raise",
+      }),
+    );
+    expect(prescription.items).toHaveLength(3);
+    expect(
+      prescription.items.every(
+        (item) =>
+          item.sets === 1 &&
+          item.reps === 5 &&
+          item.circuit?.id === "tb-ab-triad" &&
+          item.circuit.position === 0,
+      ),
+    ).toBe(true);
+  });
+
   it("maps conditioning/cardio → a display-only cardio_external item; still reports unresolved strength", () => {
     const { prescription, skipped } = adaptSessionPrescription(
       {

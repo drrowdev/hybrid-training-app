@@ -262,6 +262,18 @@ export type PrescriptionItem = {
   intensityLabel?: string;
   notes?: string;
   /**
+   * Linked multi-movement circuit. Each movement remains a separate prescription
+   * item and set-log identity; the logger uses this metadata only to advance in
+   * round order.
+   */
+  circuit?: {
+    id: string;
+    name: string;
+    position: number;
+    size: number;
+    rounds: number;
+  };
+  /**
    * Cardio: structured, render-ready presentation (summary / format / per-station
    * loads / effort) — the clean alternative to cramming everything into `notes`.
    * Rendered by the shared CardioPlanView across Today / live session / plan

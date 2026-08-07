@@ -386,7 +386,7 @@ describe("materializeProgram — TB3 Activation", () => {
     expect(armor.weeks).toBe(20);
   });
 
-  it("materialises the corrected Armor main, supplemental and Ab Triad work", () => {
+  it("materialises the corrected Armor main, supplemental and AB Triad work", () => {
     const a1 = result.sessions.find(
       (session) => session.weekIndex === 5 && session.ref.endsWith("armor-a1"),
     )!;
@@ -413,6 +413,13 @@ describe("materializeProgram — TB3 Activation", () => {
       const items = itemsFor(a1, movement, "accessory");
       expect(items).toHaveLength(3);
       expect(items.every((item) => item.reps === 5)).toBe(true);
+      expect(
+        items.every(
+          (item) =>
+            item.circuit?.id === "tb-ab-triad" &&
+            item.circuit.rounds === 3,
+        ),
+      ).toBe(true);
     }
     expect(a1.prescription.items.some((item) => item.movementId === "mv-ab-triad")).toBe(false);
     expect(b1.prescription.items.filter((item) => item.kind === "main").map(
