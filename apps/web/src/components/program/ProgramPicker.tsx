@@ -2552,17 +2552,17 @@ export function ProgramPicker({
     const groups = [
       {
         key: "armorSupplementalA",
-        title: "Supp A · posterior chain + Ab Triad",
+        title: "Supp A · posterior chain + AB Triad",
         selected: armorSupplementalA,
         options: [
           {
             value: "back-extension",
-            label: "Back Extensions + Ab Triad",
+            label: "Back Extensions + AB Triad",
             desc: "Loaded supplemental work at 65/70/75% of 1RM.",
           },
           {
             value: "reverse-hyper",
-            label: "Reverse Hyper + Ab Triad",
+            label: "Reverse Hyper + AB Triad",
             desc: "Loaded supplemental work at 65/70/75% of 1RM.",
           },
         ],

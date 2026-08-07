@@ -221,6 +221,7 @@ export function adaptSessionPrescription(
         : {}),
       ...(it.kind === "amrap" || it.isAmrap ? { isAmrap: true } : {}),
       ...(notes ? { notes } : {}),
+      ...(it.circuit ? { circuit: { ...it.circuit } } : {}),
     };
 
     // The logger renders ONE loggable slot per prescription item. Engines that

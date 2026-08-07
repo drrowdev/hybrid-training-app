@@ -424,3 +424,7 @@ Activation phase session cards now render in selected weekday order. An occupied
 
 ## [2026-08-06] remove | Retire AI and unify launch branding
 Removed the in-app chat, session explanation/review controls, provider settings, API and MCP routes, model SDKs, eval/tooling code, and their tests. Migration 0121 deletes provider credentials, chat history, assistant memories, observability and authorization metadata, and provider profile fields; the retained user-owned notes field is presented only as Training notes and exported under training_notes. The compact SxC diamond mark now drives landing/login, favicon, PWA/native icons and splash screens, and social metadata; the expanded descriptor and legacy wordmark assets are retired.
+
+
+## [2026-08-07] refine | Link TB3 AB Triad logging by round
+TB3 AB Triad keeps nine granular set slots across Hanging Leg Raise, Hanging Knee Raise and Toes-to-Bar, but now carries typed circuit identity through the program adapter. The Focus Strip advances 5 leg raises -> 5 knee raises -> 5 toes-to-bar, rests after each completed round, and repeats for three rounds with round/movement guidance. Existing materialised canonical sessions are inferred from the exact three slugs, 3x5 dose and stored AB Triad note, so upcoming workouts gain the flow without regeneration; partial or legacy-swapped triads remain unlinked. Full engine, adapter, logger, legacy-reload and authenticated browser coverage preserves distinct set-log movement attribution.

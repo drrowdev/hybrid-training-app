@@ -32,6 +32,7 @@ import { buildGlobalWarmupItems } from "@hta/program-core";
 import {
   TB_TEMPLATES,
   TB_MOVEMENT_LABEL,
+  AB_TRIAD_MOVEMENTS,
   getTbTemplate,
   type TbTemplate,
   type TbLiftKind,
@@ -614,6 +615,12 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
     if (!scheme || pct == null) return { items: [] };
 
     const lifts = sessionLifts(template, instance, session, parsed.week);
+    const sourceMovements = new Set(
+      lifts.map((lift) => lift.sourceMovement ?? lift.movement),
+    );
+    const hasCompleteAbTriad = AB_TRIAD_MOVEMENTS.every((movement) =>
+      sourceMovements.has(movement),
+    );
 
     const items: PrescribedItem[] = [];
     const customizedSeries =
@@ -664,6 +671,9 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
             : "submaximal, stop short of failure");
 
       if (lift.kind === "unanchored" || prescribedPercent == null) {
+        const abTriadPosition = AB_TRIAD_MOVEMENTS.indexOf(
+          sourceMovement as (typeof AB_TRIAD_MOVEMENTS)[number],
+        );
         items.push({
           kind: prescribedItemKind,
           name: liftLabel(lift),
@@ -674,6 +684,17 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
           ...(prescribedRepsMax != null ? { repsMax: prescribedRepsMax } : {}),
           repsLabel: prescribedRepsLabel,
           note: rangeNote,
+          ...(hasCompleteAbTriad && abTriadPosition >= 0
+            ? {
+                circuit: {
+                  id: "tb-ab-triad",
+                  name: "AB Triad",
+                  position: abTriadPosition,
+                  size: AB_TRIAD_MOVEMENTS.length,
+                  rounds: prescribedSetsMin,
+                },
+              }
+            : {}),
         });
         continue;
       }
