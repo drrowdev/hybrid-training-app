@@ -46,7 +46,7 @@ describe("CardioPrescriptionList — Phase 2 classification", () => {
     expect(html).toContain("Effective load: 80");
     expect(html).toContain("(high)");
     // The Phase 1 placeholder body should be gone.
-    expect(html).not.toContain("Logged via Runna. Mark complete when done.");
+    expect(html).not.toContain("Logged via Runna. Tap Mark done when finished.");
   });
 
   it("shows the (?) low-confidence marker when confidence < 0.7", () => {
@@ -92,7 +92,7 @@ describe("CardioPrescriptionList — Phase 2 classification", () => {
       />,
     );
     expect(html).toContain('data-classified="false"');
-    expect(html).toContain("Logged via Runna. Mark complete when done.");
+    expect(html).toContain("Logged via Runna. Tap Mark done when finished.");
     expect(html).not.toContain("Detected as");
   });
 

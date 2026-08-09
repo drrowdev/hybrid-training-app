@@ -832,8 +832,11 @@ export default async function SessionDetailPage({
   // least 1 set" gate; hybrid sessions render BOTH the existing
   // strength UI AND the cardio form below it so the user can finish
   // either path.
-  const cardioPrescriptionItems = (plannedPrescription?.items ?? []).filter(
-    (it) => it.kind.startsWith("cardio_") && it.kind !== "cardio_external",
+  const allCardioPrescriptionItems = (
+    plannedPrescription?.items ?? []
+  ).filter((it) => it.kind.startsWith("cardio_"));
+  const cardioPrescriptionItems = allCardioPrescriptionItems.filter(
+    (it) => it.kind !== "cardio_external",
   );
   const firstCardioPrescription = cardioPrescriptionItems[0] ?? null;
   const hasLoggedCardioRow = (cardio ?? []).length > 0;
@@ -850,12 +853,14 @@ export default async function SessionDetailPage({
   const quickCardioDurationMin =
     quickCardioDurationSec != null ? Math.round(quickCardioDurationSec / 60) : null;
   const hasQuickCardio = !!quickCardioModality;
-  const hasCardio = cardioPrescriptionItems.length > 0 || hasQuickCardio;
+  const hasCardio = allCardioPrescriptionItems.length > 0 || hasQuickCardio;
   const hasStrengthPrescription = strengthItemCount > 0;
   const isPureCardio = hasCardio && !hasStrengthPrescription;
   const isHybridSession = hasCardio && hasStrengthPrescription;
   const showCardioLogForm =
-    hasCardio && !isComplete && !hasLoggedCardioRow;
+    (cardioPrescriptionItems.length > 0 || hasQuickCardio) &&
+    !isComplete &&
+    !hasLoggedCardioRow;
 
   // Fix 4 — surface the planned cardio implementing modality (Run /
   // Bike / Row / Ski erg / …) next to the movement title in the

@@ -24,7 +24,7 @@ const noopMark = (async () => ({ ok: true as const })) as Parameters<
 >[0]["markExternalCompleteAction"];
 
 describe("CardioPrescriptionList — cardio_external rows", () => {
-  it("renders the program name as the title and a Mark complete CTA", () => {
+  it("renders the program name as the title and a Mark done CTA", () => {
     const html = renderToStaticMarkup(
       <CardioPrescriptionList
         plannedSessionId="00000000-0000-0000-0000-000000000001"
@@ -36,9 +36,9 @@ describe("CardioPrescriptionList — cardio_external rows", () => {
     );
     expect(html).toContain('data-external="true"');
     expect(html).toContain("Runna");
-    expect(html).toContain("Logged via Runna. Mark complete when done.");
+    expect(html).toContain("Logged via Runna. Tap Mark done when finished.");
     expect(html).toContain('data-testid="cardio-external-mark-complete-0"');
-    expect(html).toContain("Mark complete");
+    expect(html).toContain("Mark done");
   });
 
   it("hides the Swap button on the external-cardio row", () => {
@@ -71,10 +71,12 @@ describe("CardioPrescriptionList — cardio_external rows", () => {
       />,
     );
     expect(html).toContain("External cardio");
-    expect(html).toContain("Logged via your external program. Mark complete when done.");
+    expect(html).toContain(
+      "Logged via your external program. Tap Mark done when finished.",
+    );
   });
 
-  it("hides the Mark complete CTA when the session is read-only", () => {
+  it("hides the Mark done CTA when the session is read-only", () => {
     const html = renderToStaticMarkup(
       <CardioPrescriptionList
         plannedSessionId="00000000-0000-0000-0000-000000000001"
