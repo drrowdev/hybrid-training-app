@@ -2633,6 +2633,28 @@ export const MOVEMENT_INSTRUCTIONS: MovementInstructionSeed[] = [
     cues: ["Chest tall, elbows inside the knees.", "Push the knees out."],
   },
   {
+    slug: "landmine-squat-to-box",
+    summary:
+      "Landmine-loaded squat to a box for a supported, upright squat pattern with controlled depth.",
+    setup:
+      "Anchor one end of a barbell, hold the sleeve at chest height, and place a stable box behind you at a pain-free depth.",
+    steps: [
+      "Stand with feet about shoulder-width and brace before descending.",
+      "Squat down under control until the hips touch the box.",
+      "Keep tension on the box without rocking or fully sitting back.",
+      "Drive through the whole foot to stand while keeping the bar close.",
+    ],
+    cues: [
+      "Use a stance and depth that stay pain-free.",
+      "Stay tall and keep knees tracking over the toes.",
+      "Touch the box softly; do not collapse onto it.",
+    ],
+    commonMistakes: [
+      "Using a box that forces more depth than can be controlled comfortably.",
+      "Rocking backward on the box before standing.",
+    ],
+  },
+  {
     slug: "hack-squat",
     summary: "Machine squat on an angled sled — heavy quad loading with back support.",
     setup: "Shoulders under the pads, feet on the platform, back flat on the pad.",

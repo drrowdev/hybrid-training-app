@@ -3536,6 +3536,12 @@ export function ProgramPicker({
                                     (source, index) =>
                                       triadSelections[index] === source,
                                   );
+                                const singleReplacement =
+                                  selectedTriadCount === 1
+                                    ? triadSelections.find(
+                                        (movement) => movement != null,
+                                      ) ?? null
+                                    : null;
                                 const canRemove =
                                   selectedTriadCount > 0 &&
                                   selectedInSession.length >
@@ -3551,7 +3557,7 @@ export function ProgramPicker({
                                 return (
                                   <div
                                     key="ab-triad"
-                                    className={`${styles.activationMovementRow} ${styles.activationCircuitRow}`}
+                                    className={styles.activationMovementRow}
                                     data-testid={`activation-movement-${session.key}-ab-triad`}
                                   >
                                     <span className={styles.sourceSlot}>
@@ -3559,40 +3565,66 @@ export function ProgramPicker({
                                       <b>AB Triad</b>
                                     </span>
                                     <span className={styles.currentExercise}>
-                                      <small>Linked circuit</small>
+                                      <small>Exercise</small>
                                       <b>
-                                        {selectedTriadCount > 0
-                                          ? currentSequence
-                                          : "Removed"}
+                                        {canonicalTriad
+                                          ? "AB Triad"
+                                          : singleReplacement
+                                            ? customMovementLabel(
+                                                singleReplacement,
+                                              )
+                                            : selectedTriadCount > 0
+                                              ? currentSequence
+                                              : "Removed"}
                                       </b>
                                       <em>
                                         {canonicalTriad
-                                          ? "3 rounds · 5 reps each · linked logging"
+                                          ? "Hanging Leg Raise → Hanging Knee Raise → Toes-to-Bar · 3 rounds × 5 each"
+                                          : singleReplacement &&
+                                              catalogMovementMeta[
+                                                singleReplacement
+                                              ]?.hasOneRm
+                                            ? "Uses its saved 1RM"
+                                            : singleReplacement?.startsWith(
+                                                  "catalog:",
+                                                )
+                                              ? "Manual load"
                                           : selectedTriadCount > 0
-                                            ? "Custom composition · restore the fixed AB Triad"
-                                            : "Restore all three circuit movements together"}
+                                                ? "Custom composition"
+                                                : "Removed"}
                                       </em>
                                     </span>
                                     <div className={styles.exerciseActions}>
-                                      {canonicalTriad ? (
-                                        <button
-                                          type="button"
-                                          disabled={!canRemove}
-                                          onClick={() =>
+                                      <details>
+                                        <summary>Change</summary>
+                                        <ExerciseLibraryPicker
+                                          movements={rehabMovements}
+                                          excludeKeys={selectedInSession}
+                                          onPick={(movement) => {
+                                            const key =
+                                              catalogMovementKey(movement.id);
+                                            setCatalogMovementMeta(
+                                              (current) => ({
+                                                ...current,
+                                                [key]: movement,
+                                              }),
+                                            );
                                             setActivationMovements(
                                               phase.key,
                                               session.key,
                                               Object.fromEntries(
                                                 AB_TRIAD_SOURCES.map(
-                                                  (source) => [source, null],
+                                                  (source, index) => [
+                                                    source,
+                                                    index === 0 ? key : null,
+                                                  ],
                                                 ),
                                               ),
-                                            )
-                                          }
-                                        >
-                                          Remove
-                                        </button>
-                                      ) : (
+                                            );
+                                          }}
+                                        />
+                                      </details>
+                                      {!canonicalTriad && (
                                         <button
                                           type="button"
                                           onClick={() =>
@@ -3607,9 +3639,27 @@ export function ProgramPicker({
                                             )
                                           }
                                         >
-                                          Restore
+                                          Restore AB Triad
                                         </button>
                                       )}
+                                      <button
+                                        type="button"
+                                        disabled={!canRemove}
+                                        onClick={() =>
+                                          setActivationMovements(
+                                            phase.key,
+                                            session.key,
+                                            Object.fromEntries(
+                                              AB_TRIAD_SOURCES.map((source) => [
+                                                source,
+                                                null,
+                                              ]),
+                                            ),
+                                          )
+                                        }
+                                      >
+                                        Remove
+                                      </button>
                                     </div>
                                   </div>
                                 );

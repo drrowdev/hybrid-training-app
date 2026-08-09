@@ -100,12 +100,42 @@ test("creates and restores a phase-aware customized Activation plan", async ({
   const abTriad = page.getByTestId(
     "activation-movement-activation.base.base-1-ab-triad",
   );
-  await expect(abTriad.getByText("AB Triad", { exact: true })).toBeVisible();
+  await expect(abTriad.getByText("AB Triad", { exact: true })).toHaveCount(2);
   await expect(abTriad).toContainText(
     "Hanging Leg Raise → Hanging Knee Raise → Toes-to-Bar",
   );
+  await expect(abTriad).toContainText("3 rounds × 5 each");
+  const ordinaryMovement = page.getByTestId(
+    "activation-movement-activation.base.base-1-goblet-squat",
+  );
+  const [triadStyle, ordinaryStyle] = await Promise.all([
+    abTriad.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        background: style.backgroundColor,
+        borderRadius: style.borderRadius,
+      };
+    }),
+    ordinaryMovement.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        background: style.backgroundColor,
+        borderRadius: style.borderRadius,
+      };
+    }),
+  ]);
+  expect(triadStyle).toEqual(ordinaryStyle);
+  await abTriad.getByText("Change", { exact: true }).click();
+  await abTriad
+    .getByLabel("Search the exercise library")
+    .fill("Belt Squat");
+  await abTriad.getByRole("button", { name: /Belt Squat/ }).click();
+  await expect(abTriad).toContainText("Belt Squat");
+  await abTriad
+    .getByRole("button", { name: "Restore AB Triad" })
+    .click();
   await expect(abTriad).toContainText(
-    "3 rounds · 5 reps each · linked logging",
+    "Hanging Leg Raise → Hanging Knee Raise → Toes-to-Bar",
   );
   await expect(
     page.getByTestId(
@@ -114,7 +144,9 @@ test("creates and restores a phase-aware customized Activation plan", async ({
   ).toHaveCount(0);
   await abTriad.getByRole("button", { name: "Remove" }).click();
   await expect(abTriad).toContainText("Removed");
-  await abTriad.getByRole("button", { name: "Restore" }).click();
+  await abTriad
+    .getByRole("button", { name: "Restore AB Triad" })
+    .click();
   await expect(abTriad).toContainText(
     "Hanging Leg Raise → Hanging Knee Raise → Toes-to-Bar",
   );

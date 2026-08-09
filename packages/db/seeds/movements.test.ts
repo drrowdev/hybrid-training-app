@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { SEED_MOVEMENTS } from "./movements";
+import { MOVEMENT_INSTRUCTIONS } from "./movement-instructions";
 
 const SEED = SEED_MOVEMENTS;
 
@@ -110,6 +111,7 @@ describe("movement catalog seed", () => {
       "cossack-squat-loaded",
       "front-squat",
       "hsr-front-squat",
+      "landmine-squat-to-box",
       "zercher-squat",
       "hsr-leg-press",
       "leg-press-45",
@@ -129,6 +131,31 @@ describe("movement catalog seed", () => {
         "adductors",
       );
     }
+  });
+
+  it("seeds Landmine Squat to Box with compound metadata and how-to content", () => {
+    const movement = SEED.find(
+      (candidate) => candidate.slug === "landmine-squat-to-box",
+    );
+    expect(movement).toMatchObject({
+      displayName: "Landmine Squat to a Box",
+      pattern: "squat",
+      equipment: "barbell-box",
+      isCompound: true,
+      axialLoad: "moderate",
+      stability: "supported",
+      isSupported: true,
+    });
+    expect(movement?.secondaryMuscles).toContain("adductors");
+
+    const instructions = MOVEMENT_INSTRUCTIONS.find(
+      (candidate) => candidate.slug === "landmine-squat-to-box",
+    );
+    expect(instructions?.summary).toContain("controlled depth");
+    expect(instructions?.steps).toHaveLength(4);
+    expect(instructions?.cues).toContain(
+      "Use a stance and depth that stay pain-free.",
+    );
   });
 
   it("injury-site tagging audit invariants (migration 0100)", () => {
