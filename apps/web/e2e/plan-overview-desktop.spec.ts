@@ -73,6 +73,29 @@ test.describe("@desktop /app/plan overview + drawer", () => {
       page.locator('[data-testid^="plan-timeline-week-"][data-today-row="true"]'),
     ).toHaveAttribute("open", "");
 
+    const completedWeek = page.getByTestId("plan-timeline-week-0");
+    if (!(await completedWeek.getAttribute("open"))) {
+      await completedWeek.locator(":scope > summary").click();
+    }
+    const completedDay = page.getByTestId("plan-day-cell-0-0");
+    const todayDay = page.locator(
+      '.plan-agenda-day[data-state="today"], .plan-agenda-day[data-state="today-completed"]',
+    );
+    await expect(completedDay).toHaveAttribute("data-state", "completed");
+    await expect(todayDay).toHaveCount(1);
+    const stateStyles = await Promise.all([
+      completedDay.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { background: style.backgroundColor, shadow: style.boxShadow };
+      }),
+      todayDay.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { background: style.backgroundColor, shadow: style.boxShadow };
+      }),
+    ]);
+    expect(stateStyles[0].background).not.toBe(stateStyles[1].background);
+    expect(stateStyles[0].shadow).not.toBe(stateStyles[1].shadow);
+
     // Switch to Month → 42 cells.
     await page.getByTestId("plan-view-tab-month").click();
     await page.waitForLoadState("networkidle");
