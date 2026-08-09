@@ -436,3 +436,7 @@ Pure prescribed cardio sessions, including Tactical Barbell Activation LSS cardi
 
 ## [2026-08-09] refine | Group AB Triad as one Activation builder slot
 The customized Activation builder now presents canonical AB Triad as one atomic program slot with its fixed Hanging Leg Raise -> Hanging Knee Raise -> Toes-to-Bar sequence and 3 rounds x 5 linked-logging cue. Remove/Restore applies to all three underlying source slots together, while saved prescriptions, movement attribution and live logging remain granular. Existing partial or noncanonical compositions are surfaced explicitly as custom and are only reset when the user chooses Restore. Authenticated create/edit coverage verifies one row, atomic removal/restoration and saved edit restoration.
+
+
+## [2026-08-09] refine | Separate current and completed Plan day states
+Plan week days now use distinct visual semantics: completed days retain the sage success fill and left edge, while Today uses a neutral elevated surface, bright neutral inset outline and high-contrast Today marker. A day that is both Today and complete keeps the neutral current-day surface/outline, the green completed edge and both Today and Done labels. Data-state markers and authenticated computed-style coverage verify the states differ by background and shadow; labels ensure color is not the only cue.

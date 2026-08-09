@@ -808,6 +808,15 @@ export function PlanRedesign(props: PlanRedesignProps) {
                                 daySessions.every(
                                   (session) => session.done,
                                 );
+                              const dayState = dayCompleted
+                                ? isToday
+                                  ? "today-completed"
+                                  : "completed"
+                                : isToday
+                                  ? "today"
+                                  : daySessions.length === 0
+                                    ? "rest"
+                                    : "planned";
                               return (
                                 <div
                                   key={dayIndex}
@@ -821,6 +830,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
                                   data-today={
                                     isToday ? "true" : undefined
                                   }
+                                  data-state={dayState}
                                   data-drag-over={
                                     dragOverKey === cellKey
                                       ? "true"
@@ -836,17 +846,19 @@ export function PlanRedesign(props: PlanRedesignProps) {
                                     <b>
                                       {Number(dayDate.slice(8, 10))}
                                     </b>
+                                    {isToday &&
+                                      (dayCompleted ||
+                                        daySessions.length === 0) && (
+                                        <span className="plan-day-today-marker">
+                                          Today
+                                        </span>
+                                      )}
                                   </div>
                                   <div className="plan-agenda-sessions">
                                     {daySessions.length === 0 ? (
                                       <div className="plan-agenda-rest">
                                         <b>Rest</b>
                                         <span>No programmed work</span>
-                                        {isToday && (
-                                          <span className="plan-session-status today">
-                                            Today
-                                          </span>
-                                        )}
                                       </div>
                                     ) : (
                                       daySessions.map((session) => {
@@ -1294,12 +1306,27 @@ export function PlanRedesign(props: PlanRedesignProps) {
           background: var(--cp-surface);
           transition: background 120ms ease;
         }
-        .plan-agenda-day.today { background: var(--cp-accent-soft); }
+        .plan-agenda-day.today {
+          background: var(--cp-bg-elevated);
+          box-shadow: inset 0 0 0 2px var(--cp-text-soft);
+        }
         .plan-agenda-day.completed {
           background: color-mix(in srgb, var(--cp-success) 18%, var(--cp-surface));
           box-shadow:
             inset 6px 0 0 var(--cp-success),
             inset 0 0 0 1px color-mix(in srgb, var(--cp-success) 32%, var(--cp-border));
+        }
+        .plan-agenda-day.today.completed {
+          background: var(--cp-bg-elevated);
+          box-shadow:
+            inset 6px 0 0 var(--cp-success),
+            inset 0 0 0 2px var(--cp-text-soft);
+        }
+        .plan-agenda-day.today .plan-agenda-date {
+          color: var(--cp-text-soft);
+        }
+        .plan-agenda-day.today .plan-agenda-date b {
+          color: var(--cp-text);
         }
         .plan-agenda-day.completed .plan-agenda-date b {
           color: var(--cp-success);
@@ -1325,6 +1352,18 @@ export function PlanRedesign(props: PlanRedesignProps) {
           color: var(--cp-text);
           font-size: 18px;
           line-height: 1;
+        }
+        .plan-day-today-marker {
+          width: fit-content;
+          margin-top: 4px;
+          padding: 2px 5px;
+          border-radius: 4px;
+          background: var(--cp-text);
+          color: var(--cp-bg);
+          font-size: 9px;
+          font-weight: 800;
+          letter-spacing: 0.04em;
+          text-transform: none;
         }
         .plan-agenda-sessions {
           display: grid;
@@ -1397,8 +1436,9 @@ export function PlanRedesign(props: PlanRedesignProps) {
           font-weight: 700;
         }
         .plan-session-status.today {
-          color: var(--cp-accent);
-          background: var(--cp-accent-soft);
+          color: var(--cp-bg);
+          background: var(--cp-text);
+          border: 1px solid var(--cp-text);
           font-weight: 800;
         }
         .plan-session-status.overdue,

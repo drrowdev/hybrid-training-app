@@ -183,6 +183,7 @@ describe("PlanRedesign — expandable program overview", () => {
     // check that the today cell carries both markers — not their
     // adjacency.
     expect(html).toContain('data-today="true"');
+    expect(html).toContain('data-state="today"');
     expect(html).toContain(">Today<");
   });
 
@@ -203,8 +204,18 @@ describe("PlanRedesign — expandable program overview", () => {
   it("marks completed sessions with a clear success status", () => {
     const html = render();
     expect(html).toContain('class="plan-agenda-day completed"');
+    expect(html).toContain('data-state="completed"');
     expect(html).toContain('class="plan-agenda-session done"');
     expect(html).toContain('class="plan-session-status done"');
+    expect(html).toContain("✓ Done");
+  });
+
+  it("keeps Today visible when the current day is also completed", () => {
+    const html = render({ today: "2026-05-25" });
+    expect(html).toContain(
+      'class="plan-agenda-day today completed" data-today="true" data-state="today-completed"',
+    );
+    expect(html).toContain('class="plan-day-today-marker">Today</span>');
     expect(html).toContain("✓ Done");
   });
 
