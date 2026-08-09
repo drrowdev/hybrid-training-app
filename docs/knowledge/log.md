@@ -432,3 +432,7 @@ TB3 AB Triad keeps nine granular set slots across Hanging Leg Raise, Hanging Kne
 
 ## [2026-08-09] fix | Complete prescribed cardio in one tap
 Pure prescribed cardio sessions, including Tactical Barbell Activation LSS cardio_external days, now expose one Mark done action that preserves an existing manual cardio log or creates one from the planned duration, completes the session and returns to Today. The strength-only finish gate and redundant full cardio form are removed from this path. Hybrid sessions remain in progress until strength is logged. Session creation uses a conditional planned-slot claim with orphan cleanup, duplicate cardio inserts are treated idempotently, and completed session duration is stamped from the retained cardio logs. Authenticated coverage proves a manual 51-minute log is preserved and a fresh 60-minute LSS records 60 minutes.
+
+
+## [2026-08-09] refine | Group AB Triad as one Activation builder slot
+The customized Activation builder now presents canonical AB Triad as one atomic program slot with its fixed Hanging Leg Raise -> Hanging Knee Raise -> Toes-to-Bar sequence and 3 rounds x 5 linked-logging cue. Remove/Restore applies to all three underlying source slots together, while saved prescriptions, movement attribution and live logging remain granular. Existing partial or noncanonical compositions are surfaced explicitly as custom and are only reset when the user chooses Restore. Authenticated create/edit coverage verifies one row, atomic removal/restoration and saved edit restoration.

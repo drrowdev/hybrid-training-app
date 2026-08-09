@@ -1761,6 +1761,16 @@
   border-top: 0;
   padding-top: 0;
 }
+.activationCircuitRow {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border: 1px solid var(--accent-dim);
+  border-radius: var(--wradius);
+  padding: 10px 12px;
+}
+.activationCircuitRow:first-child {
+  border-top: 1px solid var(--accent-dim);
+  padding-top: 10px;
+}
 .sourceSlot,
 .currentExercise {
   display: grid;
