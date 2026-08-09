@@ -282,6 +282,7 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     admin,
     baseURL,
   }) => {
+    test.slow();
     await markOnboarded(admin, freshUser.userId);
     for (const tm of [
       ...STRENGTH_TMS,
@@ -394,6 +395,84 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     expect(cardioItems).toEqual([
       expect.objectContaining({ kind: "cardio_external", durationMin: 60 }),
     ]);
+
+    // Pure prescribed cardio is one-tap complete. Reproduce the reported
+    // failure with an existing manually logged cardio row: Mark done must
+    // finish the session, retain that granular log, and never show the
+    // strength-only "Log at least 1 set" gate.
+    await page.goto(`/app/sessions/start/${cardio!.id}`);
+    await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}/, {
+      timeout: 30_000,
+    });
+    const cardioSessionId = page.url().split("/").at(-1)!;
+    const { error: manualCardioError } = await admin
+      .from("cardio_logs")
+      .insert({
+        session_id: cardioSessionId,
+        block_index: 0,
+        modality: "other",
+        duration_sec: 51 * 60,
+      });
+    expect(manualCardioError).toBeNull();
+    await expect(page.getByTestId("finish-stickybar")).toHaveCount(0);
+    await expect(page.getByTestId("cardio-log-form")).toHaveCount(0);
+    await page
+      .getByTestId("cardio-external-mark-complete-0")
+      .click();
+    await page.waitForURL("**/app", { timeout: 30_000 });
+
+    await expect
+      .poll(async () => {
+        const { data } = await admin
+          .from("sessions")
+          .select("completed_at, duration_min")
+          .eq("id", cardioSessionId)
+          .maybeSingle();
+        return data ?? null;
+      })
+      .toEqual(
+        expect.objectContaining({
+          completed_at: expect.any(String),
+          duration_min: 51,
+        }),
+      );
+    const { data: retainedCardioLogs } = await admin
+      .from("cardio_logs")
+      .select("duration_sec")
+      .eq("session_id", cardioSessionId);
+    expect(retainedCardioLogs).toEqual([{ duration_sec: 51 * 60 }]);
+
+    const freshCardio = sessions!.find(
+      (session) =>
+        session.week_index === 0 &&
+        session.role === "cardio" &&
+        session.id !== cardio!.id,
+    )!;
+    await page.goto(`/app/sessions/start/${freshCardio.id}`);
+    await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}/, {
+      timeout: 30_000,
+    });
+    const freshCardioSessionId = page.url().split("/").at(-1)!;
+    await expect(page.getByTestId("finish-stickybar")).toHaveCount(0);
+    await page
+      .getByTestId("cardio-external-mark-complete-0")
+      .click();
+    await page.waitForURL("**/app", { timeout: 30_000 });
+    const { data: targetDurationLog } = await admin
+      .from("cardio_logs")
+      .select("duration_sec")
+      .eq("session_id", freshCardioSessionId)
+      .single();
+    expect(targetDurationLog?.duration_sec).toBe(60 * 60);
+    const { data: targetDurationSession } = await admin
+      .from("sessions")
+      .select("completed_at, duration_min")
+      .eq("id", freshCardioSessionId)
+      .single();
+    expect(targetDurationSession).toMatchObject({
+      completed_at: expect.any(String),
+      duration_min: 60,
+    });
 
     type StoredItem = {
       movementSlug?: string;

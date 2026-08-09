@@ -25,7 +25,10 @@ import {
 import type { Prescription, PrescriptionItem } from "@hta/db";
 import { applyPrescriptionSwap } from "./prescription-mutations";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
-import { sessionPrescribesStrength } from "./strength-prescribed";
+import {
+  prescriptionItemsHaveStrength,
+  sessionPrescribesStrength,
+} from "./strength-prescribed";
 
 const startAdHocSchema = z.object({
   title: z.string().trim().max(120).optional(),
@@ -355,7 +358,7 @@ export async function addCardioBlock(
 
 /**
  * Phase 1 "external cardio" — server action invoked when the user
- * presses "Mark complete" on a placeholder `cardio_external` card.
+ * presses "Mark done" on a placeholder `cardio_external` card.
  *
  * Inserts a minimal `cardio_logs` row so the session can register as
  * having a cardio block (the freshness ledger, the
@@ -373,14 +376,21 @@ export async function addCardioBlock(
  */
 const markExternalCardioSchema = z.object({
   plannedSessionId: z.string().uuid(),
+  itemIndex: z.coerce.number().int().min(0),
   programName: z.string().trim().max(80).optional().nullable(),
 });
 
 export async function markExternalCardioComplete(
   formData: FormData,
-): Promise<{ ok?: true; error?: string }> {
+): Promise<{
+  ok?: true;
+  error?: string;
+  sessionId?: string;
+  sessionCompleted?: boolean;
+}> {
   const parsed = markExternalCardioSchema.safeParse({
     plannedSessionId: formData.get("plannedSessionId"),
+    itemIndex: formData.get("itemIndex"),
     programName: formData.get("programName") || undefined,
   });
   if (!parsed.success) {
@@ -401,13 +411,21 @@ export async function markExternalCardioComplete(
   // Resolve / lazily create the underlying session for this planned slot.
   const { data: planned, error: pErr } = await supabase
     .from("planned_sessions")
-    .select("id, user_id, title, completed_session_id")
+    .select("id, user_id, title, completed_session_id, prescription")
     .eq("id", parsed.data.plannedSessionId)
     .maybeSingle();
   if (pErr || !planned) {
     return { error: pErr?.message ?? "Planned session not found" };
   }
   if (planned.user_id !== user.id) return { error: "Not your session." };
+  const prescription =
+    (planned.prescription as Prescription | null | undefined) ?? null;
+  const cardioItem = prescription?.items?.[parsed.data.itemIndex];
+  if (!cardioItem || !cardioItem.kind.startsWith("cardio_")) {
+    return { error: "Cardio prescription not found." };
+  }
+  const hasStrength = prescriptionItemsHaveStrength(prescription?.items);
+  const isPureCardio = !hasStrength;
 
   let sessionId = planned.completed_session_id as string | null;
   if (!sessionId) {
@@ -423,45 +441,104 @@ export async function markExternalCardioComplete(
     if (sErr || !created) {
       return { error: sErr?.message ?? "Could not create session" };
     }
-    sessionId = created.id;
-    await supabase
+    const { data: linked, error: linkErr } = await supabase
       .from("planned_sessions")
-      .update({ completed_session_id: sessionId })
-      .eq("id", parsed.data.plannedSessionId);
+      .update({ completed_session_id: created.id })
+      .eq("id", parsed.data.plannedSessionId)
+      .is("completed_session_id", null)
+      .select("completed_session_id")
+      .maybeSingle();
+    if (linkErr) {
+      await supabase.from("sessions").delete().eq("id", created.id);
+      return { error: linkErr.message };
+    }
+    if (linked?.completed_session_id) {
+      sessionId = linked.completed_session_id as string;
+    } else {
+      await supabase.from("sessions").delete().eq("id", created.id);
+      const { data: winner, error: winnerErr } = await supabase
+        .from("planned_sessions")
+        .select("completed_session_id")
+        .eq("id", parsed.data.plannedSessionId)
+        .maybeSingle();
+      if (winnerErr || !winner?.completed_session_id) {
+        return {
+          error:
+            winnerErr?.message ?? "Could not resolve the started session.",
+        };
+      }
+      sessionId = winner.completed_session_id as string;
+    }
   }
+  if (!sessionId) return { error: "Could not resolve session." };
+  const resolvedSessionId = sessionId;
 
   // Idempotency guard: if any cardio_log already exists for this
   // session, this is a re-click after refresh (the UI's `done` state
   // is component-local and doesn't survive). Return success without
   // inserting a second row.
-  const { count } = await supabase
+  const { count, error: countErr } = await supabase
     .from("cardio_logs")
     .select("id", { count: "exact", head: true })
-    .eq("session_id", sessionId);
+    .eq("session_id", resolvedSessionId);
+  if (countErr) return { error: countErr.message };
 
-  if ((count ?? 0) > 0) {
-    revalidatePath(`/app/sessions/${sessionId}`);
-    revalidatePath(`/app/plan`);
-    return { ok: true };
+  if ((count ?? 0) === 0) {
+    const { error: insErr } = await supabase.from("cardio_logs").insert({
+      session_id: resolvedSessionId,
+      movement_id:
+        cardioItem.movementId &&
+        z.string().uuid().safeParse(cardioItem.movementId).success
+          ? cardioItem.movementId
+          : null,
+      block_index: 0,
+      modality: "other",
+      // Prefer the program's target duration (e.g. 60-minute LSS). Legacy
+      // placeholders without a duration keep the 1-second unknown sentinel.
+      duration_sec:
+        cardioItem.durationMin != null && cardioItem.durationMin > 0
+          ? Math.round(cardioItem.durationMin * 60)
+          : 1,
+      notes,
+    });
+    if (insErr && (insErr as { code?: string }).code !== "23505") {
+      return { error: insErr.message };
+    }
   }
 
-  const { error: insErr } = await supabase.from("cardio_logs").insert({
-    session_id: sessionId,
-    movement_id: null,
-    block_index: 0,
-    modality: "other",
-    // 1-second sentinel keeps the row valid against the duration_sec
-    // NOT NULL / >0 constraint while signalling "duration unknown" to
-    // any consumer that filters on it. Stats counts the day as
-    // adherent via `run-plan-adherence` regardless.
-    duration_sec: 1,
-    notes,
-  });
-  if (insErr) return { error: insErr.message };
+  if (isPureCardio) {
+    const { data: cardioRows, error: durationErr } = await supabase
+      .from("cardio_logs")
+      .select("duration_sec")
+      .eq("session_id", resolvedSessionId);
+    if (durationErr) return { error: durationErr.message };
+    const durationMin = Math.max(
+      1,
+      Math.round(
+        (cardioRows ?? []).reduce(
+          (total, row) => total + Number(row.duration_sec ?? 0),
+          0,
+        ) / 60,
+      ),
+    );
+    const completion = await completeSessionResult(resolvedSessionId, null);
+    if (completion.error) return completion;
+    const { error: durationUpdateErr } = await supabase
+      .from("sessions")
+      .update({ duration_min: durationMin })
+      .eq("id", resolvedSessionId)
+      .eq("user_id", user.id);
+    if (durationUpdateErr) return { error: durationUpdateErr.message };
+  }
 
-  revalidatePath(`/app/sessions/${sessionId}`);
+  revalidatePath(`/app/sessions/${resolvedSessionId}`);
   revalidatePath(`/app/plan`);
-  return { ok: true };
+  revalidatePath("/app");
+  return {
+    ok: true,
+    sessionId: resolvedSessionId,
+    sessionCompleted: isPureCardio,
+  };
 }
 
 /**

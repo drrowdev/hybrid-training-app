@@ -88,11 +88,16 @@ export function CardioPrescriptionList({
   isReadOnly?: boolean;
   /**
    * Phase 1 "external cardio". Server action invoked when the user
-   * presses "Mark complete" on a `cardio_external` placeholder card.
+   * presses "Mark done" on a `cardio_external` placeholder card.
    * Optional — if omitted, the button still renders but is disabled so
    * the parent (e.g. session-detail page) can wire it incrementally.
    */
-  markExternalCompleteAction?: (fd: FormData) => Promise<{ ok?: true; error?: string }>;
+  markExternalCompleteAction?: (fd: FormData) => Promise<{
+    ok?: true;
+    error?: string;
+    sessionId?: string;
+    sessionCompleted?: boolean;
+  }>;
   /**
    * Page title (e.g. `sessions.title`). When a row's heading
    * (movementName) would just repeat this title, the structured cardio
@@ -163,8 +168,8 @@ export function CardioPrescriptionList({
  * Phase 1 "external cardio" row. Muted card with no intensity chip /
  * no Swap button — the user logs the actual run via their external
  * program (Runna / Garmin Coach / Hal Higdon / etc.). The single CTA
- * fires `markExternalCompleteAction` which inserts a placeholder
- * `cardio_logs` row so the session can be marked done.
+ * fires `markExternalCompleteAction`, which writes the cardio log and finishes
+ * a pure-cardio workout in one operation.
  */
 function ExternalCardioRow({
   itemIndex,
@@ -178,7 +183,12 @@ function ExternalCardioRow({
   item: PrescriptionItem;
   plannedSessionId: string | null;
   isReadOnly: boolean;
-  markCompleteAction?: (fd: FormData) => Promise<{ ok?: true; error?: string }>;
+  markCompleteAction?: (fd: FormData) => Promise<{
+    ok?: true;
+    error?: string;
+    sessionId?: string;
+    sessionCompleted?: boolean;
+  }>;
   classification: CardioClassification | null;
 }) {
   const [pending, startTransition] = useTransition();
@@ -200,10 +210,10 @@ function ExternalCardioRow({
   const body = hasClassification
     ? null
     : richNote.length > 0
-      ? `${richNote} Mark complete when done.`
+      ? `${richNote} Tap Mark done when finished.`
       : protoNote.length > 0
-        ? `${protoNote} Mark complete when done.`
-        : `Logged via ${programName.length > 0 && programName !== "External program" ? programName : "your external program"}. Mark complete when done.`;
+        ? `${protoNote} Tap Mark done when finished.`
+        : `Complete this cardio session, then tap Mark done.`;
 
   const onClick = () => {
     if (!markCompleteAction || !plannedSessionId) return;
@@ -216,6 +226,10 @@ function ExternalCardioRow({
       const res = await markCompleteAction(fd);
       if (res?.error) {
         setError(res.error);
+        return;
+      }
+      if (res.sessionCompleted && res.sessionId) {
+        window.location.assign("/app");
         return;
       }
       setDone(true);
@@ -323,7 +337,7 @@ function ExternalCardioRow({
               minHeight: 32,
             }}
           >
-            {done ? "Marked complete" : pending ? "Saving…" : "Mark complete"}
+            {done ? "Cardio marked done" : pending ? "Finishing…" : "Mark done"}
           </button>
         </div>
       )}
