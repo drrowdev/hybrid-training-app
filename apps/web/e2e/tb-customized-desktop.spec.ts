@@ -97,6 +97,27 @@ test("creates and restores a phase-aware customized Activation plan", async ({
 
   const base = page.getByTestId("activation-phase-base");
   await expect(base).toBeVisible();
+  const abTriad = page.getByTestId(
+    "activation-movement-activation.base.base-1-ab-triad",
+  );
+  await expect(abTriad.getByText("AB Triad", { exact: true })).toBeVisible();
+  await expect(abTriad).toContainText(
+    "Hanging Leg Raise → Hanging Knee Raise → Toes-to-Bar",
+  );
+  await expect(abTriad).toContainText(
+    "3 rounds · 5 reps each · linked logging",
+  );
+  await expect(
+    page.getByTestId(
+      "activation-movement-activation.base.base-1-hanging-leg-raise",
+    ),
+  ).toHaveCount(0);
+  await abTriad.getByRole("button", { name: "Remove" }).click();
+  await expect(abTriad).toContainText("Removed");
+  await abTriad.getByRole("button", { name: "Restore" }).click();
+  await expect(abTriad).toContainText(
+    "Hanging Leg Raise → Hanging Knee Raise → Toes-to-Bar",
+  );
   await page
     .getByTestId("activation-session-activation.base.base-1")
     .getByRole("combobox")
@@ -399,6 +420,13 @@ test("creates and restores a phase-aware customized Activation plan", async ({
       .getByTestId("activation-session-activation.base.base-1")
       .getByRole("combobox"),
   ).toHaveValue("6");
+  await expect(
+    page.getByTestId(
+      "activation-movement-activation.base.base-1-ab-triad",
+    ),
+  ).toContainText(
+    "Hanging Leg Raise → Hanging Knee Raise → Toes-to-Bar",
+  );
   await expect(
     page
       .getByTestId(

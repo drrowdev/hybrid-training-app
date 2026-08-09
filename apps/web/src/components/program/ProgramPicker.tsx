@@ -495,6 +495,13 @@ const MOVEMENT_LABEL: Record<string, string> = {
   "plyo-pushup": "Plyometric Push-up",
 };
 
+const AB_TRIAD_SOURCES = [
+  "hanging-leg-raise",
+  "hanging-knee-raise",
+  "toes-to-bar",
+] as const;
+const AB_TRIAD_SOURCE_SET: ReadonlySet<string> = new Set(AB_TRIAD_SOURCES);
+
 function movementLabel(key: string): string {
   return MOVEMENT_LABEL[key] ?? key;
 }
@@ -1827,6 +1834,29 @@ export function ProgramPicker({
             movements: {
               ...current[phase].sessions[sessionKey]!.movements,
               [sourceMovement]: movement,
+            },
+          },
+        },
+      },
+    }));
+  }
+
+  function setActivationMovements(
+    phase: ActivationPhaseKey,
+    sessionKey: string,
+    movements: Readonly<Record<string, string | null>>,
+  ) {
+    setActivationDrafts((current) => ({
+      ...current,
+      [phase]: {
+        ...current[phase],
+        sessions: {
+          ...current[phase].sessions,
+          [sessionKey]: {
+            ...current[phase].sessions[sessionKey]!,
+            movements: {
+              ...current[phase].sessions[sessionKey]!.movements,
+              ...movements,
             },
           },
         },
@@ -3471,6 +3501,119 @@ export function ProgramPicker({
                         {session.type === "strength" ? (
                           <div className={styles.activationMovements}>
                             {session.movements.map((slot) => {
+                              const hasCompleteAbTriad =
+                                AB_TRIAD_SOURCES.every((source) =>
+                                  session.movements.some(
+                                    (movement) =>
+                                      movement.sourceMovement === source,
+                                  ),
+                                );
+                              if (
+                                hasCompleteAbTriad &&
+                                AB_TRIAD_SOURCE_SET.has(slot.sourceMovement)
+                              ) {
+                                if (
+                                  slot.sourceMovement !== AB_TRIAD_SOURCES[0]
+                                ) {
+                                  return null;
+                                }
+                                const triadSelections =
+                                  AB_TRIAD_SOURCES.map(
+                                    (source) => draft.movements[source],
+                                  );
+                                const selectedTriadCount =
+                                  triadSelections.filter(
+                                    (movement) => movement != null,
+                                  ).length;
+                                const selectedInSession = Object.values(
+                                  draft.movements,
+                                ).filter(
+                                  (movement): movement is string =>
+                                    movement != null,
+                                );
+                                const canonicalTriad =
+                                  AB_TRIAD_SOURCES.every(
+                                    (source, index) =>
+                                      triadSelections[index] === source,
+                                  );
+                                const canRemove =
+                                  selectedTriadCount > 0 &&
+                                  selectedInSession.length >
+                                    selectedTriadCount;
+                                const currentSequence =
+                                  triadSelections
+                                    .map((movement) =>
+                                      movement
+                                        ? customMovementLabel(movement)
+                                        : "Removed",
+                                    )
+                                    .join(" → ");
+                                return (
+                                  <div
+                                    key="ab-triad"
+                                    className={`${styles.activationMovementRow} ${styles.activationCircuitRow}`}
+                                    data-testid={`activation-movement-${session.key}-ab-triad`}
+                                  >
+                                    <span className={styles.sourceSlot}>
+                                      <small>Program slot</small>
+                                      <b>AB Triad</b>
+                                    </span>
+                                    <span className={styles.currentExercise}>
+                                      <small>Linked circuit</small>
+                                      <b>
+                                        {selectedTriadCount > 0
+                                          ? currentSequence
+                                          : "Removed"}
+                                      </b>
+                                      <em>
+                                        {canonicalTriad
+                                          ? "3 rounds · 5 reps each · linked logging"
+                                          : selectedTriadCount > 0
+                                            ? "Custom composition · restore the fixed AB Triad"
+                                            : "Restore all three circuit movements together"}
+                                      </em>
+                                    </span>
+                                    <div className={styles.exerciseActions}>
+                                      {canonicalTriad ? (
+                                        <button
+                                          type="button"
+                                          disabled={!canRemove}
+                                          onClick={() =>
+                                            setActivationMovements(
+                                              phase.key,
+                                              session.key,
+                                              Object.fromEntries(
+                                                AB_TRIAD_SOURCES.map(
+                                                  (source) => [source, null],
+                                                ),
+                                              ),
+                                            )
+                                          }
+                                        >
+                                          Remove
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setActivationMovements(
+                                              phase.key,
+                                              session.key,
+                                              Object.fromEntries(
+                                                AB_TRIAD_SOURCES.map(
+                                                  (source) => [source, source],
+                                                ),
+                                              ),
+                                            )
+                                          }
+                                        >
+                                          Restore
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              }
                               const selectedMovement =
                                 draft.movements[slot.sourceMovement];
                               const selectedInSession = Object.values(
