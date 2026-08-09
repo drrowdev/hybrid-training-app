@@ -855,6 +855,13 @@
       "when": 1786041600000,
       "tag": "0121_remove_ai_functionality",
       "breakpoints": false
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1786298400000,
+      "tag": "0122_seed_landmine_squat_to_box",
+      "breakpoints": false
     }
   ]
 }

@@ -440,3 +440,7 @@ The customized Activation builder now presents canonical AB Triad as one atomic 
 
 ## [2026-08-09] refine | Separate current and completed Plan day states
 Plan week days now use distinct visual semantics: completed days retain the sage success fill and left edge, while Today uses a neutral elevated surface, bright neutral inset outline and high-contrast Today marker. A day that is both Today and complete keeps the neutral current-day surface/outline, the green completed edge and both Today and Done labels. Data-state markers and authenticated computed-style coverage verify the states differ by background and shadow; labels ensure color is not the only cue.
+
+
+## [2026-08-09] refine | Normalize AB Triad row and seed Landmine Squat to a Box
+AB Triad now uses the same builder row styling and Exercise/Change/Remove controls as every other movement. Change replaces the whole slot with one selected library movement by keeping one 3x5 source slot and removing the other two, preventing tripled replacements; Restore AB Triad explicitly restores the three canonical linked movements. Migration 0122 and the TypeScript seeds add Landmine Squat to a Box as a supported, moderate-axial compound squat requiring a barbell and box, with catalog muscle/region metadata plus setup, execution steps, cues and common mistakes. Seed, migration, picker create/edit and visual-parity coverage pass.

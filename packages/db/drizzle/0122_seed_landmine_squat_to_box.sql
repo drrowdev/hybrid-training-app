@@ -1,0 +1,111 @@
+-- Add a supported, controllable-depth compound squat option to the global
+-- movement library, including its in-app how-to content. Idempotent.
+
+INSERT INTO public.movements (
+  user_id,
+  slug,
+  display_name,
+  pattern,
+  primary_region,
+  secondary_regions,
+  primary_muscles,
+  secondary_muscles,
+  equipment,
+  is_compound,
+  interference_cost,
+  high_strain_tendon,
+  bulletproof_roles,
+  functional_roles,
+  is_supported,
+  eccentric_load_score,
+  stim_to_fatigue_score,
+  axial_load,
+  stability,
+  bilateral,
+  body_weight_loaded,
+  experience_min,
+  experience_max,
+  metadata
+) VALUES (
+  NULL,
+  'landmine-squat-to-box',
+  'Landmine Squat to a Box',
+  'squat',
+  'knee',
+  '["hamstring_posterior","lumbar_trunk","foot_ankle_calf"]'::jsonb,
+  '{"quads","glutes"}'::muscle[],
+  '{"hamstrings","lower_back","adductors"}'::muscle[],
+  'barbell-box',
+  true,
+  'low_moderate',
+  false,
+  '{}'::text[],
+  '{"compound_assistance"}'::text[],
+  true,
+  2,
+  4,
+  'moderate',
+  'supported',
+  true,
+  false,
+  0,
+  4,
+  '{"eccentric_cost":"low","cns_cost":"moderate","stim_fatigue_ratio":"high","emphasis":"upright-controlled-depth"}'::jsonb
+)
+ON CONFLICT (user_id, slug) DO UPDATE SET
+  display_name = excluded.display_name,
+  pattern = excluded.pattern,
+  primary_region = excluded.primary_region,
+  secondary_regions = excluded.secondary_regions,
+  primary_muscles = excluded.primary_muscles,
+  secondary_muscles = excluded.secondary_muscles,
+  equipment = excluded.equipment,
+  is_compound = excluded.is_compound,
+  interference_cost = excluded.interference_cost,
+  high_strain_tendon = excluded.high_strain_tendon,
+  bulletproof_roles = excluded.bulletproof_roles,
+  functional_roles = excluded.functional_roles,
+  is_supported = excluded.is_supported,
+  eccentric_load_score = excluded.eccentric_load_score,
+  stim_to_fatigue_score = excluded.stim_to_fatigue_score,
+  axial_load = excluded.axial_load,
+  stability = excluded.stability,
+  bilateral = excluded.bilateral,
+  body_weight_loaded = excluded.body_weight_loaded,
+  experience_min = excluded.experience_min,
+  experience_max = excluded.experience_max,
+  metadata = excluded.metadata;
+
+INSERT INTO public.movement_instructions (
+  movement_id,
+  summary,
+  setup,
+  steps,
+  cues,
+  common_mistakes,
+  source,
+  reviewed,
+  updated_at
+)
+SELECT
+  id,
+  'Landmine-loaded squat to a box for a supported, upright squat pattern with controlled depth.',
+  'Anchor one end of a barbell, hold the sleeve at chest height, and place a stable box behind you at a pain-free depth.',
+  '["Stand with feet about shoulder-width and brace before descending.","Squat down under control until the hips touch the box.","Keep tension on the box without rocking or fully sitting back.","Drive through the whole foot to stand while keeping the bar close."]'::jsonb,
+  '["Use a stance and depth that stay pain-free.","Stay tall and keep knees tracking over the toes.","Touch the box softly; do not collapse onto it."]'::jsonb,
+  '["Using a box that forces more depth than can be controlled comfortably.","Rocking backward on the box before standing."]'::jsonb,
+  'seed-v1',
+  true,
+  now()
+FROM public.movements
+WHERE user_id IS NULL
+  AND slug = 'landmine-squat-to-box'
+ON CONFLICT (movement_id) DO UPDATE SET
+  summary = excluded.summary,
+  setup = excluded.setup,
+  steps = excluded.steps,
+  cues = excluded.cues,
+  common_mistakes = excluded.common_mistakes,
+  source = excluded.source,
+  reviewed = excluded.reviewed,
+  updated_at = excluded.updated_at;
