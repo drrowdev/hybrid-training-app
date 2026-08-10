@@ -399,6 +399,12 @@ export type PrescriptionItem = {
 export type Prescription = {
   items: PrescriptionItem[];
   /**
+   * Set when the user edits this specific planned session's movements. Program
+   * regeneration uses it to preserve the row instead of silently replacing a
+   * per-session override. Absent means engine-authored or legacy unknown.
+   */
+  userEdited?: boolean;
+  /**
    * ADR 0013 — within-block volume autoregulation. When set (< 1), the
    * discretionary items (accessory / tendon / power_potentiation) are
    * sliced to `round(n · scale)` from the END at read time (fill +

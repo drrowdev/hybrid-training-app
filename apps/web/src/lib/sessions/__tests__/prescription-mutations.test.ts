@@ -6,6 +6,7 @@ import {
   removeMovementFromPrescription,
   swapMovementInPrescription,
   addMovementToPrescription,
+  hasUserEditedPrescription,
 } from "../prescription-mutations";
 import type { Prescription } from "@hta/db";
 
@@ -52,6 +53,7 @@ describe("applyPrescriptionSwap — Phase 2 A2", () => {
     expect(next.items[0]!.sets).toBe(3);
     expect(next.items[0]!.reps).toBe(5);
     expect(next.items[0]!.percentTm).toBe(80);
+    expect(next.userEdited).toBe(true);
   });
 
   it("records the original movement under meta.swappedFrom", () => {
@@ -126,10 +128,13 @@ describe("removeMovementFromPrescription", () => {
     const next = removeMovementFromPrescription(base, "mov-bench");
     expect(next.items).toHaveLength(1);
     expect(next.items[0]!.movementId).toBe("mov-squat");
+    expect(next.userEdited).toBe(true);
   });
   it("is a no-op when the movement is absent", () => {
     const next = removeMovementFromPrescription(base, "mov-nope");
     expect(next.items).toHaveLength(2);
+    expect(next).toBe(base);
+    expect(next.userEdited).toBeUndefined();
   });
 });
 
@@ -153,6 +158,7 @@ describe("swapMovementInPrescription", () => {
     expect(next.items[2]!.movementId).toBe("mov-squat");
     const meta = next.items[1]!.meta as Record<string, unknown>;
     expect(meta.swappedFrom).toEqual({ movementId: "mov-bench", movementName: "Bench" });
+    expect(next.userEdited).toBe(true);
   });
 });
 
@@ -170,5 +176,40 @@ describe("addMovementToPrescription", () => {
     expect(added.sets).toBe(3);
     expect(added.reps).toBe(10);
     expect((added.meta as Record<string, unknown>).userAdded).toBe(true);
+    expect(next.userEdited).toBe(true);
+  });
+});
+
+describe("hasUserEditedPrescription", () => {
+  it("recognizes explicit and legacy movement-edit markers", () => {
+    expect(hasUserEditedPrescription(base)).toBe(false);
+    expect(
+      hasUserEditedPrescription({ ...base, userEdited: true }),
+    ).toBe(true);
+    expect(
+      hasUserEditedPrescription({
+        items: [
+          {
+            ...base.items[0]!,
+            meta: { userAdded: true },
+          },
+        ],
+      }),
+    ).toBe(true);
+    expect(
+      hasUserEditedPrescription({
+        items: [
+          {
+            ...base.items[0]!,
+            meta: {
+              swappedFrom: {
+                movementId: "original",
+                movementName: "Original",
+              },
+            },
+          },
+        ],
+      }),
+    ).toBe(true);
   });
 });

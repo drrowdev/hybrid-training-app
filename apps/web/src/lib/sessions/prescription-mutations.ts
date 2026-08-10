@@ -23,6 +23,17 @@ export type ApplySwapInput = {
   swappedAt?: string;
 };
 
+export function hasUserEditedPrescription(
+  prescription: Prescription | null | undefined,
+): boolean {
+  if (!prescription) return false;
+  if (prescription.userEdited === true) return true;
+  return (prescription.items ?? []).some((item) => {
+    const meta = (item.meta ?? {}) as Record<string, unknown>;
+    return meta.userAdded === true || meta.swappedFrom != null;
+  });
+}
+
 /**
  * Returns a NEW prescription with item[itemIndex] swapped to the given
  * movement. Records ``meta.swappedFrom = { movementId, movementName }``
@@ -65,7 +76,7 @@ export function applyPrescriptionSwap(
     },
   };
   items[input.itemIndex] = nextItem;
-  return { items };
+  return { ...prescription, items, userEdited: true };
 }
 
 /**
@@ -92,8 +103,10 @@ export function removeMovementFromPrescription(
   prescription: Prescription,
   movementId: string,
 ): Prescription {
-  const items = (prescription.items ?? []).filter((it) => it.movementId !== movementId);
-  return { ...prescription, items };
+  const priorItems = prescription.items ?? [];
+  const items = priorItems.filter((it) => it.movementId !== movementId);
+  if (items.length === priorItems.length) return prescription;
+  return { ...prescription, items, userEdited: true };
 }
 
 /**
@@ -148,5 +161,9 @@ export function addMovementToPrescription(
     reps: movement.reps ?? 10,
     meta: { userAdded: true, addedAt: new Date().toISOString() },
   };
-  return { ...prescription, items: [...(prescription.items ?? []), item] };
+  return {
+    ...prescription,
+    items: [...(prescription.items ?? []), item],
+    userEdited: true,
+  };
 }

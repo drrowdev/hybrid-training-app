@@ -25,6 +25,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { programSegments, type PlatformContext, type ProgramEngine } from "@hta/program-core";
+import type { Prescription } from "@hta/db";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { ARCHETYPES } from "@/lib/planner/archetypes";
 import type { HybridInstance } from "@/lib/programs/hybrid/engine";
@@ -56,9 +57,13 @@ import {
 } from "./tb-accessories";
 import { discardAbandonedInProgressSessions } from "@/lib/planner/archive-prior-blocks";
 import { activateSeasonBlock } from "@/lib/seasons/activation";
-import { planForwardOnlyRewrite } from "./forward-rewrite";
+import {
+  planForwardOnlyRewrite,
+  prescriptionsEquivalent,
+} from "./forward-rewrite";
 import { todayYmd, mondayOfYmd, daysBetweenYmd } from "@/lib/dates";
 import { programSetupAuditInput } from "./setup-audit";
+import { hasUserEditedPrescription } from "@/lib/sessions/prescription-mutations";
 import { inferProgramStartWeekIndex } from "@/lib/plan/program-overview";
 import {
   customizationDays,
@@ -1438,6 +1443,62 @@ async function updateForeignProgramInstance(
   const currentDayIndex =
     elapsedDays < 0 ? -1 : ((elapsedDays % 7) + 7) % 7;
 
+  // Re-materialise the stored setup before applying the edit. This gives us a
+  // canonical baseline for today's rehab prescription, including legacy rows
+  // created before per-session edits gained a durable `userEdited` marker.
+  let priorWrite: ProgramInstanceWrite | null = null;
+  if (programId === "tactical-barbell") {
+    const priorValues =
+      priorSetupInput.values &&
+      typeof priorSetupInput.values === "object" &&
+      !Array.isArray(priorSetupInput.values)
+        ? (priorSetupInput.values as Record<string, unknown>)
+        : null;
+    const priorWeekdays = Array.isArray(priorSetupInput.weekdays)
+      ? priorSetupInput.weekdays.filter(
+          (day): day is number =>
+            typeof day === "number" &&
+            Number.isInteger(day) &&
+            day >= 0 &&
+            day <= 6,
+        )
+      : null;
+    const parsedPriorCustomization =
+      priorSetupInput.customization == null
+        ? null
+        : tbCustomizationSchema.safeParse(priorSetupInput.customization);
+    if (
+      priorValues &&
+      priorWeekdays &&
+      (parsedPriorCustomization == null || parsedPriorCustomization.success)
+    ) {
+      try {
+        ({ write: priorWrite } = await computeForeignWrite(
+          supabase,
+          user,
+          engine,
+          {
+            programId,
+            setupValues: priorValues,
+            weekdays: priorWeekdays,
+            startedOn: blockStartedOn,
+            ...(priorStartWeekIndex > 0
+              ? { startWeekIndex: priorStartWeekIndex }
+              : {}),
+            ...(parsedPriorCustomization?.success
+              ? { customization: parsedPriorCustomization.data }
+              : {}),
+          },
+        ));
+      } catch (error) {
+        console.warn(
+          "Couldn't reconstruct the prior Tactical Barbell plan; preserving today's rehab:",
+          error,
+        );
+      }
+    }
+  }
+
   // 3) Fresh materialise from the new inputs — same engine, ORIGINAL start date.
   let write: ProgramInstanceWrite;
   let instance: unknown;
@@ -1457,15 +1518,23 @@ async function updateForeignProgramInstance(
   }
   const newWeeks = Math.max(write.weeks, currentWeekIndex + 1);
 
-  // 4) Rewrite only open slots after today. Past/today plus any later row that
-  //    was started or skipped are preserved.
+  // 4) Rewrite open slots after today plus an untouched rehab slot scheduled
+  //    today. Past rows, today's non-rehab work, and started/skipped rows stay.
   const { data: futureRows, error: frErr } = await supabase
     .from("planned_sessions")
-    .select("id, week_index, day_index, slot, completed_session_id, skipped_at")
+    .select(
+      "id, week_index, day_index, slot, role, planned_at, notes, prescription, completed_session_id, skipped_at",
+    )
     .eq("block_id", blockId)
     .eq("user_id", user.id)
     .gte("week_index", currentWeekIndex);
   if (frErr) return { ok: false, error: frErr.message };
+  const priorPrescriptionBySlot = new Map(
+    (priorWrite?.sessions ?? []).map((session) => [
+      `${session.weekIndex}-${session.dayIndex}-${session.slot}`,
+      session.prescription,
+    ]),
+  );
   const plan = planForwardOnlyRewrite({
     currentWeekIndex,
     currentDayIndex,
@@ -1475,12 +1544,34 @@ async function updateForeignProgramInstance(
       weekIndex: r.week_index as number,
       dayIndex: r.day_index as number,
       slot: (r.slot as string) ?? "single",
-      touched: r.completed_session_id != null || r.skipped_at != null,
+      role: (r.role as string | null) ?? undefined,
+      touched: (() => {
+        const hasExplicitUserState =
+          r.completed_session_id != null ||
+          r.skipped_at != null ||
+          r.planned_at != null ||
+          (typeof r.notes === "string" && r.notes.trim() !== "") ||
+          hasUserEditedPrescription(r.prescription as Prescription | null);
+        if (hasExplicitUserState) return true;
+        const isTodayRehab =
+          r.week_index === currentWeekIndex &&
+          r.day_index === currentDayIndex &&
+          r.role === "rehab";
+        if (!isTodayRehab) return false;
+        const priorPrescription = priorPrescriptionBySlot.get(
+          `${r.week_index}-${r.day_index}-${r.slot ?? "single"}`,
+        );
+        return (
+          priorPrescription == null ||
+          !prescriptionsEquivalent(r.prescription, priorPrescription)
+        );
+      })(),
     })),
     newSessions: write.sessions.map((s) => ({
       weekIndex: s.weekIndex,
       dayIndex: s.dayIndex,
       slot: s.slot,
+      role: s.role,
     })),
   });
 

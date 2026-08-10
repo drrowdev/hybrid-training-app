@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   planForwardOnlyRewrite,
+  prescriptionsEquivalent,
   type ExistingFutureRow,
   type NewSessionLite,
 } from "../forward-rewrite";
@@ -25,6 +26,26 @@ describe("planForwardOnlyRewrite", () => {
       writeWeeks: 4,
       existingFuture,
       newSessions,
+    });
+
+    describe("prescriptionsEquivalent", () => {
+      it("ignores object key order but detects prescription changes", () => {
+        const canonical = {
+          programRef: "rehab-w1-d0",
+          items: [{ movementId: "hip-adduction", sets: 5, reps: 15 }],
+        };
+        const reordered = {
+          items: [{ reps: 15, sets: 5, movementId: "hip-adduction" }],
+          programRef: "rehab-w1-d0",
+        };
+        const removed = {
+          programRef: "rehab-w1-d0",
+          items: [],
+        };
+
+        expect(prescriptionsEquivalent(canonical, reordered)).toBe(true);
+        expect(prescriptionsEquivalent(canonical, removed)).toBe(false);
+      });
     });
 
     // Every future row (weeks 2,3) is untouched → deletable; weeks 0,1 untouched.
@@ -149,10 +170,85 @@ describe("planForwardOnlyRewrite", () => {
       ],
       newSessions,
     });
+
     expect(plan.deleteIds).toEqual(["open-sunday"]);
     expect(
       plan.insertIndices.map((index) => newSessions[index]!.dayIndex),
     ).toEqual([6]);
+  });
+
+  it("rewrites an untouched rehab slot today while freezing today's strength", () => {
+    const newSessions: NewSessionLite[] = [
+      {
+        weekIndex: 1,
+        dayIndex: 0,
+        slot: "single",
+        role: "strength",
+      },
+      {
+        weekIndex: 1,
+        dayIndex: 0,
+        slot: "pm",
+        role: "rehab",
+      },
+    ];
+    const plan = planForwardOnlyRewrite({
+      currentWeekIndex: 1,
+      currentDayIndex: 0,
+      writeWeeks: 3,
+      existingFuture: [
+        {
+          id: "today-strength",
+          weekIndex: 1,
+          dayIndex: 0,
+          slot: "single",
+          role: "strength",
+          touched: false,
+        },
+        {
+          id: "today-rehab",
+          weekIndex: 1,
+          dayIndex: 0,
+          slot: "pm",
+          role: "rehab",
+          touched: false,
+        },
+      ],
+      newSessions,
+    });
+
+    expect(plan.deleteIds).toEqual(["today-rehab"]);
+    expect(plan.insertIndices).toEqual([1]);
+  });
+
+  it("preserves a started rehab slot today", () => {
+    const newSessions: NewSessionLite[] = [
+      {
+        weekIndex: 1,
+        dayIndex: 0,
+        slot: "pm",
+        role: "rehab",
+      },
+    ];
+    const plan = planForwardOnlyRewrite({
+      currentWeekIndex: 1,
+      currentDayIndex: 0,
+      writeWeeks: 3,
+      existingFuture: [
+        {
+          id: "started-rehab",
+          weekIndex: 1,
+          dayIndex: 0,
+          slot: "pm",
+          role: "rehab",
+          touched: true,
+        },
+      ],
+      newSessions,
+    });
+
+    expect(plan.deleteIds).toEqual([]);
+    expect(plan.insertIndices).toEqual([]);
   });
 
   it("rewrites week zero when the block has not started yet", () => {
