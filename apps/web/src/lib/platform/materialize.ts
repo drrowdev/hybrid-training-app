@@ -49,6 +49,7 @@ import {
   type ClassifierMovement,
   type SessionModality,
 } from "../planner/session-modality";
+import { expandPrescriptionSets } from "@/lib/planner/expand-prescription-sets";
 
 export interface MaterializeOptions {
   /**
@@ -595,7 +596,7 @@ export function materializeProgram<I>(
               ? "Rehab"
               : `Rehab · ${assignment.protocolName}`,
           role: "rehab",
-          prescription,
+          prescription: expandPrescriptionSets(prescription),
           sessionModality: "restorative",
           effectiveStressLoad: 0,
           skipped: [],

@@ -727,6 +727,7 @@ export function MovementFocusView({
               displaySlot.position,
               displaySlot.total,
               activeItem.optional,
+              activeItem.meta?.rehab === true,
             )}
           </span>
           {activeItem.percentTm != null && (

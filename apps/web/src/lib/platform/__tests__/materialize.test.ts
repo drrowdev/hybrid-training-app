@@ -674,17 +674,20 @@ describe("materializeProgram — TB3 Activation", () => {
         day: session.dayIndex,
         title: session.title,
         movement: session.prescription.items[0]?.movementName,
+        sets: session.prescription.items.length,
       })),
     ).toEqual([
       {
         day: 0,
         title: "Rehab · Adductor",
         movement: "Standing Banded Hip Adduction",
+        sets: 5,
       },
       {
         day: 2,
         title: "Rehab · Trunk",
         movement: "Dead bug",
+        sets: 3,
       },
     ]);
   });
@@ -866,10 +869,11 @@ describe("materializeProgram — customized Tactical Barbell", () => {
     expect(rehab[0]!.prescription.items[0]).toMatchObject({
       movementName: "Single-leg balance",
       kind: "tendon",
-      sets: 3,
+      sets: 1,
       holdSec: { min: 30, max: 30 },
       meta: { rehab: true, side: "left" },
     });
+    expect(rehab[0]!.prescription.items).toHaveLength(3);
   });
 
   it("keeps conditioning open and the customized strength slots collision-free", () => {

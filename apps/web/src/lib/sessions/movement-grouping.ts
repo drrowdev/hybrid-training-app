@@ -198,6 +198,7 @@ export function bucketLabelForKind(
   position: number,
   total: number,
   optional = false,
+  rehab = false,
 ): string {
   if (optional) return `Optional set · ${position + 1} of ${total}`;
   const tag =
@@ -210,7 +211,9 @@ export function bucketLabelForKind(
           : kind === "accessory"
             ? "Accessory"
             : kind === "tendon"
-              ? "Tendon"
+              ? rehab
+                ? "Rehab"
+                : "Tendon"
               : "Set";
   if (total <= 0) return tag;
   return `${tag} · ${position + 1} of ${total}`;
