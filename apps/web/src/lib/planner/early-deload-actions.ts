@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { getEarlyDeloadRecommendation } from "@/lib/planner/early-deload-offer";
 import type { Prescription } from "@hta/db";
+import { isUnstartedLinkedSession } from "@/lib/sessions/linked-session-state";
 
 export type AcceptEarlyDeloadResult =
   | { ok: true; sessions: number }
@@ -56,21 +57,34 @@ export async function acceptEarlyDeload(): Promise<AcceptEarlyDeloadResult> {
 
   const { data: curRows } = await supabase
     .from("planned_sessions")
-    .select("id, day_index, slot, prescription")
+    .select(
+      "id, day_index, slot, prescription, completed_session_id, sessions(deleted_at, completed_at)",
+    )
     .eq("user_id", user.id)
     .eq("block_id", reco.blockId)
     .eq("week_index", reco.currentWeekIndex)
-    .is("completed_session_id", null)
     .is("skipped_at", null);
-  type CurRow = { id: string; day_index: number; slot: string | null; prescription: Prescription };
+  type CurRow = {
+    id: string;
+    day_index: number;
+    slot: string | null;
+    prescription: Prescription;
+    completed_session_id: string | null;
+    sessions:
+      | { deleted_at: string | null; completed_at: string | null }
+      | Array<{ deleted_at: string | null; completed_at: string | null }>
+      | null;
+  };
 
   let updated = 0;
-  for (const r of (curRows ?? []) as CurRow[]) {
+  for (const r of ((curRows ?? []) as CurRow[]).filter((row) =>
+    isUnstartedLinkedSession(row.completed_session_id, row.sessions),
+  )) {
     if (r.prescription?.earlyDeload === true) continue;
     const tpl = templateByKey.get(`${r.day_index}:${r.slot ?? "single"}`);
     if (!tpl) continue;
     const prescription: Prescription = { ...tpl.prescription, earlyDeload: true };
-    const { error, count } = await supabase
+    const updateBase = supabase
       .from("planned_sessions")
       .update(
         {
@@ -82,8 +96,15 @@ export async function acceptEarlyDeload(): Promise<AcceptEarlyDeloadResult> {
       )
       .eq("id", r.id)
       .eq("user_id", user.id)
-      .eq("block_id", reco.blockId)
-      .is("completed_session_id", null)
+      .eq("block_id", reco.blockId);
+    const guarded =
+      r.completed_session_id != null
+        ? updateBase.eq(
+            "completed_session_id",
+            r.completed_session_id,
+          )
+        : updateBase.is("completed_session_id", null);
+    const { error, count } = await guarded
       .is("skipped_at", null);
     if (error) return { ok: false, error: error.message };
     updated += count ?? 0;

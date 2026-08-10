@@ -21,6 +21,7 @@ import { DeleteBlockMenu } from "@/components/trash/DeleteBlockMenu";
 import { StatusBadge } from "@/components/blocks/StatusBadge";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { groupBlocksByMonth } from "@/lib/plan/history-grouping";
+import { resolveLinkedSession } from "@/lib/sessions/linked-session-state";
 
 const PAGE_SIZE = 20;
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
@@ -67,7 +68,7 @@ export default async function PlanHistoryPage({
     const [{ data: planned }, { data: instances }] = await Promise.all([
       supabase
         .from("planned_sessions")
-        .select("id, block_id, week_index, day_index, slot, title, completed_session_id, skipped_at")
+        .select("id, block_id, week_index, day_index, slot, title, completed_session_id, skipped_at, sessions(deleted_at)")
         .in("block_id", blockIds)
         .order("week_index", { ascending: true })
         .order("day_index", { ascending: true })
@@ -84,13 +85,26 @@ export default async function PlanHistoryPage({
     for (const row of planned ?? []) {
       const blockId = (row as { block_id: string }).block_id;
       const list = sessionsByBlock.get(blockId) ?? [];
+      const session = Array.isArray(row.sessions)
+        ? row.sessions[0]
+        : row.sessions;
+      const linked = resolveLinkedSession(
+        row.completed_session_id,
+        session && row.completed_session_id
+          ? {
+              id: row.completed_session_id,
+              completedAt: null,
+              deletedAt: session.deleted_at,
+            }
+          : null,
+      );
       list.push({
         id: row.id,
         week_index: row.week_index,
         day_index: row.day_index,
         slot: row.slot ?? null,
         title: row.title,
-        completed_session_id: row.completed_session_id,
+        completed_session_id: linked.completedSessionId,
         skipped_at: row.skipped_at,
       });
       sessionsByBlock.set(blockId, list);

@@ -22,6 +22,10 @@ import {
   loadPrimaryMusclesByMovementId,
   resolverFromMap,
 } from "./superset-view";
+import {
+  resolveLinkedSession,
+  type LinkedSessionSnapshot,
+} from "@/lib/sessions/linked-session-state";
 
 /**
  * Resolve a block's `archetype` column to the human-facing display name.
@@ -88,6 +92,8 @@ export type PlannedDay = {
   completedSessionId: string | null;
   /** When the linked session was actually finished. null = started-but-not-done. */
   completedAt: string | null;
+  /** Completed linked workout currently in Trash; restored explicitly, never auto-started. */
+  deletedCompletedSessionId?: string | null;
   skippedAt: string | null;
   /** Drawer notes — see migration 0055 / `hybrid-sync-audit.md` §3a. */
   notes: string | null;
@@ -195,14 +201,18 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
         .filter((x): x is string => !!x),
     ),
   );
-  const completedAtById = new Map<string, string | null>();
+  const linkedSessionById = new Map<string, LinkedSessionSnapshot>();
   if (linkedIds.length > 0) {
     const { data: linkedSessions } = await supabase
       .from("sessions")
-      .select("id, completed_at")
+      .select("id, completed_at, deleted_at")
       .in("id", linkedIds);
     for (const s of linkedSessions ?? []) {
-      completedAtById.set(s.id as string, (s.completed_at as string | null) ?? null);
+      linkedSessionById.set(s.id as string, {
+        id: s.id as string,
+        completedAt: (s.completed_at as string | null) ?? null,
+        deletedAt: (s.deleted_at as string | null) ?? null,
+      });
     }
   }
 
@@ -215,6 +225,12 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
       base,
       resolveModificationsForDate(modRows, date),
     );
+    const linked = resolveLinkedSession(
+      (d.completed_session_id as string | null) ?? null,
+      d.completed_session_id
+        ? linkedSessionById.get(d.completed_session_id as string)
+        : null,
+    );
     return {
       id: d.id,
       blockId: d.block_id,
@@ -225,10 +241,9 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
       title: d.title,
       role: d.role,
       prescription,
-      completedSessionId: d.completed_session_id,
-      completedAt: d.completed_session_id
-        ? completedAtById.get(d.completed_session_id) ?? null
-        : null,
+      completedSessionId: linked.completedSessionId,
+      completedAt: linked.completedAt,
+      deletedCompletedSessionId: linked.deletedCompletedSessionId,
       skippedAt: d.skipped_at,
       notes: (d.notes as string | null) ?? null,
       date,
@@ -352,15 +367,25 @@ export async function getPlannedSessionById(
       resolverFromMap(muscleMap),
     );
   }
-  let completedAt: string | null = null;
+  let linkedSession: LinkedSessionSnapshot | null = null;
   if (data.completed_session_id) {
     const { data: linked } = await supabase
       .from("sessions")
-      .select("completed_at")
+      .select("id, completed_at, deleted_at")
       .eq("id", data.completed_session_id)
       .maybeSingle();
-    completedAt = (linked?.completed_at as string | null) ?? null;
+    if (linked) {
+      linkedSession = {
+        id: linked.id as string,
+        completedAt: (linked.completed_at as string | null) ?? null,
+        deletedAt: (linked.deleted_at as string | null) ?? null,
+      };
+    }
   }
+  const resolvedLink = resolveLinkedSession(
+    (data.completed_session_id as string | null) ?? null,
+    linkedSession,
+  );
   return {
     id: data.id,
     blockId: data.block_id,
@@ -371,8 +396,9 @@ export async function getPlannedSessionById(
     title: data.title,
     role: data.role,
     prescription,
-    completedSessionId: data.completed_session_id,
-    completedAt,
+    completedSessionId: resolvedLink.completedSessionId,
+    completedAt: resolvedLink.completedAt,
+    deletedCompletedSessionId: resolvedLink.deletedCompletedSessionId,
     skippedAt: data.skipped_at,
     notes: (data.notes as string | null) ?? null,
     date,
@@ -571,7 +597,7 @@ export async function getAllBlocksWithCompletionStats(
   const { data } = await supabase
     .from("training_blocks")
     .select(
-      "id, archetype, program_id, program_family, started_on, updated_at, ended_at, weeks, days_per_week, status, day_index_overrides, notes, planned_sessions(id, completed_session_id, skipped_at, week_index, day_index)",
+      "id, archetype, program_id, program_family, started_on, updated_at, ended_at, weeks, days_per_week, status, day_index_overrides, notes, planned_sessions(id, completed_session_id, skipped_at, week_index, day_index, sessions(deleted_at))",
     )
     .eq("user_id", user.id)
     .is("deleted_at", null)
@@ -587,12 +613,29 @@ export async function getAllBlocksWithCompletionStats(
         skipped_at: string | null;
         week_index: number;
         day_index: number;
+        sessions:
+          | { deleted_at: string | null }
+          | Array<{ deleted_at: string | null }>
+          | null;
       }>;
       const totalSessions = planned.length;
       let loggedSessions = 0;
       let skippedSessions = 0;
       for (const p of planned) {
-        if (p.completed_session_id) loggedSessions++;
+        const session = Array.isArray(p.sessions)
+          ? p.sessions[0]
+          : p.sessions;
+        const linked = resolveLinkedSession(
+          p.completed_session_id,
+          session && p.completed_session_id
+            ? {
+                id: p.completed_session_id,
+                completedAt: null,
+                deletedAt: session.deleted_at,
+              }
+            : null,
+        );
+        if (linked.completedSessionId) loggedSessions++;
         else if (p.skipped_at) skippedSessions++;
       }
       const stored = d.days_per_week ?? null;

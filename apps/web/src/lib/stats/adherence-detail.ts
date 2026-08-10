@@ -30,6 +30,7 @@
  * can pin the shape against fixture rows.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { resolveLinkedSession } from "@/lib/sessions/linked-session-state";
 import {
   addDaysToYmd,
   daysBetweenYmd,
@@ -483,6 +484,10 @@ type PlannedRowDbShape = {
   title: string;
   completed_session_id: string | null;
   skipped_at: string | null;
+  sessions:
+    | { deleted_at: string | null }
+    | Array<{ deleted_at: string | null }>
+    | null;
   training_blocks:
     | { id: string; archetype: string | null; program_family: string | null; notes: string | null; started_on: string; deleted_at: string | null }
     | Array<{ id: string; archetype: string | null; program_family: string | null; notes: string | null; started_on: string; deleted_at: string | null }>
@@ -497,7 +502,7 @@ async function readAllPlanned(
   const { data, error } = await supabase
     .from("planned_sessions")
     .select(
-      "id, block_id, week_index, day_index, title, completed_session_id, skipped_at, training_blocks!inner(id, archetype, program_family, notes, started_on, deleted_at, user_id)",
+      "id, block_id, week_index, day_index, title, completed_session_id, skipped_at, sessions(deleted_at), training_blocks!inner(id, archetype, program_family, notes, started_on, deleted_at, user_id)",
     )
     .eq("training_blocks.user_id", userId)
     .is("training_blocks.deleted_at", null);
@@ -508,6 +513,17 @@ async function readAllPlanned(
     const blk = Array.isArray(r.training_blocks) ? r.training_blocks[0] : r.training_blocks;
     if (!blk?.started_on) continue;
     if (blk.deleted_at) continue;
+    const session = Array.isArray(r.sessions) ? r.sessions[0] : r.sessions;
+    const linked = resolveLinkedSession(
+      r.completed_session_id,
+      session && r.completed_session_id
+        ? {
+            id: r.completed_session_id,
+            completedAt: null,
+            deletedAt: session.deleted_at,
+          }
+        : null,
+    );
     out.push({
       plannedId: r.id,
       blockId: r.block_id,
@@ -518,7 +534,7 @@ async function readAllPlanned(
       weekIndex: r.week_index,
       dayIndex: r.day_index,
       title: r.title,
-      completedSessionId: r.completed_session_id,
+      completedSessionId: linked.completedSessionId,
       skippedAt: r.skipped_at,
     });
   }

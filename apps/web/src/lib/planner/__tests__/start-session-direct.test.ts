@@ -49,6 +49,9 @@ type State = {
   /** How many times the planned_sessions SELECT has been called. */
   plannedSelectCalls: number;
   sessionDeleteCalls: string[];
+  linkedSessionDeleted: boolean;
+  linkedSessionCompleted: boolean;
+  sessionRestoreCalls: string[];
   redirected: string | null;
   revalidated: string[];
   /** User's IANA timezone returned by the profiles select. */
@@ -65,6 +68,9 @@ const state: State = {
   linkRaceWinner: null,
   plannedSelectCalls: 0,
   sessionDeleteCalls: [],
+  linkedSessionDeleted: false,
+  linkedSessionCompleted: false,
+  sessionRestoreCalls: [],
   redirected: null,
   revalidated: [],
   tz: "UTC",
@@ -125,33 +131,66 @@ vi.mock("@/lib/supabase/server", () => ({
               },
             }),
           }),
-          update: (payload: Record<string, unknown>) => ({
-            eq: (_col: string, val: string) => {
-              state.plannedUpdateCalls.push({ payload, id: val });
-              // The action now chains `.is("completed_session_id", null)`
-              // followed by `.select(...).maybeSingle()`. When the race
-              // is lost, the chained select resolves to `data: null`
-              // (UPDATE affected 0 rows).
-              const builder = {
-                is: (_col: string, _v: null) => ({
-                  select: (_cols?: string) => ({
-                    maybeSingle: () =>
-                      Promise.resolve({
-                        data: state.linkRaceWinner
-                          ? null
-                          : { id: val, completed_session_id: state.sessionInsertResult.id },
-                        error: null,
-                      }),
-                  }),
+          update: (payload: Record<string, unknown>) => {
+            let id = "";
+            const builder: Record<string, unknown> = {};
+            const selectResult = (_cols?: string) => ({
+              maybeSingle: () =>
+                Promise.resolve({
+                  data: state.linkRaceWinner
+                    ? null
+                    : {
+                        id,
+                        completed_session_id:
+                          state.sessionInsertResult.id,
+                      },
+                  error: null,
                 }),
-              };
-              return builder;
-            },
-          }),
+            });
+            Object.assign(builder, {
+              eq: (col: string, val: string) => {
+                if (col === "id") {
+                  id = val;
+                  state.plannedUpdateCalls.push({ payload, id: val });
+                }
+                return builder;
+              },
+              is: (_col: string, _v: null) => ({
+                select: selectResult,
+              }),
+              select: selectResult,
+              then: (
+                resolve: (value: { data: null; error: null }) => unknown,
+              ) => Promise.resolve(resolve({ data: null, error: null })),
+            });
+            return builder;
+          },
         };
       }
       if (table === "sessions") {
         return {
+          select: (_cols?: string) => ({
+            eq: (_col: string, val: string) => ({
+              eq: (_userCol: string, _userId: string) => ({
+                maybeSingle: () =>
+                  Promise.resolve({
+                    data:
+                      state.planned?.completed_session_id === val
+                        ? {
+                            id: val,
+                            deleted_at: state.linkedSessionDeleted
+                              ? "2026-08-10T09:23:52.772Z"
+                              : null,
+                            completed_at: state.linkedSessionCompleted
+                              ? "2026-08-10T10:18:56.099Z"
+                              : null,
+                          }
+                        : null,
+                    error: null,
+                  }),
+              }),
+            }),
+          }),
           insert: (payload: SessionInsert) => {
             state.sessionInsertCalls.push(payload);
             return {
@@ -161,6 +200,29 @@ vi.mock("@/lib/supabase/server", () => ({
               }),
             };
           },
+          update: (payload: Record<string, unknown>) => ({
+            eq: (_col: string, val: string) => ({
+              eq: (_userCol: string, _userId: string) => ({
+                select: (_cols?: string) => ({
+                  maybeSingle: () => {
+                    if (
+                      payload.deleted_at === null &&
+                      state.planned?.completed_session_id === val
+                    ) {
+                      state.sessionRestoreCalls.push(val);
+                      state.linkedSessionDeleted = false;
+                      state.linkedSessionCompleted = false;
+                      return Promise.resolve({
+                        data: { id: val },
+                        error: null,
+                      });
+                    }
+                    return Promise.resolve({ data: null, error: null });
+                  },
+                }),
+              }),
+            }),
+          }),
           delete: () => ({
             eq: (_col: string, val: string) => {
               state.sessionDeleteCalls.push(val);
@@ -188,6 +250,8 @@ beforeEach(() => {
   state.linkRaceWinner = null;
   state.plannedSelectCalls = 0;
   state.sessionDeleteCalls = [];
+  state.linkedSessionDeleted = false;
+  state.sessionRestoreCalls = [];
   state.redirected = null;
   state.revalidated = [];
   state.tz = "UTC";
@@ -292,6 +356,59 @@ describe("startSessionDirect — no pre-workout check-in", () => {
     expect(state.sessionInsertCalls).toHaveLength(0);
     expect(state.plannedUpdateCalls).toHaveLength(0);
     expect(state.redirected).toBe("/app/sessions/existing-session-id");
+  });
+
+  it("restores a soft-deleted linked session instead of redirecting to a 404", async () => {
+    state.planned = {
+      id: VALID_UUID,
+      title: "Rehab",
+      slot: "pm",
+      planned_at: null,
+      prescription: { items: [] },
+      completed_session_id: "cancelled-session-id",
+      user_id: "user-1",
+    };
+    state.linkedSessionDeleted = true;
+
+    await expect(startSessionDirect(VALID_UUID)).rejects.toBeInstanceOf(
+      RedirectError,
+    );
+
+    expect(state.sessionRestoreCalls).toEqual(["cancelled-session-id"]);
+    expect(state.sessionInsertCalls).toHaveLength(0);
+    expect(state.plannedUpdateCalls).toHaveLength(0);
+    expect(state.redirected).toBe("/app/sessions/cancelled-session-id");
+    expect(state.revalidated).toEqual(
+      expect.arrayContaining([
+        "/app",
+        "/app/plan",
+        "/app/sessions",
+        "/app/settings/trash",
+      ]),
+    );
+  });
+
+  it("routes a deleted completed session to explicit Trash restoration", async () => {
+    state.planned = {
+      id: VALID_UUID,
+      title: "Strength",
+      slot: "single",
+      planned_at: null,
+      prescription: { items: [] },
+      completed_session_id: "deleted-completed-id",
+      user_id: "user-1",
+    };
+    state.linkedSessionDeleted = true;
+    state.linkedSessionCompleted = true;
+
+    await expect(startSessionDirect(VALID_UUID)).rejects.toBeInstanceOf(
+      RedirectError,
+    );
+
+    expect(state.sessionRestoreCalls).toHaveLength(0);
+    expect(state.sessionInsertCalls).toHaveLength(0);
+    expect(state.plannedUpdateCalls).toHaveLength(0);
+    expect(state.redirected).toBe("/app/settings/trash");
   });
 
   it("refuses to act on a planned session owned by another user", async () => {

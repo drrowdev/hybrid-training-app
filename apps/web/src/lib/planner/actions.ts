@@ -627,9 +627,47 @@ export async function startSessionDirect(
   if (!planned) throw new Error("Planned session not found");
   if (planned.user_id !== user.id) throw new Error("Planned session not found");
 
-  // Idempotent re-entry: reuse the existing linked session if any.
+  // Idempotent re-entry: reuse an active linked session. A cancelled workout
+  // remains soft-deleted for Undo/history, but "Start" should revive that same
+  // session rather than redirect to a 404 or create a duplicate. Reusing the
+  // existing plan link also makes concurrent Undo safe.
   if (planned.completed_session_id) {
-    redirect(`/app/sessions/${planned.completed_session_id}`);
+    const staleCandidate = planned.completed_session_id as string;
+    const { data: linkedSession, error: linkedErr } = await supabase
+      .from("sessions")
+      .select("id, deleted_at, completed_at")
+      .eq("id", staleCandidate)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (linkedErr) throw new Error(linkedErr.message);
+    if (linkedSession && linkedSession.deleted_at == null) {
+      redirect(`/app/sessions/${staleCandidate}`);
+    }
+    if (linkedSession?.completed_at != null) {
+      redirect("/app/settings/trash");
+    }
+    if (linkedSession) {
+      const { data: restored, error: restoreErr } = await supabase
+        .from("sessions")
+        .update({ deleted_at: null })
+        .eq("id", staleCandidate)
+        .eq("user_id", user.id)
+        .select("id")
+        .maybeSingle();
+      if (restoreErr) throw new Error(restoreErr.message);
+      if (restored) {
+        if (!options?.skipRevalidate) {
+          revalidatePath("/app");
+          revalidatePath("/app/plan");
+          revalidatePath("/app/plan/history");
+          revalidatePath("/app/sessions");
+          revalidatePath("/app/settings/trash");
+        }
+        redirect(`/app/sessions/${staleCandidate}`);
+      }
+    }
+    // A hard-deleted row has already nulled the FK; continue through the
+    // ordinary create/link path.
   }
 
   const sessionPayload: {
@@ -664,6 +702,7 @@ export async function startSessionDirect(
     .from("planned_sessions")
     .update({ completed_session_id: session.id })
     .eq("id", planned.id)
+    .eq("user_id", user.id)
     .is("completed_session_id", null)
     .select("id, completed_session_id")
     .maybeSingle();

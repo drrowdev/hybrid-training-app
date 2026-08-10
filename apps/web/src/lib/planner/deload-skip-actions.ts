@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { getDeloadSkipOffer } from "@/lib/planner/deload-skip-offer";
 import type { Prescription } from "@hta/db";
+import { isUnstartedLinkedSession } from "@/lib/sessions/linked-session-state";
 
 export type AcceptDeloadSkipResult =
   | { ok: true; sessions: number }
@@ -59,11 +60,12 @@ export async function acceptDeloadSkip(): Promise<AcceptDeloadSkipResult> {
   // The deload week's un-started, not-already-skipped sessions.
   const { data: deloadRows } = await supabase
     .from("planned_sessions")
-    .select("id, day_index, slot, prescription")
+    .select(
+      "id, day_index, slot, prescription, completed_session_id, sessions(deleted_at, completed_at)",
+    )
     .eq("user_id", user.id)
     .eq("block_id", offer.blockId)
     .eq("week_index", offer.deloadWeekIndex)
-    .is("completed_session_id", null)
     .is("skipped_at", null);
 
   type DeloadRow = {
@@ -71,15 +73,22 @@ export async function acceptDeloadSkip(): Promise<AcceptDeloadSkipResult> {
     day_index: number;
     slot: string | null;
     prescription: Prescription;
+    completed_session_id: string | null;
+    sessions:
+      | { deleted_at: string | null; completed_at: string | null }
+      | Array<{ deleted_at: string | null; completed_at: string | null }>
+      | null;
   };
 
   let updated = 0;
-  for (const r of (deloadRows ?? []) as DeloadRow[]) {
+  for (const r of ((deloadRows ?? []) as DeloadRow[]).filter((row) =>
+    isUnstartedLinkedSession(row.completed_session_id, row.sessions),
+  )) {
     if (r.prescription?.deloadSkipped === true) continue;
     const opener = openerByKey.get(`${r.day_index}:${r.slot ?? "single"}`);
     if (!opener) continue;
     const prescription: Prescription = { ...opener.prescription, deloadSkipped: true };
-    const { error, count } = await supabase
+    const updateBase = supabase
       .from("planned_sessions")
       .update(
         {
@@ -91,8 +100,15 @@ export async function acceptDeloadSkip(): Promise<AcceptDeloadSkipResult> {
       )
       .eq("id", r.id)
       .eq("user_id", user.id)
-      .eq("block_id", offer.blockId)
-      .is("completed_session_id", null)
+      .eq("block_id", offer.blockId);
+    const guarded =
+      r.completed_session_id != null
+        ? updateBase.eq(
+            "completed_session_id",
+            r.completed_session_id,
+          )
+        : updateBase.is("completed_session_id", null);
+    const { error, count } = await guarded
       .is("skipped_at", null);
     if (error) return { ok: false, error: error.message };
     updated += count ?? 0;

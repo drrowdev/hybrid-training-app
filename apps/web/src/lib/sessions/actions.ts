@@ -1210,6 +1210,8 @@ export async function deleteSession(
   if (error) return { ok: false, error: error.message };
 
   revalidatePath("/app");
+  revalidatePath("/app/plan");
+  revalidatePath("/app/plan/history");
   revalidatePath("/app/sessions");
   revalidatePath("/app/stats");
   revalidatePath("/app/settings/trash");
@@ -1238,6 +1240,8 @@ export async function restoreSession(id: string): Promise<{ ok: true } | { ok: f
   if (error) return { ok: false, error: error.message };
 
   revalidatePath("/app");
+  revalidatePath("/app/plan");
+  revalidatePath("/app/plan/history");
   revalidatePath("/app/sessions");
   revalidatePath("/app/stats");
   revalidatePath("/app/settings/trash");
@@ -1269,6 +1273,8 @@ export async function permanentlyDeleteSession(
   if (error) return { ok: false, error: error.message };
 
   revalidatePath("/app");
+  revalidatePath("/app/plan");
+  revalidatePath("/app/plan/history");
   revalidatePath("/app/sessions");
   revalidatePath("/app/stats");
   revalidatePath("/app/settings/trash");

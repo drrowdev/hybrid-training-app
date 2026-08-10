@@ -11,6 +11,7 @@
  * familiar to the planner team.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { resolveLinkedSession } from "@/lib/sessions/linked-session-state";
 import { addDaysToYmd, isoWeekdayYmd, todayYmd } from "@/lib/dates";
 import { archetypeDisplayName } from "@/lib/planner/queries";
 
@@ -49,7 +50,7 @@ export async function getActiveBlockProgress(
   const { data, error } = await supabase
     .from("training_blocks")
     .select(
-      "id, archetype, program_id, started_on, weeks, days_per_week, status, notes, day_index_overrides, planned_sessions(week_index, day_index, completed_session_id, skipped_at, session_modality)",
+      "id, archetype, program_id, started_on, weeks, days_per_week, status, notes, day_index_overrides, planned_sessions(week_index, day_index, completed_session_id, skipped_at, session_modality, sessions(deleted_at))",
     )
     .eq("user_id", userId)
     .eq("status", "active")
@@ -66,6 +67,10 @@ export async function getActiveBlockProgress(
     completed_session_id: string | null;
     skipped_at: string | null;
     session_modality: string | null;
+    sessions:
+      | { deleted_at: string | null }
+      | Array<{ deleted_at: string | null }>
+      | null;
   };
   const planned = (data.planned_sessions ?? []) as PlannedRow[];
   const today = todayYmd(tz);
@@ -89,7 +94,18 @@ export async function getActiveBlockProgress(
     const date = addDaysToYmd(blockMonday, p.week_index * 7 + p.day_index);
     if (date <= today) {
       scheduledToDate++;
-      if (p.completed_session_id) logged++;
+      const session = Array.isArray(p.sessions) ? p.sessions[0] : p.sessions;
+      const linked = resolveLinkedSession(
+        p.completed_session_id,
+        session && p.completed_session_id
+          ? {
+              id: p.completed_session_id,
+              completedAt: null,
+              deletedAt: session.deleted_at,
+            }
+          : null,
+      );
+      if (linked.completedSessionId) logged++;
       else if (p.skipped_at) skipped++;
     }
     if (p.week_index === currentWeekIdx && date <= today) {

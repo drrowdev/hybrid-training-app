@@ -120,7 +120,11 @@ export type LimitationResponsePlan = {
   drops: LimitationDrop[];
   warns: LimitationWarn[];
   /** Sessions whose prescription changed (swaps + drops applied), ready to persist. */
-  updates: Array<{ id: string; prescription: Prescription }>;
+  updates: Array<{
+    id: string;
+    prescription: Prescription;
+    expectedCompletedSessionId?: string | null;
+  }>;
 };
 
 const EMPTY_PLAN: LimitationResponsePlan = {
@@ -302,7 +306,7 @@ export function buildLimitationResponse(
   const swaps: LimitationSwap[] = [];
   const drops: LimitationDrop[] = [];
   const warns: LimitationWarn[] = [];
-  const updates: Array<{ id: string; prescription: Prescription }> = [];
+  const updates: LimitationResponsePlan["updates"] = [];
 
   // Alternatives are session-agnostic + equipment-filtered, so every occurrence
   // of the same offending movement offers the same ranked choice. Memoised.
@@ -400,6 +404,7 @@ export function buildLimitationResponse(
       updates.push({
         id: session.id,
         prescription: { ...session.prescription, items: nextItems },
+        expectedCompletedSessionId: session.expectedCompletedSessionId,
       });
     }
   }
@@ -419,7 +424,11 @@ export type AppliedAdjustment = {
 
 /** Result of narrowing a full plan to a user-selected subset of items. */
 export type SelectedLimitationUpdates = {
-  updates: Array<{ id: string; prescription: Prescription }>;
+  updates: Array<{
+    id: string;
+    prescription: Prescription;
+    expectedCompletedSessionId?: string | null;
+  }>;
   swapped: number;
   dropped: number;
   /** The concrete changes applied (resolved targets), for adjustment tracking. */
@@ -482,7 +491,7 @@ export function buildSelectedUpdates(
     dropped += 1;
   }
 
-  const updates: Array<{ id: string; prescription: Prescription }> = [];
+  const updates: SelectedLimitationUpdates["updates"] = [];
   const applied: AppliedAdjustment[] = [];
   const touchedSessionIds = new Set<string>([
     ...swapsBySession.keys(),
@@ -551,6 +560,7 @@ export function buildSelectedUpdates(
     updates.push({
       id: sessionId,
       prescription: { ...session.prescription, items: nextItems },
+      expectedCompletedSessionId: session.expectedCompletedSessionId,
     });
   }
 

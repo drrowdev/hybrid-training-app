@@ -22,6 +22,7 @@ import {
   shouldRecommendEarlyDeload,
   type FatigueArchetypeKey,
 } from "@/lib/planner/fatigue-proxy";
+import { isUnstartedLinkedSession } from "@/lib/sessions/linked-session-state";
 
 export type EarlyDeloadRecommendation = {
   blockId: string;
@@ -82,14 +83,27 @@ export async function getEarlyDeloadRecommendation(): Promise<EarlyDeloadRecomme
   // Current-week un-started sessions (what an early deload would convert).
   const { data: curRows } = await supabase
     .from("planned_sessions")
-    .select("id, prescription")
+    .select(
+      "id, prescription, completed_session_id, sessions(deleted_at, completed_at)",
+    )
     .eq("user_id", user.id)
     .eq("block_id", block.id)
     .eq("week_index", currentWeekIndex)
-    .is("completed_session_id", null)
     .is("skipped_at", null);
-  const convertible = ((curRows ?? []) as Array<{ id: string; prescription: { earlyDeload?: boolean } }>).filter(
-    (r) => r.prescription?.earlyDeload !== true,
+  const convertible = (
+    (curRows ?? []) as Array<{
+      id: string;
+      prescription: { earlyDeload?: boolean };
+      completed_session_id: string | null;
+      sessions:
+        | { deleted_at: string | null; completed_at: string | null }
+        | Array<{ deleted_at: string | null; completed_at: string | null }>
+        | null;
+    }>
+  ).filter(
+    (r) =>
+      isUnstartedLinkedSession(r.completed_session_id, r.sessions) &&
+      r.prescription?.earlyDeload !== true,
   );
   if (convertible.length === 0) return null;
 

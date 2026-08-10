@@ -16,7 +16,7 @@
  * When `windowDays === null` (Phase 2 "all-time" range), the lower
  * bound is dropped entirely — every past planned session counts.
  *
- * Numerator: planned_sessions with `completed_session_id IS NOT NULL`.
+ * Numerator: planned sessions linked to a non-deleted session.
  *
  * The query fans through every non-deleted block the user owns. Cost is
  * bounded — a user's active + recent blocks contain at most a few
@@ -25,6 +25,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { addDaysToYmd, daysBetweenYmd, isoWeekdayYmd, todayYmd, ymdInTimezone } from "@/lib/dates";
+import { resolveLinkedSession } from "@/lib/sessions/linked-session-state";
 
 export type AdherenceInput = {
   /** Today as YYYY-MM-DD in the user's timezone. */
@@ -154,7 +155,7 @@ export async function getAdherence30d(
   const { data, error } = await supabase
     .from("planned_sessions")
     .select(
-      "week_index, day_index, completed_session_id, skipped_at, training_blocks!inner(started_on, deleted_at, user_id), sessions(performed_at)",
+      "week_index, day_index, completed_session_id, skipped_at, training_blocks!inner(started_on, deleted_at, user_id), sessions(performed_at, deleted_at)",
     )
     .eq("training_blocks.user_id", userId)
     .is("training_blocks.deleted_at", null);
@@ -169,8 +170,8 @@ export async function getAdherence30d(
       | Array<{ started_on: string }>
       | null;
     sessions:
-      | { performed_at: string | null }
-      | Array<{ performed_at: string | null }>
+      | { performed_at: string | null; deleted_at: string | null }
+      | Array<{ performed_at: string | null; deleted_at: string | null }>
       | null;
   };
   const rows = (data ?? []) as Row[];
@@ -179,12 +180,25 @@ export async function getAdherence30d(
       const blk = Array.isArray(r.training_blocks) ? r.training_blocks[0] : r.training_blocks;
       if (!blk?.started_on) return null;
       const sess = Array.isArray(r.sessions) ? r.sessions[0] : r.sessions;
+      const linked = resolveLinkedSession(
+        r.completed_session_id,
+        sess && r.completed_session_id
+          ? {
+              id: r.completed_session_id,
+              completedAt: null,
+              deletedAt: sess.deleted_at,
+            }
+          : null,
+      );
+      const activeSession = linked.completedSessionId ? sess : null;
       const performedYmd =
-        sess?.performed_at != null ? ymdInTimezone(new Date(sess.performed_at), tz) : null;
+        activeSession?.performed_at != null
+          ? ymdInTimezone(new Date(activeSession.performed_at), tz)
+          : null;
       return {
         weekIndex: r.week_index,
         dayIndex: r.day_index,
-        completedSessionId: r.completed_session_id,
+        completedSessionId: linked.completedSessionId,
         skippedAt: r.skipped_at,
         blockStartedOn: blk.started_on,
         performedYmd,
@@ -208,7 +222,7 @@ export async function getAdherenceForWindow(
   const { data, error } = await supabase
     .from("planned_sessions")
     .select(
-      "week_index, day_index, completed_session_id, skipped_at, training_blocks!inner(started_on, deleted_at, user_id), sessions(performed_at)",
+      "week_index, day_index, completed_session_id, skipped_at, training_blocks!inner(started_on, deleted_at, user_id), sessions(performed_at, deleted_at)",
     )
     .eq("training_blocks.user_id", userId)
     .is("training_blocks.deleted_at", null);
@@ -223,8 +237,8 @@ export async function getAdherenceForWindow(
       | Array<{ started_on: string }>
       | null;
     sessions:
-      | { performed_at: string | null }
-      | Array<{ performed_at: string | null }>
+      | { performed_at: string | null; deleted_at: string | null }
+      | Array<{ performed_at: string | null; deleted_at: string | null }>
       | null;
   };
   const rows = (data ?? []) as Row[];
@@ -233,12 +247,25 @@ export async function getAdherenceForWindow(
       const blk = Array.isArray(r.training_blocks) ? r.training_blocks[0] : r.training_blocks;
       if (!blk?.started_on) return null;
       const sess = Array.isArray(r.sessions) ? r.sessions[0] : r.sessions;
+      const linked = resolveLinkedSession(
+        r.completed_session_id,
+        sess && r.completed_session_id
+          ? {
+              id: r.completed_session_id,
+              completedAt: null,
+              deletedAt: sess.deleted_at,
+            }
+          : null,
+      );
+      const activeSession = linked.completedSessionId ? sess : null;
       const performedYmd =
-        sess?.performed_at != null ? ymdInTimezone(new Date(sess.performed_at), tz) : null;
+        activeSession?.performed_at != null
+          ? ymdInTimezone(new Date(activeSession.performed_at), tz)
+          : null;
       return {
         weekIndex: r.week_index,
         dayIndex: r.day_index,
-        completedSessionId: r.completed_session_id,
+        completedSessionId: linked.completedSessionId,
         skippedAt: r.skipped_at,
         blockStartedOn: blk.started_on,
         performedYmd,

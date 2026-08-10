@@ -52,6 +52,7 @@ export async function acceptVolumeAutoregResult(): Promise<AcceptAutoregResult> 
     .map((s) => ({
       id: s.id,
       prescription: { ...s.prescription, autoregVolumeScale: scale },
+      expectedCompletedSessionId: s.expectedCompletedSessionId,
     }));
 
   if (updates.length === 0) return { ok: true, sessions: 0, scale };
