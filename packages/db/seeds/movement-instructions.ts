@@ -1047,6 +1047,90 @@ export const MOVEMENT_INSTRUCTIONS: MovementInstructionSeed[] = [
     cues: ["Control the stretch at the open position.", "Squeeze fully closed."],
   },
   {
+    slug: "standing-banded-hip-flexion",
+    summary:
+      "Standing band-resisted leg drive forward to train hip flexion as one direction of the four-way hip protocol.",
+    setup:
+      "Anchor a band low behind you, loop it around the working ankle, stand tall, and hold a stable support with the opposite hand.",
+    steps: [
+      "Brace and shift your weight onto the support leg.",
+      "Drive the working leg forward without leaning back.",
+      "Pause briefly at the prescribed range.",
+      "Return slowly until the band is lightly tensioned.",
+    ],
+    cues: [
+      "Keep the pelvis level and torso still.",
+      "Move from the hip, not the lower back.",
+    ],
+    commonMistakes: [
+      "Leaning backward to create more range.",
+      "Letting the band pull the leg back quickly.",
+    ],
+  },
+  {
+    slug: "standing-banded-hip-extension",
+    summary:
+      "Standing band-resisted leg drive backward to train hip extension as one direction of the four-way hip protocol.",
+    setup:
+      "Anchor a band low in front of you, loop it around the working ankle, stand tall, and hold a stable support with the opposite hand.",
+    steps: [
+      "Brace and shift your weight onto the support leg.",
+      "Drive the working leg straight backward without arching your back.",
+      "Pause and squeeze the glute.",
+      "Return slowly to the start.",
+    ],
+    cues: [
+      "Keep the knee mostly straight and pelvis square.",
+      "Finish with the glute, not lumbar extension.",
+    ],
+    commonMistakes: [
+      "Arching the lower back instead of extending the hip.",
+      "Rotating the pelvis open.",
+    ],
+  },
+  {
+    slug: "standing-banded-hip-abduction",
+    summary:
+      "Standing band-resisted leg movement outward to train hip abduction as one direction of the four-way hip protocol.",
+    setup:
+      "Anchor a band low beside the support leg, loop it around the working ankle, stand tall, and hold a stable support with the opposite hand.",
+    steps: [
+      "Brace and keep the support leg softly bent.",
+      "Move the working leg out to the side with the toes facing forward.",
+      "Pause at the prescribed range.",
+      "Return slowly without letting the foot snap inward.",
+    ],
+    cues: [
+      "Keep the pelvis level.",
+      "Lead with the heel and keep the toes forward.",
+    ],
+    commonMistakes: [
+      "Leaning the torso away from the working leg.",
+      "Turning the toes outward to gain range.",
+    ],
+  },
+  {
+    slug: "standing-banded-hip-adduction",
+    summary:
+      "Standing band-resisted leg movement inward to train the adductors as one direction of the four-way hip protocol.",
+    setup:
+      "Anchor a band low beside the working leg, loop it around the working ankle, stand tall, and hold a stable support with the opposite hand.",
+    steps: [
+      "Brace and shift your weight onto the support leg.",
+      "Draw the working leg inward across the body without rotating the pelvis.",
+      "Pause at the prescribed range.",
+      "Return slowly to the start under band tension.",
+    ],
+    cues: [
+      "Keep the toes forward and pelvis square.",
+      "Use a smooth, controlled range.",
+    ],
+    commonMistakes: [
+      "Twisting the pelvis to pull the leg farther across.",
+      "Letting the band pull the leg outward quickly.",
+    ],
+  },
+  {
     slug: "hollow-body-hold",
     summary: "Holding a banana shape on your back — total-trunk tension and anti-extension.",
     setup: "Lie on your back, arms overhead, legs straight.",

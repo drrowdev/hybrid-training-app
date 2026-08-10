@@ -862,6 +862,13 @@
       "when": 1786298400000,
       "tag": "0122_seed_landmine_squat_to_box",
       "breakpoints": false
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1786305600000,
+      "tag": "0123_seed_banded_four_way_hip",
+      "breakpoints": false
     }
   ]
 }

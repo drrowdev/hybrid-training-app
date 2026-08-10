@@ -6,7 +6,7 @@
  * missing a primary muscle, a region, or has an impossible combination.
  */
 import { describe, expect, it } from "vitest";
-import { SEED_MOVEMENTS } from "./movements";
+import { requiresPrimaryMuscle, SEED_MOVEMENTS } from "./movements";
 import { MOVEMENT_INSTRUCTIONS } from "./movement-instructions";
 
 const SEED = SEED_MOVEMENTS;
@@ -36,10 +36,9 @@ describe("movement catalog seed", () => {
     }
   });
 
-  it("non-carry movements have ≥ 1 primary muscle (DC-T1)", () => {
+  it("taxonomy-representable movements have ≥ 1 primary muscle (DC-T1)", () => {
     for (const m of SEED) {
-      // Carries are trunk/grip-stabilisation work; primary "muscle" is fuzzy.
-      if (m.pattern === "carry") continue;
+      if (!requiresPrimaryMuscle(m)) continue;
       expect(
         m.primaryMuscles.length,
         `${m.slug} missing primary muscles`,
@@ -156,6 +155,80 @@ describe("movement catalog seed", () => {
     expect(instructions?.cues).toContain(
       "Use a stance and depth that stay pain-free.",
     );
+  });
+
+  it("seeds all four standing banded hip directions with instructions", () => {
+    const expected = [
+      {
+        slug: "standing-banded-hip-flexion",
+        region: "adductor_groin",
+        primary: null,
+      },
+      {
+        slug: "standing-banded-hip-extension",
+        region: "hamstring_posterior",
+        primary: "glutes",
+      },
+      {
+        slug: "standing-banded-hip-abduction",
+        region: "hamstring_posterior",
+        primary: "abductors",
+      },
+      {
+        slug: "standing-banded-hip-adduction",
+        region: "adductor_groin",
+        primary: "adductors",
+      },
+    ];
+
+    for (const entry of expected) {
+      const movement = SEED.find((candidate) => candidate.slug === entry.slug);
+      expect(movement).toMatchObject({
+        equipment: "band",
+        pattern: "isolation",
+        primaryRegion: entry.region,
+        bilateral: false,
+        stability: "supported",
+        isSupported: true,
+        eccentricLoadScore: 1,
+        stimToFatigueScore: 4,
+      });
+      if (entry.primary) {
+        expect(movement?.primaryMuscles).toContain(entry.primary);
+      } else {
+        expect(movement?.primaryMuscles).toEqual([]);
+        expect(movement?.secondaryMuscles).toEqual([]);
+      }
+      expect(movement?.metadata).toMatchObject({
+        protocol: "banded-four-way-hip",
+      });
+
+      const instructions = MOVEMENT_INSTRUCTIONS.find(
+        (candidate) => candidate.slug === entry.slug,
+      );
+      expect(instructions?.steps).toHaveLength(4);
+      expect(instructions?.setup).toContain("opposite hand");
+      expect(instructions?.cues.length).toBeGreaterThanOrEqual(2);
+      expect(instructions?.commonMistakes).toHaveLength(2);
+    }
+    expect(
+      SEED.find(
+        (candidate) => candidate.slug === "standing-banded-hip-abduction",
+      )?.functionalRoles,
+    ).toContain("hip_stabilizer");
+    expect(
+      SEED.find(
+        (candidate) => candidate.slug === "standing-banded-hip-adduction",
+      )?.functionalRoles,
+    ).toContain("hip_stabilizer");
+    expect(
+      SEED.find(
+        (candidate) => candidate.slug === "standing-banded-hip-extension",
+      ),
+    ).toMatchObject({
+      secondaryRegions: [],
+      secondaryMuscles: ["hamstrings"],
+    });
   });
 
   it("injury-site tagging audit invariants (migration 0100)", () => {
