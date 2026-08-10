@@ -465,3 +465,6 @@ Today now renders primary workout cards only for unfinished, unskipped planned s
 
 ## [2026-08-10] fix | Expand rehab prescriptions into granular logger sets
 Foreign-program rehab now uses the same one-prescription-item-per-loggable-set storage contract as planner-generated accessories, so a 5x15 / 3x10 / 3x10 / 3x10 protocol produces fourteen Focus Strip set slots instead of four. Migration 0124 idempotently expands existing rehab rows only when no set logs exist, preserving prescription-item attribution for started work. Clinician-authored rehab groups and set buckets are labeled Rehab rather than exposing the internal tendon kind.
+
+## [2026-08-10] fix | Fill every planned rehab set idempotently
+Same as planned now tracks fulfillment per prescription item and copy rather than deduplicating an entire movement/kind after its first set. The planner supports expanded and legacy collapsed prescriptions, partial fills, deleted middle copies and movement swaps. Each planned set uses a deterministic UUID derived from session, item, copy, movement and kind, then duplicate-ignoring upsert makes repeat and concurrent taps idempotent without suppressing legitimate sibling sets.
