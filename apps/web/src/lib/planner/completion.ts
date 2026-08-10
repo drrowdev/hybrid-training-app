@@ -24,13 +24,12 @@
  * guard on the UPDATE keeps that idempotent — a second invocation
  * doesn't overwrite the original timestamp.
  *
- * "Done" criterion mirrors the existing planner queries: a planned
- * session counts as remaining iff `completed_session_id IS NULL AND
- * skipped_at IS NULL`. Treating skipped rows as done matches user
- * intent (a user who skipped a session and finished the rest has
- * finished the block, not abandoned it).
+ * "Done" criterion mirrors the planner UI: a raw link counts only when its
+ * session exists and is not soft-deleted. Unlinked/cancelled rows remain;
+ * skipped rows count as settled.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { resolveLinkedSession } from "@/lib/sessions/linked-session-state";
 
 export async function maybeCompleteBlock(
   supabase: SupabaseClient,
@@ -46,25 +45,35 @@ export async function maybeCompleteBlock(
   if (bErr || !block) return;
   if (block.status !== "active") return;
 
-  // 2. Any planned_session still un-touched? If yes, nothing to do.
-  const { count: remaining, error: rErr } = await supabase
+  // 2. Any planned_session still untouched? A raw link only counts when its
+  // linked session still exists and is not soft-deleted.
+  const { data: planned, error: rErr } = await supabase
     .from("planned_sessions")
-    .select("id", { count: "exact", head: true })
-    .eq("block_id", blockId)
-    .is("completed_session_id", null)
-    .is("skipped_at", null);
-  if (rErr) return;
-  if ((remaining ?? 0) > 0) return;
-
-  // 3. Sanity guard: a block with zero planned_sessions shouldn't flip
-  //    (it never started). Skip silently.
-  const { count: total } = await supabase
-    .from("planned_sessions")
-    .select("id", { count: "exact", head: true })
+    .select("id, completed_session_id, skipped_at, sessions(deleted_at)")
     .eq("block_id", blockId);
-  if ((total ?? 0) === 0) return;
+  if (rErr) return;
+  if (!planned || planned.length === 0) return;
+  const hasRemaining = planned.some((row) => {
+    if (row.skipped_at != null) return false;
+    const session = Array.isArray(row.sessions)
+      ? row.sessions[0]
+      : row.sessions;
+    return (
+      resolveLinkedSession(
+        (row.completed_session_id as string | null) ?? null,
+        session && row.completed_session_id
+          ? {
+              id: row.completed_session_id as string,
+              completedAt: null,
+              deletedAt: (session.deleted_at as string | null) ?? null,
+            }
+          : null,
+      ).completedSessionId == null
+    );
+  });
+  if (hasRemaining) return;
 
-  // 4. Flip. Guarded by `status='active'` so a concurrent endBlock
+  // 3. Flip. Guarded by `status='active'` so a concurrent endBlock
   //    (which writes 'archived') wins the race rather than getting
   //    overwritten back to 'completed'. The `status='active'` guard
   //    also makes the timestamp write idempotent — re-running this

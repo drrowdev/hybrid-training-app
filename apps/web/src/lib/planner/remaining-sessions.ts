@@ -7,15 +7,15 @@
  * Blocks are materialized eagerly at creation, so a mid-block change
  * cannot flow through the generation-time overlay — it must rewrite the
  * stored `planned_sessions.prescription` rows directly. Both features
- * only ever touch UN-STARTED future rows: `completed_session_id IS NULL`
- * AND `skipped_at IS NULL`. Completed / in-progress / skipped sessions
- * are immutable.
+ * only ever touch UN-STARTED future rows. A soft-deleted unfinished link is
+ * unstarted; active, completed, deleted-completed and skipped rows are immutable.
  *
  * All queries are user-scoped (pass an authenticated client; RLS plus
  * the explicit `user_id` predicate guard ownership).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Prescription } from "@hta/db";
+import { isUnstartedLinkedSession } from "@/lib/sessions/linked-session-state";
 
 export type RemainingSession = {
   id: string;
@@ -24,6 +24,7 @@ export type RemainingSession = {
   title: string;
   role: string;
   prescription: Prescription;
+  expectedCompletedSessionId?: string | null;
 };
 
 export type ActiveBlockRemaining = {
@@ -65,10 +66,11 @@ export async function getActiveBlockRemainingSessions(
 
   const { data: rows } = await supabase
     .from("planned_sessions")
-    .select("id, week_index, day_index, title, role, prescription")
+    .select(
+      "id, week_index, day_index, title, role, prescription, completed_session_id, sessions(deleted_at, completed_at)",
+    )
     .eq("user_id", userId)
     .eq("block_id", block.id)
-    .is("completed_session_id", null)
     .is("skipped_at", null)
     .order("week_index", { ascending: true })
     .order("day_index", { ascending: true });
@@ -81,15 +83,34 @@ export async function getActiveBlockRemainingSessions(
       title: string;
       role: string;
       prescription: Prescription;
+      completed_session_id: string | null;
+      sessions:
+        | {
+            deleted_at: string | null;
+            completed_at: string | null;
+          }
+        | Array<{
+            deleted_at: string | null;
+            completed_at: string | null;
+          }>
+        | null;
     }>
-  ).map((r) => ({
-    id: r.id,
-    weekIndex: r.week_index,
-    dayIndex: r.day_index,
-    title: r.title,
-    role: r.role,
-    prescription: r.prescription,
-  }));
+  )
+    .filter((row) =>
+      isUnstartedLinkedSession(
+        row.completed_session_id,
+        row.sessions,
+      ),
+    )
+    .map((r) => ({
+      id: r.id,
+      weekIndex: r.week_index,
+      dayIndex: r.day_index,
+      title: r.title,
+      role: r.role,
+      prescription: r.prescription,
+      expectedCompletedSessionId: r.completed_session_id,
+    }));
 
   return {
     blockId: block.id,
@@ -110,17 +131,26 @@ export async function applyPrescriptionUpdates(
   supabase: SupabaseClient,
   userId: string,
   blockId: string,
-  updates: ReadonlyArray<{ id: string; prescription: Prescription }>,
+  updates: ReadonlyArray<{
+    id: string;
+    prescription: Prescription;
+    expectedCompletedSessionId?: string | null;
+  }>,
 ): Promise<{ updated: number; error?: string }> {
   let updated = 0;
   for (const u of updates) {
-    const { error, count } = await supabase
+    const updateBase = supabase
       .from("planned_sessions")
       .update({ prescription: u.prescription }, { count: "exact" })
       .eq("id", u.id)
       .eq("user_id", userId)
-      .eq("block_id", blockId)
-      .is("completed_session_id", null)
+      .eq("block_id", blockId);
+    const expected = u.expectedCompletedSessionId;
+    const guarded =
+      expected != null
+        ? updateBase.eq("completed_session_id", expected)
+        : updateBase.is("completed_session_id", null);
+    const { error, count } = await guarded
       .is("skipped_at", null);
     if (error) return { updated, error: error.message };
     updated += count ?? 0;

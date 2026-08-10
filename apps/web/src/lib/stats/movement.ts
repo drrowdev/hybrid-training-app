@@ -18,6 +18,7 @@
  * lives in @hta/engine; this is the display layer.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { resolveLinkedSessionRelation } from "@/lib/sessions/linked-session-state";
 import { createClient } from "@/lib/supabase/server";
 import { mondayOfYmd, ymdInTimezone } from "@/lib/dates";
 import { bestEstimateOneRm } from "@/lib/engine/one-rm";
@@ -572,6 +573,10 @@ export type SwapEvent = {
 type PlannedRowForSwap = {
   completed_session_id: string | null;
   prescription: { items?: Array<unknown> } | null;
+  sessions?:
+    | { deleted_at: string | null }
+    | Array<{ deleted_at: string | null }>
+    | null;
 };
 
 type SwappedFromMeta = { movementId: string; movementName: string };
@@ -638,9 +643,15 @@ export async function getMovementSwapHistory(
 ): Promise<SwapEvent[]> {
   const { data } = await supabase
     .from("planned_sessions")
-    .select("completed_session_id, prescription")
+    .select("completed_session_id, prescription, sessions(deleted_at)")
     .eq("user_id", userId);
-  const rows = (data ?? []) as PlannedRowForSwap[];
+  const rows = ((data ?? []) as PlannedRowForSwap[]).map((row) => ({
+    ...row,
+    completed_session_id: resolveLinkedSessionRelation(
+      row.completed_session_id,
+      row.sessions,
+    ).completedSessionId,
+  }));
   return deriveSwapHistory(movementId, rows);
 }
 

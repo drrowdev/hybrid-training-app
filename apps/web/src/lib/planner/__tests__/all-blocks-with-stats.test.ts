@@ -31,10 +31,10 @@ vi.mock("@/lib/supabase/server", () => ({
             day_index_overrides: { days: [0, 2, 4, 6], twoADay: false },
             notes: null,
             planned_sessions: [
-              { id: "p1", completed_session_id: "s1", skipped_at: null, week_index: 0, day_index: 0 },
-              { id: "p2", completed_session_id: "s2", skipped_at: null, week_index: 0, day_index: 2 },
-              { id: "p3", completed_session_id: null, skipped_at: "2026-05-12", week_index: 0, day_index: 4 },
-              { id: "p4", completed_session_id: null, skipped_at: null, week_index: 0, day_index: 6 },
+              { id: "p1", completed_session_id: "s1", skipped_at: null, week_index: 0, day_index: 0, sessions: { deleted_at: null } },
+              { id: "p2", completed_session_id: "s2", skipped_at: null, week_index: 0, day_index: 2, sessions: { deleted_at: "2026-05-12T12:00:00Z" } },
+              { id: "p3", completed_session_id: null, skipped_at: "2026-05-12", week_index: 0, day_index: 4, sessions: null },
+              { id: "p4", completed_session_id: null, skipped_at: null, week_index: 0, day_index: 6, sessions: null },
             ],
           },
           {
@@ -50,10 +50,10 @@ vi.mock("@/lib/supabase/server", () => ({
             day_index_overrides: null,
             notes: null,
             planned_sessions: [
-              { id: "q1", completed_session_id: "s10", skipped_at: null, week_index: 0, day_index: 1 },
-              { id: "q2", completed_session_id: "s11", skipped_at: null, week_index: 0, day_index: 3 },
-              { id: "q3", completed_session_id: "s12", skipped_at: null, week_index: 0, day_index: 5 },
-              { id: "q4", completed_session_id: "s13", skipped_at: null, week_index: 1, day_index: 1 },
+              { id: "q1", completed_session_id: "s10", skipped_at: null, week_index: 0, day_index: 1, sessions: { deleted_at: null } },
+              { id: "q2", completed_session_id: "s11", skipped_at: null, week_index: 0, day_index: 3, sessions: { deleted_at: null } },
+              { id: "q3", completed_session_id: "s12", skipped_at: null, week_index: 0, day_index: 5, sessions: { deleted_at: null } },
+              { id: "q4", completed_session_id: "s13", skipped_at: null, week_index: 1, day_index: 1, sessions: { deleted_at: null } },
             ],
           },
           {
@@ -88,7 +88,7 @@ describe("getAllBlocksWithCompletionStats", () => {
     expect(rows).toHaveLength(3);
     const active = rows[0]!;
     expect(active.totalSessions).toBe(4);
-    expect(active.loggedSessions).toBe(2);
+    expect(active.loggedSessions).toBe(1);
     expect(active.skippedSessions).toBe(1);
     expect(active.archetypeName).toBe("Strength Focus");
     expect(active.endedOn).toBeNull();

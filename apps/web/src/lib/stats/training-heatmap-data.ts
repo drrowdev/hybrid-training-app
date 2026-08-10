@@ -35,6 +35,7 @@ import {
   todayYmd,
   ymdInTimezone,
 } from "@/lib/dates";
+import { resolveLinkedSession } from "@/lib/sessions/linked-session-state";
 
 export type CellState =
   | "empty"
@@ -282,7 +283,7 @@ export async function getTrainingHeatmap(
   const { data: plannedRows, error: plannedErr } = await supabase
     .from("planned_sessions")
     .select(
-      "week_index, day_index, title, completed_session_id, skipped_at, training_blocks!inner(started_on, deleted_at, user_id)",
+      "week_index, day_index, title, completed_session_id, skipped_at, training_blocks!inner(started_on, deleted_at, user_id), sessions(deleted_at)",
     )
     .eq("training_blocks.user_id", userId)
     .is("training_blocks.deleted_at", null);
@@ -294,6 +295,10 @@ export async function getTrainingHeatmap(
     title: string;
     completed_session_id: string | null;
     skipped_at: string | null;
+    sessions:
+      | { deleted_at: string | null }
+      | Array<{ deleted_at: string | null }>
+      | null;
     training_blocks:
       | { started_on: string }
       | Array<{ started_on: string }>
@@ -305,11 +310,22 @@ export async function getTrainingHeatmap(
         ? r.training_blocks[0]
         : r.training_blocks;
       if (!blk?.started_on) return null;
+      const linked = Array.isArray(r.sessions) ? r.sessions[0] : r.sessions;
+      const resolved = resolveLinkedSession(
+        r.completed_session_id,
+        linked && r.completed_session_id
+          ? {
+              id: r.completed_session_id,
+              completedAt: null,
+              deletedAt: linked.deleted_at,
+            }
+          : null,
+      );
       const date = dayDateFor(blk.started_on, r.week_index, r.day_index);
       return {
         date,
         title: r.title,
-        completedSessionId: r.completed_session_id,
+        completedSessionId: resolved.completedSessionId,
         skippedAt: r.skipped_at,
       };
     })

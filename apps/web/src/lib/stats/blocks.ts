@@ -25,6 +25,7 @@
  *     no such block exists, the section renders solo with a note.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { resolveLinkedSession } from "@/lib/sessions/linked-session-state";
 import { addDaysToYmd, isoWeekdayYmd } from "@/lib/dates";
 import { archetypeDisplayName } from "@/lib/planner/queries";
 import { bestEstimateOneRm } from "@/lib/engine/one-rm";
@@ -308,6 +309,10 @@ type RawPlannedRow = {
   prescription: { items?: Array<Record<string, unknown>> } | null;
   completed_session_id: string | null;
   skipped_at: string | null;
+  sessions:
+    | { deleted_at: string | null }
+    | Array<{ deleted_at: string | null }>
+    | null;
 };
 
 type RawSetRow = {
@@ -360,12 +365,30 @@ async function fetchPlannedRows(
   const { data } = await supabase
     .from("planned_sessions")
     .select(
-      "id, week_index, day_index, title, role, prescription, completed_session_id, skipped_at",
+      "id, week_index, day_index, title, role, prescription, completed_session_id, skipped_at, sessions(deleted_at)",
     )
     .eq("block_id", blockId)
     .order("week_index", { ascending: true })
     .order("day_index", { ascending: true });
-  return (data ?? []) as RawPlannedRow[];
+  return ((data ?? []) as RawPlannedRow[]).map((row) => {
+    const session = Array.isArray(row.sessions)
+      ? row.sessions[0]
+      : row.sessions;
+    const linked = resolveLinkedSession(
+      row.completed_session_id,
+      session && row.completed_session_id
+        ? {
+            id: row.completed_session_id,
+            completedAt: null,
+            deletedAt: session.deleted_at,
+          }
+        : null,
+    );
+    return {
+      ...row,
+      completed_session_id: linked.completedSessionId,
+    };
+  });
 }
 
 async function fetchSetLogsForSessions(
@@ -1211,7 +1234,7 @@ export async function getBlockIndex(
   const { data: blocks } = await supabase
     .from("training_blocks")
     .select(
-      "id, archetype, started_on, status, weeks, days_per_week, notes, ended_at, planned_sessions(id, completed_session_id, skipped_at, week_index, day_index)",
+      "id, archetype, started_on, status, weeks, days_per_week, notes, ended_at, planned_sessions(id, completed_session_id, skipped_at, week_index, day_index, sessions(deleted_at))",
     )
     .eq("user_id", userId)
     .is("deleted_at", null)
@@ -1227,12 +1250,29 @@ export async function getBlockIndex(
         skipped_at: string | null;
         week_index: number;
         day_index: number;
+        sessions:
+          | { deleted_at: string | null }
+          | Array<{ deleted_at: string | null }>
+          | null;
       }>;
       const totalSessions = planned.length;
       let loggedSessions = 0;
       let skippedSessions = 0;
       for (const p of planned) {
-        if (p.completed_session_id) loggedSessions++;
+        const session = Array.isArray(p.sessions)
+          ? p.sessions[0]
+          : p.sessions;
+        const linked = resolveLinkedSession(
+          p.completed_session_id,
+          session && p.completed_session_id
+            ? {
+                id: p.completed_session_id,
+                completedAt: null,
+                deletedAt: session.deleted_at,
+              }
+            : null,
+        );
+        if (linked.completedSessionId) loggedSessions++;
         else if (p.skipped_at) skippedSessions++;
       }
       const summary = await summariseBlockForComparison(supabase, b.id, userId);

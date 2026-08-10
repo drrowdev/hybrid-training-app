@@ -74,6 +74,7 @@ import {
 } from "@/lib/planner/actions";
 import { estimateSessionMinutes } from "@/lib/sessions/estimate-duration";
 import { ThisWeekRail } from "@/components/plan/ThisWeekRail";
+import { plannedSessionCta } from "@/lib/today/planned-session-cta";
 import type { PlanSessionInput } from "@/components/plan/PlanRedesign";
 import { isTodayFullyLogged } from "@/lib/sessions/today-hero";
 import {
@@ -1288,6 +1289,12 @@ function PlannedSessionCard({
     (isTwoADay && planned.slot !== "single") ||
     planned.completedAt != null ||
     estMin != null;
+  const primaryCta = plannedSessionCta({
+    plannedId: planned.id,
+    completedSessionId: planned.completedSessionId,
+    completedAt: planned.completedAt,
+    deletedCompletedSessionId: planned.deletedCompletedSessionId,
+  });
 
   return (
     <section
@@ -1440,25 +1447,15 @@ function PlannedSessionCard({
         />
       </div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: "auto" }}>
-        {planned.completedSessionId ? (
-          <Link
-            href={`/app/sessions/${planned.completedSessionId}`}
-            className="cp-btn primary big"
-            data-testid="today-cta"
-            style={{ flex: "1 1 auto", minHeight: 56 }}
-          >
-            Continue workout →
-          </Link>
-        ) : (
-          <Link
-            href={`/app/sessions/start/${planned.id}`}
-            className="cp-btn primary big"
-            data-testid="today-cta"
-            style={{ flex: "1 1 auto", minHeight: 56 }}
-          >
-            Start workout →
-          </Link>
-        )}
+        <Link
+          href={primaryCta.href}
+          className="cp-btn primary big"
+          data-testid="today-cta"
+          data-session-state={primaryCta.state}
+          style={{ flex: "1 1 auto", minHeight: 56 }}
+        >
+          {primaryCta.label}
+        </Link>
         <Link
           href={`/app/plan/preview/${planned.id}`}
           className="cp-btn big"

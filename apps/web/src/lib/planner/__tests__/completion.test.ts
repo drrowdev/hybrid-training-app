@@ -26,6 +26,7 @@ type Planned = {
   block_id: string;
   completed_session_id: string | null;
   skipped_at: string | null;
+  sessions: { deleted_at: string | null } | null;
 };
 
 type Store = {
@@ -124,6 +125,7 @@ function seedBlock(
       block_id: blockId,
       completed_session_id: i < completed ? `s-${i}` : null,
       skipped_at: null,
+      sessions: i < completed ? { deleted_at: null } : null,
     });
   }
   return {
@@ -160,6 +162,18 @@ describe("maybeCompleteBlock", () => {
     const ts = new Date(blk.completed_at!).getTime();
     expect(ts).toBeGreaterThanOrEqual(before);
     expect(ts).toBeLessThanOrEqual(after);
+  });
+
+  it("does not complete when a linked session was soft-deleted", async () => {
+    store = seedBlock("active", 1, 1);
+    store.planned_sessions[0]!.sessions = {
+      deleted_at: "2026-08-10T09:23:52.772Z",
+    };
+    const sb = makeClient(store);
+
+    await maybeCompleteBlock(sb, "blk-1");
+
+    expect(store.training_blocks[0]!.status).toBe("active");
   });
 
   it("flips to 'completed' when all sessions are either linked or skipped", async () => {

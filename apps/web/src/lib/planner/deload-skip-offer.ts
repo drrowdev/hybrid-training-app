@@ -25,6 +25,7 @@ import {
   isDeloadSkipEligible,
 } from "@/lib/planner/deload-skip";
 import type { Prescription } from "@hta/db";
+import { isUnstartedLinkedSession } from "@/lib/sessions/linked-session-state";
 
 export type { DeloadSkipOffer } from "@/lib/planner/deload-skip";
 import type { DeloadSkipOffer } from "@/lib/planner/deload-skip";
@@ -71,14 +72,27 @@ export async function getDeloadSkipOffer(): Promise<DeloadSkipOffer | null> {
   // The deload week must still have un-started, not-already-skipped sessions.
   const { data: deloadRows } = await supabase
     .from("planned_sessions")
-    .select("id, prescription")
+    .select(
+      "id, prescription, completed_session_id, sessions(deleted_at, completed_at)",
+    )
     .eq("user_id", user.id)
     .eq("block_id", block.id)
     .eq("week_index", deloadWeekIndex)
-    .is("completed_session_id", null)
     .is("skipped_at", null);
-  const skippable = ((deloadRows ?? []) as Array<{ id: string; prescription: Prescription }>).filter(
-    (r) => r.prescription?.deloadSkipped !== true,
+  const skippable = (
+    (deloadRows ?? []) as Array<{
+      id: string;
+      prescription: Prescription;
+      completed_session_id: string | null;
+      sessions:
+        | { deleted_at: string | null; completed_at: string | null }
+        | Array<{ deleted_at: string | null; completed_at: string | null }>
+        | null;
+    }>
+  ).filter(
+    (r) =>
+      isUnstartedLinkedSession(r.completed_session_id, r.sessions) &&
+      r.prescription?.deloadSkipped !== true,
   );
 
   // A reactive auto-deload firing this block means the user genuinely needed
