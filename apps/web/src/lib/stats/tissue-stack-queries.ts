@@ -1,8 +1,9 @@
 /**
  * DC-O4 weekly tissue-stack deficit check.
  *
- * Reads the current week's prescription items for the active block,
- * counts how many bulletproof roles are satisfied, and reports any gaps.
+ * Reads the current week's prescription items for an app-generated archetype
+ * block, counts how many bulletproof roles are satisfied, and reports any
+ * gaps. Packaged programs own their programming and are outside this audit.
  * The plan-page card surfaces "tissue-stack-deficient" warnings per
  * docs/design/accessory-schema.md §11.
  */
@@ -14,6 +15,7 @@ import {
   FLOOR_PLYOMETRIC_TOTAL,
   type BulletproofRole,
 } from "@/lib/planner/accessory-roles";
+import { ARCHETYPES } from "@/lib/planner/archetypes";
 
 export type TissueStackGap = {
   role: BulletproofRole;
@@ -37,12 +39,24 @@ export async function getCurrentWeekTissueStackGaps(
 ): Promise<TissueStackGap[]> {
   const { data: block } = await supabase
     .from("training_blocks")
-    .select("id, started_on, weeks")
+    .select("id, started_on, weeks, program_id, archetype")
     .eq("user_id", userId)
     .eq("status", "active")
     .is("deleted_at", null)
     .maybeSingle();
   if (!block) return [];
+
+  // Only the app's predefined archetype planner promises the DC-O4 durability
+  // floor. A positive allowlist also excludes packaged programs in both their
+  // current (program_id) and legacy (archetype="program:*") storage shapes,
+  // user-built custom blocks, and any unknown future block type by default.
+  const isPlannerOwnedArchetype =
+    block.program_id == null &&
+    typeof block.archetype === "string" &&
+    Object.prototype.hasOwnProperty.call(ARCHETYPES, block.archetype);
+  if (!isPlannerOwnedArchetype) {
+    return [];
+  }
 
   const startedOn = new Date(block.started_on + "T00:00:00");
   const daysSinceStart = Math.floor((Date.now() - startedOn.getTime()) / 86_400_000);

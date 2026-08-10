@@ -82,6 +82,98 @@ describe("getCurrentWeekTissueStackGaps — banner gating", () => {
     expect(out).toEqual([]);
   });
 
+  it.each([
+    "tactical-barbell",
+    "wendler-531",
+    "green-protocol",
+    "hyrox",
+    "hybrid",
+  ])(
+    "returns [] for ready-made program %s even when its week lacks every tissue-stack role",
+    async (programId) => {
+      const startedOn = new Date(NOW - 30 * 86_400_000)
+        .toISOString()
+        .slice(0, 10);
+      const completedAt = new Date(NOW - 2 * 86_400_000).toISOString();
+      const supabase = makeStub({
+        training_blocks: [
+          {
+            id: "program-block-1",
+            user_id: USER_ID,
+            status: "active",
+            deleted_at: null,
+            started_on: startedOn,
+            weeks: 20,
+            program_id: programId,
+            archetype: null,
+          },
+        ],
+        sessions: [
+          {
+            id: "s-1",
+            user_id: USER_ID,
+            completed_at: completedAt,
+            deleted_at: null,
+          },
+        ],
+        planned_sessions: [
+          {
+            block_id: "program-block-1",
+            week_index: 4,
+            prescription: { items: [{ movementId: "mv-empty" }] },
+          },
+        ],
+        movements: [{ id: "mv-empty", bulletproof_roles: [] }],
+      });
+
+      const out = await getCurrentWeekTissueStackGaps(supabase, USER_ID);
+      expect(out).toEqual([]);
+    },
+  );
+
+  it.each(["custom", "program:531", "totally_unknown", null])(
+    "returns [] for non-planner archetype %s",
+    async (archetype) => {
+      const startedOn = new Date(NOW - 30 * 86_400_000)
+        .toISOString()
+        .slice(0, 10);
+      const completedAt = new Date(NOW - 2 * 86_400_000).toISOString();
+      const supabase = makeStub({
+        training_blocks: [
+          {
+            id: "unowned-1",
+            user_id: USER_ID,
+            status: "active",
+            deleted_at: null,
+            started_on: startedOn,
+            weeks: 6,
+            program_id: null,
+            archetype,
+          },
+        ],
+        sessions: [
+          {
+            id: "s-1",
+            user_id: USER_ID,
+            completed_at: completedAt,
+            deleted_at: null,
+          },
+        ],
+        planned_sessions: [
+          {
+            block_id: "unowned-1",
+            week_index: 4,
+            prescription: { items: [{ movementId: "mv-empty" }] },
+          },
+        ],
+        movements: [{ id: "mv-empty", bulletproof_roles: [] }],
+      });
+
+      const out = await getCurrentWeekTissueStackGaps(supabase, USER_ID);
+      expect(out).toEqual([]);
+    },
+  );
+
   it("returns [] on day 1 of a fresh block, even if the week's plan is empty", async () => {
     // Block started today — daysSinceStart = 0, well under the 7-day floor.
     const startedOn = new Date(NOW).toISOString().slice(0, 10);
@@ -94,6 +186,8 @@ describe("getCurrentWeekTissueStackGaps — banner gating", () => {
           deleted_at: null,
           started_on: startedOn,
           weeks: 6,
+          program_id: null,
+          archetype: "strength_anchor",
         },
       ],
       // Nothing else matters — the function must short-circuit before
@@ -118,6 +212,8 @@ describe("getCurrentWeekTissueStackGaps — banner gating", () => {
           deleted_at: null,
           started_on: startedOn,
           weeks: 6,
+          program_id: null,
+          archetype: "strength_anchor",
         },
       ],
       // Zero completed sessions in the last 7 days.
@@ -144,6 +240,8 @@ describe("getCurrentWeekTissueStackGaps — banner gating", () => {
             deleted_at: null,
             started_on: startedOn,
             weeks: 6,
+            program_id: null,
+            archetype: "strength_anchor",
           },
         ],
         sessions: [
