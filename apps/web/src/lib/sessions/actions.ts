@@ -22,6 +22,12 @@ import {
   applyModificationsToPrescription,
   getActiveModifications,
 } from "@/lib/planner/modifications";
+import {
+  planMissingPrescriptionSets,
+  plannedSetClientId,
+  type ExistingPlannedSet,
+  type PlannedSetKind,
+} from "./fill-plan-sets";
 import type { Prescription, PrescriptionItem } from "@hta/db";
 import { applyPrescriptionSwap } from "./prescription-mutations";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
@@ -1303,19 +1309,12 @@ type SetInsert = {
   session_id: string;
   movement_id: string;
   set_index: number;
-  set_kind: "warmup" | "main" | "back_off" | "accessory" | "tendon";
+  set_kind: PlannedSetKind;
   weight_kg: number | null;
   reps: number | null;
   prescription_item_index: number | null;
+  client_log_id: string;
 };
-
-const STRENGTH_KINDS: ReadonlyArray<SetInsert["set_kind"]> = [
-  "warmup",
-  "main",
-  "back_off",
-  "accessory",
-  "tendon",
-];
 
 export async function fillSessionFromPlan(
   formData: FormData,
@@ -1343,7 +1342,9 @@ export async function fillSessionFromPlan(
       .maybeSingle(),
     supabase
       .from("set_logs")
-      .select("movement_id, set_kind, set_index")
+      .select(
+        "movement_id, set_kind, set_index, prescription_item_index, client_log_id",
+      )
       .eq("session_id", parsed.data.sessionId),
     supabase
       .from("training_maxes")
@@ -1387,14 +1388,6 @@ export async function fillSessionFromPlan(
     if (Number.isFinite(tm) && tm > 0) tmByMovementId.set(row.movement_id, tm);
   }
 
-  // Group existing set_logs by (movement_id, set_kind) so the
-  // idempotency check is O(1) per planned item.
-  const existingByKey = new Map<string, number>();
-  for (const r of (existingRes.data ?? []) as Array<{ movement_id: string; set_kind: string }>) {
-    const key = `${r.movement_id}::${r.set_kind}`;
-    existingByKey.set(key, (existingByKey.get(key) ?? 0) + 1);
-  }
-
   // Resolve the session's calendar date from the plan slot so an
   // accepted taper/recovery scales the materialised set_logs the same
   // way the renderers (queries.ts) scale what the user sees.
@@ -1410,14 +1403,14 @@ export async function fillSessionFromPlan(
     );
     items = applyModificationsToPrescription(base, mods).items ?? [];
   }
-  let nextIndex = (existingRes.data ?? []).length;
   const inserts: SetInsert[] = [];
-
-  for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
-    const item = items[itemIdx] as PrescriptionItem;
-    if (!STRENGTH_KINDS.includes(item.kind as SetInsert["set_kind"])) continue;
-    const setKind = item.kind as SetInsert["set_kind"];
-    const setCount = Math.max(1, item.sets ?? 1);
+  const missingSets = planMissingPrescriptionSets(
+    parsed.data.sessionId,
+    items,
+    (existingRes.data ?? []) as ExistingPlannedSet[],
+  );
+  for (const missing of missingSets) {
+    const item = items[missing.itemIndex] as PrescriptionItem;
     const reps = item.reps ?? null;
 
     // Resolve target weight: percentTm × TM, rounded to plate. When no
@@ -1434,30 +1427,32 @@ export async function fillSessionFromPlan(
       weight = item.targetWeightKg;
     }
 
-    const key = `${item.movementId}::${setKind}`;
-    const alreadyHave = existingByKey.get(key) ?? 0;
-    const need = Math.max(0, setCount - alreadyHave);
-    for (let i = 0; i < need; i++) {
-      inserts.push({
-        session_id: parsed.data.sessionId,
-        movement_id: item.movementId,
-        set_index: nextIndex++,
-        set_kind: setKind,
-        weight_kg: weight,
-        reps,
-        prescription_item_index: itemIdx,
-      });
-    }
-    // Update the existing map so the same movement appearing twice in
-    // the plan (rare but possible) doesn't double-count.
-    existingByKey.set(key, alreadyHave + need);
+    inserts.push({
+      session_id: parsed.data.sessionId,
+      movement_id: item.movementId,
+      set_index: missing.setIndex,
+      set_kind: missing.setKind,
+      weight_kg: weight,
+      reps,
+      prescription_item_index: missing.itemIndex,
+      client_log_id: plannedSetClientId(
+        parsed.data.sessionId,
+        missing.itemIndex,
+        missing.copyIndex,
+        item.movementId,
+        missing.setKind,
+      ),
+    });
   }
 
   if (inserts.length === 0) {
     return { ok: true, inserted: 0 };
   }
 
-  const { error } = await supabase.from("set_logs").insert(inserts);
+  const { error } = await supabase.from("set_logs").upsert(inserts, {
+    onConflict: "client_log_id",
+    ignoreDuplicates: true,
+  });
   if (error) return { error: error.message };
 
   revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
