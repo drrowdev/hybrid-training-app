@@ -310,8 +310,8 @@ export default async function PlanPage({
     };
   });
 
-  // Tissue gaps banner kept — the surfacing of "missing tendon work"
-  // is engine output and stays out of the visual rework.
+  // The generic tissue-stack audit belongs only to app-generated archetype
+  // blocks. Packaged programs return no gaps because they own their methodology.
   const tissueGaps = await getCurrentWeekTissueStackGaps(supabase, user.id);
 
   // Reuse the `profile` row fetched above (audit F8 — was a duplicate
