@@ -29,9 +29,12 @@ import {
   DEFAULT_CUSTOM_TB_NAME,
   TB_ACTIVATION_CUSTOMIZATION_VERSION,
   TB_CUSTOMIZATION_VERSION,
-  isTbActivationCustomizationV2,
+  activationSessionConfigs,
+  activationRehabAssignments,
+  activationRehabProtocols,
+  isTbActivationCustomization,
   isTbCustomizationV1,
-  type TbActivationCustomizationV2,
+  type TbActivationCustomizationV3,
   type TbCustomization,
 } from "@/lib/platform/tb-customization";
 import styles from "./ProgramPicker.module.css";
@@ -535,6 +538,12 @@ type RehabDraft = {
   instructions: string;
 };
 
+type RehabProtocolDraft = {
+  id: string;
+  name: string;
+  items: RehabDraft[];
+};
+
 type ActivationSessionDraft = {
   day: number;
   enabled: boolean;
@@ -543,7 +552,7 @@ type ActivationSessionDraft = {
 
 type ActivationPhaseDraft = {
   sessions: Record<string, ActivationSessionDraft>;
-  rehabDays: number[];
+  rehabAssignments: Record<number, string>;
 };
 
 type ActivationDrafts = Record<ActivationPhaseKey, ActivationPhaseDraft>;
@@ -558,12 +567,11 @@ function catalogMovementMetaFromCustomization(
   if (!customization) return {};
   const movements = isTbCustomizationV1(customization)
     ? Object.values(customization.sessionMovements).flat()
-    : Object.values(customization.phases).flatMap((phase) =>
-        Object.values(phase.sessions).flatMap((session) =>
+    : Object.values(activationSessionConfigs(customization)).flatMap(
+        (session) =>
           Object.values(session.movementOverrides).filter(
             (movement) => movement != null,
           ),
-        ),
       );
   return Object.fromEntries(
     movements.flatMap((movement) =>
@@ -651,7 +659,7 @@ function defaultActivationDrafts(
 ): ActivationDrafts {
   const empty = (): ActivationPhaseDraft => ({
     sessions: {},
-    rehabDays: [],
+    rehabAssignments: {},
   });
   const drafts: ActivationDrafts = {
     base: empty(),
@@ -676,7 +684,7 @@ function defaultActivationDrafts(
           },
         ]),
       ),
-      rehabDays: [],
+      rehabAssignments: {},
     };
   }
   for (const session of Object.values(drafts.armor.sessions)) {
@@ -703,12 +711,16 @@ function activationDraftsFromCustomization(
     armorSupplementalA,
     armorSupplementalB,
   );
-  if (!customization || !isTbActivationCustomizationV2(customization)) {
+  if (!customization || !isTbActivationCustomization(customization)) {
     return drafts;
   }
   for (const phase of template?.activationPhases ?? []) {
     const stored = customization.phases[phase.key];
-    drafts[phase.key].rehabDays = [...stored.rehabDays];
+    drafts[phase.key].rehabAssignments = Object.fromEntries(
+      activationRehabAssignments(customization, phase.key).map(
+        (assignment) => [assignment.day, assignment.protocolId],
+      ),
+    );
     for (const session of phase.sessions) {
       const config = stored.sessions[session.key];
       if (!config) continue;
@@ -726,6 +738,47 @@ function activationDraftsFromCustomization(
     }
   }
   return drafts;
+}
+
+function rehabDraftFromStored(item: {
+  movementId: string;
+  side?: "both" | "left" | "right";
+  sets: number;
+  reps?: number;
+  holdSeconds?: number;
+  targetWeightKg?: number;
+  instructions?: string;
+}): RehabDraft {
+  return {
+    movementId: item.movementId,
+    side: item.side ?? "both",
+    sets: String(item.sets),
+    reps: item.reps == null ? "" : String(item.reps),
+    holdSeconds:
+      item.holdSeconds == null ? "" : String(item.holdSeconds),
+    targetWeightKg:
+      item.targetWeightKg == null ? "" : String(item.targetWeightKg),
+    instructions: item.instructions ?? "",
+  };
+}
+
+function validRehabDraft(item: RehabDraft): boolean {
+  return (
+    Boolean(item.movementId) &&
+    Number(item.sets) > 0 &&
+    (Number(item.reps) > 0 || Number(item.holdSeconds) > 0)
+  );
+}
+
+function activationProtocolDraftsFromCustomization(
+  customization: TbCustomization | undefined,
+): RehabProtocolDraft[] {
+  if (!customization || !isTbActivationCustomization(customization)) return [];
+  return activationRehabProtocols(customization).map((protocol) => ({
+    id: protocol.id,
+    name: protocol.name,
+    items: protocol.items.map(rehabDraftFromStored),
+  }));
 }
 
 /**
@@ -1268,17 +1321,17 @@ export function ProgramPicker({
       : {};
   });
   const [rehabDrafts, setRehabDrafts] = useState<RehabDraft[]>(
-    editContext?.customization?.rehab?.items.map((item) => ({
-      movementId: item.movementId,
-      side: item.side ?? "both",
-      sets: String(item.sets),
-      reps: item.reps == null ? "" : String(item.reps),
-      holdSeconds:
-        item.holdSeconds == null ? "" : String(item.holdSeconds),
-      targetWeightKg:
-        item.targetWeightKg == null ? "" : String(item.targetWeightKg),
-      instructions: item.instructions ?? "",
-    })) ?? [],
+    editContext?.customization &&
+      isTbCustomizationV1(editContext.customization)
+      ? editContext.customization.rehab?.items.map(rehabDraftFromStored) ?? []
+      : [],
+  );
+  const [rehabProtocols, setRehabProtocols] = useState<
+    RehabProtocolDraft[]
+  >(() =>
+    activationProtocolDraftsFromCustomization(
+      editContext?.customization,
+    ),
   );
   const [activationDrafts, setActivationDrafts] =
     useState<ActivationDrafts>(() =>
@@ -1316,6 +1369,7 @@ export function ProgramPicker({
         : {},
     );
     setRehabDrafts([]);
+    setRehabProtocols([]);
     setCatalogMovementMeta({});
     setActivationDrafts(
       defaultActivationDrafts(
@@ -1569,24 +1623,25 @@ export function ProgramPicker({
         if (new Set(selected).size !== selected.length) return false;
       }
     }
-    const hasRehabDays = Object.values(activationDrafts).some(
-      (phase) => phase.rehabDays.length > 0,
+    const protocolIds = new Set(rehabProtocols.map((protocol) => protocol.id));
+    const protocolsReady = rehabProtocols.every(
+      (protocol) =>
+        protocol.name.trim().length > 0 &&
+        protocol.items.length > 0 &&
+        protocol.items.every(validRehabDraft),
     );
-    return (
-      !hasRehabDays ||
-      rehabDrafts.some(
-        (item) =>
-          item.movementId &&
-          Number(item.sets) > 0 &&
-          (Number(item.reps) > 0 || Number(item.holdSeconds) > 0),
-      )
+    const assignmentsReady = Object.values(activationDrafts).every((phase) =>
+      Object.values(phase.rehabAssignments).every((protocolId) =>
+        protocolIds.has(protocolId),
+      ),
     );
+    return protocolsReady && assignmentsReady;
   }, [
     activeTbTemplate,
     activationDrafts,
     customizeTb,
     isActivation,
-    rehabDrafts,
+    rehabProtocols,
   ]);
 
   const canDeploy =
@@ -1662,12 +1717,17 @@ export function ProgramPicker({
           : {},
       );
       setRehabDrafts([]);
+      setRehabProtocols([]);
       setCatalogMovementMeta({});
       setActivationDrafts(defaultActivationDrafts(t ?? null));
     } else {
       setCluster([]);
       setLastTbTemplateId(null);
       setWeek(buildWeek(p.sessionsPerWeek ?? 4));
+      setRehabDrafts([]);
+      setRehabProtocols([]);
+      setCatalogMovementMeta({});
+      setActivationDrafts(defaultActivationDrafts(null));
     }
     setFreq531(p.id === "wendler-531" ? (p.sessionsPerWeek ?? 4) : 4);
   }
@@ -1741,6 +1801,11 @@ export function ProgramPicker({
         );
       }
       if (next && isActivation) {
+        setRehabProtocols(
+          activationProtocolDraftsFromCustomization(
+            editContext?.customization,
+          ),
+        );
         setActivationDrafts(
           activationDraftsFromCustomization(
             activeTbTemplate,
@@ -1864,19 +1929,22 @@ export function ProgramPicker({
     }));
   }
 
-  function toggleActivationRehabDay(
+  function setActivationRehabProtocol(
     phase: ActivationPhaseKey,
     day: number,
+    protocolId: string,
   ) {
     setActivationDrafts((current) => {
-      const selected = current[phase].rehabDays;
+      const rehabAssignments = {
+        ...current[phase].rehabAssignments,
+      };
+      if (protocolId) rehabAssignments[day] = protocolId;
+      else delete rehabAssignments[day];
       return {
         ...current,
         [phase]: {
           ...current[phase],
-          rehabDays: selected.includes(day)
-            ? selected.filter((candidate) => candidate !== day)
-            : [...selected, day].sort((a, b) => a - b),
+          rehabAssignments,
         },
       };
     });
@@ -1907,6 +1975,100 @@ export function ProgramPicker({
         instructions: "",
       },
     ]);
+  }
+
+  function addRehabProtocol() {
+    setRehabProtocols((current) => {
+      let ordinal = current.length + 1;
+      while (
+        current.some((protocol) => protocol.id === `protocol-${ordinal}`)
+      ) {
+        ordinal += 1;
+      }
+      return [
+        ...current,
+        {
+          id: `protocol-${ordinal}`,
+          name: `Protocol ${ordinal}`,
+          items: [],
+        },
+      ];
+    });
+  }
+
+  function updateRehabProtocol(
+    protocolId: string,
+    patch: Partial<Pick<RehabProtocolDraft, "name" | "items">>,
+  ) {
+    setRehabProtocols((current) =>
+      current.map((protocol) =>
+        protocol.id === protocolId ? { ...protocol, ...patch } : protocol,
+      ),
+    );
+  }
+
+  function removeRehabProtocol(protocolId: string) {
+    setRehabProtocols((current) =>
+      current.filter((protocol) => protocol.id !== protocolId),
+    );
+    setActivationDrafts((current) =>
+      Object.fromEntries(
+        Object.entries(current).map(([phase, draft]) => [
+          phase,
+          {
+            ...draft,
+            rehabAssignments: Object.fromEntries(
+              Object.entries(draft.rehabAssignments).filter(
+                ([, assigned]) => assigned !== protocolId,
+              ),
+            ),
+          },
+        ]),
+      ) as ActivationDrafts,
+    );
+  }
+
+  function addProtocolMovement(protocolId: string) {
+    setRehabProtocols((current) =>
+      current.map((protocol) =>
+        protocol.id === protocolId
+          ? {
+              ...protocol,
+              items: [
+                ...protocol.items,
+                {
+                  movementId: rehabMovements[0]?.id ?? "",
+                  side: "both",
+                  sets: "3",
+                  reps: "10",
+                  holdSeconds: "",
+                  targetWeightKg: "",
+                  instructions: "",
+                },
+              ],
+            }
+          : protocol,
+      ),
+    );
+  }
+
+  function updateProtocolMovement(
+    protocolId: string,
+    index: number,
+    patch: Partial<RehabDraft>,
+  ) {
+    setRehabProtocols((current) =>
+      current.map((protocol) =>
+        protocol.id === protocolId
+          ? {
+              ...protocol,
+              items: protocol.items.map((item, itemIndex) =>
+                itemIndex === index ? { ...item, ...patch } : item,
+              ),
+            }
+          : protocol,
+      ),
+    );
   }
 
   function updateRehabMovement(
@@ -1978,12 +2140,10 @@ export function ProgramPicker({
       setupValues.dayOrder = chosen.dayOrder;
     }
 
-    const rehabItems = rehabDrafts
+    const serializeRehabItems = (drafts: RehabDraft[]) =>
+      drafts
       .filter(
-        (item) =>
-          item.movementId &&
-          Number(item.sets) > 0 &&
-          (Number(item.reps) > 0 || Number(item.holdSeconds) > 0),
+        validRehabDraft,
       )
       .map((item) => ({
         movementId: item.movementId,
@@ -2007,19 +2167,17 @@ export function ProgramPicker({
           ? { instructions: item.instructions.trim() }
           : {}),
       }));
-    const hasActivationRehabDays = Object.values(activationDrafts).some(
-      (phase) => phase.rehabDays.length > 0,
-    );
+    const rehabItems = serializeRehabItems(rehabDrafts);
     const activationPhasePayload = (
       phase: ActivationPhaseKey,
-    ): TbActivationCustomizationV2["phases"][ActivationPhaseKey] => {
-      const sessions: TbActivationCustomizationV2["phases"][ActivationPhaseKey]["sessions"] =
+    ): TbActivationCustomizationV3["phases"][ActivationPhaseKey] => {
+      const sessions: TbActivationCustomizationV3["phases"][ActivationPhaseKey]["sessions"] =
         Object.fromEntries(
         (activeTbTemplate?.activationPhases ?? [])
           .find((candidate) => candidate.key === phase)
           ?.sessions.map((session) => {
             const draft = activationDrafts[phase].sessions[session.key]!;
-            const movementOverrides: TbActivationCustomizationV2["phases"][ActivationPhaseKey]["sessions"][string]["movementOverrides"] =
+            const movementOverrides: TbActivationCustomizationV3["phases"][ActivationPhaseKey]["sessions"][string]["movementOverrides"] =
               {};
             for (const [sourceMovement, movement] of Object.entries(
               draft.movements,
@@ -2055,7 +2213,14 @@ export function ProgramPicker({
         );
       return {
         sessions,
-        rehabDays: [...activationDrafts[phase].rehabDays],
+        rehabAssignments: Object.entries(
+          activationDrafts[phase].rehabAssignments,
+        )
+          .map(([day, protocolId]) => ({
+            day: Number(day),
+            protocolId,
+          }))
+          .sort((left, right) => left.day - right.day),
       };
     };
     const customization: TbCustomization | undefined =
@@ -2071,9 +2236,11 @@ export function ProgramPicker({
                 operator: activationPhasePayload("operator"),
                 vertex: activationPhasePayload("vertex"),
               },
-              ...(hasActivationRehabDays
-                ? { rehab: { items: rehabItems } }
-                : {}),
+              rehabProtocols: rehabProtocols.map((protocol) => ({
+                id: protocol.id,
+                name: protocol.name.trim(),
+                items: serializeRehabItems(protocol.items),
+              })),
             }
           : {
               version: TB_CUSTOMIZATION_VERSION,
@@ -3126,11 +3293,22 @@ export function ProgramPicker({
               (session) => session.type === "strength",
             ).length;
             const conditioning = enabled.length - strength;
-            const rehab =
-              activationDrafts[activationStartPhase].rehabDays.length;
+            const rehabDays = Object.keys(
+              activationDrafts[activationStartPhase].rehabAssignments,
+            ).map(Number);
+            const rehab = rehabDays.length;
+            const occupiedDays = new Set([
+              ...enabled.map(
+                (session) =>
+                  activationDrafts[activationStartPhase].sessions[
+                    session.key
+                  ]!.day,
+              ),
+              ...rehabDays,
+            ]);
             const rest = Math.max(
               0,
-              7 - enabled.length - rehab,
+              7 - occupiedDays.size,
             );
             return `${strength} strength · ${conditioning} conditioning · ${rehab} rehab · ${rest} rest`;
           })()
@@ -3189,139 +3367,183 @@ export function ProgramPicker({
   function renderRehabProtocolEditor() {
     return (
       <div>
-        <div className={styles.label}>Rehab protocol</div>
+        <div className={styles.label}>Rehab protocols</div>
         <p className={styles.note}>
-          Write the exercises, side, sets/reps or hold time, load, and
-          clinician instructions here. Then select rehab days in each phase;
-          rehab can share a day with another workout. SxC does not generate
-          or progress this work.
+          Create one or more clinician-supplied protocols, then choose which
+          protocol runs on each rehab day in every phase. Rehab can share a day
+          with another workout. SxC does not generate or progress this work.
         </p>
-        <div className={styles.rehabList}>
-          {rehabDrafts.map((item, index) => (
-            <div
-              key={`${item.movementId}-${index}`}
-              className={styles.rehabRow}
+        <div className={styles.rehabProtocols}>
+          {rehabProtocols.map((protocol, protocolIndex) => (
+            <section
+              key={protocol.id}
+              className={styles.rehabProtocolCard}
+              data-testid={`rehab-protocol-${protocol.id}`}
             >
-              <select
-                value={item.movementId}
-                onChange={(event) =>
-                  updateRehabMovement(index, {
-                    movementId: event.target.value,
-                  })
-                }
-                aria-label={`Rehab movement ${index + 1}`}
-              >
-                {rehabMovements.map((movement) => (
-                  <option key={movement.id} value={movement.id}>
-                    {movement.name}
-                  </option>
+              <div className={styles.rehabProtocolHead}>
+                <input
+                  type="text"
+                  value={protocol.name}
+                  maxLength={120}
+                  onChange={(event) =>
+                    updateRehabProtocol(protocol.id, {
+                      name: event.target.value,
+                    })
+                  }
+                  aria-label={`Rehab protocol ${protocolIndex + 1} name`}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeRehabProtocol(protocol.id)}
+                  aria-label={`Remove rehab protocol ${protocolIndex + 1}`}
+                >
+                  Remove protocol
+                </button>
+              </div>
+              <div className={styles.rehabList}>
+                {protocol.items.map((item, index) => (
+                  <div
+                    key={`${protocol.id}-${item.movementId}-${index}`}
+                    className={styles.rehabRow}
+                  >
+                    <select
+                      value={item.movementId}
+                      onChange={(event) =>
+                        updateProtocolMovement(protocol.id, index, {
+                          movementId: event.target.value,
+                        })
+                      }
+                      aria-label={`${protocol.name} movement ${index + 1}`}
+                    >
+                      {rehabMovements.map((movement) => (
+                        <option key={movement.id} value={movement.id}>
+                          {movement.name}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={item.side}
+                      onChange={(event) =>
+                        updateProtocolMovement(protocol.id, index, {
+                          side: event.target.value as RehabDraft["side"],
+                        })
+                      }
+                      aria-label={`${protocol.name} side ${index + 1}`}
+                    >
+                      <option value="both">Both sides</option>
+                      <option value="left">Left</option>
+                      <option value="right">Right</option>
+                    </select>
+                    <input
+                      type="number"
+                      min="1"
+                      value={item.sets}
+                      onChange={(event) =>
+                        updateProtocolMovement(protocol.id, index, {
+                          sets: event.target.value,
+                        })
+                      }
+                      aria-label={`${protocol.name} sets ${index + 1}`}
+                      placeholder="Sets"
+                    />
+                    <input
+                      type="number"
+                      min="1"
+                      value={item.reps}
+                      onChange={(event) =>
+                        updateProtocolMovement(protocol.id, index, {
+                          reps: event.target.value,
+                          holdSeconds: event.target.value
+                            ? ""
+                            : item.holdSeconds,
+                        })
+                      }
+                      aria-label={`${protocol.name} reps ${index + 1}`}
+                      placeholder="Reps"
+                    />
+                    <input
+                      type="number"
+                      min="1"
+                      value={item.holdSeconds}
+                      onChange={(event) =>
+                        updateProtocolMovement(protocol.id, index, {
+                          holdSeconds: event.target.value,
+                          reps: event.target.value ? "" : item.reps,
+                        })
+                      }
+                      aria-label={`${protocol.name} hold seconds ${index + 1}`}
+                      placeholder="Hold sec"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={item.targetWeightKg}
+                      onChange={(event) =>
+                        updateProtocolMovement(protocol.id, index, {
+                          targetWeightKg: event.target.value,
+                        })
+                      }
+                      aria-label={`${protocol.name} load ${index + 1}`}
+                      placeholder="kg"
+                    />
+                    <input
+                      type="text"
+                      value={item.instructions}
+                      maxLength={500}
+                      onChange={(event) =>
+                        updateProtocolMovement(protocol.id, index, {
+                          instructions: event.target.value,
+                        })
+                      }
+                      aria-label={`${protocol.name} instructions ${index + 1}`}
+                      placeholder="Instructions"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateRehabProtocol(protocol.id, {
+                          items: protocol.items.filter(
+                            (_, itemIndex) => itemIndex !== index,
+                          ),
+                        })
+                      }
+                      aria-label={`${protocol.name} remove movement ${index + 1}`}
+                    >
+                      Remove
+                    </button>
+                  </div>
                 ))}
-              </select>
-              <select
-                value={item.side}
-                onChange={(event) =>
-                  updateRehabMovement(index, {
-                    side: event.target.value as RehabDraft["side"],
-                  })
-                }
-                aria-label={`Side for rehab movement ${index + 1}`}
-              >
-                <option value="both">Both sides</option>
-                <option value="left">Left</option>
-                <option value="right">Right</option>
-              </select>
-              <input
-                type="number"
-                min="1"
-                value={item.sets}
-                onChange={(event) =>
-                  updateRehabMovement(index, { sets: event.target.value })
-                }
-                aria-label={`Sets for rehab movement ${index + 1}`}
-                placeholder="Sets"
-              />
-              <input
-                type="number"
-                min="1"
-                value={item.reps}
-                onChange={(event) =>
-                  updateRehabMovement(index, {
-                    reps: event.target.value,
-                    holdSeconds: event.target.value
-                      ? ""
-                      : item.holdSeconds,
-                  })
-                }
-                aria-label={`Reps for rehab movement ${index + 1}`}
-                placeholder="Reps"
-              />
-              <input
-                type="number"
-                min="1"
-                value={item.holdSeconds}
-                onChange={(event) =>
-                  updateRehabMovement(index, {
-                    holdSeconds: event.target.value,
-                    reps: event.target.value ? "" : item.reps,
-                  })
-                }
-                aria-label={`Hold seconds for rehab movement ${index + 1}`}
-                placeholder="Hold sec"
-              />
-              <input
-                type="number"
-                min="0"
-                step="0.5"
-                value={item.targetWeightKg}
-                onChange={(event) =>
-                  updateRehabMovement(index, {
-                    targetWeightKg: event.target.value,
-                  })
-                }
-                aria-label={`Load for rehab movement ${index + 1}`}
-                placeholder="kg"
-              />
-              <input
-                type="text"
-                value={item.instructions}
-                maxLength={500}
-                onChange={(event) =>
-                  updateRehabMovement(index, {
-                    instructions: event.target.value,
-                  })
-                }
-                aria-label={`Instructions for rehab movement ${index + 1}`}
-                placeholder="Instructions"
-              />
+              </div>
               <button
                 type="button"
-                onClick={() =>
-                  setRehabDrafts((current) =>
-                    current.filter(
-                      (_, itemIndex) => itemIndex !== index,
-                    ),
-                  )
-                }
-                aria-label={`Remove rehab movement ${index + 1}`}
+                className={styles.addlift}
+                onClick={() => addProtocolMovement(protocol.id)}
+                disabled={rehabMovements.length === 0}
               >
-                Remove
+                + Add movement
               </button>
-            </div>
+              {protocol.items.length === 0 ? (
+                <p className={styles.inlineError}>
+                  Add at least one movement to {protocol.name || "this protocol"}.
+                </p>
+              ) : protocol.items.some((item) => !validRehabDraft(item)) ? (
+                <p className={styles.inlineError}>
+                  Complete the movement, sets, and reps or hold time before
+                  saving.
+                </p>
+              ) : null}
+            </section>
           ))}
         </div>
         <button
           type="button"
           className={styles.addlift}
-          onClick={addRehabMovement}
-          disabled={rehabMovements.length === 0}
+          onClick={addRehabProtocol}
+          disabled={rehabProtocols.length >= 8}
         >
-          + Add rehab movement
+          + Add rehab protocol
         </button>
-        {rehabDrafts.length === 0 ? (
-          <p className={styles.inlineError}>
-            Add at least one movement for your rehab day.
-          </p>
-        ) : null}
       </div>
     );
   }
@@ -3407,7 +3629,7 @@ export function ProgramPicker({
                         phaseDraft.sessions[session.key]?.enabled,
                     ).length
                   }{" "}
-                  sessions · {phaseDraft.rehabDays.length} rehab
+                  sessions · {Object.keys(phaseDraft.rehabAssignments).length} rehab
                   {phaseLocked
                     ? beforeStart
                       ? " · Before start · locked"
@@ -3768,33 +3990,45 @@ export function ProgramPicker({
                   })}
                 </div>
                 <div>
-                  <div className={styles.label}>Rehab-only days</div>
+                  <div className={styles.label}>Rehab protocol by day</div>
                   <div className={styles.activationRehabDays}>
                     {WD.map((day, index) => {
                       const selected =
-                        phaseDraft.rehabDays.includes(index);
+                        phaseDraft.rehabAssignments[index] ?? "";
                       const sharesWorkout = occupied.has(index);
                       return (
-                        <button
+                        <label
                           key={day}
-                          type="button"
                           className={selected ? styles.selected : ""}
-                          onClick={() =>
-                            toggleActivationRehabDay(
-                              phase.key,
-                              index,
-                            )
-                          }
-                          aria-pressed={selected}
                           title={
                             sharesWorkout
                               ? "Adds a separate rehab session on this workout day"
                               : "Adds a rehab-only session"
                           }
                         >
-                          {day}
-                          {sharesWorkout ? " +" : ""}
-                        </button>
+                          <span>
+                            {day}
+                            {sharesWorkout ? " +" : ""}
+                          </span>
+                          <select
+                            value={selected}
+                            onChange={(event) =>
+                              setActivationRehabProtocol(
+                                phase.key,
+                                index,
+                                event.target.value,
+                              )
+                            }
+                            aria-label={`${phase.label} ${day} rehab protocol`}
+                          >
+                            <option value="">No rehab</option>
+                            {rehabProtocols.map((protocol) => (
+                              <option key={protocol.id} value={protocol.id}>
+                                {protocol.name || "Unnamed protocol"}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                       );
                     })}
                   </div>

@@ -590,6 +590,7 @@ describe("materializeProgram — TB3 Activation", () => {
       dayIndex: 2,
       title: "Rehab",
       slot: "pm",
+      prescription: { programRef: "rehab-w0-d2" },
     });
     const baseOne = baseWeek.find((session) =>
       session.ref.endsWith("base-1"),
@@ -610,6 +611,82 @@ describe("materializeProgram — TB3 Activation", () => {
         (session) => session.weekIndex === 4 && session.role === "test",
       ),
     ).toHaveLength(1);
+  });
+
+  it("materialises different named rehab protocols on different Activation days", () => {
+    const customization = {
+      version: 3 as const,
+      templateId: "activation" as const,
+      displayName: "Activation · Multiple rehab",
+      phases: {
+        base: {
+          sessions: {},
+          rehabAssignments: [
+            { day: 0, protocolId: "adductor" },
+            { day: 2, protocolId: "trunk" },
+          ],
+        },
+        armor: { sessions: {}, rehabAssignments: [] },
+        operator: { sessions: {}, rehabAssignments: [] },
+        vertex: { sessions: {}, rehabAssignments: [] },
+      },
+      rehabProtocols: [
+        {
+          id: "adductor",
+          name: "Adductor",
+          items: [
+            {
+              movementId: "00000000-0000-4000-8000-000000000001",
+              movementName: "Standing Banded Hip Adduction",
+              sets: 5,
+              reps: 15,
+            },
+          ],
+        },
+        {
+          id: "trunk",
+          name: "Trunk",
+          items: [
+            {
+              movementId: "00000000-0000-4000-8000-000000000002",
+              movementName: "Dead bug",
+              sets: 3,
+              reps: 8,
+            },
+          ],
+        },
+      ],
+    } satisfies import("../tb-customization").TbActivationCustomizationV3;
+    const custom = materializeProgram(
+      tacticalBarbellEngine,
+      instance,
+      activationCtx,
+      resolve,
+      { weekdays: [0], customization },
+    );
+    const rehab = custom.sessions.filter(
+      (session) => session.weekIndex === 0 && session.role === "rehab",
+    );
+
+    expect(rehab).toHaveLength(2);
+    expect(
+      rehab.map((session) => ({
+        day: session.dayIndex,
+        title: session.title,
+        movement: session.prescription.items[0]?.movementName,
+      })),
+    ).toEqual([
+      {
+        day: 0,
+        title: "Rehab · Adductor",
+        movement: "Standing Banded Hip Adduction",
+      },
+      {
+        day: 2,
+        title: "Rehab · Trunk",
+        movement: "Dead bug",
+      },
+    ]);
   });
 });
 

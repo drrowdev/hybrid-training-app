@@ -87,6 +87,23 @@ describe("SessionPreviewBody (compact / Today hero)", () => {
     expect(html).not.toContain("1 × 14 · 1 × 14");
   });
 
+  it("shows rehab sets × reps instead of the internal tendon kind", () => {
+    const html = renderCompact([
+      {
+        kind: "tendon",
+        movementId: "hip-adduction",
+        movementName: "Standing Banded Hip Adduction",
+        sets: 5,
+        reps: 15,
+        meta: { rehab: true },
+      },
+    ]);
+    expect(html).toContain("5 × 15");
+    expect(html).not.toContain("Tendon × 15");
+    expect(html).toContain("REHAB");
+    expect(html).not.toContain("TENDON WORK");
+  });
+
   it("strips outer chrome: no back link, no outer header, no Start CTA", () => {
     const html = renderCompact([cardio()], { title: "VO2 intervals" });
     expect(html).not.toContain('data-testid="back-link"');

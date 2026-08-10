@@ -35,6 +35,9 @@ import type { AssistancePlanner } from "./assistance-resolver";
 import type { TbAccessoryInjector } from "./tb-accessories";
 import {
   activationSessionConfigs,
+  activationRehabAssignments,
+  activationRehabProtocols,
+  isTbActivationCustomization,
   isTbActivationCustomizationV2,
   isTbCustomizationV1,
   type TbCustomization,
@@ -303,7 +306,7 @@ export function materializeProgram<I>(
   let maxEmittedWeek = -1;
   const activationConfigs =
     opts.customization &&
-    isTbActivationCustomizationV2(opts.customization)
+    isTbActivationCustomization(opts.customization)
       ? activationSessionConfigs(opts.customization)
       : null;
 
@@ -458,8 +461,24 @@ export function materializeProgram<I>(
     }
   }
 
-  const rehabItems = opts.customization?.rehab?.items ?? [];
-  if (rehabItems.length > 0 && maxEmittedWeek >= 0) {
+  const legacyRehabItems =
+    opts.customization && isTbCustomizationV1(opts.customization)
+      ? opts.customization.rehab?.items ?? []
+      : [];
+  const activationProtocols =
+    opts.customization && isTbActivationCustomization(opts.customization)
+      ? activationRehabProtocols(opts.customization)
+      : [];
+  const usesLegacyActivationRehab =
+    opts.customization != null &&
+    isTbActivationCustomizationV2(opts.customization);
+  const activationProtocolById = new Map(
+    activationProtocols.map((protocol) => [protocol.id, protocol]),
+  );
+  if (
+    (legacyRehabItems.length > 0 || activationProtocols.length > 0) &&
+    maxEmittedWeek >= 0
+  ) {
     const takenSlots = new Set(
       sessions.map(
         (session) =>
@@ -467,23 +486,54 @@ export function materializeProgram<I>(
       ),
     );
     for (let weekIndex = 0; weekIndex <= maxEmittedWeek; weekIndex++) {
-      const rehabDays =
+      const rehabAssignments =
         opts.customization && isTbCustomizationV1(opts.customization)
           ? opts.customization.dayTypes.flatMap((type, day) =>
-              type === "rehab" ? [day] : [],
+              type === "rehab"
+                ? [
+                    {
+                      day,
+                      protocolId: null,
+                      protocolName: "Rehab",
+                      items: legacyRehabItems,
+                    },
+                  ]
+                : [],
             )
           : opts.customization &&
-              isTbActivationCustomizationV2(opts.customization)
+              isTbActivationCustomization(opts.customization)
             ? (() => {
                 const absoluteWeek =
                   ((startWeek + weekIndex) % 25) + 1;
                 const phase = activationPhaseForWeek(absoluteWeek);
-                return phase
-                  ? opts.customization.phases[phase].rehabDays
-                  : [];
+                if (!phase) return [];
+                return activationRehabAssignments(
+                  opts.customization,
+                  phase,
+                ).map((assignment) => {
+                  const protocol = activationProtocolById.get(
+                    assignment.protocolId,
+                  );
+                  if (!protocol) {
+                    throw new Error(
+                      `materializeProgram: rehab protocol '${assignment.protocolId}' is missing`,
+                    );
+                  }
+                  return {
+                    day: assignment.day,
+                    protocolId: usesLegacyActivationRehab
+                      ? null
+                      : protocol.id,
+                    protocolName: usesLegacyActivationRehab
+                      ? "Rehab"
+                      : protocol.name,
+                    items: protocol.items,
+                  };
+                });
               })()
             : [];
-      for (const dayIndex of rehabDays) {
+      for (const assignment of rehabAssignments) {
+        const dayIndex = assignment.day;
         const dayHasSession = sessions.some(
           (session) =>
             session.weekIndex === weekIndex &&
@@ -495,10 +545,12 @@ export function materializeProgram<I>(
             `materializeProgram: rehab slot '${slot}' on day ${dayIndex} collides in week ${weekIndex + 1}`,
           );
         }
-        const ref = `rehab-w${weekIndex}-d${dayIndex}`;
+        const ref = assignment.protocolId
+          ? `rehab-${assignment.protocolId}-w${weekIndex}-d${dayIndex}`
+          : `rehab-w${weekIndex}-d${dayIndex}`;
         const prescription: Prescription = {
           programRef: ref,
-          items: rehabItems.map((item): PrescriptionItem => {
+          items: assignment.items.map((item): PrescriptionItem => {
             const sideCue =
               item.side === "left"
                 ? "Left side"
@@ -538,7 +590,10 @@ export function materializeProgram<I>(
           weekIndex,
           dayIndex,
           slot,
-          title: "Rehab",
+          title:
+            assignment.protocolName === "Rehab"
+              ? "Rehab"
+              : `Rehab · ${assignment.protocolName}`,
           role: "rehab",
           prescription,
           sessionModality: "restorative",

@@ -1,7 +1,9 @@
 import { z } from "zod";
 
 export const TB_CUSTOMIZATION_VERSION = 1 as const;
-export const TB_ACTIVATION_CUSTOMIZATION_VERSION = 2 as const;
+export const TB_ACTIVATION_CUSTOMIZATION_V2_VERSION = 2 as const;
+export const TB_ACTIVATION_CUSTOMIZATION_VERSION = 3 as const;
+export const LEGACY_REHAB_PROTOCOL_ID = "protocol-1";
 export const DEFAULT_CUSTOM_TB_NAME = "Tactical Barbell - Customized";
 
 const weekdayTypeSchema = z.enum([
@@ -117,7 +119,7 @@ const activationPhaseSchema = z
 
 export const tbActivationCustomizationV2Schema = z
   .object({
-    version: z.literal(TB_ACTIVATION_CUSTOMIZATION_VERSION),
+    version: z.literal(TB_ACTIVATION_CUSTOMIZATION_V2_VERSION),
     templateId: z.literal("activation"),
     displayName: z.string().trim().min(1).max(120),
     phases: z
@@ -157,15 +159,99 @@ export const tbActivationCustomizationV2Schema = z
     }
   });
 
+const rehabProtocolSchema = z
+  .object({
+    id: z
+      .string()
+      .regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
+    name: z.string().trim().min(1).max(120),
+    items: z.array(rehabItemSchema).min(1).max(20),
+  })
+  .strict();
+
+const rehabAssignmentSchema = z
+  .object({
+    day: z.number().int().min(0).max(6),
+    protocolId: z.string().min(1).max(64),
+  })
+  .strict();
+
+const activationPhaseV3Schema = z
+  .object({
+    sessions: z.record(activationSessionSchema),
+    rehabAssignments: z.array(rehabAssignmentSchema).max(7).default([]),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const days = value.rehabAssignments.map((assignment) => assignment.day);
+    if (new Set(days).size !== days.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["rehabAssignments"],
+        message: "Each day can use at most one rehab protocol.",
+      });
+    }
+  });
+
+export const tbActivationCustomizationV3Schema = z
+  .object({
+    version: z.literal(TB_ACTIVATION_CUSTOMIZATION_VERSION),
+    templateId: z.literal("activation"),
+    displayName: z.string().trim().min(1).max(120),
+    phases: z
+      .object({
+        base: activationPhaseV3Schema,
+        armor: activationPhaseV3Schema,
+        operator: activationPhaseV3Schema,
+        vertex: activationPhaseV3Schema,
+      })
+      .strict(),
+    rehabProtocols: z.array(rehabProtocolSchema).max(8).default([]),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const protocolIds = value.rehabProtocols.map((protocol) => protocol.id);
+    if (new Set(protocolIds).size !== protocolIds.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["rehabProtocols"],
+        message: "Rehab protocol ids must be unique.",
+      });
+    }
+    const known = new Set(protocolIds);
+    for (const [phase, config] of Object.entries(value.phases)) {
+      for (const assignment of config.rehabAssignments) {
+        if (!known.has(assignment.protocolId)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [
+              "phases",
+              phase,
+              "rehabAssignments",
+            ],
+            message: `Rehab protocol '${assignment.protocolId}' does not exist.`,
+          });
+        }
+      }
+    }
+  });
+
 export const tbCustomizationSchema = z.union([
   tbCustomizationV1Schema,
   tbActivationCustomizationV2Schema,
+  tbActivationCustomizationV3Schema,
 ]);
 
 export type TbCustomizationV1 = z.infer<typeof tbCustomizationV1Schema>;
 export type TbActivationCustomizationV2 = z.infer<
   typeof tbActivationCustomizationV2Schema
 >;
+export type TbActivationCustomizationV3 = z.infer<
+  typeof tbActivationCustomizationV3Schema
+>;
+export type TbActivationCustomization =
+  | TbActivationCustomizationV2
+  | TbActivationCustomizationV3;
 export type TbCustomization = z.infer<typeof tbCustomizationSchema>;
 
 export function isTbCustomizationV1(
@@ -177,16 +263,93 @@ export function isTbCustomizationV1(
 export function isTbActivationCustomizationV2(
   value: TbCustomization,
 ): value is TbActivationCustomizationV2 {
+  return value.version === TB_ACTIVATION_CUSTOMIZATION_V2_VERSION;
+}
+
+export function isTbActivationCustomizationV3(
+  value: TbCustomization,
+): value is TbActivationCustomizationV3 {
   return value.version === TB_ACTIVATION_CUSTOMIZATION_VERSION;
 }
 
+export function isTbActivationCustomization(
+  value: TbCustomization,
+): value is TbActivationCustomization {
+  return (
+    isTbActivationCustomizationV2(value) ||
+    isTbActivationCustomizationV3(value)
+  );
+}
+
 export function activationSessionConfigs(
-  customization: TbActivationCustomizationV2,
+  customization: TbActivationCustomization,
 ) {
   return Object.assign(
     {},
     ...Object.values(customization.phases).map((phase) => phase.sessions),
-  ) as TbActivationCustomizationV2["phases"]["base"]["sessions"];
+  ) as TbActivationCustomization["phases"]["base"]["sessions"];
+}
+
+export type ActivationRehabProtocol = {
+  id: string;
+  name: string;
+  items: z.infer<typeof rehabItemSchema>[];
+};
+
+export type ActivationRehabAssignment = {
+  day: number;
+  protocolId: string;
+};
+
+export function activationRehabProtocols(
+  customization: TbActivationCustomization,
+): ActivationRehabProtocol[] {
+  if (isTbActivationCustomizationV3(customization)) {
+    return customization.rehabProtocols;
+  }
+  return customization.rehab
+    ? [
+        {
+          id: LEGACY_REHAB_PROTOCOL_ID,
+          name: "Protocol 1",
+          items: customization.rehab.items,
+        },
+      ]
+    : [];
+}
+
+export function activationRehabAssignments(
+  customization: TbActivationCustomization,
+  phase: keyof TbActivationCustomization["phases"],
+): ActivationRehabAssignment[] {
+  if (isTbActivationCustomizationV3(customization)) {
+    return customization.phases[phase].rehabAssignments;
+  }
+  return customization.phases[phase].rehabDays.map((day) => ({
+    day,
+    protocolId: LEGACY_REHAB_PROTOCOL_ID,
+  }));
+}
+
+export function effectiveActivationRehabProtocolIds(
+  customization: TbActivationCustomization,
+  startWeekIndex = 0,
+): Set<string> {
+  const phaseEnds = {
+    base: 3,
+    armor: 7,
+    operator: 18,
+    vertex: 23,
+  } as const;
+  return new Set(
+    (["base", "armor", "operator", "vertex"] as const)
+      .filter((phase) => phaseEnds[phase] >= startWeekIndex)
+      .flatMap((phase) =>
+        activationRehabAssignments(customization, phase).map(
+          (assignment) => assignment.protocolId,
+        ),
+      ),
+  );
 }
 
 export function customizationDays(

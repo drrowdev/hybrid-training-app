@@ -1583,7 +1583,7 @@
   min-width: 0;
   box-sizing: border-box;
 }
-.rehabRow input[aria-label^="Instructions"] {
+.rehabRow input[aria-label*="instructions" i] {
   grid-column: 1 / -2;
 }
 .rehabRow button {
@@ -1932,28 +1932,61 @@
   background: var(--panel);
   padding: 16px;
 }
-.activationRehabDays {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+.rehabProtocols {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 12px;
 }
-.activationRehabDays button {
-  min-width: 48px;
+.rehabProtocolCard {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line2);
+  border-radius: var(--wradius);
+  background: var(--panel2);
+  padding: 12px;
+}
+.rehabProtocolHead {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.rehabProtocolHead input {
+  flex: 1;
+  min-width: 0;
+}
+.rehabProtocolHead button {
   min-height: 40px;
+  border: 0;
+  background: transparent;
+  color: var(--warn);
+  cursor: pointer;
+}
+.activationRehabDays {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+.activationRehabDays label {
+  display: grid;
+  gap: 5px;
   border: 1px solid var(--line2);
   border-radius: var(--wradius);
   background: var(--bg);
   color: var(--muted);
-  cursor: pointer;
+  padding: 8px;
 }
-.activationRehabDays button.selected {
+.activationRehabDays label.selected {
   border-color: var(--warn);
   background: var(--panel2);
   color: var(--warn);
 }
-.activationRehabDays button:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
+.activationRehabDays label > span {
+  font-size: 11px;
+  font-weight: 700;
+}
+.activationRehabDays select {
+  width: 100%;
+  min-width: 0;
 }
 
 /* info modal meta chips */
@@ -1980,7 +2013,7 @@
     grid-template-columns: 1fr 1fr;
   }
   .rehabRow select:first-child,
-  .rehabRow input[aria-label^="Instructions"],
+  .rehabRow input[aria-label*="instructions" i],
   .rehabRow button {
     grid-column: 1 / -1;
   }

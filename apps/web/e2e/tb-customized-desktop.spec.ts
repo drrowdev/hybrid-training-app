@@ -214,7 +214,25 @@ test("creates and restores a phase-aware customized Activation plan", async ({
     .getByLabel("Search the exercise library")
     .fill("Belt Squat");
   await armorSquat.getByRole("button", { name: /Belt Squat/ }).click();
-  await armor.getByRole("button", { name: "Mon +", exact: true }).click();
+  await page.getByRole("button", { name: "Add rehab protocol" }).click();
+  await page
+    .getByTestId("rehab-protocol-protocol-1")
+    .getByRole("button", { name: "Add movement" })
+    .click();
+  await page.getByRole("button", { name: "Add rehab protocol" }).click();
+  await page
+    .getByTestId("rehab-protocol-protocol-2")
+    .getByRole("button", { name: "Add movement" })
+    .click();
+  await page
+    .getByLabel("Protocol 2 movement 1")
+    .selectOption({ label: "Dead Bug" });
+  await armor
+    .getByLabel("Armor Mon rehab protocol")
+    .selectOption("protocol-1");
+  await armor
+    .getByLabel("Armor Sat rehab protocol")
+    .selectOption("protocol-2");
   await page
     .getByTestId("activation-phase-operator")
     .locator(":scope > summary")
@@ -229,9 +247,8 @@ test("creates and restores a phase-aware customized Activation plan", async ({
       .getByRole("button", { name: /Conventional Deadlift/ })
       .click();
   }
-  await page.getByRole("button", { name: "Add rehab movement" }).click();
   await page
-    .getByLabel("Instructions for rehab movement 1")
+    .getByLabel("Protocol 1 instructions 1")
     .fill("Slow and pain-free, as prescribed by physio.");
   await expect(
     page.getByText("3 strength · 2 conditioning · 0 rehab · 2 rest"),
@@ -257,17 +274,19 @@ test("creates and restores a phase-aware customized Activation plan", async ({
   expect(instanceError).toBeNull();
   expect(programInstance).toMatchObject({
     display_name: "Tactical Barbell - Customized",
-    customization_version: 2,
+    customization_version: 3,
   });
   const setupInput = programInstance!.setup_input as {
     customization?: {
       version?: number;
-      rehab?: {
+      rehabProtocols?: Array<{
+        id?: string;
+        name?: string;
         items?: Array<{ instructions?: string }>;
-      };
+      }>;
       phases?: {
         base?: {
-          rehabDays?: number[];
+          rehabAssignments?: Array<{ day?: number; protocolId?: string }>;
           sessions?: Record<
             string,
             {
@@ -278,7 +297,7 @@ test("creates and restores a phase-aware customized Activation plan", async ({
           >;
         };
         armor?: {
-          rehabDays?: number[];
+          rehabAssignments?: Array<{ day?: number; protocolId?: string }>;
           sessions?: Record<
             string,
             {
@@ -291,17 +310,30 @@ test("creates and restores a phase-aware customized Activation plan", async ({
     };
   };
   expect(setupInput.customization).toMatchObject({
-    version: 2,
-    rehab: {
-      items: [
-        {
-          instructions: "Slow and pain-free, as prescribed by physio.",
-        },
-      ],
-    },
+    version: 3,
+    rehabProtocols: [
+      {
+        id: "protocol-1",
+        name: "Protocol 1",
+        items: [
+          {
+            instructions: "Slow and pain-free, as prescribed by physio.",
+          },
+        ],
+      },
+      {
+        id: "protocol-2",
+        name: "Protocol 2",
+        items: [
+          {
+            movementName: "Dead Bug",
+          },
+        ],
+      },
+    ],
     phases: {
       base: {
-        rehabDays: [],
+        rehabAssignments: [],
         sessions: {
           "activation.base.base-1": {
             day: 6,
@@ -311,7 +343,10 @@ test("creates and restores a phase-aware customized Activation plan", async ({
         },
       },
       armor: {
-        rehabDays: [0],
+        rehabAssignments: [
+          { day: 0, protocolId: "protocol-1" },
+          { day: 5, protocolId: "protocol-2" },
+        ],
         sessions: {
           "activation.armor.armor-a1": {
             day: 1,
@@ -332,7 +367,7 @@ test("creates and restores a phase-aware customized Activation plan", async ({
 
   const { data: sessions, error: sessionsError } = await admin
     .from("planned_sessions")
-    .select("id, week_index, day_index, slot, role, prescription, completed_session_id")
+    .select("id, week_index, day_index, slot, title, role, prescription, completed_session_id")
     .eq("block_id", programInstance!.block_id);
   expect(sessionsError).toBeNull();
   const weekOne = sessions!.filter((session) => session.week_index === 0);
@@ -375,6 +410,16 @@ test("creates and restores a phase-aware customized Activation plan", async ({
       ["rehab", "pm"],
     ]),
   );
+  expect(
+    armorWeek.find(
+      (session) =>
+        session.day_index === 5 &&
+        session.role === "rehab",
+    ),
+  ).toMatchObject({
+    slot: "pm",
+    title: "Rehab · Protocol 2",
+  });
   const armorA1 = armorWeek.find((session) =>
     (session.prescription as { programRef?: string }).programRef?.endsWith(
       "armor-a1",
@@ -488,8 +533,16 @@ test("creates and restores a phase-aware customized Activation plan", async ({
   await expect(
     page
       .getByTestId("activation-phase-armor")
-      .getByRole("button", { name: "Mon +", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
+      .getByLabel("Armor Mon rehab protocol"),
+  ).toHaveValue("protocol-1");
+  await expect(
+    page
+      .getByTestId("activation-phase-armor")
+      .getByLabel("Armor Sat rehab protocol"),
+  ).toHaveValue("protocol-2");
+  await expect(page.getByLabel("Rehab protocol 1 name")).toHaveValue(
+    "Protocol 1",
+  );
   await expect(
     page
       .getByTestId("activation-session-activation.base.base-lss-3")
