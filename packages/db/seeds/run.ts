@@ -11,7 +11,7 @@ import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { sql as drizzleSql } from "drizzle-orm";
 import { movements } from "../src/schema/movements";
-import { SEED_MOVEMENTS } from "./movements";
+import { requiresPrimaryMuscle, SEED_MOVEMENTS } from "./movements";
 
 config({ path: ".env.local" });
 
@@ -27,8 +27,11 @@ const db = drizzle(sql);
 async function main() {
   console.log(`Seeding ${SEED_MOVEMENTS.length} movements...`);
 
-  // Sanity: every movement has at least one primary muscle.
-  const malformed = SEED_MOVEMENTS.filter((m) => m.primaryMuscles.length === 0 && m.pattern !== "carry");
+  // Sanity: every movement representable by the current taxonomy has a
+  // primary muscle. Deliberate taxonomy gaps are centralized with the seed.
+  const malformed = SEED_MOVEMENTS.filter(
+    (m) => m.primaryMuscles.length === 0 && requiresPrimaryMuscle(m),
+  );
   if (malformed.length > 0) {
     console.error(`✗ ${malformed.length} movements missing primary muscles:`);
     for (const m of malformed.slice(0, 10)) console.error(`  ${m.slug}`);

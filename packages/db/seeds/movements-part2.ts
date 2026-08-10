@@ -268,6 +268,72 @@ const CORE: NewMovement[] = [
 // candidates (endurance_anchor requires 2 of each per week). Tagged
 // automatically by `deriveAccessoryRoles` (slug + region rules).
 const PREHAB: NewMovement[] = [
+  m("standing-banded-hip-flexion", "Standing Banded Hip Flexion", {
+    equipment: "band",
+    // Closest required region for this anterior-hip movement and conservative
+    // safety bucket for the user-requested adductor rehabilitation protocol.
+    primaryRegion: "adductor_groin",
+    primaryMuscles: [],
+    secondaryMuscles: [],
+    bilateral: false,
+    stability: "supported",
+    isSupported: true,
+    eccentricLoadScore: 1,
+    stimToFatigueScore: 4,
+    metadata: {
+      protocol: "banded-four-way-hip",
+      direction: "flexion",
+      emphasis: "hip-flexor-rehab",
+    },
+  }),
+  m("standing-banded-hip-extension", "Standing Banded Hip Extension", {
+    equipment: "band",
+    primaryRegion: "hamstring_posterior",
+    primaryMuscles: ["glutes"],
+    secondaryMuscles: ["hamstrings"],
+    bilateral: false,
+    stability: "supported",
+    isSupported: true,
+    eccentricLoadScore: 1,
+    stimToFatigueScore: 4,
+    metadata: {
+      protocol: "banded-four-way-hip",
+      direction: "extension",
+      emphasis: "hip-extensor-rehab",
+    },
+  }),
+  m("standing-banded-hip-abduction", "Standing Banded Hip Abduction", {
+    equipment: "band",
+    primaryRegion: "hamstring_posterior",
+    primaryMuscles: ["abductors", "glutes"],
+    bilateral: false,
+    stability: "supported",
+    isSupported: true,
+    eccentricLoadScore: 1,
+    stimToFatigueScore: 4,
+    functionalRoles: ["hip_stabilizer"],
+    metadata: {
+      protocol: "banded-four-way-hip",
+      direction: "abduction",
+      emphasis: "lateral-hip-rehab",
+    },
+  }),
+  m("standing-banded-hip-adduction", "Standing Banded Hip Adduction", {
+    equipment: "band",
+    primaryRegion: "adductor_groin",
+    primaryMuscles: ["adductors"],
+    bilateral: false,
+    stability: "supported",
+    isSupported: true,
+    eccentricLoadScore: 1,
+    stimToFatigueScore: 4,
+    functionalRoles: ["hip_stabilizer"],
+    metadata: {
+      protocol: "banded-four-way-hip",
+      direction: "adduction",
+      emphasis: "adductor-rehab",
+    },
+  }),
   m("clamshell-band", "Clamshell (band)", { equipment: "band", primaryRegion: "hamstring_posterior", primaryMuscles: ["abductors", "glutes"], bilateral: false, experienceMax: 2, metadata: { emphasis: "glute-med-prehab" } }),
   m("monster-walk-band", "Monster Walk (band)", { equipment: "band", primaryRegion: "hamstring_posterior", primaryMuscles: ["abductors", "glutes"], metadata: { emphasis: "glute-med-prehab" } }),
   m("side-lying-hip-abduction", "Side-Lying Hip Abduction", { equipment: "bodyweight-or-loaded", primaryRegion: "hamstring_posterior", primaryMuscles: ["abductors", "glutes"], bilateral: false }),
