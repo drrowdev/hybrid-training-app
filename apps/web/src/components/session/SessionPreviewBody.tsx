@@ -126,6 +126,13 @@ export function SessionPreviewBody({
   const supplementalMovementSections = sections.movements.filter(
     isSupplementalOnlySection,
   );
+  const tendonSectionLabel =
+    sections.tendon.length > 0 &&
+    sections.tendon.every((row) =>
+      row.items.every((item) => item.meta?.rehab === true),
+    )
+      ? "REHAB"
+      : "TENDON WORK";
 
   // On the Preview page the page header already shows "~35 min" in
   // the meta line, so CardioCard hides its Duration row to avoid
@@ -250,7 +257,7 @@ export function SessionPreviewBody({
         {sections.tendon.length > 0 && (
           <MovementListCard
             testId="session-preview-section-tendon"
-            kind="TENDON WORK"
+            kind={tendonSectionLabel}
             rows={sections.tendon}
           />
         )}

@@ -25,6 +25,32 @@ describe("formatPrescriptionItem · accessory branch", () => {
     expect(formatPrescriptionItem(accessory({ sets: 3, reps: 12 }))).toBe("3 × 12");
   });
 
+  describe("formatPrescriptionItem · tendon/rehab branch", () => {
+    it("renders rehab sets and reps without leaking the internal tendon kind", () => {
+      expect(
+        formatPrescriptionItem({
+          movementId: "rehab",
+          movementName: "Standing Banded Hip Adduction",
+          kind: "tendon",
+          sets: 5,
+          reps: 15,
+        }),
+      ).toBe("5 × 15");
+    });
+
+    it("renders rehab hold dosage with its set count", () => {
+      expect(
+        formatPrescriptionItem({
+          movementId: "rehab",
+          movementName: "Isometric Adduction",
+          kind: "tendon",
+          sets: 3,
+          holdSec: { min: 30, max: 30 },
+        }),
+      ).toBe("3 × 30s hold");
+    });
+  });
+
   it("renders structured set and rep ranges without collapsing to their maxima", () => {
     expect(
       formatPrescriptionItem(

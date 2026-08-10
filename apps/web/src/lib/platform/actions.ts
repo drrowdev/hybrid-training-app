@@ -67,11 +67,13 @@ import { hasUserEditedPrescription } from "@/lib/sessions/prescription-mutations
 import { inferProgramStartWeekIndex } from "@/lib/plan/program-overview";
 import {
   customizationDays,
+  activationRehabProtocols,
+  effectiveActivationRehabProtocolIds,
+  isTbActivationCustomization,
   activationSessionConfigs,
-  isTbActivationCustomizationV2,
   isTbCustomizationV1,
   tbCustomizationSchema,
-  type TbActivationCustomizationV2,
+  type TbActivationCustomization,
   type TbCustomization,
 } from "./tb-customization";
 import {
@@ -122,7 +124,7 @@ function customMovementBindings(
 }
 
 function validateActivationCustomization(
-  customization: TbActivationCustomizationV2,
+  customization: TbActivationCustomization,
 ): string | null {
   const template = getTbTemplate("activation");
   if (!template) return "Activation template is unavailable.";
@@ -197,7 +199,7 @@ function validateActivationCustomization(
 }
 
 function deriveActivationMilestoneOverrides(
-  customization: TbActivationCustomizationV2,
+  customization: TbActivationCustomization,
 ): {
   overrides: Record<
     string,
@@ -311,7 +313,7 @@ function deriveActivationMilestoneOverrides(
 }
 
 function effectiveActivationMovements(
-  customization: TbActivationCustomizationV2,
+  customization: TbActivationCustomization,
   startWeekIndex = 0,
 ): Array<{
   movement: string;
@@ -932,7 +934,7 @@ async function computeForeignWrite(
           ),
         ),
       }
-    : customization && isTbActivationCustomizationV2(customization)
+    : customization && isTbActivationCustomization(customization)
       ? {
           ...setupValues,
           activationSessionOverrides: Object.fromEntries(
@@ -1087,9 +1089,21 @@ async function computeForeignWrite(
     const limitations = await readLimitationsContext(supabase, user.id);
     const catalog = customizationCatalog;
     const byId = new Map(catalog.map((movement) => [movement.id, movement]));
-    const selectedIds = new Set<string>(
-      customization.rehab?.items.map((item) => item.movementId) ?? [],
-    );
+    const selectedIds = new Set<string>();
+    if (isTbCustomizationV1(customization)) {
+      for (const item of customization.rehab?.items ?? []) {
+        selectedIds.add(item.movementId);
+      }
+    } else {
+      const assignedProtocolIds = effectiveActivationRehabProtocolIds(
+        customization,
+        startWeekIndex ?? 0,
+      );
+      for (const protocol of activationRehabProtocols(customization)) {
+        if (!assignedProtocolIds.has(protocol.id)) continue;
+        for (const item of protocol.items) selectedIds.add(item.movementId);
+      }
+    }
     const replacementMovements = isTbCustomizationV1(customization)
       ? Object.values(customization.sessionMovements).flat()
       : effectiveActivationMovements(

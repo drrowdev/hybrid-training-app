@@ -2211,10 +2211,21 @@ export function formatPrescriptionItem(item: PrescriptionItem, tmKg?: number): s
     return parts.join(" · ") || "cardio";
   }
   if (item.kind === "tendon") {
-    const reps = item.reps != null ? `× ${item.reps}` : "";
+    const sets = item.setRange
+      ? `${item.setRange.min}–${item.setRange.max}`
+      : String(item.sets ?? 1);
+    const dosage = item.holdSec
+      ? item.holdSec.min === item.holdSec.max
+        ? `${item.holdSec.min}s hold`
+        : `${item.holdSec.min}–${item.holdSec.max}s hold`
+      : item.repRange
+        ? `${item.repRange.min}–${item.repRange.max}`
+        : item.reps != null
+          ? String(item.reps)
+          : "";
     const cleanedNotes = cleanPrescriptionNotes(item.notes);
     const note = cleanedNotes ? ` · ${cleanedNotes}` : "";
-    return `${item.intensityLabel ?? "Tendon"} ${reps}${note}`.trim();
+    return `${dosage ? `${sets} × ${dosage}` : `${sets} sets`}${note}`;
   }
   if (item.kind === "accessory") {
     const sets = item.setRange
