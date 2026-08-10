@@ -78,13 +78,42 @@ describe("summariseSessionSets — post-session summary computation (Phase 1 C1)
     expect(summary.durationMin).toBe(180);
   });
 
-  it("ignores sets without weight or reps", () => {
+  it("counts unloaded rehab, timed holds, and distance work without inventing tonnage", () => {
     const summary = summariseSessionSets(
       [
-        { set_kind: "main", weight_kg: null, reps: 5 },
+        { set_kind: "tendon", weight_kg: null, reps: 15 },
+        {
+          set_kind: "tendon",
+          weight_kg: null,
+          reps: null,
+          duration_sec: 30,
+        },
+        {
+          set_kind: "accessory",
+          weight_kg: 0,
+          reps: null,
+          distance_m: 20,
+        },
+      ],
+      baseSession,
+      0,
+    );
+    expect(summary.totalTonnageKg).toBe(0);
+    expect(summary.workingSetCount).toBe(3);
+  });
+
+  it("excludes warmups, skipped rows, and rows with no positive work", () => {
+    const summary = summariseSessionSets(
+      [
+        { set_kind: "warmup", weight_kg: 40, reps: 5 },
         { set_kind: "main", weight_kg: 100, reps: null },
-        { set_kind: "main", weight_kg: 0, reps: 5 },
         { set_kind: "main", weight_kg: 100, reps: 0 },
+        {
+          set_kind: "tendon",
+          weight_kg: null,
+          reps: 15,
+          skipped: true,
+        },
       ],
       baseSession,
       0,

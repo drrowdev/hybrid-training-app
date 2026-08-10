@@ -6,6 +6,7 @@
  * components (Today / session-detail pages) and the test harness.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isCountableSet } from "@/lib/engine/set-load";
 
 export type LastSetForMovement = {
   movementId: string;
@@ -167,6 +168,7 @@ export async function getLastSetsForMovements(
 
 export type SessionSummary = {
   setCount: number;
+  /** Completed non-warmup rows, including unloaded rehab, timed holds, and carries. */
   workingSetCount: number;
   /** Sum of weight × reps across non-warmup strength sets, in kg. */
   totalTonnageKg: number;
@@ -179,15 +181,20 @@ export type SessionSummary = {
 /**
  * Compute the session-summary numbers shown on the post-session card.
  *
- * Pure-ish — only takes already-fetched rows. Tonnage excludes warmups
- * (consistent with how PR detection treats them) and excludes sets
- * without both weight and reps.
+ * Pure-ish — only takes already-fetched rows. Completion is independent
+ * from tonnage: unloaded rehab/bodyweight reps, timed holds, and carries
+ * are completed work even when no external weight was logged. Tonnage
+ * still requires positive weight and reps. Warmups and skipped rows count
+ * toward neither metric.
  */
 export function summariseSessionSets(
   sets: Array<{
     set_kind: string;
     weight_kg: number | string | null;
     reps: number | null;
+    duration_sec?: number | null;
+    distance_m?: number | string | null;
+    skipped?: boolean | null;
   }>,
   session: { performed_at: string; completed_at: string | null; duration_min: number | null },
   prCount: number,
@@ -197,9 +204,20 @@ export function summariseSessionSets(
   for (const s of sets) {
     const w = Number(s.weight_kg ?? 0);
     const r = Number(s.reps ?? 0);
-    if (s.set_kind !== "warmup" && w > 0 && r > 0) {
-      tonnage += w * r;
+    const duration = Number(s.duration_sec ?? 0);
+    const distance = Number(s.distance_m ?? 0);
+    const isCountable = isCountableSet({
+      setKind: s.set_kind,
+      isSkipped: s.skipped,
+    });
+    const isCompletedWork =
+      isCountable &&
+      (r > 0 || duration > 0 || distance > 0);
+    if (isCompletedWork) {
       workingCount += 1;
+    }
+    if (isCountable && w > 0 && r > 0) {
+      tonnage += w * r;
     }
   }
 

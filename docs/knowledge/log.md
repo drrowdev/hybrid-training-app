@@ -468,3 +468,6 @@ Foreign-program rehab now uses the same one-prescription-item-per-loggable-set s
 
 ## [2026-08-10] fix | Fill every planned rehab set idempotently
 Same as planned now tracks fulfillment per prescription item and copy rather than deduplicating an entire movement/kind after its first set. The planner supports expanded and legacy collapsed prescriptions, partial fills, deleted middle copies and movement swaps. Each planned set uses a deterministic UUID derived from session, item, copy, movement and kind, then duplicate-ignoring upsert makes repeat and concurrent taps idempotent without suppressing legitimate sibling sets.
+
+## [2026-08-10] fix | Count unloaded rehab work in completed summaries
+Completed-session set totals now count real non-warmup work independently from tonnage, so unloaded rehab and bodyweight reps, timed holds and distance-based work remain completed even without external weight. Warmups, skipped rows and empty rows stay excluded, while tonnage still requires positive load and reps. Same as planned now persists the same rep, hold-duration or distance target shown by the individual logger through one canonical prescription resolver. Authenticated browser coverage follows a fourteen-set mixed rep-and-hold rehab workout from bulk fill through persisted rows, completion and the reloaded 14 / 14 summary.

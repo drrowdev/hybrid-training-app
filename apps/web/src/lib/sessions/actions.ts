@@ -28,6 +28,7 @@ import {
   type ExistingPlannedSet,
   type PlannedSetKind,
 } from "./fill-plan-sets";
+import { resolvePrescriptionSetWork } from "@hta/domain";
 import type { Prescription, PrescriptionItem } from "@hta/db";
 import { applyPrescriptionSwap } from "./prescription-mutations";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
@@ -1312,6 +1313,8 @@ type SetInsert = {
   set_kind: PlannedSetKind;
   weight_kg: number | null;
   reps: number | null;
+  duration_sec: number | null;
+  distance_m: number | null;
   prescription_item_index: number | null;
   client_log_id: string;
 };
@@ -1411,7 +1414,7 @@ export async function fillSessionFromPlan(
   );
   for (const missing of missingSets) {
     const item = items[missing.itemIndex] as PrescriptionItem;
-    const reps = item.reps ?? null;
+    const work = resolvePrescriptionSetWork(item);
 
     // Resolve target weight: percentTm × TM, rounded to plate. When no
     // TM is set we leave weight null — the user will be nudged by the
@@ -1433,7 +1436,9 @@ export async function fillSessionFromPlan(
       set_index: missing.setIndex,
       set_kind: missing.setKind,
       weight_kg: weight,
-      reps,
+      reps: work.reps,
+      duration_sec: work.durationSec,
+      distance_m: work.distanceM,
       prescription_item_index: missing.itemIndex,
       client_log_id: plannedSetClientId(
         parsed.data.sessionId,
