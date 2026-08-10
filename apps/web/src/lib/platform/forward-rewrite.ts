@@ -4,10 +4,12 @@
  * Given today's (week, day) boundary, a freshly materialised set of sessions,
  * and the block's existing rows from the current week onward, it decides —
  * without touching the DB — which untouched upcoming rows to delete and which
- * new rows to insert. Every row through today plus any later row already started
- * or skipped is preserved.
+ * new rows to insert. Past rows, today's non-rehab rows, and any started or
+ * skipped row are preserved. An untouched rehab row scheduled today may be
+ * regenerated so a protocol edit is reflected before the user starts it.
  *
- * "Forward-only" means calendar slots at or before today's day are frozen.
+ * "Forward-only" means past calendar slots are frozen. Today's rehab slot is
+ * the narrow exception because it is explicitly user-authored protocol data.
  */
 
 export interface ExistingFutureRow {
@@ -15,6 +17,7 @@ export interface ExistingFutureRow {
   weekIndex: number;
   dayIndex: number;
   slot: string;
+  role?: string;
   /** True when the row was started (completed_session_id) or skipped. */
   touched: boolean;
 }
@@ -23,6 +26,7 @@ export interface NewSessionLite {
   weekIndex: number;
   dayIndex: number;
   slot: string;
+  role?: string;
 }
 
 export interface ForwardRewritePlan {
@@ -36,6 +40,24 @@ export interface ForwardRewritePlan {
 
 function key(r: { weekIndex: number; dayIndex: number; slot: string }): string {
   return `${r.weekIndex}-${r.dayIndex}-${r.slot}`;
+}
+
+function stableJson(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(stableJson).join(",")}]`;
+  }
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((recordKey) => `${JSON.stringify(recordKey)}:${stableJson(record[recordKey])}`)
+    .join(",")}}`;
+}
+
+export function prescriptionsEquivalent(left: unknown, right: unknown): boolean {
+  return stableJson(left) === stableJson(right);
 }
 
 export function planForwardOnlyRewrite(args: {
@@ -52,22 +74,30 @@ export function planForwardOnlyRewrite(args: {
     existingFuture,
     newSessions,
   } = args;
-  const isFrozen = (row: { weekIndex: number; dayIndex: number }) =>
+  const isPast = (row: { weekIndex: number; dayIndex: number }) =>
     row.weekIndex < currentWeekIndex ||
     (row.weekIndex === currentWeekIndex &&
-      row.dayIndex <= currentDayIndex);
+      row.dayIndex < currentDayIndex);
+  const isTodayNonRehab = (row: {
+    weekIndex: number;
+    dayIndex: number;
+    role?: string;
+  }) =>
+    row.weekIndex === currentWeekIndex &&
+    row.dayIndex === currentDayIndex &&
+    row.role !== "rehab";
 
   const preserved = new Set<string>();
   const deleteIds: string[] = [];
   for (const r of existingFuture) {
-    if (isFrozen(r)) continue;
+    if (isPast(r) || isTodayNonRehab(r)) continue;
     if (r.touched) preserved.add(key(r));
     else deleteIds.push(r.id);
   }
 
   const insertIndices: number[] = [];
   newSessions.forEach((s, i) => {
-    if (isFrozen(s)) return;
+    if (isPast(s) || isTodayNonRehab(s)) return;
     if (preserved.has(key(s))) return; // keep the logged/skipped row instead
     insertIndices.push(i);
   });

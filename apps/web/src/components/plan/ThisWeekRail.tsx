@@ -34,6 +34,50 @@ export type RailRow = {
   session: PlanSessionInput | null;
 };
 
+const SLOT_ORDER: Record<string, number> = {
+  am: 0,
+  single: 1,
+  pm: 2,
+};
+
+export function buildWeekRailRows(
+  sessions: PlanSessionInput[],
+  weekIndex: number,
+): RailRow[] {
+  const byCell = new Map<string, PlanSessionInput[]>();
+  for (const session of sessions) {
+    const key = `${session.weekIndex}-${session.dayIndex}`;
+    const bucket = byCell.get(key) ?? [];
+    bucket.push(session);
+    byCell.set(key, bucket);
+  }
+
+  const rows: RailRow[] = [];
+  for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+    const bucket = [...(byCell.get(`${weekIndex}-${dayIndex}`) ?? [])].sort(
+      (a, b) =>
+        (SLOT_ORDER[a.slot] ?? 3) - (SLOT_ORDER[b.slot] ?? 3) ||
+        a.title.localeCompare(b.title),
+    );
+    if (bucket.length === 0) {
+      rows.push({
+        dayIndex,
+        dow: DOW_FULL[dayIndex]!,
+        session: null,
+      });
+      continue;
+    }
+    for (const session of bucket) {
+      rows.push({
+        dayIndex,
+        dow: DOW_FULL[dayIndex]!,
+        session,
+      });
+    }
+  }
+  return rows;
+}
+
 /**
  * Presentational rail list. Pure render: the caller supplies the seven
  * rows (already resolved to the current week), `today`, and the open
@@ -97,7 +141,7 @@ export function RailList({
           if (!s) {
             return (
               <div
-                key={row.dayIndex}
+                key={`rest-${row.dayIndex}`}
                 className={`rail-item rest-item${isToday ? " today-item" : ""}`}
                 data-today={isToday ? "true" : undefined}
                 data-testid={`plan-rail-${row.dayIndex}`}
@@ -120,7 +164,7 @@ export function RailList({
           return (
             <button
               type="button"
-              key={row.dayIndex}
+              key={s.id}
               className={`rail-item ${isPast && !isToday ? "past" : ""} ${
                 isToday ? "today-item" : ""
               }${overdue ? " overdue" : ""}${statusClass ? ` ${statusClass}` : ""}`}
@@ -150,7 +194,7 @@ export function RailList({
                 </span>
               ) : (
                 <span className="rail-kind mono">
-                  {s.isCardio ? "Cardio" : "Strength"}
+                  {s.isRehab ? "Rehab" : s.isCardio ? "Cardio" : "Strength"}
                 </span>
               )}
             </button>
@@ -369,21 +413,10 @@ export function ThisWeekRail({
   }, [openId, closeDrawer]);
 
   const railWeek = Math.max(0, currentWeekIndex >= 0 ? currentWeekIndex : 0);
-  const rail = useMemo<RailRow[]>(() => {
-    const byCell = new Map<string, PlanSessionInput[]>();
-    for (const s of sessions) {
-      const key = `${s.weekIndex}-${s.dayIndex}`;
-      const bucket = byCell.get(key) ?? [];
-      bucket.push(s);
-      byCell.set(key, bucket);
-    }
-    const rows: RailRow[] = [];
-    for (let d = 0; d < 7; d++) {
-      const bucket = byCell.get(`${railWeek}-${d}`) ?? [];
-      rows.push({ dayIndex: d, dow: DOW_FULL[d]!, session: bucket[0] ?? null });
-    }
-    return rows;
-  }, [sessions, railWeek]);
+  const rail = useMemo(
+    () => buildWeekRailRows(sessions, railWeek),
+    [sessions, railWeek],
+  );
 
   const openSession = openId
     ? sessions.find((s) => s.id === openId) ?? null

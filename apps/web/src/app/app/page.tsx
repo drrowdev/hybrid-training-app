@@ -10,7 +10,7 @@ import {
   type PlannedDay,
 } from "@/lib/planner/queries";
 import { todayYmd } from "@/lib/dates";
-import { effectiveTimeOfDay, gapHoursBetween } from "@/lib/planner/time-of-day";
+import { effectiveTimeOfDay } from "@/lib/planner/time-of-day";
 import { getRegionFreshness, type FreshnessConflict } from "@/lib/stats/region-freshness-queries";
 import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
 import { findHeavyOnRecoveringConflictWithMuscles } from "@/lib/muscle/muscle-conflict";
@@ -1144,9 +1144,8 @@ function TodaySessionCard({
     );
   }
 
-  // 1 or 2 planned sessions today.
-  // Compute effective times for AM and PM, then derive the actual gap for
-  // the DC-D1 warning so it shows the real value, not a static reminder.
+  // 1 or 2 planned sessions today. Resolve effective times for the PM-next
+  // hint when the first session has already been completed.
   const slotTimes = new Map<string, string>();
   for (const p of plannedToday) {
     const t = effectiveTimeOfDay({
@@ -1158,11 +1157,6 @@ function TodaySessionCard({
     });
     if (t) slotTimes.set(p.slot, t);
   }
-  const amTime = slotTimes.get("am");
-  const pmTime = slotTimes.get("pm");
-  const gapH = isTwoADay && amTime && pmTime ? gapHoursBetween(amTime, pmTime) : null;
-  const gapShort = gapH != null && gapH < 6;
-
   // Phase 2 B2 — when one slot of a two-a-day is already complete, lead
   // with the still-open slot. Incomplete cards come first; completed
   // cards drop to the bottom (de-emphasised but still visible).
@@ -1205,40 +1199,6 @@ function TodaySessionCard({
   return (
     <div style={{ display: "grid", gap: 10 }}>
       {programRecsBanner}
-      {isTwoADay && (
-        <div
-          role="note"
-          className="cp-card"
-          style={{
-            padding: "10px 14px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 12,
-            background: "color-mix(in oklab, var(--cp-accent) 4%, transparent)",
-            borderColor: "var(--cp-accent)",
-            fontSize: 12,
-          }}
-        >
-          <span style={{ color: "var(--cp-text)" }}>
-            <strong>
-              Two-a-day{gapH != null ? ` · ${gapH.toFixed(0)}h gap` : ""}.
-            </strong>
-            <span style={{ color: "var(--cp-text-muted)", marginLeft: 4 }}>
-              {gapShort
-                ? `Sessions are ${gapH!.toFixed(1)}h apart — research recommends ≥6h between AM lift and PM cardio to protect the strength signal.`
-                : "AM lift + PM cardio with at least 6 hours between protects the strength signal."}
-            </span>
-          </span>
-          <span
-            className="mono"
-            title="Robineau 2016 (HIGH) — recovery between concurrent sessions"
-            style={{ fontSize: 11, color: "var(--cp-text-muted)", flexShrink: 0 }}
-          >
-            Robineau 2016
-          </span>
-        </div>
-      )}
       <div
         style={{
           display: "grid",
