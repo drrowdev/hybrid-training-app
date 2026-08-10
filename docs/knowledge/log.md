@@ -459,3 +459,6 @@ Rehab previews now show the actual prescription dose as sets x reps or sets x ho
 
 ## [2026-08-10] fix | Make Today workout CTAs reflect real session state
 Today now distinguishes Start, Continue, View and Restore from the linked session's active/deleted/completed state instead of treating every raw planned-session link as in progress. Cancelled unfinished sessions are presented as unstarted and can safely restore/reuse their existing session without a 404, link clearing or duplication; deleted completed workouts require explicit restoration from Trash. The same deleted-aware link state now governs planner/history rows, adherence, heatmap, progress, block completion, movement swap links and adaptive remaining-session/deload paths so UI and statistics cannot disagree.
+
+## [2026-08-10] fix | Hide settled workouts from Today primary cards
+Today now renders primary workout cards only for unfinished, unskipped planned sessions. Completed and skipped rows remain visible in This week, history and recent activity, while the full planned day still drives all-logged state and AM/PM context. Partial days therefore keep only the pending card; completed-plus-skipped days show the logged summary; all-skipped plans show No remaining workouts rather than a false Rest day; unrelated activity cannot make an all-skipped plan look logged.

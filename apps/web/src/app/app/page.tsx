@@ -76,7 +76,10 @@ import { estimateSessionMinutes } from "@/lib/sessions/estimate-duration";
 import { ThisWeekRail } from "@/components/plan/ThisWeekRail";
 import { plannedSessionCta } from "@/lib/today/planned-session-cta";
 import type { PlanSessionInput } from "@/components/plan/PlanRedesign";
-import { isTodayFullyLogged } from "@/lib/sessions/today-hero";
+import {
+  actionablePlannedSessions,
+  isTodayFullyLogged,
+} from "@/lib/sessions/today-hero";
 import {
   groupByMovementThenKind,
   isSupplementalOnlySection,
@@ -456,6 +459,7 @@ export default async function TodayPage() {
 
   const openSession = (todaySessions ?? []).find((s) => !s.completed_at) ?? null;
   const completedToday = (todaySessions ?? []).filter((s) => s.completed_at);
+  const actionableToday = actionablePlannedSessions(plannedToday);
   const isTwoADay = plannedToday.length > 1;
   const timezone = profile?.timezone ?? "UTC";
   const amWindowStart = profile?.am_window_start ?? "07:00:00";
@@ -962,6 +966,7 @@ function TodaySessionCard({
   const programRecsBanner = (
     <ProgramRecommendationsBanner recommendations={programRecs} dismissAction={dismissProgramRecommendation} />
   );
+  const actionableToday = actionablePlannedSessions(plannedToday);
   if (openSession) {
     return (
       <>
@@ -1016,7 +1021,42 @@ function TodaySessionCard({
     );
   }
 
-  if (plannedToday.length === 0) {
+  if (actionableToday.length === 0) {
+    if (plannedToday.length > 0) {
+      return (
+        <>
+          {programRecsBanner}
+          <section
+            className="cp-card"
+            data-testid="today-settled"
+            style={{ padding: 20, display: "grid", gap: 10 }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                color: "var(--cp-text-muted)",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+              }}
+            >
+              Today&apos;s plan
+            </div>
+            <h2 style={{ fontSize: 22, margin: 0 }}>
+              No remaining workouts
+            </h2>
+            <p
+              style={{
+                color: "var(--cp-text-muted)",
+                margin: 0,
+                fontSize: 14,
+              }}
+            >
+              Today&apos;s planned sessions are completed or skipped.
+            </p>
+          </section>
+        </>
+      );
+    }
     // Compact 1-row rest banner. Replaces the older Why-rest-day card.
     return (
       <>
@@ -1148,7 +1188,7 @@ function TodaySessionCard({
   // 1 or 2 planned sessions today. Resolve effective times for the PM-next
   // hint when the first session has already been completed.
   const slotTimes = new Map<string, string>();
-  for (const p of plannedToday) {
+  for (const p of actionableToday) {
     const t = effectiveTimeOfDay({
       slot: p.slot,
       plannedAt: p.plannedAt,
@@ -1162,7 +1202,7 @@ function TodaySessionCard({
   // with the still-open slot. Incomplete cards come first; completed
   // cards drop to the bottom (de-emphasised but still visible).
   const orderedPlannedToday = isTwoADay
-    ? [...plannedToday].sort((a, b) => {
+    ? [...actionableToday].sort((a, b) => {
         const aDone = a.completedAt != null ? 1 : 0;
         const bDone = b.completedAt != null ? 1 : 0;
         if (aDone !== bDone) return aDone - bDone;
@@ -1170,17 +1210,17 @@ function TodaySessionCard({
         const slotOrder = (s: string) => (s === "am" ? 0 : s === "pm" ? 1 : 2);
         return slotOrder(a.slot) - slotOrder(b.slot);
       })
-    : plannedToday;
+    : actionableToday;
 
   // PM-next hint (B2). When the AM slot is logged and PM remains, show
   // a ~Xh count-down above the PM card. Computed from the PM slot time
   // minus now-in-user-timezone — falls back to "PM session next" when
   // we can't resolve a clock time.
-  const completedAmSlot = isTwoADay
+  const completedAmSlot = plannedToday.length > 1
     ? plannedToday.find((p) => p.slot === "am" && p.completedAt != null)
     : null;
   const openPmSlot = completedAmSlot
-    ? plannedToday.find((p) => p.slot === "pm" && p.completedAt == null)
+    ? actionableToday.find((p) => p.slot === "pm" && p.completedAt == null)
     : null;
   const pmHoursFromNow = (() => {
     if (!openPmSlot) return null;
