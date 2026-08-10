@@ -676,4 +676,157 @@ test.describe("@desktop session log", () => {
       plannedSessionId: seed.todayPlannedId,
     });
   });
+
+  test("I: rehab Same as planned persists all unloaded sets through the summary", async ({
+    page,
+    context,
+    freshUser,
+    seedConfig,
+    admin,
+    baseURL,
+  }) => {
+    const url = baseURL ?? "http://localhost:3000";
+    const rehabDoses = [
+      { slug: "standing-banded-hip-flexion", sets: 5, reps: 15 },
+      { slug: "standing-banded-hip-extension", sets: 3, reps: 15 },
+      { slug: "standing-banded-hip-abduction", sets: 3, reps: 15 },
+      {
+        slug: "standing-banded-hip-adduction",
+        sets: 3,
+        holdSeconds: 30,
+      },
+    ] as const;
+
+    await markOnboarded(admin, freshUser.userId);
+    await seedStrengthTms(admin, freshUser.userId);
+    const seed = await seedActiveBlock(admin, freshUser.userId);
+    const { data: rehabMovements, error: movementsError } = await admin
+      .from("movements")
+      .select("id, slug, display_name")
+      .in(
+        "slug",
+        rehabDoses.map((dose) => dose.slug),
+      );
+    expect(movementsError).toBeNull();
+    expect(rehabMovements).toHaveLength(rehabDoses.length);
+
+    const movementBySlug = new Map(
+      rehabMovements!.map((movement) => [movement.slug, movement]),
+    );
+    const rehabItems = rehabDoses.flatMap((dose) => {
+      const movement = movementBySlug.get(dose.slug);
+      if (!movement) throw new Error(`Missing rehab movement ${dose.slug}`);
+      return Array.from({ length: dose.sets }, () => ({
+        movementId: movement.id,
+        movementSlug: movement.slug,
+        movementName: movement.display_name,
+        kind: "tendon",
+        sets: 1,
+        ...("holdSeconds" in dose
+          ? {
+              holdSec: {
+                min: dose.holdSeconds,
+                max: dose.holdSeconds,
+              },
+            }
+          : { reps: dose.reps }),
+        meta: { rehab: true },
+      }));
+    });
+    expect(rehabItems).toHaveLength(14);
+
+    const { error: updateError } = await admin
+      .from("planned_sessions")
+      .update({
+        title: "Rehab",
+        role: "rehab",
+        prescription: { items: rehabItems },
+      })
+      .eq("id", seed.todayPlannedId);
+    expect(updateError).toBeNull();
+
+    await signInAs(context, freshUser, seedConfig, url);
+    await page.goto(`/app/sessions/start/${seed.todayPlannedId}`);
+    await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, {
+      timeout: 15_000,
+    });
+    const sessionId = new URL(page.url()).pathname.split("/").pop()!;
+
+    for (const dose of rehabDoses) {
+      const movement = movementBySlug.get(dose.slug)!;
+      await expect(
+        page.getByTestId(`focus-strip-queue-${movement.id}`),
+      ).toContainText(`0/${dose.sets}`);
+    }
+
+    await page.getByTestId("movement-card-fill-from-plan").click();
+
+    for (const dose of rehabDoses) {
+      const movement = movementBySlug.get(dose.slug)!;
+      await expect(
+        page.getByTestId(`focus-strip-queue-${movement.id}`),
+      ).toContainText("✓", { timeout: 15_000 });
+    }
+    await expect(page.getByTestId("finish-stickybar")).toHaveAttribute(
+      "data-armed",
+      "true",
+    );
+
+    await expect
+      .poll(
+        async () => {
+          const { count } = await admin
+            .from("set_logs")
+            .select("id", { count: "exact", head: true })
+            .eq("session_id", sessionId);
+          return count ?? 0;
+        },
+        { timeout: 15_000 },
+      )
+      .toBe(14);
+
+    const { data: loggedSets, error: loggedSetsError } = await admin
+      .from("set_logs")
+      .select(
+        "set_index, set_kind, weight_kg, reps, duration_sec, prescription_item_index, client_log_id",
+      )
+      .eq("session_id", sessionId)
+      .order("set_index", { ascending: true });
+    expect(loggedSetsError).toBeNull();
+    expect(loggedSets).toHaveLength(14);
+    expect(loggedSets!.map((set) => set.set_index)).toEqual(
+      Array.from({ length: 14 }, (_, index) => index),
+    );
+    expect(loggedSets!.map((set) => set.prescription_item_index)).toEqual(
+      Array.from({ length: 14 }, (_, index) => index),
+    );
+    expect(loggedSets!.every((set) => set.set_kind === "tendon")).toBe(true);
+    expect(loggedSets!.every((set) => set.weight_kg == null)).toBe(true);
+    expect(
+      loggedSets!.filter((set) => set.reps === 15 && set.duration_sec == null),
+    ).toHaveLength(11);
+    expect(
+      loggedSets!.filter((set) => set.reps == null && set.duration_sec === 30),
+    ).toHaveLength(3);
+    expect(
+      new Set(loggedSets!.map((set) => set.client_log_id)).size,
+    ).toBe(14);
+
+    await finishAndCompleteSession(page, sessionId);
+    await expect(page.getByTestId("summary-sets")).toContainText(
+      /Sets\s*14\s*\/\s*14$/,
+    );
+    await expect(page.getByTestId("summary-tonnage")).toContainText(
+      /Tonnage\s*—$/,
+    );
+
+    await page.reload();
+    await expect(page.getByTestId("summary-sets")).toContainText(
+      /Sets\s*14\s*\/\s*14$/,
+    );
+    await assertSessionComplete(admin, sessionId, {
+      expectedSetCount: 14,
+      plannedSessionId: seed.todayPlannedId,
+    });
+  });
 });

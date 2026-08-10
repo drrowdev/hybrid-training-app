@@ -518,6 +518,9 @@ export default async function SessionDetailPage({
           set_kind: s.set_kind as string,
           weight_kg: s.weight_kg as number | string | null,
           reps: (s.reps as number | null) ?? null,
+          duration_sec: (s.duration_sec as number | null) ?? null,
+          distance_m: s.distance_m as number | string | null,
+          skipped: (s.skipped as boolean | null) ?? false,
         })),
         {
           performed_at: session.performed_at as string,

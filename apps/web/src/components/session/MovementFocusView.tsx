@@ -23,6 +23,7 @@ import {
 import { detectTmAnchoredPr } from "@/lib/engine/tm-anchored-pr";
 import { restSecondsForKind } from "@/lib/sessions/rest";
 import { resolveBarKind } from "@/lib/sessions/bar-kind";
+import { resolvePrescriptionSetWork } from "@hta/domain";
 import { hapticTick } from "@/lib/feedback";
 import { useUnits } from "@/lib/units/context";
 import {
@@ -254,7 +255,11 @@ export function MovementFocusView({
         ?.weightKg ?? 0
     );
   }, [activeItem, tmKg, loggedSets, group.movementId]);
-  const targetReps = activeItem?.reps ?? 5;
+  const targetWork = useMemo(
+    () => resolvePrescriptionSetWork(activeItem),
+    [activeItem],
+  );
+  const targetReps = targetWork.reps ?? 5;
   // Detect kind from prescription fields. `distanceM` = loaded carry
   // (programmed by metres, McGill 2014); `holdSec` = isometric hold.
   // `bw` = bodyweight Phase 3 prescription (reps OR isometric hold;
@@ -271,18 +276,8 @@ export function MovementFocusView({
       : isBwItem
         ? "bw_reps"
         : "default";
-  const targetDistance = useMemo(() => {
-    const d = activeItem?.distanceM;
-    if (!d) return 0;
-    // Default to the midpoint, rounded to the nearest 5 m step so the
-    // stepper's stable interval matches the prescription range.
-    return Math.round((d.min + d.max) / 2 / 5) * 5;
-  }, [activeItem]);
-  const targetDuration = useMemo(() => {
-    const h = activeItem?.holdSec;
-    if (!h) return 0;
-    return Math.round((h.min + h.max) / 2 / 5) * 5;
-  }, [activeItem]);
+  const targetDistance = targetWork.distanceM ?? 0;
+  const targetDuration = targetWork.durationSec ?? 0;
 
   // Stepper state. We snap defaults back to target whenever the cursor
   // moves so the user always starts at the prescription.
