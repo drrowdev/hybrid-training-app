@@ -462,3 +462,6 @@ Today now distinguishes Start, Continue, View and Restore from the linked sessio
 
 ## [2026-08-10] fix | Hide settled workouts from Today primary cards
 Today now renders primary workout cards only for unfinished, unskipped planned sessions. Completed and skipped rows remain visible in This week, history and recent activity, while the full planned day still drives all-logged state and AM/PM context. Partial days therefore keep only the pending card; completed-plus-skipped days show the logged summary; all-skipped plans show No remaining workouts rather than a false Rest day; unrelated activity cannot make an all-skipped plan look logged.
+
+## [2026-08-10] fix | Expand rehab prescriptions into granular logger sets
+Foreign-program rehab now uses the same one-prescription-item-per-loggable-set storage contract as planner-generated accessories, so a 5x15 / 3x10 / 3x10 / 3x10 protocol produces fourteen Focus Strip set slots instead of four. Migration 0124 idempotently expands existing rehab rows only when no set logs exist, preserving prescription-item attribution for started work. Clinician-authored rehab groups and set buckets are labeled Rehab rather than exposing the internal tendon kind.

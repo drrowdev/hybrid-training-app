@@ -285,8 +285,13 @@ export function FocusStripLogger({
       !declinedIds.has(group.movementId));
 
   const role = bucketForGroup(activeOriginal);
+  const isRehabGroup = activeOriginal.items.every(
+    (item) => item.meta?.rehab === true,
+  );
   const roleLabel =
-    role === "main"
+    isRehabGroup
+      ? "Rehab"
+      : role === "main"
       ? "Main lift"
       : role === "supplemental"
         ? "Supplemental"

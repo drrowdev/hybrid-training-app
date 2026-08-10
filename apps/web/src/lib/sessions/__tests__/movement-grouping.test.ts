@@ -175,6 +175,9 @@ describe("lastMainSlot + bucketLabelForKind", () => {
     expect(bucketLabelForKind("warmup", 0, 3)).toBe("Warm-up · 1 of 3");
     expect(bucketLabelForKind("main", 1, 5)).toBe("Working set · 2 of 5");
     expect(bucketLabelForKind("back_off", 2, 3)).toBe("Supplemental · 3 of 3");
+    expect(bucketLabelForKind("tendon", 1, 3, false, true)).toBe(
+      "Rehab · 2 of 3",
+    );
   });
 });
 

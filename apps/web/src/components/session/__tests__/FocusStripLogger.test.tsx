@@ -92,6 +92,27 @@ const accessoryB: MovementGroup = {
   slotBuckets: { warmup: [], working: [], accessory: [0] },
 };
 
+const rehabGroup: MovementGroup = {
+  movementId: "hip-adduction",
+  movementName: "Standing Banded Hip Adduction",
+  movementSlug: "standing-banded-hip-adduction",
+  itemIndices: [0, 1, 2],
+  items: Array.from({ length: 3 }, () => ({
+    movementId: "hip-adduction",
+    movementSlug: "standing-banded-hip-adduction",
+    movementName: "Standing Banded Hip Adduction",
+    kind: "tendon" as const,
+    sets: 1,
+    reps: 15,
+    meta: { rehab: true },
+  })),
+  slotBuckets: {
+    warmup: [],
+    working: [],
+    accessory: [0, 1, 2],
+  },
+};
+
 const triadGroups: MovementGroup[] = [
   ["leg", "Hanging Leg Raise", 0],
   ["knee", "Hanging Knee Raise", 1],
@@ -187,6 +208,31 @@ describe("FocusStripLogger", () => {
     expect(html).toContain("alternate with Triceps Extension, then rest once");
     expect(html).toContain('data-testid="focus-strip-reorder"');
     expect(html).toContain('aria-label="Move Curl later"');
+  });
+
+  it("renders granular rehab sets without exposing the tendon label", () => {
+    const html = renderToStaticMarkup(
+      <FocusStripLogger
+        sessionId="session"
+        groups={[rehabGroup]}
+        setsByMovement={new Map()}
+        tmBySlug={{}}
+        oneRmBySlug={{}}
+        loggedItemIndices={new Set()}
+        skippedItemIndices={new Set()}
+        loggedSetIdByItemIndex={{}}
+        priorBests={{}}
+        addStrengthSet={addStrengthSet}
+        updateStrengthSet={updateStrengthSet}
+        hapticsEnabled={false}
+        timerSoundEnabled={false}
+      />,
+    );
+    expect(html).toContain("0 of 3 required sets");
+    expect(html).toContain("Standing Banded Hip Adduction 0/3");
+    expect(html).toContain("Rehab · 3×15");
+    expect(html).toContain("Rehab · 1 of 3");
+    expect(html).not.toContain("Tendon ·");
   });
 
   it("shows linked AB Triad round and movement guidance", () => {
