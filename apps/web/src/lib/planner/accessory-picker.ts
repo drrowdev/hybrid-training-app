@@ -1294,16 +1294,22 @@ const PULL_PLANE_DIVERSITY_PENALTY = 28;
 // ADR 0043 — focus-muscle sub-pattern diversity. A declared focus muscle must
 // span its distinct FUNCTIONAL patterns across the week rather than stacking the
 // same one (the review flagged a `forearms` focus that filled every slot with
-// wrist FLEXION, ignoring extension + rotation). The taxonomy is currently
+// wrist FLEXION, ignoring extension + deviation + rotation). The taxonomy is currently
 // meaningful only for the forearm, the one focus target with several genuinely
 // distinct sub-patterns in the catalogue; every other slug returns `null` →
 // no grouping → byte-identical (the existing movement-id variety still applies).
 // Inferred from the slug so it scales with the catalogue (no movement-id lists).
-function focusSubPattern(slug: string | undefined | null): string | null {
+export function focusSubPattern(slug: string | undefined | null): string | null {
   const s = (slug ?? "").toLowerCase();
   if (!s) return null;
   if (s.includes("pronation") || s.includes("supination") || s.includes("wrist-rotation"))
     return "forearm_rotation";
+  if (
+    s.includes("wrist-deviation") ||
+    s.includes("radial-deviation") ||
+    s.includes("ulnar-deviation")
+  )
+    return "forearm_deviation";
   if (s.includes("reverse-wrist")) return "forearm_extension";
   if (s.includes("wrist-curl")) return "forearm_flexion";
   if (

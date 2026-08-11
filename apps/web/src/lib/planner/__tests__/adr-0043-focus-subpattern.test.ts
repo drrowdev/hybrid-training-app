@@ -2,7 +2,7 @@
  * ADR 0043 — focus-muscle sub-pattern diversity.
  *
  * A declared `forearms` focus spread across the week must span DISTINCT
- * functional sub-patterns (flexion → extension → rotation → grip) rather than
+ * functional sub-patterns (flexion, extension, deviation, rotation, grip) rather than
  * stacking the same one. The pre-existing within-week movement-id variety only
  * stops the SAME movement twice — two different wrist-FLEXION curls would still
  * both seat. This test proves the new sub-pattern penalty steers the second
@@ -10,7 +10,11 @@
  * movement (a different id) is available.
  */
 import { describe, expect, it } from "vitest";
-import { pickAccessoriesForSession, type CatalogMovement } from "../accessory-picker";
+import {
+  focusSubPattern,
+  pickAccessoriesForSession,
+  type CatalogMovement,
+} from "../accessory-picker";
 import type { AccessoryProfile } from "../accessory-roles";
 
 function mv(over: Partial<CatalogMovement> & { id: string; slug: string }): CatalogMovement {
@@ -34,12 +38,17 @@ function mv(over: Partial<CatalogMovement> & { id: string; slug: string }): Cata
 }
 
 // Two wrist-FLEXION curls (distinct ids, same sub-pattern) + one extension + one
-// rotation. Movement-id variety alone could pick the second flexion on day 2;
+// deviation + rotation. Movement-id variety alone could pick the second flexion on day 2;
 // only the sub-pattern penalty forces a different pattern.
 const CATALOG: CatalogMovement[] = [
   mv({ id: "wrist-curl-db", slug: "wrist-curl-db" }),
   mv({ id: "wrist-curl-bb", slug: "wrist-curl-bb" }),
   mv({ id: "reverse-wrist-curl", slug: "reverse-wrist-curl" }),
+  mv({
+    id: "supported-wrist-radial-deviation-db",
+    slug: "supported-wrist-radial-deviation-db",
+    isSupported: true,
+  }),
   mv({ id: "db-pronation-supination", slug: "db-pronation-supination" }),
 ];
 
@@ -92,10 +101,18 @@ const SUBPATTERN: Record<string, string> = {
   "wrist-curl-db": "flexion",
   "wrist-curl-bb": "flexion",
   "reverse-wrist-curl": "extension",
+  "supported-wrist-radial-deviation-db": "deviation",
   "db-pronation-supination": "rotation",
 };
 
 describe("ADR 0043 — focus sub-pattern diversity", () => {
+  it("classifies supported wrist deviation separately from an elbow-level hammer curl", () => {
+    expect(focusSubPattern("supported-wrist-radial-deviation-db")).toBe(
+      "forearm_deviation",
+    );
+    expect(focusSubPattern("hammer-curl")).toBeNull();
+  });
+
   it("a second focus day picks a DIFFERENT sub-pattern, not just a different movement", () => {
     const history: Hist = [];
     const day1 = runDay(history);
