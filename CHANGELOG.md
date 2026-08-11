@@ -5,10 +5,11 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 ### Supported forearm rehab movements
-- Marked the palms-up wrist curl, palms-down reverse wrist curl, and dumbbell
-  pronation/supination entries as bench-supported, matching their instructions.
-- Added a distinct supported radial-deviation movement for the neutral "hammer"
-  wrist position; the existing Hammer Curl remains an elbow-flexion exercise.
+- Kept the general wrist-curl, reverse-wrist-curl, and pronation/supination
+  movements separate from their rehab counterparts.
+- Added distinct bench-supported dumbbell variants for wrist flexion, wrist
+  extension, radial deviation, and forearm rotation; Hammer Curl remains an
+  elbow-flexion exercise.
 
 ### AI retirement + unified compact launch branding
 - Removed all in-app AI controls, chat surfaces, provider settings, API/MCP

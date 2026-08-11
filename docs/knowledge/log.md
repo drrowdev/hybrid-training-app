@@ -471,3 +471,6 @@ Same as planned now tracks fulfillment per prescription item and copy rather tha
 
 ## [2026-08-10] fix | Count unloaded rehab work in completed summaries
 Completed-session set totals now count real non-warmup work independently from tonnage, so unloaded rehab and bodyweight reps, timed holds and distance-based work remain completed even without external weight. Warmups, skipped rows and empty rows stay excluded, while tonnage still requires positive load and reps. Same as planned now persists the same rep, hold-duration or distance target shown by the individual logger through one canonical prescription resolver. Authenticated browser coverage follows a fourteen-set mixed rep-and-hold rehab workout from bulk fill through persisted rows, completion and the reloaded 14 / 14 summary.
+
+## [2026-08-11] fix | Separate supported wrist rehab variants
+General wrist curls, reverse wrist curls and dumbbell pronation/supination remain distinct strength movements. The catalog now carries separate unilateral bench-supported dumbbell variants for wrist flexion, wrist extension, radial deviation and forearm rotation, each with explicit forearm-on-bench setup and controlled rehab instructions. Migration 0126 restores the general rows and seeds the three missing supported variants.

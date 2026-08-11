@@ -45,11 +45,26 @@ const CATALOG: CatalogMovement[] = [
   mv({ id: "wrist-curl-bb", slug: "wrist-curl-bb" }),
   mv({ id: "reverse-wrist-curl", slug: "reverse-wrist-curl" }),
   mv({
+    id: "supported-wrist-curl-db",
+    slug: "supported-wrist-curl-db",
+    isSupported: true,
+  }),
+  mv({
+    id: "supported-reverse-wrist-curl-db",
+    slug: "supported-reverse-wrist-curl-db",
+    isSupported: true,
+  }),
+  mv({
     id: "supported-wrist-radial-deviation-db",
     slug: "supported-wrist-radial-deviation-db",
     isSupported: true,
   }),
   mv({ id: "db-pronation-supination", slug: "db-pronation-supination" }),
+  mv({
+    id: "supported-pronation-supination-db",
+    slug: "supported-pronation-supination-db",
+    isSupported: true,
+  }),
 ];
 
 const PROFILE: AccessoryProfile = {
@@ -101,15 +116,24 @@ const SUBPATTERN: Record<string, string> = {
   "wrist-curl-db": "flexion",
   "wrist-curl-bb": "flexion",
   "reverse-wrist-curl": "extension",
+  "supported-wrist-curl-db": "flexion",
+  "supported-reverse-wrist-curl-db": "extension",
   "supported-wrist-radial-deviation-db": "deviation",
   "db-pronation-supination": "rotation",
+  "supported-pronation-supination-db": "rotation",
 };
 
 describe("ADR 0043 — focus sub-pattern diversity", () => {
-  it("classifies supported wrist deviation separately from an elbow-level hammer curl", () => {
-    expect(focusSubPattern("supported-wrist-radial-deviation-db")).toBe(
-      "forearm_deviation",
-    );
+  it.each([
+    ["supported-wrist-curl-db", "forearm_flexion"],
+    ["supported-reverse-wrist-curl-db", "forearm_extension"],
+    ["supported-wrist-radial-deviation-db", "forearm_deviation"],
+    ["supported-pronation-supination-db", "forearm_rotation"],
+  ])("classifies %s as %s", (slug, expected) => {
+    expect(focusSubPattern(slug)).toBe(expected);
+  });
+
+  it("keeps an elbow-level hammer curl outside the wrist sub-patterns", () => {
     expect(focusSubPattern("hammer-curl")).toBeNull();
   });
 
