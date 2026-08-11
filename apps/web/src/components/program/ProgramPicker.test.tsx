@@ -15,6 +15,7 @@ vi.mock("@/lib/training-maxes/actions", () => ({
 
 import {
   ProgramPicker,
+  activationSummaryPhaseFor,
   activationRequiredBenchmarkKeysFor,
   defaultClusterFor,
   relevantBenchmarkKeysFor,
@@ -96,6 +97,43 @@ const ACTIVATION: PickerTbTemplate = {
     { movement: "power-clean" },
   ],
 };
+
+describe("activationSummaryPhaseFor", () => {
+  it("uses the absolute current program week while editing", () => {
+    expect(
+      activationSummaryPhaseFor(0, {
+        currentWeekIndex: 5,
+        programStartWeekIndex: 0,
+      }),
+    ).toBe("armor");
+    expect(
+      activationSummaryPhaseFor(0, {
+        currentWeekIndex: 3,
+        programStartWeekIndex: 5,
+      }),
+    ).toBe("operator");
+  });
+
+  it("uses the selected start point for a new program", () => {
+    expect(activationSummaryPhaseFor(0)).toBe("base");
+    expect(activationSummaryPhaseFor(21)).toBe("vertex");
+  });
+
+  it("uses the next editable phase during a protected milestone week", () => {
+    expect(
+      activationSummaryPhaseFor(0, {
+        currentWeekIndex: 4,
+        programStartWeekIndex: 0,
+      }),
+    ).toBe("armor");
+    expect(
+      activationSummaryPhaseFor(0, {
+        currentWeekIndex: 19,
+        programStartWeekIndex: 0,
+      }),
+    ).toBe("vertex");
+  });
+});
 
 describe("toggleMultiSelect", () => {
   it("adds a value when absent", () => {

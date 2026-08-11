@@ -474,3 +474,6 @@ Completed-session set totals now count real non-warmup work independently from t
 
 ## [2026-08-11] fix | Separate supported wrist rehab variants
 General wrist curls, reverse wrist curls and dumbbell pronation/supination remain distinct strength movements. The catalog now carries separate unilateral bench-supported dumbbell variants for wrist flexion, wrist extension, radial deviation and forearm rotation, each with explicit forearm-on-bench setup and controlled rehab instructions. Migration 0126 restores the general rows and seeds the three missing supported variants.
+
+## [2026-08-11] fix | Keep Activation edit summary on the current phase
+The final program summary now derives an edited Activation plan's week from its absolute current program position instead of resetting to Base. Rehab sessions assigned in the phase being edited therefore appear in the summary count, including plans that originally started from a later phase; new-program summaries continue to use the selected start point.
