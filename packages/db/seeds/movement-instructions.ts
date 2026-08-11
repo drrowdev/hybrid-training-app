@@ -1360,7 +1360,7 @@ export const MOVEMENT_INSTRUCTIONS: MovementInstructionSeed[] = [
   },
   {
     slug: "db-pronation-supination",
-    summary: "Rotating a dumbbell held at one end to train forearm rotation.",
+    summary: "Bench-supported pronation and supination with a light dumbbell to train forearm rotation.",
     setup: "Sit with the forearm on a bench, holding one end of a light dumbbell.",
     steps: [
       "Rotate the wrist to turn the palm up.",
@@ -1429,13 +1429,29 @@ export const MOVEMENT_INSTRUCTIONS: MovementInstructionSeed[] = [
   },
   {
     slug: "reverse-wrist-curl",
-    summary: "Curling the back of the hand up to train the forearm extensors.",
+    summary: "Bench-supported palms-down wrist extension to train the forearm extensors.",
     setup: "Rest the forearms on a bench, palms down, holding a light bar or dumbbells.",
     steps: [
       "Raise the back of the hands up toward the forearm.",
       "Pause, then lower slowly.",
     ],
     cues: ["Keep the forearms flat on the bench.", "Go light — small muscles."],
+  },
+  {
+    slug: "supported-wrist-radial-deviation-db",
+    summary: "Bench-supported neutral-grip wrist radial deviation for the forearm.",
+    setup: "Rest the forearm on its side on a bench with the thumb up and the hand just beyond the edge, holding a light dumbbell.",
+    steps: [
+      "Keep the forearm and elbow supported.",
+      "Raise the thumb side of the hand toward the forearm without rotating the palm.",
+      "Pause briefly at the top.",
+      "Lower slowly through a comfortable range.",
+    ],
+    cues: ["Lead with the thumb; keep the forearm from rolling.", "Move at the wrist, not the elbow."],
+    commonMistakes: [
+      "Turning the palm up or down instead of moving at the wrist.",
+      "Lifting the elbow or using a weight that shortens the range.",
+    ],
   },
   {
     slug: "rkc-plank",
@@ -1721,7 +1737,7 @@ export const MOVEMENT_INSTRUCTIONS: MovementInstructionSeed[] = [
   },
   {
     slug: "wrist-curl-bb",
-    summary: "Barbell wrist curl for the forearm flexors.",
+    summary: "Bench-supported palms-up barbell wrist flexion for the forearm flexors.",
     setup: "Rest the forearms on a bench, palms up, holding a barbell.",
     steps: [
       "Let the bar roll to the fingers.",
@@ -1732,7 +1748,7 @@ export const MOVEMENT_INSTRUCTIONS: MovementInstructionSeed[] = [
   },
   {
     slug: "wrist-curl-db",
-    summary: "Dumbbell wrist curl for the forearm flexors.",
+    summary: "Bench-supported palms-up dumbbell wrist flexion for the forearm flexors.",
     setup: "Rest the forearms on a bench, palms up, holding dumbbells.",
     steps: [
       "Lower the dumbbells toward the fingers.",

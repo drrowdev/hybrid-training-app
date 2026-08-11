@@ -231,6 +231,48 @@ describe("movement catalog seed", () => {
     });
   });
 
+  it("seeds distinct bench-supported forearm rehab motions with instructions", () => {
+    const expected = [
+      { slug: "wrist-curl-db", motion: "wrist flexion" },
+      { slug: "reverse-wrist-curl", motion: "wrist extension" },
+      {
+        slug: "supported-wrist-radial-deviation-db",
+        motion: "radial deviation",
+      },
+      { slug: "db-pronation-supination", motion: "pronation and supination" },
+    ];
+
+    for (const entry of expected) {
+      const movement = SEED.find((candidate) => candidate.slug === entry.slug);
+      expect(movement).toMatchObject({
+        primaryRegion: "elbow_forearm",
+        primaryMuscles: ["forearms"],
+        isSupported: true,
+        stability: "supported",
+      });
+
+      const instructions = MOVEMENT_INSTRUCTIONS.find(
+        (candidate) => candidate.slug === entry.slug,
+      );
+      expect(instructions?.summary.toLowerCase()).toContain(entry.motion);
+      expect(instructions?.setup?.toLowerCase()).toContain("bench");
+      expect(instructions?.cues.length).toBeGreaterThanOrEqual(2);
+    }
+
+    expect(
+      SEED.find(
+        (candidate) =>
+          candidate.slug === "supported-wrist-radial-deviation-db",
+      ),
+    ).toMatchObject({
+      bilateral: false,
+      metadata: {
+        emphasis: "wrist-radial-deviation",
+        position: "forearm-supported-neutral",
+      },
+    });
+  });
+
   it("injury-site tagging audit invariants (migration 0100)", () => {
     const musclesOf = (slug: string): string[] => {
       const m = SEED.find((x) => x.slug === slug);

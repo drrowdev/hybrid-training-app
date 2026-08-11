@@ -876,6 +876,13 @@
       "when": 1786388400000,
       "tag": "0124_expand_rehab_prescription_sets",
       "breakpoints": false
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1786392000000,
+      "tag": "0125_seed_supported_wrist_deviation",
+      "breakpoints": false
     }
   ]
 }

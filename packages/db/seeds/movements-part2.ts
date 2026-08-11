@@ -98,7 +98,7 @@ const TRICEPS: NewMovement[] = [
   triceps("kickback-db", "Tricep Kickback (DB)", { equipment: "dumbbell", bilateral: false }),
 ];
 
-// ─── forearm / grip (7) ───
+// ─── forearm / grip (8) ───
 const grip = (slug: string, name: string, opts: MoveOpts = {}): NewMovement =>
   m(slug, name, {
     pattern: "isolation",
@@ -110,15 +110,43 @@ const grip = (slug: string, name: string, opts: MoveOpts = {}): NewMovement =>
   });
 
 const GRIP: NewMovement[] = [
-  grip("wrist-curl-db", "Wrist Curl (DB)", { equipment: "dumbbells" }),
-  grip("wrist-curl-bb", "Wrist Curl (BB)", { equipment: "barbell" }),
-  grip("reverse-wrist-curl", "Reverse Wrist Curl", { equipment: "dumbbells-or-bb" }),
+  grip("wrist-curl-db", "Wrist Curl (DB)", {
+    equipment: "dumbbells",
+    isSupported: true,
+    stability: "supported",
+  }),
+  grip("wrist-curl-bb", "Wrist Curl (BB)", {
+    equipment: "barbell",
+    isSupported: true,
+    stability: "supported",
+  }),
+  grip("reverse-wrist-curl", "Reverse Wrist Curl", {
+    equipment: "dumbbells-or-bb",
+    isSupported: true,
+    stability: "supported",
+  }),
+  grip(
+    "supported-wrist-radial-deviation-db",
+    "Supported Wrist Radial Deviation (DB)",
+    {
+      equipment: "dumbbell",
+      bilateral: false,
+      isSupported: true,
+      stability: "supported",
+      metadata: {
+        emphasis: "wrist-radial-deviation",
+        position: "forearm-supported-neutral",
+      },
+    },
+  ),
   // ADR 0043 — forearm ROTATION (pronation/supination), the sub-pattern a
   // forearms focus previously lacked so the engine could span flexion +
-  // extension + rotation instead of duplicating wrist flexion.
+  // extension + deviation + rotation instead of duplicating wrist flexion.
   grip("db-pronation-supination", "Pronation / Supination (DB)", {
     equipment: "dumbbell",
     bilateral: false,
+    isSupported: true,
+    stability: "supported",
     metadata: { emphasis: "forearm-rotation" },
   }),
   grip("plate-pinch", "Plate Pinch", { equipment: "plates", metadata: { protocol: "isometric" } }),
