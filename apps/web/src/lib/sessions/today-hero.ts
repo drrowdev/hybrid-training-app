@@ -1,3 +1,5 @@
+import type { PlannedSlot } from "@/lib/planner/slot";
+
 /**
  * Pure predicate for the Today hero's "Session logged ✓ — rest and
  * recover" state.
@@ -45,4 +47,37 @@ export function actionablePlannedSessions<
       planned.completedAt == null &&
       planned.skippedAt == null,
   );
+}
+
+const PAIRED_SLOT_ORDER: Record<PlannedSlot, number> = {
+  am: 0,
+  pm: 1,
+  single: 2,
+};
+
+const STANDALONE_SLOT_ORDER: Record<PlannedSlot, number> = {
+  single: 0,
+  am: 1,
+  pm: 2,
+};
+
+/**
+ * Keep genuine two-a-days in AM → PM order. For mixed same-day rows, lead
+ * with the real single session and place storage-only adjunct slots after it.
+ */
+export function orderPlannedSessionsForToday<
+  T extends {
+    completedAt: string | null;
+    slot: PlannedSlot;
+  },
+>(sessions: readonly T[], isTwoADay: boolean): T[] {
+  const slotOrder = isTwoADay
+    ? PAIRED_SLOT_ORDER
+    : STANDALONE_SLOT_ORDER;
+  return [...sessions].sort((a, b) => {
+    const completionOrder =
+      Number(a.completedAt != null) - Number(b.completedAt != null);
+    if (completionOrder !== 0) return completionOrder;
+    return slotOrder[a.slot] - slotOrder[b.slot];
+  });
 }

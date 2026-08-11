@@ -28,3 +28,18 @@ export function sanitiseSlotForMode(
   if (allowsTwoADays) return slot ?? "single";
   return "single";
 }
+
+/**
+ * A genuine two-a-day has both an AM and a PM session. A same-day adjunct
+ * (for example rehab stored as `pm` beside a `single` training session) uses
+ * the slot only to satisfy row uniqueness and must not expose time-of-day UI.
+ */
+export function hasTwoADaySlotPair(slots: readonly PlannedSlot[]): boolean {
+  let hasAm = false;
+  let hasPm = false;
+  for (const slot of slots) {
+    if (slot === "am") hasAm = true;
+    if (slot === "pm") hasPm = true;
+  }
+  return hasAm && hasPm;
+}
