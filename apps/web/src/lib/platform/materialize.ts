@@ -540,6 +540,9 @@ export function materializeProgram<I>(
             session.weekIndex === weekIndex &&
             session.dayIndex === dayIndex,
         );
+        // `pm` is a uniqueness key for same-day adjunct rehab, not an inferred
+        // training time. Renderers expose AM/PM only when an actual AM + PM pair
+        // exists; a `single` + `pm` day remains time-neutral.
         const slot = dayHasSession ? "pm" : "single";
         if (takenSlots.has(`${weekIndex}-${dayIndex}-${slot}`)) {
           throw new Error(

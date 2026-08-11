@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   actionablePlannedSessions,
   isTodayFullyLogged,
+  orderPlannedSessionsForToday,
 } from "../today-hero";
 
 const done = { completedAt: "2026-06-22T10:00:00Z" };
@@ -41,6 +42,28 @@ describe("isTodayFullyLogged", () => {
           skipped,
         ]),
       ).toEqual([pending]);
+    });
+  });
+
+  describe("orderPlannedSessionsForToday", () => {
+    it("leads with the primary single session before storage-only PM rehab", () => {
+      const rehab = { id: "rehab", slot: "pm" as const, completedAt: null };
+      const primary = {
+        id: "armor-a1",
+        slot: "single" as const,
+        completedAt: null,
+      };
+
+      expect(
+        orderPlannedSessionsForToday([rehab, primary], false),
+      ).toEqual([primary, rehab]);
+    });
+
+    it("orders a genuine two-a-day AM before PM", () => {
+      const pm = { id: "pm", slot: "pm" as const, completedAt: null };
+      const am = { id: "am", slot: "am" as const, completedAt: null };
+
+      expect(orderPlannedSessionsForToday([pm, am], true)).toEqual([am, pm]);
     });
   });
 

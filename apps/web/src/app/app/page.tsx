@@ -11,6 +11,7 @@ import {
 } from "@/lib/planner/queries";
 import { todayYmd } from "@/lib/dates";
 import { effectiveTimeOfDay } from "@/lib/planner/time-of-day";
+import { hasTwoADaySlotPair } from "@/lib/planner/slot";
 import { getRegionFreshness, type FreshnessConflict } from "@/lib/stats/region-freshness-queries";
 import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
 import { findHeavyOnRecoveringConflictWithMuscles } from "@/lib/muscle/muscle-conflict";
@@ -79,6 +80,7 @@ import type { PlanSessionInput } from "@/components/plan/PlanRedesign";
 import {
   actionablePlannedSessions,
   isTodayFullyLogged,
+  orderPlannedSessionsForToday,
 } from "@/lib/sessions/today-hero";
 import {
   groupByMovementThenKind,
@@ -459,8 +461,10 @@ export default async function TodayPage() {
 
   const openSession = (todaySessions ?? []).find((s) => !s.completed_at) ?? null;
   const completedToday = (todaySessions ?? []).filter((s) => s.completed_at);
-  const actionableToday = actionablePlannedSessions(plannedToday);
-  const isTwoADay = plannedToday.length > 1;
+  const isMultiSessionDay = plannedToday.length > 1;
+  const isTwoADay = hasTwoADaySlotPair(
+    plannedToday.map((planned) => planned.slot),
+  );
   const timezone = profile?.timezone ?? "UTC";
   const amWindowStart = profile?.am_window_start ?? "07:00:00";
   const pmWindowStart = profile?.pm_window_start ?? "17:00:00";
@@ -724,6 +728,7 @@ export default async function TodayPage() {
               openSession={openSession}
               completedToday={completedToday}
               plannedToday={plannedToday}
+              isMultiSessionDay={isMultiSessionDay}
               isTwoADay={isTwoADay}
               timezone={timezone}
               amWindowStart={amWindowStart}
@@ -940,6 +945,7 @@ function TodaySessionCard({
   openSession,
   completedToday,
   plannedToday,
+  isMultiSessionDay,
   isTwoADay,
   timezone,
   amWindowStart,
@@ -952,6 +958,7 @@ function TodaySessionCard({
   openSession: { id: string; title: string | null } | null;
   completedToday: { id: string; title: string | null }[];
   plannedToday: PlannedDay[];
+  isMultiSessionDay: boolean;
   isTwoADay: boolean;
   timezone: string;
   amWindowStart: string;
@@ -1198,25 +1205,18 @@ function TodaySessionCard({
     });
     if (t) slotTimes.set(p.slot, t);
   }
-  // Phase 2 B2 — when one slot of a two-a-day is already complete, lead
-  // with the still-open slot. Incomplete cards come first; completed
-  // cards drop to the bottom (de-emphasised but still visible).
-  const orderedPlannedToday = isTwoADay
-    ? [...actionableToday].sort((a, b) => {
-        const aDone = a.completedAt != null ? 1 : 0;
-        const bDone = b.completedAt != null ? 1 : 0;
-        if (aDone !== bDone) return aDone - bDone;
-        // Within same completion bucket: AM before PM.
-        const slotOrder = (s: string) => (s === "am" ? 0 : s === "pm" ? 1 : 2);
-        return slotOrder(a.slot) - slotOrder(b.slot);
-      })
-    : actionableToday;
+  // Genuine two-a-days stay AM → PM. Mixed same-day rows (such as a primary
+  // session plus adjunct rehab) lead with the primary `single` session.
+  const orderedPlannedToday = orderPlannedSessionsForToday(
+    actionableToday,
+    isTwoADay,
+  );
 
   // PM-next hint (B2). When the AM slot is logged and PM remains, show
   // a ~Xh count-down above the PM card. Computed from the PM slot time
   // minus now-in-user-timezone — falls back to "PM session next" when
   // we can't resolve a clock time.
-  const completedAmSlot = plannedToday.length > 1
+  const completedAmSlot = isTwoADay
     ? plannedToday.find((p) => p.slot === "am" && p.completedAt != null)
     : null;
   const openPmSlot = completedAmSlot
@@ -1243,7 +1243,9 @@ function TodaySessionCard({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: isTwoADay ? "repeat(auto-fit, minmax(300px, 1fr))" : "1fr",
+          gridTemplateColumns: isMultiSessionDay
+            ? "repeat(auto-fit, minmax(300px, 1fr))"
+            : "1fr",
           gap: 12,
         }}
       >
@@ -1270,6 +1272,7 @@ function TodaySessionCard({
               )}
               <PlannedSessionCard
                 planned={p}
+                isMultiSessionDay={isMultiSessionDay}
                 isTwoADay={isTwoADay}
                 timeOfDay={slotTimes.get(p.slot) ?? null}
                 conflict={conflictsBySlot.get(p.id) ?? null}
@@ -1284,11 +1287,13 @@ function TodaySessionCard({
 
 function PlannedSessionCard({
   planned,
+  isMultiSessionDay,
   isTwoADay,
   timeOfDay,
   conflict,
 }: {
   planned: PlannedDay;
+  isMultiSessionDay: boolean;
   isTwoADay: boolean;
   timeOfDay: string | null;
   conflict: FreshnessConflict | null;
@@ -1310,21 +1315,27 @@ function PlannedSessionCard({
     grouped.accessories.length +
     grouped.hingeCompensations.length +
     grouped.tendon.length;
-  const movementSummary = [
-    mainLiftCount > 0
-      ? `${mainLiftCount} main lift${mainLiftCount === 1 ? "" : "s"}`
-      : null,
-    supplementalLiftCount > 0
-      ? `${supplementalLiftCount} supplemental lift${
-          supplementalLiftCount === 1 ? "" : "s"
+  const rehabMovementCount = grouped.tendon.length;
+  const movementSummary =
+    planned.role === "rehab" && rehabMovementCount > 0
+      ? `${rehabMovementCount} rehab movement${
+          rehabMovementCount === 1 ? "" : "s"
         }`
-      : null,
-    accessoryCount > 0
-      ? `${accessoryCount} accessor${accessoryCount === 1 ? "y" : "ies"}`
-      : null,
-  ]
-    .filter((part): part is string => part != null)
-    .join(", ");
+      : [
+          mainLiftCount > 0
+            ? `${mainLiftCount} main lift${mainLiftCount === 1 ? "" : "s"}`
+            : null,
+          supplementalLiftCount > 0
+            ? `${supplementalLiftCount} supplemental lift${
+                supplementalLiftCount === 1 ? "" : "s"
+              }`
+            : null,
+          accessoryCount > 0
+            ? `${accessoryCount} accessor${accessoryCount === 1 ? "y" : "ies"}`
+            : null,
+        ]
+          .filter((part): part is string => part != null)
+          .join(", ");
   const showMetaRow =
     (isTwoADay && planned.slot !== "single") ||
     planned.completedAt != null ||
@@ -1350,7 +1361,7 @@ function PlannedSessionCard({
         borderColor: "var(--cp-border)",
         background:
           "linear-gradient(165deg, var(--cp-bg-elevated), var(--cp-surface))",
-        minHeight: isTwoADay ? 200 : 280,
+        minHeight: isMultiSessionDay ? 200 : 280,
       }}
     >
       <span

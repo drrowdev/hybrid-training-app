@@ -22,6 +22,10 @@ import { StatusBadge } from "@/components/blocks/StatusBadge";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { groupBlocksByMonth } from "@/lib/plan/history-grouping";
 import { resolveLinkedSession } from "@/lib/sessions/linked-session-state";
+import {
+  hasTwoADaySlotPair,
+  type PlannedSlot,
+} from "@/lib/planner/slot";
 
 const PAGE_SIZE = 20;
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
@@ -30,7 +34,7 @@ type PlannedRow = {
   id: string;
   week_index: number;
   day_index: number;
-  slot: string | null;
+  slot: PlannedSlot | null;
   title: string;
   completed_session_id: string | null;
   skipped_at: string | null;
@@ -197,17 +201,20 @@ function BlockHistoryRow({
 
   // Group by week for the expanded view. `weeks` from the block row
   // gives the canonical count even if some weeks have zero sessions.
-  // Also count sessions per (week, day) so the AM/PM slot label only
-  // renders when a calendar day genuinely pairs two sessions
+  // Also collect slots per (week, day) so the AM/PM slot label only
+  // renders when a calendar day genuinely pairs AM + PM
   // (Stage C/D in feat/slot-semantics).
   const byWeek = new Map<number, PlannedRow[]>();
-  const dayCounts = new Map<string, number>();
+  const daySlots = new Map<string, PlannedSlot[]>();
   for (const s of sessions) {
     const list = byWeek.get(s.week_index) ?? [];
     list.push(s);
     byWeek.set(s.week_index, list);
     const key = `${s.week_index}-${s.day_index}`;
-    dayCounts.set(key, (dayCounts.get(key) ?? 0) + 1);
+    daySlots.set(key, [
+      ...(daySlots.get(key) ?? []),
+      s.slot ?? "single",
+    ]);
   }
   const weekIndices = Array.from(byWeek.keys()).sort((a, b) => a - b);
 
@@ -275,7 +282,7 @@ function BlockHistoryRow({
                 key={w}
                 weekIndex={w}
                 sessions={byWeek.get(w) ?? []}
-                dayCounts={dayCounts}
+                daySlots={daySlots}
               />
             ))}
           </div>
@@ -288,11 +295,11 @@ function BlockHistoryRow({
 function WeekGroup({
   weekIndex,
   sessions,
-  dayCounts,
+  daySlots,
 }: {
   weekIndex: number;
   sessions: PlannedRow[];
-  dayCounts: Map<string, number>;
+  daySlots: Map<string, PlannedSlot[]>;
 }): React.ReactElement {
   return (
     <div style={{ padding: "8px 18px", borderTop: "1px solid var(--cp-border)" }}>
@@ -310,7 +317,9 @@ function WeekGroup({
       </div>
       <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 4 }}>
         {sessions.map((s) => {
-          const isTwoADay = (dayCounts.get(`${s.week_index}-${s.day_index}`) ?? 0) >= 2;
+          const isTwoADay = hasTwoADaySlotPair(
+            daySlots.get(`${s.week_index}-${s.day_index}`) ?? [],
+          );
           return <SessionRow key={s.id} session={s} isTwoADay={isTwoADay} />;
         })}
       </ul>

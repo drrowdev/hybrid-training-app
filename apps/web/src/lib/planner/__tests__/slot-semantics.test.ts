@@ -17,7 +17,7 @@
  * `apps/web/e2e/no-am-pm-on-single-mode.spec.ts`.
  */
 import { describe, it, expect } from "vitest";
-import { sanitiseSlotForMode } from "../slot";
+import { hasTwoADaySlotPair, sanitiseSlotForMode } from "../slot";
 import {
   ARCHETYPES,
   type Archetype,
@@ -41,6 +41,21 @@ describe("sanitiseSlotForMode", () => {
   it("defaults missing slot to 'single' when allowsTwoADays = true", () => {
     expect(sanitiseSlotForMode(null, true)).toBe("single");
     expect(sanitiseSlotForMode(undefined, true)).toBe("single");
+  });
+});
+
+describe("hasTwoADaySlotPair", () => {
+  it("recognises a genuine AM + PM pair", () => {
+    expect(hasTwoADaySlotPair(["pm", "am"])).toBe(true);
+  });
+
+  it("does not expose a storage-only PM slot beside a single session", () => {
+    expect(hasTwoADaySlotPair(["single", "pm"])).toBe(false);
+  });
+
+  it("does not treat an isolated AM or PM session as a two-a-day", () => {
+    expect(hasTwoADaySlotPair(["am"])).toBe(false);
+    expect(hasTwoADaySlotPair(["pm"])).toBe(false);
   });
 });
 
