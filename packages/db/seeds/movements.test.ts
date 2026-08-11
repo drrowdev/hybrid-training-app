@@ -233,20 +233,40 @@ describe("movement catalog seed", () => {
 
   it("seeds distinct bench-supported forearm rehab motions with instructions", () => {
     const expected = [
-      { slug: "wrist-curl-db", motion: "wrist flexion" },
-      { slug: "reverse-wrist-curl", motion: "wrist extension" },
+      {
+        slug: "supported-wrist-curl-db",
+        name: "Supported Wrist Curl (DB)",
+        motion: "wrist flexion",
+        position: "forearm-supported-supinated",
+      },
+      {
+        slug: "supported-reverse-wrist-curl-db",
+        name: "Supported Reverse Wrist Curl (DB)",
+        motion: "wrist extension",
+        position: "forearm-supported-pronated",
+      },
       {
         slug: "supported-wrist-radial-deviation-db",
+        name: "Supported Wrist Radial Deviation (DB)",
         motion: "radial deviation",
+        position: "forearm-supported-neutral",
       },
-      { slug: "db-pronation-supination", motion: "pronation and supination" },
+      {
+        slug: "supported-pronation-supination-db",
+        name: "Supported Pronation / Supination (DB)",
+        motion: "pronation and supination",
+        position: "forearm-supported-rotation",
+      },
     ];
 
     for (const entry of expected) {
       const movement = SEED.find((candidate) => candidate.slug === entry.slug);
       expect(movement).toMatchObject({
+        displayName: entry.name,
         primaryRegion: "elbow_forearm",
         primaryMuscles: ["forearms"],
+        equipment: "dumbbell",
+        bilateral: false,
         isSupported: true,
         stability: "supported",
       });
@@ -257,20 +277,30 @@ describe("movement catalog seed", () => {
       expect(instructions?.summary.toLowerCase()).toContain(entry.motion);
       expect(instructions?.setup?.toLowerCase()).toContain("bench");
       expect(instructions?.cues.length).toBeGreaterThanOrEqual(2);
+      expect(instructions?.commonMistakes).toHaveLength(2);
+      expect(movement?.metadata).toMatchObject({
+        position: entry.position,
+      });
     }
 
-    expect(
-      SEED.find(
-        (candidate) =>
-          candidate.slug === "supported-wrist-radial-deviation-db",
-      ),
-    ).toMatchObject({
-      bilateral: false,
-      metadata: {
-        emphasis: "wrist-radial-deviation",
-        position: "forearm-supported-neutral",
-      },
-    });
+    for (const slug of [
+      "wrist-curl-db",
+      "wrist-curl-bb",
+      "reverse-wrist-curl",
+      "db-pronation-supination",
+    ]) {
+      const movement = SEED.find((candidate) => candidate.slug === slug);
+      expect(movement?.isSupported ?? false, `${slug} must remain a general variant`).toBe(
+        false,
+      );
+      expect(movement?.stability).toBe("free");
+
+      const instructions = MOVEMENT_INSTRUCTIONS.find(
+        (candidate) => candidate.slug === slug,
+      );
+      expect(instructions?.summary.toLowerCase()).toContain("general");
+      expect(instructions?.setup?.toLowerCase()).not.toContain("bench");
+    }
   });
 
   it("injury-site tagging audit invariants (migration 0100)", () => {

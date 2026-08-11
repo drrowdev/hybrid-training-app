@@ -883,6 +883,13 @@
       "when": 1786392000000,
       "tag": "0125_seed_supported_wrist_deviation",
       "breakpoints": false
+    },
+    {
+      "idx": 126,
+      "version": "7",
+      "when": 1786441104881,
+      "tag": "0126_separate_supported_wrist_rehab",
+      "breakpoints": false
     }
   ]
 }

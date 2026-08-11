@@ -98,7 +98,7 @@ const TRICEPS: NewMovement[] = [
   triceps("kickback-db", "Tricep Kickback (DB)", { equipment: "dumbbell", bilateral: false }),
 ];
 
-// ─── forearm / grip (8) ───
+// ─── forearm / grip (11) ───
 const grip = (slug: string, name: string, opts: MoveOpts = {}): NewMovement =>
   m(slug, name, {
     pattern: "isolation",
@@ -110,21 +110,43 @@ const grip = (slug: string, name: string, opts: MoveOpts = {}): NewMovement =>
   });
 
 const GRIP: NewMovement[] = [
-  grip("wrist-curl-db", "Wrist Curl (DB)", {
-    equipment: "dumbbells",
-    isSupported: true,
-    stability: "supported",
-  }),
-  grip("wrist-curl-bb", "Wrist Curl (BB)", {
-    equipment: "barbell",
-    isSupported: true,
-    stability: "supported",
-  }),
+  grip("wrist-curl-db", "Wrist Curl (DB)", { equipment: "dumbbells" }),
+  grip("wrist-curl-bb", "Wrist Curl (BB)", { equipment: "barbell" }),
   grip("reverse-wrist-curl", "Reverse Wrist Curl", {
     equipment: "dumbbells-or-bb",
+  }),
+  // ADR 0043 — forearm ROTATION (pronation/supination), the sub-pattern a
+  // forearms focus previously lacked so the engine could span flexion +
+  // extension + deviation + rotation instead of duplicating wrist flexion.
+  grip("db-pronation-supination", "Pronation / Supination (DB)", {
+    equipment: "dumbbell",
+    bilateral: false,
+    metadata: { emphasis: "forearm-rotation" },
+  }),
+  grip("supported-wrist-curl-db", "Supported Wrist Curl (DB)", {
+    equipment: "dumbbell",
+    bilateral: false,
     isSupported: true,
     stability: "supported",
+    metadata: {
+      emphasis: "wrist-flexion",
+      position: "forearm-supported-supinated",
+    },
   }),
+  grip(
+    "supported-reverse-wrist-curl-db",
+    "Supported Reverse Wrist Curl (DB)",
+    {
+      equipment: "dumbbell",
+      bilateral: false,
+      isSupported: true,
+      stability: "supported",
+      metadata: {
+        emphasis: "wrist-extension",
+        position: "forearm-supported-pronated",
+      },
+    },
+  ),
   grip(
     "supported-wrist-radial-deviation-db",
     "Supported Wrist Radial Deviation (DB)",
@@ -139,16 +161,20 @@ const GRIP: NewMovement[] = [
       },
     },
   ),
-  // ADR 0043 — forearm ROTATION (pronation/supination), the sub-pattern a
-  // forearms focus previously lacked so the engine could span flexion +
-  // extension + deviation + rotation instead of duplicating wrist flexion.
-  grip("db-pronation-supination", "Pronation / Supination (DB)", {
-    equipment: "dumbbell",
-    bilateral: false,
-    isSupported: true,
-    stability: "supported",
-    metadata: { emphasis: "forearm-rotation" },
-  }),
+  grip(
+    "supported-pronation-supination-db",
+    "Supported Pronation / Supination (DB)",
+    {
+      equipment: "dumbbell",
+      bilateral: false,
+      isSupported: true,
+      stability: "supported",
+      metadata: {
+        emphasis: "forearm-rotation",
+        position: "forearm-supported-rotation",
+      },
+    },
+  ),
   grip("plate-pinch", "Plate Pinch", { equipment: "plates", metadata: { protocol: "isometric" } }),
   grip("captains-of-crush", "Captains of Crush", { equipment: "gripper", bilateral: false }),
   grip("dead-hang", "Dead Hang", { equipment: "bar", bodyWeightLoaded: true, metadata: { protocol: "isometric-tendon" } }),
