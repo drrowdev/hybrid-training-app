@@ -13,7 +13,7 @@
 
 - [ ] No migration added — skip this section.
 - [ ] Migration added under `packages/db/drizzle/`. **After merge** apply it to Supabase:
-      `pnpm --filter @hta/db db:migrate`
+      `gh workflow run ci.yml --ref main -f migrate_production=true`
       _Then verify with a smoke test on the live preview — the schema cache
       can take ~30s to refresh; force-reload in Supabase Studio (API →
       Reload Schema) if a new RPC isn't visible._
