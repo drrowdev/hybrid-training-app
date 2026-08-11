@@ -13,6 +13,10 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  activationPhaseForWeek,
+  type ActivationPhaseKey,
+} from "@hta/tacticalbarbell";
+import {
   createProgramInstance,
   getProgramSegments,
   type CreateProgramInstanceResult,
@@ -133,8 +137,6 @@ export interface PickerTbTemplate {
   }>;
   activationPhases?: PickerActivationPhase[];
 }
-
-type ActivationPhaseKey = "base" | "armor" | "operator" | "vertex";
 
 export interface PickerActivationPhase {
   key: ActivationPhaseKey;
@@ -1059,6 +1061,29 @@ export interface ProgramEditContextProp {
   customization?: TbCustomization;
   currentWeekIndex?: number;
   programStartWeekIndex?: number;
+}
+
+export function activationSummaryPhaseFor(
+  startWeekIndex: number,
+  editContext?: Pick<
+    ProgramEditContextProp,
+    "currentWeekIndex" | "programStartWeekIndex"
+  >,
+): ActivationPhaseKey | null {
+  const summaryWeekIndex =
+    editContext?.currentWeekIndex == null
+      ? startWeekIndex
+      : (editContext.programStartWeekIndex ?? 0) +
+        editContext.currentWeekIndex;
+  for (
+    let week = Math.max(1, Math.trunc(summaryWeekIndex) + 1);
+    week <= 25;
+    week += 1
+  ) {
+    const phase = activationPhaseForWeek(week);
+    if (phase) return phase;
+  }
+  return null;
 }
 
 export function ProgramPicker({
@@ -3267,25 +3292,19 @@ export function ProgramPicker({
           loadoutOptions.find((o) => o.value === selectedLoadoutValue)?.label ?? "\u2014",
         )
       : "Custom";
-    const activationStartPhase: ActivationPhaseKey | null =
-      startWeekIndex <= 3
-        ? "base"
-        : startWeekIndex >= 5 && startWeekIndex <= 7
-          ? "armor"
-          : startWeekIndex >= 8 && startWeekIndex <= 18
-            ? "operator"
-            : startWeekIndex >= 21 && startWeekIndex <= 23
-              ? "vertex"
-              : null;
+    const activationSummaryPhase = activationSummaryPhaseFor(
+      startWeekIndex,
+      isEditing ? editContext : undefined,
+    );
     const activationStartWeekText =
-      customizeTb && isActivation && activationStartPhase
+      customizeTb && isActivation && activationSummaryPhase
         ? (() => {
             const phase = activeTbTemplate?.activationPhases?.find(
-              (candidate) => candidate.key === activationStartPhase,
+              (candidate) => candidate.key === activationSummaryPhase,
             );
             const enabled = (phase?.sessions ?? []).filter(
               (session) =>
-                activationDrafts[activationStartPhase].sessions[
+                activationDrafts[activationSummaryPhase].sessions[
                   session.key
                 ]?.enabled,
             );
@@ -3294,13 +3313,13 @@ export function ProgramPicker({
             ).length;
             const conditioning = enabled.length - strength;
             const rehabDays = Object.keys(
-              activationDrafts[activationStartPhase].rehabAssignments,
+              activationDrafts[activationSummaryPhase].rehabAssignments,
             ).map(Number);
             const rehab = rehabDays.length;
             const occupiedDays = new Set([
               ...enabled.map(
                 (session) =>
-                  activationDrafts[activationStartPhase].sessions[
+                  activationDrafts[activationSummaryPhase].sessions[
                     session.key
                   ]!.day,
               ),
