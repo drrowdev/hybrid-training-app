@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      migrate_production:
+        description: Apply all pending Drizzle migrations to production
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -134,9 +140,9 @@ jobs:
 
       - name: Flag new migrations in PR description
         # When a PR adds files under packages/db/drizzle/*.sql, surface a
-        # loud reminder in the job summary so the merger remembers to run
-        # `pnpm --filter @hta/db db:migrate` against Supabase prod. The
-        # repo doesn't auto-deploy migrations.
+        # loud reminder in the job summary so the merger remembers to
+        # dispatch the guarded production migration job. The repo doesn't
+        # auto-deploy migrations.
         if: github.event_name == 'pull_request'
         run: |
           git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
@@ -145,14 +151,14 @@ jobs:
             {
               echo "## ⚠️ This PR adds a new migration"
               echo ""
-              echo "The repo does not auto-apply migrations. After merging, run:"
+              echo "The repo does not auto-apply migrations. After merging, dispatch:"
               echo ""
-              echo "    pnpm --filter @hta/db db:migrate"
+              echo "    gh workflow run ci.yml --ref main -f migrate_production=true"
               echo ""
               echo "**New files:**"
               echo "$NEW_SQL" | sed 's/^/- /'
             } >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning::New migration files in this PR. Run 'pnpm --filter @hta/db db:migrate' after merge."
+            echo "::warning::New migration files in this PR. Dispatch the production migration workflow after merge."
           fi
 
   e2e:
@@ -285,13 +291,58 @@ jobs:
           fi
           pnpm --filter @hta/web test:rpc-smoke
 
+  prod-migrate:
+    name: apply prod migrations
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      inputs.migrate_production
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: ci
+    environment: Production
+    permissions:
+      contents: read
+    concurrency:
+      group: production-database-migrations
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply pending migrations
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_PROD_DB_URL }}
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "::error::SUPABASE_PROD_DB_URL is not configured."
+            exit 1
+          fi
+          pnpm --filter @hta/db db:migrate
+
+      - name: Verify production migration state
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_PROD_DB_URL }}
+        run: pnpm --filter @hta/db db:check
+
   prod-drift:
     name: prod migration drift guard
     # Runs only after merge to main. Connects to the production
     # Supabase database (read-only) and asserts that every migration in
     # _journal.json has been applied to __drizzle_migrations. Surfaces
     # the gap loudly if someone merges a migration without running
-    # `pnpm --filter @hta/db db:migrate`. Read-only — never writes.
+    # the guarded `prod-migrate` workflow-dispatch job. Read-only — never writes.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -330,9 +381,9 @@ jobs:
             {
               echo "## ❌ Prod database is behind"
               echo ""
-              echo "Run from a machine with the prod \`DATABASE_URL\`:"
+              echo "Dispatch the guarded production migration job:"
               echo ""
-              echo "    pnpm --filter @hta/db db:migrate"
+              echo "    gh workflow run ci.yml --ref main -f migrate_production=true"
               echo ""
               echo "Then re-run this job (Re-run jobs button)."
             } >> "$GITHUB_STEP_SUMMARY"

@@ -50,6 +50,14 @@ and skip the migration entirely. ADR required for any new top-level column.
    the staging DB.
 5. Commit the schema change + the new SQL file + the journal update
    together in one PR.
+6. After the PR merges, apply pending migrations through the guarded
+   production workflow:
+   ```bash
+   gh workflow run ci.yml --ref main -f migrate_production=true
+   ```
+   The job runs only from `main`, serializes production migrations, uses the
+   protected `Production` environment, and verifies the migration journal
+   against the live database before succeeding.
 
 ### Out-of-band path (Supabase dashboard) — discouraged
 
