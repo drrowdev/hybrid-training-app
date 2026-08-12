@@ -337,7 +337,9 @@ export function MovementFocusView({
 
   // Snap weight/reps to the target whenever the active slot changes.
   // Also reset RPE + close the skip menu so each set starts clean.
-  const cursorKey = `${group.movementId}:${cursor}:${isActiveLogged ? "done" : "open"}`;
+  const cursorKey = `${group.groupKey ?? group.movementId}:${cursor}:${
+    isActiveLogged ? "done" : "open"
+  }`;
   const lastCursorKey = useRef(cursorKey);
   useEffect(() => {
     if (lastCursorKey.current === cursorKey) return;

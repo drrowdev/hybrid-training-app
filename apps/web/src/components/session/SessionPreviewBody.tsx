@@ -27,6 +27,7 @@ import {
 } from "@/lib/plan/prescription-grouping";
 import { segmentSupersetRows } from "@/lib/plan/superset-grouping";
 import { formatPrescriptionItem } from "@/lib/planner/archetypes";
+import { estimateSessionMinutes } from "@/lib/sessions/estimate-duration";
 import { CardioCard } from "./CardioCard";
 import { makeShouldHideHeading } from "@/lib/session/heading-dedup";
 import { BackLink } from "@/components/ui/BackLink";
@@ -90,13 +91,14 @@ export function SessionPreviewBody({
   const exerciseCount =
     sections.movements.length +
     sections.accessories.length +
+    sections.rehab.length +
     sections.tendon.length +
     sections.hingeCompensations.length;
-  const meta = durationLine(session, exerciseCount);
   const hasAnything =
     sections.movements.length > 0 ||
     sections.accessories.length > 0 ||
     sections.hingeCompensations.length > 0 ||
+    sections.rehab.length > 0 ||
     sections.tendon.length > 0 ||
     sections.cardio.length > 0;
 
@@ -126,13 +128,23 @@ export function SessionPreviewBody({
   const supplementalMovementSections = sections.movements.filter(
     isSupplementalOnlySection,
   );
-  const tendonSectionLabel =
-    sections.tendon.length > 0 &&
-    sections.tendon.every((row) =>
-      row.items.every((item) => item.meta?.rehab === true),
-    )
-      ? "REHAB"
-      : "TENDON WORK";
+  const hasEmbeddedRehab =
+    sections.rehab.length > 0 &&
+    (sections.movements.length > 0 ||
+      sections.accessories.length > 0 ||
+      sections.hingeCompensations.length > 0 ||
+      sections.tendon.length > 0);
+  const rehabItems = sections.rehab.flatMap((row) => row.items);
+  const rehabMinutes = estimateSessionMinutes(rehabItems);
+  const rehabProtocol = rehabItems
+    .map((item) => item.meta?.rehabProtocolName)
+    .find((name): name is string => typeof name === "string" && name.length > 0);
+  const meta = [
+    durationLine(session, exerciseCount),
+    hasEmbeddedRehab ? "Rehab overlaps warm-up" : null,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(" · ");
 
   // On the Preview page the page header already shows "~35 min" in
   // the meta line, so CardioCard hides its Duration row to avoid
@@ -209,6 +221,24 @@ export function SessionPreviewBody({
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {sections.rehab.length > 0 && (
+          <MovementListCard
+            testId="session-preview-section-rehab"
+            kind={
+              rehabProtocol && rehabProtocol !== "Rehab"
+                ? `REHAB · ${rehabProtocol.toUpperCase()}`
+                : "REHAB"
+            }
+            subtitle={[
+              hasEmbeddedRehab ? "Do during warm-up" : null,
+              rehabMinutes != null ? `~${rehabMinutes} min` : null,
+            ]
+              .filter((part): part is string => part != null)
+              .join(" · ")}
+            rows={sections.rehab}
+            accent
+          />
+        )}
         {/*
           Strength rendering differs by variant. The full Preview page
           shows every warm-up + working set per movement (the user is
@@ -257,7 +287,7 @@ export function SessionPreviewBody({
         {sections.tendon.length > 0 && (
           <MovementListCard
             testId="session-preview-section-tendon"
-            kind={tendonSectionLabel}
+            kind="TENDON WORK"
             rows={sections.tendon}
           />
         )}
@@ -542,18 +572,45 @@ function SetLine({
 function MovementListCard({
   testId,
   kind,
+  subtitle,
   rows,
+  accent = false,
 }: {
   testId: string;
   kind: string;
+  subtitle?: string;
   rows: PrescriptionMovementRow[];
+  accent?: boolean;
 }) {
   const segments = segmentSupersetRows(rows);
   return (
-    <section data-testid={testId} style={cardStyle}>
+    <section
+      data-testid={testId}
+      style={{
+        ...cardStyle,
+        ...(accent
+          ? {
+              borderColor: "var(--cp-accent)",
+              background: "var(--cp-accent-soft)",
+            }
+          : {}),
+      }}
+    >
       <div className="mono" style={eyebrowStyle}>
         {kind}
       </div>
+      {subtitle && (
+        <div
+          style={{
+            marginTop: -4,
+            marginBottom: 8,
+            fontSize: 12,
+            color: accent ? "var(--cp-accent)" : "var(--cp-text-muted)",
+          }}
+        >
+          {subtitle}
+        </div>
+      )}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {segments.map((seg) =>
           seg.kind === "solo" ? (

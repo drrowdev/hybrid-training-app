@@ -50,6 +50,7 @@ import {
   type SessionModality,
 } from "../planner/session-modality";
 import { expandPrescriptionSets } from "@/lib/planner/expand-prescription-sets";
+import { embedRehabPrescription } from "./rehab-composition";
 
 export interface MaterializeOptions {
   /**
@@ -535,20 +536,6 @@ export function materializeProgram<I>(
             : [];
       for (const assignment of rehabAssignments) {
         const dayIndex = assignment.day;
-        const dayHasSession = sessions.some(
-          (session) =>
-            session.weekIndex === weekIndex &&
-            session.dayIndex === dayIndex,
-        );
-        // `pm` is a uniqueness key for same-day adjunct rehab, not an inferred
-        // training time. Renderers expose AM/PM only when an actual AM + PM pair
-        // exists; a `single` + `pm` day remains time-neutral.
-        const slot = dayHasSession ? "pm" : "single";
-        if (takenSlots.has(`${weekIndex}-${dayIndex}-${slot}`)) {
-          throw new Error(
-            `materializeProgram: rehab slot '${slot}' on day ${dayIndex} collides in week ${weekIndex + 1}`,
-          );
-        }
         const ref = assignment.protocolId
           ? `rehab-${assignment.protocolId}-w${weekIndex}-d${dayIndex}`
           : `rehab-w${weekIndex}-d${dayIndex}`;
@@ -584,11 +571,48 @@ export function materializeProgram<I>(
                 : {}),
               meta: {
                 rehab: true,
+                rehabProtocolId: assignment.protocolId,
+                rehabProtocolName: assignment.protocolName,
+                rehabSourceRef: ref,
+                rehabPlacement: "during_warmup",
                 ...(item.side ? { side: item.side } : {}),
               },
             };
           }),
         };
+        const expandedPrescription = expandPrescriptionSets(prescription);
+        const strengthSession = sessions.find(
+          (session) =>
+            session.weekIndex === weekIndex &&
+            session.dayIndex === dayIndex &&
+            session.role === "strength",
+        );
+        if (strengthSession) {
+          strengthSession.prescription = embedRehabPrescription(
+            strengthSession.prescription,
+            expandedPrescription.items,
+            {
+              protocolId: assignment.protocolId,
+              protocolName: assignment.protocolName,
+              sourceRef: ref,
+            },
+          );
+          continue;
+        }
+
+        const dayHasSession = sessions.some(
+          (session) =>
+            session.weekIndex === weekIndex &&
+            session.dayIndex === dayIndex,
+        );
+        // Cardio + rehab and rehab-only days remain independent sessions.
+        // `pm` is only a collision key here, not an inferred training time.
+        const slot = dayHasSession ? "pm" : "single";
+        if (takenSlots.has(`${weekIndex}-${dayIndex}-${slot}`)) {
+          throw new Error(
+            `materializeProgram: rehab slot '${slot}' on day ${dayIndex} collides in week ${weekIndex + 1}`,
+          );
+        }
         sessions.push({
           ref,
           weekIndex,
@@ -599,7 +623,7 @@ export function materializeProgram<I>(
               ? "Rehab"
               : `Rehab · ${assignment.protocolName}`,
           role: "rehab",
-          prescription: expandPrescriptionSets(prescription),
+          prescription: expandedPrescription,
           sessionModality: "restorative",
           effectiveStressLoad: 0,
           skipped: [],

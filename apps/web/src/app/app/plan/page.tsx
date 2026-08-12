@@ -8,7 +8,7 @@ import {
   unskipPlannedSession,
 } from "@/lib/planner/actions";
 import { updatePlannedSessionNotes } from "@/lib/sessions/actions";
-import { estimateSessionMinutes } from "@/lib/sessions/estimate-duration";
+import { estimateSessionDurationBreakdown } from "@/lib/sessions/estimate-duration";
 import { ARCHETYPES } from "@/lib/planner/archetypes";
 import {
   getActiveBlock,
@@ -289,7 +289,7 @@ export default async function PlanPage({
     const hasStrengthItems = items.some((i) => !(i.kind ?? "").startsWith("cardio_"));
     const isRehab = p.role === "rehab";
     // Set-aware duration estimate (shared with the planner's tilt governor).
-    const dur = estimateSessionMinutes(items);
+    const dur = estimateSessionDurationBreakdown(items).displayMinutes;
     return {
       id: p.id,
       weekIndex: p.weekIndex,

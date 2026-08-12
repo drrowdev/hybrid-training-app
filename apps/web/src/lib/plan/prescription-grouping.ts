@@ -14,6 +14,7 @@
  */
 
 import type { PrescriptionItem } from "@hta/db";
+import { isRehabItem } from "@hta/domain";
 
 export type PrescriptionMovementRow = {
   /** movement_id used as the dedup key; falls back to slug-derived id. */
@@ -38,6 +39,7 @@ export type PrescriptionSections = {
   main: PrescriptionMainRow[];
   accessories: PrescriptionMovementRow[];
   hingeCompensations: PrescriptionMovementRow[];
+  rehab: PrescriptionMovementRow[];
   tendon: PrescriptionMovementRow[];
   cardio: PrescriptionItem[];
 };
@@ -78,6 +80,7 @@ export type PlanCardSections = {
   movements: MovementPrescriptionSection[];
   accessories: PrescriptionMovementRow[];
   hingeCompensations: PrescriptionMovementRow[];
+  rehab: PrescriptionMovementRow[];
   tendon: PrescriptionMovementRow[];
   cardio: PrescriptionItem[];
 };
@@ -157,6 +160,8 @@ export function groupPrescriptionSections(
   const accessoriesByKey = new Map<string, PrescriptionMovementRow>();
   const hinge: PrescriptionMovementRow[] = [];
   const hingeByKey = new Map<string, PrescriptionMovementRow>();
+  const rehab: PrescriptionMovementRow[] = [];
+  const rehabByKey = new Map<string, PrescriptionMovementRow>();
   const tendon: PrescriptionMovementRow[] = [];
   const tendonByKey = new Map<string, PrescriptionMovementRow>();
   const cardio: PrescriptionItem[] = [];
@@ -171,7 +176,11 @@ export function groupPrescriptionSections(
       continue;
     }
     if (item.kind === "tendon") {
-      pushIntoRow(tendon, tendonByKey, item);
+      if (isRehabItem(item)) {
+        pushIntoRow(rehab, rehabByKey, item);
+      } else {
+        pushIntoRow(tendon, tendonByKey, item);
+      }
       continue;
     }
     if (item.kind === "accessory") {
@@ -208,7 +217,15 @@ export function groupPrescriptionSections(
     return { item, setNumber: i + 1, isTopSet };
   });
 
-  return { warmups, main, accessories, hingeCompensations: hinge, tendon, cardio };
+  return {
+    warmups,
+    main,
+    accessories,
+    hingeCompensations: hinge,
+    rehab,
+    tendon,
+    cardio,
+  };
 }
 
 /**
@@ -243,6 +260,8 @@ export function groupByMovementThenKind(
   const accessoriesByKey = new Map<string, PrescriptionMovementRow>();
   const hinge: PrescriptionMovementRow[] = [];
   const hingeByKey = new Map<string, PrescriptionMovementRow>();
+  const rehab: PrescriptionMovementRow[] = [];
+  const rehabByKey = new Map<string, PrescriptionMovementRow>();
   const tendon: PrescriptionMovementRow[] = [];
   const tendonByKey = new Map<string, PrescriptionMovementRow>();
   const cardio: PrescriptionItem[] = [];
@@ -273,7 +292,11 @@ export function groupByMovementThenKind(
     }
     if (isContentlessItem(item)) continue;
     if (item.kind === "tendon") {
-      pushIntoRow(tendon, tendonByKey, item);
+      if (isRehabItem(item)) {
+        pushIntoRow(rehab, rehabByKey, item);
+      } else {
+        pushIntoRow(tendon, tendonByKey, item);
+      }
       continue;
     }
     if (item.kind === "accessory") {
@@ -327,7 +350,14 @@ export function groupByMovementThenKind(
     }
   }
 
-  return { movements, accessories, hingeCompensations: hinge, tendon, cardio };
+  return {
+    movements,
+    accessories,
+    hingeCompensations: hinge,
+    rehab,
+    tendon,
+    cardio,
+  };
 }
 
 /**

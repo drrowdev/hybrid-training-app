@@ -136,6 +136,44 @@ describe("removeMovementFromPrescription", () => {
     expect(next).toBe(base);
     expect(next.userEdited).toBeUndefined();
   });
+
+  it("can remove rehab without removing core work for the same movement", () => {
+    const combined: Prescription = {
+      items: [
+        {
+          ...base.items[0]!,
+          kind: "tendon",
+          meta: {
+            rehab: true,
+            rehabSourceRef: "rehab-achilles",
+          },
+        },
+        base.items[0]!,
+      ],
+      meta: {
+        embeddedRehabSections: [
+          {
+            protocolId: "achilles",
+            protocolName: "Achilles",
+            sourceRef: "rehab-achilles",
+            placement: "during_warmup",
+            itemCount: 1,
+            movementCount: 1,
+          },
+        ],
+      },
+    };
+
+    const next = removeMovementFromPrescription(combined, "mov-bench", {
+      rehab: true,
+    });
+
+    expect(next.items).toEqual([base.items[0]]);
+    expect(next.meta?.embeddedRehabSections).toBeUndefined();
+    expect(next.meta?.removedEmbeddedRehabSourceRefs).toEqual([
+      "rehab-achilles",
+    ]);
+  });
 });
 
 describe("swapMovementInPrescription", () => {
@@ -159,6 +197,33 @@ describe("swapMovementInPrescription", () => {
     const meta = next.items[1]!.meta as Record<string, unknown>;
     expect(meta.swappedFrom).toEqual({ movementId: "mov-bench", movementName: "Bench" });
     expect(next.userEdited).toBe(true);
+  });
+
+  it("can swap core work without retargeting rehab for the same movement", () => {
+    const combined: Prescription = {
+      items: [
+        {
+          ...base.items[0]!,
+          kind: "tendon",
+          meta: { rehab: true },
+        },
+        base.items[0]!,
+      ],
+    };
+    const next = swapMovementInPrescription(
+      combined,
+      "mov-bench",
+      {
+        id: "mov-floor",
+        slug: "floor-press",
+        displayName: "Floor Press",
+      },
+      "2026-05-23T12:00:00.000Z",
+      { rehab: false },
+    );
+
+    expect(next.items[0]!.movementId).toBe("mov-bench");
+    expect(next.items[1]!.movementId).toBe("mov-floor");
   });
 });
 

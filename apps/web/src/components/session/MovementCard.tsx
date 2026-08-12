@@ -640,7 +640,11 @@ export function MovementCard({
           open={swapOpen}
           onClose={() => setSwapOpen(false)}
           sessionId={sessionId}
-          original={{ id: group.movementId, displayName: group.movementName }}
+          original={{
+            id: group.movementId,
+            displayName: group.movementName,
+            rehab: group.items.every((item) => item.meta?.rehab === true),
+          }}
           onSwapped={(next) => {
             setSwappedMovement(next);
             setSwapOpen(false);

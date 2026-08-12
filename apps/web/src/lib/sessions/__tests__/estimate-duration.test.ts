@@ -3,6 +3,7 @@ import type { PrescriptionItem } from "@hta/db";
 import {
   WORK_SEC_PER_SET,
   SUPERSET_TRANSITION_SEC,
+  estimateSessionDurationBreakdown,
   estimateSessionSeconds,
   estimateSessionMinutes,
 } from "../estimate-duration";
@@ -35,6 +36,24 @@ describe("estimate-duration", () => {
     expect(
       estimateSessionSeconds([item({ kind: "accessory", sets: 3 })]),
     ).toBe(3 * (WORK_SEC_PER_SET + 90));
+  });
+
+  it("shows embedded rehab as overlapping warm-up instead of inflating workout duration", () => {
+    const main = item({ kind: "main", sets: 3 });
+    const rehab = item({
+      kind: "tendon",
+      sets: 3,
+      movementId: "rehab",
+      meta: { rehab: true },
+    });
+    const breakdown = estimateSessionDurationBreakdown([rehab, main]);
+
+    expect(breakdown.hasEmbeddedRehab).toBe(true);
+    expect(breakdown.displayMinutes).toBe(estimateSessionMinutes([main]));
+    expect(breakdown.rehabMinutes).toBe(estimateSessionMinutes([rehab]));
+    expect(breakdown.totalIfSequentialMinutes).toBe(
+      (breakdown.coreMinutes ?? 0) + (breakdown.rehabMinutes ?? 0),
+    );
   });
 
   it("is set-count-aware and monotonic (the governor invariant)", () => {

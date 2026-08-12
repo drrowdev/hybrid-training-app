@@ -104,6 +104,30 @@ describe("SessionPreviewBody (compact / Today hero)", () => {
     expect(html).not.toContain("TENDON WORK");
   });
 
+  it("renders embedded rehab before strength and frames it as warm-up work", () => {
+    const html = renderCompact([
+      {
+        kind: "tendon",
+        movementId: "hip-adduction",
+        movementName: "Standing Banded Hip Adduction",
+        sets: 3,
+        reps: 15,
+        meta: {
+          rehab: true,
+          rehabProtocolName: "Adductor",
+          rehabPlacement: "during_warmup",
+        },
+      },
+      main({ movementId: "squat", movementName: "Front Squat" }),
+    ]);
+
+    expect(html).toContain("REHAB · ADDUCTOR");
+    expect(html).toContain("Do during warm-up");
+    expect(html.indexOf("REHAB · ADDUCTOR")).toBeLessThan(
+      html.indexOf("MAIN LIFTS"),
+    );
+  });
+
   it("strips outer chrome: no back link, no outer header, no Start CTA", () => {
     const html = renderCompact([cardio()], { title: "VO2 intervals" });
     expect(html).not.toContain('data-testid="back-link"');

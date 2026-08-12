@@ -31,7 +31,7 @@ export type SwapMovementModalProps = {
   open: boolean;
   onClose: () => void;
   sessionId: string;
-  original: { id: string; displayName: string };
+  original: { id: string; displayName: string; rehab?: boolean };
   /** Called with the picked movement once the swap is recorded. */
   onSwapped: (next: { id: string; slug: string; displayName: string }) => void;
 };
@@ -185,6 +185,9 @@ export function SwapMovementModal({
     const fd = new FormData();
     fd.set("sessionId", sessionId);
     fd.set("originalMovementId", original.id);
+    if (original.rehab != null) {
+      fd.set("rehab", String(original.rehab));
+    }
     fd.set("newMovementId", pick.id);
     fd.set("reason", reason);
     if (freeform.trim().length > 0) fd.set("freeformReason", freeform.trim());

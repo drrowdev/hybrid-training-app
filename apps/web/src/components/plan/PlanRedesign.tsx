@@ -74,6 +74,7 @@ import {
 import { setHyroxStationOverride } from "@/lib/hyrox/station-swap-actions";
 import { stationAlternativesFor } from "@hta/hyrox";
 import type { PrescriptionItem } from "@hta/db";
+import { isRehabItem } from "@hta/domain";
 
 export type PlanViewMode = "timeline" | "month" | "season";
 
@@ -2450,6 +2451,11 @@ export function SessionDrawer({
     sections.accessories.length +
     sections.hingeCompensations.length +
     sections.tendon.length;
+  const rehabMovementCount = sections.rehab.length;
+  const rehabProtocolName = sections.rehab
+    .flatMap((row) => row.items)
+    .map((item) => item.meta?.rehabProtocolName)
+    .find((name): name is string => typeof name === "string" && name.length > 0);
   const compositionLabel = useMemo(() => {
     const parts: string[] = [];
     if (mainLiftCount > 0) {
@@ -2465,8 +2471,18 @@ export function SessionDrawer({
     if (accessoryCount > 0) {
       parts.push(`${accessoryCount} accessor${accessoryCount === 1 ? "y" : "ies"}`);
     }
+    if (rehabMovementCount > 0) {
+      parts.push(
+        `${rehabMovementCount} rehab movement${rehabMovementCount === 1 ? "" : "s"}`,
+      );
+    }
     return parts.join(" + ");
-  }, [mainLiftCount, supplementalLiftCount, accessoryCount]);
+  }, [
+    mainLiftCount,
+    supplementalLiftCount,
+    accessoryCount,
+    rehabMovementCount,
+  ]);
   const dur = session.estDurationMin;
 
   const handleSwap = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -2720,12 +2736,27 @@ export function SessionDrawer({
             <MovementEditList
               plannedSessionId={session.id}
               items={session.items}
+              canRemoveMovements={!session.completedSessionId}
               onChanged={() => router.refresh()}
             />
           ) : session.done && session.completedSessionId ? (
             <CompletedSummaryCard sessionId={session.completedSessionId} />
           ) : (
             <>
+              {sections.rehab.length > 0 && (
+                <DrawerRowSection
+                  testId="plan-drawer-section-rehab"
+                  label={
+                    rehabProtocolName && rehabProtocolName !== "Rehab"
+                      ? `Rehab · ${rehabProtocolName}`
+                      : "Rehab"
+                  }
+                  hint={session.isRehab ? undefined : "Do during warm-up"}
+                  prefix="R"
+                  rows={sections.rehab}
+                  accent
+                />
+              )}
               {sections.movements.map((sec) => (
                 <DrawerMovement key={sec.rowKey} section={sec} editing={false} />
               ))}
@@ -3200,35 +3231,50 @@ function SetRow({
 function MovementEditList({
   plannedSessionId,
   items,
+  canRemoveMovements,
   onChanged,
 }: {
   plannedSessionId: string;
   items: PrescriptionItem[];
+  canRemoveMovements: boolean;
   onChanged: () => void;
 }) {
   const movements = useMemo(() => {
     const seen = new Set<string>();
-    const out: { movementId: string; name: string }[] = [];
+    const out: { movementId: string; name: string; rehab: boolean }[] = [];
     for (const it of items) {
       if ((it.kind ?? "").startsWith("cardio_")) continue;
       const id = it.movementId;
-      if (!id || seen.has(id)) continue;
-      seen.add(id);
-      out.push({ movementId: id, name: it.movementName ?? it.movementSlug ?? "Movement" });
+      const rehab = isRehabItem(it);
+      const key = `${rehab ? "rehab" : "core"}:${id}`;
+      if (!id || seen.has(key)) continue;
+      seen.add(key);
+      const name = it.movementName ?? it.movementSlug ?? "Movement";
+      out.push({
+        movementId: id,
+        name: rehab ? `Rehab · ${name}` : name,
+        rehab,
+      });
     }
     return out;
   }, [items]);
+  const coreMovementCount = movements.filter((movement) => !movement.rehab).length;
 
   return (
     <div data-testid="plan-drawer-edit-movements" style={{ display: "grid", gap: 8 }}>
       {movements.length > 0 && <div className="section">Movements</div>}
       {movements.map((m) => (
         <MovementEditRow
-          key={m.movementId}
+          key={`${m.rehab ? "rehab" : "core"}:${m.movementId}`}
           plannedSessionId={plannedSessionId}
           movementId={m.movementId}
+          rehab={m.rehab}
           name={m.name}
-          canRemove={movements.length > 1}
+          canRemove={
+            canRemoveMovements &&
+            (m.rehab ? movements.length > 1 : coreMovementCount > 1)
+          }
+          removalLocked={!canRemoveMovements}
           onChanged={onChanged}
         />
       ))}
@@ -3408,14 +3454,18 @@ function StationEditRow({
 function MovementEditRow({
   plannedSessionId,
   movementId,
+  rehab,
   name,
   canRemove,
+  removalLocked,
   onChanged,
 }: {
   plannedSessionId: string;
   movementId: string;
+  rehab: boolean;
   name: string;
   canRemove: boolean;
+  removalLocked: boolean;
   onChanged: () => void;
 }) {
   const [swapping, setSwapping] = useState(false);
@@ -3428,6 +3478,7 @@ function MovementEditRow({
       const fd = new FormData();
       fd.set("plannedSessionId", plannedSessionId);
       fd.set("movementId", movementId);
+      fd.set("rehab", String(rehab));
       const r = await removePlannedMovement(fd);
       if (r.error) setError(r.error);
       else onChanged();
@@ -3440,6 +3491,7 @@ function MovementEditRow({
       const fd = new FormData();
       fd.set("plannedSessionId", plannedSessionId);
       fd.set("movementId", movementId);
+      fd.set("rehab", String(rehab));
       fd.set("newMovementId", m.id);
       const r = await swapPlannedMovement(fd);
       if (r.error) setError(r.error);
@@ -3452,7 +3504,7 @@ function MovementEditRow({
 
   return (
     <div
-      data-testid={`plan-drawer-edit-movement-${movementId}`}
+      data-testid={`plan-drawer-edit-movement-${rehab ? "rehab-" : ""}${movementId}`}
       style={{
         display: "grid",
         gap: 6,
@@ -3468,7 +3520,7 @@ function MovementEditRow({
           <button
             type="button"
             className="cp-btn"
-            data-testid={`plan-drawer-swap-movement-${movementId}`}
+            data-testid={`plan-drawer-swap-movement-${rehab ? "rehab-" : ""}${movementId}`}
             onClick={() => setSwapping((v) => !v)}
             disabled={pending}
             style={editBtnStyle}
@@ -3478,10 +3530,16 @@ function MovementEditRow({
           <button
             type="button"
             className="cp-btn"
-            data-testid={`plan-drawer-remove-movement-${movementId}`}
+            data-testid={`plan-drawer-remove-movement-${rehab ? "rehab-" : ""}${movementId}`}
             onClick={doRemove}
             disabled={pending || !canRemove}
-            title={canRemove ? undefined : "A workout needs at least one movement"}
+            title={
+              canRemove
+                ? undefined
+                : removalLocked
+                  ? "Movements can't be removed after a workout has started"
+                  : "A workout needs at least one movement"
+            }
             style={editBtnStyle}
           >
             Remove
@@ -3490,7 +3548,7 @@ function MovementEditRow({
       </div>
       {swapping && (
         <MovementPicker
-          name={`__swap_${movementId}`}
+          name={`__swap_${rehab ? "rehab_" : ""}${movementId}`}
           placeholder="Swap for…"
           onChange={doSwap}
         />
@@ -3588,14 +3646,18 @@ const editBtnStyle: React.CSSProperties = {
 
 function DrawerRowSection({
   label,
+  hint,
   prefix,
   rows,
   testId,
+  accent = false,
 }: {
   label: string;
+  hint?: string;
   prefix: string;
   rows: PrescriptionMovementRow[];
   testId: string;
+  accent?: boolean;
 }) {
   const segments = segmentSupersetRows(rows);
   const rendered: React.ReactNode[] = [];
@@ -3641,8 +3703,34 @@ function DrawerRowSection({
     );
   }
   return (
-    <div data-testid={testId}>
-      <div className="section">{label}</div>
+    <div
+      data-testid={testId}
+      style={
+        accent
+          ? {
+              borderLeft: "2px solid var(--cp-accent)",
+              paddingLeft: 10,
+            }
+          : undefined
+      }
+    >
+      <div className="section">
+        {label}
+        {hint && (
+          <span
+            style={{
+              marginLeft: 8,
+              fontSize: 11,
+              fontWeight: 500,
+              color: "var(--cp-accent)",
+              textTransform: "none",
+              letterSpacing: 0,
+            }}
+          >
+            {hint}
+          </span>
+        )}
+      </div>
       {rendered}
     </div>
   );

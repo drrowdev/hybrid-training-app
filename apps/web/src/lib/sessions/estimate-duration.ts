@@ -25,6 +25,7 @@
  */
 
 import type { PrescriptionItem, PrescriptionItemKind } from "@hta/db";
+import { partitionRehabItems } from "@hta/domain";
 import { restSecondsForKind } from "./rest";
 import { SUPERSET_GROUP_KEY } from "../planner/antagonist-pairs";
 
@@ -151,4 +152,35 @@ export function estimateSessionMinutes(
   const sec = estimateSessionSeconds(items);
   if (sec <= 0) return null;
   return Math.round(sec / 60);
+}
+
+export type SessionDurationBreakdown = {
+  /** Duration shown for the workout; embedded rehab overlaps its warm-up. */
+  displayMinutes: number | null;
+  coreMinutes: number | null;
+  rehabMinutes: number | null;
+  totalIfSequentialMinutes: number | null;
+  hasEmbeddedRehab: boolean;
+};
+
+export function estimateSessionDurationBreakdown(
+  items: readonly PrescriptionItem[] | null | undefined,
+): SessionDurationBreakdown {
+  const { rehab, core } = partitionRehabItems(items ?? []);
+  const coreMinutes = estimateSessionMinutes(core);
+  const rehabMinutes = estimateSessionMinutes(rehab);
+  const hasEmbeddedRehab = rehab.length > 0 && core.length > 0;
+  const totalIfSequentialMinutes =
+    coreMinutes == null && rehabMinutes == null
+      ? null
+      : (coreMinutes ?? 0) + (rehabMinutes ?? 0);
+
+  return {
+    displayMinutes:
+      core.length > 0 ? coreMinutes : rehabMinutes,
+    coreMinutes,
+    rehabMinutes,
+    totalIfSequentialMinutes,
+    hasEmbeddedRehab,
+  };
 }

@@ -3614,6 +3614,14 @@ export function ProgramPicker({
               return draft?.enabled ? [draft.day] : [];
             }),
           );
+          const strengthDays = new Set(
+            phase.sessions.flatMap((session) => {
+              const draft = phaseDraft.sessions[session.key];
+              return session.type === "strength" && draft?.enabled
+                ? [draft.day]
+                : [];
+            }),
+          );
           const orderedSessions = [...phase.sessions].sort((left, right) => {
             const dayDiff =
               phaseDraft.sessions[left.key]!.day -
@@ -4015,13 +4023,16 @@ export function ProgramPicker({
                       const selected =
                         phaseDraft.rehabAssignments[index] ?? "";
                       const sharesWorkout = occupied.has(index);
+                      const sharesStrength = strengthDays.has(index);
                       return (
                         <label
                           key={day}
                           className={selected ? styles.selected : ""}
                           title={
                             sharesWorkout
-                              ? "Adds a separate rehab session on this workout day"
+                              ? sharesStrength
+                                ? "Included as the warm-up rehab section in this strength workout"
+                                : "Adds a separate rehab session beside this conditioning workout"
                               : "Adds a rehab-only session"
                           }
                         >

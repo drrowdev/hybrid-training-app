@@ -29,6 +29,10 @@ const swapActiveSchema = z.object({
   sessionId: z.string().uuid(),
   originalMovementId: z.string().uuid(),
   newMovementId: z.string().uuid(),
+  rehab: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((value) => (value == null ? undefined : value === "true")),
   reason: z.enum(["pain", "equipment", "other"]),
   freeformReason: z.string().max(280).optional(),
 });
@@ -47,6 +51,7 @@ export async function swapActiveMovement(
     sessionId: formData.get("sessionId"),
     originalMovementId: formData.get("originalMovementId"),
     newMovementId: formData.get("newMovementId"),
+    rehab: formData.get("rehab") ?? undefined,
     reason: formData.get("reason"),
     freeformReason:
       (formData.get("freeformReason") as string | null) ?? undefined,
@@ -103,6 +108,7 @@ export async function swapActiveMovement(
       originalMovementId: parsed.data.originalMovementId,
       newMovementId: parsed.data.newMovementId,
       reasonCategory: parsed.data.reason,
+      rehab: parsed.data.rehab ?? null,
       freeformReason: parsed.data.freeformReason ?? null,
     },
   });
@@ -130,6 +136,8 @@ export async function swapActiveMovement(
       planned.prescription as Prescription,
       parsed.data.originalMovementId,
       newMovement,
+      undefined,
+      { rehab: parsed.data.rehab },
     );
     await supabase
       .from("planned_sessions")
@@ -145,7 +153,13 @@ export async function swapActiveMovement(
       .maybeSingle();
     const rx = (sessionRx as { prescription?: Prescription | null } | null)?.prescription;
     if (rx) {
-      const updated = swapMovementInPrescription(rx, parsed.data.originalMovementId, newMovement);
+      const updated = swapMovementInPrescription(
+        rx,
+        parsed.data.originalMovementId,
+        newMovement,
+        undefined,
+        { rehab: parsed.data.rehab },
+      );
       await supabase
         .from("sessions")
         .update({ prescription: updated })

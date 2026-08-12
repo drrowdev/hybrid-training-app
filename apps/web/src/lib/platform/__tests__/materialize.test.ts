@@ -581,17 +581,39 @@ describe("materializeProgram — TB3 Activation", () => {
       (session) => session.weekIndex === 0,
     );
     expect(baseWeek.map((session) => session.dayIndex)).toEqual([
-      6, 2, 4, 1, 3, 2,
+      6, 2, 4, 1, 3,
     ]);
     expect(
       baseWeek.some((session) => session.ref.endsWith("base-lss-3")),
     ).toBe(false);
-    expect(baseWeek.find((session) => session.role === "rehab")).toMatchObject({
-      dayIndex: 2,
-      title: "Rehab",
-      slot: "pm",
-      prescription: { programRef: "rehab-w0-d2" },
-    });
+    expect(baseWeek.find((session) => session.role === "rehab")).toBeUndefined();
+    const baseTwo = baseWeek.find(
+      (session) => session.role === "strength" && session.dayIndex === 2,
+    )!;
+    expect(baseTwo.prescription.programRef).not.toBe("rehab-w0-d2");
+    expect(baseTwo.prescription.items.slice(0, 3)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          movementName: "Knee extension",
+          kind: "tendon",
+          sets: 1,
+          meta: expect.objectContaining({
+            rehab: true,
+            rehabSourceRef: "rehab-w0-d2",
+            rehabPlacement: "during_warmup",
+          }),
+        }),
+      ]),
+    );
+    expect(baseTwo.prescription.meta?.embeddedRehabSections).toEqual([
+      expect.objectContaining({
+        protocolName: "Rehab",
+        sourceRef: "rehab-w0-d2",
+        placement: "during_warmup",
+        itemCount: 3,
+        movementCount: 1,
+      }),
+    ]);
     const baseOne = baseWeek.find((session) =>
       session.ref.endsWith("base-1"),
     )!;
@@ -623,7 +645,7 @@ describe("materializeProgram — TB3 Activation", () => {
           sessions: {},
           rehabAssignments: [
             { day: 0, protocolId: "adductor" },
-            { day: 2, protocolId: "trunk" },
+            { day: 1, protocolId: "trunk" },
           ],
         },
         armor: { sessions: {}, rehabAssignments: [] },
@@ -668,28 +690,39 @@ describe("materializeProgram — TB3 Activation", () => {
       (session) => session.weekIndex === 0 && session.role === "rehab",
     );
 
-    expect(rehab).toHaveLength(2);
-    expect(
-      rehab.map((session) => ({
-        day: session.dayIndex,
-        title: session.title,
-        movement: session.prescription.items[0]?.movementName,
-        sets: session.prescription.items.length,
-      })),
-    ).toEqual([
-      {
-        day: 0,
-        title: "Rehab · Adductor",
-        movement: "Standing Banded Hip Adduction",
-        sets: 5,
-      },
-      {
-        day: 2,
-        title: "Rehab · Trunk",
-        movement: "Dead bug",
-        sets: 3,
-      },
+    const combined = custom.sessions.find(
+      (session) =>
+        session.weekIndex === 0 &&
+        session.dayIndex === 0 &&
+        session.role === "strength",
+    )!;
+    expect(combined.prescription.items.slice(0, 5)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          movementName: "Standing Banded Hip Adduction",
+          meta: expect.objectContaining({
+            rehabProtocolId: "adductor",
+            rehabProtocolName: "Adductor",
+          }),
+        }),
+      ]),
+    );
+    expect(combined.prescription.meta?.embeddedRehabSections).toEqual([
+      expect.objectContaining({
+        protocolId: "adductor",
+        protocolName: "Adductor",
+        itemCount: 5,
+      }),
     ]);
+
+    expect(rehab).toHaveLength(1);
+    expect(rehab[0]).toMatchObject({
+      dayIndex: 1,
+      slot: "pm",
+      title: "Rehab · Trunk",
+    });
+    expect(rehab[0]?.prescription.items).toHaveLength(3);
+    expect(rehab[0]?.prescription.items[0]?.movementName).toBe("Dead bug");
   });
 });
 

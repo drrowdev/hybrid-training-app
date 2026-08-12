@@ -1,4 +1,7 @@
-import type { MovementGroup } from "./movement-grouping";
+import {
+  movementGroupKey,
+  type MovementGroup,
+} from "./movement-grouping";
 
 export type LinkedCircuitInfo = {
   id: string;
@@ -68,7 +71,7 @@ export function buildLinkedCircuitByMovementId(
       );
     if (!complete) continue;
     for (const { group, info } of ordered) {
-      result.set(group.movementId, info);
+      result.set(movementGroupKey(group), info);
     }
   }
 
@@ -92,7 +95,7 @@ export function buildLinkedCircuitByMovementId(
         entry,
       ): entry is { group: MovementGroup; position: number } =>
         entry.position != null &&
-        !result.has(entry.group.movementId) &&
+        !result.has(movementGroupKey(entry.group)) &&
         requiredItemIndices(entry.group).length === 3 &&
         entry.group.items.every(
           (item) =>
@@ -106,7 +109,7 @@ export function buildLinkedCircuitByMovementId(
     new Set(legacyAbTriad.map(({ position }) => position)).size === 3
   ) {
     legacyAbTriad.forEach(({ group, position }) => {
-      result.set(group.movementId, {
+      result.set(movementGroupKey(group), {
         id: "tb-ab-triad",
         name: "AB Triad",
         position,
@@ -126,12 +129,12 @@ function orderedMembers(
 ): MovementGroup[] {
   return groups
     .filter(
-      (group) => membership.get(group.movementId)?.id === circuitId,
+      (group) => membership.get(movementGroupKey(group))?.id === circuitId,
     )
     .sort(
       (left, right) =>
-        membership.get(left.movementId)!.position -
-        membership.get(right.movementId)!.position,
+        membership.get(movementGroupKey(left))!.position -
+        membership.get(movementGroupKey(right))!.position,
     );
 }
 
@@ -144,13 +147,13 @@ export function firstOpenCircuitMovementId(
 ): string | null {
   const members = orderedMembers(groups, membership, circuitId);
   const rounds = members[0]
-    ? membership.get(members[0].movementId)!.rounds
+    ? membership.get(movementGroupKey(members[0]))!.rounds
     : 0;
   for (let round = 0; round < rounds; round += 1) {
     for (const member of members) {
       const itemIndex = requiredItemIndices(member)[round];
       if (itemIndex != null && !coveredItemIndices.has(itemIndex)) {
-        return member.movementId;
+        return movementGroupKey(member);
       }
     }
   }
@@ -165,7 +168,7 @@ export function firstOpenMovementId(
 ): string {
   const visitedCircuits = new Set<string>();
   for (const group of groups) {
-    const info = membership.get(group.movementId);
+    const info = membership.get(movementGroupKey(group));
     if (info) {
       if (visitedCircuits.has(info.id)) continue;
       visitedCircuits.add(info.id);
@@ -183,18 +186,18 @@ export function firstOpenMovementId(
         (index) => !coveredItemIndices.has(index),
       )
     ) {
-      return group.movementId;
+      return movementGroupKey(group);
     }
   }
-  return groups[0]?.movementId ?? "";
+  return groups[0] ? movementGroupKey(groups[0]) : "";
 }
 
 export function circuitMembersFor(
-  movementId: string,
+  groupKey: string,
   groups: readonly MovementGroup[],
   membership: ReadonlyMap<string, LinkedCircuitInfo>,
 ): MovementGroup[] {
-  const circuitId = membership.get(movementId)?.id;
+  const circuitId = membership.get(groupKey)?.id;
   return circuitId ? orderedMembers(groups, membership, circuitId) : [];
 }
 

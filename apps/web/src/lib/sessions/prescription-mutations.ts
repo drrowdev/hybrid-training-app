@@ -6,6 +6,7 @@
  * orchestrates auth + DB I/O; this helper owns the in-memory shape.
  */
 import type { Prescription, PrescriptionItem } from "@hta/db";
+import { countDistinctRehabMovements, isRehabItem } from "@hta/domain";
 
 export type SwappedFromMeta = {
   movementId: string;
@@ -22,6 +23,68 @@ export type ApplySwapInput = {
   /** ISO timestamp to stamp into ``meta.swappedAt``. Defaults to now. */
   swappedAt?: string;
 };
+
+export type MovementMutationScope = {
+  rehab?: boolean;
+};
+
+function matchesMovement(
+  item: PrescriptionItem,
+  movementId: string,
+  scope?: MovementMutationScope,
+): boolean {
+  return (
+    item.movementId === movementId &&
+    (scope?.rehab == null || isRehabItem(item) === scope.rehab)
+  );
+}
+
+function syncEmbeddedRehabSections(
+  prescription: Prescription,
+  items: PrescriptionItem[],
+): Prescription["meta"] {
+  const sections = prescription.meta?.embeddedRehabSections;
+  if (!sections) return prescription.meta;
+  const nextSections = sections.flatMap((section) => {
+    const sectionItems = items.filter(
+      (item) =>
+        isRehabItem(item) &&
+        item.meta?.rehabSourceRef === section.sourceRef,
+    );
+    return sectionItems.length === 0
+      ? []
+      : [
+          {
+            ...section,
+            itemCount: sectionItems.length,
+            movementCount: countDistinctRehabMovements(sectionItems),
+          },
+        ];
+  });
+  const meta = { ...(prescription.meta ?? {}) };
+  const removedSourceRefs = sections
+    .filter(
+      (section) =>
+        !nextSections.some(
+          (nextSection) => nextSection.sourceRef === section.sourceRef,
+        ),
+    )
+    .map((section) => section.sourceRef);
+  if (nextSections.length > 0) {
+    meta.embeddedRehabSections = nextSections;
+  } else {
+    delete meta.embeddedRehabSections;
+  }
+  if (removedSourceRefs.length > 0) {
+    meta.removedEmbeddedRehabSourceRefs = Array.from(
+      new Set([
+        ...(meta.removedEmbeddedRehabSourceRefs ?? []),
+        ...removedSourceRefs,
+      ]),
+    );
+  }
+  return meta;
+}
 
 export function hasUserEditedPrescription(
   prescription: Prescription | null | undefined,
@@ -102,11 +165,19 @@ export function isSwapped(item: PrescriptionItem): boolean {
 export function removeMovementFromPrescription(
   prescription: Prescription,
   movementId: string,
+  scope?: MovementMutationScope,
 ): Prescription {
   const priorItems = prescription.items ?? [];
-  const items = priorItems.filter((it) => it.movementId !== movementId);
+  const items = priorItems.filter(
+    (item) => !matchesMovement(item, movementId, scope),
+  );
   if (items.length === priorItems.length) return prescription;
-  return { ...prescription, items, userEdited: true };
+  return {
+    ...prescription,
+    items,
+    meta: syncEmbeddedRehabSections(prescription, items),
+    userEdited: true,
+  };
 }
 
 /**
@@ -119,11 +190,12 @@ export function swapMovementInPrescription(
   fromMovementId: string,
   newMovement: { id: string; slug: string; displayName: string },
   swappedAt?: string,
+  scope?: MovementMutationScope,
 ): Prescription {
   let next = { ...prescription, items: [...(prescription.items ?? [])] };
   const stamp = swappedAt ?? new Date().toISOString();
   next.items.forEach((it, i) => {
-    if (it.movementId !== fromMovementId) return;
+    if (!matchesMovement(it, fromMovementId, scope)) return;
     next = applyPrescriptionSwap(next, {
       itemIndex: i,
       newMovement,

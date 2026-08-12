@@ -404,12 +404,41 @@ test("creates and restores a phase-aware customized Activation plan", async ({
     armorWeek.filter((session) => session.day_index === 0).map(
       (session) => [session.role, session.slot],
     ),
-  ).toEqual(
-    expect.arrayContaining([
-      ["strength", "single"],
-      ["rehab", "pm"],
-    ]),
-  );
+  ).toEqual([["strength", "single"]]);
+  const combinedArmorSession = armorWeek.find(
+    (session) =>
+      session.day_index === 0 &&
+      session.role === "strength",
+  )!;
+  const combinedArmorPrescription = combinedArmorSession.prescription as {
+    items?: Array<{
+      meta?: {
+        rehab?: boolean;
+        rehabProtocolId?: string;
+        rehabPlacement?: string;
+      };
+    }>;
+    meta?: {
+      embeddedRehabSections?: Array<{
+        protocolId?: string;
+        placement?: string;
+      }>;
+    };
+  };
+  expect(
+    combinedArmorPrescription.items?.some(
+      (item) =>
+        item.meta?.rehab === true &&
+        item.meta.rehabProtocolId === "protocol-1" &&
+        item.meta.rehabPlacement === "during_warmup",
+    ),
+  ).toBe(true);
+  expect(combinedArmorPrescription.meta?.embeddedRehabSections).toEqual([
+    expect.objectContaining({
+      protocolId: "protocol-1",
+      placement: "during_warmup",
+    }),
+  ]);
   expect(
     armorWeek.find(
       (session) =>

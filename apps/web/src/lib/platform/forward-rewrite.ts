@@ -5,10 +5,10 @@
  * and the block's existing rows from the current week onward, it decides —
  * without touching the DB — which untouched upcoming rows to delete and which
  * new rows to insert. Past rows, today's non-rehab rows, and any started or
- * skipped row are preserved. An untouched rehab row scheduled today may be
- * regenerated so a protocol edit is reflected before the user starts it.
+ * skipped row are preserved. An untouched legacy rehab row scheduled today may
+ * be removed while its section is refreshed in-place on today's strength row.
  *
- * "Forward-only" means past calendar slots are frozen. Today's rehab slot is
+ * "Forward-only" means past calendar slots are frozen. Today's rehab data is
  * the narrow exception because it is explicitly user-authored protocol data.
  */
 

@@ -117,6 +117,25 @@ describe("groupPrescriptionSections", () => {
     expect(out.tendon[0]!.items).toHaveLength(2);
   });
 
+  it("keeps embedded rehab distinct from ordinary tendon work", () => {
+    const out = groupPrescriptionSections([
+      item({
+        kind: "tendon",
+        movementId: "rehab",
+        movementName: "Adductor raise",
+        meta: { rehab: true },
+      }),
+      item({
+        kind: "tendon",
+        movementId: "durability",
+        movementName: "Calf raise",
+      }),
+    ]);
+
+    expect(out.rehab.map((row) => row.movementName)).toEqual(["Adductor raise"]);
+    expect(out.tendon.map((row) => row.movementName)).toEqual(["Calf raise"]);
+  });
+
   it("falls back to slug-humanised name when movementName is missing", () => {
     const items: PrescriptionItem[] = [
       {

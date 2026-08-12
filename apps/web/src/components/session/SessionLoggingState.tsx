@@ -12,7 +12,11 @@ import {
 type SessionLoggingState = {
   hasStrengthSets: boolean;
   remainingPlannedSets: number;
-  registerStrengthLog: (clientId: string, prescribed: boolean) => void;
+  remainingRehabSets: number;
+  registerStrengthLog: (
+    clientId: string,
+    prescriptionItemIndex: number | null,
+  ) => void;
   rollbackStrengthLog: (clientId: string) => void;
 };
 
@@ -21,22 +25,24 @@ const Context = createContext<SessionLoggingState | null>(null);
 export function SessionLoggingStateProvider({
   initialHasStrengthSets,
   initialUnloggedStrengthCount,
+  initialUnloggedRehabIndices = [],
   children,
 }: {
   initialHasStrengthSets: boolean;
   initialUnloggedStrengthCount: number;
+  initialUnloggedRehabIndices?: number[];
   children: ReactNode;
 }) {
   const [optimisticLogs, setOptimisticLogs] = useState<
-    ReadonlyMap<string, boolean>
+    ReadonlyMap<string, number | null>
   >(() => new Map());
 
   const registerStrengthLog = useCallback(
-    (clientId: string, prescribed: boolean) => {
+    (clientId: string, prescriptionItemIndex: number | null) => {
       setOptimisticLogs((current) => {
         if (current.has(clientId)) return current;
         const next = new Map(current);
-        next.set(clientId, prescribed);
+        next.set(clientId, prescriptionItemIndex);
         return next;
       });
     },
@@ -54,8 +60,16 @@ export function SessionLoggingStateProvider({
 
   const value = useMemo<SessionLoggingState>(() => {
     let prescribedPending = 0;
-    for (const prescribed of optimisticLogs.values()) {
-      if (prescribed) prescribedPending += 1;
+    let rehabPending = 0;
+    const rehabIndices = new Set(initialUnloggedRehabIndices);
+    for (const prescriptionItemIndex of optimisticLogs.values()) {
+      if (prescriptionItemIndex != null) prescribedPending += 1;
+      if (
+        prescriptionItemIndex != null &&
+        rehabIndices.has(prescriptionItemIndex)
+      ) {
+        rehabPending += 1;
+      }
     }
     return {
       hasStrengthSets: initialHasStrengthSets || optimisticLogs.size > 0,
@@ -63,12 +77,17 @@ export function SessionLoggingStateProvider({
         0,
         initialUnloggedStrengthCount - prescribedPending,
       ),
+      remainingRehabSets: Math.max(
+        0,
+        initialUnloggedRehabIndices.length - rehabPending,
+      ),
       registerStrengthLog,
       rollbackStrengthLog,
     };
   }, [
     initialHasStrengthSets,
     initialUnloggedStrengthCount,
+    initialUnloggedRehabIndices,
     optimisticLogs,
     registerStrengthLog,
     rollbackStrengthLog,

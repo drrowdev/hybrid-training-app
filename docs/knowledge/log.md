@@ -477,3 +477,6 @@ General wrist curls, reverse wrist curls and dumbbell pronation/supination remai
 
 ## [2026-08-11] fix | Keep Activation edit summary on the current phase
 The final program summary now derives an edited Activation plan's week from its absolute current program position instead of resetting to Base. Rehab sessions assigned in the phase being edited therefore appear in the summary count, including plans that originally started from a later phase; new-program summaries continue to use the selected start point.
+
+## [2026-08-11] refine | Embed same-day rehab in strength warm-ups
+Rehab assigned to a day with strength now materializes as a provenance-tagged warm-up section inside the strength prescription, preserving one planned row, one live session and one progression event. Today, Preview, Plan and the live Focus Strip surface rehab separately from accessories, show that its duration overlaps the warm-up, start with rehab, provide section progress/navigation and require every rehab set to be logged or explicitly skipped before completion. Rehab-only days and cardio-plus-rehab days remain separate. Migration 0127 folds only untouched pairs from active plans, stores rollback provenance in JSONB metadata and has a conflict-safe down migration; started, skipped, scheduled, noted or user-edited rows remain unchanged.

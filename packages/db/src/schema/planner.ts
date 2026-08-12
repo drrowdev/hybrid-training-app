@@ -22,6 +22,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
+import type { EmbeddedRehabSection } from "@hta/domain";
 import { sessions, sessionSlot } from "./sessions";
 
 export const trainingBlockStatus = pgEnum("training_block_status", [
@@ -449,6 +450,22 @@ export type Prescription = {
    */
   meta?: {
     hyroxQuickFormat?: "circuit" | "compromised" | "erg" | "run";
+    /**
+     * Same-day rehab folded into this session's warm-up flow. The source
+     * identity makes forward rewrites and reversible data migrations explicit
+     * without adding a derived top-level database column.
+     */
+    embeddedRehabSections?: EmbeddedRehabSection[];
+    /** Session-specific user choice to keep generated rehab out of this workout. */
+    removedEmbeddedRehabSourceRefs?: string[];
+    /**
+     * Immutable rollback provenance for rows folded by migration 0127. Kept
+     * outside the render-facing section metadata so plan rewrites can refresh or
+     * remove rehab without losing the data needed for a safe down migration.
+     */
+    embeddedRehabMigrationSources?: Array<{
+      migrationSource: NonNullable<EmbeddedRehabSection["migrationSource"]>;
+    }>;
     /**
      * The structured HYROX completion view for a quick-generated session, stored
      * at generation time so the session page can render the same
