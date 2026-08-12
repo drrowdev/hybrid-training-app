@@ -20,7 +20,7 @@ import {
   formatEyebrowDate,
   type ProfileForFormat,
 } from "@/lib/format/datetime";
-import { estimateSessionMinutes } from "@/lib/sessions/estimate-duration";
+import { estimateSessionDurationBreakdown } from "@/lib/sessions/estimate-duration";
 
 export default async function PreviewWorkoutPage({
   params,
@@ -68,7 +68,7 @@ export default async function PreviewWorkoutPage({
     id: planned.id,
     title: planned.title,
     eyebrow,
-    estDurationMin: estimateSessionMinutes(items),
+    estDurationMin: estimateSessionDurationBreakdown(items).displayMinutes,
     items,
   };
 

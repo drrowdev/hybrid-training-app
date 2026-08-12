@@ -177,19 +177,13 @@ describe("planForwardOnlyRewrite", () => {
     ).toEqual([6]);
   });
 
-  it("rewrites an untouched rehab slot today while freezing today's strength", () => {
+  it("removes an untouched legacy rehab slot when it is embedded into today's strength", () => {
     const newSessions: NewSessionLite[] = [
       {
         weekIndex: 1,
         dayIndex: 0,
         slot: "single",
         role: "strength",
-      },
-      {
-        weekIndex: 1,
-        dayIndex: 0,
-        slot: "pm",
-        role: "rehab",
       },
     ];
     const plan = planForwardOnlyRewrite({
@@ -218,7 +212,7 @@ describe("planForwardOnlyRewrite", () => {
     });
 
     expect(plan.deleteIds).toEqual(["today-rehab"]);
-    expect(plan.insertIndices).toEqual([1]);
+    expect(plan.insertIndices).toEqual([]);
   });
 
   it("preserves a started rehab slot today", () => {

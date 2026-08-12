@@ -28,7 +28,9 @@ import {
   type ExistingPlannedSet,
   type PlannedSetKind,
 } from "./fill-plan-sets";
-import { resolvePrescriptionSetWork } from "@hta/domain";
+import {
+  resolvePrescriptionSetWork,
+} from "@hta/domain";
 import type { Prescription, PrescriptionItem } from "@hta/db";
 import { applyPrescriptionSwap } from "./prescription-mutations";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
@@ -1074,10 +1076,9 @@ export async function completeSessionResult(
   if (!idCheck.success) return { error: "Invalid session id" };
 
   const supabase = await createClient();
-  // One RLS-protected database call validates ownership, derives session RPE
-  // and duration, and stamps completion. Returning the owning user id avoids a
-  // separate GoTrue lookup on the successful path while keeping the explicit
-  // auth/ownership gate inside Postgres.
+  // The RLS-protected RPC validates ownership, derives session RPE and duration,
+  // and stamps completion. Returning the owning user id avoids a separate
+  // GoTrue lookup while keeping the explicit ownership gate inside Postgres.
   const { data: userId, error } = await supabase.rpc(
     "complete_training_session",
     {

@@ -15,6 +15,7 @@ import { memo, useCallback, useMemo, useRef, useState } from "react";
 import type { Prescription } from "@hta/db";
 import {
   groupPrescriptionByMovement,
+  movementGroupKey,
   type MovementGroup,
 } from "@/lib/sessions/movement-grouping";
 import { bucketForGroup } from "@/lib/sessions/movement-summary";
@@ -165,6 +166,17 @@ export function MovementCardList({
     () => groupPrescriptionByMovement(prescription),
     [prescription],
   );
+  const sharedMovementIds = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const group of groups) {
+      counts.set(group.movementId, (counts.get(group.movementId) ?? 0) + 1);
+    }
+    return new Set(
+      Array.from(counts.entries()).flatMap(([movementId, count]) =>
+        count > 1 ? [movementId] : [],
+      ),
+    );
+  }, [groups]);
 
   // Map prescribed movementIds for the freestyle add to skip duplicates.
   const prescribedIds = useMemo(
@@ -302,12 +314,23 @@ export function MovementCardList({
   // Partition prescribed groups into main, supplemental and accessory buckets.
   // Order within each bucket is the
   // original first-appearance order from the prescription.
-  const { mainGroups, supplementalGroups, accessoryGroups, otherGroups } = useMemo(() => {
+  const {
+    rehabGroups,
+    mainGroups,
+    supplementalGroups,
+    accessoryGroups,
+    otherGroups,
+  } = useMemo(() => {
+    const rehab: MovementGroup[] = [];
     const main: MovementGroup[] = [];
     const supplemental: MovementGroup[] = [];
     const accessory: MovementGroup[] = [];
     const other: MovementGroup[] = [];
     for (const g of groups) {
+      if (g.items.length > 0 && g.items.every((item) => item.meta?.rehab === true)) {
+        rehab.push(g);
+        continue;
+      }
       const b = bucketForGroup(g);
       if (b === "main") main.push(g);
       else if (b === "supplemental") supplemental.push(g);
@@ -323,6 +346,7 @@ export function MovementCardList({
       : accessory;
     const orderedAccessory = applyCustomOrder(smart, (g) => g.movementId, effectiveOrder);
     return {
+      rehabGroups: rehab,
       mainGroups: main,
       supplementalGroups: supplemental,
       accessoryGroups: orderedAccessory,
@@ -332,13 +356,26 @@ export function MovementCardList({
 
   // First prescribed card with no logged sets across the whole session
   // shows the session-level "Same as planned" button.
-  const showFillOnFirst = !isComplete && sets.length === 0;
+  const showFillOnFirst =
+    !isComplete && sets.length === 0 && rehabGroups.length === 0;
 
   // Build a single ordered render list so the "first card" check for
   // the session-level fill button stays correct across both sections.
   const orderedGroups: MovementGroup[] = useMemo(
-    () => [...mainGroups, ...supplementalGroups, ...accessoryGroups, ...otherGroups],
-    [mainGroups, supplementalGroups, accessoryGroups, otherGroups],
+    () => [
+      ...rehabGroups,
+      ...mainGroups,
+      ...supplementalGroups,
+      ...accessoryGroups,
+      ...otherGroups,
+    ],
+    [
+      rehabGroups,
+      mainGroups,
+      supplementalGroups,
+      accessoryGroups,
+      otherGroups,
+    ],
   );
 
   // ADR 0026 P5b — fold the accessory cards into solo cards + antagonist
@@ -359,6 +396,7 @@ export function MovementCardList({
   );
   const focusGroups = useMemo(
     () => [
+      ...rehabGroups,
       ...mainGroups,
       ...supplementalGroups,
       ...accessorySegments.flatMap((segment) =>
@@ -366,7 +404,13 @@ export function MovementCardList({
       ),
       ...otherGroups,
     ],
-    [mainGroups, supplementalGroups, accessorySegments, otherGroups],
+    [
+      rehabGroups,
+      mainGroups,
+      supplementalGroups,
+      accessorySegments,
+      otherGroups,
+    ],
   );
   const focusSupersetByMovementId = hasManualOrder
     ? EMPTY_SUPERSET_MAP
@@ -562,11 +606,13 @@ export function MovementCardList({
     );
     const groupSets = sets.filter(
       (set) =>
-        set.movement.id === group.movementId || groupSetIds.has(set.id),
+        groupSetIds.has(set.id) ||
+        (!sharedMovementIds.has(group.movementId) &&
+          set.movement.id === group.movementId),
     );
     return (
       <PrescribedCard
-        key={group.movementId}
+        key={movementGroupKey(group)}
         sessionId={sessionId}
         group={group}
         readOnly={isComplete}
@@ -623,6 +669,19 @@ export function MovementCardList({
 
   return (
     <div data-testid="movement-card-list" style={{ display: "grid", gap: 12 }}>
+      {rehabGroups.length > 0 && (
+        <>
+          <SectionDivider
+            label={
+              mainGroups.length > 0 || supplementalGroups.length > 0
+                ? "Rehab · during warm-up"
+                : "Rehab"
+            }
+            testId="movement-group-rehab"
+          />
+          {rehabGroups.map(renderCard)}
+        </>
+      )}
       {mainGroups.length > 0 && (
         <>
           <SectionDivider label="Main lifts" testId="movement-group-main" />

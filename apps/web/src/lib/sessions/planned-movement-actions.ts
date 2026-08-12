@@ -18,6 +18,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { Prescription } from "@hta/db";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
+import { isRehabItem } from "@hta/domain";
 import {
   removeMovementFromPrescription,
   swapMovementInPrescription,
@@ -51,13 +52,25 @@ async function persistPlannedPrescription(
   plannedSessionId: string,
   next: Prescription,
   completedSessionId: string | null,
+  requireUnstarted = false,
 ): Promise<PlannedEditResult> {
-  const { error } = await supabase
+  const update = supabase
     .from("planned_sessions")
     .update({ prescription: next })
     .eq("id", plannedSessionId)
     .eq("user_id", userId);
+  const guarded = requireUnstarted
+    ? update.is("completed_session_id", null)
+    : update;
+  const { data, error } = await guarded.select("id").maybeSingle();
   if (error) return { error: error.message };
+  if (!data) {
+    return {
+      error: requireUnstarted
+        ? "Movements can't be removed after a workout has started."
+        : "Planned session not found.",
+    };
+  }
   revalidatePath("/app");
   revalidatePath("/app/plan");
   if (completedSessionId) revalidatePath(`/app/sessions/${completedSessionId}`);
@@ -67,12 +80,17 @@ async function persistPlannedPrescription(
 const removeMovementSchema = z.object({
   plannedSessionId: z.string().uuid(),
   movementId: z.string().min(1),
+  rehab: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((value) => (value == null ? undefined : value === "true")),
 });
 
 export async function removePlannedMovement(formData: FormData): Promise<PlannedEditResult> {
   const parsed = removeMovementSchema.safeParse({
     plannedSessionId: formData.get("plannedSessionId"),
     movementId: formData.get("movementId"),
+    rehab: formData.get("rehab") ?? undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
 
@@ -84,10 +102,26 @@ export async function removePlannedMovement(formData: FormData): Promise<Planned
 
   const loaded = await loadPlannedForEdit(supabase, user.id, parsed.data.plannedSessionId);
   if ("error" in loaded) return { error: loaded.error };
+  if (loaded.completedSessionId) {
+    return { error: "Movements can't be removed after a workout has started." };
+  }
 
-  const next = removeMovementFromPrescription(loaded.prescription, parsed.data.movementId);
+  const next = removeMovementFromPrescription(
+    loaded.prescription,
+    parsed.data.movementId,
+    { rehab: parsed.data.rehab },
+  );
   if ((next.items?.length ?? 0) === 0) {
     return { error: "A workout needs at least one movement." };
+  }
+  if (
+    parsed.data.rehab === false &&
+    next.items.every(
+      (item) =>
+        isRehabItem(item) || (item.kind ?? "").startsWith("cardio_"),
+    )
+  ) {
+    return { error: "A strength workout needs at least one strength movement." };
   }
   return persistPlannedPrescription(
     supabase,
@@ -95,6 +129,7 @@ export async function removePlannedMovement(formData: FormData): Promise<Planned
     parsed.data.plannedSessionId,
     next,
     loaded.completedSessionId,
+    true,
   );
 }
 
@@ -102,6 +137,10 @@ const swapMovementSchema = z.object({
   plannedSessionId: z.string().uuid(),
   movementId: z.string().min(1),
   newMovementId: z.string().uuid(),
+  rehab: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((value) => (value == null ? undefined : value === "true")),
 });
 
 export async function swapPlannedMovement(formData: FormData): Promise<PlannedEditResult> {
@@ -109,6 +148,7 @@ export async function swapPlannedMovement(formData: FormData): Promise<PlannedEd
     plannedSessionId: formData.get("plannedSessionId"),
     movementId: formData.get("movementId"),
     newMovementId: formData.get("newMovementId"),
+    rehab: formData.get("rehab") ?? undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
 
@@ -130,11 +170,17 @@ export async function swapPlannedMovement(formData: FormData): Promise<PlannedEd
   if (mErr) return { error: mErr.message };
   if (!newMov) return { error: "Replacement movement not found." };
 
-  const next = swapMovementInPrescription(loaded.prescription, parsed.data.movementId, {
-    id: newMov.id as string,
-    slug: newMov.slug as string,
-    displayName: newMov.display_name as string,
-  });
+  const next = swapMovementInPrescription(
+    loaded.prescription,
+    parsed.data.movementId,
+    {
+      id: newMov.id as string,
+      slug: newMov.slug as string,
+      displayName: newMov.display_name as string,
+    },
+    undefined,
+    { rehab: parsed.data.rehab },
+  );
   return persistPlannedPrescription(
     supabase,
     user.id,

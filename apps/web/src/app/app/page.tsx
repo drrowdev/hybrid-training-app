@@ -73,7 +73,9 @@ import {
   startSessionFromPlan,
   unskipPlannedSession,
 } from "@/lib/planner/actions";
-import { estimateSessionMinutes } from "@/lib/sessions/estimate-duration";
+import {
+  estimateSessionDurationBreakdown,
+} from "@/lib/sessions/estimate-duration";
 import { ThisWeekRail } from "@/components/plan/ThisWeekRail";
 import { plannedSessionCta } from "@/lib/today/planned-session-cta";
 import type { PlanSessionInput } from "@/components/plan/PlanRedesign";
@@ -570,7 +572,7 @@ export default async function TodayPage() {
       skipped: !!p.skippedAt,
       slot: p.slot,
       items,
-      estDurationMin: estimateSessionMinutes(items),
+      estDurationMin: estimateSessionDurationBreakdown(items).displayMinutes,
       notes: p.notes,
       completedSessionId: p.completedSessionId,
     };
@@ -1303,7 +1305,8 @@ function PlannedSessionCard({
 
   // Glanceable hero metrics derive from the same movement grouping as the
   // compact preview, so role counts and section contents cannot drift apart.
-  const estMin = estimateSessionMinutes(planned.prescription.items);
+  const duration = estimateSessionDurationBreakdown(planned.prescription.items);
+  const estMin = duration.displayMinutes;
   const grouped = groupByMovementThenKind(planned.prescription.items);
   const mainLiftCount = grouped.movements.filter(
     (section) => !isSupplementalOnlySection(section),
@@ -1315,7 +1318,7 @@ function PlannedSessionCard({
     grouped.accessories.length +
     grouped.hingeCompensations.length +
     grouped.tendon.length;
-  const rehabMovementCount = grouped.tendon.length;
+  const rehabMovementCount = grouped.rehab.length;
   const movementSummary =
     planned.role === "rehab" && rehabMovementCount > 0
       ? `${rehabMovementCount} rehab movement${
@@ -1433,7 +1436,7 @@ function PlannedSessionCard({
         </div>
       )}
       <h2 style={{ fontSize: 26, margin: 0, letterSpacing: "-0.02em", fontWeight: 700 }}>{planned.title}</h2>
-      {movementSummary && (
+      {(movementSummary || rehabMovementCount > 0) && (
         <div
           data-testid="hero-topline"
           style={{
@@ -1455,6 +1458,23 @@ function PlannedSessionCard({
           >
             {movementSummary}
           </span>
+          {planned.role !== "rehab" && rehabMovementCount > 0 && (
+            <span
+              data-testid="embedded-rehab-badge"
+              style={{
+                fontSize: 12.5,
+                color: "var(--cp-accent)",
+                background: "var(--cp-accent-soft)",
+                border: "1px solid var(--cp-accent)",
+                borderRadius: 9,
+                padding: "6px 11px",
+                fontWeight: 650,
+              }}
+            >
+              Includes rehab · {rehabMovementCount} movement
+              {rehabMovementCount === 1 ? "" : "s"}
+            </span>
+          )}
         </div>
       )}
       {conflict && (

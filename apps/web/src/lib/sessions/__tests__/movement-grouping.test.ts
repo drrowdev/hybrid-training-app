@@ -41,6 +41,38 @@ describe("groupPrescriptionByMovement", () => {
     expect(groups[1]!.slotBuckets.working).toEqual([0]);
   });
 
+  it("keeps rehab and strength cards distinct when they use the same movement", () => {
+    const groups = groupPrescriptionByMovement(
+      p([
+        {
+          movementId: "split-squat",
+          movementName: "Split Squat",
+          kind: "tendon",
+          sets: 1,
+          reps: 12,
+          meta: { rehab: true },
+        },
+        {
+          movementId: "split-squat",
+          movementName: "Split Squat",
+          kind: "main",
+          sets: 1,
+          reps: 6,
+        },
+      ]),
+    );
+
+    expect(groups).toHaveLength(2);
+    expect(groups.map((group) => group.groupKey)).toEqual([
+      "rehab:split-squat",
+      "split-squat",
+    ]);
+    expect(groups.map((group) => group.itemIndices)).toEqual([[0], [1]]);
+    expect(groups.every((group) => group.movementId === "split-squat")).toBe(
+      true,
+    );
+  });
+
   it("falls back to a humanised slug when movementName is missing", () => {
     const pres = p([
       { movementId: "hh-1", movementSlug: "hip_hinge", kind: "main", sets: 1, reps: 5 },

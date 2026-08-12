@@ -9,12 +9,18 @@
  */
 
 import type { Prescription, PrescriptionItem } from "@hta/db";
+import { isRehabItem } from "@hta/domain";
 import { PRESCRIPTION_STRENGTH_KINDS } from "./prescription-progress";
 import { SET_KIND_LABELS } from "./set-kind-labels";
 
 export type MovementSlotBucket = "warmup" | "working" | "accessory";
 
 export type MovementGroup = {
+  /**
+   * UI identity for this card. Rehab and core work can intentionally use the
+   * same catalog movement, so movementId alone is not always unique.
+   */
+  groupKey?: string;
   movementId: string;
   movementName: string;
   movementSlug: string | null;
@@ -62,11 +68,14 @@ export function groupPrescriptionByMovement(
   prescription: Prescription | null,
 ): MovementGroup[] {
   if (!prescription?.items?.length) return [];
-  const byId = new Map<string, MovementGroup>();
+  const byKey = new Map<string, MovementGroup>();
   prescription.items.forEach((item, idx) => {
     if (!PRESCRIPTION_STRENGTH_KINDS.has(item.kind)) return;
     if (!item.movementId) return;
-    const existing = byId.get(item.movementId);
+    const groupKey = isRehabItem(item)
+      ? `rehab:${item.movementId}`
+      : item.movementId;
+    const existing = byKey.get(groupKey);
     if (existing) {
       const slot = existing.itemIndices.length;
       existing.itemIndices.push(idx);
@@ -76,7 +85,8 @@ export function groupPrescriptionByMovement(
     }
     const name =
       item.movementName ?? humanizeSlug(item.movementSlug) ?? "Movement";
-    byId.set(item.movementId, {
+    byKey.set(groupKey, {
+      groupKey,
       movementId: item.movementId,
       movementName: name,
       movementSlug: item.movementSlug ?? null,
@@ -89,7 +99,13 @@ export function groupPrescriptionByMovement(
       },
     });
   });
-  return Array.from(byId.values());
+  return Array.from(byKey.values());
+}
+
+export function movementGroupKey(
+  group: Pick<MovementGroup, "groupKey" | "movementId">,
+): string {
+  return group.groupKey ?? group.movementId;
 }
 
 /**

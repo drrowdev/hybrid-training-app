@@ -62,6 +62,7 @@ import {
   countProgrammedWorkingSets,
 } from "@/lib/sessions/prescription-progress";
 import type { ProgressionHint } from "@/components/session/PostSessionSummary";
+import { unresolvedRehabItemIndices } from "@hta/domain";
 import type { Prescription } from "@hta/db";
 import {
   getSupersetAccessoriesPref,
@@ -827,6 +828,10 @@ export default async function SessionDetailPage({
   }
   const strengthItemCount = countStrengthPrescriptionItems(plannedPrescription);
   const unloggedStrengthCount = Math.max(0, strengthItemCount - loggedItemIndexSet.size);
+  const unloggedRehabIndices = unresolvedRehabItemIndices(
+    plannedPrescription?.items ?? [],
+    loggedItemIndexSet,
+  );
 
   // Cardio modality / log form wiring. A session is "cardio-aware"
   // when any prescription item is a cardio kind; "pure cardio" when
@@ -938,6 +943,7 @@ export default async function SessionDetailPage({
       key={sets.length}
       initialHasStrengthSets={sets.length > 0}
       initialUnloggedStrengthCount={unloggedStrengthCount}
+      initialUnloggedRehabIndices={unloggedRehabIndices}
     >
     <div style={{ display: "grid", gap: 18 }}>
       <header>

@@ -235,6 +235,90 @@ describe("FocusStripLogger", () => {
     expect(html).not.toContain("Tendon ·");
   });
 
+  it("starts a combined workout in rehab with section progress and explicit skip", () => {
+    const mixedMain = {
+      ...mainGroup,
+      itemIndices: [3, 4, 5, 6],
+    };
+    const mixedAccessory = {
+      ...accessoryA,
+      itemIndices: [7],
+    };
+    const html = renderToStaticMarkup(
+      <FocusStripLogger
+        sessionId="session"
+        groups={[rehabGroup, mixedMain, mixedAccessory]}
+        setsByMovement={new Map()}
+        tmBySlug={{ "bench-press-flat": 100 }}
+        oneRmBySlug={{ "bench-press-flat": 100 }}
+        loggedItemIndices={new Set()}
+        skippedItemIndices={new Set()}
+        loggedSetIdByItemIndex={{}}
+        priorBests={{}}
+        addStrengthSet={addStrengthSet}
+        updateStrengthSet={updateStrengthSet}
+        hapticsEnabled={false}
+        timerSoundEnabled={false}
+      />,
+    );
+
+    expect(html).toContain('data-testid="focus-strip-section-nav"');
+    expect(html).toContain("Rehab · 0/3");
+    expect(html).toContain("Main · 0/4");
+    expect(html).toContain("Accessories · 0/1");
+    expect(html).toContain("Rehab · during warm-up");
+    expect(html).toContain("Skip remaining rehab (3)");
+  });
+
+  it("keeps rehab navigation distinct when the main workout uses the same movement", () => {
+    const sameMovementRehab: MovementGroup = {
+      ...rehabGroup,
+      groupKey: "rehab:bench",
+      movementId: "bench",
+      movementName: "Bench Press",
+      itemIndices: [0],
+      items: [
+        {
+          movementId: "bench",
+          movementName: "Bench Press",
+          movementSlug: "bench-press-flat",
+          kind: "tendon",
+          sets: 1,
+          reps: 15,
+          meta: { rehab: true },
+        },
+      ],
+      slotBuckets: { warmup: [], working: [], accessory: [0] },
+    };
+    const sameMovementMain: MovementGroup = {
+      ...mainGroup,
+      groupKey: "bench",
+      itemIndices: [1, 2, 3, 4],
+    };
+    const html = renderToStaticMarkup(
+      <FocusStripLogger
+        sessionId="session"
+        groups={[sameMovementRehab, sameMovementMain]}
+        setsByMovement={new Map()}
+        tmBySlug={{ "bench-press-flat": 100 }}
+        oneRmBySlug={{ "bench-press-flat": 100 }}
+        loggedItemIndices={new Set()}
+        skippedItemIndices={new Set()}
+        loggedSetIdByItemIndex={{}}
+        priorBests={{}}
+        addStrengthSet={addStrengthSet}
+        updateStrengthSet={updateStrengthSet}
+        hapticsEnabled={false}
+        timerSoundEnabled={false}
+      />,
+    );
+
+    expect(html).toContain('data-testid="focus-strip-queue-rehab:bench"');
+    expect(html).toContain('data-testid="focus-strip-queue-bench"');
+    expect(html).toContain("Rehab · during warm-up");
+    expect(html).toContain("Skip remaining rehab (1)");
+  });
+
   it("shows linked AB Triad round and movement guidance", () => {
     const html = renderToStaticMarkup(
       <FocusStripLogger

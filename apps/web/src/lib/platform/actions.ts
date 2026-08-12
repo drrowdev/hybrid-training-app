@@ -80,6 +80,12 @@ import {
   loadsBlockedMuscle,
   loadsBlockedRegion,
 } from "@/lib/planner/accessory-picker";
+import {
+  embeddedRehabSnapshot,
+  rehabItemsForComparison,
+  replaceEmbeddedRehab,
+  stripEmbeddedRehab,
+} from "./rehab-composition";
 
 const WEEKDAY = z.number().int().min(0).max(6);
 
@@ -1543,45 +1549,81 @@ async function updateForeignProgramInstance(
     .eq("user_id", user.id)
     .gte("week_index", currentWeekIndex);
   if (frErr) return { ok: false, error: frErr.message };
-  const priorPrescriptionBySlot = new Map(
-    (priorWrite?.sessions ?? []).map((session) => [
-      `${session.weekIndex}-${session.dayIndex}-${session.slot}`,
-      session.prescription,
-    ]),
+  const priorRehabByDay = new Map(
+    (priorWrite?.sessions ?? []).flatMap((session) => {
+      const rehabItems = rehabItemsForComparison(session.prescription);
+      return rehabItems.length > 0
+        ? [[`${session.weekIndex}-${session.dayIndex}`, rehabItems] as const]
+        : [];
+    }),
+  );
+  const dayKey = (
+    weekIndex: number,
+    dayIndex: number,
+  ): `${number}-${number}` =>
+    `${weekIndex}-${dayIndex}`;
+  const unavailableStrengthDays = new Set(
+    (futureRows ?? []).flatMap((row) =>
+      row.role === "strength" &&
+      (row.completed_session_id != null || row.skipped_at != null)
+        ? [dayKey(row.week_index as number, row.day_index as number)]
+        : [],
+    ),
+  );
+  const existingFuture = (futureRows ?? []).map((row) => {
+    const key = dayKey(
+      row.week_index as number,
+      row.day_index as number,
+    );
+    let touched =
+      row.completed_session_id != null ||
+      row.skipped_at != null ||
+      row.planned_at != null ||
+      (typeof row.notes === "string" && row.notes.trim() !== "") ||
+      hasUserEditedPrescription(row.prescription as Prescription | null);
+    if (row.role === "rehab" && !touched) {
+      const priorRehab = priorRehabByDay.get(key);
+      touched =
+        unavailableStrengthDays.has(key) ||
+        priorRehab == null ||
+        !prescriptionsEquivalent(
+          rehabItemsForComparison(row.prescription as Prescription),
+          priorRehab,
+        );
+    }
+    return {
+      id: row.id as string,
+      weekIndex: row.week_index as number,
+      dayIndex: row.day_index as number,
+      slot: (row.slot as string) ?? "single",
+      role: (row.role as string | null) ?? undefined,
+      touched,
+    };
+  });
+  const touchedSeparateRehabDays = new Set(
+    existingFuture.flatMap((row) =>
+      row.role === "rehab" && row.touched
+        ? [dayKey(row.weekIndex, row.dayIndex)]
+        : [],
+    ),
+  );
+  const sessionsForRewrite = write.sessions.map((session) =>
+    session.role === "strength" &&
+    touchedSeparateRehabDays.has(
+      dayKey(session.weekIndex, session.dayIndex),
+    )
+      ? {
+          ...session,
+          prescription: stripEmbeddedRehab(session.prescription),
+        }
+      : session,
   );
   const plan = planForwardOnlyRewrite({
     currentWeekIndex,
     currentDayIndex,
     writeWeeks: write.weeks,
-    existingFuture: (futureRows ?? []).map((r) => ({
-      id: r.id as string,
-      weekIndex: r.week_index as number,
-      dayIndex: r.day_index as number,
-      slot: (r.slot as string) ?? "single",
-      role: (r.role as string | null) ?? undefined,
-      touched: (() => {
-        const hasExplicitUserState =
-          r.completed_session_id != null ||
-          r.skipped_at != null ||
-          r.planned_at != null ||
-          (typeof r.notes === "string" && r.notes.trim() !== "") ||
-          hasUserEditedPrescription(r.prescription as Prescription | null);
-        if (hasExplicitUserState) return true;
-        const isTodayRehab =
-          r.week_index === currentWeekIndex &&
-          r.day_index === currentDayIndex &&
-          r.role === "rehab";
-        if (!isTodayRehab) return false;
-        const priorPrescription = priorPrescriptionBySlot.get(
-          `${r.week_index}-${r.day_index}-${r.slot ?? "single"}`,
-        );
-        return (
-          priorPrescription == null ||
-          !prescriptionsEquivalent(r.prescription, priorPrescription)
-        );
-      })(),
-    })),
-    newSessions: write.sessions.map((s) => ({
+    existingFuture,
+    newSessions: sessionsForRewrite.map((s) => ({
       weekIndex: s.weekIndex,
       dayIndex: s.dayIndex,
       slot: s.slot,
@@ -1589,19 +1631,165 @@ async function updateForeignProgramInstance(
     })),
   });
 
-  // 5) Clear the regenerable future rows (untouched only).
-  if (plan.deleteIds.length > 0) {
-    const { error: delErr } = await supabase
-      .from("planned_sessions")
-      .delete()
-      .eq("user_id", user.id)
-      .in("id", plan.deleteIds);
-    if (delErr) return { ok: false, error: `Couldn't clear upcoming workouts: ${delErr.message}` };
-  }
+  // Preserved strength rows (today, plus user-touched future rows) keep their
+  // core work. Refresh only an untouched rehab section; a touched standalone
+  // rehab row suppresses embedding on that day so the obligation is not doubled.
+  const strengthPrescriptionUpdates = (futureRows ?? []).flatMap((row, index) => {
+    const rewriteRow = existingFuture[index]!;
+    const isToday =
+      rewriteRow.weekIndex === currentWeekIndex &&
+      rewriteRow.dayIndex === currentDayIndex;
+    const isPast =
+      rewriteRow.weekIndex === currentWeekIndex &&
+      rewriteRow.dayIndex < currentDayIndex;
+    const isPreservedStrength =
+      !isPast &&
+      rewriteRow.role === "strength" &&
+      (isToday || rewriteRow.touched);
+    if (
+      !isPreservedStrength ||
+      row.completed_session_id != null ||
+      row.skipped_at != null
+    ) {
+      return [];
+    }
+    const generated = sessionsForRewrite.find(
+      (session) =>
+        session.role === "strength" &&
+        session.weekIndex === rewriteRow.weekIndex &&
+        session.dayIndex === rewriteRow.dayIndex &&
+        session.slot === rewriteRow.slot,
+    );
+    if (!generated) return [];
 
-  // 6) Insert the new future rows.
-  const newRows = plan.insertIndices.map((i) => {
-    const s = write.sessions[i]!;
+    const currentPrescription = row.prescription as Prescription;
+    const currentSnapshot = embeddedRehabSnapshot(currentPrescription);
+    const currentCarriesRehab =
+      currentSnapshot.items.length > 0 || currentSnapshot.sections.length > 0;
+    const priorRehab = priorRehabByDay.get(
+      dayKey(rewriteRow.weekIndex, rewriteRow.dayIndex),
+    );
+    const currentRehabWasEdited =
+      (currentPrescription.meta?.removedEmbeddedRehabSourceRefs?.length ?? 0) >
+        0 ||
+      (currentCarriesRehab &&
+        (priorRehab == null ||
+          !prescriptionsEquivalent(
+            rehabItemsForComparison(currentPrescription),
+            priorRehab,
+          )));
+    if (currentRehabWasEdited) return [];
+
+    const prescription = replaceEmbeddedRehab(
+      currentPrescription,
+      generated.prescription,
+    );
+    return prescriptionsEquivalent(currentPrescription, prescription)
+      ? []
+      : [
+          {
+            id: rewriteRow.id,
+            weekIndex: rewriteRow.weekIndex,
+            dayIndex: rewriteRow.dayIndex,
+            slot: rewriteRow.slot,
+            currentPrescription,
+            prescription,
+          },
+        ];
+  });
+
+  // 5) Build replacement rows and execute the prescription refresh, deletes,
+  // and inserts in one transaction. Every mutation carries its read snapshot,
+  // so a concurrent start/edit aborts the entire rewrite.
+  const futureRowsById = new Map(
+    (futureRows ?? []).map((row) => [row.id as string, row]),
+  );
+  const deletedProvenance = plan.deleteIds.flatMap((id) => {
+    const row = futureRowsById.get(id);
+    const prescription = row?.prescription as Prescription | undefined;
+    const sources =
+      prescription?.meta?.embeddedRehabMigrationSources ?? [];
+    return row && sources.length > 0
+      ? [
+          {
+            programRef: prescription?.programRef ?? null,
+            weekIndex: row.week_index as number,
+            dayIndex: row.day_index as number,
+            slot: (row.slot as string) ?? "single",
+            role: (row.role as string | null) ?? "",
+            sources,
+          },
+        ]
+      : [];
+  });
+  const claimedProvenance = new Set<number>();
+  const attachMigrationSources = (
+    prescription: Prescription,
+    sources: NonNullable<
+      NonNullable<Prescription["meta"]>["embeddedRehabMigrationSources"]
+    >,
+  ): Prescription => {
+    const byPlannedSessionId = new Map(
+      [
+        ...(prescription.meta?.embeddedRehabMigrationSources ?? []),
+        ...sources,
+      ].map((source) => [
+        source.migrationSource.plannedSessionId,
+        source,
+      ]),
+    );
+    return {
+      ...prescription,
+      meta: {
+        ...prescription.meta,
+        embeddedRehabMigrationSources: Array.from(
+          byPlannedSessionId.values(),
+        ),
+      },
+    };
+  };
+  const replacementSessions = plan.insertIndices.map(
+    (index) => sessionsForRewrite[index]!,
+  );
+  const provenanceByReplacement = new Map<
+    number,
+    (typeof deletedProvenance)[number]["sources"]
+  >();
+  replacementSessions.forEach((session, replacementIndex) => {
+    const provenanceIndex = deletedProvenance.findIndex(
+      (entry, index) =>
+        !claimedProvenance.has(index) &&
+        entry.programRef != null &&
+        session.prescription.programRef != null &&
+        entry.programRef === session.prescription.programRef,
+    );
+    if (provenanceIndex < 0) return;
+    claimedProvenance.add(provenanceIndex);
+    provenanceByReplacement.set(
+      replacementIndex,
+      deletedProvenance[provenanceIndex]!.sources,
+    );
+  });
+  replacementSessions.forEach((session, replacementIndex) => {
+    if (provenanceByReplacement.has(replacementIndex)) return;
+    const provenanceIndex = deletedProvenance.findIndex(
+      (entry, index) =>
+        !claimedProvenance.has(index) &&
+        entry.weekIndex === session.weekIndex &&
+        entry.dayIndex === session.dayIndex &&
+        entry.slot === session.slot &&
+        entry.role === session.role,
+    );
+    if (provenanceIndex < 0) return;
+    claimedProvenance.add(provenanceIndex);
+    provenanceByReplacement.set(
+      replacementIndex,
+      deletedProvenance[provenanceIndex]!.sources,
+    );
+  });
+  const newRows = replacementSessions.map((s, replacementIndex) => {
+    const matchingSources =
+      provenanceByReplacement.get(replacementIndex) ?? [];
     return {
       block_id: blockId,
       user_id: user.id,
@@ -1610,17 +1798,82 @@ async function updateForeignProgramInstance(
       slot: s.slot,
       title: s.title,
       role: s.role,
-      prescription: s.prescription,
+      prescription:
+        matchingSources.length > 0
+          ? attachMigrationSources(s.prescription, matchingSources)
+          : s.prescription,
       session_modality: s.sessionModality,
       effective_stress_load: s.effectiveStressLoad,
     };
   });
-  if (newRows.length > 0) {
-    const { error: insErr } = await supabase.from("planned_sessions").insert(newRows);
-    if (insErr) return { ok: false, error: `Couldn't write updated weeks: ${insErr.message}` };
+  const unmatchedSources = deletedProvenance.flatMap((entry, index) =>
+    claimedProvenance.has(index) ? [] : entry.sources,
+  );
+  if (unmatchedSources.length > 0) {
+    const insertionIndex = newRows.findIndex((row) => row.role === "strength");
+    if (insertionIndex >= 0) {
+      const target = newRows[insertionIndex]!;
+      newRows[insertionIndex] = {
+        ...target,
+        prescription: attachMigrationSources(
+          target.prescription,
+          unmatchedSources,
+        ),
+      };
+    } else if (strengthPrescriptionUpdates[0]) {
+      const target = strengthPrescriptionUpdates[0];
+      strengthPrescriptionUpdates[0] = {
+        ...target,
+        prescription: attachMigrationSources(
+          target.prescription,
+          unmatchedSources,
+        ),
+      };
+    } else {
+      return {
+        ok: false,
+        error: "Couldn't preserve rehab migration history during this update.",
+      };
+    }
+  }
+  const deletionSnapshots = plan.deleteIds.flatMap((id) => {
+    const row = futureRowsById.get(id);
+    return row
+      ? [
+          {
+            id,
+            weekIndex: row.week_index as number,
+            dayIndex: row.day_index as number,
+            slot: (row.slot as string) ?? "single",
+            role: (row.role as string | null) ?? "",
+            currentPrescription: row.prescription as Prescription,
+          },
+        ]
+      : [];
+  });
+  if (deletionSnapshots.length !== plan.deleteIds.length) {
+    return {
+      ok: false,
+      error: "Couldn't build a safe snapshot of upcoming workouts.",
+    };
+  }
+  const { error: rewriteErr } = await supabase.rpc(
+    "rewrite_planned_sessions_atomically",
+    {
+      p_block_id: blockId,
+      p_strength_updates: strengthPrescriptionUpdates,
+      p_deletions: deletionSnapshots,
+      p_insertions: newRows,
+    },
+  );
+  if (rewriteErr) {
+    return {
+      ok: false,
+      error: `Couldn't update upcoming workouts: ${rewriteErr.message}`,
+    };
   }
 
-  // 7) Update block metadata (id + started_on unchanged). Re-seed tm_percent so
+  // 6) Update block metadata (id + started_on unchanged). Re-seed tm_percent so
   //    regenerated workouts render correct weights — a no-op when the user only
   //    changed cardio (the common case), since the seeds are identical.
   const cardioPresent = !!(args.cardioWeekdays && args.cardioWeekdays.length > 0);
@@ -1645,7 +1898,7 @@ async function updateForeignProgramInstance(
       .eq("movement_id", seed.movementId);
   }
 
-  // 8) Keep the active program instance in sync (serialised state + wizard input).
+  // 7) Keep the active program instance in sync (serialised state + wizard input).
   const { data: pi } = await supabase
     .from("program_instances")
     .update({

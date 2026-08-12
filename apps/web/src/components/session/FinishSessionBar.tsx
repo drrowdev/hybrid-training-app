@@ -48,13 +48,24 @@ export function FinishSessionBar({
   testId?: string;
 }) {
   const loggingState = useSessionLoggingState();
-  const effectiveDisabled = disabled && !loggingState?.hasStrengthSets;
+  const remainingRehabSets = loggingState?.remainingRehabSets ?? 0;
+  const rehabBlocked = remainingRehabSets > 0;
+  const effectiveDisabled =
+    rehabBlocked || (disabled && !loggingState?.hasStrengthSets);
   const disabledLabel = hybrid
     ? "Log at least 1 strength set to finish"
     : "Log at least 1 set to finish";
-  const label = effectiveDisabled ? disabledLabel : "Finish session →";
+  const label = rehabBlocked
+    ? "Log or skip rehab to finish"
+    : effectiveDisabled
+      ? disabledLabel
+      : "Finish session →";
   const effectiveSubtitle =
-    disabled && loggingState?.hasStrengthSets
+    rehabBlocked
+      ? `${remainingRehabSets} rehab set${
+          remainingRehabSets === 1 ? "" : "s"
+        } remain. Log or explicitly skip them before finishing.`
+      : disabled && loggingState?.hasStrengthSets
       ? loggingState.remainingPlannedSets > 0
         ? `${loggingState.remainingPlannedSets} planned sets aren't logged. You can still finish; the session will be marked complete with what you logged. · Finish anyway`
         : null
@@ -70,6 +81,7 @@ export function FinishSessionBar({
   const [finishError, setFinishError] = useState<string | null>(null);
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (effectiveDisabled) return;
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       const id =
         globalThis.crypto?.randomUUID?.() ?? `complete-${Date.now()}`;

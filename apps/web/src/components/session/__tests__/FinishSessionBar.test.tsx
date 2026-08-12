@@ -47,4 +47,22 @@ describe("FinishSessionBar — hybrid clarifier", () => {
     expect(html).toContain("Finish session");
     expect(html).toContain("3 planned sets aren&#x27;t logged");
   });
+
+  it("requires embedded rehab to be logged or explicitly skipped before finishing", () => {
+    const html = renderToStaticMarkup(
+      <SessionLoggingStateProvider
+        initialHasStrengthSets
+        initialUnloggedStrengthCount={4}
+        initialUnloggedRehabIndices={[0, 1, 2]}
+      >
+        <FinishSessionBar sessionId="s" variant="bottom" disabled={false} />
+      </SessionLoggingStateProvider>,
+    );
+
+    expect(html).toContain('data-armed="false"');
+    expect(html).toContain("Log or skip rehab to finish");
+    expect(html).toContain(
+      "3 rehab sets remain. Log or explicitly skip them before finishing.",
+    );
+  });
 });

@@ -216,7 +216,7 @@ export function SessionWorkArea({
       if (optimistic) {
         registerStrengthLog?.(
           clientKey,
-          optimistic.prescriptionItemIndex != null,
+          optimistic.prescriptionItemIndex,
         );
       }
 
