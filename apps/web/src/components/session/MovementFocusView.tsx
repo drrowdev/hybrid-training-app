@@ -23,7 +23,8 @@ import {
 import { detectTmAnchoredPr } from "@/lib/engine/tm-anchored-pr";
 import { restSecondsForKind } from "@/lib/sessions/rest";
 import { resolveBarKind } from "@/lib/sessions/bar-kind";
-import { resolvePrescriptionSetWork } from "@hta/domain";
+import { resolvePrescriptionSetWork, resolvePrescribedSnapshot } from "@hta/domain";
+import { SET_KIND_TO_LOG as SHARED_SET_KIND_TO_LOG } from "@/lib/sessions/set-kind";
 import { hapticTick } from "@/lib/feedback";
 import { useUnits } from "@/lib/units/context";
 import {
@@ -128,14 +129,8 @@ export type FocusViewProps = {
   suppressRestAfterSave?: boolean;
 };
 
-const SET_KIND_TO_LOG: Record<string, "warmup" | "main" | "back_off" | "accessory" | "tendon"> = {
-  warmup: "warmup",
-  main: "main",
-  back_off: "back_off",
-  accessory: "accessory",
-  tendon: "tendon",
-  power_potentiation: "main",
-};
+const SET_KIND_TO_LOG: Record<string, "warmup" | "main" | "back_off" | "accessory" | "tendon"> =
+  SHARED_SET_KIND_TO_LOG;
 
 type PrFlash = {
   isWeightPr: boolean;
@@ -446,6 +441,18 @@ export function MovementFocusView({
       fd.set("reps", String(reps));
     }
     fd.set("prescriptionItemIndex", String(activeItemIndex));
+    // ADR 0070 — the prescribed values as DISPLAYED on this card. Sent with the
+    // log so the server stores what the user actually saw, rather than
+    // re-deriving it later from state that may have moved (TM change, taper,
+    // offline replay). `targetWeight` falls back to the last logged load for
+    // unanchored movements — a UI convenience, not a prescription — so it is
+    // only sent when the item genuinely determines a load.
+    if (activeItem.percentTm != null || (activeItem.targetWeightKg ?? 0) > 0) {
+      fd.set("targetWeightKg", String(targetWeight));
+    }
+    if (targetWork.reps != null) {
+      fd.set("targetReps", String(targetWork.reps));
+    }
     if (rpe != null && !isWarmup) {
       fd.set("rpe", String(rpe));
     }
@@ -557,6 +564,15 @@ export function MovementFocusView({
     fd.set("prescriptionItemIndex", String(activeItemIndex));
     fd.set("skipped", "true");
     fd.set("skipReason", reason);
+    // ADR 0070 — a skip carries its snapshot too: the deviation is exactly "the
+    // whole prescribed set", which is the most informative signal for
+    // autoregulation, not the least.
+    if (activeItem.percentTm != null || (activeItem.targetWeightKg ?? 0) > 0) {
+      fd.set("targetWeightKg", String(targetWeight));
+    }
+    if (targetWork.reps != null) {
+      fd.set("targetReps", String(targetWork.reps));
+    }
     if (note) fd.set("notes", note);
     try {
       const result = await addStrengthSet(fd);
@@ -584,7 +600,7 @@ export function MovementFocusView({
   // path the per-set skip uses — so the dot strip fills in instantly. Writes
   // are sequential so the server's set_index count stays correct.
   const remainingSlots = group.itemIndices
-    .map((idx, slot) => ({ idx, kind: group.items[slot]?.kind ?? "main" }))
+    .map((idx, slot) => ({ idx, kind: group.items[slot]?.kind ?? "main", item: group.items[slot] }))
     .filter(({ idx }) => !loggedItemIndices.has(idx));
 
   const handleSkipRest = async (reason: SkipReason, note: string | null) => {
@@ -592,7 +608,7 @@ export function MovementFocusView({
     setSkipPending(true);
     setSkipError(null);
     try {
-      for (const { idx, kind } of remainingSlots) {
+      for (const { idx, kind, item } of remainingSlots) {
         const fd = new FormData();
         fd.set("sessionId", sessionId);
         fd.set("movementId", group.movementId);
@@ -602,6 +618,17 @@ export function MovementFocusView({
         fd.set("prescriptionItemIndex", String(idx));
         fd.set("skipped", "true");
         fd.set("skipReason", reason);
+        // ADR 0070 — snapshot each skipped slot from its OWN item (these are
+        // other sets, not the active card), via the shared resolver.
+        const snap = resolvePrescribedSnapshot(item, {
+          tmKg,
+          roundToPlate,
+          setKind: SET_KIND_TO_LOG[kind] ?? "main",
+        });
+        if (snap.targetWeightKg != null) {
+          fd.set("targetWeightKg", String(snap.targetWeightKg));
+        }
+        if (snap.targetReps != null) fd.set("targetReps", String(snap.targetReps));
         if (note) fd.set("notes", note);
         const result = await addStrengthSet(fd);
         if (result?.error) {

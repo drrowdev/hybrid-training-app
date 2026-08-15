@@ -13,6 +13,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   numeric,
   pgEnum,
   pgTable,
@@ -23,6 +24,21 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
+import type { PrescribedSnapshot } from "@hta/domain";
+
+/**
+ * ADR 0070 — prescription slot semantics captured at log time, alongside the
+ * typed `target_weight_kg` / `target_reps` scalars.
+ *
+ * This carries what a scalar cannot express, and what the engine needs to judge
+ * whether a set "landed as programmed": 5 reps at target weight is not the same
+ * result at RIR 2 as at RPE 10, and a discretionary 4th set of a 3–5 cluster is
+ * not a missed set. Engine-internal detail, hence JSONB per plan §6.8.
+ *
+ * The type is owned by `@hta/domain` (the canonical resolver produces it) and
+ * re-exported here so storage and derivation cannot drift apart.
+ */
+export type { PrescribedSnapshot } from "@hta/domain";
 
 export const setKind = pgEnum("set_kind", [
   "warmup",
@@ -66,6 +82,23 @@ export const setLogs = pgTable(
     // CONFLICT DO NOTHING so a retried flush can't double-insert. NULL on the
     // regular online path and on legacy rows (partial-unique, NULLs coexist).
     clientLogId: uuid("client_log_id"),
+    // ADR 0070 (migration 0128) — prescribed-vs-actual snapshot. These record
+    // what the app ASKED for; the columns above record what the user DID.
+    //
+    // Written once at log time from the values the user actually SAW (the
+    // client submits them; the server validates but never re-derives, because
+    // re-resolving at insert reads current TM / modification state and would
+    // persist numbers that were never on screen after an offline replay).
+    //
+    // Immutable after insert, enforced by the `set_logs_freeze_prescribed`
+    // trigger — RLS grants table-wide UPDATE, so convention is not enough.
+    //
+    // NULL means "unknown, no deviation inferable": free-form logs, off-plan
+    // sets, HYROX race rows, and every row predating migration 0128 (no
+    // backfill is possible — see the migration header).
+    targetWeightKg: numeric("target_weight_kg", { precision: 6, scale: 2 }),
+    targetReps: smallint("target_reps"),
+    prescribed: jsonb("prescribed").$type<PrescribedSnapshot>(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .default(sql`now()`)
       .notNull(),

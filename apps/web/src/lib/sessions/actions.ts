@@ -30,8 +30,11 @@ import {
 } from "./fill-plan-sets";
 import {
   resolvePrescriptionSetWork,
+  resolvePrescribedSnapshot,
+  validateSubmittedTarget,
 } from "@hta/domain";
-import type { Prescription, PrescriptionItem } from "@hta/db";
+import type { Prescription, PrescriptionItem, PrescribedSnapshot } from "@hta/db";
+import { loggedSetKindForItemKind } from "./set-kind";
 import { applyPrescriptionSwap } from "./prescription-mutations";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
 import {
@@ -117,6 +120,15 @@ const setSchema = z.object({
   // on the outbox path so a retried flush can't double-insert. Absent on the
   // regular online path → byte-identical behaviour.
   clientLogId: z.string().uuid().optional().nullable(),
+  // ADR 0070 — the prescribed values the user actually SAW for this set. Sent
+  // by the client rather than re-derived here on purpose: re-resolving at
+  // insert time reads *current* TM / taper / prescription state, which after an
+  // offline replay or a mid-block TM change is not what was on screen. The
+  // server validates these against the linked prescription (see
+  // `validateSubmittedTarget`) and stores NULL when it can't corroborate them.
+  // Absent on free-form logs and legacy clients → NULL, meaning "unknown".
+  targetWeightKg: z.coerce.number().min(0).max(1000).optional().nullable(),
+  targetReps: z.coerce.number().int().min(0).max(500).optional().nullable(),
 });
 
 export type AddStrengthSetResult = {
@@ -142,6 +154,102 @@ export type AddStrengthSetResult = {
   bwTut?: { family: string; tutAccumulated: number };
 };
 
+/**
+ * ADR 0070 — resolve the prescribed snapshot for one logged set.
+ *
+ * The client submits what it displayed; this corroborates it against the linked
+ * prescription and returns the SUBMITTED values when they agree (they are what
+ * the user actually saw — the whole point) or NULL when they can't be trusted.
+ *
+ * Guards, in order:
+ *   1. No prescription link → free-form log, no snapshot, ZERO extra queries.
+ *   2. Index must resolve to an item whose movement AND set kind match the row
+ *      being logged. `prescription_item_index` addresses a transformed array
+ *      (autoreg trim + taper/recovery reorder), so a stale index can otherwise
+ *      point at a different movement. Identity mismatch → NULL, not a guess.
+ *   3. Numeric targets must be within tolerance of what the item implies.
+ *
+ * Never throws: a snapshot failure must never stop the actual set being logged.
+ */
+async function resolveSetSnapshot(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  args: {
+    sessionId: string;
+    movementId: string;
+    prescriptionItemIndex: number | null;
+    setKind: string;
+    submittedWeightKg: number | null;
+    submittedReps: number | null;
+  },
+): Promise<{
+  targetWeightKg: number | null;
+  targetReps: number | null;
+  prescribed: PrescribedSnapshot | null;
+}> {
+  const empty = { targetWeightKg: null, targetReps: null, prescribed: null };
+  const { prescriptionItemIndex: idx } = args;
+  if (idx == null) return empty;
+
+  try {
+    const { data: planned } = await supabase
+      .from("planned_sessions")
+      .select("prescription")
+      .eq("completed_session_id", args.sessionId)
+      .maybeSingle();
+    const items = (planned?.prescription as Prescription | null)?.items ?? [];
+    const item = items[idx];
+    if (!item) return empty;
+
+    // Identity guard — the index must still address the slot being logged.
+    if (item.movementId && item.movementId !== args.movementId) return empty;
+    if (loggedSetKindForItemKind(item.kind) !== args.setKind) return empty;
+
+    // Independently derive what this item implies, so submitted values can be
+    // corroborated. `tmKg` is only needed for percentage-based loads.
+    let tmKg: number | null = null;
+    if (typeof item.percentTm === "number" && item.movementId) {
+      const [tmRes, profileRes] = await Promise.all([
+        supabase
+          .from("training_maxes")
+          .select(TM_RESOLUTION_SELECT)
+          .eq("movement_id", item.movementId)
+          .maybeSingle(),
+        supabase.from("profiles").select("tm_percent_default").maybeSingle(),
+      ]);
+      const tmRow = tmRes.data as {
+        one_rm_kg?: number | string | null;
+        tm_percent?: number | string | null;
+      } | null;
+      const oneRm = Number(tmRow?.one_rm_kg);
+      if (Number.isFinite(oneRm) && oneRm > 0) {
+        const pct = Number(
+          tmRow?.tm_percent ?? profileRes.data?.tm_percent_default ?? 90,
+        );
+        tmKg = (oneRm * pct) / 100;
+      }
+    }
+
+    const expected = resolvePrescribedSnapshot(item, {
+      tmKg,
+      basis: item.intensityLabel?.includes("1RM") ? "1RM" : "TM",
+      roundToPlate,
+      setKind: args.setKind,
+    });
+
+    return {
+      targetWeightKg: validateSubmittedTarget(
+        args.submittedWeightKg,
+        expected.targetWeightKg,
+      ),
+      targetReps: validateSubmittedTarget(args.submittedReps, expected.targetReps),
+      prescribed: expected.prescribed,
+    };
+  } catch {
+    // Snapshot resolution is best-effort — never block the log.
+    return empty;
+  }
+}
+
 export async function addStrengthSet(
   formData: FormData,
 ): Promise<AddStrengthSetResult> {
@@ -161,6 +269,8 @@ export async function addStrengthSet(
     externalLoadKg: formData.get("externalLoadKg") ?? undefined,
     loadSource: formData.get("loadSource") || undefined,
     clientLogId: formData.get("clientLogId") || undefined,
+    targetWeightKg: formData.get("targetWeightKg") ?? undefined,
+    targetReps: formData.get("targetReps") ?? undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
 
@@ -181,6 +291,26 @@ export async function addStrengthSet(
   if (!user) return { error: "Not signed in." };
 
   const clientLogId = parsed.data.clientLogId ?? null;
+
+  // ADR 0070 — resolve the prescribed snapshot for this set.
+  //
+  // The CLIENT is authoritative on the numbers (it rendered them); the server's
+  // job is corroboration, not derivation. We look up the linked prescription
+  // item, independently compute what it implies, and keep the submitted value
+  // only when the two agree within tolerance. A mismatch stores NULL rather
+  // than the server's own figure — "we don't know what was shown" is the honest
+  // record, and a fabricated target would manufacture a false deviation.
+  //
+  // Wrapped so any failure here can NEVER block logging the actual set.
+  const snapshot = await resolveSetSnapshot(supabase, {
+    sessionId: parsed.data.sessionId,
+    movementId: parsed.data.movementId,
+    prescriptionItemIndex: parsed.data.prescriptionItemIndex ?? null,
+    setKind: parsed.data.setKind,
+    submittedWeightKg: parsed.data.targetWeightKg ?? null,
+    submittedReps: parsed.data.targetReps ?? null,
+  });
+
   const insertPayload = {
     session_id: parsed.data.sessionId,
     movement_id: parsed.data.movementId,
@@ -198,6 +328,12 @@ export async function addStrengthSet(
     skipped: isSkipped,
     skip_reason: isSkipped ? (parsed.data.skipReason ?? null) : null,
     client_log_id: clientLogId,
+    // Snapshot is kept even on a SKIP: a skipped set is a deviation whose
+    // magnitude is exactly "the whole prescribed set" — the most informative
+    // row for autoregulation, not the least.
+    target_weight_kg: snapshot.targetWeightKg,
+    target_reps: snapshot.targetReps,
+    prescribed: snapshot.prescribed,
   };
 
   // Insert the row. When the client supplies a `client_log_id` (offline outbox
@@ -1318,6 +1454,12 @@ type SetInsert = {
   distance_m: number | null;
   prescription_item_index: number | null;
   client_log_id: string;
+  // ADR 0070 — this path resolves the prescription itself, so the snapshot is
+  // the same value it already computes for the prefill, stored durably instead
+  // of being overwritten by the user's first edit.
+  target_weight_kg: number | null;
+  target_reps: number | null;
+  prescribed: PrescribedSnapshot | null;
 };
 
 export async function fillSessionFromPlan(
@@ -1431,6 +1573,16 @@ export async function fillSessionFromPlan(
       weight = item.targetWeightKg;
     }
 
+    // ADR 0070 — the prescribed snapshot. This path IS the prescription
+    // resolver, so the snapshot is exactly what the prefill shows. Derived
+    // through the shared resolver (plan §6.9) so it matches the live logger.
+    const snapshot = resolvePrescribedSnapshot(item, {
+      tmKg: tm ?? null,
+      basis: item.intensityLabel?.includes("1RM") ? "1RM" : "TM",
+      roundToPlate,
+      setKind: missing.setKind,
+    });
+
     inserts.push({
       session_id: parsed.data.sessionId,
       movement_id: item.movementId,
@@ -1448,6 +1600,9 @@ export async function fillSessionFromPlan(
         item.movementId,
         missing.setKind,
       ),
+      target_weight_kg: snapshot.targetWeightKg,
+      target_reps: snapshot.targetReps,
+      prescribed: snapshot.prescribed,
     });
   }
 

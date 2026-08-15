@@ -69,6 +69,11 @@ const CONTRACTS: Contract[] = [
       "weight_kg",
       "reps",
       "prescription_item_index",
+      // ADR 0070 — prescribed-vs-actual snapshot, written by both
+      // materialisation paths as raw string keys.
+      "target_weight_kg",
+      "target_reps",
+      "prescribed",
     ],
   },
   {
