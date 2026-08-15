@@ -3,9 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  attributionInputForGroup,
+  attributionInputsForGroups,
   movementGroupKey,
   type MovementGroup,
 } from "@/lib/sessions/movement-grouping";
+import {
+  buildLoggedSetAttribution,
+  groupOwnsLoggedSet,
+} from "@/lib/sessions/movement-attribution";
 import { bucketForGroup } from "@/lib/sessions/movement-summary";
 import { summariseGroupForHeader } from "@/lib/sessions/movement-summary";
 import type { LastSetHint, LoggedSet } from "./SessionLogClient";
@@ -39,6 +45,14 @@ export type FocusStripLoggerProps = {
   loggedItemIndices: ReadonlySet<number>;
   skippedItemIndices?: ReadonlySet<number>;
   loggedSetIdByItemIndex: Readonly<Record<number, string>>;
+  /**
+   * ALL logged set ids per prescription item index. `loggedSetIdByItemIndex` is
+   * first-only (it is the "edit this entry" link target) and therefore cannot
+   * carry the 2nd+ row at an index; attribution needs the complete map or those
+   * rows fall back to a movement match and vanish the moment a swap retargets
+   * the item. Optional — falls back to the first-only map when omitted.
+   */
+  loggedSetIdsByItemIndex?: Readonly<Record<number, ReadonlyArray<string>>>;
   priorBests: Record<
     string,
     { heaviestWeight: number | null; bestE1rm: number | null }
@@ -148,6 +162,7 @@ export function FocusStripLogger({
   loggedItemIndices,
   skippedItemIndices,
   loggedSetIdByItemIndex,
+  loggedSetIdsByItemIndex,
   priorBests,
   lastSetHints = {},
   supersetByMovementId,
@@ -193,6 +208,23 @@ export function FocusStripLogger({
     () => focusSets(allLoggedSets),
     [allLoggedSets],
   );
+  // Canonical logged-set attribution (plan §6.9 — `lib/sessions/movement-attribution`).
+  const setIdsByItemIndex = useMemo(
+    () =>
+      loggedSetIdsByItemIndex ??
+      Object.fromEntries(
+        Object.entries(loggedSetIdByItemIndex).map(([index, id]) => [index, [id]]),
+      ),
+    [loggedSetIdsByItemIndex, loggedSetIdByItemIndex],
+  );
+  const attribution = useMemo(
+    () =>
+      buildLoggedSetAttribution(
+        attributionInputsForGroups(groups),
+        setIdsByItemIndex,
+      ),
+    [groups, setIdsByItemIndex],
+  );
 
   useEffect(() => {
     if (groups.some((group) => movementGroupKey(group) === activeId)) return;
@@ -219,21 +251,11 @@ export function FocusStripLogger({
         movementName: activeSwap.displayName,
       }
     : activeOriginal;
-  const activeLoggedSetIds = new Set(
-    activeOriginal.itemIndices
-      .map((index) => loggedSetIdByItemIndex[index])
-      .filter((id): id is string => id != null),
-  );
-  const movementIdIsShared = groups.some(
-    (group) =>
-      movementGroupKey(group) !== activeOriginalKey &&
-      group.movementId === activeOriginal.movementId,
-  );
-  const activeLoggedSets = focusLoggedSets.filter(
-    (set) =>
-      activeLoggedSetIds.has(set.id) ||
-      (!movementIdIsShared &&
-        set.movementId === activeOriginal.movementId),
+  const activeLoggedSets = focusLoggedSets.filter((set) =>
+    groupOwnsLoggedSet(attribution, attributionInputForGroup(activeOriginal), {
+      id: set.id,
+      movementId: set.movementId,
+    }),
   );
 
   const activeRequired = requiredIndices(activeOriginal);

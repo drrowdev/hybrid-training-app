@@ -8,10 +8,13 @@
  * Contract under test (AGENTS.md DC-K4):
  *   - `deleteSession` flips `deleted_at` to a timestamp; the row is
  *     NOT removed.
+ *   - Planned-session links remain until a subsequent start replaces a
+ *     deleted in-progress attempt, so Trash restore preserves the association.
  *   - `restoreSession` flips `deleted_at` back to NULL.
  *   - `permanentlyDeleteSession` actually removes the row.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { recomputeRegionState } from "@/lib/engine/region-ledger";
 
 type SessionRow = {
   id: string;
@@ -20,10 +23,22 @@ type SessionRow = {
   deleted_at: string | null;
 };
 
+type PlannedRow = {
+  id: string;
+  user_id: string;
+  completed_session_id: string | null;
+};
+
+type SetLogRow = { id: string; session_id: string };
+
 const SELF_USER = "00000000-0000-0000-0000-000000000001";
 const SESSION_ID = "11111111-1111-1111-1111-111111111111";
 
-const store: { sessions: SessionRow[] } = { sessions: [] };
+const store: {
+  sessions: SessionRow[];
+  planned: PlannedRow[];
+  setLogs: SetLogRow[];
+} = { sessions: [], planned: [], setLogs: [] };
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
@@ -99,6 +114,7 @@ vi.mock("@/lib/supabase/server", () => {
 });
 
 beforeEach(() => {
+  vi.clearAllMocks();
   store.sessions = [
     {
       id: SESSION_ID,
@@ -107,6 +123,14 @@ beforeEach(() => {
       deleted_at: null,
     },
   ];
+  store.planned = [
+    {
+      id: "planned-session-1",
+      user_id: SELF_USER,
+      completed_session_id: SESSION_ID,
+    },
+  ];
+  store.setLogs = [{ id: "set-1", session_id: SESSION_ID }];
 });
 
 describe("deleteSession (soft-delete)", () => {
@@ -130,6 +154,22 @@ describe("deleteSession (soft-delete)", () => {
       expect(result.restoreUrl).toContain(SESSION_ID);
     }
   });
+
+  it("keeps the plan link and logged sets recoverable for Trash restore", async () => {
+    // DC-K4: deletion is reversible. The stale-link handling belongs to the
+    // start action so Undo/Trash can restore the original plan association.
+    const { deleteSession } = await import("../actions");
+    const fd = new FormData();
+    fd.set("id", SESSION_ID);
+
+    const result = await deleteSession(fd);
+
+    expect(result.ok).toBe(true);
+    expect(store.sessions).toHaveLength(1);
+    expect(store.sessions[0]!.deleted_at).toBeTruthy();
+    expect(store.setLogs).toEqual([{ id: "set-1", session_id: SESSION_ID }]);
+    expect(store.planned[0]!.completed_session_id).toBe(SESSION_ID);
+  });
 });
 
 describe("restoreSession", () => {
@@ -138,6 +178,39 @@ describe("restoreSession", () => {
     const { restoreSession } = await import("../actions");
     const result = await restoreSession(SESSION_ID);
     expect(result.ok).toBe(true);
+    expect(store.sessions[0]!.deleted_at).toBeNull();
+  });
+
+  it("recomputes region_state so Undo puts the load back", async () => {
+    // `recomputeRegionState` only walks sessions with `completed_at IS NOT
+    // NULL AND deleted_at IS NULL` (lib/engine/region-ledger.ts:67-73), so
+    // deleting drops a session's regional load from freshness / balance.
+    // Restore has to be the exact mirror or Undo silently leaves the ledger
+    // short until some unrelated event triggers the next recompute.
+    store.sessions[0]!.deleted_at = new Date().toISOString();
+    const { restoreSession } = await import("../actions");
+
+    const result = await restoreSession(SESSION_ID);
+
+    expect(result.ok).toBe(true);
+    expect(recomputeRegionState).toHaveBeenCalledTimes(1);
+    expect(recomputeRegionState).toHaveBeenCalledWith(
+      expect.anything(),
+      SELF_USER,
+      "UTC",
+    );
+  });
+
+  it("is symmetric with deleteSession across a delete → undo round trip", async () => {
+    const { deleteSession, restoreSession } = await import("../actions");
+    const fd = new FormData();
+    fd.set("id", SESSION_ID);
+
+    await deleteSession(fd);
+    expect(recomputeRegionState).toHaveBeenCalledTimes(1);
+
+    await restoreSession(SESSION_ID);
+    expect(recomputeRegionState).toHaveBeenCalledTimes(2);
     expect(store.sessions[0]!.deleted_at).toBeNull();
   });
 });

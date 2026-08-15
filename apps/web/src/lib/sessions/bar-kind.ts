@@ -49,3 +49,40 @@ export function resolveBarKind(movementSlug: string | null | undefined): BarKind
   }
   return "barbell";
 }
+
+/** The bar half of `Equipment["bars"]`, tolerant of absent props. */
+export type BarInventoryKg = {
+  barbellKg?: number | null;
+  trapBarKg?: number | null;
+};
+
+/**
+ * Single home (plan §6.9) for "what does the empty bar weigh for this
+ * movement, given what the lifter owns?".
+ *
+ * Both the session renderer and the server-side plan materialisation
+ * (`fillSessionFromPlan`) call this before `roundWarmupLoadKg`, so the
+ * displayed warm-up load and the persisted `set_logs.weight_kg` can
+ * never disagree about the bar floor.
+ *
+ * Returns `null` — meaning "no bar, so no bar floor and no plate
+ * breakdown" — when either the movement isn't loaded on a bar or the
+ * user doesn't own the bar it needs. `bars.barbellKg === 0`
+ * (travel/hotel, bodyweight-only) and `bars.trapBarKg === null`
+ * (home/functional/custom) are the canonical "no such bar" signals —
+ * see `hasLoadableMainLift` / `presetKeyForScheme` in
+ * `lib/settings/equipment-presets.ts`. Never coerce them to a default
+ * bar mass at a call site.
+ */
+export function resolveBarWeightKg(
+  movementSlug: string | null | undefined,
+  bars: BarInventoryKg | null | undefined,
+): number | null {
+  const barKind = resolveBarKind(movementSlug);
+  if (barKind == null) return null;
+  const weightKg = barKind === "trap_bar" ? bars?.trapBarKg : bars?.barbellKg;
+  if (typeof weightKg !== "number" || !Number.isFinite(weightKg) || weightKg <= 0) {
+    return null;
+  }
+  return weightKg;
+}

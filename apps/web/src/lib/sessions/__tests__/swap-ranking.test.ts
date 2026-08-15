@@ -5,6 +5,7 @@ import { describe, it, expect } from "vitest";
 import {
   scoreSwapCandidate,
   rankSwapCandidates,
+  prescribedMovementIds,
   type SwapMovementFields,
 } from "../swap-ranking";
 
@@ -115,5 +116,70 @@ describe("rankSwapCandidates", () => {
     const weak = mv({ id: "weak", display_name: "Unrelated", primary_muscles: ["calves"] });
     const ranked = rankSwapCandidates(ORIGINAL, [weak]);
     expect(ranked[0]!.recommended).toBe(false);
+  });
+});
+
+describe("rankSwapCandidates — movements already in the session", () => {
+  // Owner-reported shape: swapping a deadlift offers barbell hip thrust (both
+  // `hinge`, so it ranks at the top) on a day that ALREADY programmes hip
+  // thrust. Taking the suggestion puts one movement in two prescription blocks,
+  // which the session view then has to split across two cards for one lift.
+  const HIP_THRUST = mv({
+    id: "hip-thrust",
+    display_name: "Barbell Hip Thrust",
+    primary_muscles: ["quads", "glutes"],
+    primary_region: "knee",
+    is_compound: true,
+    is_supported: false,
+  });
+  const FRONT_SQUAT = mv({
+    id: "front-squat",
+    display_name: "Front Squat",
+    primary_muscles: ["quads", "glutes"],
+    primary_region: "knee",
+    is_compound: true,
+    is_supported: false,
+  });
+
+  it("excludes a movement the session already prescribes from recommendations", () => {
+    const ranked = rankSwapCandidates(ORIGINAL, [HIP_THRUST, FRONT_SQUAT], {
+      movementIdsInSession: ["hip-thrust"],
+    });
+    expect(ranked.map((c) => c.id)).toEqual(["front-squat"]);
+  });
+
+  it("still returns it when explicitly searched, flagged and never recommended (DC-K4: warn, don't silently overrule)", () => {
+    const ranked = rankSwapCandidates(ORIGINAL, [HIP_THRUST, FRONT_SQUAT], {
+      movementIdsInSession: ["hip-thrust"],
+      mode: "search",
+    });
+    expect(ranked.map((c) => c.id)).toEqual(["front-squat", "hip-thrust"]);
+    const duplicate = ranked.find((c) => c.id === "hip-thrust")!;
+    expect(duplicate.alreadyInSession).toBe(true);
+    expect(duplicate.recommended).toBe(false);
+  });
+
+  it("is a no-op when the session list is empty", () => {
+    const ranked = rankSwapCandidates(ORIGINAL, [HIP_THRUST, FRONT_SQUAT], {
+      movementIdsInSession: [],
+    });
+    expect(ranked).toHaveLength(2);
+    expect(ranked.every((c) => c.alreadyInSession === undefined)).toBe(true);
+  });
+});
+
+describe("prescribedMovementIds", () => {
+  it("lists the session's movements minus the one being replaced, deduped", () => {
+    const prescription = {
+      items: [
+        { movementId: "deadlift" },
+        { movementId: "deadlift" },
+        { movementId: "hip-thrust" },
+        { movementId: null },
+      ],
+    };
+    expect(prescribedMovementIds(prescription, { exclude: "deadlift" })).toEqual(["hip-thrust"]);
+    expect(prescribedMovementIds(prescription)).toEqual(["deadlift", "hip-thrust"]);
+    expect(prescribedMovementIds(null)).toEqual([]);
   });
 });

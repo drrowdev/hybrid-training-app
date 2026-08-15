@@ -15,7 +15,14 @@
  * / other), and an optional freeform note via `swapActiveMovement`.
  */
 
-import { useEffect, useId, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { swapActiveMovement } from "@/lib/sessions/swap-actions";
 
 export type SwapMovementCatalogRow = {
@@ -25,6 +32,12 @@ export type SwapMovementCatalogRow = {
   equipment: string | null;
   /** Server similarity rank flag — the closest alternatives to the original. */
   recommended?: boolean;
+  /**
+   * Server flag — this workout already prescribes the movement somewhere else.
+   * Never recommended; only reachable by searching for it explicitly, where it
+   * is labelled rather than hidden (DC-K4: warn, don't silently overrule).
+   */
+  alreadyInSession?: boolean;
 };
 
 export type SwapMovementModalProps = {
@@ -33,7 +46,10 @@ export type SwapMovementModalProps = {
   sessionId: string;
   original: { id: string; displayName: string; rehab?: boolean };
   /** Called with the picked movement once the swap is recorded. */
-  onSwapped: (next: { id: string; slug: string; displayName: string }) => void;
+  onSwapped: (
+    next: { id: string; slug: string; displayName: string },
+    warning?: string,
+  ) => void;
 };
 
 type ReasonCategory = "pain" | "equipment" | "other";
@@ -53,6 +69,11 @@ export function SwapMovementModal({
 }: SwapMovementModalProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
+  const [pendingSwap, setPendingSwap] = useState<{
+    next: { id: string; slug: string; displayName: string };
+    warning: string;
+  } | null>(null);
   const [candidates, setCandidates] = useState<SwapMovementCatalogRow[]>([]);
   const [search, setSearch] = useState("");
   const [reason, setReason] = useState<ReasonCategory>("pain");
@@ -60,6 +81,16 @@ export function SwapMovementModal({
   const [pending, startTransition] = useTransition();
   const searchRef = useRef<HTMLInputElement | null>(null);
   const titleId = useId();
+
+  const handleClose = useCallback(() => {
+    setWarning(null);
+    if (pendingSwap) {
+      const completed = pendingSwap;
+      setPendingSwap(null);
+      onSwapped(completed.next, completed.warning);
+    }
+    onClose();
+  }, [onClose, onSwapped, pendingSwap]);
 
   // Fetch candidates whenever the menu opens or the (debounced) search changes.
   // Empty query → similarity-ranked recommendations for the original movement.
@@ -78,6 +109,9 @@ export function SwapMovementModal({
         const params = new URLSearchParams({
           originalId: original.id,
           limit: "40",
+          // Scopes the list to this workout so movements it already prescribes
+          // are not offered as duplicates (see the route's doc comment).
+          sessionId,
         });
         if (q.length > 0) params.set("q", q);
         fetch(`/api/movements/swap-candidates?${params.toString()}`)
@@ -107,7 +141,7 @@ export function SwapMovementModal({
       cancelled = true;
       clearTimeout(id);
     };
-  }, [open, original.id, search]);
+  }, [open, original.id, search, sessionId]);
 
   useEffect(() => {
     if (!open) return;
@@ -118,11 +152,11 @@ export function SwapMovementModal({
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") handleClose();
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [handleClose, open]);
 
   if (!open) return null;
 
@@ -138,7 +172,7 @@ export function SwapMovementModal({
       key={c.id}
       type="button"
       onClick={() => confirm(c)}
-      disabled={pending}
+      disabled={pending || pendingSwap != null}
       data-testid={`swap-modal-candidate-${c.slug}`}
       style={{
         textAlign: "left",
@@ -147,7 +181,7 @@ export function SwapMovementModal({
         border: `1px solid ${c.recommended ? "color-mix(in oklab, var(--cp-accent) 45%, var(--cp-border))" : "var(--cp-border)"}`,
         background: "var(--cp-surface-soft)",
         color: "var(--cp-text)",
-        cursor: pending ? "wait" : "pointer",
+        cursor: pending || pendingSwap != null ? "not-allowed" : "pointer",
         fontSize: 13,
         minHeight: 44,
         display: "flex",
@@ -157,11 +191,21 @@ export function SwapMovementModal({
       }}
     >
       <span style={{ fontWeight: 500 }}>{c.display_name}</span>
-      {c.equipment && (
-        <span className="mono" style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-          {c.equipment}
-        </span>
-      )}
+      <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {c.alreadyInSession && (
+          <span
+            data-testid={`swap-modal-already-in-session-${c.slug}`}
+            style={{ fontSize: 11, color: "var(--cp-warn, var(--cp-text-muted))" }}
+          >
+            already in this workout
+          </span>
+        )}
+        {c.equipment && (
+          <span className="mono" style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
+            {c.equipment}
+          </span>
+        )}
+      </span>
     </button>
   );
 
@@ -182,6 +226,8 @@ export function SwapMovementModal({
 
   const confirm = (pick: SwapMovementCatalogRow) => {
     setError(null);
+    setWarning(null);
+    setPendingSwap(null);
     const fd = new FormData();
     fd.set("sessionId", sessionId);
     fd.set("originalMovementId", original.id);
@@ -197,6 +243,13 @@ export function SwapMovementModal({
         setError(res.error ?? "Swap failed.");
         return;
       }
+      if (res.warning) {
+        // Keep the modal open so the DC-K4 warning is visible. Notify the
+        // parent when the user closes it, after acknowledging the warning.
+        setWarning(res.warning);
+        setPendingSwap({ next: res.newMovement, warning: res.warning });
+        return;
+      }
       onSwapped(res.newMovement);
       onClose();
     });
@@ -208,7 +261,7 @@ export function SwapMovementModal({
       aria-modal="true"
       aria-labelledby={titleId}
       data-testid="swap-movement-modal"
-      onClick={onClose}
+      onClick={handleClose}
       style={{
         position: "fixed",
         inset: 0,
@@ -238,7 +291,7 @@ export function SwapMovementModal({
           <button
             type="button"
             aria-label="Close"
-            onClick={onClose}
+            onClick={handleClose}
             data-testid="swap-modal-close"
             style={{ background: "transparent", border: 0, color: "var(--cp-text-muted)", fontSize: 18, cursor: "pointer" }}
           >
@@ -330,6 +383,22 @@ export function SwapMovementModal({
           {error && (
             <div role="alert" data-testid="swap-modal-error" style={{ fontSize: 12, color: "var(--cp-danger)" }}>
               {error}
+            </div>
+          )}
+          {warning && (
+            <div
+              role="status"
+              data-testid="swap-modal-warning"
+              style={{
+                fontSize: 12,
+                color: "var(--cp-warning, var(--cp-text-muted))",
+                background: "var(--cp-surface-soft)",
+                border: "1px solid var(--cp-border)",
+                borderRadius: 6,
+                padding: "7px 9px",
+              }}
+            >
+              {warning}
             </div>
           )}
           {!loading && !error && filtered.length === 0 && (

@@ -435,11 +435,18 @@ export function oneRepMaxFor(ctx: PlatformContext, movement: string): number | u
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Global warm-up ramp — the single source of truth for every strength program
-// that ramps to a top working set (5/3/1, Tactical Barbell, Zulu/HT…). 40/60/80%
-// of the work set × 5/5/3 reps, mirroring 5/3/1's classic default. Programs that
-// need warm-ups should call `buildGlobalWarmupItems` rather than redefining the
-// ramp, so the routine stays consistent app-wide.
+// Global warm-up ramp — the app's shared default for strength programs that ramp
+// to a top working set and have no published warm-up of their own (Tactical
+// Barbell, Zulu/HT, HYROX strength…). 40/60/80% OF THE WORK SET × 5/5/3 reps, so
+// the ladder climbs as the top set climbs.
+//
+// This is the APP's convention, not any external program's published ramp. In
+// particular it is NOT 5/3/1's default: that method ramps a FIXED 40/50/60% of
+// the TRAINING MAX (5/5/3), identical in every week of the wave. A program with
+// its own published warm-up supplies it itself (see `@hta/wendler`
+// `TRAINING_MAX_WARMUP` / `buildProgramWarmupSets`); everything else should call
+// `buildGlobalWarmupItems` rather than redefining the ramp, so the shared
+// routine stays consistent app-wide.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const GLOBAL_WARMUP_PERCENTS = [0.4, 0.6, 0.8] as const;

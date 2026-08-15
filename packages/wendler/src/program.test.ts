@@ -364,3 +364,50 @@ describe("5/3/1 engine — segments (start points)", () => {
     expect(segs.map((s) => s.startWeekIndex)).toEqual([0, 3, 4, 7]);
   });
 });
+
+describe("5/3/1 engine — warm-up ramp is anchored to the Training Max", () => {
+  // 235 × 0.85 = 199.75 → 200 kg deadlift TM, the worked example.
+  const tmCtx: PlatformContext = {
+    oneRepMaxes: { squat: 165, bench: 118, deadlift: 235, press: 71 },
+    roundingKg: 2.5,
+  };
+
+  function deadliftWeek(inst: WendlerInstance, week: 1 | 2 | 3) {
+    const tl = wendler531Engine.timeline(inst);
+    const day = tl.find(
+      (s) =>
+        s.tags?.includes("lift:deadlift") &&
+        s.tags?.includes(`week:${week}`) &&
+        s.tags?.includes("phase:anchor"),
+    )!;
+    return wendler531Engine.prescribe(inst, day.ref, tmCtx);
+  }
+
+  it("prescribes a FLAT 40/50/60% of TM ramp — identical in the 5s, 3s and 5/3/1 weeks", () => {
+    const inst = wendler531Engine.setup(
+      { values: { templateId: "5spro-fsl", leaderCycles: 2, anchorCycles: 1, tmPercent: 0.85 } },
+      tmCtx,
+    );
+    expect(inst.trainingMaxes.deadlift).toBe(200);
+
+    const ramps = ([1, 2, 3] as const).map((week) =>
+      itemsOfKind(deadliftWeek(inst, week), "warmup").map((i) => i.weightKg),
+    );
+    const tops = ([1, 2, 3] as const).map((week) =>
+      Math.max(
+        ...itemsOfKind(deadliftWeek(inst, week), "main").map((i) => i.weightKg ?? 0),
+        ...itemsOfKind(deadliftWeek(inst, week), "amrap").map((i) => i.weightKg ?? 0),
+      ),
+    );
+
+    // The top set climbs 85% → 90% → 95% of TM...
+    expect(tops).toEqual([170, 180, 190]);
+    // ...while the warm-ups do not move: 40/50/60% of the 200 kg TM.
+    expect(ramps[0]).toEqual([80, 100, 120]);
+    expect(ramps[1]).toEqual([80, 100, 120]);
+    expect(ramps[2]).toEqual([80, 100, 120]);
+    expect(itemsOfKind(deadliftWeek(inst, 1), "warmup").map((i) => i.reps)).toEqual([
+      5, 5, 3,
+    ]);
+  });
+});

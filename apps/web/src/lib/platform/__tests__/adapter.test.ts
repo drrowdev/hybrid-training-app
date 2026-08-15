@@ -228,7 +228,7 @@ describe("adaptSessionPrescription — strength", () => {
     expect(prescription.items.filter((item) => item.optional)).toHaveLength(2);
   });
 
-  it("preserves linked-circuit identity on every granular log slot", () => {
+  it("[DC-E1] preserves linked-circuit identity on every granular supplemental log slot", () => {
     const circuit = {
       id: "tb-ab-triad",
       name: "AB Triad",
@@ -240,7 +240,7 @@ describe("adaptSessionPrescription — strength", () => {
       {
         items: [
           {
-            kind: "assistance",
+            kind: "supplemental",
             name: "Hanging Leg Raise",
             movementId: "hanging-leg-raise",
             sets: 3,
@@ -259,6 +259,7 @@ describe("adaptSessionPrescription — strength", () => {
     expect(
       prescription.items.every(
         (item) =>
+          item.kind === "back_off" &&
           item.sets === 1 &&
           item.reps === 5 &&
           item.circuit?.id === "tb-ab-triad" &&

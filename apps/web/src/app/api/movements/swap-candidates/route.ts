@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
+  prescribedMovementIds,
   rankSwapCandidates,
   type SwapMovementFields,
 } from "@/lib/sessions/swap-ranking";
@@ -11,7 +12,7 @@ import {
 } from "@/lib/planner/equipment-requirements";
 
 /**
- * GET /api/movements/swap-candidates?originalId=<uuid>&limit=25
+ * GET /api/movements/swap-candidates?originalId=<uuid>&limit=25&sessionId=<uuid>
  *
  * Phase 2 A1 — returns role-compatible alternatives for the given
  * movement, used by the mid-workout swap menu. "Compatible" today
@@ -23,6 +24,14 @@ import {
  * role, region) so the closest alternatives lead and the top few are flagged
  * `recommended` — instead of an unhelpful alphabetical dump of the whole pattern
  * bucket. See `lib/sessions/swap-ranking.ts`.
+ *
+ * ``sessionId`` (optional) scopes the list to the workout being edited: any
+ * movement the session ALREADY prescribes is dropped from the recommendations,
+ * because swapping into it duplicates a movement inside one workout — e.g.
+ * barbell hip thrust is a `hinge`, so it ranks near the top when replacing a
+ * deadlift even on a day that already programmes it as an accessory. Explicit
+ * searches still return those movements, flagged `alreadyInSession` so the
+ * picker can warn instead of silently hiding a result the user typed.
  */
 const MOVEMENT_FIELDS =
   "id, slug, display_name, pattern, primary_region, primary_muscles, secondary_muscles, functional_roles, bulletproof_roles, equipment, is_compound, is_supported, stability, metadata";
@@ -31,6 +40,7 @@ export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const url = new URL(request.url);
   const originalId = url.searchParams.get("originalId");
+  const sessionId = url.searchParams.get("sessionId");
   const q = (url.searchParams.get("q") ?? "").trim();
   const limit = Math.min(
     50,
@@ -77,6 +87,47 @@ export async function GET(request: NextRequest) {
     return available.length > 0 ? available : pool;
   };
 
+  // Movements this workout ALREADY carries — the prescription (planned session
+  // first, then the quick/freestyle session row) plus any off-plan additions in
+  // `session_movements`. Every read is user-scoped so RLS holds. A failure here
+  // degrades to "no exclusions" rather than breaking the swap menu.
+  const movementIdsInSession =
+    sessionId && user
+      ? await (async () => {
+          const [planned, session, extras] = await Promise.all([
+            supabase
+              .from("planned_sessions")
+              .select("prescription")
+              .eq("completed_session_id", sessionId)
+              .eq("user_id", user.id)
+              .maybeSingle(),
+            supabase
+              .from("sessions")
+              .select("prescription")
+              .eq("id", sessionId)
+              .eq("user_id", user.id)
+              .is("deleted_at", null)
+              .maybeSingle(),
+            supabase
+              .from("session_movements")
+              .select("movement_id")
+              .eq("session_id", sessionId)
+              .eq("user_id", user.id),
+          ]);
+          const rx =
+            (planned.data?.prescription as Parameters<typeof prescribedMovementIds>[0]) ??
+            (session.data?.prescription as Parameters<typeof prescribedMovementIds>[0]) ??
+            null;
+          const ids = new Set(prescribedMovementIds(rx, { exclude: originalId }));
+          for (const row of (extras.data ?? []) as Array<{ movement_id?: string | null }>) {
+            if (typeof row.movement_id === "string" && row.movement_id !== originalId) {
+              ids.add(row.movement_id);
+            }
+          }
+          return Array.from(ids);
+        })()
+      : [];
+
   // SEARCH MODE: when the user types a query, search the WHOLE catalog by name /
   // slug — not just the similarity-ranked bucket. The recommendations list is
   // capped + ordered by similarity, so a relevant-but-distant movement (e.g. an
@@ -94,6 +145,7 @@ export async function GET(request: NextRequest) {
     const ranked = rankSwapCandidates(
       orig as unknown as SwapMovementFields,
       equipmentFilter((data ?? []) as unknown as SwapMovementFields[]),
+      { movementIdsInSession, mode: "search" },
     ).slice(0, limit);
     return NextResponse.json({ pattern: orig.pattern, movements: ranked, mode: "search" });
   }
@@ -140,6 +192,7 @@ export async function GET(request: NextRequest) {
   const ranked = rankSwapCandidates(
     orig as unknown as SwapMovementFields,
     equipmentFilter(Array.from(byId.values())),
+    { movementIdsInSession, mode: "recommend" },
   ).slice(0, limit);
 
   return NextResponse.json({

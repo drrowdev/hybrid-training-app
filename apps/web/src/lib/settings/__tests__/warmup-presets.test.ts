@@ -4,7 +4,10 @@ import {
   presetByKey,
   presetKeyForScheme,
 } from "../warmup-presets";
-import { DEFAULT_WARMUP_SCHEME } from "@/lib/planner/warmups";
+import {
+  DEFAULT_WARMUP_SCHEME,
+  LEGACY_DEFAULT_WARMUP_SCHEME,
+} from "@/lib/planner/warmups";
 
 describe("warmup presets", () => {
   it("standard preset equals the engine default scheme", () => {
@@ -18,9 +21,11 @@ describe("warmup presets", () => {
     expect(skip.repLadder).toEqual([]);
   });
 
-  it("long preset is 4 sets, quick is 2 sets", () => {
+  it("long preset is 4 sets, quick is 2 sets, and both reach a useful bridge to work", () => {
     expect(presetByKey("long").scheme.setCount).toBe(4);
     expect(presetByKey("quick").scheme.setCount).toBe(2);
+    expect(presetByKey("long").scheme.percentLadder).toEqual([30, 50, 70, 85]);
+    expect(presetByKey("quick").scheme.percentLadder).toEqual([50, 75]);
   });
 
   it("each non-custom preset has matching ladder lengths", () => {
@@ -52,6 +57,10 @@ describe("presetKeyForScheme", () => {
         repLadder: [5, 3, 2],
       }),
     ).toBe("custom");
+  });
+
+  it("maps an explicitly stored migration-0039 default to standard", () => {
+    expect(presetKeyForScheme(LEGACY_DEFAULT_WARMUP_SCHEME)).toBe("standard");
   });
 
   it("falls back to 'custom' when ladder lengths differ from any preset", () => {

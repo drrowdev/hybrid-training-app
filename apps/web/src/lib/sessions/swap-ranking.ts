@@ -35,6 +35,13 @@ export type RankedSwapCandidate = {
   score: number;
   /** True for the leading, genuinely-similar matches (surfaced as "Recommended"). */
   recommended: boolean;
+  /**
+   * True when this workout ALREADY prescribes the movement in another slot.
+   * Swapping into it would put the same movement in two places, which the
+   * session UI then has to render as two separate cards for one lift. Never
+   * offered as a recommendation; only reachable by explicitly searching for it.
+   */
+  alreadyInSession?: boolean;
 };
 
 // Weights — a primary-muscle match is the strongest "this trains the same thing"
@@ -62,6 +69,27 @@ function overlapCount(a: readonly string[] | null | undefined, b: readonly strin
   let n = 0;
   for (const x of b) if (set.has(x)) n += 1;
   return n;
+}
+
+/**
+ * Movement ids the workout already prescribes, minus the one being replaced.
+ *
+ * Feeds `RankSwapOptions.movementIdsInSession`. Structural input so this stays
+ * usable for a planned_session prescription, a quick-workout session
+ * prescription, or a plain movement-id list from `session_movements`.
+ */
+export function prescribedMovementIds(
+  prescription: { items?: ReadonlyArray<{ movementId?: string | null }> | null } | null,
+  options: { exclude?: string | null } = {},
+): string[] {
+  const out: string[] = [];
+  for (const item of prescription?.items ?? []) {
+    const id = item?.movementId;
+    if (typeof id !== "string" || id.length === 0) continue;
+    if (options.exclude != null && id === options.exclude) continue;
+    if (!out.includes(id)) out.push(id);
+  }
+  return out;
 }
 
 /** Similarity score of `candidate` vs `original` (already same pattern). */
@@ -99,29 +127,68 @@ export function scoreSwapCandidate(
 }
 
 /**
+ * Options controlling which candidates are offered.
+ */
+export type RankSwapOptions = {
+  /**
+   * Movement ids the session ALREADY prescribes (excluding the movement being
+   * replaced). Suggesting one of these produces a duplicate movement in a
+   * single workout, which the session view then has to split across two cards
+   * for the same lift — and which the plain "same pattern" ranker happily puts
+   * at the top (barbell hip thrust is a `hinge`, so it outranks most things
+   * when you swap a deadlift, even when the day already includes it).
+   */
+  movementIdsInSession?: Iterable<string>;
+  /**
+   * `"recommend"` (default) drops already-present movements outright — the list
+   * is a curated set of suggestions and a duplicate is never a good suggestion.
+   * `"search"` keeps them, because the user typed the name and hiding the
+   * result with no explanation is worse; they are flagged `alreadyInSession`,
+   * never `recommended`, and sorted below every non-duplicate.
+   */
+  mode?: "recommend" | "search";
+};
+
+/**
  * Rank candidates best-first by similarity to the original, breaking ties
  * alphabetically (stable, predictable). The leading `RECOMMENDED_MAX` whose
  * score clears `RECOMMENDED_MIN_SCORE` are flagged `recommended`.
+ *
+ * Movements already prescribed elsewhere in the session are excluded (or, when
+ * searching, demoted and flagged) — see `RankSwapOptions`.
  */
 export function rankSwapCandidates(
   original: SwapMovementFields,
   candidates: ReadonlyArray<SwapMovementFields>,
+  options: RankSwapOptions = {},
 ): RankedSwapCandidate[] {
-  const scored = candidates.map((c) => ({
+  const inSession = new Set(options.movementIdsInSession ?? []);
+  const searching = options.mode === "search";
+  const pool =
+    !searching && inSession.size > 0
+      ? candidates.filter((c) => !inSession.has(c.id))
+      : candidates;
+  const scored = pool.map((c) => ({
     id: c.id,
     slug: c.slug,
     display_name: c.display_name,
     equipment: c.equipment,
     score: scoreSwapCandidate(original, c),
     recommended: false,
+    ...(inSession.has(c.id) ? { alreadyInSession: true } : {}),
   }));
-  scored.sort((a, b) =>
-    b.score !== a.score
+  scored.sort((a, b) => {
+    const aDup = a.alreadyInSession === true ? 1 : 0;
+    const bDup = b.alreadyInSession === true ? 1 : 0;
+    if (aDup !== bDup) return aDup - bDup;
+    return b.score !== a.score
       ? b.score - a.score
-      : a.display_name.localeCompare(b.display_name),
-  );
+      : a.display_name.localeCompare(b.display_name);
+  });
   for (let i = 0; i < scored.length && i < RECOMMENDED_MAX; i++) {
-    if (scored[i]!.score >= RECOMMENDED_MIN_SCORE) scored[i]!.recommended = true;
+    const c = scored[i]!;
+    if (c.alreadyInSession === true) continue;
+    if (c.score >= RECOMMENDED_MIN_SCORE) c.recommended = true;
   }
   return scored;
 }

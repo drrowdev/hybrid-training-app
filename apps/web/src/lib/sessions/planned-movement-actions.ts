@@ -19,22 +19,44 @@ import { z } from "zod";
 import type { Prescription } from "@hta/db";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { isRehabItem } from "@hta/domain";
+import { resolveWarmupScheme } from "@/lib/planner/warmups";
 import {
+  programIdFromJoinedBlock,
+  warmupSchemeForProgram,
+} from "@/lib/planner/program-warmup-scheme";
+import {
+  SWAP_NO_TRAINING_MAX_WARNING,
+  SWAP_NO_WARMUP_ANCHOR_WARNING,
+  getSwapWarmupAnchor,
   removeMovementFromPrescription,
   swapMovementInPrescription,
   addMovementToPrescription,
 } from "./prescription-mutations";
 
-export type PlannedEditResult = { ok?: true; error?: string; prescription?: Prescription };
+export type PlannedEditResult = {
+  ok?: true;
+  error?: string;
+  prescription?: Prescription;
+  warning?: string;
+};
 
 async function loadPlannedForEdit(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
   plannedSessionId: string,
-): Promise<{ prescription: Prescription; completedSessionId: string | null } | { error: string }> {
+): Promise<
+  | {
+      prescription: Prescription;
+      completedSessionId: string | null;
+      programId: string | null;
+    }
+  | { error: string }
+> {
   const { data, error } = await supabase
     .from("planned_sessions")
-    .select("id, user_id, prescription, completed_session_id")
+    .select(
+      "id, user_id, prescription, completed_session_id, training_blocks!inner(program_id)",
+    )
     .eq("id", plannedSessionId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -43,6 +65,7 @@ async function loadPlannedForEdit(
   return {
     prescription: (data.prescription as Prescription | null) ?? { items: [] },
     completedSessionId: (data.completed_session_id as string | null) ?? null,
+    programId: programIdFromJoinedBlock(data),
   };
 }
 
@@ -158,18 +181,72 @@ export async function swapPlannedMovement(formData: FormData): Promise<PlannedEd
   } = await getAuthUser();
   if (!user) return { error: "Not signed in." };
 
-  const [loaded, { data: newMov, error: mErr }] = await Promise.all([
+  const [
+    loaded,
+    { data: newMov, error: mErr },
+    { data: replacementTm, error: tmErr },
+    { data: profile, error: profileErr },
+  ] = await Promise.all([
     loadPlannedForEdit(supabase, user.id, parsed.data.plannedSessionId),
     supabase
       .from("movements")
       .select("id, slug, display_name")
       .eq("id", parsed.data.newMovementId)
       .maybeSingle(),
+    supabase
+      .from("training_maxes")
+      .select("one_rm_kg, bw_node_id")
+      .eq("user_id", user.id)
+      .eq("movement_id", parsed.data.newMovementId)
+      .maybeSingle(),
+    supabase
+      .from("profiles")
+      .select("warmup_scheme")
+      .eq("id", user.id)
+      .maybeSingle(),
   ]);
   if ("error" in loaded) return { error: loaded.error };
   if (mErr) return { error: mErr.message };
+  if (tmErr) return { error: tmErr.message };
+  if (profileErr) return { error: profileErr.message };
   if (!newMov) return { error: "Replacement movement not found." };
 
+  const oneRm = Number(
+    (replacementTm as { one_rm_kg?: number | string | null } | null)?.one_rm_kg,
+  );
+  const replacementHasTrainingMax = Number.isFinite(oneRm) && oneRm > 0;
+  const isRehabSwap = parsed.data.rehab === true;
+  const warmupAnchor = getSwapWarmupAnchor(
+    loaded.prescription,
+    parsed.data.movementId,
+    { rehab: parsed.data.rehab },
+  );
+  const warning =
+    isRehabSwap || !warmupAnchor.hasMain
+      ? undefined
+      : !replacementHasTrainingMax
+        ? SWAP_NO_TRAINING_MAX_WARNING
+        : warmupAnchor.topWorkingPercent == null
+          ? SWAP_NO_WARMUP_ANCHOR_WARNING
+          : undefined;
+  // Rehab prescriptions are not TM-anchored; they still use the shared
+  // movement rebuild, but don't need the strength-lift no-anchor warning.
+  const rebuildContext = {
+    // A block owned by a program that publishes its own warm-up ramp is
+    // rebuilt with THAT ramp; archetype/native blocks keep the user's ladder.
+    warmupScheme: warmupSchemeForProgram(
+      loaded.programId,
+      resolveWarmupScheme(
+        (profile as { warmup_scheme?: unknown } | null)?.warmup_scheme,
+      ),
+    ),
+    replacementHasTrainingMax: isRehabSwap || replacementHasTrainingMax,
+    // A planned session that already has a completed_session_id is a workout
+    // in progress: its `set_logs.prescription_item_index` values address items
+    // by position, so the rebuild must not change `items.length`. Future
+    // sessions have no logs and keep the canonical re-splice.
+    preserveItemIndices: loaded.completedSessionId != null,
+  };
   const next = swapMovementInPrescription(
     loaded.prescription,
     parsed.data.movementId,
@@ -180,14 +257,16 @@ export async function swapPlannedMovement(formData: FormData): Promise<PlannedEd
     },
     undefined,
     { rehab: parsed.data.rehab },
+    rebuildContext,
   );
-  return persistPlannedPrescription(
+  const persisted = await persistPlannedPrescription(
     supabase,
     user.id,
     parsed.data.plannedSessionId,
     next,
     loaded.completedSessionId,
   );
+  return warning ? { ...persisted, warning } : persisted;
 }
 
 const addMovementSchema = z.object({
