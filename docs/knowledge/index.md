@@ -83,6 +83,7 @@ edit.
 
 | ADR | One-line summary |
 |---|---|
+| [`0070-prescribed-vs-actual-set-capture.md`](../adr/0070-prescribed-vs-actual-set-capture.md) | **Prescribed-vs-actual set capture (2026-08-15).** `set_logs` gains `target_weight_kg`, `target_reps` and a `prescribed` JSONB blob so a reduced-load or short-rep set is an auditable DC-K4 deviation instead of being invisible. Targets are client-submitted (what was displayed), server-corroborated, and frozen by a trigger. Migration 0128; no backfill — NULL means "unknown", never "on target". |
 | [`0001-stack-choices.md`](../adr/0001-stack-choices.md) | **Phase 0 stack.** Next.js 16 + TS strict + Drizzle + Supabase + Tailwind v4 + Vercel. Reasoning for each choice and the alternatives considered. |
 | [`0002-ai-architecture.md`](../adr/0002-ai-architecture.md) | **Retired architecture (2026-08-06).** Historical in-app model-provider design; all code, routes, SDKs and persistence removed by migration 0121. |
 | [`0003-mcp-dual-path.md`](../adr/0003-mcp-dual-path.md) | **Retired architecture (2026-08-06).** Historical external tool-server design; endpoints, authorization code and persistence removed by migration 0121. |

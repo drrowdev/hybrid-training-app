@@ -31,6 +31,7 @@ import { archetypeDisplayName } from "@/lib/planner/queries";
 import { bestEstimateOneRm } from "@/lib/engine/one-rm";
 import { detectPrs, type HistoricalSet, type PrHit } from "@/lib/engine/pr";
 import type { StrengthRole } from "@/lib/planner/archetypes";
+import { rollupFidelity, type FidelityRollup } from "@hta/domain";
 
 // ──────────────────────────────────────────────────────────────────────
 // Pure types
@@ -157,6 +158,12 @@ export type BlockSummary = {
   rpeCreep: BlockRpeCreepRow[];
   powerOutcome: BlockPowerOutcome | null;
   wellness: BlockWellnessAverages;
+  /**
+   * ADR 0070 — how closely logged work tracked the prescription across the
+   * block. Null when no set carries a snapshot (every block predating
+   * migration 0128), so the section is absent rather than falsely perfect.
+   */
+  fidelity: FidelityRollup | null;
   /** Total PR count from main-lift sets across the block (all kinds). */
   prCount: number;
   /** Aggregate sum of %-delta across main lifts (avg %). null if no lifts had both start+end. */
@@ -1115,6 +1122,57 @@ async function summariseBlockForComparison(
   return { prCount, avgE1RmDeltaPct };
 }
 
+/**
+ * B8 — prescription fidelity (ADR 0070).
+ *
+ * How closely the block's logged work tracked what was prescribed. This is the
+ * thing a lifter genuinely cannot do unaided: recall eight weeks of individual
+ * load decisions. It reflects, it does not instruct.
+ *
+ * Returns null when no set in the block carries a snapshot — every session
+ * logged before migration 0128 — so the section is simply absent rather than
+ * claiming perfect adherence it never measured.
+ */
+async function getBlockFidelity(
+  supabase: SupabaseClient,
+  blockId: string,
+  planned: RawPlannedRow[],
+): Promise<FidelityRollup | null> {
+  const sessionIds = planned
+    .map((p) => p.completed_session_id)
+    .filter((id): id is string => !!id);
+  if (sessionIds.length === 0) return null;
+
+  const { data } = await supabase
+    .from("set_logs")
+    .select("weight_kg, reps, skipped, set_kind, target_weight_kg, target_reps, prescribed")
+    .in("session_id", sessionIds);
+
+  const rows = (data ?? []) as Array<{
+    weight_kg: number | string | null;
+    reps: number | null;
+    skipped: boolean | null;
+    set_kind: string | null;
+    target_weight_kg: number | string | null;
+    target_reps: number | null;
+    prescribed: { optional?: boolean } | null;
+  }>;
+
+  const rollup = rollupFidelity(
+    rows
+      .filter((r) => r.set_kind !== "warmup")
+      .map((r) => ({
+        weightKg: r.weight_kg == null ? null : Number(r.weight_kg),
+        reps: r.reps ?? null,
+        skipped: r.skipped ?? false,
+        targetWeightKg: r.target_weight_kg == null ? null : Number(r.target_weight_kg),
+        targetReps: r.target_reps ?? null,
+        optional: r.prescribed?.optional === true,
+      })),
+  );
+  return rollup.verdict === "no-data" ? null : rollup;
+}
+
 /** Whole-page summary for `/app/stats/blocks/[id]`. */
 export async function getBlockSummary(
   supabase: SupabaseClient,
@@ -1126,26 +1184,28 @@ export async function getBlockSummary(
   if (!meta) return null;
   const planned = await fetchPlannedRows(supabase, blockId);
 
-  const [mainLifts, adherence, rpeCreep, powerOutcome, wellness] = await Promise.all([
-    buildMainLifts(supabase, meta, userId, planned),
-    Promise.resolve(
-      computeBlockAdherence({
-        today,
-        startedOn: meta.startedOn,
-        planned: planned.map((p) => ({
-          plannedId: p.id,
-          weekIndex: p.week_index,
-          dayIndex: p.day_index,
-          title: p.title,
-          completedSessionId: p.completed_session_id,
-          skippedAt: p.skipped_at,
-        })),
-      }),
-    ),
-    getBlockRpeCreep(supabase, blockId, userId),
-    getBlockPowerOutcome(supabase, blockId, userId),
-    getBlockWellnessAverages(supabase, blockId, userId, today),
-  ]);
+  const [mainLifts, adherence, rpeCreep, powerOutcome, wellness, fidelity] =
+    await Promise.all([
+      buildMainLifts(supabase, meta, userId, planned),
+      Promise.resolve(
+        computeBlockAdherence({
+          today,
+          startedOn: meta.startedOn,
+          planned: planned.map((p) => ({
+            plannedId: p.id,
+            weekIndex: p.week_index,
+            dayIndex: p.day_index,
+            title: p.title,
+            completedSessionId: p.completed_session_id,
+            skippedAt: p.skipped_at,
+          })),
+        }),
+      ),
+      getBlockRpeCreep(supabase, blockId, userId),
+      getBlockPowerOutcome(supabase, blockId, userId),
+      getBlockWellnessAverages(supabase, blockId, userId, today),
+      getBlockFidelity(supabase, blockId, planned),
+    ]);
 
   const deltas = mainLifts.map((l) => l.deltaPct).filter((d): d is number => d != null);
   const avgE1RmDeltaPct =
@@ -1170,6 +1230,7 @@ export async function getBlockSummary(
     },
     prCount,
     avgE1RmDeltaPct,
+    fidelity,
   };
 }
 

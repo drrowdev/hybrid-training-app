@@ -24,7 +24,8 @@ import { detectTmAnchoredPr } from "@/lib/engine/tm-anchored-pr";
 import { restSecondsForKind } from "@/lib/sessions/rest";
 import { resolveBarWeightKg } from "@/lib/sessions/bar-kind";
 import { roundWarmupLoadKg } from "@/lib/planner/warmups";
-import { resolvePrescriptionSetWork } from "@hta/domain";
+import { resolvePrescriptionSetWork, resolvePrescribedSnapshot } from "@hta/domain";
+import { SET_KIND_TO_LOG as SHARED_SET_KIND_TO_LOG } from "@/lib/sessions/set-kind";
 import { hapticTick } from "@/lib/feedback";
 import { useUnits } from "@/lib/units/context";
 import {
@@ -134,14 +135,8 @@ export type FocusViewProps = {
   suppressRestAfterSave?: boolean;
 };
 
-const SET_KIND_TO_LOG: Record<string, "warmup" | "main" | "back_off" | "accessory" | "tendon"> = {
-  warmup: "warmup",
-  main: "main",
-  back_off: "back_off",
-  accessory: "accessory",
-  tendon: "tendon",
-  power_potentiation: "main",
-};
+const SET_KIND_TO_LOG: Record<string, "warmup" | "main" | "back_off" | "accessory" | "tendon"> =
+  SHARED_SET_KIND_TO_LOG;
 
 type PrFlash = {
   isWeightPr: boolean;
@@ -497,6 +492,19 @@ export function MovementFocusView({
       fd.set("reps", String(reps));
     }
     fd.set("prescriptionItemIndex", String(activeItemIndex));
+    // ADR 0070 — the prescribed values as DISPLAYED on this card. Sent with the
+    // log so the server stores what the user actually saw, rather than
+    // re-deriving it later from state that may have moved (TM change, taper,
+    // offline replay). `targetWeightForItem` returns null when the prescription
+    // determines no load, which is exactly when nothing must be recorded: the
+    // logger's last-logged-weight fallback is a UI convenience, not a plan.
+    const prescribedWeight = targetWeightForItem(activeItem);
+    if (prescribedWeight != null) {
+      fd.set("targetWeightKg", String(prescribedWeight));
+    }
+    if (targetWork.reps != null) {
+      fd.set("targetReps", String(targetWork.reps));
+    }
     if (rpe != null && !isWarmup) {
       fd.set("rpe", String(rpe));
     }
@@ -608,6 +616,16 @@ export function MovementFocusView({
     fd.set("prescriptionItemIndex", String(activeItemIndex));
     fd.set("skipped", "true");
     fd.set("skipReason", reason);
+    // ADR 0070 — a skip carries its snapshot too: the deviation is exactly "the
+    // whole prescribed set", which is the most informative signal for
+    // autoregulation, not the least.
+    const skippedWeight = targetWeightForItem(activeItem);
+    if (skippedWeight != null) {
+      fd.set("targetWeightKg", String(skippedWeight));
+    }
+    if (targetWork.reps != null) {
+      fd.set("targetReps", String(targetWork.reps));
+    }
     if (note) fd.set("notes", note);
     try {
       const result = await addStrengthSet(fd);
@@ -635,7 +653,7 @@ export function MovementFocusView({
   // path the per-set skip uses — so the dot strip fills in instantly. Writes
   // are sequential so the server's set_index count stays correct.
   const remainingSlots = group.itemIndices
-    .map((idx, slot) => ({ idx, kind: group.items[slot]?.kind ?? "main" }))
+    .map((idx, slot) => ({ idx, kind: group.items[slot]?.kind ?? "main", item: group.items[slot] }))
     .filter(({ idx }) => !loggedItemIndices.has(idx));
 
   const handleSkipRest = async (reason: SkipReason, note: string | null) => {
@@ -643,7 +661,7 @@ export function MovementFocusView({
     setSkipPending(true);
     setSkipError(null);
     try {
-      for (const { idx, kind } of remainingSlots) {
+      for (const { idx, kind, item } of remainingSlots) {
         const fd = new FormData();
         fd.set("sessionId", sessionId);
         fd.set("movementId", group.movementId);
@@ -653,6 +671,17 @@ export function MovementFocusView({
         fd.set("prescriptionItemIndex", String(idx));
         fd.set("skipped", "true");
         fd.set("skipReason", reason);
+        // ADR 0070 — snapshot each skipped slot from its OWN item (these are
+        // other sets, not the active card). Load comes from the same helper the
+        // card renders with, so a warm-up slot keeps its bar-floor rounding.
+        const snap = resolvePrescribedSnapshot(item, {
+          setKind: SET_KIND_TO_LOG[kind] ?? "main",
+        });
+        const slotWeight = item ? targetWeightForItem(item) : null;
+        if (slotWeight != null) {
+          fd.set("targetWeightKg", String(slotWeight));
+        }
+        if (snap.targetReps != null) fd.set("targetReps", String(snap.targetReps));
         if (note) fd.set("notes", note);
         const result = await addStrengthSet(fd);
         if (result?.error) {

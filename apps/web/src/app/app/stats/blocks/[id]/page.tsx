@@ -10,6 +10,7 @@
  *   B5 power emphasis   — only when the block had power_emphasis=true
  *   B6 wellness         — motivation / fatigue / soreness
  *   B7 comparison       — `?compare=<id>` renders side-by-side
+ *   B8 prescribed vs actual — ADR 0070 fidelity, only when sets carry a snapshot
  *
  * Every read fans out via `getBlockSummary` / `compareBlocks` which run
  * their internal queries in parallel — the page itself wires the two
@@ -32,6 +33,7 @@ import {
   type BlockPowerOutcome,
   type BlockWellnessAverages,
 } from "@/lib/stats/blocks";
+import type { FidelityRollup } from "@hta/domain";
 import { displayWeight, weightUnitLabel, type WeightUnit } from "@/lib/stats/units";
 import { StatusBadge } from "@/components/blocks/StatusBadge";
 import { MiniLine } from "@/components/stats/charts/MiniLine";
@@ -116,6 +118,7 @@ function SoloView({
       <AdherenceSection adherence={summary.adherence} />
       <RpeCreepSection rows={summary.rpeCreep} />
       {summary.powerOutcome && <PowerOutcomeSection outcome={summary.powerOutcome} />}
+      {summary.fidelity && <FidelitySection fidelity={summary.fidelity} />}
       <WellnessSection wellness={summary.wellness} />
     </>
   );
@@ -508,6 +511,115 @@ function PowerOutcomeSection({ outcome }: { outcome: BlockPowerOutcome }): React
         </div>
       )}
     </section>
+  );
+}
+
+// ── B8 prescription fidelity (ADR 0070) ───────────────────────────────
+
+/**
+ * How closely the block's logged work tracked the prescription.
+ *
+ * Deliberately descriptive: it reports what happened and offers no advice.
+ * Adjusting load or set count mid-block is the lifter's call — the value here
+ * is remembering eight weeks of those calls, which is the part a person cannot
+ * do unaided. Rendered only when at least one set carries a snapshot.
+ */
+function FidelitySection({ fidelity }: { fidelity: FidelityRollup }): ReactElement {
+  const total = fidelity.comparableSets;
+  const pct = (n: number) => (total === 0 ? 0 : Math.round((n / total) * 100));
+  const verdictLabel: Record<string, string> = {
+    "on-plan": "Tracked the plan",
+    eased: "Eased off the plan",
+    pushed: "Ran ahead of the plan",
+    mixed: "Mixed against the plan",
+    "no-data": "—",
+  };
+  const load = fidelity.avgLoadShortfall;
+  const loadLabel =
+    load == null || Math.abs(load) < 0.005
+      ? "on target"
+      : `${load > 0 ? "−" : "+"}${Math.abs(Math.round(load * 100))}%`;
+
+  return (
+    <section
+      className="cp-card"
+      data-testid="stats-block-fidelity"
+      style={{ padding: 16, display: "grid", gap: 10 }}
+    >
+      <SectionTitle title="Prescribed vs actual" />
+      <div style={{ fontSize: 13, color: "var(--cp-text)" }}>
+        <strong data-testid="stats-block-fidelity-verdict">
+          {verdictLabel[fidelity.verdict]}
+        </strong>{" "}
+        <span style={{ color: "var(--cp-text-muted)" }}>
+          · {total} comparable set{total === 1 ? "" : "s"}
+          {fidelity.unknownSets > 0 ? ` · ${fidelity.unknownSets} without a plan target` : ""}
+        </span>
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+          gap: 8,
+        }}
+      >
+        <FidelityTile
+          testid="stats-block-fidelity-onplan"
+          label="As prescribed"
+          value={`${pct(fidelity.onPlanSets)}%`}
+          sub={`${fidelity.onPlanSets} sets`}
+        />
+        <FidelityTile
+          testid="stats-block-fidelity-eased"
+          label="Under target"
+          value={`${pct(fidelity.easedSets)}%`}
+          sub={`${fidelity.easedSets} sets`}
+        />
+        <FidelityTile
+          testid="stats-block-fidelity-load"
+          label="Avg load vs plan"
+          value={loadLabel}
+          sub="working sets"
+        />
+        <FidelityTile
+          testid="stats-block-fidelity-optional"
+          label="Optional not taken"
+          value={`${fidelity.skippedOptional}`}
+          sub="not counted as missed"
+        />
+      </div>
+    </section>
+  );
+}
+
+function FidelityTile({
+  testid,
+  label,
+  value,
+  sub,
+}: {
+  testid: string;
+  label: string;
+  value: string;
+  sub: string;
+}): ReactElement {
+  return (
+    <div
+      data-testid={testid}
+      style={{
+        border: "1px solid var(--cp-border)",
+        borderRadius: 10,
+        padding: "10px 12px",
+        display: "grid",
+        gap: 2,
+      }}
+    >
+      <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>{label}</span>
+      <span className="mono" style={{ fontSize: 18, color: "var(--cp-text)" }}>
+        {value}
+      </span>
+      <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>{sub}</span>
+    </div>
   );
 }
 

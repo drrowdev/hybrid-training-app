@@ -71,6 +71,7 @@ export function PostSessionSummary({
   bwDiagnostics,
   cardio,
   hyrox,
+  fidelityLine,
 }: {
   sessionId: string;
   summary: SessionSummary;
@@ -108,6 +109,13 @@ export function PostSessionSummary({
   cardio?: CardioSessionSummary | null;
   /** HYROX conditioning summary — replaces the strength tiles + cardio block. */
   hyrox?: HyroxSummary | null;
+  /**
+   * ADR 0070 — one neutral line describing how the logged work compared to the
+   * prescription ("Logged as prescribed", "2 sets under target · load down 8%
+   * on average"). Reflection only: it never suggests a response, and it is null
+   * whenever no set carried a prescribed snapshot, so nothing is rendered.
+   */
+  fidelityLine?: string | null;
 }) {
   const units = useUnits();
   const [showNote, setShowNote] = useState(false);
@@ -221,6 +229,20 @@ export function PostSessionSummary({
               testId="summary-effort"
             />
           )}
+        </div>
+      )}
+
+      {fidelityLine && (
+        <div
+          data-testid="summary-fidelity"
+          style={{
+            fontSize: 12.5,
+            color: "var(--cp-text-muted)",
+            lineHeight: 1.5,
+            paddingTop: 2,
+          }}
+        >
+          <span style={{ color: "var(--cp-text)" }}>vs plan</span> · {fidelityLine}
         </div>
       )}
 

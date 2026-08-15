@@ -91,7 +91,7 @@ user's, never the global catalog.
 | `planned_sessions`           | `planned_sessions`           | The planned/prescribed sessions inside each block.                         |
 | `sessions`                   | `sessions`                   | Logged training sessions (workouts).                                       |
 | `session_movements`          | `session_movements`          | Off-plan / freestyle movements attached to a session. Joined to `movement`. |
-| `set_logs`                   | `set_logs`                   | Individual logged sets (reps, weight, RPE, kind…). Joined to `movement`.   |
+| `set_logs`                   | `set_logs`                   | Individual logged sets (reps, weight, RPE, kind…). Joined to `movement`. Also carries the ADR 0070 prescribed snapshot — see below. |
 | `cardio_logs`                | `cardio_logs`                | Logged cardio sessions. Joined to `movement`.                              |
 | `wellness`                   | `wellness`                   | Daily log rows — body weight (live), plus retained legacy wellness check-in fields (fatigue/soreness/motivation/notes) kept for history (see ADR 0018). |
 | `limitations`                | `limitations`                | Active/historical injury or training limitations.                         |
@@ -103,6 +103,31 @@ user's, never the global catalog.
 | `engine_override_events`     | `engine_override_events`     | Logged overrides of engine decisions.                                     |
 | `region_state`               | `region_state`               | Per-body-region load/recovery state.                                      |
 | `custom_movements`           | `movements` (user-owned)     | The user's own custom movements (`user_id = <you>`). The global catalog is excluded. |
+
+### Prescribed vs actual on `set_logs` (ADR 0070)
+
+Each set row records **what you did** (`weight_kg`, `reps`, `duration_sec`,
+`distance_m`, `rpe`) and, since migration 0128, **what the app asked for**:
+
+| Field | Meaning |
+|---|---|
+| `target_weight_kg` | Prescribed load as displayed when the set was logged |
+| `target_reps`      | Prescribed reps as displayed when the set was logged |
+| `prescribed`       | Slot semantics — `optional`, `setRange`, `repRange`, `targetRir` / `targetRpe`, `isAmrap`, `percentTm`, `basis` |
+
+`prescribed.percentTm` is a **0–100** percentage, and `prescribed.basis` says what
+it is a percentage *of*: `"TM"` (a training max, e.g. 5/3/1) or `"1RM"` (e.g.
+Tactical Barbell, Green Protocol, HYROX). Comparing a percentage across programs
+without reading `basis` will misinterpret the load.
+
+**`null` means "unknown", never "on target".** Targets are absent for free-form
+logs, off-plan sets, HYROX race rows, sets whose submitted target could not be
+corroborated against the plan, and every set logged before migration 0128 —
+historical rows were not backfilled, because the prescriptions they referenced
+have since been transformed and the training maxes have moved. Any analysis over
+these fields must skip `null` rather than treat it as a match.
+
+Skipped sets keep their snapshot: the deviation is the whole prescribed set.
 
 ### Movement references
 
