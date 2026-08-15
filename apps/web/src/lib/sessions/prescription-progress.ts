@@ -5,9 +5,10 @@
  * The canonical link is `set_logs.prescription_item_index` (migration
  * 0036). For sets logged before that column existed — or for free-form
  * sets the user added via the "+ add movement" picker — we fall back
- * to a best-effort movement match: any non-warmup set on the same
- * movement counts the FIRST unsatisfied prescription item for that
- * movement as done.
+ * to a best-effort movement match: any non-warmup set whose movement the
+ * item ACCEPTS (its current movement or its swap lineage — see
+ * `movement-attribution`) counts the FIRST unsatisfied prescription item
+ * as done.
  *
  * "Satisfied" here is intentionally lenient (≥1 logged set), not
  * "every prescribed rep landed". A prescription row showing ✓ means
@@ -17,6 +18,10 @@
  */
 
 import type { Prescription } from "@hta/db";
+import {
+  STRENGTH_ITEM_KINDS,
+  itemAcceptsMovementId,
+} from "./movement-attribution";
 
 export type LoggedSetForMatch = {
   movementId: string;
@@ -25,15 +30,6 @@ export type LoggedSetForMatch = {
   /** Set in migration 0037 — true when this row is a "skip with reason". */
   skipped?: boolean;
 };
-
-const STRENGTH_ITEM_KINDS = new Set([
-  "warmup",
-  "main",
-  "back_off",
-  "accessory",
-  "tendon",
-  "power_potentiation",
-]);
 
 /**
  * Returns the set of prescription item indices that have at least one
@@ -75,7 +71,11 @@ export function matchPrescriptionItemsDetailed(
     }
   }
 
-  // Second pass — fallback movement match for unlinked sets.
+  // Second pass — fallback movement match for unlinked sets. A swapped
+  // item still accepts sets logged against the movement it was swapped
+  // FROM (`meta.swappedFrom`): the swap is forward-only, so the log
+  // legitimately carries the original movement id (DC-K4 — the override
+  // is recorded, it must not silently erase what the lifter did).
   const claimed = new Set(matched);
   for (const s of loggedSets) {
     const hasValidLink =
@@ -88,7 +88,7 @@ export function matchPrescriptionItemsDetailed(
       if (claimed.has(i)) continue;
       const it = prescription.items[i]!;
       if (!STRENGTH_ITEM_KINDS.has(it.kind)) continue;
-      if (it.movementId !== s.movementId) continue;
+      if (!itemAcceptsMovementId(it, s.movementId)) continue;
       claimed.add(i);
       matched.add(i);
       if (s.skipped) skipped.add(i);
@@ -115,6 +115,10 @@ export function countStrengthPrescriptionItems(
   return n;
 }
 
+/**
+ * Back-compat alias — the canonical set now lives in `movement-attribution`
+ * (plan §6.9, single home for derived state).
+ */
 export const PRESCRIPTION_STRENGTH_KINDS = STRENGTH_ITEM_KINDS;
 
 // Working strength sets the user actually logs — warm-ups are excluded (they

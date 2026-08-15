@@ -13,6 +13,7 @@ import type { PrescriptionItem, PrescriptionItemKind } from "@hta/db";
 import type { AccessoryProfile } from "./accessory-roles";
 import { accessoryIntensity } from "./accessory-intensity";
 import { cleanPrescriptionNotes } from "./clean-prescription-notes";
+import { movementIdentityKey } from "@/lib/sessions/movement-attribution";
 import {
   NO_ACTIVE_MODIFICATIONS,
   type ActiveModifications,
@@ -2151,7 +2152,17 @@ export function applyModificationsToItems(
   const strengthBuckets = new Map<string, PrescriptionItem[]>();
   for (const item of items) {
     if (item.kind === "main" || item.kind === "tendon") {
-      const k = `${item.kind}::${item.movementId}`;
+      // Bucket = one prescribed BLOCK, whose length is its set count; the taper
+      // keeps a proportion of it. The key must therefore identify the block,
+      // not just the movement: a mid-workout swap can leave two independent
+      // blocks carrying the same `movementId` (deadlift swapped to hip thrust
+      // on a day that already mains hip thrust), and a plain `movementId` key
+      // merges them into one bucket — `round(2 × 0.5) = 1` keeps ONE item where
+      // two unmerged buckets keep one each. That silently deleted a lift.
+      // `movementIdentityKey` keeps swapped blocks distinct (`swap:<orig>><new>`)
+      // and is identical to `movementId` for every unswapped item, so untouched
+      // prescriptions bucket exactly as before. Single home for the rule: plan §6.9.
+      const k = `${item.kind}::${movementIdentityKey(item)}`;
       const arr = strengthBuckets.get(k) ?? [];
       arr.push(item);
       strengthBuckets.set(k, arr);

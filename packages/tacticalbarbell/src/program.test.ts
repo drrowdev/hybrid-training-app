@@ -373,7 +373,7 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
     ]);
   });
 
-  it("Zulu Pass 1 opens at 70% and Pass 2 at 75%, both for 5–8 reps", () => {
+  it("[DC-E1] Zulu Pass 1 opens at 70% and Pass 2 at 75%, both for 5–8 reps", () => {
     const inst = setup({ templateId: "zulu" });
     const pass1 = tb.prescribe(inst, "b0-w1-p1a", ctx);
     const pass2 = tb.prescribe(inst, "b0-w1-p2a", ctx);
@@ -388,8 +388,11 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
     expect(itemsOfKind(pass1, "main").every((item) => item.repsLabel === "5–8")).toBe(true);
     expect(itemsOfKind(pass1, "supplemental").map((item) => item.name)).toEqual([
       "Overhead Press",
+      "Hanging Leg Raise",
+      "Hanging Knee Raise",
+      "Toes-to-Bar",
     ]);
-    expect(itemsOfKind(pass1, "assistance").map((item) => [item.name, item.sets, item.reps])).toEqual([
+    expect(itemsOfKind(pass1, "supplemental").slice(1).map((item) => [item.name, item.sets, item.reps])).toEqual([
       ["Hanging Leg Raise", 3, 5],
       ["Hanging Knee Raise", 3, 5],
       ["Toes-to-Bar", 3, 5],
@@ -463,7 +466,7 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
     expect(itemsOfKind(p, "main")[0]).toMatchObject({ name: "Squat", repsLabel: "1–2", percentOfTm: 0.95, weightKg: 190 });
   });
 
-  it("Activation Base expands AB Triad into three linked exercises for three rounds", () => {
+  it("[DC-E1] Activation Base expands AB Triad into three linked supplemental exercises for three rounds", () => {
     const p = tb.prescribe(setup({ templateId: "activation" }), "b0-w1-base-1", ctx);
     expect(p.items.map((item) => [item.name, item.sets, item.reps, item.weightKg])).toEqual([
       ["Push-up", 3, 10, undefined],
@@ -473,7 +476,7 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
       ["Hanging Knee Raise", 3, 5, undefined],
       ["Toes-to-Bar", 3, 5, undefined],
     ]);
-    expect(p.items.slice(-3).every((item) => item.kind === "assistance")).toBe(true);
+    expect(p.items.slice(-3).every((item) => item.kind === "supplemental")).toBe(true);
     expect(p.items.slice(-3).map((item) => item.circuit)).toEqual([
       { id: "tb-ab-triad", name: "AB Triad", position: 0, size: 3, rounds: 3 },
       { id: "tb-ab-triad", name: "AB Triad", position: 1, size: 3, rounds: 3 },
@@ -609,6 +612,9 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
             10,
             source.supplementalPercent,
           ],
+          ["Hanging Leg Raise", 3, undefined, 5, undefined, undefined],
+          ["Hanging Knee Raise", 3, undefined, 5, undefined, undefined],
+          ["Toes-to-Bar", 3, undefined, 5, undefined, undefined],
         ]);
       }
       for (const session of [b1, b2]) {
@@ -653,6 +659,9 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
     const b1 = tb.prescribe(inst, "b0-w6-armor-b1", ctx);
     expect(itemsOfKind(a1, "supplemental").map((item) => item.name)).toEqual([
       "Reverse Hyperextension",
+      "Hanging Leg Raise",
+      "Hanging Knee Raise",
+      "Toes-to-Bar",
     ]);
     expect(itemsOfKind(b1, "supplemental").map((item) => item.name)).toEqual([
       "Inverted Row",

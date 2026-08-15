@@ -14,10 +14,17 @@
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import type { Prescription } from "@hta/db";
 import {
+  attributionInputForGroup,
+  attributionInputsForGroups,
   groupPrescriptionByMovement,
   movementGroupKey,
   type MovementGroup,
 } from "@/lib/sessions/movement-grouping";
+import {
+  buildLoggedSetAttribution,
+  buildLoggedSetIdsByItemIndex,
+  groupOwnsLoggedSet,
+} from "@/lib/sessions/movement-attribution";
 import { bucketForGroup } from "@/lib/sessions/movement-summary";
 import { MetricHelp } from "@/components/ui/MetricHelp";
 import {
@@ -166,17 +173,27 @@ export function MovementCardList({
     () => groupPrescriptionByMovement(prescription),
     [prescription],
   );
-  const sharedMovementIds = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const group of groups) {
-      counts.set(group.movementId, (counts.get(group.movementId) ?? 0) + 1);
-    }
-    return new Set(
-      Array.from(counts.entries()).flatMap(([movementId, count]) =>
-        count > 1 ? [movementId] : [],
+  // Canonical logged-set attribution (plan §6.9 — `lib/sessions/movement-attribution`).
+  // Derived from `sets` rather than the server's first-only id map so EVERY row at
+  // an index is attributed, including the extra sets and the optimistic overlay
+  // entries the first-only map cannot represent.
+  const loggedSetIdsByItemIndex = useMemo(
+    () =>
+      buildLoggedSetIdsByItemIndex(
+        prescription,
+        sets.map((s) => ({
+          id: s.id,
+          movementId: s.movement.id,
+          setKind: s.set_kind,
+          prescriptionItemIndex: s.prescription_item_index ?? null,
+        })),
       ),
-    );
-  }, [groups]);
+    [prescription, sets],
+  );
+  const attribution = useMemo(
+    () => buildLoggedSetAttribution(attributionInputsForGroups(groups), loggedSetIdsByItemIndex),
+    [groups, loggedSetIdsByItemIndex],
+  );
 
   // Map prescribed movementIds for the freestyle add to skip duplicates.
   const prescribedIds = useMemo(
@@ -551,6 +568,7 @@ export function MovementCardList({
           loggedItemIndices={loggedItemIndices}
           skippedItemIndices={skippedItemIndices}
           loggedSetIdByItemIndex={loggedSetIdByItemIndex}
+          loggedSetIdsByItemIndex={loggedSetIdsByItemIndex}
           priorBests={priorBests}
           lastSetHints={lastSetHints}
           supersetByMovementId={focusSupersetByMovementId}
@@ -599,16 +617,12 @@ export function MovementCardList({
 
   const renderCard = (group: MovementGroup, dragHandle?: React.ReactNode) => {
     const idx = orderedGroups.indexOf(group);
-    const groupSetIds = new Set(
-      group.itemIndices
-        .map((index) => loggedSetIdByItemIndex[index])
-        .filter((id): id is string => id != null),
-    );
-    const groupSets = sets.filter(
-      (set) =>
-        groupSetIds.has(set.id) ||
-        (!sharedMovementIds.has(group.movementId) &&
-          set.movement.id === group.movementId),
+    const input = attributionInputForGroup(group);
+    const groupSets = sets.filter((set) =>
+      groupOwnsLoggedSet(attribution, input, {
+        id: set.id,
+        movementId: set.movement.id,
+      }),
     );
     return (
       <PrescribedCard

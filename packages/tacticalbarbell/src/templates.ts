@@ -575,7 +575,7 @@ const abRule: TbPrescriptionRule = {
   setsMax: 3,
   reps: 5,
   repsLabel: "5",
-  itemKind: "assistance",
+  itemKind: "supplemental",
   warmup: false,
   note:
     "AB Triad — 3 rounds: 5 hanging leg raises, 5 hanging knee raises, then 5 toes-to-bar.",

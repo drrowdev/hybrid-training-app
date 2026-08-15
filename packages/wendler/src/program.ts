@@ -31,7 +31,7 @@ import type {
 import type { MainLift, SeventhWeekKind, WendlerWeek } from "./types";
 import type { MainScheme } from "./waves";
 import { buildMainSets } from "./waves";
-import { buildWarmupSets } from "./warmup";
+import { buildProgramWarmupSets } from "./warmup";
 import { buildSupplementalSets, type SupplementalTemplateId } from "./supplemental";
 import {
   assistanceLevelForSupplemental,
@@ -415,9 +415,15 @@ export const wendler531Engine: ProgramEngine<WendlerInstance> = {
       });
 
       const raw: RawSet[] = [];
-      // Warm-up ramp to the top working weight.
+      // Warm-up ramp. 5/3/1's ramp is a FIXED 40/50/60% of the Training Max
+      // (5/5/3) — it does not climb with the week's top set, so a 5s / 3s /
+      // 5/3/1 week all warm up on the same bar loads. See warmup.ts.
       const topWorking = mainSets.reduce((m, s) => Math.max(m, s.weightKg), 0);
-      for (const w of buildWarmupSets(topWorking, r)) {
+      for (const w of buildProgramWarmupSets({
+        trainingMaxKg: tm,
+        topWorkingWeightKg: topWorking,
+        roundingKg: r,
+      })) {
         raw.push({ kind: "warmup", name, weightKg: w.weightKg, reps: w.reps });
       }
       // Main sets.

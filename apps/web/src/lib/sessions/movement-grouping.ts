@@ -9,7 +9,11 @@
  */
 
 import type { Prescription, PrescriptionItem } from "@hta/db";
-import { isRehabItem } from "@hta/domain";
+import {
+  movementIdentityKey,
+  movementIdsForItems,
+  type AttributionGroupInput,
+} from "./movement-attribution";
 import { PRESCRIPTION_STRENGTH_KINDS } from "./prescription-progress";
 import { SET_KIND_LABELS } from "./set-kind-labels";
 
@@ -18,12 +22,26 @@ export type MovementSlotBucket = "warmup" | "working" | "accessory";
 export type MovementGroup = {
   /**
    * UI identity for this card. Rehab and core work can intentionally use the
-   * same catalog movement, so movementId alone is not always unique.
+   * same catalog movement, so movementId alone is not always unique — and a
+   * swapped block carries its origin in the key (see `movementIdentityKey`) so
+   * a swap into a movement the session already prescribes elsewhere does not
+   * merge the two blocks into one card.
    */
   groupKey?: string;
   movementId: string;
   movementName: string;
   movementSlug: string | null;
+  /**
+   * Every movement id whose logged sets belong on this card: the current
+   * movement plus the swap lineage of its items. Attribution MUST use this, not
+   * `movementId` — a forward-only swap leaves `set_logs.movement_id` pointing at
+   * the original movement.
+   *
+   * Optional so hand-built fixtures stay valid; `attributionInputForGroup`
+   * re-derives it from `items` when absent. `groupPrescriptionByMovement`
+   * always populates it.
+   */
+  acceptedMovementIds?: string[];
   /** Prescription item indices belonging to this movement, in display order. */
   itemIndices: number[];
   /** The raw prescription items, same order as `itemIndices`. */
@@ -60,9 +78,15 @@ export function bucketForKind(kind: PrescriptionItem["kind"]): MovementSlotBucke
 }
 
 /**
- * Group strength prescription items by movementId, preserving the
- * order in which each movement first appears. Cardio items are
+ * Group strength prescription items by movement identity, preserving the
+ * order in which each identity first appears. Cardio items are
  * skipped — they're rendered elsewhere on the session page.
+ *
+ * Identity is `movementIdentityKey`, NOT the raw movementId: a swapped block
+ * carries its origin in the key, so swapping into a movement the session
+ * already prescribes elsewhere no longer silently merges two blocks into a
+ * single card (deadlift → barbell hip thrust absorbing a pre-existing
+ * hip-thrust accessory: 3 cards became 2).
  */
 export function groupPrescriptionByMovement(
   prescription: Prescription | null,
@@ -72,15 +96,14 @@ export function groupPrescriptionByMovement(
   prescription.items.forEach((item, idx) => {
     if (!PRESCRIPTION_STRENGTH_KINDS.has(item.kind)) return;
     if (!item.movementId) return;
-    const groupKey = isRehabItem(item)
-      ? `rehab:${item.movementId}`
-      : item.movementId;
+    const groupKey = movementIdentityKey(item);
     const existing = byKey.get(groupKey);
     if (existing) {
       const slot = existing.itemIndices.length;
       existing.itemIndices.push(idx);
       existing.items.push(item);
       existing.slotBuckets[bucketForKind(item.kind)].push(slot);
+      existing.acceptedMovementIds = movementIdsForItems(existing.items);
       return;
     }
     const name =
@@ -90,6 +113,7 @@ export function groupPrescriptionByMovement(
       movementId: item.movementId,
       movementName: name,
       movementSlug: item.movementSlug ?? null,
+      acceptedMovementIds: movementIdsForItems([item]),
       itemIndices: [idx],
       items: [item],
       slotBuckets: {
@@ -106,6 +130,28 @@ export function movementGroupKey(
   group: Pick<MovementGroup, "groupKey" | "movementId">,
 ): string {
   return group.groupKey ?? group.movementId;
+}
+
+/**
+ * Adapter to the canonical attribution context (`movement-attribution`). Every
+ * surface that decides "does this logged set belong on this card?" builds its
+ * context from here so the rule has exactly one implementation.
+ */
+export function attributionInputForGroup(
+  group: MovementGroup,
+): AttributionGroupInput {
+  return {
+    key: movementGroupKey(group),
+    itemIndices: group.itemIndices,
+    acceptedMovementIds:
+      group.acceptedMovementIds ?? movementIdsForItems(group.items ?? []),
+  };
+}
+
+export function attributionInputsForGroups(
+  groups: ReadonlyArray<MovementGroup>,
+): AttributionGroupInput[] {
+  return groups.map(attributionInputForGroup);
 }
 
 /**

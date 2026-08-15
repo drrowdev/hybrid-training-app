@@ -386,7 +386,7 @@ describe("materializeProgram — TB3 Activation", () => {
     expect(armor.weeks).toBe(20);
   });
 
-  it("materialises the corrected Armor main, supplemental and AB Triad work", () => {
+  it("[DC-E1] materialises the corrected Armor main, supplemental and AB Triad work", () => {
     const a1 = result.sessions.find(
       (session) => session.weekIndex === 5 && session.ref.endsWith("armor-a1"),
     )!;
@@ -410,9 +410,12 @@ describe("materializeProgram — TB3 Activation", () => {
       repRange: { min: 8, max: 10 },
     });
     for (const movement of ["hanging-leg-raise", "hanging-knee-raise", "toes-to-bar"]) {
-      const items = itemsFor(a1, movement, "accessory");
+      const items = itemsFor(a1, movement, "back_off");
       expect(items).toHaveLength(3);
       expect(items.every((item) => item.reps === 5)).toBe(true);
+      expect(items.every((item) => item.percentTm == null)).toBe(true);
+      expect(items.every((item) => item.optional !== true)).toBe(true);
+      expect(itemsFor(a1, movement, "accessory")).toHaveLength(0);
       expect(
         items.every(
           (item) =>

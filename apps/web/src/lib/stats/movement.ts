@@ -65,9 +65,10 @@ export async function getSetsForMovement(movementId: string): Promise<MovementSe
   const { data } = await supabase
     .from("set_logs")
     .select(
-      "id, weight_kg, reps, rpe, set_kind, session:sessions(performed_at, completed_at)",
+      "id, weight_kg, reps, rpe, set_kind, session:sessions!inner(performed_at, completed_at, deleted_at)",
     )
     .eq("movement_id", movementId)
+    .is("session.deleted_at", null)
     .eq("skipped", false)
     .order("created_at", { ascending: true });
 
@@ -189,8 +190,9 @@ export async function listMovementsRanked(): Promise<MovementListRow[]> {
   const { data } = await supabase
     .from("set_logs")
     .select(
-      "movement_id, session:sessions(performed_at, completed_at), movement:movements(slug, display_name)",
+      "movement_id, session:sessions!inner(performed_at, completed_at, deleted_at), movement:movements(slug, display_name)",
     )
+    .is("session.deleted_at", null)
     .order("created_at", { ascending: false })
     .limit(2000);
 

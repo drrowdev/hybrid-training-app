@@ -107,7 +107,7 @@ describe("Operator — TB3 fixed loadout", () => {
 });
 
 describe("Zulu — TB3 fixed A/B work", () => {
-  it("keeps a legacy custom cluster in the instance but prescribes the TB3 loadout", () => {
+  it("[DC-E1] keeps a legacy custom cluster in the instance but prescribes the TB3 loadout", () => {
     const inst = setup({
       templateId: "zulu",
       splitA: ["squat", "press", "row"],
@@ -123,8 +123,6 @@ describe("Zulu — TB3 fixed A/B work", () => {
     ]);
     expect(itemsOfKind(a, "supplemental").map((i) => i.movementId)).toEqual([
       "overhead-press",
-    ]);
-    expect(itemsOfKind(a, "assistance").map((i) => i.movementId)).toEqual([
       "hanging-leg-raise",
       "hanging-knee-raise",
       "toes-to-bar",
