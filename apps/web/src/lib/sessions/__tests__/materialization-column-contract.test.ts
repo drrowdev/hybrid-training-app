@@ -110,6 +110,13 @@ const CONTRACTS: Contract[] = [
     columns: ["user_id", "program_id", "instance", "status", "deleted_at"],
   },
   {
+    // ADR 0070 — the fidelity read paths (session detail + block stats) select
+    // the snapshot columns by raw string.
+    name: "set_logs prescribed-vs-actual read",
+    table: setLogs,
+    columns: ["skipped", "target_weight_kg", "target_reps", "prescribed"],
+  },
+  {
     // insert_deload_week RPC (0106) writes these planned_sessions columns via raw
     // SQL — not typechecked, so pin them here. A rename must break CI.
     name: "deload-week RPC insert",

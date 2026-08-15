@@ -62,7 +62,11 @@ import {
   countProgrammedWorkingSets,
 } from "@/lib/sessions/prescription-progress";
 import type { ProgressionHint } from "@/components/session/PostSessionSummary";
-import { unresolvedRehabItemIndices } from "@hta/domain";
+import {
+  unresolvedRehabItemIndices,
+  rollupFidelity,
+  fidelitySummaryLine,
+} from "@hta/domain";
 import type { Prescription } from "@hta/db";
 import {
   getSupersetAccessoriesPref,
@@ -127,7 +131,7 @@ export default async function SessionDetailPage({
     supabase
       .from("set_logs")
       .select(
-        "id, set_index, set_kind, weight_kg, reps, duration_sec, distance_m, rpe, notes, prescription_item_index, skipped, skip_reason, created_at, movement:movements(id, slug, display_name, primary_region)",
+        "id, set_index, set_kind, weight_kg, reps, duration_sec, distance_m, rpe, notes, prescription_item_index, skipped, skip_reason, created_at, target_weight_kg, target_reps, prescribed, movement:movements(id, slug, display_name, primary_region)",
       )
       .eq("session_id", id)
       .order("set_index", { ascending: true }),
@@ -531,6 +535,28 @@ export default async function SessionDetailPage({
         tmAnchoredPrCount,
       )
     : null;
+
+  // ADR 0070 — prescription fidelity for this session. Reflection only: it
+  // describes how the logged work compared to what was prescribed, and says
+  // nothing about what to do next. Silent (null) until sets carry a snapshot,
+  // so sessions logged before migration 0128 render exactly as before.
+  const fidelity = isComplete
+    ? rollupFidelity(
+        (setsRaw ?? [])
+          .filter((s) => (s.set_kind as string) !== "warmup")
+          .map((s) => ({
+            weightKg: s.weight_kg == null ? null : Number(s.weight_kg),
+            reps: (s.reps as number | null) ?? null,
+            skipped: (s.skipped as boolean | null) ?? false,
+            targetWeightKg:
+              s.target_weight_kg == null ? null : Number(s.target_weight_kg),
+            targetReps: (s.target_reps as number | null) ?? null,
+            optional:
+              (s.prescribed as { optional?: boolean } | null)?.optional === true,
+          })),
+      )
+    : null;
+  const fidelityLine = fidelity ? fidelitySummaryLine(fidelity) : null;
 
   // Activity-aware completion card — aggregate the session's cardio
   // blocks so the summary can show distance / HR / pace / time-in-zone
@@ -1076,6 +1102,7 @@ export default async function SessionDetailPage({
               bwDiagnostics={bwSessionDiagnostics}
               cardio={cardioSummary}
               hyrox={hyroxSummary}
+              fidelityLine={fidelityLine}
             />
           </CompletedHyroxEditor>
         ) : (
@@ -1089,6 +1116,7 @@ export default async function SessionDetailPage({
             bwDiagnostics={bwSessionDiagnostics}
             cardio={cardioSummary}
             hyrox={hyroxSummary}
+            fidelityLine={fidelityLine}
           />
         )
       )}
