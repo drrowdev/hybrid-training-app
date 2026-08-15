@@ -593,8 +593,11 @@ export async function startSessionFromPlan(formData: FormData): Promise<void> {
  *   4. Redirect to `/app/sessions/<new-id>` — the session log surface.
  *
  * Idempotent re-entry: if the planned row already has a
- * `completed_session_id`, we skip the insert and redirect to that
- * session (matches the behaviour the deleted interstitial had).
+ * `completed_session_id`, we skip the insert and redirect to that active
+ * session. A soft-deleted in-progress link is stale, though: it is cleared
+ * conditionally and replaced with a fresh session so the deleted attempt's
+ * set logs can never become the next workout's progress. Keeping the link
+ * intact until this point lets Undo/Trash restore the original association.
  */
 export async function startSessionDirect(
   plannedId: string,
@@ -627,10 +630,10 @@ export async function startSessionDirect(
   if (!planned) throw new Error("Planned session not found");
   if (planned.user_id !== user.id) throw new Error("Planned session not found");
 
-  // Idempotent re-entry: reuse an active linked session. A cancelled workout
-  // remains soft-deleted for Undo/history, but "Start" should revive that same
-  // session rather than redirect to a 404 or create a duplicate. Reusing the
-  // existing plan link also makes concurrent Undo safe.
+  // Idempotent re-entry: reuse an active linked session. A soft-deleted
+  // in-progress link is stale, however. It must not be revived because its
+  // set_logs are the cancelled attempt's progress; the normal create/link
+  // path below will replace it with a clean session.
   if (planned.completed_session_id) {
     const staleCandidate = planned.completed_session_id as string;
     const { data: linkedSession, error: linkedErr } = await supabase
@@ -647,27 +650,18 @@ export async function startSessionDirect(
       redirect("/app/settings/trash");
     }
     if (linkedSession) {
-      const { data: restored, error: restoreErr } = await supabase
-        .from("sessions")
-        .update({ deleted_at: null })
-        .eq("id", staleCandidate)
+      const { error: staleLinkError } = await supabase
+        .from("planned_sessions")
+        .update({ completed_session_id: null })
+        .eq("id", planned.id)
         .eq("user_id", user.id)
-        .select("id")
-        .maybeSingle();
-      if (restoreErr) throw new Error(restoreErr.message);
-      if (restored) {
-        if (!options?.skipRevalidate) {
-          revalidatePath("/app");
-          revalidatePath("/app/plan");
-          revalidatePath("/app/plan/history");
-          revalidatePath("/app/sessions");
-          revalidatePath("/app/settings/trash");
-        }
-        redirect(`/app/sessions/${staleCandidate}`);
-      }
+        .eq("completed_session_id", staleCandidate);
+      if (staleLinkError) throw new Error(staleLinkError.message);
     }
     // A hard-deleted row has already nulled the FK; continue through the
-    // ordinary create/link path.
+    // ordinary create/link path. If another request won the conditional
+    // stale-link update, the conditional link below will clean up our
+    // orphan and redirect to that winner.
   }
 
   const sessionPayload: {
@@ -716,6 +710,7 @@ export async function startSessionDirect(
       .from("planned_sessions")
       .select("completed_session_id")
       .eq("id", planned.id)
+      .eq("user_id", user.id)
       .maybeSingle();
     if (winner?.completed_session_id) {
       if (!options?.skipRevalidate) {

@@ -3471,9 +3471,11 @@ function MovementEditRow({
   const [swapping, setSwapping] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
 
   const doRemove = () => {
     setError(null);
+    setWarning(null);
     startTransition(async () => {
       const fd = new FormData();
       fd.set("plannedSessionId", plannedSessionId);
@@ -3487,6 +3489,7 @@ function MovementEditRow({
   const doSwap = (m: MovementSearchResult | null) => {
     if (!m || pending) return;
     setError(null);
+    setWarning(null);
     startTransition(async () => {
       const fd = new FormData();
       fd.set("plannedSessionId", plannedSessionId);
@@ -3498,6 +3501,7 @@ function MovementEditRow({
       else {
         setSwapping(false);
         onChanged();
+        setWarning(r.warning ?? null);
       }
     });
   };
@@ -3556,6 +3560,15 @@ function MovementEditRow({
       {error && (
         <span role="alert" style={{ fontSize: 12, color: "var(--cp-danger)" }}>
           {error}
+        </span>
+      )}
+      {warning && (
+        <span
+          role="status"
+          data-testid="plan-drawer-swap-warning"
+          style={{ fontSize: 12, color: "var(--cp-warning, var(--cp-text-muted))" }}
+        >
+          {warning}
         </span>
       )}
     </div>

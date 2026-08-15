@@ -12,12 +12,14 @@ import { maybeCompleteBlock } from "@/lib/planner/completion";
 import { expandPrescriptionSetItems } from "@/lib/planner/expand-prescription-sets";
 import { getUserTimezone, dayDate } from "@/lib/planner/queries";
 import { roundToPlate } from "@/lib/planner/archetypes";
+import { roundWarmupLoadKg } from "@/lib/planner/warmups";
 import { resolveQuickStrengthPlan } from "@/lib/planner/quick-generate-resolve";
 import { resolveQuickHyroxPlan } from "@/lib/planner/quick-hyrox-resolve";
 import type { HyroxQuickStation } from "@/lib/planner/quick-hyrox";
 import type { QuickLength } from "@/lib/planner/quick-generate";
 import { TM_RESOLUTION_SELECT } from "@/lib/training-maxes/columns";
 import { applyAutoregVolumeScale } from "@/lib/planner/autoreg-volume";
+import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import {
   applyModificationsToPrescription,
   getActiveModifications,
@@ -35,6 +37,7 @@ import {
 } from "@hta/domain";
 import type { Prescription, PrescriptionItem, PrescribedSnapshot } from "@hta/db";
 import { loggedSetKindForItemKind } from "./set-kind";
+import { resolveBarWeightKg } from "./bar-kind";
 import { applyPrescriptionSwap } from "./prescription-mutations";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
 import {
@@ -573,6 +576,38 @@ export async function markExternalCardioComplete(
   const isPureCardio = !hasStrength;
 
   let sessionId = planned.completed_session_id as string | null;
+  if (sessionId) {
+    // A pre-fix delete may have left the planned slot pointing at a
+    // soft-deleted in-progress session. Do not append the new external-cardio
+    // log to that old attempt; clear the stale link and use the normal lazy
+    // materialisation path below. Completed deleted sessions remain a Trash
+    // restore concern rather than being silently replaced.
+    const { data: linkedSession, error: linkedErr } = await supabase
+      .from("sessions")
+      .select("id, deleted_at, completed_at")
+      .eq("id", sessionId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (linkedErr) return { error: linkedErr.message };
+    if (
+      linkedSession?.deleted_at != null &&
+      linkedSession.completed_at != null
+    ) {
+      return {
+        error: "This session is in Trash. Restore it before marking cardio complete.",
+      };
+    }
+    if (!linkedSession || linkedSession.deleted_at != null) {
+      const { error: staleLinkError } = await supabase
+        .from("planned_sessions")
+        .update({ completed_session_id: null })
+        .eq("id", parsed.data.plannedSessionId)
+        .eq("user_id", user.id)
+        .eq("completed_session_id", sessionId);
+      if (staleLinkError) return { error: staleLinkError.message };
+      sessionId = null;
+    }
+  }
   if (!sessionId) {
     const { data: created, error: sErr } = await supabase
       .from("sessions")
@@ -590,6 +625,7 @@ export async function markExternalCardioComplete(
       .from("planned_sessions")
       .update({ completed_session_id: created.id })
       .eq("id", parsed.data.plannedSessionId)
+      .eq("user_id", user.id)
       .is("completed_session_id", null)
       .select("completed_session_id")
       .maybeSingle();
@@ -605,6 +641,7 @@ export async function markExternalCardioComplete(
         .from("planned_sessions")
         .select("completed_session_id")
         .eq("id", parsed.data.plannedSessionId)
+        .eq("user_id", user.id)
         .maybeSingle();
       if (winnerErr || !winner?.completed_session_id) {
         return {
@@ -1353,6 +1390,17 @@ export async function deleteSession(
     .eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
 
+  // `region_state` is a materialised aggregate used by freshness and
+  // load-balance stats. Rebuild it after removing a completed session so a
+  // soft-deleted attempt cannot continue contributing stale load.
+  try {
+    await recomputeRegionState(supabase, user.id, await getUserTimezone(user.id));
+  } catch (e) {
+    // Deletion itself succeeded; an aggregate refresh failure must not make
+    // the user retry the destructive action and create confusing results.
+    console.error("recomputeRegionState (deleteSession) failed:", e);
+  }
+
   revalidatePath("/app");
   revalidatePath("/app/plan");
   revalidatePath("/app/plan/history");
@@ -1382,6 +1430,19 @@ export async function restoreSession(id: string): Promise<{ ok: true } | { ok: f
     .eq("id", id)
     .eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
+
+  // Mirror of `deleteSession`: `recomputeRegionState` only walks
+  // `completed_at IS NOT NULL AND deleted_at IS NULL`, so the delete
+  // dropped this session's load out of the aggregate. Undo/Recover has to
+  // put it back or freshness + load balance stay wrong until some
+  // unrelated event triggers the next recompute.
+  try {
+    await recomputeRegionState(supabase, user.id, await getUserTimezone(user.id));
+  } catch (e) {
+    // The restore itself succeeded; an aggregate refresh failure must not
+    // make the user retry and think the session is still in Trash.
+    console.error("recomputeRegionState (restoreSession) failed:", e);
+  }
 
   revalidatePath("/app");
   revalidatePath("/app/plan");
@@ -1498,7 +1559,9 @@ export async function fillSessionFromPlan(
       .eq("user_id", user.id),
     supabase
       .from("profiles")
-      .select("tm_percent_default")
+      .select(
+        "tm_percent_default, barbell_kg, trap_bar_kg, plate_inventory_kg, equipment",
+      )
       .eq("id", user.id)
       .maybeSingle(),
   ]);
@@ -1521,6 +1584,7 @@ export async function fillSessionFromPlan(
   // max = stored 1RM × effective TM% (per-movement override, else the profile
   // default, else 90) — same formula as `getTrainingMaxContext`.
   const defaultPct = Number(profileRes.data?.tm_percent_default ?? 90);
+  const equipment = resolveEquipment(profileRes.data);
   const tmByMovementId = new Map<string, number>();
   for (const row of (tmsRes.data ?? []) as Array<{
     movement_id: string;
@@ -1563,14 +1627,32 @@ export async function fillSessionFromPlan(
     // TM is set we leave weight null — the user will be nudged by the
     // empty input, not by a guessed default.
     const tm = tmByMovementId.get(item.movementId);
+    // Same canonical resolver the focus view uses, so a displayed
+    // warm-up load and the persisted one cannot diverge (a `null`
+    // trap bar / `0` barbell means no bar floor on either side).
+    const warmupBarWeightKg =
+      item.kind === "warmup"
+        ? resolveBarWeightKg(item.movementSlug, equipment.bars)
+        : null;
+    const warmupLoadOptions = {
+      barWeightKg: warmupBarWeightKg ?? undefined,
+      availablePlateWeightsKg: equipment.plates,
+    };
     let weight: number | null = null;
     if (typeof item.percentTm === "number" && tm) {
-      weight = roundToPlate(tm * (item.percentTm / 100));
+      const rawKg = tm * (item.percentTm / 100);
+      weight =
+        item.kind === "warmup"
+          ? roundWarmupLoadKg(rawKg, warmupLoadOptions)
+          : roundToPlate(rawKg);
     } else if (
       typeof item.targetWeightKg === "number" &&
       Number.isFinite(item.targetWeightKg)
     ) {
-      weight = item.targetWeightKg;
+      weight =
+        item.kind === "warmup"
+          ? roundWarmupLoadKg(item.targetWeightKg, warmupLoadOptions)
+          : item.targetWeightKg;
     }
 
     // ADR 0070 — the prescribed snapshot. This path IS the prescription

@@ -106,10 +106,23 @@ export interface PlateBreakdown {
   remainderKg: number; // weight that couldn't be loaded
 }
 
+/**
+ * What the warm-up ladder is a percentage OF.
+ *
+ * - `"training_max"` — the published 5/3/1 ramp: a FIXED 40/50/60% of the
+ *   Training Max, identical in a 5s week, a 3s week and a 5/3/1 week.
+ * - `"top_set"` — the app-wide shared ramp (`@hta/program-core`
+ *   `GLOBAL_WARMUP_PERCENTS`), a percentage of the day's heaviest work set,
+ *   so the ladder climbs with the top set.
+ */
+export type WarmupAnchor = "top_set" | "training_max";
+
 export interface WarmupConfig {
-  /** Each entry is a percent (0..1) of the working weight. Defaults to [0.4, 0.6, 0.8]. */
+  /** Each entry is a percent (0..1) of whatever `anchor` names. */
   percents: number[];
-  reps: number[]; // optional, defaults to [5, 5, 3]
+  reps: number[];
+  /** Absent means `"top_set"` (the historical behaviour of this config). */
+  anchor?: WarmupAnchor;
 }
 
 export interface TrainingMaxConfig {

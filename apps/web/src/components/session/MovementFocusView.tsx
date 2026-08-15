@@ -7,7 +7,7 @@
  * logged-set data, prior bests, and the server action to call.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PrescriptionItem } from "@hta/db";
 import type { SkipReason } from "@/lib/sessions/skip-reasons";
@@ -22,7 +22,8 @@ import {
 } from "@/lib/sessions/movement-grouping";
 import { detectTmAnchoredPr } from "@/lib/engine/tm-anchored-pr";
 import { restSecondsForKind } from "@/lib/sessions/rest";
-import { resolveBarKind } from "@/lib/sessions/bar-kind";
+import { resolveBarWeightKg } from "@/lib/sessions/bar-kind";
+import { roundWarmupLoadKg } from "@/lib/planner/warmups";
 import { resolvePrescriptionSetWork, resolvePrescribedSnapshot } from "@hta/domain";
 import { SET_KIND_TO_LOG as SHARED_SET_KIND_TO_LOG } from "@/lib/sessions/set-kind";
 import { hapticTick } from "@/lib/feedback";
@@ -103,9 +104,14 @@ export type FocusViewProps = {
    * and walk a real inventory. When `plateInventory` is empty the
    * focus view renders a "Set up plate inventory →" link instead of
    * the breakdown.
+   *
+   * These are the RAW stored values: `barbellKg === 0` and a missing /
+   * null `trapBarKg` mean "the user owns no such bar". Never default
+   * them to 20 / 25 here — `resolveBarWeightKg` owns that decision and
+   * the server-side warm-up materialisation reads the same signal.
    */
-  barbellKg?: number;
-  trapBarKg?: number;
+  barbellKg?: number | null;
+  trapBarKg?: number | null;
   plateInventory?: PlateInventoryItem[];
   preferStandardLbPlates?: boolean;
   /**
@@ -153,8 +159,8 @@ export function MovementFocusView({
   updateStrengthSet,
   hapticsEnabled,
   timerSoundEnabled,
-  barbellKg = 20,
-  trapBarKg = 25,
+  barbellKg,
+  trapBarKg,
   plateInventory,
   preferStandardLbPlates = true,
   initialCursor = null,
@@ -226,18 +232,43 @@ export function MovementFocusView({
   // set programs like Tactical Barbell and fixed-5s, showing a bogus "5 reps+".)
   const isAmrap = activeItem?.isAmrap === true;
 
+  // Canonical bar mass for this movement — null when the movement isn't
+  // barbell-loaded OR the user owns no such bar. Shared with the server
+  // (`fillSessionFromPlan`) so the displayed warm-up load and the
+  // persisted one always agree.
+  const barWeightKg = useMemo(
+    () => resolveBarWeightKg(group.movementSlug, { barbellKg, trapBarKg }),
+    [barbellKg, group.movementSlug, trapBarKg],
+  );
+
+  const warmupLoadOptions = useMemo(
+    () => ({
+      barWeightKg: barWeightKg ?? undefined,
+      availablePlateWeightsKg: plateInventory?.map((plate) => plate.weightKg) ?? [],
+    }),
+    [barWeightKg, plateInventory],
+  );
+
+  const targetWeightForItem = useCallback((item: PrescriptionItem): number | null => {
+    if (item.percentTm != null && tmKg) {
+      const rawKg = (tmKg * item.percentTm) / 100;
+      return item.kind === "warmup"
+        ? roundWarmupLoadKg(rawKg, warmupLoadOptions)
+        : roundToPlate(rawKg);
+    }
+    if (item.targetWeightKg != null && item.targetWeightKg > 0) {
+      return item.kind === "warmup"
+        ? roundWarmupLoadKg(item.targetWeightKg, warmupLoadOptions)
+        : roundToPlate(item.targetWeightKg);
+    }
+    return null;
+  }, [tmKg, warmupLoadOptions]);
+
   // Target weight / reps derived from the prescription + TM.
   const targetWeight = useMemo(() => {
     if (!activeItem) return 0;
-    if (activeItem.percentTm != null && tmKg) {
-      return roundToPlate((tmKg * activeItem.percentTm) / 100);
-    }
-    // Warm-ups carry a concrete target weight (e.g. 5/3/1's 40/50/60% ramp
-    // resolved to kg at deploy) but no % of TM — prefer it so the logger
-    // prescribes the warm-up load instead of defaulting to bar-only.
-    if (activeItem.targetWeightKg != null && activeItem.targetWeightKg > 0) {
-      return roundToPlate(activeItem.targetWeightKg);
-    }
+    const prescribedWeight = targetWeightForItem(activeItem);
+    if (prescribedWeight != null) return prescribedWeight;
     // Fall back to the most recent logged weight attributed to this movement.
     // A forward-only swap can include an older movement's row for inline review;
     // that historical load must not seed the replacement movement.
@@ -249,7 +280,27 @@ export function MovementFocusView({
         )
         ?.weightKg ?? 0
     );
-  }, [activeItem, tmKg, loggedSets, group.movementId]);
+  }, [
+    activeItem,
+    group.movementId,
+    loggedSets,
+    targetWeightForItem,
+  ]);
+  const warmupFloorWarning = useMemo(() => {
+    if (activeItem?.kind !== "warmup") return null;
+    const rawKg =
+      activeItem.percentTm != null && tmKg
+        ? (tmKg * activeItem.percentTm) / 100
+        : activeItem.targetWeightKg != null && activeItem.targetWeightKg > 0
+          ? activeItem.targetWeightKg
+          : null;
+    if (rawKg == null || barWeightKg == null || rawKg >= barWeightKg) {
+      return null;
+    }
+    // `formatWeight` already appends the unit label — appending
+    // `unitLabel` again rendered "Raised to the 20 kg kg bar minimum".
+    return `Raised to the ${formatWeight(barWeightKg, units)} bar minimum`;
+  }, [activeItem, barWeightKg, tmKg, units]);
   const targetWork = useMemo(
     () => resolvePrescriptionSetWork(activeItem),
     [activeItem],
@@ -444,11 +495,12 @@ export function MovementFocusView({
     // ADR 0070 — the prescribed values as DISPLAYED on this card. Sent with the
     // log so the server stores what the user actually saw, rather than
     // re-deriving it later from state that may have moved (TM change, taper,
-    // offline replay). `targetWeight` falls back to the last logged load for
-    // unanchored movements — a UI convenience, not a prescription — so it is
-    // only sent when the item genuinely determines a load.
-    if (activeItem.percentTm != null || (activeItem.targetWeightKg ?? 0) > 0) {
-      fd.set("targetWeightKg", String(targetWeight));
+    // offline replay). `targetWeightForItem` returns null when the prescription
+    // determines no load, which is exactly when nothing must be recorded: the
+    // logger's last-logged-weight fallback is a UI convenience, not a plan.
+    const prescribedWeight = targetWeightForItem(activeItem);
+    if (prescribedWeight != null) {
+      fd.set("targetWeightKg", String(prescribedWeight));
     }
     if (targetWork.reps != null) {
       fd.set("targetReps", String(targetWork.reps));
@@ -567,8 +619,9 @@ export function MovementFocusView({
     // ADR 0070 — a skip carries its snapshot too: the deviation is exactly "the
     // whole prescribed set", which is the most informative signal for
     // autoregulation, not the least.
-    if (activeItem.percentTm != null || (activeItem.targetWeightKg ?? 0) > 0) {
-      fd.set("targetWeightKg", String(targetWeight));
+    const skippedWeight = targetWeightForItem(activeItem);
+    if (skippedWeight != null) {
+      fd.set("targetWeightKg", String(skippedWeight));
     }
     if (targetWork.reps != null) {
       fd.set("targetReps", String(targetWork.reps));
@@ -619,14 +672,14 @@ export function MovementFocusView({
         fd.set("skipped", "true");
         fd.set("skipReason", reason);
         // ADR 0070 — snapshot each skipped slot from its OWN item (these are
-        // other sets, not the active card), via the shared resolver.
+        // other sets, not the active card). Load comes from the same helper the
+        // card renders with, so a warm-up slot keeps its bar-floor rounding.
         const snap = resolvePrescribedSnapshot(item, {
-          tmKg,
-          roundToPlate,
           setKind: SET_KIND_TO_LOG[kind] ?? "main",
         });
-        if (snap.targetWeightKg != null) {
-          fd.set("targetWeightKg", String(snap.targetWeightKg));
+        const slotWeight = item ? targetWeightForItem(item) : null;
+        if (slotWeight != null) {
+          fd.set("targetWeightKg", String(slotWeight));
         }
         if (snap.targetReps != null) fd.set("targetReps", String(snap.targetReps));
         if (note) fd.set("notes", note);
@@ -658,12 +711,7 @@ export function MovementFocusView({
       : "Log set";
   const nextSlot = cursor + 1 < totalSlots ? cursor + 1 : null;
   const nextItem = nextSlot != null ? group.items[nextSlot]! : null;
-  const nextWeight =
-    nextItem && nextItem.percentTm != null && tmKg
-      ? roundToPlate((tmKg * nextItem.percentTm) / 100)
-      : nextItem && nextItem.targetWeightKg != null && nextItem.targetWeightKg > 0
-        ? roundToPlate(nextItem.targetWeightKg)
-        : null;
+  const nextWeight = nextItem ? targetWeightForItem(nextItem) : null;
 
   return (
     <div
@@ -861,6 +909,19 @@ export function MovementFocusView({
             {renderTargetLine(activeItem, targetReps, isAmrap)}
           </div>
         )}
+        {warmupFloorWarning && (
+          <div
+            data-testid="warmup-load-floor-warning"
+            role="status"
+            style={{
+              fontSize: 12,
+              color: "var(--cp-text-muted)",
+              lineHeight: 1.35,
+            }}
+          >
+            {warmupFloorWarning}
+          </div>
+        )}
         {activeItem.percentTm == null && activeItem.intensityCue && (
           <div
             data-testid="accessory-intensity-cue"
@@ -961,12 +1022,13 @@ export function MovementFocusView({
           itemKind === "back_off" ||
           itemKind === "warmup";
         if (!isBarbellEligibleKind) return null;
-        const barKind = resolveBarKind(group.movementSlug);
-        if (barKind == null) return null;
+        // `null` covers both "not a barbell movement" and "the user owns
+        // no bar for it" (travel/hotel `barbellKg: 0`, home-gym
+        // `trapBarKg: null`) — either way there is no bar to subtract.
+        if (barWeightKg == null) return null;
         // Additional safety: if the movement has no training max set,
         // it isn't a tracked main lift and shouldn't claim a bar.
         if (tmKg == null) return null;
-        const barWeightKg = barKind === "trap_bar" ? trapBarKg : barbellKg;
         const inv = plateInventory ?? [];
         if (inv.length === 0) {
           return (

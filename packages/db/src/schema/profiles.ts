@@ -160,8 +160,11 @@ export const profiles = pgTable("profiles", {
    */
   /**
    * Warmup-ladder configuration. NULL is treated as the default
-   * `{ setCount: 3, percentLadder: [40, 50, 60], repLadder: [5, 3, 2] }`
-   * at read time. `setCount = 0` disables auto-warmups entirely.
+   * `{ setCount: 3, percentLadder: [40, 60, 80], repLadder: [5, 5, 3] }`
+   * at read time. Ladder percentages are relative to the top working set.
+   * The exact 0039-era default payload is upgraded to this value at read
+   * time; other explicit schemes remain user-owned values. `setCount = 0`
+   * disables auto-warmups entirely.
    *
    * Ladders are the practitioner-consensus ramp pattern: rehearse the
    * motor pattern at light loads, then ramp so connective tissue

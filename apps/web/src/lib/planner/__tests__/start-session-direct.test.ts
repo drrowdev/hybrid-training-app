@@ -16,10 +16,11 @@
  *   2. Updates the matching `planned_sessions.completed_session_id`
  *      so the plan calendar flips to "in progress".
  *   3. Redirects to `/app/sessions/<new-id>`.
- *   4. Idempotent re-entry: when the planned row already links to a
- *      session, no new INSERT runs and we redirect to the existing
- *      session id.
- *   5. Refuses to act on someone else's planned session.
+ *   4. Idempotent re-entry: when the planned row already links to an active
+ *      session, no new INSERT runs and we redirect to the existing session id.
+ *   5. A soft-deleted in-progress link is stale: it is replaced with a fresh
+ *      session rather than restoring the old set_logs/progress.
+ *   6. Refuses to act on someone else's planned session.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -113,8 +114,13 @@ vi.mock("@/lib/supabase/server", () => ({
       }
       if (table === "planned_sessions") {
         return {
-          select: (_cols?: string) => ({
-            eq: (_col: string, _val: string) => ({
+          // Chainable `.eq()` so the mock tolerates the RLS-convention
+          // `.eq("user_id", user.id)` alongside `.eq("id", …)` — real
+          // PostgREST builders chain any number of filters.
+          select: (_cols?: string) => {
+            const selectBuilder: Record<string, unknown> = {};
+            Object.assign(selectBuilder, {
+              eq: (_col: string, _val: string) => selectBuilder,
               maybeSingle: () => {
                 state.plannedSelectCalls += 1;
                 // First select = the initial fetch in startSessionDirect.
@@ -129,8 +135,9 @@ vi.mock("@/lib/supabase/server", () => ({
                 }
                 return Promise.resolve({ data: state.planned, error: null });
               },
-            }),
-          }),
+            });
+            return selectBuilder;
+          },
           update: (payload: Record<string, unknown>) => {
             let id = "";
             const builder: Record<string, unknown> = {};
@@ -358,7 +365,9 @@ describe("startSessionDirect — no pre-workout check-in", () => {
     expect(state.redirected).toBe("/app/sessions/existing-session-id");
   });
 
-  it("restores a soft-deleted linked session instead of redirecting to a 404", async () => {
+  it("replaces a soft-deleted in-progress link with a fresh session", async () => {
+    // DC-K4: deleting is reversible through Trash, but starting again must
+    // not silently revive the deleted attempt's progress.
     state.planned = {
       id: VALID_UUID,
       title: "Rehab",
@@ -374,18 +383,13 @@ describe("startSessionDirect — no pre-workout check-in", () => {
       RedirectError,
     );
 
-    expect(state.sessionRestoreCalls).toEqual(["cancelled-session-id"]);
-    expect(state.sessionInsertCalls).toHaveLength(0);
-    expect(state.plannedUpdateCalls).toHaveLength(0);
-    expect(state.redirected).toBe("/app/sessions/cancelled-session-id");
-    expect(state.revalidated).toEqual(
-      expect.arrayContaining([
-        "/app",
-        "/app/plan",
-        "/app/sessions",
-        "/app/settings/trash",
-      ]),
-    );
+    expect(state.sessionRestoreCalls).toHaveLength(0);
+    expect(state.sessionInsertCalls).toHaveLength(1);
+    expect(state.plannedUpdateCalls).toEqual([
+      { payload: { completed_session_id: null }, id: VALID_UUID },
+      { payload: { completed_session_id: "new-session-uuid" }, id: VALID_UUID },
+    ]);
+    expect(state.redirected).toBe("/app/sessions/new-session-uuid");
   });
 
   it("routes a deleted completed session to explicit Trash restoration", async () => {

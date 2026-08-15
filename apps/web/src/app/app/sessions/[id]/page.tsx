@@ -61,6 +61,10 @@ import {
   countStrengthPrescriptionItems,
   countProgrammedWorkingSets,
 } from "@/lib/sessions/prescription-progress";
+import {
+  buildLoggedSetIdsByItemIndex,
+  firstLoggedSetIdByItemIndex,
+} from "@/lib/sessions/movement-attribution";
 import type { ProgressionHint } from "@/components/session/PostSessionSummary";
 import {
   unresolvedRehabItemIndices,
@@ -167,8 +171,13 @@ export default async function SessionDetailPage({
   // a profile written through the new editor and a legacy profile
   // both surface a fully-typed Equipment blob here.
   const equipment = resolveEquipment(feedbackPrefs ?? null);
-  const barbellKg = equipment.bars.barbellKg || 20;
-  const trapBarKg = equipment.bars.trapBarKg ?? 25;
+  // Raw, uncoerced bar inventory. `barbellKg === 0` (travel/hotel,
+  // bodyweight-only) and `trapBarKg === null` (home/functional/custom)
+  // mean "the user owns no such bar" — `resolveBarWeightKg` is the one
+  // place that interprets them, shared with the server-side warm-up
+  // materialisation in `fillSessionFromPlan`.
+  const barbellKg = equipment.bars.barbellKg;
+  const trapBarKg = equipment.bars.trapBarKg;
   const plateInventory = equipment.plates.map((weightKg) => ({ weightKg }));
   const preferStandardLbPlates = equipment.preset !== "custom";
 
@@ -789,8 +798,8 @@ export default async function SessionDetailPage({
   // by ≥1 logged set, and the canonical set_logs.id for each (so the
   // prescription row can scroll the user to the right "This session"
   // entry). Lifts the new explicit `prescription_item_index` link
-  // first, then falls back to movement-based matching for sets logged
-  // before the column existed.
+  // first, then falls back to a lineage-aware movement match for sets
+  // logged before the column existed (see `movement-attribution`).
   const loggedForMatch = (setsRaw ?? []).map((s) => {
     const m = Array.isArray(s.movement) ? s.movement[0] : s.movement;
     return {
@@ -813,45 +822,18 @@ export default async function SessionDetailPage({
     );
   const loggedItemIndices = Array.from(loggedItemIndexSet).sort((a, b) => a - b);
   const skippedItemIndices = Array.from(skippedItemIndexSet).sort((a, b) => a - b);
-  const loggedSetIdByItemIndex: Record<number, string> = {};
-  // Pick the FIRST logged set per matched index (the one the user
-  // scrolls back to). Explicit links win; movement-fallback fills the
-  // rest, mirroring `matchPrescriptionItems` so the two stay aligned.
-  if (plannedPrescription) {
-    const claimed = new Set<number>();
-    for (const s of loggedForMatch) {
-      if (
-        s.prescriptionItemIndex != null &&
-        s.prescriptionItemIndex >= 0 &&
-        s.prescriptionItemIndex < (plannedPrescription.items?.length ?? 0) &&
-        !loggedSetIdByItemIndex[s.prescriptionItemIndex]
-      ) {
-        loggedSetIdByItemIndex[s.prescriptionItemIndex] = s.id;
-        claimed.add(s.prescriptionItemIndex);
-      }
-    }
-    for (const s of loggedForMatch) {
-      if (s.prescriptionItemIndex != null) continue;
-      if (s.setKind === "warmup") continue;
-      for (let i = 0; i < (plannedPrescription.items?.length ?? 0); i++) {
-        if (claimed.has(i)) continue;
-        const it = plannedPrescription.items[i]!;
-        if (
-          it.movementId === s.movementId &&
-          (it.kind === "warmup" ||
-            it.kind === "main" ||
-            it.kind === "back_off" ||
-            it.kind === "accessory" ||
-            it.kind === "tendon" ||
-            it.kind === "power_potentiation")
-        ) {
-          claimed.add(i);
-          loggedSetIdByItemIndex[i] = s.id;
-          break;
-        }
-      }
-    }
-  }
+  // ALL logged set ids per item index — the first-only map this used to build
+  // dropped every extra row at an index, and those rows then survived only on
+  // the movement-id fallback, so a swap made them disappear from the card and
+  // the progress chip. `loggedSetIdByItemIndex` stays first-only on purpose:
+  // it is the "scroll to / edit this entry" link target, never attribution.
+  const loggedSetIdsByItemIndex = buildLoggedSetIdsByItemIndex(
+    plannedPrescription,
+    loggedForMatch,
+  );
+  const loggedSetIdByItemIndex = firstLoggedSetIdByItemIndex(
+    loggedSetIdsByItemIndex,
+  );
   const strengthItemCount = countStrengthPrescriptionItems(plannedPrescription);
   const unloggedStrengthCount = Math.max(0, strengthItemCount - loggedItemIndexSet.size);
   const unloggedRehabIndices = unresolvedRehabItemIndices(
@@ -1454,7 +1436,7 @@ export default async function SessionDetailPage({
         skippedItemIndices={skippedItemIndices}
         loggedSetIdByItemIndex={loggedSetIdByItemIndex}
         barbellKg={barbellKg}
-        trapBarKg={trapBarKg}
+        trapBarKg={trapBarKg ?? undefined}
         plateInventory={plateInventory}
         preferStandardLbPlates={preferStandardLbPlates}
         bwGateStateByFamily={bwGateStateByFamily}

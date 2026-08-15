@@ -112,9 +112,13 @@ export function WarmupSettings({ initial }: WarmupSettingsProps) {
     setSchemeAndSave({ ...scheme, repLadder: next });
   };
 
-  // Live preview of the resolved ladder against an 85% TM top set.
-  // If the scheme is malformed we fall back to the engine default so
-  // the user always sees a sensible preview while editing.
+  // Live preview of the ladder the user is holding, against an 85% TM
+  // top set. `generateWarmupItems` is faithful to the scheme it is
+  // handed (it only substitutes the default for a structurally
+  // malformed one), so the preview can never contradict the Custom
+  // inputs above it — in particular the migration-0039 legacy upgrade
+  // in `resolveWarmupScheme` is a read-boundary concern and must not
+  // reach this render.
   const preview = useMemo(
     () => generateWarmupItems("preview", PREVIEW_TOP_PERCENT, scheme),
     [scheme],

@@ -43,14 +43,14 @@ test.describe("@desktop /app/settings/training · warmup ladder", () => {
     const preset = page.getByTestId("warmup-preset-select");
     await expect(preset).toBeVisible();
 
-    // Switch to Quick 2-set: 50% / 65% × 5 / 3 against an 85% top set
-    // resolves to 42.5% × 5 and 55.5% × 3 (rounded to nearest 0.5%).
+    // Switch to Quick 2-set: 50% / 75% × 5 / 3 against an 85% top set
+    // resolves to 42.5% × 5 and 64% × 3 (rounded to nearest 0.5%).
     await preset.selectOption("quick");
     await expect(page.getByTestId("warmup-preview-0")).toContainText(
       /Warmup 1: 42\.5% TM × 5/i,
     );
     await expect(page.getByTestId("warmup-preview-1")).toContainText(
-      /Warmup 2: 55(\.\d+)?% TM × 3/i,
+      /Warmup 2: 64% TM × 3/i,
     );
 
     // Preset switch auto-saves — wait for the inline "Saved" badge
@@ -70,7 +70,7 @@ test.describe("@desktop /app/settings/training · warmup ladder", () => {
       repLadder: number[];
     } | null;
     expect(scheme?.setCount).toBe(2);
-    expect(scheme?.percentLadder).toEqual([50, 65]);
+    expect(scheme?.percentLadder).toEqual([50, 75]);
     expect(scheme?.repLadder).toEqual([5, 3]);
 
     // Reload and confirm the preset sticks.
@@ -127,4 +127,3 @@ test.describe("@desktop /app/settings/training · warmup ladder", () => {
     }
   });
 });
-
