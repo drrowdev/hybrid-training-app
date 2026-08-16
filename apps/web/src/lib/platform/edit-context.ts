@@ -39,8 +39,6 @@ export interface ProgramEditContext {
   cardioWeekdays: number[];
   /** Original block start (YYYY-MM-DD) — fixed; you can't move the past. */
   startedOn: string;
-  /** Per-block antagonist-superset accessories choice. */
-  supersetAccessories: boolean;
   /** Whether opt-in TB accessory work is present in the block's strength sessions. */
   accessoriesEnabled: boolean;
   customization?: TbCustomization;
@@ -65,7 +63,7 @@ export async function getBlockEditContext(blockId: string): Promise<ProgramEditC
 
   const { data: block } = await supabase
     .from("training_blocks")
-    .select("id, program_id, started_on, superset_accessories, status, deleted_at")
+    .select("id, program_id, started_on, status, deleted_at")
     .eq("id", blockId)
     .eq("user_id", user.id)
     .maybeSingle();
@@ -152,7 +150,6 @@ export async function getBlockEditContext(blockId: string): Promise<ProgramEditC
     strengthWeekdays,
     cardioWeekdays,
     startedOn: block.started_on as string,
-    supersetAccessories: Boolean(block.superset_accessories),
     accessoriesEnabled,
     currentWeekIndex,
     programStartWeekIndex,

@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Link lifts into supersets (ADR 0071, supersedes ADR 0026)
+- Replaced the block-level "Superset accessories" toggle, which inferred pairs
+  from an anatomical antagonist table, with explicit per-slot links you author
+  yourself: pick two or more lifts, in the order you'll perform them.
+- Links can hold any number of members (superset, tri-set, giant set), can
+  include main lifts (with a warning, never a block), and work on every Tactical
+  Barbell program — canonical templates, customized ones, and Activation.
+- A link is expressed as the existing `circuit` primitive, so the logger's
+  round-major navigation, the preview bracket and the duration estimate all
+  understand one representation. `rounds` is the lowest required set count across
+  members; sets beyond that log solo at full rest.
+- Movements the template already links (the AB Triad) can't be added to a link —
+  an item carries at most one circuit.
+- Migration 0129 drops `profiles.superset_accessories` and
+  `training_blocks.superset_accessories`. **Ship the code release first**: the
+  plan queries, logger and wizard all select those columns by name. No
+  prescription or set_log is migrated, so existing blocks keep identical
+  prescribed work and only lose the auto-paired brackets.
+
 ### Supported forearm rehab movements
 - Kept the general wrist-curl, reverse-wrist-curl, and pronation/supination
   movements separate from their rehab counterparts.

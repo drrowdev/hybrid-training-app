@@ -21,7 +21,6 @@ import { LastSetHintRow } from "./MovementCard";
 import { SwapMovementModal } from "./SwapMovementModal";
 import { MovementHowToButton } from "./MovementHowToButton";
 import type { PlateInventoryItem } from "./plate-math";
-import type { SupersetCardInfo } from "@/lib/sessions/superset-cards";
 import {
   buildLinkedCircuitByMovementId,
   circuitMembersFor,
@@ -61,7 +60,6 @@ export type FocusStripLoggerProps = {
     { heaviestWeight: number | null; bestE1rm: number | null }
   >;
   lastSetHints?: Readonly<Record<string, LastSetHint>>;
-  supersetByMovementId?: ReadonlyMap<string, SupersetCardInfo>;
   reorderableMovementIds?: readonly string[];
   onReorderMovements?: (movementIds: string[]) => void;
   addStrengthSet: typeof addStrengthSet;
@@ -170,7 +168,6 @@ export function FocusStripLogger({
   loggedSetIdsByItemIndex,
   priorBests,
   lastSetHints = {},
-  supersetByMovementId,
   reorderableMovementIds,
   onReorderMovements,
   addStrengthSet,
@@ -272,24 +269,6 @@ export function FocusStripLogger({
     (index) => !loggedItemIndices.has(index),
   );
   const declinedOptional = declinedOptionalIds.has(activeOriginalKey);
-  const activeSuperset =
-    focusSectionFor(activeOriginal) === "rehab"
-      ? undefined
-      : supersetByMovementId?.get(activeOriginal.movementId);
-  const supersetPartner = activeSuperset
-    ? groups.find((group) => {
-        if (
-          movementGroupKey(group) === activeOriginalKey ||
-          focusSectionFor(group) === "rehab"
-        ) {
-          return false;
-        }
-        return (
-          supersetByMovementId?.get(group.movementId)?.groupId ===
-          activeSuperset.groupId
-        );
-      })
-    : undefined;
   const activeCircuit = linkedCircuitByMovementId.get(
     activeOriginalKey,
   );
@@ -873,23 +852,6 @@ export function FocusStripLogger({
                </div>
              </div>
            )}
-           {!activeCircuitRound && activeSuperset && supersetPartner && (
-             <div
-               data-testid="focus-strip-superset-cue"
-               style={{
-                 padding: "8px 10px",
-                 borderRadius: 10,
-                 border: "1px solid var(--cp-border)",
-                 background: "var(--cp-surface-soft)",
-                 color: "var(--cp-text-muted)",
-                 fontSize: 12,
-               }}
-             >
-               <strong style={{ color: "var(--cp-text)" }}>Superset</strong>
-               {" · "}alternate with {supersetPartner.movementName}, then rest
-               once.
-             </div>
-           )}
            {role === "accessory" && (
              <LastSetHintRow
                hint={lastSetHints[activeOriginal.movementId]}
@@ -923,15 +885,11 @@ export function FocusStripLogger({
                 equipmentByMovementId?.get(activeOriginal.movementId) ??
                 null
               }
-              suppressRestAfterSave={
-                activeCircuit
-                  ? circuitSuppressesRest(
-                      activeOriginal,
-                      activeCircuit,
-                      activeNextItemIndex,
-                    )
-                  : activeSuperset?.slot === "A1" && supersetPartner != null
-              }
+              suppressRestAfterSave={circuitSuppressesRest(
+                activeOriginal,
+                activeCircuit,
+                activeNextItemIndex,
+              )}
               focusStrip
               onSaved={({ itemIndex, isLast }) => {
                 const projected = new Set(loggedItemIndices);
@@ -946,15 +904,6 @@ export function FocusStripLogger({
                   : null;
                 if (circuitNext) {
                   setActiveId(circuitNext);
-                } else if (
-                  supersetPartner &&
-                  hasOpenWork(
-                    supersetPartner,
-                    declinedOptionalIds,
-                    projected,
-                  )
-                ) {
-                  setActiveId(movementGroupKey(supersetPartner));
                 } else if (isLast) {
                   advance(declinedOptionalIds, projected);
                 }

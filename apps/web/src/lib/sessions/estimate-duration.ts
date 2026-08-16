@@ -27,7 +27,6 @@
 import type { PrescriptionItem, PrescriptionItemKind } from "@hta/db";
 import { partitionRehabItems } from "@hta/domain";
 import { restSecondsForKind } from "./rest";
-import { SUPERSET_GROUP_KEY } from "../planner/antagonist-pairs";
 
 /**
  * Per-set working time (concentric + eccentric + bar setup), independent of
@@ -70,24 +69,17 @@ function restSecForItem(kind: PrescriptionItemKind): number {
   return restSecondsForKind(kind);
 }
 
-function supersetGroupOf(it: PrescriptionItem): string | null {
-  const g = (it.meta as Record<string, unknown> | undefined)?.[
-    SUPERSET_GROUP_KEY
-  ];
-  return typeof g === "string" && g.length > 0 ? g : null;
-}
-
 /**
  * How rest should be priced.
  *
  * - `"solo"` charges every set its own full rest, ignoring all grouping. This is
  *   what the ADR-0020 duration governor MUST use: if grouping fed the governor,
  *   linking two lifts would free up time and let it keep MORE accessory volume,
- *   so enabling a presentation feature would change the prescription. ADR 0026
+ *   so a presentation choice would silently change the prescription. ADR 0026
  *   calls that invariant absolute, so it is encoded here as an explicit argument
  *   rather than left to depend on which call sites happen to produce grouping.
- * - `"grouped"` overlaps rest inside supersets and circuits. Display surfaces
- *   use it so the shown duration reflects how the session is actually run.
+ * - `"grouped"` overlaps rest inside linked circuits. Display surfaces use it so
+ *   the shown duration reflects how the session is actually run.
  */
 export type RestPricingMode = "solo" | "grouped";
 
@@ -167,17 +159,12 @@ function priceCircuitRounds(items: readonly PrescriptionItem[]): {
  * contribute `sets × (work + rest)`. `cardio_external` (no duration) and
  * empty inputs contribute nothing.
  *
- * **Grouped rest.** Two mechanisms overlap rest, and both are gated on `mode`:
- *   - antagonist supersets (ADR 0026), where two accessory items sharing a
- *     `meta.supersetGroup` with equal sets rest once per round, and
- *   - linked circuits (`item.circuit`), where every station in a round is
- *     performed back-to-back before a single rest.
- *
- * A "widowed" superset member whose partner was trimmed (ADR 0013 autoreg
- * end-slice), and any circuit set with no counterpart in its round, are priced
- * solo. With `mode: "solo"`, or with no grouping metadata present at all, this
- * reduces to the exact per-item computation — so the estimate is byte-identical
- * for un-grouped sessions and for the governor.
+ * **Grouped rest.** A linked circuit (`item.circuit`) performs every station in
+ * a round back-to-back before a single rest. Any circuit set with no counterpart
+ * in its round is priced solo, mirroring the never-a-half-bracket rule. With
+ * `mode: "solo"`, or with no circuit metadata present at all, this reduces to
+ * the exact per-item computation — so the estimate is byte-identical for
+ * un-linked sessions and for the governor.
  */
 export function estimateSessionSeconds(
   items: readonly PrescriptionItem[] | null | undefined,
@@ -186,47 +173,16 @@ export function estimateSessionSeconds(
   if (!items || items.length === 0) return 0;
 
   let sec = 0;
-  const pairedMembers = new Set<PrescriptionItem>();
+  const grouped = new Set<PrescriptionItem>();
 
   if (mode === "grouped") {
-    // Collect superset members, then price valid pairs (exactly two present,
-    // both accessory, equal sets) with overlapped rest. Everything else — incl.
-    // widowed members — falls through to the solo pricing below.
-    const groups = new Map<string, PrescriptionItem[]>();
-    for (const it of items) {
-      const g = supersetGroupOf(it);
-      if (g) {
-        const arr = groups.get(g);
-        if (arr) arr.push(it);
-        else groups.set(g, [it]);
-      }
-    }
-    for (const members of groups.values()) {
-      if (members.length !== 2) continue;
-      const [a, b] = members;
-      if (a.kind !== "accessory" || b.kind !== "accessory") continue;
-      const rounds = Math.max(1, a.sets ?? 1);
-      if (rounds !== Math.max(1, b.sets ?? 1)) continue;
-      const restPair = Math.max(restSecForItem(a.kind), restSecForItem(b.kind));
-      sec +=
-        rounds *
-        (workSecForItem(a) +
-          workSecForItem(b) +
-          SUPERSET_TRANSITION_SEC +
-          restPair);
-      pairedMembers.add(a);
-      pairedMembers.add(b);
-    }
-
-    const circuits = priceCircuitRounds(
-      items.filter((it) => !pairedMembers.has(it)),
-    );
+    const circuits = priceCircuitRounds(items);
     sec += circuits.seconds;
-    circuits.consumed.forEach((it) => pairedMembers.add(it));
+    circuits.consumed.forEach((it) => grouped.add(it));
   }
 
   for (const it of items) {
-    if (pairedMembers.has(it)) continue;
+    if (grouped.has(it)) continue;
     if (isCardio(it.kind)) {
       sec += (it.durationMin ?? 0) * 60;
       continue;

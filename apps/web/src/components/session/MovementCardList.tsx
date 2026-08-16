@@ -27,10 +27,6 @@ import {
 } from "@/lib/sessions/movement-attribution";
 import { bucketForGroup } from "@/lib/sessions/movement-summary";
 import { MetricHelp } from "@/components/ui/MetricHelp";
-import {
-  segmentAccessoryGroups,
-  type SupersetCardInfo,
-} from "@/lib/sessions/superset-cards";
 import { FillFromPlanButton, MovementCard } from "./MovementCard";
 import { FreestyleMovementCard } from "./FreestyleMovementCard";
 import type { PlateInventoryItem } from "./plate-math";
@@ -50,8 +46,6 @@ import {
   type AccessoryMeta,
 } from "@/lib/sessions/accessory-order";
 import { FocusStripLogger } from "./FocusStripLogger";
-
-const EMPTY_SUPERSET_MAP: ReadonlyMap<string, SupersetCardInfo> = new Map();
 
 export type MovementCardListProps = {
   sessionId: string;
@@ -107,13 +101,6 @@ export type MovementCardListProps = {
    */
   resolvedFreestyle?: ReadonlyArray<ResolvedFreestyleMovement>;
   /**
-   * ADR 0026 P5b — accessory movementId -> antagonist-superset membership, built
-   * server-side from the (unpaired) prescription so paired accessory CARDS can be
-   * bracketed and pulled adjacent WITHOUT reordering the index-bearing items.
-   * Empty / omitted = no supersets (every card renders solo, as before).
-   */
-  supersetByMovementId?: ReadonlyMap<string, SupersetCardInfo>;
-  /**
    * Movement ids whose movement is bodyweight-capable (`body_weight_loaded` in
    * the catalog): pull-ups, dips, inverted rows, push-ups, etc. Forwarded to
    * each card so the focus view can log them at 0 kg added load. Omitted ⇒ none.
@@ -154,7 +141,6 @@ export function MovementCardList({
   preferStandardLbPlates,
   bwGateStateByFamily,
   resolvedFreestyle,
-  supersetByMovementId,
   bodyweightMovementIds,
   accessoryMetaById,
   customAccessoryOrder,
@@ -177,7 +163,6 @@ export function MovementCardList({
   // server-saved `customAccessoryOrder` (or the smart default when that's null).
   const [localOrder, setLocalOrder] = useState<string[] | null>(null);
   const effectiveOrder = localOrder ?? customAccessoryOrder ?? null;
-  const hasManualOrder = (effectiveOrder?.length ?? 0) > 0;
   const groups = useMemo(
     () => groupPrescriptionByMovement(prescription),
     [prescription],
@@ -404,43 +389,22 @@ export function MovementCardList({
     ],
   );
 
-  // ADR 0026 P5b — fold the accessory cards into solo cards + antagonist
-  // superset clusters (A2 pulled adjacent to A1). Membership is derived
-  // server-side from the unpaired prescription; the underlying items are NOT
-  // reordered, so the index-based set matching is untouched. Empty map (pref
-  // off / no pairs) => every entry is solo, original order preserved.
-  //
-  // Once the user MANUALLY reorders, we respect their literal order — the
-  // auto-superset re-clustering is suppressed so it can't fight their choice.
-  const accessorySegments = useMemo(
-    () =>
-      segmentAccessoryGroups(
-        accessoryGroups,
-        hasManualOrder ? EMPTY_SUPERSET_MAP : supersetByMovementId ?? EMPTY_SUPERSET_MAP,
-      ),
-    [accessoryGroups, supersetByMovementId, hasManualOrder],
-  );
   const focusGroups = useMemo(
     () => [
       ...rehabGroups,
       ...mainGroups,
       ...supplementalGroups,
-      ...accessorySegments.flatMap((segment) =>
-        segment.kind === "solo" ? [segment.group] : segment.groups,
-      ),
+      ...accessoryGroups,
       ...otherGroups,
     ],
     [
       rehabGroups,
       mainGroups,
       supplementalGroups,
-      accessorySegments,
+      accessoryGroups,
       otherGroups,
     ],
   );
-  const focusSupersetByMovementId = hasManualOrder
-    ? EMPTY_SUPERSET_MAP
-    : supersetByMovementId ?? EMPTY_SUPERSET_MAP;
 
   // Move an accessory card up/down. Recomputes the full movementId order from
   // the current (possibly smart/custom) accessory order, swaps the neighbour,
@@ -580,7 +544,6 @@ export function MovementCardList({
           loggedSetIdsByItemIndex={loggedSetIdsByItemIndex}
           priorBests={priorBests}
           lastSetHints={lastSetHints}
-          supersetByMovementId={focusSupersetByMovementId}
           reorderableMovementIds={
             reorderEnabled
               ? accessoryGroups.map((group) => group.movementId)
@@ -731,15 +694,7 @@ export function MovementCardList({
             testId="movement-group-accessory"
             helpTerm="accessory_work"
           />
-          {accessorySegments.map((seg) =>
-            seg.kind === "solo" ? (
-              renderAccessoryCard(seg.group)
-            ) : (
-              <SupersetCardBracket key={seg.groupId} groupId={seg.groupId}>
-                {seg.groups.map(renderCard)}
-              </SupersetCardBracket>
-            ),
-          )}
+          {accessoryGroups.map((group) => renderAccessoryCard(group))}
         </>
       )}
 
@@ -1031,41 +986,6 @@ function sameLoggedSets(previous: LoggedSet[], next: LoggedSet[]): boolean {
  * alternate, rest once" caption so the lifter does them back-to-back and rests
  * a single time per round. Internal A1/A2 slot codes are NOT surfaced.
  */
-function SupersetCardBracket({
-  groupId,
-  children,
-}: {
-  groupId: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      data-testid="superset-card-bracket"
-      data-superset-group={groupId}
-      style={{
-        display: "grid",
-        gap: 12,
-        borderLeft: "2px solid var(--cp-accent, var(--cp-text-muted))",
-        paddingLeft: 10,
-      }}
-    >
-      <div
-        className="mono"
-        style={{
-          fontSize: 10,
-          letterSpacing: "0.08em",
-          textTransform: "uppercase",
-          color: "var(--cp-accent, var(--cp-text-muted))",
-          fontWeight: 600,
-        }}
-      >
-        Superset · alternate, rest once
-      </div>
-      {children}
-    </div>
-  );
-}
-
 function SectionDivider({
   label,
   testId,

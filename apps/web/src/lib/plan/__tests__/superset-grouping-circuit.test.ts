@@ -118,10 +118,4 @@ describe("circuit-backed bracketing", () => {
       "link-2",
     ]);
   });
-
-  it("prefers an explicit supersetGroup when both are somehow present", () => {
-    const row = circuitRow("squat", 0);
-    row.items = row.items.map((it) => ({ ...it, meta: { supersetGroup: "ss-9" } }));
-    expect(supersetGroupOfRow(row)).toBe("ss-9");
-  });
 });

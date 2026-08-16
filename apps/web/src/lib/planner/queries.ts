@@ -17,12 +17,6 @@ import {
   resolveModificationsForDate,
 } from "./modifications";
 import {
-  applySupersetPairing,
-  getSupersetAccessoriesPref,
-  loadPrimaryMusclesByMovementId,
-  resolverFromMap,
-} from "./superset-view";
-import {
   resolveLinkedSession,
   type LinkedSessionSnapshot,
 } from "@/lib/sessions/linked-session-state";
@@ -182,7 +176,7 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
   const { data } = await supabase
     .from("planned_sessions")
     .select(
-      "id, block_id, week_index, day_index, slot, planned_at, title, role, prescription, completed_session_id, skipped_at, notes, training_blocks!inner(superset_accessories)",
+      "id, block_id, week_index, day_index, slot, planned_at, title, role, prescription, completed_session_id, skipped_at, notes",
     )
     .eq("block_id", blockId)
     .order("week_index", { ascending: true })
@@ -250,49 +244,7 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
     };
   });
 
-  // ADR 0026 P4 — antagonist-superset pairing is a read-time presentation
-  // layer applied AFTER autoreg + modifications. Migration 0111 moves the gate
-  // from a single profile pref to a PER-BLOCK choice: each day uses its own
-  // block's `superset_accessories`; null falls back to the profile pref. `??`
-  // (not `||`) lets an explicit per-block `false` override a profile `true`.
-  // Resolve PER DAY (days may span multiple blocks). Off (resolved false) -> no
-  // pairing, no muscle query, byte-identical prescription. If NO day is
-  // superset-on we return early, byte-identical to the pre-0111 behaviour.
-  let profilePref: boolean | null = null;
-  const readProfilePref = async (): Promise<boolean> => {
-    if (profilePref === null) {
-      profilePref = user
-        ? await getSupersetAccessoriesPref(supabase, user.id)
-        : false;
-    }
-    return profilePref;
-  };
-  const resolvedFlags: boolean[] = [];
-  let anySupersetOn = false;
-  for (const d of data) {
-    const blockRel = (d as { training_blocks?: unknown }).training_blocks;
-    const block = (Array.isArray(blockRel) ? blockRel[0] : blockRel) as
-      | { superset_accessories?: boolean | null }
-      | null
-      | undefined;
-    const blockSuperset = block?.superset_accessories ?? null;
-    const on = blockSuperset ?? (await readProfilePref());
-    resolvedFlags.push(on);
-    if (on) anySupersetOn = true;
-  }
-  if (!anySupersetOn) return days;
-  // Only resolve muscles for the movements present on superset-on days — the
-  // off days never touch the catalog, so they stay byte-identical.
-  const movementIds = days
-    .filter((_, i) => resolvedFlags[i])
-    .flatMap((d) => (d.prescription.items ?? []).map((it) => it.movementId));
-  const muscleMap = await loadPrimaryMusclesByMovementId(supabase, movementIds);
-  const resolve = resolverFromMap(muscleMap);
-  return days.map((d, i) =>
-    resolvedFlags[i]
-      ? { ...d, prescription: applySupersetPairing(d.prescription, true, resolve) }
-      : d,
-  );
+  return days;
 }
 
 /**
@@ -327,14 +279,14 @@ export async function getPlannedSessionById(
   const { data } = await supabase
     .from("planned_sessions")
     .select(
-      "id, block_id, week_index, day_index, slot, planned_at, title, role, prescription, completed_session_id, skipped_at, notes, training_blocks!inner(archetype, started_on, notes, superset_accessories)",
+      "id, block_id, week_index, day_index, slot, planned_at, title, role, prescription, completed_session_id, skipped_at, notes, training_blocks!inner(archetype, started_on, notes)",
     )
     .eq("id", plannedId)
     .maybeSingle();
   if (!data) return null;
   const blockRel = data.training_blocks as
-    | { archetype: string; started_on: string; notes: string | null; superset_accessories: boolean | null }
-    | { archetype: string; started_on: string; notes: string | null; superset_accessories: boolean | null }[]
+    | { archetype: string; started_on: string; notes: string | null }
+    | { archetype: string; started_on: string; notes: string | null }[]
     | null;
   const block = Array.isArray(blockRel) ? blockRel[0] : blockRel;
   if (!block) return null;
@@ -347,26 +299,7 @@ export async function getPlannedSessionById(
     base,
     resolveModificationsForDate(modRows, date),
   );
-  // ADR 0026 P4 — read-time superset pairing after autoreg + modifications.
-  // Migration 0111: the per-block `superset_accessories` value WINS; null falls
-  // back to the profile pref. `??` (not `||`) lets an explicit per-block `false`
-  // override a profile `true`. The profile pref is only queried when the block
-  // value is null (avoids a needless query when the block has an explicit value).
-  let prescription = modified;
-  const supersetOn =
-    block.superset_accessories ??
-    (user ? await getSupersetAccessoriesPref(supabase, user.id) : false);
-  if (supersetOn) {
-    const muscleMap = await loadPrimaryMusclesByMovementId(
-      supabase,
-      (modified.items ?? []).map((it) => it.movementId),
-    );
-    prescription = applySupersetPairing(
-      modified,
-      true,
-      resolverFromMap(muscleMap),
-    );
-  }
+  const prescription = modified;
   let linkedSession: LinkedSessionSnapshot | null = null;
   if (data.completed_session_id) {
     const { data: linked } = await supabase

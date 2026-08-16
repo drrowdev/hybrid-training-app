@@ -1063,7 +1063,6 @@ export interface ProgramEditContextProp {
   strengthWeekdays: number[];
   cardioWeekdays: number[];
   startedOn: string;
-  supersetAccessories: boolean;
   accessoriesEnabled: boolean;
   customization?: TbCustomization;
   /** User-authored superset links, rehydrated into the link editor. */
