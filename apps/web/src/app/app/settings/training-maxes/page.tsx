@@ -120,7 +120,12 @@ export default async function TrainingMaxesPage() {
   }));
 
   return (
-    <div style={{ display: "grid", gap: 20 }}>
+    // `minmax(0, 1fr)` — an auto track takes its floor from the widest child's
+    // min-content width, and the lift rows (role label + variant `<select>` +
+    // input) exceed a phone viewport. That stretched the whole page, not just
+    // the card: the intro copy ran off-screen and the inputs sat past the
+    // right edge. Capping the track keeps every child inside the viewport.
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 20 }}>
       <PageHeader
         back={{ href: "/app/settings", label: "Settings" }}
         title="1-rep maxes"

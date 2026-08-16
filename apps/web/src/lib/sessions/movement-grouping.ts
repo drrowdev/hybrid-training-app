@@ -235,12 +235,36 @@ export function autoCursorForGroup(
  * Effective cursor — manual override wins until the user logs again.
  * `cursorSlot` is the position within the group (0-indexed), NOT the
  * raw prescription item index.
+ *
+ * `slotCount` clamps the result into the group's real range. A pinned slot can
+ * outlive the group it was picked on (the focus strip reuses one logger across
+ * movements) or survive the group shrinking under it (a swap / set edit
+ * followed by `router.refresh()`). Either way an out-of-range cursor resolves
+ * to no prescription item and the logger renders nothing — so the cursor is
+ * clamped rather than trusted.
  */
 export function effectiveCursor(
   autoCursor: number,
   manualCursor: number | null,
+  slotCount?: number,
 ): number {
-  return manualCursor ?? autoCursor;
+  const requested = manualCursor ?? autoCursor;
+  if (slotCount == null) return requested;
+  if (slotCount <= 0) return 0;
+  return Math.min(Math.max(requested, 0), slotCount - 1);
+}
+
+/**
+ * Resolve a manual cursor pin against the movement being rendered. The focus
+ * strip drives every movement through ONE logger instance, so a pin has to
+ * carry the group it was made on — an unscoped slot number silently applies to
+ * the next movement, which may not have that slot at all.
+ */
+export function pinnedCursorForGroup(
+  pin: { key: string; slot: number } | null,
+  groupKey: string,
+): number | null {
+  return pin && pin.key === groupKey ? pin.slot : null;
 }
 
 /**
