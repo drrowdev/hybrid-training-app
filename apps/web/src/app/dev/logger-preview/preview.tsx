@@ -28,6 +28,18 @@ const MOV = {
   plank: "10000000-0000-4000-8000-000000000007",
 } as const;
 
+/**
+ * The fixture's user-authored link. Declared BEFORE the prescription that
+ * references it: the item arrays are built by `.map()` at module evaluation, so
+ * a later `const` would be in its temporal dead zone and throw at import time.
+ */
+const SUPERSET_LINK = {
+  id: "link-1",
+  name: "Superset",
+  size: 2,
+  rounds: 3,
+} as const;
+
 const REHAB_ITEMS = [1, 2, 3].map(() => ({
   movementId: MOV.calf,
   movementSlug: "seated-calf-raise",
@@ -114,13 +126,6 @@ const SETS: LoggedSet[] = [0, 1].map((i) => ({
     primary_region: "lower",
   },
 }));
-
-const SUPERSET_LINK = {
-  id: "link-1",
-  name: "Superset",
-  size: 2,
-  rounds: 3,
-} as const;
 
 /** Fixed so the fixture renders identically on every run (and in tests). */
 const SIX_DAYS_AGO = "2026-08-10T18:00:00.000Z";
