@@ -147,6 +147,48 @@ export function linksIncludeMainLift(
   return links.some((link) => link.members.some((m) => mains.has(m)));
 }
 
+/**
+ * Drop a movement from every link in a slot, dissolving any link left with
+ * fewer than two members.
+ *
+ * Called when a lift is removed from the slot. Without it the link keeps a
+ * member that no longer exists: the wizard would still show it, and the engine
+ * would then refuse to realise the whole link (every member must be present),
+ * so the lifter's superset would vanish at materialisation with nothing having
+ * said so. Pruning here keeps the editor honest — the link visibly shrinks, or
+ * visibly disappears, at the moment the lift is removed.
+ */
+export function pruneMovementFromLinks(
+  links: readonly SessionLink[],
+  movementKey: string,
+): SessionLink[] {
+  return links
+    .map((link) =>
+      link.members.includes(movementKey)
+        ? { ...link, members: link.members.filter((m) => m !== movementKey) }
+        : link,
+    )
+    .filter((link) => link.members.length >= 2);
+}
+
+/**
+ * Drop every member that is no longer offered by the slot, dissolving links
+ * left too small. Used when the slot's movement list is replaced wholesale
+ * (template switch, edit-mode rehydration) rather than one lift at a time.
+ */
+export function pruneLinksToMovements(
+  links: readonly SessionLink[],
+  movements: readonly LinkableMovement[],
+): SessionLink[] {
+  const present = new Set(movements.map((m) => m.key));
+  return links
+    .map((link) => ({
+      ...link,
+      members: link.members.filter((m) => present.has(m)),
+    }))
+    .filter((link) => link.members.length >= 2);
+}
+
 /** True when this link contains a main lift. */
 export function linkHasMainLift(
   link: SessionLink,

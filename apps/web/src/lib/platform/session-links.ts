@@ -202,7 +202,35 @@ export function linksBySeries(
 }
 
 /**
- * Parse a persisted `setup_input.sessionLinks` blob. Returns `undefined` for
+ * Names the links that reference a movement the session no longer contains.
+ *
+ * The engine already refuses to realise a link with a missing member, but it
+ * does so SILENTLY — the lifter would deploy and simply find the superset
+ * absent. Callers that know the session's movement list (the wizard sends it
+ * with the customization) can use this to say so instead.
+ *
+ * Returns the offending members grouped by series key; an empty array means
+ * every link is satisfiable.
+ */
+export function findOrphanedLinkMembers(
+  links: SessionLinks | undefined,
+  movementsBySeries: Readonly<Record<string, readonly string[]>>,
+): { seriesKey: string; linkId: string; missing: string[] }[] {
+  if (!links) return [];
+  const out: { seriesKey: string; linkId: string; missing: string[] }[] = [];
+  for (const [seriesKey, list] of Object.entries(links.bySeries)) {
+    const available = new Set(movementsBySeries[seriesKey] ?? []);
+    for (const link of list) {
+      const missing = link.members.filter((m) => !available.has(m));
+      if (missing.length > 0) {
+        out.push({ seriesKey, linkId: link.id, missing });
+      }
+    }
+  }
+  return out;
+}
+
+/** Parse a persisted `setup_input.sessionLinks` blob. Returns `undefined` for
  * anything unparseable so a malformed/legacy value degrades to "no links"
  * instead of throwing — the same posture `edit-context` takes for the
  * customization, and the reason the two are parsed independently.

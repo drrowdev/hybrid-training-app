@@ -48,6 +48,7 @@ import {
   getTbTemplate,
 } from "@hta/tacticalbarbell";
 import {
+  findOrphanedLinkMembers,
   linksBySeries,
   normalizeSessionLinks,
   sessionLinksSchema,
@@ -465,6 +466,29 @@ export async function createProgramInstance(
       ok: false,
       error: "Only Tactical Barbell templates can link lifts into supersets.",
     };
+  }
+
+  // A link may only reference lifts the session actually contains. The engine
+  // already refuses to realise a link with a missing member, but it does so
+  // SILENTLY — the lifter would deploy, and the superset would simply not be
+  // there. When the wizard sends the movement list too, we can say so instead.
+  if (sessionLinks && customization && isTbCustomizationV1(customization)) {
+    const orphans = findOrphanedLinkMembers(
+      sessionLinks,
+      Object.fromEntries(
+        Object.entries(customization.sessionMovements).map(([key, movements]) => [
+          key,
+          movements.map((movement) => movement.movement),
+        ]),
+      ),
+    );
+    if (orphans.length > 0) {
+      const count = orphans.reduce((n, o) => n + o.missing.length, 0);
+      return {
+        ok: false,
+        error: `A linked superset references ${count === 1 ? "a lift" : "lifts"} that aren't in that session anymore. Remove the link or add the ${count === 1 ? "lift" : "lifts"} back.`,
+      };
+    }
   }
 
   if (customization) {

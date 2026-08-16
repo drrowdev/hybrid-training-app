@@ -15,6 +15,8 @@ import {
   linksIncludeMainLift,
   moveMember,
   nextLinkId,
+  pruneLinksToMovements,
+  pruneMovementFromLinks,
   removeLink,
   selectableMovements,
   toggleSelection,
@@ -185,6 +187,51 @@ describe("main-lift detection (DC-K4)", () => {
     const b = link("link-2", ["squat", "bench"]);
     expect(linkHasMainLift(a, MOVEMENTS)).toBe(false);
     expect(linkHasMainLift(b, MOVEMENTS)).toBe(true);
+  });
+});
+
+describe("pruning links when lifts leave the slot", () => {
+  // Without this a link keeps a member the session no longer has. The engine
+  // requires every member to be present, so it would drop the whole link at
+  // materialisation and the superset would vanish with nothing having said so.
+  const links = [
+    link("link-1", ["squat", "bench", "catalog:1"], "Tri-set"),
+    link("link-2", ["catalog:2", "catalog:3"]),
+  ];
+
+  it("removes the lift but keeps a link that still has two members", () => {
+    const out = pruneMovementFromLinks(links, "bench");
+    expect(out).toHaveLength(2);
+    expect(out[0]!.members).toEqual(["squat", "catalog:1"]);
+  });
+
+  it("dissolves a link left with a single member", () => {
+    const out = pruneMovementFromLinks(links, "catalog:2");
+    expect(out.map((l) => l.id)).toEqual(["link-1"]);
+  });
+
+  it("leaves links untouched when the lift is in none of them", () => {
+    expect(pruneMovementFromLinks(links, "deadlift")).toEqual(links);
+  });
+
+  it("prunes to whatever the slot still offers", () => {
+    const remaining: LinkableMovement[] = [
+      { key: "squat", label: "Squat", isMain: true },
+      { key: "catalog:1", label: "Barbell curl" },
+    ];
+    const out = pruneLinksToMovements(links, remaining);
+    // link-2 loses both members and dissolves; link-1 keeps the two that remain.
+    expect(out).toHaveLength(1);
+    expect(out[0]!.members).toEqual(["squat", "catalog:1"]);
+  });
+
+  it("dissolves everything when the slot is emptied", () => {
+    expect(pruneLinksToMovements(links, [])).toEqual([]);
+  });
+
+  it("preserves member order while pruning", () => {
+    const ordered = [link("link-1", ["c", "a", "b"], "Tri-set")];
+    expect(pruneMovementFromLinks(ordered, "a")[0]!.members).toEqual(["c", "b"]);
   });
 });
 

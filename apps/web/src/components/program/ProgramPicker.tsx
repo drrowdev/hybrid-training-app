@@ -44,6 +44,7 @@ import {
 } from "@/lib/platform/tb-customization";
 import styles from "./ProgramPicker.module.css";
 import { SessionLinkEditor, type LinkableMovement } from "./SessionLinkEditor";
+import { pruneMovementFromLinks } from "./session-link-editing";
 import {
   SESSION_LINKS_VERSION,
   type SessionLink,
@@ -2029,6 +2030,23 @@ export function ProgramPicker({
           ? selected.filter((key) => key !== movement)
           : [...selected, movement],
       };
+    });
+    // A removed lift must leave any link it was part of, or the link keeps a
+    // member the session no longer has: the engine requires every member to be
+    // present, so it would drop the whole link at materialisation and the
+    // superset would silently disappear.
+    setSessionLinks((current) => {
+      const links = current[seriesKey];
+      if (!links?.length) return current;
+      const pruned = pruneMovementFromLinks(links, movement);
+      if (pruned.length === links.length &&
+          pruned.every((l, i) => l.members.length === links[i]!.members.length)) {
+        return current;
+      }
+      const next = { ...current };
+      if (pruned.length > 0) next[seriesKey] = pruned;
+      else delete next[seriesKey];
+      return next;
     });
   }
 

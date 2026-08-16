@@ -16,11 +16,13 @@ import {
   SESSION_LINKS_VERSION,
   defaultLinkName,
   emptySessionLinks,
+  findOrphanedLinkMembers,
   isEmptySessionLinks,
   linksBySeries,
   normalizeSessionLinks,
   parseStoredSessionLinks,
   sessionLinksSchema,
+  type SessionLinks,
 } from "../session-links";
 
 const link = (over: Record<string, unknown> = {}) => ({
@@ -199,6 +201,64 @@ describe("helpers", () => {
         bySeries: { "slot-1": [link()] },
       }),
     ).toEqual({ "slot-1": [link()] });
+  });
+});
+
+describe("findOrphanedLinkMembers", () => {
+  // The engine drops a link with a missing member silently, so the deploy would
+  // succeed and the superset would just be absent. This is what lets the caller
+  // say so instead.
+  const envelopeWith = (members: string[]) =>
+    envelope({ "slot-1": [link({ members })] }) as SessionLinks;
+
+  it("reports nothing when every member is present", () => {
+    expect(
+      findOrphanedLinkMembers(envelopeWith(["curl", "pushdown"]), {
+        "slot-1": ["squat", "curl", "pushdown"],
+      }),
+    ).toEqual([]);
+  });
+
+  it("reports a member the session no longer contains", () => {
+    const out = findOrphanedLinkMembers(envelopeWith(["curl", "pushdown"]), {
+      "slot-1": ["squat", "curl"],
+    });
+    expect(out).toEqual([
+      { seriesKey: "slot-1", linkId: "link-1", missing: ["pushdown"] },
+    ]);
+  });
+
+  it("reports every missing member of a link", () => {
+    const out = findOrphanedLinkMembers(envelopeWith(["curl", "pushdown"]), {
+      "slot-1": ["squat"],
+    });
+    expect(out[0]!.missing).toEqual(["curl", "pushdown"]);
+  });
+
+  it("treats an unknown series key as having no movements", () => {
+    const out = findOrphanedLinkMembers(envelopeWith(["curl", "pushdown"]), {});
+    expect(out).toHaveLength(1);
+    expect(out[0]!.missing).toEqual(["curl", "pushdown"]);
+  });
+
+  it("checks each series against its own movement list", () => {
+    const links = {
+      version: SESSION_LINKS_VERSION,
+      bySeries: {
+        "slot-1": [link({ id: "link-1", members: ["a", "b"] })],
+        "slot-2": [link({ id: "link-1", members: ["c", "d"] })],
+      },
+    } as SessionLinks;
+    const out = findOrphanedLinkMembers(links, {
+      "slot-1": ["a", "b"],
+      "slot-2": ["c"],
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ seriesKey: "slot-2", missing: ["d"] });
+  });
+
+  it("reports nothing for an absent envelope", () => {
+    expect(findOrphanedLinkMembers(undefined, { "slot-1": [] })).toEqual([]);
   });
 });
 
