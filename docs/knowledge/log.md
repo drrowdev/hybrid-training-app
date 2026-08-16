@@ -551,3 +551,6 @@ Follow-up to the same-day logger rehaul. Closes the four items the external revi
 - 19 unit tests in `__tests__/session-resume.test.ts`. The suite runs in the `node` environment, so storage is stubbed rather than pulling in jsdom.
 
 Mobile e2e grew to 11 cases; the new ones pin dock ownership + a reachable ≥44px exit, the undo guard, and that no dock row (rest, undo) can cover the primary action.
+
+## [2026-08-16] fix | Finish prescribed cardio in one tap from the drawer
+The Today "This week" drawer rendered Mark done as a link to the session screen, where an identical Mark done had to be pressed again to finish a pure prescribed cardio slot. The drawer now completes the session in place via the existing `markExternalCardioComplete` action, which resolves or lazily creates the session, writes the cardio log, completes the session and is idempotent on re-click. The one-tap path is gated on `prescriptionItemsHaveStrength` — the same predicate the action uses for its own pure-cardio check — so the drawer can never offer a finish the server would refuse; hybrid and strength-only slots keep the navigation link because they still need sets logged. The drawer closes and refreshes through the parent so the rail does not go stale, and a failed finish surfaces inline instead of losing the drawer.

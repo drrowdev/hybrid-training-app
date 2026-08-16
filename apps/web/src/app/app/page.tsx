@@ -29,6 +29,7 @@ import {
   generateQuickStrengthSession,
   generateQuickHyroxSession,
   updatePlannedSessionNotes,
+  markExternalCardioComplete,
 } from "@/lib/sessions/actions";
 import { getQuickRepeatCandidates } from "@/lib/sessions/queries";
 import { getLimitationTodaySummary } from "@/lib/limitations/today-summary";
@@ -771,6 +772,7 @@ export default async function TodayPage() {
                 unskipAction={unskipPlannedSession}
                 updateNotesAction={updatePlannedSessionNotes}
                 startSessionAction={startSessionFromPlan}
+                markCardioDoneAction={markExternalCardioComplete}
               />
             </div>
 
