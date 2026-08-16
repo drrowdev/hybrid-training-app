@@ -43,6 +43,13 @@ import {
 } from "@/lib/stats/units";
 import { RestTimer } from "./RestTimer";
 import { SessionDock } from "./SessionDock";
+import { deleteSet } from "@/lib/sessions/actions";
+import {
+  draftAppliesTo,
+  readResume,
+  remainingRestSeconds,
+  writeResume,
+} from "@/lib/sessions/session-resume";
 import { RpeZonePicker } from "./RpeZonePicker";
 import { SkipSetMenu } from "./SkipSetMenu";
 import { PlateView } from "./PlateView";
@@ -85,7 +92,16 @@ export type FocusViewProps = {
    * zero was 27 taps, which pushed users into the keyboard.
    */
   lastSetHint?: { weightKg: number; reps: number; performedAt: string } | null;
-  addStrengthSet: (fd: FormData) => Promise<{ error?: string; ok?: true }>;
+  addStrengthSet: (fd: FormData) => Promise<{
+    error?: string;
+    ok?: true;
+    /**
+     * The persisted row. Present once the write resolves online; absent when
+     * the set was queued offline (there is no server row to act on yet), which
+     * is why Undo only appears when an id came back.
+     */
+    set?: { id: string };
+  }>;
   updateStrengthSet?: (
     fd: FormData,
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
@@ -432,6 +448,56 @@ export function MovementFocusView({
   const [justLoggedAt, setJustLoggedAt] = useState<number | null>(null);
   const [restSeconds, setRestSeconds] = useState(0);
   const [restToken, setRestToken] = useState(0);
+  /**
+   * The set just written, offered for one-tap removal.
+   *
+   * Logging is optimistic and the CTA is now a big docked target, which makes
+   * a mis-tap both easier and more consequential. A short-lived Undo is the
+   * cheap counterweight — cheaper than a confirmation dialog, which would tax
+   * every correct log to guard against the rare wrong one.
+   */
+  const [undo, setUndo] = useState<{
+    setId: string;
+    itemIndex: number;
+    summary: string;
+    at: number;
+  } | null>(null);
+  const [undoing, setUndoing] = useState(false);
+  // Absolute epoch-ms the current rest ends at. Persisted so a reload or a
+  // process eviction resumes the SAME countdown instead of restarting it.
+  const restDeadlineRef = useRef<number | null>(null);
+
+  // Undo is deliberately short-lived: it's for "that was the wrong button",
+  // not for revising a set five minutes later (that's what editing is for).
+  useEffect(() => {
+    if (!undo) return;
+    const id = window.setTimeout(() => setUndo(null), 8000);
+    return () => window.clearTimeout(id);
+  }, [undo]);
+
+  const runUndo = async () => {
+    if (!undo || undoing) return;
+    setUndoing(true);
+    try {
+      const fd = new FormData();
+      fd.set("id", undo.setId);
+      fd.set("sessionId", sessionId);
+      await deleteSet(fd);
+      // Let the slot be logged again — the re-entrancy guard would otherwise
+      // treat the retry as a duplicate and silently drop it.
+      firedIndicesRef.current.delete(undo.itemIndex);
+      setManualPin({ key: groupKey, slot: cursor });
+      setRestSeconds(0);
+      restDeadlineRef.current = null;
+      setUndo(null);
+      hapticTick(hapticsEnabled);
+      router.refresh();
+    } catch {
+      setError("Couldn't undo that set — it's still logged.");
+    } finally {
+      setUndoing(false);
+    }
+  };
   const [justLogged, setJustLogged] = useState(false);
   const [skipMenuOpen, setSkipMenuOpen] = useState(false);
   const [skipScope, setSkipScope] = useState<"set" | "movement">("set");
@@ -444,6 +510,75 @@ export function MovementFocusView({
     const id = window.setTimeout(() => setJustLogged(false), 1500);
     return () => window.clearTimeout(id);
   }, [justLoggedAt]);
+
+  // ── Interruption recovery ────────────────────────────────────────────────
+  // Restore the slot, the unsaved numbers and the remaining rest exactly once
+  // on mount. Only applies when the stored draft belongs to THIS movement and
+  // slot — see `draftAppliesTo`.
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current || !focusStrip) return;
+    restoredRef.current = true;
+    const saved = readResume(sessionId);
+    if (!saved) return;
+    const now = Date.now();
+    const restLeft = remainingRestSeconds(saved.restDeadlineMs, now);
+    if (restLeft > 0) {
+      restDeadlineRef.current = saved.restDeadlineMs ?? null;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot restore of persisted resume state
+      setRestSeconds(restLeft);
+      setRestToken((t) => t + 1);
+    }
+    if (saved.cursor != null && saved.activeKey === groupKey) {
+      setManualPin({ key: groupKey, slot: saved.cursor });
+      if (draftAppliesTo(saved, groupKey, saved.cursor) && saved.draft) {
+        const d = saved.draft;
+        if (d.weightKg != null) setWeight(d.weightKg);
+        if (d.reps != null) setReps(d.reps);
+        if (d.rpe !== undefined) setRpe(d.rpe);
+        if (d.distanceM != null) setDistanceM(d.distanceM);
+        if (d.durationSec != null) setDurationSec(d.durationSec);
+        if (d.externalLoadKg != null) setExternalLoadKg(d.externalLoadKg);
+      }
+    }
+    // Mount-only: re-running would fight the user's live edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist the working state. Cheap (one small localStorage write) and
+  // throttled by React's render cadence rather than a timer.
+  useEffect(() => {
+    if (!focusStrip) return;
+    writeResume({
+      sessionId,
+      activeKey: groupKey,
+      cursor,
+      draftKey: groupKey,
+      draft: {
+        weightKg: weight,
+        reps,
+        rpe,
+        distanceM,
+        durationSec,
+        externalLoadKg,
+      },
+      restDeadlineMs: restDeadlineRef.current ?? undefined,
+      restLabel: group.movementName,
+    });
+  }, [
+    focusStrip,
+    sessionId,
+    groupKey,
+    cursor,
+    weight,
+    reps,
+    rpe,
+    distanceM,
+    durationSec,
+    externalLoadKg,
+    group.movementName,
+    restSeconds,
+  ]);
 
   // Snap weight/reps to the target whenever the active slot changes.
   // Also reset RPE + close the skip menu so each set starts clean.
@@ -639,12 +774,24 @@ export function MovementFocusView({
     // mislabel itself "next <movement>" and linger over the Finish CTA. We also
     // CLEAR any timer still running from the previous set.
     const isLastSlot = cursor >= totalSlots - 1;
+    const undoSummary =
+      itemKind === "carry"
+        ? `${formatWeight(weight, units)} × ${distanceM} m`
+        : itemKind === "isometric"
+          ? isBwHold
+            ? `${durationSec} s`
+            : `${formatWeight(weight, units)} × ${durationSec} s`
+          : itemKind === "bw_reps"
+            ? `× ${reps}`
+            : `${formatWeight(weight, units)} × ${reps}`;
     if (isLastSlot || suppressRestAfterSave) {
       setRestSeconds(0);
+      restDeadlineRef.current = null;
     } else {
       const secs = restSecondsForKind(SET_KIND_TO_LOG[activeItem.kind] ?? "main");
       if (secs > 0) {
         setRestSeconds(secs);
+        restDeadlineRef.current = Date.now() + secs * 1000;
         setRestToken((t) => t + 1);
       }
     }
@@ -657,11 +804,24 @@ export function MovementFocusView({
         if (result?.error) {
           firedIndicesRef.current.delete(activeItemIndex);
           setError(result.error);
+          setUndo(null);
+          return;
+        }
+        // Only offer Undo once we hold the real row id — deleting requires it,
+        // and an offline-queued set has no server row to delete yet.
+        if (result?.set?.id) {
+          setUndo({
+            setId: result.set.id,
+            itemIndex: activeItemIndex,
+            summary: undoSummary,
+            at: Date.now(),
+          });
         }
       })
       .catch(() => {
         firedIndicesRef.current.delete(activeItemIndex);
         setError("Couldn't save that set — check your connection and retry.");
+        setUndo(null);
       });
   };
 
@@ -1501,6 +1661,24 @@ export function MovementFocusView({
           primary={logButton}
           accessory={isEditing ? dockCancelButton : dockAccessory}
           editing={isEditing}
+          undo={
+            undo ? (
+              <div className="cp-dock-undo" data-testid="session-dock-undo">
+                <span className="cp-dock-undo-msg">
+                  Logged <span className="mono">{undo.summary}</span>
+                </span>
+                <button
+                  type="button"
+                  className="cp-btn"
+                  onClick={() => void runUndo()}
+                  disabled={undoing}
+                  data-testid="session-dock-undo-button"
+                >
+                  {undoing ? "Undoing…" : "Undo"}
+                </button>
+              </div>
+            ) : null
+          }
         />
       )}
     </div>

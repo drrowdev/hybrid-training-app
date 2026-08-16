@@ -28,6 +28,7 @@ export function SessionDock({
   primary,
   accessory,
   editing = false,
+  undo,
   testId = "session-dock",
 }: {
   /** Rest countdown row. Rendered above the action row when present. */
@@ -38,17 +39,32 @@ export function SessionDock({
   accessory?: React.ReactNode;
   /** Editing a logged set is a distinct mode and is coloured as one. */
   editing?: boolean;
+  /**
+   * Transient "Logged X · Undo" row. Lives inside the dock rather than
+   * floating, so it stacks with the rest row instead of covering the CTA the
+   * way an independently-positioned toast would.
+   */
+  undo?: React.ReactNode;
   testId?: string;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
 
-  // Publish the dock's real height so `.cp-main` can reserve space for it.
-  // The height changes when the rest row appears/disappears, so measure
-  // continuously rather than once on mount.
+  // Publish the dock's real height so `.cp-main` can reserve space for it, and
+  // claim the bottom region for the duration of the session.
+  //
+  // The global tab bar is hidden while the dock is mounted: two stacked fixed
+  // bars cost 133px of a 667px screen, and a mis-tap on "Plan" mid-set drops
+  // you out of a live workout. The navigator sheet carries an explicit "Leave
+  // workout" row so this is a deliberate exit, not a trap.
+  //
+  // `--cp-bottomnav-h` is zeroed rather than the tab bar merely being hidden,
+  // because the dock and the rest timer both offset themselves by it.
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     const root = document.documentElement;
+    root.classList.add("cp-session-live");
+    root.style.setProperty("--cp-bottomnav-h", "0px");
     const publish = () => {
       root.style.setProperty("--cp-session-dock-h", `${Math.round(el.offsetHeight)}px`);
     };
@@ -57,6 +73,8 @@ export function SessionDock({
     ro.observe(el);
     return () => {
       ro.disconnect();
+      root.classList.remove("cp-session-live");
+      root.style.removeProperty("--cp-bottomnav-h");
       root.style.removeProperty("--cp-session-dock-h");
     };
   }, []);
@@ -67,6 +85,7 @@ export function SessionDock({
       className={`cp-session-dock${editing ? " cp-session-dock--editing" : ""}`}
       data-testid={testId}
     >
+      {undo}
       {rest}
       <div className="cp-session-dock-row">
         {primary}

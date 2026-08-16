@@ -1,21 +1,71 @@
 "use client";
 
 /**
- * OfflineSyncBadge — surfaces offline-logging status during a workout.
+ * OfflineSyncBadge — where a logged set currently lives.
  *
- * Three states, driven by `navigator.onLine` + the outbox pending count:
- *  - Offline with queued sets   → "Offline — N saved on this device"
- *  - Online with queued sets    → "Syncing N…"
- *  - Online, queue empty        → render nothing (the quiet happy path)
+ * Logging never blocks on the network (see SessionWorkArea.logSet): a set is
+ * written to a durable IndexedDB outbox first and replayed when connectivity
+ * returns. That makes the honest question not "did it save?" but "where is it
+ * saved?", so the badge names the actual state rather than collapsing
+ * everything into "offline":
  *
- * Set logging never blocks on the network (see SessionWorkArea.logSet), so this
- * is purely informational — reassurance that nothing was lost when the signal
- * drops in a gym basement.
+ *   offline, queued        → "Saved on this device"   (nothing is lost)
+ *   online, retry failed   → "Couldn't sync N"        (actionable)
+ *   online, queued         → "Syncing N…"             (in flight)
+ *   online, just drained   → "All sets synced"        (briefly, then quiet)
+ *   online, nothing queued → render nothing           (the happy path)
+ *
+ * The badge is never a blocker and never implies logging is unavailable — the
+ * failure mode that matters is a user in a gym basement believing their work
+ * was dropped and re-logging it.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-export function OfflineSyncBadge({ pendingCount }: { pendingCount: number }) {
+export type SyncState = "offline" | "failed" | "syncing" | "synced" | "idle";
+
+export function resolveSyncState(opts: {
+  online: boolean;
+  pendingCount: number;
+  failedCount: number;
+  recentlyDrained: boolean;
+}): SyncState {
+  const { online, pendingCount, failedCount, recentlyDrained } = opts;
+  if (!online && pendingCount > 0) return "offline";
+  if (online && failedCount > 0) return "failed";
+  if (online && pendingCount > 0) return "syncing";
+  if (online && pendingCount === 0 && recentlyDrained) return "synced";
+  // Offline with an empty queue is not worth a badge: nothing is at risk.
+  return "idle";
+}
+
+export function syncLabel(state: SyncState, pendingCount: number): string {
+  switch (state) {
+    case "offline":
+      return `Saved on this device — ${pendingCount} waiting to sync`;
+    case "failed":
+      return `Couldn't sync ${pendingCount} — still saved on this device`;
+    case "syncing":
+      return `Syncing ${pendingCount}…`;
+    case "synced":
+      return "All sets synced";
+    default:
+      return "";
+  }
+}
+
+export function OfflineSyncBadge({
+  pendingCount,
+  failedCount = 0,
+}: {
+  pendingCount: number;
+  /** Queued ops whose last replay attempt errored. */
+  failedCount?: number;
+}) {
   const [online, setOnline] = useState(true);
+  // "All sets synced" is only meaningful right after a drain — showing it
+  // permanently would be noise on a session that was never offline.
+  const [recentlyDrained, setRecentlyDrained] = useState(false);
+  const hadPending = useRef(false);
 
   useEffect(() => {
     const sync = () =>
@@ -29,27 +79,45 @@ export function OfflineSyncBadge({ pendingCount }: { pendingCount: number }) {
     };
   }, []);
 
-  // Quiet when there's nothing to report and we're connected.
-  if (pendingCount === 0 && online) return null;
+  useEffect(() => {
+    if (pendingCount > 0) {
+      hadPending.current = true;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- mirror queue depth into the transient "just drained" flag
+      setRecentlyDrained(false);
+      return;
+    }
+    if (!hadPending.current) return;
+    hadPending.current = false;
+    setRecentlyDrained(true);
+    const id = window.setTimeout(() => setRecentlyDrained(false), 4000);
+    return () => window.clearTimeout(id);
+  }, [pendingCount]);
 
-  const offline = !online;
-  const label = offline
-    ? `Offline — ${pendingCount} saved on this device`
-    : pendingCount > 0
-      ? `Syncing ${pendingCount}…`
-      : "Synced";
+  const state = resolveSyncState({
+    online,
+    pendingCount,
+    failedCount,
+    recentlyDrained,
+  });
+  if (state === "idle") return null;
 
-  const accent = offline ? "var(--cp-warning)" : "var(--cp-accent)";
+  const accent =
+    state === "failed"
+      ? "var(--cp-danger)"
+      : state === "offline"
+        ? "var(--cp-warning)"
+        : "var(--cp-accent)";
 
   return (
     <div
       role="status"
       data-testid="offline-sync-badge"
+      data-state={state}
       style={{
         display: "flex",
         alignItems: "center",
         gap: 8,
-        fontSize: 12,
+        fontSize: 12.5,
         padding: "6px 12px",
         marginBottom: 10,
         borderRadius: 8,
@@ -68,10 +136,10 @@ export function OfflineSyncBadge({ pendingCount }: { pendingCount: number }) {
           flexShrink: 0,
         }}
       />
-      <span>{label}</span>
-      {offline && pendingCount > 0 && (
+      <span>{syncLabel(state, pendingCount)}</span>
+      {state === "offline" && (
         <span style={{ color: "var(--cp-text-muted)" }}>
-          — they&apos;ll sync when you&apos;re back online
+          — keep logging, they&apos;ll go up when you reconnect
         </span>
       )}
     </div>

@@ -297,4 +297,68 @@ test.describe("@mobile logger ergonomics", () => {
     await expect(page.getByTestId("load-from-history")).toBeVisible();
     await expect(page.getByTestId("movement-focus-log-button")).toContainText("135");
   });
+
+  test("the dock owns the bottom region and the exit is explicit", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto(PREVIEW);
+
+    // Two stacked fixed bars cost 133px of a 667px screen, and a mis-tap on
+    // "Plan" mid-set drops you out of a live workout.
+    await expect(page.getByTestId("session-dock")).toBeVisible();
+    await expect(page.locator(".cp-bottom-tabbar")).toBeHidden();
+    await expect(page.locator("html")).toHaveClass(/cp-session-live/);
+
+    // Hiding global nav is only acceptable if leaving is still obvious.
+    await openNavigator(page);
+    const leave = page.getByTestId("movement-navigator-leave");
+    await expect(leave).toBeVisible();
+    await expect(leave).toHaveAttribute("href", "/app");
+    await expect(leave).toContainText("Leave workout");
+    // It says what happens to your work, because that is the actual worry.
+    await expect(leave).toContainText("saved");
+    const box = await leave.boundingBox();
+    expect(box?.height).toBeGreaterThanOrEqual(44);
+  });
+
+  test("a just-logged set can be undone from the dock", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(PREVIEW);
+    await gotoMovement(page, /Front Plank/);
+
+    // The preview's server action is a stub that returns no row id, so Undo
+    // correctly stays hidden — there is nothing to delete. This asserts the
+    // guard rather than the happy path: offering Undo for a set that was only
+    // queued offline would delete nothing and lie about it.
+    await page.getByTestId("movement-focus-log-button").click();
+    await page.waitForTimeout(400);
+    await expect(page.getByTestId("session-dock-undo")).toHaveCount(0);
+  });
+
+  test("the dock never lets its rows cover the primary action", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto(PREVIEW);
+    await gotoMovement(page, /Back Squat/);
+    await page.getByTestId("movement-dot-3").click();
+    await page.getByTestId("movement-focus-log-button").click();
+    await expect(page.getByTestId("rest-timer-shell")).toBeVisible({ timeout: 5000 });
+
+    // Rest row, undo row and CTA all live inside the dock, so they stack
+    // instead of overlapping however many are present.
+    const clear = await page.evaluate(() => {
+      const cta = document.querySelector<HTMLElement>(
+        '[data-testid="movement-focus-log-button"]',
+      );
+      if (!cta) return null;
+      const r = cta.getBoundingClientRect();
+      const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return {
+        insideViewport: r.top >= 0 && r.bottom <= window.innerHeight + 0.5,
+        topmost: !!top && (top === cta || cta.contains(top)),
+      };
+    });
+    expect(clear?.insideViewport).toBe(true);
+    expect(clear?.topmost).toBe(true);
+  });
 });

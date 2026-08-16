@@ -201,8 +201,24 @@ export function MovementNavigatorSheet({
               </div>
             );
           })}
-        </div>
+
+          {/* The global tab bar is hidden while the dock is mounted, so leaving a
+              live session has to be explicit and discoverable. It lives here
+              rather than in the dock so it can never be mistaken for the log
+              action. Nothing is lost: every set is already persisted (or queued
+              in the offline outbox) the moment it is logged. */}
+          <a
+            className="cp-nav-leave"
+            href="/app"
+            data-testid="movement-navigator-leave"
+          >
+            <span className="cp-nav-leave-title">Leave workout</span>
+            <span className="cp-nav-leave-sub">
+              Your logged sets are saved — you can pick this up later
+            </span>
+          </a>
       </div>
+    </div>
     </>
   );
 }

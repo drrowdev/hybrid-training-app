@@ -427,6 +427,25 @@ select option {
   background: color-mix(in srgb, var(--cp-warning) 6%, var(--cp-bg-elevated));
 }
 .cp-session-dock-row { display: flex; gap: 8px; align-items: stretch; }
+/* Undo stacks above the rest row inside the dock, so it can never cover the
+ * CTA the way an independently-positioned toast would. */
+.cp-dock-undo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 6px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--cp-border-strong);
+  background: var(--cp-surface);
+}
+.cp-dock-undo-msg {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--cp-text-soft);
+}
+.cp-dock-undo-msg .mono { color: var(--cp-text); font-weight: 650; }
+.cp-dock-undo button { min-height: 44px; padding: 0 14px; font-weight: 650; }
 .cp-session-dock-row > .cp-dock-cta {
   flex: 1;
   min-height: 56px;
@@ -447,12 +466,18 @@ select option {
   min-height: 56px;
 }
 
+/* While the dock is mounted it is the sole owner of the bottom region: the
+ * global tab bar is hidden so a mis-tap can't drop you out of a live set, and
+ * the two bars don't stack into 133px of permanent chrome on a 667px screen.
+ * The navigator sheet carries the explicit "Leave workout" exit. */
+html.cp-session-live .cp-bottom-tabbar { display: none !important; }
+
 /* Reserve exactly the dock's measured height at the bottom of the scroll
  * container so the last card is never trapped behind it. */
 @media (max-width: 768px) {
   body:has(.cp-session-dock) .cp-main {
     padding-bottom: calc(
-      96px + var(--cp-session-dock-h, 0px) + env(safe-area-inset-bottom)
+      24px + var(--cp-session-dock-h, 0px) + env(safe-area-inset-bottom)
     );
   }
 }
@@ -611,6 +636,27 @@ select option {
   border: 1px solid var(--cp-strength);
   border-radius: 5px;
   padding: 2px 5px;
+}
+
+.cp-nav-leave {
+  display: block;
+  margin-top: 18px;
+  padding: 12px 14px;
+  border-radius: 11px;
+  border: 1px dashed var(--cp-border-strong);
+  background: transparent;
+  color: var(--cp-text-soft);
+  text-decoration: none;
+  min-height: 58px;
+}
+.cp-nav-leave:hover { border-color: var(--cp-text-muted); color: var(--cp-text); }
+.cp-nav-leave-title { display: block; font-size: 14px; font-weight: 640; }
+.cp-nav-leave-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--cp-text-muted);
+  line-height: 1.35;
 }
 
 /* Sticky bottom action bar — sits below the fold for one-handed reach.

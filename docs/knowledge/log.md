@@ -534,3 +534,20 @@ Rebuilt the in-session logging surface around measured gym-floor ergonomics rath
 `e2e/logger-ergonomics-mobile.spec.ts` drives a dev-only fixture at `/dev/logger-preview` (404s outside development, no DB/auth needed) and asserts: CTA inside the viewport and topmost at its centre for every movement x every phone size; navigation present with and without rehab; no navigator row clipped; supplemental addressable; supersets bracketed; every control >= 44x44; rest timer never overlapping the CTA.
 
 **Open question deferred:** whether to hide the global tab bar during an active session. The external review recommended it (one owner of the bottom region, no accidental navigation away from a live session); it was not done here because it removes app-level navigation mid-workout and the reachability numbers pass without it.
+
+## [2026-08-16] decision | mobile logger — durability pass (undo, offline vocabulary, resume, dock ownership)
+Follow-up to the same-day logger rehaul. Closes the four items the external review raised that the first pass deferred.
+
+**Dock owns the bottom region.** The global tab bar is now hidden while the session dock is mounted (`html.cp-session-live`), and `--cp-bottomnav-h` is zeroed so the dock and rest timer stop offsetting for a bar that is not there. Two stacked fixed bars cost 133px of a 667px screen and a mis-tap on "Plan" mid-set dropped the user out of a live workout. This was explicitly deferred in the first pass because **the session page had no exit affordance** — hiding global nav without one would have trapped the user. The navigator sheet now carries an explicit "Leave workout · your logged sets are saved" row, so leaving is deliberate and states what happens to the work.
+
+**Offline vocabulary.** `OfflineSyncBadge` distinguished only offline / syncing. It now names the real state — `Saved on this device` / `Couldn't sync N` / `Syncing N…` / `All sets synced` (transient) / silent — and `SessionWorkArea` tracks a separate failed count from outbox entries with `attempts > 0 && lastError`. The failure mode being designed against is a user in a gym basement believing their work was dropped and re-logging it. The badge is never a blocker and never implies logging is unavailable.
+
+**Undo.** Logging is optimistic and the CTA is now a large docked target, which makes a mis-tap both easier and more consequential. A logged set offers `Logged 100 kg x 5 · Undo` for 8 seconds, rendered as a row INSIDE the dock so it stacks with the rest row rather than covering the CTA the way a floating toast would. Undo only appears once the real row id comes back — an offline-queued set has no server row to delete, and offering undo for it would delete nothing and lie about it.
+
+**Interruption recovery.** New `lib/sessions/session-resume.ts` persists active movement, cursor, unsaved draft and an **absolute** rest deadline to localStorage, restored once on mount and cleared on finish. Notes:
+- `RestTimer` already derived remaining time from wall-clock (`Date.now() - start`), so a throttled interval while backgrounded was never the bug; the bug was that the start instant lived only in memory and did not survive a reload or process eviction.
+- A draft is scoped to the movement AND slot it was captured on (`draftAppliesTo`) — restoring a squat's 115 kg onto a lateral raise would be worse than restoring nothing.
+- State older than 6h, from another session, or from a backwards-moving clock is discarded rather than restored.
+- 19 unit tests in `__tests__/session-resume.test.ts`. The suite runs in the `node` environment, so storage is stubbed rather than pulling in jsdom.
+
+Mobile e2e grew to 11 cases; the new ones pin dock ownership + a reachable ≥44px exit, the undo guard, and that no dock row (rest, undo) can cover the primary action.
