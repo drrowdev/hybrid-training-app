@@ -10,7 +10,9 @@ import type { PrescriptionMovementRow } from "../prescription-grouping";
 import {
   circuitNameOfRow,
   segmentSupersetRows,
+  segmentSupersetSections,
   supersetGroupOfRow,
+  supersetGroupOfSection,
 } from "../superset-grouping";
 
 function circuitRow(
@@ -117,5 +119,85 @@ describe("circuit-backed bracketing", () => {
       "link-1",
       "link-2",
     ]);
+  });
+});
+
+describe("bracketing main and supplemental lifts", () => {
+  // The preview used to bracket ACCESSORY rows only, because auto-pairing could
+  // only ever produce accessory pairs. A user link spans main and supplemental
+  // lifts too, and if those cards are not segmented the link the lifter created
+  // is invisible on the surface they check before training.
+  function section(
+    movementId: string,
+    circuit?: { id: string; position: number; size: number; name?: string },
+  ) {
+    const item: PrescriptionItem = {
+      movementId,
+      movementSlug: movementId,
+      movementName: movementId,
+      kind: "main",
+      sets: 1,
+      reps: 5,
+      ...(circuit
+        ? { circuit: { name: "Superset", rounds: 3, ...circuit } }
+        : {}),
+    };
+    return {
+      rowKey: movementId,
+      movementId,
+      movementName: movementId,
+      movementSlug: movementId,
+      warmups: [] as PrescriptionItem[],
+      sets: [0, 1, 2].map((i) => ({
+        item,
+        setNumber: i + 1,
+        isTopSet: false,
+        isBackOff: false,
+      })),
+    };
+  }
+
+  it("brackets two consecutive linked supplemental lifts", () => {
+    const segs = segmentSupersetSections([
+      section("barbell-row"),
+      section("pullup", { id: "link-1", position: 0, size: 2 }),
+      section("overhead-press", { id: "link-1", position: 1, size: 2 }),
+    ]);
+    expect(segs.map((s) => s.kind)).toEqual(["solo", "superset"]);
+    const cluster = segs[1]!;
+    expect(
+      cluster.kind === "superset" && cluster.sections.map((s) => s.movementId),
+    ).toEqual(["pullup", "overhead-press"]);
+  });
+
+  it("carries the link name so a tri-set doesn't read as a superset", () => {
+    const segs = segmentSupersetSections([
+      section("a", { id: "l", position: 0, size: 3, name: "Tri-set" }),
+      section("b", { id: "l", position: 1, size: 3, name: "Tri-set" }),
+      section("c", { id: "l", position: 2, size: 3, name: "Tri-set" }),
+    ]);
+    expect(segs).toHaveLength(1);
+    expect(segs[0]!.kind === "superset" && segs[0]!.name).toBe("Tri-set");
+  });
+
+  it("ignores warm-ups when reading the link, since they never rotate", () => {
+    const s = section("squat", { id: "link-1", position: 0, size: 2 });
+    s.warmups = [
+      { movementId: "squat", kind: "warmup", sets: 1, reps: 5 },
+    ] as PrescriptionItem[];
+    expect(supersetGroupOfSection(s)).toBe("link-1");
+  });
+
+  it("leaves an unlinked section solo", () => {
+    const segs = segmentSupersetSections([section("squat"), section("bench")]);
+    expect(segs.map((s) => s.kind)).toEqual(["solo", "solo"]);
+  });
+
+  it("renders a lone member solo rather than a half-bracket", () => {
+    const segs = segmentSupersetSections([
+      section("pullup", { id: "link-1", position: 0, size: 2 }),
+      section("row"),
+    ]);
+    expect(segs.map((s) => s.kind)).toEqual(["solo", "solo"]);
   });
 });

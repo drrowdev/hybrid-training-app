@@ -20,6 +20,23 @@ export interface LinkableMovement {
   isMain?: boolean;
   /** Already part of a built-in circuit (the AB Triad); cannot be linked. */
   lockedReason?: string;
+  /**
+   * Canonical slots this entry contributes when linked, when it stands for a
+   * GROUP rather than a single lift.
+   *
+   * The AB Triad is one engine-owned circuit of three movements. Supersetting a
+   * lift "with the AB Triad" is really a four-station circuit, so the triad is
+   * offered as one row that expands to its three slots — you pick the triad, not
+   * its parts. Absent ⇒ the entry contributes just its own `key`.
+   */
+  expandsTo?: readonly string[];
+}
+
+/** The canonical slots an entry contributes to a link. */
+export function slotsOf(movement: LinkableMovement): readonly string[] {
+  return movement.expandsTo && movement.expandsTo.length > 0
+    ? movement.expandsTo
+    : [movement.key];
 }
 
 /** Every movement already claimed by a link in this slot. */
@@ -30,14 +47,17 @@ export function linkedKeys(links: readonly SessionLink[]): Set<string> {
 /**
  * Movements the user may still pick: not locked by a built-in circuit, and not
  * already inside another link — a prescription item carries at most one circuit,
- * so a movement can belong to a single link only.
+ * so a movement can belong to a single link only. A group entry (the AB Triad)
+ * is withheld once ANY of its slots is claimed.
  */
 export function selectableMovements(
   movements: readonly LinkableMovement[],
   links: readonly SessionLink[],
 ): LinkableMovement[] {
   const claimed = linkedKeys(links);
-  return movements.filter((m) => !m.lockedReason && !claimed.has(m.key));
+  return movements.filter(
+    (m) => !m.lockedReason && !slotsOf(m).some((slot) => claimed.has(slot)),
+  );
 }
 
 /** The first free `link-N` id for this slot. */
@@ -48,16 +68,43 @@ export function nextLinkId(links: readonly SessionLink[]): string {
   return `link-${n}`;
 }
 
-/** True when the selection can become a link. */
+/**
+ * True when the selection can become a link.
+ *
+ * `movements` is required, not optional: the size that matters is the number of
+ * SLOTS the selection expands to, and a group entry (the AB Triad) contributes
+ * three. Defaulting it would silently answer "no" for every valid selection.
+ */
 export function canCreateLink(
   selected: readonly string[],
   links: readonly SessionLink[],
+  movements: readonly LinkableMovement[],
 ): boolean {
+  const size = expandSelection(movements, selected).length;
   return (
     selected.length >= 2 &&
-    selected.length <= MAX_LINK_MEMBERS &&
+    size >= 2 &&
+    size <= MAX_LINK_MEMBERS &&
     links.length < MAX_LINKS_PER_SERIES
   );
+}
+
+/**
+ * The canonical slots a selection contributes, in SLOT order, with group
+ * entries (the AB Triad) expanded to their members.
+ */
+export function expandSelection(
+  movements: readonly LinkableMovement[],
+  selected: readonly string[],
+): string[] {
+  const out: string[] = [];
+  for (const m of movements) {
+    if (!selected.includes(m.key) || m.lockedReason) continue;
+    for (const slot of slotsOf(m)) {
+      if (!out.includes(slot)) out.push(slot);
+    }
+  }
+  return out;
 }
 
 /**
@@ -65,18 +112,17 @@ export function canCreateLink(
  *
  * Members are stored in SLOT order rather than click order, so the link reads
  * the way the session is written and the engine's positions line up with how the
- * lifter sees the session. Returns the input unchanged when the selection can't
- * form a link.
+ * lifter sees the session. A group entry contributes all of its slots, so
+ * "back extension + AB Triad" becomes a four-station circuit. Returns the input
+ * unchanged when the selection can't form a link.
  */
 export function addLink(
   links: readonly SessionLink[],
   movements: readonly LinkableMovement[],
   selected: readonly string[],
 ): SessionLink[] {
-  if (!canCreateLink(selected, links)) return [...links];
-  const members = movements
-    .filter((m) => selected.includes(m.key) && !m.lockedReason)
-    .map((m) => m.key);
+  if (!canCreateLink(selected, links, movements)) return [...links];
+  const members = expandSelection(movements, selected);
   if (members.length < 2) return [...links];
   return [
     ...links,
@@ -208,30 +254,51 @@ export function activationLinkableMovements(args: {
   labelOf: (movementKey: string) => string;
   /** Source slots the engine already links (the AB Triad). */
   builtinCircuitSources: readonly string[];
-  lockedReason: string;
+  /** Display name for the built-in group, e.g. "AB Triad". */
+  builtinCircuitLabel: string;
 }): LinkableMovement[] {
-  const { slots, selected, labelOf, builtinCircuitSources, lockedReason } = args;
-  const locked = new Set(builtinCircuitSources);
+  const {
+    slots,
+    selected,
+    labelOf,
+    builtinCircuitSources,
+    builtinCircuitLabel,
+  } = args;
+  const inBuiltin = new Set(builtinCircuitSources);
+  // The built-in circuit only stands as a unit when all of its slots are present
+  // AND still filled; otherwise its movements are ordinary lifts again.
   const complete =
     builtinCircuitSources.length > 0 &&
-    builtinCircuitSources.every((source) =>
-      slots.some((slot) => slot.sourceMovement === source),
+    builtinCircuitSources.every(
+      (source) =>
+        slots.some((slot) => slot.sourceMovement === source) &&
+        selected[source] != null,
     );
-  return slots.flatMap((slot) => {
+  const out: LinkableMovement[] = [];
+  let builtinEmitted = false;
+  for (const slot of slots) {
     const movement = selected[slot.sourceMovement];
-    if (movement == null) return [];
-    return [
-      {
-        key: slot.sourceMovement,
-        label: labelOf(movement),
-        // Activation's slots are all prescribed program lifts, not accessories.
+    if (movement == null) continue;
+    if (complete && inBuiltin.has(slot.sourceMovement)) {
+      // One row for the whole group, at the position of its first member.
+      if (builtinEmitted) continue;
+      builtinEmitted = true;
+      out.push({
+        key: builtinCircuitSources[0]!,
+        label: builtinCircuitLabel,
         isMain: true,
-        ...(complete && locked.has(slot.sourceMovement)
-          ? { lockedReason }
-          : {}),
-      },
-    ];
-  });
+        expandsTo: builtinCircuitSources,
+      });
+      continue;
+    }
+    out.push({
+      key: slot.sourceMovement,
+      label: labelOf(movement),
+      // Activation's slots are all prescribed program lifts, not accessories.
+      isMain: true,
+    });
+  }
+  return out;
 }
 
 /** True when this link contains a main lift. */

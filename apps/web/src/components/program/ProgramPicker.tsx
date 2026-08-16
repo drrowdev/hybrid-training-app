@@ -1369,33 +1369,43 @@ export function ProgramPicker({
     },
     [],
   );
-  const AB_TRIAD_LOCK_REASON =
-    "The AB Triad is already linked as a circuit, so its movements can\u2019t be added to another superset.";
+  const AB_TRIAD_LABEL = "AB Triad";
 
   /**
    * The lifts a slot can link, in session order.
    *
    * Movement keys are the CANONICAL slot identity the engine matches on
    * (`sourceMovement ?? movement`), so a link keeps working when the underlying
-   * movement is substituted. The AB Triad is locked out whenever the complete
-   * triad is present: it is already a circuit, and an item carries at most one.
+   * movement is substituted. The AB Triad is offered as ONE entry rather than
+   * three: it is a single engine-owned circuit, so supersetting something "with
+   * the AB Triad" means a four-station circuit, not picking its parts.
    */
   const linkableMovementsFor = (
     movementKeys: readonly string[],
   ): LinkableMovement[] => {
     const triad = AB_TRIAD_MOVEMENTS as readonly string[];
     const completeTriad = triad.every((m) => movementKeys.includes(m));
-    return movementKeys.map((key) => ({
-      key,
-      label: customMovementLabel(key),
-      isMain: !key.startsWith("catalog:"),
-      ...(completeTriad && triad.includes(key)
-        ? {
-            lockedReason:
-              "The AB Triad is already linked as a circuit, so its movements can\u2019t be added to another superset.",
-          }
-        : {}),
-    }));
+    const out: LinkableMovement[] = [];
+    let triadEmitted = false;
+    for (const key of movementKeys) {
+      if (completeTriad && triad.includes(key)) {
+        if (triadEmitted) continue;
+        triadEmitted = true;
+        out.push({
+          key: triad[0]!,
+          label: AB_TRIAD_LABEL,
+          isMain: false,
+          expandsTo: triad,
+        });
+        continue;
+      }
+      out.push({
+        key,
+        label: customMovementLabel(key),
+        isMain: !key.startsWith("catalog:"),
+      });
+    }
+    return out;
   };
   const [rehabDrafts, setRehabDrafts] = useState<RehabDraft[]>(
     editContext?.customization &&
@@ -4116,7 +4126,7 @@ export function ProgramPicker({
                                 selected: draft.movements,
                                 labelOf: customMovementLabel,
                                 builtinCircuitSources: AB_TRIAD_SOURCES,
-                                lockedReason: AB_TRIAD_LOCK_REASON,
+                                builtinCircuitLabel: AB_TRIAD_LABEL,
                               })}
                               links={sessionLinks[session.key] ?? []}
                               onChange={setLinksForSeries}
