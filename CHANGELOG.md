@@ -18,10 +18,11 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 - Movements the template already links (the AB Triad) can't be added to a link —
   an item carries at most one circuit.
 - Migration 0129 drops `profiles.superset_accessories` and
-  `training_blocks.superset_accessories`. **Ship the code release first**: the
-  plan queries, logger and wizard all select those columns by name. No
-  prescription or set_log is migrated, so existing blocks keep identical
-  prescribed work and only lose the auto-paired brackets.
+  `training_blocks.superset_accessories` (rollback SQL is inlined in the
+  migration). **Ship the code release first**: the plan queries, logger and
+  wizard all select those columns by name. No prescription or set_log is
+  migrated, so existing blocks keep identical prescribed work and only lose the
+  auto-paired brackets.
 
 ### Supported forearm rehab movements
 - Kept the general wrist-curl, reverse-wrist-curl, and pronation/supination

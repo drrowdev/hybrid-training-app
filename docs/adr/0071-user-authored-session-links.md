@@ -161,8 +161,10 @@ enforced by the call, not by the current call graph.
   derived, so the same items, sets and reps are produced; only the grouping and
   the shown duration change.
 - `profiles.superset_accessories` and `training_blocks.superset_accessories` are
-  dropped (migration 0129, with a down migration). Sole-user app; owner approved
-  the destructive drop. **Ship the code release first** — running the migration
+  dropped (migration 0129; the rollback SQL is inlined in the migration, because
+  the drift guard requires every `.sql` under `drizzle/` to be journaled and
+  drizzle journals only forward migrations). Sole-user app; owner approved the
+  destructive drop. **Ship the code release first** — running the migration
   against an older build breaks the plan queries, the logger and the wizard,
   which all select the columns by name.
 - The AB Triad keeps precedence: when the complete triad is present, a user link

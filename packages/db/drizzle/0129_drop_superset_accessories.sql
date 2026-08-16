@@ -18,8 +18,22 @@
 -- queries (`planner/queries.ts`), the session logger and the program wizard,
 -- all of which select the columns by name.
 --
--- The down migration in `0129_drop_superset_accessories.down.sql` restores the
--- schema but NOT the values; they are intentionally discarded.
+-- ROLLBACK (schema only — the dropped values are intentionally discarded):
+--
+--   ALTER TABLE public.profiles
+--     ADD COLUMN IF NOT EXISTS superset_accessories boolean NOT NULL DEFAULT false;
+--   ALTER TABLE public.training_blocks
+--     ADD COLUMN IF NOT EXISTS superset_accessories boolean;
+--
+-- That restores `profiles.superset_accessories` to its original default (false)
+-- and `training_blocks.superset_accessories` to null ("inherit profile /
+-- legacy"), which is exactly what a fresh row carried. It does NOT restore
+-- auto-pairing behaviour — the code that read these columns was deleted in the
+-- same release, so rolling the application back is what re-activates it.
+--
+-- Kept inline rather than as a sibling `.down.sql`: the migration-drift guard
+-- requires every .sql file under drizzle/ to have a `_journal.json` entry, and
+-- drizzle only journals forward migrations.
 
 ALTER TABLE public.training_blocks
   DROP COLUMN IF EXISTS superset_accessories;
