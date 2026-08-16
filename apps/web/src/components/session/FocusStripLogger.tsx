@@ -82,6 +82,8 @@ export type FocusStripLoggerProps = {
     >
   >;
   bodyweightMovementIds?: ReadonlySet<string>;
+  /** movementId → catalog `movements.equipment` tag; sizes the ± weight stepper. */
+  equipmentByMovementId?: ReadonlyMap<string, string | null>;
 };
 
 type SwapTarget = { id: string; slug: string; displayName: string };
@@ -178,6 +180,7 @@ export function FocusStripLogger({
   preferStandardLbPlates,
   bwGateStateByFamily,
   bodyweightMovementIds,
+  equipmentByMovementId,
 }: FocusStripLoggerProps) {
   const router = useRouter();
   const linkedCircuitByMovementId = useMemo(
@@ -898,6 +901,11 @@ export function FocusStripLogger({
               bwGateStateByFamily={bwGateStateByFamily}
               bodyweightCapable={
                 bodyweightMovementIds?.has(activeOriginal.movementId) ?? false
+              }
+              equipmentTag={
+                equipmentByMovementId?.get(activeGroup.movementId) ??
+                equipmentByMovementId?.get(activeOriginal.movementId) ??
+                null
               }
               suppressRestAfterSave={
                 activeCircuit
