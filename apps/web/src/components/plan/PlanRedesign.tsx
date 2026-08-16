@@ -2865,52 +2865,6 @@ export function SessionDrawer({
           .drawer-drag-handle {
             display: none;
           }
-          /* Mobile (<=768px): full-screen bottom sheet with slide-up
-             entrance, visible grab handle, and pointer-driven swipe-
-             down dismiss. Desktop stays as the right-side panel. */
-          @media (max-width: 768px) {
-            .plan-drawer {
-              top: 0;
-              right: 0;
-              left: 0;
-              bottom: 0;
-              inset: 0;
-              width: 100%;
-              border-left: 0;
-              animation: plan-drawer-slide-up 240ms ease-out;
-            }
-            .drawer-drag-handle {
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              margin: 12px 0 8px;
-              touch-action: none;
-              cursor: grab;
-              user-select: none;
-            }
-            .drawer-drag-handle .grip {
-              display: block;
-              width: 36px;
-              height: 4px;
-              border-radius: 2px;
-              background: var(--cp-border-strong, var(--cp-border));
-            }
-            .plan-drawer .drawer-head {
-              touch-action: none;
-              /* Full-screen on mobile (inset:0) puts the sticky header under the
-                 status bar / notch, making the × close button hard to reach.
-                 Keep its content (incl. the close button) below the safe area
-                 whether the header is at rest or stuck to the top on scroll. */
-              padding-top: max(18px, env(safe-area-inset-top));
-            }
-          }
-          @keyframes plan-drawer-slide-up {
-            from { transform: translateY(100%); }
-            to   { transform: translateY(0); }
-          }
-          @media (prefers-reduced-motion: reduce) {
-            .plan-drawer { animation: none; }
-          }
           .plan-drawer .drawer-head {
             position: sticky;
             top: 0;
@@ -2941,6 +2895,82 @@ export function SessionDrawer({
             padding: 0 4px;
           }
           .plan-drawer .drawer-body { padding: 18px 20px 32px; flex: 1; }
+          /* Mobile (<=768px): full-screen bottom sheet with slide-up
+             entrance, visible grab handle, and pointer-driven swipe-
+             down dismiss. Desktop stays as the right-side panel.
+
+             Declared *after* the base .drawer-head / .drawer-body rules on
+             purpose: the selectors have equal specificity, so when this block
+             sat earlier the base "padding: 18px 20px" shorthand won and reset
+             the safe-area padding-top back to 18px. */
+          @media (max-width: 768px) {
+            .plan-drawer {
+              top: 0;
+              right: 0;
+              left: 0;
+              bottom: 0;
+              inset: 0;
+              width: 100%;
+              border-left: 0;
+              animation: plan-drawer-slide-up 240ms ease-out;
+              /* Only .drawer-body scrolls (below), so the grab handle and the
+                 header — and with them the × close button — stay pinned rather
+                 than sliding under the status bar / notch on scroll. */
+              overflow: hidden;
+            }
+            .drawer-drag-handle {
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              /* inset:0 puts the top of the sheet under the status bar /
+                 Dynamic Island, so push the grip past the safe area. */
+              margin: calc(env(safe-area-inset-top, 0px) + 10px) 0 6px;
+              flex: 0 0 auto;
+              touch-action: none;
+              cursor: grab;
+              user-select: none;
+            }
+            .drawer-drag-handle .grip {
+              display: block;
+              width: 36px;
+              height: 4px;
+              border-radius: 2px;
+              background: var(--cp-border-strong, var(--cp-border));
+            }
+            .plan-drawer .drawer-head {
+              /* The handle above already clears the safe area and the header no
+                 longer scrolls, so it needs no sticky offset of its own. */
+              position: static;
+              padding-top: 4px;
+              flex: 0 0 auto;
+              touch-action: none;
+            }
+            /* 24px glyph in a 44px hit area — the close target was otherwise
+               below the minimum touch size and sat partly under the notch. */
+            .plan-drawer .close {
+              min-width: 44px;
+              min-height: 44px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              margin-right: -10px;
+            }
+            .plan-drawer .drawer-body {
+              flex: 1 1 auto;
+              min-height: 0;
+              overflow-y: auto;
+              overscroll-behavior: contain;
+              -webkit-overflow-scrolling: touch;
+              padding-bottom: calc(32px + env(safe-area-inset-bottom, 0px));
+            }
+          }
+          @keyframes plan-drawer-slide-up {
+            from { transform: translateY(100%); }
+            to   { transform: translateY(0); }
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .plan-drawer { animation: none; }
+          }
           .plan-drawer .drawer-actions {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
