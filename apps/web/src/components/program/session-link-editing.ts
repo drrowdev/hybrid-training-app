@@ -189,6 +189,51 @@ export function pruneLinksToMovements(
     .filter((link) => link.members.length >= 2);
 }
 
+/**
+ * Linkable lifts for an Activation strength session.
+ *
+ * Activation does not use the `sessionMovements` list the weekly templates do —
+ * it has fixed program slots, each optionally overridden or removed. Members are
+ * keyed by the CANONICAL slot (`sourceMovement`) rather than the movement
+ * currently filling it, because that is the identity the engine resolves links
+ * against, so a link survives swapping the exercise in that slot.
+ *
+ * A removed slot is not offered. The built-in AB Triad is locked while it is
+ * complete, since an item carries at most one circuit.
+ */
+export function activationLinkableMovements(args: {
+  slots: ReadonlyArray<{ sourceMovement: string }>;
+  /** Canonical slot -> the movement filling it, or null when removed. */
+  selected: Readonly<Record<string, string | null>>;
+  labelOf: (movementKey: string) => string;
+  /** Source slots the engine already links (the AB Triad). */
+  builtinCircuitSources: readonly string[];
+  lockedReason: string;
+}): LinkableMovement[] {
+  const { slots, selected, labelOf, builtinCircuitSources, lockedReason } = args;
+  const locked = new Set(builtinCircuitSources);
+  const complete =
+    builtinCircuitSources.length > 0 &&
+    builtinCircuitSources.every((source) =>
+      slots.some((slot) => slot.sourceMovement === source),
+    );
+  return slots.flatMap((slot) => {
+    const movement = selected[slot.sourceMovement];
+    if (movement == null) return [];
+    return [
+      {
+        key: slot.sourceMovement,
+        label: labelOf(movement),
+        // Activation's slots are all prescribed program lifts, not accessories.
+        isMain: true,
+        ...(complete && locked.has(slot.sourceMovement)
+          ? { lockedReason }
+          : {}),
+      },
+    ];
+  });
+}
+
 /** True when this link contains a main lift. */
 export function linkHasMainLift(
   link: SessionLink,

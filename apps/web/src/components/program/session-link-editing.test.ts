@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 import type { SessionLink } from "@/lib/platform/session-links";
 import {
+  activationLinkableMovements,
   addLink,
   canCreateLink,
   linkHasMainLift,
@@ -187,6 +188,77 @@ describe("main-lift detection (DC-K4)", () => {
     const b = link("link-2", ["squat", "bench"]);
     expect(linkHasMainLift(a, MOVEMENTS)).toBe(false);
     expect(linkHasMainLift(b, MOVEMENTS)).toBe(true);
+  });
+});
+
+describe("activationLinkableMovements", () => {
+  // Activation has fixed program slots rather than a movement list, so its
+  // linkable set is derived differently — but the members are still canonical
+  // slot ids, which is what lets a link survive swapping the exercise.
+  const TRIAD = ["hanging-leg-raise", "hanging-knee-raise", "toes-to-bar"];
+  const LOCK = "The AB Triad is already linked as a circuit.";
+  const label = (key: string) => `LBL:${key}`;
+
+  const build = (
+    slots: string[],
+    selected: Record<string, string | null>,
+  ) =>
+    activationLinkableMovements({
+      slots: slots.map((sourceMovement) => ({ sourceMovement })),
+      selected,
+      labelOf: label,
+      builtinCircuitSources: TRIAD,
+      lockedReason: LOCK,
+    });
+
+  it("keys members by the canonical slot, not the movement filling it", () => {
+    const out = build(["bench", "barbell-row"], {
+      bench: "catalog:99",
+      "barbell-row": "barbell-row",
+    });
+    expect(out.map((m) => m.key)).toEqual(["bench", "barbell-row"]);
+    // Label follows the CURRENT exercise; identity does not.
+    expect(out[0]!.label).toBe("LBL:catalog:99");
+  });
+
+  it("omits a removed slot", () => {
+    const out = build(["bench", "barbell-row", "pullup"], {
+      bench: "bench",
+      "barbell-row": null,
+      pullup: "pullup",
+    });
+    expect(out.map((m) => m.key)).toEqual(["bench", "pullup"]);
+  });
+
+  it("treats every Activation slot as a main lift, so linking one warns", () => {
+    const out = build(["bench"], { bench: "bench" });
+    expect(out[0]!.isMain).toBe(true);
+  });
+
+  it("locks the AB Triad while the whole triad is present", () => {
+    const slots = ["squat", ...TRIAD];
+    const selected = Object.fromEntries(slots.map((s) => [s, s]));
+    const out = build(slots, selected);
+    expect(out.find((m) => m.key === "squat")!.lockedReason).toBeUndefined();
+    for (const source of TRIAD) {
+      expect(out.find((m) => m.key === source)!.lockedReason).toBe(LOCK);
+    }
+  });
+
+  it("leaves triad movements linkable when the triad is incomplete", () => {
+    const slots = ["squat", "hanging-leg-raise", "toes-to-bar"];
+    const selected = Object.fromEntries(slots.map((s) => [s, s]));
+    const out = build(slots, selected);
+    expect(out.every((m) => m.lockedReason == null)).toBe(true);
+  });
+
+  it("preserves session order", () => {
+    const out = build(["c", "a", "b"], { a: "a", b: "b", c: "c" });
+    expect(out.map((m) => m.key)).toEqual(["c", "a", "b"]);
+  });
+
+  it("returns nothing when every slot is removed", () => {
+    expect(build(["a", "b"], { a: null, b: null })).toEqual([]);
   });
 });
 
