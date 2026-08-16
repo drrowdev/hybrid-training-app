@@ -65,7 +65,10 @@ export function TmSection({
   const allSet = setCount === total;
 
   return (
-    <div style={{ display: "grid", gap: 20 }}>
+    // See the page shell: auto grid tracks inherit the widest child's
+    // min-content width, so the track is capped to keep the sections inside
+    // the viewport on a phone.
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 20 }}>
       <section className="cp-card" style={{ padding: 20 }}>
         <div className={styles.head}>
           <span className={styles.headLabel}>Main lifts</span>

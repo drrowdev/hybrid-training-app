@@ -6,6 +6,7 @@ import {
   isMovementComplete,
   autoCursorForGroup,
   effectiveCursor,
+  pinnedCursorForGroup,
   lastMainSlot,
   bucketLabelForKind,
   bucketPositionForSlot,
@@ -182,6 +183,29 @@ describe("autoCursorForGroup + effectiveCursor", () => {
     expect(effectiveCursor(2, 3)).toBe(3);
     expect(effectiveCursor(2, null)).toBe(2);
     expect(effectiveCursor(2, 0)).toBe(0);
+  });
+
+  it("clamps the cursor into the group's slot range", () => {
+    // A pinned slot can outlive the movement it was picked on (the focus strip
+    // reuses one logger across movements) or the group can shrink under it. An
+    // out-of-range cursor resolves to no prescription item, which used to blank
+    // the logger mid-workout — leaving only the movement name on screen.
+    expect(effectiveCursor(0, 4, 3)).toBe(2);
+    expect(effectiveCursor(0, -1, 3)).toBe(0);
+    expect(effectiveCursor(9, null, 3)).toBe(2);
+    expect(effectiveCursor(0, 2, 3)).toBe(2);
+    expect(effectiveCursor(0, 1, 0)).toBe(0);
+  });
+
+  it("only applies a manual pin to the movement it was made on", () => {
+    expect(pinnedCursorForGroup({ key: "press", slot: 4 }, "press")).toBe(4);
+    expect(pinnedCursorForGroup({ key: "press", slot: 4 }, "curl")).toBeNull();
+    expect(pinnedCursorForGroup(null, "press")).toBeNull();
+    // Rehab and core work can share a movement id — the group key keeps the
+    // two sections' cursors apart.
+    expect(
+      pinnedCursorForGroup({ key: "rehab:squat", slot: 1 }, "squat"),
+    ).toBeNull();
   });
 });
 

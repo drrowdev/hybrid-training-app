@@ -86,6 +86,9 @@
   padding: 0 15px 0 0;
   cursor: pointer;
   outline: none;
+  /* A `<select>` is intrinsically as wide as its widest option; without
+     `min-width: 0` a long variant name widens the row past the viewport. */
+  min-width: 0;
   max-width: 100%;
   text-overflow: ellipsis;
   background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='6' viewBox='0 0 8 6'%3E%3Cpath fill='%238fb39b' d='M4 6 0 0h8z'/%3E%3C/svg%3E");
@@ -301,4 +304,20 @@
   color: var(--cp-text-muted);
   margin-top: 14px;
   line-height: 1.5;
+}
+
+/* Phones — the role label ("VERTICAL PRESS (OVERHEAD)") plus the variant
+   dropdown plus Estimate + the numeric input don't fit on one line, which
+   squeezed the label down to a few characters per row. Give the name the full
+   width and drop the controls onto a right-aligned second line. */
+@media (max-width: 480px) {
+  .lift {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: 10px;
+  }
+
+  .linfo {
+    flex: 1 1 100%;
+  }
 }

@@ -113,13 +113,16 @@ export function TmAutoForm({
         }}
       >
       {mode === "new" && (
-        <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 2, minWidth: 0 }}>
           <Label>Pick your variant</Label>
           <select
             value={movementId}
             onChange={(e) => onMovement(e.target.value)}
             aria-label="Pick a variant"
-            style={{ padding: "8px 10px", fontSize: 14 }}
+            // A `<select>` is intrinsically as wide as its widest option, and
+            // catalog movement names are long — without this it pushes the
+            // whole page wider than a phone viewport.
+            style={{ padding: "8px 10px", fontSize: 14, width: "100%", minWidth: 0, maxWidth: "100%" }}
           >
             <option value="">— variant —</option>
             {candidateGroups

@@ -17,6 +17,8 @@ import {
   bucketPositionForSlot,
   effectiveCursor,
   bucketLabelForKind,
+  movementGroupKey,
+  pinnedCursorForGroup,
   roundToPlate,
   type MovementGroup,
 } from "@/lib/sessions/movement-grouping";
@@ -179,20 +181,30 @@ export function MovementFocusView({
   // intact (the server still computes priorBests for other consumers).
   void priorBest;
   const totalSlots = group.itemIndices.length;
+  const groupKey = movementGroupKey(group);
   const autoCursor = useMemo(
     () => autoCursorForGroup(group, loggedItemIndices),
     [group, loggedItemIndices],
   );
-  const [manualCursor, setManualCursor] = useState<number | null>(initialCursor);
+  // The manual cursor is pinned to the movement it was picked on. The focus
+  // strip reuses ONE instance of this component for every movement in the
+  // session, so a bare slot number leaks across movements: pin slot 4 while
+  // editing a 5-set lift, tap a 3-set lift, and slot 4 resolves to no
+  // prescription item — the card renders its header and nothing else. Scoping
+  // the pin makes a different movement fall back to its own auto cursor.
+  const [manualPin, setManualPin] = useState<{ key: string; slot: number } | null>(
+    initialCursor != null ? { key: groupKey, slot: initialCursor } : null,
+  );
   // Adopt parent-pinned cursor changes (e.g. user taps "Edit sets" on
   // a different completed card). We do NOT clear back to null when
-  // the parent passes null — `setManualCursor(null)` after a save is
+  // the parent passes null — `setManualPin(null)` after a save is
   // already the path that hands control back to the auto cursor.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- mirror parent-pinned cursor into local state
-    if (initialCursor != null) setManualCursor(initialCursor);
-  }, [initialCursor]);
-  const cursor = effectiveCursor(autoCursor, manualCursor);
+    if (initialCursor != null) setManualPin({ key: groupKey, slot: initialCursor });
+  }, [groupKey, initialCursor]);
+  const manualCursor = pinnedCursorForGroup(manualPin, groupKey);
+  const cursor = effectiveCursor(autoCursor, manualCursor, totalSlots);
 
   const activeItem = group.items[cursor];
   const activeItemIndex = group.itemIndices[cursor]!;
@@ -525,7 +537,7 @@ export function MovementFocusView({
             setError(result.error);
             return;
           }
-          setManualCursor(cursor);
+          setManualPin({ key: groupKey, slot: cursor });
           router.refresh();
         })
         .catch(() => {
@@ -561,7 +573,7 @@ export function MovementFocusView({
     hapticTick(hapticsEnabled);
     // Reset manual cursor — auto advances when the parent rerenders with the
     // optimistic loggedItemIndices.
-    setManualCursor(null);
+    setManualPin(null);
     setJustLoggedAt(Date.now());
     if (flash && (flash.isWeightPr || flash.isE1rmPr || flash.e1rmKg != null)) {
       setPrFlash(flash);
@@ -635,7 +647,7 @@ export function MovementFocusView({
       }
       hapticTick(hapticsEnabled);
       setSkipMenuOpen(false);
-      setManualCursor(null);
+      setManualPin(null);
       // Skipped sets must not trigger PR/e1RM toasts or the rest timer
       // — they are intentionally "no work".
       onSaved?.({
@@ -691,7 +703,7 @@ export function MovementFocusView({
       }
       hapticTick(hapticsEnabled);
       setSkipMenuOpen(false);
-      setManualCursor(null);
+      setManualPin(null);
       onSaved?.({ itemIndex: activeItemIndex, isLast: true });
     } finally {
       setSkipPending(false);
@@ -745,7 +757,7 @@ export function MovementFocusView({
         loggedItemIndices={loggedItemIndices}
         skippedItemIndices={skippedItemIndices}
         cursor={cursor}
-        onPickSlot={(i) => setManualCursor(i)}
+        onPickSlot={(i) => setManualPin({ key: groupKey, slot: i })}
       />
 
       <div
