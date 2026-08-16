@@ -420,6 +420,48 @@ describe("PlanRedesign — mobile drawer (full-screen sheet, swipe-down dismiss)
     expect(html).toContain("@keyframes plan-drawer-slide-up");
     expect(html).toMatch(/@media\s*\(\s*max-width:\s*768px\s*\)[\s\S]*?\.drawer-drag-handle\s*\{[\s\S]*?display:\s*flex/);
   });
+
+  it("keeps the header + close button clear of the status bar / notch", async () => {
+    const { SessionDrawer } = await import("./PlanRedesign");
+    const html = renderToStaticMarkup(
+      <SessionDrawer
+        session={session()}
+        today="2026-05-26"
+        weeks={4}
+        logHrefBase="/app/sessions/start"
+        onClose={() => {}}
+        moveAction={noop}
+        skipAction={noop}
+        unskipAction={noop}
+        updateNotesAction={async () => ({ ok: true as const })}
+        startSessionAction={noop}
+      />,
+    );
+
+    // Regression: the mobile block must be declared AFTER the base
+    // `.plan-drawer .drawer-head { padding: 18px 20px }` rule. Both selectors
+    // have identical specificity, so when the media query came first the base
+    // `padding` shorthand won and reset the safe-area offset — dropping the
+    // title and × close button under the status bar / Dynamic Island.
+    const baseHead = html.indexOf(".plan-drawer .drawer-head {");
+    const mobileBlock = html.search(/@media\s*\(\s*max-width:\s*768px\s*\)\s*\{\s*\.plan-drawer\s*\{/);
+    expect(baseHead).toBeGreaterThan(-1);
+    expect(mobileBlock).toBeGreaterThan(baseHead);
+
+    const mobileCss = html.slice(mobileBlock);
+    // Grab handle clears the safe area, so the sheet's own chrome starts below it.
+    expect(mobileCss).toMatch(
+      /\.drawer-drag-handle\s*\{[\s\S]*?margin:\s*calc\(env\(safe-area-inset-top[\s\S]*?\)/,
+    );
+    // Only the body scrolls, so the header never slides back under the notch.
+    expect(mobileCss).toMatch(/\.plan-drawer\s*\{[\s\S]*?overflow:\s*hidden/);
+    expect(mobileCss).toMatch(/\.plan-drawer \.drawer-head\s*\{[\s\S]*?position:\s*static/);
+    expect(mobileCss).toMatch(/\.plan-drawer \.drawer-body\s*\{[\s\S]*?overflow-y:\s*auto/);
+    // × gets a 44px minimum touch target.
+    expect(mobileCss).toMatch(
+      /\.plan-drawer \.close\s*\{[\s\S]*?min-width:\s*44px[\s\S]*?min-height:\s*44px/,
+    );
+  });
 });
 
 describe("SessionDrawer — Plan review-only mode", () => {
