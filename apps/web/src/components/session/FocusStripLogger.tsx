@@ -679,11 +679,9 @@ export function FocusStripLogger({
                 equipmentByMovementId?.get(activeOriginal.movementId) ??
                 null
               }
-              suppressRestAfterSave={circuitSuppressesRest(
-                activeOriginal,
-                activeCircuit,
-                activeNextItemIndex,
-              )}
+              suppressRestForItemIndex={(itemIndex) =>
+                circuitSuppressesRest(activeOriginal, activeCircuit, itemIndex)
+              }
               focusStrip
               dockAccessory={
                 <button
