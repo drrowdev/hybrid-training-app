@@ -43,6 +43,7 @@ import {
   type FocusMuscle,
 } from "@/lib/planner/focus-muscles";
 import { isOverdue, overdueDays } from "@/lib/planner/overdue";
+import { prescriptionItemsHaveStrength } from "@/lib/sessions/strength-prescribed";
 import { LogNowDateForm } from "@/components/plan/LogNowDateForm";
 import { addDaysToYmd } from "@/lib/dates";
 import {
@@ -2251,6 +2252,7 @@ export function SessionDrawer({
   unskipAction,
   updateNotesAction,
   startSessionAction,
+  markCardioDoneAction,
   allowLogging = true,
 }: {
   session: PlanSessionInput;
@@ -2274,6 +2276,21 @@ export function SessionDrawer({
     notes: string,
   ) => Promise<{ ok?: true; error?: string }>;
   startSessionAction?: (formData: FormData) => Promise<void> | void;
+  /**
+   * One-tap completion for a PURE cardio slot. When supplied, the drawer's
+   * "Mark done" finishes the session in place instead of routing the lifter to
+   * the session screen only to press an identical "Mark done" there. The action
+   * is `markExternalCardioComplete`: it lazily materialises the session, writes
+   * the cardio log and completes the session, and is idempotent on re-click.
+   * Omitted (or a hybrid/strength slot) falls back to the navigation link,
+   * because those sessions still need sets logged.
+   */
+  markCardioDoneAction?: (formData: FormData) => Promise<{
+    ok?: true;
+    error?: string;
+    sessionId?: string;
+    sessionCompleted?: boolean;
+  }>;
   /** Plan is review/edit-only; Today keeps workout logging actions enabled. */
   allowLogging?: boolean;
 }) {
@@ -2286,11 +2303,56 @@ export function SessionDrawer({
   // open so the user can retry without losing context.
   const [swapError, setSwapError] = useState<string | null>(null);
   const [swapPending, setSwapPending] = useState(false);
+  // One-tap cardio completion (see `markCardioDoneAction`). Kept separate from
+  // the swap error so a failed finish doesn't clear a swap message.
+  const [cardioDoneError, setCardioDoneError] = useState<string | null>(null);
+  const [cardioDonePending, setCardioDonePending] = useState(false);
   const isToday = session.date === today;
   const overdue = isOverdue(sessionToOverdueCandidate(session), today);
   const overdueDayCount = overdue
     ? overdueDays(sessionToOverdueCandidate(session), today)
     : 0;
+
+  // One-tap cardio: the index of the cardio item to complete, or null when this
+  // slot isn't a pure cardio session. Gated on the SAME predicate the server
+  // action uses for `isPureCardio` (plan §6.9) so the drawer can never offer a
+  // one-tap finish for a session the server would refuse to complete.
+  const pureCardioItemIndex = (() => {
+    if (!markCardioDoneAction) return null;
+    const items = session.items ?? [];
+    if (prescriptionItemsHaveStrength(items)) return null;
+    const idx = items.findIndex((it) =>
+      typeof it?.kind === "string" && it.kind.startsWith("cardio_"),
+    );
+    return idx >= 0 ? idx : null;
+  })();
+
+  const onMarkCardioDone = () => {
+    if (pureCardioItemIndex == null || !markCardioDoneAction) return;
+    setCardioDoneError(null);
+    setCardioDonePending(true);
+    void (async () => {
+      try {
+        const fd = new FormData();
+        fd.set("plannedSessionId", session.id);
+        fd.set("itemIndex", String(pureCardioItemIndex));
+        const res = await markCardioDoneAction(fd);
+        if (res?.error) {
+          setCardioDoneError(res.error);
+          return;
+        }
+        // The rail reads from the server; refresh through the PARENT so the
+        // refresh survives this drawer unmounting on close.
+        onClose();
+        if (onMutated) onMutated();
+        else router.refresh();
+      } catch {
+        setCardioDoneError("Could not finish this session. Try again.");
+      } finally {
+        setCardioDonePending(false);
+      }
+    })();
+  };
 
   // ── Mobile swipe-down-to-dismiss ─────────────────────────────────
   // On phones the drawer is a full-screen bottom sheet (see CSS below).
@@ -2634,14 +2696,28 @@ export function SessionDrawer({
                 hide them once the workout is complete. */}
             {!session.done && (
               <>
-                {allowLogging && logHrefBase && (
-                  <Link
-                    href={`${logHrefBase}/${session.id}`}
+                {allowLogging && pureCardioItemIndex != null ? (
+                  <button
+                    type="button"
                     className="cp-btn"
+                    onClick={onMarkCardioDone}
+                    disabled={cardioDonePending}
                     data-testid="plan-drawer-mark-done"
+                    data-one-tap="true"
                   >
-                    ✓ Mark done
-                  </Link>
+                    {cardioDonePending ? "Finishing…" : "✓ Mark done"}
+                  </button>
+                ) : (
+                  allowLogging &&
+                  logHrefBase && (
+                    <Link
+                      href={`${logHrefBase}/${session.id}`}
+                      className="cp-btn"
+                      data-testid="plan-drawer-mark-done"
+                    >
+                      ✓ Mark done
+                    </Link>
+                  )
                 )}
                 {session.skipped ? (
                   <form action={unskipAction}>
@@ -2671,6 +2747,16 @@ export function SessionDrawer({
               </>
             )}
           </div>
+
+          {cardioDoneError && (
+            <p
+              className="swap-form-error"
+              role="alert"
+              data-testid="plan-drawer-cardio-done-error"
+            >
+              {cardioDoneError}
+            </p>
+          )}
 
           {((overdue && !session.skipped && !session.done) ||
             (session.isCardio && !session.done && !session.skipped)) && (

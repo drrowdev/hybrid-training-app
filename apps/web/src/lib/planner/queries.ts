@@ -248,14 +248,6 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
 }
 
 /**
- * Regex matching a v4-style lowercase UUID. Shared between the
- * `/app/sessions/start/[plannedId]` route and the
- * `/app/plan/preview/[plannedId]` route so a hand-typed or fuzzed id
- * is rejected at the route boundary before we ever hit the DB.
- */
-export const PLANNED_ID_REGEX = /^[0-9a-f-]{36}$/i;
-
-/**
  * Load a single planned session by id, scoped to the authenticated
  * user via Supabase RLS. Returns null when the row doesn't exist or
  * isn't visible to the caller — both cases should map to `notFound()`

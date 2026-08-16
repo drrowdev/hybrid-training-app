@@ -359,6 +359,16 @@ export type ThisWeekRailProps = {
     notes: string,
   ) => Promise<{ ok?: true; error?: string }>;
   startSessionAction: (formData: FormData) => Promise<void> | void;
+  /**
+   * One-tap finish for a pure cardio slot, forwarded to the drawer. See
+   * `SessionDrawer`'s `markCardioDoneAction`.
+   */
+  markCardioDoneAction?: (formData: FormData) => Promise<{
+    ok?: true;
+    error?: string;
+    sessionId?: string;
+    sessionCompleted?: boolean;
+  }>;
 };
 
 /**
@@ -378,6 +388,7 @@ export function ThisWeekRail({
   unskipAction,
   updateNotesAction,
   startSessionAction,
+  markCardioDoneAction,
 }: ThisWeekRailProps) {
   const router = useRouter();
   const [openId, setOpenId] = useState<string | null>(null);
@@ -438,6 +449,7 @@ export function ThisWeekRail({
           unskipAction={unskipAction}
           updateNotesAction={updateNotesAction}
           startSessionAction={startSessionAction}
+          markCardioDoneAction={markCardioDoneAction}
         />
       )}
     </>

@@ -3,14 +3,15 @@
  * sections (warm-ups + main work per movement, accessories, hinge
  * compensation, tendon, cardio), and a primary "Start workout" CTA.
  *
- * Rendered by `/app/plan/preview/[plannedId]` so the user can see what
- * they're about to do before committing the secondary Today-page CTA.
- * The PlanRedesign drawer renders the same body shape but adds
- * interactive scaffolding (set notes, swap form, mark-done buttons);
- * extracting the drawer body into a shared component was deferred —
- * see the PR description for the rationale. This component re-implements
- * the read-only slice with the same vocabulary so visual drift stays
- * obvious in review.
+ * Used by the Today hero in its `compact` variant for the at-a-glance
+ * summary. The full variant's former host — a standalone
+ * `/app/plan/preview/[plannedId]` route — was removed once the Today
+ * "Preview" CTA started opening the shared rail drawer instead: two
+ * near-identical read-only preview surfaces was one too many. The
+ * PlanRedesign drawer renders the same body shape plus interactive
+ * scaffolding (set notes, swap form, mark-done buttons); folding this
+ * component into that one remains deferred, so the shared vocabulary is
+ * kept deliberately identical to keep visual drift obvious in review.
  *
  * NOTE: internal slot codes (W1 / S1 / C1 / A1 / T1 / H1) are NEVER
  * surfaced to the user. Set numbers ("1", "2", "3") within a single

@@ -29,6 +29,7 @@ import {
   generateQuickStrengthSession,
   generateQuickHyroxSession,
   updatePlannedSessionNotes,
+  markExternalCardioComplete,
 } from "@/lib/sessions/actions";
 import { getQuickRepeatCandidates } from "@/lib/sessions/queries";
 import { getLimitationTodaySummary } from "@/lib/limitations/today-summary";
@@ -771,6 +772,7 @@ export default async function TodayPage() {
                 unskipAction={unskipPlannedSession}
                 updateNotesAction={updatePlannedSessionNotes}
                 startSessionAction={startSessionFromPlan}
+                markCardioDoneAction={markExternalCardioComplete}
               />
             </div>
 
@@ -1527,14 +1529,23 @@ function PlannedSessionCard({
         >
           {primaryCta.label}
         </Link>
-        <Link
-          href={`/app/plan/preview/${planned.id}`}
+        {/*
+          Preview opens the SAME drawer the "This week" rail uses, rather than a
+          second, near-identical read-only preview screen. The rail listens for
+          `#session=<plannedId>` (see ThisWeekRail's hashchange effect) and finds
+          the session across ALL planned days, not just the rendered week, so a
+          plain hash anchor is enough — and it stays a real, keyboard-focusable
+          link. Next's <Link> is deliberately avoided here: a client-side
+          pushState navigation would not fire `hashchange`.
+        */}
+        <a
+          href={`#session=${planned.id}`}
           className="cp-btn big"
           data-testid="today-preview-cta"
           style={{ flex: "0 1 auto", minHeight: 56, justifyContent: "center" }}
         >
           Preview
-        </Link>
+        </a>
       </div>
     </section>
   );

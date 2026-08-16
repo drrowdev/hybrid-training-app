@@ -138,16 +138,24 @@ test.describe("@desktop today page (Phase 1)", () => {
     const href = await cta.getAttribute("href");
     expect(href).toBe(`/app/sessions/start/${seed.todayPlannedId}`);
 
-    // The hero now condenses strength to overview rows and exposes a
-    // secondary "Preview" CTA that drills into the full set-by-set
-    // breakdown on the Preview page (`/app/plan/preview/[plannedId]`).
+    // The hero condenses strength to overview rows and exposes a secondary
+    // "Preview" CTA. It opens the SAME drawer as the "This week" rail (via the
+    // `#session=<plannedId>` hash) instead of a second, near-identical preview
+    // screen — so the app has one preview surface, not two.
     const preview = page.getByTestId("today-preview-cta").first();
     await expect(preview).toBeVisible();
     await expect(preview).toHaveText(/^preview$/i);
     await expect(preview).toHaveAttribute(
       "href",
-      `/app/plan/preview/${seed.todayPlannedId}`,
+      `#session=${seed.todayPlannedId}`,
     );
+
+    // Pressing it opens the shared rail drawer in place.
+    await preview.click();
+    await expect(page.getByTestId("plan-drawer")).toBeVisible();
+    await expect(page.getByTestId("plan-drawer-close")).toBeVisible();
+    await page.getByTestId("plan-drawer-close").click();
+    await expect(page.getByTestId("plan-drawer")).toHaveCount(0);
 
     // Clicking Start auto-creates the session and lands on the log surface.
     // (The pre-session check-in interstitial was removed; the Today-page
@@ -220,7 +228,7 @@ test.describe("@desktop today page (Phase 1)", () => {
     await expect(preview).toHaveText(/preview/i);
     await expect(preview).toHaveAttribute(
       "href",
-      `/app/plan/preview/${seed.todayPlannedId}`,
+      `#session=${seed.todayPlannedId}`,
     );
   });
 
