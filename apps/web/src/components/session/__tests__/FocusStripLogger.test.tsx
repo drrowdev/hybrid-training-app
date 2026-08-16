@@ -521,4 +521,35 @@ describe("MovementFocusView inline history", () => {
     expect(html).toContain('value="0"');
     expect(html).not.toContain('value="200"');
   });
+
+  it("still renders the logger when a pinned slot is out of the group's range", () => {
+    // Regression: the focus strip drives every movement through one logger
+    // instance, so a slot pinned on a 5-set lift (e.g. after editing set 5)
+    // followed by a tap on a 3-set lift resolved to a slot that doesn't exist.
+    // The card kept its header and dropped the entire logging UI — the user
+    // saw just the movement name until they resumed the workout from Today.
+    const html = renderToStaticMarkup(
+      <MovementFocusView
+        sessionId="session"
+        group={rehabGroup}
+        tmKg={undefined}
+        oneRmKg={undefined}
+        loggedItemIndices={new Set()}
+        skippedItemIndices={new Set()}
+        loggedSetIdByItemIndex={{}}
+        loggedSets={[]}
+        priorBest={undefined}
+        addStrengthSet={addStrengthSet}
+        updateStrengthSet={updateStrengthSet}
+        hapticsEnabled={false}
+        timerSoundEnabled={false}
+        focusStrip
+        initialCursor={4}
+      />,
+    );
+    expect(html).toContain('data-testid="movement-focus-log-button"');
+    expect(html).toContain('aria-label="Reps"');
+    // Clamped onto the group's last real slot rather than resolving to nothing.
+    expect(html).toContain("3 of 3");
+  });
 });

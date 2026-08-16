@@ -21,7 +21,7 @@
  *      anything other than Main forces the rail to stay expanded so
  *      the user can see what they selected.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { LoggedSet } from "./SessionLogClient";
 import type { addStrengthSet as addStrengthSetAction } from "@/lib/sessions/actions";
 import type { removeSessionMovementAction as removeSessionMovementActionType } from "@/lib/sessions/session-movement-actions";
@@ -40,6 +40,7 @@ import {
   stepWeightKg,
   formatWeight,
 } from "@/lib/stats/units";
+import { resolveLoadIncrement } from "@/lib/sessions/load-increment";
 import { RestTimer } from "./RestTimer";
 import {
   SET_KINDS,
@@ -125,6 +126,12 @@ export function FreestyleMovementCard({
   void priorBest;
   const units = useUnits();
   const unitLabel = weightUnitLabel(units);
+  // Freestyle cards have no prescription, so the implement is inferred from the
+  // movement slug (`*-db`, `dumbbell-*`, …) — dumbbells step 1 kg, plates 2.5.
+  const weightStep = useMemo(
+    () => resolveLoadIncrement({ slug: movement.slug }),
+    [movement.slug],
+  );
   const [collapsed, setCollapsed] = useState(readOnly);
   const last = loggedSets[loggedSets.length - 1];
   const [weight, setWeight] = useState<number>(
@@ -504,10 +511,10 @@ export function FreestyleMovementCard({
               <FreestyleStepper
                 label={`Weight (${unitLabel})`}
                 value={roundDisplayWeight(displayWeight(weight, units), units)}
-                step={weightStepDisplay(units)}
+                step={weightStepDisplay(units, weightStep)}
                 integer={false}
-                onMinus={() => setWeight((v) => stepWeightKg(v, units, -1))}
-                onPlus={() => setWeight((v) => stepWeightKg(v, units, 1))}
+                onMinus={() => setWeight((v) => stepWeightKg(v, units, -1, { step: weightStep }))}
+                onPlus={() => setWeight((v) => stepWeightKg(v, units, 1, { step: weightStep }))}
                 onSet={(displayVal) => setWeight(toKg(displayVal, units))}
               />
               <FreestyleStepper

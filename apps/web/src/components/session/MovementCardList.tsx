@@ -163,6 +163,15 @@ export function MovementCardList({
     () => new Set(bodyweightMovementIds ?? []),
     [bodyweightMovementIds],
   );
+  // movementId → catalog equipment tag. Sizes the ± weight stepper inside the
+  // focus view (dumbbells step 1 kg, plates 2.5 kg) — see load-increment.ts.
+  const equipmentTagById = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const [movementId, meta] of Object.entries(accessoryMetaById ?? {})) {
+      map.set(movementId, meta.equipment);
+    }
+    return map;
+  }, [accessoryMetaById]);
   // Optimistic local accessory order (movementIds). Set the instant the user
   // taps move; the server write settles in the background. `null` = use the
   // server-saved `customAccessoryOrder` (or the smart default when that's null).
@@ -588,6 +597,7 @@ export function MovementCardList({
           preferStandardLbPlates={preferStandardLbPlates}
           bwGateStateByFamily={bwGateStateByFamily}
           bodyweightMovementIds={bodyweightIdSet}
+          equipmentByMovementId={equipmentTagById}
         />
 
         {freestyleMerged.length > 0 && (
@@ -653,6 +663,7 @@ export function MovementCardList({
         preferStandardLbPlates={preferStandardLbPlates}
         bwGateStateByFamily={bwGateStateByFamily}
         bodyweightCapable={bodyweightIdSet.has(group.movementId)}
+        equipmentTag={accessoryMetaById?.[group.movementId]?.equipment ?? null}
         {...(dragHandle ? { dragHandle } : {})}
       />
     );
@@ -886,6 +897,8 @@ type PrescribedCardProps = {
     >
   >;
   bodyweightCapable?: boolean;
+  /** Catalog `movements.equipment` tag — sizes the ± weight stepper. */
+  equipmentTag?: string | null;
   dragHandle?: React.ReactNode;
 };
 
@@ -939,6 +952,7 @@ const PrescribedCard = memo(function PrescribedCard(props: PrescribedCardProps) 
       persistKeyPrefix={`mc:${props.sessionId}`}
       bwGateStateByFamily={props.bwGateStateByFamily}
       bodyweightCapable={props.bodyweightCapable}
+      equipmentTag={props.equipmentTag}
       dragHandle={props.dragHandle}
     />
   );
@@ -967,6 +981,7 @@ function samePrescribedCardProps(
     previous.preferStandardLbPlates !== next.preferStandardLbPlates ||
     previous.bwGateStateByFamily !== next.bwGateStateByFamily ||
     previous.bodyweightCapable !== next.bodyweightCapable ||
+    previous.equipmentTag !== next.equipmentTag ||
     Boolean(previous.dragHandle) !== Boolean(next.dragHandle)
   ) {
     return false;

@@ -64,23 +64,40 @@ export function formatWeight(
   return opts.withUnit === false ? `${n}` : `${n} ${weightUnitLabel(units)}`;
 }
 
-/** The weight-stepper increment in the DISPLAY unit: 2.5 kg / 5 lb. */
-export function weightStepDisplay(units: WeightUnit): number {
-  return units === "imperial" ? 5 : 2.5;
+/**
+ * A stepper increment expressed in both units. Callers that know which
+ * implement is being loaded pass an implement-specific step (see
+ * `lib/sessions/load-increment.ts`); everything else gets the plate default.
+ */
+export type WeightStep = { kg: number; lb: number };
+
+/**
+ * Plate-loaded default: the smallest pair of plates on a bar. Also the
+ * fallback for machines / cables / anything we can't identify.
+ */
+export const DEFAULT_WEIGHT_STEP: WeightStep = { kg: 2.5, lb: 5 };
+
+/** The weight-stepper increment in the DISPLAY unit: 2.5 kg / 5 lb by default. */
+export function weightStepDisplay(
+  units: WeightUnit,
+  step: WeightStep = DEFAULT_WEIGHT_STEP,
+): number {
+  return units === "imperial" ? step.lb : step.kg;
 }
 
 /**
  * Step a kg weight up/down by `deltaSteps` display-unit increments and return the
  * new kg value. Works in the display unit so the user sees clean 2.5 kg / 5 lb
  * jumps, then snaps back to kg for storage. `floorAtZero` clamps to ≥ 0.
+ * `step` overrides the default increment (e.g. dumbbells step 1 kg, not 2.5).
  */
 export function stepWeightKg(
   kg: number,
   units: WeightUnit,
   deltaSteps: number,
-  opts: { floorAtZero?: boolean } = {},
+  opts: { floorAtZero?: boolean; step?: WeightStep } = {},
 ): number {
-  const stepD = weightStepDisplay(units);
+  const stepD = weightStepDisplay(units, opts.step);
   const currentD = roundDisplayWeight(displayWeight(kg, units), units);
   let nextD = currentD + deltaSteps * stepD;
   if (opts.floorAtZero !== false) nextD = Math.max(0, nextD);
