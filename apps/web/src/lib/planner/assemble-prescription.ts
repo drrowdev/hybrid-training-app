@@ -682,11 +682,20 @@ export function assemblePrescriptionItems(
                 candidates[i]!.itemBonus,
                 candidates[i]!.aestheticFloor,
               );
-        const sec = estimateSessionSeconds([
-          ...items,
-          ...trial.accessoryItems,
-          ...(primerItem ? [primerItem] : []),
-        ]);
+        // ADR 0026 invariant: the governor MUST price on the unpaired estimate.
+        // If grouped rest fed the budget, linking two lifts would free up time
+        // and let the governor keep MORE accessory volume — a presentation
+        // choice would silently change the prescription. Requested explicitly
+        // so the guarantee does not depend on this path happening to produce no
+        // superset or circuit metadata today.
+        const sec = estimateSessionSeconds(
+          [
+            ...items,
+            ...trial.accessoryItems,
+            ...(primerItem ? [primerItem] : []),
+          ],
+          "solo",
+        );
         if (sec <= capSec || i === candidates.length - 1) {
           chosen = trial;
           break;

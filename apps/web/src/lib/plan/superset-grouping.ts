@@ -32,11 +32,36 @@ export type SupersetRowSegment =
  * part of a superset. All items of a single accessory movement share one group
  * id (a movement is either the A1 or the A2 of one pair), so the first tagged
  * item wins.
+ *
+ * Falls back to a linked-circuit id: user-authored links (supersets, tri-sets,
+ * giant sets) are expressed as `item.circuit`, not `meta.supersetGroup`, and
+ * must bracket in exactly the same way.
  */
 export function supersetGroupOfRow(row: PrescriptionMovementRow): string | null {
   for (const it of row.items) {
     const g = it.meta?.[SUPERSET_GROUP_KEY];
     if (typeof g === "string" && g.length > 0) return g;
+  }
+  for (const it of row.items) {
+    const c = it.circuit;
+    if (
+      c &&
+      typeof c.id === "string" &&
+      c.id.length > 0 &&
+      Number.isInteger(c.size) &&
+      c.size >= 2
+    ) {
+      return c.id;
+    }
+  }
+  return null;
+}
+
+/** The human name of a row's linked circuit, when it has one. */
+export function circuitNameOfRow(row: PrescriptionMovementRow): string | null {
+  for (const it of row.items) {
+    const c = it.circuit;
+    if (c && typeof c.name === "string" && c.name.length > 0) return c.name;
   }
   return null;
 }

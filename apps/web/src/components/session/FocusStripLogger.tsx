@@ -26,8 +26,11 @@ import {
   buildLinkedCircuitByMovementId,
   circuitMembersFor,
   circuitRoundFor,
+  circuitSuppressesRest,
   firstOpenCircuitMovementId,
   firstOpenMovementId,
+  isCircuitItemIndex,
+  nextOpenItemIndex,
 } from "@/lib/sessions/linked-circuit";
 import { hapticTick } from "@/lib/feedback";
 import { SKIP_REASONS, type SkipReason } from "@/lib/sessions/skip-reasons";
@@ -290,16 +293,29 @@ export function FocusStripLogger({
   const activeCircuit = linkedCircuitByMovementId.get(
     activeOriginalKey,
   );
-  const activeCircuitMembers = activeCircuit
-    ? circuitMembersFor(
-        activeOriginalKey,
-        groups,
-        linkedCircuitByMovementId,
-      )
-    : [];
-  const activeCircuitRound = activeCircuit
-    ? circuitRoundFor(activeOriginal, activeCircuit, loggedItemIndices)
-    : null;
+  // The set the user is about to log. Circuit membership is per-SET, so the cue
+  // and the rest behaviour must key off this slot rather than the movement:
+  // a warm-up, or a set past the group's round count, is ordinary solo work
+  // even though the movement itself is part of a link.
+  const activeNextItemIndex = nextOpenItemIndex(
+    activeOriginal,
+    loggedItemIndices,
+  );
+  const activeSlotInCircuit =
+    activeNextItemIndex != null &&
+    isCircuitItemIndex(activeOriginal, activeCircuit, activeNextItemIndex);
+  const activeCircuitMembers =
+    activeCircuit && activeSlotInCircuit
+      ? circuitMembersFor(
+          activeOriginalKey,
+          groups,
+          linkedCircuitByMovementId,
+        )
+      : [];
+  const activeCircuitRound =
+    activeCircuit && activeSlotInCircuit
+      ? circuitRoundFor(activeOriginal, activeCircuit, loggedItemIndices)
+      : null;
 
   const totalRequired = groups.reduce(
     (sum, group) => sum + requiredIndices(group).length,
@@ -857,7 +873,7 @@ export function FocusStripLogger({
                </div>
              </div>
            )}
-           {!activeCircuit && activeSuperset && supersetPartner && (
+           {!activeCircuitRound && activeSuperset && supersetPartner && (
              <div
                data-testid="focus-strip-superset-cue"
                style={{
@@ -909,7 +925,11 @@ export function FocusStripLogger({
               }
               suppressRestAfterSave={
                 activeCircuit
-                  ? activeCircuit.position < activeCircuit.size - 1
+                  ? circuitSuppressesRest(
+                      activeOriginal,
+                      activeCircuit,
+                      activeNextItemIndex,
+                    )
                   : activeSuperset?.slot === "A1" && supersetPartner != null
               }
               focusStrip
