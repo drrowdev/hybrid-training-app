@@ -89,23 +89,38 @@ export function MovementHowToButton({
           setOpen(true);
         }}
         style={{
+          // 44×44 hit area with a 20px visual glyph — the badge should not
+          // grow just to be tappable.
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
-          width: 20,
-          height: 20,
-          borderRadius: "50%",
-          border: "1px solid var(--cp-border)",
+          width: 44,
+          height: 44,
+          padding: 0,
+          border: "none",
           background: "transparent",
           color: "var(--cp-text-muted)",
-          fontSize: 12,
-          fontWeight: 700,
-          lineHeight: 1,
           cursor: "pointer",
           flexShrink: 0,
         }}
       >
-        i
+        <span
+          aria-hidden="true"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 20,
+            height: 20,
+            borderRadius: "50%",
+            border: "1px solid var(--cp-border)",
+            fontSize: 12,
+            fontWeight: 700,
+            lineHeight: 1,
+          }}
+        >
+          i
+        </span>
       </button>
 
       {open && (

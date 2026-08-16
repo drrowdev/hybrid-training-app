@@ -42,6 +42,7 @@ import {
   formatWeight,
 } from "@/lib/stats/units";
 import { RestTimer } from "./RestTimer";
+import { SessionDock } from "./SessionDock";
 import { RpeZonePicker } from "./RpeZonePicker";
 import { SkipSetMenu } from "./SkipSetMenu";
 import { PlateView } from "./PlateView";
@@ -141,6 +142,12 @@ export type FocusViewProps = {
   bodyweightCapable?: boolean;
   /** Compact hierarchy used by the single-movement Focus Strip logger. */
   focusStrip?: boolean;
+  /**
+   * Rendered beside the primary action inside the session dock (the focus
+   * strip passes its movement-navigator trigger here). Only used when
+   * `focusStrip` is set — the inline card layout has no dock.
+   */
+  dockAccessory?: React.ReactNode;
   /** Superset A1 advances immediately; its A2 partner owns the shared rest. */
   suppressRestAfterSave?: boolean;
 };
@@ -179,6 +186,7 @@ export function MovementFocusView({
   bwGateStateByFamily,
   bodyweightCapable = false,
   focusStrip = false,
+  dockAccessory = null,
   suppressRestAfterSave = false,
 }: FocusViewProps) {
   const router = useRouter();
@@ -741,6 +749,60 @@ export function MovementFocusView({
   const nextSlot = cursor + 1 < totalSlots ? cursor + 1 : null;
   const nextItem = nextSlot != null ? group.items[nextSlot]! : null;
   const nextWeight = nextItem ? targetWeightForItem(nextItem) : null;
+  // The dock hosts the primary action on phones. The button stays a real
+  // submit button and reaches back into the form by id, so the existing
+  // `onSubmit` path (and Enter-to-submit from an input) is untouched.
+  const formId = `session-log-form-${groupKey}`;
+  const ctaValueSuffix =
+    !submitting &&
+    ((itemKind === "bw_reps" && reps > 0) ||
+      (itemKind === "isometric" && durationSec > 0 && (isBwHold || weight > 0)) ||
+      (weight > 0 &&
+        ((itemKind === "carry" && distanceM > 0) ||
+          (itemKind === "isometric" && durationSec > 0) ||
+          (itemKind === "default" && reps > 0)))) ? (
+      <>
+        {" · "}
+        <span className="mono">
+          {itemKind === "carry"
+            ? `${formatWeight(weight, units)} × ${distanceM} m`
+            : itemKind === "isometric"
+              ? isBwHold
+                ? `${durationSec} s`
+                : `${formatWeight(weight, units)} × ${durationSec} s`
+              : itemKind === "bw_reps"
+                ? `× ${reps}`
+                : `${formatWeight(weight, units)} × ${reps}`}
+        </span>
+      </>
+    ) : null;
+
+  const logButton = (
+    <button
+      type="submit"
+      form={formId}
+      className={`cp-btn primary${focusStrip ? " cp-dock-cta" : ""}`}
+      disabled={submitting || pendingSetSync || loggedBeforeSwap}
+      data-testid="movement-focus-log-button"
+    >
+      {ctaLabel}
+      {ctaValueSuffix}
+    </button>
+  );
+
+  const restTimerNode =
+    restSeconds > 0 ? (
+      <RestTimer
+        key={restToken}
+        seconds={restSeconds}
+        defaultSeconds={restSeconds}
+        onDone={() => setRestSeconds(0)}
+        hapticsEnabled={hapticsEnabled}
+        timerSoundEnabled={timerSoundEnabled}
+        movementName={group.movementName}
+        inline={focusStrip}
+      />
+    ) : null;
 
   return (
     <div
@@ -757,17 +819,7 @@ export function MovementFocusView({
         width: "100%",
       }}
     >
-      {restSeconds > 0 && (
-        <RestTimer
-          key={restToken}
-          seconds={restSeconds}
-          defaultSeconds={restSeconds}
-          onDone={() => setRestSeconds(0)}
-          hapticsEnabled={hapticsEnabled}
-          timerSoundEnabled={timerSoundEnabled}
-          movementName={group.movementName}
-        />
-      )}
+      {!focusStrip && restTimerNode}
 
       <DotStrip
         group={group}
@@ -1110,6 +1162,7 @@ export function MovementFocusView({
       })()}
 
       <form
+        id={formId}
         onSubmit={handleSubmit}
         data-testid="session-log-form"
         style={{ display: "grid", gap: 12 }}
@@ -1204,36 +1257,7 @@ export function MovementFocusView({
         )}
 
         <div style={{ display: "grid", gap: 8 }}>
-            <button
-              type="submit"
-              className="cp-btn primary"
-              disabled={submitting || pendingSetSync || loggedBeforeSwap}
-              data-testid="movement-focus-log-button"
-            >
-              {ctaLabel}
-              {!submitting &&
-                ((itemKind === "bw_reps" && reps > 0) ||
-                  (itemKind === "isometric" && durationSec > 0 && (isBwHold || weight > 0)) ||
-                  (weight > 0 &&
-                    ((itemKind === "carry" && distanceM > 0) ||
-                      (itemKind === "isometric" && durationSec > 0) ||
-                      (itemKind === "default" && reps > 0)))) && (
-                <>
-                  {" · "}
-                  <span className="mono">
-                    {itemKind === "carry"
-                      ? `${formatWeight(weight, units)} × ${distanceM} m`
-                      : itemKind === "isometric"
-                        ? isBwHold
-                          ? `${durationSec} s`
-                          : `${formatWeight(weight, units)} × ${durationSec} s`
-                        : itemKind === "bw_reps"
-                          ? `× ${reps}`
-                          : `${formatWeight(weight, units)} × ${reps}`}
-                  </span>
-                </>
-              )}
-            </button>
+            {!focusStrip && logButton}
             {!isActiveLogged && (
               <div style={{ display: "flex", justifyContent: "flex-start", gap: 16 }}>
                 <button
@@ -1248,10 +1272,13 @@ export function MovementFocusView({
                   style={{
                     all: "unset",
                     cursor: submitting || skipPending ? "default" : "pointer",
-                    fontSize: 12,
+                    fontSize: 13,
                     color: "var(--cp-text-muted)",
                     textDecoration: "underline",
-                    padding: "4px 0",
+                    minHeight: 44,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    padding: "0 4px",
                   }}
                 >
                   {skipMenuOpen && skipScope === "set" ? "Cancel skip" : "Skip set"}
@@ -1269,10 +1296,13 @@ export function MovementFocusView({
                     style={{
                       all: "unset",
                       cursor: submitting || skipPending ? "default" : "pointer",
-                      fontSize: 12,
+                      fontSize: 13,
                       color: "var(--cp-text-muted)",
                       textDecoration: "underline",
-                      padding: "4px 0",
+                      minHeight: 44,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      padding: "0 4px",
                     }}
                   >
                     {skipMenuOpen && skipScope === "movement"
@@ -1320,6 +1350,15 @@ export function MovementFocusView({
           </div>
         )}
       </form>
+
+      {focusStrip && (
+        <SessionDock
+          rest={restTimerNode}
+          primary={logButton}
+          accessory={dockAccessory}
+          editing={isActiveLogged && !isActiveSkipped}
+        />
+      )}
     </div>
   );
 }
@@ -1711,7 +1750,7 @@ function DotStrip({
     <div
       role="tablist"
       data-testid="movement-dot-strip"
-      style={{ display: "flex", justifyContent: "center", gap: 6 }}
+      style={{ display: "flex", justifyContent: "center", gap: 0, flexWrap: "wrap" }}
     >
       {group.itemIndices.map((idx, slot) => {
         const isLogged = loggedItemIndices.has(idx);
@@ -1790,10 +1829,27 @@ function DotStrip({
             data-logged={isLogged ? "true" : "false"}
             data-skipped={isSkipped ? "true" : "false"}
             onClick={() => onPickSlot(slot)}
-            style={style}
             aria-label={`Set ${slot + 1} of ${group.itemIndices.length}${isSkipped ? " — skipped" : isLogged ? " — logged" : ""}`}
+            // The pip stays small — a 44px-tall coloured bar would read as a
+            // progress chart, not a set marker. The BUTTON is 44×44 so it can
+            // actually be hit with a thumb; the pip is a child of it.
+            style={{
+              width: 44,
+              height: 44,
+              minWidth: 44,
+              minHeight: 44,
+              padding: 0,
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              display: "grid",
+              placeItems: "center",
+              marginLeft: bucketChanged ? 12 : 0,
+            }}
           >
-            {isSkipped && isActive ? "—" : isLogged && isActive ? "✓" : null}
+            <span style={{ ...style, marginLeft: 0 }} aria-hidden="true">
+              {isSkipped && isActive ? "—" : isLogged && isActive ? "✓" : null}
+            </span>
           </button>
         );
       })}
@@ -1829,22 +1885,25 @@ function Stepper({
         background: "var(--cp-surface)",
         border: "1px solid var(--cp-border)",
         borderRadius: 12,
-        padding: 12,
+        // Tighter than the original 12px so the number field itself clears
+        // 44px wide inside a two-up stepper row at 375px.
+        padding: "10px 8px",
         display: "grid",
         gap: 6,
       }}
     >
       <div
         style={{
-          fontSize: 10,
+          fontSize: 12,
           color: "var(--cp-text-muted)",
           textTransform: "uppercase",
           letterSpacing: "0.06em",
+          paddingLeft: 2,
         }}
       >
         {label}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 6, alignItems: "center" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 2, alignItems: "center" }}>
         <button
           type="button"
           onClick={onMinus}
@@ -1894,7 +1953,7 @@ function Stepper({
         </button>
       </div>
       {showStepHint && (
-        <div style={{ fontSize: 10, color: "var(--cp-text-muted)", textAlign: "center" }}>
+        <div style={{ fontSize: 12, color: "var(--cp-text-muted)", textAlign: "center" }}>
           ± {step}
         </div>
       )}
