@@ -5,6 +5,8 @@ import {
   roundDisplayWeight,
   toKg,
   epleyOneRm,
+  weightStepDisplay,
+  stepWeightKg,
 } from "../units";
 
 describe("weight unit helpers", () => {
@@ -48,5 +50,29 @@ describe("weight unit helpers", () => {
     expect(epleyOneRm(0, 5)).toBe(0);
     expect(epleyOneRm(100, 0)).toBe(0);
     expect(epleyOneRm(Number.NaN, 5)).toBe(0);
+  });
+
+  it("weightStepDisplay defaults to the plate increment and honours an override", () => {
+    expect(weightStepDisplay("metric")).toBe(2.5);
+    expect(weightStepDisplay("imperial")).toBe(5);
+    expect(weightStepDisplay("metric", { kg: 1, lb: 2 })).toBe(1);
+    expect(weightStepDisplay("imperial", { kg: 1, lb: 2 })).toBe(2);
+  });
+
+  it("stepWeightKg steps by the supplied increment instead of 2.5 kg", () => {
+    // Regression: a 5.5 kg dumbbell set used to jump straight to 8 kg.
+    expect(stepWeightKg(5.5, "metric", 1, { step: { kg: 1, lb: 2 } })).toBe(6.5);
+    expect(stepWeightKg(5.5, "metric", -1, { step: { kg: 1, lb: 2 } })).toBe(4.5);
+    expect(stepWeightKg(5.5, "metric", 1)).toBe(8);
+  });
+
+  it("stepWeightKg still floors at zero with a custom increment", () => {
+    expect(stepWeightKg(0.5, "metric", -1, { step: { kg: 1, lb: 2 } })).toBe(0);
+    expect(
+      stepWeightKg(0.5, "metric", -1, {
+        step: { kg: 1, lb: 2 },
+        floorAtZero: false,
+      }),
+    ).toBe(-0.5);
   });
 });

@@ -86,6 +86,8 @@ export type MovementCardProps = {
    * set can be logged at 0 kg added load instead of demanding a weight.
    */
   bodyweightCapable?: boolean;
+  /** Catalog `movements.equipment` tag — forwarded so the focus view can size the ± weight stepper. */
+  equipmentTag?: string | null;
   /**
    * Optional reorder grip rendered inside the card header (accessory cards only).
    * Kept INSIDE the card so the card itself stays full-width and aligned with the
@@ -137,6 +139,7 @@ export function MovementCard({
   persistKeyPrefix,
   bwGateStateByFamily,
   bodyweightCapable,
+  equipmentTag,
   dragHandle,
 }: MovementCardProps) {
   const units = useUnits();
@@ -631,6 +634,7 @@ export function MovementCard({
             onSaved={() => setPinnedCursor(null)}
             bwGateStateByFamily={bwGateStateByFamily}
             bodyweightCapable={bodyweightCapable}
+            equipmentTag={equipmentTag}
           />
         </div>
       )}

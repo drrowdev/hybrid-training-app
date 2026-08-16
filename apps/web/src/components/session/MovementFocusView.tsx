@@ -23,8 +23,9 @@ import {
 import { detectTmAnchoredPr } from "@/lib/engine/tm-anchored-pr";
 import { restSecondsForKind } from "@/lib/sessions/rest";
 import { resolveBarWeightKg } from "@/lib/sessions/bar-kind";
+import { resolveLoadIncrement } from "@/lib/sessions/load-increment";
 import { roundWarmupLoadKg } from "@/lib/planner/warmups";
-import { resolvePrescriptionSetWork, resolvePrescribedSnapshot } from "@hta/domain";
+import { resolvePrescriptionSetWork, resolvePrescribedSnapshot, isRehabItem } from "@hta/domain";
 import { SET_KIND_TO_LOG as SHARED_SET_KIND_TO_LOG } from "@/lib/sessions/set-kind";
 import { hapticTick } from "@/lib/feedback";
 import { useUnits } from "@/lib/units/context";
@@ -115,6 +116,13 @@ export type FocusViewProps = {
   plateInventory?: PlateInventoryItem[];
   preferStandardLbPlates?: boolean;
   /**
+   * The catalog `movements.equipment` tag for this movement, when the
+   * parent has it. Feeds `resolveLoadIncrement` so a dumbbell movement
+   * steps by 1 kg instead of the 2.5 kg plate default. Omitted ⇒ the
+   * increment falls back to the slug heuristic.
+   */
+  equipmentTag?: string | null;
+  /**
    * Optional manual cursor pinned by the parent — e.g. clicking
    * "Edit sets" on a recap-row opens the focus view at the last
    * logged slot. Null means "let the auto cursor decide".
@@ -163,6 +171,7 @@ export function MovementFocusView({
   trapBarKg,
   plateInventory,
   preferStandardLbPlates = true,
+  equipmentTag,
   initialCursor = null,
   onSaved,
   bwGateStateByFamily,
@@ -207,6 +216,14 @@ export function MovementFocusView({
     activeLoggedSet?.movementId != null &&
     activeLoggedSet.movementId !== group.movementId;
   const isWarmup = activeItem?.kind === "warmup";
+  const isRehab = isRehabItem(activeItem);
+  // How big is one tap of the ± weight stepper? Bar work moves in plate
+  // pairs (2.5 kg); a dumbbell rack moves in 1 kg. Single home:
+  // `lib/sessions/load-increment.ts`.
+  const weightStep = useMemo(
+    () => resolveLoadIncrement({ slug: group.movementSlug, equipment: equipmentTag }),
+    [equipmentTag, group.movementSlug],
+  );
   // Position of the active slot within its own kind-bucket
   // (warmup / working / accessory). Drives the "Set X of Y" caption
   // so warm-ups don't inflate the working-set count.
@@ -1096,10 +1113,11 @@ export function MovementFocusView({
             <Stepper
               label={bodyweightCapable ? `Added weight (${unitLabel})` : `Weight (${unitLabel})`}
               value={roundDisplayWeight(displayWeight(weight, units), units)}
-              step={weightStepDisplay(units)}
+              step={weightStepDisplay(units, weightStep)}
               integer={false}
-              onMinus={() => setWeight((v) => stepWeightKg(v, units, -1))}
-              onPlus={() => setWeight((v) => stepWeightKg(v, units, 1))}
+              testId="stepper-weight"
+              onMinus={() => setWeight((v) => stepWeightKg(v, units, -1, { step: weightStep }))}
+              onPlus={() => setWeight((v) => stepWeightKg(v, units, 1, { step: weightStep }))}
               onSet={(displayVal) => setWeight(toKg(displayVal, units))}
               showStepHint={!focusStrip}
             />
@@ -1142,7 +1160,12 @@ export function MovementFocusView({
           )}
         </div>
 
-        {!isWarmup && !isBwItem && (
+        {/* Rehab work is prescribed by protocol, not by effort — asking
+            "how did it feel?" invites the user to autoregulate a load that
+            is deliberately sub-maximal, and nothing downstream consumes a
+            rehab RPE. Warm-ups and BW-node sets are excluded for the same
+            "no meaningful effort signal" reason. */}
+        {!isWarmup && !isBwItem && !isRehab && (
           <RpeZonePicker
             value={rpe}
             onChange={(next) => setRpe(next)}
