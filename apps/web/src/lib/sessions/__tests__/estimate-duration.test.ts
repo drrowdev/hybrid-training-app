@@ -2,15 +2,10 @@ import { describe, it, expect } from "vitest";
 import type { PrescriptionItem } from "@hta/db";
 import {
   WORK_SEC_PER_SET,
-  SUPERSET_TRANSITION_SEC,
   estimateSessionDurationBreakdown,
   estimateSessionSeconds,
   estimateSessionMinutes,
 } from "../estimate-duration";
-import {
-  SUPERSET_GROUP_KEY,
-  SUPERSET_SLOT_KEY,
-} from "../../planner/antagonist-pairs";
 
 const item = (over: Partial<PrescriptionItem>): PrescriptionItem =>
   ({
@@ -119,99 +114,20 @@ describe("estimate-duration", () => {
     expect(min!).toBeLessThan(75);
   });
 
-  describe("antagonist supersets (ADR 0026)", () => {
-    const ssA1 = (over: Partial<PrescriptionItem>): PrescriptionItem =>
-      item({
-        kind: "accessory",
-        sets: 3,
-        ...over,
-        meta: { [SUPERSET_GROUP_KEY]: "ss-1", [SUPERSET_SLOT_KEY]: "A1" },
-      });
-    const ssA2 = (over: Partial<PrescriptionItem>): PrescriptionItem =>
-      item({
-        kind: "accessory",
-        sets: 3,
-        ...over,
-        meta: { [SUPERSET_GROUP_KEY]: "ss-1", [SUPERSET_SLOT_KEY]: "A2" },
-      });
-
-    it("prices a valid pair as one overlapped rest + a station switch per round", () => {
-      const paired = estimateSessionSeconds([
-        ssA1({ movementId: "curl" }),
-        ssA2({ movementId: "pushdown" }),
-      ]);
-      // 3 rounds × (40 work A1 + 40 work A2 + 15 switch + 90 one rest) = 555
-      expect(paired).toBe(
-        3 * (WORK_SEC_PER_SET + WORK_SEC_PER_SET + SUPERSET_TRANSITION_SEC + 90),
-      );
-    });
-
-    it("is cheaper than the same two accessories priced solo", () => {
-      const paired = estimateSessionSeconds([
-        ssA1({ movementId: "curl" }),
-        ssA2({ movementId: "pushdown" }),
-      ]);
-      const solo = estimateSessionSeconds([
-        item({ kind: "accessory", sets: 3, movementId: "curl" }),
-        item({ kind: "accessory", sets: 3, movementId: "pushdown" }),
-      ]);
-      expect(paired).toBeLessThan(solo);
-      // saving = 3 rounds × (one dropped 90s rest − 15s switch) = 225s
-      expect(solo - paired).toBe(3 * (90 - SUPERSET_TRANSITION_SEC));
-    });
-
-    it("prices a widowed member (partner trimmed away) as a normal solo item", () => {
-      const widowed = estimateSessionSeconds([ssA1({ movementId: "curl" })]);
-      expect(widowed).toBe(3 * (WORK_SEC_PER_SET + 90));
-    });
-
-    it("does not pair members with mismatched set counts", () => {
-      const sec = estimateSessionSeconds([
-        ssA1({ movementId: "curl", sets: 3 }),
-        ssA2({ movementId: "pushdown", sets: 2 }),
-      ]);
-      // both fall back to solo pricing: 3×130 + 2×130
-      expect(sec).toBe(3 * (WORK_SEC_PER_SET + 90) + 2 * (WORK_SEC_PER_SET + 90));
-    });
-
-    it("is byte-identical to the legacy estimate when no superset meta present", () => {
-      const items: PrescriptionItem[] = [
-        item({ kind: "warmup", movementId: "w" }),
-        item({ kind: "main", sets: 1, movementId: "m" }),
-        item({ kind: "accessory", sets: 3, movementId: "a1" }),
-        item({ kind: "accessory", sets: 3, movementId: "a2" }),
-        item({ kind: "cardio_z2", durationMin: 20, movementId: "c" }),
-      ];
-      const expected =
-        (WORK_SEC_PER_SET + 60) +
-        (WORK_SEC_PER_SET + 180) +
-        2 * (3 * (WORK_SEC_PER_SET + 90)) +
-        20 * 60;
-      expect(estimateSessionSeconds(items)).toBe(expected);
-    });
-
-    it("surfaces a shorter ~N min on Plan/Preview when the pair is present (minute wrapper)", () => {
-      // P6 surface contract: the Plan + Preview pages call estimateSessionMinutes
-      // on the *paired* read-path items (P4 applySupersetPairing), so the `~N min`
-      // the lifter sees must drop once two opposing accessories are grouped. Guard
-      // at the minute boundary the surfaces actually render, not just seconds.
-      const mainWork: PrescriptionItem[] = [
-        item({ kind: "main", sets: 3, movementId: "squat" }),
-      ];
-      const pairedMin = estimateSessionMinutes([
-        ...mainWork,
-        ssA1({ movementId: "curl" }),
-        ssA2({ movementId: "pushdown" }),
-      ]);
-      const soloMin = estimateSessionMinutes([
-        ...mainWork,
-        item({ kind: "accessory", sets: 3, movementId: "curl" }),
-        item({ kind: "accessory", sets: 3, movementId: "pushdown" }),
-      ]);
-      expect(pairedMin).not.toBeNull();
-      expect(soloMin).not.toBeNull();
-      // 225s of dropped rest = a visible whole-minute reduction in the shown copy.
-      expect(pairedMin!).toBeLessThan(soloMin!);
-    });
+  it("is byte-identical to the legacy estimate with no grouping metadata", () => {
+    const items: PrescriptionItem[] = [
+      item({ kind: "warmup", movementId: "w" }),
+      item({ kind: "main", sets: 1, movementId: "m" }),
+      item({ kind: "accessory", sets: 3, movementId: "a1" }),
+      item({ kind: "accessory", sets: 3, movementId: "a2" }),
+      item({ kind: "cardio_z2", durationMin: 20, movementId: "c" }),
+    ];
+    const expected =
+      (WORK_SEC_PER_SET + 60) +
+      (WORK_SEC_PER_SET + 180) +
+      2 * (3 * (WORK_SEC_PER_SET + 90)) +
+      20 * 60;
+    expect(estimateSessionSeconds(items)).toBe(expected);
+    expect(estimateSessionSeconds(items, "solo")).toBe(expected);
   });
 });

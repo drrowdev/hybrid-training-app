@@ -161,16 +161,6 @@ export const trainingBlocks = pgTable("training_blocks", {
    * setting when null. Foreign program blocks leave it null.
    */
   allowsTwoADays: boolean("allows_two_a_days"),
-  /**
-   * Per-block antagonist-superset accessory preference (migration 0111).
-   * NULLABLE with NO default: null means "inherit profile / legacy" so every
-   * pre-0111 block reads byte-identically to the old
-   * `profiles.superset_accessories`-driven behaviour. The program wizard's
-   * Schedule step writes an explicit boolean (shown for ALL programs); the
-   * read-time pairing (`queries.ts`) lets a non-null per-block value WIN and
-   * falls back to the profile setting when null.
-   */
-  supersetAccessories: boolean("superset_accessories"),
 }, (table) => [
   check(
     "training_blocks_weeks_check",
@@ -266,6 +256,10 @@ export type PrescriptionItem = {
    * Linked multi-movement circuit. Each movement remains a separate prescription
    * item and set-log identity; the logger uses this metadata only to advance in
    * round order.
+   *
+   * `round` is stamped per granular set by the platform adapter — a set carrying
+   * it participates in the rotation, a set without it runs solo with full rest.
+   * That distinction matters when linked members have unequal set counts.
    */
   circuit?: {
     id: string;
@@ -273,6 +267,7 @@ export type PrescriptionItem = {
     position: number;
     size: number;
     rounds: number;
+    round?: number;
   };
   /**
    * Cardio: structured, render-ready presentation (summary / format / per-station

@@ -45,6 +45,18 @@ export interface PrescribedCircuit {
   size: number;
   /** Number of rounds prescribed. */
   rounds: number;
+  /**
+   * Zero-based round this GRANULAR set belongs to, stamped by the platform
+   * adapter when it expands a `sets > 1` item into one loggable item per set.
+   *
+   * Engines never set this — they describe the circuit once for the whole
+   * movement. It exists because circuit participation is a per-SET fact, not a
+   * per-movement one: when linked members have unequal set counts the group runs
+   * `rounds = min(required sets)` and every set beyond that must fall back to
+   * ordinary solo logging and full rest. Absent on legacy stored prescriptions,
+   * where consumers fall back to positional inference.
+   */
+  round?: number;
 }
 
 /**

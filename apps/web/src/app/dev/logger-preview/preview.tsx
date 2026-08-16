@@ -4,8 +4,9 @@
  * Fixture data + wiring for the dev-only logger preview. See page.tsx.
  *
  * The fixture deliberately models the hard case: one session mixing rehab,
- * a main lift with warm-ups, supplemental back-off work, an antagonist
- * superset, a loaded carry and an isometric hold.
+ * a main lift with warm-ups, supplemental back-off work, a user-authored
+ * superset (leg press + cable row, linked via `circuit`), a loaded carry and
+ * an isometric hold.
  */
 
 import type { Prescription } from "@hta/db";
@@ -14,7 +15,6 @@ import { CommandPaletteProvider } from "@/components/cmd-k/CommandPaletteProvide
 import { SessionWorkArea } from "@/components/session/SessionWorkArea";
 import { SessionLoggingStateProvider } from "@/components/session/SessionLoggingState";
 import type { LoggedSet } from "@/components/session/SessionLogClient";
-import type { SupersetCardInfo } from "@/lib/sessions/superset-cards";
 
 const SESSION_ID = "00000000-0000-4000-8000-000000000001";
 
@@ -26,6 +26,18 @@ const MOV = {
   row: "10000000-0000-4000-8000-000000000005",
   carry: "10000000-0000-4000-8000-000000000006",
   plank: "10000000-0000-4000-8000-000000000007",
+} as const;
+
+/**
+ * The fixture's user-authored link. Declared BEFORE the prescription that
+ * references it: the item arrays are built by `.map()` at module evaluation, so
+ * a later `const` would be in its temporal dead zone and throw at import time.
+ */
+const SUPERSET_LINK = {
+  id: "link-1",
+  name: "Superset",
+  size: 2,
+  rounds: 3,
 } as const;
 
 const REHAB_ITEMS = [1, 2, 3].map(() => ({
@@ -56,7 +68,7 @@ const WORK_ITEMS = [
     reps: 8,
     percentTm: 65,
   })),
-  ...[1, 2, 3].map(() => ({
+  ...[0, 1, 2].map((round) => ({
     movementId: MOV.legPress,
     movementSlug: "leg-press",
     movementName: "Leg Press",
@@ -67,8 +79,9 @@ const WORK_ITEMS = [
     // accessory case, where the load has to come from the user's history.
     targetRir: { min: 1, max: 2 },
     intensityCue: "Control the lowering, no bouncing out of the bottom.",
+    circuit: { ...SUPERSET_LINK, position: 0, round },
   })),
-  ...[1, 2, 3].map(() => ({
+  ...[0, 1, 2].map((round) => ({
     movementId: MOV.row,
     movementSlug: "seated-cable-row",
     movementName: "Seated Cable Row",
@@ -76,6 +89,7 @@ const WORK_ITEMS = [
     sets: 1,
     reps: 12,
     targetRir: { min: 1, max: 2 },
+    circuit: { ...SUPERSET_LINK, position: 1, round },
   })),
   ...[1, 2, 3].map(() => ({
     movementId: MOV.carry,
@@ -112,11 +126,6 @@ const SETS: LoggedSet[] = [0, 1].map((i) => ({
     primary_region: "lower",
   },
 }));
-
-const SUPERSETS: ReadonlyMap<string, SupersetCardInfo> = new Map([
-  [MOV.legPress, { groupId: "A", slot: "A1" as const }],
-  [MOV.row, { groupId: "A", slot: "A2" as const }],
-]);
 
 /** Fixed so the fixture renders identically on every run (and in tests). */
 const SIX_DAYS_AGO = "2026-08-10T18:00:00.000Z";
@@ -199,7 +208,6 @@ export function LoggerPreview({ variant }: { variant: string }) {
               { weightKg: 2.5 },
               { weightKg: 1.25 },
             ]}
-            supersetByMovementId={SUPERSETS}
             accessoryMetaById={{
               [MOV.legPress]: { equipment: "machine", region: "lower" },
               [MOV.row]: { equipment: "cable", region: "upper" },

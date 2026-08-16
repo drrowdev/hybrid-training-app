@@ -45,7 +45,6 @@ import { OfflineSyncBadge } from "./OfflineSyncBadge";
 import { useSessionLoggingState } from "./SessionLoggingState";
 import type { PlateInventoryItem } from "./plate-math";
 import type { ResolvedFreestyleMovement } from "@/lib/sessions/freestyle-resolver";
-import type { SupersetCardInfo } from "@/lib/sessions/superset-cards";
 
 type AddStrengthSetAction = typeof addStrengthSetAction;
 type FillSessionFromPlanAction = typeof fillSessionFromPlanAction;
@@ -83,7 +82,6 @@ export function SessionWorkArea({
   preferStandardLbPlates,
   bwGateStateByFamily,
   resolvedFreestyle,
-  supersetByMovementId,
   bodyweightMovementIds,
   accessoryMetaById,
   customAccessoryOrder,
@@ -130,12 +128,6 @@ export function SessionWorkArea({
    * correct but loses anything the user added without logging a set.
    */
   resolvedFreestyle?: ReadonlyArray<ResolvedFreestyleMovement>;
-  /**
-   * ADR 0026 P5b — antagonist-superset membership keyed by accessory
-   * movementId, built server-side. Threaded straight through to
-   * `MovementCardList`. Omitted / empty = no supersets (solo cards).
-   */
-  supersetByMovementId?: ReadonlyMap<string, SupersetCardInfo>;
   /**
    * Movement ids whose movement is bodyweight-capable (`body_weight_loaded`):
    * pull-ups, dips, inverted rows, etc. The focus view lets these log at 0 kg
@@ -396,7 +388,6 @@ export function SessionWorkArea({
         preferStandardLbPlates={preferStandardLbPlates}
         bwGateStateByFamily={mergedBwGateStateByFamily}
         resolvedFreestyle={resolvedFreestyle}
-        supersetByMovementId={supersetByMovementId}
         bodyweightMovementIds={bodyweightMovementIds}
         accessoryMetaById={accessoryMetaById}
         customAccessoryOrder={customAccessoryOrder}

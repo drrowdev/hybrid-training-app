@@ -159,7 +159,10 @@ test.describe("@mobile logger ergonomics", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(PREVIEW);
     await openNavigator(page);
-    const linked = page.getByTestId("movement-navigator-superset-A");
+    // The bracket id is the LINK's own id (a user superset, or the engine's
+    // "tb-ab-triad"), not a positional label — a movement belongs to at most one
+    // link, so the id is what groups its members.
+    const linked = page.getByTestId("movement-navigator-superset-link-1");
     await expect(linked).toBeVisible();
     await expect(linked).toContainText("Leg Press");
     await expect(linked).toContainText("Seated Cable Row");

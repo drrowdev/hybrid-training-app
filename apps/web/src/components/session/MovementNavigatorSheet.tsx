@@ -15,8 +15,8 @@
  *
  * The sheet is opened from the dock, so it is reachable one-handed on a
  * tall phone, and it is always available regardless of the day's shape.
- * Linked work (antagonist supersets) is bracketed rather than listed as
- * unrelated rows, because splitting A1 from A2 misrepresents how the work
+ * Linked work (supersets, tri-sets) is bracketed rather than listed as
+ * unrelated rows, because splitting the members misrepresents how the work
  * is actually performed.
  */
 
@@ -24,7 +24,7 @@ import { useEffect, useRef } from "react";
 import type { MovementGroup } from "@/lib/sessions/movement-grouping";
 import { movementGroupKey } from "@/lib/sessions/movement-grouping";
 import { summariseGroupForHeader } from "@/lib/sessions/movement-summary";
-import type { SupersetCardInfo } from "@/lib/sessions/superset-cards";
+import type { LinkedCircuitInfo } from "@/lib/sessions/linked-circuit";
 import type { FocusSectionKey } from "./FocusStripLogger";
 
 export type NavigatorEntry = {
@@ -35,7 +35,8 @@ export type NavigatorEntry = {
   total: number;
   settled: boolean;
   spec: string;
-  superset: SupersetCardInfo | undefined;
+  /** Membership of a linked group (user superset / tri-set, or the AB Triad). */
+  link: LinkedCircuitInfo | undefined;
 };
 
 const SECTION_ORDER: FocusSectionKey[] = [
@@ -58,7 +59,7 @@ export function buildNavigatorEntries(opts: {
   progressFor: (g: MovementGroup) => { done: number; total: number; settled: boolean };
   tmBySlug: Record<string, number>;
   oneRmBySlug: Record<string, number>;
-  supersetByMovementId?: ReadonlyMap<string, SupersetCardInfo>;
+  supersetByMovementId?: ReadonlyMap<string, LinkedCircuitInfo>;
 }): NavigatorEntry[] {
   const { groups, sectionFor, progressFor, tmBySlug, oneRmBySlug } = opts;
   return groups.map((group) => {
@@ -78,7 +79,7 @@ export function buildNavigatorEntries(opts: {
         tmKg,
         oneRmKg != null && tmKg != null && Math.abs(tmKg - oneRmKg) < 0.001 ? "1RM" : "TM",
       ),
-      superset: opts.supersetByMovementId?.get(group.movementId),
+      link: opts.supersetByMovementId?.get(movementGroupKey(group)),
     };
   });
 }
@@ -163,20 +164,25 @@ export function MovementNavigatorSheet({
                 <div className="cp-nav-section">{section.label}</div>
                 {section.items.map((entry) => {
                   if (drawn.has(entry.key)) return null;
-                  const partners = entry.superset
-                    ? section.items.filter(
-                        (e) => e.superset?.groupId === entry.superset?.groupId,
-                      )
+                  const partners = entry.link
+                    ? section.items
+                        .filter((e) => e.link?.id === entry.link?.id)
+                        // Performance order, not section order: the accessory
+                        // list is smart-ordered, which can otherwise surface A2
+                        // above A1 inside the bracket.
+                        .sort((a, b) => a.link!.position - b.link!.position)
                     : [];
                   if (partners.length > 1) {
                     partners.forEach((p) => drawn.add(p.key));
                     return (
                       <div
-                        key={`ss-${entry.superset!.groupId}`}
+                        key={`ss-${entry.link!.id}`}
                         className="cp-nav-linked"
-                        data-testid={`movement-navigator-superset-${entry.superset!.groupId}`}
+                        data-testid={`movement-navigator-superset-${entry.link!.id}`}
                       >
-                        <div className="cp-nav-linked-head">Superset — alternate</div>
+                        <div className="cp-nav-linked-head">
+                          {entry.link!.name} — alternate
+                        </div>
                         {partners.map((p) => (
                           <NavRow
                             key={p.key}
@@ -241,8 +247,8 @@ function NavRow({
       aria-current={active}
       onClick={() => onPick(entry.key)}
     >
-      {entry.superset && (
-        <span className="cp-nav-slot mono">{entry.superset.slot}</span>
+      {entry.link && (
+        <span className="cp-nav-slot mono">A{entry.link.position + 1}</span>
       )}
       <span className="cp-nav-mark" aria-hidden="true">
         {entry.settled ? "✓" : ""}

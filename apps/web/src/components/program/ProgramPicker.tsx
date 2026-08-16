@@ -10,9 +10,10 @@
  * date, and deploy via `createProgramInstance`. Visual + content target is the
  * accepted mockup `program-wizard-v3-sage.html`.
  */
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  AB_TRIAD_MOVEMENTS,
   activationPhaseForWeek,
   type ActivationPhaseKey,
 } from "@hta/tacticalbarbell";
@@ -42,6 +43,13 @@ import {
   type TbCustomization,
 } from "@/lib/platform/tb-customization";
 import styles from "./ProgramPicker.module.css";
+import { SessionLinkEditor, type LinkableMovement } from "./SessionLinkEditor";
+import { pruneMovementFromLinks } from "./session-link-editing";
+import {
+  SESSION_LINKS_VERSION,
+  type SessionLink,
+  type SessionLinks,
+} from "@/lib/platform/session-links";
 
 /** Stencil "code" + Oswald kicker shown on each program card (step 1). */
 const CARD_META: Record<string, { kick: string; code: string }> = {
@@ -1056,9 +1064,10 @@ export interface ProgramEditContextProp {
   strengthWeekdays: number[];
   cardioWeekdays: number[];
   startedOn: string;
-  supersetAccessories: boolean;
   accessoriesEnabled: boolean;
   customization?: TbCustomization;
+  /** User-authored superset links, rehydrated into the link editor. */
+  sessionLinks?: SessionLinks;
   currentWeekIndex?: number;
   programStartWeekIndex?: number;
 }
@@ -1319,11 +1328,6 @@ export function ProgramPicker({
   const [accessoryMuscles, setAccessoryMuscles] = useState<string[]>([...TB_DEFAULT_ACCESSORY_MUSCLES]);
   // Per-block two-a-day preference (migration 0110) — Hybrid only, default OFF.
   const [twoADay, setTwoADay] = useState<boolean>(false);
-  // Per-block antagonist-superset accessories (migration 0111) — ALL programs,
-  // default OFF.
-  const [supersetAccessories, setSupersetAccessories] = useState<boolean>(
-    isEditing && editContext ? editContext.supersetAccessories : false,
-  );
   const [customizeTb, setCustomizeTb] = useState<boolean>(
     Boolean(editContext?.customization),
   );
@@ -1345,6 +1349,48 @@ export function ProgramPicker({
         )
       : {};
   });
+  // User-authored superset / tri-set links, keyed by session series. Kept OUTSIDE
+  // the TB customization blob so they also work on canonical templates and on
+  // Activation — see lib/platform/session-links.
+  const [sessionLinks, setSessionLinks] = useState<Record<string, SessionLink[]>>(
+    () => ({ ...(editContext?.sessionLinks?.bySeries ?? {}) }),
+  );
+  const setLinksForSeries = useCallback(
+    (seriesKey: string, links: SessionLink[]) => {
+      setSessionLinks((current) => {
+        const next = { ...current };
+        if (links.length > 0) next[seriesKey] = links;
+        else delete next[seriesKey];
+        return next;
+      });
+    },
+    [],
+  );
+  /**
+   * The lifts a slot can link, in session order.
+   *
+   * Movement keys are the CANONICAL slot identity the engine matches on
+   * (`sourceMovement ?? movement`), so a link keeps working when the underlying
+   * movement is substituted. The AB Triad is locked out whenever the complete
+   * triad is present: it is already a circuit, and an item carries at most one.
+   */
+  const linkableMovementsFor = (
+    movementKeys: readonly string[],
+  ): LinkableMovement[] => {
+    const triad = AB_TRIAD_MOVEMENTS as readonly string[];
+    const completeTriad = triad.every((m) => movementKeys.includes(m));
+    return movementKeys.map((key) => ({
+      key,
+      label: customMovementLabel(key),
+      isMain: !key.startsWith("catalog:"),
+      ...(completeTriad && triad.includes(key)
+        ? {
+            lockedReason:
+              "The AB Triad is already linked as a circuit, so its movements can\u2019t be added to another superset.",
+          }
+        : {}),
+    }));
+  };
   const [rehabDrafts, setRehabDrafts] = useState<RehabDraft[]>(
     editContext?.customization &&
       isTbCustomizationV1(editContext.customization)
@@ -1985,6 +2031,23 @@ export function ProgramPicker({
           : [...selected, movement],
       };
     });
+    // A removed lift must leave any link it was part of, or the link keeps a
+    // member the session no longer has: the engine requires every member to be
+    // present, so it would drop the whole link at materialisation and the
+    // superset would silently disappear.
+    setSessionLinks((current) => {
+      const links = current[seriesKey];
+      if (!links?.length) return current;
+      const pruned = pruneMovementFromLinks(links, movement);
+      if (pruned.length === links.length &&
+          pruned.every((l, i) => l.members.length === links[i]!.members.length)) {
+        return current;
+      }
+      const next = { ...current };
+      if (pruned.length > 0) next[seriesKey] = pruned;
+      else delete next[seriesKey];
+      return next;
+    });
   }
 
   function addRehabMovement() {
@@ -2358,7 +2421,14 @@ export function ProgramPicker({
           ? { accessories: { enabled: true, muscles: accessoryMuscles } }
           : {}),
         ...((isHybrid || isHyrox) && twoADay ? { twoADay: true } : {}),
-        ...(supersetAccessories ? { supersetAccessories: true } : {}),
+        ...(isTb && Object.keys(sessionLinks).length > 0
+          ? {
+              sessionLinks: {
+                version: SESSION_LINKS_VERSION as 1,
+                bySeries: sessionLinks,
+              },
+            }
+          : {}),
         ...(customization ? { customization } : {}),
         ...(isEditing && editContext ? { editBlockId: editContext.blockId } : {}),
         ...(!isEditing && seasonBlockId ? { seasonBlockId } : {}),
@@ -4398,6 +4468,14 @@ export function ProgramPicker({
                             Choose at least one movement.
                           </p>
                         ) : null}
+                        <SessionLinkEditor
+                          seriesKey={series.key}
+                          movements={linkableMovementsFor(
+                            customSessionMovements[series.key] ?? [],
+                          )}
+                          links={sessionLinks[series.key] ?? []}
+                          onChange={setLinksForSeries}
+                        />
                       </section>
                     ))}
                   </div>
@@ -4577,25 +4655,35 @@ export function ProgramPicker({
           </div>
         ) : null}
 
-        {/* Superset-accessories pairing is a barbell-accessory concept; HYROX
-            has no supersettable accessories (its stations ARE the work), so the
-            toggle is hidden for it (field report). */}
-        {!isHyrox && (
-          <div style={{ marginTop: 24, maxWidth: 560 }} data-testid="superset-accessories">
-            <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={supersetAccessories}
-                data-testid="superset-accessories-toggle"
-                onChange={(e) => setSupersetAccessories(e.target.checked)}
-              />
-              <span className={styles.label} style={{ margin: 0 }}>
-                Superset accessories (optional)
-              </span>
-            </label>
+        {/* Explicit lift links replace the old block-level "Superset accessories"
+            checkbox, which auto-paired anatomical antagonists and could never
+            touch a main lift. Only offered for Tactical Barbell, whose engine
+            resolves them; the customized builder renders its own editor inline
+            per slot, so this stands in for canonical templates. */}
+        {isTb && !customizeTb && !isActivation && activeTbTemplate && (
+          <div style={{ marginTop: 24, maxWidth: 560 }} data-testid="session-links">
+            <span className={styles.label} style={{ margin: 0 }}>
+              Link lifts (optional)
+            </span>
             <p className={styles.sub} style={{ marginTop: 6 }}>
-              {"Pair opposing accessories (e.g. a curl with a pushdown) so you rest once per round instead of twice \u2014 a shorter session for the same work. Never changes which exercises or how many sets you get. Applies to this block only."}
+              {"Run two or more lifts back-to-back as a superset \u2014 one set of each, then a single rest. Shortens the session without changing which lifts you do, your sets, reps or percentages."}
             </p>
+            <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+              {sessionSeriesFor(activeTbTemplate).map((series, index) => (
+                <section key={series.key} className={styles.seriesCard}>
+                  <header>
+                    <b>Strength {index + 1}</b>
+                    <small>{series.label}</small>
+                  </header>
+                  <SessionLinkEditor
+                    seriesKey={series.key}
+                    movements={linkableMovementsFor(series.movements)}
+                    links={sessionLinks[series.key] ?? []}
+                    onChange={setLinksForSeries}
+                  />
+                </section>
+              ))}
+            </div>
           </div>
         )}
 

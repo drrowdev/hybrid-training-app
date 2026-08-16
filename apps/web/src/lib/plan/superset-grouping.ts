@@ -1,61 +1,64 @@
 /**
- * Superset segmentation for the preview / plan accessory lists — ADR 0026 P5a.
+ * Superset segmentation for the preview / plan accessory lists.
  *
- * The read-time pairing pass (ADR 0026 P4, `lib/planner/superset-view.ts`) tags
- * paired accessory items with `meta.supersetGroup` / `meta.supersetSlot` and
- * pulls each A2 partner up to sit immediately after its A1. By the time the
- * accessory rows reach the preview / plan renderers (one `PrescriptionMovementRow`
- * per movement, in prescription order) a superset is therefore two CONSECUTIVE
- * rows that share the same `supersetGroup` id.
+ * A user-authored link (superset, tri-set, giant set) is realised by the engine
+ * as `item.circuit` on each member, and the members are emitted adjacent. By the
+ * time the rows reach the preview / plan renderers (one `PrescriptionMovementRow`
+ * per movement, in prescription order) a link is therefore two or more
+ * CONSECUTIVE rows sharing the same circuit id.
  *
- * This module is the pure, render-free segmentation: it folds a flat accessory
- * row list into a sequence of solo rows and superset clusters so a renderer can
- * wrap the paired rows in a "Superset" bracket. It is deliberately conservative:
+ * This module is the pure, render-free segmentation: it folds a flat row list
+ * into a sequence of solo rows and superset clusters so a renderer can wrap the
+ * linked rows in a bracket. It is deliberately conservative:
  *
- *   - A cluster is only emitted as a superset when 2+ consecutive rows share the
- *     id. A lone row carrying a `supersetGroup` (its partner was trimmed by the
- *     ADR-0013 autoreg end-slice, or landed in a different render section like
- *     hinge-compensation) is a WIDOWED member and renders solo — never as a
- *     half-bracket. This is the widowed-fallback the ADR requires.
- *   - With the preference off, no row carries a `supersetGroup`, so every segment
- *     is solo and the output is structurally identical to the un-segmented list.
+ *   - A cluster is only emitted when 2+ consecutive rows share the id. A lone
+ *     row carrying a circuit (its partner dropped out of this week's session, or
+ *     landed in a different render section) renders solo — never a half-bracket.
+ *   - With no links authored, no row carries a circuit, so every segment is solo
+ *     and the output is structurally identical to the un-segmented list.
  */
 import type { PrescriptionMovementRow } from "./prescription-grouping";
-import { SUPERSET_GROUP_KEY, SUPERSET_SLOT_KEY, type SupersetSlot } from "@/lib/planner/antagonist-pairs";
 
 export type SupersetRowSegment =
   | { kind: "solo"; row: PrescriptionMovementRow }
   | { kind: "superset"; groupId: string; rows: PrescriptionMovementRow[] };
 
 /**
- * The superset group id carried by a row's items, or null when the row is not
- * part of a superset. All items of a single accessory movement share one group
- * id (a movement is either the A1 or the A2 of one pair), so the first tagged
- * item wins.
+ * The circuit id carried by a row's items, or null when the row is not linked.
+ * All items of a single movement share one id (a movement belongs to at most one
+ * link), so the first tagged item wins.
  */
 export function supersetGroupOfRow(row: PrescriptionMovementRow): string | null {
   for (const it of row.items) {
-    const g = it.meta?.[SUPERSET_GROUP_KEY];
-    if (typeof g === "string" && g.length > 0) return g;
+    const c = it.circuit;
+    if (
+      c &&
+      typeof c.id === "string" &&
+      c.id.length > 0 &&
+      Number.isInteger(c.size) &&
+      c.size >= 2
+    ) {
+      return c.id;
+    }
   }
   return null;
 }
 
-/** The A1 / A2 slot carried by a row's items, or null when unpaired. */
-export function supersetSlotOfRow(row: PrescriptionMovementRow): SupersetSlot | null {
+/** The human name of a row's link, when it has one. */
+export function circuitNameOfRow(row: PrescriptionMovementRow): string | null {
   for (const it of row.items) {
-    const s = it.meta?.[SUPERSET_SLOT_KEY];
-    if (s === "A1" || s === "A2") return s;
+    const c = it.circuit;
+    if (c && typeof c.name === "string" && c.name.length > 0) return c.name;
   }
   return null;
 }
 
 /**
- * Fold a flat accessory row list into solo rows + superset clusters.
+ * Fold a flat row list into solo rows + superset clusters.
  *
- * Pure and order-preserving: clusters consecutive rows that share a
- * `supersetGroup` id; a single-row "cluster" degrades to a solo segment
- * (widowed fallback). When no row is tagged, returns one solo segment per row.
+ * Pure and order-preserving: clusters consecutive rows that share a circuit id;
+ * a single-row "cluster" degrades to a solo segment. When no row is linked,
+ * returns one solo segment per row.
  */
 export function segmentSupersetRows(
   rows: readonly PrescriptionMovementRow[],

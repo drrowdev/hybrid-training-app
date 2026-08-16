@@ -904,6 +904,13 @@
       "when": 1786752000000,
       "tag": "0128_set_logs_prescribed_snapshot",
       "breakpoints": false
+    },
+    {
+      "idx": 129,
+      "version": "7",
+      "when": 1786838400000,
+      "tag": "0129_drop_superset_accessories",
+      "breakpoints": false
     }
   ]
 }

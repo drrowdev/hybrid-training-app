@@ -172,7 +172,17 @@ export type FocusViewProps = {
    */
   dockAccessory?: React.ReactNode;
   /** Superset A1 advances immediately; its A2 partner owns the shared rest. */
-  suppressRestAfterSave?: boolean;
+  /**
+   * Decides whether saving a given prescription item should SKIP the rest
+   * timer — used for linked supersets, where you move straight to the next
+   * station and rest once at the end of the round.
+   *
+   * A predicate rather than a boolean on purpose: the slot being saved is this
+   * component's own cursor, which can be pinned by the user or by the parent,
+   * so it is not always the "next open" slot the parent would guess. Passing
+   * the decision down lets it be made against the index actually being logged.
+   */
+  suppressRestForItemIndex?: (itemIndex: number) => boolean;
 };
 
 const SET_KIND_TO_LOG: Record<string, "warmup" | "main" | "back_off" | "accessory" | "tendon"> =
@@ -211,7 +221,7 @@ export function MovementFocusView({
   bodyweightCapable = false,
   focusStrip = false,
   dockAccessory = null,
-  suppressRestAfterSave = false,
+  suppressRestForItemIndex,
 }: FocusViewProps) {
   const router = useRouter();
   const units = useUnits();
@@ -784,7 +794,7 @@ export function MovementFocusView({
           : itemKind === "bw_reps"
             ? `× ${reps}`
             : `${formatWeight(weight, units)} × ${reps}`;
-    if (isLastSlot || suppressRestAfterSave) {
+    if (isLastSlot || suppressRestForItemIndex?.(activeItemIndex)) {
       setRestSeconds(0);
       restDeadlineRef.current = null;
     } else {

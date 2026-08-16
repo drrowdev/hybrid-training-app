@@ -72,16 +72,6 @@ import {
   fidelitySummaryLine,
 } from "@hta/domain";
 import type { Prescription } from "@hta/db";
-import {
-  getSupersetAccessoriesPref,
-  loadPrimaryMusclesByMovementId,
-  resolverFromMap,
-} from "@/lib/planner/superset-view";
-import {
-  accessoryMovementIds,
-  buildSupersetByMovementId,
-  type SupersetCardInfo,
-} from "@/lib/sessions/superset-cards";
 import { loadBwGateStatesForPrescription } from "@/lib/planner/bw-gate-state-loader";
 import { cardioModalityLabel } from "@/lib/session/cardio-modality-label";
 import { isEmptyInProgressSession, shouldShowStrengthEmptyState } from "@/lib/sessions/empty-state";
@@ -337,24 +327,6 @@ export default async function SessionDetailPage({
     }
   }
 
-  // ADR 0026 P5b — when the lifter has opted into antagonist supersets, derive
-  // accessory pairing from the (unpaired) stored prescription so the logger can
-  // bracket paired CARDS adjacent. We never reorder `prescription.items` (the
-  // index-based set matching depends on their order); only the card render is
-  // grouped. Off / no pairs => empty map => byte-identical legacy card layout.
-  // Superset chain stays internally sequential (pref gate → muscle-map load),
-  // but the chain as a whole runs in parallel with the other independent reads
-  // below via the Batch 1 Promise.all join.
-  const supersetByMovementIdPromise: Promise<ReadonlyMap<string, SupersetCardInfo>> =
-    (async () => {
-      if (!plannedPrescription) return new Map<string, SupersetCardInfo>();
-      const supersetPrefOn = await getSupersetAccessoriesPref(supabase, user.id);
-      if (!supersetPrefOn) return new Map<string, SupersetCardInfo>();
-      const accessoryIds = accessoryMovementIds(plannedPrescription);
-      if (accessoryIds.length === 0) return new Map<string, SupersetCardInfo>();
-      const muscleMap = await loadPrimaryMusclesByMovementId(supabase, accessoryIds);
-      return buildSupersetByMovementId(plannedPrescription, resolverFromMap(muscleMap));
-    })();
   const resolvedFreestyle = resolveFreestyleMovements({
     persisted: persistedFreestyle,
     sets: setLogSlimForFreestyle,
@@ -484,17 +456,15 @@ export default async function SessionDetailPage({
         )
       : Promise.resolve({});
 
-  // Batch 1 join — superset chain, bw-gate states, the proposal waterfall,
-  // last-set hints and prior bests are mutually independent, so they execute
-  // together here. Each promise was started above; this awaits them as one.
+  // Batch 1 join — bw-gate states, the proposal waterfall, last-set hints and
+  // prior bests are mutually independent, so they execute together here. Each
+  // promise was started above; this awaits them as one.
   const [
-    supersetByMovementId,
     bwGateStateByFamily,
     { bumpProposal, deloadProposal, prRecalibrateProposals },
     lastSetHints,
     priorBests,
   ] = await Promise.all([
-    supersetByMovementIdPromise,
     bwGateStateByFamilyPromise,
     proposalsPromise,
     lastSetHintsPromise,
@@ -1441,7 +1411,6 @@ export default async function SessionDetailPage({
         preferStandardLbPlates={preferStandardLbPlates}
         bwGateStateByFamily={bwGateStateByFamily}
         resolvedFreestyle={resolvedFreestyle}
-        supersetByMovementId={supersetByMovementId}
         bodyweightMovementIds={bodyweightMovementIds}
         accessoryMetaById={accessoryMetaById}
         customAccessoryOrder={

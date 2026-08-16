@@ -27,7 +27,6 @@
 import type { PrescriptionItem, PrescriptionItemKind } from "@hta/db";
 import { partitionRehabItems } from "@hta/domain";
 import { restSecondsForKind } from "./rest";
-import { SUPERSET_GROUP_KEY } from "../planner/antagonist-pairs";
 
 /**
  * Per-set working time (concentric + eccentric + bar setup), independent of
@@ -70,11 +69,88 @@ function restSecForItem(kind: PrescriptionItemKind): number {
   return restSecondsForKind(kind);
 }
 
-function supersetGroupOf(it: PrescriptionItem): string | null {
-  const g = (it.meta as Record<string, unknown> | undefined)?.[
-    SUPERSET_GROUP_KEY
-  ];
-  return typeof g === "string" && g.length > 0 ? g : null;
+/**
+ * How rest should be priced.
+ *
+ * - `"solo"` charges every set its own full rest, ignoring all grouping. This is
+ *   what the ADR-0020 duration governor MUST use: if grouping fed the governor,
+ *   linking two lifts would free up time and let it keep MORE accessory volume,
+ *   so a presentation choice would silently change the prescription. ADR 0026
+ *   calls that invariant absolute, so it is encoded here as an explicit argument
+ *   rather than left to depend on which call sites happen to produce grouping.
+ * - `"grouped"` overlaps rest inside linked circuits. Display surfaces use it so
+ *   the shown duration reflects how the session is actually run.
+ */
+export type RestPricingMode = "solo" | "grouped";
+
+/**
+ * Price the circuit rounds present in `items`, returning the seconds spent and
+ * the exact item instances consumed (so the caller prices nothing twice).
+ *
+ * Grouping is by circuit id, then by POSITION within the circuit. Keying by id
+ * alone would be wrong: the platform adapter expands an engine item with
+ * `sets > 1` into one loggable prescription item per set and copies the circuit
+ * onto each, so a 3-movement × 3-round circuit is nine items sharing an id, not
+ * three. The r-th item at each position is the r-th round, which resolves both
+ * the adapter-stamped `circuit.round` form and legacy stored circuits that
+ * predate the stamp.
+ *
+ * A round costs `Σ work + (size − 1) × switch + one overlapped rest` — you move
+ * between stations and rest once, at the longest of the members' requirements.
+ * Incomplete circuits (a member missing, or fewer rounds at some position) leave
+ * their surplus sets to solo pricing, mirroring the widowed-member rule.
+ */
+function priceCircuitRounds(items: readonly PrescriptionItem[]): {
+  seconds: number;
+  consumed: Set<PrescriptionItem>;
+} {
+  const byId = new Map<string, PrescriptionItem[]>();
+  for (const it of items) {
+    const c = it.circuit;
+    if (!c || typeof c.id !== "string" || c.id.length === 0) continue;
+    if (!Number.isInteger(c.size) || c.size < 2) continue;
+    if (!Number.isInteger(c.position) || c.position < 0 || c.position >= c.size) {
+      continue;
+    }
+    const arr = byId.get(c.id);
+    if (arr) arr.push(it);
+    else byId.set(c.id, [it]);
+  }
+
+  let seconds = 0;
+  const consumed = new Set<PrescriptionItem>();
+  for (const members of byId.values()) {
+    const size = members[0]!.circuit!.size;
+    const byPosition = new Map<number, PrescriptionItem[]>();
+    for (const it of members) {
+      const pos = it.circuit!.position;
+      const arr = byPosition.get(pos);
+      if (arr) arr.push(it);
+      else byPosition.set(pos, [it]);
+    }
+    // Every station must be present, exactly once per round.
+    if (byPosition.size !== size) continue;
+    const lanes: PrescriptionItem[][] = [];
+    let ok = true;
+    for (let pos = 0; pos < size; pos += 1) {
+      const lane = byPosition.get(pos);
+      if (!lane || lane.length === 0) {
+        ok = false;
+        break;
+      }
+      lanes.push(lane);
+    }
+    if (!ok) continue;
+    const rounds = Math.min(...lanes.map((lane) => lane.length));
+    for (let round = 0; round < rounds; round += 1) {
+      const inRound = lanes.map((lane) => lane[round]!);
+      const rest = Math.max(...inRound.map((it) => restSecForItem(it.kind)));
+      const work = inRound.reduce((sum, it) => sum + workSecForItem(it), 0);
+      seconds += work + (size - 1) * SUPERSET_TRANSITION_SEC + rest;
+      inRound.forEach((it) => consumed.add(it));
+    }
+  }
+  return { seconds, consumed };
 }
 
 /**
@@ -83,52 +159,30 @@ function supersetGroupOf(it: PrescriptionItem): string | null {
  * contribute `sets × (work + rest)`. `cardio_external` (no duration) and
  * empty inputs contribute nothing.
  *
- * **Antagonist supersets (ADR 0026):** when two accessory items share a
- * `meta.supersetGroup` (and BOTH are present with equal sets), they are priced
- * as a paired block — one overlapped rest per round plus a short station
- * switch — instead of two full rests. A "widowed" member whose partner was
- * trimmed away (ADR 0013 autoreg end-slice) is priced solo. With no superset
- * meta present this loop reduces to the exact legacy per-item computation, so
- * the estimate is byte-identical when the feature is off.
+ * **Grouped rest.** A linked circuit (`item.circuit`) performs every station in
+ * a round back-to-back before a single rest. Any circuit set with no counterpart
+ * in its round is priced solo, mirroring the never-a-half-bracket rule. With
+ * `mode: "solo"`, or with no circuit metadata present at all, this reduces to
+ * the exact per-item computation — so the estimate is byte-identical for
+ * un-linked sessions and for the governor.
  */
 export function estimateSessionSeconds(
   items: readonly PrescriptionItem[] | null | undefined,
+  mode: RestPricingMode = "grouped",
 ): number {
   if (!items || items.length === 0) return 0;
 
-  // Collect superset members, then price valid pairs (exactly two present,
-  // both accessory, equal sets) with overlapped rest. Everything else — incl.
-  // widowed members — falls through to the solo pricing below.
-  const groups = new Map<string, PrescriptionItem[]>();
-  for (const it of items) {
-    const g = supersetGroupOf(it);
-    if (g) {
-      const arr = groups.get(g);
-      if (arr) arr.push(it);
-      else groups.set(g, [it]);
-    }
-  }
-  const pairedMembers = new Set<PrescriptionItem>();
   let sec = 0;
-  for (const members of groups.values()) {
-    if (members.length !== 2) continue;
-    const [a, b] = members;
-    if (a.kind !== "accessory" || b.kind !== "accessory") continue;
-    const rounds = Math.max(1, a.sets ?? 1);
-    if (rounds !== Math.max(1, b.sets ?? 1)) continue;
-    const restPair = Math.max(restSecForItem(a.kind), restSecForItem(b.kind));
-    sec +=
-      rounds *
-      (workSecForItem(a) +
-        workSecForItem(b) +
-        SUPERSET_TRANSITION_SEC +
-        restPair);
-    pairedMembers.add(a);
-    pairedMembers.add(b);
+  const grouped = new Set<PrescriptionItem>();
+
+  if (mode === "grouped") {
+    const circuits = priceCircuitRounds(items);
+    sec += circuits.seconds;
+    circuits.consumed.forEach((it) => grouped.add(it));
   }
 
   for (const it of items) {
-    if (pairedMembers.has(it)) continue;
+    if (grouped.has(it)) continue;
     if (isCardio(it.kind)) {
       sec += (it.durationMin ?? 0) * 60;
       continue;

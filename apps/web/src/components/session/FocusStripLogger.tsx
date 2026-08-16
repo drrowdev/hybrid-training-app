@@ -25,13 +25,15 @@ import {
 } from "./MovementNavigatorSheet";
 import { MovementHowToButton } from "./MovementHowToButton";
 import type { PlateInventoryItem } from "./plate-math";
-import type { SupersetCardInfo } from "@/lib/sessions/superset-cards";
 import {
   buildLinkedCircuitByMovementId,
   circuitMembersFor,
   circuitRoundFor,
+  circuitSuppressesRest,
   firstOpenCircuitMovementId,
   firstOpenMovementId,
+  isCircuitItemIndex,
+  nextOpenItemIndex,
 } from "@/lib/sessions/linked-circuit";
 import { hapticTick } from "@/lib/feedback";
 import { SKIP_REASONS, type SkipReason } from "@/lib/sessions/skip-reasons";
@@ -62,7 +64,6 @@ export type FocusStripLoggerProps = {
     { heaviestWeight: number | null; bestE1rm: number | null }
   >;
   lastSetHints?: Readonly<Record<string, LastSetHint>>;
-  supersetByMovementId?: ReadonlyMap<string, SupersetCardInfo>;
   reorderableMovementIds?: readonly string[];
   onReorderMovements?: (movementIds: string[]) => void;
   addStrengthSet: typeof addStrengthSet;
@@ -179,7 +180,6 @@ export function FocusStripLogger({
   loggedSetIdsByItemIndex,
   priorBests,
   lastSetHints = {},
-  supersetByMovementId,
   reorderableMovementIds,
   onReorderMovements,
   addStrengthSet,
@@ -282,37 +282,32 @@ export function FocusStripLogger({
     (index) => !loggedItemIndices.has(index),
   );
   const declinedOptional = declinedOptionalIds.has(activeOriginalKey);
-  const activeSuperset =
-    focusSectionFor(activeOriginal) === "rehab"
-      ? undefined
-      : supersetByMovementId?.get(activeOriginal.movementId);
-  const supersetPartner = activeSuperset
-    ? groups.find((group) => {
-        if (
-          movementGroupKey(group) === activeOriginalKey ||
-          focusSectionFor(group) === "rehab"
-        ) {
-          return false;
-        }
-        return (
-          supersetByMovementId?.get(group.movementId)?.groupId ===
-          activeSuperset.groupId
-        );
-      })
-    : undefined;
   const activeCircuit = linkedCircuitByMovementId.get(
     activeOriginalKey,
   );
-  const activeCircuitMembers = activeCircuit
-    ? circuitMembersFor(
-        activeOriginalKey,
-        groups,
-        linkedCircuitByMovementId,
-      )
-    : [];
-  const activeCircuitRound = activeCircuit
-    ? circuitRoundFor(activeOriginal, activeCircuit, loggedItemIndices)
-    : null;
+  // The set the user is about to log. Circuit membership is per-SET, so the cue
+  // and the rest behaviour must key off this slot rather than the movement:
+  // a warm-up, or a set past the group's round count, is ordinary solo work
+  // even though the movement itself is part of a link.
+  const activeNextItemIndex = nextOpenItemIndex(
+    activeOriginal,
+    loggedItemIndices,
+  );
+  const activeSlotInCircuit =
+    activeNextItemIndex != null &&
+    isCircuitItemIndex(activeOriginal, activeCircuit, activeNextItemIndex);
+  const activeCircuitMembers =
+    activeCircuit && activeSlotInCircuit
+      ? circuitMembersFor(
+          activeOriginalKey,
+          groups,
+          linkedCircuitByMovementId,
+        )
+      : [];
+  const activeCircuitRound =
+    activeCircuit && activeSlotInCircuit
+      ? circuitRoundFor(activeOriginal, activeCircuit, loggedItemIndices)
+      : null;
 
   const totalRequired = groups.reduce(
     (sum, group) => sum + requiredIndices(group).length,
@@ -344,7 +339,7 @@ export function FocusStripLogger({
     },
     tmBySlug,
     oneRmBySlug,
-    supersetByMovementId,
+    supersetByMovementId: linkedCircuitByMovementId,
   });
   const sectionSummaries = ([
     "rehab",
@@ -393,16 +388,6 @@ export function FocusStripLogger({
       }
     }
   };
-  const hasOpenWork = (
-    group: MovementGroup,
-    declinedIds = declinedOptionalIds,
-    coveredIndices = loggedItemIndices,
-  ) =>
-    requiredIndices(group).some((index) => !coveredIndices.has(index)) ||
-    (optionalIndices(group).some(
-      (index) => !coveredIndices.has(index),
-    ) &&
-      !declinedIds.has(movementGroupKey(group)));
 
   const role = bucketForGroup(activeOriginal);
   const isRehabGroup = activeOriginal.items.every(
@@ -660,23 +645,6 @@ export function FocusStripLogger({
                </div>
              </div>
            )}
-           {!activeCircuit && activeSuperset && supersetPartner && (
-             <div
-               data-testid="focus-strip-superset-cue"
-               style={{
-                 padding: "8px 10px",
-                 borderRadius: 10,
-                 border: "1px solid var(--cp-border)",
-                 background: "var(--cp-surface-soft)",
-                 color: "var(--cp-text-muted)",
-                 fontSize: 12,
-               }}
-             >
-               <strong style={{ color: "var(--cp-text)" }}>Superset</strong>
-               {" · "}alternate with {supersetPartner.movementName}, then rest
-               once.
-             </div>
-           )}
            {role === "accessory" && (
              <LastSetHintRow
                hint={lastSetHints[activeOriginal.movementId]}
@@ -711,10 +679,8 @@ export function FocusStripLogger({
                 equipmentByMovementId?.get(activeOriginal.movementId) ??
                 null
               }
-              suppressRestAfterSave={
-                activeCircuit
-                  ? activeCircuit.position < activeCircuit.size - 1
-                  : activeSuperset?.slot === "A1" && supersetPartner != null
+              suppressRestForItemIndex={(itemIndex) =>
+                circuitSuppressesRest(activeOriginal, activeCircuit, itemIndex)
               }
               focusStrip
               dockAccessory={
@@ -758,15 +724,6 @@ export function FocusStripLogger({
                   : null;
                 if (circuitNext) {
                   setActiveId(circuitNext);
-                } else if (
-                  supersetPartner &&
-                  hasOpenWork(
-                    supersetPartner,
-                    declinedOptionalIds,
-                    projected,
-                  )
-                ) {
-                  setActiveId(movementGroupKey(supersetPartner));
                 } else if (isLast) {
                   advance(declinedOptionalIds, projected);
                 }

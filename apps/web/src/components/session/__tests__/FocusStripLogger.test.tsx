@@ -190,7 +190,7 @@ describe("FocusStripLogger", () => {
     expect(html).not.toContain("± 1");
   });
 
-  it("preserves superset alternation guidance", () => {
+  it("keeps the accessory reorder controls", () => {
     const html = renderToStaticMarkup(
       <FocusStripLogger
         sessionId="session"
@@ -202,12 +202,6 @@ describe("FocusStripLogger", () => {
         skippedItemIndices={new Set()}
         loggedSetIdByItemIndex={{}}
         priorBests={{}}
-        supersetByMovementId={
-          new Map([
-            ["curl", { groupId: "arms", slot: "A1" as const }],
-            ["extension", { groupId: "arms", slot: "A2" as const }],
-          ])
-        }
         reorderableMovementIds={["curl", "extension"]}
         onReorderMovements={vi.fn()}
         addStrengthSet={addStrengthSet}
@@ -216,8 +210,9 @@ describe("FocusStripLogger", () => {
         timerSoundEnabled={false}
       />,
     );
-    expect(html).toContain('data-testid="focus-strip-superset-cue"');
-    expect(html).toContain("alternate with Triceps Extension, then rest once");
+    // Auto-pairing is gone: unlinked accessories carry no superset cue. A user
+    // link surfaces through the circuit cue instead (see linked-circuit tests).
+    expect(html).not.toContain('data-testid="focus-strip-superset-cue"');
     expect(html).toContain('data-testid="focus-strip-reorder"');
     expect(html).toContain('aria-label="Move Curl later"');
   });
