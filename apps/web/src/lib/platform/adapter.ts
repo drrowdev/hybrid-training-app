@@ -236,11 +236,23 @@ export function adaptSessionPrescription(
       (appKind === "main" || appKind === "back_off" || appKind === "accessory") &&
       setCount > 1;
     if (isWorkingMulti) {
+      // Circuit participation is decided HERE, per granular set. A linked group
+      // runs `rounds = min(required sets)` across its members, so only the first
+      // `rounds` required sets rotate; anything past that — and any optional set
+      // — is ordinary solo work that rests in full. Stamping the round index is
+      // what lets the logger and the estimator tell the two apart, since every
+      // expanded set would otherwise carry an identical copy of the circuit.
+      const circuit = appItem.circuit;
+      const base: PrescriptionItem = { ...appItem };
+      delete base.circuit;
       for (let s = 0; s < setCount; s++) {
+        const optional = s >= requiredSetCount;
+        const inRotation = circuit != null && !optional && s < circuit.rounds;
         items.push({
-          ...appItem,
+          ...base,
           sets: 1,
-          ...(s >= requiredSetCount ? { optional: true } : {}),
+          ...(optional ? { optional: true } : {}),
+          ...(inRotation && circuit ? { circuit: { ...circuit, round: s } } : {}),
         });
       }
     } else {

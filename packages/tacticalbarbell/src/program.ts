@@ -525,6 +525,118 @@ function sessionLinksFromValue(
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/** One lift's contiguous run of emitted items (warm-up ramp, then working set). */
+interface EmittedLift {
+  /** Canonical slot identity — `sourceMovement ?? movement`. */
+  source: string;
+  items: PrescribedItem[];
+}
+
+/**
+ * Realise the user's session links over the items a session ACTUALLY emitted.
+ *
+ * Resolving against emitted items rather than the raw `lifts` list is
+ * load-bearing: an anchored lift silently drops out when its 1RM is missing, and
+ * a template week can exclude a movement, so a link's member may simply not be
+ * in this session. When ANY member is absent the link is skipped entirely and
+ * its present members render solo — never a half-bracket.
+ *
+ * `rounds = min(sets)` across members. A member prescribing more sets than that
+ * keeps them; the adapter stamps only the first `rounds` as circuit sets and the
+ * remainder log solo with full rest.
+ *
+ * Members are moved to sit together, anchored at the position of the earliest
+ * one, so the preview brackets them and the logger rotates through them.
+ */
+function applySessionLinks(
+  blocks: EmittedLift[],
+  links: readonly TbSessionLink[] | undefined,
+  hasCompleteAbTriad: boolean,
+): PrescribedItem[] {
+  if (!links || links.length === 0) return blocks.flatMap((b) => b.items);
+
+  const indexBySource = new Map<string, number>();
+  blocks.forEach((block, index) => {
+    if (!indexBySource.has(block.source)) indexBySource.set(block.source, index);
+  });
+
+  const claimed = new Set<number>();
+  const resolved: { link: TbSessionLink; members: number[] }[] = [];
+  for (const link of links) {
+    // The engine owns the AB Triad. When the complete triad is present it is
+    // already a circuit, and an item can carry only one, so any user link
+    // touching those slots is ignored rather than allowed to collide. The wizard
+    // also refuses to build one, so this only ever catches stale data.
+    if (
+      hasCompleteAbTriad &&
+      link.members.some((member) =>
+        (AB_TRIAD_MOVEMENTS as readonly string[]).includes(member),
+      )
+    ) {
+      continue;
+    }
+    const members = link.members.map((member) => indexBySource.get(member));
+    if (members.some((index) => index == null)) continue;
+    const indices = members as number[];
+    if (new Set(indices).size !== indices.length) continue;
+    if (indices.some((index) => claimed.has(index))) continue;
+    indices.forEach((index) => claimed.add(index));
+    resolved.push({ link, members: indices });
+  }
+  if (resolved.length === 0) return blocks.flatMap((b) => b.items);
+
+  const workingItem = (block: EmittedLift): PrescriptionWorkingItem | null => {
+    for (let i = block.items.length - 1; i >= 0; i -= 1) {
+      const item = block.items[i]!;
+      if (item.kind !== "warmup") return item;
+    }
+    return null;
+  };
+
+  for (const { link, members } of resolved) {
+    const working = members.map((index) => workingItem(blocks[index]!));
+    if (working.some((item) => item == null)) continue;
+    const rounds = Math.min(
+      ...working.map((item) => Math.max(1, item!.sets ?? 1)),
+    );
+    working.forEach((item, position) => {
+      item!.circuit = {
+        id: link.id,
+        name: link.name,
+        position,
+        size: members.length,
+        rounds,
+      };
+    });
+  }
+
+  // Emit members together at the earliest member's slot, keeping every other
+  // lift in its original position.
+  const anchorOf = new Map<number, { link: TbSessionLink; members: number[] }>();
+  const absorbed = new Set<number>();
+  for (const entry of resolved) {
+    const anchor = Math.min(...entry.members);
+    anchorOf.set(anchor, entry);
+    entry.members.forEach((index) => {
+      if (index !== anchor) absorbed.add(index);
+    });
+  }
+  const out: PrescribedItem[] = [];
+  blocks.forEach((block, index) => {
+    const entry = anchorOf.get(index);
+    if (entry) {
+      for (const member of entry.members) out.push(...blocks[member]!.items);
+      return;
+    }
+    if (absorbed.has(index)) return;
+    out.push(...block.items);
+  });
+  return out;
+}
+
+/** Narrow alias: the working (non-warm-up) item a link attaches its circuit to. */
+type PrescriptionWorkingItem = PrescribedItem;
+
 export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
   meta: META,
 
@@ -706,13 +818,24 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       sourceMovements.has(movement),
     );
 
-    const items: PrescribedItem[] = [];
+    const seriesKey = sessionSeriesKey(template, session);
+    // Each lift emits its own contiguous run of items (warm-up ramp, then the
+    // working set). Collecting them per lift rather than pushing straight into
+    // one flat list lets the link pass reorder whole lifts afterwards without
+    // separating a lift from its own warm-ups.
+    const blocks: EmittedLift[] = [];
     const customizedSeries =
-      instance.customSessionMovements?.[sessionSeriesKey(template, session)];
+      instance.customSessionMovements?.[seriesKey];
     const customPeaks = customizedSeries
       ? customizedPeakMovements(template, session, customizedSeries)
       : null;
     for (const lift of lifts) {
+      const items: PrescribedItem[] = [];
+      const pushLift = () => {
+        if (items.length > 0) {
+          blocks.push({ source: lift.sourceMovement ?? lift.movement, items });
+        }
+      };
       const sourceMovement = lift.sourceMovement ?? lift.movement;
       const anchor = ctx.oneRepMaxes[lift.movement];
       const movementRange = session.movementSetRanges?.[sourceMovement];
@@ -780,6 +903,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
               }
             : {}),
         });
+        pushLift();
         continue;
       }
 
@@ -802,6 +926,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
             note: `${rangeNote} · set a 1RM before this session`,
           });
         }
+        pushLift();
         continue;
       }
 
@@ -820,6 +945,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
           percentOfTm: prescribedPercent,
           note: `bodyweight — ${Math.round(prescribedPercent * 100)}% of max reps; ${rangeNote}`,
         });
+        pushLift();
         continue;
       }
 
@@ -853,8 +979,15 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
         percentOfTm: prescribedPercent,
         note: rangeNote,
       });
+      pushLift();
     }
-    return { items };
+    return {
+      items: applySessionLinks(
+        blocks,
+        instance.customSessionLinks?.[seriesKey],
+        hasCompleteAbTriad,
+      ),
+    };
   },
 
   onSessionLogged(
