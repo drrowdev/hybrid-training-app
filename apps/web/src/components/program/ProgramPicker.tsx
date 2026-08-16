@@ -44,7 +44,10 @@ import {
 } from "@/lib/platform/tb-customization";
 import styles from "./ProgramPicker.module.css";
 import { SessionLinkEditor, type LinkableMovement } from "./SessionLinkEditor";
-import { pruneMovementFromLinks } from "./session-link-editing";
+import {
+  activationLinkableMovements,
+  pruneMovementFromLinks,
+} from "./session-link-editing";
 import {
   SESSION_LINKS_VERSION,
   type SessionLink,
@@ -1366,6 +1369,9 @@ export function ProgramPicker({
     },
     [],
   );
+  const AB_TRIAD_LOCK_REASON =
+    "The AB Triad is already linked as a circuit, so its movements can\u2019t be added to another superset.";
+
   /**
    * The lifts a slot can link, in session order.
    *
@@ -1975,6 +1981,29 @@ export function ProgramPicker({
         },
       },
     }));
+    // Removing the slot must also take it out of any link, or the link keeps a
+    // member the session no longer has and the engine drops the whole thing at
+    // materialisation. Replacing the exercise is fine: links are keyed by the
+    // canonical slot, so they survive a swap.
+    if (movement == null) {
+      setSessionLinks((current) => {
+        const links = current[sessionKey];
+        if (!links?.length) return current;
+        const pruned = pruneMovementFromLinks(links, sourceMovement);
+        if (
+          pruned.length === links.length &&
+          pruned.every(
+            (l, i) => l.members.length === links[i]!.members.length,
+          )
+        ) {
+          return current;
+        }
+        const next = { ...current };
+        if (pruned.length > 0) next[sessionKey] = pruned;
+        else delete next[sessionKey];
+        return next;
+      });
+    }
   }
 
   function setActivationMovements(
@@ -4080,6 +4109,18 @@ export function ProgramPicker({
                                 Keep or replace at least one movement.
                               </p>
                             ) : null}
+                            <SessionLinkEditor
+                              seriesKey={session.key}
+                              movements={activationLinkableMovements({
+                                slots: session.movements,
+                                selected: draft.movements,
+                                labelOf: customMovementLabel,
+                                builtinCircuitSources: AB_TRIAD_SOURCES,
+                                lockedReason: AB_TRIAD_LOCK_REASON,
+                              })}
+                              links={sessionLinks[session.key] ?? []}
+                              onChange={setLinksForSeries}
+                            />
                           </div>
                         ) : null}
                       </section>
