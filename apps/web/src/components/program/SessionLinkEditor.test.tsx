@@ -48,8 +48,42 @@ describe("SessionLinkEditor", () => {
       { id: "link-1", name: "Superset", members: ["catalog:1", "catalog:2"] },
     ]);
     expect(html).toContain("session-link-link-1");
-    expect(html).toContain("Barbell curl → Triceps pushdown");
+    expect(html).toContain("Barbell curl");
+    expect(html).toContain("Triceps pushdown");
     expect(html).toContain("Unlink Superset");
+  });
+
+  it("labels each member with its round position", () => {
+    const html = markup([
+      { id: "link-1", name: "Tri-set", members: ["squat", "catalog:1", "catalog:2"] },
+    ]);
+    expect(html).toContain("link-member-link-1-0");
+    expect(html).toContain("link-member-link-1-1");
+    expect(html).toContain("link-member-link-1-2");
+    // React splits `A{index + 1}` into separate text nodes.
+    expect(html.replace(/<!--.*?-->/g, "")).toContain("A3");
+  });
+
+  it("offers move controls, disabled at each end", () => {
+    const html = markup([
+      { id: "link-1", name: "Superset", members: ["catalog:1", "catalog:2"] },
+    ]);
+    expect(html).toContain("Move Barbell curl later");
+    expect(html).toContain("Move Triceps pushdown earlier");
+    // First member cannot move up; last cannot move down.
+    expect(html).toMatch(
+      /link-move-up-link-1-0"[^>]*disabled|disabled[^>]*link-move-up-link-1-0"/,
+    );
+    expect(html).toMatch(
+      /link-move-down-link-1-1"[^>]*disabled|disabled[^>]*link-move-down-link-1-1"/,
+    );
+  });
+
+  it("says which lift the rest follows, so order reads as consequential", () => {
+    const html = markup([
+      { id: "link-1", name: "Superset", members: ["catalog:1", "catalog:2"] },
+    ]);
+    expect(html).toContain("Rest after Triceps pushdown");
   });
 
   it("warns when a link contains a main lift, and still renders the link", () => {

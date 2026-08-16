@@ -29,8 +29,8 @@ import {
   addLink,
   canCreateLink,
   linkHasMainLift,
-  linkSummary,
   linksIncludeMainLift,
+  moveMember,
   removeLink,
   selectableMovements,
   toggleSelection,
@@ -38,6 +38,23 @@ import {
 } from "./session-link-editing";
 
 export type { LinkableMovement };
+
+/** Compact ± control for reordering a link's members. */
+function moveButtonStyle(disabled: boolean) {
+  return {
+    flex: "none" as const,
+    width: 26,
+    height: 26,
+    lineHeight: "1",
+    border: "1px solid var(--line2, #384230)",
+    borderRadius: 4,
+    background: "transparent",
+    color: "var(--dim, #afb8a8)",
+    fontSize: 11,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.3 : 1,
+  };
+}
 
 export interface SessionLinkEditorProps {
   seriesKey: string;
@@ -57,6 +74,7 @@ export function SessionLinkEditor({
   const selectable = selectableMovements(movements, links);
   const lockedNote = movements.find((m) => m.lockedReason)?.lockedReason;
   const showWarning = linksIncludeMainLift(links, movements);
+  const byKey = new Map(movements.map((m) => [m.key, m.label]));
 
   if (movements.length < 2) return null;
 
@@ -69,54 +87,122 @@ export function SessionLinkEditor({
             const accent = hasMain
               ? "var(--warn, #c99a5b)"
               : "var(--accent, #8fb39b)";
+            const lastLabel =
+              byKey.get(link.members[link.members.length - 1]!) ??
+              link.members[link.members.length - 1]!;
             return (
               <div
                 key={link.id}
                 data-testid={`session-link-${link.id}`}
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
                   borderLeft: `2px solid ${accent}`,
                   paddingLeft: 8,
-                  minHeight: 32,
+                  paddingBottom: 2,
                 }}
               >
-                <span style={{ display: "grid", gap: 2, minWidth: 0, flex: 1 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    minHeight: 26,
+                  }}
+                >
                   <b
                     style={{
                       fontSize: 10,
                       letterSpacing: "0.08em",
                       textTransform: "uppercase",
                       color: accent,
+                      flex: 1,
                     }}
                   >
                     {link.name}
                   </b>
-                  <small
+                  <button
+                    type="button"
+                    aria-label={`Unlink ${link.name}`}
+                    onClick={() => onChange(seriesKey, removeLink(links, link.id))}
                     style={{
+                      border: 0,
+                      background: "transparent",
+                      color: "var(--warn, #c99a5b)",
+                      cursor: "pointer",
                       fontSize: 11,
-                      color: "var(--dim, #afb8a8)",
-                      overflowWrap: "anywhere",
                     }}
                   >
-                    {linkSummary(link, movements)}
-                  </small>
-                </span>
-                <button
-                  type="button"
-                  aria-label={`Unlink ${link.name}`}
-                  onClick={() => onChange(seriesKey, removeLink(links, link.id))}
+                    Unlink
+                  </button>
+                </div>
+                {link.members.map((member, index) => {
+                  const label = byKey.get(member) ?? member;
+                  const isFirst = index === 0;
+                  const isLast = index === link.members.length - 1;
+                  return (
+                    <div
+                      key={member}
+                      data-testid={`link-member-${link.id}-${index}`}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        minHeight: 32,
+                        fontSize: 11.5,
+                        color: "var(--dim, #afb8a8)",
+                      }}
+                    >
+                      <span
+                        className="mono"
+                        style={{
+                          flex: "none",
+                          fontSize: 9.5,
+                          color: accent,
+                          minWidth: 18,
+                        }}
+                      >
+                        A{index + 1}
+                      </span>
+                      <span
+                        style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}
+                      >
+                        {label}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={`Move ${label} earlier`}
+                        data-testid={`link-move-up-${link.id}-${index}`}
+                        disabled={isFirst}
+                        onClick={() =>
+                          onChange(seriesKey, moveMember(links, link.id, index, -1))
+                        }
+                        style={moveButtonStyle(isFirst)}
+                      >
+                        {"\u2191"}
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Move ${label} later`}
+                        data-testid={`link-move-down-${link.id}-${index}`}
+                        disabled={isLast}
+                        onClick={() =>
+                          onChange(seriesKey, moveMember(links, link.id, index, 1))
+                        }
+                        style={moveButtonStyle(isLast)}
+                      >
+                        {"\u2193"}
+                      </button>
+                    </div>
+                  );
+                })}
+                <p
                   style={{
-                    border: 0,
-                    background: "transparent",
-                    color: "var(--warn, #c99a5b)",
-                    cursor: "pointer",
-                    fontSize: 11,
+                    margin: "2px 0 0",
+                    fontSize: 10,
+                    color: "var(--muted, #79836f)",
                   }}
                 >
-                  Unlink
-                </button>
+                  {`Rest after ${lastLabel}, then start the next round.`}
+                </p>
               </div>
             );
           })}

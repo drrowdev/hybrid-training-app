@@ -11,9 +11,9 @@ import {
   addLink,
   canCreateLink,
   linkHasMainLift,
-  linkSummary,
   linkedKeys,
   linksIncludeMainLift,
+  moveMember,
   nextLinkId,
   removeLink,
   selectableMovements,
@@ -188,16 +188,62 @@ describe("main-lift detection (DC-K4)", () => {
   });
 });
 
-describe("linkSummary", () => {
-  it("reads in performance order with labels", () => {
-    expect(linkSummary(link("link-1", ["squat", "catalog:1"]), MOVEMENTS)).toBe(
-      "Squat \u2192 Barbell curl",
+describe("moveMember", () => {
+  const links = [
+    link("link-1", ["squat", "bench", "catalog:1"], "Tri-set"),
+    link("link-2", ["catalog:2", "catalog:3"]),
+  ];
+
+  it("moves a member earlier", () => {
+    const out = moveMember(links, "link-1", 1, -1);
+    expect(out[0]!.members).toEqual(["bench", "squat", "catalog:1"]);
+  });
+
+  it("moves a member later", () => {
+    const out = moveMember(links, "link-1", 0, 1);
+    expect(out[0]!.members).toEqual(["bench", "squat", "catalog:1"]);
+  });
+
+  it("moves across the whole group, not just by swapping neighbours", () => {
+    // Last -> first, one step at a time, ends up fully reversed at the front.
+    let out = moveMember(links, "link-1", 2, -1);
+    out = moveMember(out, "link-1", 1, -1);
+    expect(out[0]!.members).toEqual(["catalog:1", "squat", "bench"]);
+  });
+
+  it("refuses to move the first member earlier", () => {
+    expect(moveMember(links, "link-1", 0, -1)[0]!.members).toEqual(
+      links[0]!.members,
     );
   });
 
-  it("falls back to the raw key for an unknown movement", () => {
-    expect(linkSummary(link("link-1", ["squat", "ghost"]), MOVEMENTS)).toBe(
-      "Squat \u2192 ghost",
+  it("refuses to move the last member later", () => {
+    expect(moveMember(links, "link-1", 2, 1)[0]!.members).toEqual(
+      links[0]!.members,
     );
+  });
+
+  it("ignores an out-of-range index", () => {
+    expect(moveMember(links, "link-1", 9, -1)[0]!.members).toEqual(
+      links[0]!.members,
+    );
+    expect(moveMember(links, "link-1", -1, 1)[0]!.members).toEqual(
+      links[0]!.members,
+    );
+  });
+
+  it("leaves other links untouched", () => {
+    const out = moveMember(links, "link-1", 0, 1);
+    expect(out[1]).toEqual(links[1]);
+  });
+
+  it("is a no-op for an unknown link id", () => {
+    expect(moveMember(links, "nope", 0, 1)).toEqual(links);
+  });
+
+  it("never drops or duplicates a member", () => {
+    const out = moveMember(links, "link-1", 1, -1);
+    expect([...out[0]!.members].sort()).toEqual([...links[0]!.members].sort());
+    expect(new Set(out[0]!.members).size).toBe(out[0]!.members.length);
   });
 });

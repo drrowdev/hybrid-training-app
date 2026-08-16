@@ -91,6 +91,41 @@ export function removeLink(
   return links.filter((link) => link.id !== id);
 }
 
+/**
+ * Move a member up or down within its link.
+ *
+ * Order is not cosmetic: a member's index becomes its `circuit.position`, which
+ * drives the logger's rotation order AND where the rest timer fires — rest is
+ * suppressed for every member except the last in a round. So the lifter has to
+ * be able to say which lift closes the round.
+ *
+ * Returns the input unchanged when the move would fall off either end, so a
+ * disabled control and a stray call behave identically.
+ */
+export function moveMember(
+  links: readonly SessionLink[],
+  linkId: string,
+  fromIndex: number,
+  direction: -1 | 1,
+): SessionLink[] {
+  return links.map((link) => {
+    if (link.id !== linkId) return link;
+    const toIndex = fromIndex + direction;
+    if (
+      fromIndex < 0 ||
+      fromIndex >= link.members.length ||
+      toIndex < 0 ||
+      toIndex >= link.members.length
+    ) {
+      return link;
+    }
+    const members = [...link.members];
+    const [moved] = members.splice(fromIndex, 1);
+    members.splice(toIndex, 0, moved!);
+    return { ...link, members };
+  });
+}
+
 /** Toggle a movement in the pending selection, respecting the member cap. */
 export function toggleSelection(
   selected: readonly string[],
@@ -110,15 +145,6 @@ export function linksIncludeMainLift(
     movements.filter((m) => m.isMain).map((m) => m.key),
   );
   return links.some((link) => link.members.some((m) => mains.has(m)));
-}
-
-/** Human summary of a link's members, in performance order. */
-export function linkSummary(
-  link: SessionLink,
-  movements: readonly LinkableMovement[],
-): string {
-  const byKey = new Map(movements.map((m) => [m.key, m.label]));
-  return link.members.map((m) => byKey.get(m) ?? m).join(" \u2192 ");
 }
 
 /** True when this link contains a main lift. */
