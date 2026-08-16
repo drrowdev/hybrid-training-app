@@ -8,6 +8,7 @@
 export {
   TB_TEMPLATES,
   TB_MOVEMENT_LABEL,
+  AB_TRIAD_MOVEMENTS,
   getTbTemplate,
   ACTIVATION_PHASE_KEYS,
   ACTIVATION_PHASE_LABELS,
@@ -29,6 +30,7 @@ export {
   tacticalBarbellEngine,
   type TbInstance,
   type TbClusterLift,
+  type TbSessionLink,
   type TbActivationSessionOverride,
 } from "./program";
 export { validateCluster, countingLifts, type ClusterValidation } from "./validate";

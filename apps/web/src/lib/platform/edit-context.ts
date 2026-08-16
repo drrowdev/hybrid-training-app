@@ -19,6 +19,10 @@ import {
   tbCustomizationSchema,
   type TbCustomization,
 } from "./tb-customization";
+import {
+  parseStoredSessionLinks,
+  type SessionLinks,
+} from "./session-links";
 import { daysBetweenYmd, mondayOfYmd, todayYmd } from "@/lib/dates";
 
 /** Foreign strength-only programs the edit flow supports (own cardio is wizard-added). */
@@ -40,6 +44,8 @@ export interface ProgramEditContext {
   /** Whether opt-in TB accessory work is present in the block's strength sessions. */
   accessoriesEnabled: boolean;
   customization?: TbCustomization;
+  /** User-authored superset links, rehydrated for the wizard's link editor. */
+  sessionLinks?: SessionLinks;
   /** Current materialized block week and absolute engine start offset. */
   currentWeekIndex: number;
   programStartWeekIndex: number;
@@ -81,6 +87,7 @@ export async function getBlockEditContext(blockId: string): Promise<ProgramEditC
     values?: Record<string, unknown>;
     weekdays?: number[];
     customization?: unknown;
+    sessionLinks?: unknown;
     startWeekIndex?: number;
   };
   const setupValues = setupInput.values ?? {};
@@ -119,6 +126,10 @@ export async function getBlockEditContext(blockId: string): Promise<ProgramEditC
   const customizationResult = tbCustomizationSchema.safeParse(
     setupInput.customization,
   );
+  // Parsed SEPARATELY from the customization on purpose: they are sibling keys
+  // in `setup_input`, so a malformed customization must not silently strip the
+  // user's links (and vice versa).
+  const sessionLinks = parseStoredSessionLinks(setupInput.sessionLinks);
   const { data: profile } = await supabase
     .from("profiles")
     .select("timezone")
@@ -148,5 +159,6 @@ export async function getBlockEditContext(blockId: string): Promise<ProgramEditC
     ...(customizationResult.success
       ? { customization: customizationResult.data }
       : {}),
+    ...(sessionLinks ? { sessionLinks } : {}),
   };
 }

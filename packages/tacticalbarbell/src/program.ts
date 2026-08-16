@@ -61,6 +61,24 @@ export interface TbActivationSessionOverride {
   movementOverrides: Record<string, TbClusterLift | null>;
 }
 
+/**
+ * One user-authored superset / tri-set / giant set within a session series.
+ *
+ * `members` are `sourceMovement ?? movement` identities — the same vocabulary
+ * peak detection and the AB Triad use — so a link survives a movement
+ * substitution (an Activation override, or the Armor supplemental choice).
+ * A link is only realised when EVERY member is actually emitted for the week
+ * being prescribed; otherwise its members run solo, never a half-bracket.
+ */
+export interface TbSessionLink {
+  /** Stable id, unique within its session series. Becomes the circuit id. */
+  id: string;
+  /** User-facing name ("Superset", "Tri-set", …). Required by the logger. */
+  name: string;
+  /** Two or more member identities, in the order they should be performed. */
+  members: string[];
+}
+
 export interface TbInstance {
   templateId: string;
   /** Number of blocks scheduled in the timeline. */
@@ -85,6 +103,13 @@ export interface TbInstance {
   armorSupplementalB: "pullup" | "inverted-row";
   /** Customized template: exact engine movements assigned to each weekly slot. */
   customSessionMovements?: Record<string, TbClusterLift[]>;
+  /**
+   * User-authored superset / tri-set links, keyed by the same session series key
+   * as `customSessionMovements` (`slot-N`, or `activation.<phase>.<id>`).
+   * Members are `sourceMovement ?? movement` identities so a link survives a
+   * movement substitution. Absent ⇒ no user links ⇒ byte-identical prescription.
+   */
+  customSessionLinks?: Record<string, TbSessionLink[]>;
   /** Activation v2: canonical-slot overrides keyed by phase-qualified session key. */
   activationSessionOverrides?: Record<string, TbActivationSessionOverride>;
   /** Activation v2: derived source-slot overrides for protected milestone weeks. */
@@ -201,6 +226,11 @@ function sessionLifts(
             instance.armorSupplementalA === "reverse-hyper"
               ? "reverse-hyper"
               : "back-extension",
+          // Keep the canonical slot identity through the substitution. Callers
+          // that key off `sourceMovement ?? movement` (peak detection, AB Triad,
+          // user-authored links) must still resolve this to `back-extension`
+          // when the user picked the reverse-hyper variant.
+          sourceMovement,
         };
       }
       if (
@@ -213,6 +243,7 @@ function sessionLifts(
               ? "inverted-row"
               : "pullup",
           kind: "unanchored",
+          sourceMovement,
         };
       }
       if (!activationOverride) return [resolvedDefault];
@@ -443,6 +474,57 @@ function activationSessionOverridesFromValue(
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/**
+ * Coerce the platform's `customSessionLinks` setup value into engine shape.
+ *
+ * Defensive by design — `setup()` receives an untyped `values` blob, so a
+ * malformed link is DROPPED rather than throwing or reaching `prescribe()`.
+ * A link needs a non-empty id and name plus at least two distinct members;
+ * anything else can't produce valid circuit metadata downstream.
+ *
+ * Milestone series keys are rejected here as a second line of defence: the
+ * unqualified `activation.milestone.<id>` key collapses repeats of the same
+ * test session across different weeks, so a link stored against it would apply
+ * to the wrong week.
+ */
+function sessionLinksFromValue(
+  value: unknown,
+): Record<string, TbSessionLink[]> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const out: Record<string, TbSessionLink[]> = {};
+  for (const [seriesKey, rawLinks] of Object.entries(
+    value as Record<string, unknown>,
+  )) {
+    if (!seriesKey || seriesKey.startsWith("activation.milestone.")) continue;
+    if (!Array.isArray(rawLinks)) continue;
+    const links: TbSessionLink[] = [];
+    const claimed = new Set<string>();
+    for (const raw of rawLinks) {
+      if (!raw || typeof raw !== "object") continue;
+      const { id, name, members } = raw as Record<string, unknown>;
+      if (typeof id !== "string" || id.length === 0) continue;
+      if (typeof name !== "string" || name.length === 0) continue;
+      if (!Array.isArray(members)) continue;
+      const cleaned = [
+        ...new Set(
+          members.filter(
+            (m): m is string => typeof m === "string" && m.length > 0,
+          ),
+        ),
+      ];
+      if (cleaned.length < 2) continue;
+      if (links.some((link) => link.id === id)) continue;
+      // A prescription item carries at most one circuit, so a movement can
+      // belong to a single link only — first link to claim it wins.
+      if (cleaned.some((m) => claimed.has(m))) continue;
+      cleaned.forEach((m) => claimed.add(m));
+      links.push({ id, name, members: cleaned });
+    }
+    if (links.length > 0) out[seriesKey] = links;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
   meta: META,
 
@@ -520,6 +602,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
     const activationMilestoneOverrides = activationSessionOverridesFromValue(
       v.activationMilestoneOverrides,
     );
+    const customSessionLinks = sessionLinksFromValue(v.customSessionLinks);
 
     return {
       templateId: template.id,
@@ -534,6 +617,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       ...(customSessionMovements
         ? { customSessionMovements }
         : {}),
+      ...(customSessionLinks ? { customSessionLinks } : {}),
       ...(activationSessionOverrides
         ? { activationSessionOverrides }
         : {}),

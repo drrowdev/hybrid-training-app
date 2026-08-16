@@ -266,6 +266,10 @@ export type PrescriptionItem = {
    * Linked multi-movement circuit. Each movement remains a separate prescription
    * item and set-log identity; the logger uses this metadata only to advance in
    * round order.
+   *
+   * `round` is stamped per granular set by the platform adapter — a set carrying
+   * it participates in the rotation, a set without it runs solo with full rest.
+   * That distinction matters when linked members have unequal set counts.
    */
   circuit?: {
     id: string;
@@ -273,6 +277,7 @@ export type PrescriptionItem = {
     position: number;
     size: number;
     rounds: number;
+    round?: number;
   };
   /**
    * Cardio: structured, render-ready presentation (summary / format / per-station

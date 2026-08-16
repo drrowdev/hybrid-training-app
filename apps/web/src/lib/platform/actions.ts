@@ -47,6 +47,12 @@ import {
   activationPhaseForSession,
   getTbTemplate,
 } from "@hta/tacticalbarbell";
+import {
+  linksBySeries,
+  normalizeSessionLinks,
+  sessionLinksSchema,
+  type SessionLinks,
+} from "./session-links";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import type { MovementResolver } from "./adapter";
 import {
@@ -421,6 +427,14 @@ const createProgramInstanceSchema = z
     supersetAccessories: z.boolean().optional(),
     /** Versioned Tactical Barbell schedule/movement/rehab overlay. */
     customization: tbCustomizationSchema.optional(),
+    /**
+     * User-authored superset / tri-set links, keyed by session series key.
+     * Independently versioned and deliberately NOT nested inside `customization`
+     * so links work on canonical templates and Activation too — see
+     * `./session-links`. Tactical Barbell only; rejected for other programs
+     * below rather than silently ignored.
+     */
+    sessionLinks: sessionLinksSchema.optional(),
     /** When present, this deploy is a forward-only EDIT of an existing active
      *  block (5/3/1 / Tactical Barbell only): keep the same block + program
      *  instance, preserve everything through today plus touched rows, and
@@ -445,7 +459,15 @@ export async function createProgramInstance(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, supersetAccessories, customization, editBlockId, seasonBlockId } = parsed.data;
+  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, supersetAccessories, customization, sessionLinks: rawSessionLinks, editBlockId, seasonBlockId } = parsed.data;
+  const sessionLinks = normalizeSessionLinks(rawSessionLinks);
+
+  if (sessionLinks && programId !== "tactical-barbell") {
+    return {
+      ok: false,
+      error: "Only Tactical Barbell templates can link lifts into supersets.",
+    };
+  }
 
   if (customization) {
     if (programId !== "tactical-barbell") {
@@ -517,6 +539,7 @@ export async function createProgramInstance(
       ...(accessories ? { accessories } : {}),
       ...(supersetAccessories != null ? { supersetAccessories } : {}),
       ...(customization ? { customization } : {}),
+      ...(sessionLinks ? { sessionLinks } : {}),
     });
   }
 
@@ -551,6 +574,7 @@ export async function createProgramInstance(
       ...(twoADay != null ? { twoADay } : {}),
       ...(supersetAccessories != null ? { supersetAccessories } : {}),
       ...(customization ? { customization } : {}),
+      ...(sessionLinks ? { sessionLinks } : {}),
       ...(seasonBlockId ? { seasonBlockId } : {}),
     });
   }
@@ -566,6 +590,7 @@ export async function createProgramInstance(
     ...(accessories ? { accessories } : {}),
     ...(supersetAccessories != null ? { supersetAccessories } : {}),
     ...(customization ? { customization } : {}),
+    ...(sessionLinks ? { sessionLinks } : {}),
     ...(seasonBlockId ? { seasonBlockId } : {}),
   });
 }
@@ -666,6 +691,9 @@ interface DeployArgs {
   /** Per-block antagonist-superset accessories (migration 0111) — all programs. */
   supersetAccessories?: boolean;
   customization?: TbCustomization;
+  /** User-authored superset / tri-set links, keyed by session series key.
+   *  Tactical Barbell only; see `./session-links`. */
+  sessionLinks?: SessionLinks;
   /** When the wizard was deep-linked from a Season roadmap (ADR 0051) — the
    *  planned season_block to activate + link to the new training block on deploy. */
   seasonBlockId?: string;
@@ -846,7 +874,7 @@ async function computeForeignWrite(
   supabase: SupabaseClient,
   user: User,
   engine: ProgramEngine,
-  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization }: DeployArgs,
+  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization, sessionLinks }: DeployArgs,
 ): Promise<{ instance: unknown; write: ProgramInstanceWrite }> {
   // HYROX: a supplied race date overrides the experience block length with the
   // whole weeks from start to race, so the program's end-taper lands on race week
@@ -987,6 +1015,12 @@ async function computeForeignWrite(
     {
       values: {
         ...effectiveSetupValues,
+        // User-authored superset links (see `./session-links`). Independent of
+        // `customization`, so this rides alongside all three branches above and
+        // reaches canonical templates that have no customization at all.
+        ...(sessionLinks
+          ? { customSessionLinks: linksBySeries(sessionLinks) }
+          : {}),
         // 5/3/1 packs its 4 main lifts across the chosen strength days
         // (4 = one lift/day, 2 = two/day). The frequency is the weekday count
         // picked in the Schedule step, mirrored into setup like Hybrid does.
@@ -1152,7 +1186,7 @@ async function computeForeignWrite(
 async function createForeignProgramInstance(
   supabase: SupabaseClient,
   user: User,
-  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, supersetAccessories, seasonBlockId, twoADay, customization }: DeployArgs,
+  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, supersetAccessories, seasonBlockId, twoADay, customization, sessionLinks }: DeployArgs,
 ): Promise<CreateProgramInstanceResult> {
   const engine = getProgramEngine(programId);
   if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
@@ -1296,6 +1330,7 @@ async function createForeignProgramInstance(
         startedOn,
         startWeekIndex,
         ...(customization ? { customization } : {}),
+        ...(sessionLinks ? { sessionLinks } : {}),
       }),
       display_name: customization?.displayName ?? null,
       customization_version: customization?.version ?? null,
@@ -1382,7 +1417,7 @@ async function updateForeignProgramInstance(
   blockId: string,
   args: DeployArgs,
 ): Promise<CreateProgramInstanceResult> {
-  const { programId, supersetAccessories, customization } = args;
+  const { programId, supersetAccessories, customization, sessionLinks } = args;
   const engine = getProgramEngine(programId);
   if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
 
@@ -1909,6 +1944,7 @@ async function updateForeignProgramInstance(
         startedOn: blockStartedOn,
         startWeekIndex: effectiveStartWeekIndex,
         ...(customization ? { customization } : {}),
+        ...(sessionLinks ? { sessionLinks } : {}),
       }),
       display_name: customization?.displayName ?? null,
       customization_version: customization?.version ?? null,
