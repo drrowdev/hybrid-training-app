@@ -165,9 +165,12 @@ export function MovementNavigatorSheet({
                 {section.items.map((entry) => {
                   if (drawn.has(entry.key)) return null;
                   const partners = entry.link
-                    ? section.items.filter(
-                        (e) => e.link?.id === entry.link?.id,
-                      )
+                    ? section.items
+                        .filter((e) => e.link?.id === entry.link?.id)
+                        // Performance order, not section order: the accessory
+                        // list is smart-ordered, which can otherwise surface A2
+                        // above A1 inside the bracket.
+                        .sort((a, b) => a.link!.position - b.link!.position)
                     : [];
                   if (partners.length > 1) {
                     partners.forEach((p) => drawn.add(p.key));
@@ -245,7 +248,7 @@ function NavRow({
       onClick={() => onPick(entry.key)}
     >
       {entry.link && (
-        <span className="cp-nav-slot mono">{entry.link.position + 1}</span>
+        <span className="cp-nav-slot mono">A{entry.link.position + 1}</span>
       )}
       <span className="cp-nav-mark" aria-hidden="true">
         {entry.settled ? "✓" : ""}
