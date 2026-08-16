@@ -42,6 +42,14 @@ import {
   formatWeight,
 } from "@/lib/stats/units";
 import { RestTimer } from "./RestTimer";
+import { SessionDock } from "./SessionDock";
+import { deleteSet } from "@/lib/sessions/actions";
+import {
+  draftAppliesTo,
+  readResume,
+  remainingRestSeconds,
+  writeResume,
+} from "@/lib/sessions/session-resume";
 import { RpeZonePicker } from "./RpeZonePicker";
 import { SkipSetMenu } from "./SkipSetMenu";
 import { PlateView } from "./PlateView";
@@ -77,7 +85,23 @@ export type FocusViewProps = {
   loggedSets: FocusLoggedSet[];
   /** Pre-existing PR snapshot used for the inline PR badges. */
   priorBest: { heaviestWeight: number | null; bestE1rm: number | null } | undefined;
-  addStrengthSet: (fd: FormData) => Promise<{ error?: string; ok?: true }>;
+  /**
+   * Prior-session top set for this movement. Seeds the load when the
+   * prescription carries no target (typical for accessories), so the stepper
+   * opens at a usable number instead of 0 — reaching a 135 kg leg press from
+   * zero was 27 taps, which pushed users into the keyboard.
+   */
+  lastSetHint?: { weightKg: number; reps: number; performedAt: string } | null;
+  addStrengthSet: (fd: FormData) => Promise<{
+    error?: string;
+    ok?: true;
+    /**
+     * The persisted row. Present once the write resolves online; absent when
+     * the set was queued offline (there is no server row to act on yet), which
+     * is why Undo only appears when an id came back.
+     */
+    set?: { id: string };
+  }>;
   updateStrengthSet?: (
     fd: FormData,
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
@@ -141,6 +165,12 @@ export type FocusViewProps = {
   bodyweightCapable?: boolean;
   /** Compact hierarchy used by the single-movement Focus Strip logger. */
   focusStrip?: boolean;
+  /**
+   * Rendered beside the primary action inside the session dock (the focus
+   * strip passes its movement-navigator trigger here). Only used when
+   * `focusStrip` is set — the inline card layout has no dock.
+   */
+  dockAccessory?: React.ReactNode;
   /** Superset A1 advances immediately; its A2 partner owns the shared rest. */
   suppressRestAfterSave?: boolean;
 };
@@ -165,6 +195,7 @@ export function MovementFocusView({
   loggedSetIdByItemIndex,
   loggedSets,
   priorBest,
+  lastSetHint = null,
   addStrengthSet,
   updateStrengthSet,
   hapticsEnabled,
@@ -179,6 +210,7 @@ export function MovementFocusView({
   bwGateStateByFamily,
   bodyweightCapable = false,
   focusStrip = false,
+  dockAccessory = null,
   suppressRestAfterSave = false,
 }: FocusViewProps) {
   const router = useRouter();
@@ -294,6 +326,17 @@ export function MovementFocusView({
   }, [tmKg, warmupLoadOptions]);
 
   // Target weight / reps derived from the prescription + TM.
+  // Resolution order, most to least authoritative:
+  //   1. the prescription (percent-of-TM or an absolute target)
+  //   2. the last set logged for this movement THIS session
+  //   3. the prior session's top set for this movement
+  //   4. 0 — genuinely unknown, the user types it
+  // Step 3 is what stops an unprescribed accessory from opening at 0 kg.
+  const seededFromLastSession = useMemo(() => {
+    if (!lastSetHint) return null;
+    return lastSetHint.weightKg > 0 ? lastSetHint.weightKg : null;
+  }, [lastSetHint]);
+
   const targetWeight = useMemo(() => {
     if (!activeItem) return 0;
     const prescribedWeight = targetWeightForItem(activeItem);
@@ -301,20 +344,28 @@ export function MovementFocusView({
     // Fall back to the most recent logged weight attributed to this movement.
     // A forward-only swap can include an older movement's row for inline review;
     // that historical load must not seed the replacement movement.
-    return (
-      loggedSets
-        .findLast(
-          (set) =>
-            set.movementId == null || set.movementId === group.movementId,
-        )
-        ?.weightKg ?? 0
-    );
+    const thisSession = loggedSets.findLast(
+      (set) => set.movementId == null || set.movementId === group.movementId,
+    )?.weightKg;
+    if (thisSession != null && thisSession > 0) return thisSession;
+    return seededFromLastSession ?? 0;
   }, [
     activeItem,
     group.movementId,
     loggedSets,
+    seededFromLastSession,
     targetWeightForItem,
   ]);
+
+  /**
+   * True when nothing in the prescription set this load — the number on
+   * screen came from the user's own history. Surfaced so the card says so
+   * instead of presenting a remembered load as a prescribed target.
+   */
+  const loadFromHistory =
+    activeItem != null &&
+    targetWeightForItem(activeItem) == null &&
+    targetWeight > 0;
   const warmupFloorWarning = useMemo(() => {
     if (activeItem?.kind !== "warmup") return null;
     const rawKg =
@@ -397,6 +448,56 @@ export function MovementFocusView({
   const [justLoggedAt, setJustLoggedAt] = useState<number | null>(null);
   const [restSeconds, setRestSeconds] = useState(0);
   const [restToken, setRestToken] = useState(0);
+  /**
+   * The set just written, offered for one-tap removal.
+   *
+   * Logging is optimistic and the CTA is now a big docked target, which makes
+   * a mis-tap both easier and more consequential. A short-lived Undo is the
+   * cheap counterweight — cheaper than a confirmation dialog, which would tax
+   * every correct log to guard against the rare wrong one.
+   */
+  const [undo, setUndo] = useState<{
+    setId: string;
+    itemIndex: number;
+    summary: string;
+    at: number;
+  } | null>(null);
+  const [undoing, setUndoing] = useState(false);
+  // Absolute epoch-ms the current rest ends at. Persisted so a reload or a
+  // process eviction resumes the SAME countdown instead of restarting it.
+  const restDeadlineRef = useRef<number | null>(null);
+
+  // Undo is deliberately short-lived: it's for "that was the wrong button",
+  // not for revising a set five minutes later (that's what editing is for).
+  useEffect(() => {
+    if (!undo) return;
+    const id = window.setTimeout(() => setUndo(null), 8000);
+    return () => window.clearTimeout(id);
+  }, [undo]);
+
+  const runUndo = async () => {
+    if (!undo || undoing) return;
+    setUndoing(true);
+    try {
+      const fd = new FormData();
+      fd.set("id", undo.setId);
+      fd.set("sessionId", sessionId);
+      await deleteSet(fd);
+      // Let the slot be logged again — the re-entrancy guard would otherwise
+      // treat the retry as a duplicate and silently drop it.
+      firedIndicesRef.current.delete(undo.itemIndex);
+      setManualPin({ key: groupKey, slot: cursor });
+      setRestSeconds(0);
+      restDeadlineRef.current = null;
+      setUndo(null);
+      hapticTick(hapticsEnabled);
+      router.refresh();
+    } catch {
+      setError("Couldn't undo that set — it's still logged.");
+    } finally {
+      setUndoing(false);
+    }
+  };
   const [justLogged, setJustLogged] = useState(false);
   const [skipMenuOpen, setSkipMenuOpen] = useState(false);
   const [skipScope, setSkipScope] = useState<"set" | "movement">("set");
@@ -409,6 +510,75 @@ export function MovementFocusView({
     const id = window.setTimeout(() => setJustLogged(false), 1500);
     return () => window.clearTimeout(id);
   }, [justLoggedAt]);
+
+  // ── Interruption recovery ────────────────────────────────────────────────
+  // Restore the slot, the unsaved numbers and the remaining rest exactly once
+  // on mount. Only applies when the stored draft belongs to THIS movement and
+  // slot — see `draftAppliesTo`.
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current || !focusStrip) return;
+    restoredRef.current = true;
+    const saved = readResume(sessionId);
+    if (!saved) return;
+    const now = Date.now();
+    const restLeft = remainingRestSeconds(saved.restDeadlineMs, now);
+    if (restLeft > 0) {
+      restDeadlineRef.current = saved.restDeadlineMs ?? null;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot restore of persisted resume state
+      setRestSeconds(restLeft);
+      setRestToken((t) => t + 1);
+    }
+    if (saved.cursor != null && saved.activeKey === groupKey) {
+      setManualPin({ key: groupKey, slot: saved.cursor });
+      if (draftAppliesTo(saved, groupKey, saved.cursor) && saved.draft) {
+        const d = saved.draft;
+        if (d.weightKg != null) setWeight(d.weightKg);
+        if (d.reps != null) setReps(d.reps);
+        if (d.rpe !== undefined) setRpe(d.rpe);
+        if (d.distanceM != null) setDistanceM(d.distanceM);
+        if (d.durationSec != null) setDurationSec(d.durationSec);
+        if (d.externalLoadKg != null) setExternalLoadKg(d.externalLoadKg);
+      }
+    }
+    // Mount-only: re-running would fight the user's live edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist the working state. Cheap (one small localStorage write) and
+  // throttled by React's render cadence rather than a timer.
+  useEffect(() => {
+    if (!focusStrip) return;
+    writeResume({
+      sessionId,
+      activeKey: groupKey,
+      cursor,
+      draftKey: groupKey,
+      draft: {
+        weightKg: weight,
+        reps,
+        rpe,
+        distanceM,
+        durationSec,
+        externalLoadKg,
+      },
+      restDeadlineMs: restDeadlineRef.current ?? undefined,
+      restLabel: group.movementName,
+    });
+  }, [
+    focusStrip,
+    sessionId,
+    groupKey,
+    cursor,
+    weight,
+    reps,
+    rpe,
+    distanceM,
+    durationSec,
+    externalLoadKg,
+    group.movementName,
+    restSeconds,
+  ]);
 
   // Snap weight/reps to the target whenever the active slot changes.
   // Also reset RPE + close the skip menu so each set starts clean.
@@ -604,12 +774,24 @@ export function MovementFocusView({
     // mislabel itself "next <movement>" and linger over the Finish CTA. We also
     // CLEAR any timer still running from the previous set.
     const isLastSlot = cursor >= totalSlots - 1;
+    const undoSummary =
+      itemKind === "carry"
+        ? `${formatWeight(weight, units)} × ${distanceM} m`
+        : itemKind === "isometric"
+          ? isBwHold
+            ? `${durationSec} s`
+            : `${formatWeight(weight, units)} × ${durationSec} s`
+          : itemKind === "bw_reps"
+            ? `× ${reps}`
+            : `${formatWeight(weight, units)} × ${reps}`;
     if (isLastSlot || suppressRestAfterSave) {
       setRestSeconds(0);
+      restDeadlineRef.current = null;
     } else {
       const secs = restSecondsForKind(SET_KIND_TO_LOG[activeItem.kind] ?? "main");
       if (secs > 0) {
         setRestSeconds(secs);
+        restDeadlineRef.current = Date.now() + secs * 1000;
         setRestToken((t) => t + 1);
       }
     }
@@ -622,11 +804,24 @@ export function MovementFocusView({
         if (result?.error) {
           firedIndicesRef.current.delete(activeItemIndex);
           setError(result.error);
+          setUndo(null);
+          return;
+        }
+        // Only offer Undo once we hold the real row id — deleting requires it,
+        // and an offline-queued set has no server row to delete yet.
+        if (result?.set?.id) {
+          setUndo({
+            setId: result.set.id,
+            itemIndex: activeItemIndex,
+            summary: undoSummary,
+            at: Date.now(),
+          });
         }
       })
       .catch(() => {
         firedIndicesRef.current.delete(activeItemIndex);
         setError("Couldn't save that set — check your connection and retry.");
+        setUndo(null);
       });
   };
 
@@ -738,9 +933,118 @@ export function MovementFocusView({
     : submitting
       ? "Logging…"
       : "Log set";
+
+  /**
+   * Editing an already-logged set is a distinct mode: it mutates history
+   * rather than appending to it, and it must be abandonable without touching
+   * the stored row. It gets its own colour (amber — not the sage "log" accent
+   * and not the red "destructive" one), an explicit banner, and a Save/Cancel
+   * pair. A primary button that silently relabels itself from "Log set" to
+   * "Update set" is not a mode indicator.
+   */
+  const isEditing =
+    isActiveLogged && !isActiveSkipped && !loggedBeforeSwap && !pendingSetSync;
+  const cancelEdit = () => {
+    // Hand control back to the auto cursor. The logged row is untouched —
+    // nothing was written, and the local draft is discarded on re-render.
+    setManualPin(null);
+    setError(null);
+    setSkipMenuOpen(false);
+  };
+  const editedSummary = isEditing
+    ? itemKind === "carry"
+      ? `${formatWeight(activeLoggedSet?.weightKg ?? 0, units)} × ${activeLoggedSet?.distanceM ?? 0} m`
+      : itemKind === "isometric"
+        ? `${activeLoggedSet?.durationSec ?? 0} s`
+        : itemKind === "bw_reps"
+          ? `× ${activeLoggedSet?.reps ?? 0}`
+          : `${formatWeight(activeLoggedSet?.weightKg ?? 0, units)} × ${activeLoggedSet?.reps ?? 0}`
+    : null;
+  // Which slot this card is about, in words ("Working set · 2 of 3"). Shared
+  // by the bucket caption and the edit banner so they can never disagree.
+  const bucketLabel = activeItem
+    ? bucketLabelForKind(
+        activeItem.kind,
+        displaySlot.position,
+        displaySlot.total,
+        activeItem.optional,
+        activeItem.meta?.rehab === true,
+      )
+    : "";
+
   const nextSlot = cursor + 1 < totalSlots ? cursor + 1 : null;
   const nextItem = nextSlot != null ? group.items[nextSlot]! : null;
   const nextWeight = nextItem ? targetWeightForItem(nextItem) : null;
+  // The dock hosts the primary action on phones. The button stays a real
+  // submit button and reaches back into the form by id, so the existing
+  // `onSubmit` path (and Enter-to-submit from an input) is untouched.
+  const formId = `session-log-form-${groupKey}`;
+  const ctaValueSuffix =
+    !submitting &&
+    ((itemKind === "bw_reps" && reps > 0) ||
+      (itemKind === "isometric" && durationSec > 0 && (isBwHold || weight > 0)) ||
+      (weight > 0 &&
+        ((itemKind === "carry" && distanceM > 0) ||
+          (itemKind === "isometric" && durationSec > 0) ||
+          (itemKind === "default" && reps > 0)))) ? (
+      <>
+        {" · "}
+        <span className="mono">
+          {itemKind === "carry"
+            ? `${formatWeight(weight, units)} × ${distanceM} m`
+            : itemKind === "isometric"
+              ? isBwHold
+                ? `${durationSec} s`
+                : `${formatWeight(weight, units)} × ${durationSec} s`
+              : itemKind === "bw_reps"
+                ? `× ${reps}`
+                : `${formatWeight(weight, units)} × ${reps}`}
+        </span>
+      </>
+    ) : null;
+
+  const logButton = (
+    <button
+      type="submit"
+      form={formId}
+      className={`cp-btn primary${focusStrip ? " cp-dock-cta" : ""}${
+        isEditing ? " cp-dock-cta--editing" : ""
+      }`}
+      disabled={submitting || pendingSetSync || loggedBeforeSwap}
+      data-testid="movement-focus-log-button"
+    >
+      {ctaLabel}
+      {ctaValueSuffix}
+    </button>
+  );
+
+  // In edit mode the dock swaps the navigator trigger for an explicit Cancel:
+  // the escape hatch has to be exactly as reachable as the commit.
+  const dockCancelButton = (
+    <button
+      type="button"
+      className="cp-btn cp-dock-accessory"
+      data-testid="movement-focus-cancel-edit-dock"
+      onClick={cancelEdit}
+      style={{ minWidth: 92, fontSize: 15, fontWeight: 650 }}
+    >
+      Cancel
+    </button>
+  );
+
+  const restTimerNode =
+    restSeconds > 0 ? (
+      <RestTimer
+        key={restToken}
+        seconds={restSeconds}
+        defaultSeconds={restSeconds}
+        onDone={() => setRestSeconds(0)}
+        hapticsEnabled={hapticsEnabled}
+        timerSoundEnabled={timerSoundEnabled}
+        movementName={group.movementName}
+        inline={focusStrip}
+      />
+    ) : null;
 
   return (
     <div
@@ -757,16 +1061,56 @@ export function MovementFocusView({
         width: "100%",
       }}
     >
-      {restSeconds > 0 && (
-        <RestTimer
-          key={restToken}
-          seconds={restSeconds}
-          defaultSeconds={restSeconds}
-          onDone={() => setRestSeconds(0)}
-          hapticsEnabled={hapticsEnabled}
-          timerSoundEnabled={timerSoundEnabled}
-          movementName={group.movementName}
-        />
+      {!focusStrip && restTimerNode}
+
+      {isEditing && (
+        <div
+          data-testid="movement-focus-edit-banner"
+          role="status"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "10px 12px",
+            borderRadius: 11,
+            border: "1px solid var(--cp-warning)",
+            background: "color-mix(in oklab, var(--cp-warning) 14%, transparent)",
+            textAlign: "left",
+          }}
+        >
+          <span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>
+            ✎
+          </span>
+          <span style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.35 }}>
+            <span
+              style={{
+                display: "block",
+                fontSize: 12,
+                fontWeight: 750,
+                letterSpacing: "0.07em",
+                textTransform: "uppercase",
+                color: "var(--cp-warning)",
+              }}
+            >
+              Editing a logged set
+            </span>
+            <span style={{ color: "var(--cp-text-soft)" }}>
+              {bucketLabel} — you logged{" "}
+              <span className="mono" style={{ color: "var(--cp-text)" }}>
+                {editedSummary}
+              </span>
+            </span>
+          </span>
+          <button
+            type="button"
+            className="cp-btn"
+            data-testid="movement-focus-cancel-edit"
+            onClick={cancelEdit}
+            style={{ flex: "0 0 auto", minHeight: 44, padding: "0 12px", fontSize: 13 }}
+          >
+            Cancel
+          </button>
+        </div>
       )}
 
       <DotStrip
@@ -796,17 +1140,25 @@ export function MovementFocusView({
         className="cp-card"
         data-testid="movement-focus-card"
         data-just-logged={justLogged ? "true" : "false"}
+        data-editing={isEditing ? "true" : "false"}
         style={{
           padding: focusStrip ? 16 : 18,
           display: "grid",
           gap: 10,
           textAlign: "center",
-          borderColor: justLogged
-            ? "color-mix(in oklab, var(--cp-success) 60%, var(--cp-border))"
-            : "var(--cp-border)",
-          background: justLogged
-            ? "color-mix(in oklab, var(--cp-success) 6%, transparent)"
-            : "var(--cp-surface-soft)",
+          borderColor: isEditing
+            ? "var(--cp-warning)"
+            : justLogged
+              ? "color-mix(in oklab, var(--cp-success) 60%, var(--cp-border))"
+              : "var(--cp-border)",
+          boxShadow: isEditing
+            ? "0 0 0 1px var(--cp-warning), 0 0 28px -10px var(--cp-warning)"
+            : undefined,
+          background: isEditing
+            ? "color-mix(in oklab, var(--cp-warning) 7%, var(--cp-surface-soft))"
+            : justLogged
+              ? "color-mix(in oklab, var(--cp-success) 6%, transparent)"
+              : "var(--cp-surface-soft)",
         }}
       >
         <div
@@ -822,15 +1174,7 @@ export function MovementFocusView({
             fontWeight: 600,
           }}
         >
-          <span>
-            {bucketLabelForKind(
-              activeItem.kind,
-              displaySlot.position,
-              displaySlot.total,
-              activeItem.optional,
-              activeItem.meta?.rehab === true,
-            )}
-          </span>
+          <span>{bucketLabel}</span>
           {activeItem.percentTm != null && (
             <span
               className="mono"
@@ -936,6 +1280,18 @@ export function MovementFocusView({
         {!isBwItem && (
           <div style={{ fontSize: 14, color: "var(--cp-text-muted)" }}>
             {renderTargetLine(activeItem, targetReps, isAmrap)}
+          </div>
+        )}
+        {loadFromHistory && !isActiveLogged && (
+          <div
+            data-testid="load-from-history"
+            style={{
+              fontSize: 12.5,
+              color: "var(--cp-text-muted)",
+              lineHeight: 1.35,
+            }}
+          >
+            No prescribed load — starting from last time
           </div>
         )}
         {warmupFloorWarning && (
@@ -1110,6 +1466,7 @@ export function MovementFocusView({
       })()}
 
       <form
+        id={formId}
         onSubmit={handleSubmit}
         data-testid="session-log-form"
         style={{ display: "grid", gap: 12 }}
@@ -1204,36 +1561,7 @@ export function MovementFocusView({
         )}
 
         <div style={{ display: "grid", gap: 8 }}>
-            <button
-              type="submit"
-              className="cp-btn primary"
-              disabled={submitting || pendingSetSync || loggedBeforeSwap}
-              data-testid="movement-focus-log-button"
-            >
-              {ctaLabel}
-              {!submitting &&
-                ((itemKind === "bw_reps" && reps > 0) ||
-                  (itemKind === "isometric" && durationSec > 0 && (isBwHold || weight > 0)) ||
-                  (weight > 0 &&
-                    ((itemKind === "carry" && distanceM > 0) ||
-                      (itemKind === "isometric" && durationSec > 0) ||
-                      (itemKind === "default" && reps > 0)))) && (
-                <>
-                  {" · "}
-                  <span className="mono">
-                    {itemKind === "carry"
-                      ? `${formatWeight(weight, units)} × ${distanceM} m`
-                      : itemKind === "isometric"
-                        ? isBwHold
-                          ? `${durationSec} s`
-                          : `${formatWeight(weight, units)} × ${durationSec} s`
-                        : itemKind === "bw_reps"
-                          ? `× ${reps}`
-                          : `${formatWeight(weight, units)} × ${reps}`}
-                  </span>
-                </>
-              )}
-            </button>
+            {!focusStrip && logButton}
             {!isActiveLogged && (
               <div style={{ display: "flex", justifyContent: "flex-start", gap: 16 }}>
                 <button
@@ -1248,10 +1576,13 @@ export function MovementFocusView({
                   style={{
                     all: "unset",
                     cursor: submitting || skipPending ? "default" : "pointer",
-                    fontSize: 12,
+                    fontSize: 13,
                     color: "var(--cp-text-muted)",
                     textDecoration: "underline",
-                    padding: "4px 0",
+                    minHeight: 44,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    padding: "0 4px",
                   }}
                 >
                   {skipMenuOpen && skipScope === "set" ? "Cancel skip" : "Skip set"}
@@ -1269,10 +1600,13 @@ export function MovementFocusView({
                     style={{
                       all: "unset",
                       cursor: submitting || skipPending ? "default" : "pointer",
-                      fontSize: 12,
+                      fontSize: 13,
                       color: "var(--cp-text-muted)",
                       textDecoration: "underline",
-                      padding: "4px 0",
+                      minHeight: 44,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      padding: "0 4px",
                     }}
                   >
                     {skipMenuOpen && skipScope === "movement"
@@ -1320,6 +1654,33 @@ export function MovementFocusView({
           </div>
         )}
       </form>
+
+      {focusStrip && (
+        <SessionDock
+          rest={restTimerNode}
+          primary={logButton}
+          accessory={isEditing ? dockCancelButton : dockAccessory}
+          editing={isEditing}
+          undo={
+            undo ? (
+              <div className="cp-dock-undo" data-testid="session-dock-undo">
+                <span className="cp-dock-undo-msg">
+                  Logged <span className="mono">{undo.summary}</span>
+                </span>
+                <button
+                  type="button"
+                  className="cp-btn"
+                  onClick={() => void runUndo()}
+                  disabled={undoing}
+                  data-testid="session-dock-undo-button"
+                >
+                  {undoing ? "Undoing…" : "Undo"}
+                </button>
+              </div>
+            ) : null
+          }
+        />
+      )}
     </div>
   );
 }
@@ -1711,7 +2072,7 @@ function DotStrip({
     <div
       role="tablist"
       data-testid="movement-dot-strip"
-      style={{ display: "flex", justifyContent: "center", gap: 6 }}
+      style={{ display: "flex", justifyContent: "center", gap: 0, flexWrap: "wrap" }}
     >
       {group.itemIndices.map((idx, slot) => {
         const isLogged = loggedItemIndices.has(idx);
@@ -1790,10 +2151,27 @@ function DotStrip({
             data-logged={isLogged ? "true" : "false"}
             data-skipped={isSkipped ? "true" : "false"}
             onClick={() => onPickSlot(slot)}
-            style={style}
             aria-label={`Set ${slot + 1} of ${group.itemIndices.length}${isSkipped ? " — skipped" : isLogged ? " — logged" : ""}`}
+            // The pip stays small — a 44px-tall coloured bar would read as a
+            // progress chart, not a set marker. The BUTTON is 44×44 so it can
+            // actually be hit with a thumb; the pip is a child of it.
+            style={{
+              width: 44,
+              height: 44,
+              minWidth: 44,
+              minHeight: 44,
+              padding: 0,
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              display: "grid",
+              placeItems: "center",
+              marginLeft: bucketChanged ? 12 : 0,
+            }}
           >
-            {isSkipped && isActive ? "—" : isLogged && isActive ? "✓" : null}
+            <span style={{ ...style, marginLeft: 0 }} aria-hidden="true">
+              {isSkipped && isActive ? "—" : isLogged && isActive ? "✓" : null}
+            </span>
           </button>
         );
       })}
@@ -1829,22 +2207,28 @@ function Stepper({
         background: "var(--cp-surface)",
         border: "1px solid var(--cp-border)",
         borderRadius: 12,
-        padding: 12,
+        // Horizontal padding is deliberately tight. Two steppers sit side by
+        // side inside the focus card, so at 375px each column is only ~150px:
+        // 44+44 for the buttons leaves barely 40px for the number field unless
+        // the container gives up its own padding. The field is an interactive
+        // target too and has to clear 44px, so the padding loses.
+        padding: "10px 6px",
         display: "grid",
         gap: 6,
       }}
     >
       <div
         style={{
-          fontSize: 10,
+          fontSize: 12,
           color: "var(--cp-text-muted)",
           textTransform: "uppercase",
           letterSpacing: "0.06em",
+          paddingLeft: 2,
         }}
       >
         {label}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 6, alignItems: "center" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 0, alignItems: "center" }}>
         <button
           type="button"
           onClick={onMinus}
@@ -1894,7 +2278,7 @@ function Stepper({
         </button>
       </div>
       {showStepHint && (
-        <div style={{ fontSize: 10, color: "var(--cp-text-muted)", textAlign: "center" }}>
+        <div style={{ fontSize: 12, color: "var(--cp-text-muted)", textAlign: "center" }}>
           ± {step}
         </div>
       )}

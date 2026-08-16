@@ -216,6 +216,11 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_test_for_ci_build_only' }}
+          # Serve the dev-only fixture routes under /dev. This job runs a
+          # PRODUCTION bundle, so a NODE_ENV check alone would 404 them and
+          # take the credential-free specs (logger ergonomics) with it.
+          # Deploys never set this, so the routes stay 404 in prod.
+          ENABLE_E2E_FIXTURES: "1"
 
       - name: Wait for app to be ready
         run: npx --yes wait-on http://127.0.0.1:3000 --timeout 120000

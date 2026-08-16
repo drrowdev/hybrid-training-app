@@ -58,23 +58,38 @@ test.describe("@mobile Focus Strip logger", () => {
     });
 
     const logger = page.getByTestId("focus-strip-logger");
+    const navigator = page.getByTestId("movement-navigator");
+    const openNav = page.getByTestId("movement-navigator-open");
     const queueItem = page.getByTestId(
-      `focus-strip-queue-${seed.todayMovementId}`,
+      `movement-navigator-item-${seed.todayMovementId}`,
     );
     const swap = page.getByTestId("focus-strip-swap");
     await expect(logger).toBeVisible();
-    await expect(queueItem).toHaveAttribute("aria-pressed", "true");
+
+    // Movement navigation lives in a sheet opened from the dock — the old
+    // horizontally-scrolling queue clipped most movements off-screen.
+    await openNav.click();
+    await expect(navigator).toHaveAttribute("aria-hidden", "false");
+    await expect(queueItem).toHaveAttribute("aria-current", "true");
 
     const viewport = page.viewportSize()!;
     const loggerBox = await logger.boundingBox();
     const queueBox = await queueItem.boundingBox();
-    const swapBox = await swap.boundingBox();
+    const openNavBox = await openNav.boundingBox();
     expect(loggerBox).not.toBeNull();
     expect(loggerBox!.x).toBeGreaterThanOrEqual(0);
     expect(loggerBox!.x + loggerBox!.width).toBeLessThanOrEqual(viewport.width);
     expect(queueBox?.height).toBeGreaterThanOrEqual(44);
+    // Navigator rows are fully inside the viewport, never clipped.
+    expect(queueBox!.x).toBeGreaterThanOrEqual(0);
+    expect(queueBox!.x + queueBox!.width).toBeLessThanOrEqual(viewport.width);
+    expect(openNavBox?.height).toBeGreaterThanOrEqual(44);
+    expect(swap).toBeTruthy();
+    const swapBox = await swap.boundingBox();
     expect(swapBox?.height).toBeGreaterThanOrEqual(44);
     expect(swapBox?.width).toBeGreaterThanOrEqual(44);
+    await page.getByTestId("movement-navigator-close").click();
+    await expect(navigator).toHaveAttribute("aria-hidden", "true");
 
     await logPrescribedSet(page, seed.todayMovementId);
     const loggedSegment = page.locator(
@@ -82,10 +97,11 @@ test.describe("@mobile Focus Strip logger", () => {
     );
     await expect(loggedSegment).toBeVisible({ timeout: 15_000 });
     await page.getByTestId("focus-strip-end-movement").click();
-    await expect(queueItem).toContainText("✓");
+    await openNav.click();
+    await expect(queueItem).toHaveAttribute("data-done", "true");
     await expect(
-      page.getByTestId(`focus-strip-queue-${carry!.id}`),
-    ).toHaveAttribute("aria-pressed", "true");
+      page.getByTestId(`movement-navigator-item-${carry!.id}`),
+    ).toHaveAttribute("aria-current", "true");
 
     // Ending optional work advances, but the movement remains reversible.
     await queueItem.click();

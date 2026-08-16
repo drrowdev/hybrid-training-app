@@ -509,3 +509,45 @@ The snapshot captured by migration 0128 now reads back in two places the user vi
 The logger's plus/minus weight buttons always moved 2.5 kg, the smallest pair of plates on a bar, which is meaningless on a dumbbell rack: a bench-supported wrist rehab set prescribed at 5.5 kg jumped straight to 8 kg on one tap. The step size is now resolved per movement in a single place, `lib/sessions/load-increment.ts`, which reuses the existing `resolveRequiredEquipment` resolver so the authoritative `movements.equipment` tag decides and the slug heuristic only fills gaps. Dumbbell work steps 1 kg; bars, machines, cables, kettlebells and unidentified movements keep the plate default. Either/or tags follow the resolver's existing first-listed-implement rule, so a barbell-or-dumbbell movement stays on plate jumps. Imperial uses 2 lb rather than a fractional step, because the display layer rounds pounds to whole numbers and could not honour 2.5 lb exactly. The prescribed target load is deliberately unchanged and still rounds to 2.5 kg, since that rounding also runs server-side during plan materialization and the two must agree.
 
 Rehab sets no longer ask "how did it feel?". Rehab is prescribed by protocol at a deliberately sub-maximal load, so soliciting an effort rating invites autoregulation of a load that is not meant to be autoregulated, and nothing downstream consumes a rehab effort value; the picker joins warm-ups and bodyweight-node sets in the "no meaningful effort signal" exclusion. Effort already recorded against a rehab set is preserved on edit rather than cleared.
+## [2026-08-16] decision | mobile logger rehaul — session dock + movement navigator
+Rebuilt the in-session logging surface around measured gym-floor ergonomics rather than screen-agnostic layout. Findings came from driving the real components at iPhone SE / 14 / 15 Pro Max viewports and measuring the DOM; the plan was reviewed against two external models before implementation.
+
+**Measured failures in the pre-change build**
+- Primary CTA sat at the end of a scrolling card, so its position depended on card height: **below the fold in all three sections at 375x667**, and underneath the fixed tab bar on the accessory section at 390x844.
+- The on-screen numeric keypad (~336px) fully covered the CTA; `scrollIntoView` only rescued the input.
+- Section navigation rendered only when the day contained rehab (`hasEmbeddedRehab`), so an ordinary day had no way to move between groups.
+- The movement queue was 725px of chips inside a 358px window — 2 of 5 movements reachable, no peek/gradient/arrow.
+- `supplemental` was folded into `main` by `focusSectionFor`, so back-off work was never addressable.
+- Five different denominators for one lift on a single screen (11 / 6 / 3 / 3 / 6).
+- 7 of 30 interactive elements under 44x44; 13 text nodes under 12px.
+- `docs/design/mobile-polish-pwa.md` had already specified a sticky bottom action bar and "primary actions in the bottom 40%". It was never built.
+
+**Changes**
+- New `SessionDock` owns the bottom region (CTA + rest countdown + navigator trigger), pinned above the tab bar and publishing `--cp-session-dock-h` so the scroll container reserves exact space. The CTA remains a real submit button via `form=`, so the existing `onSubmit` path is untouched.
+- `RestTimer` gained an `inline` mode; it previously fought the dock for the same fixed band.
+- New `MovementNavigatorSheet` replaces the conditional section chips and the clipped queue. Always available, grouped Rehab / Main / Supplemental / Accessories, linked A1/A2 bracketed.
+- `focusSectionFor` now returns four sections; `supplemental` is first-class.
+- Chrome above the movement name cut from 294-375px to **133px** (56% -> 20% of the fold on an SE). Skip-rehab and reorder moved below the card.
+- Touch floor enforced: dot pips, the how-to badge, the number fields and the skip links all now clear 44x44.
+
+**Guarantees now pinned by tests**
+`e2e/logger-ergonomics-mobile.spec.ts` drives a dev-only fixture at `/dev/logger-preview` (404s outside development, no DB/auth needed) and asserts: CTA inside the viewport and topmost at its centre for every movement x every phone size; navigation present with and without rehab; no navigator row clipped; supplemental addressable; supersets bracketed; every control >= 44x44; rest timer never overlapping the CTA.
+
+**Open question deferred:** whether to hide the global tab bar during an active session. The external review recommended it (one owner of the bottom region, no accidental navigation away from a live session); it was not done here because it removes app-level navigation mid-workout and the reachability numbers pass without it.
+
+## [2026-08-16] decision | mobile logger — durability pass (undo, offline vocabulary, resume, dock ownership)
+Follow-up to the same-day logger rehaul. Closes the four items the external review raised that the first pass deferred.
+
+**Dock owns the bottom region.** The global tab bar is now hidden while the session dock is mounted (`html.cp-session-live`), and `--cp-bottomnav-h` is zeroed so the dock and rest timer stop offsetting for a bar that is not there. Two stacked fixed bars cost 133px of a 667px screen and a mis-tap on "Plan" mid-set dropped the user out of a live workout. This was explicitly deferred in the first pass because **the session page had no exit affordance** — hiding global nav without one would have trapped the user. The navigator sheet now carries an explicit "Leave workout · your logged sets are saved" row, so leaving is deliberate and states what happens to the work.
+
+**Offline vocabulary.** `OfflineSyncBadge` distinguished only offline / syncing. It now names the real state — `Saved on this device` / `Couldn't sync N` / `Syncing N…` / `All sets synced` (transient) / silent — and `SessionWorkArea` tracks a separate failed count from outbox entries with `attempts > 0 && lastError`. The failure mode being designed against is a user in a gym basement believing their work was dropped and re-logging it. The badge is never a blocker and never implies logging is unavailable.
+
+**Undo.** Logging is optimistic and the CTA is now a large docked target, which makes a mis-tap both easier and more consequential. A logged set offers `Logged 100 kg x 5 · Undo` for 8 seconds, rendered as a row INSIDE the dock so it stacks with the rest row rather than covering the CTA the way a floating toast would. Undo only appears once the real row id comes back — an offline-queued set has no server row to delete, and offering undo for it would delete nothing and lie about it.
+
+**Interruption recovery.** New `lib/sessions/session-resume.ts` persists active movement, cursor, unsaved draft and an **absolute** rest deadline to localStorage, restored once on mount and cleared on finish. Notes:
+- `RestTimer` already derived remaining time from wall-clock (`Date.now() - start`), so a throttled interval while backgrounded was never the bug; the bug was that the start instant lived only in memory and did not survive a reload or process eviction.
+- A draft is scoped to the movement AND slot it was captured on (`draftAppliesTo`) — restoring a squat's 115 kg onto a lateral raise would be worse than restoring nothing.
+- State older than 6h, from another session, or from a backwards-moving clock is discarded rather than restored.
+- 19 unit tests in `__tests__/session-resume.test.ts`. The suite runs in the `node` environment, so storage is stubbed rather than pulling in jsdom.
+
+Mobile e2e grew to 11 cases; the new ones pin dock ownership + a reachable ≥44px exit, the undo guard, and that no dock row (rest, undo) can cover the primary action.

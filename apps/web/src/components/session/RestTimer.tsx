@@ -42,6 +42,12 @@ export type RestTimerProps = {
    * "next <name>" so the lifter knows which lift they're resting before.
    */
   movementName?: string | null;
+  /**
+   * Render in-flow instead of pinned. Used when the timer lives inside the
+   * session dock — two independently-fixed bottom elements would otherwise
+   * stack on top of each other.
+   */
+  inline?: boolean;
 };
 
 function fmt(secs: number): string {
@@ -67,6 +73,15 @@ const SHEET_WRAP_STYLE: React.CSSProperties = {
   boxShadow: "0 14px 40px rgba(0,0,0,0.40)",
 };
 
+/** In-dock presentation: the dock already owns the pinning and the chrome. */
+const INLINE_WRAP_STYLE: React.CSSProperties = {
+  position: "static",
+  padding: "8px 10px",
+  borderRadius: 12,
+  background: "var(--cp-surface)",
+  border: "1px solid var(--cp-accent)",
+};
+
 const ADJ_BTN_STYLE: React.CSSProperties = {
   minWidth: 46,
   minHeight: 44,
@@ -86,6 +101,7 @@ export function RestTimer({
   hapticsEnabled = true,
   timerSoundEnabled = true,
   movementName = null,
+  inline = false,
 }: RestTimerProps) {
   // The user can nudge ±30s mid-countdown. Adjustments are session-
   // scoped only — we never persist them. Resetting `seconds` (parent
@@ -128,7 +144,11 @@ export function RestTimer({
 
   if (done) {
     return (
-      <div data-testid="rest-timer-shell" className="cp-sheet-up" style={SHEET_WRAP_STYLE}>
+      <div
+        data-testid="rest-timer-shell"
+        className={inline ? undefined : "cp-sheet-up"}
+        style={inline ? INLINE_WRAP_STYLE : SHEET_WRAP_STYLE}
+      >
         <button
           type="button"
           data-testid="rest-timer-done"
@@ -162,8 +182,13 @@ export function RestTimer({
   return (
     <div
       data-testid="rest-timer-shell"
-      className="cp-sheet-up"
-      style={{ ...SHEET_WRAP_STYLE, display: "flex", alignItems: "center", gap: 12 }}
+      className={inline ? undefined : "cp-sheet-up"}
+      style={{
+        ...(inline ? INLINE_WRAP_STYLE : SHEET_WRAP_STYLE),
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+      }}
     >
       {/* Circular countdown — tapping it dismisses the rest, like the old bar. */}
       <button

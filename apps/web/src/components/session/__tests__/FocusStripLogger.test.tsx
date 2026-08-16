@@ -150,7 +150,7 @@ const addStrengthSet = vi.fn(async () => ({ ok: true as const }));
 const updateStrengthSet = vi.fn(async () => ({ ok: true as const }));
 
 describe("FocusStripLogger", () => {
-  it("renders one active movement with a horizontal movement queue", () => {
+  it("renders one active movement and lists the rest in the navigator", () => {
     const html = renderToStaticMarkup(
       <FocusStripLogger
         sessionId="session"
@@ -169,9 +169,21 @@ describe("FocusStripLogger", () => {
       />,
     );
     expect(html).toContain('data-testid="focus-strip-logger"');
-    expect(html).toContain("0 of 7 required sets");
-    expect(html).toContain("Bench Press 0/4");
-    expect(html).toContain("Overhead Press 0/5");
+    // Compact progress line replaces the old uppercase "WORKOUT PROGRESS" block.
+    expect(html).toContain('data-testid="focus-strip-progress"');
+    expect(html).toContain("0/7");
+    // The primary action is docked, not trailing the card.
+    expect(html).toContain('data-testid="session-dock"');
+    expect(html).toContain('data-testid="movement-focus-log-button"');
+    // Every movement is reachable from the navigator, including supplemental
+    // work, which the old section chips folded into "Main".
+    expect(html).toContain('data-testid="movement-navigator"');
+    expect(html).toContain('data-testid="movement-navigator-item-bench"');
+    expect(html).toContain('data-testid="movement-navigator-item-press"');
+    expect(html).toContain("Supplemental");
+    // The clipped horizontal queue is gone.
+    expect(html).not.toContain('data-testid="focus-strip-movement-queue"');
+    expect(html).not.toContain('data-testid="focus-strip-section-nav"');
     expect(html).toContain('data-testid="focus-strip-swap"');
     expect(html).not.toContain("movement-card-header-");
     expect(html).not.toContain("± 2.5");
@@ -228,8 +240,8 @@ describe("FocusStripLogger", () => {
         timerSoundEnabled={false}
       />,
     );
-    expect(html).toContain("0 of 3 required sets");
-    expect(html).toContain("Standing Banded Hip Adduction 0/3");
+    expect(html).toContain("0/3");
+    expect(html).toContain('data-testid="movement-navigator-item-hip-adduction"');
     expect(html).toContain("Rehab · 3×15");
     expect(html).toContain("Rehab · 1 of 3");
     expect(html).not.toContain("Tendon ·");
@@ -262,12 +274,14 @@ describe("FocusStripLogger", () => {
       />,
     );
 
-    expect(html).toContain('data-testid="focus-strip-section-nav"');
-    expect(html).toContain("Rehab · 0/3");
-    expect(html).toContain("Main · 0/4");
-    expect(html).toContain("Accessories · 0/1");
+    // Sections live in the navigator now, and each is addressable on every
+    // day — not only when the day happens to contain rehab.
+    expect(html).toContain('data-testid="movement-navigator"');
     expect(html).toContain("Rehab · during warm-up");
+    expect(html).toContain(">Main<");
+    expect(html).toContain(">Accessories<");
     expect(html).toContain("Skip remaining rehab (3)");
+    expect(html).not.toContain('data-testid="focus-strip-section-nav"');
   });
 
   it("keeps rehab navigation distinct when the main workout uses the same movement", () => {
@@ -313,8 +327,10 @@ describe("FocusStripLogger", () => {
       />,
     );
 
-    expect(html).toContain('data-testid="focus-strip-queue-rehab:bench"');
-    expect(html).toContain('data-testid="focus-strip-queue-bench"');
+    // Same catalog movement in both rehab and main must stay two distinct,
+    // separately addressable navigator rows.
+    expect(html).toContain('data-testid="movement-navigator-item-rehab:bench"');
+    expect(html).toContain('data-testid="movement-navigator-item-bench"');
     expect(html).toContain("Rehab · during warm-up");
     expect(html).toContain("Skip remaining rehab (1)");
   });
