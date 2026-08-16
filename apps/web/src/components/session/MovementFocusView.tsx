@@ -2207,9 +2207,12 @@ function Stepper({
         background: "var(--cp-surface)",
         border: "1px solid var(--cp-border)",
         borderRadius: 12,
-        // Tighter than the original 12px so the number field itself clears
-        // 44px wide inside a two-up stepper row at 375px.
-        padding: "10px 8px",
+        // Horizontal padding is deliberately tight. Two steppers sit side by
+        // side inside the focus card, so at 375px each column is only ~150px:
+        // 44+44 for the buttons leaves barely 40px for the number field unless
+        // the container gives up its own padding. The field is an interactive
+        // target too and has to clear 44px, so the padding loses.
+        padding: "10px 6px",
         display: "grid",
         gap: 6,
       }}
@@ -2225,7 +2228,7 @@ function Stepper({
       >
         {label}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 2, alignItems: "center" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 0, alignItems: "center" }}>
         <button
           type="button"
           onClick={onMinus}
