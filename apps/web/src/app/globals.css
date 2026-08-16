@@ -433,6 +433,14 @@ select option {
   font-size: 16px;
   font-weight: 700;
 }
+/* Save-an-edit is a different action from log-a-set, so it reads amber
+ * rather than borrowing the sage "log" accent. */
+.cp-session-dock-row > .cp-dock-cta--editing,
+.cp-session-dock-row > .cp-dock-cta--editing:hover {
+  background: var(--cp-warning);
+  border-color: var(--cp-warning);
+  color: #1a1206;
+}
 .cp-session-dock-row > .cp-dock-accessory {
   flex: 0 0 auto;
   min-width: 60px;

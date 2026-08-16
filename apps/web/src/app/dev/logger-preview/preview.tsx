@@ -63,6 +63,8 @@ const WORK_ITEMS = [
     kind: "accessory" as const,
     sets: 1,
     reps: 12,
+    // Deliberately NO percentTm and NO targetWeightKg — this is the ordinary
+    // accessory case, where the load has to come from the user's history.
     targetRir: { min: 1, max: 2 },
     intensityCue: "Control the lowering, no bouncing out of the bottom.",
   })),
@@ -116,6 +118,18 @@ const SUPERSETS: ReadonlyMap<string, SupersetCardInfo> = new Map([
   [MOV.row, { groupId: "A", slot: "A2" as const }],
 ]);
 
+/** Fixed so the fixture renders identically on every run (and in tests). */
+const SIX_DAYS_AGO = "2026-08-10T18:00:00.000Z";
+
+/**
+ * Prior-session top sets. Leg Press carries no prescribed load, so this is
+ * what seeds its stepper instead of opening at 0 kg.
+ */
+const LAST_SET_HINTS = {
+  [MOV.legPress]: { weightKg: 135, reps: 12, performedAt: SIX_DAYS_AGO },
+  [MOV.row]: { weightKg: 57.5, reps: 12, performedAt: SIX_DAYS_AGO },
+};
+
 const noop = async () => ({ ok: true as const });
 
 export function LoggerPreview({ variant }: { variant: string }) {
@@ -149,7 +163,7 @@ export function LoggerPreview({ variant }: { variant: string }) {
           <SessionWorkArea
             sessionId={SESSION_ID}
             isComplete={false}
-            performedAt={new Date().toISOString()}
+            performedAt={SIX_DAYS_AGO}
             sets={sets}
             tmBySlug={{ "back-squat-high-bar": 140, "romanian-deadlift": 120 }}
             oneRmBySlug={{}}
@@ -161,7 +175,7 @@ export function LoggerPreview({ variant }: { variant: string }) {
             /* eslint-enable @typescript-eslint/no-explicit-any */
             hapticsEnabled={false}
             timerSoundEnabled={false}
-            lastSetHints={{}}
+            lastSetHints={LAST_SET_HINTS}
             priorBests={{}}
             plannedSessionId="30000000-0000-4000-8000-000000000001"
             prescription={prescription}

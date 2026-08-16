@@ -229,4 +229,72 @@ test.describe("@mobile logger ergonomics", () => {
     });
     expect(overlap, "rest timer overlaps the CTA").toBe(false);
   });
+
+  test("editing a logged set is an explicit, cancellable mode", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(PREVIEW);
+
+    // Rehab sets 1 and 2 are pre-logged in the fixture.
+    await gotoMovement(page, /Seated Calf Raise/);
+    const card = page.getByTestId("movement-focus-card");
+    await expect(card).toHaveAttribute("data-editing", "false");
+    await expect(page.getByTestId("movement-focus-edit-banner")).toHaveCount(0);
+    await expect(page.getByTestId("movement-focus-log-button")).toContainText(
+      "Log set",
+    );
+    const normalBg = await page
+      .getByTestId("movement-focus-log-button")
+      .evaluate((el) => getComputedStyle(el).backgroundColor);
+
+    // Re-open the first logged set.
+    await page.getByTestId("movement-dot-0").click();
+
+    // Every cue the mode is supposed to raise.
+    await expect(card).toHaveAttribute("data-editing", "true");
+    const banner = page.getByTestId("movement-focus-edit-banner");
+    await expect(banner).toBeVisible();
+    await expect(banner).toContainText("Editing a logged set");
+    await expect(banner).toContainText("you logged");
+    await expect(page.getByTestId("movement-focus-cancel-edit")).toBeVisible();
+    await expect(page.getByTestId("movement-focus-cancel-edit-dock")).toBeVisible();
+    await expect(page.getByTestId("movement-focus-log-button")).toContainText(
+      "Update set",
+    );
+    await expect(page.getByTestId("session-dock")).toHaveClass(
+      /cp-session-dock--editing/,
+    );
+    const editBg = await page
+      .getByTestId("movement-focus-log-button")
+      .evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(editBg, "edit CTA is visually distinct from the log CTA").not.toBe(
+      normalBg,
+    );
+
+    // Cancel restores the normal mode and writes nothing.
+    await page.getByTestId("movement-focus-cancel-edit-dock").click();
+    await expect(card).toHaveAttribute("data-editing", "false");
+    await expect(page.getByTestId("movement-focus-edit-banner")).toHaveCount(0);
+    await expect(page.getByTestId("movement-focus-log-button")).toContainText(
+      "Log set",
+    );
+    // The navigator trigger comes back in place of Cancel.
+    await expect(page.getByTestId("movement-navigator-open")).toBeVisible();
+  });
+
+  test("an unprescribed accessory opens at last session's load, not zero", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(PREVIEW);
+    await gotoMovement(page, /Leg Press/);
+
+    // The fixture gives Leg Press no percentTm and no targetWeightKg, but a
+    // prior-session top set of 135 kg. Stepping there from 0 at 2.5 kg would
+    // be 54 taps.
+    await expect(
+      page.locator('[data-testid="stepper-weight"] input'),
+    ).toHaveValue("135");
+    await expect(page.getByTestId("load-from-history")).toBeVisible();
+    await expect(page.getByTestId("movement-focus-log-button")).toContainText("135");
+  });
 });

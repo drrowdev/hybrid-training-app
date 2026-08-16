@@ -693,6 +693,7 @@ export function FocusStripLogger({
               loggedSetIdByItemIndex={loggedSetIdByItemIndex}
               loggedSets={activeLoggedSets}
               priorBest={priorBests[activeOriginal.movementId]}
+              lastSetHint={lastSetHints[activeOriginal.movementId] ?? null}
               addStrengthSet={addStrengthSet}
               updateStrengthSet={updateStrengthSet}
               hapticsEnabled={hapticsEnabled}
