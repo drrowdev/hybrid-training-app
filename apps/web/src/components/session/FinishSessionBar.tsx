@@ -21,6 +21,7 @@
 import { useEffect, useRef, useState } from "react";
 import { completeSessionResult } from "@/lib/sessions/actions";
 import { enqueue as outboxEnqueue } from "@/lib/offline/outbox";
+import { clearResume } from "@/lib/sessions/session-resume";
 import { useSessionLoggingState } from "./SessionLoggingState";
 
 export function FinishSessionBar({
@@ -82,6 +83,9 @@ export function FinishSessionBar({
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (effectiveDisabled) return;
+    // The session is over either way — drop the resume snapshot so reopening
+    // a finished session never restores a stale cursor or rest countdown.
+    clearResume(sessionId);
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       const id =
         globalThis.crypto?.randomUUID?.() ?? `complete-${Date.now()}`;

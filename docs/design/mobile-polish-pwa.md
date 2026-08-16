@@ -1,7 +1,26 @@
 # Feature design: Mobile polish + PWA install
 
-**Status:** Planned. Build is queued after pre-session check-in.
-**Last updated:** 2026-05-21
+**Status:** Partially built. The in-session ergonomics half shipped 2026-08-16 (see
+"Build status" below); the PWA half is still queued.
+**Last updated:** 2026-08-16
+
+---
+
+## Build status (2026-08-16)
+
+The in-session pieces of §5 are **built**, though not exactly as sketched here.
+What actually shipped, and why it differs:
+
+| Spec'd here | Shipped | Note |
+| --- | --- | --- |
+| "Sticky bottom action bar (`Next set` / `Complete`)" | `SessionDock` — primary CTA + rest countdown + movement navigator | Measured first: the CTA was **below the fold in all three sections at 375×667**, so this was the single highest-impact fix. The dock is one owner of the bottom region; previously the rest timer and the action row were independently `position: fixed`. |
+| "Increment buttons flank the weight input as ≥44pt buttons" | Already existed; the **number field itself** was 31–40px wide | Fixed by tightening the stepper's internal padding. |
+| "Touch-target audit: every interactive element ≥ 44pt" | Enforced and now **test-guarded** | Dot pips, the how-to badge and the skip links were all under the floor. A Playwright assertion fails the build if any control regresses. |
+| "One-handed reach: primary actions on the bottom 40%" | Achieved via the dock | Chrome above the movement name went from 294–375px to **133px**. |
+| — (not spec'd) | **Movement navigator sheet** | Section navigation used to render only when the day contained rehab, and the movement queue clipped 3 of 5 movements off-screen. Neither problem was anticipated by this document. |
+
+Still open from §5: nothing for the session page. Still open overall: the entire
+PWA section (§6) and the Plan / Today / Settings responsive tweaks.
 
 ---
 

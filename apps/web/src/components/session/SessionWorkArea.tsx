@@ -165,6 +165,10 @@ export function SessionWorkArea({
   // server snapshot so the overlay reconciles the now-persisted rows away.
   const router = useRouter();
   const [outboxPending, setOutboxPending] = useState(0);
+  // Queued ops whose last replay attempt errored. Distinguishing "in flight"
+  // from "tried and failed" is the difference between "wait" and "something
+  // is wrong" for the user.
+  const [outboxFailed, setOutboxFailed] = useState(0);
   const loggingState = useSessionLoggingState();
   const registerStrengthLog = loggingState?.registerStrengthLog;
   const rollbackStrengthLog = loggingState?.rollbackStrengthLog;
@@ -275,6 +279,7 @@ export function SessionWorkArea({
     void outboxListForSession(sessionId).then((entries) => {
       if (cancelled) return;
       setOutboxPending(entries.length);
+      setOutboxFailed(entries.filter((e) => e.attempts > 0 && e.lastError).length);
       const seeded = entries
         .filter((e) => e.op === "set")
         .map((e) => optimisticLogFromFormData(payloadToFormData(e.payload), e.id))
@@ -291,6 +296,16 @@ export function SessionWorkArea({
     const stop = startAutoFlush((r) => {
       if (cancelled) return;
       setOutboxPending(r.remaining);
+      // Re-read so a failed replay surfaces as "couldn't sync" rather than
+      // sitting silently in the queue looking like it is still in flight.
+      void outboxListForSession(sessionId)
+        .then((entries) => {
+          if (cancelled) return;
+          setOutboxFailed(
+            entries.filter((e) => e.attempts > 0 && e.lastError).length,
+          );
+        })
+        .catch(() => {});
       if (r.flushed > 0) router.refresh();
     });
     return () => {
@@ -349,7 +364,7 @@ export function SessionWorkArea({
 
   return (
     <>
-      <OfflineSyncBadge pendingCount={outboxPending} />
+      <OfflineSyncBadge pendingCount={outboxPending} failedCount={outboxFailed} />
       <MovementCardList
         sessionId={sessionId}
         isComplete={isComplete}

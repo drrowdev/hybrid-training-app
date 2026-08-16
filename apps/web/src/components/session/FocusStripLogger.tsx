@@ -19,6 +19,10 @@ import type { FocusLoggedSet } from "./MovementFocusView";
 import { MovementFocusView } from "./MovementFocusView";
 import { LastSetHintRow } from "./MovementCard";
 import { SwapMovementModal } from "./SwapMovementModal";
+import {
+  MovementNavigatorSheet,
+  buildNavigatorEntries,
+} from "./MovementNavigatorSheet";
 import { MovementHowToButton } from "./MovementHowToButton";
 import type { PlateInventoryItem } from "./plate-math";
 import {
@@ -124,19 +128,27 @@ function coveredCount(
   return indices.filter((index) => loggedItemIndices.has(index)).length;
 }
 
-type FocusSectionKey = "rehab" | "main" | "accessories";
+export type FocusSectionKey = "rehab" | "main" | "supplemental" | "accessories";
 
-function focusSectionFor(group: MovementGroup): FocusSectionKey {
+/**
+ * Which navigator section a movement belongs to.
+ *
+ * `supplemental` used to be folded into `main`, which meant back-off work —
+ * one of the three things users explicitly think in terms of — was never
+ * addressable. It is its own section now.
+ */
+export function focusSectionFor(group: MovementGroup): FocusSectionKey {
   if (group.items.every((item) => item.meta?.rehab === true)) return "rehab";
   const bucket = bucketForGroup(group);
-  return bucket === "main" || bucket === "supplemental"
-    ? "main"
-    : "accessories";
+  if (bucket === "main") return "main";
+  if (bucket === "supplemental") return "supplemental";
+  return "accessories";
 }
 
 const FOCUS_SECTION_LABEL: Record<FocusSectionKey, string> = {
   rehab: "Rehab",
   main: "Main",
+  supplemental: "Supplemental",
   accessories: "Accessories",
 };
 
@@ -199,6 +211,7 @@ export function FocusStripLogger({
     () => new Set(),
   );
   const [swapOpen, setSwapOpen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const [skipRehabOpen, setSkipRehabOpen] = useState(false);
   const [skipRehabPending, setSkipRehabPending] = useState(false);
   const [skipRehabError, setSkipRehabError] = useState<string | null>(null);
@@ -305,9 +318,33 @@ export function FocusStripLogger({
       sum + coveredCount(requiredIndices(group), loggedItemIndices),
     0,
   );
+
+  // Rows for the navigator sheet. Progress counts optional slots too, so the
+  // "3/6" a user sees matches the dot strip on the card.
+  const navigatorEntries = buildNavigatorEntries({
+    groups,
+    sectionFor: focusSectionFor,
+    progressFor: (group) => {
+      const required = requiredIndices(group);
+      const optional = optionalIndices(group);
+      const all = [...required, ...optional];
+      return {
+        done: coveredCount(all, loggedItemIndices),
+        total: all.length,
+        settled:
+          coveredCount(required, loggedItemIndices) === required.length &&
+          (optional.every((index) => loggedItemIndices.has(index)) ||
+            declinedOptionalIds.has(movementGroupKey(group))),
+      };
+    },
+    tmBySlug,
+    oneRmBySlug,
+    supersetByMovementId: linkedCircuitByMovementId,
+  });
   const sectionSummaries = ([
     "rehab",
     "main",
+    "supplemental",
     "accessories",
   ] as const).flatMap((key) => {
     const sectionGroups = groups.filter(
@@ -351,16 +388,6 @@ export function FocusStripLogger({
       }
     }
   };
-  const hasOpenWork = (
-    group: MovementGroup,
-    declinedIds = declinedOptionalIds,
-    coveredIndices = loggedItemIndices,
-  ) =>
-    requiredIndices(group).some((index) => !coveredIndices.has(index)) ||
-    (optionalIndices(group).some(
-      (index) => !coveredIndices.has(index),
-    ) &&
-      !declinedIds.has(movementGroupKey(group)));
 
   const role = bucketForGroup(activeOriginal);
   const isRehabGroup = activeOriginal.items.every(
@@ -450,268 +477,34 @@ export function FocusStripLogger({
       data-testid="focus-strip-logger"
       style={{ display: "grid", gap: 12, maxWidth: 560, marginInline: "auto" }}
     >
+      {/* Compact, passive progress line. The old chrome here — an uppercase
+          "WORKOUT PROGRESS" kicker, a row of section chips that only existed
+          on rehab days, a full-width "Skip remaining rehab" panel and a
+          clipped horizontal movement queue — consumed 294–375px before the
+          movement name was even visible. Navigation now lives in the
+          navigator sheet, opened from the dock. */}
       <div
+        data-testid="focus-strip-progress"
         style={{
           display: "flex",
+          alignItems: "center",
           justifyContent: "space-between",
-          alignItems: "baseline",
           gap: 12,
+          fontSize: 13,
+          color: "var(--cp-text-muted)",
         }}
       >
-        <div>
-          <div
-            style={{
-              fontSize: 11,
-              color: "var(--cp-text-muted)",
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              fontWeight: 700,
-            }}
-          >
-            Workout progress
-          </div>
-          <div style={{ fontSize: 13, color: "var(--cp-text-soft)" }}>
-            {totalRequiredDone} of {totalRequired} required sets
-          </div>
-        </div>
-      </div>
-      {hasEmbeddedRehab && (
-        <div
-          data-testid="focus-strip-section-nav"
-          role="navigation"
-          aria-label="Workout sections"
-          style={{
-            display: "flex",
-            gap: 8,
-            overflowX: "auto",
-            paddingBottom: 2,
-          }}
-        >
-          {sectionSummaries.map((section) => {
-            const current = section.key === currentSection;
-            return (
-              <button
-                key={section.key}
-                type="button"
-                aria-pressed={current}
-                data-section={section.key}
-                onClick={() => {
-                  const target =
-                    section.groups.find((group) => hasOpenWork(group)) ??
-                    section.groups[0];
-                  if (target) setActiveId(movementGroupKey(target));
-                }}
-                style={{
-                  flex: "0 0 auto",
-                  minHeight: 44,
-                  padding: "0 12px",
-                  borderRadius: 10,
-                  border: `1px solid ${
-                    current ? "var(--cp-accent)" : "var(--cp-border)"
-                  }`,
-                  background: current
-                    ? "var(--cp-accent-soft)"
-                    : "var(--cp-surface)",
-                  color: current
-                    ? "var(--cp-accent)"
-                    : "var(--cp-text-muted)",
-                  fontSize: 12,
-                  fontWeight: current ? 700 : 600,
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {section.label} · {section.done}/{section.total}
-              </button>
-            );
-          })}
-        </div>
-      )}
-      {currentSection === "rehab" && remainingRehab.length > 0 && (
-        <div
-          data-testid="focus-strip-skip-rehab"
-          style={{
-            display: "grid",
-            gap: 8,
-            padding: 10,
-            border: "1px solid var(--cp-accent)",
-            borderRadius: 10,
-            background: "var(--cp-accent-soft)",
-          }}
-        >
-          <button
-            type="button"
-            className="cp-btn"
-            onClick={() => setSkipRehabOpen((open) => !open)}
-            disabled={skipRehabPending}
-          >
-            {skipRehabPending
-              ? "Skipping…"
-              : `Skip remaining rehab (${remainingRehab.length})`}
-          </button>
-          {skipRehabOpen && (
-            <div
-              role="group"
-              aria-label="Why are you skipping rehab?"
-              style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
-            >
-              {SKIP_REASONS.map((reason) => (
-                <button
-                  key={reason}
-                  type="button"
-                  className="cp-btn"
-                  disabled={skipRehabPending}
-                  onClick={() => void skipRemainingRehab(reason)}
-                  style={{ minHeight: 40, textTransform: "capitalize" }}
-                >
-                  {reason}
-                </button>
-              ))}
-            </div>
-          )}
-          {skipRehabError && (
-            <span role="alert" style={{ color: "var(--cp-danger)", fontSize: 12 }}>
-              {skipRehabError}
-            </span>
-          )}
-        </div>
-      )}
-      {reorderableMovementIds &&
-        reorderableMovementIds.length > 1 &&
-        onReorderMovements && (
-          <details
-            data-testid="focus-strip-reorder"
-            style={{
-              border: "1px solid var(--cp-border)",
-              borderRadius: 10,
-              padding: "8px 10px",
-              background: "var(--cp-surface)",
-            }}
-          >
-            <summary
-              className="cp-link"
-              style={{ cursor: "pointer", fontSize: 12 }}
-            >
-              Reorder accessories
-            </summary>
-            <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
-              {reorderableMovementIds.map((movementId, index) => {
-                const movement = groups.find(
-                  (group) =>
-                    group.movementId === movementId &&
-                    focusSectionFor(group) === "accessories",
-                );
-                if (!movement) return null;
-                const move = (offset: -1 | 1) => {
-                  const next = [...reorderableMovementIds];
-                  const target = index + offset;
-                  [next[index], next[target]] = [next[target]!, next[index]!];
-                  hapticTick(hapticsEnabled);
-                  onReorderMovements(next);
-                };
-                return (
-                  <div
-                    key={movementId}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "minmax(0, 1fr) auto auto",
-                      alignItems: "center",
-                      gap: 6,
-                    }}
-                  >
-                    <span
-                      style={{
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        fontSize: 12,
-                      }}
-                    >
-                      {movement.movementName}
-                    </span>
-                    <button
-                      type="button"
-                      className="cp-btn"
-                      aria-label={`Move ${movement.movementName} earlier`}
-                      disabled={index === 0}
-                      onClick={() => move(-1)}
-                      style={{ minWidth: 44, minHeight: 44, padding: 8 }}
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      className="cp-btn"
-                      aria-label={`Move ${movement.movementName} later`}
-                      disabled={index === reorderableMovementIds.length - 1}
-                      onClick={() => move(1)}
-                      style={{ minWidth: 44, minHeight: 44, padding: 8 }}
-                    >
-                      ↓
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </details>
+        <span>
+          <span style={{ color: "var(--cp-text)", fontWeight: 650 }}>
+            {totalRequiredDone}/{totalRequired}
+          </span>{" "}
+          sets logged
+        </span>
+        {remainingRehab.length > 0 && currentSection === "rehab" && (
+          <span style={{ color: "var(--cp-warning)", fontWeight: 600 }}>
+            {remainingRehab.length} rehab left
+          </span>
         )}
-
-      <div
-        data-testid="focus-strip-movement-queue"
-        role="navigation"
-        aria-label="Choose movement"
-        style={{
-          display: "flex",
-          gap: 6,
-          overflowX: "auto",
-          paddingBottom: 2,
-        }}
-      >
-        {groups.map((group) => {
-          const groupKey = movementGroupKey(group);
-          const required = requiredIndices(group);
-          const optional = optionalIndices(group);
-          const all = [...required, ...optional];
-          const done = coveredCount(all, loggedItemIndices);
-          const settled =
-            coveredCount(required, loggedItemIndices) === required.length &&
-            (optional.every((index) => loggedItemIndices.has(index)) ||
-              declinedOptionalIds.has(groupKey));
-          const current = groupKey === activeOriginalKey;
-          return (
-            <button
-              key={groupKey}
-              type="button"
-              data-testid={`focus-strip-queue-${groupKey}`}
-              data-current={current ? "true" : "false"}
-              aria-pressed={current}
-              onClick={() => setActiveId(groupKey)}
-              style={{
-                flex: "0 0 auto",
-                minHeight: 44,
-                padding: "0 11px",
-                borderRadius: 999,
-                border: `1px solid ${
-                  current ? "var(--cp-accent)" : "var(--cp-border)"
-                }`,
-                background: current
-                  ? "var(--cp-accent-soft)"
-                  : "var(--cp-surface)",
-                color: settled
-                  ? "var(--cp-success)"
-                  : current
-                    ? "var(--cp-accent)"
-                    : "var(--cp-text-muted)",
-                fontSize: 12,
-                fontWeight: current ? 700 : 600,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {group.movementName} {settled ? "✓" : `${done}/${all.length}`}
-            </button>
-          );
-        })}
       </div>
 
       <div
@@ -868,6 +661,7 @@ export function FocusStripLogger({
               loggedSetIdByItemIndex={loggedSetIdByItemIndex}
               loggedSets={activeLoggedSets}
               priorBest={priorBests[activeOriginal.movementId]}
+              lastSetHint={lastSetHints[activeOriginal.movementId] ?? null}
               addStrengthSet={addStrengthSet}
               updateStrengthSet={updateStrengthSet}
               hapticsEnabled={hapticsEnabled}
@@ -891,6 +685,34 @@ export function FocusStripLogger({
                 activeNextItemIndex,
               )}
               focusStrip
+              dockAccessory={
+                <button
+                  type="button"
+                  className="cp-btn cp-dock-accessory"
+                  data-testid="movement-navigator-open"
+                  onClick={() => setNavOpen(true)}
+                  aria-haspopup="dialog"
+                  aria-expanded={navOpen}
+                  style={{
+                    display: "grid",
+                    placeItems: "center",
+                    gap: 1,
+                    lineHeight: 1.1,
+                    padding: "6px 8px",
+                  }}
+                >
+                  <span aria-hidden="true" style={{ fontSize: 17 }}>
+                    ☰
+                  </span>
+                  <span style={{ fontSize: 12, fontWeight: 650 }}>Moves</span>
+                  <span
+                    className="mono"
+                    style={{ fontSize: 12, color: "var(--cp-text-muted)" }}
+                  >
+                    {Math.max(0, totalRequired - totalRequiredDone)} left
+                  </span>
+                </button>
+              }
               onSaved={({ itemIndex, isLast }) => {
                 const projected = new Set(loggedItemIndices);
                 projected.add(itemIndex);
@@ -937,6 +759,151 @@ export function FocusStripLogger({
           </>
         )}
       </div>
+
+      {/* Secondary, low-frequency session controls. These used to sit ABOVE
+          the logging card and pushed the primary action off the fold; a
+          "skip" action was the loudest element on the screen. They live
+          below the card now — still one scroll away, no longer competing
+          with the thing you opened the page to do. */}
+      {currentSection === "rehab" && remainingRehab.length > 0 && (
+        <div
+          data-testid="focus-strip-skip-rehab"
+          style={{
+            display: "grid",
+            gap: 8,
+            padding: 10,
+            border: "1px solid var(--cp-border)",
+            borderRadius: 10,
+            background: "var(--cp-surface)",
+          }}
+        >
+          <button
+            type="button"
+            className="cp-btn"
+            onClick={() => setSkipRehabOpen((open) => !open)}
+            disabled={skipRehabPending}
+          >
+            {skipRehabPending
+              ? "Skipping…"
+              : `Skip remaining rehab (${remainingRehab.length})`}
+          </button>
+          {skipRehabOpen && (
+            <div
+              role="group"
+              aria-label="Why are you skipping rehab?"
+              style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
+            >
+              {SKIP_REASONS.map((reason) => (
+                <button
+                  key={reason}
+                  type="button"
+                  className="cp-btn"
+                  disabled={skipRehabPending}
+                  onClick={() => void skipRemainingRehab(reason)}
+                  style={{ minHeight: 44, textTransform: "capitalize" }}
+                >
+                  {reason}
+                </button>
+              ))}
+            </div>
+          )}
+          {skipRehabError && (
+            <span role="alert" style={{ color: "var(--cp-danger)", fontSize: 12 }}>
+              {skipRehabError}
+            </span>
+          )}
+        </div>
+      )}
+
+      {reorderableMovementIds &&
+        reorderableMovementIds.length > 1 &&
+        onReorderMovements && (
+          <details
+            data-testid="focus-strip-reorder"
+            style={{
+              border: "1px solid var(--cp-border)",
+              borderRadius: 10,
+              padding: "8px 10px",
+              background: "var(--cp-surface)",
+            }}
+          >
+            <summary className="cp-link" style={{ cursor: "pointer", fontSize: 13, minHeight: 44, display: "flex", alignItems: "center" }}>
+              Reorder accessories
+            </summary>
+            <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+              {reorderableMovementIds.map((movementId, index) => {
+                const movement = groups.find(
+                  (group) =>
+                    group.movementId === movementId &&
+                    focusSectionFor(group) === "accessories",
+                );
+                if (!movement) return null;
+                const move = (offset: -1 | 1) => {
+                  const next = [...reorderableMovementIds];
+                  const target = index + offset;
+                  [next[index], next[target]] = [next[target]!, next[index]!];
+                  hapticTick(hapticsEnabled);
+                  onReorderMovements(next);
+                };
+                return (
+                  <div
+                    key={movementId}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0, 1fr) auto auto",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <span
+                      style={{
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        fontSize: 13,
+                      }}
+                    >
+                      {movement.movementName}
+                    </span>
+                    <button
+                      type="button"
+                      className="cp-btn"
+                      aria-label={`Move ${movement.movementName} earlier`}
+                      disabled={index === 0}
+                      onClick={() => move(-1)}
+                      style={{ minWidth: 44, minHeight: 44, padding: 8 }}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      className="cp-btn"
+                      aria-label={`Move ${movement.movementName} later`}
+                      disabled={index === reorderableMovementIds.length - 1}
+                      onClick={() => move(1)}
+                      style={{ minWidth: 44, minHeight: 44, padding: 8 }}
+                    >
+                      ↓
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </details>
+        )}
+
+      <MovementNavigatorSheet
+        open={navOpen}
+        onClose={() => setNavOpen(false)}
+        entries={navigatorEntries}
+        activeKey={activeOriginalKey}
+        doneCount={totalRequiredDone}
+        totalCount={totalRequired}
+        onPick={(key) => {
+          setNavOpen(false);
+          setActiveId(key);
+        }}
+      />
 
       <SwapMovementModal
         open={swapOpen}
