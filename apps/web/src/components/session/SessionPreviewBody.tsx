@@ -26,7 +26,11 @@ import {
   isSupplementalOnlySection,
   type PrescriptionMovementRow,
 } from "@/lib/plan/prescription-grouping";
-import { segmentSupersetRows } from "@/lib/plan/superset-grouping";
+import {
+  circuitNameOfRow,
+  segmentSupersetRows,
+  segmentSupersetSections,
+} from "@/lib/plan/superset-grouping";
 import { formatPrescriptionItem } from "@/lib/planner/archetypes";
 import { estimateSessionMinutes } from "@/lib/sessions/estimate-duration";
 import { CardioCard } from "./CardioCard";
@@ -270,13 +274,30 @@ export function SessionPreviewBody({
                 )}
               </>
             )
-          : sections.movements.map((sec) => (
-              <MovementCard
-                key={sec.rowKey}
-                section={sec}
-                hideHeading={shouldHideHeading(sec.movementName)}
-              />
-            ))}
+          : segmentSupersetSections(sections.movements).map((seg) =>
+              seg.kind === "solo" ? (
+                <MovementCard
+                  key={seg.section.rowKey}
+                  section={seg.section}
+                  hideHeading={shouldHideHeading(seg.section.movementName)}
+                />
+              ) : (
+                <SupersetCluster
+                  key={seg.groupId}
+                  groupId={seg.groupId}
+                  name={seg.name}
+                  size={seg.sections.length}
+                >
+                  {seg.sections.map((sec) => (
+                    <MovementCard
+                      key={sec.rowKey}
+                      section={sec}
+                      hideHeading={shouldHideHeading(sec.movementName)}
+                    />
+                  ))}
+                </SupersetCluster>
+              ),
+            )}
 
         {sections.accessories.length > 0 && (
           <MovementListCard
@@ -617,7 +638,12 @@ function MovementListCard({
           seg.kind === "solo" ? (
             <AccessoryRow key={seg.row.rowKey} row={seg.row} />
           ) : (
-            <SupersetCluster key={seg.groupId} groupId={seg.groupId}>
+            <SupersetCluster
+              key={seg.groupId}
+              groupId={seg.groupId}
+              name={circuitNameOfRow(seg.rows[0]!)}
+              size={seg.rows.length}
+            >
               {seg.rows.map((r) => (
                 <AccessoryRow key={r.rowKey} row={r} withinSuperset />
               ))}
@@ -666,18 +692,32 @@ function AccessoryRow({
 
 /**
  * Visual bracket around an antagonist superset (ADR 0026). Wraps the paired
- * accessory rows with a left accent rule, a "SUPERSET" tag, and a one-line
- * "alternate, rest once" hint so the lifter understands they do the two
- * movements back-to-back and rest a single time per round. Internal slot codes
- * (A1/A2) are NOT surfaced — only the human idea "do these two together".
+ * accessory rows with a left accent rule, the link's name, and a one-line
+ * "alternate, rest once" hint so the lifter understands they do the movements
+ * back-to-back and rest a single time per round. Internal slot codes (A1/A2)
+ * are NOT surfaced — only the human idea "do these together".
  */
 function SupersetCluster({
   groupId,
+  name,
+  size,
   children,
 }: {
   groupId: string;
+  /** The link's own name, so a tri-set doesn't read as "Superset". */
+  name?: string | null;
+  /** Member count, used only when the link carries no name. */
+  size?: number;
   children: React.ReactNode;
 }) {
+  const label =
+    name && name.length > 0
+      ? name
+      : size != null && size > 3
+        ? "Giant set"
+        : size === 3
+          ? "Tri-set"
+          : "Superset";
   return (
     <div
       data-testid="superset-cluster"
@@ -700,7 +740,7 @@ function SupersetCluster({
           paddingTop: 6,
         }}
       >
-        Superset · alternate, rest once
+        {label} · alternate, rest once
       </div>
       {children}
     </div>

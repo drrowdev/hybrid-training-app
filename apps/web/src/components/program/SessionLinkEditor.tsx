@@ -28,6 +28,7 @@ import { defaultLinkName, type SessionLink } from "@/lib/platform/session-links"
 import {
   addLink,
   canCreateLink,
+  expandSelection,
   linkHasMainLift,
   linksIncludeMainLift,
   moveMember,
@@ -265,7 +266,7 @@ export function SessionLinkEditor({
             <button
               type="button"
               data-testid={`link-create-${seriesKey}`}
-              disabled={!canCreateLink(selected, links)}
+              disabled={!canCreateLink(selected, links, movements)}
               onClick={() => {
                 onChange(seriesKey, addLink(links, movements, selected));
                 setSelected([]);
@@ -278,12 +279,16 @@ export function SessionLinkEditor({
                 color: "var(--accent, #8fb39b)",
                 padding: "7px 10px",
                 fontSize: 11,
-                cursor: canCreateLink(selected, links) ? "pointer" : "not-allowed",
-                opacity: canCreateLink(selected, links) ? 1 : 0.4,
+                cursor: canCreateLink(selected, links, movements)
+                  ? "pointer"
+                  : "not-allowed",
+                opacity: canCreateLink(selected, links, movements) ? 1 : 0.4,
               }}
             >
               {selected.length >= 2
-                ? `Link as ${defaultLinkName(selected.length).toLowerCase()}`
+                ? `Link as ${defaultLinkName(
+                    expandSelection(movements, selected).length,
+                  ).toLowerCase()}`
                 : "Select 2 or more"}
             </button>
           </div>

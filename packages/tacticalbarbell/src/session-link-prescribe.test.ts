@@ -205,25 +205,71 @@ describe("prescribe — links that cannot be realised", () => {
 });
 
 describe("prescribe — AB Triad precedence", () => {
-  it("keeps the built-in triad circuit and ignores an overlapping user link", () => {
-    // TB3 sessions carry the AB Triad. The engine owns it, an item can hold only
-    // one circuit, so a user link touching those slots must be ignored outright.
-    const inst = setup({ templateId: "zulu" });
-    const withTriad = tb
-      .timeline(inst)
-      .map((spec) => ({ spec, items: tb.prescribe(inst, spec.ref, ctx).items }))
-      .find(({ items }) =>
-        items.some((it) => it.circuit?.id === "tb-ab-triad"),
-      );
-    if (!withTriad) return; // template without the triad — nothing to assert
-    const linked = setup({
-      templateId: "zulu",
+  /** The first TB session in any template that materialises the AB Triad. */
+  function triadSession() {
+    for (const templateId of ["zulu", "operator", "fighter", "mass"]) {
+      const inst = setup({ templateId });
+      for (const spec of tb.timeline(inst)) {
+        const items = tb.prescribe(inst, spec.ref, ctx).items;
+        if (items.some((it) => it.circuit?.id === "tb-ab-triad")) {
+          return { templateId, ref: spec.ref, items };
+        }
+      }
+    }
+    return null;
+  }
+
+  it("emits the built-in triad when no user link touches it", () => {
+    const found = triadSession();
+    if (!found) return;
+    expect(
+      found.items.filter((it) => it.circuit?.id === "tb-ab-triad"),
+    ).toHaveLength(3);
+  });
+
+  it("ignores a link claiming only PART of the triad", () => {
+    // A partial claim would leave the rest as a broken circuit.
+    const found = triadSession();
+    if (!found) return;
+    const inst = setup({
+      templateId: found.templateId,
       customSessionLinks: {
-        [`slot-1`]: [link(["hanging-leg-raise", "toes-to-bar"])],
+        "slot-1": [link(["hanging-leg-raise", "toes-to-bar"])],
       },
     });
-    const items = tb.prescribe(linked, withTriad.spec.ref, ctx).items;
+    const items = tb.prescribe(inst, found.ref, ctx).items;
     expect(items.some((it) => it.circuit?.id === "link-1")).toBe(false);
     expect(items.some((it) => it.circuit?.id === "tb-ab-triad")).toBe(true);
+  });
+
+  it("lets a link absorb the WHOLE triad, superseding the built-in circuit", () => {
+    // "Superset X with the AB Triad" is really one circuit that includes all
+    // three of its stations, so the user link replaces `tb-ab-triad`.
+    const found = triadSession();
+    if (!found) return;
+    const triad = [
+      "hanging-leg-raise",
+      "hanging-knee-raise",
+      "toes-to-bar",
+    ];
+    // Pick a non-triad lift from the same session to lead the group.
+    const lead = found.items
+      .filter((it) => it.kind !== "warmup" && it.circuit == null)
+      .map((it) => it.movementId)
+      .find((id): id is string => !!id && !triad.includes(id));
+    if (!lead) return;
+    const inst = setup({
+      templateId: found.templateId,
+      customSessionLinks: { "slot-1": [link([lead, ...triad])] },
+    });
+    const items = tb.prescribe(inst, found.ref, ctx).items;
+    const linked = items.filter((it) => it.circuit?.id === "link-1");
+    expect(linked).toHaveLength(4);
+    expect(linked.every((it) => it.circuit!.size === 4)).toBe(true);
+    // The built-in circuit is fully replaced, not left half-applied.
+    expect(items.some((it) => it.circuit?.id === "tb-ab-triad")).toBe(false);
+    expect(
+      linked.map((it) => it.circuit!.position).sort((a, b) => a - b),
+    ).toEqual([0, 1, 2, 3]);
   });
 });

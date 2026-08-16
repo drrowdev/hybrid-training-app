@@ -563,17 +563,21 @@ function applySessionLinks(
   const claimed = new Set<number>();
   const resolved: { link: TbSessionLink; members: number[] }[] = [];
   for (const link of links) {
-    // The engine owns the AB Triad. When the complete triad is present it is
-    // already a circuit, and an item can carry only one, so any user link
-    // touching those slots is ignored rather than allowed to collide. The wizard
-    // also refuses to build one, so this only ever catches stale data.
-    if (
-      hasCompleteAbTriad &&
-      link.members.some((member) =>
-        (AB_TRIAD_MOVEMENTS as readonly string[]).includes(member),
-      )
-    ) {
-      continue;
+    // The AB Triad is an engine-owned circuit, and an item carries only one, so
+    // a link may absorb it only as a WHOLE — "back extension + AB Triad" is
+    // really a four-station circuit, and the user link then supersedes the
+    // built-in one (the circuit assigned below overwrites `tb-ab-triad`).
+    // A link claiming only PART of the triad would leave the rest as a broken
+    // partial circuit, so it is refused. The wizard offers the triad as a single
+    // unit, so that only ever catches stale or hand-edited data.
+    if (hasCompleteAbTriad) {
+      const triad = AB_TRIAD_MOVEMENTS as readonly string[];
+      const claimedTriad = link.members.filter((member) =>
+        triad.includes(member),
+      );
+      if (claimedTriad.length > 0 && claimedTriad.length !== triad.length) {
+        continue;
+      }
     }
     const members = link.members.map((member) => indexBySource.get(member));
     if (members.some((index) => index == null)) continue;

@@ -79,19 +79,26 @@ describe("selectableMovements", () => {
 
 describe("canCreateLink", () => {
   it("needs at least two members", () => {
-    expect(canCreateLink([], [])).toBe(false);
-    expect(canCreateLink(["a"], [])).toBe(false);
-    expect(canCreateLink(["a", "b"], [])).toBe(true);
+    expect(canCreateLink([], [], MOVEMENTS)).toBe(false);
+    expect(canCreateLink(["squat"], [], MOVEMENTS)).toBe(false);
+    expect(canCreateLink(["squat", "bench"], [], MOVEMENTS)).toBe(true);
+  });
+
+  it("refuses a selection whose movements aren't in the slot", () => {
+    expect(canCreateLink(["ghost-a", "ghost-b"], [], MOVEMENTS)).toBe(false);
   });
 
   it("refuses past the member cap", () => {
-    const nine = Array.from({ length: 9 }, (_, i) => `m${i}`);
-    expect(canCreateLink(nine, [])).toBe(false);
+    const many: LinkableMovement[] = Array.from({ length: 9 }, (_, i) => ({
+      key: `m${i}`,
+      label: `M${i}`,
+    }));
+    expect(canCreateLink(many.map((m) => m.key), [], many)).toBe(false);
   });
 
   it("refuses past the per-slot link cap", () => {
     const six = Array.from({ length: 6 }, (_, i) => link(`link-${i}`, ["x", "y"]));
-    expect(canCreateLink(["a", "b"], six)).toBe(false);
+    expect(canCreateLink(["squat", "bench"], six, MOVEMENTS)).toBe(false);
   });
 });
 
@@ -196,7 +203,6 @@ describe("activationLinkableMovements", () => {
   // linkable set is derived differently — but the members are still canonical
   // slot ids, which is what lets a link survive swapping the exercise.
   const TRIAD = ["hanging-leg-raise", "hanging-knee-raise", "toes-to-bar"];
-  const LOCK = "The AB Triad is already linked as a circuit.";
   const label = (key: string) => `LBL:${key}`;
 
   const build = (
@@ -208,7 +214,7 @@ describe("activationLinkableMovements", () => {
       selected,
       labelOf: label,
       builtinCircuitSources: TRIAD,
-      lockedReason: LOCK,
+      builtinCircuitLabel: "AB Triad",
     });
 
   it("keys members by the canonical slot, not the movement filling it", () => {
@@ -235,21 +241,39 @@ describe("activationLinkableMovements", () => {
     expect(out[0]!.isMain).toBe(true);
   });
 
-  it("locks the AB Triad while the whole triad is present", () => {
-    const slots = ["squat", ...TRIAD];
+  it("offers the complete AB Triad as ONE entry, not three", () => {
+    // Supersetting "with the AB Triad" means a circuit that includes all three
+    // of its stations, so it is picked as a unit.
+    const slots = ["back-extension", ...TRIAD];
     const selected = Object.fromEntries(slots.map((s) => [s, s]));
     const out = build(slots, selected);
-    expect(out.find((m) => m.key === "squat")!.lockedReason).toBeUndefined();
-    for (const source of TRIAD) {
-      expect(out.find((m) => m.key === source)!.lockedReason).toBe(LOCK);
-    }
+    expect(out.map((m) => m.label)).toEqual(["LBL:back-extension", "AB Triad"]);
+    const triadEntry = out[1]!;
+    expect(triadEntry.expandsTo).toEqual(TRIAD);
+    expect(triadEntry.lockedReason).toBeUndefined();
   });
 
-  it("leaves triad movements linkable when the triad is incomplete", () => {
+  it("lists the triad's movements individually when it is incomplete", () => {
     const slots = ["squat", "hanging-leg-raise", "toes-to-bar"];
     const selected = Object.fromEntries(slots.map((s) => [s, s]));
     const out = build(slots, selected);
-    expect(out.every((m) => m.lockedReason == null)).toBe(true);
+    expect(out.map((m) => m.key)).toEqual(slots);
+    expect(out.every((m) => m.expandsTo == null)).toBe(true);
+  });
+
+  it("breaks the triad up once one of its slots is removed", () => {
+    const slots = ["squat", ...TRIAD];
+    const selected: Record<string, string | null> = Object.fromEntries(
+      slots.map((s) => [s, s]),
+    );
+    selected["toes-to-bar"] = null;
+    const out = build(slots, selected);
+    expect(out.map((m) => m.key)).toEqual([
+      "squat",
+      "hanging-leg-raise",
+      "hanging-knee-raise",
+    ]);
+    expect(out.every((m) => m.expandsTo == null)).toBe(true);
   });
 
   it("preserves session order", () => {
@@ -259,6 +283,43 @@ describe("activationLinkableMovements", () => {
 
   it("returns nothing when every slot is removed", () => {
     expect(build(["a", "b"], { a: null, b: null })).toEqual([]);
+  });
+});
+
+describe("group entries expand into their slots", () => {
+  const TRIAD = ["hanging-leg-raise", "hanging-knee-raise", "toes-to-bar"];
+  const WITH_GROUP: LinkableMovement[] = [
+    { key: "back-extension", label: "Back Extension", isMain: true },
+    { key: TRIAD[0]!, label: "AB Triad", expandsTo: TRIAD },
+    { key: "catalog:1", label: "Barbell curl" },
+  ];
+
+  it("links a lift with the whole triad as one circuit", () => {
+    const out = addLink([], WITH_GROUP, ["back-extension", TRIAD[0]!]);
+    expect(out[0]!.members).toEqual(["back-extension", ...TRIAD]);
+    // Four stations -> a giant set, not a "superset".
+    expect(out[0]!.name).toBe("Giant set");
+  });
+
+  it("counts expanded slots against the member cap", () => {
+    // Two picks, four resulting stations — still valid.
+    expect(canCreateLink(["back-extension", TRIAD[0]!], [], WITH_GROUP)).toBe(
+      true,
+    );
+    // A single pick is never a link, even when it expands to three.
+    expect(canCreateLink([TRIAD[0]!], [], WITH_GROUP)).toBe(false);
+  });
+
+  it("withholds the group once any of its slots is linked", () => {
+    const links = [link("link-1", ["back-extension", ...TRIAD], "Giant set")];
+    expect(selectableMovements(WITH_GROUP, links).map((m) => m.key)).toEqual([
+      "catalog:1",
+    ]);
+  });
+
+  it("expands in slot order regardless of pick order", () => {
+    const out = addLink([], WITH_GROUP, [TRIAD[0]!, "back-extension"]);
+    expect(out[0]!.members).toEqual(["back-extension", ...TRIAD]);
   });
 });
 
