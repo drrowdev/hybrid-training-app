@@ -64,11 +64,17 @@ export const MAX_LINKS_PER_SERIES = 6;
  */
 export const MILESTONE_SERIES_PREFIX = "activation.milestone.";
 
-/** Default human name for a link of `n` members. Required by the logger, which
- *  rejects circuit metadata carrying an empty name. */
-export function defaultLinkName(memberCount: number): string {
-  if (memberCount <= 2) return "Superset";
-  if (memberCount === 3) return "Tri-set";
+/**
+ * Default human name for a link of `n` STATIONS.
+ *
+ * Stations, not members: the AB Triad is three movements the lifter thinks of as
+ * one thing, so linking a lift to it is a superset of two stations, not a giant
+ * set of four. Required by the logger, which rejects circuit metadata carrying
+ * an empty name.
+ */
+export function defaultLinkName(stationCount: number): string {
+  if (stationCount <= 2) return "Superset";
+  if (stationCount === 3) return "Tri-set";
   return "Giant set";
 }
 

@@ -141,6 +141,21 @@ export function expandSelection(
 }
 
 /**
+ * The picker rows a selection resolves to, ignoring anything locked or unknown.
+ *
+ * The unit the lifter reasons in: a group row (the AB Triad) is ONE station
+ * however many movements it contributes, which is what the link's name counts.
+ */
+export function selectedStations(
+  movements: readonly LinkableMovement[],
+  selected: readonly string[],
+): LinkableMovement[] {
+  return movements.filter(
+    (m) => selected.includes(m.key) && !m.lockedReason,
+  );
+}
+
+/**
  * Add a link for the current selection.
  *
  * Members are stored in SLOT order rather than click order, so the link reads
@@ -159,7 +174,13 @@ export function addLink(
   if (members.length < 2) return [...links];
   return [
     ...links,
-    { id: nextLinkId(links), name: defaultLinkName(members.length), members },
+    {
+      id: nextLinkId(links),
+      // Named by stations, not members: "back extension + AB Triad" is a
+      // superset of two things, not a giant set of four.
+      name: defaultLinkName(selectedStations(movements, selected).length),
+      members,
+    },
   ];
 }
 

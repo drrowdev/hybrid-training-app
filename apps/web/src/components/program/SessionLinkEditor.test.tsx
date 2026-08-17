@@ -36,9 +36,14 @@ describe("SessionLinkEditor", () => {
     expect(markup([], [MOVEMENTS[0]!])).toBe("");
   });
 
-  it("offers the picker when nothing is linked yet", () => {
+  it("offers the picker when nothing is linked yet, marked closed", () => {
     const html = markup([]);
-    expect(html).toContain("+ Link lifts");
+    expect(html).toContain("Link lifts");
+    expect(html).toContain("link-picker-toggle-slot-1");
+    // Closed picker shows "+"; the open state swaps it for a minus so the
+    // control says which way it will move.
+    expect(html).toContain(">+</span>");
+    expect(html).not.toContain("\u2212</span>");
     expect(html).toContain("link-pick-slot-1-squat");
     expect(html).toContain("link-create-slot-1");
   });

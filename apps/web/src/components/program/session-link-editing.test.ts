@@ -378,8 +378,20 @@ describe("group entries expand into their slots", () => {
   it("links a lift with the whole triad as one circuit", () => {
     const out = addLink([], WITH_GROUP, ["back-extension", GROUP_KEY]);
     expect(out[0]!.members).toEqual(["back-extension", ...TRIAD]);
-    // Four stations -> a giant set, not a "superset".
-    expect(out[0]!.name).toBe("Giant set");
+    // Two STATIONS, four slots: the triad is one thing to the lifter, so this
+    // is a superset — calling it a giant set describes the engine, not the work.
+    expect(out[0]!.name).toBe("Superset");
+  });
+
+  it("names a link by stations, counting a group as one", () => {
+    const withCurl = addLink([], WITH_GROUP, [
+      "back-extension",
+      GROUP_KEY,
+      "catalog:1",
+    ]);
+    // Three stations (five slots) -> tri-set.
+    expect(withCurl[0]!.name).toBe("Tri-set");
+    expect(withCurl[0]!.members).toHaveLength(5);
   });
 
   it("counts expanded slots against the member cap", () => {
